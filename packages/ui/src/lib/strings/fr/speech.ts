@@ -5,7 +5,6 @@ export const fr: Translation = {
     enabled: 'Dictée vocale',
     enabledHint: "Activez la dictée sur cet appareil. La désactiver retire le micro de la barre de saisie, même si un modèle est installé.",
     microphone: 'Microphone',
-    microphoneHint: 'Le micro utilisé pour dicter sur cet appareil.',
     defaultMicrophone: 'Micro par défaut du système',
     microphoneNumber: 'Microphone {number}',
     microphoneUnavailable: 'Le micro choisi est indisponible. Choisissez un autre micro.',

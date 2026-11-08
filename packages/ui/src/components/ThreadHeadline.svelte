@@ -28,8 +28,8 @@
    * time after it. The thread's header names its agent, so the row carries no
    * provider glyph; a flat list (`tile`) shows the project's tile first, since
    * no card names it. `mark` draws the state as the narrow mark
-   * (ThreadState.svelte). `ask` (Activity) follows the title on its line when
-   * both fit, and runs under it otherwise. `at` is a time of the row's own
+   * (ThreadState.svelte). `ask` (Activity) is one line under the title, which
+   * keeps the row's width. `at` is a time of the row's own
    * (Activity's since when, a phone's last message): it follows the mark, and
    * stands alone when there is none.
    */
@@ -105,18 +105,17 @@
     color: var(--color-muted-foreground);
     font-weight: 500;
   }
-  /* Activity: what is asked shares the title's line when both fit, and wraps under the title's edge when not. */
+  /* Activity: the title first, on the row's width, and what is asked as one line under its edge. */
   .lead {
     display: flex;
     flex: 1;
-    flex-wrap: wrap;
-    align-items: baseline;
+    flex-direction: column;
+    align-items: stretch;
     min-width: 0;
-    gap: 2px 10px;
+    gap: 2px;
   }
   .lead > .title {
-    flex: 0 1 auto;
-    max-width: 100%;
+    flex: none;
   }
   .at {
     flex: none;

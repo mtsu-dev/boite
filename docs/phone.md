@@ -415,7 +415,7 @@ shifts a quarter of the width left under it, and slides back out on the way
 back; a Settings page does the same over the Settings home. The right panel
 comes in from the right edge and leaves by it, and a bottom sheet rises from
 the bottom edge and goes back down. Only transforms move, over `--dur-3` with
-`--ease-slide`, and the conversation keeps its full height on the way, so
+`--motion-curve`, and the conversation keeps its full height on the way, so
 nothing inside it reflows. Between the bottom bar's places, from one Settings
 page to another and wider than 720 px nothing slides; under reduced motion
 nothing moves. Safari's swipe from the edge, and Chrome's where it draws one,

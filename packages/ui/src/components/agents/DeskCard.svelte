@@ -53,7 +53,7 @@
   }
 </script>
 
-<article class="desk-row" class:done data-state={standing} data-tone={tone} data-testid="desk-card" data-thread={watch.threadId}>
+<article class="desk-row" class:done class:away={!!watch.unreachable} data-state={standing} data-tone={tone} data-testid="desk-card" data-thread={watch.threadId}>
   {#if onopen}<button type="button" class="desk-card-open" onclick={onopen} aria-label={fill(t.open, { title: watch.title })} title={fill(t.open, { title: watch.title })}></button>{/if}
   <span class="desk-row-tile" title={t.origin[watch.origin]}>
     {#if project}<ProjectTile {project} {store} size={16} />{:else}<span class="desk-row-blank"><MessageSquare size={10} strokeWidth={2} /></span>{/if}
@@ -73,8 +73,9 @@
     {#if meta}
       <p class="desk-card-meta">
         {#if said}{#key standing}<span class="desk-chip" data-testid="desk-chip">{standing === 'stalled' && watch.stalledSince !== null ? fill(t.silent, { time: workedTime(now - watch.stalledSince) }) : t.state[standing]}</span>{/key}{/if}
-        {#if watch.machine && (watch.unreachable || !project)}<span class="desk-card-machine" data-testid="desk-card-machine">{watch.machine}</span>{/if}
-        {#if watch.unreachable}<span class="desk-card-unreachable" title={watch.unreachable} data-testid="desk-card-unreachable"><span class="desk-card-off" aria-hidden="true"></span>{t.unreachable}</span>{/if}
+        <!-- Out of reach reads as the machine's state, in words after its name ("skoll offline"); the card dims. -->
+        {#if watch.unreachable}<span class="desk-card-unreachable" title={watch.unreachable} data-testid="desk-card-unreachable">{#if watch.machine}<span class="desk-card-machine" data-testid="desk-card-machine">{watch.machine}</span>{' '}{/if}{t.unreachable}</span>
+        {:else if watch.machine && !project}<span class="desk-card-machine" data-testid="desk-card-machine">{watch.machine}</span>{/if}
         {#if pr}
           <span class="desk-card-pr" data-pr={pr.state} data-checks={pr.checks ?? 'none'} data-testid="desk-card-pr">
             {#if pr.state === 'merged'}<GitMerge size={12} strokeWidth={1.75} />{:else if pr.state === 'closed'}<GitPullRequestClosed size={12} strokeWidth={1.75} />{:else}<GitPullRequest size={12} strokeWidth={1.75} />{/if}

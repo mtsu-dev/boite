@@ -273,7 +273,7 @@ test('an agent thread folds a finished turn\'s steps behind the count on its sum
   const folds = () => [...document.querySelectorAll<HTMLElement>('[data-testid="turn-fold"]')];
   // Its evening routines had nothing to report: one line each, its opening and its calls folded inside.
   const quiet = folds().find(fold => fold.dataset.kind === 'quiet' && fold.textContent?.includes('4 issues'))!;
-  expect(quiet.textContent).toContain('Checked: 4 issues, 2 pull requests, nothing new · 2 steps');
+  expect(quiet.textContent).toContain('Checked: 4 issues, 2 pull requests, nothing new · Ran 2 commands');
   // The automatic compaction after each is a mark on its line, not a row of its own.
   expect(folds().filter(fold => fold.dataset.kind === 'quiet').map(fold => fold.querySelector('[data-testid="turn-fold-compaction"]')?.textContent)).toEqual(['summarized 51.1K → 10.8K', 'summarized 48.9K → 11.2K']);
   expect(document.querySelector('[data-testid="compaction-part"]')).toBeNull();
@@ -299,13 +299,13 @@ test('an agent thread folds a finished turn\'s steps behind the count on its sum
   await openAgent(owner, nova.id);
   running = mount(MessageList, { target: document.body, props: { store: owner, threadId: owner.openThread!.id, messages: owner.openThread!.messages } });
   flushSync();
-  // No row above the answer: the summary line under it counts the steps, with the time it worked and when it finished.
+  // No row above the answer: the summary line under it says the steps in words, with the time it worked and when it finished.
   expect(folds().filter(fold => fold.dataset.kind === 'worked')).toHaveLength(0);
   const worked = [...document.querySelectorAll<HTMLElement>('[data-testid="turn-steps"]')];
   // Its answers are signed with its name, not the provider's.
   expect([...document.querySelectorAll('[data-testid="message-model"]')].map(node => node.textContent?.trim())).toContain('Nova');
   expect(timeline()).not.toMatch(/^Echo|\bEcho\b/);
-  expect(worked.map(button => button.textContent?.trim())).toEqual(['2 steps', '4 steps']);
+  expect(worked.map(button => button.textContent?.trim())).toEqual(['Ran 2 commands', 'Ran 3 commands and read 1 file']);
   expect(worked[1]!.closest('[data-testid="turn-summary"]')?.textContent).toMatch(/Worked for 2m 0\ds.*done/);
   expect(timeline()).toContain('The login fix opened PR #482');
   expect(timeline()).not.toContain('The e2e job fails; its log names the redirect test.');
@@ -529,6 +529,29 @@ test('a call finished in the running turn rereads only that turn files, never a 
   thread.messages[1]!.parts.push(write('c.ts'));
   flushSync();
   expect(read.mock.calls.map(call => call[0])).toEqual([live.id]);
+});
+
+test("a turn's change count sits on the tool line of its last change, not on a card of its own under the answer", async ({ createStore }) => {
+  window.localStorage.clear();
+  const { store: owner, client } = createStore({ delayMs: 0 });
+  owner.attach(client); await owner.connect(); await owner.open('t-trace');
+  const thread = owner.openThread!;
+  const done = { ...thread.turns[0]!, startedAt: 1, finishedAt: 15, status: 'done' as const };
+  const read = { type: 'tool' as const, toolId: 'read', name: 'Read', input: { file_path: 'a.ts' }, output: 'x', status: 'done' as const };
+  const write = { type: 'tool' as const, toolId: 'write', name: 'Write', input: { file_path: 'b.ts', content: 'one\ntwo' }, output: null, status: 'done' as const };
+  thread.memoryEvents = [];
+  thread.turns = [done];
+  thread.messages = [{ id: 'answer', threadId: thread.id, turnId: done.id, role: 'assistant', state: 'complete', createdAt: 10, parts: [read, write, { type: 'text', text: 'Wrote b.ts.' }] }];
+  running = mount(MessageList, { target: document.body, props: { store: owner, threadId: thread.id, messages: thread.messages } });
+  flushSync();
+  await vi.waitFor(() => expect(document.querySelector('[data-testid=turn-files]')).not.toBeNull());
+  // One row: the run's line says what was done and carries the lines it added; no "Changed files" title repeats it.
+  const line = document.querySelector('[data-testid=tool-group] [data-testid=turn-files]')!;
+  expect(line).not.toBeNull();
+  expect(document.querySelectorAll('[data-testid=turn-files]')).toHaveLength(1);
+  expect(document.querySelector('[data-testid=tool-group-label]')?.textContent).toBe('Read 1 file and changed 1 file');
+  expect(line.querySelector('[data-testid=turn-files-toggle]')?.textContent?.trim()).toBe('+2');
+  expect(line.querySelector<HTMLElement>('[data-testid=turn-files-toggle]')?.title).toBe('Changed files: 1 file, +2');
 });
 
 test('delegation mail opens its messages tab with local family identity, without duplicating coordination mail', async () => {

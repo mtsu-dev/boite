@@ -286,7 +286,8 @@
 /* A tap leaves :hover behind on a touch screen: the chip would stay pressed once its popover closed. */
 @media (hover: hover) { .trigger:hover { background: var(--control-glaze) var(--color-control-hover); color: var(--color-foreground); } }
 .fast-mark { display: inline-flex; margin-left: -2px; color: var(--color-accent); }
-.popover { position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 40; width: 280px; padding: 10px 12px 12px; background: var(--color-surface-3); border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-e2); animation: pop var(--dur-2) var(--ease-out-quint); transform-origin: bottom left; }
+/* Every menu's one edge, radius and shadow. */
+.popover { position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 40; width: 280px; padding: 10px 12px 12px; background: var(--overlay-surface); border: 1px solid var(--overlay-edge); border-radius: var(--radius-overlay); box-shadow: var(--shadow-overlay); animation: pop var(--dur-2) var(--ease-out-quint); transform-origin: bottom left; }
 .popover.closing { animation-name: pop-out; pointer-events: none; }
 /* Three columns: the fast switch on the left, the level in the middle whatever the switch's width. */
 .heading { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; min-height: 24px; margin-bottom: 8px; color: var(--color-foreground); font-size: var(--text-sm); font-weight: 600; }

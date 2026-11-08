@@ -80,7 +80,7 @@
     <input type="checkbox" role="switch" data-testid="voice-enabled" checked={voice.current.enabled} onchange={(event) => voice.setEnabled(event.currentTarget.checked)} />
   </label>
   <div class="switch-row microphone-row">
-    <span class="text ui-label-box"><span class="ui-label">{strings.speech.microphone}</span><InfoTip topic={strings.speech.microphone} text={strings.speech.microphoneHint} /></span>
+    <span class="text ui-label">{strings.speech.microphone}</span>
     <div class="picker">
       <Menu items={inputs} onpick={pick} label={strings.speech.microphone} placement="bottom" align="end" testid="voice-microphone">
         <Mic size={15} /><span class="selected ui-label">{selected}</span><ChevronDown size={14} />

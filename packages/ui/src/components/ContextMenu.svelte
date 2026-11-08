@@ -204,13 +204,13 @@
     display: flex;
     flex-direction: column;
     gap: 1px;
-    animation: pop var(--motion-in);
+    animation: pop var(--motion-duration) var(--motion-curve);
     transform-origin: top left;
     outline: none;
   }
 
   .context-menu.closing {
-    animation: pop-out var(--motion-out);
+    animation: pop-out var(--motion-duration) var(--motion-curve);
     pointer-events: none;
   }
 
@@ -307,5 +307,6 @@
   }
 
   /* A rule only ever separates: none at either end of the menu, never two in a row. */
-  .rule:first-child, .rule:last-child, .rule + .rule { display: none; }
+  /* A back row draws its own rule (BackRow.svelte): no second one under it. */
+  .rule:first-child, .rule:last-child, .rule + .rule, .context-menu :global(.back-rule + .rule) { display: none; }
 </style>

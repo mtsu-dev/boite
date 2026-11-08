@@ -38,6 +38,7 @@
   import { workingThread } from '../lib/recent.svelte';
   import { compareEntries } from '../lib/thread-order';
   import { rowPlaces } from '../lib/row-place';
+  import { hostName } from '../lib/machine-host';
   import { activityFeed, feedGroups, storeNeedsYou, type FeedVerb } from '../lib/activity-feed';
   import { tabHeader } from '../lib/tab-header.svelte';
   import EmptyState from './EmptyState.svelte';
@@ -322,6 +323,7 @@
         {@const doneOpen = archiveCount(group.project, 'done') > 0 && doneFilter.shown}
         {@const archivedOpen = archiveCount(group.project, 'archived') > 0 && (later || projectThreadView.isOpen(group, 'archived'))}
         {@const workingRows = groupRows.filter(row => workingThread(row.machine.store, row.thread))}
+        {@const waitingHere = group.machine.store.connection === 'ready' ? waitingCount(group) : 0}
         {@const attentionAll = query || !recentPreferences.groupWorking ? groupRows : groupRows.filter(row => workingOpen ? !workingThread(row.machine.store, row.thread) : !groupWorkingThread(group.machine.store, row.thread))}
         {@const fold = query || unfolded[projectKey(group)] ? { shown: attentionAll, folded: [] } : foldQuiet(attentionAll, row => row.thread.pinned === true || threadState(row.thread, rowAsks(row.machine.store, row.thread.id)) !== null)}
         {@const attentionRows = fold.shown}
@@ -330,8 +332,8 @@
         {#if !query || groupRows.length > 0 || doneOpen || archivedOpen}
         <section class="project-group" class:inactive={!activeProject(group)} data-testid="mobile-project-group" data-project-id={group.project.id} data-machine-id={group.machine.id}>
           <div class="project-heading">
-            <ProjectTile project={group.project} store={group.machine.store} /><h2><span class="name">{projectName(group.project)}</span>{#if several && (group.machine !== home || group.machine.store.connection !== 'ready')}{@const reach = group.machine.store.connection === 'ready' ? null : group.machine.store.connection === 'connecting' ? strings.connection.connecting : strings.connection.offline}<span class="host" class:offline={reach !== null} data-testid="mobile-project-host" title={reach ? `${group.machine.label} · ${reach}` : group.machine.label} aria-label={reach ? `${group.machine.label}, ${reach}` : group.machine.label}>{#if reach}<span class="off-dot" aria-hidden="true"></span>{/if}{group.machine.label}</span>{/if}</h2>
-            <ProjectThreadCounters entry={group} working={group.machine.store.threadsOf(group.project.id).filter(thread => workingThread(group.machine.store, thread)).length} waiting={group.machine.store.connection === 'ready' ? waitingCount(group) : 0} {controls} searching={!!query} away={group.machine.store.connection !== 'ready'} />
+            <ProjectTile project={group.project} store={group.machine.store} /><h2><span class="name">{projectName(group.project)}</span>{#if hostName(group.machine, machines, home?.id)}{@const name = hostName(group.machine, machines, home?.id)!}<span class="host" class:offline={name.away} data-testid="mobile-project-host" title={name.text}>{name.text}</span>{/if}</h2>
+            <ProjectThreadCounters entry={group} working={group.machine.store.threadsOf(group.project.id).filter(thread => workingThread(group.machine.store, thread)).length} waiting={waitingHere} {controls} searching={!!query} away={group.machine.store.connection !== 'ready'} />
             {#if projectView.order === 'manual'}
               <Menu items={[
                 { id: 'up', label: strings.sidebar.moveProjectUp, disabled: projectKey(foldOf(group)[0]!) === projectKey(group) },
@@ -354,9 +356,10 @@
               <span class="ui-label">{fill(strings.sidebar.moreThreads, { count: String(fold.folded.length) })}</span>
             </button>
           {/if}
+          <ProjectThreadCounters entry={group} working={workingRows.length} waiting={waitingHere} {controls} searching={!!query} away={group.machine.store.connection !== 'ready'} place="fold" />
           <div id="{controls}-working" hidden={!workingOpen || !!query || workingRows.length === 0} data-testid="project-working">
             {#if workingOpen && !query && workingRows.length > 0}
-              <GroupLabel kind="working" count={workingRows.length} />
+              {#if waitingHere === 0}<GroupLabel kind="working" count={workingRows.length} />{/if}
               <WindowList items={workingRows} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} estimate={66} measurements={measurements(`${projectKey(group)}:working`)}>
                 {#snippet row(entry)}{@render threadRow(entry, true)}{/snippet}
               </WindowList>
@@ -482,9 +485,10 @@
     .mobile-list { display: block; position: absolute; inset: 0; overflow-y: auto; overscroll-behavior: contain; background: var(--color-background); padding: 8px max(16px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
     /* The bottom bar owns the home indicator's inset. */
     .mobile-list.tabbed { padding-bottom: 24px; }
-    /* The foot's fade (app.css `.scroll-edges`): 24 px of the ground over the rows while more lies below, gone at the
-       end, where the padding leaves the last row whole above the tab bar. */
-    .mobile-list { --scroll-edge: 24px; --scroll-edge-top: 8px; --scroll-edge-bottom: 24px; scroll-padding-block: calc(var(--scroll-edge) + 8px); }
+    /* The foot's fade (app.css `.scroll-edges`): 12 px of the ground over the rows while more lies below, shallow
+       enough that the last row in view reads whole, gone at the end, where the padding leaves the last row whole
+       above the tab bar. */
+    .mobile-list { --scroll-edge: 12px; --scroll-edge-top: 8px; --scroll-edge-bottom: 24px; scroll-padding-block: calc(var(--scroll-edge) + 8px); }
     p { font-size: var(--text-sm); }
     /* One frame: a quiet surface, no border and no banded header inside it. */
     .project-group { --row-background: var(--color-surface); border-radius: var(--radius-lg); background: var(--color-surface); margin-bottom: 12px; overflow: hidden; }
@@ -493,9 +497,8 @@
     .project-heading h2 { display: flex; align-items: baseline; gap: 6px; margin: 0; flex: 1; min-width: 0; font-size: var(--text-sm); }
     .project-heading .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .project-heading .host { flex: 0 1000 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); font-weight: 400; color: var(--color-subtle); }
-    /* An unreachable machine as on the desktop header (Sidebar.svelte): quiet, a grey dot, the word in its name. */
-    .project-heading .host.offline { color: var(--color-muted-foreground); }
-    .off-dot { display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: var(--radius-full); background: var(--color-subtle); vertical-align: 1px; }
+    /* An unreachable machine as on the desktop header (Sidebar.svelte): the word in its name, a step brighter. */
+    .project-heading .host.offline { flex: none; color: var(--color-muted-foreground); }
     /* A whole touch target that eats the heading's padding rather than making it taller. */
     /* The folded quiet threads' line: a finger's height, subtle ink, on the rows' text edge. */
     .more-threads { display: flex; width: 100%; height: auto; min-height: var(--touch-target); padding: 0 12px; justify-content: flex-start; border-radius: 0; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 400; }
@@ -514,10 +517,10 @@
        inside rewraps; the list and the bar shift under it, and the header stays, raised over its shadow. */
     .mobile-header[data-slide] { z-index: 4; }
     .mobile-header[data-slide] > :global(*) { animation: fade var(--dur-3) var(--ease-out-quint); }
-    :global(.app:not(.shell)) > .mobile-header[data-slide] ~ :global(.body) { grid-row: 2 / 4; z-index: 3; visibility: visible; content-visibility: visible; background: var(--screen-background, var(--color-background)); box-shadow: var(--shadow-screen); animation: screen-in var(--dur-3) var(--ease-slide) both; }
+    :global(.app:not(.shell)) > .mobile-header[data-slide] ~ :global(.body) { grid-row: 2 / 4; z-index: 3; visibility: visible; content-visibility: visible; background: var(--screen-background, var(--color-background)); box-shadow: var(--shadow-screen); animation: screen-in var(--dur-3) var(--motion-curve) both; }
     :global(.app:not(.shell)) > .mobile-header[data-slide='pop'] ~ :global(.body) { animation-name: screen-out; }
-    .mobile-header[data-slide='push'] ~ .mobile-list, .mobile-header[data-slide='push'] ~ :global(.mobile-tabs) { pointer-events: none; animation: screen-under-out var(--dur-3) var(--ease-slide) both; }
-    .mobile-header[data-slide='pop'] ~ .mobile-list, .mobile-header[data-slide='pop'] ~ :global(.mobile-tabs) { animation: screen-under-in var(--dur-3) var(--ease-slide) both; }
+    .mobile-header[data-slide='push'] ~ .mobile-list, .mobile-header[data-slide='push'] ~ :global(.mobile-tabs) { pointer-events: none; animation: screen-under-out var(--dur-3) var(--motion-curve) both; }
+    .mobile-header[data-slide='pop'] ~ .mobile-list, .mobile-header[data-slide='pop'] ~ :global(.mobile-tabs) { animation: screen-under-in var(--dur-3) var(--motion-curve) both; }
     .mobile-list.recent { display: flex; flex-direction: column; }
     .mobile-list.recent > :global(*) { flex-shrink: 0; }
     .recent-folds { margin-top: auto; padding-top: 16px; }

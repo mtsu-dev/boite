@@ -117,7 +117,7 @@ export const strings = {
       routinesEmpty: 'No routine yet.', memoryAdd: 'Write a note',
       open: 'Open {title}', drop: 'Take {title} off its desk',
       silent: 'silent for {time}',
-      unreachable: 'unreachable',
+      unreachable: 'offline',
       state: { 'needs-you': 'Needs you', stalled: 'Stalled', failed: 'Failed', working: 'Working', queued: 'Queued', merged: 'Merged', review: 'PR open', done: 'Done', idle: 'Idle', archived: 'Archived' },
       pr: { open: 'PR #{number}', draft: 'Draft #{number}', merged: 'PR #{number} merged', closed: 'PR #{number} closed' },
       checks: { pending: 'checks running', passing: 'checks pass', failing: 'checks failing' },

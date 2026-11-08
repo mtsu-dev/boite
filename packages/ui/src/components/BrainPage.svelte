@@ -143,7 +143,7 @@
 {/snippet}
 
 <div class="page" data-testid="brain-page" aria-busy={busy}>
-  <header><div><h1 class="ui-label-box"><span class="ui-label">{t.heading}</span><InfoTip topic={t.heading} text={t.description} /></h1></div></header>
+  <header><div><h1 class="ui-label-box"><span class="ui-label">{t.heading}</span></h1></div></header>
   {#if error}<p class="error" role="alert" data-testid="brain-error">{error}</p>{/if}
   {#if status && !status.config.path}
     {@render linkHelp()}

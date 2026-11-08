@@ -36,7 +36,7 @@ test('one connected machine says nothing; a filter brings back the button, its n
   expect(rows).toEqual(['manage']);
 });
 
-test('a machine that is off reads quiet: a grey dot on the button and Offline in its name, never the trouble sign', async () => {
+test('a machine that is off reads quiet: a grey dot on the button and "offline" after its name, never the trouble sign', async () => {
   client = new FakeClient({ delayMs: 0 });
   store = new Store(); store.attach(client); await store.connect();
   // A Store is a class instance, which `$state` keeps as it is rather than proxying.
@@ -48,7 +48,7 @@ test('a machine that is off reads quiet: a grey dot on the button and Offline in
     await settle();
     const button = document.querySelector<HTMLButtonElement>('[data-testid=machine-status]')!;
     expect(button.querySelector('[data-testid=machine-offline]')).not.toBeNull();
-    expect(button.getAttribute('aria-label')).toBe('Filter machines · Offline: Laptop');
+    expect(button.getAttribute('aria-label')).toBe('Filter machines · Laptop offline');
     expect(document.querySelector('.machines')?.classList.contains('problem')).toBe(false);
   } finally {
     workspace.machines = before;

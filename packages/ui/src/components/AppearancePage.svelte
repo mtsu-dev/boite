@@ -117,6 +117,10 @@
   );
 
   let locale = $state<LocaleSetting>(untrack(() => localeSetting()));
+  let languages = $derived<{ id: LocaleSetting; name: string }[]>([
+    { id: 'system', name: strings.settings.languageSystem },
+    ...LOCALES.map((id) => ({ id, name: strings.settings.languageNames[id] }))
+  ]);
   function pickLocale(next: LocaleSetting) {
     locale = next;
     setLocaleSetting(next);
@@ -163,6 +167,17 @@
 
   <section class="card" id="settings-theme">
     <h2 class="ui-label-box"><span class="ui-label">{strings.settings.display}</span><InfoTip gather topic={strings.settings.display} text="" testid="section-info" /></h2>
+    {#if phone}
+      <!-- A phone reads each short choice as a label and its value, the row opening a sheet. -->
+      <div class="switch-row value">
+        <span class="text ui-label">{strings.settings.language}</span>
+        <ChoiceSelect row label={strings.settings.language} options={languages} value={locale} onpick={pickLocale} testid="locale-current" optionTestid={(id) => `locale-${id}`} />
+      </div>
+      <div class="switch-row value">
+        <span class="text ui-label">{strings.settings.theme}</span>
+        <ChoiceSelect row label={strings.settings.theme} options={themes.map((option) => ({ id: option.id, name: option.label }))} value={theme} onpick={pickTheme} testid="theme-current" optionTestid={(id) => `theme-${id}`} />
+      </div>
+    {:else}
     <div class="switch-row">
       <span class="text ui-label">{strings.settings.language}</span>
       <div class="segmented" role="group" aria-label={strings.settings.language}>
@@ -192,6 +207,7 @@
         {/each}
       </div>
     </div>
+    {/if}
     <ThemeColors {phone} />
     {#if !phone}
     <div class="switch-row">
@@ -228,13 +244,13 @@
   <section class="card" id="settings-reading">
     <h2 class="ui-label-box"><span class="ui-label">{strings.settings.reading}</span><InfoTip gather topic={strings.settings.reading} text="" testid="section-info" /></h2>
     <!-- Each face's name is drawn in that face: the name is the sample. -->
-    <div class="switch-row choice-row">
+    <div class="switch-row choice-row" class:value={phone}>
       <span class="text ui-label-box"><span class="ui-label">{strings.settings.font}</span><InfoTip topic={strings.settings.font} text={strings.settings.fontHint} /></span>
-      <ChoiceSelect label={strings.settings.font} options={faces} value={font} onpick={pickFont} face={(id) => `var(--face-${id})`} testid="font-current" optionTestid={(id) => `font-${id}`} />
+      <ChoiceSelect label={strings.settings.font} options={faces} value={font} onpick={pickFont} face={(id) => `var(--face-${id})`} testid="font-current" optionTestid={(id) => `font-${id}`} row={phone} />
     </div>
-    <div class="switch-row choice-row">
+    <div class="switch-row choice-row" class:value={phone}>
       <span class="text ui-label">{strings.settings.monoFont}</span>
-      <ChoiceSelect label={strings.settings.monoFont} options={monos} value={mono} onpick={pickMono} face={(id) => `var(--face-mono-${id})`} testid="font-mono-current" optionTestid={(id) => `font-mono-${id}`} />
+      <ChoiceSelect label={strings.settings.monoFont} options={monos} value={mono} onpick={pickMono} face={(id) => `var(--face-mono-${id})`} testid="font-mono-current" optionTestid={(id) => `font-mono-${id}`} row={phone} />
     </div>
     {#if zoomable}
       <div class="switch-row">
@@ -302,7 +318,7 @@
   @media (max-width: 720px) {
     :global(.settings .page) .switch-row:has(.segmented) { flex-direction: column; align-items: stretch; }
     :global(.settings .page) .segmented { display: flex; }
-    :global(.settings .page) .choice-row { flex-direction: column; align-items: stretch; gap: var(--space-3); }
+    :global(.settings .page) .choice-row:not(.value) { flex-direction: column; align-items: stretch; gap: var(--space-3); }
     /* Each option grows from its own word: equal thirds cut "Soulignement"
        and "Modifications" past their button's edge. */
     .segmented button { flex: 1 1 auto; min-width: 0; padding: 0 6px; }

@@ -8,9 +8,8 @@ export const strings = {
     agents: 'Agents',
     /** An agent whose program is already on this machine. */
     installed: 'Installed',
-    go: 'Continue with {provider}',
-    /** The two ways in, named apart: an agent's login on this machine, or this machine linked to another computer or a phone. */
-    connect: 'Connect an AI account',
+    /** The last row of the first run's agents: the connect dialog's whole list. */
+    others: 'Other agents',
     otherMachine: 'Connect another computer or a phone',
   }
 } as const;

@@ -1,15 +1,14 @@
 <script module lang="ts">
   import type { MemoryPass } from '../lib/agent-turns';
-  /** A persistent agent's folded steps: how many, whether they show above the answer, and the click that flips it. */
-  export type SummarySteps = { count: number; open: boolean; toggle: () => void };
+  /** A persistent agent's folded steps: how many and what in words, whether they show above the answer, and the click that flips it. */
+  export type SummarySteps = { count: number; words: string; open: boolean; toggle: () => void };
   /** The memory pass that followed the turn, and what a click on its mark opens. */
   export type SummaryMemory = { pass: MemoryPass; open?: () => void };
 </script>
 
 <script lang="ts">
   import { page } from '../lib/page-hidden.svelte';
-  import { Brain, ChevronRight, Square, CircleAlert } from '@lucide/svelte';
-  import { stepsLabel } from '../lib/agent-turns';
+  import { ChevronRight, Square, CircleAlert } from '@lucide/svelte';
   import { compactionMark, compactionText, type CompactionPart } from '../lib/tool-groups';
   import type { BackgroundTask, ThreadProgress, Turn } from '@boite/contracts';
   import { clockTime, elapsed, exactTime, formatTokens } from '../lib/format';
@@ -144,13 +143,13 @@
         {#if steps}
           <span class="dot ui-label" aria-hidden="true">·</span>
           <button type="button" class="mark steps" aria-expanded={steps.open} title={steps.open ? fold.hideSteps : fold.showSteps} onclick={steps.toggle} data-testid="turn-steps">
-            <span class="ui-label">{stepsLabel(steps.count)}</span><span class="fold-caret" class:open={steps.open} aria-hidden="true"><ChevronRight size={11} /></span>
+            <span class="ui-label">{steps.words}</span><span class="fold-caret" class:open={steps.open} aria-hidden="true"><ChevronRight size={11} /></span>
           </button>
         {/if}
         {#if memory}
           <span class="dot ui-label" aria-hidden="true">·</span>
           <button type="button" class="mark memory" data-status={memory.pass.status} title={memoryTitle} aria-label={memoryTitle} disabled={!memory.open} onclick={memory.open} data-testid="memory-pass">
-            <Brain size={12} strokeWidth={1.75} />
+            <span class="ui-label">{fold.memory[memory.pass.status]}</span>
           </button>
         {/if}
       </span>

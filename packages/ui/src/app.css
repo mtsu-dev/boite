@@ -244,24 +244,24 @@
   /* The window's chrome: the app rail, the sidebar and the top bars on one
      near black, the work inset in panels of the page colour with a hairline. */
   --color-frame: #0b0b0c;
-  --color-frame-edge: rgba(255, 255, 255, 0.075);
+  --color-frame-edge: rgba(255, 255, 255, 0.09);
   --color-surface: #171719;
   /* The two raised fills: a chip, a card, the composer; then a pressed or selected raise.
      The first sits a clear step over the page, so a card and the composer read off the timeline. */
   --color-surface-2: #1d1d20;
   --color-surface-3: #252528;
-  /* The two hairlines: a quiet separator, and an edge that must read. */
-  --color-border: rgba(255, 255, 255, 0.075);
-  --color-edge: rgba(255, 255, 255, 0.11);
+  /* The two hairlines: a quiet separator, and an edge that must read. Round 15 lifts both one step. */
+  --color-border: rgba(255, 255, 255, 0.09);
+  --color-edge: rgba(255, 255, 255, 0.13);
   /* The lift a hovered or selected row takes: light over the ground, never a new grey. */
   --color-hover: rgba(255, 255, 255, 0.045);
   --color-active: rgba(255, 255, 255, 0.075);
-  --color-foreground: #ededef;
+  --color-foreground: #f4f4f6;
   /* Three text tiers a visible step apart (4 to 7 L*), the faintest still 8:1 on every surface in both
      themes: subtle carries times, machine names and meta, which must read as well as any secondary line
-     (lib/contrast.test.ts). */
-  --color-muted-foreground: #e0e0e3;
-  --color-subtle: #d0d0d4;
+     (lib/contrast.test.ts). Round 15 lifts all three one step, secondary to 12:1 on every ground. */
+  --color-muted-foreground: #e6e6e9;
+  --color-subtle: #d8d8dc;
   /* Below reading contrast: a disabled mark, a placeholder glyph, never words that must be read. */
   --color-faint: #4a4a50;
   /* A switch: a dark track off, the light track of the foreground on, its knob the ink a primary wears. Neutral: the
@@ -334,7 +334,8 @@
      same raised fill, readable edge, corner and shadow, and one row form inside
      (height, inset, corner). A component sizes it; it never restyles it. */
   --overlay-surface: var(--color-surface-2);
-  --overlay-edge: var(--color-edge);
+  /* One step over the edge, toward the text, in every theme and palette: a menu reads off the page behind it. */
+  --overlay-edge: color-mix(in srgb, var(--color-edge), var(--color-foreground) 6%);
   --radius-overlay: var(--radius-lg);
   --shadow-overlay: 0 12px 36px rgb(0 0 0 / 0.5), 0 1px 2px rgb(0 0 0 / 0.4);
   --overlay-pad: var(--space-1);
@@ -513,32 +514,22 @@
   --dur-whip: 360ms;
   --dur-typing: 1100ms;
   --dur-typing-step: 140ms;
-  /* A pane that makes its room beside the chat (terminal, right panel,
-     sidebar). It starts gently and decelerates the whole way, so the chat
-     giving way reads as one movement; ease-out-quint covered 72% of the
-     terminal's height in its first 50 ms, then crawled. The exit is the same
-     curve, shorter: an accelerating one left the sidebar fading in place for
-     100 ms before it moved. */
-  --dur-slide: 300ms;
-  --dur-slide-out: 200ms;
   /* How long a Settings card a conversation pointed at stays ringed. */
   --dur-flash: 1800ms;
   /* The tour's scenes play like a GIF: reduced motion leaves these two alone. */
   --dur-demo-step: 220ms;
   --dur-demo-word: 150ms;
-  --ease-slide: cubic-bezier(0.2, 0, 0, 1);
-  /* One motion set for whatever opens and closes: a menu, a popover, a dialog, a
-     sheet, a toast, a fold. It enters in --dur-enter on --ease-enter and leaves
-     quicker on --ease-exit; `--motion-in` and `--motion-out` are the pairs to put
-     after an animation's name. `--motion` scales every move in their keyframes.
+  /* One motion for whatever arrives and leaves: a sheet, a panel, a decision, a
+     menu, a popover, a dialog, a toast, a fold. One duration and one curve, the
+     way in and the way out: it starts at speed and settles, so a short move
+     still reads. Panes that make their room beside the chat (terminal, right
+     panel, sidebar) use it too, in and out. Write `var(--motion-duration)
+     var(--motion-curve)` after an animation's name; `--motion` scales every
+     move in their keyframes.
      Reduced motion is a cut: every duration below drops to 0.01 ms (not 0, so
      `animationend` still fires for `lib/closing.svelte.ts`). */
-  --dur-enter: 200ms;
-  --dur-exit: 140ms;
-  --ease-enter: cubic-bezier(0.22, 1, 0.36, 1);
-  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
-  --motion-in: var(--dur-enter) var(--ease-enter);
-  --motion-out: var(--dur-exit) var(--ease-exit);
+  --motion-duration: 200ms;
+  --motion-curve: cubic-bezier(0.2, 0, 0, 1);
   --motion: 1;
   /* A bot's picture at rest: grey, a touch under its lit tone (lib/avatar-lit.ts). */
   --avatar-rest: grayscale(1) brightness(0.92) contrast(0.95);
@@ -565,11 +556,11 @@
   --palette-dark-default-background: #131314;
   --palette-dark-default-frame: #0b0b0c;
   --palette-dark-default-surface: #1a1a1c;
-  --palette-dark-default-foreground: #ededef;
+  --palette-dark-default-foreground: #f4f4f6;
   --palette-light-default-background: #f3f3f6;
   --palette-light-default-frame: #e7e7ec;
   --palette-light-default-surface: #ffffff;
-  --palette-light-default-foreground: #1c1c21;
+  --palette-light-default-foreground: #18181d;
   --palette-grain-theme-color: #1a1a1e;
 
   /* dark-oled */
@@ -890,17 +881,17 @@ html[data-chat-width='full'] {
 [data-theme='light'] {
   --color-background: #f3f3f6;
   --color-frame: #e7e7ec;
-  --color-frame-edge: rgba(0, 0, 0, 0.12);
+  --color-frame-edge: rgba(0, 0, 0, 0.14);
   --color-surface: #fafafb;
   --color-surface-2: #ffffff;
   --color-surface-3: #ebebef;
-  --color-border: rgba(0, 0, 0, 0.08);
-  --color-edge: rgba(0, 0, 0, 0.16);
+  --color-border: rgba(0, 0, 0, 0.095);
+  --color-edge: rgba(0, 0, 0, 0.19);
   --color-hover: rgba(0, 0, 0, 0.04);
   --color-active: rgba(0, 0, 0, 0.07);
-  --color-foreground: #1c1c21;
-  --color-muted-foreground: #36363e;
-  --color-subtle: #42424a;
+  --color-foreground: #18181d;
+  --color-muted-foreground: #303038;
+  --color-subtle: #3a3a42;
   --color-faint: #b4b4bb;
   --color-selection: rgba(28, 28, 33, 0.14);
   --color-terminal-background: var(--color-surface-2);
@@ -965,6 +956,7 @@ html[data-chat-width='full'] {
 @supports not (color: color-mix(in oklch, red 50%, blue)) {
   :root {
     --color-resident-soft: oklch(66% 0.15 calc(var(--accent-hue) + 115) / 0.14);
+    --overlay-edge: var(--color-edge);
   }
 }
 
@@ -973,12 +965,9 @@ html[data-chat-width='full'] {
     --dur-1: 0.01ms;
     --dur-2: 0.01ms;
     --dur-3: 0.01ms;
-    --dur-slide: 0.01ms;
-    --dur-slide-out: 0.01ms;
     /* A cut: nothing moves and nothing fades, so no frame ever shows two states at once. */
     --motion: 0;
-    --dur-enter: 0.01ms;
-    --dur-exit: 0ms;
+    --motion-duration: 0.01ms;
   }
 }
 
@@ -988,11 +977,8 @@ html[data-motion='reduced'] {
   --dur-1: 0.01ms;
   --dur-2: 0.01ms;
   --dur-3: 0.01ms;
-  --dur-slide: 0.01ms;
-  --dur-slide-out: 0.01ms;
   --motion: 0;
-  --dur-enter: 0.01ms;
-  --dur-exit: 0ms;
+  --motion-duration: 0.01ms;
 }
 
 /* The same cut for every animation and transition a component wrote with its own
@@ -1914,6 +1900,12 @@ tr:last-child td {
   padding: var(--space-2) 0;
 }
 
+/* A phone's label and value row (ChoiceSelect `row`): the value's button covers it, the label's "i" stays over it. */
+.settings .page .switch-row.value { position: relative; flex-wrap: nowrap; }
+.settings .page .switch-row.value .text { flex: none; }
+.settings .page .switch-row.value .info-tip, .settings .page .switch-row.value .policy-lock { position: relative; z-index: 1; }
+.settings .page .switch-row.value .choice-select { flex: 1; justify-content: flex-end; }
+
 /* Rows a wrapper groups inside a card keep the card's line between them. */
 .settings .page .switch-row + .switch-row {
   border-top: 1px solid var(--color-border);
@@ -2330,11 +2322,11 @@ html[data-glass] #app {
    row) the chat card's own left gap eases in step. */
 @media (min-width: 721px) {
   .app > .body { overflow-x: clip; }
-  .app > .body[data-rail-sliding] { transition: padding-left var(--dur-slide) var(--ease-slide); }
-  .app > .body.sidebar-folded[data-rail-sliding] { transition-duration: var(--dur-slide-out); }
+  .app > .body[data-rail-sliding] { transition: padding-left var(--motion-duration) var(--motion-curve); }
+  .app > .body.sidebar-folded[data-rail-sliding] { transition-duration: var(--motion-duration); }
   /* The main column's bar follows the list column's fold in step (RailFrame marks it too). */
-  .app > .titlebar[data-rail-sliding] { transition: margin-left var(--dur-slide) var(--ease-slide); }
-  .app > .titlebar[data-rail-sliding='out'] { transition-duration: var(--dur-slide-out); }
+  .app > .titlebar[data-rail-sliding] { transition: margin-left var(--motion-duration) var(--motion-curve); }
+  .app > .titlebar[data-rail-sliding='out'] { transition-duration: var(--motion-duration); }
 }
 
 /* Keyframes shared by the components. */
@@ -2509,16 +2501,16 @@ input[type=checkbox][role=switch]:disabled { opacity: .45; cursor: not-allowed; 
 /* Under a finger the outline rail is a touch target wide (MessageOutline.svelte): the text starts past it. */
 @media (pointer: coarse) { :root { --outline-room: calc(var(--touch-target) + 4px); } }
 @media (max-width: 720px) {
-  .mobile-sheet-backdrop { position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; border-radius: 0; background: var(--color-scrim); animation: fade var(--motion-in); }
-  .mobile-sheet-backdrop.closing { animation: fade-out var(--motion-out); pointer-events: none; }
+  .mobile-sheet-backdrop { position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; border-radius: 0; background: var(--color-scrim); animation: fade var(--motion-duration) var(--motion-curve); }
+  .mobile-sheet-backdrop.closing { animation: fade-out var(--motion-duration) var(--motion-curve); pointer-events: none; }
   /* The one phone sheet (lib/floating.ts): docked to the bottom edge, rounded on top only, a grabber
      over real top air, and the home indicator's room under its last row. The grabber sits out of the
      flow, so a grid or flex sheet keeps its own layout. */
   [data-mobile-sheet='true'] { position: fixed !important; max-width: none !important; box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain; border-width: 1px 0 0 !important; border-radius: var(--radius-xl) var(--radius-xl) 0 0 !important; padding-top: var(--space-6) !important; padding-bottom: max(var(--space-3), env(safe-area-inset-bottom)) !important; }
   [data-mobile-sheet='true']::before { content: ''; position: absolute; top: var(--space-2); left: calc(50% - 18px); width: 36px; height: 5px; border-radius: var(--radius-full); background: var(--color-edge); pointer-events: none; }
   /* A sheet rises from the bottom edge and goes back down, where its popover pops in place (lib/floating.ts). */
-  [data-mobile-sheet='true'] { animation-name: sheet-up !important; animation-duration: var(--dur-enter) !important; animation-timing-function: var(--ease-enter) !important; }
-  [data-mobile-sheet='true'].closing { animation-name: sheet-down !important; animation-duration: var(--dur-exit) !important; animation-timing-function: var(--ease-exit) !important; }
+  [data-mobile-sheet='true'] { animation-name: sheet-up !important; animation-duration: var(--motion-duration) !important; animation-timing-function: var(--motion-curve) !important; }
+  [data-mobile-sheet='true'].closing { animation-name: sheet-down !important; animation-duration: var(--motion-duration) !important; animation-timing-function: var(--motion-curve) !important; }
   /* No outline rail on a phone (MessageList.svelte): the timeline's left edge matches its right. */
   :root { --outline-room: 20px; }
   :root { --settings-padding: var(--space-4); --card-head: var(--touch-target); --control: var(--touch-target); --control-sm: var(--touch-target); --control-lg: var(--touch-target); --input: var(--touch-target); --row: var(--touch-target); }

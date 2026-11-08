@@ -18,6 +18,7 @@ export const strings = {
     ready: 'Connected',
     closed: 'Disconnected',
     offline: 'Offline',
+    nameOffline: '{name} offline',
     label: 'Connection'
   }
 } as const;

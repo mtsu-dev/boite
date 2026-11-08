@@ -5,7 +5,7 @@ afterEach(() => { delete document.documentElement.dataset.motion; document.body.
 
 function dock(height: number): { node: HTMLElement; animate: ReturnType<typeof vi.fn> } {
   const node = document.createElement('div');
-  node.style.setProperty('--dur-enter', '200ms');
+  node.style.setProperty('--motion-duration', '200ms');
   node.getBoundingClientRect = () => ({ top: 0, left: 0, right: 0, bottom: height, width: 0, height, x: 0, y: 0, toJSON() {} }) as DOMRect;
   const animate = vi.fn();
   node.animate = animate as unknown as typeof node.animate;

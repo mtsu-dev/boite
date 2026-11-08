@@ -1,4 +1,6 @@
 import type { PermissionRequest } from '@boite/contracts';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterEach, expect, test } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import { FakeClient } from '../lib/fake-client';
@@ -40,4 +42,16 @@ test('a phone row that needs you says it once, by its named dot, and an Activity
   expect(document.querySelector('[data-testid=mobile-row-reason]')!.textContent?.trim()).toBe('Wants to run:');
   expect(document.querySelector('[data-testid=mobile-row] code')!.textContent).toBe(command);
   expect(document.querySelector<HTMLElement>('[data-testid=thread-verb]')!.dataset['verb']).toBe('allow');
+});
+
+test('an Activity row keeps the title on the row\'s width: the ask is one line under it, the verb follows the content', () => {
+  const css = readFileSync(resolve('src/components/MobileThreadRow.svelte'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const headline = readFileSync(resolve('src/components/ThreadHeadline.svelte'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  // No room reserved beside the title for the verb: at 360 that squeezed a title into three lines next to an empty column.
+  expect(css).not.toMatch(/\.reason \.thread :global\(\.headline\) \{[^}]*margin-right/);
+  expect(css).not.toMatch(/\.verb \{[^}]*position: absolute/);
+  // What is asked: one line, cut with an ellipsis, under the title (the headline's lead is a column).
+  expect(css).toMatch(/\.why \.text \{[^}]*white-space: nowrap[^}]*\}/);
+  expect(css).toMatch(/\.why \.text \{[^}]*text-overflow: ellipsis/);
+  expect(headline).toMatch(/\.lead \{[^}]*flex-direction: column/);
 });

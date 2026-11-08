@@ -139,9 +139,14 @@ export function desktopSettings(phoneWidth: boolean): boolean {
   return !phoneWidth || window.__TAURI_INTERNALS__ !== undefined;
 }
 
-/** The page a desktop shows for a route: the view it is a section of, or Home where this window may not open it. */
+/**
+ * The page a desktop shows for a route: the view it is a section of, or
+ * General for Home and wherever this window may not go. A desktop has two
+ * levels, the nav and a page: its home is the nav's search over the first page.
+ */
 export function desktopPage(tab: SettingsTab, owner: boolean): SettingsTab {
-  return owner || !ownerOnly(tab) ? viewOf(tab, owner) : 'home';
+  const view = owner || !ownerOnly(tab) ? viewOf(tab, owner) : 'home';
+  return view === 'home' ? 'general' : view;
 }
 
 /** The page a phone shows for a route: a whole page, one card's page, or Home. */

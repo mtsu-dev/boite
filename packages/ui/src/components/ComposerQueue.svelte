@@ -127,7 +127,7 @@
     max-width: 100%;
     color: var(--color-muted-foreground);
     font-size: var(--text-sm);
-    animation: rise var(--motion-in);
+    animation: rise var(--motion-duration) var(--motion-curve);
   }
 
   /* No chip: the clock, the text and its menu on the card's surface. */

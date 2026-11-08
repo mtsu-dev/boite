@@ -8,8 +8,7 @@ export const fr: Translation = {
     pathPlaceholder: 'Chemin absolu du dossier',
     agents: 'Agents',
     installed: 'Installé',
-    go: 'Continuer avec {provider}',
-    connect: 'Connecter un compte IA',
+    others: 'Autres agents',
     otherMachine: 'Connecter un autre ordinateur ou un téléphone',
   }
 };

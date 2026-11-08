@@ -116,11 +116,12 @@ test('Nova\'s threads: what it handles, needs-you first, then what it is done wi
     const away = card('Fix the save migration')!;
     expect(away.querySelector('[data-testid=desk-card-machine]')?.textContent).toBe('skoll');
     expect(away.querySelector('[data-testid=desk-card-unreachable]')?.getAttribute('title')).toContain('its events reach you once it is back');
-    // Out of reach is a machine state: the offline machine's grey dot, never the failure red.
-    expect(away.querySelector('[data-testid=desk-card-unreachable] .desk-card-off')).not.toBeNull();
+    // Out of reach is a machine state in words after its name, the card dimmed, never the failure red.
+    expect(away.querySelector('[data-testid=desk-card-unreachable]')?.textContent).toBe('skoll offline');
+    expect(away.classList.contains('away')).toBe(true);
     expect(deskCss).toMatch(/\.desk-card-unreachable \{[^}]*color: var\(--color-muted-foreground\)/);
-    expect(deskCss).toMatch(/\.desk-card-off \{[^}]*background: var\(--color-subtle\)/);
-    expect(deskCss).not.toMatch(/\.desk-card-(unreachable|off)[^{]*\{[^}]*--color-danger/);
+    expect(deskCss).toMatch(/\.desk-row\.away \.desk-row-tile, \.desk-row\.away \.desk-row-text \{ opacity: 0\.6; \}/);
+    expect(deskCss).not.toMatch(/\.desk-card-unreachable[^{]*\{[^}]*--color-danger/);
     expect(away.querySelector('.desk-card-open')).toBeNull();
 
     // The question is answered from the row, and leaves it.

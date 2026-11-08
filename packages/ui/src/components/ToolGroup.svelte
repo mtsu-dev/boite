@@ -14,6 +14,7 @@
   import Spinner from './Spinner.svelte';
   import type { Store } from '../lib/store.svelte';
   import { asksDocked } from '../lib/one-status';
+  import type { Snippet } from 'svelte';
 
   /*
    * A run of activity with no answer between it: calls and the reasoning around
@@ -37,7 +38,8 @@
     answerPermission = () => false,
     store,
     threadId,
-    carded = null
+    carded = null,
+    changes
   }: {
     parts: ActivityPart[];
     /** The compactions that fell in this run: a mark on its line, no row of their own. */
@@ -56,6 +58,8 @@
     threadId?: string;
     /** The failed call the turn's error card says: no second red mark for it here (`cardedCall`). */
     carded?: string | null;
+    /** The turn's change count when its last change is in this run: on the run's line, or under a lone step. */
+    changes?: Snippet<[inline: boolean]>;
   } = $props();
 
   const ICONS = { command: SquareTerminal, read: FileText, edit: FilePen, write: FilePen, search: Search, fetch: Globe, web: Globe, agent: Bot, other: Wrench };
@@ -153,8 +157,11 @@
 
 {#if steps.length === 1 && steps[0] && compactions.length === 0}
   {@render step(steps[0].part, steps[0].index)}
+  {@render changes?.(false)}
 {:else if steps.length > 0}
   <div class="group" data-testid="tool-group" data-count={steps.length} data-live={live}>
+    <!-- The run's line, and the turn's change count on it when its last change is here: one row, not a card under it. -->
+    <div class="line" class:counted={!!changes}>
     <button
       type="button"
       class="ghost head"
@@ -186,6 +193,8 @@
       {/if}
       <span class="fold-caret" class:open aria-hidden="true"><ChevronRight size={12} /></span>
     </button>
+    {@render changes?.(true)}
+    </div>
     <div class="disclosure-fold" class:open inert={!open}>
       <div>
         {#if built}
@@ -219,6 +228,13 @@
     max-width: 100%;
     min-width: 0;
   }
+
+  /* With the change count on it, the count and its diff close the line, its
+     list and diffs open under it. A phone gives the words the whole width and
+     the count the next line. */
+  .line.counted { display: flex; flex-wrap: wrap; align-items: center; column-gap: 2px; }
+  .counted > .head { flex: 1 1 0; width: auto; min-width: 0; }
+  @media (max-width: 720px) { .counted > .head { flex-basis: 100%; } }
 
   .head {
     display: flex;

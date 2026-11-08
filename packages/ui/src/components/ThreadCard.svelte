@@ -202,10 +202,10 @@
     cursor: grabbing !important;
     user-select: none;
   }
-  /* Its machine dropped: the row still opens, to read what is held and queue a prompt. */
-  .thread.offline .row,
-  .thread.offline .row :global(*) {
-    color: var(--color-subtle);
+  /* Its machine dropped: the row reads dimmed, title and mark alike (its card header says "offline"), and still
+     opens, to read what is held and queue a prompt. */
+  .thread.offline .row {
+    opacity: 0.6;
   }
   /* One line of 32 px: the title's 20 px line in 6 px of padding. */
   .row {

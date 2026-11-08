@@ -484,7 +484,7 @@
   .open-child { flex: none; padding-inline: 10px; color: var(--color-accent); }
   .question-row > :global(svg) { color: var(--color-live); }
   .question-toggle { display: flex; align-items: center; gap: 6px; height: var(--control-sm); padding: 0 6px; font-weight: 400; color: var(--color-foreground); justify-content: flex-start; }
-  .question-toggle > :global(svg) { flex: none; color: var(--color-muted-foreground); transition: transform var(--dur-2) var(--ease-out-quint); }
+  .question-toggle > :global(svg) { flex: none; color: var(--color-muted-foreground); transition: transform var(--motion-duration) var(--motion-curve); }
   .question-toggle > :global(.turned), .fold-toggle > :global(.turned) { transform: rotate(180deg); }
   .question-line { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: left; }
   .pager { display: inline-flex; align-items: center; gap: 2px; flex: none; }
@@ -519,11 +519,11 @@
   .tasks-toggle { display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 6px; width: 100%; height: auto; min-height: var(--control); padding: 6px 8px; font-weight: 400; color: var(--color-foreground); }
   .toggle-line { display: flex; align-items: center; gap: 8px; min-width: 0; line-height: 16px; }
   .toggle-line > :global(svg) { flex: none; color: var(--color-muted-foreground); }
-  .toggle-line > :global(svg:last-child) { transition: transform var(--dur-2) var(--ease-out-quint); }
+  .toggle-line > :global(svg:last-child) { transition: transform var(--motion-duration) var(--motion-curve); }
   .toggle-line > :global(.turned) { transform: rotate(180deg); }
   progress { display: block; appearance: none; width: 100%; height: 3px; border: none; border-radius: var(--radius-sm); overflow: hidden; background: var(--color-surface-3); }
   progress::-webkit-progress-bar { background: var(--color-surface-3); }
-  progress::-webkit-progress-value { background: var(--color-accent); transition: width var(--dur-3); }
+  progress::-webkit-progress-value { background: var(--color-accent); transition: width var(--motion-duration) var(--motion-curve); }
   progress::-moz-progress-bar { background: var(--color-accent); }
   ul, ol { list-style: none; margin: 0; padding: 2px 8px 6px; }
   li { display: flex; align-items: flex-start; gap: 8px; padding: 4px 0; line-height: 1.5; overflow-wrap: anywhere; }

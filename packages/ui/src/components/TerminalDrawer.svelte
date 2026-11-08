@@ -318,14 +318,14 @@
     --terminal-gap: 0px;
     height: calc(var(--terminal-height) + var(--terminal-gap));
     overflow: clip;
-    transition: height var(--dur-slide) var(--ease-slide);
+    transition: height var(--motion-duration) var(--motion-curve);
   }
 
   @starting-style {
     .drawer { height: 0; }
   }
 
-  .drawer.closing { height: 0; transition: height var(--dur-slide-out) var(--ease-slide); }
+  .drawer.closing { height: 0; transition: height var(--motion-duration) var(--motion-curve); }
   .drawer.dragging { transition: none; }
 
   /* One flat screen, header included, as a console window: no card inside the frame. */

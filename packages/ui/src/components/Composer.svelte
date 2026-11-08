@@ -894,7 +894,7 @@
     backdrop-filter: var(--composer-blur);
     -webkit-backdrop-filter: var(--composer-blur);
     box-shadow: var(--composer-rest);
-    transition: border-color var(--dur-3) var(--ease-out-quint), box-shadow var(--dur-3) var(--ease-out-quint);
+    transition: border-color var(--motion-duration) var(--motion-curve), box-shadow var(--motion-duration) var(--motion-curve);
   }
 
   /* A card the script focused for a touch screen shows no ring: only a key lights it. */

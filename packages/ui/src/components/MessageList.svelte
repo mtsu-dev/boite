@@ -5,7 +5,7 @@
   import type { Store } from '../lib/store.svelte';
   import MessageTurnSummary from './MessageTurnSummary.svelte';
   import TurnFiles from './TurnFilesLoader.svelte';
-  import { TurnFileCache, answersByTurn, showsTurnFiles, type TurnFilesData } from '../lib/turn-files';
+  import { TurnFileCache, answersByTurn, changeHost, showsTurnFiles, type TurnFilesData } from '../lib/turn-files';
   import { chatPrefs } from '../lib/chat-prefs.svelte';
   import MessageOutline from './MessageOutline.svelte';
   import AgentMessageGroup from './AgentMessageGroup.svelte';
@@ -701,6 +701,13 @@
     const data = fileCache.read(turn.id, answers.get(turn.id) ?? [], thread.cwd, turn.status === 'running');
     return data.files.length ? data : null;
   }
+  /** Each turn's answers as drawn (a bot's fold took its calls out), rebuilt when the timeline is. */
+  const drawnAnswers = $derived(answersByTurn(timeline.filter(message => !cards.has(message.id) && !grouped.groups.has(message.id) && !shaped.folds.has(message.id) && !movedBy(message) && !startedFrom(message))));
+  /** The tool line a turn's change count joins, or null when it stands at the turn's end. */
+  function changeHostOf(turnId: string): { messageId: string; index: number } | null {
+    const own = drawnAnswers.get(turnId);
+    return own ? changeHost(own) : null;
+  }
 
   /**
    * Edit and retry go through the core's rewind, fork through its fork, and
@@ -750,6 +757,12 @@
         {@const quietFold = shaped.folds.get(message.id)}
         {@const closes = row.last && !quietFold && turn !== undefined && turn.execution?.operation !== 'keepalive' && lastInTurn.get(turn.id) === message.id}
         {@const joined = seam(rows[view.start + index - 1], row)}
+        {@const host = turn ? changeHostOf(turn.id) : null}
+        <!-- The turn's change count, on the tool line of its last change (`inline`) or at its end. -->
+        {#snippet changes(inline: boolean)}
+          {@const files = turn ? filesOf(turn) : null}
+          {#if files}<TurnFiles {store} {...files} {inline} loadDiffs={() => Promise.all(files.deferred.map(source => store.loadToolOutput(threadId, source.messageId, source.toolId))).then(() => {})} />{/if}
+        {/snippet}
         <article
           use:track={{ row, joined }}
           class="message {message.role}"
@@ -778,11 +791,11 @@
             <UserMessage {store} {message} {turn} accepted={!!turn} responded={progress.responded(message.turnId)} edit={atRest && !isSending(message) ? () => void editMessage(message) : undefined} />
           {:else}
             <AssistantMessage {store} {threadId} {message} from={row.from} to={row.to} {signedOut} showModel={row.first && firstAssistantInTurn.get(message.turnId) === message.id}
-              latestInTurn={lastInTurn.get(message.turnId) === message.id} views={views.get(message.turnId)} />
+              latestInTurn={lastInTurn.get(message.turnId) === message.id} views={views.get(message.turnId)}
+              changes={host?.messageId === message.id ? { at: host.index, line: changes } : undefined} />
           {/if}
           {#if turn && closes}
-            {@const files = filesOf(turn)}
-            {#if files}<TurnFiles {store} {...files} loadDiffs={() => Promise.all(files.deferred.map(source => store.loadToolOutput(threadId, source.messageId, source.toolId))).then(() => {})} />{/if}
+            {#if !host}{@render changes(false)}{/if}
             <!-- A failure's card holds its cause and its one Retry; a docked ask is a running turn's status. -->
             {#if !failureCarded(turn, messages) && !(asking && turn.status === 'running')}
             <MessageTurnSummary {store} {threadId} {turn} turns={shownTurns} message={source ?? message} {messages} pointed={pointed === turn.id}
@@ -862,8 +875,8 @@
     --edge-ground: var(--scroll-edge-ground, var(--color-background));
     animation: none;
     opacity: 0;
-    transition: opacity var(--dur-2) var(--ease-out-quint);
-    /* Eased, not a straight ramp: a bordered block thins out over the 24 px
+    transition: opacity var(--motion-duration) var(--motion-curve);
+    /* Eased, not a straight ramp: a bordered block thins out over the edge
        instead of meeting a band whose upper edge reads as a cut. */
     background: linear-gradient(to top, var(--edge-ground), color-mix(in oklab, var(--edge-ground) 84%, transparent) 30%, color-mix(in oklab, var(--edge-ground) 52%, transparent) 55%, color-mix(in oklab, var(--edge-ground) 18%, transparent) 80%, transparent);
   }

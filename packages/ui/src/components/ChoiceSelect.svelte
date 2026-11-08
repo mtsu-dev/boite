@@ -2,17 +2,20 @@
   // One choice that is seen before it is picked (a palette, a text face, a code
   // face): the value in use as one row with its preview, which opens the others,
   // each with its own. A face needs no picture: its name is drawn in it. A popover on a desktop, a bottom sheet on a phone
-  // (lib/floating.ts), so the two read the same.
+  // (lib/floating.ts), so the two read the same. `row`: a phone's label and value
+  // row, the value and a chevron at its end, the whole row its target (the row
+  // it sits in is `position: relative`).
   import { tick, type Snippet } from 'svelte';
-  import { Check, ChevronDown, LayoutGrid } from '@lucide/svelte';
+  import { Check, ChevronDown, ChevronRight, LayoutGrid } from '@lucide/svelte';
   import { Closing } from '../lib/closing.svelte';
   import { curated } from '../lib/curated';
   import { floating } from '../lib/floating';
 
-  let { label, options, value, fallback = '', onpick, preview, testid, optionTestid, face, front, all }: {
+  let { label, options, value, fallback = '', onpick, preview, testid, optionTestid, face, front, all, row = false }: {
     /** What is chosen: the list's name and the sheet's title. */
     label: string;
-    options: { id: T; name: string }[];
+    /** `disabled`: an option that cannot be picked now (a policy, a running install), still listed. */
+    options: { id: T; name: string; disabled?: boolean }[];
     /** The option in use; none when the value matches no option (edited colours). */
     value: T | undefined;
     /** The trigger's words when no option matches. */
@@ -28,6 +31,8 @@
     front?: number;
     /** The row that opens the rest. */
     all?: string;
+    /** The value at the end of its row, which it covers: no chip, a chevron to the side. */
+    row?: boolean;
   } = $props();
 
   const popover = new Closing();
@@ -97,12 +102,12 @@
 
 <svelte:window onpointerdown={onWindowPointerdown} />
 
-<div class="choice-select" bind:this={root}>
+<div class="choice-select" class:row bind:this={root}>
   <button type="button" class="trigger" class:bare={!preview} aria-haspopup="menu" aria-expanded={popover.open} aria-label="{label}: {shown?.name ?? fallback}"
     data-testid={testid} bind:this={trigger} onclick={(event) => { event.stopPropagation(); popover.toggle(); }} {onkeydown}>
     {#if preview}<span class="preview" aria-hidden="true">{@render preview(value)}</span>{/if}
     <span class="name ui-label" style:font-family={shown && face ? face(shown.id) : undefined}>{shown?.name ?? fallback}</span>
-    <ChevronDown size={14} strokeWidth={1.75} />
+    {#if row}<ChevronRight size={16} strokeWidth={1.75} />{:else}<ChevronDown size={14} strokeWidth={1.75} />{/if}
   </button>
   {#if popover.shown}
     <div class="list" class:closing={popover.closing} role="menu" tabindex="-1" aria-label={label} {onkeydown}
@@ -111,7 +116,7 @@
       data-testid="{testid}-list">
       {#if sheet}<div class="sheet-title" aria-hidden="true">{label}</div>{/if}
       {#each listed as option (option.id)}
-        <button type="button" class="option" role="menuitemradio" aria-checked={option.id === value} data-testid={optionTestid(option.id)} onclick={() => pick(option.id)}>
+        <button type="button" class="option" role="menuitemradio" aria-checked={option.id === value} data-testid={optionTestid(option.id)} disabled={option.disabled} onclick={() => pick(option.id)}>
           {#if preview}<span class="preview" aria-hidden="true">{@render preview(option.id)}</span>{/if}
           <span class="name ui-label" style:font-family={face?.(option.id)}>{option.name}</span>
           <span class="check" aria-hidden="true">{#if option.id === value}<Check size={14} strokeWidth={2} />{/if}</span>
@@ -140,8 +145,8 @@
   .preview:empty { display: none; }
   .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .trigger .name { flex: 1; }
-  .list { display: flex; flex-direction: column; gap: 1px; min-width: 260px; max-width: 360px; padding: var(--overlay-pad); overflow-y: auto; background: var(--overlay-surface); border: 1px solid var(--overlay-edge); border-radius: var(--radius-overlay); box-shadow: var(--shadow-overlay); font-size: var(--text-base); z-index: 40; animation: pop var(--motion-in); }
-  .list.closing { animation: pop-out var(--motion-out); pointer-events: none; }
+  .list { display: flex; flex-direction: column; gap: 1px; min-width: 260px; max-width: 360px; padding: var(--overlay-pad); overflow-y: auto; background: var(--overlay-surface); border: 1px solid var(--overlay-edge); border-radius: var(--radius-overlay); box-shadow: var(--shadow-overlay); font-size: var(--text-base); z-index: 40; animation: pop var(--motion-duration) var(--motion-curve); }
+  .list.closing { animation: pop-out var(--motion-duration) var(--motion-curve); pointer-events: none; }
   .list:focus { outline: none; }
   .list > * { flex: none; }
   .sheet-title { padding: 0 var(--space-4) var(--space-3); color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 600; text-align: center; }
@@ -152,9 +157,18 @@
   .check { display: inline-flex; flex: none; width: 14px; }
   .all { color: var(--color-muted-foreground); }
   .all-mark { justify-content: center; width: 52px; }
+  /* A row's value: quiet words at the row's end, the row the target (::after spans it). */
+  .row .trigger, .row .trigger[aria-expanded='true'] { position: static; justify-content: flex-end; gap: var(--space-2); min-height: 0; padding: 0; border: 0; background: transparent; box-shadow: none; color: var(--color-muted-foreground); font-size: var(--text-base); }
+  .row .trigger::after { content: ''; position: absolute; inset: 0; border-radius: inherit; }
+  .row .trigger:active:not(:disabled) { transform: none; }
+  .row .trigger:focus-visible { outline: none; }
+  .row .trigger:focus-visible::after { outline: var(--focus-ring); outline-offset: -2px; }
+  .row .trigger .name { flex: 0 1 auto; }
+  .row .trigger > :global(svg) { color: var(--color-subtle); }
+  .row .trigger[aria-expanded='true'] > :global(svg) { transform: none; }
   @media (max-width: 720px) {
-    .choice-select, .trigger { width: 100%; }
-    .trigger { min-height: var(--touch-target); }
+    .choice-select:not(.row), .choice-select:not(.row) .trigger { width: 100%; }
+    .choice-select:not(.row) .trigger { min-height: var(--touch-target); }
     .option { min-height: var(--touch-target); padding-inline: var(--space-4); }
   }
 </style>

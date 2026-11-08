@@ -577,11 +577,11 @@
     /* It comes in from the window's right edge and the chat narrows with it,
        at its own width all along, so nothing inside rewraps on the way. */
     --slide-room: calc(var(--panel-width) + var(--frame-gap));
-    animation: slide-left var(--dur-slide) var(--ease-slide);
+    animation: slide-left var(--motion-duration) var(--motion-curve);
   }
 
   .panel.closing {
-    animation: slide-right-out var(--dur-slide-out) var(--ease-slide);
+    animation: slide-right-out var(--motion-duration) var(--motion-curve);
     pointer-events: none;
   }
 
@@ -673,9 +673,7 @@
     font-size: var(--text-xs);
     cursor: pointer;
     user-select: none;
-    transition:
-      background var(--dur-2) var(--ease-out-quint),
-      color var(--dur-2) var(--ease-out-quint);
+    /* No transition: the strip stays still while the body crossfades under it, the picked tab lit in the same frame. */
   }
 
   .tab:hover {
@@ -783,7 +781,7 @@
      the first frame already reads. No rise: a moving box drew the old place
      under the new one for a frame, and dragged a browser's native view along. */
   .surface:global([data-arriving]) {
-    animation: surface-fade var(--dur-2) var(--ease-enter) both;
+    animation: surface-fade var(--motion-duration) var(--motion-curve) both;
   }
   @keyframes surface-fade { from { opacity: 0.85; } }
   /* A cut under reduced motion, whatever the duration tokens say. */
@@ -816,12 +814,12 @@
       box-shadow: var(--shadow-e3);
       /* Over the chat it takes no room: it slides across from the right edge. */
       --slide-room: calc(100% + var(--frame-gap));
-      animation: slide-over-left var(--dur-slide) var(--ease-slide);
+      animation: slide-over-left var(--motion-duration) var(--motion-curve);
     }
 
     .panel.closing,
     .panel.maximized.closing {
-      animation: slide-over-right-out var(--dur-slide-out) var(--ease-slide);
+      animation: slide-over-right-out var(--motion-duration) var(--motion-curve);
     }
 
     .sheet-scrim {
@@ -834,11 +832,11 @@
       border: none;
       border-radius: 0;
       background: var(--color-scrim);
-      animation: fade var(--dur-slide) var(--ease-slide);
+      animation: fade var(--motion-duration) var(--motion-curve);
     }
 
     .sheet-scrim.closing {
-      animation: fade-out var(--dur-slide-out) var(--ease-slide);
+      animation: fade-out var(--motion-duration) var(--motion-curve);
       pointer-events: none;
     }
   }
@@ -864,12 +862,12 @@
       box-sizing: border-box;
       padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
       /* A screen of its own: it slides in over the conversation and back out, opaque all the way, as the conversation does over the list. */
-      animation: screen-in var(--dur-3) var(--ease-slide);
+      animation: screen-in var(--dur-3) var(--motion-curve);
     }
 
     .panel.closing,
     .panel.maximized.closing {
-      animation: screen-out var(--dur-3) var(--ease-slide);
+      animation: screen-out var(--dur-3) var(--motion-curve);
     }
 
     .sheet-scrim {

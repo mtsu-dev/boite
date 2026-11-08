@@ -132,6 +132,15 @@
     return change.path === selected && drawn !== null ? drawn : { added: change.additions, removed: change.deletions };
   }
 
+  /** No file read, or one with no text to diff: the branch stays on the line, as no View menu is there to hold it. */
+  let branchInline = $derived(selected === null || diff?.binary === true);
+  let branchTitle = $derived([status?.branch ?? strings.changes.noBranch, status?.upstream].filter(Boolean).join(' → '));
+  /** The commits to send and to receive, in words: the View menu's branch row says them under its name. */
+  let tracking = $derived([
+    status && status.ahead > 0 ? fill(strings.changes.ahead, { count: String(status.ahead) }) : '',
+    status && status.behind > 0 ? fill(strings.changes.behind, { count: String(status.behind) }) : ''
+  ].filter(Boolean).join(', '));
+
   function back(): void {
     panel.update(surface.id, { path: undefined });
   }
@@ -219,7 +228,9 @@
         <ChevronLeft size={16} strokeWidth={1.75} />
       </button>
     {/if}
-    <span class="branch" title={[status?.branch ?? strings.changes.noBranch, status?.upstream].filter(Boolean).join(' → ')}>
+    <!-- With a diff open its View menu holds the branch, so the line keeps the file, the count and two controls. -->
+    {#if branchInline}
+    <span class="branch" title={branchTitle}>
       <GitBranch size={13} strokeWidth={1.75} />
       <span class="branch-name ui-label">{status?.branch ?? strings.changes.noBranch}</span>
     </span>
@@ -232,6 +243,7 @@
       <span class="track" title={fill(strings.changes.behind, { count: String(status.behind) })}>
         <ArrowDown size={13} strokeWidth={1.75} /><span class="ui-label">{status.behind}</span>
       </span>
+    {/if}
     {/if}
     {#if oneFile && picked}
       <!-- The file picker: titled by the file, it lists the changed files. The panel's own selector, in the head, lists panels only. -->
@@ -254,7 +266,7 @@
     {:else}
       <span class="total" data-testid="changes-count">{strings.changes.loading}</span>
     {/if}
-    {#if textDiff}<DiffOptions split={codeWidth >= SPLIT_MIN_WIDTH} />{/if}
+    {#if textDiff}<DiffOptions split={codeWidth >= SPLIT_MIN_WIDTH} branch={{ name: status?.branch ?? strings.changes.noBranch, title: branchTitle, hint: tracking || undefined }} />{/if}
     <button
       type="button"
       class="ghost small icon refresh"

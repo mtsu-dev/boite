@@ -987,7 +987,7 @@ are inert. Settings pages use `--settings-width`, `--settings-padding` and
 reserved for current errors, counts or missing steps.
 
 The terminal, the right panel and the sidebar make their room as they arrive,
-on `--dur-slide` and `--ease-slide`: the terminal grows its slot, the panel and
+on `--motion-duration` and `--motion-curve`: the terminal grows its slot, the panel and
 the sidebar slide in from their window edge behind a negative margin that
 shrinks to zero. The chat gives way over the whole movement instead of jumping
 in one frame. The panel and the sidebar keep their final size while they

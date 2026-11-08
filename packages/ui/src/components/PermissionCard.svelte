@@ -262,16 +262,17 @@
   .docked :global(.info-tip) { flex: none; }
   /* Under a pointer the raw input's "i" shows on the ask's hover or focus. */
   @media (hover: hover) {
-    .docked :global(.info-tip) { opacity: 0; transition: opacity var(--dur-2) var(--ease-out-quint); }
+    .docked :global(.info-tip) { opacity: 0; transition: opacity var(--motion-duration) var(--motion-curve); }
     .docked:is(:hover, :focus-within) :global(.info-tip), .docked :global(.info-tip[aria-expanded='true']) { opacity: 1; }
   }
   .docked :global(.info-bubble) { font-family: var(--font-mono); font-size: var(--text-xs); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 50vh; overflow: auto; }
   .choices { display: flex; align-items: center; gap: 6px; }
   .count { flex: none; color: var(--color-muted-foreground); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
   /* Squeezed by the dock's budget, it scrolls; a line under its edge fades instead of being cut (app.css `.scroll-edges`). */
-  /* The command is one mono line on a faint fill, not a box: a long one
-     scrolls sideways, its whole text behind the "i". */
-  .docked pre { --scroll-edge-ground: var(--color-composer-surface); max-height: 120px; padding: 6px 10px; border: none; border-radius: var(--radius-sm); background: var(--color-hover); font-size: var(--text-meta); white-space: pre; word-break: normal; overflow: auto; scrollbar-width: none; }
+  /* The command belongs to the ask's line: right under its title, starting
+     where the title's words do (past the dot), with no fill and no edge of
+     its own. A long one scrolls sideways, its whole text behind the "i". */
+  .docked pre { --scroll-edge-ground: var(--color-composer-surface); max-height: 120px; margin-top: -6px; padding: 0 0 0 14px; border: none; border-radius: 0; background: none; font-size: var(--text-meta); line-height: 20px; white-space: pre; word-break: normal; overflow: auto; scrollbar-width: none; }
   .choice { flex: none; height: 30px; gap: 8px; padding: 0 12px; border-radius: var(--radius-md); font-size: var(--text-sm); font-weight: 600; }
   /* Neutral ink, never the accent: the accent stays for send. */
   .choice.allow { background: var(--color-foreground); color: var(--color-background); }

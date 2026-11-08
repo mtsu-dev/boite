@@ -20,6 +20,7 @@
   import AgentAvatar from './agents/AgentAvatar.svelte';
   import { agentDirectory } from '../lib/agent-directory.svelte';
   import { inbox } from '../lib/inbox.svelte';
+  import { hostName } from '../lib/machine-host';
 
   let { store }: { store: Store } = $props();
 
@@ -68,6 +69,8 @@
   let machines = $derived(workspace.machinesOr(store));
   /** One machine names no machine. */
   let several = $derived(workspace.machines.length > 1);
+  /** A heading names its machine as a project card does (lib/machine-host.ts): this app's own goes unsaid. */
+  const home = $derived(machines.find(machine => machine.store === workspace.primary)?.id);
 
   /** Every live thread, most recent first; the list cuts it to the recents until something is typed. */
   let threadData = $derived.by(() => {
@@ -262,7 +265,7 @@
               <div class="section-label project-label" data-testid="palette-project">
                 {#if heading.project}<ProjectTile project={heading.project} store={heading.machine.store} size={16} />{/if}
                 <span class="name ui-label">{heading.project ? projectName(heading.project) : strings.drafts.name}</span>
-                {#if several}<span class="machine ui-label"><MachineIcon icon={heading.machine.icon} os={heading.machine.store.core?.os} size={12} />{heading.machine.label}</span>{/if}
+                {#if hostName(heading.machine, machines, home)}<span class="machine ui-label"><MachineIcon icon={heading.machine.icon} os={heading.machine.store.core?.os} size={12} />{hostName(heading.machine, machines, home)!.text}</span>{/if}
               </div>
             {:else}
               <div class="section-label">{section.id === BOTS ? strings.agents.heading : section.kind === 'project' ? strings.palette.projects : strings.palette.commands}</div>

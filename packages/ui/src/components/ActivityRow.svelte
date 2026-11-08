@@ -8,7 +8,7 @@
 
   /**
    * One Activity row, desktop (ActivityList.svelte): the list's own row (menu, drag, rename) with who asks, its title
-   * on two lines at most, and what is asked beside it when both fit on one line, under it when not, whole; the
+   * on two lines at most, and what is asked as one line under it, whole in the row's tooltip; the
    * command of a permission in a mono block under them, each sub-agent that asks the same as a line of its own
    * (lib/activity-feed.ts: one event, one row). The mark, since when and the row's one action end the title's line. A command too long to read here turns Allow into Review, which opens the thread
    * first. Acting leaves Activity for the thread; once the ask is settled, Activity comes back where it was
@@ -23,11 +23,11 @@
 </script>
 
 <ThreadCard machine={row.machine} project={row.project} thread={row.thread} {now} compact at={row.at}>
-  {#snippet ask()}<span class="ask" data-testid="thread-reason">{row.reason}</span>{/snippet}
+  {#snippet ask()}<span class="ask" data-testid="thread-reason" title={row.reason}>{row.reason}</span>{/snippet}
   {#snippet detail()}
     {#if operation}<code class="operation" class:long data-testid="thread-operation">{operation}</code>{/if}
     {#each helpers as helper (helper.thread.id)}
-      <span class="ask helper" data-testid="thread-helper" data-thread-id={helper.thread.id}><span class="who">{helper.thread.title}</span> <span class="sep" aria-hidden="true">·</span> {helper.reason}</span>
+      <span class="ask helper" data-testid="thread-helper" data-thread-id={helper.thread.id} title={`${helper.thread.title} · ${helper.reason}`}><span class="who">{helper.thread.title}</span> <span class="sep" aria-hidden="true">·</span> {helper.reason}</span>
     {/each}
   {/snippet}
   {#snippet action()}
@@ -42,8 +42,8 @@
 </ThreadCard>
 
 <style>
-  /* Beside the title, or under its text edge once it wraps: what is asked, wrapped, never cut. */
-  .ask { flex: 1 1 auto; min-width: 0; font-size: var(--text-sm); line-height: 1.45; color: var(--color-muted-foreground); text-align: start; white-space: normal; overflow-wrap: anywhere; }
+  /* Under the title's edge: what is asked, one secondary line; its tooltip and the thread hold the whole. */
+  .ask { display: block; min-width: 0; font-size: var(--text-sm); line-height: 1.45; color: var(--color-muted-foreground); text-align: start; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* A sub-agent's line, under the title's text edge (the 16 px tile and its 10 px gap). */
   .helper { display: block; flex: none; padding-left: 26px; }
   .who { color: var(--color-foreground); font-weight: 500; }

@@ -58,5 +58,8 @@ describe('the merged settings', () => {
 
   test('a page that is not merged opens itself', () => {
     for (const tab of ['keyboard', 'voice', 'limits', 'machines'] as const) expect(desktopPage(tab, true)).toBe(tab);
+    // A desktop has no page between the nav and a page: Home, or a page this window may not open, shows General.
+    expect(desktopPage('home', true)).toBe('general');
+    expect(desktopPage('resources', false)).toBe('general');
   });
 });

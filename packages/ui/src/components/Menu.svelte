@@ -179,8 +179,10 @@
       onanimationend={popover.end}
       data-testid={testid ? `${testid}-menu` : undefined}
     >
-      {#if switches}<div class="heading ui-label" aria-hidden="true">{label}</div>
-      {:else if sheet}<div class="sheet-title" aria-hidden="true">{heading ?? label}</div>{/if}
+      <!-- A phone sheet titles every menu the same way, switches included. -->
+      {#if switches && !sheet}<div class="heading ui-label" aria-hidden="true">{label}</div>
+      <!-- A second level's back row names it: no sheet title over it. -->
+      {:else if sheet && !ordered[0]?.back}<div class="sheet-title" aria-hidden="true">{heading ?? label}</div>{/if}
       {#each ordered as item (item.id)}
         {#if item.separator && item.label}
           <!-- A labelled rule opens a section: its words, no line. -->
@@ -243,7 +245,8 @@
   .popover:global([data-mobile-sheet='true']) .section:first-child,
   .popover:global([data-mobile-sheet='true']) .sheet-title + .section { padding-top: 0; }
   /* A rule only ever separates: one left first or last by a hidden item draws nothing. */
-  .separator:first-child, .sheet-title + .separator, .heading + .separator, .separator:last-child, .separator + .separator { display: none; }
+  /* A back row draws its own rule (BackRow.svelte): a separator under it would be a second one. */
+  .separator:first-child, .sheet-title + .separator, .heading + .separator, .separator:last-child, .separator + .separator, .popover :global(.back-rule + .separator) { display: none; }
   /* The list holds the focus only to keep the keys; its rows wear the ring. */
   .popover:focus { outline: none; }
   .sheet-title { padding: 0 var(--space-4) var(--space-3); color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 600; line-height: 1.35; text-align: center; overflow-wrap: anywhere; }
@@ -366,7 +369,7 @@
     display: flex;
     flex-direction: column;
     gap: 1px;
-    animation: pop var(--motion-in);
+    animation: pop var(--motion-duration) var(--motion-curve);
     transform-origin: bottom left;
   }
 
@@ -374,7 +377,7 @@
   .popover > * { flex: none; }
 
   .popover.closing {
-    animation: pop-out var(--motion-out);
+    animation: pop-out var(--motion-duration) var(--motion-curve);
     pointer-events: none;
   }
 

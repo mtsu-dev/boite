@@ -4,12 +4,16 @@
   import InfoTip from './InfoTip.svelte';
   import PolicyLock from './PolicyLock.svelte';
   import VoiceInputSettings from './VoiceInputSettings.svelte';
+  import ChoiceSelect from './ChoiceSelect.svelte';
+  import { MediaQuery } from 'svelte/reactivity';
   import { AlertTriangle, Check, Download, LoaderCircle, Trash2 } from '@lucide/svelte';
   import { RpcErrorCode, type SpeechConfig, type SpeechModel, type SpeechStatus } from '@boite/contracts';
   import { RpcFailure } from '../lib/client';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
   let { store, readOnly = false }: { store: Store; readOnly?: boolean } = $props();
+  /** A phone reads the engine as a label and its value, the row opening a sheet, as Appearance does. */
+  const phone = new MediaQuery('(max-width: 720px)');
   /** The admin policy's dictation: `local` keeps the cloud engines off, `off` every engine and download. */
   const dictation = $derived(lockedBy(store.policy, 'dictation') ? store.policy?.values.dictation ?? null : null);
   const off = $derived(dictation === 'off');
@@ -239,12 +243,18 @@
     {#if pollError && pollError !== error}<p class="error" role="alert" data-testid="voice-poll-error">{pollError}</p>{/if}
 
     <section class="card">
-      <div class="switch-row">
+      <div class="switch-row" class:value={phone.current}>
         <span class="text ui-label-box"><span class="ui-label">{strings.speech.engine}</span><InfoTip topic={strings.speech.engine} text={strings.speech.engineHint} /><PolicyLock {store} keys={['dictation']} /></span>
+        {#if phone.current}
+          <ChoiceSelect row label={strings.speech.engine} value={config.engine} testid="voice-engine-current" optionTestid={(id) => `voice-${id}`}
+            options={[{ id: 'local' as const, name: strings.speech.local, disabled: busy || off }, { id: 'api' as const, name: strings.speech.api, disabled: busy || dictation !== null }]}
+            onpick={(engine) => { if (config!.engine !== engine) void apply({ engine }); }} />
+        {:else}
         <div class="segmented" role="radiogroup" aria-label={strings.speech.engine}>
           <button type="button" role="radio" class:on={config.engine === 'local'} aria-checked={config.engine === 'local'} data-testid="voice-local" disabled={busy || off} onclick={() => { if (config!.engine !== 'local') void apply({ engine: 'local' }); }}><span class="ui-label">{strings.speech.local}</span></button>
           <button type="button" role="radio" class:on={config.engine === 'api'} aria-checked={config.engine === 'api'} data-testid="voice-api" disabled={busy || dictation !== null} onclick={() => { if (config!.engine !== 'api') void apply({ engine: 'api' }); }}><span class="ui-label">{strings.speech.api}</span></button>
         </div>
+        {/if}
       </div>
       <div class="switch-row">
         <span class="text ui-label-box" id="voice-language-label"><span class="ui-label">{strings.speech.language}</span><InfoTip topic={strings.speech.language} text={strings.speech.languageHint} /></span>

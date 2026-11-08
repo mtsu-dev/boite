@@ -45,11 +45,43 @@ function lightness(hex: string): number {
 
 const GROUNDS = ['--color-background', '--color-frame', '--color-surface', '--color-surface-2', '--color-surface-3'];
 
+/** The alpha of a hairline written as `rgba(r, g, b, a)`. */
+function alpha(scope: string, name: string): number {
+  const match = new RegExp(`${name}:\\s*rgba\\([^)]*,\\s*([\\d.]+)\\)\\s*;`, 'i').exec(scope);
+  if (!match?.[1]) throw new Error(`no rgba ${name}`);
+  return Number(match[1]);
+}
+
+/**
+ * Round 15 lifts the grey one step: secondary text, the hairline and the edge
+ * that must read. The floors below fail on round 14's values (secondary 11.6:1
+ * and 9.71:1 at worst, subtle 9.94:1 and 8.08:1, hairline 0.075 and 0.08,
+ * edge 0.11 and 0.16).
+ */
+const FLOORS = {
+  dark: { muted: 12, subtle: 10.5, border: 0.09, edge: 0.13 },
+  light: { muted: 10.5, subtle: 9, border: 0.095, edge: 0.19 }
+};
+
 describe.each([
   ['dark', ':root'],
   ['light', "[data-theme='light']"]
-])('%s theme', (_theme, selector) => {
+] as const)('%s theme', (theme, selector) => {
   const scope = block(selector);
+
+  test('secondary and tertiary text sit one step brighter than round 14', () => {
+    for (const ground of GROUNDS) {
+      expect(ratio(token(scope, '--color-muted-foreground'), token(scope, ground)), `muted on ${ground}`).toBeGreaterThanOrEqual(FLOORS[theme].muted);
+      expect(ratio(token(scope, '--color-subtle'), token(scope, ground)), `subtle on ${ground}`).toBeGreaterThanOrEqual(FLOORS[theme].subtle);
+    }
+  });
+
+  test('the hairline and the edge read one step stronger, the edge still over the hairline', () => {
+    const [border, edge] = [alpha(scope, '--color-border'), alpha(scope, '--color-edge')];
+    expect(border).toBeGreaterThanOrEqual(FLOORS[theme].border);
+    expect(edge).toBeGreaterThanOrEqual(FLOORS[theme].edge);
+    expect(edge).toBeGreaterThan(border);
+  });
 
   test.each(['--color-subtle', '--color-muted-foreground'])('%s clears 4.5:1 on every ground', (tier) => {
     for (const ground of GROUNDS) expect(ratio(token(scope, tier), token(scope, ground)), `${tier} on ${ground}`).toBeGreaterThanOrEqual(4.5);
@@ -66,6 +98,10 @@ describe.each([
     // More than one step under muted reads as dim (round 13: 8.6 L* in dark, 8.8 in light).
     expect(Math.abs(muted! - subtle!), 'muted to subtle').toBeLessThanOrEqual(7);
   });
+});
+
+test('a menu or popover edge sits one step over the edge, toward the text, in every theme and palette', () => {
+  expect(block(':root')).toMatch(/--overlay-edge:\s*color-mix\(in srgb, var\(--color-edge\), var\(--color-foreground\) \d+%\);/);
 });
 
 /**

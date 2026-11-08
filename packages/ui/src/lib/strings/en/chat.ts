@@ -125,12 +125,10 @@ export const strings = {
     /** A bot's finished turn: its steps folded above its answer, or a wake that had nothing for the user. */
     fold: {
       worked: 'Worked {time}', workedBare: 'Worked',
-      stepOne: '1 step', stepMany: '{count} steps',
       quiet: 'Checked, nothing to report', quietWith: 'Checked: {reason}',
       showSteps: 'Show the steps', hideSteps: 'Hide the steps',
       showTurn: 'Show the whole turn', hideTurn: 'Fold this turn',
       memory: { running: 'Updating its memory', done: 'Memory updated', unchanged: 'Memory checked, nothing to change', error: 'Memory update failed' },
-      memoryOpen: 'See its memory on the desk',
     },
     /** At the foot of a thread the user moved: the note rides on the next prompt, not sent yet. */
     movePending: 'Moved to {project} · the agent will be told with your next message',

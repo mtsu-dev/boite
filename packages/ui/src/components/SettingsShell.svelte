@@ -4,7 +4,7 @@
   import MobileSettings from './MobileSettings.svelte';
   import BrainPage from './BrainPage.svelte';
   import InfoTip from './InfoTip.svelte';
-  import { Activity, Brain, ChevronLeft, Coins, FlaskConical, Gauge, Keyboard, MemoryStick, Mic, Monitor, Palette, Puzzle, Plug, Settings, Stethoscope, Wrench } from '@lucide/svelte';
+  import { ChevronLeft, ChevronRight, Search } from '@lucide/svelte';
   import KeyboardPage from './KeyboardPage.svelte';
   import LimitsPage from './LimitsPage.svelte';
   import PluginsPage from './PluginsPage.svelte';
@@ -23,7 +23,6 @@
   import MachinesPage from './MachinesPage.svelte';
   import ResourcesPage from './ResourcesPage.svelte';
   import TaskManagerLoader from './TaskManagerLoader.svelte';
-  import SettingsHome, { type SettingsEntry, type SettingsGroup, type SettingsTile } from './SettingsHome.svelte';
   import UsagePage from './UsagePage.svelte';
   import VoiceSettings from './VoiceSettings.svelte';
   import { providerGroups } from '../lib/provider-family';
@@ -82,26 +81,30 @@
   const narrow = new MediaQuery('(max-width: 720px)');
   const inShell = window.__TAURI_INTERNALS__ !== undefined;
 
-  type Tab = SettingsTile;
+  /** A page as the nav names it. */
+  type Tab = { id: SettingsTab; label: string };
+  /** One place the search can land: a page, or a card on it. */
+  type SettingsEntry = { tab: SettingsTab; section: string | null; label: string; trail: string };
 
   // Derived, not built once: the nav is written in the language the app is
-  // speaking, and the language changes without a reload.
+  // speaking, and the language changes without a reload. Words only: an icon
+  // a row said nothing the name did not.
   let all = $derived<Tab[]>([
-    { id: 'general', label: strings.settings.tabs.general, icon: Settings },
-    { id: 'appearance', label: strings.settings.tabs.appearance, icon: Palette },
-    { id: 'keyboard', label: strings.settings.tabs.keyboard, icon: Keyboard },
-    { id: 'voice', label: strings.speech.heading, icon: Mic },
-    { id: 'accounts', label: strings.settings.tabs.accounts, icon: Plug },
-    { id: 'plugins', label: strings.settings.tabs.plugins, icon: Puzzle },
-    { id: 'brain', label: strings.brain.heading, icon: Brain },
-    { id: 'usage', label: strings.settings.tabs.usage, icon: Coins },
-    { id: 'limits', label: strings.usage.limits, icon: Gauge },
-    { id: 'task-manager', label: strings.taskManager.title, icon: Activity },
-    { id: 'resources', label: strings.settings.tabs.resources, icon: MemoryStick },
-    { id: 'machines', label: strings.settings.tabs.machines, icon: Monitor },
-    { id: 'advanced', label: strings.settings.tabs.advanced, icon: Wrench },
-    { id: 'diagnostics', label: strings.settings.tabs.diagnostics, icon: Stethoscope },
-    { id: 'experiments', label: strings.settings.tabs.experiments, icon: FlaskConical }
+    { id: 'general', label: strings.settings.tabs.general },
+    { id: 'appearance', label: strings.settings.tabs.appearance },
+    { id: 'keyboard', label: strings.settings.tabs.keyboard },
+    { id: 'voice', label: strings.speech.heading },
+    { id: 'accounts', label: strings.settings.tabs.accounts },
+    { id: 'plugins', label: strings.settings.tabs.plugins },
+    { id: 'brain', label: strings.brain.heading },
+    { id: 'usage', label: strings.settings.tabs.usage },
+    { id: 'limits', label: strings.usage.limits },
+    { id: 'task-manager', label: strings.taskManager.title },
+    { id: 'resources', label: strings.settings.tabs.resources },
+    { id: 'machines', label: strings.settings.tabs.machines },
+    { id: 'advanced', label: strings.settings.tabs.advanced },
+    { id: 'diagnostics', label: strings.settings.tabs.diagnostics },
+    { id: 'experiments', label: strings.settings.tabs.experiments }
   ]);
 
   let providerList = $derived(providerGroups(store.providers, store.shownAccounts()));
@@ -162,19 +165,15 @@
   let tabs = $derived(all.filter((tab) => store.owner || !ownerOnly(tab.id)));
   /**
    * The nav's seven entries (`SETTINGS_GROUPS`), the same list a phone shows,
-   * each led by the first page of it this window may open. Its other pages
-   * are tabs at the top of its card; the search still finds every card.
+   * each led by the first page of it this window may open, its other pages
+   * listed under it: two levels, the nav and the page, nothing between.
    */
   let groups = $derived(SETTINGS_GROUPS
     .map((ids) => pagesOf(ids[0], store.owner).flatMap((id) => tabs.filter((entry) => entry.id === id)))
     .filter((members) => members.length > 0)
-    .map(([lead, ...rest]): SettingsGroup => ({ ...lead!, members: rest, sections: sectionsOf(lead!.id, store.owner).flatMap((id) => tabs.filter((entry) => entry.id === id)) })));
-  /** The group the shown page sits in, by its first page this window lists. */
-  let group = $derived(groups.find((entry) => entry.id === tab || entry.members.some((member) => member.id === tab)));
+    .map(([lead, ...rest]) => ({ ...lead!, members: rest })));
   /** The pages merged into the shown one as its last sections (`lib/settings-tabs.ts`). */
   let merged = $derived(sectionsOf(tab, store.owner));
-  /** A group of several pages shows them as tabs at the top of its card. */
-  let strip = $derived((group?.members.length ?? 0) > 0);
 
   /**
    * What each page is for, said once behind the "i" beside the screen's title
@@ -187,7 +186,6 @@
       case 'voice': return strings.speech.description;
       case 'accounts': return strings.providerSettings.intro;
       case 'plugins': return strings.plugins.intro;
-      case 'brain': return strings.brain.description;
       case 'usage': return `${strings.usage.intro} ${strings.usage.note}`;
       case 'machines': return strings.machines.intro;
       case 'experiments': return strings.settings.experiments.intro;
@@ -196,9 +194,9 @@
       default: return '';
     }
   }
-  /** One title per screen, at the top of its card: the group the page sits in. Home has the list's head. */
-  let title = $derived(tab === 'home' ? strings.settings.heading : group?.label ?? tabs.find((entry) => entry.id === tab)?.label ?? '');
-  let info = $derived(tab === 'home' ? '' : infoOf(tab));
+  /** One title per screen, at the top of its card: the page's own name, as the nav lists it. */
+  let title = $derived(tabs.find((entry) => entry.id === tab)?.label ?? '');
+  let info = $derived(infoOf(tab));
 
   /**
    * On a desktop the card carries the screen's one title, a step over the
@@ -274,7 +272,7 @@
     ['diagnostics', 'diagnostics-log', strings.diagnostics.search]
   ]);
 
-  /** Every page, every section the nav names and the settings above: what the home page's search looks through. */
+  /** Every page, every section the nav names and the settings above: what the nav's search looks through. */
   let entries = $derived<SettingsEntry[]>(tabs.flatMap((entry) => {
     const sections = children[entry.id] ?? [];
     const words = settingsWords.filter(([tab, section]) => tab === entry.id && (section === null || sections.some((child) => child.id === section)));
@@ -293,8 +291,56 @@
 
   const motion = (): ScrollBehavior => (window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth');
 
+  /**
+   * The search heads the nav: while it holds words, the card lists what they
+   * find in place of the page; a result or a nav entry opens its page and
+   * empties it.
+   */
+  let query = $state('');
+  let field = $state<HTMLInputElement>();
+  /** The result Enter opens: the arrows move it, a new query puts it back on top. */
+  let active = $state(0);
+  /** "Clavier" finds "clavier", "Récents" finds "recents": case and accents never decide a match. */
+  const fold = (text: string): string => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+  let results = $derived.by(() => {
+    const words = fold(query).split(/\s+/).filter(Boolean);
+    if (words.length === 0) return [];
+    return entries.filter((entry) => {
+      const text = fold(`${entry.label} ${entry.trail}`);
+      return words.every((word) => text.includes(word));
+    }).slice(0, 12);
+  });
+  let searching = $derived(query.trim() !== '');
+
   function open(entry: SettingsEntry) {
+    query = '';
     store.showSettings(entry.tab, entry.section);
+  }
+
+  function go(page: SettingsTab) {
+    query = '';
+    store.showSettings(page);
+  }
+
+  // The gear opens Settings to be searched: the keyboard lands in the field. A
+  // touch screen would answer with its keyboard over the page, so it waits for a tap.
+  $effect(() => {
+    if (untrack(() => store.settingsTab) === 'home' && window.matchMedia('(hover: hover) and (pointer: fine)').matches) field?.focus({ preventScroll: true });
+  });
+
+  function onkey(event: KeyboardEvent) {
+    const picked = results[Math.min(active, results.length - 1)];
+    if (event.key === 'Enter' && picked) {
+      event.preventDefault();
+      open(picked);
+    } else if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && results.length > 0) {
+      event.preventDefault();
+      active = (Math.min(active, results.length - 1) + (event.key === 'ArrowDown' ? 1 : results.length - 1)) % results.length;
+    } else if (event.key === 'Escape' && query) {
+      event.preventDefault();
+      event.stopPropagation();
+      query = '';
+    }
   }
 
   // A caller can name a card before this lazy settings subtree is mounted.
@@ -336,57 +382,64 @@
     <button type="button" class="ghost title" data-testid="settings-back" title={strings.settings.back} onclick={() => { store.showChat(); store.sidebarCollapsed = false; }}>
       <ChevronLeft size={16} aria-hidden="true" /><span class="ui-label">{strings.settings.heading}</span>
     </button>
-    <!-- One entry a group, as on a phone: a group's other pages are tabs at the top of its card. -->
+    <!-- Settings' home is this search: it finds every page, card and single setting. -->
+    <label class="search" data-testid="settings-home">
+      <Search size={14} strokeWidth={1.75} aria-hidden="true" />
+      <input type="search" bind:this={field} bind:value={query} oninput={() => (active = 0)} placeholder={strings.settings.search} aria-label={strings.settings.search} data-testid="settings-search" onkeydown={onkey} spellcheck="false" autocomplete="off" />
+    </label>
+    <!-- One entry a group, as on a phone, its other pages listed under it. -->
     {#each groups as entry (entry.id)}
-      {@const Icon = entry.icon}
-      {@const here = group?.id === entry.id}
-      <button
-        type="button"
-        class="ghost tab"
-        class:active={here}
-        data-testid="settings-tab-{entry.id}"
-        aria-current={here ? 'page' : undefined}
-        onclick={() => store.showSettings(entry.id)}
-      >
-        <Icon size={16} strokeWidth={1.75} />
-        <span class="ui-label">{entry.label}</span>
-      </button>
+      {#each [entry, ...entry.members] as page, index (page.id)}
+        {@const here = !searching && tab === page.id}
+        <button
+          type="button"
+          class="ghost tab"
+          class:sub={index > 0}
+          class:active={here}
+          data-testid="settings-tab-{page.id}"
+          aria-current={here ? 'page' : undefined}
+          onclick={() => go(page.id)}
+        >
+          <span class="ui-label">{page.label}</span>
+        </button>
+      {/each}
     {/each}
   </nav>
 
   <!-- The panel is keyed on the tab, so switching tabs fades the new page in
        rather than swapping it in one frame. -->
   {#key tab}
-    <section class="framed" class:with-bar={tab !== 'home' || bar || banner || strip || merged.length > 0}>
-      {#if tab !== 'home'}
-        <header class="screen" data-testid="settings-crumb">
-          <h1 class="ui-label-box"><span class="ui-label">{title}</span>{#if info}<InfoTip topic={tabs.find((entry) => entry.id === tab)?.label ?? title} text={info} testid="settings-info" />{/if}</h1>
-        </header>
-      {/if}
-      {#if strip && group}
-        <!-- The group's pages, the shown one filled. The group's own entry keeps the nav's test id; a moved page keeps its own. -->
-        <div class="pages" role="group" aria-label={group.label} data-testid="settings-pages">
-          {#each [group, ...group.members] as page (page.id)}
-            <button type="button" class="page-tab" class:on={page.id === tab} aria-current={page.id === tab ? 'page' : undefined}
-              data-testid={page.id === group.id ? `settings-page-${page.id}` : `settings-tab-${page.id}`} onclick={() => store.showSettings(page.id)}>
-              <span class="ui-label">{page.label}</span>
-            </button>
-          {/each}
+    <section class="framed">
+      {#if searching}
+        <div class="found">
+          {#if results.length === 0}
+            <p class="hint" data-testid="settings-search-empty">{strings.settings.searchEmpty}</p>
+          {:else}
+            <div class="card flush results" data-testid="settings-search-results">
+              {#each results as entry, index (`${entry.tab}:${entry.section}:${entry.label}`)}
+                <button type="button" class="ghost result" class:active={index === Math.min(active, results.length - 1)} data-testid="settings-search-result" onpointermove={() => (active = index)} onclick={() => open(entry)}>
+                  <span class="label ui-label">{entry.label}</span>
+                  {#if entry.trail}<span class="trail ui-label">{entry.trail}</span>{/if}
+                  <ChevronRight size={15} />
+                </button>
+              {/each}
+            </div>
+          {/if}
         </div>
-      {/if}
-      {#if bar && tab !== 'experiments'}{@render machineBar()}{/if}
-      {#key target}
-      <PolicyBanner store={target} />
-      {#if tab === 'home'}
-        <SettingsHome {store} tiles={groups} {entries} onopen={open} />
       {:else}
+        <header class="screen" data-testid="settings-crumb">
+          <h1 class="ui-label-box"><span class="ui-label">{title}</span>{#if info}<InfoTip topic={title} text={info} testid="settings-info" />{/if}</h1>
+        </header>
+        {#if bar && tab !== 'experiments'}{@render machineBar()}{/if}
+        {#key target}
+        <PolicyBanner store={target} />
         {@render view(tab)}
         {#each merged as section (section)}
           <!-- A page merged into this one, as its last section: its route scrolls here. -->
           <div class="merged" id="settings-{section}">{@render view(section)}</div>
         {/each}
+        {/key}
       {/if}
-      {/key}
     </section>
   {/key}
 </div>
@@ -428,48 +481,66 @@
 {/snippet}
 
 <style>
-  /* With the machine bar, the panel scrolls bar and page together, on one column. */
-  .framed.with-bar { scrollbar-gutter: stable both-edges; }
-  .framed.with-bar > :global(.machine-bar) { padding: 24px var(--settings-gutter) 0; }
-  .framed.with-bar > :global(.page) { height: auto; overflow: visible; padding-top: 20px; }
+  /* The panel scrolls title, bar and page together, on one column. */
+  .framed { scrollbar-gutter: stable both-edges; }
+  .framed > :global(.machine-bar) { padding: 24px var(--settings-gutter) 0; }
+  .framed > :global(.page) { height: auto; overflow: visible; padding-top: 20px; }
   .framed > :global(.policy-banner) { margin: 24px var(--settings-gutter) 0; }
   @media (min-width: 721px) {
-    .framed.with-bar > :global(.machine-bar) { padding-inline: max(var(--settings-gutter), calc((100% - var(--settings-width)) / 2)); max-width: none; }
+    .framed > :global(.machine-bar) { padding-inline: max(var(--settings-gutter), calc((100% - var(--settings-width)) / 2)); max-width: none; }
     .framed > :global(.policy-banner) { margin-inline: max(var(--settings-gutter), calc((100% - var(--settings-width)) / 2)); }
   }
   @media (max-width: 720px) {
-    .framed.with-bar > :global(.machine-bar) { padding: 16px 16px 0; }
-    .framed.with-bar > :global(.page) { padding-top: 16px; }
+    .framed > :global(.machine-bar) { padding: 16px 16px 0; }
+    .framed > :global(.page) { padding-top: 16px; }
     .framed > :global(.policy-banner) { margin: 16px 16px 0; }
   }
   .tab span { flex: 1; text-align: left; }
+  /* A group's other pages, under its entry: the same row, set in by the room an icon once took. */
+  .tab.sub { padding-left: 22px; }
 
-  /* A group's pages: one quiet segmented track over the page, the shown one raised. The accent stays out. */
-  .pages {
+  /* The search heads the nav, on the chrome like the rows under it. */
+  .search {
+    flex: none;
     display: flex;
-    flex-wrap: wrap;
-    gap: 2px;
-    width: fit-content;
-    max-width: 100%;
-    margin: var(--space-6) max(var(--settings-gutter), calc((100% - var(--settings-width)) / 2)) 0;
-    padding: 2px;
+    align-items: center;
+    gap: var(--space-2);
+    height: var(--control);
+    margin: 0 0 var(--space-2);
+    padding: 0 10px;
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
-    background: var(--color-surface);
+    background: var(--color-hover);
+    color: var(--color-subtle);
+    transition: border-color var(--dur-2);
   }
-  .page-tab {
-    height: var(--control-sm);
-    padding: 0 var(--space-3);
-    border-radius: var(--radius-sm);
-    color: var(--color-muted-foreground);
-    font-size: var(--text-sm);
-    font-weight: 400;
-    transition: background var(--dur-2) var(--ease-out-quint), color var(--dur-2) var(--ease-out-quint);
+  /* A field brightens its edge on focus, as every field does (app.css): an autofocused search wore an accent frame. */
+  .search:focus-within { border-color: var(--color-composer-focus); }
+  .search :global(svg) { flex: none; }
+  .search input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; box-shadow: none; outline: none; font-size: var(--text-sm); color: var(--color-foreground); }
+  .search input::-webkit-search-cancel-button { display: none; }
+
+  /* What the search finds, in the page's column. */
+  .found { padding: var(--space-8) max(var(--settings-gutter), calc((100% - var(--settings-width)) / 2)); }
+  .found .hint { margin: 0; color: var(--color-muted-foreground); font-size: var(--text-base); }
+  .results { display: grid; }
+  .result {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: var(--space-3);
+    height: auto;
+    min-height: var(--row);
+    padding: var(--space-2) var(--space-4);
+    border-radius: 0;
+    color: var(--color-foreground);
+    text-align: left;
   }
-  @media (hover: hover) { .page-tab:hover:not(.on) { background: var(--color-hover); color: var(--color-foreground); } }
-  .page-tab.on { background: var(--color-surface-3); color: var(--color-foreground); box-shadow: var(--shadow-control); }
-  .framed.with-bar > .pages + :global(.machine-bar) { padding-top: var(--space-4); }
-  .framed.with-bar > .pages + :global(.page) { padding-top: var(--space-6); }
+  button.result.active { background: var(--color-hover); }
+  .result + .result { border-top: 1px solid var(--color-border); }
+  .result .label { flex: none; max-width: 60%; }
+  .result .trail { flex: 1; min-width: 0; font-size: var(--text-sm); color: var(--color-muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .result :global(svg) { flex: none; color: var(--color-subtle); }
 
   /* A page merged into another reads as its last section: its title a section title, the same column. */
   .merged { scroll-margin-top: var(--space-6); }
@@ -519,7 +590,6 @@
   /* The screen's one title, at the top of its card in the settings column, one step over a card's. */
   .screen { padding: var(--space-8) max(var(--settings-gutter), calc((100% - var(--settings-width)) / 2)) 0; }
   .screen h1 { min-width: 0; margin: 0; color: var(--color-foreground); font-size: var(--text-lg); font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; }
-  .screen + .pages { margin-top: var(--space-4); }
   .screen + :global(.page) { padding-top: var(--space-5); }
 
   .tab {
@@ -575,8 +645,9 @@
     }
 
     .settings { gap: 0; }
-    /* In a row, the head is the first chip and each group a run of chips. */
+    /* In a row, the head is the first chip, then the search, then each page a chip. */
     .title { height: var(--control); margin: 0; font-size: var(--text-sm); white-space: nowrap; }
-    .tab { width: auto; white-space: nowrap; }
+    .search { width: 180px; margin: 0; }
+    .tab, .tab.sub { width: auto; white-space: nowrap; padding-left: 10px; }
   }
 </style>

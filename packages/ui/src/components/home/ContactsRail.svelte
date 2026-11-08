@@ -52,14 +52,14 @@
     width: var(--rail-width);
     min-height: 0;
     margin-right: calc(-1 * var(--frame-gap));
-    transition: margin-right var(--dur-slide) var(--ease-slide), opacity var(--dur-3) var(--ease-out-quint), display var(--dur-slide) allow-discrete;
+    transition: margin-right var(--motion-duration) var(--motion-curve), opacity var(--dur-3) var(--ease-out-quint), display var(--motion-duration) allow-discrete;
   }
   .contacts-rail.collapsed {
     display: none;
     pointer-events: none;
     opacity: 0;
     margin-right: calc(-1 * var(--slide-room));
-    transition: margin-right var(--dur-slide-out) var(--ease-slide), opacity var(--dur-2) var(--ease-out-quint), display var(--dur-slide-out) allow-discrete;
+    transition: margin-right var(--motion-duration) var(--motion-curve), opacity var(--dur-2) var(--ease-out-quint), display var(--motion-duration) allow-discrete;
   }
   @starting-style { .contacts-rail.drawn:not(.collapsed) { opacity: 0; margin-right: calc(-1 * var(--slide-room)); } }
   .head { display: flex; align-items: center; gap: 6px; height: var(--control-lg); margin: 0 10px 0 6px; }

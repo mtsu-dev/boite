@@ -39,9 +39,6 @@ export const strings = {
     /** A refused send held the pending messages until the user sends again. */
     queuedPaused: 'Held after a refused send',
     sendNow: 'Send now',
-    queueWaitForEnd: 'Goals and loops wait for the current turn to finish. Your command remains queued.',
-    queueTurnNotReady: 'The running turn has not reached this client yet. Your message remains queued.',
-    queueNotAccepted: 'This turn did not accept the queued input. It remains queued and will be sent when the turn ends.',
     sendNowHint: 'Stops the current turn and sends pending messages. Enter in the empty composer does the same.',
     retryQueuedHint: 'Sends all pending messages together again. Enter in the empty composer does the same.',
     /** The outbox: messages written while the machine was away, kept on this device. */
@@ -59,9 +56,9 @@ export const strings = {
     removeQueued: 'Remove this pending message',
     picker: 'Provider and model',
     models: 'Models',
-    /** The picker's first level lists the models in use; this row opens every provider, its logins and models. */
+    /** The title of the picker's source button, which unfolds every provider beside the models in use. */
     allModels: 'All models',
-    /** The way back from All models to the first level. */
+    /** The picker's source that lists the models in use. */
     yourModels: 'Your models',
     searchModels: 'Search models',
     noModels: 'No model matches',
@@ -76,7 +73,7 @@ export const strings = {
     effortTitle: 'Effort',
     speed: 'Response speed',
     /** The picker's named row under the effort that opens the response speed and the context as their own level; it reads their current values. */
-    pickerMore: 'Access, speed and context',
+    pickerMore: 'Speed and context',
     /** The reasoning chip of a model whose agent keeps its own level until one is picked. */
     effortDefault: 'Default',
     effortDefaultHint: 'Let the agent pick its own level for this model',

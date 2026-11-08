@@ -1,22 +1,24 @@
 <script lang="ts">
-  import { Plus } from '@lucide/svelte';
+  import { Check, Plus } from '@lucide/svelte';
   import type { ProviderSummary } from '@boite/contracts';
   import ProviderLogo from './ProviderLogo.svelte';
   import { strings } from '../lib/strings';
-  import { connected } from '../lib/provider-setup';
+  import { listedProviders } from '../lib/picker-providers';
   import type { Choice, Store } from '../lib/store.svelte';
 
   /**
-   * The model picker's row of providers under "All models", above their
-   * models on every width: one tile
-   * per provider in the order the core listed them, its mark in monochrome
-   * beside its name. A tile only moves the list under it.
+   * The model picker's sources, unfolded in place under its search row: one
+   * row per provider in the order the core listed them, its mark in monochrome
+   * beside its name, the shown one checked. A row only moves the list under it.
+   * Folded, the rows stay in the page (the same nodes when they unfold) but
+   * leave the arrows' path.
    */
   let {
     store,
     choice,
     locked,
     current,
+    open = true,
     onpick,
     onmore
   }: {
@@ -25,6 +27,8 @@
     locked: boolean;
     /** The provider whose column is shown. */
     current: string | null;
+    /** Folded: no row is on the arrows' path. */
+    open?: boolean;
     onpick: (providerId: string) => void;
     /** The last tile, while some providers are left out: Settings, where they are connected. */
     onmore?: () => void;
@@ -38,18 +42,7 @@
     held: boolean;
   }
 
-  /**
-   * One tile per provider the user can run, in the order the core listed them:
-   * a provider with no signed-in account is Settings' business, not the
-   * picker's. The one the choice is on stays, and with nothing connected at all
-   * every provider shows, so the rail is never empty.
-   */
-  let listed = $derived.by((): ProviderSummary[] => {
-    // A provider turned off is offered nowhere, the one an open thread sits on included.
-    const offered = store.offeredProviders;
-    const usable = offered.filter((entry) => connected(entry, store.accountsOf(entry.id)) || entry.id === choice?.providerId);
-    return usable.some((entry) => connected(entry, store.accountsOf(entry.id))) ? usable : offered;
-  });
+  let listed = $derived(listedProviders(store, choice));
   let tiles = $derived.by((): Tile[] => {
     return listed.map((entry) => {
       const reason = !entry.available
@@ -81,70 +74,52 @@
     class:dim={tile.reason !== null}
     disabled={tile.held}
     role="menuitem"
-    data-row
+    data-row={open || undefined}
     data-provider={tile.provider.id}
     title={tileTitle(tile)}
     onclick={() => pickTile(tile)}
   >
+    <span class="mark" aria-hidden="true">{#if current === tile.provider.id}<Check size={14} />{/if}</span>
     <ProviderLogo providerId={tile.provider.id} size={14} />
     <span class="tile-name ui-label">{tile.provider.name}</span>
+    {#if tile.reason}<span class="reason ui-label">{tile.reason}</span>{/if}
   </button>
 {/each}
 {#if onmore && listed.length < store.providers.length}
-  <button type="button" class="tile more" role="menuitem" data-row data-provider="more" data-testid="picker-more-providers" title={strings.settings.connectProvider} aria-label={strings.settings.connectProvider} onclick={onmore}><Plus size={14} /></button>
+  <button type="button" class="tile more" role="menuitem" data-row={open || undefined} data-provider="more" data-testid="picker-more-providers" onclick={onmore}><span class="mark" aria-hidden="true"></span><Plus size={14} /><span class="tile-name ui-label">{strings.settings.connectProvider}</span></button>
 {/if}
 
 <style>
+  /* Every menu's row: one height, inset and radius per device (`--overlay-row`). */
   .tile {
     display: flex;
     align-items: center;
     justify-content: flex-start;
     gap: 8px;
-    flex: none;
-    height: var(--control-sm);
-    padding: 0 10px;
+    width: 100%;
+    min-height: var(--overlay-row);
+    padding: var(--space-1) var(--overlay-row-pad);
     border: none;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-overlay-row);
     background: transparent;
-    color: var(--color-muted-foreground);
-    font-size: var(--text-sm);
-    font-weight: 500;
+    color: var(--color-foreground);
+    font-size: var(--text-base);
+    font-weight: 400;
     text-align: left;
-    transition:
-      background var(--dur-2) var(--ease-out-quint),
-      color var(--dur-2) var(--ease-out-quint);
   }
 
   /* Every mark in one ink: the names tell the providers apart. */
   .tile :global(.logo) { flex: none; filter: grayscale(1); }
-  .tile-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tile-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mark { display: inline-flex; flex: none; width: 14px; color: var(--color-accent); }
+  .reason { flex: none; font-size: var(--text-sm); color: var(--color-subtle); }
 
-  .tile:focus-visible {
-    background: var(--color-hover);
-    color: var(--color-foreground);
-  }
+  .tile:focus-visible { background: var(--color-hover); }
+  @media (hover: hover) { .tile:hover:not(:disabled) { background: var(--color-hover); } }
 
-  @media (hover: hover) {
-    .tile:hover:not(:disabled) {
-      background: var(--color-hover);
-      color: var(--color-foreground);
-    }
-  }
+  .tile.more { color: var(--color-muted-foreground); }
+  .tile.more :global(svg) { flex: none; }
 
-  .tile.current {
-    background: var(--color-active);
-    color: var(--color-foreground);
-  }
-
-  .tile.more { width: auto; color: var(--color-subtle); }
-
-  /* Nothing runs on it: still pickable, so its column can say why. */
-  .tile.dim {
-    opacity: 0.45;
-  }
-
-  @media (max-width: 720px) {
-    /* A finger's row, like every other control on a phone. */
-    .tile { height: var(--touch-target); }
-  }
+  /* Nothing runs on it: still pickable, so its list can say why. */
+  .tile.dim .tile-name, .tile.dim :global(.logo) { opacity: 0.55; }
 </style>

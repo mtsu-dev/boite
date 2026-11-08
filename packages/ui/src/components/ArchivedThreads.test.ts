@@ -80,8 +80,9 @@ test('the mounted settings archive shows merged PR identity/time, reloads reason
   expect(reason.textContent).toContain('Archived after PR #7 merged');
   expect(reason.querySelector('a')?.getAttribute('href')).toBe('https://github.com/example/repo/pull/7');
   expect(reason.querySelector('a')?.getAttribute('rel')).toBe('noopener noreferrer');
-  // The row's time, at the end of its context line, is when the merge put it away.
-  expect(row().querySelector('.context time')?.getAttribute('datetime')).toBe(new Date((await client.call('threads.get', { threadId: thread.id })).archiveReason!.archivedAt).toISOString());
+  // The row's time, at the end of the title's line as on a live row, is when the merge put it away.
+  expect(row().querySelector('.context time')).toBeNull();
+  expect(row().querySelector('.title + time.at')?.getAttribute('datetime')).toBe(new Date((await client.call('threads.get', { threadId: thread.id })).archiveReason!.archivedAt).toISOString());
   await unmount(running!, { outro: false }); running = null; document.body.innerHTML = '';
   await draw();
   expect(row().querySelector('[data-testid=archive-merged-reason]')).not.toBeNull();

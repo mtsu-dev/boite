@@ -57,12 +57,12 @@
 
 <style>
   /* The card's look is the shared one; a toast only arrives and leaves. */
-  .undo-toast { align-items: center; animation: rise var(--motion-in); }
+  .undo-toast { align-items: center; animation: rise var(--motion-duration) var(--motion-curve); }
   .undo-toast .notify-mark { margin-top: 0; }
   .undo-toast .notify-dismiss { margin: 0; }
 
   .undo-toast.closing {
-    animation: fade-out var(--motion-out);
+    animation: fade-out var(--motion-duration) var(--motion-curve);
     pointer-events: none;
   }
 

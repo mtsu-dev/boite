@@ -1,6 +1,6 @@
 import { SvelteSet } from 'svelte/reactivity';
 import { continuesRequest, queueOrder, type AgentStatus, type Message, type MessagePart, type Turn } from '@boite/contracts';
-import type { CompactionPart } from './tool-groups';
+import { runSummary, type CompactionPart, type ToolPart } from './tool-groups';
 import { fill, strings } from './strings';
 import { elapsed } from './format';
 import { AgentsView } from './agents.svelte';
@@ -24,6 +24,8 @@ export interface TurnFold {
   kind: 'worked' | 'quiet';
   /** The calls the turn made. */
   steps: number;
+  /** The same calls in words, "Read 1 file and ran 4 commands" (`runSummary`), never a bare count. */
+  words: string;
   /** How long it ran, when both ends are known. */
   ms: number | null;
   /** What a quiet wake says it checked, after `[quiet]`; empty when it said nothing. */
@@ -39,14 +41,10 @@ export function workedTime(ms: number): string {
   return elapsed(Math.max(1000, ms));
 }
 
-export function stepsLabel(count: number): string {
-  return count === 1 ? strings.chat.fold.stepOne : fill(strings.chat.fold.stepMany, { count: String(count) });
-}
-
-/** The row's words: "Worked 3m 00s · 14 steps", or "Checked: <reason> · 3 steps", the work it did first. */
+/** The row's words: "Worked 3m 00s · Ran 4 commands", or "Checked: <reason> · Read 2 files", the work it did first. */
 export function foldText(fold: TurnFold): string {
   const t = strings.chat.fold;
-  const steps = fold.steps > 0 ? [stepsLabel(fold.steps)] : [];
+  const steps = fold.words ? [fold.words] : [];
   if (fold.kind === 'quiet') return [fold.reason ? fill(t.quietWith, { reason: fold.reason }) : t.quiet, ...steps].join(' · ');
   return [fold.ms === null ? t.workedBare : fill(t.worked, { time: workedTime(fold.ms) }), ...steps].join(' · ');
 }
@@ -108,11 +106,12 @@ export class TurnFolds {
     for (const turn of turns) {
       const messages = byTurn.get(turn.id);
       if (!messages || !settled(turn) || !foldable(turn)) continue;
-      const steps = messages.reduce((sum, message) => sum + (message.role === 'assistant' ? message.parts.filter(part => part.type === 'tool').length : 0), 0);
+      const calls = messages.flatMap(message => message.role === 'assistant' ? message.parts.filter((part): part is ToolPart => part.type === 'tool') : []);
+      const steps = calls.length;
       const reason = quietReason(turn, messages);
       if (reason === null && steps === 0) continue;
       const ms = turn.startedAt !== null && turn.finishedAt !== null ? Math.max(0, turn.finishedAt - turn.startedAt) : null;
-      folds.set(FOLD_PREFIX + turn.id, { turnId: turn.id, kind: reason === null ? 'worked' : 'quiet', steps, ms, reason: reason ?? '', open: opened.has(turn.id) });
+      folds.set(FOLD_PREFIX + turn.id, { turnId: turn.id, kind: reason === null ? 'worked' : 'quiet', steps, words: runSummary(calls), ms, reason: reason ?? '', open: opened.has(turn.id) });
     }
     this.folds = folds;
     const hidden = new Map<string, CompactionPart[]>();
@@ -151,7 +150,7 @@ export class TurnFolds {
   }
 
   #row(id: string, fold: TurnFold, at: Message): Message {
-    const key = `${fold.kind}|${fold.steps}|${fold.ms}|${fold.reason}|${fold.open}|${at.createdAt}`;
+    const key = `${fold.kind}|${fold.words}|${fold.ms}|${fold.reason}|${fold.open}|${at.createdAt}`;
     const known = this.#rows.get(id);
     if (known?.key === key) return known.message;
     const message: Message = { id, threadId: at.threadId, turnId: fold.turnId, role: 'system', parts: [], state: 'complete', createdAt: at.createdAt };
@@ -289,12 +288,12 @@ export function toggleTurn(turnId: string): void {
 }
 
 /** What a turn's summary line carries: its folded steps, opened from the line, the compactions that followed it, and in an agent's thread the mark of the memory pass that followed it. */
-export function summaryMarks(shaped: ShapedTimeline, turnId: string, openDesk: () => void): { steps?: { count: number; open: boolean; toggle: () => void }; memory?: { pass: MemoryPass; open: () => void }; compactions?: CompactionPart[] } {
+export function summaryMarks(shaped: ShapedTimeline, turnId: string, openDesk: () => void): { steps?: { count: number; words: string; open: boolean; toggle: () => void }; memory?: { pass: MemoryPass; open: () => void }; compactions?: CompactionPart[] } {
   const fold = shaped.folds.get(FOLD_PREFIX + turnId);
   const compactions = shaped.compactions.get(turnId);
   return {
     ...(compactions ? { compactions } : {}),
-    ...(fold?.kind === 'worked' ? { steps: { count: fold.steps, open: fold.open, toggle: () => toggleTurn(turnId) } } : {}),
+    ...(fold?.kind === 'worked' ? { steps: { count: fold.steps, words: fold.words, open: fold.open, toggle: () => toggleTurn(turnId) } } : {}),
     ...(shaped.memoryTurnId === turnId && shaped.pass ? { memory: { pass: shaped.pass, open: openDesk } } : {}),
   };
 }

@@ -21,3 +21,20 @@ test('a flat list names the project when it spans several, the machine when it s
   // This app's own machine goes unsaid: only the other one is named, on its rows.
   expect(machines.map(rowPlaces(machines, 'm1'))).toEqual(['orbit', 'orbit', 'orbit · m2']);
 });
+
+test('the machine is named only while two are connected, and an unreachable one always says so', () => {
+  const orbit = project('o', 'orbit');
+  const site = project('s', 'site');
+  const at = (id: string, connection: string) => ({ id, label: id, store: { connection } });
+  // Two machines listed, one of them asleep: the one connected is not worth a name on every row ("This computer ·").
+  const asleep = [
+    { machine: at('m1', 'ready'), project: orbit, thread: { id: 'a', title: 'Fix CI' } },
+    { machine: at('m1', 'ready'), project: site, thread: { id: 'b', title: 'Docs' } },
+    { machine: at('m2', 'closed'), project: orbit, thread: { id: 'c', title: 'Render' } }
+  ];
+  expect(asleep.map(rowPlaces(asleep))).toEqual(['orbit', 'site', 'orbit · m2 offline']);
+  expect(asleep.map(rowPlaces(asleep, 'm1'))).toEqual(['orbit', 'site', 'orbit · m2 offline']);
+  // Both connected: the other machine is named, this app's own goes unsaid.
+  const awake = asleep.map(row => ({ ...row, machine: at(row.machine.id, 'ready') }));
+  expect(awake.map(rowPlaces(awake, 'm1'))).toEqual(['orbit', 'site', 'orbit · m2']);
+});

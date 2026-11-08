@@ -107,7 +107,7 @@ export const fr: Translation = {
       routinesEmpty: 'Aucune routine pour l’instant.', memoryAdd: 'Écrire une note',
       open: 'Ouvrir {title}', drop: 'Retirer {title} de son bureau',
       silent: 'silencieux depuis {time}',
-      unreachable: 'injoignable',
+      unreachable: 'hors ligne',
       state: { 'needs-you': 'Vous attend', stalled: 'Bloqué', failed: 'Échec', working: 'Au travail', queued: 'En file', merged: 'Fusionnée', review: 'PR ouverte', done: 'Terminé', idle: 'Au repos', archived: 'Archivé' },
       pr: { open: 'PR #{number}', draft: 'Brouillon #{number}', merged: 'PR #{number} fusionnée', closed: 'PR #{number} fermée' },
       checks: { pending: 'vérifications en cours', passing: 'vérifications OK', failing: 'vérifications en échec' },

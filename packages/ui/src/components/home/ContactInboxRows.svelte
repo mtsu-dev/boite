@@ -78,8 +78,9 @@
 {#each merged as { row, same } (row.key)}
   {@const busy = row.view.isBusy(row.request ? `decide:${row.request.id}` : `mail:${row.letter!.id}`)}
   {@const text = (row.request ?? row.letter).text}
-  <!-- Activity's row (ActivityRow.svelte): who asks, then what, whole; since when and the one answer end the
-       title's line. Refusing and another project wait in the row's menu. -->
+  <!-- Activity's row (ActivityRow.svelte): who asks, then what, one line, whole in its tooltip and on the contact's
+       page; since when and the one answer end the title's line, the answer after the content on a phone. Refusing
+       and another project wait in the row's menu. -->
   <article class="contact-row" data-testid="activity-contact" data-kind={row.letter ? 'mail' : 'request'} data-count={same.length}>
     <span class="mark" aria-hidden="true">{#if row.letter}<Mail size={14} />{:else}<UserRound size={14} />{/if}</span>
     <div class="lines">
@@ -88,7 +89,7 @@
         <button type="button" class="ghost title ui-label" title={labels.review} onclick={() => void openContact(row.machine.store, (row.request ?? row.letter!).coreId)} data-testid="activity-contact-open"><span class="clamp">{row.letter ? fill(strings.contacts.mail.writes, { contact: row.letter.contact, thread: row.letter.thread }) : fill(labels.asks, { contact: row.request.contact })}</span></button>
         {#if same.length > 1}{@const many = fill(labels.same, { count: String(same.length) })}<span class="times" data-testid="activity-contact-count" title={many} aria-label={many}>×{same.length}</span>{/if}
       </p>
-      <p class="text">{text}</p>
+      <p class="text" title={text}>{text}</p>
       {#if row.request && refusing === row.key}
         {@const request = row.request}
         <form class="refusal" onsubmit={event => { event.preventDefault(); void refuse({ ...row, request }, same); }}>
@@ -158,8 +159,8 @@
   .clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
   .title:hover { text-decoration: underline; background: none; }
   .times { flex: none; line-height: 20px; font-size: var(--text-xs); font-weight: 600; color: var(--color-muted-foreground); font-variant-numeric: tabular-nums; }
-  /* What is asked, whole: the answer is never given to a cut line. */
-  .text { margin: 0; font-size: var(--text-sm); color: var(--color-muted-foreground); white-space: pre-wrap; overflow-wrap: anywhere; }
+  /* What is asked, one secondary line: the title opens the contact's page with the whole, its tooltip holds it too. */
+  .text { margin: 0; font-size: var(--text-sm); color: var(--color-muted-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .side { position: absolute; top: 0; right: 0; display: flex; align-items: center; gap: 8px; height: calc(20px + 2 * var(--feed-pad)); padding-right: var(--pad-x); }
   .top { display: grid; justify-items: end; align-items: center; width: var(--feed-time); height: 20px; }
   .top > :global(*) { grid-area: 1 / 1; }
@@ -178,10 +179,15 @@
   .refusal .actions { justify-content: flex-end; }
   .failed { margin: 0; font-size: var(--text-xs); color: var(--color-danger); overflow-wrap: anywhere; }
   @media (max-width: 720px) {
-    /* The phone row's own edge (MobileThreadRow.svelte): 12 px in; the menu always shows before the time, the answer
-       at a finger's size and MobileThreadRow.svelte's one verb width, still on the title's line. */
-    .contact-row { --feed-pad: 10px; --pad-x: 12px; --feed-time: 32px; --feed-verb: 88px; --side-room: calc(var(--feed-time) + var(--touch-target) + 8px + var(--feed-verb) + var(--pad-x)); }
-    .side { height: calc(22px + 2 * var(--feed-pad)); }
+    /* The phone row's own edge (MobileThreadRow.svelte): 12 px in; the menu always shows before the time on the
+       title's line, and the answer, at a finger's size and MobileThreadRow.svelte's one verb width, follows the
+       content at its text edge, so who asks keeps the row's width. */
+    .contact-row { --feed-pad: 10px; --pad-x: 12px; --feed-time: 32px; --feed-verb: 88px; --side-room: calc(var(--feed-time) + var(--touch-target) + 2px + var(--pad-x));
+      flex-wrap: wrap; row-gap: 6px; }
+    .side { display: contents; }
+    .top { position: absolute; top: 0; right: var(--pad-x); height: calc(22px + 2 * var(--feed-pad)); }
+    .feed-action { flex-basis: calc(100% - 26px); margin-left: 26px; }
+    .answer { width: var(--feed-verb); }
     /* The menu before the time, so the time stands next to the answer in the thread rows' column. */
     .top { display: flex; flex-direction: row-reverse; gap: 2px; width: auto; }
     .top :global(.trigger) { opacity: 1; min-width: var(--touch-target); }
@@ -190,7 +196,5 @@
     .answer { font-size: var(--text-sm); }
     /* The title line is the row's open button: a finger needs 44 px, not its text's height, with no taller row. */
     .title::after { content: ''; position: absolute; inset: 50% 0 auto; height: var(--touch-target); translate: 0 -50%; }
-    /* The answer is a finger's height, taller than the title's line: the text under it starts below the button. */
-    .head { min-height: calc(var(--touch-target) - var(--feed-pad)); }
   }
 </style>

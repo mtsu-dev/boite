@@ -169,9 +169,8 @@
   let effortItems = $derived([...agentDefault ? [{ id: '', label: strings.composer.effortDefault, title: strings.composer.effortDefaultHint }] : [],
     ...effortLevels.map((level) => ({ id: level.id, label: levelName(level), title: levelTitle(level) }))]);
   let speedItems = $derived([{ id: '', label: strings.composer.standardSpeed }, ...speeds.map((entry) => ({ id: entry.id, label: levelName(entry), title: levelTitle(entry) }))]);
-  /** What the picker's More row holds, by its current values: the permission, then a speed other than the standard one. */
-  let moreSummary = $derived([modes.length > 0 ? modeItems.find((item) => item.id === displayedMode)?.label : undefined,
-    speedItems.find((item) => item.id !== '' && item.id === speedOptions.speed)?.label].filter(Boolean).join(' · '));
+  /** What the picker's More row holds, by its current value: a speed other than the standard one. */
+  let moreSummary = $derived(speedItems.find((item) => item.id !== '' && item.id === speedOptions.speed)?.label ?? '');
 
   /** A null effort runs at the model's own default, not at a preset the client configured. */
   function cacheKey(selection: Choice): CacheKey {
@@ -306,13 +305,13 @@
         <div class="setting" data-testid="composer-effort" tabindex="-1"><span class="setting-name ui-label">{strings.composer.effortTitle}</span>
           <PickerChoices label={strings.composer.effortTitle} testid="composer-effort-menu" items={effortItems} active={activeEffort ?? (agentDefault ? '' : null)} onpick={pickEffort} /></div>
       {/if}
-      {#if modes.length > 0 || speeds.length > 0 || bound}
-        <!-- The rest waits behind one quiet row that reads its values: the first level is the model and its effort. -->
+      {#if modes.length > 0}
+        <div class="setting" data-testid="composer-mode" tabindex="-1"><span class="setting-name ui-label">{strings.composer.mode}</span>
+          <PickerChoices label={strings.composer.mode} testid="composer-mode-menu" items={modeItems} active={displayedMode} onpick={pickMode} /></div>
+      {/if}
+      {#if speeds.length > 0 || bound}
+        <!-- Speed and context wait behind one quiet row that reads its value: the first level is the model, its effort and its permission. -->
         <More summary={moreSummary}>
-          {#if modes.length > 0}
-            <div class="setting" data-testid="composer-mode" tabindex="-1"><span class="setting-name ui-label">{strings.composer.mode}</span>
-              <PickerChoices label={strings.composer.mode} testid="composer-mode-menu" items={modeItems} active={displayedMode} onpick={pickMode} /></div>
-          {/if}
           {#if speeds.length > 0}
             <div class="setting" data-testid="effort-speed" tabindex="-1"><span class="setting-name ui-label">{strings.composer.speed}</span>
               <PickerChoices label={strings.composer.speed} testid="effort-speed-menu" items={speedItems} active={speedOptions.speed ?? ''} onpick={(id) => void pick(speedOptions.pick(id || null))} /></div>

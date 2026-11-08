@@ -354,8 +354,9 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 /* The second line's words stay grey: the mark after the title carries the one colour. */
 .desk-chip { color: var(--color-subtle); font-weight: 500; animation: pop var(--dur-2) var(--ease-out-quint); }
 /* Out of reach is a machine state, not a failure: the offline machine's grey dot (Sidebar.svelte), not red. */
-.desk-card-unreachable { display: inline-flex; align-items: center; gap: 5px; color: var(--color-muted-foreground); }
-.desk-card-off { flex: none; width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--color-subtle); }
+.desk-card-unreachable { color: var(--color-muted-foreground); }
+/* A card of a machine out of reach reads dimmed, its tile and words alike, as the lists' offline rows do. */
+.desk-row.away .desk-row-tile, .desk-row.away .desk-row-text { opacity: 0.6; }
 .desk-card-pr { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
 .desk-card-pr[data-pr='merged'], .desk-card-pr[data-checks='passing'] { color: var(--color-success); }
 .desk-card-pr:is([data-pr='closed'], [data-checks='failing']):not([data-pr='merged']) { color: var(--color-danger); }

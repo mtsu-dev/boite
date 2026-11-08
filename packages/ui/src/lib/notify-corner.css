@@ -5,7 +5,7 @@
   bottom: calc(12px + max(var(--corner-lift, 0px), env(safe-area-inset-bottom, 0px)));
   z-index: 80;
   width: min(340px, calc(100vw - 24px));
-  transition: bottom var(--motion-in);
+  transition: bottom var(--motion-duration) var(--motion-curve);
 }
 
 /* In the toasts' room (notify-corner.ts): centred on what gave way, its shadow the toasts' own. */

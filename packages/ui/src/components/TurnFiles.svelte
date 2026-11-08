@@ -11,6 +11,7 @@
   import { countsOf, turnFileTree, turnLineCounts, type TurnDiff, type TurnFile, type TurnFileNode } from '../lib/turn-files';
   import Deferred, { parts } from './Deferred.svelte';
   import ChangeCount from './ChangeCount.svelte';
+  import { changeCount, changeText } from '../lib/change-count';
   import { chatPrefs } from '../lib/chat-prefs.svelte';
 
   /**
@@ -18,12 +19,17 @@
    * the whole thread changed is the working tree against its last commit: the
    * Changes panel, one click away for whoever can read the repository.
    */
-  let { store, files, diffs = [], cwd, deferred = [], loadDiffs }: { store: Store; files: TurnFile[]; diffs?: TurnDiff[]; /** The directory `files` were read against. */ cwd: string; deferred?: { messageId: string; toolId: string }[]; loadDiffs?: () => Promise<void> } = $props();
+  let { store, files, diffs = [], cwd, deferred = [], loadDiffs, inline = false }: {
+    store: Store; files: TurnFile[]; diffs?: TurnDiff[]; /** The directory `files` were read against. */ cwd: string; deferred?: { messageId: string; toolId: string }[]; loadDiffs?: () => Promise<void>;
+    /** On the tool line of the turn's last change (ToolGroup), which already names the files: the lines it adds, no title or card of its own. */
+    inline?: boolean;
+  } = $props();
   let diffToggled = $state<boolean | null>(null);
   let showDiff = $derived(diffToggled ?? chatPrefs.expandDiffs);
   /** Folded by default: the count and the lines added and removed say enough until the list is wanted. */
   let open = $state(false);
   let lines = $derived(turnLineCounts(diffs, cwd));
+  let total = $derived(changeCount(files.length, diffs.length > 0 ? lines.total.added : null, diffs.length > 0 ? lines.total.removed : null));
   let repository = $derived(store.openProject?.repository === true);
   let tree = $derived(turnFileTree(files));
   let expanded = $state<Record<string, boolean>>({});
@@ -68,13 +74,13 @@
   }
 </script>
 
-<section class="turn-files" data-testid="turn-files" aria-label={strings.chat.turnFiles}>
+<section class="turn-files" class:inline data-testid="turn-files" aria-label={strings.chat.turnFiles}>
   <header>
-    <button type="button" class="ghost small fold" data-testid="turn-files-toggle" aria-expanded={open} onclick={() => (open = !open)}>
-      <ChevronRight size={14} class={open ? 'fold-caret open' : 'fold-caret'} />
-      <span class="ui-label">{strings.chat.turnFiles}</span>
-      <!-- "1 file, +7 −2": the one count of changes (lib/change-count.ts). -->
-      <span class="count"><ChangeCount files={files.length} added={diffs.length > 0 ? lines.total.added : null} removed={diffs.length > 0 ? lines.total.removed : null} testid="turn-lines" /></span>
+    <button type="button" class="ghost small fold" data-testid="turn-files-toggle" aria-expanded={open} title={`${strings.chat.turnFiles}: ${changeText(total)}`} onclick={() => (open = !open)}>
+      <!-- On the tool line the count is the opener: the run's own caret is just before it. -->
+      {#if !inline}<ChevronRight size={14} class={open ? 'fold-caret open' : 'fold-caret'} /><span class="ui-label">{strings.chat.turnFiles}</span>{/if}
+      <!-- "1 file, +7 −2": the one count of changes (lib/change-count.ts). On the tool line, whose words already count the files, the lines alone when known. -->
+      <span class="count"><ChangeCount files={inline && diffs.length > 0 ? null : files.length} added={diffs.length > 0 ? lines.total.added : null} removed={diffs.length > 0 ? lines.total.removed : null} testid="turn-lines" /></span>
     </button>
     {#if open && hasFolders}
       <button type="button" class="ghost small icon expand" data-testid="turn-files-expand"
@@ -237,6 +243,16 @@
   .all { display: flex; }
   .tree { padding: 0 6px 6px; }
   .diffs { display: flex; flex-direction: column; gap: 8px; padding: 0 12px 12px; }
+
+  /* On the tool line: its buttons join the line's row, the list and diffs open
+     under it at full width, with no surface of their own. */
+  .inline, .inline header { display: contents; }
+  .inline .fold { margin-left: 0; }
+  /* Its own line on a phone, under the run's words rather than its glyph. */
+  @media (max-width: 720px) { .inline .fold { margin-left: calc(var(--activity-glyph) + var(--activity-gap)); } }
+  .inline .tree, .inline .diffs { flex: 1 0 100%; min-width: 0; }
+  .inline .tree { padding: 0 0 6px; }
+  .inline .diffs { padding: 4px 0 8px; }
 
   ul {
     list-style: none;

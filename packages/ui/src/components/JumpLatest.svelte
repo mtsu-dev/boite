@@ -27,7 +27,7 @@
     color: var(--color-foreground);
     font-size: var(--text-sm);
     font-weight: 550;
-    animation: rise var(--dur-2) var(--ease-out-quint);
+    animation: rise var(--motion-duration) var(--motion-curve);
   }
 
   .jump:hover { background: var(--color-surface-3); }

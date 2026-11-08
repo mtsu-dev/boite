@@ -1,7 +1,7 @@
 <script lang="ts">
   import { machineName, listedName, isThisPC, machineHealth, workspace } from '../lib/workspace.svelte';
   import { Monitor, TriangleAlert } from '@lucide/svelte';
-  import { strings } from '../lib/strings';
+  import { fill, strings } from '../lib/strings';
   import type { Snippet } from 'svelte';
   import type { Store } from '../lib/store.svelte';
   import Menu from './Menu.svelte';
@@ -33,12 +33,12 @@
   // Off by choice or by sleep, not a fault: quiet, in the status grammar's grey, named in the tooltip and the name.
   const away = $derived(machines.filter(m => health.get(m) === 'offline'));
   const trouble = $derived(issues > 0 ? `${issues} ${strings.connection.issues}`
-    : away.length > 0 ? `${strings.connection.offline}: ${away.map(m => machineName(m)).join(', ')}` : null);
+    : away.length > 0 ? away.map(m => fill(strings.connection.nameOffline, { name: machineName(m) })).join(', ') : null);
   const label = $derived(trouble ? `${name} · ${trouble}` : name);
   const items = $derived<MenuItem[]>([
     ...(machines.length > 1 ? [
       { id: 'all', label: strings.machines.all, checked: filter === null, radio: true },
-      ...machines.map(m => ({ id: m.id, label: listedName(m), status: { tone: tones[health.get(m)!], label: health.get(m) === 'offline' ? strings.connection.offline : strings.connection[m.store.connection] }, checked: m.id === filter, radio: true })),
+      ...machines.map(m => ({ id: m.id, label: health.get(m) === 'offline' ? fill(strings.connection.nameOffline, { name: listedName(m) }) : listedName(m), status: { tone: tones[health.get(m)!], label: health.get(m) === 'offline' ? strings.connection.offline : strings.connection[m.store.connection] }, checked: m.id === filter, radio: true })),
       separator('manage-separator')
     ] : []),
     { id: 'manage', label: strings.connection.manage, icon: 'settings' }

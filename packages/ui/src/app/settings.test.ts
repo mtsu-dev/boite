@@ -130,3 +130,30 @@ test('the checklist model sits with the conversation settings on General, with n
   query<HTMLButtonElement>('[data-testid=view-threads]').click();
   await waitFor(() => document.querySelector('[data-testid=settings]') === null);
 });
+
+test('a desktop has two levels: the gear opens the nav, its search and the first page, a typed word lists its results in the page and Enter opens one', async ({ app: _app }) => {
+  query<HTMLButtonElement>('[data-testid=nav-settings]').click();
+  await waitFor(() => document.querySelector('[data-testid=settings-search]') !== null);
+  // No grid of tiles between the nav and a page: Home shows General beside the nav, the search heads the nav.
+  expect(query('[data-testid=settings-home]').closest('nav')).not.toBeNull();
+  expect(document.querySelector('[data-testid^=settings-home-]')).toBeNull();
+  await waitFor(() => document.querySelector('[data-testid=settings-tab-general]')?.getAttribute('aria-current') === 'page');
+  expect(query('[data-testid=settings-crumb] h1').textContent?.trim()).toBe('General');
+  // A group's other pages are nav entries under it: Keyboard is one click from anywhere.
+  expect(query('[data-testid=settings-tab-keyboard]').classList.contains('sub')).toBe(true);
+  expect(document.querySelector('[data-testid=settings-pages]')).toBeNull();
+
+  const field = query<HTMLInputElement>('[data-testid=settings-search]');
+  field.value = 'font';
+  field.dispatchEvent(new Event('input', { bubbles: true }));
+  await waitFor(() => document.querySelector('[data-testid=settings-search-results]') !== null);
+  expect(document.querySelector('[data-testid=settings-crumb]')).toBeNull();
+  field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  await waitFor(() => store.settingsTab === 'appearance');
+  await waitFor(() => document.querySelector('[data-testid=settings-search-results]') === null);
+  expect(field.value).toBe('');
+  expect(query('[data-testid=settings-tab-appearance]').getAttribute('aria-current')).toBe('page');
+
+  query<HTMLButtonElement>('[data-testid=settings-back]').click();
+  await waitFor(() => document.querySelector('[data-testid=settings]') === null);
+});

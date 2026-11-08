@@ -106,12 +106,10 @@ export const fr: Translation = {
     day: { today: "Aujourd'hui", yesterday: 'Hier', withYear: '{day} {year}' },
     fold: {
       worked: 'A travaillé {time}', workedBare: 'A travaillé',
-      stepOne: '1 étape', stepMany: '{count} étapes',
       quiet: 'Vérifié, rien à signaler', quietWith: 'Vérifié : {reason}',
       showSteps: 'Voir les étapes', hideSteps: 'Masquer les étapes',
       showTurn: 'Voir tout le tour', hideTurn: 'Replier ce tour',
       memory: { running: 'Met à jour sa mémoire', done: 'Mémoire mise à jour', unchanged: 'Mémoire relue, rien à changer', error: 'Échec de la mise à jour de la mémoire' },
-      memoryOpen: 'Voir sa mémoire sur le bureau',
     },
     movePending: "Déplacé vers {project} · l'agent sera prévenu à votre prochain message",
     movePendingShow: "Voir ce qui sera dit à l'agent",

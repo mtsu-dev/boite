@@ -280,9 +280,10 @@ test.each([
 });
 
 test('at rest, a line that opens on its step count keeps the count whole: the hidden dot still holds the room the clip takes', async () => {
-  running = mount(TurnSummary, { target: document.body, props: { turn: turn(), steps: { count: 2, open: false, toggle: () => {} } } });
+  running = mount(TurnSummary, { target: document.body, props: { turn: turn(), steps: { count: 2, words: 'Ran 2 commands', open: false, toggle: () => {} } } });
   flushSync();
-  expect(text('turn-steps')).toBe('2 steps');
+  // The steps read in words, never a bare count.
+  expect(text('turn-steps')).toBe('Ran 2 commands');
   // jsdom gets no component CSS from Vite: compile this file's own, under the scope class the render carries.
   const { compile } = await import('svelte/compiler');
   const { readFileSync } = await import('node:fs');
@@ -294,7 +295,7 @@ test('at rest, a line that opens on its step count keeps the count whole: the hi
   document.head.append(style);
   try {
     // The line is clipped --lead in from its left edge, where a dot sits. With its
-    // dot taken out, the count started under the clip and read "steps".
+    // dot taken out, the count started under the clip and read "commands".
     expect(getComputedStyle(dot).display).not.toBe('none');
     expect(getComputedStyle(dot).visibility).toBe('hidden');
   } finally { style.remove(); }

@@ -81,6 +81,18 @@ test('a late archive read for a previous project or machine never replaces the s
   expect([...document.querySelectorAll('[data-testid=done-thread]')].every(row => (row as HTMLElement).dataset.machineId === 'second')).toBe(true);
 });
 
+test('a done row names its machine only while two machines are connected', async () => {
+  await ready('first'); const second = await ready('second');
+  const props = $state({ entries: entries(), now: Date.now() });
+  mounted = mount(RecentDone, { target: document.body, props });
+  click('[data-testid=recent-done-toggle]'); await settle();
+  expect(document.querySelectorAll('[data-testid=done-thread] .machine')).toHaveLength(2);
+  // One connected machine left: the icon tells nothing apart, so the title keeps the room.
+  second.store.connection = 'closed'; props.entries = entries(); await settle();
+  expect(document.querySelectorAll('[data-testid=done-thread]').length).toBeGreaterThan(0);
+  expect(document.querySelectorAll('[data-testid=done-thread] .machine')).toHaveLength(0);
+});
+
 test('a failed machine read keeps the other completed threads usable and can be retried', async () => {
   const first = await ready('first'); await ready('second');
   vi.spyOn(first.client, 'call').mockRejectedValueOnce(new Error('offline'));

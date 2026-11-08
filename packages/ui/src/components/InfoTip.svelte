@@ -163,7 +163,7 @@
     letter-spacing: normal;
     text-transform: none;
     white-space: normal;
-    animation: pop var(--motion-in);
+    animation: pop var(--motion-duration) var(--motion-curve);
   }
 
   /* A section's tip: its rows' tips one after another, each led by the row it explains. */
@@ -173,7 +173,7 @@
   .gathered strong { font-weight: 600; }
 
   .info-bubble.closing {
-    animation: pop-out var(--motion-out);
+    animation: pop-out var(--motion-duration) var(--motion-curve);
   }
 
   /* A phone gets it as a sheet, where there is room to read. */

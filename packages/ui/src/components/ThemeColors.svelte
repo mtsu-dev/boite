@@ -96,17 +96,26 @@
   </span>
 {/snippet}
 
-<div class="colors" data-testid="theme-colors">
-  <div class="heading">
-    <span class="text ui-label-box"><span class="ui-label">{strings.settings.colors.title}</span><InfoTip topic={strings.settings.colors.title} text={strings.settings.colors.hint} /></span>
-    <!-- Undo and Reset only once there is something to take back. -->
+<!-- Undo and Reset only once there is something to take back. -->
+{#snippet edits()}
     <div class="actions">
       {#if canUndo}<button type="button" class="small ghost" onclick={undoEdit} data-testid="colors-undo"><span class="ui-label">{strings.settings.colors.undo}</span></button>{/if}
       {#if custom}<button type="button" class="small ghost" onclick={reset} data-testid="colors-reset"><RotateCcw size={13} /><span class="ui-label">{strings.settings.colors.reset}</span></button>{/if}
       <button type="button" class="ghost small customize" aria-expanded={customizing} aria-controls={editorId} onclick={() => { customizing = !customizing; }} data-testid="colors-customize"><SlidersHorizontal size={14} /><span class="ui-label">{strings.settings.colors.customize}</span></button>
-      {#if phone}<ChoiceSelect label={strings.settings.colors.palette} options={choices} value={matching} fallback={strings.settings.colors.custom} onpick={pick} preview={tile} testid="palette-current" optionTestid={(id) => `palette-${id}`} front={FRONT} all={strings.settings.colors.allThemes} />{/if}
     </div>
+{/snippet}
+
+<div class="colors" data-testid="theme-colors">
+  <!-- A phone reads the palette in use as its row's value, the row opening the sheet; what edits it goes under. -->
+  <div class="heading" class:value={phone}>
+    <span class="text ui-label-box"><span class="ui-label">{strings.settings.colors.title}</span><InfoTip topic={strings.settings.colors.title} text={strings.settings.colors.hint} /></span>
+    {#if phone}
+      <ChoiceSelect row label={strings.settings.colors.palette} options={choices} value={matching} fallback={strings.settings.colors.custom} onpick={pick} preview={tile} testid="palette-current" optionTestid={(id) => `palette-${id}`} front={FRONT} all={strings.settings.colors.allThemes} />
+    {:else}
+      {@render edits()}
+    {/if}
   </div>
+  {#if phone}{@render edits()}{/if}
   {#if !phone}
     <!-- Each palette by its picture, its name under it; edited colours check none. -->
     <div class="palettes" role="group" aria-label={strings.settings.colors.palette} data-testid="palette-current" bind:this={grid}>
@@ -194,9 +203,15 @@
   .contrast { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 18px; color: var(--color-muted-foreground); font-size: var(--text-sm); }
   .contrast > span:first-child { color: var(--color-danger); }
   .contrast > span:first-child { display: flex; align-items: center; }
-  /* A phone stacks the row as its other choices do: the words, then the palette in use across, then Customize. */
+  /* A phone's palette row: the words, the palette in use at the end, the row its target; Customize under it. */
+  .heading.value { position: relative; gap: var(--space-3); min-height: 52px; }
+  /* The label of a row like Language's and Theme's above it. */
+  .heading.value .text { flex: none; color: var(--color-foreground); font-size: var(--text-base); }
+  .heading.value :global(.info-tip) { position: relative; z-index: 1; }
+  .heading.value :global(.choice-select) { flex: 1; justify-content: flex-end; }
+  .heading.value + .actions { justify-content: flex-start; }
   @media (max-width: 720px) {
-    .heading { flex-direction: column; align-items: stretch; gap: var(--space-3); }
+    .heading:not(.value) { flex-direction: column; align-items: stretch; gap: var(--space-3); }
     .actions { flex-direction: column-reverse; align-items: stretch; }
     .actions > button { justify-content: center; }
     .editor, .editor.customizing { grid-template-columns: minmax(0, 1fr); gap: 16px; }

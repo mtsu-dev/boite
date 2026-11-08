@@ -160,11 +160,12 @@
        foot. The fade is exactly the padding, so at rest it covers nothing; a
        mask, not a scroll-driven animation, because tests and closing elements
        wait on every running animation and that one would never end. */
-    /* Deep at the foot: a row the quota line's edge would slice fades out over a row's height instead. */
-    --fade: 24px;
+    /* Shallow at the foot, a third of a row: the first and last rows read whole, only the sliver the quota line's
+       edge would slice fades. */
+    --fade: 12px;
     /* Shorter on top: the head's tools sit right above, and a deeper fade
        there opened a wider gap under them than between them and the switch. */
-    --fade-top: 6px;
+    --fade-top: 3px;
     padding: var(--fade-top) 6px var(--fade);
     /* A row the keyboard reaches scrolls clear of both fades, never read through one. */
     scroll-padding-block: calc(var(--fade-top) + 4px) calc(var(--fade) + 4px);
@@ -186,7 +187,7 @@
     .rail { padding-top: 6px; }
     .rail {
       --slide-room: calc(var(--sidebar-width) + var(--frame-gap));
-      transition: margin-left var(--dur-slide) var(--ease-slide), opacity var(--dur-3) var(--ease-out-quint), display var(--dur-slide) allow-discrete;
+      transition: margin-left var(--motion-duration) var(--motion-curve), opacity var(--dur-3) var(--ease-out-quint), display var(--motion-duration) allow-discrete;
     }
     /* No room taken, no head, no foot: the main card keeps the one frame gap of the row; a body that folds the column
        itself (App.svelte's `sidebar-folded`) gives that gap as its padding, so then the column leaves the flow. */
@@ -197,7 +198,7 @@
       pointer-events: none;
       opacity: 0;
       margin-left: calc(-1 * var(--slide-room));
-      transition: margin-left var(--dur-slide-out) var(--ease-slide), opacity var(--dur-2) var(--ease-out-quint), display var(--dur-slide-out) allow-discrete;
+      transition: margin-left var(--motion-duration) var(--motion-curve), opacity var(--dur-2) var(--ease-out-quint), display var(--motion-duration) allow-discrete;
     }
     /* Unfolding only (`wasFolded`): a list drawn open stands where it is. */
     @starting-style { .rail.was-folded:not(.collapsed) { opacity: 0; margin-left: calc(-1 * var(--slide-room)); } }
@@ -215,7 +216,7 @@
       opacity: 0;
       /* A drawer from the left edge, where its button is. */
       transform: translateX(calc(-100% - 12px));
-      transition: opacity var(--dur-3) var(--ease-out-quint), transform var(--dur-slide) var(--ease-slide), visibility var(--dur-slide);
+      transition: opacity var(--dur-3) var(--ease-out-quint), transform var(--motion-duration) var(--motion-curve), visibility var(--motion-duration);
       box-shadow: var(--shadow-e3);
     }
     .rail.drawer.open {

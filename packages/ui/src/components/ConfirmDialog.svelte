@@ -146,12 +146,12 @@
     align-items: center;
     justify-content: center;
     background: var(--color-scrim);
-    animation: fade var(--motion-in);
+    animation: fade var(--motion-duration) var(--motion-curve);
   }
 
-  /* The one motion set (app.css): in on --motion-in, out quicker on --motion-out, a fade under reduced motion. */
+  /* The one motion set (app.css): one duration and curve in and out, a cut under reduced motion. */
   .scrim.closing {
-    animation: fade-out var(--motion-out);
+    animation: fade-out var(--motion-duration) var(--motion-curve);
     pointer-events: none;
   }
 
@@ -163,11 +163,11 @@
     border: 1px solid var(--overlay-edge);
     border-radius: var(--radius-overlay);
     box-shadow: var(--shadow-overlay);
-    animation: pop var(--motion-in);
+    animation: pop var(--motion-duration) var(--motion-curve);
   }
 
   .dialog.closing {
-    animation: pop-out var(--motion-out);
+    animation: pop-out var(--motion-duration) var(--motion-curve);
   }
 
   h2 {

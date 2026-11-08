@@ -109,25 +109,27 @@
       {#if aside}{@render aside()}
       {:else}
         {#if pinned}<span class="pin" data-testid="agent-pinned"><Pin size={12} /></span>{/if}
-        {#if spent !== null}<span class="spent" data-testid="agent-row-spent">{spent}</span>
+        <!-- The next wake sits on the name line, beside the time, so the preview under it keeps the row's width. -->
+        {#if wake}<span class="wake" title={fill(strings.agents.nextWake, { name: wake.label, when: exactTime(wake.at) })} data-testid="agent-row-wake"><Clock3 size={11} strokeWidth={2} />{wakeText}</span>{/if}
+        {#if away && machine}<span class="offline-name" data-testid="agent-row-away">{fill(strings.connection.nameOffline, { name: machine.label })}</span>
+        {:else if spent !== null}<span class="spent" data-testid="agent-row-spent">{spent}</span>
         {:else if unread > 0}<span class="unread-count" role="img" title={missed} aria-label={missed} data-testid="agent-unread-count">{unread}</span>
         {:else if at > 0}<time class="when" datetime={new Date(at).toISOString()} title={exactTime(at)}>{ago(at, now)}</time>{/if}
         {#if marked}<StatusMark tone="unread" label={strings.sidebar.unread} />{/if}
       {/if}
     </span>
-    {#if detail || wake}
+    {#if detail}
       <span class="detail-line">
         {#if mark}<span class="state-mark" data-testid="agent-row-mark"><StatusMark tone={mark} label={markLabel} /></span>
         {:else if icon}{@const Glyph = icon}<span class="glyph" data-testid="agent-row-glyph"><Glyph size={13} strokeWidth={2} /></span>{/if}
         <span class="detail" data-testid="agent-row-detail">{detail}</span>
-        {#if wake}<span class="wake" title={fill(strings.agents.nextWake, { name: wake.label, when: exactTime(wake.at) })} data-testid="agent-row-wake"><Clock3 size={11} strokeWidth={2} />{wakeText}</span>{/if}
       </span>
     {/if}
     {#if pending}<span class="pending" data-testid="agent-row-pending" title={pending}><ArrowRightLeft size={12} /><span class="ui-label">{pending}</span></span>{/if}
   </span>
 {/snippet}
 
-<div class="agent-row" class:open class:unread={unread > 0 || marked} class:on-machine={!!machine} data-machine-id={machine?.id} data-tone={tone}>
+<div class="agent-row" class:open class:away class:unread={unread > 0 || marked} class:on-machine={!!machine} data-machine-id={machine?.id} data-tone={tone}>
   {#if renaming}
     <div class="row">
       {#snippet field()}
@@ -162,7 +164,10 @@
   .row:active:not(:disabled) { transform: none; }
   .picture { display: inline-flex; flex: none; margin: 3px; }
   .machine { display: inline-flex; align-items: center; flex: none; margin-right: -4px; color: var(--color-muted-foreground); }
-  .machine.offline { color: var(--color-danger); }
+  /* Out of reach is a state, not a fault: the row reads dimmed and its machine's name says "offline" where the
+     time stood. */
+  .agent-row.away .row { opacity: 0.6; }
+  .offline-name { flex: none; color: var(--color-muted-foreground); font-size: var(--text-xs); }
   .text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .headline { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-foreground); font-weight: 500; }
@@ -186,7 +191,7 @@
   [data-tone='error'] .detail { white-space: normal; overflow-wrap: anywhere; line-height: 1.4; }
   [data-tone='asleep'] .detail-line { color: var(--color-subtle); }
   [data-tone='asleep'] .title { color: var(--color-muted-foreground); }
-  .wake { flex: none; display: inline-flex; align-items: center; gap: 3px; color: var(--color-subtle); font-variant-numeric: tabular-nums; }
+  .wake { flex: none; display: inline-flex; align-items: center; gap: 3px; color: var(--color-subtle); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
   .pin { display: inline-flex; align-items: center; flex: none; color: var(--color-muted-foreground); }
   /* A move waiting for the turn's end, like a thread's. */
   .pending { display: flex; align-items: center; gap: 4px; min-width: 0; font-size: var(--text-xs); color: var(--color-muted-foreground); }

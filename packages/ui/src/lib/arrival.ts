@@ -2,7 +2,7 @@ import { glides } from './motion';
 
 /**
  * Grows an element that just got taller from the height it had, its content
- * fading in with it, over `--dur-enter`: a decision docked at the composer's
+ * fading in with it, over `--motion-duration`: a decision docked at the composer's
  * head and the box around it move as one piece, with no frame drawn at the
  * final size before the content is there. Reduced motion shows it at once.
  */
@@ -12,20 +12,20 @@ export function growFrom(element: HTMLElement, from: number): void {
   move(element, [{ height: `${from}px`, opacity: from > 0 ? 1 : 0, overflow: 'hidden' }, { height: `${to}px`, opacity: 1, overflow: 'hidden' }]);
 }
 
-/** The dock's own motion: `--dur-enter` on `--ease-enter`, nothing under reduced motion. */
+/** The dock's own motion: `--motion-duration` on `--motion-curve`, nothing under reduced motion. */
 function move(element: HTMLElement, frames: Keyframe[]): void {
   if (!glides() || typeof element.animate !== 'function') return;
   const style = getComputedStyle(element);
-  const token = style.getPropertyValue('--dur-enter').trim();
+  const token = style.getPropertyValue('--motion-duration').trim();
   const duration = parseFloat(token) * (token.endsWith('ms') ? 1 : 1000) || 0;
   if (duration <= 0) return;
-  element.animate(frames, { duration, easing: style.getPropertyValue('--ease-enter').trim() || 'ease-out' });
+  element.animate(frames, { duration, easing: style.getPropertyValue('--motion-curve').trim() || 'ease-out' });
 }
 
 /**
  * Closes an element that just got shorter from the height it had: an
  * answered decision leaves the dock as the box closes over its place, in
- * `--dur-enter` (200 ms), while its receipt lands in the transcript. Reduced
+ * `--motion-duration` (200 ms), while its receipt lands in the transcript. Reduced
  * motion cuts.
  */
 export function collapseFrom(element: HTMLElement, from: number): void {

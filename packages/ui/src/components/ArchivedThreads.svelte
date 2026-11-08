@@ -141,9 +141,9 @@
   {:else if threads.length === 0}
     <p class="muted" data-testid="archived-empty">{strings.settings.archived.empty}</p>
   {:else}
-    <!-- One group of rows, as the lists draw them: the title, then where it was and why it left, then since when (a merge's
-         own time when one put it away). The row itself restores (its one action, named under the pointer or the
-         keyboard), then opens; Delete waits in its menu. -->
+    <!-- One group of rows in the live rows' places: the title with since when at its line's end (a merge's own time
+         when one put it away), then where it was and why it left. The row itself restores (its one action, named in
+         the time's place under the pointer or the keyboard), then opens; Delete waits in its menu. -->
     <ul class="archived" data-testid="archived-list">
       {#each threads as thread (thread.id)}
         {@const retention = store.settings?.threadDoneRetentionDays ?? DEFAULT_THREAD_DONE_RETENTION_DAYS}
@@ -156,15 +156,15 @@
         ]}
         <li data-thread-id={thread.id} class:back>
           <span class="title" title={thread.title}>{thread.title}</span>
+          <time class="at" datetime={new Date(at).toISOString()} title={exactTime(at)}>{ago(at)}</time>
           <span class="context">
-            {#if projectOf(thread)}<span class="part">{projectOf(thread)}</span><span class="sep" aria-hidden="true">·</span>{/if}
+            {#if projectOf(thread)}<span class="part">{projectOf(thread)}</span>{/if}
             {#if thread.archiveReason?.type === 'pr-merged'}
-              <span class="part archive-reason" data-testid="archive-merged-reason"><a href={thread.archiveReason.url} target="_blank" rel="noopener noreferrer">{fill(strings.settings.archived.mergedReason, { number: String(thread.archiveReason.number) })}</a></span><span class="sep" aria-hidden="true">·</span>
+              <span class="part archive-reason" data-testid="archive-merged-reason"><a href={thread.archiveReason.url} target="_blank" rel="noopener noreferrer">{fill(strings.settings.archived.mergedReason, { number: String(thread.archiveReason.number) })}</a></span>
             {/if}
             {#if thread.doneAt != null && retention > 0}
-              <span class="part" data-testid="done-expires">{fill(strings.settings.archived.deletesAt, { date: exactTime(thread.doneAt + retention * 86_400_000) })}</span><span class="sep" aria-hidden="true">·</span>
+              <span class="part" data-testid="done-expires">{fill(strings.settings.archived.deletesAt, { date: exactTime(thread.doneAt + retention * 86_400_000) })}</span>
             {/if}
-            <time class="part" datetime={new Date(at).toISOString()} title={exactTime(at)}>{ago(at)}</time>
           </span>
           <span class="actions">
             <!-- The row's one action: its button covers the row, its word shows under the pointer or the keyboard. -->
@@ -216,10 +216,22 @@
 
   .title {
     grid-column: 1;
+    grid-row: 1;
     min-width: 0;
     overflow-wrap: anywhere;
     line-height: 1.5;
   }
+  /* Since when, at the title line's end, the live rows' place; the row's action takes it under the pointer. */
+  .at {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+    font-size: var(--text-xs);
+    color: var(--color-subtle);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .archived li:is(:hover, :focus-within):not(.back) .at { visibility: hidden; }
 
   .context {
     grid-column: 1;
@@ -232,14 +244,15 @@
     color: var(--color-muted-foreground);
   }
   .part { min-width: 0; overflow-wrap: anywhere; }
-  .sep { color: var(--color-subtle); }
-  .context time { color: var(--color-subtle); }
+  /* The dot between two parts, whichever are there. */
+  .part + .part::before { content: '·'; margin-right: 6px; color: var(--color-subtle); }
   .archive-reason a { position: relative; z-index: 1; color: inherit; text-underline-offset: 2px; }
 
-  /* The action and the menu beside both lines, at the row's right. */
+  /* The action and the menu at the row's right, over the time's place. */
   .actions {
     grid-column: 2;
     grid-row: 1 / span 2;
+    justify-self: end;
     display: flex;
     align-items: center;
     gap: 2px;
@@ -258,6 +271,9 @@
      settings card already frames the list there, so the rows lose their own border and line up with its edge. */
   @media (max-width: 720px) {
     .archived li:not(:hover, :focus-within) .actions :global(.trigger) { opacity: 1; }
+    /* The menu always shows there, so it takes the second line's end and the time keeps the first's. */
+    .actions { grid-row: 2; }
+    .archived li:is(:hover, :focus-within):not(.back) .at { visibility: visible; }
     .archived { border: none; border-radius: 0; }
     .archived li { padding-inline: 0; }
     /* Brought into view (Settings opened at the archive), the phone page's machine bar above stays whole rather than

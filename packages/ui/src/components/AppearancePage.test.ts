@@ -140,3 +140,32 @@ test('picking a face from its list applies it, names it in the row and gives the
   expect(head.getAttribute('aria-expanded')).toBe('false');
   expect(document.activeElement).toBe(head);
 });
+
+test('a phone reads each short choice as its label and value on one row, the row opening the list; a desktop keeps the segments', () => {
+  const restore = phoneWidth();
+  try {
+    running = mount(AppearancePage, { target: document.body, props: { store: { owner: true } as Store, phone: true } });
+    flushSync();
+    // No segment on a phone: language and theme are rows like the faces and the palette.
+    expect(document.querySelector('[data-testid=theme-dark]')).toBeNull();
+    expect(document.querySelector('[data-testid=locale-system]')).toBeNull();
+    for (const trigger of ['locale-current', 'theme-current', 'palette-current', 'font-current', 'font-mono-current']) {
+      const head = document.querySelector<HTMLButtonElement>(`[data-testid=${trigger}]`)!;
+      expect(head.closest('.choice-select')!.classList.contains('row'), trigger).toBe(true);
+      expect(head.closest('.value'), trigger).not.toBeNull();
+    }
+    const theme = document.querySelector<HTMLButtonElement>('[data-testid=theme-current]')!;
+    theme.click();
+    flushSync();
+    document.querySelector<HTMLButtonElement>('[data-testid=theme-current-list] [data-testid=theme-light]')!.click();
+    flushSync();
+    expect(localStorage.getItem('boite.theme')).toBe('light');
+    expect(theme.textContent).toContain('Light');
+    expect(theme.getAttribute('aria-expanded')).toBe('false');
+  } finally { restore(); }
+  unmount(running!, { outro: false });
+  running = mount(AppearancePage, { target: document.body, props: { store: { owner: true } as Store } });
+  flushSync();
+  expect(pressed('theme-light')).toBe('true');
+  expect(document.querySelector('[data-testid=theme-current]')).toBeNull();
+});

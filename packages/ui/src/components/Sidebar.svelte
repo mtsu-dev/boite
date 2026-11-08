@@ -11,6 +11,7 @@
   import { projectName } from '../lib/format';
   import { compareEntries } from '../lib/thread-order';
   import { rowPlaces } from '../lib/row-place';
+  import { hostName } from '../lib/machine-host';
   import { projectRollup, threadState } from '../lib/thread-state';
   import { foldQuiet } from '../lib/card-fold';
   import { storeNeedsYou } from '../lib/activity-feed';
@@ -70,8 +71,8 @@
   let machines = $derived(workspace.machinesOr(store));
   /** One machine says nothing about where a thread runs: its icon only shows once there are two. */
   let multi = $derived(machines.length > 1);
-  /** A card names its machine only when it is not this app's own: the rest is where everything runs by default. */
-  const elsewhere = (machine: Machine) => multi && machine.store !== workspace.primary;
+  /** The machine a card names (lib/machine-host.ts): another connected one once two are, an unreachable one always, with the word. */
+  const host = (machine: Machine) => hostName(machine, machines, machines.find(entry => entry.store === workspace.primary)?.id);
   /** The display menu and the rail's machine button set it (machine-filter.svelte.ts). */
   let shownFilter = $derived(machineFilter.shown(machines));
   let visible = $derived(machines.filter((m) => shownFilter === null || m.id === shownFilter));
@@ -335,8 +336,7 @@
             >
               {#if projectView.order === 'manual'}<GripVertical size={12} />{/if}<span class="mark"><ProjectTile {project} store={owner} size={18} /><span class="fold-caret" class:open={!collapsed} aria-hidden="true"><ChevronRight size={16} /></span></span
               ><span class="name project-title ui-label" class:gone={project.missing === true}>{projectName(project)}</span
-              >{#if elsewhere(machine) || (multi && owner.connection !== 'ready')}{@const reach = owner.connection === 'ready' ? null : owner.connection === 'connecting' ? strings.connection.connecting : strings.connection.offline}<span class="host" data-testid="project-host" class:offline={reach !== null}
-                title={reach ? `${machine.label} · ${reach}` : machine.label} aria-label={reach ? `${machine.label}, ${reach}` : machine.label}>{#if reach}<span class="off-dot" aria-hidden="true"></span>{/if}{machine.label}</span>{/if}{#if project.missing === true}<span class="missing" data-testid="project-missing" title={strings.sidebar.projectMissing} aria-label={strings.sidebar.projectMissing}><FolderX size={13} aria-hidden="true" /></span>{/if}{#if rollup && !needsYou(rollup.kind) && rollup.kind !== 'done' && lists.working.length === 0}{@const label = fill(rollup.count === 1 ? strings.sidebar.rollupOne : strings.sidebar.rollupMany, { count: String(rollup.count), state: strings.sidebar.state[rollup.kind] })}<span
+              >{#if host(machine)}{@const name = host(machine)!}<span class="host" data-testid="project-host" class:offline={name.away} title={name.text}>{name.text}</span>{/if}{#if project.missing === true}<span class="missing" data-testid="project-missing" title={strings.sidebar.projectMissing} aria-label={strings.sidebar.projectMissing}><FolderX size={13} aria-hidden="true" /></span>{/if}{#if rollup && !needsYou(rollup.kind) && rollup.kind !== 'done' && lists.working.length === 0}{@const label = fill(rollup.count === 1 ? strings.sidebar.rollupOne : strings.sidebar.rollupMany, { count: String(rollup.count), state: strings.sidebar.state[rollup.kind] })}<span
                   class="rollup {rollup.kind}" data-testid="project-rollup" data-state={rollup.kind} title={label} aria-label={label}
                   >{#if rollup.kind === 'interrupted'}<FailMark size={10} />{:else}<span class="work-ring" aria-hidden="true"></span>{/if}{#if rollup.count > 1}<span class="ui-label">{rollup.count}</span>{/if}</span
                 >{/if}
@@ -363,6 +363,7 @@
                   <span class="ui-label">{fill(strings.sidebar.moreThreads, { count: String(fold.folded.length) })}</span>
                 </button>
               {/if}
+              <ProjectThreadCounters {entry} working={lists.working.length} waiting={away ? 0 : waitingCount(entry)} {controls} {collapsed} {away} place="fold" />
               <div id="{controls}-working" hidden={!workingOpen || lists.working.length === 0} data-testid="project-working">
                 {#if workingOpen && lists.working.length > 0}
                   <WindowList items={lists.working} keyOf={thread => JSON.stringify([machine.id, thread.id])} {scrollRoot} active={!collapsed} estimate={34} measurements={measurements(JSON.stringify([machine.id, project.id, 'working']))}>
@@ -568,10 +569,9 @@
     font-weight: 400;
     color: var(--color-subtle);
   }
-  /* The rows under it carry no machine icon, so the header says the machine is unreachable: quiet, a grey dot in
-     the status grammar (the rail's machine button wears the same), the word in its tooltip and name. */
-  .host.offline { display: inline-flex; align-items: center; gap: 5px; color: var(--color-muted-foreground); }
-  .off-dot { flex: none; width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--color-subtle); }
+  /* The rows under it carry no machine icon, so the header says the machine is unreachable in words ("Builder
+     offline"), a step brighter than a plain machine name; its rows read dimmed (ThreadCard.svelte). */
+  .host.offline { color: var(--color-muted-foreground); }
   .head :global(.counters) { margin-right: 2px; transition: margin-right var(--dur-2) var(--ease-out-quint); }
   /* The menu appears at the right end on hover and the counters step left of it, as a row's state does. */
   .project-actions {

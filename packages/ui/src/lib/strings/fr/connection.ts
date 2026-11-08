@@ -20,6 +20,7 @@ export const fr: Translation = {
     ready: 'Connecté',
     closed: 'Déconnecté',
     offline: 'Hors ligne',
+    nameOffline: '{name} hors ligne',
     label: 'Connexion'
   }
 };

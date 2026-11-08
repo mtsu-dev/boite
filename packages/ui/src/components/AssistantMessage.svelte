@@ -4,6 +4,7 @@
   import { replyOf, repliesOf, sendAnswer, writeAnswer } from '../lib/question-reply.svelte';
   import { COUNCIL_EXPERIMENT, type Account, type Message } from '@boite/contracts';
   import { fill, strings } from '../lib/strings';
+  import type { Snippet } from 'svelte';
   import type { Store } from '../lib/store.svelte';
   import { count, formatTokens, providerName } from '../lib/format';
   import { isNamedModel } from '../lib/model-order';
@@ -37,6 +38,8 @@
    * carry the way back in. `from` and `to` name the parts to draw when the
    * timeline cut a long message in several rows (lib/timeline-rows.ts).
    * `views` are the pages its turn published, for its answer to place.
+   * `changes` is its turn's change count, drawn on the line of the run that
+   * holds part `at`.
    */
   let {
     store,
@@ -47,7 +50,8 @@
     signedOut,
     showModel,
     latestInTurn = true,
-    views
+    views,
+    changes
   }: {
     store: Store;
     threadId: string;
@@ -58,6 +62,7 @@
     showModel: boolean;
     latestInTurn?: boolean;
     views?: readonly Message[];
+    changes?: { at: number; line: Snippet<[inline: boolean]> };
   } = $props();
 
   /** Longer than this, a text before a step is a report of its own and reads in full ink. */
@@ -137,15 +142,17 @@
       {@const lastAt = run.indices.at(-1) ?? -1}
       {@const tail = message.parts[lastAt]}
       {@const thinkingLive = message.state === 'streaming' && lastAt === message.parts.length - 1 && tail?.type === 'thinking' && tail.finishedAt == null}
+      {@const hosted = changes && run.indices.includes(changes.at) ? changes.line : undefined}
       {#if activityShown(activity, thinkingLive) && !(asking && dockedRun(activity, thinkingLive, (requestId) => store.permissionRequests[requestId] !== undefined))}
       <div class="part" data-kind={activity.every((part) => part.type === 'thinking') ? 'thinking' : 'tool'}>
-        <ToolGroup parts={activity} {compactions} {thinkingLive} {isBackground} {store} {threadId} {carded}
+        <ToolGroup parts={activity} {compactions} {thinkingLive} {isBackground} {store} {threadId} {carded} changes={hosted}
           loadOutput={toolId => store.loadToolOutput(threadId, message.id, toolId)}
           permissionRequest={requestId => store.permissionRequests[requestId] ?? null}
           answerPermission={(requestId, decision) => store.answer(requestId, decision)} />
       </div>
       {:else}
         {#each compactions as part, at (at)}<div class="part" data-kind="compaction">{@render compaction(part)}</div>{/each}
+        {#if hosted}<div class="part" data-kind="tool">{@render hosted(false)}</div>{/if}
       {/if}
     {:else if message.parts[run.index]}
     {@const index = run.index}
