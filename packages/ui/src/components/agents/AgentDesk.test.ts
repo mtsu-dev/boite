@@ -29,9 +29,10 @@ test('Nova\'s desk is one column: who it is, its routines and its notes, its liv
     await vi.waitFor(() => expect(document.querySelector('[data-testid=desk-ident]')).not.toBeNull());
     flushSync();
 
-    // Who it is: its name, what it is for, its model, its machine and since when; no tabs and no day's spend.
+    // What it is for, its model, its machine and since when; its face and name are the column's, not repeated here; no tabs and no day's spend.
     const ident = document.querySelector('[data-testid=desk-ident]')!;
-    expect(ident.textContent).toContain('Nova');
+    expect(ident.textContent).not.toContain('Nova');
+    expect(ident.querySelector('.agent-avatar')).toBeNull();
     expect(ident.textContent).toContain(nova.domain);
     expect(document.querySelector('[data-testid=desk-model]')?.textContent?.trim()).not.toBe('');
     expect(document.querySelector('[data-testid=desk-since]')?.textContent).toMatch(/^Since /);

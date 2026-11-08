@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import { Archive, Ellipsis, Pin, PinOff } from '@lucide/svelte';
   import type { Project, ThreadSummary } from '@boite/contracts';
   import type { Machine } from '../lib/workspace.svelte';
@@ -24,9 +25,14 @@
    * left shows pin and archive. Its trigger stays for the keyboard, drawn
    * only while focused.
    */
-  let { machine, thread, project, now, items, compact = false, reason, at, nested = false, onopen, onaction }: {
+  let { machine, thread, project, now, items, tools, compact = false, reason, at, nested = false, where, onopen, onaction }: {
     machine: Machine; thread: ThreadSummary; project: Project | undefined; now: number; items: MenuItem[]; compact?: boolean;
-    reason?: string; at?: number; nested?: boolean; onopen: () => void; onaction: (action: string) => void;
+    reason?: string; at?: number; nested?: boolean;
+    /** Recent: where the row lives, first on its line under the title (lib/row-place.ts). */
+    where?: string;
+    /** What the menu's All tools (`more`) opens in its place, with a Back (`back`) to `items`. */
+    tools?: MenuItem[];
+    onopen: () => void; onaction: (action: string) => void;
   } = $props();
   const owner = $derived(machine.store);
   const pin = $derived(items.find(item => item.id === 'pin'));
@@ -41,6 +47,21 @@
     menu?.querySelector<HTMLButtonElement>('[aria-haspopup=menu]')?.click();
   }
   function swiped(action: string) { closeSwipedRow(); onaction(action); }
+  /** The menu shows All tools' list in place of its own until Back, a pick or a fresh open. */
+  let inTools = $state(false);
+  let reopening = false;
+  const shown = $derived(inTools && tools ? tools : items);
+  function reopen(next: boolean) {
+    inTools = next;
+    reopening = true;
+    void tick().then(() => { menu?.querySelector<HTMLButtonElement>('[aria-haspopup=menu]')?.click(); reopening = false; });
+  }
+  function pick(action: string) {
+    if (tools && action === 'more') return reopen(true);
+    if (tools && action === 'back') return reopen(false);
+    inTools = false;
+    onaction(action);
+  }
 </script>
 
 <div class="row" class:reason={reason !== undefined} class:nested class:tiled={compact && !nested && project !== undefined} data-testid="mobile-row" data-thread-id={thread.id} data-machine-id={machine.id}>
@@ -61,10 +82,12 @@
       {:else}
         <ThreadHeadline {owner} {thread} tile={compact && !nested ? project : undefined} />
         <!-- The state, then the time; a thread at rest has its time alone. -->
-        <span class="meta" data-testid="mobile-row-meta"><ThreadState {thread} {now} subagents={owner.subagents(thread.id)} {away} />{#if kind !== null}<span class="sep" aria-hidden="true">·</span><time title={exactTime(thread.lastUserMessageAt ?? thread.createdAt)}>{ago(thread.lastUserMessageAt ?? thread.createdAt, now)}</time>{/if}</span>
+        <span class="meta" data-testid="mobile-row-meta">{#if where}<span class="where" data-testid="mobile-row-where">{where}</span><span class="sep" aria-hidden="true">·</span>{/if}<ThreadState {thread} {now} subagents={owner.subagents(thread.id)} {away} />{#if kind !== null}<span class="sep" aria-hidden="true">·</span><time title={exactTime(thread.lastUserMessageAt ?? thread.createdAt)}>{ago(thread.lastUserMessageAt ?? thread.createdAt, now)}</time>{/if}</span>
       {/if}
     </button>
-    <span class="row-menu" bind:this={menu}><Menu {items} onpick={onaction} label={strings.sidebar.threadMenu} heading={thread.title} placement="bottom" variant="ghost" testid="mobile-thread-menu-{thread.id}"><Ellipsis size={18} /></Menu></span>
+    <!-- A tap that opens the menu afresh starts it on its own list. -->
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+    <span class="row-menu" bind:this={menu} onclickcapture={() => { if (!reopening) inTools = false; }}><Menu items={shown} onpick={pick} label={strings.sidebar.threadMenu} heading={thread.title} placement="bottom" variant="ghost" testid="mobile-thread-menu-{thread.id}"><Ellipsis size={18} /></Menu></span>
   </div>
 </div>
 
@@ -73,7 +96,7 @@
   /* What a slide uncovers: pin, then archive at the edge, as mail apps lay them. */
   .swipe-actions { position: absolute; inset: 0 0 0 auto; display: flex; }
   .swipe { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; width: 76px; height: 100%; padding: 0 6px; border: 0; border-radius: 0;
-    font-size: 11px; font-weight: 500; background: var(--color-surface-3); color: var(--color-foreground); }
+    font-size: var(--text-meta); font-weight: 500; background: var(--color-surface-3); color: var(--color-foreground); }
   .swipe .ui-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .body { position: relative; touch-action: pan-y; transform: translateX(var(--swipe, 0px)); transition: transform var(--dur-3) var(--ease-out-quint); background: var(--row-background, var(--color-background)); }
   .body:global(.dragging) { transition: none; }
@@ -84,6 +107,8 @@
   .tiled :is(.meta, .why) { margin-left: 26px; }
   .meta time { flex: none; color: var(--color-subtle); font-variant-numeric: tabular-nums; }
   .sep { flex: none; color: var(--color-subtle); }
+  /* Where the row lives gives way first: the state and the time stay whole. */
+  .meta .where { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .meta :global(.when), .why :global(.when) { font-size: inherit; }
   .meta > :global(.when:not(.state)) { font-weight: 400; }
   /* Activity: since when ends the title's line; the reason reads whole under it. */
@@ -92,7 +117,8 @@
   .feed-head time { flex: none; font-size: var(--text-sm); color: var(--color-subtle); font-variant-numeric: tabular-nums; }
   .why .text { flex: 0 1 auto; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
   /* A sub-agent under its parent: stepped in, a hairline where the tile was. */
-  .nested .thread { padding-left: 40px; }
+  /* Its words on the parent's text edge: 12 px in, the 16 px tile and its 10 px gap. */
+  .nested .thread { padding-left: 38px; }
   .nested .body::before { content: ''; position: absolute; left: 20px; top: 0; bottom: 0; width: 1px; background: var(--color-border); }
   .thread :global(.headline) { gap: 10px; align-items: flex-start; }
   .thread:not(:has(.feed-head)) :global(.headline > .tile) { margin-top: 3px; }

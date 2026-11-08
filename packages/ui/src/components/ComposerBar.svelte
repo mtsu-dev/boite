@@ -49,6 +49,7 @@
     waiting = false,
     answering = false,
     folded = false,
+    blocked = false,
     composer = null,
     sendLabel = strings.composer.send,
     choice = $bindable(),
@@ -74,6 +75,8 @@
     answering?: boolean;
     /** A permission or a question holds the box and nothing is written: the decision reads alone. */
     folded?: boolean;
+    /** Nothing can run here (the thread's folder is gone): the row steps back, and send leaves the accent to the notice's way out. */
+    blocked?: boolean;
     /** The composer while an ask is docked in it: menus open above it, so the ask stays readable. */
     composer?: HTMLElement | null;
     /** What Send does, when it answers a question rather than sending a message. */
@@ -276,7 +279,7 @@
 
 <svelte:window onstorage={(event) => { if (event.key === VOICE_STORAGE_KEY || event.key === null) voice.load(); }} />
 
-<div class="bar" class:folded bind:this={bar}>
+<div class="bar" class:folded class:blocked inert={blocked} bind:this={bar}>
   <!-- One "+" at the start: files, a file mention, a command and the draft's worktree. -->
   {#if !folded}
   {#key `${key}:${store.draft?.projectId ?? ''}`}
@@ -472,6 +475,9 @@
   }
 
   .send { box-shadow: var(--shadow-send); }
+  /* Blocked, the row reads as off and send is an outline: the notice's button is the one way on. */
+  .bar.blocked > :global(:not(.send)) { opacity: .45; }
+  .bar.blocked .send { background: transparent; border-color: var(--color-edge); color: var(--color-subtle); box-shadow: none; opacity: 1; }
   .send.resting { display: none; }
   .send:not(:disabled):active { transform: scale(.92); }
   .send :global(.spinner) { animation: spin 1s linear infinite var(--loops); }

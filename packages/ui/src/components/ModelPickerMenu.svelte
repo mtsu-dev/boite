@@ -2,7 +2,8 @@
   import { onDestroy, type Snippet } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import { ChevronRight, Star, RefreshCw } from '@lucide/svelte';
-  import { orderedModels, type FavoriteModel } from '../lib/model-order';
+  import { isNamedModel, orderedModels } from '../lib/model-order';
+  import { shortlist, type ShortModel } from '../lib/model-shortlist';
   import type { Account, ModelInfo } from '@boite/contracts';
   import AccountSeats from './AccountSeats.svelte';
   import ModelSearch from './ModelSearch.svelte';
@@ -20,13 +21,14 @@
 
   /**
    * The model picker's popover, its own chunk: only a click on the chip
-   * (`ModelPicker.svelte`) draws it. A fixed frame: provider logos beside a
-   * scrolling model list on desktop. Its name heads the column, its accounts
-   * sit below the name as chips when there is more than one, and its models
-   * fill the rest. A click on a model closes the picker; nothing else does.
-   * `settings` holds the composer's effort and permission rows under the
-   * models, handed the More row (`PickerMore`) so its body loads with this
-   * chunk; a phone gets the whole thing as one sheet, providers above the models.
+   * (`ModelPicker.svelte`) draws it. Two levels. The first lists the models in
+   * use (stars, then the latest threads' models, `lib/model-shortlist.ts`),
+   * one row each, and one "All models" row. The second is the full frame:
+   * providers beside a scrolling model list, the provider's logins beside its
+   * name. A click on a model closes the picker; nothing else does.
+   * `settings` holds the composer's effort row and its More row (`PickerMore`)
+   * under either level. Desktop anchors it to its chip; a phone gets the same
+   * bottom sheet as its other menus, grabber and title on top.
    */
   let {
     store,
@@ -71,23 +73,21 @@
   let modelQuery = $state('');
   /** The provider whose column is shown: the choice's until another tile is clicked. */
   let shownProviderId = $state<string | null>(null);
-  let favoritesOpen = $state(false);
+  /** The first level (the models in use) or every provider's list. */
+  let level = $state<'home' | 'all'>('all');
   let pickPending = $state(false);
   // Nothing typed on a long list: its first rows, the current model and a show-all row.
   let expandedFor = $state<string | null>(null);
-  /** Shared by every machine; each is resolved to an account of this one (`lib/model-favorites.svelte.ts`). */
-  const favorites = $derived(store.favorites);
   const favoriteSet = $derived.by(() => favoriteIds(store.favorites, shown?.id, shownAccountId));
 
-  /** Each opening starts on the choice's column, or the favorites when there are some. */
+  /** Each opening starts on the models in use, or on the choice's column when there are not two of them to pick from. */
   export function reset() {
     shownProviderId = choice?.providerId ?? null;
-    favoritesOpen = !single && store.favorites.length > 0;
+    level = hasHome ? 'home' : 'all';
     legacy.hide();
     modelQuery = '';
     expandedFor = null;
   }
-  reset();
 
   function favorite(model: ModelInfo): boolean {
     return favoriteSet.has(model.id);
@@ -134,8 +134,60 @@
     return protocol === 'claude-sdk' || protocol === 'acp' || protocol === 'codex-appserver' || protocol === 'muse' || protocol === 'pi';
   }
 
-  function pickFavorite(entry: FavoriteModel) {
-    return applyPick(entry, entry.model.id);
+  /**
+   * The first level's rows. A row is drawn only where a click lands: its
+   * provider is offered and its account lists the model. A held choice
+   * (`locked`) keeps the rows of its own account.
+   */
+  let home = $derived.by((): ShortModel[] => {
+    if (single) return [];
+    const find = (providerId: string, accountId: string, modelId: string): ModelInfo | null => {
+      if (!store.providerOn(providerId)) return null;
+      // The current choice reads as the chip does, even before its account's list is read.
+      const own = choice && choice.providerId === providerId && choice.accountId === accountId ? store.modelOf({ ...choice, model: modelId }) : null;
+      const model = store.modelsOf(providerId, accountId).find((entry) => entry.id === modelId) ?? own;
+      return model && isNamedModel(model) ? model : null;
+    };
+    const rows = shortlist(store.favorites, store.threads, choice && { ...choice, model: choiceModel }, find);
+    return locked ? rows.filter((row) => row.providerId === choice?.providerId && row.accountId === choice?.accountId) : rows;
+  });
+  /** A choice left on its provider's default still names the model it runs. */
+  let choiceModel = $derived.by(() => {
+    if (!choice) return null;
+    const provider = store.providerOf(choice.providerId);
+    return choice.model ?? (provider ? store.defaultModelOf(provider, choice.accountId) : null);
+  });
+  /** One row alone is no choice: the picker then opens on the full list. */
+  let hasHome = $derived(home.length >= 2);
+  reset();
+
+  function isChoice(row: ShortModel): boolean {
+    return choice?.providerId === row.providerId && choice.accountId === row.accountId && choiceModel === row.model.id;
+  }
+
+  /** The row's quiet text: its provider, the gateway route, and the login when the provider has several. */
+  function sourceOf(row: ShortModel): string {
+    const parts = [store.providerOf(row.providerId)?.name ?? row.providerId];
+    const route = modelSource(row.model);
+    if (route) parts.push(route);
+    if (store.accountsOf(row.providerId).length > 1) {
+      const label = store.accountOf(row.accountId)?.label;
+      if (label) parts.push(label);
+    }
+    return parts.join(' · ');
+  }
+
+  function openAll() {
+    level = 'all';
+    modelQuery = '';
+  }
+
+  function backHome() {
+    pickEpoch += 1;
+    pickPending = false;
+    level = 'home';
+    legacy.hide();
+    modelQuery = '';
   }
 
   let provider = $derived(choice ? store.providerOf(choice.providerId) : null);
@@ -165,15 +217,7 @@
   let pending = $derived(shown ? store.modelsPending(shown.id, shownAccountId) : false);
 
   async function refreshModels() {
-    if (favoritesOpen) {
-      const seen = new Set<string>();
-      for (const entry of favorites) {
-        const key = entry.providerId + '::' + entry.accountId;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        await store.probeModels(entry.providerId, entry.accountId, true);
-      }
-    } else if (shown && shownAccountId) await store.probeModels(shown.id, shownAccountId, true);
+    if (shown && shownAccountId) await store.probeModels(shown.id, shownAccountId, true);
   }
 
   // An ACP agent owns its model list, so the descriptor cannot carry it: the
@@ -181,7 +225,7 @@
   // a catalog whose cached answer has expired.
   // Nothing is asked of a provider whose executable is not on the machine.
   $effect(() => {
-    if (!popover.open || favoritesOpen || !shown || needsInstall) return;
+    if (!popover.open || level === 'home' || !shown || needsInstall) return;
     if (!agentListed(shown.protocol)) return;
     const accountId = shownAccountId;
     if (accountId === null) return;
@@ -190,7 +234,7 @@
 
   // Keep the shown provider visible in the vertical rail or phone strip.
   $effect(() => {
-    const current = favoritesOpen ? 'favorites' : shown?.id;
+    const current = level === 'all' ? shown?.id : null;
     if (!popover.shown || !menu || !current) return;
     const rail = menu.querySelector<HTMLElement>('.rail');
     const tile = rail?.querySelector<HTMLElement>(`[data-provider="${current}"]`);
@@ -213,7 +257,7 @@
   // An ACP agent can list hundreds of models (OpenCode answered 534 here), and a
   // plain scroll is useless at that length: group by the `provider/` prefix.
   let grouped = $derived(shownModels.length > SEARCH_FROM || shownModels.some(model => modelSource(model) !== ''));
-  let searchable = $derived(!favoritesOpen && !needsInstall);
+  let searchable = $derived(level === 'all' && !needsInstall);
   let words = $derived(
     searchable ? modelQuery.toLowerCase().split(/\s+/).filter((word) => word.length > 0) : []
   );
@@ -248,12 +292,16 @@
     if (!popover.open || !searchable) return;
     focusInitial(searchBox, menu);
   });
+  // The first level has no field: the keys start on the current row, so arrows, Enter and Escape work at once.
+  $effect(() => {
+    if (!popover.open || level !== 'home') return;
+    focusInitial(menu?.querySelector<HTMLElement>('.short-list .row.current') ?? menu?.querySelector<HTMLElement>('.short-list [data-row]:not(:disabled)'), menu);
+  });
 
   /** A tile only moves the column: the choice follows a model or an account chip. */
   function pickTile(providerId: string) {
     pickEpoch += 1;
     pickPending = false;
-    favoritesOpen = false;
     shownProviderId = providerId;
     legacy.hide();
     modelQuery = '';
@@ -292,6 +340,27 @@
     return seat ? { providerId, accountId: seat.id } : null;
   }
 
+  /**
+   * What the desktop popover opens above: the whole composer around the chip,
+   * so it covers neither a docked ask nor the text being written; a chip
+   * outside a composer (an agent's settings) is its own anchor.
+   */
+  function anchorBox(): HTMLElement | null {
+    return anchor?.() ?? root()?.closest<HTMLElement>('[data-testid="composer"]') ?? root() ?? null;
+  }
+
+  /**
+   * Which edge the popover shares with its anchor: the chip's side, so it
+   * opens over its chip (at the composer's end while an ask is docked).
+   * Read at each placement (a getter): the ask can leave while the picker is open.
+   */
+  function chipSide(): 'start' | 'end' {
+    const chip = root()?.getBoundingClientRect();
+    const box = anchorBox()?.getBoundingClientRect();
+    if (!chip || !box) return 'start';
+    return chip.left + chip.width / 2 > box.left + box.width / 2 ? 'end' : 'start';
+  }
+
   /** The keys of the whole picker; the chip hands its own to it. */
   export const keydown = pickerKeydown({
     get popover() { return popover; },
@@ -310,20 +379,40 @@
   class="popover"
   class:closing={popover.closing}
   class:single
+  class:home={level === 'home'}
   role="menu"
   tabindex="-1"
   aria-label={strings.composer.picker}
   data-testid="composer-picker-menu"
   bind:this={menu}
-  use:floating={{ anchor: () => anchor?.() ?? root() ?? null, placement: 'top', cap: 560, sheet: anchor?.() ? false : undefined, dismiss: () => popover.hide() }}
+  use:floating={{ anchor: anchorBox, placement: 'top', get align() { return chipSide(); }, cap: 560, dismiss: () => popover.hide() }}
   use:popover.attach
   onanimationend={popover.end}
   onkeydown={keydown}
 >
+  <!-- A phone sheet's title, as on its other sheets; the chip names the model on desktop. -->
+  <span class="sheet-title ui-label">{strings.composer.model}</span>
+  {#if level === 'home'}
+  <div class="column models short-list" data-testid="picker-shortlist">
+    <!-- Name and provider only: stars are set under All models. -->
+    {#each home as row (`${row.providerId}:${row.accountId}:${row.model.id}`)}
+      <button type="button" class="row model" class:current={isChoice(row)} role="menuitem" data-row data-testid={row.favorite ? 'favorite-model' : 'recent-model'}
+        title={row.model.id} disabled={disabled || pickPending || !store.providerOf(row.providerId)?.available} onclick={() => void applyPick(row, row.model.id)}>
+        <span class="mark"></span>
+        <span class="name ui-label">{row.model.name}</span>
+        <span class="source ui-label">{sourceOf(row)}</span>
+      </button>
+    {/each}
+    <button type="button" class="row fold all" data-row data-testid="picker-all-models" onclick={openAll} onkeydown={(event) => { if (event.key === 'ArrowRight') { event.preventDefault(); openAll(); } }}>
+      <span class="name ui-label">{strings.composer.allModels}</span>
+      <ChevronRight size={14} strokeWidth={2} />
+    </button>
+  </div>
+  {:else}
   <button class="refresh" type="button" data-testid="picker-refresh" aria-label={strings.composer.refreshModels} title={strings.composer.refreshModels} disabled={disabled || probing || pickPending || needsInstall} onclick={() => void refreshModels()}><RefreshCw size={14} class={probing || pickPending ? 'spin' : ''} /></button>
   {#if !single}
     <div class="column rail">
-      <ProviderTiles {store} {choice} {locked} current={shown?.id ?? null} {favoritesOpen} onfavorites={() => { favoritesOpen = true; modelQuery = ''; }} onpick={pickTile} onmore={providersReachable ? openInstall : undefined} />
+      <ProviderTiles {store} {choice} {locked} current={shown?.id ?? null} onback={hasHome ? backHome : undefined} onpick={pickTile} onmore={providersReachable ? openInstall : undefined} />
     </div>
   {/if}
 
@@ -355,23 +444,6 @@
       </div>
     {/snippet}
 
-    {#if favoritesOpen}
-      <div class="head"><span class="provider-name ui-label">{strings.composer.favorites}</span></div>
-      <div class="model-list">
-      {#each favorites as entry (`${entry.providerId}:${entry.accountId}:${entry.model.id}`)}
-        <div class="model-entry">
-          <button type="button" class="row model favorite-row" role="menuitem" data-row data-testid="favorite-model" title={entry.model.id} disabled={disabled || pickPending || !store.providerOf(entry.providerId)?.available} onclick={() => void pickFavorite(entry)}>
-            <ProviderLogo providerId={entry.providerId} size={16} /><span class="name">{store.modelsOf(entry.providerId, entry.accountId).find(m => m.id === entry.model.id)?.name ?? entry.model.name}{#if modelSource(entry.model)}<span class="account-label">{modelSource(entry.model)}</span>{/if}{#if favorites.some(other => other.providerId === entry.providerId && other.model.id === entry.model.id && other.accountId !== entry.accountId)}<span class="account-label">{store.accountOf(entry.accountId)?.label}</span>{/if}</span>
-          </button>
-          {#if store.owner}
-            <button type="button" class="favorite-button" aria-label={strings.composer.unfavorite} onclick={() => store.toggleFavorite(entry.providerId, entry.accountId, entry.model)}><Star size={14} fill="currentColor" /></button>
-          {:else}
-            <span class="favorite-button favorite-mark" aria-hidden="true"><Star size={14} fill="currentColor" /></span>
-          {/if}
-        </div>
-      {:else}<p class="none subtle" data-testid="favorites-empty">{strings.composer.favoritesEmpty}</p>{/each}
-      </div>
-    {:else}
     <div class="head">
       <span class="provider-name ui-label">{shown ? shown.name : strings.composer.models}</span>
       <AccountSeats {shown} {seats} {shownAccountId} {choice} {locked} busy={disabled || pickPending} onpick={pickSeat} />
@@ -450,11 +522,11 @@
     {/if}
     </div>
     {/key}
-    {/if}
   </div>
+  {/if}
   {#if settings}<div class="settings" data-picker-settings>{@render settings(PickerMore)}</div>{/if}
 </div>
-{#if popover.shown && legacy.shown && !favoritesOpen && !pending && filteredLegacy.length > 0}
+{#if popover.shown && legacy.shown && level === 'all' && !pending && filteredLegacy.length > 0}
 <div class="popover legacy-menu" class:closing={legacy.closing} role="menu" tabindex="-1" data-testid="picker-legacy-menu" aria-label={strings.composer.legacyModels} use:legacy.attach onanimationend={legacy.end} use:floating={{ anchor: () => menu ?? null, side: 'right' }} onkeydown={keydown}>
   <div class="column models">
     <div class="head"><button type="button" class="icon small legacy-back" aria-label={strings.settings.back} onclick={() => legacy.hide()}><ChevronRight size={14} style="transform: rotate(180deg)" /></button><span class="provider-name ui-label">{strings.composer.legacyModels}</span></div>
@@ -492,8 +564,12 @@
   .favorite-button[aria-pressed='true'] { color: var(--color-foreground); }
   /** A paired device reads the owner's stars without changing them. */
   .favorite-mark { display: inline-flex; align-items: center; justify-content: center; color: var(--color-foreground); }
-  .account-label { margin-left: 8px; font-size: var(--text-xs); color: var(--color-muted-foreground); }
-  .row.favorite-row { min-height: 42px; }
+  /* The first level stacks its title (phone), its rows and the effort: no grid areas to hold. */
+  .popover.home { display: flex; flex-direction: column; }
+  .source { max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); color: var(--color-subtle); }
+  .all { color: var(--color-muted-foreground); }
+  .all .name { flex: 1; font-weight: 400; }
+  .sheet-title { display: none; }
   .popover.legacy-menu { width: min(320px, calc(100vw - 24px)); height: auto; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); z-index: 41; }
   .popover {
     position: fixed;
@@ -682,18 +758,24 @@
   :global(html[data-motion='reduced']) .skeleton { animation: none; }
 
   @media (max-width: 720px) {
-    /* One sheet, read top to bottom: the providers in a row, their models, then
-       the effort and permission rows; the refresh sits at the row's end. */
-    .popover { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto minmax(0, 1fr) auto; width: calc(100vw - 24px); }
-    .rail { grid-area: 1 / 1; flex-direction: row; overflow-x: auto; overflow-y: hidden; touch-action: pan-x; padding: 8px; gap: 4px; scrollbar-width: none; }
+    /* The phone's bottom sheet, read top to bottom: its title, the providers
+       in a row (the refresh at its end), their models, then the effort and
+       More rows. The first level is its title, the rows in use and the effort. */
+    .popover { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto minmax(0, 1fr) auto; width: calc(100vw - 24px); }
+    .sheet-title { display: block; grid-area: 1 / 1 / 2 / 3; padding-bottom: var(--space-2); text-align: center; font-weight: 600; }
+    .rail { grid-area: 2 / 1; flex-direction: row; overflow-x: auto; overflow-y: hidden; touch-action: pan-x; padding: 8px; gap: 4px; scrollbar-width: none; }
     .rail :global(.tile) { width: auto; padding: 0 12px; }
-    .refresh { grid-area: 1 / 2; align-self: center; margin: 0 6px 0 0; }
-    .main-models { grid-area: 2 / 1 / 3 / 3; border-left: none; border-top: 1px solid var(--color-border); }
+    .refresh { grid-area: 2 / 2; align-self: center; margin: 0 6px 0 0; }
+    .main-models { grid-area: 3 / 1 / 4 / 3; border-left: none; border-top: 1px solid var(--color-border); }
     .model-list { max-height: none; }
-    .settings { grid-area: 3 / 1 / 4 / 3; padding: 8px; }
+    .settings { grid-area: 4 / 1 / 5 / 3; padding: 8px; }
     .refresh, .single .refresh { width: var(--touch-target); height: var(--touch-target); }
-    .single .main-models .head { padding-right: calc(var(--touch-target) + 8px); }
-    .single .refresh { top: 0; right: 0; }
-    .single .main-models { grid-area: 1 / 1 / 3 / 3; border-top: none; }
+    /* One provider: no rail, the refresh beside the title. */
+    .single .refresh { position: static; grid-area: 1 / 2; align-self: start; margin: calc(var(--space-2) * -1) 6px 0 0; }
+    .single .main-models { grid-area: 2 / 1 / 4 / 3; }
+    .popover.single { grid-template-columns: minmax(0, 1fr) auto; }
+    .single .main-models .head { padding-right: 6px; }
+    .short-list { padding: 0 8px 8px; }
+    .short-list .row { min-height: var(--touch-target); }
   }
 </style>

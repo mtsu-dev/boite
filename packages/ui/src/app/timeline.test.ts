@@ -50,11 +50,11 @@ test('an async question waits in the dock above the composer, stacked, and the t
   await sendPrompt('[ask] one');
   await waitFor(() => document.querySelectorAll('[data-testid=activity-question]').length === 1);
   await waitFor(() => store.openThread?.status === 'idle');
-  // The composer answers the docked question until it is set aside for an ordinary prompt.
-  query<HTMLButtonElement>('[data-testid=composer-reply-ignore]').click();
-  await waitFor(() => document.querySelector('[data-testid=composer-reply]') === null);
+  // The composer answers the docked question until its fold sets it aside for an ordinary prompt.
+  expect(document.querySelector('[data-testid=composer-reply]')).not.toBeNull();
   query<HTMLButtonElement>('[data-testid=activity-question-toggle]').click();
-  await waitFor(() => query('[data-testid=activity-question-toggle]').getAttribute('aria-expanded') === 'false');
+  await waitFor(() => document.querySelector('[data-testid=composer-reply]') === null);
+  expect(query('[data-testid=activity-question-toggle]').getAttribute('aria-expanded')).toBe('false');
   await sendPrompt('[ask] two');
   await waitFor(() => document.querySelectorAll('[data-testid=activity-question]').length === 2);
   expect(query('[data-testid=activity-question-toggle]').getAttribute('aria-expanded')).toBe('false');

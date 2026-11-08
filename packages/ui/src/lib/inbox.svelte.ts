@@ -1,6 +1,7 @@
 import type { ThreadSummary } from '@boite/contracts';
 import { agentDirectory } from './agent-directory.svelte';
 import type { FeedSource } from './activity-feed';
+export { feedThread } from './activity-feed';
 import type { Store } from './store.svelte';
 import { LazyComponent } from './lazy-component.svelte';
 
@@ -47,9 +48,4 @@ export const doneFilter = new DoneFilter();
 /** Where a thread outside any project lives in Activity: the bot it works for, by name. */
 export function feedPlace(entry: FeedSource<{ store: Store }>): string | null {
   return agentDirectory(entry.machine.store).ownerOf(entry.thread)?.name ?? null;
-}
-
-/** What Activity reads: every live thread but team chats and council salons, which have no turn of their own to answer. */
-export function feedThread(thread: ThreadSummary): boolean {
-  return !thread.archived && !thread.incognito && !thread.teamId && !thread.councilId;
 }

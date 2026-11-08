@@ -6,8 +6,8 @@
   import InfoTip from './InfoTip.svelte';
 
   /**
-   * The prompts waiting behind the running turn, one line each in the strip
-   * above the composer: what it waits for, then its text cut to the line. A
+   * The prompts waiting behind the running turn, one quiet chip each inside
+   * the composer, over its field: a clock, then its text cut to the line. A
    * click on the text takes it back into the box; Send now sends them all.
    * One written while the machine was away says so in place of "Queued", or
    * says why the core refused it, with Send again; the x removes it. Why they
@@ -57,14 +57,15 @@
 <div class="queued" data-testid="composer-queued">
   {#each queued as entry, at (entry)}
     {@const failed = entry.request?.failed}
-    <div class="line" class:failed={failed !== undefined} data-testid="composer-queued-item">
+    <div class="chip" class:failed={failed !== undefined} data-testid="composer-queued-item">
       {#if failed !== undefined}
         <span class="state error" data-testid="composer-outbox-failed" title={fill(strings.composer.outboxFailed, { reason: failed })}>{fill(strings.composer.outboxFailed, { reason: failed })}</span>
       {:else if entry.request}
-        <span class="state" data-testid="composer-outbox-pending"><Clock size={13} /><span class="word">{at < outgoing ? strings.composer.outboxSending
+        <span class="state" data-testid="composer-outbox-pending"><Clock size={12} /><span class="word">{at < outgoing ? strings.composer.outboxSending
           : connected ? strings.composer.outboxNext : fill(strings.composer.outboxWaiting, { machine })}</span></span>
       {:else}
-        <span class="state"><Clock size={13} /><span class="word">{strings.composer.queuedLabel}</span></span>
+        <!-- The clock says it waits; the word stays for screen readers, the "i" says why. -->
+        <span class="state"><Clock size={12} /><span class="visually-hidden">{strings.composer.queuedLabel}</span></span>
       {/if}
       <button type="button" class="text"
         title={strings.composer.editQueued}
@@ -79,7 +80,7 @@
       {#if onremove}
         <button type="button" class="ghost icon remove" data-testid="composer-queued-remove"
           title={strings.composer.removeQueued} aria-label={strings.composer.removeQueued}
-          disabled={at < outgoing || !!entry.request?.start} onclick={() => onremove(at)}><X size={13} /></button>
+          disabled={at < outgoing || !!entry.request?.start} onclick={() => onremove(at)}><X size={12} /></button>
       {/if}
     </div>
   {/each}
@@ -91,26 +92,31 @@
 </div>
 
 <style>
-  /* Quiet lines at the head of the box: each held prompt on its own line, its
-     state muted before it, edit and remove at its end; Send now closes the run. */
+  /* Quiet chips inside the box, over its field: each held prompt cut to one
+     line, its state a muted clock before it, edit on its text and remove at
+     its end; Send now closes the row. They wrap rather than scroll sideways. */
   .queued {
     display: flex;
-    flex-direction: column;
-    gap: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
     min-width: 0;
     max-width: 100%;
     max-height: 30vh;
     overflow-y: auto;
   }
 
-  .line {
-    display: flex;
+  .chip {
+    display: inline-flex;
     align-items: center;
     gap: 6px;
     min-width: 0;
     max-width: 100%;
     height: 28px;
-    padding: 0 2px 0 0;
+    padding: 0 2px 0 10px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-full);
+    background: var(--color-hover);
     font-size: var(--text-sm);
     animation: rise var(--dur-3) var(--ease-out-quint);
   }
@@ -121,7 +127,6 @@
     gap: 5px;
     flex: none;
     color: var(--color-muted-foreground);
-    font-weight: 500;
     white-space: nowrap;
   }
 
@@ -136,7 +141,7 @@
     border: none;
     background: none;
     box-shadow: none;
-    color: var(--color-muted-foreground);
+    color: var(--color-foreground);
     font-weight: 400;
     text-align: left;
     overflow: hidden;
@@ -144,18 +149,17 @@
     white-space: nowrap;
   }
 
-  .text:hover:not(:disabled) { background: none; color: var(--color-foreground); text-decoration: underline; text-decoration-color: var(--color-subtle); }
-  /* Still waiting to go while the box holds other text: the line stays legible. */
+  .text:hover:not(:disabled) { background: none; text-decoration: underline; text-decoration-color: var(--color-subtle); }
+  /* Still waiting to go while the box holds other text: the chip stays legible. */
   .text:disabled { opacity: 1; }
 
   .extra { display: inline-flex; align-items: center; gap: 3px; flex: none; color: var(--color-muted-foreground); font-size: var(--text-xs); }
-  .line :global(.info-tip) { flex: none; margin: 0; }
-  .remove { flex: none; width: 22px; height: 22px; margin-left: auto; }
-  .line .ghost.small { flex: none; height: 22px; font-size: var(--text-xs); }
+  .chip :global(.info-tip) { flex: none; margin: 0; }
+  .remove { flex: none; width: 22px; height: 22px; border-radius: var(--radius-full); }
+  .chip .ghost.small { flex: none; height: 22px; font-size: var(--text-xs); }
 
-  .send-now { align-self: flex-start; height: 26px; padding: 0 8px; margin-left: -8px; border-radius: var(--radius-md); font-size: var(--text-sm); font-weight: 550; }
-  @media (max-width: 720px) { .line { height: 36px; } .remove { width: 36px; height: 36px; } }
-  /* A 360 px phone keeps the line for the prompt: the clock says it waits, the
-     word stays for screen readers, the "i" says why. */
+  .send-now { height: 28px; padding: 0 8px; border-radius: var(--radius-full); font-size: var(--text-sm); font-weight: 550; }
+  @media (max-width: 720px) { .chip { height: 36px; } .remove { width: 32px; height: 32px; } .send-now { height: 36px; } }
+  /* A 360 px phone keeps the chip for the prompt: the outbox's word goes, the "i" still says why. */
   @media (max-width: 400px) { .word { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; } }
 </style>

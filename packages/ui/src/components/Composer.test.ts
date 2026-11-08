@@ -12,7 +12,7 @@ import { repliesOf, sendAnswer, TYPING_PAUSE_MS } from '../lib/question-reply.sv
 import { closeTour } from '../lib/onboarding.svelte';
 import { freshWork, work, WORK_STORAGE_KEY } from '../lib/work-prefs.svelte';
 import { retryTurn } from '../lib/composer-edit';
-import { strings } from '../lib/strings';
+import { fill, strings } from '../lib/strings';
 
 /**
  * The three composer keys, on the whole app over the in-memory fake: Ctrl+Enter
@@ -452,6 +452,11 @@ function inPicker(testid: string): HTMLElement | null {
     document.querySelector<HTMLElement>('[data-testid=composer-picker-more][aria-expanded=false]')?.click();
     flushSync();
   }
+  // The providers' lists sit behind All models when the picker opens on the models in use.
+  if (!document.querySelector(`[data-testid=${testid}]`)) {
+    document.querySelector<HTMLElement>('[data-testid=picker-all-models]')?.click();
+    flushSync();
+  }
   return document.querySelector<HTMLElement>(`[data-testid=${testid}]`);
 }
 
@@ -648,6 +653,8 @@ test('the picker keeps row, account and legacy keyboard navigation separate', as
   await openDraft();
   query<HTMLButtonElement>('[data-testid=composer-picker]').click();
   await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null);
+  query<HTMLButtonElement>('[data-testid=picker-all-models]').click();
+  await waitFor(() => document.querySelector('[data-provider=claude]') !== null);
 
   const claudeTile = query<HTMLButtonElement>('[data-provider=claude]');
   claudeTile.focus();
@@ -842,6 +849,28 @@ test('an outbox prompt the core refuses shows why, holds the next one, and goes 
   expect(sent.some(parts => parts.includes('Third while away'))).toBe(false);
 });
 
+test('a thread whose worktree is gone takes no message: the box says why and send leaves the accent', async ({ app: _app }) => {
+  await store.open('t-trace');
+  await waitFor(() => store.openThread?.id === 't-trace' && !store.busy);
+  expect(input().placeholder).toBe(fill(strings.composer.placeholder, { name: 'Echo' }));
+  await type('one more change');
+  const call = vi.spyOn(store.client!, 'call');
+  store.openThread!.worktreeRemoved = { path: '/workspace/.worktrees/trace', branch: 'trace', branchDeleted: false, reason: 'clean', removedAt: Date.now() };
+  await waitFor(() => input().disabled);
+  expect(input().placeholder).toBe(strings.composer.placeholderNoFolder);
+  const send = query<HTMLButtonElement>('[data-testid=composer-send]');
+  expect(send.disabled).toBe(true);
+  expect(send.closest('.bar')?.classList.contains('blocked')).toBe(true);
+  // Enter on the field sends nothing: the notice's button is the way on.
+  input().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  await new Promise(resolve => setTimeout(resolve, 20));
+  expect(call.mock.calls.filter(([method]) => method === 'turns.start')).toHaveLength(0);
+  expect(input().value).toBe('one more change');
+  store.openThread!.worktreeRemoved = null;
+  await waitFor(() => !input().disabled);
+  expect(send.disabled).toBe(false);
+});
+
 /** The asks of the open thread; the fixture keeps others waiting elsewhere. */
 function asks(): typeof store.pendingPermissions {
   return store.pendingPermissions.filter((request) => request.threadId === 't-trace');
@@ -852,7 +881,7 @@ test('Enter in the emptied composer allows the docked permission, then the input
   await type('Hold on [permission]');
   press('Enter');
   await waitFor(() => store.openThread?.status === 'waiting' && document.querySelector('[data-testid=composer] [data-testid=permission-card]') !== null);
-  expect(input().placeholder).toBe(strings.composer.permissionPlaceholder);
+  expect(input().placeholder).toBe(fill(strings.composer.replyPlaceholder, { name: 'Echo' }));
   // The decision lives in the composer alone: while the ask is docked the timeline draws no line for it, no second copy.
   expect(document.querySelectorAll('[data-testid=permission-card]')).toHaveLength(1);
   expect(document.querySelector('[data-testid=timeline] [data-testid=permission-waiting]')).toBeNull();
@@ -1002,9 +1031,9 @@ test('all queued prompts run together on their thread without reopening it', asy
   await store.send('question');
   await waitFor(() => store.openThread?.status === 'waiting');
   const question = store.pendingQuestions.find(item => item.threadId === 't-trace')!;
-  // The composer would answer the question: set it aside to queue ordinary prompts.
-  await waitFor(() => document.querySelector('[data-testid=composer-reply-ignore]') !== null);
-  query<HTMLButtonElement>('[data-testid=composer-reply-ignore]').click();
+  // The composer would answer the question: folding it sets it aside to queue ordinary prompts.
+  await waitFor(() => document.querySelector('[data-testid=composer-reply]') !== null);
+  query<HTMLButtonElement>('[data-testid=activity-question-toggle]').click();
   await type('first queued prompt');
   press('Enter');
   await type('second queued prompt');
@@ -1309,7 +1338,8 @@ test('a picture tile draws a small thumbnail, the preview the bytes by URL, both
   }
 });
 
-const REPLY_PLACEHOLDER = strings.composer.replyPlaceholder;
+const REPLY_PLACEHOLDER = fill(strings.composer.replyPlaceholder, { name: 'Echo' });
+const ANSWER_LABEL = 'Send the answer';
 
 /** The question docked in the composer; the timeline keeps only its one-line row. */
 function pendingCard(): HTMLElement {
@@ -1325,16 +1355,19 @@ test('a waiting question takes the composer as its free answer, with the card pi
   // a budget counted in attempts of at least 2 ms each, well past that pause.
   await waitFor(() => document.querySelector('[data-testid=composer-reply]') !== null, TYPING_PAUSE_MS);
   expect(input().placeholder).toBe(REPLY_PLACEHOLDER);
-  expect(query('[data-testid=composer-send]').getAttribute('aria-label')).toBe('Send the answer');
+  expect(query('[data-testid=composer-send]').getAttribute('aria-label')).toBe(ANSWER_LABEL);
   // The question is written once, in the dock: the timeline draws no line for it while it waits there.
   expect(document.querySelectorAll('[data-testid=thread-activity] [data-testid=question-text]')).toHaveLength(1);
   expect(document.querySelector('[data-testid=timeline] [data-testid=question-waiting]')).toBeNull();
   expect(document.querySelector('[data-testid=question-reply-hint]')).toBeNull();
 
-  // Ignore gives the composer back to ordinary messages; the card offers it again.
-  query<HTMLButtonElement>('[data-testid=composer-reply-ignore]').click();
+  // Folding the question gives the composer back to ordinary messages; opened again, the card offers it again.
+  query<HTMLButtonElement>('[data-testid=activity-question-toggle]').click();
   await waitFor(() => document.querySelector('[data-testid=composer-reply]') === null);
-  expect(input().placeholder).not.toBe(REPLY_PLACEHOLDER);
+  expect(query('[data-testid=composer-send]').getAttribute('aria-label')).not.toBe(ANSWER_LABEL);
+  query<HTMLButtonElement>('[data-testid=activity-question-toggle]').click();
+  await waitFor(() => pendingCard().querySelector('[data-testid=question-write]') !== null);
+  expect(document.querySelector('[data-testid=composer-reply]')).toBeNull();
   pendingCard().querySelector<HTMLButtonElement>('[data-testid=question-write]')!.click();
   await waitFor(() => document.querySelector('[data-testid=composer-reply]') !== null);
 
@@ -1365,7 +1398,7 @@ test('an ignored async question stays docked while an ordinary message goes out 
   await waitFor(() => document.querySelector('[data-testid=composer-reply]') !== null);
   const asked = store.pendingQuestions.find((question) => question.threadId === 't-trace')!;
   expect(query('[data-testid=composer-reply]').dataset.question).toBe(asked.id);
-  query<HTMLButtonElement>('[data-testid=composer-reply-ignore]').click();
+  query<HTMLButtonElement>('[data-testid=activity-question-toggle]').click();
   await waitFor(() => document.querySelector('[data-testid=composer-reply]') === null);
   await send('something else entirely');
   const prompt = store.openThread!.messages.filter((message) => message.role === 'user').at(-1)!;
@@ -1834,13 +1867,13 @@ test('permission menu offers No limits beside Auto and preserves legacy modes un
   }
   const names = () => Array.from(query('[data-testid=composer-mode-menu]').querySelectorAll('[data-value]')).map(row => row.textContent?.trim());
   // The live legacy mode keeps a choice of its own at the end until another is picked.
-  expect(names()).toEqual(['No limits', 'Auto', 'Edit freely', 'Ask', 'Auto-deny']);
-  for (const [mode, label] of [['yolo', 'No limits'], ['bypassPermissions', 'Auto'], ['acceptEdits', 'Edit freely'], ['default', 'Ask']]) {
+  expect(names()).toEqual(['No limits', 'Auto', 'Edit freely', 'Ask first', 'Auto-deny']);
+  for (const [mode, label] of [['yolo', 'No limits'], ['bypassPermissions', 'Auto'], ['acceptEdits', 'Edit freely'], ['default', 'Ask first']]) {
     query(`[data-testid=composer-mode-menu] [data-value="${mode}"]`).click();
     await waitFor(() => store.openThread?.permissionMode === mode);
     await waitFor(() => picked('composer-mode-menu') === label);
   }
-  expect(names()).toEqual(['No limits', 'Auto', 'Edit freely', 'Ask']);
+  expect(names()).toEqual(['No limits', 'Auto', 'Edit freely', 'Ask first']);
 });
 
 test('a slash lists the agent commands first, filters, and completes the box', async ({ app: _app }) => {

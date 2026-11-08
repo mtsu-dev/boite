@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { AgentsSnapshot, ThreadSummary } from '@boite/contracts';
 import { setExperiment } from './experiments';
 import { agentDirectory } from './agent-directory.svelte';
-import { pickThreadAction, threadMenuItems } from './thread-menu';
+import { pickThreadAction, threadMenuItems, threadToolItems } from './thread-menu';
 import type { Store } from './store.svelte';
 
 beforeEach(() => { setExperiment('resident-agents', true); });
@@ -55,8 +55,40 @@ test('the row, header and phone menus share one order and grouping for what they
     .map(item => item.separator ? '|' : item.id).join(' ').replace(/(\| )+/g, '| ').replace(/^\| |( \|)+$/g, '');
   const row = order(threadMenuItems(store, thread(), { open: false, showDone: true, prLoading: false }));
   const header = order(threadMenuItems(store, thread(), { showDone: true }));
+  const grouped = order(threadMenuItems(store, thread(), { open: false, showDone: true, prLoading: false, grouped: true }));
   const phone = order(threadMenuItems(store, thread(), { phone: true, showDone: true }));
   expect(row).toBe('rename pin | done archive | delete');
   expect(header).toBe(row);
   expect(phone).toBe(row);
+  expect(grouped).toBe(row);
+});
+
+test('a desktop row\'s menu puts the common actions first and every tool behind All tools, each with its own id', () => {
+  const store = stub();
+  agentDirectory(store).snapshot = { profiles: [{ id: 'mira', name: 'Mira', status: 'active', domain: '', avatar: '' }], entrusted: [] } as unknown as AgentsSnapshot;
+  const options = { open: false, showDone: true, prLoading: false, grouped: true };
+  const t = thread({ branch: 'boite/port' });
+  const ids = (items: ReturnType<typeof threadMenuItems>) => items.filter(item => !item.separator).map(item => item.id);
+  expect(ids(threadMenuItems(store, t, options))).toEqual(['open', 'rename', 'pin', 'done', 'archive', 'more', 'delete']);
+  expect(threadMenuItems(store, t, options).find(item => item.id === 'more')?.submenu).toBe(true);
+  const tools = threadToolItems(store, t, options);
+  expect(ids(tools)).toEqual(['back', 'retitle', 'entrust', 'move', 'copy', 'pr']);
+  expect(tools[0]?.back).toBe(true);
+  // Nothing the flat menu offers is lost: the two lists together hold every row of it.
+  const flat = ids(threadMenuItems(store, t, { open: false, showDone: true, prLoading: false }));
+  expect(new Set([...ids(threadMenuItems(store, t, options)), ...ids(tools)])).toEqual(new Set([...flat, 'more', 'back']));
+});
+
+test('a phone row\'s menu groups the same way and keeps every action the flat phone menu had', () => {
+  const store = stub();
+  agentDirectory(store).snapshot = { profiles: [{ id: 'mira', name: 'Mira', status: 'active', domain: '', avatar: '' }], entrusted: [] } as unknown as AgentsSnapshot;
+  const t = thread({ branch: 'boite/port' });
+  const ids = (items: ReturnType<typeof threadMenuItems>) => items.filter(item => !item.separator).map(item => item.id);
+  const main = threadMenuItems(store, t, { phone: true, grouped: true, showDone: true });
+  const tools = threadToolItems(store, t, { phone: true });
+  expect(ids(main)).toEqual(['rename', 'pin', 'done', 'archive', 'more', 'delete']);
+  // The path and the pull request stay on the desktop.
+  expect(ids(tools)).toEqual(['back', 'retitle', 'entrust', 'move']);
+  const flat = ids(threadMenuItems(store, t, { phone: true, showDone: true }));
+  for (const id of flat) expect([...ids(main), ...ids(tools)]).toContain(id);
 });

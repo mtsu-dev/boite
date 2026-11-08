@@ -97,3 +97,32 @@ test('a refresh reads the diff beside the status and keeps the old diff on scree
     store.detach(); client.close(); document.body.innerHTML = '';
   }
 });
+
+test('the open file counts the lines its diff draws, not a figure from another read', async () => {
+  const client = new FakeClient({ delayMs: 0 });
+  const store = new Store();
+  store.attach(client);
+  let component;
+  try {
+    await store.connect();
+    await store.open('t-trace');
+    const reads = gate(store);
+    // git's own figure for the file disagrees with the texts the diff is drawn from.
+    reads.editStatus((status) => ({ ...status, changes: status.changes.map((change) => (change.path === PATH ? { ...change, additions: 99, deletions: 98 } : change)) }));
+    const surface: Surface = { id: 'changes', kind: 'changes', path: PATH };
+    const panel = { update() {} } as unknown as BoundPanel;
+    component = mount(ChangesSurface, { target: document.body, props: { store, surface, panel } });
+    flushSync();
+    await reads.releaseAll();
+    const added = document.querySelectorAll('[data-testid=diff-row][data-kind=add]').length;
+    const removed = document.querySelectorAll('[data-testid=diff-row][data-kind=remove]').length;
+    expect(added + removed).toBeGreaterThan(0);
+    const row = document.querySelector(`[data-testid=changes-row][data-path="${PATH}"]`)!;
+    expect(row.querySelector('.count.added')?.textContent).toBe(added ? `+${added}` : '');
+    expect(row.querySelector('.count.removed')?.textContent).toBe(removed ? `-${removed}` : '');
+    expect(row.textContent).not.toContain('+99');
+  } finally {
+    if (component) await unmount(component);
+    store.detach(); client.close(); document.body.innerHTML = '';
+  }
+});

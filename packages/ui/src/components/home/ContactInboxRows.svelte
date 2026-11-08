@@ -101,7 +101,8 @@
 {/each}
 
 <style>
-  .contact-row { display: flex; gap: 10px; padding: 8px; border-radius: var(--radius-md); }
+  /* The text edge of Activity's thread rows (ThreadCard.svelte): 10 px in, a 16 px mark, 10 px to the words. */
+  .contact-row { display: flex; gap: 10px; padding: 8px 10px; border-radius: var(--radius-md); }
   .contact-row + .contact-row { margin-top: 2px; }
   .contact-row:hover { background: var(--color-hover); }
   /* Grey: amber is the "Needs you" word alone, and the section above already says it. */
@@ -120,7 +121,8 @@
   .refusal .actions { justify-content: flex-end; }
   .failed { margin: 0; font-size: var(--text-xs); color: var(--color-danger); overflow-wrap: anywhere; }
   @media (max-width: 720px) {
-    .contact-row { padding: 10px 4px; }
+    /* The phone row's own edge (MobileThreadRow.svelte): 12 px in. */
+    .contact-row { padding: 10px 12px; }
     .actions :global(button) { min-height: var(--touch-target); }
   }
 </style>

@@ -1,7 +1,7 @@
 export const strings = {
 
   permissionMode: {
-    default: 'Ask',
+    default: 'Ask first',
     acceptEdits: 'Edit freely',
     bypassPermissions: 'Auto',
     yolo: 'No limits',

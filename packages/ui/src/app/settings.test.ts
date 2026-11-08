@@ -49,8 +49,11 @@ test('the keybindings file moves a chord, takes one away, and the Keyboard page 
   expect(document.getElementById(gear.getAttribute('aria-describedby')!)?.textContent).toBe('Ctrl+,');
   const settings = new KeyboardEvent('keydown', { key: ',', ctrlKey: true, bubbles: true, cancelable: true });
   expect(document.body.dispatchEvent(settings)).toBe(false);
-  await waitFor(() => document.querySelector('[data-testid=settings-tab-keyboard]') !== null);
+  await waitFor(() => document.querySelector('[data-testid=settings-tab-general]') !== null);
 
+  // Keyboard is a page of General: the nav names the group, the card's tabs its pages.
+  query<HTMLButtonElement>('[data-testid=settings-tab-general]').click();
+  await waitFor(() => document.querySelector('[data-testid=settings-tab-keyboard]') !== null);
   query<HTMLButtonElement>('[data-testid=settings-tab-keyboard]').click();
   await waitFor(() => document.querySelector('[data-testid=keyboard-page]') !== null);
   const keyOf = (id: string) =>

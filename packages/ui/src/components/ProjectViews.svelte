@@ -16,7 +16,8 @@
    * Recent's project filter and the machine filter live in the display menu,
    * which marks its button while one of them hides threads.
    */
-  let { entries, store }: { entries: ProjectEntry[]; store: Store } = $props();
+  /** `quiet`: the first run, no AI and no project yet: one quiet line stands where the view's name and its menu would. */
+  let { entries, store, quiet = false }: { entries: ProjectEntry[]; store: Store; quiet?: boolean } = $props();
   const selected = $derived(projectView.selected(entries));
   const target = $derived(workspace.view === 'recent' && selected ? selected.project : store.openProject ?? store.projects.find(p => !p.archived));
   const targetOwner = $derived(workspace.view === 'recent' && selected ? selected.machine.store : store);
@@ -31,6 +32,9 @@
   }
 </script>
 
+{#if quiet}
+<p class="list-head quiet" data-testid="list-first-run">{strings.sidebar.firstRunList}</p>
+{:else}
 <div class="list-head">
   <h2 class="title" data-testid="list-view-name">{workspace.view === 'recent' ? strings.sidebar.recentView : strings.sidebar.projectsView}</h2>
   <div class="actions">
@@ -41,11 +45,13 @@
     {/if}
   </div>
 </div>
+{/if}
 
 <style>
   /* No rule under it: the rows fade out beneath it instead (RailFrame.svelte). */
   .list-head { display: flex; align-items: center; gap: 4px; min-width: 0; height: 36px; margin-top: 10px; padding: 0 0 0 8px; }
   .title { flex: 1; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 650; letter-spacing: -0.015em; color: var(--color-foreground); }
+  .quiet { margin-bottom: 0; padding-right: 8px; font-size: var(--text-sm); color: var(--color-subtle); }
   .actions { display: flex; align-items: center; gap: 4px; flex: none; }
   .actions :global(button.icon) { flex: none; width: 28px; height: 28px; border-radius: var(--radius-md); color: var(--color-subtle); }
   .actions :global(button.icon:hover) { color: var(--color-foreground); }

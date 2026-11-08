@@ -10,6 +10,9 @@ test('a provider Boite installs waits in Settings, one tile away, and joins the 
   await waitFor(() => store.draft !== null);
   query<HTMLButtonElement>('[data-testid=composer-picker]').click();
   await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null);
+  // The rail sits behind All models when the picker opens on the models in use.
+  document.querySelector<HTMLButtonElement>('[data-testid=picker-all-models]')?.click();
+  await waitFor(() => document.querySelector('[data-testid=picker-more-providers]') !== null);
 
   // Nothing is on the machine yet, so the rail leaves it out and its last
   // tile goes where it is installed and signed into.
@@ -26,6 +29,8 @@ test('a provider Boite installs waits in Settings, one tile away, and joins the 
   await waitFor(() => document.querySelector('[data-testid=composer-picker]') !== null);
   query<HTMLButtonElement>('[data-testid=composer-picker]').click();
   await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null);
+  document.querySelector<HTMLButtonElement>('[data-testid=picker-all-models]')?.click();
+  await waitFor(() => document.querySelector('[data-testid=picker-more-providers]') !== null);
   expect(document.querySelector('[data-testid=composer-picker-menu] [data-provider=antigravity]')).toBeNull();
 
   // Signed in, it is one tile like any other, in the open rail too.

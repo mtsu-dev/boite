@@ -5,6 +5,13 @@ import { effortDots, effortPicked, groupLabels, press, query, seats, shownModels
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
 
+/** The picker opens on the models in use once there are two of them; every provider sits behind "All models". */
+async function allModels(): Promise<void> {
+  await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null);
+  document.querySelector<HTMLButtonElement>('[data-testid=picker-all-models]')?.click();
+  await waitFor(() => document.querySelector('[data-testid=composer-picker-menu] [data-testid=picker-refresh]') !== null);
+}
+
 /** The reasoning row lives in the model chip's popover: open it, then find the row. */
 function effortRow(): HTMLElement | null {
   if (!document.querySelector('[data-testid=composer-picker-menu]')) {
@@ -26,10 +33,11 @@ test('the picker rails the providers as logos and gives the shown one its accoun
 
   query<HTMLButtonElement>('[data-testid=composer-picker]').click();
   await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null);
+  await allModels();
   await waitFor(() => shownModels().length === 3);
   // One tile per provider an account answers for, in the core's order: the
   // one still to download or sign into is Settings' business, one tile away.
-  expect(tiles()).toEqual(['favorites', 'claude', 'echo', 'opencode', 'codex', 'pi', 'grok', 'muse', 'more']);
+  expect(tiles()).toEqual(['home', 'claude', 'echo', 'opencode', 'codex', 'pi', 'grok', 'muse', 'more']);
   // Claude is the shown one and has two logins, so they sit beside its name.
   expect(seats()).toEqual(['claude::a-claude-main', 'claude::a-claude-side']);
   // On the provider's own login the chip names the model alone.
@@ -56,6 +64,7 @@ test('the picker rails the providers as logos and gives the shown one its accoun
   expect(query('[data-testid=composer-picker] .label').textContent?.trim()).toBe('Opus 5.5');
   expect(query('[data-testid=composer-picker-account]').textContent?.trim()).toBe(store.accountOf('a-claude-side')!.label);
   query<HTMLButtonElement>('[data-testid=composer-picker]').click();
+  await allModels();
   await waitFor(() => document.querySelector('[data-instance="claude::a-claude-side"]')?.getAttribute('aria-pressed') === 'true');
   query<HTMLButtonElement>('[data-testid=composer-picker]').click();
   await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') === null);
@@ -77,6 +86,7 @@ test('the picker reads an ACP agent models, showing the descriptor and a probing
 
   query<HTMLButtonElement>('[data-testid=composer-picker]').click();
   await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null);
+  await allModels();
   query<HTMLButtonElement>('[data-testid=composer-picker-menu] [data-provider=opencode]').click();
 
   // While the agent is being asked, its descriptor's one model stands.
@@ -118,6 +128,7 @@ test('past twelve models the column gets a search field, prefix groups and keybo
 
   query<HTMLButtonElement>('[data-testid=composer-picker]').click();
   await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null);
+  await allModels();
   await waitFor(() => document.querySelector('[data-testid=picker-search]') !== null);
   // Search is available even on the shorter Claude list.
   expect(document.querySelector('[data-testid=picker-search]')).not.toBeNull();
@@ -155,6 +166,7 @@ test('past twelve models the column gets a search field, prefix groups and keybo
 
   // A query nothing answers says so, and Escape clears it before it closes anything.
   query<HTMLButtonElement>('[data-testid=composer-picker]').click();
+  await allModels();
   await waitFor(() => document.querySelector('[data-testid=picker-search]') !== null);
   await type(query<HTMLInputElement>('[data-testid=picker-search]'), 'nothing here');
   await waitFor(() => document.querySelector('[data-testid=picker-no-models]') !== null);
@@ -188,7 +200,7 @@ test('the reasoning row names each level, sets the effort of the picked model, a
   expect(effortDots()).toEqual(['low', 'medium', 'high', 'xhigh', 'max', 'ultrathink']);
   // Every level by its name, in the model's order, inline in the popover: no second menu.
   expect(Array.from(document.querySelectorAll('[data-testid=composer-effort-menu] [data-value]')).map((el) => el.textContent?.trim()))
-    .toEqual(['Low', 'Medium', 'High', 'Extra high', 'Max', 'Deepest']);
+    .toEqual(['Low', 'Medium', 'High', 'Extra high', 'Max', 'Think longest']);
   // Nothing chosen yet, so the model's own default reads as the active one.
   expect(effortPicked()).toBe('high');
 
@@ -216,4 +228,36 @@ test('the reasoning row names each level, sets the effort of the picked model, a
   query<HTMLButtonElement>('[data-testid=composer-send]').click();
   await waitFor(() => store.openThread !== null && store.draft === null);
   expect(store.openThread?.effort).toBe('xhigh');
+});
+
+test('the picker opens on the models in use, one row each, with every provider behind All models', async ({ app: _app }) => {
+  vi.spyOn(store, 'favorites', 'get').mockReturnValue([
+    { providerId: 'claude', accountId: 'a-claude-main', model: { id: 'claude-sonnet-5-5', name: 'Sonnet 5.5' }, items: [] }
+  ]);
+  query<HTMLButtonElement>('[data-testid=new-thread]').click();
+  await waitFor(() => store.draft !== null);
+  await waitFor(() => query('[data-testid=composer-picker]').textContent?.includes('Opus 5.5') === true);
+
+  query<HTMLButtonElement>('[data-testid=composer-picker]').click();
+  const short = () => [...document.querySelectorAll<HTMLElement>('[data-testid=picker-shortlist] .row.model')].map((row) => [row.dataset.testid, row.title]);
+  await waitFor(() => short().length === 3);
+  // The star first, then the current choice, then the latest threads' model; no provider rail on this level, the effort row under it.
+  expect(short()).toEqual([['favorite-model', 'claude-sonnet-5-5'], ['recent-model', 'claude-opus-5-5'], ['recent-model', 'echo-1']]);
+  expect(query('[data-testid=picker-shortlist] .row.current .source').textContent).toContain(store.providerOf('claude')!.name);
+  expect(document.querySelector('[data-testid=composer-picker-menu] .rail')).toBeNull();
+  expect(document.querySelector('[data-testid=composer-effort-menu]')).not.toBeNull();
+  // The keys start on the current row.
+  expect(document.activeElement).toBe(query('[data-testid=picker-shortlist] .row.current'));
+
+  // All models opens the full frame, its first tile the way back.
+  query<HTMLButtonElement>('[data-testid=picker-all-models]').click();
+  await waitFor(() => tiles().length > 1);
+  expect(tiles()[0]).toBe('home');
+  query<HTMLButtonElement>('[data-testid=picker-back]').click();
+  await waitFor(() => short().length === 3);
+
+  // One click on a row picks it and closes.
+  query<HTMLButtonElement>('[data-testid=favorite-model]').click();
+  await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') === null);
+  expect(query('[data-testid=composer-picker]').textContent).toContain('Sonnet 5.5');
 });

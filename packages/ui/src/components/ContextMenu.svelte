@@ -197,13 +197,13 @@
     display: flex;
     flex-direction: column;
     gap: 1px;
-    animation: pop var(--dur-2) var(--ease-out-quint);
+    animation: pop var(--motion-in);
     transform-origin: top left;
     outline: none;
   }
 
   .context-menu.closing {
-    animation-name: pop-out;
+    animation: pop-out var(--motion-out);
     pointer-events: none;
   }
 
@@ -287,4 +287,7 @@
     margin: var(--space-1) var(--overlay-row-pad);
     background: var(--color-border);
   }
+
+  /* A rule only ever separates: none at either end of the menu, never two in a row. */
+  .rule:first-child, .rule:last-child, .rule + .rule { display: none; }
 </style>

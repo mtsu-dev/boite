@@ -126,7 +126,7 @@ test('the phone settings list the desktop\'s groups, General and Advanced hold t
   store.showSettings();
   await waitFor(home);
   expect(rows('mobile-settings-home')).toEqual([
-    'settings-tab-general', 'settings-tab-appearance', 'settings-tab-accounts', 'settings-tab-brain', 'settings-tab-usage', 'settings-tab-resources', 'mobile-settings-connection', 'settings-tab-advanced'
+    'settings-tab-general', 'settings-tab-appearance', 'settings-tab-accounts', 'settings-tab-brain', 'settings-tab-limits', 'settings-tab-resources', 'mobile-settings-connection', 'settings-tab-advanced'
   ]);
   // The header already says Settings, and the list's display options group the threads.
   expect(document.querySelector('[data-testid=mobile-settings-home] h1')).toBeNull();
@@ -140,7 +140,8 @@ test('the phone settings list the desktop\'s groups, General and Advanced hold t
   expect(query('[data-testid=settings]').dataset.detail).toBe('true');
   await back();
   await open('settings-tab-advanced', advanced);
-  expect(rows('mobile-settings-advanced')).toEqual(['mobile-settings-compaction', 'settings-tab-task-manager', 'settings-tab-diagnostics', 'settings-tab-experiments']);
+  // The task manager is the last section of Diagnostics, so the owner's index has no row of its own for it.
+  expect(rows('mobile-settings-advanced')).toEqual(['mobile-settings-compaction', 'settings-tab-experiments', 'settings-tab-diagnostics']);
   expect(document.querySelector('[data-testid=setting-group-working-threads]')).toBeNull();
 
   // Experiments are this phone's own: Bots on the computer does not give the phone its tab until it is switched on here.
@@ -178,10 +179,11 @@ test('the phone settings list the desktop\'s groups, General and Advanced hold t
   await back(general);
   await back();
 
-  query<HTMLButtonElement>('[data-testid=settings-tab-usage]').click();
-  await waitFor(() => document.querySelector('[data-testid=mobile-usage-tab-usage][aria-selected=true]') !== null);
-  query<HTMLButtonElement>('[data-testid=mobile-usage-tab-limits]').click();
+  // Usage is a page of Limits: the entry opens on the limits, its tab on the usage.
+  query<HTMLButtonElement>('[data-testid=settings-tab-limits]').click();
   await waitFor(() => store.settingsTab === 'limits' && document.querySelector('[data-testid=mobile-usage-tab-limits][aria-selected=true]') !== null);
+  query<HTMLButtonElement>('[data-testid=mobile-usage-tab-usage]').click();
+  await waitFor(() => store.settingsTab === 'usage' && document.querySelector('[data-testid=mobile-usage-tab-usage][aria-selected=true]') !== null);
   await back();
 
   // Appearance holds visual choices only, and leaves the desktop's rows behind.

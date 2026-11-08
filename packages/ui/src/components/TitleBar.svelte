@@ -123,8 +123,10 @@
   {/if}
   {#if threadHeader && (inShell || !mobile.current)}
     {#key store}<ThreadHeader {store} />{/key}
-  {:else if (store.page === 'agents' || store.page === 'settings') && titleSlot.current && !mobile.current}
+  {:else if titleSlot.current && !mobile.current}
+    <!-- A screen's one title, set by the screen itself (lib/title-slot.svelte.ts): its card then repeats no heading. -->
     {@render titleSlot.current()}
+    {#if titleSlot.actions}<span class="slot-actions">{@render titleSlot.actions()}</span>{/if}
   {:else if firstRun}
     <span class="name" aria-hidden="true"></span>
   {:else}
@@ -189,6 +191,7 @@
   .titlebar.mac { padding-right: 8px; }
   .sidebar-toggle { flex: none; }
   .narrow-settings { flex: none; display: none; margin-left: auto; }
+  .slot-actions { display: flex; flex: none; align-items: center; gap: 4px; margin-left: auto; padding-right: 8px; }
   @media (min-width: 721px) {
     /* Right of the app rail and the list column, which reach the window's top. */
     .titlebar { margin-left: var(--bar-left, 0px); }

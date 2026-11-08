@@ -20,7 +20,8 @@
    * in the thread and in the tooltip, never as a clock on the row.
    * `mark`: the desktop list's narrow end, where the title gets the width:
    * the user's turn is a dot and work its ring alone, their words in the
-   * tooltip and the accessible name. Only this file draws that dot.
+   * tooltip and the accessible name. Only this file draws that dot; where
+   * the word shows (a phone's row), it stays grey beside the amber dot.
    */
   let { thread, now, subagents = null, away = false, mark = false }: { thread: Pick<ThreadSummary, 'status' | 'unread' | 'runningSince' | 'requestSince' | 'backgroundWork' | 'openQuestions' | 'lastUserMessageAt' | 'createdAt'> & Partial<Pick<ThreadSummary, 'backgroundWait' | 'pullRequestWatches'>>; now: number; subagents?: WorkingChildren | null; away?: boolean; mark?: boolean } = $props();
 
@@ -95,7 +96,7 @@
     {:else if kind === 'watching'}<GitPullRequest size={11} class="pulse" aria-hidden="true" />
     {:else if kind === 'interrupted'}<CircleAlert size={11} aria-hidden="true" />
     {:else if kind === 'done'}<Check size={12} aria-hidden="true" />
-    {:else if kind === 'waiting' && bare}<span class="needs-dot" aria-hidden="true"></span>{/if}
+    {:else if kind === 'waiting'}<span class="needs-dot" aria-hidden="true"></span>{/if}
     {#if !bare}<span class="ui-label" data-testid={kind === 'delegating' ? 'thread-state-text' : undefined}>{strings.sidebar.state[kind]}</span>{/if}
   </span>
 {/if}
@@ -121,10 +122,11 @@
     color: var(--color-muted-foreground);
   }
   .working :global(.spinner) { color: var(--color-accent); }
+  /* Amber is the user's turn's mark, not its words: the dot carries it, the word beside it on a phone stays grey. */
   .waiting {
-    color: var(--color-live);
+    color: var(--color-muted-foreground);
   }
-  /* The user's turn on the desktop list: the one amber dot, the size of the ring beside work. */
+  /* The user's turn: the one amber dot, the size of the ring beside work, alone on the desktop list. */
   .needs-dot { width: 7px; height: 7px; margin: 0 2px; border-radius: var(--radius-full); background: var(--color-live); }
   .error {
     color: var(--color-danger);

@@ -4,9 +4,9 @@
 </script>
 
 <script lang="ts">
-  import { Columns2, Space } from '@lucide/svelte';
   import { diffCounts, diffRows, diffRowsOf, splitRows, type DiffRow, type DiffSource } from '../lib/diff';
-  import { diffPrefs, setDiffPref } from '../lib/diff-prefs.svelte';
+  import { diffPrefs } from '../lib/diff-prefs.svelte';
+  import DiffOptions from './DiffOptions.svelte';
   import { fill, strings } from '../lib/strings';
   import { codeLanguage, highlightCode } from '../lib/code-highlight';
   import { whenIdle } from '../lib/idle';
@@ -89,14 +89,7 @@
       {#if counts.removed > 0}
         <span class="count removed ui-label">{fill(strings.chat.diffRemoved, { count: String(counts.removed) })}</span>
       {/if}
-      <button type="button" class="ghost small icon toggle" data-testid="diff-whitespace" aria-pressed={diffPrefs.ignoreWhitespace}
-        title={strings.chat.diffIgnoreWhitespace} aria-label={strings.chat.diffIgnoreWhitespace}
-        onclick={() => setDiffPref('ignoreWhitespace', !diffPrefs.ignoreWhitespace)}><Space size={14} /></button>
-      {#if splittable}
-        <button type="button" class="ghost small icon toggle" data-testid="diff-split" aria-pressed={diffPrefs.split}
-          title={strings.chat.diffSideBySide} aria-label={strings.chat.diffSideBySide}
-          onclick={() => setDiffPref('split', !diffPrefs.split)}><Columns2 size={14} /></button>
-      {/if}
+      <DiffOptions split={splittable} />
     </div>
   {/if}
   <div class="rows mono">
@@ -205,7 +198,6 @@
   .rows {
     max-height: 320px;
     overflow-y: auto;
-    /* Long lines wrap inside the row on a wide column; a phone scrolls them (below). */
     overflow-x: hidden;
     padding: 4px 0;
   }
@@ -225,16 +217,6 @@
 
   .more {
     margin: 4px 10px;
-  }
-
-  .toggle {
-    flex: none;
-    color: var(--color-subtle);
-  }
-
-  .toggle[aria-pressed='true'] {
-    color: var(--color-foreground);
-    background: var(--color-surface-2);
   }
 
   /* Two halves of one line: each keeps its own number, sign and wrap. */
@@ -276,12 +258,16 @@
     user-select: none;
   }
 
+  /* Code wraps at every width, so no line is ever cut at the edge. A wrapped
+     line hangs 2ch in under its first, and only the first carries a number,
+     so a continuation never reads as a line of its own. */
   .text {
     flex: 1;
     min-width: 0;
-    padding-right: 10px;
+    padding: 0 10px 0 2ch;
+    text-indent: -2ch;
     white-space: pre-wrap;
-    word-break: break-word;
+    overflow-wrap: anywhere;
   }
 
   /* A changed line keeps its code's own colours on a light tint, marked by a
@@ -307,18 +293,10 @@
     font-size: var(--text-sm);
   }
 
-  /* A phone's column is too narrow to wrap code: a line broken mid-token
-     reads as two. Lines keep their shape and the rows scroll sideways
-     together, one track as wide as the longest, so every tint runs full.
-     The changes panel (`grow`) reads code the same way at any width. */
-  .grow .rows { display: grid; grid-template-columns: minmax(100%, max-content); overflow-x: auto; overscroll-behavior-x: contain; }
-  .grow .text { white-space: pre; word-break: normal; }
-  .grow .row.gap .text { white-space: nowrap; }
-  .grow .more { justify-self: start; }
+  .row.gap .text { text-indent: 0; }
+  /* A phone's column: a narrower number column leaves the code its width. */
   @media (max-width: 720px) {
-    .rows { display: grid; grid-template-columns: minmax(100%, max-content); overflow-x: auto; overscroll-behavior-x: contain; }
-    .text { white-space: pre; word-break: normal; }
-    .row.gap .text { white-space: nowrap; }
-    .more { justify-self: start; }
+    .num { width: 28px; padding-right: 6px; }
+    .gutter { width: 12px; }
   }
 </style>

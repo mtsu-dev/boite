@@ -16,15 +16,15 @@ export const strings = {
     /** The column of buttons down the window's left edge (AppRail.svelte). */
     rail: {
       label: 'Boite',
-      waitingOne: '1 waits for you',
-      waitingMany: '{count} wait for you',
+      waitingOne: '1 needs you',
+      waitingMany: '{count} need you',
       bots: 'Bots',
       add: 'New bot or team',
       botWaiting: '{name} needs you',
       botFailed: '{name} failed',
       botWorking: '{name} is at work',
       botPaused: '{name} is paused',
-      utilities: 'Machines and limits'
+      utilities: 'Account limits and machines'
     }
   }
 } as const;

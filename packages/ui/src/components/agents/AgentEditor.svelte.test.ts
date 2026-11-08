@@ -225,6 +225,9 @@ test('an agent\'s identity and model, edited side by side in its Settings tab, b
   // The runtime card moves the revision; the next identity edit still saves on top of it.
   document.querySelector<HTMLButtonElement>('[data-testid=agent-runtime] [data-testid=composer-picker]')!.click();
   await settle();
+  // The picker opens on the models in use; the provider's list sits behind All models.
+  document.querySelector<HTMLButtonElement>('[data-testid=picker-all-models]')?.click();
+  await settle();
   document.querySelector<HTMLButtonElement>('[data-model="claude-sonnet-5-5"]')!.click();
   await idle();
   const domain = document.querySelector<HTMLInputElement>('[data-testid=agent-editor] input[maxlength="500"]')!;

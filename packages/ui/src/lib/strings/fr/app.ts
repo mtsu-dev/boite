@@ -14,15 +14,15 @@ export const fr: Translation = {
     openSettings: 'Ouvrir les réglages',
     rail: {
       label: 'Boite',
-      waitingOne: '1 élément vous attend',
-      waitingMany: '{count} éléments vous attendent',
+      waitingOne: '1 a besoin de vous',
+      waitingMany: '{count} ont besoin de vous',
       bots: 'Bots',
       add: 'Nouveau bot ou équipe',
       botWaiting: '{name} a besoin de vous',
       botFailed: '{name} a échoué',
       botWorking: '{name} travaille',
       botPaused: '{name} est en pause',
-      utilities: 'Machines et limites'
+      utilities: 'Limites de compte et machines'
     }
   }
 };

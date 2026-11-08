@@ -6,7 +6,7 @@
   import { workspace } from '../lib/workspace.svelte';
   import { contextMenu } from '../lib/context-menu.svelte';
   import { canMove, moveBlocked, pendingLine, startThreadDrag, threadDrag } from '../lib/thread-move.svelte';
-  import { pickThreadAction, threadMenuItems } from '../lib/thread-menu';
+  import { pickThreadAction, threadMenuItems, threadToolItems } from '../lib/thread-menu';
   import { focusOnMount } from '../lib/actions';
   import { strings } from '../lib/strings';
   import ThreadHeadline, { pullRequestLabel } from './ThreadHeadline.svelte';
@@ -26,7 +26,8 @@
     compact = false,
     reason,
     at,
-    nested = false
+    nested = false,
+    where
   }: {
     machine: Machine;
     project: Project | undefined;
@@ -43,6 +44,8 @@
     at?: number;
     /** Activity: a sub-agent under its parent's row. */
     nested?: boolean;
+    /** Recent: where the row lives (its project, its machine among several), when the tile alone may not tell rows apart (lib/row-place.ts). */
+    where?: string;
   } = $props();
   let owner = $derived(machine.store);
   let open = $derived(workspace.active === owner && owner.openThread?.id === thread.id);
@@ -83,12 +86,16 @@
   function dragStart(event: PointerEvent) {
     if (movable) startThreadDrag(event, owner, { machineId: machine.id, threadId: thread.id, projectId: thread.projectId }, { title: thread.title, providerId: thread.providerId });
   }
+  /** The common actions first; All tools opens the rest in the same place, and Back returns. */
   function menu(event: MouseEvent) {
-    contextMenu.open(
-      event,
-      threadMenuItems(owner, thread, { open, showDone, prLoading: pr.loading }),
-      (action) => pickThreadAction(owner, thread, action, { rename, refreshPr: () => void pr.refresh(true) })
-    );
+    const options = { open, showDone, prLoading: pr.loading, grouped: true };
+    const main = threadMenuItems(owner, thread, options);
+    const pick = (action: string): void => {
+      if (action === 'more') return contextMenu.follow(threadToolItems(owner, thread, options), pick);
+      if (action === 'back') return contextMenu.follow(main, pick);
+      pickThreadAction(owner, thread, action, { rename, refreshPr: () => void pr.refresh(true) });
+    };
+    contextMenu.open(event, main, pick);
   }
 </script>
 
@@ -141,6 +148,7 @@
         <span class="reason" data-testid="thread-reason">{#if feedState !== null && feedState !== 'waiting'}<ThreadState {thread} {now} subagents={owner.subagents(thread.id)} away={owner.connection !== 'ready'} /><span class="sep" aria-hidden="true">·</span>{/if}<span class="text">{reason}</span></span>
       {:else}
         <ThreadHeadline {owner} {thread} {now} {open} tile={compact && !nested ? project : undefined} {pullRequest} mark />
+        {#if where}<span class="where ui-label" data-testid="thread-where">{where}</span>{/if}
       {/if}
       {#if pending}
         <span class="pending" data-testid="thread-pending" title={pending}><FolderInput size={12} /><span class="ui-label">{pending}</span></span>
@@ -220,6 +228,8 @@
   .reason .text { flex: 0 1 auto; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
   .reason .sep { flex: none; color: var(--color-subtle); }
   .compact.feed:not(.nested) .reason { padding-left: 26px; }
+  /* Recent's second line, on the title's edge: where the row lives, when the tile alone may not say it. */
+  .where { margin-top: -3px; padding-left: 26px; overflow: hidden; font-size: var(--text-xs); color: var(--color-subtle); text-align: start; text-overflow: ellipsis; white-space: nowrap; }
   .nested { margin-left: 26px; }
   /* The Recent list: a step wider inside, the project's tile first. */
   .compact .row { padding: 6px 10px; }

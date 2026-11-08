@@ -6,6 +6,7 @@
   import { feedPlace, feedThread, inbox } from '../lib/inbox.svelte';
   import { minuteClock } from '../lib/clock.svelte';
   import { strings } from '../lib/strings';
+  import { count } from '../lib/format';
   import ThreadCard from './ThreadCard.svelte';
   import EmptyState from './EmptyState.svelte';
 
@@ -25,6 +26,8 @@
   }), feedPlace));
   const needs = $derived(rows.filter(row => row.section === 'needs'));
   const updates = $derived(rows.filter(row => row.section === 'updates'));
+  /** The section's number, the rail's badge's: its top rows (a sub-agent counts on its parent) and what contacts ask. */
+  const needsCount = $derived(needs.filter(row => !row.nested).length + inbox.contacts);
   const now = $derived(minuteClock.now);
 
   let ContactInboxRows = $state<typeof import('./home/ContactInboxRows.svelte').default>();
@@ -48,10 +51,10 @@
 
 <svelte:window onkeydowncapture={onkeydown} />
 
-<section class="activity-page" data-testid="activity-list" aria-labelledby="activity-heading">
+<!-- The window's band names the page, in its empty state too: the card carries no second title. -->
+<section class="activity-page" data-testid="activity-list" aria-label={strings.mobile.activity}>
   <div class="column">
-    <h1 id="activity-heading">{strings.mobile.activity}</h1>
-    {#if needs.length > 0 || inbox.contacts > 0}<h2 class="section-label" data-testid="activity-needs">{strings.sidebar.state.waiting}</h2>{/if}
+    {#if needsCount > 0}<h2 class="section-label" data-testid="activity-needs" data-count={needsCount}>{strings.sidebar.state.waiting}<span class="count">{count(needsCount)}</span></h2>{/if}
     {#if ContactInboxRows && contactsShown(store)}<ContactInboxRows {store} />{/if}
     {#each needs as row (`${row.machine.id}:${row.thread.id}`)}
       <ThreadCard machine={row.machine} project={row.project} thread={row.thread} {now} compact reason={row.reason} at={row.at} nested={row.nested} />
@@ -71,10 +74,11 @@
   .activity-page { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; }
   /* A reading column, as the chat's: rows of a thread's width read better than rows of the screen's. */
   .column { display: flex; flex-direction: column; gap: 2px; width: min(100%, 720px); min-height: 100%; margin: 0 auto; padding: var(--space-8) var(--space-6) var(--space-6); }
-  h1 { margin: 0 0 var(--space-4) var(--space-3); font-size: var(--text-lg); font-weight: 650; letter-spacing: -0.015em; color: var(--color-foreground); }
   /* A section's name over its rows, from the rows' text edge; the next section stands off the last row. */
   h2 { margin: 0 0 var(--space-2) var(--space-3); }
   h2 ~ h2 { margin-top: var(--space-6); }
+  /* The section's count, the rail badge's number: amber marks it, the word stays grey. */
+  h2 .count { margin-left: 6px; color: var(--color-live); font-variant-numeric: tabular-nums; }
   /* A reading column's rows: a step taller than the list's. */
   .column :global([data-testid=thread-row] .row) { padding-block: 8px; }
 </style>

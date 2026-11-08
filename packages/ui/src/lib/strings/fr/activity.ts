@@ -10,6 +10,7 @@ export const fr: Translation = {
     questionNext: 'Question suivante',
     questionFold: 'Replier la question',
     questionUnfold: 'Déplier la question',
+    questionSetAside: 'Replier la question et écrire un message',
     subagentAsks: 'Demandé par {title}',
     subagentPermission: '{title} attend votre autorisation',
     openSubagent: 'Ouvrir',

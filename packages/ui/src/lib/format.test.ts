@@ -42,7 +42,7 @@ test('durations, sizes, effort levels and quota windows follow the language the 
   expect(millis(38_000)).toBe('38.0 s');
   // Xhigh and ultrathink read in plain words, whatever label the core sends; the tooltip keeps the agent's word.
   expect(levelName({ id: 'xhigh', label: 'Xhigh' })).toBe('Extra high');
-  expect(levelName({ id: 'ultrathink', label: 'Ultrathink' })).toBe('Deepest');
+  expect(levelName({ id: 'ultrathink', label: 'Ultrathink' })).toBe('Think longest');
   expect(levelTitle({ id: 'ultrathink', description: 'Extended thinking' })).toBe('Extended thinking (ultrathink)');
   expect(levelTitle({ id: 'high', description: 'Deeper reasoning' })).toBe('Deeper reasoning');
   await setLocaleSetting('fr');

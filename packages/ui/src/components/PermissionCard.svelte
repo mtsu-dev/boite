@@ -7,6 +7,7 @@
   import CodeText from './CodeText.svelte';
   import Deferred, { parts } from './Deferred.svelte';
   import InfoTip from './InfoTip.svelte';
+  import DecisionHead from './DecisionHead.svelte';
 
   let {
     toolName,
@@ -79,12 +80,21 @@
 {#if docked}
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div class="permission docked" data-testid="permission-card" data-decision="pending" data-family={described.family} role="group" aria-label={sentence} tabindex="-1" {@attach keys}>
-  <div class="dock-head">
-    <span class="tag"><span class="ui-label">{strings.chat.permissionNeedsYou}</span></span>
+  <DecisionHead>
     <span class="sentence ui-label" data-testid="permission-sentence" title={described.subject || toolName}>{sentence}</span>
     {#if request}<InfoTip text={`${why ? `${why}\n\n` : ''}${toolName}\n${json(request.input)}`} topic={sentence} testid="permission-input" />{/if}
-    {#if total > 1}<span class="count ui-label" data-testid="permission-count">{fill(strings.chat.permissionOf, { index: String(index), total: String(total) })}</span>{/if}
-  </div>
+    {#snippet end()}
+      <span class="choices" aria-busy={sending !== null}>
+        {#if total > 1}<span class="count ui-label" data-testid="permission-count">{fill(strings.chat.permissionOf, { index: String(index), total: String(total) })}</span>{/if}
+        <button type="button" class="ghost choice" data-testid="permission-deny" disabled={sending !== null} onclick={() => void choose('deny')}>
+          <span class="ui-label">{strings.chat.deny}</span><kbd aria-hidden="true">{strings.chat.keyEscape}</kbd>
+        </button>
+        <button type="button" class="choice allow" data-testid="permission-allow" disabled={sending !== null || previewMissing} onclick={() => void choose('allow')}>
+          <span class="ui-label">{strings.chat.allow}</span><kbd aria-hidden="true"><CornerDownLeft size={11} strokeWidth={2} /></kbd>
+        </button>
+      </span>
+    {/snippet}
+  </DecisionHead>
   {#if subjectBlock}
     <pre class="mono subject" data-testid="permission-subject">{subjectBlock}</pre>
   {/if}
@@ -92,15 +102,6 @@
     {@const change = described.change}
     <Deferred part={parts.DiffView}>{#snippet children(DiffView)}<DiffView path={change.path} oldText={change.oldText} newText={change.newText} doc={change} />{/snippet}</Deferred>
   {/if}
-  <div class="foot" aria-busy={sending !== null}>
-    <span class="why" title={why || undefined}><CodeText text={why} /></span>
-    <button type="button" class="ghost choice" data-testid="permission-deny" disabled={sending !== null} onclick={() => void choose('deny')}>
-      <span class="ui-label">{strings.chat.deny}</span><kbd aria-hidden="true">{strings.chat.keyEscape}</kbd>
-    </button>
-    <button type="button" class="choice allow" data-testid="permission-allow" disabled={sending !== null || previewMissing} onclick={() => void choose('allow')}>
-      <span class="ui-label">{strings.chat.allow}</span><kbd aria-hidden="true"><CornerDownLeft size={11} strokeWidth={2} /></kbd>
-    </button>
-  </div>
 </div>
 {:else}
 <div
@@ -260,17 +261,12 @@
     outline: none;
   }
   .docked:focus-visible { box-shadow: inset 0 0 0 2px var(--color-accent); }
-  .dock-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
-  .dock-head .sentence { flex: 0 1 auto; min-width: 0; font-size: var(--text-base); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-  .dock-head :global(.info-tip) { flex: none; margin: 0; }
+  .docked .sentence { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .docked :global(.info-tip) { flex: none; }
   .docked :global(.info-bubble) { font-family: var(--font-mono); font-size: var(--text-xs); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 50vh; overflow: auto; }
-  /* What waits on the owner, quietly: a small live dot and a muted word, no fill. */
-  .tag { flex: none; height: 22px; gap: 6px; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; display: inline-flex; align-items: center; }
-  .tag::before { content: ''; width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--color-live); }
-  .count { flex: none; margin-left: auto; color: var(--color-muted-foreground); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
-  .docked pre { max-height: 120px; padding: 9px 12px; border-radius: var(--radius-md); background: var(--color-surface); font-size: 12.5px; }
-  .foot { display: flex; align-items: center; gap: 6px; min-width: 0; }
-  .why { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--color-muted-foreground); font-size: var(--text-sm); }
+  .choices { display: flex; align-items: center; gap: 6px; }
+  .count { flex: none; color: var(--color-muted-foreground); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+  .docked pre { max-height: 120px; padding: 9px 12px; border-radius: var(--radius-md); background: var(--color-surface); font-size: var(--text-meta); }
   .choice { flex: none; height: 30px; gap: 8px; padding: 0 12px; border-radius: var(--radius-md); font-size: var(--text-sm); font-weight: 600; }
   /* Neutral ink, never the accent: the accent stays for send. */
   .choice.allow { background: var(--color-foreground); color: var(--color-background); }
@@ -279,13 +275,5 @@
   @media (max-width: 720px) {
     .choice kbd { display: none; }
     .choice { height: var(--touch-target); padding: 0 12px; }
-    /* A phone puts the choices on the head's row and the reason one "i" away
-       in the head, so the ask takes two rows over the field, not four. */
-    .permission.docked { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 8px; }
-    .docked > :global(:not(.dock-head, .foot)) { grid-column: 1 / -1; }
-    .docked .dock-head { grid-area: 1 / 1; }
-    .docked .foot { grid-area: 1 / 2; }
-    .docked .tag > .ui-label { display: none; }
-    .why { display: none; }
   }
 </style>

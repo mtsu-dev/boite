@@ -54,7 +54,9 @@ test('Activity gives each row its reason and its time, a sub-agent under its par
   expect(reasons.some(reason => /^Wants to run /.test(reason) || asked.includes(reason))).toBe(true);
   // Triage: what asks the user under "Needs you", before the updates' heading when there is one.
   const needs = document.querySelector<HTMLElement>('[data-testid=activity-needs]')!;
-  expect(needs.textContent).toBe('Needs you');
+  // The section says its number, the tab badge's own: one count for both.
+  expect(needs.firstChild?.textContent).toBe('Needs you');
+  expect(needs.querySelector('.feed-count')?.textContent).toBe(document.querySelector('[data-testid=mobile-activity-waiting]')?.textContent);
   const updates = document.querySelector<HTMLElement>('[data-testid=activity-updates]');
   const asking = rows.find(row => asked.includes(row.querySelector('[data-testid=mobile-row-reason] .text')?.textContent ?? '') || /^Wants to run /.test(row.textContent ?? ''))!;
   expect(needs.compareDocumentPosition(asking) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -140,6 +142,15 @@ test('the header holds the search, opened in place, and the new thread; the bar 
   const threadId = row.dataset['threadId'];
   row.querySelector('[data-testid^=mobile-thread-]')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })); await settle();
   expect(id(`mobile-thread-menu-${threadId}-menu`)?.querySelector('[data-value=rename]')).not.toBeNull();
+  // Common actions first; a new title and the rest behind All tools, which opens in place and comes back.
+  const menuValues = () => Array.from(id(`mobile-thread-menu-${threadId}-menu`)?.querySelectorAll<HTMLElement>('[data-value]') ?? []).map(item => item.dataset['value']);
+  expect(menuValues()).not.toContain('retitle');
+  id(`mobile-thread-menu-${threadId}-menu`)!.querySelector<HTMLElement>('[data-value=more]')!.click(); await settle();
+  expect(menuValues()[0]).toBe('back');
+  expect(menuValues()).toContain('retitle');
+  expect(menuValues()).not.toContain('copy');
+  id(`mobile-thread-menu-${threadId}-menu`)!.querySelector<HTMLElement>('[data-value=back]')!.click(); await settle();
+  expect(menuValues()).toContain('rename');
 
   // The new thread is the header's neutral "+", out of the bottom bar.
   expect(document.querySelector('[data-testid=mobile-tabs] [data-testid=mobile-new]')).toBeNull();

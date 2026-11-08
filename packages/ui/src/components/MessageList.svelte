@@ -744,7 +744,7 @@
     hasOlder={store.messagesBefore !== null} loading={store.loadingOlder} loadOlder={() => { if (viewport) { releaseNavigation(); viewport.scrollTop = rows[0]?.gap ? Math.max(0, (totals(rows)[1] ?? 0) - viewport.clientHeight) : 0; pinned = false; loadAbove(viewport); } }} />{/if}
   <!-- Input releases restored and navigation anchors; programmatic corrections keep them. A tap on a phone shows a message's buttons. -->
   <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
-  <div class="timeline" class:behind bind:this={viewport} use:watchWheel={onwheel} use:selectionClicks onclick={reveal.tap} {onscroll} ontouchstart={press} onpointerdown={press} onpointerover={(event) => { pointed = pointedTurn(event); }} onpointerleave={() => { pointed = null; }} onkeydown={releaseNavigation} style:padding-top="{20 + promptLead}px" style:overflow-anchor={timeline.at(-1)?.state === 'streaming' ? 'none' : undefined} data-testid="timeline" data-media-gallery data-scroll-root>
+  <div class="timeline" class:behind class:cut={scrollTop > 1} bind:this={viewport} use:watchWheel={onwheel} use:selectionClicks onclick={reveal.tap} {onscroll} ontouchstart={press} onpointerdown={press} onpointerover={(event) => { pointed = pointedTurn(event); }} onpointerleave={() => { pointed = null; }} onkeydown={releaseNavigation} style:padding-top="{20 + promptLead}px" style:overflow-anchor={timeline.at(-1)?.state === 'streaming' ? 'none' : undefined} data-testid="timeline" data-media-gallery data-scroll-root>
     <div class="column" bind:this={column}>
       <!-- paging: the one line the top of the list shows while a page is in flight. -->
       {#if store.loadingOlder}<p class="loading-older" data-testid="loading-older">{strings.chat.loadingOlder}</p>{/if}
@@ -765,7 +765,7 @@
           class="message {message.role}"
           class:rest={!row.first} {...reveal.attrs(message)}
           data-seam={joined}
-          style:margin-top={joined && `calc(var(--chat-${joined}-gap) - var(--chat-message-gap))`}
+          style:margin-top={joined && 'calc(var(--chat-block-gap) - var(--chat-message-gap))'}
           data-testid={row.first ? 'message' : 'message-rest'}
           data-role={group ? 'agent-mail' : message.role} data-turn={message.turnId}
         >
@@ -845,23 +845,28 @@
     /* Balance the outline rail on both sides; keep room below for the activity overlay. */
     padding: 20px var(--outline-room) calc(var(--dock-room, 0px) + 20px);
     overscroll-behavior: contain;
-    /* A phone's toast sits under the header in room taken from the top of the
-       timeline (notify-corner.ts), so it covers no line of the thread. */
+    /* The toasts sit under the header in room taken from the top of the
+       timeline (notify-corner.ts), so they cover no line of the thread. */
     margin-top: var(--corner-room, 0px);
     transition: margin-top var(--dur-2) var(--ease-out-quint);
   }
 
   /* Where the timeline meets the band, it fades into its own background
-     instead of stopping on a hard edge, so a card or a table never reads as
-     sliced; at the end the fade only covers the bottom padding. Scrolled up,
-     what continues below fades longer. */
+     instead of stopping on a hard edge, so a card, a table or the day's pill
+     never reads as sliced. The bottom fade ends where the dock above the
+     composer starts (--dock-room), so no line shows half legible behind it;
+     at the end it covers only the bottom padding, and scrolled up, what
+     continues below fades longer. The top fades once something scrolled
+     past it. */
   .timeline {
-    mask-image: linear-gradient(to bottom, currentColor calc(100% - 20px), transparent);
+    --fade-top: 0px;
+    --fade-end: 20px;
+    mask-image: linear-gradient(to bottom, transparent, currentColor var(--fade-top), currentColor calc(100% - var(--dock-room, 0px) - var(--fade-end)), transparent calc(100% - var(--dock-room, 0px)));
   }
 
-  .timeline.behind {
-    mask-image: linear-gradient(to bottom, currentColor calc(100% - 44px), transparent);
-  }
+  .timeline.cut { --fade-top: 20px; }
+
+  .timeline.behind { --fade-end: 44px; }
 
   .column {
     flex: none;

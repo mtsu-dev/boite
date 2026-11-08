@@ -33,27 +33,11 @@
     ...runs.map((run) => ({ key: run.id, name: run.name, startedAt: run.createdAt, kind: 'workflow', open: () => store.panel.openWorkflow(run.id), workflow: true }))
   ]);
 
-  /*
-   * One line at every width, each entry whole and its own (never folded into
-   * a count): what does not fit scrolls sideways, a fade marks the side that
-   * has more (in CSS, from the scroll itself), and a mouse wheel scrolls it too.
-   */
-
-  // Non-passive, so a vertical wheel over an overflowing line moves it instead of the page.
-  function sideways(node: HTMLElement) {
-    const onwheel = (event: WheelEvent) => {
-      if (node.scrollWidth <= node.clientWidth || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
-      event.preventDefault();
-      node.scrollLeft += event.deltaY;
-    };
-    node.addEventListener('wheel', onwheel, { passive: false });
-    return { destroy: () => node.removeEventListener('wheel', onwheel) };
-  }
 </script>
 
 {#if entries.length > 0}
   <div class="dock" data-testid="agent-dock">
-    <div class="entries" role="group" use:sideways data-testid="active-subagents" data-count={active.length + native.length} data-runs={runs.length}>
+    <div class="entries" role="group" data-testid="active-subagents" data-count={active.length + native.length} data-runs={runs.length}>
       {#each entries as entry (entry.key)}
         <button type="button" class="entry" data-testid="active-subagent" data-kind={entry.kind} title={entry.name} onclick={entry.open}>
           <StatusMark {...entry.workflow ? workflowTone('running', true) : threadTone('running')} />
@@ -66,43 +50,31 @@
 {/if}
 
 <style>
-  /* Its one line in the strip, the way back at its right end. */
+  /* Its rows in the strip, the way back at its right end. */
   .dock { display: contents; }
+  /* Every entry whole at every width: what does not fit one row wraps to the
+     next (never cut at the screen's edge, never folded into a count), and a
+     long run scrolls inside three rows. */
   .entries {
     display: flex;
-    gap: 4px;
+    flex-wrap: wrap;
+    gap: 2px 4px;
     flex: 1 1 0;
     min-width: 0;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
+    max-height: calc(3 * 28px + 4px);
+    overflow-y: auto;
     scrollbar-width: none;
   }
   .entries::-webkit-scrollbar { display: none; }
-  /* The fades follow the line's own scroll: none while it fits (no scroll, no
-     timeline), the end's at its start, both midway, the start's at its end. */
-  @property --fade-start { syntax: '<length>'; inherits: false; initial-value: 0px; }
-  @property --fade-end { syntax: '<length>'; inherits: false; initial-value: 0px; }
-  @keyframes edge-fades {
-    from { --fade-start: 0px; --fade-end: 28px; }
-    8% { --fade-start: 28px; }
-    92% { --fade-end: 28px; }
-    to { --fade-start: 28px; --fade-end: 0px; }
-  }
-  @supports (animation-timeline: scroll()) {
-    .entries {
-      mask-image: linear-gradient(to right, transparent, currentColor var(--fade-start), currentColor calc(100% - var(--fade-end)), transparent);
-      animation: edge-fades linear both;
-      animation-timeline: scroll(self inline);
-    }
-  }
-  /* Quiet one-line entries: no pill, the mark and the name; a hover shows the button. */
-  .entry { flex: none; max-width: 16rem; height: 28px; gap: 6px; padding: 0 8px; border: none; border-radius: var(--radius-md); background: transparent; box-shadow: none; color: var(--color-foreground); font-size: var(--text-sm); font-weight: 500; overflow: hidden; }
-  .entry:hover { background: var(--color-hover); }
+  /* Quiet secondary entries: no pill, the mark and the name in muted ink; a hover brings the ink and the button. */
+  .entry { flex: 0 1 auto; min-width: 0; max-width: 100%; height: 28px; gap: 6px; padding: 0 8px; border: none; border-radius: var(--radius-md); background: transparent; box-shadow: none; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 400; overflow: hidden; }
+  .entry:hover { background: var(--color-hover); color: var(--color-foreground); }
   .name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .entry :global(.elapsed) { flex: none; color: var(--color-muted-foreground); font-weight: 400; font-variant-numeric: tabular-nums; }
+  .entry :global(.elapsed) { flex: none; color: var(--color-subtle); font-variant-numeric: tabular-nums; }
   /* A phone gives the names the room: the mark says it runs, the panel says how long. */
   @media (max-width: 720px) {
-    .entry { max-width: 12rem; }
+    .entries { max-height: calc(3 * var(--touch-target) + 4px); }
+    .entry { height: var(--touch-target); padding: 0 6px; }
     .entry :global(.elapsed) { display: none; }
   }
 </style>

@@ -259,8 +259,8 @@
   --color-foreground: #ededef;
   /* Both text tiers clear 4.5:1 on every surface in both themes, subtle above 5.7:1 even on
      surface-3: it carries times and states, which must read as well as any secondary line (lib/contrast.test.ts). */
-  --color-muted-foreground: #d4d4d8;
-  --color-subtle: #bbbbc1;
+  --color-muted-foreground: #dadade;
+  --color-subtle: #c2c2c8;
   /* Below reading contrast: a disabled mark, a placeholder glyph, never words that must be read. */
   --color-faint: #4a4a50;
   /* A switch: a dark track off; on takes the accent, the one surface it may fill, so on and off never differ by grey alone. */
@@ -359,6 +359,13 @@
   --color-control-hover: var(--color-surface-3);
   --color-control-primary-hover: var(--color-accent);
   --color-control-strong-hover: var(--color-foreground);
+  /* The one primary button form, on every page and platform: filled in the text colour
+     (white in dark, near black in light). The accent never fills a primary: it stays on
+     the send button, focus, switches and small marks. `button.primary` wears these; a
+     link drawn as a primary takes them too. */
+  --primary-fill: var(--color-foreground);
+  --primary-ink: var(--color-on-foreground);
+  --primary-hover: var(--color-control-strong-hover);
   --shadow-control: inset 0 1px 0 rgb(255 255 255 / 0.06);
 
   --font-fallback: ui-sans-serif, system-ui, 'Segoe UI Variable Text', 'Segoe UI', sans-serif;
@@ -380,12 +387,18 @@
   --font-sans: var(--face-inter);
   --font-mono: var(--face-mono-geist);
 
-  /* Four steps and a 12 px floor. A desktop's meta (times, counts, hints) reads at
-     13 px, so there xs and sm are one size; a phone, held closer, keeps 12. */
-  --text-xs: 13px;
-  --text-sm: 13px;
-  --text-base: 14px;
-  --text-md: 16px;
+  /* Three sizes the chrome speaks in: a title (a card or a section), the body
+     (a row, a control, a menu) and meta (times, counts, hints, labels), meta at
+     13 px everywhere, a step over the 11 and 12 px hints it replaces. A component
+     picks one of the three; xs and sm are meta, md the title, lg only a
+     screen's own large title on a phone. Prose reads at `--text-reading`. */
+  --text-meta: 13px;
+  --text-body: 14px;
+  --text-title: 16px;
+  --text-xs: var(--text-meta);
+  --text-sm: var(--text-meta);
+  --text-base: var(--text-body);
+  --text-md: var(--text-title);
   --text-lg: 20px;
   /* What a conversation is read and written in: one step above the chrome,
      16 px everywhere, so the composer types at the size the prose reads. */
@@ -502,6 +515,18 @@
   --dur-demo-step: 220ms;
   --dur-demo-word: 150ms;
   --ease-slide: cubic-bezier(0.2, 0, 0, 1);
+  /* One motion set for whatever opens and closes: a menu, a popover, a dialog, a
+     sheet, a toast, a fold. It enters in --dur-enter on --ease-enter and leaves
+     quicker on --ease-exit; `--motion-in` and `--motion-out` are the pairs to put
+     after an animation's name. `--motion` scales every move in their keyframes:
+     reduced motion sets it to 0, so the same entrance plays as a short fade. */
+  --dur-enter: 200ms;
+  --dur-exit: 140ms;
+  --ease-enter: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --motion-in: var(--dur-enter) var(--ease-enter);
+  --motion-out: var(--dur-exit) var(--ease-exit);
+  --motion: 1;
   --z-whip: 100;
   --z-window-resize: 11000;
   --window-resize-edge: 5px;
@@ -929,6 +954,10 @@ html[data-chat-width='full'] {
     --dur-3: 0.01ms;
     --dur-slide: 0.01ms;
     --dur-slide-out: 0.01ms;
+    /* Nothing moves; what opens and closes still fades, briefly, so it never pops in a frame. */
+    --motion: 0;
+    --dur-enter: 120ms;
+    --dur-exit: 90ms;
   }
 }
 
@@ -940,6 +969,9 @@ html[data-motion='reduced'] {
   --dur-3: 0.01ms;
   --dur-slide: 0.01ms;
   --dur-slide-out: 0.01ms;
+  --motion: 0;
+  --dur-enter: 120ms;
+  --dur-exit: 90ms;
 }
 
 /* Every endless animation but a tour picture's plays `var(--loops)`
@@ -1183,14 +1215,14 @@ button.primary:disabled {
    control, semibold for the one action a view leads with. */
 button.primary {
   font-weight: 600;
-  background: var(--control-glaze) var(--color-foreground);
-  border-color: var(--color-foreground);
-  color: var(--color-on-foreground);
+  background: var(--control-glaze) var(--primary-fill);
+  border-color: var(--primary-fill);
+  color: var(--primary-ink);
 }
 
 @media (hover: hover) {
   button.primary:hover:not(:disabled) {
-    background: var(--control-glaze) var(--color-control-strong-hover);
+    background: var(--control-glaze) var(--primary-hover);
   }
 }
 
@@ -2186,7 +2218,7 @@ html[data-glass] #app {
 @keyframes rise {
   from {
     opacity: 0;
-    transform: translateY(4px);
+    transform: translateY(calc(4px * var(--motion)));
   }
   to {
     opacity: 1;
@@ -2197,7 +2229,7 @@ html[data-glass] #app {
 @keyframes pop {
   from {
     opacity: 0;
-    transform: scale(0.97);
+    transform: scale(calc(1 - 0.03 * var(--motion)));
   }
   to {
     opacity: 1;
@@ -2213,7 +2245,7 @@ html[data-glass] #app {
   }
   to {
     opacity: 0;
-    transform: scale(0.97);
+    transform: scale(calc(1 - 0.03 * var(--motion)));
   }
 }
 
@@ -2257,11 +2289,11 @@ html[data-glass] #app {
 
 /* A phone's bottom sheet rises from below the screen and goes back down. */
 @keyframes sheet-up {
-  from { transform: translateY(calc(100% + 40px)); }
+  from { transform: translateY(calc((100% + 40px) * var(--motion))); opacity: calc(1 - var(--motion)); }
 }
 
 @keyframes sheet-down {
-  to { transform: translateY(calc(100% + 40px)); }
+  to { transform: translateY(calc((100% + 40px) * var(--motion))); opacity: calc(1 - var(--motion)); }
 }
 
 @keyframes pulse {
@@ -2321,19 +2353,19 @@ input[type=checkbox][role=switch]:disabled { opacity: .45; cursor: not-allowed; 
 /* Under a finger the outline rail is a touch target wide (MessageOutline.svelte): the text starts past it. */
 @media (pointer: coarse) { :root { --outline-room: calc(var(--touch-target) + 4px); } }
 @media (max-width: 720px) {
-  .mobile-sheet-backdrop { position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; border-radius: 0; background: var(--color-scrim); animation: fade var(--dur-2) var(--ease-out-quint); }
-  .mobile-sheet-backdrop.closing { animation-name: fade-out; pointer-events: none; }
+  .mobile-sheet-backdrop { position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; border-radius: 0; background: var(--color-scrim); animation: fade var(--motion-in); }
+  .mobile-sheet-backdrop.closing { animation: fade-out var(--motion-out); pointer-events: none; }
   /* The one phone sheet (lib/floating.ts): docked to the bottom edge, rounded on top only, a grabber
      over real top air, and the home indicator's room under its last row. The grabber sits out of the
      flow, so a grid or flex sheet keeps its own layout. */
   [data-mobile-sheet='true'] { position: fixed !important; max-width: none !important; box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain; border-width: 1px 0 0 !important; border-radius: var(--radius-xl) var(--radius-xl) 0 0 !important; padding-top: var(--space-6) !important; padding-bottom: max(var(--space-3), env(safe-area-inset-bottom)) !important; }
   [data-mobile-sheet='true']::before { content: ''; position: absolute; top: var(--space-2); left: calc(50% - 18px); width: 36px; height: 5px; border-radius: var(--radius-full); background: var(--color-edge); pointer-events: none; }
   /* A sheet rises from the bottom edge and goes back down, where its popover pops in place (lib/floating.ts). */
-  [data-mobile-sheet='true'] { animation-name: sheet-up !important; animation-duration: var(--dur-3) !important; animation-timing-function: var(--ease-slide) !important; }
-  [data-mobile-sheet='true'].closing { animation-name: sheet-down !important; }
+  [data-mobile-sheet='true'] { animation-name: sheet-up !important; animation-duration: var(--dur-enter) !important; animation-timing-function: var(--ease-enter) !important; }
+  [data-mobile-sheet='true'].closing { animation-name: sheet-down !important; animation-duration: var(--dur-exit) !important; animation-timing-function: var(--ease-exit) !important; }
   /* No outline rail on a phone (MessageList.svelte): the timeline's left edge matches its right. */
   :root { --outline-room: 20px; }
-  :root { --text-xs: 12px; --settings-padding: var(--space-4); --control: var(--touch-target); --control-sm: var(--touch-target); --control-lg: var(--touch-target); --input: var(--touch-target); --row: var(--touch-target); }
+  :root { --settings-padding: var(--space-4); --control: var(--touch-target); --control-sm: var(--touch-target); --control-lg: var(--touch-target); --input: var(--touch-target); --row: var(--touch-target); }
   input, textarea { font-size: var(--text-md); }
   button.icon { min-width: var(--touch-target); min-height: var(--touch-target); }
   .composer-wrap { padding-bottom: max(10px, env(safe-area-inset-bottom)); }

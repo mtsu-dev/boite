@@ -98,7 +98,16 @@ test("a phone's header is back, the title and one menu: the thread's tools, then
   expect(new Set(ids).size).toBe(ids.length);
   expect(menu.textContent).not.toMatch(/contact/i);
   expect([...menu.querySelectorAll('[data-row]')].filter(row => row.textContent?.trim() === 'Browser')).toHaveLength(1);
-  menu.querySelector<HTMLButtonElement>('[data-value="phone-browser-toggle"]')!.click(); await settle();
+  // The thread's actions group as a phone row's do: the rest waits behind All tools, with a way back.
+  expect(rows.at(-1)).toBe('delete');
+  expect(rows).toContain('more');
+  expect(rows).not.toContain('retitle');
+  menu.querySelector<HTMLButtonElement>('[data-value="more"]')!.click(); await settle();
+  const toolRows = [...document.querySelector<HTMLElement>('[data-testid=thread-menu-trigger-menu]')!.querySelectorAll<HTMLElement>('[data-value]')].map(node => node.dataset['value']);
+  expect(toolRows.slice(0, 2)).toEqual(['back', 'retitle']);
+  document.querySelector<HTMLButtonElement>('[data-testid=thread-menu-trigger-menu] [data-value="back"]')!.click(); await settle();
+  const back = document.querySelector<HTMLElement>('[data-testid=thread-menu-trigger-menu]')!;
+  back.querySelector<HTMLButtonElement>('[data-value="phone-browser-toggle"]')!.click(); await settle();
   expect([store.panelOpen, store.panel.active?.kind]).toEqual([true, 'agent-browser']);
 });
 

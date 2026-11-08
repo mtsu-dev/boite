@@ -51,10 +51,12 @@ test('the whitespace switch hides reindented lines for every diff and remembers 
   running = mount(DiffView, { target: document.body, props: { path: 'a.ts', oldText: 'if (a) {\n  run();\n}\n', newText: 'if (a) {\n    run();\n}\n' } });
   flushSync();
   expect(document.querySelectorAll('[data-testid=diff-row]')).toHaveLength(2 + 2);
-  const toggle = document.querySelector<HTMLButtonElement>('[data-testid=diff-whitespace]')!;
-  toggle.click();
+  // The switch lives in the head's named "View" menu, not behind a bare glyph.
+  document.querySelector<HTMLButtonElement>('[data-testid=diff-options]')!.click();
   flushSync();
-  expect(toggle.getAttribute('aria-pressed')).toBe('true');
+  document.querySelector<HTMLButtonElement>('[data-testid=diff-whitespace]')!.click();
+  flushSync();
+  expect(document.querySelector('[data-testid=diff-whitespace]')!.getAttribute('aria-checked')).toBe('true');
   expect(diffPrefs.ignoreWhitespace).toBe(true);
   expect(JSON.parse(localStorage.getItem('boite.diffView')!)).toEqual({ split: false, ignoreWhitespace: true });
   expect(document.querySelectorAll('[data-testid=diff-row]')).toHaveLength(0);

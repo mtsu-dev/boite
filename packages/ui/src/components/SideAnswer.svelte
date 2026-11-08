@@ -46,8 +46,8 @@
   .close { position: absolute; top: 6px; right: 8px; }
   .content { padding: 8px 42px 8px 10px; max-height: 40dvh; overflow: auto; overflow-wrap: anywhere; }
   footer { display: flex; justify-content: flex-end; padding: 0 8px 6px; }
-  footer button { display: flex; align-items: center; gap: 4px; min-height: 28px; font-size: 12px; }
-  .question { min-height: 28px; margin: 0 0 6px; font-size: 13px; color: var(--color-muted-foreground); white-space: pre-wrap; overflow-wrap: anywhere; }
+  footer button { display: flex; align-items: center; gap: 4px; min-height: 28px; font-size: var(--text-meta); }
+  .question { min-height: 28px; margin: 0 0 6px; font-size: var(--text-meta); color: var(--color-muted-foreground); white-space: pre-wrap; overflow-wrap: anywhere; }
   .question code { color: var(--color-foreground); }
   @media (pointer: coarse) { footer button { min-height: 36px; } }
 </style>

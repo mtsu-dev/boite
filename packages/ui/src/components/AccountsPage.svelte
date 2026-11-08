@@ -804,8 +804,8 @@
     transition: background var(--dur-2) var(--ease-out-quint);
   }
   a.button:hover { background: var(--color-hover); }
-  a.button.primary { background: var(--color-foreground); border-color: transparent; color: var(--color-on-foreground); justify-self: start; }
-  a.button.primary:hover { opacity: 0.9; }
+  a.button.primary { background: var(--primary-fill); border-color: transparent; color: var(--primary-ink); justify-self: start; }
+  a.button.primary:hover { background: var(--primary-hover); }
 
   .track { height: 2px; border-radius: 999px; background: var(--color-surface-3); overflow: hidden; }
   .bar { display: block; height: 100%; background: var(--color-foreground); transition: width var(--dur-2) var(--ease-out-quint); }

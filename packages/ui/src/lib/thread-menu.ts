@@ -1,4 +1,4 @@
-import { Archive, Check, Copy, FolderInput, GitPullRequest, MessageSquare, PencilLine, Pin, PinOff, Sparkles, Trash2, X } from '@lucide/svelte';
+import { Archive, ArrowLeft, Check, Copy, FolderInput, GitPullRequest, MessageSquare, PencilLine, Pin, PinOff, Sparkles, Trash2, Wrench, X } from '@lucide/svelte';
 import type { ThreadSummary } from '@boite/contracts';
 import type { Store } from './store.svelte';
 import { separator, type MenuItem } from './menu';
@@ -22,6 +22,33 @@ interface ThreadMenuOptions {
    * title by the agent, a move, the path and the pull request stay on the desktop.
    */
   phone?: boolean;
+  /**
+   * A row's menu: what the user does most (Open, Rename, Pin, Mark done, Archive), then one All tools entry
+   * that opens the rest (`threadToolItems`), then Delete apart. With `phone`, a phone row's: no Open.
+   */
+  grouped?: boolean;
+}
+
+/**
+ * A row's All tools: a new title by the agent, a hand-off to a bot, a move, the path, the pull request and
+ * the view's own tools, under a way back to the row's menu. Each keeps the id the flat menu gives it. A phone's
+ * (`phone`) leaves out the path and the pull request, which stay on the desktop.
+ */
+export function threadToolItems(store: Store, thread: ThreadSummary, options: ThreadMenuOptions = {}): MenuItem[] {
+  const retitling = store.retitling.includes(thread.id);
+  return [
+    { id: 'back', label: strings.sidebar.backToThreadMenu, glyph: ArrowLeft, back: true },
+    separator('back-sep'),
+    { id: 'retitle', label: retitling ? strings.sidebar.retitling : strings.sidebar.retitle, glyph: Sparkles, disabled: retitling },
+    ...entrustItems(store, thread),
+    ...(canMove(thread) ? moveItems(store, thread).map(item => ({ ...item, glyph: item.id === 'move-cancel' ? X : FolderInput })) : []),
+    ...(options.phone ? options.tools ?? [] : [
+      separator('sep-tools'),
+      { id: 'copy', label: strings.sidebar.copyPath, glyph: Copy, title: thread.cwd },
+      ...(options.prLoading === undefined || !thread.branch || thread.branch === 'HEAD' ? [] : [{ id: 'pr', label: strings.machines.refreshPr, glyph: GitPullRequest, disabled: options.prLoading }]),
+      ...(options.tools ?? [])
+    ])
+  ];
 }
 
 /**
@@ -29,8 +56,8 @@ interface ThreadMenuOptions {
  * long press, the header's menu): the shared actions keep one name, one order
  * and one grouping. What it is called and who has it (Rename, Pin, Hand off),
  * then where it stands (Mark done, Archive), then Delete apart. The desktop
- * adds Open first and its own tools before Delete; Archive is on every thread
- * that can be kept.
+ * adds Open first and its own tools before Delete, or, on a row (`grouped`),
+ * behind one All tools entry; Archive is on every thread that can be kept.
  */
 export function threadMenuItems(store: Store, thread: ThreadSummary, options: ThreadMenuOptions = {}): MenuItem[] {
   const retitling = store.retitling.includes(thread.id);
@@ -44,8 +71,10 @@ export function threadMenuItems(store: Store, thread: ThreadSummary, options: Th
     ...(options.showDone ? [{ id: 'done', label: strings.sidebar.markDone, glyph: Check, disabled: !canMarkDone(store, thread) }] : []),
     { id: 'archive', label: strings.sidebar.archive, glyph: Archive }
   ] : [];
-  const items: MenuItem[] = options.phone ? [rename, ...pin, ...(options.tools ?? []), ...entrustItems(store, thread), ...standing] : [
-    ...(options.open === undefined ? [] : [{ id: 'open', label: strings.common.open, glyph: MessageSquare, disabled: options.open }, separator('sep-open')]),
+  const opening: MenuItem[] = options.open === undefined ? [] : [{ id: 'open', label: strings.common.open, glyph: MessageSquare, disabled: options.open }, separator('sep-open')];
+  const items: MenuItem[] = options.phone && !options.grouped ? [rename, ...pin, ...(options.tools ?? []), ...entrustItems(store, thread), ...standing]
+    : options.grouped ? [...opening, rename, ...pin, ...standing, separator('sep-tools'), { id: 'more', label: strings.thread.allTools, glyph: Wrench, submenu: true, ...(options.phone ? {} : { hint: '›' }) }] : [
+    ...opening,
     rename,
     { id: 'retitle', label: retitling ? strings.sidebar.retitling : strings.sidebar.retitle, glyph: Sparkles, disabled: retitling },
     ...pin,

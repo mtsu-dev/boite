@@ -111,7 +111,7 @@
     display: inline-grid;
     place-items: center;
     width: 24px;
-    height: 24px;
+    height: 20px;
     min-height: 0;
     padding: 0;
     border: 1px solid transparent;
@@ -125,9 +125,12 @@
     color: var(--color-foreground);
   }
 
-  /* A finger takes the full target, as every other phone control does. */
+  /* A finger takes the full target, as every other phone control does. The
+     row draws 32 px tall and the target reaches the rest over the gaps around
+     it, so the buttons sit tight under their message with no band below. */
   @media (pointer: coarse), (max-width: 720px) {
-    .message-actions { gap: 0; }
-    .act { width: var(--touch-target); height: var(--touch-target); }
+    .message-actions { gap: 4px; }
+    .act { position: relative; width: 36px; height: 32px; }
+    .act::after { content: ''; position: absolute; inset: calc((32px - var(--touch-target)) / 2) -2px; }
   }
 </style>

@@ -61,11 +61,11 @@
     background: var(--color-surface-2);
     box-shadow: var(--shadow-e3);
     font-size: var(--text-sm);
-    animation: rise var(--dur-3) var(--ease-out-quint);
+    animation: rise var(--motion-in);
   }
 
   .undo-toast.closing {
-    animation: fade-out var(--dur-2) var(--ease-out-quint);
+    animation: fade-out var(--motion-out);
     pointer-events: none;
   }
 

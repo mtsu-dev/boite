@@ -33,7 +33,7 @@ test('model picker account tooltips keep emails private on desktop and phone', a
     await page.waitFor(`document.querySelector('[data-testid="composer-picker-menu"] [data-provider="claude"]')`);
     await page.click('[data-testid="composer-picker-menu"] [data-provider="claude"]');
     await page.waitFor(`document.querySelector('[data-instance="claude::a-claude-main"]')`);
-    expect(await page.evaluate(`document.querySelector('[data-instance="claude::a-claude-main"]').title`)).toBe('Default login');
+    expect(await page.evaluate(`document.querySelector('[data-instance="claude::a-claude-main"]').title`)).toBe('Default');
     expect(await page.evaluate(`document.querySelector('[data-testid="composer-picker-menu"]').textContent.includes('you@example.com')`)).toBe(false);
     const point = await page.evaluate<{ x: number; y: number }>(`(() => { const r = document.querySelector('[data-instance="claude::a-claude-main"]').getBoundingClientRect(); return {x: r.x + r.width / 2, y: r.y + r.height / 2}; })()`);
     await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point });

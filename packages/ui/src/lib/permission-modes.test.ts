@@ -32,7 +32,7 @@ describe('permission modes', () => {
   it('says Codex writes in the folder on its default, and the open mode reaches the whole computer', () => {
     expect(modeLabel('default', provider('codex-appserver'))).toBe('This folder');
     expect(modeHint('default', provider('codex-appserver'))).toContain('in this folder without asking');
-    expect(modeLabel('default', provider('claude-sdk'))).toBe('Ask');
+    expect(modeLabel('default', provider('claude-sdk'))).toBe('Ask first');
     expect(modeLabel('bypassPermissions', provider('claude-sdk'))).toBe('Auto');
     expect(modeHint('bypassPermissions', null)).toContain('anywhere on this computer');
     // A plain name; the technical one stays in the hint.

@@ -86,10 +86,10 @@
 {/if}
 
 <style>
-  .toast { width: min(340px, calc(100vw - 24px)); animation: rise var(--dur-3) var(--ease-out-quint); }
+  .toast { width: min(340px, calc(100vw - 24px)); animation: rise var(--motion-in); }
 
   .toast.closing {
-    animation: fade-out var(--dur-2) var(--ease-out-quint);
+    animation: fade-out var(--motion-out);
     pointer-events: none;
   }
 </style>

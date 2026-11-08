@@ -276,28 +276,18 @@
   .system-copy :global(.prose) { font-size: var(--text-sm); line-height: 1.5; }
 
   /* A 4 px rest on the left so an answer does not kiss the column's edge. */
+  /* Text, a tool run, its result and a decision are blocks of one answer: one
+     gap between any two of them, so no pair reads as closer than another. */
   .parts {
     display: flex;
     flex-direction: column;
-    gap: var(--chat-part-gap);
+    gap: var(--chat-block-gap);
     padding-left: var(--activity-padding);
     max-width: 100%;
   }
 
   .part {
     min-width: 0;
-  }
-
-  /* Consecutive cards stack as one block at the flex gap; text on either side
-     of a card, or two text blocks in a row, get the full 12 px instead. */
-  .part[data-kind='text'] + .part,
-  .part[data-kind='thinking'] + .part,
-  .part[data-kind='error'] + .part,
-  .part + .part[data-kind='text'],
-  .part + .part[data-kind='thinking'],
-  .part + .part[data-kind='error'],
-  .part + .part[data-kind='hook'] {
-    margin-top: calc(var(--chat-block-gap) - var(--chat-part-gap));
   }
 
   /* An answer is read at its own measure; cards keep the whole column. */
@@ -318,8 +308,6 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    /* With the parts' gap, a block's rest on either side, like a paragraph. */
-    margin: calc(var(--chat-block-gap) - var(--chat-part-gap)) 0;
     font-size: var(--text-sm);
     color: var(--color-muted-foreground);
   }

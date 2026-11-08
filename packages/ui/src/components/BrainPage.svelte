@@ -301,6 +301,8 @@
   .category span { font-size: var(--text-xs); color: var(--color-muted-foreground); }
   .category.active { color: var(--color-foreground); background: var(--color-active); }
   .entry { border-bottom: 1px solid var(--color-border); }
+  /* Rules separate entries; the card's own edge closes the list. */
+  .entry:last-of-type { border-bottom: 0; }
   .entry summary { display: flex; gap: 12px; align-items: center; min-height: 52px; padding: 12px; cursor: pointer; list-style: none; font-size: var(--text-sm); border-radius: var(--radius-md); }
   summary::-webkit-details-marker { display: none; }
   .entry summary:hover { background: var(--color-hover); }

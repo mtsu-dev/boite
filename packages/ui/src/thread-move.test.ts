@@ -81,6 +81,9 @@ test('the row menu opens a picker of the other projects, and a pick moves the ro
   await mountOnFake();
   await waitFor(() => inProject('t-descriptors', 'p-notes'));
   query('[data-thread-id="t-descriptors"]').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 60 }));
+  // The row's menu keeps the move under All tools.
+  await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=more]') !== null);
+  query<HTMLButtonElement>('[data-testid=context-menu] [data-value=more]').click();
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=move]') !== null);
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=move]').click();
 
@@ -186,6 +189,8 @@ test('a running thread stays draggable; its move asks first, waits for the turn,
   expect(query('[data-testid=thread-header] [data-testid=thread-pending]').getAttribute('title')).toBe('Moves to notes after this turn');
 
   query('[data-thread-id="t-bench"]').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 60 }));
+  await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=more]') !== null);
+  query<HTMLButtonElement>('[data-testid=context-menu] [data-value=more]').click();
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=move-cancel]') !== null);
   expect(query<HTMLButtonElement>('[data-testid=context-menu] [data-value=move]').disabled).toBe(false);
   expect(query('[data-testid=context-menu] [data-value=move-cancel]').textContent?.trim()).toBe('Cancel move');

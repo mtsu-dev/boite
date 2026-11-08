@@ -87,6 +87,15 @@
   const activityLabel = $derived(observed ? strings.chat.progress[observed.phase] : null);
   const providerAge = $derived(observed?.providerAt == null ? null : Math.max(0, now - observed.providerAt));
   const fold = $derived(strings.chat.fold);
+  /** What the running turn is doing, in the line's "i": the phase, how long nothing new came, the provider's last word. */
+  const liveFacts = $derived.by(() => {
+    if (!observed) return [];
+    const facts: { id: string; text: string }[] = [];
+    if (!activeTool && !activeContent || observed.phase === 'retrying' || quiet >= 60_000) facts.push({ id: 'turn-progress', text: observed.detail ? `${activityLabel}: ${observed.detail}` : activityLabel ?? '' });
+    if (quiet >= 60_000) facts.push({ id: 'turn-last-activity', text: fill(strings.chat.noActivity, { time: elapsed(quiet) }) });
+    if (quiet >= 60_000 && providerAge !== null && observed.providerAt! > observed.at) facts.push({ id: 'turn-provider-signal', text: fill(strings.chat.providerSignal, { time: elapsed(providerAge) }) });
+    return facts;
+  });
   /** The mark's tooltip: what the pass did, then its summary. */
   const memoryTitle = $derived(memory ? [fold.memory[memory.pass.status], ...(memory.pass.summary && memory.pass.status !== 'running' ? [memory.pass.summary] : [])].join(' · ') : '');
   /** A line that counts steps or carries a memory mark reads at rest: it is what the agent did, not a measurement. */
@@ -119,16 +128,12 @@
     {#if compactOperation && (turn.status === 'error' || turn.status === 'stopped')}
       {@render metric('compaction-result', label)}
     {/if}
-    {#if observed}
-      {#if !activeTool && !activeContent || observed.phase === 'retrying' || quiet >= 60_000}
-        {@render metric('turn-progress', observed.detail ? `${activityLabel}: ${observed.detail}` : activityLabel, observed.detail ?? undefined)}
-      {/if}
-      {#if quiet >= 60_000}
-        {@render metric('turn-last-activity', fill(strings.chat.noActivity, { time: elapsed(quiet) }), undefined, true)}
-      {/if}
-      {#if quiet >= 60_000 && providerAge !== null && observed.providerAt! > observed.at}
-        {@render metric('turn-provider-signal', fill(strings.chat.providerSignal, { time: elapsed(providerAge) }))}
-      {/if}
+    {#if liveFacts.length}
+      <!-- The line keeps one fact, the time; what the agent is doing waits behind the "i". The facts stay in the line, read by screen readers. -->
+      <span class="live-tip">
+        {#each liveFacts as fact (fact.id)}<span class="visually-hidden" data-testid={fact.id}>{fact.text}</span>{/each}
+        <InfoTip text={liveFacts.map((fact) => fact.text).join(' · ')} topic={strings.chat.turnDetails} testid="turn-activity" />
+      </span>
     {/if}
     {#if turn.finishedAt !== null}
       {@render metric('turn-finished-at', finishedLabel, exactTime(turn.finishedAt), false, true)}
@@ -192,6 +197,12 @@
   .summary.settled.pointed :global(.act) { opacity: 1; }
   @media (hover: none) { .summary.settled { opacity: 1; } }
   .summary.settled.marked { opacity: 1; }
+  /* A line with nothing shown at rest takes no band of its own on a pointer
+     device: it waits inside the gap to the next message, one row tall, so the
+     buttons come up right under the answer they belong to and cover nothing. */
+  @media (hover: hover) {
+    .summary.settled:not(.marked):has(.tail) { flex-wrap: nowrap; height: var(--chat-message-gap); margin-top: 0; margin-bottom: calc(-1 * var(--chat-message-gap)); }
+  }
   /* A settled line keeps what the agent did at rest (its steps, a memory mark) and
      its buttons; how long it took, when and what it spent wait for the pointer. A
      finger reads them behind the "i" instead, the line's last mark. */
@@ -218,7 +229,7 @@
   .compaction-elapsed { display: block; margin-top: 8px; color: var(--color-muted-foreground); }
   .compaction-icon { display: inline-flex; flex: none; margin-top: 2px; }
   .dot { display: inline-block; width: calc(var(--lead) - 6px); text-align: center; opacity: .6; }
-  [data-testid='turn-progress'] { min-width: 0; overflow-wrap: anywhere; }
+  .live-tip { display: inline-flex; align-items: center; }
   .quiet { color: var(--color-muted-foreground); }
   .background { display: inline-flex; align-items: center; gap: 6px; color: var(--color-muted-foreground); }
   .pulse { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: pulse 1.6s var(--loop-ease-out-quint-48) infinite var(--loops); }

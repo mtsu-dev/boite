@@ -10,13 +10,9 @@ export const strings = {
     filesUnavailable: 'The messages were rewound, but this edit has no complete file backup. The code could not be restored.',
     filesBusy: 'The messages were rewound. Another agent is still working in this folder, so the files were left as they are.',
     editingCancel: 'Stop editing (Esc)',
-    /** A question waits for a written answer: the box writes it, the card above names the question. One line on a 360 px phone. */
-    replyPlaceholder: 'Or write an answer',
-    /** An ask to run a tool waits above the box: what is written instead refuses it. One line on a 360 px phone. */
-    permissionPlaceholder: 'Or say what to do',
+    /** The box while the agent works or a decision (a question, an ask to run a tool) waits above it: what is written answers. One line on a 360 px phone. */
+    replyPlaceholder: 'Reply to {name}',
     replySend: 'Send the answer',
-    replyIgnore: 'Write a message',
-    replyIgnoreHint: 'Leave the question waiting and write an ordinary message',
     switchTitle: 'Switch a {tokens} token thread to {provider}?',
     switchBody: '{provider} starts a new session and receives excerpts of the opening and of the most recent exchanges, about 20k tokens. The rest is lost to it. Compacting first changes nothing.',
     switchConfirm: 'Switch',
@@ -29,11 +25,12 @@ export const strings = {
     mentionFile: 'Mention a file',
     commands: 'Commands',
     botModel: "{name}'s model, set in its settings",
-    placeholder: 'Message {provider} in {project}',
-    placeholderBot: 'Message {name}',
-    placeholderNoProject: 'Message the agent',
-    /** A new conversation, before anything is sent. */
-    placeholderNew: 'What do you want to do?',
+    /** The box at rest, on a new conversation or one under way: who reads the message. */
+    placeholder: 'Message {name}',
+    /** `{name}` in the two placeholders when the provider is unknown. */
+    placeholderAgent: 'the agent',
+    /** The thread's folder or worktree is gone: the notice above holds the way out. */
+    placeholderNoFolder: 'This thread has no folder to run in',
     placeholderOffline: '{machine} is offline: messages wait here and go out when it reconnects',
     placeholderOfflineDraft: '{machine} is offline: the conversation starts when it reconnects',
     send: 'Send',
@@ -61,6 +58,10 @@ export const strings = {
     removeQueued: 'Remove this pending message',
     picker: 'Provider and model',
     models: 'Models',
+    /** The picker's first level lists the models in use; this row opens every provider, its logins and models. */
+    allModels: 'All models',
+    /** The way back from All models to the first level. */
+    yourModels: 'Your models',
     searchModels: 'Search models',
     noModels: 'No model matches',
     noModelsAvailable: 'The agent has not listed any models. Refresh to retry.',
@@ -78,10 +79,8 @@ export const strings = {
     effortDefault: 'Default',
     effortDefaultHint: 'Let the agent pick its own level for this model',
     standardSpeed: 'Standard speed',
-    favorites: 'Favorites',
     favorite: 'Add to favorites',
     unfavorite: 'Remove from favorites',
-    favoritesEmpty: 'Star a model to find it here.',
     favoriteUnavailable: 'This favorite is no longer offered by the account. Choose another model.',
     compact: 'Compact context',
     compactBusy: 'Wait for the current turn to finish',

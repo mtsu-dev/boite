@@ -303,6 +303,8 @@
     padding: 10px 0;
     border-bottom: 1px solid var(--color-border);
   }
+  /* Rules separate machines; the group card's own edge closes the list. */
+  .machine-card:last-child { border-bottom: 0; }
   .main {
     display: flex;
     align-items: center;

@@ -8,14 +8,13 @@ import './notify-corner.css';
  * the activity strip on it, the phone's tab bar), so none covers a title or
  * the field being typed in. The lift is `--corner-lift` on each card.
  *
- * The undo and error toasts have a home of their own instead, which nothing
- * else shares (`toastSlot`).
+ * The undo and error toasts have a home of their own instead, at the top of
+ * the thread, which nothing else shares (`toastSlot`).
  */
 /** Bottom-edge owners. A composer centred in an empty thread is not one. */
 const FLOORS = '[data-testid=composer],[data-testid=thread-activity],[data-testid=mobile-tabs]';
-/** The phone's headers, under which its toasts sit. */
+/** The headers the toasts sit under. */
 const HEADERS = '[data-testid=mobile-header],[data-testid=thread-header],[data-testid=mobile-settings-header],[data-testid=agent-header],[data-testid=team-header]';
-const PHONE = '(max-width: 720px)';
 const cards: HTMLElement[] = [];
 const toasts: HTMLElement[] = [];
 let timer = 0;
@@ -35,42 +34,39 @@ function reserve(at: HTMLElement | null, room: number): void {
 }
 
 /**
- * The toast home. On a phone it is under the header, centred, in room the
- * timeline keeps for it at its top. On a wider
- * window it is the right end of the strip above the composer, in room the
- * strip keeps for it at its top: the strip's entries, the composer and the
- * timeline's last lines all stay clear. A page with no composer keeps the
- * bottom-right corner.
+ * The toast home, the same at every width: under the header, centred on the
+ * thread, in room the timeline keeps for it at its top. The timeline gives
+ * way, so the toast covers no line of it, and the bottom stack (the strip's
+ * subagents, the queue, the composer) stays clear of it. A page with no
+ * timeline keeps the bottom-right corner.
  */
 function placeToasts(): void {
   const shown = toasts.filter((toast) => toast.offsetHeight > 0);
   const room = shown.reduce((sum, toast) => sum + toast.offsetHeight + 8, 0);
-  const phone = matchMedia(PHONE).matches;
-  // A phone's toasts push the timeline's top down, so they cover no line of it.
-  const over = phone ? document.querySelector<HTMLElement>('[data-testid=timeline]') : strip();
+  const found = document.querySelector<HTMLElement>('[data-testid=timeline]');
+  const over = found && found.getClientRects().length > 0 ? found : null;
   reserve(over, room);
-  let top: number, right: number | null;
-  if (phone) {
+  let top: number, centre: number | null;
+  if (over) {
+    const box = over.getBoundingClientRect();
     let under = 0;
     for (const header of document.querySelectorAll<HTMLElement>(HEADERS)) {
-      const box = header.getBoundingClientRect();
-      if (box.height && box.top < 120) under = Math.max(under, box.bottom);
+      const head = header.getBoundingClientRect();
+      if (head.height && head.top < 120 && head.right > box.left && head.left < box.right) under = Math.max(under, head.bottom);
     }
-    top = under + 8;
-    right = null;
-  } else if (over) {
-    const box = over.getBoundingClientRect();
-    top = box.top + 4;
-    right = Math.max(12, innerWidth - box.right);
+    // The timeline's own top, less the room it keeps (its margin, even mid-transition).
+    const rest = box.top - (parseFloat(getComputedStyle(over).marginTop) || 0);
+    top = Math.max(under, rest) + 8;
+    centre = box.left + box.width / 2;
   } else {
     top = innerHeight - 12 - room + 8;
-    right = 16;
+    centre = null;
   }
   for (const toast of shown) {
     toast.style.setProperty('--toast-top', `${Math.round(top)}px`);
-    if (right === null) toast.style.removeProperty('--toast-right');
-    else toast.style.setProperty('--toast-right', `${Math.round(right)}px`);
-    toast.dataset.slot = right === null ? 'header' : 'end';
+    if (centre === null) toast.style.removeProperty('--toast-left');
+    else toast.style.setProperty('--toast-left', `${Math.round(centre)}px`);
+    toast.dataset.slot = centre === null ? 'end' : 'top';
     top += toast.offsetHeight + 8;
   }
 }
@@ -88,7 +84,7 @@ function placeCards(): void {
         const box = owner.getBoundingClientRect();
         if (box.height && box.right > left && box.left < right && box.bottom > innerHeight - 160) lift = Math.max(lift, innerHeight - box.top);
       }
-      // The strip above the composer (subagents, the way back, the toasts' room) sits on that floor: a card rises over it too.
+      // The strip above the composer (subagents, the way back) sits on that floor: a card rises over it too.
       if (lift > 0 && bar?.height && bar.right > left && bar.left < right && bar.bottom >= innerHeight - lift - 1) lift = Math.max(lift, innerHeight - bar.top);
     }
     card.style.setProperty('--corner-lift', `${lift}px`);

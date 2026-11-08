@@ -134,10 +134,11 @@
   .name small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .count { flex: none; }
   .metric { display: grid; gap: 4px; min-width: 0; }
-  .line { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
+  /* A label and its value share a line while both fit whole; on a narrow card the value wraps under it, at the right, instead of cutting the label's share. */
+  .line { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 8px; min-width: 0; }
   .line > span { display: flex; gap: 6px; min-width: 0; overflow: hidden; white-space: nowrap; }
   .line small { overflow: hidden; text-overflow: ellipsis; }
-  .line b { flex: none; font-size: var(--text-sm); font-weight: 500; font-variant-numeric: tabular-nums; }
+  .line b { flex: none; margin-left: auto; font-size: var(--text-sm); font-weight: 500; font-variant-numeric: tabular-nums; }
   .none { color: var(--color-subtle); }
   .spark { display: block; width: 100%; height: 24px; }
   .spark path { fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }

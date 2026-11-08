@@ -9,10 +9,10 @@
   import type { Store } from '../lib/store.svelte';
   import { workspace } from '../lib/workspace.svelte';
   import { fill, strings } from '../lib/strings';
-  import { projectName } from '../lib/format';
+  import { count, projectName } from '../lib/format';
   import { mobileOverlay } from '../lib/mobile-history';
   import { groupWorkingThread, recentPreferences } from '../lib/recent.svelte';
-  import { pickThreadAction, threadMenuItems } from '../lib/thread-menu';
+  import { pickThreadAction, threadMenuItems, threadToolItems } from '../lib/thread-menu';
   import { projectMenu } from '../lib/project-menu';
   import type { MenuItem } from '../lib/menu';
   import type { ThreadSummary } from '@boite/contracts';
@@ -34,12 +34,13 @@
   import { projectKey, projectView, type ProjectEntry } from '../lib/project-view.svelte';
   import { activeProject, archiveCount, projectSections, projectThreadView } from '../lib/project-threads.svelte';
   import { workingThread } from '../lib/recent.svelte';
-  import { compareThreads } from '../lib/thread-order';
-  import { activityFeed } from '../lib/activity-feed';
+  import { compareEntries } from '../lib/thread-order';
+  import { rowPlaces } from '../lib/row-place';
+  import { activityFeed, storeNeedsYou } from '../lib/activity-feed';
   import { tabHeader } from '../lib/tab-header.svelte';
   import EmptyState from './EmptyState.svelte';
   import { threadsNeedingYou } from '../lib/app-rail';
-  import { needsUser, threadState } from '../lib/thread-state';
+  import { needsUser } from '../lib/thread-state';
   import { minuteClock } from '../lib/clock.svelte';
   import { needsAnAI } from '../lib/first-run';
   import { contactsShown } from '../lib/contacts-rail.svelte';
@@ -117,8 +118,10 @@
   let rows: (typeof entries[number] & { reason?: string; at?: number; nested?: boolean; section?: 'needs' | 'updates' })[] = $derived(listScreen === 'activity'
     ? activityFeed(entries.filter(matches), feedPlace)
     : entries.filter(e => matches(e) && !e.thread.parentThreadId && !e.project?.archived && (workspace.view !== 'recent' || !selected || (e.machine.id === selected.machine.id && e.thread.projectId === selected.project.id)))
-      .sort((a, b) => compareThreads(a.thread, b.thread)));
+      .sort(compareEntries));
   const inRecent = $derived(listScreen === 'threads' && workspace.view === 'recent');
+  /** Recent's line under the title starts with where the row lives, once the tiles alone may not tell rows apart. */
+  const places = $derived(rowPlaces(rows));
   /** Recent shows one project or all of them: the filter's choices. */
   const filterItems = $derived([
     { id: 'all', label: strings.sidebar.allProjects, active: !selected },
@@ -160,11 +163,16 @@
   /** The threads of a project that wait on the user, its heading's amber count, as on the desktop card. */
   function waitingCount(entry: ProjectEntry): number {
     const owner = entry.machine.store;
-    return owner.threadsOf(entry.project.id).filter(thread => threadState(thread, owner.subagents(thread.id)) === 'waiting').length;
+    // Activity's own count over the project's threads: the card and the rail's badge never disagree.
+    return storeNeedsYou(owner, owner.threadsOf(entry.project.id));
   }
-  /** A phone's row menu: the thread's lifecycle, as in its header (`threadMenuItems`' phone set). */
+  /** A phone's row menu: the thread's lifecycle first, the rest behind All tools, as on a desktop row. */
   function rowItems(owner: Store, thread: ThreadSummary): MenuItem[] {
-    return threadMenuItems(owner, thread, { showDone: listScreen === 'threads', phone: true });
+    return threadMenuItems(owner, thread, { showDone: listScreen === 'threads', phone: true, grouped: true });
+  }
+  /** What the row menu's All tools opens: a new title, a hand-off, a move, and a way back. */
+  function rowTools(owner: Store, thread: ThreadSummary): MenuItem[] {
+    return threadToolItems(owner, thread, { phone: true });
   }
   /** Thread ids can collide between machines: the row's own store acts, and its pickers hang under the row's own trigger. */
   function rowAction(owner: Store, thread: ThreadSummary, action: string, machineId: string) {
@@ -282,7 +290,7 @@
       </div>
     {/if}
     {#snippet threadRow(row: typeof rows[number], grouped = false)}
-      <MobileThreadRow machine={row.machine} thread={row.thread} project={row.project} {now} compact={!grouped} reason={row.reason} at={row.at} nested={row.nested} items={rowItems(row.machine.store, row.thread)}
+      <MobileThreadRow machine={row.machine} thread={row.thread} project={row.project} {now} compact={!grouped} reason={row.reason} at={row.at} nested={row.nested} where={!grouped && inRecent ? places(row) : undefined} items={rowItems(row.machine.store, row.thread)} tools={rowTools(row.machine.store, row.thread)}
         onopen={() => { show('chat'); void workspace.select(row.machine.store, row.thread.id); }} onaction={action => rowAction(row.machine.store, row.thread, action, row.machine.id)} />
     {/snippet}
     {#if listScreen === 'threads' && workspace.view === 'projects'}
@@ -358,7 +366,9 @@
       {@const needs = rows.filter(row => row.section === 'needs')}
       {@const updates = rows.filter(row => row.section === 'updates')}
       {@const asked = ContactInboxRows && contactsShown(store) && !query}
-      {#if needs.length > 0 || (asked && inbox.contacts > 0)}<h2 class="section-label feed-section" data-testid="activity-needs">{strings.sidebar.state.waiting}</h2>{/if}
+      {@const needsCount = needs.filter(row => !row.nested).length + (asked ? inbox.contacts : 0)}
+      <!-- The section's number is the tab's badge: its top rows (a sub-agent counts on its parent) and what contacts ask. -->
+      {#if needsCount > 0}<h2 class="section-label feed-section" data-testid="activity-needs" data-count={needsCount}>{strings.sidebar.state.waiting}<span class="feed-count">{count(needsCount)}</span></h2>{/if}
       {#if asked && ContactInboxRows}<ContactInboxRows {store} />{/if}
       <WindowList items={needs} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} estimate={66} measurements={measurements('activity')}>
         {#snippet row(entry)}{@render threadRow(entry)}{/snippet}
@@ -480,5 +490,7 @@
     /* A section's name over its rows, from the rows' edge; the second stands off the first. */
     .feed-section { margin: 8px 12px 4px; }
     .feed-section ~ .feed-section { margin-top: 20px; }
+    /* The section's count, the tab badge's number: amber marks it, the word stays grey. */
+    .feed-count { margin-left: 6px; color: var(--color-live); font-variant-numeric: tabular-nums; }
   }
 </style>

@@ -393,8 +393,9 @@
     color: var(--color-foreground);
     text-decoration: none;
   }
-  a.button.primary { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-accent-ink); }
-  a.button.primary:hover { background: color-mix(in oklch, var(--color-accent) 88%, var(--color-foreground)); }
+  /* A link drawn as the primary takes the same fill as button.primary. */
+  a.button.primary { font-weight: 600; background: var(--control-glaze) var(--primary-fill); border-color: var(--primary-fill); color: var(--primary-ink); }
+  @media (hover: hover) { a.button.primary:hover { background: var(--control-glaze) var(--primary-hover); } }
   /* The terminal's own height: a menu of a dozen lines fits without a scroll. */
   .screen { width: 100%; height: 280px; min-width: 0; border-radius: var(--radius-sm); overflow: hidden; }
   .code { display: flex; gap: 6px; width: 100%; }

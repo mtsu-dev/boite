@@ -20,7 +20,7 @@ export const strings = {
     compactionFailed: 'Compaction failed',
     compactionStopped: 'Compaction stopped',
     progress: { starting: 'Starting agent', thinking: 'Thinking', compacting: 'Compacting context', retrying: 'Retrying request', tool: 'Running tool', working: 'Receiving activity', waiting: 'Waiting for provider' },
-    providerSignal: 'Provider signal {time} ago',
+    providerSignal: 'The provider last answered {time} ago',
     noActivity: 'No new activity for {time}',
     /** The jump button once something arrived below the reader. */
     newMessage: '1 new message',
@@ -80,6 +80,8 @@ export const strings = {
     diffHidden: '{count} unchanged lines',
     diffIgnoreWhitespace: 'Ignore whitespace changes',
     diffSideBySide: 'Old and new side by side',
+    /** The diff's options menu: whitespace and the side by side layout. */
+    diffView: 'View',
     /** A diff whose every change was spaces, with whitespace ignored. */
     diffWhitespaceOnly: 'Only whitespace changed.',
     diffShowAll: 'Show all {count} lines',

@@ -5,23 +5,23 @@
   bottom: calc(12px + max(var(--corner-lift, 0px), env(safe-area-inset-bottom, 0px)));
   z-index: 80;
   width: min(340px, calc(100vw - 24px));
-  transition: bottom var(--dur-2) var(--ease-out-quint);
+  transition: bottom var(--motion-in);
 }
 
-/* The undo and error toasts' one home (notify-corner.ts places it): the strip's
-   right end on a wide window, under the header, centred, on a phone. */
+/* The undo and error toasts' one home (notify-corner.ts places it): under
+   the header, centred on the thread, in room the timeline keeps; with no
+   thread, the bottom-right corner. */
 .toast-slot {
   position: fixed;
   top: var(--toast-top, 12px);
-  right: var(--toast-right, 16px);
+  right: 16px;
   z-index: 80;
   width: max-content;
   max-width: min(440px, calc(100vw - 24px));
 }
-.toast-slot[data-slot='header'] { right: auto; left: 50%; translate: -50% 0; }
-/* Above the strip the toast sits in room of its own, not over the page: a
-   floating card's deep shadow would only dim the strip's names under it. */
-.toast-slot[data-slot='end'] > :is([role], .notify-card) { box-shadow: var(--shadow-e1); }
+.toast-slot[data-slot='top'] { right: auto; left: var(--toast-left, 50%); translate: -50% 0; }
+/* In room of its own, not over the page: a floating card's deep shadow would only dim what is near. */
+.toast-slot[data-slot='top'] > :is([role], .notify-card) { box-shadow: var(--shadow-e1); }
 
 /* One card for every notification: a mark, a bold line, its text, one way to act. */
 .notify-card {

@@ -1,14 +1,15 @@
 <script lang="ts">
-  import { ArrowDown, ArrowUp, ChevronDown, ChevronLeft, Columns2, GitBranch, RefreshCw, Space } from '@lucide/svelte';
+  import { ArrowDown, ArrowUp, ChevronDown, ChevronLeft, GitBranch, RefreshCw } from '@lucide/svelte';
   import type { GitChange, GitDiff, GitStatus, ThreadId } from '@boite/contracts';
   import type { BoundPanel, Surface } from '../lib/right-panel.svelte';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import { boxWidth } from '../lib/box-width';
-  import { diffPrefs, setDiffPref } from '../lib/diff-prefs.svelte';
+  import { diffCountsOf, type DiffSource } from '../lib/diff';
   import type { MenuItem } from '../lib/menu';
   import DiffView, { SPLIT_MIN_WIDTH } from './DiffView.svelte';
   import Menu from './Menu.svelte';
+  import DiffOptions from './DiffOptions.svelte';
 
   let { store, surface, panel }: { store: Store; surface: Surface; panel: BoundPanel } = $props();
 
@@ -88,7 +89,7 @@
     id: change.path,
     label: base(change.path),
     title: change.path,
-    hint: [change.additions ? `+${change.additions}` : '', change.deletions ? `-${change.deletions}` : ''].filter(Boolean).join(' ') || undefined,
+    hint: ((lines) => [lines.added ? `+${lines.added}` : '', lines.removed ? `-${lines.removed}` : ''].filter(Boolean).join(' ') || undefined)(countsOf(change)),
     status: { tone: TONES[change.status], label: strings.changes.status[change.status] },
     checked: change.path === selected,
     radio: true,
@@ -102,6 +103,17 @@
   /** The code's own width: the side by side switch is offered only where two columns can be read. */
   let codeWidth = $state(0);
   let textDiff = $derived(selected !== null && diff !== null && !diff.binary);
+  /** The texts the diff on screen is drawn from, one object so its rows and counts are read once. */
+  let source = $derived<DiffSource | null>(textDiff && diff ? { oldText: diff.oldText ?? '', newText: diff.newText ?? '' } : null);
+  /**
+   * The open file's lines added and removed, counted from the diff on screen,
+   * so the figure beside it always matches the rows under it. The list's
+   * figures for the other files are git's own, until one is opened.
+   */
+  let drawn = $derived(source !== null && diff?.path === selected ? diffCountsOf(source) : null);
+  function countsOf(change: GitChange): { added: number | null; removed: number | null } {
+    return change.path === selected && drawn !== null ? drawn : { added: change.additions, removed: change.deletions };
+  }
 
   function back(): void {
     panel.update(surface.id, { path: undefined });
@@ -161,7 +173,7 @@
   });
 </script>
 
-<div class="changes-surface" class:narrow class:reading={oneFile} data-testid="changes-panel" bind:clientWidth={width}>
+<div class="changes-surface" class:narrow class:reading={oneFile} class:has-file={selected !== null} data-testid="changes-panel" bind:clientWidth={width}>
   <!-- One bar: the way back and the file choice when one file fills the panel, the branch, the count or the file's lines, the diff's switches. -->
   <div class="panel-toolbar">
     {#if oneFile}
@@ -194,9 +206,10 @@
     {/if}
     <span class="spacer"></span>
     {#if oneFile && picked}
-      <span class="lines">
-        {#if picked.additions}<span class="count added ui-label">+{picked.additions}</span>{/if}
-        {#if picked.deletions}<span class="count removed ui-label">-{picked.deletions}</span>{/if}
+      {@const lines = countsOf(picked)}
+      <span class="lines" data-testid="changes-lines">
+        {#if lines.added}<span class="count added ui-label">+{lines.added}</span>{/if}
+        {#if lines.removed}<span class="count removed ui-label">-{lines.removed}</span>{/if}
       </span>
     {:else}
       <span class="total" data-testid="changes-count">
@@ -207,16 +220,7 @@
           : strings.changes.loading}
       </span>
     {/if}
-    {#if textDiff}
-      <button type="button" class="ghost small icon toggle" data-testid="diff-whitespace" aria-pressed={diffPrefs.ignoreWhitespace}
-        title={strings.chat.diffIgnoreWhitespace} aria-label={strings.chat.diffIgnoreWhitespace}
-        onclick={() => setDiffPref('ignoreWhitespace', !diffPrefs.ignoreWhitespace)}><Space size={14} /></button>
-      {#if codeWidth >= SPLIT_MIN_WIDTH}
-        <button type="button" class="ghost small icon toggle" data-testid="diff-split" aria-pressed={diffPrefs.split}
-          title={strings.chat.diffSideBySide} aria-label={strings.chat.diffSideBySide}
-          onclick={() => setDiffPref('split', !diffPrefs.split)}><Columns2 size={14} /></button>
-      {/if}
-    {/if}
+    {#if textDiff}<DiffOptions split={codeWidth >= SPLIT_MIN_WIDTH} />{/if}
     <button
       type="button"
       class="ghost small icon"
@@ -236,6 +240,7 @@
         <p class="empty" data-testid="changes-empty">{strings.changes.clean}</p>
       {/if}
       {#each status?.changes ?? [] as change (change.path)}
+        {@const lines = countsOf(change)}
         <button
           type="button"
           class="row"
@@ -260,8 +265,8 @@
             <span class="staged ui-label-box" title={strings.changes.staged}><span class="ui-label">{strings.changes.stagedShort}</span></span>
           {/if}
           <!-- Both counts keep their column, empty or not, so every row's figures line up. -->
-          <span class="count added ui-label">{change.additions ? `+${change.additions}` : ''}</span>
-          <span class="count removed ui-label">{change.deletions ? `-${change.deletions}` : ''}</span>
+          <span class="count added ui-label">{lines.added ? `+${lines.added}` : ''}</span>
+          <span class="count removed ui-label">{lines.removed ? `-${lines.removed}` : ''}</span>
         </button>
       {/each}
     </div>
@@ -279,7 +284,7 @@
         {/if}
         <!-- The bar above names the file and holds the switches: the code starts right under it. -->
         <div use:boxWidth={(value) => (codeWidth = value)}>
-          <DiffView path={diff.path} oldText={diff.oldText ?? ''} newText={diff.newText ?? ''} headless grow />
+          <DiffView path={diff.path} oldText={diff.oldText ?? ''} newText={diff.newText ?? ''} doc={source ?? undefined} headless grow />
         </div>
       {/if}
     </div>
@@ -364,8 +369,9 @@
     }
   }
 
-  /* A phone's width: the list fills the panel until a row is picked, then the
-     diff does, under the file outline that steps to any other file or back to the list. */
+  /* A phone's width: the list fills the panel until a row is picked. Then the
+     bar names the file and its counts, the diff follows, and the other files
+     come under it in the same scroll, one tap from the next diff. */
   .narrow .list {
     flex: 1;
     max-height: none;
@@ -377,8 +383,19 @@
     border-top: none;
   }
 
-  .narrow.reading .list { display: none; }
-  .narrow.reading .detail { display: block; }
+  .narrow.reading .split { overflow-y: auto; }
+  .narrow.reading .detail { display: block; flex: none; overflow: visible; }
+  .narrow.reading .list { flex: none; max-height: none; overflow: visible; }
+
+  /* A file open in a stacked panel: the diff first, sized to its rows, and the
+     list right under it, so the panel holds both instead of a short diff over
+     an empty half. Beside each other from 900 px, as above. */
+  @container (max-width: 899px) {
+    .has-file .detail { order: 1; flex: 0 1 auto; border-top: none; }
+    .has-file .list { order: 2; flex: 0 0 auto; max-height: 40%; padding-top: 6px; border-top: 1px solid var(--color-border); }
+  }
+  /* Beside a desktop chat the list under the diff is the way back: no arrow for it. */
+  @media (min-width: 721px) { .narrow.reading .back { display: none; } }
 
   /* The back arrow pulls into the bar's edge so its glyph lines up with the rows under it. */
   .back { flex: none; margin-left: -6px; }
@@ -393,8 +410,6 @@
     .reading .branch, .reading .track { display: none; }
   }
   .lines { flex: none; display: inline-flex; gap: 6px; }
-  .toggle { flex: none; color: var(--color-subtle); }
-  .toggle[aria-pressed='true'] { color: var(--color-foreground); background: var(--color-surface-2); }
   .dot { width: 6px; height: 6px; flex: none; border-radius: var(--radius-full); background: var(--mark); }
   .dot[data-status='added'], .dot[data-status='copied'] { --mark: var(--color-success); }
   .dot[data-status='modified'] { --mark: var(--color-live); }

@@ -4,10 +4,10 @@
   import ComposerQueue from './ComposerQueue.svelte';
 
   /**
-   * The head of the box when something waits to go: the answers held for the
-   * turn and the queued prompts, each one quiet line with its edit and remove.
-   * Inside the box, not a row of pills over it; the strip above keeps the
-   * subagents and the way back.
+   * The head of the field when something waits to go: the answers held for
+   * the turn and the queued prompts, each a quiet chip with its edit and
+   * remove. Inside the box, on its surface, not a band over it; the strip
+   * above keeps the subagents and the way back.
    */
   let { store, key, thread, composer, blocked, machine, sendNow, onrestore, onsendnow }: {
     store: Store;
@@ -46,7 +46,7 @@
 {/if}
 
 <style>
-  /* The box's own padding, a hairline under it: the head reads apart from the field. */
-  .held { display: flex; flex-direction: column; min-width: 0; padding: 2px 8px 2px 12px; border-bottom: 1px solid var(--color-border); }
+  /* Chips on the box's own surface, over the field: no band of their own. */
+  .held { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 10px 12px 0; }
   .answers { display: flex; min-width: 0; }
 </style>

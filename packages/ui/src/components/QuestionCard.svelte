@@ -5,6 +5,7 @@
   import { keepFocus } from '../lib/focus';
   import { fill, strings } from '../lib/strings';
   import CodeText from './CodeText.svelte';
+  import DecisionHead from './DecisionHead.svelte';
 
   let {
     text,
@@ -145,14 +146,15 @@
     </button>
   {:else}
   {#if docked}
-    <div class="dock-head">
-      <span class="tag"><span class="ui-label">{strings.chat.questionAsyncHeading}</span></span>
-      <p class="prompt" class:folded data-testid="question-text"><CodeText {text} /></p>
-      {@render head?.()}
-      {#if pending && skip}
-        <button type="button" class="ghost skip" data-testid="question-skip" disabled={sent} onmousedown={keepFocus} onclick={pass}><span class="ui-label">{strings.chat.questionSkip}</span></button>
-      {/if}
-    </div>
+    <DecisionHead>
+      <span class="prompt" class:folded data-testid="question-text"><CodeText {text} /></span>
+      {#snippet end()}
+        {@render head?.()}
+        {#if pending && skip}
+          <button type="button" class="ghost skip" data-testid="question-skip" disabled={sent} onmousedown={keepFocus} onclick={pass}><span class="ui-label">{strings.chat.questionSkip}</span></button>
+        {/if}
+      {/snippet}
+    </DecisionHead>
   {:else}
     <div class="head">
       <span class="glyph"><MessageCircleQuestionMark size={15} strokeWidth={1.75} /></span>
@@ -259,22 +261,9 @@
     gap: 8px;
   }
 
-  .dock-head { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
-  .dock-head :global(button) { flex: none; }
-  .dock-head .prompt { flex: 1; min-width: 0; font-size: var(--text-base); font-weight: 600; line-height: 22px; }
-  .dock-head .prompt.folded { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-  /* What waits on the owner, quietly: a small live dot and a muted word, no fill. */
-  .tag { flex: none; height: 22px; gap: 6px; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; display: inline-flex; align-items: center; }
-  .tag::before { content: ''; width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--color-live); }
-  /* A phone puts the question under its tag and controls, full width; the controls keep
-     their touch height on narrower sides, so a pager and Skip still fit one row at 360 px. */
-  @media (max-width: 720px) {
-    .dock-head { flex-wrap: wrap; align-items: center; gap: 0; }
-    .dock-head .tag { margin-right: auto; }
-    .dock-head .prompt { order: 1; flex: 1 0 100%; }
-    .dock-head :global(button.icon) { min-width: 36px; }
-    .dock-head .skip { min-height: var(--touch-target); padding: 0 6px; }
-  }
+  .docked .prompt { flex: 1; min-width: 0; padding-block: calc((var(--control) - 22px) / 2); font-weight: inherit; }
+  .docked .prompt.folded { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  @media (max-width: 720px) { .docked .skip { min-height: var(--touch-target); padding: 0 6px; } }
   .skip { height: 24px; padding: 0 8px; border-radius: var(--radius-sm); color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 550; }
 
   .docked .options { gap: 2px; }
@@ -283,7 +272,7 @@
   .docked .option.picked { background: var(--color-hover); border-color: var(--color-edge); }
   .docked .option:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -1px; }
   .docked .label { font-weight: 550; }
-  kbd { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 20px; height: 20px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface-3); color: var(--color-muted-foreground); font-family: var(--font-mono); font-size: 11px; }
+  kbd { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 20px; height: 20px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface-3); color: var(--color-muted-foreground); font-family: var(--font-mono); font-size: var(--text-meta); }
   .option.picked kbd { color: var(--color-foreground); border-color: var(--color-edge); }
   .docked .actions { justify-content: flex-end; }
 

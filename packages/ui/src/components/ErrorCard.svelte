@@ -42,8 +42,9 @@
 </div>
 
 <style>
-  .error-card { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border: 1px solid color-mix(in srgb, var(--color-danger) 18%, var(--color-border)); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--color-danger) 3%, var(--color-surface)); }
-  .error-icon { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: var(--radius-md); color: var(--color-danger); background: color-mix(in srgb, var(--color-danger) 10%, transparent); }
+  /* Red on the status mark alone: the card and its words stay neutral, so a failure reads as a fact to act on, not an alarm. */
+  .error-card { display: flex; align-items: flex-start; gap: 10px; padding: 14px 16px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); }
+  .error-icon { display: grid; place-items: center; flex: none; height: 22px; color: var(--color-danger); }
   .body { flex: 1; min-width: 0; }
   .heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 10px; min-height: 22px; }
   .title { color: var(--color-foreground); font-size: var(--text-sm); font-weight: 600; }

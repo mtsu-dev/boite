@@ -83,18 +83,16 @@
         {#if allExpanded}<ChevronsDownUp size={14} />{:else}<ChevronsUpDown size={14} />{/if}
       </button>
     {/if}
-    <span class="tools">
-      {#if diffs.length > 0 || deferred.length > 0}
+    <!-- One action: the answer's own diff, the same rows its counts are read from. The folder's whole change set is offered under it. -->
+    {#if diffs.length > 0 || deferred.length > 0}
+      <span class="tools">
         <button type="button" class="ghost small" data-testid="turn-diff-toggle" aria-expanded={showDiff} onclick={() => { if (!showDiff) { attempt += 1; loadError = null; } diffToggled = !showDiff; }}>
           <FileDiff size={14} /><span class="ui-label">{showDiff ? strings.chat.hideTurnDiff : strings.chat.showTurnDiff}</span>
         </button>
-      {/if}
-      <!-- Not a second diff toggle: it opens the folder's whole change set in the side panel, so its mark is the panel. -->
-      {#if repository}
-        <button type="button" class="ghost small icon" data-testid="turn-all-changes" title={strings.chat.allChanges} aria-label={strings.chat.allChanges}
-          onclick={() => store.panel.openChanges()}><PanelRightOpen size={14} /></button>
-      {/if}
-    </span>
+      </span>
+    {:else if repository}
+      <span class="tools">{@render allChanges()}</span>
+    {/if}
   </header>
   {#if open}<div class="tree" data-testid="turn-files-tree">{@render branch(tree, 0)}</div>{/if}
   {#if showDiff}
@@ -104,9 +102,18 @@
       {#each diffs as doc, index (index)}
         <Deferred part={parts.DiffView}>{#snippet children(DiffView)}<DiffView path={doc.path} oldText={doc.oldText} newText={doc.newText} {doc} />{/snippet}</Deferred>
       {/each}
+      {#if repository}<span class="all">{@render allChanges()}</span>{/if}
     </div>
   {/if}
 </section>
+
+{#snippet allChanges()}
+  <!-- The working tree against its last commit, in the side panel, on this answer's first file. -->
+  <button type="button" class="ghost small" data-testid="turn-all-changes" title={strings.chat.allChanges}
+    onclick={() => store.panel.openChanges(files.find(openable)?.relative ?? undefined)}>
+    <PanelRightOpen size={14} /><span class="ui-label">{strings.chat.allChanges}</span>
+  </button>
+{/snippet}
 
 {#snippet counts(value: { added: number; removed: number })}
   <span class="lines" data-testid="turn-lines"><span class="added">+{value.added}</span><span class="removed">-{value.removed}</span></span>
@@ -183,15 +190,15 @@
     flex-direction: column;
     min-width: 0;
     /* The answer's parts sit 4px in; the card lines up with them. */
-    margin: 12px 0 0 4px;
+    margin: var(--chat-block-gap) 0 0 4px;
     background: var(--color-surface);
     border-radius: var(--radius-md);
     overflow: hidden;
   }
 
+  /* One row at every width: the fold shrinks, its action stays whole. */
   header {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
     gap: 8px;
     min-height: var(--row);
@@ -209,6 +216,7 @@
   }
   .fold {
     display: inline-flex;
+    flex: none;
     align-items: center;
     gap: 6px;
     margin-left: -6px;
@@ -229,8 +237,9 @@
   .row .lines { padding-right: 6px; }
   .expand, .tools { margin-left: auto; }
   .expand ~ .tools { margin-left: 0; }
-  .tools { display: flex; align-items: center; gap: 2px; }
-  .tools button:not(.icon) { display: inline-flex; align-items: center; gap: 6px; }
+  .tools { display: flex; flex: none; align-items: center; gap: 2px; }
+  .tools button, .all button { display: inline-flex; align-items: center; gap: 6px; }
+  .all { display: flex; }
   .tree { padding: 0 6px 6px; }
   .diffs { display: flex; flex-direction: column; gap: 8px; padding: 0 12px 12px; }
 

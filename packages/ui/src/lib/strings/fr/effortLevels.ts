@@ -12,7 +12,7 @@ export const fr: Translation = {
     xhigh: 'Très élevé',
     max: 'Max',
     ultra: 'Ultra',
-    ultrathink: 'Profond',
+    ultrathink: 'Réfléchir plus',
     fast: 'Rapide'
   }
 };

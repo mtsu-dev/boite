@@ -71,10 +71,10 @@
     }
     // Inside a group of choices the arrows move between its options, the radio way.
     if (!(event.target instanceof HTMLElement) || event.target.getAttribute('role') !== 'radio') return;
-    if (!['ArrowUp', 'ArrowDown'].includes(event.key)) return;
+    if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) return;
     const group = [...(event.target.parentElement?.querySelectorAll<HTMLButtonElement>('[role=radio]') ?? [])];
     const at = group.indexOf(event.target as HTMLButtonElement);
-    const next = group[(at + (event.key === 'ArrowUp' ? group.length - 1 : 1)) % group.length];
+    const next = group[(at + (event.key === 'ArrowUp' || event.key === 'ArrowLeft' ? group.length - 1 : 1)) % group.length];
     event.preventDefault();
     next?.click();
     next?.focus();
@@ -120,10 +120,14 @@
   use:floating={{ anchor, placement: 'bottom', align: 'end', cap: 640, dismiss: () => onclose() }}
   onanimationend={popover.end}
 >
-  <h3 class="ui-label" id="{uid}-view">{strings.sidebar.displayView}</h3>
-  <div role="radiogroup" aria-labelledby="{uid}-view">
-    {@render choice('view:projects', strings.sidebar.projectsView, projects, () => workspace.setView('projects'), Kanban)}
-    {@render choice('view:recent', strings.sidebar.recentView, !projects, () => workspace.setView('recent'), Clock)}
+  <!-- The view, a two-state switch: both sides in sight, the one on filled. -->
+  <div role="radiogroup" class="views" aria-label={strings.sidebar.displayView} data-testid={`${prefix}view-switch`} data-view={projects ? 'projects' : 'recent'}>
+    {#each [['projects', strings.sidebar.projectsView, Kanban], ['recent', strings.sidebar.recentView, Clock]] as const as [view, label, Glyph] (view)}
+      {@const checked = (view === 'projects') === projects}
+      <button type="button" role="radio" class="side" class:on={checked} aria-checked={checked} tabindex={checked ? 0 : -1} data-value="view:{view}" onclick={() => workspace.setView(view)}>
+        <Glyph size={14} aria-hidden="true" /><span class="ui-label">{label}</span>
+      </button>
+    {/each}
   </div>
   {#if !projects && !compact && entries.length}
     <!-- The project Recent lists: its own menu, so a long list of projects scrolls there and not here. -->
@@ -204,7 +208,7 @@
     margin: 0;
     padding: 6px 8px 4px;
     color: var(--color-subtle);
-    font-size: 11px;
+    font-size: var(--text-meta);
     font-weight: 600;
   }
   h3.project span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -238,6 +242,15 @@
   .check { color: var(--color-foreground); }
   /* The app's one switch (app.css), a size down for a menu row. */
   .switch { --switch-width: 26px; --switch-height: 16px; pointer-events: none; }
+  /* The view switch: two halves of one track, the one on raised in it. */
+  .views { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; margin: 2px 2px 4px; padding: 2px; border-radius: var(--radius-md); background: var(--color-background); box-shadow: inset 0 0 0 1px var(--color-border); }
+  .side { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; height: 26px; padding: 0 6px; border: none; border-radius: var(--radius-sm);
+    background: transparent; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 500; }
+  .side .ui-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .side :global(svg) { flex: none; }
+  .side:hover:not(.on), .side:focus-visible { color: var(--color-foreground); }
+  .side:active { transform: none; }
+  .side.on { background: var(--color-surface-3); color: var(--color-foreground); box-shadow: var(--shadow-e1); }
   .filter { padding: 2px 0 0; }
   .filter :global(.menu) { display: flex; min-width: 0; }
   .filter :global(.trigger) { width: 100%; min-width: 0; height: 30px; padding: 0 8px; justify-content: flex-start; gap: 9px; border-radius: var(--radius-sm); font-size: var(--text-sm); font-weight: 500; color: var(--color-muted-foreground); }
@@ -248,5 +261,6 @@
   @media (max-width: 720px) {
     .panel { width: auto; padding: 8px 6px max(8px, env(safe-area-inset-bottom)); }
     .row { height: var(--touch-target); }
+    .side { height: 38px; }
   }
 </style>

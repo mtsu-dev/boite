@@ -38,6 +38,9 @@ async function pick(model: string) {
   await settle();
   document.querySelector<HTMLButtonElement>('[data-testid=agent-runtime] [data-testid=composer-picker]')!.click();
   await settle();
+  // The picker opens on the models in use; the provider's list sits behind All models.
+  document.querySelector<HTMLButtonElement>('[data-testid=picker-all-models]')?.click();
+  await settle();
   document.querySelector<HTMLButtonElement>(`[data-model="${model}"]`)!.click();
   // A pick first asks the core for the account's models.
   await idle();

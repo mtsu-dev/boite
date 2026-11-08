@@ -94,10 +94,11 @@
 {/if}
 
 <style>
+  /* A 24 px target around the 14 px mark; the negative margin keeps the line's height. */
   .info-tip {
-    width: 22px;
-    height: 22px;
-    margin: -2px 0 -2px 4px;
+    width: 24px;
+    height: 24px;
+    margin: -4px -2px -4px 2px;
     padding: 0;
     border-radius: 50%;
     vertical-align: middle;
@@ -127,11 +128,11 @@
     letter-spacing: normal;
     text-transform: none;
     white-space: normal;
-    animation: pop var(--dur-2) var(--ease-out-quint);
+    animation: pop var(--motion-in);
   }
 
   .info-bubble.closing {
-    animation-name: pop-out;
+    animation: pop-out var(--motion-out);
   }
 
   /* A phone gets it as a sheet, where there is room to read. */

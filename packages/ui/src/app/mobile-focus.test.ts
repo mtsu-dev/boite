@@ -68,7 +68,7 @@ test('Escape after closing an overlay on touch preserves a question waiting for 
   expect(stop).not.toHaveBeenCalled();
   expect(store.busy).toBe(true);
   expect(document.querySelector('[data-testid=question-card][data-state=pending]')).not.toBeNull();
-  query<HTMLButtonElement>('[data-testid=composer-reply-ignore]').click();
+  query<HTMLButtonElement>('[data-testid=activity-question-toggle]').click();
   await waitFor(() => document.querySelector('[data-testid=composer-reply]') === null);
   query('[data-testid=composer]').focus();
   press('Escape');
@@ -159,8 +159,11 @@ test('asking to write an answer still focuses the composer on touch', async () =
   touch();
   await mountOnFake();
   await store.client!.call('questions.ask', { threadId: store.openThread!.id, text: 'Your answer?', options: ['Yes'] });
-  await waitFor(() => document.querySelector('[data-testid=composer-reply-ignore]') !== null);
-  query<HTMLButtonElement>('[data-testid=composer-reply-ignore]').click();
+  await waitFor(() => document.querySelector('[data-testid=composer-reply]') !== null);
+  // Folded, the question is set aside; opened again, it offers to take the box back.
+  query<HTMLButtonElement>('[data-testid=activity-question-toggle]').click();
+  await waitFor(() => document.querySelector('[data-testid=composer-reply]') === null);
+  query<HTMLButtonElement>('[data-testid=activity-question-toggle]').click();
   await waitFor(() => document.querySelector('[data-testid=question-write]') !== null);
   query<HTMLTextAreaElement>('[data-testid=composer-input]').blur();
   query<HTMLButtonElement>('[data-testid=question-write]').click();

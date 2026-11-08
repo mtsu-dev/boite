@@ -35,4 +35,9 @@
   /* A finger has no pointer to bring them up: settled ticks stay away, the turn's "i" holds its times. */
   @media (hover: none) { .receipts.settled .tick { display: none; } }
   .receipts.agent { align-self: flex-start; }
+  /* On a pointer device the row sits inside the gap under the bubble, one row
+     tall, instead of opening a band between the prompt and its answer. */
+  @media (hover: hover) {
+    .receipts { height: var(--chat-message-gap); margin: 0 2px calc(-1 * var(--chat-message-gap)); }
+  }
 </style>

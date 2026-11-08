@@ -70,6 +70,7 @@ export const fr: Translation = {
     addProject: 'Ajouter un projet',
     noProjects: 'Aucun projet pour le moment.',
     noThreads: 'Aucune conversation pour le moment.',
+    firstRunList: 'Vos conversations apparaîtront ici.',
     noMatch: 'Rien ne correspond.',
     unread: 'Non lu',
     collapse: 'Masquer la barre latérale',
@@ -85,6 +86,7 @@ export const fr: Translation = {
     autoArchiveMergedPr: 'Masquer les conversations des PR mergées',
     autoRemoveWorktrees: 'Supprimer les worktrees terminés',
     backToProjectMenu: 'Retour',
+    backToThreadMenu: 'Retour',
     viewArchivedThreads: 'Voir les conversations archivées',
     importSession: 'Importer une session Claude Code',
     archiveProject: 'Archiver le projet',
@@ -130,7 +132,7 @@ export const fr: Translation = {
         'error': 'la tâche a échoué',
         'cancelled': 'la tâche a été annulée',
         'no-longer-reported': 'son processus s’est arrêté',
-        'session-ended': 'le processus de l’agent a été arrêté',
+        'session-ended': 'l’agent a été arrêté',
         'core-restarted': 'Boite ou le PC a redémarré'
       }
     },

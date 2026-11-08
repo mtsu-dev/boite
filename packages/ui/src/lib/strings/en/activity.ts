@@ -9,6 +9,8 @@ export const strings = {
     questionNext: 'Next question',
     questionFold: 'Fold the question',
     questionUnfold: 'Open the question',
+    /** The fold of the question the box answers: folding sets it aside, and the box writes an ordinary message. */
+    questionSetAside: 'Fold the question and write a message',
     /** A sub-agent's question or permission, docked in its parent: whose it is, and the way into its conversation. */
     subagentAsks: 'Asked by {title}',
     subagentPermission: '{title} waits for your permission',

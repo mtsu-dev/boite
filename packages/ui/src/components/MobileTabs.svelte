@@ -69,7 +69,7 @@
     .tab {
       display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0; height: auto; min-height: 52px; padding: 2px 0 0;
       border: 0; border-radius: var(--radius-md); background: transparent; color: var(--color-muted-foreground);
-      font-size: 11px; font-weight: 500; letter-spacing: -0.2px; -webkit-tap-highlight-color: transparent;
+      font-size: var(--text-meta); font-weight: 500; letter-spacing: -0.2px; -webkit-tap-highlight-color: transparent;
     }
     .glyph {
       position: relative; display: grid; place-items: center; width: 48px; height: 30px; border-radius: var(--radius-full);

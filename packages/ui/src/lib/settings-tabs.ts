@@ -54,25 +54,49 @@ const SECTION_PAGES: Partial<Record<SettingsTab, Record<string, { page: PhoneSec
 export type PhoneSectionPage = 'conversations' | 'archived' | 'worktrees' | 'windows' | 'secrets' | 'browser-profiles' | 'auto-compact';
 
 /**
- * The eight groups Settings shows, desktop and phone alike, each led by the page
- * its entry opens. A page keeps its id, its route and its test ids: the group
- * only says where it is listed, so an old link lands on the same page, inside
- * its group.
+ * The eight entries Settings lists, desktop and phone alike, each led by the
+ * page its entry opens. The other pages of a group are tabs at the top of its
+ * card (desktop) or rows of its index (phone): a page keeps its id, its route
+ * and its test ids, so an old link lands on the same page, inside its group.
  */
 export const SETTINGS_GROUPS = [
   ['general', 'keyboard', 'voice'],
   ['appearance'],
   ['accounts', 'plugins'],
   ['brain'],
-  ['usage', 'limits'],
+  ['limits', 'usage'],
   ['resources'],
   ['machines'],
-  ['advanced', 'task-manager', 'diagnostics', 'experiments']
+  ['advanced', 'experiments', 'diagnostics', 'task-manager']
 ] as const satisfies readonly (readonly SettingsTab[])[];
+
+/**
+ * A page shown as the last section of another, once that one may open here:
+ * the task manager is the live half of Diagnostics. A paired device, which
+ * may not read the logs, still gets the task manager as a page of its own.
+ */
+const MERGED: Partial<Record<SettingsTab, SettingsTab>> = { 'task-manager': 'diagnostics' };
 
 /** The page that leads a page's group: what the group's entry opens and marks. */
 export function groupOf(tab: SettingsTab): SettingsTab {
   return SETTINGS_GROUPS.find((group) => (group as readonly SettingsTab[]).includes(tab))?.[0] ?? tab;
+}
+
+/** The page whose view shows a route: its own, or the one it is a section of. */
+export function viewOf(tab: SettingsTab, owner: boolean): SettingsTab {
+  const host = MERGED[tab];
+  return host && (owner || !ownerOnly(host)) ? host : tab;
+}
+
+/** The pages merged into a view as its last sections, in order. */
+export function sectionsOf(view: SettingsTab, owner: boolean): SettingsTab[] {
+  return (Object.keys(MERGED) as SettingsTab[]).filter((tab) => MERGED[tab] === view && viewOf(tab, owner) === view);
+}
+
+/** The tabs a group's card shows: its pages this window may open, those merged into another left out. */
+export function pagesOf(lead: SettingsTab, owner: boolean): SettingsTab[] {
+  const group: readonly SettingsTab[] = SETTINGS_GROUPS.find((members) => members[0] === lead) ?? [lead];
+  return group.filter((tab) => (owner || !ownerOnly(tab)) && viewOf(tab, owner) === tab);
 }
 
 export function ownerOnly(tab: SettingsTab): boolean {
@@ -91,13 +115,14 @@ export function desktopSettings(phoneWidth: boolean): boolean {
   return !phoneWidth || window.__TAURI_INTERNALS__ !== undefined;
 }
 
-/** The page a desktop shows for a route. */
+/** The page a desktop shows for a route: the view it is a section of, or Home where this window may not open it. */
 export function desktopPage(tab: SettingsTab, owner: boolean): SettingsTab {
-  return owner || !ownerOnly(tab) ? tab : 'home';
+  return owner || !ownerOnly(tab) ? viewOf(tab, owner) : 'home';
 }
 
 /** The page a phone shows for a route: a whole page, one card's page, or Home. */
-export function phonePage(tab: SettingsTab, section: string | null | undefined, owner: boolean): SettingsTab | PhoneSectionPage {
+export function phonePage(route: SettingsTab, section: string | null | undefined, owner: boolean): SettingsTab | PhoneSectionPage {
+  const tab = viewOf(route, owner);
   const page = PAGES[tab];
   if (page.owner && !owner) return 'home';
   if (page.phone === 'page') return tab;

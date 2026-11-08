@@ -23,7 +23,7 @@ export const strings = {
       accounts: 'Providers',
       plugins: 'Plugins',
       usage: 'Usage',
-      resources: 'Focus and resources',
+      resources: 'Quiet and memory',
       experiments: 'Experiments',
       diagnostics: 'Diagnostics'
     },

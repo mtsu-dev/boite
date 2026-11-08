@@ -1,11 +1,13 @@
 <script lang="ts">
   import { errorText } from '../lib/errors';
   import { untrack } from 'svelte';
+  import { MediaQuery } from 'svelte/reactivity';
   import { ChevronDown, RefreshCw } from '@lucide/svelte';
   import type { UsageHistory, UsageHistoryThread } from '@boite/contracts';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
   import { formatLocale } from '../lib/i18n.svelte';
+  import { titleSlot } from '../lib/title-slot.svelte';
   import { workspace, type Machine } from '../lib/workspace.svelte';
   import {
     dayEdges,
@@ -153,6 +155,15 @@
     void load(range);
   }
 
+  /** Wider than a phone, the band carries the page's title, so the refresh stands in the band's actions. */
+  const narrow = new MediaQuery('(max-width: 720px)');
+  const inBand = $derived(!narrow.current);
+  $effect(() => {
+    if (!inBand) return;
+    titleSlot.actions = refreshButton;
+    return () => { if (titleSlot.actions === refreshButton) titleSlot.actions = null; };
+  });
+
   function pickMachine(id: string) {
     const next = id === ALL ? ALL : id === current.id ? null : id;
     if (next === scope) return;
@@ -235,12 +246,16 @@
   </tr>
 {/snippet}
 
+{#snippet refreshButton()}
+  <button type="button" class="quiet icon refresh" aria-label={strings.usage.refresh} title={strings.usage.refresh} data-testid="usage-refresh" onclick={refresh}>
+    <RefreshCw size={15} strokeWidth={1.75} class={loading ? 'spinning' : ''} />
+  </button>
+{/snippet}
+
 <div class="page usage" data-testid="usage-page">
   <header>
     <h1 class="ui-label-box"><span class="ui-label">{strings.usage.heading}</span><InfoTip topic={strings.usage.heading} text={`${strings.usage.intro} ${strings.usage.note}`} /></h1>
-    <button type="button" class="quiet icon refresh" aria-label={strings.usage.refresh} title={strings.usage.refresh} data-testid="usage-refresh" onclick={refresh}>
-      <RefreshCw size={15} strokeWidth={1.75} class={loading ? 'spinning' : ''} />
-    </button>
+    {#if !inBand}{@render refreshButton()}{/if}
   </header>
 
   <div class="filters">
@@ -430,7 +445,7 @@
 {/snippet}
 
 <style>
-  /* The refresh sits on the title's line, as on Limits. */
+  /* On a phone the refresh sits on the title's line; wider, it stands in the band. */
   .usage > header { align-items: center; gap: 8px; max-width: var(--settings-width); }
   .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; max-width: var(--settings-width); margin-bottom: 20px; }
   .refresh { margin-left: auto; width: var(--control); height: var(--control); padding: 0; }

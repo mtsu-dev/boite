@@ -8,8 +8,11 @@
   import { workspace, type Machine } from '../lib/workspace.svelte';
   import { fill, strings } from '../lib/strings';
   import { projectName } from '../lib/format';
-  import { compareThreads } from '../lib/thread-order';
+  import { compareEntries } from '../lib/thread-order';
+  import { rowPlaces } from '../lib/row-place';
   import { projectRollup, threadState } from '../lib/thread-state';
+  import { storeNeedsYou } from '../lib/activity-feed';
+  import { needsYou } from '../lib/status-order';
   import { groupWorkingThread, recentPreferences } from '../lib/recent.svelte';
   import { dropKey as threadDropKey, takesDrop, threadDrag } from '../lib/thread-move.svelte';
   import { sidebarRows } from '../lib/sidebar-rows.svelte';
@@ -95,8 +98,10 @@
           .threadsOf(project.id)
           .map((thread) => ({ machine, project, thread }))
       )
-      .sort((a, b) => compareThreads(a.thread, b.thread))
+      .sort(compareEntries)
   );
+  /** Recent's second line: where each row lives, once the tiles alone may not tell them apart. */
+  const places = $derived(rowPlaces(recent));
   let workingOpen = $state(false);
   let doneRows = $state.raw<{ store: Store; threadId: ThreadId }[]>([]);
   let archivedRows = $state.raw<{ store: Store; threadId: ThreadId }[]>([]);
@@ -153,7 +158,8 @@
   /** The threads of a project that wait on the user, its header's amber count; a sub-agent's question counts for its parent. */
   function waitingCount(entry: ProjectEntry): number {
     const owner = entry.machine.store;
-    return owner.threadsOf(entry.project.id).filter(thread => threadState(thread, owner.subagents(thread.id)) === 'waiting').length;
+    // Activity's own count over the project's threads: the card and the rail's badge never disagree.
+    return storeNeedsYou(owner, owner.threadsOf(entry.project.id));
   }
   const canAddProject = $derived(store.owner && work.shows('sidebar.add-project'));
   /** Nothing listed yet: the list says why, and where the projects come from. */
@@ -180,7 +186,7 @@
 </script>
 
 <RailFrame {store} kind="sidebar" label={strings.sidebar.threads} testid="sidebar" drawer bind:scroller={scrollRoot} onscroll={() => { if (showRows && scrollRoot) savedScroll = scrollRoot.scrollTop; }}>
-  {#snippet head()}<ProjectViews entries={groups} {store} />{/snippet}
+  {#snippet head()}<ProjectViews entries={groups} {store} quiet={groups.length === 0 && needsAnAI(store) && !loading} />{/snippet}
     {#if showRows}
     {#if groups.length === 0 && !(needsAnAI(store) && !loading)}
       <div class="empty" data-testid="sidebar-empty" role={loading ? 'status' : undefined}>
@@ -198,11 +204,11 @@
         {/each}
       {/each}
       <WindowList items={split.active} keyOf={entry => JSON.stringify([entry.machine.id, entry.thread.id])} {scrollRoot} estimate={32} measurements={measurements('recent')}>
-        {#snippet row(entry)}<ThreadCard {...entry} {now} compact showDone />{/snippet}
+        {#snippet row(entry)}<ThreadCard {...entry} {now} compact showDone where={places(entry)} />{/snippet}
       </WindowList>
       {#if split.active.length > 0 && split.older.length > 0}<div class="rest-line" role="separator"></div>{/if}
       <WindowList items={split.older} keyOf={entry => JSON.stringify([entry.machine.id, entry.thread.id])} {scrollRoot} estimate={32} measurements={measurements('recent-rest')}>
-        {#snippet row(entry)}<ThreadCard {...entry} {now} compact showDone />{/snippet}
+        {#snippet row(entry)}<ThreadCard {...entry} {now} compact showDone where={places(entry)} />{/snippet}
       </WindowList>
       <!-- Done is the display menu's filter: on, the finished threads follow the live ones. -->
       {#if doneFilter.shown}
@@ -217,7 +223,7 @@
         {#if working.length > 0}
           <RecentGroup kind="working" count={working.length} bind:open={workingOpen}>
             <WindowList items={working} keyOf={entry => JSON.stringify([entry.machine.id, entry.thread.id])} {scrollRoot} estimate={32} measurements={measurements('recent-working')}>
-              {#snippet row(entry)}<ThreadCard {...entry} {now} compact showDone />{/snippet}
+              {#snippet row(entry)}<ThreadCard {...entry} {now} compact showDone where={places(entry)} />{/snippet}
             </WindowList>
           </RecentGroup>
         {/if}
@@ -274,14 +280,14 @@
               onclick={() => projectThreadView.toggleProject(entry, lists, draftsHere.length)}
             >
               {#if projectView.order === 'manual'}<GripVertical size={12} />{/if}<span class="mark"><ProjectTile {project} store={owner} size={18} /><span class="fold-caret" class:open={!collapsed} aria-hidden="true"><ChevronRight size={16} /></span></span
-              ><span class="name ui-label" class:gone={project.missing === true}>{projectName(project)}</span
+              ><span class="name project-title ui-label" class:gone={project.missing === true}>{projectName(project)}</span
               >{#if multi}<span class="host" data-testid="project-host" class:offline={owner.connection !== 'ready'}
-                title={`${machine.label} · ${strings.connection[owner.connection]}`} aria-label={machine.label}>{machine.label}</span>{/if}{#if project.missing === true}<span class="missing" data-testid="project-missing" title={strings.sidebar.projectMissing} aria-label={strings.sidebar.projectMissing}><FolderX size={13} aria-hidden="true" /></span>{/if}{#if rollup && rollup.kind !== 'waiting'}{@const label = fill(rollup.count === 1 ? strings.sidebar.rollupOne : strings.sidebar.rollupMany, { count: String(rollup.count), state: strings.sidebar.state[rollup.kind] })}<span
+                title={`${machine.label} · ${strings.connection[owner.connection]}`} aria-label={machine.label}>{machine.label}</span>{/if}{#if project.missing === true}<span class="missing" data-testid="project-missing" title={strings.sidebar.projectMissing} aria-label={strings.sidebar.projectMissing}><FolderX size={13} aria-hidden="true" /></span>{/if}{#if rollup && !needsYou(rollup.kind)}{@const label = fill(rollup.count === 1 ? strings.sidebar.rollupOne : strings.sidebar.rollupMany, { count: String(rollup.count), state: strings.sidebar.state[rollup.kind] })}<span
                   class="rollup {rollup.kind}" data-testid="project-rollup" data-state={rollup.kind} title={label} aria-label={label}
                   >{#if rollup.kind === 'error' || rollup.kind === 'interrupted'}<CircleAlert size={12} aria-hidden="true" />{:else if rollup.kind === 'done'}<Check size={12} aria-hidden="true" />{:else}<LoaderCircle size={11} class={rollup.kind === 'working' ? 'spinner' : 'pulse'} aria-hidden="true" />{/if}{#if rollup.count > 1}<span class="ui-label">{rollup.count}</span>{/if}</span
                 >{/if}
             </button>
-            <ProjectThreadCounters {entry} part="head" working={lists.working.length} waiting={away || (rollup && rollup.kind !== 'waiting') ? 0 : waitingCount(entry)} {controls} {collapsed} {away} />
+            <ProjectThreadCounters {entry} part="head" working={lists.working.length} waiting={away ? 0 : waitingCount(entry)} {controls} {collapsed} {away} />
             <button
               class="ghost small icon project-actions"
               data-testid="project-menu"
@@ -438,7 +444,8 @@
   }
   .toggle:hover:not(:disabled) { background: transparent; }
   .toggle:active:not(:disabled) { transform: none; }
-  /* The name takes what it needs first: the host icon and the counters are small and follow it. */
+  /* The card's title, the user's folder name: it takes what is left after the
+     machine and the counters, which stay whole, and ends in an ellipsis. */
   .name {
     flex: 0 1 auto;
     min-width: 0;
@@ -500,12 +507,10 @@
   @media (prefers-reduced-motion: reduce) {
     .mark > :global(*) { transition: none; }
   }
-  /* The machine, after the name in quiet ink; it gives way before the name does. */
+  /* The machine, after the name in quiet ink. A machine label is short and
+     says where the work runs, so it stays whole: the project name gives way. */
   .host {
-    flex: 0 1000 auto;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    flex: none;
     white-space: nowrap;
     font-size: var(--text-xs);
     font-weight: 400;

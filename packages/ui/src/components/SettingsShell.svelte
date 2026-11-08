@@ -3,7 +3,8 @@
   import { tick } from 'svelte';
   import MobileSettings from './MobileSettings.svelte';
   import BrainPage from './BrainPage.svelte';
-  import { Activity, Brain, ChevronRight, Coins, FlaskConical, Gauge, Keyboard, Mic, Monitor, Palette, Puzzle, Settings2, ShieldCheck, SlidersHorizontal, Stethoscope, Users } from '@lucide/svelte';
+  import InfoTip from './InfoTip.svelte';
+  import { Activity, Brain, Coins, FlaskConical, Gauge, Keyboard, Mic, Monitor, Palette, Puzzle, Settings2, ShieldCheck, SlidersHorizontal, Stethoscope, Users } from '@lucide/svelte';
   import KeyboardPage from './KeyboardPage.svelte';
   import LimitsPage from './LimitsPage.svelte';
   import PluginsPage from './PluginsPage.svelte';
@@ -29,8 +30,8 @@
   import { isThisPC, workspace } from '../lib/workspace.svelte';
   import SettingsMachineBar from './SettingsMachineBar.svelte';
   import { untrack } from 'svelte';
-  import { revealSettingsCard } from '../lib/settings-flash';
-  import { desktopPage, desktopSettings, groupOf, machinePage, ownerOnly, SETTINGS_GROUPS } from '../lib/settings-tabs';
+  import { holdSettingsCard, revealSettingsCard } from '../lib/settings-flash';
+  import { desktopPage, desktopSettings, groupOf, machinePage, ownerOnly, pagesOf, sectionsOf, SETTINGS_GROUPS } from '../lib/settings-tabs';
   import { titleSlot } from '../lib/title-slot.svelte';
 
   let { store, onopenthread }: { store: Store; onopenthread?: () => void } = $props();
@@ -51,14 +52,16 @@
   let chosen = $derived(choices.find((machine) => machine.id === picked)
     ?? (store.settingsTab === 'plugins' ? choices.find(isThisPC) : undefined)
     ?? choices.find((machine) => machine.store === store));
-  let target = $derived(machinePage(store.settingsTab) ? chosen?.store ?? store : store);
+  /** The page shown: the route's own, the one it is a section of, or Home where this window may not open it. */
+  let tab = $derived(desktopPage(store.settingsTab, store.owner));
+  let target = $derived(machinePage(tab) ? chosen?.store ?? store : store);
   /** A plugin card's Preview reads the repository on the card's machine, where the agent that asked runs. */
   $effect(() => {
     if (!store.pluginSource) return;
     untrack(() => { picked = choices.find((machine) => machine.store === store)?.id ?? picked; });
   });
   /** The bar when there is a machine to pick or a default machine to speak of. */
-  let bar = $derived(machinePage(store.settingsTab) && chosen !== undefined && (choices.length > 1 || chosen.store.group?.settingsHome !== undefined));
+  let bar = $derived(machinePage(tab) && chosen !== undefined && (choices.length > 1 || chosen.store.group?.settingsHome !== undefined));
   /** The policy banner stands above the page, so the panel scrolls both on one column, as under the bar. */
   let banner = $derived(target.policy?.present === true && target.policy.problems.length > 0);
   /**
@@ -156,24 +159,49 @@
 
   let tabs = $derived(all.filter((tab) => store.owner || !ownerOnly(tab.id)));
   /**
-   * The nav's eight groups (`SETTINGS_GROUPS`), each led by the first page of
-   * it this window may open, its other pages listed right under it. The home's
-   * tiles open the leads; the search still finds every card of every page.
+   * The nav's eight entries (`SETTINGS_GROUPS`), the same list a phone shows,
+   * each led by the first page of it this window may open. Its other pages
+   * are tabs at the top of its card; the search still finds every card.
    */
   let groups = $derived(SETTINGS_GROUPS
-    .map((ids) => ids.flatMap((id) => tabs.filter((entry) => entry.id === id)))
+    .map((ids) => pagesOf(ids[0], store.owner).flatMap((id) => tabs.filter((entry) => entry.id === id)))
     .filter((members) => members.length > 0)
     .map(([lead, ...rest]): SettingsGroup => ({ ...lead!, members: rest })));
-  /** A page only the owner may open lands on Home on a paired device, as it does on a phone. */
-  let tab = $derived(desktopPage(store.settingsTab, store.owner));
-  let tabLabel = $derived(tabs.find((entry) => entry.id === tab)?.label ?? '');
   /** The group the shown page sits in, by its first page this window lists. */
   let group = $derived(groups.find((entry) => entry.id === tab || entry.members.some((member) => member.id === tab)));
+  /** The pages merged into the shown one as its last sections (the task manager under Diagnostics). */
+  let merged = $derived(sectionsOf(tab, store.owner));
+  /** A group of several pages shows them as tabs at the top of its card. */
+  let strip = $derived((group?.members.length ?? 0) > 0);
 
   /**
-   * On a desktop the bar above the page says where it is, Settings then the
-   * page, and Settings leads back to Home. The rail and this trail are the way
-   * out: no Back button.
+   * What each page is for, said once behind the "i" beside the screen's title
+   * in the bar: the page's own title steps aside, so its card starts with
+   * its settings (app.css's `.page > header`).
+   */
+  function infoOf(page: SettingsTab): string {
+    switch (page) {
+      case 'keyboard': return strings.keyboard.intro;
+      case 'voice': return strings.speech.description;
+      case 'accounts': return strings.providerSettings.intro;
+      case 'plugins': return strings.plugins.intro;
+      case 'brain': return strings.brain.description;
+      case 'usage': return `${strings.usage.intro} ${strings.usage.note}`;
+      case 'machines': return strings.machines.intro;
+      case 'experiments': return strings.settings.experiments.intro;
+      case 'diagnostics': return strings.diagnostics.intro;
+      case 'task-manager': return strings.taskManager.scope;
+      default: return '';
+    }
+  }
+  /** One title per screen, in the bar: Settings on Home, else the group the page sits in. */
+  let title = $derived(tab === 'home' ? strings.settings.heading : group?.label ?? tabs.find((entry) => entry.id === tab)?.label ?? '');
+  let info = $derived(tab === 'home' ? '' : infoOf(tab));
+
+  /**
+   * On a desktop the bar above the card carries the screen's one title; the
+   * list's head leads back to Home, and the rail is the way out: no Back
+   * button and no second heading in the card.
    */
   $effect(() => {
     if (!desktopSettings(narrow.current)) return;
@@ -266,30 +294,29 @@
 
   // A caller can name a card before this lazy settings subtree is mounted.
   // Effects run after its DOM is present, so the normal navigation path can
-  // perform the first scroll without timing guesses in the caller.
+  // perform the first scroll without timing guesses in the caller. A page
+  // merged into another is that page's section: its route scrolls to it.
   $effect(() => {
-    const section = store.settingsSection;
-    if (!section || tab !== store.settingsTab) return;
-    void section.request;
+    const route = store.settingsTab, section = store.settingsSection;
+    const id = tab === route ? section?.id : merged.includes(route) ? route : undefined;
+    if (!id) return;
+    void section?.request;
+    let release = () => {};
+    let live = true;
     void tick().then(() => {
-      revealSettingsCard(section.id, section.flash === true, motion());
+      if (!live) return;
+      // A merged section jumps and holds: the page above it is still filling in.
+      revealSettingsCard(id, section?.flash === true, tab === route ? motion() : 'instant');
+      if (tab !== route) release = holdSettingsCard(id);
     });
+    return () => { live = false; release(); };
   });
 </script>
 
 {#snippet crumb()}
   <span class="crumb" data-testid="settings-crumb">
-    {#if tab === 'home'}
-      <span class="here ui-label">{strings.settings.heading}</span>
-    {:else}
-      <button type="button" class="ghost root" onclick={() => store.showSettings('home')}><span class="ui-label">{strings.settings.heading}</span></button>
-      <ChevronRight size={14} strokeWidth={1.75} aria-hidden="true" />
-      {#if group && group.id !== tab}
-        <button type="button" class="ghost root" onclick={() => store.showSettings(group.id)}><span class="ui-label">{group.label}</span></button>
-        <ChevronRight size={14} strokeWidth={1.75} aria-hidden="true" />
-      {/if}
-      <span class="here ui-label">{tabLabel}</span>
-    {/if}
+    <span class="here ui-label">{title}</span>
+    {#if info}<InfoTip topic={tabs.find((entry) => entry.id === tab)?.label ?? title} text={info} testid="settings-info" />{/if}
   </span>
 {/snippet}
 
@@ -306,31 +333,39 @@
     <button type="button" class="ghost title" class:active={tab === 'home'} data-testid="settings-tab-home" aria-current={tab === 'home' ? 'page' : undefined} title={strings.settings.tabs.home} onclick={() => store.showSettings('home')}>
       <span class="ui-label">{strings.settings.heading}</span>
     </button>
-    <!-- Every page in view, its group's pages right under the one that leads it: nothing to unfold. -->
+    <!-- One entry a group, as on a phone: a group's other pages are tabs at the top of its card. -->
     {#each groups as entry (entry.id)}
-      <div class="category" role="group" aria-label={entry.label}>
-        {#each [entry, ...entry.members] as page (page.id)}
-          {@const Icon = page.icon}
-          <button
-            type="button"
-            class="ghost tab"
-            class:active={tab === page.id}
-            data-testid="settings-tab-{page.id}"
-            aria-current={tab === page.id ? 'page' : undefined}
-            onclick={() => store.showSettings(page.id)}
-          >
-            <Icon size={16} strokeWidth={1.75} />
-            <span class="ui-label">{page.label}</span>
-          </button>
-        {/each}
-      </div>
+      {@const Icon = entry.icon}
+      {@const here = group?.id === entry.id}
+      <button
+        type="button"
+        class="ghost tab"
+        class:active={here}
+        data-testid="settings-tab-{entry.id}"
+        aria-current={here ? 'page' : undefined}
+        onclick={() => store.showSettings(entry.id)}
+      >
+        <Icon size={16} strokeWidth={1.75} />
+        <span class="ui-label">{entry.label}</span>
+      </button>
     {/each}
   </nav>
 
   <!-- The panel is keyed on the tab, so switching tabs fades the new page in
        rather than swapping it in one frame. -->
   {#key tab}
-    <section class="framed" class:with-bar={bar || banner}>
+    <section class="framed" class:with-bar={bar || banner || strip || merged.length > 0}>
+      {#if strip && group}
+        <!-- The group's pages, the shown one filled. The group's own entry keeps the nav's test id; a moved page keeps its own. -->
+        <div class="pages" role="group" aria-label={group.label} data-testid="settings-pages">
+          {#each [group, ...group.members] as page (page.id)}
+            <button type="button" class="page-tab" class:on={page.id === tab} aria-current={page.id === tab ? 'page' : undefined}
+              data-testid={page.id === group.id ? `settings-page-${page.id}` : `settings-tab-${page.id}`} onclick={() => store.showSettings(page.id)}>
+              <span class="ui-label">{page.label}</span>
+            </button>
+          {/each}
+        </div>
+      {/if}
       {#if bar && tab !== 'experiments'}{@render machineBar()}{/if}
       {#key target}
       <PolicyBanner store={target} />
@@ -364,6 +399,10 @@
         <ExperimentsPage {store} {target} bar={bar ? machineBar : undefined} />
       {:else if tab === 'diagnostics'}
         <DiagnosticsPage store={target} {onopenthread} />
+        {#if merged.includes('task-manager')}
+          <!-- The live half of Diagnostics: its route scrolls here. -->
+          <div class="merged" id="settings-task-manager"><TaskManagerLoader {store} {onopenthread} /></div>
+        {/if}
       {:else}
         <ResourcesPage store={target} />
       {/if}
@@ -388,10 +427,50 @@
     .framed.with-bar > :global(.page) { padding-top: 16px; }
     .framed > :global(.policy-banner) { margin: 16px 16px 0; }
   }
-  /* A group's pages stand together; the air between groups is their only divider. */
-  .category { flex: none; display: flex; flex-direction: column; gap: 2px; }
-  .category + .category { margin-top: var(--space-3); }
   .tab span { flex: 1; text-align: left; }
+
+  /* A group's pages: one quiet segmented track over the page, the shown one raised. The accent stays out. */
+  .pages {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    width: fit-content;
+    max-width: 100%;
+    margin: var(--space-6) max(clamp(20px, 4vw, 64px), calc((100% - var(--settings-width)) / 2)) 0;
+    padding: 2px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+  }
+  .page-tab {
+    height: var(--control-sm);
+    padding: 0 var(--space-3);
+    border-radius: var(--radius-sm);
+    color: var(--color-muted-foreground);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    transition: background var(--dur-2) var(--ease-out-quint), color var(--dur-2) var(--ease-out-quint);
+  }
+  @media (hover: hover) { .page-tab:hover:not(.on) { background: var(--color-hover); color: var(--color-foreground); } }
+  .page-tab.on { background: var(--color-surface-3); color: var(--color-foreground); box-shadow: var(--shadow-control); }
+  .framed.with-bar > .pages + :global(.machine-bar) { padding-top: var(--space-4); }
+  .framed.with-bar > .pages + :global(.page) { padding-top: var(--space-6); }
+
+  /* A page merged into another reads as its last section: its title a section title, the same column. */
+  .merged { min-height: 100%; scroll-margin-top: var(--space-6); }
+  .merged > :global(.page) { height: auto; overflow: visible; padding-top: 0; padding-inline: max(clamp(20px, 4vw, 64px), calc((100% - var(--settings-width)) / 2)); }
+  .merged > :global(.page > header h1) { font-size: var(--text-md); }
+
+  /* The bar carries the page's title and its "i": the page's own heading steps aside, and
+     its header with it unless it holds an action. A lock or another mark in the title stays. */
+  .framed > :global(.page > header h1 > .ui-label),
+  .framed > :global(.page > header h1 > .ui-label + .info-tip),
+  .framed > :global(.page > header h1:not(:has(> :not(.ui-label, .ui-label + .info-tip)))),
+  .framed > :global(.limits-page > header h1),
+  .framed > :global(.machines-page .head h1) { display: none; }
+  .framed > :global(.page > header:not(:has(button:not(.ui-label + .info-tip), [role='status'], .policy-lock))),
+  .framed > :global(.machines-page .head:not(:has(button:not(.ui-label + .info-tip)))) { display: none; }
+  .framed > :global(.page > header) { justify-content: flex-end; }
 
   /* The pages' list stands in the thread list's column, on the chrome, and
      the page in the inset card beside it, as in the rest of the frame. */
@@ -418,11 +497,9 @@
   .title { flex: none; justify-content: flex-start; height: 36px; margin: 16px 4px 4px; padding: 0 8px; font-size: 15px; font-weight: 650; letter-spacing: -0.015em; color: var(--color-foreground); }
   .title:hover:not(:disabled) { background: var(--color-hover); }
 
-  .crumb { display: flex; align-items: center; gap: 4px; min-width: 0; padding-left: 10px; color: var(--color-subtle); font-size: var(--text-sm); }
-  .crumb :global(svg) { flex: none; }
-  .crumb .root { height: var(--control-sm); padding: 0 6px; color: var(--color-muted-foreground); font-weight: 500; }
-  .crumb .root:hover:not(:disabled) { color: var(--color-foreground); }
-  .crumb .here { min-width: 0; padding: 0 6px; color: var(--color-foreground); font-weight: 600; }
+    /* The screen's one title, in the bar at the thread title's size and weight. */
+  .crumb { display: flex; align-items: center; gap: 2px; min-width: 0; padding-left: 16px; }
+  .crumb .here { min-width: 0; color: var(--color-foreground); font-size: var(--text-base); font-weight: 600; }
 
   .tab {
     justify-content: flex-start;
@@ -480,8 +557,6 @@
     /* In a row, the head is the first chip and each group a run of chips. */
     .title { height: var(--control); margin: 0; font-size: var(--text-sm); white-space: nowrap; }
     .title.active { background: var(--color-active); }
-    .category { flex-direction: row; min-width: 0; }
-    .category + .category { margin: 0 0 0 var(--space-3); }
     .tab { width: auto; white-space: nowrap; }
   }
 </style>

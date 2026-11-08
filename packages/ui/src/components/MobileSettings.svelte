@@ -31,7 +31,7 @@
   import PolicyBanner from './PolicyBanner.svelte';
   import PolicySettings from './PolicySettings.svelte';
   import { tick, type Component, type Snippet } from 'svelte';
-  import { revealSettingsCard } from '../lib/settings-flash';
+  import { holdSettingsCard, revealSettingsCard } from '../lib/settings-flash';
   import { phonePage } from '../lib/settings-tabs';
 
   /**
@@ -124,6 +124,15 @@
     store.showSettings(group);
   }
 
+  // The task manager's route opens Diagnostics, where it is the last section: scroll to it.
+  $effect(() => {
+    if (page !== 'diagnostics' || store.settingsTab !== 'task-manager') return;
+    let release = () => {};
+    let live = true;
+    void tick().then(() => { if (live && revealSettingsCard('task-manager', false, 'instant')) release = holdSettingsCard('task-manager'); });
+    return () => { live = false; release(); };
+  });
+
   // A settings card in a conversation opened this page to show one card: scroll to it and light it up.
   $effect(() => {
     const section = store.settingsSection;
@@ -150,7 +159,8 @@
         {@render row('settings-tab-appearance', Palette, strings.settings.tabs.appearance, () => store.showSettings('appearance'))}
         {#if store.owner}{@render row('settings-tab-accounts', Users, strings.settings.tabs.accounts, () => store.showSettings('accounts'))}{/if}
         {#if store.owner}{@render row('settings-tab-brain', Brain, strings.brain.heading, () => store.showSettings('brain'))}{/if}
-        {@render row('settings-tab-usage', Coins, strings.settings.tabs.usage, () => store.showSettings('usage'))}
+        <!-- Usage is a page of Limits, as on the desktop: the entry wears the rail's gauge and opens on the limits. -->
+        {@render row('settings-tab-limits', Gauge, strings.usage.limits, () => store.showSettings('limits'))}
         {#if store.owner}{@render row('settings-tab-resources', ShieldCheck, strings.settings.tabs.resources, () => store.showSettings('resources'))}{/if}
         <!-- Machines carries the machine this phone reaches and how. -->
         <button class="ghost row machine-link" data-testid="mobile-settings-connection" onclick={() => store.showSettings('machines')}>
@@ -174,8 +184,8 @@
       {#key target}
       {#if quota}
         <div class="tabs" role="tablist" aria-label={strings.usage.heading} data-testid="mobile-usage-tabs">
-          <button type="button" role="tab" class="tab" class:on={shown === 'usage'} aria-selected={shown === 'usage'} data-testid="mobile-usage-tab-usage" onclick={() => store.showSettings('usage')}><Coins size={15} /><span class="ui-label">{strings.usage.heading}</span></button>
           <button type="button" role="tab" class="tab" class:on={shown === 'limits'} aria-selected={shown === 'limits'} data-testid="mobile-usage-tab-limits" onclick={() => store.showSettings('limits')}><Gauge size={15} /><span class="ui-label">{strings.usage.limits}</span></button>
+          <button type="button" role="tab" class="tab" class:on={shown === 'usage'} aria-selected={shown === 'usage'} data-testid="mobile-usage-tab-usage" onclick={() => store.showSettings('usage')}><Coins size={15} /><span class="ui-label">{strings.usage.heading}</span></button>
         </div>
       {/if}
       {#if shown === 'general'}
@@ -198,10 +208,11 @@
         <div class="page index" data-testid="mobile-settings-advanced">
           <div class="rows">
             {#if store.owner}{@render row('mobile-settings-compaction', Minimize2, strings.settings.autoCompact, () => store.showSettings('advanced', 'auto-compact'))}{/if}
-            {@render row('settings-tab-task-manager', Activity, strings.taskManager.title, () => store.showSettings('task-manager'))}
-            {#if store.owner}{@render row('settings-tab-diagnostics', Stethoscope, strings.diagnostics.heading, () => store.showSettings('diagnostics'))}{/if}
             <!-- The phone follows the desktop app's experiments until it flips one here, and can follow it again from this page. -->
             {@render row('settings-tab-experiments', FlaskConical, strings.settings.tabs.experiments, () => store.showSettings('experiments'))}
+            <!-- The task manager is Diagnostics' last section (lib/settings-tabs.ts); a paired phone, without the logs, opens it alone. -->
+            {#if store.owner}{@render row('settings-tab-diagnostics', Stethoscope, strings.diagnostics.heading, () => store.showSettings('diagnostics'))}
+            {:else}{@render row('settings-tab-task-manager', Activity, strings.taskManager.title, () => store.showSettings('task-manager'))}{/if}
           </div>
         </div>
       {:else if shown === 'accounts' && target.owner}
@@ -236,7 +247,10 @@
       {:else if shown === 'experiments'}
         <ExperimentsPage {store} {target} {bar} />
       {:else if shown === 'diagnostics' && target.owner}
-        <DiagnosticsPage store={target} {onopenthread} />
+        <div class="stack">
+          <DiagnosticsPage store={target} {onopenthread} />
+          <div class="merged" id="settings-task-manager"><TaskManagerLoader {store} {onopenthread} /></div>
+        </div>
       {:else if shown === 'worktrees'}
         <div class="page"><WorktreesCard store={target} /></div>
       {:else if shown === 'windows'}
@@ -306,6 +320,11 @@
   .phone-page :global(.card) { padding: var(--space-4); }
   .detail :global(.page), .detail :global(.machines-page) { padding: var(--space-4); }
   .bar { padding: var(--space-4) var(--space-4) 0; }
+  /* Diagnostics then the task manager, one scroll: neither page scrolls on its own. */
+  .stack > :global(.page), .stack > .merged > :global(.page) { height: auto; overflow: visible; }
+  .stack > .merged > :global(.page) { padding-top: 0; }
+  .detail .stack > .merged > :global(.page.task-manager:not(.usage) > header) { display: flex; }
+  .stack > .merged :global(.page > header h1) { font-size: var(--text-md); }
   .bar + :global(.page) { padding-top: var(--space-3); }
   /* The bar above already names the page, so its own title steps aside. */
   .detail :global(.page:not(.machines-page):not(.limits-page):not(.usage) > header),

@@ -179,6 +179,10 @@
   [data-tone='waiting'] .detail-line { color: var(--color-live); }
   [data-tone='waiting'] .detail { font-weight: 500; }
   [data-tone='error'] .detail-line { color: var(--color-danger); }
+  /* A failure's line says its cause and the way out: it wraps whole rather than lose the action at a phone's width. */
+  [data-tone='error'] .detail-line { align-items: flex-start; }
+  [data-tone='error'] .detail-line .glyph { margin-top: 2px; }
+  [data-tone='error'] .detail { white-space: normal; overflow-wrap: anywhere; line-height: 1.4; }
   [data-tone='asleep'] .detail-line { color: var(--color-subtle); }
   [data-tone='asleep'] .title { color: var(--color-muted-foreground); }
   .wake { flex: none; display: inline-flex; align-items: center; gap: 3px; color: var(--color-subtle); font-variant-numeric: tabular-nums; }

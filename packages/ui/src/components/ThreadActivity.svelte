@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { errorText } from '../lib/errors';
-  import { Bot, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleCheck, CircleDot, Hand, KeyRound, ListChecks, ListTodo, MessageCircleQuestionMark, PanelRight, PencilLine, Pause, Play, Repeat, Reply, Settings2, ShieldQuestion, Target, Users, X } from '@lucide/svelte';
+  import { Bot, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleCheck, CircleDot, Hand, KeyRound, ListChecks, ListTodo, MessageCircleQuestionMark, PanelRight, Pause, Play, Repeat, Reply, Settings2, ShieldQuestion, Target, Users, X } from '@lucide/svelte';
   import type { MessagePart, QuestionRequest, SecretRequest, ThreadSummary } from '@boite/contracts';
   import { focusComposer } from '../lib/focus';
   import type { Store } from '../lib/store.svelte';
@@ -95,6 +95,19 @@
     // The composer answers the question on screen.
     if (next.allowText && !next.secret && !repliesOf(store).ignored[next.id]) repliesOf(store).chosen = next.id;
   }
+
+  /**
+   * The fold is also the way out of answering: folding the question the box
+   * answers sets the thread's questions aside, so the box sends an ordinary
+   * message. Opened again, the card offers "Answer in writing" to take the
+   * box back (`writeAnswer`).
+   */
+  function toggleQuestion(id: string): void {
+    if (questionOpen && replyOf(store, id).replying) ignoreQuestions(store);
+    questionOpen = !questionOpen;
+  }
+  const foldTitle = (id: string) => !questionOpen ? strings.activity.questionUnfold
+    : replyOf(store, id).replying ? strings.activity.questionSetAside : strings.activity.questionFold;
 
   let visible = $derived(Boolean(asked.length > 0 || waits.length > 0 || childQuestions.length > 0 || activity?.goal && !activity.goal.dismissed || activity?.loop || activity?.tasks.length && !activity.tasksDismissed));
   // Keep completed content mounted during the fade out, without occupying chat space.
@@ -231,8 +244,8 @@
         <div class="activity-row question-row">
           {#if shown.secret}<KeyRound size={16} />{:else if shown.setting}<Settings2 size={16} />{:else if shown.agentSetting}<Bot size={16} />{:else if shown.team}<Users size={16} />{:else}<MessageCircleQuestionMark size={16} />{/if}
           <button type="button" class="ghost objective question-toggle" aria-expanded={questionOpen}
-            title={questionOpen ? strings.activity.questionFold : strings.activity.questionUnfold} data-testid="activity-question-toggle"
-            onclick={() => (questionOpen = !questionOpen)}>
+            title={foldTitle(shown.id)} data-testid="activity-question-toggle"
+            onclick={() => toggleQuestion(shown!.id)}>
             <span class="question-line ui-label">{shown.secret ? shown.secret.name : questionOpen ? (shown.setting ? settingHeading(shown.setting) : shown.agentSetting ? fill(strings.agentSettingRequest.heading, { name: shown.agentSetting.agentName }) : shown.team ? teamHeading(shown.team) : strings.chat.questionAsyncHeading) : shown.text}</span>
             <ChevronDown size={16} class={questionOpen ? 'turned' : ''} />
           </button>
@@ -240,9 +253,8 @@
             <InfoTip text={strings.secrets.neverShown} topic={strings.secrets.cardLabel} />
           {/if}
           {#if !shown.secret && replyOf(store, shown.id).replying}
-            <span data-testid="composer-reply" data-question={shown.id}>
-              <button type="button" class="ghost small" data-testid="composer-reply-ignore" title={strings.composer.replyIgnoreHint} onclick={() => ignoreQuestions(store)}>{strings.composer.replyIgnore}</button>
-            </span>
+            <!-- The box answers this one: its fold sets it aside. -->
+            <span data-testid="composer-reply" data-question={shown.id} hidden></span>
           {/if}
           {@render pager()}
         </div>
@@ -315,14 +327,13 @@
                 >{#snippet head()}
                   {#if question.id === shown?.id}
                   {#if reply.replying}
-                    <span data-testid="composer-reply" data-question={question.id}>
-                      <button type="button" class="ghost small icon" data-testid="composer-reply-ignore" aria-label={strings.composer.replyIgnoreHint} title={strings.composer.replyIgnoreHint} onclick={() => ignoreQuestions(store)}><PencilLine size={14} /></button>
-                    </span>
+                    <!-- The box answers this one: its fold sets it aside. -->
+                    <span data-testid="composer-reply" data-question={question.id} hidden></span>
                   {/if}
                   {@render pager()}
-                  <button type="button" class="ghost small icon fold-toggle" aria-expanded={questionOpen} aria-label={questionOpen ? strings.activity.questionFold : strings.activity.questionUnfold}
-                    title={questionOpen ? strings.activity.questionFold : strings.activity.questionUnfold} data-testid="activity-question-toggle"
-                    onclick={() => (questionOpen = !questionOpen)}><ChevronDown size={16} class={questionOpen ? 'turned' : ''} /></button>
+                  <button type="button" class="ghost small icon fold-toggle" aria-expanded={questionOpen} aria-label={foldTitle(question.id)}
+                    title={foldTitle(question.id)} data-testid="activity-question-toggle"
+                    onclick={() => toggleQuestion(question.id)}><ChevronDown size={16} class={questionOpen ? 'turned' : ''} /></button>
                   {/if}
                 {/snippet}</QuestionCard>{/snippet}</Deferred>
                 {/if}

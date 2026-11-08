@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
-  import { ArrowLeft, ArrowRightToLine, ChevronLeft, ChevronRight, ListX, Maximize2, Minimize2, Plus, SquareX, X, GripHorizontal, PanelsTopLeft } from '@lucide/svelte';
+  import { ArrowLeft, ArrowRightToLine, ChevronLeft, ChevronRight, Ellipsis, ListX, Maximize2, Minimize2, SquareX, X, GripHorizontal, PanelsTopLeft } from '@lucide/svelte';
   import { floatingPanel, RESIZE_DIRECTIONS } from '../lib/floating-panel';
   import { browserBridge } from '../lib/browser-bridge';
   import { stripOverflows } from '../lib/strip-overflow';
@@ -271,9 +271,26 @@
 
   /** A persistent agent's own thread has a desk, offered first. */
   const agentThread = $derived(!!store.openThread?.agentSessionId);
+  /**
+   * The few kinds this thread has something for, not open yet: offered in the
+   * strip itself, one press each. Every other kind waits behind More.
+   */
+  let suggested = $derived.by<SurfaceKind[]>(() => {
+    const thread = store.openThread;
+    if (!thread) return [];
+    const open = new Set(surfaces.map((surface) => surface.kind));
+    const offered = new Set(offeredCards().map((card) => card.kind));
+    const kinds: SurfaceKind[] = [];
+    if (agentThread) kinds.push('desk');
+    if (store.threads.some((row) => row.parentThreadId === thread.id)) kinds.push('agents');
+    if ((thread.activity?.tasks.length ?? 0) > 0) kinds.push('tasks');
+    if (store.openProject?.repository) kinds.push('changes');
+    return kinds.filter((kind) => !open.has(kind) && (kind === 'desk' || offered.has(kind)) && available(kind)).slice(0, 2);
+  });
   let menuItems = $derived([
-    ...(agentThread ? [{ id: 'desk', label: kindName('desk'), glyph: surfaceGlyph('desk') }] : []),
-    ...offeredCards().map((card) => ({
+    ...(agentThread && !suggested.includes('desk') ? [{ id: 'desk', label: kindName('desk'), glyph: surfaceGlyph('desk') }] : []),
+    // What the strip already shows, open or offered, is not listed again.
+    ...offeredCards().filter((card) => !suggested.includes(card.kind) && !surfaces.some((surface) => surface.kind === card.kind)).map((card) => ({
       id: card.kind,
       label: kindName(card.kind),
       glyph: surfaceGlyph(card.kind),
@@ -392,6 +409,15 @@
           <span class="name ui-label">{label(surface)}</span>
         </div>
       {/each}
+      {#if !empty}
+        {#each suggested as kind (kind)}
+          <!-- Not open yet: a quiet tab that opens on one press, the strip's own way to what this thread has. -->
+          <button type="button" class="tab suggested" data-testid="panel-suggested" data-kind={kind} title={kindName(kind)} onclick={() => launch(kind)}>
+            <span class="glyph"><SurfaceIcon {kind} size={14} /></span>
+            <span class="name ui-label">{kindName(kind)}</span>
+          </button>
+        {/each}
+      {/if}
     </div>
 
     {#if overflowing}
@@ -417,7 +443,7 @@
         label={strings.rightPanel.newSurface}
         testid="panel-add"
       >
-        <Plus size={14} strokeWidth={1.75} />
+        <Ellipsis size={14} strokeWidth={1.75} />
       </Menu>
     {/if}
 
@@ -647,6 +673,16 @@
     color: var(--color-foreground);
   }
 
+  /* Offered, not open: no fill, a dashed edge, the name at rest. */
+  .tab.suggested {
+    gap: 6px;
+    padding: 0 8px;
+    border: 1px dashed var(--color-border);
+    background: transparent;
+    color: var(--color-subtle);
+  }
+  .tab.suggested:hover { color: var(--color-foreground); background: var(--color-hover); }
+
   .name {
     overflow: hidden;
     text-overflow: ellipsis;
@@ -693,8 +729,8 @@
 
   /* The surface's own icon is the close target: it turns into an X under the
      pointer, and under the keyboard too as soon as the tab holds the focus. */
-  .tab:hover .glyph,
-  .tab:focus-within .glyph,
+  .tab:not(.suggested):hover .glyph,
+  .tab:not(.suggested):focus-within .glyph,
   .closer:focus-visible .glyph {
     display: none;
   }

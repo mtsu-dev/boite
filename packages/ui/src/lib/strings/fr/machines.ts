@@ -40,7 +40,7 @@ export const fr: Translation = {
     groupBots: 'Bots des autres machines',
     groupBotsHint: "Un bot d'une autre machine du groupe peut s'occuper des projets de cette machine que leur propriétaire lui a confiés : lister, lire et piloter leurs conversations et répondre à leurs questions. Il ne peut ni gérer les autorisations d'outils, ni supprimer des conversations, ni modifier les réglages de cette machine. Désactiver ce réglage coupe immédiatement son accès. Désactivé par défaut.",
     pick: 'Machine dont ce sont les réglages',
-    home: 'Paramètres', homeNone: 'Aucune', homeBadge: 'Paramètres',
+    home: 'Paramètres', homeNone: 'Chaque machine les siens', homeBadge: 'Paramètres',
     homeHint: 'Les autres machines suivent les réglages de celle-ci : conversations, ressources, clavier et options du brain. Un réglage changé sur une autre machine y reste et prend une étoile.',
     homeOlder: 'Mettez à jour Boite sur {machines} pour suivre la machine des paramètres.',
     bots: 'Bots', botsBadge: 'Bots',

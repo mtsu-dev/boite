@@ -42,14 +42,20 @@ test('project menus keep Mark done separate from Archive, which can stop pending
   row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 60 }));
   await waitFor(() => document.querySelector('[data-testid=context-menu]') !== null);
   const labels = Array.from(document.querySelectorAll('[data-testid=context-menu] [data-row]')).map((el) => el.textContent?.trim());
-  // The one thread menu's order: Open, then what it is called and who has it, where it stands, the desktop's tools, Delete apart.
-  expect(labels).toEqual(['Open', 'Rename', 'Regenerate title', 'Pin', 'Move to project', 'Mark done', 'Archive', 'Copy path', 'Delete']);
-  const groups = Array.from(query('[data-testid=context-menu]').querySelectorAll('[data-row], [role=separator]'))
+  // The row's menu: Open, then what it is called and pinned, where it stands, the tools behind All tools, Delete apart.
+  expect(labels).toEqual(['Open', 'Rename', 'Pin', 'Mark done', 'Archive', 'All tools ›', 'Delete']);
+  const groups = () => Array.from(query('[data-testid=context-menu]').querySelectorAll('[data-row], [role=separator]'))
     .map(el => el.getAttribute('role') === 'separator' ? '|' : el.textContent?.trim()).join(',');
-  expect(groups).toBe('Open,|,Rename,Regenerate title,Pin,Move to project,|,Mark done,Archive,|,Copy path,|,Delete');
+  expect(groups()).toBe('Open,|,Rename,Pin,|,Mark done,Archive,|,All tools ›,|,Delete');
+  // All tools opens the rest in place, each row with its own id, and Back returns.
+  query<HTMLButtonElement>('[data-testid=context-menu] [data-value=more]').click();
+  await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=copy]') !== null);
+  expect(groups()).toBe('Back,|,Regenerate title,Move to project,|,Copy path');
   expect(query('[data-testid=context-menu] [data-value=copy]').getAttribute('title')).toBe('C:\\src\\boite');
   // t-bench waits on a permission: its turn still runs, and a move would wait for it to end.
   expect(query<HTMLButtonElement>('[data-testid=context-menu] [data-value=move]').disabled).toBe(false);
+  query<HTMLButtonElement>('[data-testid=context-menu] [data-value=back]').click();
+  await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=archive]') !== null);
   expect(query<HTMLButtonElement>('[data-testid=context-menu] [data-value=done]').disabled).toBe(true);
   expect(query<HTMLButtonElement>('[data-testid=context-menu] [data-value=archive]').disabled).toBe(false);
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=archive]').click();

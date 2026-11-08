@@ -113,6 +113,12 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  /* A phone's column cuts most titles: two lines read it whole, the glyph stays on the first. */
+  @media (max-width: 720px) {
+    .head { align-items: flex-start; }
+    .glyph, .took, .fold-caret { margin-top: 2px; }
+    .label { white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; max-height: 2lh; }
+  }
 
   .dot {
     width: 6px;

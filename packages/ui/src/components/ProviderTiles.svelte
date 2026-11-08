@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Plus, Star } from '@lucide/svelte';
+  import { ChevronLeft, Plus } from '@lucide/svelte';
   import type { ProviderSummary } from '@boite/contracts';
   import ProviderLogo from './ProviderLogo.svelte';
   import { strings } from '../lib/strings';
@@ -7,17 +7,17 @@
   import type { Choice, Store } from '../lib/store.svelte';
 
   /**
-   * The model picker's rail, a compact list: favorites, then one row per
-   * provider in the order the core listed them, its mark in monochrome beside
-   * its name. A row only moves the column beside it.
+   * The model picker's rail under "All models", a compact list: the way back
+   * to the models in use, then one row per provider in the order the core
+   * listed them, its mark in monochrome beside its name. A row only moves the
+   * column beside it.
    */
   let {
     store,
     choice,
     locked,
     current,
-    favoritesOpen,
-    onfavorites,
+    onback,
     onpick,
     onmore
   }: {
@@ -26,8 +26,8 @@
     locked: boolean;
     /** The provider whose column is shown. */
     current: string | null;
-    favoritesOpen: boolean;
-    onfavorites: () => void;
+    /** Back to the first level, when it has models to show. */
+    onback?: () => void;
     onpick: (providerId: string) => void;
     /** The last tile, while some providers are left out: Settings, where they are connected. */
     onmore?: () => void;
@@ -76,12 +76,14 @@
   }
 </script>
 
-<button type="button" class="tile" class:current={favoritesOpen} role="menuitem" data-row data-provider="favorites" title={strings.composer.favorites} onclick={onfavorites}><Star size={14} /><span class="tile-name ui-label">{strings.composer.favorites}</span></button>
+{#if onback}
+  <button type="button" class="tile back" role="menuitem" data-row data-provider="home" data-testid="picker-back" title={strings.composer.yourModels} onclick={onback}><ChevronLeft size={14} /><span class="tile-name ui-label">{strings.composer.yourModels}</span></button>
+{/if}
 {#each tiles as tile (tile.provider.id)}
   <button
     type="button"
     class="tile"
-    class:current={!favoritesOpen && current === tile.provider.id}
+    class:current={current === tile.provider.id}
     class:dim={tile.reason !== null}
     disabled={tile.held}
     role="menuitem"
@@ -136,6 +138,7 @@
   }
 
   .tile.more { width: auto; color: var(--color-subtle); }
+  .tile.back { color: var(--color-foreground); }
 
   /* Nothing runs on it: still pickable, so its column can say why. */
   .tile.dim {

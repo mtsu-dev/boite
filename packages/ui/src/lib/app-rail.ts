@@ -1,5 +1,6 @@
 import type { AgentProfile, AgentStatus, ThreadSummary } from '@boite/contracts';
-import { threadState, type Delegated } from './thread-state';
+import type { Delegated } from './thread-state';
+import { storeNeedsYou } from './activity-feed';
 
 /** How a bot stands, for its picture in the app rail and its row in the phone's bot list. */
 export type RailBotState = 'waiting' | 'failed' | 'working' | 'queued' | 'paused' | 'idle';
@@ -22,27 +23,17 @@ export function railBotState(profile: Pick<AgentProfile, 'status'>, status: Agen
 }
 
 interface WaitingStore {
-  threads: readonly (Parameters<typeof threadState>[0] & { id: string; archived?: boolean; incognito?: boolean; agentSessionId?: string | null; teamId?: string | null; councilId?: string | null; parentThreadId?: string | null; parentIsBot?: boolean })[];
+  threads: readonly ThreadSummary[];
   subagents(threadId: string): Delegated;
 }
 
 /**
- * The threads of every machine that wait on the user: the one count the rail's
- * Activity, the phone's Activity tab and the list's marks all carry, so they
- * never disagree. It is Activity's top rows that wait (`threadState`): a bot's
- * own conversation counts on its picture, a team's or a salon's nowhere, and a
- * helper's question once, on its parent; a bot's worker has no parent row, so
- * it counts for itself.
+ * What needs the user on every machine: the rows of Activity's Needs you
+ * section (a thread that asks or failed, a helper's question once, on its
+ * parent; a bot's own conversation counts on its picture, a team's or a
+ * salon's nowhere). The rail's Activity badge and the phone's Activity tab
+ * add what contacts ask, as the section lists it above.
  */
 export function threadsNeedingYou(stores: readonly WaitingStore[]): number {
-  let count = 0;
-  for (const store of stores) {
-    const bots = new Set(store.threads.filter(thread => thread.agentSessionId).map(thread => thread.id));
-    for (const thread of store.threads) {
-      if (thread.archived || thread.incognito || thread.agentSessionId || thread.teamId || thread.councilId) continue;
-      if (thread.parentThreadId && !thread.parentIsBot && !bots.has(thread.parentThreadId)) continue;
-      if (threadState(thread, store.subagents(thread.id)) === 'waiting') count += 1;
-    }
-  }
-  return count;
+  return stores.reduce((total, store) => total + storeNeedsYou(store, store.threads), 0);
 }

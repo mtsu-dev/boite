@@ -207,7 +207,7 @@ test('a workflow the thread started is left to the strip while it runs, then is 
     const cards = document.querySelectorAll<HTMLButtonElement>('[data-testid=workflow-activity]');
     expect(cards).toHaveLength(1);
     expect(cards[0]!.textContent).toContain('Review the parser');
-    expect(cards[0]!.textContent).toContain('1/5 steps');
+    expect(cards[0]!.textContent).toContain('1 of 5 done');
     expect(cards[0]!.querySelectorAll('.phases i')).toHaveLength(4);
     cards[0]!.click();
     flushSync();

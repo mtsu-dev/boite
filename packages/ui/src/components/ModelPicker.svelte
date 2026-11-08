@@ -12,10 +12,10 @@
 
   /**
    * The model chip. Its popover (`ModelPickerMenu.svelte`) is a chunk of its
-   * own that only a click draws: provider logos beside a scrolling model list.
-   * The composer's chip adds its effort and permission rows under the models
-   * (`settings`) and its context ring beside the name (`trailing`); a phone
-   * gets the whole thing as one sheet, providers above the models.
+   * own that only a click draws: the models in use first, every provider's
+   * list behind "All models". The composer's chip adds its effort row and More
+   * under the models (`settings`) and its context ring beside the name
+   * (`trailing`). Desktop opens it from the chip; a phone as a bottom sheet.
    */
   let {
     store,
@@ -35,7 +35,7 @@
     choice: Choice | null;
     /** Optional restriction for callers that intentionally keep one account. */
     locked?: boolean;
-    /** The choice's provider alone: no provider rail and no favorites, its models straight away. */
+    /** The choice's provider alone: no provider rail and no first level, its models straight away. */
     single?: boolean;
     disabled?: boolean;
     /** The model is set elsewhere (a bot's settings): the chip names it and opens nothing. */
@@ -43,7 +43,7 @@
     readonlyHint?: string;
     /** Stepped back behind a decision: the provider's mark alone, its name said on hover. */
     compact?: boolean;
-    /** What the popover opens above: the chip, or the whole composer while an ask is docked in it, so it never covers the ask. */
+    /** What the desktop popover opens above: the chip, or the whole composer while an ask is docked in it, on the chip's side, so it never covers the ask. */
     anchor?: () => HTMLElement | null;
     /** The rows under the models; the menu hands them its More row, which loads with it. */
     settings?: Snippet<[typeof PickerMore]>;

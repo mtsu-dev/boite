@@ -165,7 +165,8 @@ test('a silent running phase shows the last real activity age without a trace ac
   flushSync();
   expect(text('turn-progress')).toBe('Retrying request: 2/5');
   expect(text('turn-last-activity')).toBe('No new activity for 1m 15s');
-  expect(document.querySelector('[data-testid=turn-summary] button')).toBeNull();
+  // The one button is the "i" that holds those facts.
+  expect([...document.querySelectorAll<HTMLButtonElement>('[data-testid=turn-summary] button')].map((button) => button.dataset.testid)).toEqual(['turn-activity']);
 });
 
 test.each(['old-turn', null])('an older turn or old core (%s) supplies no inferred activity', id => {
@@ -196,7 +197,14 @@ test('provider signals do not imply new execution progress or text', () => {
   flushSync();
   expect(text('turn-progress')).toBe('Waiting for provider');
   expect(text('turn-last-activity')).toBe('No new activity for 1m 15s');
-  expect(text('turn-provider-signal')).toBe('Provider signal 0s ago');
+  expect(text('turn-provider-signal')).toBe('The provider last answered 0s ago');
+  // The line itself says one fact, the time; the rest opens from its "i".
+  const shown = [...document.querySelectorAll('[data-testid=turn-summary] .ui-label')].map((label) => label.textContent);
+  expect(shown).toHaveLength(1);
+  expect(shown[0]).toMatch(/^Working for 2m/);
+  document.querySelector<HTMLButtonElement>('[data-testid=turn-activity]')!.click();
+  flushSync();
+  expect(text('turn-activity-text')).toBe('Waiting for provider · No new activity for 1m 15s · The provider last answered 0s ago');
 });
 
 test('a compaction turn identifies maintenance even before provider progress arrives', () => {

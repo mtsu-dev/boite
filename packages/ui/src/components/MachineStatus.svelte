@@ -29,6 +29,8 @@
   const tones = { ready: 'success', connecting: 'warning', offline: 'neutral', lost: 'danger' } as const;
   const chosen = $derived(filter === null ? null : machines.find(m => m.id === filter) ?? null);
   const shown = $derived(limits !== undefined || machines.length > 1 || issues > 0 || chosen !== null);
+  /* The glyph is the Gauge every limits surface wears (Limits page, glance, pinned quota),
+     so the card names that first: what the gauge measures, then the machines behind it. */
   const name = $derived(limits ? strings.app.rail.utilities : strings.machines.filter);
   const trouble = $derived(issues > 0 ? `${issues} ${strings.connection.issues}` : null);
   const label = $derived(trouble ? `${name} · ${trouble}` : name);

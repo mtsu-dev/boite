@@ -14,7 +14,6 @@
   import Elapsed from '../Elapsed.svelte';
   import Spinner from '../Spinner.svelte';
   import ProviderLogo from '../ProviderLogo.svelte';
-  import AgentAvatar from './AgentAvatar.svelte';
   import AgentBrainEditor from './AgentBrainEditor.svelte';
   import AgentRoutines from './AgentRoutines.svelte';
   import BotWorkList from './BotWorkList.svelte';
@@ -81,12 +80,9 @@
   {#if !agent}
     <p class="agent-empty">{strings.app.loading}</p>
   {:else}
+    <!-- The bot's column and the thread's header already show its face and name: the desk starts at what it is for. -->
     <header class="desk-ident" data-testid="desk-ident">
-      <AgentAvatar kind="profile" id={agent.id} name={agent.name} avatar={agent.avatar} size={56} squircle />
-      <div class="desk-ident-text">
-        <strong class="desk-ident-name">{agent.name}</strong>
-        {#if agent.domain}<p class="desk-ident-domain">{agent.domain}</p>{/if}
-      </div>
+      {#if agent.domain}<p class="desk-ident-domain">{agent.domain}</p>{/if}
       <div class="desk-chips">
         <span class="desk-meta" data-testid="desk-model"><ProviderLogo providerId={agent.selection.providerId} size={13} />{model}</span>
         {#if machine}<span class="desk-meta" data-testid="desk-machine"><Monitor size={13} strokeWidth={1.75} />{machineName(machine)}</span>{/if}

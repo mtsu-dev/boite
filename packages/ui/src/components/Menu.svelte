@@ -203,8 +203,14 @@
 
 <style>
   .separator { height: 1px; background: var(--color-border); margin: var(--space-1) var(--overlay-row-pad); }
-  .section { padding: var(--space-3) var(--overlay-row-pad) var(--space-1); font-size: var(--text-xs); font-weight: 600; color: var(--color-subtle); }
+  .section { padding: var(--space-3) var(--overlay-row-pad) var(--space-2); font-size: var(--text-meta); font-weight: 600; color: var(--color-subtle); }
   .section:first-child, .sheet-title + .section { padding-top: var(--space-1); }
+  /* A sheet's rows are taller, so its section labels take more air above and keep a clear gap to their first row. */
+  .popover:global([data-mobile-sheet='true']) .section { padding: var(--space-4) var(--space-4) var(--space-2); }
+  .popover:global([data-mobile-sheet='true']) .section:first-child,
+  .popover:global([data-mobile-sheet='true']) .sheet-title + .section { padding-top: 0; }
+  /* A rule only ever separates: one left first or last by a hidden item draws nothing. */
+  .separator:first-child, .sheet-title + .separator, .heading + .separator, .separator:last-child, .separator + .separator { display: none; }
   /* The list holds the focus only to keep the keys; its rows wear the ring. */
   .popover:focus { outline: none; }
   .sheet-title { padding: 0 var(--space-4) var(--space-3); color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 600; line-height: 1.35; text-align: center; overflow-wrap: anywhere; }
@@ -317,7 +323,7 @@
     display: flex;
     flex-direction: column;
     gap: 1px;
-    animation: pop var(--dur-2) var(--ease-out-quint);
+    animation: pop var(--motion-in);
     transform-origin: bottom left;
   }
 
@@ -325,7 +331,7 @@
   .popover > * { flex: none; }
 
   .popover.closing {
-    animation-name: pop-out;
+    animation: pop-out var(--motion-out);
     pointer-events: none;
   }
 

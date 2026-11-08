@@ -171,9 +171,15 @@
   let docked = $derived(target ? undefined : store.pendingQuestions.find((question) => question.id === repliesOf(store).docked && question.threadId === thread?.id));
   $effect(prefetchPermissionCard);
 
-  let placeholder = $derived(permission && !reply ? strings.composer.permissionPlaceholder
-    : composerPlaceholder({ target, replying: !!reply, bot, offline, onThread: !!thread, draft: !!store.draft,
-      machine: machineLabel, project: store.openProject?.name ?? null, provider: provider?.name ?? null }));
+  /**
+   * The thread's folder or its worktree is gone (the notice above says so and
+   * holds the way out): the core runs nothing here, so the box says why and
+   * takes no message, and its send steps back from the accent.
+   */
+  let noFolder = $derived(!target && (!!thread?.worktreeRemoved || (store.openProject?.missing === true && !thread?.agentSessionId)));
+
+  let placeholder = $derived(composerPlaceholder({ target, replying: !!reply || !!permission || (!!thread && store.busy), bot, offline, noFolder, onThread: !!thread,
+    machine: machineLabel, provider: provider?.name ?? null }));
 
   // -- the slash menu -----------------------------------------------------------
   // `/` on an empty box, then the word being typed: nothing else opens it, and a
@@ -381,6 +387,7 @@
   }
 
   async function submit(nextDraft = false) {
+    if (noFolder) return;
     if (attachments.some(unresolvedAssetId)) { store.error = strings.errors.draftAttachment; return; }
     if (loadingFiles) { if (sendable) sendWhenLoaded = { store, key, state: stateForInput(), shape: sendShape(text, attachments), nextDraft }; return; }
     if (reply) {
@@ -799,6 +806,7 @@
       }}
       onblur={() => { track(); focused = false; }}
       rows="1"
+      disabled={noFolder}
       {placeholder}
       aria-label={placeholder}
       data-testid="composer-input"
@@ -825,7 +833,7 @@
 
     <ComposerSpeechPreview status={speechStatus} preview={speechPreview} error={speechError} />
 
-    <ComposerBar bind:this={toolbar} {store} {key} {target} {bot} {provider} canSend={sendable} waiting={sendWhenLoaded !== null} answering={!!reply} {folded} composer={permission || docked ? shell ?? null : null}
+    <ComposerBar bind:this={toolbar} {store} {key} {target} {bot} {provider} canSend={sendable && !noFolder} blocked={noFolder} waiting={sendWhenLoaded !== null} answering={!!reply} {folded} composer={permission || docked ? shell ?? null : null}
       onmention={!target && !reply && mentionProject !== null ? startMention : undefined} oncommand={!target && !reply && text.trim() === '' ? startCommand : undefined} sendLabel={reply ? strings.composer.replySend : undefined} bind:choice bind:picking bind:dictating
       onsubmit={() => void submit()}
       onfiles={(files) => void take(files)}

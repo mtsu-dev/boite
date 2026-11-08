@@ -8,7 +8,7 @@
   import { needsAnAI } from '../lib/first-run';
   import { contextMenu } from '../lib/context-menu.svelte';
   import { pendingLine } from '../lib/thread-move.svelte';
-  import { pickThreadAction, threadMenuItems } from '../lib/thread-menu';
+  import { pickThreadAction, threadMenuItems, threadToolItems } from '../lib/thread-menu';
   import { separator, type MenuItem } from '../lib/menu';
   import { fill, strings } from '../lib/strings';
   import { work } from '../lib/work-prefs.svelte';
@@ -29,10 +29,11 @@
   const mobile = new MediaQuery('(max-width: 720px)');
   /** Under a phone's title: where the conversation lives, its machine once there are two. */
   let place = $derived.by(() => {
-    if (!thread) return '';
+    if (!thread) return null;
     const project = thread.projectId ? store.projects.find(p => p.id === thread!.projectId) : undefined;
     const machines = workspace.machinesOr(store);
-    return [project ? projectName(project) : null, machines.length > 1 ? machines.find(m => m.store === store)?.label : null].filter(Boolean).join(' · ');
+    const where = { project: project ? projectName(project) : '', machine: machines.length > 1 ? machines.find(m => m.store === store)?.label ?? '' : '' };
+    return where.project || where.machine ? where : null;
   });
   /** The project's name, the first half of a desktop header's "where": project, then title. */
   let projectLabel = $derived.by(() => {
@@ -191,12 +192,29 @@
       ...(delegated || agentsOn ? [{ id: 'agents', label: strings.delegation.heading, glyph: UsersRound, active: agentsOn }] : []),
       ...(store.boardAvailable() ? [{ id: 'board', label: strings.board.open, glyph: SquareKanban, active: store.boardShown }] : []),
       { id: 'find', label: strings.palette.find, glyph: Search },
-      { id: 'panel', label: strings.thread.allTools, glyph: PanelRight, active: store.panelOpen },
+      { id: 'panel', label: strings.thread.panelMenu, glyph: PanelRight, active: store.panelOpen },
       section('sec-thread', strings.thread.threadSection),
       ...identity,
-      ...threadMenuItems(store, thread, { phone: true })
+      // The phone rows' grouping: the common actions, then All tools (`more`) for the rest.
+      ...threadMenuItems(store, thread, { phone: true, grouped: true })
     ];
   });
+  /** The phone menu shows All tools' list in its place until Back, a pick or a fresh open, as a phone row does. */
+  let inTools = $state(false);
+  let reopening = false;
+  let titleMenu = $state<HTMLElement>();
+  const phoneShown = $derived(inTools && thread ? threadToolItems(store, thread, { phone: true }) : phoneItems);
+  function reopenPhone(next: boolean) {
+    inTools = next;
+    reopening = true;
+    void tick().then(() => { titleMenu?.querySelector<HTMLButtonElement>('[aria-haspopup=menu]')?.click(); reopening = false; });
+  }
+  function phonePick(action: string) {
+    if (action === 'more') return reopenPhone(true);
+    if (action === 'back') return reopenPhone(false);
+    inTools = false;
+    titleAction(action);
+  }
 
   function titleAction(action: string) {
     const open = store.openThread;
@@ -269,10 +287,11 @@
             <span class="ui-label">{thread.title}</span>
           </button>
           <!-- On a phone the title reads as text over its place, and the one menu closes the header's row. -->
-          {#if mobile.current}<span class="title-lines"><span class="title-text ui-label">{thread.title}</span>{#if place}<span class="title-place ui-label" data-testid="thread-place">{place}</span>{/if}</span>{/if}
+          {#if mobile.current}<span class="title-lines"><span class="title-text ui-label">{thread.title}</span>{#if place}<span class="title-place ui-label" data-testid="thread-place">{#if place.project}<span class="place-project">{place.project}</span>{/if}{#if place.project && place.machine}<span aria-hidden="true">·</span>{/if}{#if place.machine}<span class="place-machine">{place.machine}</span>{/if}</span>{/if}</span>{/if}
           <!-- A small chevron exposes thread actions on the desktop. -->
-          <span class="title-menu">
-            <Menu items={mobile.current ? phoneItems : desktopItems} onpick={titleAction} label={strings.sidebar.threadMenu} heading={thread?.title} placement="bottom" variant={mobile.current ? 'ghost' : 'text'} testid="thread-menu-trigger">
+          <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+          <span class="title-menu" bind:this={titleMenu} onclickcapture={() => { if (!reopening) inTools = false; }}>
+            <Menu items={mobile.current ? phoneShown : desktopItems} onpick={mobile.current ? phonePick : titleAction} label={strings.sidebar.threadMenu} heading={thread?.title} placement="bottom" variant={mobile.current ? 'ghost' : 'text'} testid="thread-menu-trigger">
               {#if mobile.current}<Ellipsis size={20} />{:else}<ChevronDown size={14} />{/if}
             </Menu>
           </span>
@@ -471,7 +490,10 @@
     /* Two lines stacked: a label's ascender room and its trim to the capitals would pull the second over the first. */
     .title-lines > .ui-label { margin-block: 0; padding-block: 0; text-box: normal; }
     .title-text { display: block; max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .title-place { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); font-weight: 400; color: var(--color-muted-foreground); }
+    .title-place { display: flex; gap: 4px; max-width: 100%; min-width: 0; white-space: nowrap; font-size: var(--text-xs); font-weight: 400; color: var(--color-muted-foreground); }
+    /* The machine label stays whole; the project name gives way. */
+    .place-project { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    .title-place > :not(.place-project) { flex: none; }
     .crumb { min-height: var(--touch-target); }
     .crumb-sep { margin: 0; }
   }

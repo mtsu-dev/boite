@@ -146,11 +146,12 @@
     align-items: center;
     justify-content: center;
     background: var(--color-scrim);
-    animation: fade var(--dur-2) var(--ease-out-quint);
+    animation: fade var(--motion-in);
   }
 
+  /* The one motion set (app.css): in on --motion-in, out quicker on --motion-out, a fade under reduced motion. */
   .scrim.closing {
-    animation-name: fade-out;
+    animation: fade-out var(--motion-out);
     pointer-events: none;
   }
 
@@ -162,11 +163,11 @@
     border: 1px solid var(--overlay-edge);
     border-radius: var(--radius-overlay);
     box-shadow: var(--shadow-overlay);
-    animation: pop var(--dur-2) var(--ease-out-quint);
+    animation: pop var(--motion-in);
   }
 
   .dialog.closing {
-    animation-name: pop-out;
+    animation: pop-out var(--motion-out);
   }
 
   h2 {

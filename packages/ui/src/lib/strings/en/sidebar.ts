@@ -79,6 +79,7 @@ export const strings = {
     addProject: 'Add a project',
     noProjects: 'No project yet.',
     noThreads: 'No thread yet.',
+    firstRunList: 'Your threads will show here.',
     noMatch: 'Nothing matches.',
     unread: 'Unread',
     collapse: 'Hide sidebar',
@@ -94,6 +95,7 @@ export const strings = {
     autoArchiveMergedPr: 'Hide merged PR conversations',
     autoRemoveWorktrees: 'Remove settled worktrees',
     backToProjectMenu: 'Back',
+    backToThreadMenu: 'Back',
     viewArchivedThreads: 'View archived threads',
     importSession: 'Import a Claude Code session',
     /** Out of the list, not out of Boite: its threads keep running and a new one brings it back. */
@@ -151,7 +153,7 @@ export const strings = {
         'error': 'the task failed',
         'cancelled': 'the task was cancelled',
         'no-longer-reported': 'its process ended',
-        'session-ended': 'its agent process was ended',
+        'session-ended': 'the agent was stopped',
         'core-restarted': 'Boite or the PC restarted'
       }
     },

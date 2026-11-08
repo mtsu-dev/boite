@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { SlidersHorizontal } from '@lucide/svelte';
+  import { Clock, Kanban } from '@lucide/svelte';
+  import { workspace } from '../lib/workspace.svelte';
   import { Closing } from '../lib/closing.svelte';
   import type { ProjectEntry } from '../lib/project-view.svelte';
   import { strings } from '../lib/strings';
@@ -12,7 +13,9 @@
    * the list has drawn, so it stays out of the entry chunk and the first press
    * still opens it at once. It stays open while the user adjusts it; a press
    * outside or Escape puts it away. `filtered` marks the button while a filter
-   * hides threads, since the menu that says so is closed.
+   * hides threads, since the menu that says so is closed. Its glyph is the
+   * view on (the cards' or Recent's, as the menu draws them), so the list
+   * says which one shows before the menu opens.
    */
   /** `compact`: the phone's choices only, the view and the groups; the order and a project's own switches stay on the desktop. */
   let { entries, target, owner, prefix = '', compact = false, filtered = false, onaddproject }: {
@@ -20,6 +23,7 @@
   } = $props();
 
   const popover = new Closing();
+  const viewName = $derived(workspace.view === 'recent' ? strings.sidebar.recentView : strings.sidebar.projectsView);
   let root = $state<HTMLDivElement>();
   let trigger = $state<HTMLButtonElement>();
   let Panel = $state.raw<typeof import('./DisplayOptionsPanel.svelte').default>();
@@ -54,8 +58,8 @@
 
 <div class="display-options" bind:this={root}>
   <button type="button" class="ghost icon small trigger" class:filtered bind:this={trigger} aria-haspopup="dialog" aria-expanded={popover.open}
-    aria-label={strings.sidebar.groupingOptions} title={strings.sidebar.groupingOptions} data-testid={`${prefix}grouping-options`} onclick={toggle}>
-    <SlidersHorizontal size={16} />
+    aria-label={strings.sidebar.groupingOptions} title={`${viewName} · ${strings.sidebar.groupingOptions}`} data-testid={`${prefix}grouping-options`} data-view={workspace.view} onclick={toggle}>
+    {#if workspace.view === 'recent'}<Clock size={16} />{:else}<Kanban size={16} />{/if}
   </button>
   {#if popover.shown && Panel}
     <Panel {popover} anchor={() => trigger ?? null} onclose={close} {entries} {target} {owner} {prefix} {compact} {onaddproject} />

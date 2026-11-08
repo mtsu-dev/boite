@@ -14,6 +14,9 @@ test('Regenerate title in the thread menu waits on the agent, then the row and t
   const row = query<HTMLButtonElement>('[data-thread-id="t-trace"]');
   row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 60 }));
   await waitFor(() => document.querySelector('[data-testid=context-menu]') !== null);
+  // The row's menu keeps it under All tools.
+  query<HTMLButtonElement>('[data-testid=context-menu] [data-value=more]').click();
+  await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=retitle]') !== null);
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=retitle]').click();
   await waitFor(() => document.querySelector('[data-testid=context-menu]') === null);
 
@@ -21,6 +24,8 @@ test('Regenerate title in the thread menu waits on the agent, then the row and t
   expect(store.retitling).toEqual(['t-trace']);
   row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 60 }));
   await waitFor(() => document.querySelector('[data-testid=context-menu]') !== null);
+  query<HTMLButtonElement>('[data-testid=context-menu] [data-value=more]').click();
+  await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=retitle]') !== null);
   const waiting = query<HTMLButtonElement>('[data-testid=context-menu] [data-value=retitle]');
   expect(waiting.textContent?.trim()).toBe('Writing a title');
   expect(waiting.disabled).toBe(true);
