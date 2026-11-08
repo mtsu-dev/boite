@@ -75,6 +75,7 @@ import { Workflows } from './workflows.ts';
 import { BrainStore } from './brain.ts';
 import { HookLedger } from './hooks.ts';
 import { TerminalStore } from './terminals.ts';
+import { KeptAgents } from './keeper/kept-agents.ts';
 import { openSecretVault } from './platform/secret-vault.ts';
 import type { SecretVault } from './platform/types.ts';
 import { SecretStore } from './secrets/store.ts';
@@ -229,6 +230,8 @@ export class Core {
   /** What the user's own hooks did since this core started, for Settings. */
   readonly hooks: HookLedger;
   readonly terminals: TerminalStore;
+  /** Agent sessions on the keeper, with `BOITE_KEEPER=1` (`keeper/kept-agents.ts`). */
+  readonly keptAgents: KeptAgents | null;
   readonly secrets: SecretStore;
   readonly stopArtifactRetention: () => Promise<void>;
   readonly artifactPreviews = new ArtifactPreviews(this);
@@ -451,6 +454,7 @@ export class Core {
     this.brain = new BrainStore(this);
     this.hooks = new HookLedger(this);
     this.terminals = new TerminalStore(this);
+    this.keptAgents = this.terminals.keeper === null ? null : new KeptAgents(this, this.terminals.keeper);
     this.secrets = new SecretStore(this, options.secretVault ?? openSecretVault);
     this.logs.mask = text => this.secrets.maskAll(text);
     this.procs.mask = (threadId, text) => this.secrets.mask(threadId, text);
@@ -677,6 +681,7 @@ export class Core {
     await this.composer.close();
     this.secrets.stop();
     await this.accounts.closeLogins();
+    this.keptAgents?.close();
     await this.terminals.closeAll();
     // Off Windows this waits out the SIGKILL of a group that ignored SIGTERM,
     // two seconds at most: the timer that sends it dies with the process.

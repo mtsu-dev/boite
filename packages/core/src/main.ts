@@ -304,6 +304,11 @@ export function main(argv: string[]): void {
     void import('./desktop/launcher.ts').then(launcher => launcher.runDesktopExec(argv.slice(1)));
     return;
   }
+  // The child of the echo driver's `[process]` (drivers/echo-process.ts).
+  if (argv[0] === '--echo-agent') {
+    void import('./drivers/echo-agent.ts').then(agent => agent.runEchoAgent());
+    return;
+  }
   // The process that holds agents and terminals across core restarts (keeper/server.ts).
   if (argv[0] === '--keeper') {
     void import('./keeper/server.ts').then(keeper => keeper.runKeeper(argv.slice(1)));

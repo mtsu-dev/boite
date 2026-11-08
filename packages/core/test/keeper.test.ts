@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import type { RpcEvents, ThreadId } from '@boite/contracts';
 import { connect, type CoreClient } from '../src/client.ts';
 import { Core } from '../src/core.ts';
-import { ByteRing } from '../src/keeper/server.ts';
+import { ByteRing } from '../src/keeper/byte-ring.ts';
 import { KeeperClient, keeperEnabled, keeperToken, type KeptTerminal } from '../src/keeper/client.ts';
 import { LineReader, keeperTokenPath } from '../src/keeper/protocol.ts';
 import { startServer, type RunningServer } from '../src/server.ts';

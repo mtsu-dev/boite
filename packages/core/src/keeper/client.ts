@@ -13,6 +13,7 @@ import type { Socket } from 'bun';
 import { CORE_VERSION } from '../version.ts';
 import { newToken } from '../ids.ts';
 import { FrameSocket } from './frames.ts';
+import { KeptChild } from './kept-child.ts';
 import { launchKeeper } from './launch.ts';
 import {
   KEEPER_PENDING_BYTES, KEEPER_PROTOCOL, LineReader, decodeBytes, encodeBytes, keeperSocketPath, keeperTokenPath,
@@ -129,7 +130,10 @@ export class KeeperClient {
   readonly #options: KeeperClientOptions;
   #frames: FrameSocket<ToKeeper> | null = null;
   #connecting: Promise<KeptProcess[] | null> | null = null;
-  readonly #kept = new Map<string, KeptTerminal>();
+  readonly #kept = new Map<string, KeptTerminal | KeptChild>();
+  /** Set while agent processes may be kept: the socket stays open with nothing held, so the next spawn needs no connect. */
+  #stayAttached = false;
+  readonly #listing = new Map<number, (processes: KeptProcess[]) => void>();
   readonly #waiting = new Map<number, Waiting>();
   #nextRequest = 1;
   #closed = false;
@@ -142,6 +146,12 @@ export class KeeperClient {
   }
 
   get connected(): boolean { return this.#frames !== null && !this.#frames.closed; }
+
+  /** Connected, or on the way: a spawn asked now is sent once it is. */
+  get reachable(): boolean { return this.connected || this.#connecting !== null; }
+
+  /** Keeps the socket open while this core runs, even holding nothing. */
+  stayAttached(): void { this.#stayAttached = true; }
 
   /** The keeper's pid, from the last `welcome`. */
   get keeperPid(): number | null { return this.#keeperPid; }
@@ -163,7 +173,7 @@ export class KeeperClient {
   /** A kept process from the `welcome` list, owned by the caller from now on. */
   adopt(info: KeptProcess): KeptTerminal {
     const existing = this.#kept.get(info.id);
-    if (existing !== undefined) return existing;
+    if (existing instanceof KeptTerminal) return existing;
     const kept = new KeptTerminal(info, (frame) => this.#send(frame));
     this.#kept.set(info.id, kept);
     void kept.exited.then(() => {
@@ -179,7 +189,7 @@ export class KeeperClient {
    * attaches again, or starts another.
    */
   detachWhenIdle(): void {
-    if (this.#kept.size > 0 || this.#waiting.size > 0 || this.#connecting !== null || this.#frames === null) return;
+    if (this.#stayAttached || this.#kept.size > 0 || this.#waiting.size > 0 || this.#connecting !== null || this.#frames === null) return;
     this.#frames.close();
     this.#frames = null;
   }
@@ -198,6 +208,53 @@ export class KeeperClient {
     return this.adopt(info);
   }
 
+  /**
+   * Starts `cmd` on pipes in the keeper. Returns at once, as node's `spawn`
+   * does: the child gets its pid and emits `spawn` when the keeper answers,
+   * or `error` when it cannot be reached or cannot start it.
+   */
+  spawnPipe(tag: KeptTag, cmd: string, args: string[], options: { cwd: string; env: Record<string, string | undefined> }): KeptChild {
+    const child = new KeptChild(tag, cmd, args);
+    const env: Record<string, string> = {};
+    for (const [key, value] of Object.entries(options.env)) if (value !== undefined) env[key] = value;
+    const start = async (): Promise<void> => {
+      await this.connect({ launch: true });
+      // The connect under way was the startup one, which starts no keeper.
+      if (!this.connected) await this.connect({ launch: true });
+      if (!this.connected) throw new Error('the keeper is not reachable');
+      const req = this.#nextRequest++;
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => { this.#waiting.delete(req); reject(new Error('the keeper did not start the process within five seconds')); }, ANSWER_MS);
+        // Called in the `spawned` frame's own tick: the output after it on the socket finds the child.
+        this.#waiting.set(req, {
+          resolve: (info) => {
+            this.#kept.set(info.id, child);
+            child.started(info, this.#keeperPid, (frame) => this.#send(frame));
+            resolve();
+          },
+          reject, timer,
+        });
+        this.#send({ op: 'spawnPipe', req, tag, cmd, args, cwd: options.cwd, env });
+      });
+    };
+    void start().catch((error: unknown) => child.failed(error instanceof Error ? error : new Error(String(error))));
+    child.once('close', () => {
+      if (child.id !== null && this.#kept.get(child.id) === child) this.#kept.delete(child.id);
+      this.detachWhenIdle();
+    });
+    return child;
+  }
+
+  /** What the keeper holds now, with each pipe's stdout window. */
+  list(): Promise<KeptProcess[]> {
+    if (!this.connected) return Promise.resolve([]);
+    const req = this.#nextRequest++;
+    return new Promise((resolve) => {
+      this.#listing.set(req, resolve);
+      this.#send({ op: 'list', req });
+    });
+  }
+
   /** The core stops: the socket goes, the processes stay with the keeper. */
   close(): void {
     this.#closed = true;
@@ -205,6 +262,8 @@ export class KeeperClient {
     this.#frames = null;
     for (const waiting of this.#waiting.values()) { clearTimeout(waiting.timer); waiting.reject(new Error('the keeper client is closed')); }
     this.#waiting.clear();
+    for (const answer of this.#listing.values()) answer([]);
+    this.#listing.clear();
   }
 
   async #connect(launch: boolean): Promise<KeptProcess[] | null> {
@@ -280,8 +339,16 @@ export class KeeperClient {
         waiting.reject(new Error(frame.message));
         return;
       }
-      case 'data': this.#kept.get(frame.id)?.data(decodeBytes(frame.data), frame.replay === true, frame.at); return;
-      case 'exit': this.#kept.get(frame.id)?.ended(frame.code); return;
+      case 'data': { const kept = this.#kept.get(frame.id); if (kept instanceof KeptTerminal) kept.data(decodeBytes(frame.data), frame.replay === true, frame.at); return; }
+      case 'out': { const kept = this.#kept.get(frame.id); if (kept instanceof KeptChild) kept.output(frame.stream, frame.at, decodeBytes(frame.data)); return; }
+      case 'eof': { const kept = this.#kept.get(frame.id); if (kept instanceof KeptChild) kept.eof(frame.stream); return; }
+      case 'exit': {
+        const kept = this.#kept.get(frame.id);
+        if (kept instanceof KeptChild) kept.ended(frame.code, frame.signal ?? null);
+        else kept?.ended(frame.code);
+        return;
+      }
+      case 'listed': { const answer = this.#listing.get(frame.req); this.#listing.delete(frame.req); answer?.(frame.processes); return; }
       // Told to stop while this core is attached: the exits of what it ends follow, then the socket closes.
       case 'stopping': this.#options.log('warn', `the keeper stops: ${frame.reason}`); return;
     }
@@ -300,6 +367,8 @@ export class KeeperClient {
     if (this.#closed) return;
     for (const waiting of this.#waiting.values()) { clearTimeout(waiting.timer); waiting.reject(new Error('the keeper connection was lost')); }
     this.#waiting.clear();
+    for (const answer of this.#listing.values()) answer([]);
+    this.#listing.clear();
     if (this.#kept.size > 0) void this.#reattach();
   }
 
@@ -311,7 +380,7 @@ export class KeeperClient {
     const listed = new Set((held ?? []).map((info) => info.id));
     let back = 0;
     for (const kept of [...this.#kept.values()]) {
-      if (listed.has(kept.id)) { kept.attach(); back++; } else kept.ended(null);
+      if (kept.id !== null && listed.has(kept.id)) { kept.attach(); back++; } else if (kept instanceof KeptChild) kept.ended(null, null, true); else kept.ended(null);
     }
     // Started for a request this core no longer waits for.
     for (const info of held ?? []) if (!this.#kept.has(info.id)) this.#send({ op: 'release', id: info.id });

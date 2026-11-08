@@ -4,12 +4,19 @@ A thread's terminal can outlive the core that opened it. With `BOITE_KEEPER=1`
 on Linux or macOS, the core asks a small process, the keeper, to start each
 thread shell. The keeper holds the PTY, so a restart, an update or a crash of
 the core leaves the shell running, and the next core takes it back with what
-it printed meanwhile. The setting is off by default.
+it printed meanwhile. With the same setting, the process of each thread's
+agent session runs in the keeper too, on pipes: the core reads its output
+through the socket and tells the keeper which bytes the journal has
+committed. A restart still ends those turns; taking them back is the next
+step. The setting is off by default.
 
 The code is in `packages/core/src/keeper/`: `protocol.ts` (the wire),
-`server.ts` (the keeper), `client.ts` (the core's side), `launch.ts` (how it
-starts). `terminals.ts` uses it for thread shells only; a sign-in terminal and
-an agent process still belong to the core.
+`server.ts` (the keeper), `pipe-process.ts` (a process on pipes, in the
+keeper), `client.ts` and `kept-child.ts` (the core's side), `kept-agents.ts`
+(agent sessions and their offsets), `launch.ts` (how it starts).
+`terminals.ts` uses it for thread shells. A sign-in terminal, a probe (models,
+quota, sign-in), a title or side question and a shared execution still belong
+to the core.
 
 ## Processes
 
@@ -18,14 +25,14 @@ flowchart LR
   subgraph unit [boite.service or the desktop shell]
     core[core]
   end
-  subgraph kunit [boite-keeper-<hash>-v1 unit, or its own session]
+  subgraph kunit [boite-keeper-<hash>-v2 unit, or its own session]
     keeper[keeper]
     sh1[thread shell]
-    sh2[thread shell]
+    ag1[agent session]
   end
   core -- "Unix socket, NDJSON, token" --> keeper
   keeper -- PTY --> sh1
-  keeper -- PTY --> sh2
+  keeper -- "stdin, stdout, stderr" --> ag1
 ```
 
 - The keeper is the core's own executable: `keeper/entry.ts` from the
@@ -39,7 +46,7 @@ flowchart LR
   `KillMode=mixed` kills that cgroup when the core stops. Anywhere else it
   starts in a session of its own and writes to `<dataDir>/logs/keeper.log`.
 - One keeper per data directory and protocol. Its socket is
-  `$XDG_RUNTIME_DIR/boite/keeper-<sha256(dataDir)[0:12]>-v1.sock` (0600, the
+  `$XDG_RUNTIME_DIR/boite/keeper-<sha256(dataDir)[0:12]>-v2.sock` (0600, the
   directory 0700), since a data directory deep in a home can pass the 104 or
   108 bytes a socket path may have. A `flock` on `<socket>.lock` keeps a
   second keeper of the same directory from starting.
@@ -55,6 +62,9 @@ flowchart LR
 | Output for a core that does not read | keeper, per connection | 16 MiB, then that connection is dropped |
 | An exit no core collected | keeper | 10 min |
 | What the shell is (id, thread, cwd, shell, argv) | keeper, as the tag the core gave | none, a few hundred bytes |
+| An agent's stdout the core has not acked | keeper, per agent | 8 MiB (`KEEPER_OUT_WINDOW_BYTES`), then it is not read until an ack: the agent waits on its write, nothing is lost |
+| An agent's last stderr | keeper, per agent | 64 KiB (`KEEPER_ERR_BYTES`) |
+| How much of an agent's stdout the journal holds the events of | core, `kept_processes.offset` | one row per agent process |
 
 The core's own history of a shell is rebuilt from the keeper's 256 KiB when
 it takes the shell back, masked as any output is.
@@ -73,9 +83,49 @@ it takes the shell back, masked as any output is.
 4. `terminals.list` and `terminals.open` wait for that step, so a client that
    connects first sees the shell, not an empty tab.
 
-A core holding no shell closes its connection. A keeper with no core and
-nothing to hold exits after 60 s (`KEEPER_IDLE_MS`); the next shell starts
-another.
+A core with `BOITE_KEEPER=1` connects at startup, once the shells are
+restored, starting a keeper if none listens, and stays attached while it
+runs. A keeper with no core and nothing to hold exits after 60 s
+(`KEEPER_IDLE_MS`).
+
+## Agent sessions
+
+`leasedSpawnChild` marks a session's own agent process with `keep` (its turn
+and driver); `procs.spawnChild` hands such a launch to `kept-agents.ts`,
+except a protected launch. It returns a `KeptChild` at once, as node's
+`spawn` does: the driver and the Claude SDK read its `stdin`, `stdout`,
+`stderr`, `pid`, `kill` and its `spawn`, `exit`, `close` and `error` events in
+node's order. The pid, the registry entry and the `kept_processes` row come
+with the keeper's `spawned` answer. A stop stops the process's group, which
+the keeper starts detached, as the core does for its own agents.
+
+Every stdout byte has an offset from 0. The keeper keeps what the core has
+not acked; the core writes what the driver has read into the row's `offset`
+in the transaction that commits the streamed parts (`StreamBuffer`'s commit
+hook), the 500 ms one, not the 16 ms delta flush, which only moves text into
+memory. Only after that commit does the core send `ack`, and the keeper drops
+those bytes. Stdout that brought no text arms a commit as well, and past
+4 MiB read and uncommitted (`FORCE_COMMIT_BYTES`) one runs at once, so an
+agent printing fast does not wait for the timer at the 8 MiB window.
+
+Once the process exited and both pipes ended, the next commit deletes its row
+and releases it in the keeper. A core that stops releases every agent it
+holds, so the keeper ends those still running rather than keep their exit
+codes for nobody; their rows stay. At startup a core deletes every row an earlier
+core left and the shells' restore releases every kept process that is not a
+shell. `state` stays null: it is for the driver's state at `offset`, which
+taking a turn back after a restart needs.
+
+When the keeper is not reachable at the moment of a launch, the agent starts
+on the core's own pipes as before, a `keeper.agent-direct` warning is logged
+once per outage, and the core connects again for the next one. A keeper that
+dies during a turn ends its agents with no exit code: the driver sees its
+process gone, the same path as a crash.
+
+The echo driver starts no process by default. `[process]` sends the turn's
+text from that point through a child, `drivers/echo-agent.ts`
+(`--echo-agent` of the bundle and binary), and `[flood:N]` has it write N
+characters as fast as its pipe goes.
 
 ## Stops
 
@@ -117,8 +167,8 @@ goes with the shell. The keeper does not exit before that grace is over.
 ## Limits
 
 - Linux and macOS only. Windows keeps every process in the shell's job.
-- Thread shells only. Agent sessions still stop with the core and resume
-  through the [restart handoff](restart-handoff.md).
+- An agent session runs in the keeper but still stops with the core, and
+  resumes through the [restart handoff](restart-handoff.md).
 - A process the keeper started is killed by the core's tree kill on Linux and
   by a signal to its group on macOS, as any terminal.
 
@@ -140,6 +190,16 @@ The compiled binary's keeper, idle: 75 MB RSS, of which 52 MB are pages of
 the binary itself, shared with the core in the page cache, and 22.5 MB its
 own.
 
+`BOITE_KEEPER=1 bun bench/keeper-agent.ts 64 20` on boite-m1, 2026-11-07,
+Bun 1.4.2: the echo driver's child started by `procs.spawnChild` with `keep`
+(the keeper) and without (the core's pipes), in one core.
+
+| | Core's pipes | Keeper |
+| --- | --- | --- |
+| First stdout byte after `spawnChild`, median of 20 | 13.95 ms | 13.89 ms |
+| 64 MiB of stdout, median of 3 | 217.3 MiB/s | 214.8 MiB/s |
+| An echo turn `[flood]` of 8 MiB to idle, median of 3 | 145 ms | 191 ms |
+
 ## Verification
 
 `packages/core/test/keeper.test.ts` restarts a core on the same data directory
@@ -151,3 +211,17 @@ The same file checks that a core dropped while it did not read takes its
 shell back with the end of 30 MB it missed, that ending a shell ends its
 `nohup` job, and that closing a shell or archiving its thread while it starts
 ends it.
+
+`packages/core/test/keeper-agents.test.ts` runs an echo `[process]` turn with
+the keeper on. While the turn waits, the agent's parent is the keeper, its
+row names the thread, turn and driver, and its offset, the keeper's acked
+offset and the keeper's end are all the bytes the child printed, whose text
+is committed; after the turn the row is gone, the keeper no longer lists it
+and the process exited. It fails when the launch is not marked `keep`. The
+same file streams one and a half windows of stdout through a turn, which
+only finishes if commits ack it, and checks that a keeper the core cannot
+reach leaves the agent on the core's pipes with the warning. Others cover a
+session launched in the millisecond its predecessor was stopped, which must
+keep running, one the keeper starts after the core closed, which it ends, and
+a `KeptChild` that emits `close` only after a reader got the last line of
+stdout.

@@ -80,7 +80,7 @@ export class Journal {
   readonly db: Database;
   collectComposerAssets?: (assetIds: string[]) => void;
   /** The streaming write path: deltas and the parts of messages still streaming. */
-  private readonly stream: StreamBuffer;
+  readonly stream: StreamBuffer;
   private readonly processes: ProcessRows;
   private readonly turnListeners = new Set<(turn: Turn) => void>();
   private readonly onError: (message: string) => void;

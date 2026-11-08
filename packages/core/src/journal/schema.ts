@@ -14,8 +14,9 @@ import { createSharedReview } from '../contacts/review-journal.ts';
 import { createTeamMachines, createTeams } from '../teams/journal.ts';
 import { createCouncil } from '../council/journal.ts';
 import { createRemovedTurnUsage } from './usage-sums.ts';
+import { createKeptProcesses } from './kept-processes.ts';
 
-export const SCHEMA_VERSION = 48;
+export const SCHEMA_VERSION = 49;
 
 /** Raised when the journal was written by a newer core than this one. */
 export class JournalTooNewError extends Error {
@@ -493,6 +494,10 @@ export function migrate(db: Database, file: string): { from: number; to: number 
   if (version < 48) {
     createRemovedTurnUsage(db);
     version = 48;
+  }
+  if (version < 49) {
+    createKeptProcesses(db);
+    version = 49;
   }
   createSharedProjects(db);
   createSharedBoard(db);
