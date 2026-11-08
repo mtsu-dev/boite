@@ -1033,12 +1033,14 @@ whatever the page said, so a broken bundle still gets a window to quit from.
 ## App update restart
 
 On Windows an in-app update closes the window when the shell starts the
-installer, and the new window opens once the installer has written the app's
-files and started the new shell. On 2026-11-07 that gap was 5.3 seconds
-(nightly 20261107.2, Ryzen 7 9800X3D, NVMe), read from the shell's log
-(`shell.update.install`, then the next `shell.start`) and the install
+installer, and the new window shows once the installer has written the app's
+files, the new shell has started and its core has answered
+([shell startup](#shell-startup)). On 2026-11-07 that gap was 6.2 seconds
+(nightly 20261107.2, Ryzen 7 9800X3D, NVMe), from `shell.update.install` to
+the next `shell.window.show` in the shell's log, split with the install
 directory's times: 1.2 s until the installer began writing, 3.4 s writing
-148 MB in 828 files, 0.7 s to the new shell, whose core answered 0.9 s later.
+148 MB in 828 files, 0.7 s to the new `shell.start`, 0.9 s until its core
+answered and the window showed.
 
 Most of the writing was LZMA decompression. The installer now packs with zlib
 (`bundle.windows.nsis.compression` in `tauri.bundle.windows.conf.json`).
@@ -1053,8 +1055,10 @@ compressor into an installer that only extracts it, then times a silent run
 | bzip2 | 66.0 MB | 6.25 s | 9.6 s |
 | none | 148.3 MB | 1.54 s | 0.7 s |
 
-zlib takes 2.9 s off the closed-window gap for 15 MB more download, which
-happens while the old window still runs. No compression would save another
+The bench times the installer's start and its extraction, not a whole update:
+the 2.9 s it gives zlib is an estimate of what the closed-window gap loses, for
+15 MB more download, which happens while the old window still runs. The next
+update's `shell.update.install` to `shell.window.show` measures it. No compression would save another
 0.7 s for 78 MB more. LZMA's cost grows on a slower CPU: Tauri's own
 documentation gives it 10 to 20 MB/s at 2 GHz.
 
