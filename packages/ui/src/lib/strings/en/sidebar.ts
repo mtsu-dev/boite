@@ -157,8 +157,8 @@ export const strings = {
     /** A folded project's mark for the threads it hides: `2 threads: Needs you`. */
     rollupOne: '1 thread: {state}',
     rollupMany: '{count} threads: {state}',
-    /** The list's foot: what the tightest subscription window has left, `6% left · Weekly`. */
-    quotaLeft: '{percent}% left · {window}',
+    /** The list's foot: what the tightest subscription window has left, `6% of your weekly limit left` (`quotaLimitName`). */
+    quotaLeft: '{percent}% of your {window} limit left',
     pin: 'Pin',
     unpin: 'Unpin',
     archive: 'Archive',

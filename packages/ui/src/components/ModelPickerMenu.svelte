@@ -165,17 +165,20 @@
     return choice?.providerId === row.providerId && choice.accountId === row.accountId && choiceModel === row.model.id;
   }
 
-  /** Several providers among the rows: only then does each row name its own. */
+  /** Several providers among the rows: two rows of one name then say whose each is. */
   let mixed = $derived(new Set(home.map((row) => row.providerId)).size > 1);
   /**
-   * The row's quiet text, only what tells it apart: its provider when the rows
-   * mix several, the gateway route, and a login other than the provider's own
-   * when it has several (the default login is not printed on every row).
+   * The row's quiet text, only where a name alone is not enough: the login
+   * when its provider has two, and the provider or gateway route when another
+   * row bears the same name. A row of its own needs none.
    */
   function sourceOf(row: ShortModel): string {
-    const parts = mixed ? [store.providerOf(row.providerId)?.name ?? row.providerId] : [];
-    const route = modelSource(row.model);
-    if (route) parts.push(route);
+    const parts: string[] = [];
+    if (home.some((other) => other !== row && other.model.name === row.model.name)) {
+      if (mixed) parts.push(store.providerOf(row.providerId)?.name ?? row.providerId);
+      const route = modelSource(row.model);
+      if (route) parts.push(route);
+    }
     if (store.accountsOf(row.providerId).length > 1) {
       const account = store.accountOf(row.accountId);
       if (account && account.isolationDir !== null && account.label) parts.push(account.label);
@@ -197,7 +200,7 @@
   }
 
   let provider = $derived(choice ? store.providerOf(choice.providerId) : null);
-  /** A provider turned off has no column: the rail's first one shows instead. */
+  /** A provider turned off has no tile: the row's first one shows instead. */
   const offered = (id: string | null | undefined) => (id && store.providerOn(id) ? store.providerOf(id) : null);
   let shown = $derived(offered(shownProviderId) ?? offered(provider?.id) ?? store.offeredProviders[0] ?? null);
   /** The account the right column belongs to: an agent lists its models per login. */
@@ -238,7 +241,7 @@
     void store.probeModels(shown.id, accountId);
   });
 
-  // Keep the shown provider visible in the vertical rail or phone strip.
+  // Keep the shown provider visible in the phone's sideways row (a desktop's wraps, every tile in view).
   $effect(() => {
     const current = level === 'all' ? shown?.id : null;
     if (!popover.shown || !menu || !current) return;
@@ -247,11 +250,6 @@
     if (!rail || !tile) return;
     const railBox = rail.getBoundingClientRect();
     const tileBox = tile.getBoundingClientRect();
-    if (!window.matchMedia('(max-width: 720px)').matches) {
-      if (tileBox.bottom > railBox.bottom) rail.scrollTop += tileBox.bottom - railBox.bottom;
-      else if (tileBox.top < railBox.top) rail.scrollTop -= railBox.top - tileBox.top;
-      return;
-    }
     const visibleRight = railBox.right - (parseFloat(getComputedStyle(rail).paddingRight) || 0);
     if (tileBox.right > visibleRight) rail.scrollLeft += tileBox.right - visibleRight;
     else if (tileBox.left < railBox.left) rail.scrollLeft -= railBox.left - tileBox.left;
@@ -450,10 +448,13 @@
       </div>
     {/snippet}
 
+    <!-- The row of providers already names the one shown: its head is for a provider with two logins (which one), or for one provider alone. -->
+    {#if single || seats.length > 1}
     <div class="head">
       <span class="provider-name ui-label">{shown ? shown.name : strings.composer.models}</span>
       <AccountSeats {shown} {seats} {shownAccountId} {choice} {locked} busy={disabled || pickPending} onpick={pickSeat} />
     </div>
+    {/if}
     {#key `${shown?.id}:${shownAccountId}`}
     <div class="model-list">
     {#if locked && seats.length > 1}
@@ -581,14 +582,17 @@
   .all .name { flex: 1; font-weight: 400; }
   .sheet-title { display: none; }
   .popover.legacy-menu { width: min(320px, calc(100vw - 24px)); height: auto; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); z-index: 41; }
+  /* One column on every width, read top to bottom: the title (a phone's),
+     the providers in a row with the refresh at its end, their models, then
+     the effort and the permission. No side column. */
   .popover {
     position: fixed;
     z-index: 40;
     display: grid;
-    grid-template-columns: 136px minmax(0, 1fr);
-    width: min(440px, calc(100vw - 32px));
-    /* As tall as the longer of the rail and the list, the rows under them; floating caps it to the room above. */
-    grid-template-rows: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) auto;
+    width: min(400px, calc(100vw - 32px));
+    /* Floating caps it to the room above. */
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
     background: var(--color-surface-2);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
@@ -614,28 +618,30 @@
     touch-action: pan-y;
   }
 
+  /* The providers in a row; on a desktop they wrap, every one in view. */
   .rail {
-    align-items: stretch;
-    gap: 1px;
-    padding: 6px 6px 40px;
+    grid-area: 2 / 1;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    padding: 6px;
+    overflow: visible;
   }
 
   .models > * { flex-shrink: 0; }
-  .main-models { grid-area: 1 / 2 / 3 / 3; overflow: hidden; padding: 0; gap: 0; border-left: 1px solid var(--color-border); }
+  .main-models { grid-area: 3 / 1 / 4 / 3; overflow: hidden; padding: 0; gap: 0; border-top: 1px solid var(--color-border); }
   .main-models .head { gap: 8px; padding: 6px 6px 6px 12px; border-bottom: 1px solid var(--color-border); }
   .main-models .head .provider-name { flex: 1; min-width: 0; }
   .model-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; padding: 6px; }
-  .rail { grid-area: 1 / 1; }
   .model-list { max-height: 300px; }
-  .settings { grid-area: 3 / 1 / 4 / 3; display: flex; flex-direction: column; gap: 2px; padding: 6px; border-top: 1px solid var(--color-border); }
-  /* One provider: its model list is the whole popover, the refresh sits in the list's head. */
-  /* No provider to switch to, so no height to hold steady: it is as tall as its models. */
-  .popover.single { grid-template-columns: minmax(0, 1fr); width: min(320px, calc(100vw - 32px)); }
-  .single .settings { grid-column: 1 / 2; }
-  .single .main-models { grid-area: 1 / 1 / 3 / 2; border-left: none; }
+  .settings { grid-area: 4 / 1 / 5 / 3; display: flex; flex-direction: column; gap: 2px; padding: 6px; border-top: 1px solid var(--color-border); }
+  /* One provider: no row of providers, its model list is the whole popover and the refresh sits at its top corner. */
+  .popover.single { width: min(320px, calc(100vw - 32px)); }
+  .single .main-models { grid-area: 2 / 1 / 4 / 3; border-top: none; }
   .single .main-models .head { padding-right: 44px; }
   .single .refresh { position: absolute; top: 6px; right: 6px; margin: 0; width: var(--control-sm); height: var(--control-sm); border: none; background: transparent; }
-  .refresh { grid-area: 2 / 1; align-self: end; justify-self: start; margin: 6px; position: relative; z-index: 3; display: grid; place-items: center; width: var(--control-sm); height: var(--control-sm); padding: 0; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--color-muted-foreground); }
+  .refresh { grid-area: 2 / 2; align-self: start; margin: 6px 6px 0 0; position: relative; z-index: 3; display: grid; place-items: center; width: var(--control-sm); height: var(--control-sm); padding: 0; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--color-muted-foreground); }
   .refresh:hover:not(:disabled) { background: var(--color-hover); color: var(--color-foreground); }
   .head {
     display: flex;
@@ -764,22 +770,19 @@
   :global(html[data-motion='reduced']) .skeleton { animation: none; }
 
   @media (max-width: 720px) {
-    /* The phone's bottom sheet, read top to bottom: its title, the providers
-       in a row (the refresh at its end), their models, then the effort and
-       More rows. The first level is its title, the rows in use and the effort. */
-    .popover { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto minmax(0, 1fr) auto; width: calc(100vw - 24px); }
+    /* The phone's bottom sheet: the same rows under its title, the providers
+       scrolling sideways under a finger rather than wrapping. */
+    .popover { width: calc(100vw - 24px); }
     .sheet-title { display: block; grid-area: 1 / 1 / 2 / 3; padding-bottom: var(--space-2); text-align: center; font-weight: 600; }
-    .rail { grid-area: 2 / 1; flex-direction: row; overflow-x: auto; overflow-y: hidden; touch-action: pan-x; padding: 8px; gap: 4px; scrollbar-width: none; }
-    .rail :global(.tile) { width: auto; padding: 0 12px; }
-    .refresh { grid-area: 2 / 2; align-self: center; margin: 0 6px 0 0; }
-    .main-models { grid-area: 3 / 1 / 4 / 3; border-left: none; border-top: 1px solid var(--color-border); }
+    .rail { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; touch-action: pan-x; padding: 8px; scrollbar-width: none; }
+    .rail :global(.tile) { padding: 0 12px; }
+    .refresh { align-self: center; margin: 0 6px 0 0; }
     .model-list { max-height: none; }
-    .settings { grid-area: 4 / 1 / 5 / 3; padding: 8px; }
+    .settings { padding: 8px; }
     .refresh, .single .refresh { width: var(--touch-target); height: var(--touch-target); }
     /* One provider: no rail, the refresh beside the title. */
     .single .refresh { position: static; grid-area: 1 / 2; align-self: start; margin: calc(var(--space-2) * -1) 6px 0 0; }
     .single .main-models { grid-area: 2 / 1 / 4 / 3; }
-    .popover.single { grid-template-columns: minmax(0, 1fr) auto; }
     .single .main-models .head { padding-right: 6px; }
     .short-list { padding: 0 8px 8px; }
     .short-list .row { min-height: var(--touch-target); }

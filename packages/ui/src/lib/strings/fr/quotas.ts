@@ -62,6 +62,7 @@ export const fr: Translation = {
     remainingUnit: ' % restants',
     resets: 'Repart {time}',
     windowHours: '{hours} heures',
+    limitHours: 'de {hours} heures',
     windowWeekly: 'Hebdomadaire',
     windowMonthly: 'Mensuelle',
     windowCredits: 'Crédits',

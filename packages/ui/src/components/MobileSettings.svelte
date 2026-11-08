@@ -81,6 +81,7 @@
   const infoOf = (page: string): string => page === 'usage' ? `${strings.usage.intro} ${strings.usage.note}`
     : page === 'privacy' ? strings.telemetry.description
     : page === 'secrets' ? strings.secrets.info
+    : page === 'worktrees' ? strings.settings.worktrees.intro
     : page === 'experiments' ? strings.settings.experiments.intro : '';
   let detail = $derived(page !== 'home');
 
@@ -252,7 +253,7 @@
           <div class="merged" id="settings-task-manager"><TaskManagerLoader {store} {onopenthread} /></div>
         </div>
       {:else if shown === 'worktrees'}
-        <div class="page"><WorktreesCard store={target} /></div>
+        <div class="page worktrees-page"><WorktreesCard store={target} /></div>
       {:else if shown === 'windows'}
         <div class="page"><WindowAllowlistCard store={target} /><WindowExclusionsCard store={target} /></div>
       {:else if shown === 'secrets'}
@@ -292,19 +293,19 @@
   .home { padding: var(--space-4); }
   .home > :global(.policy-banner) { margin-bottom: var(--space-5); }
   /* The group's first row is the machine itself: its name over its connection. */
-  .machine-link { min-height: 64px; }
+  .machine-link { min-height: 56px; }
   .machine-link strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; }
   .machine-link small { display: block; margin-top: var(--space-1); font-size: var(--text-xs); font-weight: 400; color: var(--color-muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .machine-link small .ready { color: var(--color-success); }
   p { font-size: var(--text-sm); color: var(--color-muted-foreground); line-height: 1.5; margin: var(--space-2) 0 var(--space-3); }
   .rows { border: 1px solid var(--color-border); border-radius: var(--radius-lg); overflow: hidden; background: var(--color-surface); }
   /* A ghost button is muted; a row title reads like any other settings label. */
-  .row { display: flex; align-items: center; width: 100%; height: auto; min-height: 56px; gap: var(--space-3); padding: var(--space-3) var(--space-4); font-size: var(--text-base); font-weight: 400; text-align: left; border-radius: 0; white-space: normal; color: var(--color-foreground); }
+  .row { display: flex; align-items: center; width: 100%; height: auto; min-height: 48px; gap: var(--space-3); padding: var(--space-3) var(--space-4); font-size: var(--text-base); font-weight: 400; text-align: left; border-radius: 0; white-space: normal; color: var(--color-foreground); }
   .row + .row { border-top: 1px solid var(--color-border); }
   .row span { flex: 1; min-width: 0; }
   .row :global(svg) { flex: none; color: var(--color-muted-foreground); }
   /* The screen's one header: the app's own steps aside over a page (App.svelte), so this one takes the top inset. */
-  header { flex: none; display: flex; align-items: center; gap: var(--space-2); min-height: 60px; padding: max(var(--space-2), env(safe-area-inset-top)) max(var(--space-3), env(safe-area-inset-right)) var(--space-2) max(var(--space-3), env(safe-area-inset-left)); border-bottom: 1px solid var(--color-border); }
+  header { flex: none; display: flex; align-items: center; gap: var(--space-2); min-height: 52px; padding: max(var(--space-2), env(safe-area-inset-top)) max(var(--space-3), env(safe-area-inset-right)) var(--space-2) max(var(--space-3), env(safe-area-inset-left)); border-bottom: 1px solid var(--color-border); }
   header .icon { width: 44px; min-height: 44px; }
   header h1 { margin: 0; font-size: var(--text-md); font-weight: 600; }
   header.limits h1 { flex: 1; min-width: 0; margin-right: 54px; }
@@ -339,5 +340,6 @@
   .detail :global(.switch-row) { flex-wrap: wrap; gap: var(--space-3); }
   /* The bar names the page and the line above says what it holds: the card's own heading and tip step aside. */
   .archived-page :global(#settings-archived > h2) { display: none; }
-  .secrets-page :global(#settings-secrets > h2) { display: none; }
+  .secrets-page :global(#settings-secrets > h2),
+  .worktrees-page :global(#settings-worktrees > h2) { display: none; }
 </style>

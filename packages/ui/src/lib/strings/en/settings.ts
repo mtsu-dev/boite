@@ -109,10 +109,9 @@ export const strings = {
     reading: 'Reading',
     font: 'Text font',
     /** What the reading studies found, behind the label's "i": why there is a choice at all. */
-    fontHint: 'No face reads fastest for everyone: in a 2022 study each reader was about 35% faster in their best face than in their worst, and taste seldom picked the fastest. Try each one on its sample.',
+    fontHint: 'No face reads fastest for everyone: in a 2022 study each reader was about 35% faster in their best face than in their worst, and taste seldom picked the fastest. Each name in the list is set in its own face.',
     fontSystem: 'System',
     /** Drawn in every face of the picker: mixed case, digits, and the glyphs that get confused (Il1, O0, rn). */
-    fontSample: 'Il1 O0 rn',
     monoFont: 'Code font',
     monoSystem: 'System',
     zoom: 'Interface size',
@@ -225,7 +224,7 @@ export const strings = {
     endpoint: 'Endpoint',
     noCore: 'Not connected to a core.',
     archived: {
-      doneRetentionLabel: 'Delete done threads after (days)',
+      doneRetentionLabel: 'Delete done threads after',
       doneRetentionHint: 'Counted from Mark done or an automatic archive after a PR merge. 3 days by default; 0 disables deletion. Manual archives are kept. Deleted conversations remain recoverable for the configured deletion retention.',
       deletesAt: 'Deletion: {date}',
       heading: 'Archived threads',
@@ -237,7 +236,7 @@ export const strings = {
     },
     deleted: {
       heading: 'Deleted conversations',
-      retentionLabel: 'Days before permanent deletion',
+      retentionLabel: 'Keep deleted conversations for',
       retentionHint: 'Counted from deletion. 0 keeps conversations indefinitely. Shortening the delay also applies to conversations already deleted.',
       retentionError: 'Enter a whole number between 0 and 3650 days.',
       purgesAt: 'Permanent deletion: {date}',
@@ -258,7 +257,7 @@ export const strings = {
       storageInvalid: 'Enter an absolute folder path on the machine that runs your agents.',
       storageSaveFailed: 'Could not save the storage location. Check the path and connection, then try again.',
       heading: 'Worktrees',
-      intro: 'A worktree stays on disk after its thread is archived. Removing one deletes the folder and its branch.',
+      intro: 'A worktree is a copy of the project on its own branch, so a thread works without touching your checkout. It stays on disk after its thread is archived. Removing one deletes the folder and its branch.',
       show: 'Show worktrees',
       noProject: 'No git project on this machine.',
       empty: 'No worktree left.',

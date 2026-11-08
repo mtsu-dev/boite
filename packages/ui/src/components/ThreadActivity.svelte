@@ -71,7 +71,7 @@
     }
     seenThread = thread;
   });
-  /** A plain question draws its own head (`QuestionCard`): the pager and the fold sit in it. */
+  /** A plain question draws its own head (`QuestionCard`): the fold sits in it, the pager under its choices. */
   const plain = (question: DockRequest) => !question.secret && !question.setting && !question.agentSetting && !question.team;
   // A card's "Answer in writing", in the timeline or here, brings that question up.
   $effect(() => {
@@ -295,11 +295,13 @@
                     <!-- The box answers this one: its fold sets it aside. -->
                     <span data-testid="composer-reply" data-question={question.id} hidden></span>
                   {/if}
-                  {@render pager()}
                   <button type="button" class="ghost small icon fold-toggle" aria-expanded={questionOpen} aria-label={foldTitle(question.id)}
                     title={foldTitle(question.id)} data-testid="activity-question-toggle"
                     onclick={() => toggleQuestion(question.id)}><ChevronDown size={16} class={questionOpen ? 'turned' : ''} /></button>
                   {/if}
+                {/snippet}{#snippet foot()}
+                  <!-- The pager is a secondary line under the choices: the question keeps the head's width. -->
+                  {#if question.id === shown?.id && asked.length > 1}<div class="pager-line">{@render pager()}</div>{/if}
                 {/snippet}</QuestionCard>{/snippet}</Deferred>
                 {/if}
               </div>
@@ -441,10 +443,11 @@
 
 <style>
   /* The head of the composer card, in the flow like the rest of the dock, so
-     the timeline gives way to it and no line of the thread runs under it.
+     the timeline gives way to it and no line of the thread runs under it. A
+     desktop caps it with the dock's budget (Composer's `.deck`), a phone here.
      Four pixels around every line: the rows carry their own inline padding,
      so a hover fill sits inset by the same four pixels on every side. */
-  .activity { max-height: 45vh; overflow-y: auto; padding: 8px 4px 4px; border-bottom: 1px solid var(--color-border); font-size: var(--text-sm); }
+  .activity { overflow-y: auto; padding: 8px 4px 4px; border-bottom: 1px solid var(--color-border); font-size: var(--text-sm); }
   .activity.hidden { display: none; }
   /* A decision arrives by growing the dock from its last height, content and
      box together (`lib/arrival.ts`); reduced motion shows it at once. */
@@ -469,6 +472,8 @@
   .question-line { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: left; }
   .pager { display: inline-flex; align-items: center; gap: 2px; flex: none; }
   .pager .meta { font-variant-numeric: tabular-nums; }
+  /* Under the choices, its first arrow under their keycaps. */
+  .pager-line { display: flex; margin: -2px 0 0 2px; }
   .activity-row > :global(svg) { flex: none; color: var(--color-muted-foreground); }
   .activity-row button { flex: none; }
   /* A folded question's text gives way to the pager, not the pager to it. */

@@ -92,12 +92,14 @@ async function openDialog() {
   return query('[data-testid=team-dialog]');
 }
 
-test('with no team yet the Bots list shows the Teams heading with New team and one line', async () => {
+test('with no team yet the Bots list shows the bots first, then the Teams heading with New team and one line', async () => {
   const { store, bots } = await computer();
   page(store);
   await vi.waitFor(() => query(`[data-testid="agent-entry-${bots[0]!.id}"]`));
   await settle();
-  expect(all('.agents-rail .section-label').map(heading => heading.textContent)).toEqual(['Teams', 'Bots']);
+  // Nothing to list as a team yet: its prompt waits under the bots, which are what there is.
+  expect(all('.agents-rail .section-label').map(heading => heading.textContent)).toEqual(['Bots', 'Teams']);
+  expect(query(`[data-testid="agent-entry-${bots[0]!.id}"]`).compareDocumentPosition(query('[data-testid=agents-teams-empty]')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect((await newTeam()).textContent?.trim()).toBe('New team');
   expect(text('[data-testid=agents-teams-empty] p')).toBe('No team yet: put a few bots in one chat.');
   expect(document.querySelector('[data-testid=agents-teams]')).toBeNull();

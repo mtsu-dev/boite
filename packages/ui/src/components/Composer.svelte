@@ -31,6 +31,7 @@
   import ComposerIntent from './ComposerIntent.svelte';
   import ComposerQueueRegion from './ComposerQueueRegion.svelte';
   import ComposerStrip from './ComposerStrip.svelte';
+  import AgentDock from './AgentDock.svelte';
   import ComposerSpeechPreview from './ComposerSpeechPreview.svelte';
   import MentionMenu from './MentionMenu.svelte';
   import SlashMenu from './SlashMenu.svelte';
@@ -73,7 +74,7 @@
   let inputScroll = $state(0);
   let toolbar = $state<ReturnType<typeof ComposerBar> | undefined>(undefined);
   let shell = $state<HTMLDivElement | undefined>(undefined);
-  // The deck's height above the card: a phone's decision gives up as much room so the conversation keeps its share.
+  // The subagents' rows on the card's top edge: the decision gives up as much room so the conversation keeps its share.
   let deckRoom = $state(0);
   let attachmentStrip = $state<ReturnType<typeof ComposerAttachments> | undefined>();
   let highlightedImage = $state<Attachment | null>(null);
@@ -754,7 +755,7 @@
     event.preventDefault(); event.stopPropagation();
   }
 }}>
-  {#if !target}<ComposerStrip {store} {thread} bind:height={deckRoom} />{/if}
+  {#if !target}<ComposerStrip />{/if}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="composer" class:dictating data-testid="composer" tabindex="-1" bind:this={shell} hidden={stopped} {ondragover} {ondrop} onkeydown={(event) => {
     if (event.target !== event.currentTarget || event.key !== 'Escape') return;
@@ -762,8 +763,12 @@
     onkeydown(event);
     event.stopPropagation();
   }}>
+    <!-- The card's head, under one height budget: the subagents' quiet rows, then the decision, the one block with weight. -->
+    <div class="deck">
+    {#if thread}<AgentDock {store} threadId={thread.id} bind:height={deckRoom} />{/if}
     {#if permission}{#key permission.id}<Deferred part={permissionCard}>{#snippet children(PermissionCard)}<PermissionCard docked toolName={permission.toolName} decision={null} request={permission} answer={(decision) => store.answer(permission.id, decision)} index={1} total={permissions.length} />{/snippet}</Deferred>{/key}{/if}
     {#if !target}<ThreadActivity {store} />{/if}
+    </div>
     <ComposerQueueRegion {store} {key} {thread} {composer} machine={machineLabel} {sendNow}
       blocked={text.length > 0 || attachments.length > 0 || previewReferences.length > 0} onrestore={restoreQueued} onsendnow={sendQueuedNow} />
     <ComposerIntent editing={!!composer?.editing} oncancel={cancelEdit} />
@@ -881,6 +886,17 @@
     -webkit-backdrop-filter: var(--composer-blur);
     box-shadow: var(--composer-rest);
     transition: border-color var(--dur-3) var(--ease-out-quint), box-shadow var(--dur-3) var(--ease-out-quint);
+  }
+
+  /* The card's head under one budget: on a desktop the whole dock, field
+     included, keeps to about 40% of the conversation; the subagents' rows
+     and an ask keep their size and the question or the tasks scroll inside
+     the rest. Empty, it takes no room. */
+  .deck { display: flex; flex-direction: column; }
+  .deck > :global(*) { flex: none; }
+  @media (min-width: 721px) {
+    .deck { max-height: max(160px, calc(40dvh - 126px)); }
+    .deck > :global(.activity) { flex: 0 1 auto; min-height: 0; }
   }
 
   /* The bottom gap sits under the box: a textarea scrolls its text through its own padding, up to the bar. */

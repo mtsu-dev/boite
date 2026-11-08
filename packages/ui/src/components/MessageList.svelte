@@ -734,7 +734,7 @@
     hasOlder={store.messagesBefore !== null} loading={store.loadingOlder} loadOlder={() => { if (viewport) { releaseNavigation(); viewport.scrollTop = rows[0]?.gap ? Math.max(0, (totals(rows)[1] ?? 0) - viewport.clientHeight) : 0; pinned = false; loadAbove(viewport); } }} />{/if}
   <!-- Input releases restored and navigation anchors; programmatic corrections keep them. A tap on a phone shows a message's buttons. -->
   <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
-  <div class="timeline" bind:this={viewport} use:watchWheel={onwheel} use:selectionClicks onclick={reveal.tap} {onscroll} ontouchstart={press} onpointerdown={press} onpointerover={(event) => { pointed = pointedTurn(event); }} onpointerleave={() => { pointed = null; }} onkeydown={releaseNavigation} style:padding-top="{20 + promptLead}px" style:overflow-anchor={timeline.at(-1)?.state === 'streaming' ? 'none' : undefined} data-testid="timeline" data-media-gallery data-scroll-root>
+  <div class="timeline" bind:this={viewport} use:watchWheel={onwheel} use:selectionClicks onclick={reveal.tap} {onscroll} ontouchstart={press} onpointerdown={press} onpointerover={(event) => { pointed = pointedTurn(event); }} onpointerleave={() => { pointed = null; }} onkeydown={releaseNavigation} style:padding-top="{20 + promptLead}px" style:overflow-anchor={timeline.at(-1)?.state === 'streaming' ? 'none' : undefined} class:below={!pinned} data-testid="timeline" data-media-gallery data-scroll-root>
     <div class="column" bind:this={column}>
       <!-- paging: the one line the top of the list shows while a page is in flight. -->
       {#if store.loadingOlder}<p class="loading-older" data-testid="loading-older">{strings.chat.loadingOlder}</p>{/if}
@@ -826,20 +826,29 @@
   .timeline {
     flex: 1;
     min-height: 0;
-    /* A column, so a short thread sits on the composer (the column's auto top
-       margin) instead of leaving a void above the docked ask. */
+    /* A column for the prompt's room under it; a short thread starts at the
+       top, so a decision docking below moves none of its lines. */
     display: flex;
     flex-direction: column;
     overflow: auto;
     scrollbar-gutter: stable both-edges;
     /* Balance the outline rail on both sides. The dock below is in the flow,
-       so the timeline ends where it starts and nothing runs under it. */
+       so the timeline ends where it starts and nothing runs under it; a line
+       cut by that end fades over the last 24 px (`.below`). */
     padding: 20px var(--outline-room);
+    --scroll-edge: var(--space-6);
     overscroll-behavior: contain;
     /* The toasts sit in room taken from the timeline's bottom, right above
        the composer (notify-corner.ts and .css), so they cover no line of it. */
     transition: margin var(--dur-2) var(--ease-out-quint);
   }
+
+  /* The bottom edge fades on the list's own state, the one that brings "Latest"
+     back: whatever lies below, the last line over the dock fades instead of
+     being cut. A state, not a scroll timeline, so a still frame shows it too;
+     two attributes outrank app.css's shared `.scroll-edges` rule. */
+  .timeline[data-scroll-root][data-testid]::after { animation: none; opacity: 0; transition: opacity var(--dur-2) var(--ease-out-quint); }
+  .timeline.below[data-scroll-root][data-testid]::after { opacity: 1; }
 
   .column {
     flex: none;
@@ -848,7 +857,7 @@
     gap: var(--chat-message-gap);
     width: 100%;
     max-width: var(--content);
-    margin: auto auto 0;
+    margin: 0 auto;
     /* One reading column: bubbles, prose and cards take the dock's width. */
     --prose: var(--content);
   }

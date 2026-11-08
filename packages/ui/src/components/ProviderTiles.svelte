@@ -7,10 +7,10 @@
   import type { Choice, Store } from '../lib/store.svelte';
 
   /**
-   * The model picker's rail under "All models", a compact list: the way back
-   * to the models in use, then one row per provider in the order the core
-   * listed them, its mark in monochrome beside its name. A row only moves the
-   * column beside it.
+   * The model picker's row of providers under "All models", above their
+   * models on every width: the way back to the models in use, then one tile
+   * per provider in the order the core listed them, its mark in monochrome
+   * beside its name. A tile only moves the list under it.
    */
   let {
     store,
@@ -107,9 +107,8 @@
     justify-content: flex-start;
     gap: 8px;
     flex: none;
-    width: 100%;
     height: var(--control-sm);
-    padding: 0 8px;
+    padding: 0 10px;
     border: none;
     border-radius: var(--radius-sm);
     background: transparent;

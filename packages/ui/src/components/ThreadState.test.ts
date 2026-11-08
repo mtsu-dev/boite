@@ -140,7 +140,7 @@ test('a monitoring thread counts from its oldest task and says what still runs',
   const state = draw({ status: 'idle', unread: true, backgroundWork: { kinds: ['monitor', 'monitor'], since: NOW - 125_000 } });
   expect(state.dataset['state']).toBe('monitoring');
   expect(state.classList.contains('monitoring')).toBe(true);
-  // One shape for every kind of work: the ring, dashed once the turn has ended.
+  // One shape for every kind of work: the still arc; which work it is, the tooltip says.
   expect(state.querySelector('.work-ring')).not.toBeNull();
   expect(state.textContent?.trim()).toBe('');
   expect(state.getAttribute('title')).toBe('Monitoring for 2m 05s\n2 monitors still running');

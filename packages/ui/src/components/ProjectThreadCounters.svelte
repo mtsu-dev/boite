@@ -42,8 +42,8 @@
     background: transparent; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; font-variant-numeric: tabular-nums; }
   .counter:disabled { opacity: 1; }
   .waiting .number { color: var(--color-live); }
-  /* Work, still: the rows' grey ring. The open thread keeps the one live spinner. */
-  .work-ring { box-sizing: border-box; width: 8px; height: 8px; border: 1.5px solid currentColor; border-radius: var(--radius-full); }
+  /* Work, still: the rows' grey arc (ThreadState.svelte). The open thread keeps the one live spinner. */
+  .work-ring { box-sizing: border-box; width: 9px; height: 9px; border: 1.5px solid currentColor; border-top-color: transparent; border-radius: var(--radius-full); transform: rotate(45deg); }
   .counter:hover:not(:disabled) { background: var(--color-hover); color: var(--color-foreground); }
   .counter.active { background: var(--color-active); color: var(--color-foreground); }
 

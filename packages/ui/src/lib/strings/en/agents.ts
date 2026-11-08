@@ -89,7 +89,7 @@ export const strings = {
     missedOne: '1 missed answer', missedMany: '{count} missed answers',
     backToChat: 'Back to the conversation',
     planned: 'Routines',
-    entrustTo: 'Hand off to a bot', entrustToName: 'Hand off to {name}', entrustedTo: 'Handled by {name}', takeBack: 'Take it back',
+    entrustTo: 'Give to a bot', entrustToName: 'Give to {name}', entrustedTo: 'Handled by {name}', takeBack: 'Take it back',
     welcomeHint: 'A bot is a conversation that keeps its name, its memory and its routines. It works on its own and tells you what matters.',
     runsHeading: 'Where it runs', runsHint: 'Its conversation, memory and routines stay on this machine. The models come from that machine’s accounts.',
     machine: 'Machine', modelLabel: 'Model', machineOffline: 'Offline', machineNotOwner: 'Owner access needed',

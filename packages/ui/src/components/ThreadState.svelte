@@ -18,7 +18,7 @@
    * One grammar in every list (rows, Recent, the palette, the phone,
    * Activity), from `stateForm`: the user's turn is an amber dot and a failure
    * a red one, with their word only where the row has room (`mark` off); work
-   * is a still grey ring alone; news and rest show the time. Lists hold many
+   * is a still grey arc alone; news and rest show the time. Lists hold many
    * rows at work: their marks stay still, the one live spinner is the open
    * thread's. How long work has run lives in the thread and the tooltip.
    * `mark`: the desktop list's narrow end, where every mark stands alone, its
@@ -117,10 +117,9 @@
   }
   /* A word shows only when the user must act: it reads bold, in the row's grey; the dot carries the colour. */
   .waiting, .error, .interrupted { font-weight: 600; }
-  /* Every mark is 8 px. Work: a still grey ring, solid for the turn, dashed for what it left running, dotted in the queue. */
-  .work-ring { flex: none; box-sizing: border-box; width: 8px; height: 8px; border: 1.5px solid var(--color-muted-foreground); border-radius: var(--radius-full); }
-  .delegating .work-ring, .background .work-ring, .monitoring .work-ring, .watching .work-ring { border-style: dashed; }
-  .queued .work-ring { border-style: dotted; }
+  /* Every mark is 8 px. Work, of any kind: a still grey arc, a spinner at rest, so it never reads as an idle ring;
+     which work it is lives in the tooltip. */
+  .work-ring { flex: none; box-sizing: border-box; width: 9px; height: 9px; border: 1.5px solid var(--color-muted-foreground); border-top-color: transparent; border-radius: var(--radius-full); transform: rotate(45deg); }
   /* The two colours of every list: amber for the user's turn, red for a failure. */
   .dot { flex: none; width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--color-live); }
   .error .dot, .interrupted .dot { background: var(--color-danger); }

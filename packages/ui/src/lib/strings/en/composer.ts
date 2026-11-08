@@ -75,8 +75,8 @@ export const strings = {
     /** The picker's row and the slider: one short word, the levels say the rest. */
     effortTitle: 'Effort',
     speed: 'Response speed',
-    /** The picker's quiet row that opens speed, permissions and context under the effort; it reads their current values. */
-    pickerMore: 'More',
+    /** The picker's quiet row that opens the response speed and the context under the effort; it reads their current values. */
+    pickerMore: 'Speed and context',
     /** The reasoning chip of a model whose agent keeps its own level until one is picked. */
     effortDefault: 'Default',
     effortDefaultHint: 'Let the agent pick its own level for this model',

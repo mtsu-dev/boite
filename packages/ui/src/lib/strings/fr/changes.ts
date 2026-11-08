@@ -3,6 +3,8 @@ import type { Translation } from '../../i18n.svelte';
 export const fr: Translation = {
 
   changes: {
+    /** A phone panel's title over Changes. */
+    title: 'Fichiers modifiés',
     clean: 'Copie de travail propre',
     noBranch: 'Aucune branche',
     ahead: '{count} en avance',

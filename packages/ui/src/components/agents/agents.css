@@ -342,17 +342,17 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 .desk-row-head { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 20px; }
 .desk-card-title { flex: 1; min-width: 0; font-size: var(--text-sm); font-weight: 500; line-height: 1.45; color: var(--color-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .desk-row.done .desk-card-title { color: var(--color-muted-foreground); font-weight: 400; }
-.desk-row-mark { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--color-live); }
+.desk-row-mark { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--color-live); }
+/* At work: the lists' still grey arc (ThreadState.svelte), a spinner at rest. */
+.desk-row-work { flex: none; box-sizing: border-box; width: 9px; height: 9px; border: 1.5px solid var(--color-muted-foreground); border-top-color: transparent; border-radius: 50%; transform: rotate(45deg); }
 .desk-row-mark[data-tone='danger'] { background: var(--color-danger); }
 .desk-card-when { flex: none; font-size: var(--text-xs); color: var(--color-subtle); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .desk-card-drop { position: absolute; top: 0; right: -4px; width: 20px; height: 20px; color: var(--color-subtle); opacity: 0; transition: opacity var(--dur-2) var(--ease-out-quint); }
 .desk-row:hover .desk-card-drop, .desk-row:focus-within .desk-card-drop { opacity: 1; }
 .desk-row:is(:hover, :focus-within) .desk-card-when:has(+ .desk-card-drop) { visibility: hidden; }
 .desk-card-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; margin: 0; font-size: var(--text-xs); color: var(--color-subtle); line-height: 1.4; }
-.desk-chip { --tone: var(--color-subtle); color: var(--tone); font-weight: 500; animation: pop var(--dur-2) var(--ease-out-quint); }
-.desk-chip[data-tone='live'] { --tone: var(--color-live); }
-.desk-chip[data-tone='danger'] { --tone: var(--color-danger); }
-.desk-chip[data-tone='success'] { --tone: var(--color-success); }
+/* The second line's words stay grey: the mark after the title carries the one colour. */
+.desk-chip { color: var(--color-subtle); font-weight: 500; animation: pop var(--dur-2) var(--ease-out-quint); }
 .desk-card-unreachable { color: var(--color-danger); }
 .desk-card-pr { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
 .desk-card-pr[data-pr='merged'], .desk-card-pr[data-checks='passing'] { color: var(--color-success); }

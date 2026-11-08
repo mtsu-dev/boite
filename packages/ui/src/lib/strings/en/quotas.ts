@@ -51,6 +51,8 @@ export const strings = {
     resets: 'Resets {time}',
     /** The limit windows the core names in English: `5 hours`, `Weekly`, `Monthly`, `Credits`, alone or on one side of ` · `. */
     windowHours: '{hours} hours',
+    /** The same window before the word limit: `5-hour limit`. */
+    limitHours: '{hours}-hour',
     windowWeekly: 'Weekly',
     windowMonthly: 'Monthly',
     windowCredits: 'Credits',

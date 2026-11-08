@@ -9,6 +9,7 @@ export const fr: Translation = {
     gigabytes: 'Go',
     milliseconds: 'ms',
     seconds: 's',
-    tokens: 'jetons'
+    tokens: 'jetons',
+    days: 'jours'
   }
 };

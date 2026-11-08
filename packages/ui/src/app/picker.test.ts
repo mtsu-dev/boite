@@ -243,11 +243,10 @@ test('the picker opens on the models in use, one row each, with every provider b
   await waitFor(() => short().length === 3);
   // The current choice first, then the star, then the latest threads' model; no provider rail on this level, the effort row under it.
   expect(short()).toEqual([['recent-model', 'claude-opus-5-5'], ['favorite-model', 'claude-sonnet-5-5'], ['recent-model', 'echo-1']]);
-  expect(query('[data-testid=picker-shortlist] .row.current .source').textContent).toContain(store.providerOf('claude')!.name);
-  // The provider's own login is not printed on its rows, even beside another seat of it.
+  // A name alone tells these rows apart: no provider under it, and the provider's own login is not printed, even beside another seat of it.
   expect(store.accountsOf('claude').length).toBeGreaterThan(1);
   expect(store.accountOf('a-claude-main')!.isolationDir).toBeNull();
-  expect(query('[data-testid=picker-shortlist] .row.current .source').textContent).not.toContain(store.accountOf('a-claude-main')!.label);
+  expect(document.querySelector('[data-testid=picker-shortlist] .row.current .source')).toBeNull();
   // The current row carries the check.
   expect(query('[data-testid=picker-shortlist] .row.current .mark svg')).not.toBeNull();
   expect(document.querySelector('[data-testid=composer-picker-menu] .rail')).toBeNull();

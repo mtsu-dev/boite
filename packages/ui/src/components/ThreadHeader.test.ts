@@ -3,6 +3,7 @@ import { flushSync, mount, unmount } from 'svelte';
 import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
 import ThreadHeader from './ThreadHeader.svelte';
+import { strings } from '../lib/strings';
 
 let mounted: ReturnType<typeof mount> | undefined;
 let client: FakeClient;
@@ -86,18 +87,16 @@ test("a phone's header is back, the title, one menu of the thread's actions and 
   const menu = document.querySelector<HTMLElement>('[data-testid=thread-menu-trigger-menu]')!;
   const values = (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>('[data-value]')].map(node => node.dataset['value']);
   const rows = values(menu);
-  // The thread's own actions, More, then Delete; no section of panels beside them.
+  // Find first (a phone has no Ctrl+F), the thread's own actions, then Delete; no section of panels, no group called More.
   expect(menu.querySelectorAll('.section')).toHaveLength(0);
+  expect(rows[0]).toBe('find');
   expect(rows).toContain('rename');
+  expect(rows).toContain('retitle');
   expect(rows.at(-1)).toBe('delete');
-  expect(rows.at(-2)).toBe('more');
-  for (const tool of ['phone-browser-toggle', 'changes', 'panel', 'find', 'retitle']) expect(rows).not.toContain(tool);
-  menu.querySelector<HTMLButtonElement>('[data-value="more"]')!.click(); await settle();
-  const list = document.querySelector<HTMLElement>('[data-testid=thread-menu-trigger-menu]')!;
-  const tools = values(list);
-  // More: the find bar a phone has no Ctrl+F for, then the thread's place and name. The panels are the panel selector's.
-  expect(tools.slice(0, 3)).toEqual(['back', 'find', 'retitle']);
-  for (const panel of ['changes', 'phone-browser-toggle', 'agents', 'panel', 'board', 'coordination']) expect(tools).not.toContain(panel);
+  expect(rows).not.toContain('more');
+  for (const tool of ['phone-browser-toggle', 'changes', 'panel']) expect(rows).not.toContain(tool);
+  for (const panel of ['changes', 'phone-browser-toggle', 'agents', 'panel', 'board', 'coordination']) expect(rows).not.toContain(panel);
+  const list = menu;
   expect(list.textContent).not.toMatch(/contact/i);
   // The phone's way to the panels is the header's panel button, as on a desktop.
   const was = store.panelOpen;
@@ -105,14 +104,22 @@ test("a phone's header is back, the title, one menu of the thread's actions and 
   expect(store.panelOpen).toBe(!was);
 });
 
-test("a desktop header's More holds the thread's less frequent actions and no panel", async () => {
+test("a desktop header's menu has find first and names its group for what it holds, with no panel", async () => {
   await start();
   document.querySelector<HTMLButtonElement>('[data-testid=thread-menu-trigger]')!.click(); await settle();
   const menu = document.querySelector<HTMLElement>('[data-testid=thread-menu-trigger-menu]')!;
   expect(menu.querySelector('[data-value="kind:changes"]')).toBeNull();
-  menu.querySelector<HTMLButtonElement>('[data-value="more"]')!.click(); await settle();
+  // Every row in view on a 900 px window: the default 360 px cap scrolled Delete out of sight.
+  expect(parseFloat(menu.style.maxHeight)).toBeGreaterThan(360);
+  // Under who has the thread and its branch, find opens the thread's own rows.
+  const actions = [...menu.querySelectorAll<HTMLElement>('[data-value]')].map(node => node.dataset['value']).filter(id => id !== 'thread-branch' && !id?.startsWith('thread-') && !id?.startsWith('watch:'));
+  expect(actions[0]).toBe('find');
+  for (const id of ['find', 'rename', 'retitle']) expect(menu.querySelector(`[data-value="${id}"]`)).not.toBeNull();
+  const group = menu.querySelector<HTMLButtonElement>('[data-value="more"]');
+  expect(group?.textContent).toContain(strings.thread.placeActions);
+  group!.click(); await settle();
   const list = document.querySelector<HTMLElement>('[data-testid=thread-menu-trigger-menu]')!;
-  for (const id of ['back', 'find', 'retitle', 'copy']) expect(list.querySelector(`[data-value="${id}"]`)).not.toBeNull();
+  for (const id of ['back', 'move', 'copy']) expect(list.querySelector(`[data-value="${id}"]`)).not.toBeNull();
   for (const id of ['kind:changes', 'agents', 'terminal-toggle', 'coordination']) expect(list.querySelector(`[data-value="${id}"]`)).toBeNull();
 });
 

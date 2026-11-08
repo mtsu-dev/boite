@@ -9,6 +9,7 @@ export const fr: Translation = {
     agents: 'Agents',
     installed: 'Installé',
     go: 'Continuer avec {provider}',
-    otherMachine: 'Utiliser une IA sur une autre machine',
+    connect: 'Connecter un compte IA',
+    otherMachine: 'Connecter un autre ordinateur ou un téléphone',
   }
 };

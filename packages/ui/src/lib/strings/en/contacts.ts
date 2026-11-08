@@ -56,6 +56,8 @@ export const strings = {
       /** Accept's tooltip, naming the project it shares; the row's menu picks another. */
       acceptInto: 'Accept: share {project}',
       acceptOther: 'Accept into another project',
+      /** The row's menu: another project, or Refuse. */
+      actions: 'More actions',
       refuse: 'Refuse',
       reason: 'Reason',
       reasonPlaceholder: 'Why, in a sentence the asking agent reads',

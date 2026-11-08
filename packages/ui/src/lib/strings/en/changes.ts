@@ -2,6 +2,8 @@ export const strings = {
 
   /** The changes surface: `git status` of the thread's working directory. */
   changes: {
+    /** A phone panel's title over Changes. */
+    title: 'Changed files',
     clean: 'Working tree clean',
     noBranch: 'No branch',
     ahead: '{count} ahead',

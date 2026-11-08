@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import type { PermissionRequest, QuestionRequest, ThreadSummary } from '@boite/contracts';
-import { activityFeed } from './activity-feed';
+import { activityFeed, feedOperation } from './activity-feed';
 
 const NOW = Date.UTC(2026, 10, 7, 12);
 
@@ -44,7 +44,10 @@ test('Activity lists what needs the user, failures included, then the updates, e
   const row = (id: string) => feed.find(row => row.thread.id === id)!;
   // A question is its own reason: the row's state already says it waits on the user.
   expect(row('asks').reason).toBe('Which retry policy?');
-  expect(row('push').reason).toBe('Wants to run git push');
+  // A command is said in words; the command itself reads whole under the row (feedOperation), never cut into the line.
+  expect(row('push').reason).toBe('Wants to run:');
+  expect(feedOperation(store, 'push' as ThreadSummary['id'])).toBe('git push');
+  expect(feedOperation(store, 'asks' as ThreadSummary['id'])).toBeNull();
   // Since when: the request's own time, not the thread's last change.
   expect(row('asks').at).toBe(NOW - 5 * 60_000);
   expect(row('push').at).toBe(NOW - 60_000);

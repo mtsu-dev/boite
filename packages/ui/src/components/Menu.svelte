@@ -186,8 +186,7 @@
           class="item"
           class:active={item.active}
           class:danger={item.danger}
-          class:hide-mark={item.hideActiveMark}
-          class:checkable={item.checked !== undefined}
+          class:checkable={item.checked !== undefined || item.active !== undefined}
           class:inline-hint={!switches && !!item.status && !!item.hint}
           class:radio={item.radio}
           class:submenu={item.submenu}
@@ -214,7 +213,7 @@
           {/if}
           {#if switches && item.checked !== undefined && !item.radio}
             <span class="switch" class:on={item.checked} aria-hidden="true"></span>
-          {:else if item.checked}<span class="check"><Check size={14} aria-hidden="true" /></span>{/if}
+          {:else if item.checked || item.active}<span class="check"><Check size={14} aria-hidden="true" /></span>{/if}
         </button>
         {/if}
       {/each}
@@ -241,7 +240,8 @@
   .item.danger .glyph { color: inherit; }
   .item.checkable { display: grid; grid-template-columns: minmax(0, 1fr) 14px; column-gap: 8px; }
   .checkable .hint { grid-column: 1; grid-row: 2; }
-  .check { display: flex; grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+  /* The one selection mark of every menu: a chosen row (`checked` or `active`) wears this check, nothing else. */
+  .check { display: flex; grid-column: 2; grid-row: 1 / span 2; align-self: center; color: var(--color-accent); }
   /* A row with a status dot (a changed file) keeps its counts on the label's line, at the right. */
   .item.checkable.inline-hint { grid-template-columns: minmax(0, 1fr) auto 14px; align-items: center; }
   .inline-hint .hint { grid-column: 2; grid-row: 1; }
@@ -256,7 +256,6 @@
   .switches .hint { padding-left: 23px; font-size: var(--text-xs); }
   /* The shared switch (app.css), a little smaller in a menu row. */
   .switch { --switch-width: 36px; --switch-height: 22px; grid-column: 2; grid-row: 1 / span 2; align-self: center; }
-  .item.hide-mark.active { background: var(--color-active); }
   .status-dot { display: inline-block; width: 6px; height: 6px; flex: none; border-radius: 50%; margin-right: 8px; vertical-align: middle; background: var(--color-live); }
   .status-dot[data-tone='success'] { background: var(--color-success); }
   .status-dot[data-tone='danger'] { background: var(--color-danger); }
@@ -411,17 +410,6 @@
   .item:active:not(:disabled) {
     transform: none;
     background: var(--color-active);
-  }
-
-  .item.active:not(.hide-mark) .label::after {
-    content: '';
-    display: inline-block;
-    width: 5px;
-    height: 5px;
-    margin-left: 8px;
-    border-radius: 50%;
-    background: var(--color-foreground);
-    vertical-align: middle;
   }
 
   .item.danger {

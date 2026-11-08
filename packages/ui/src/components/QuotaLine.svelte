@@ -3,7 +3,7 @@
   import { Gauge } from '@lucide/svelte';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
-  import { quotaWindowName } from '../lib/format';
+  import { quotaLimitName, quotaWindowName } from '../lib/format';
   import { quotaReader, shownQuotas } from '../lib/quota-reader.svelte';
   import { lowestLimit } from '../lib/limits-meter';
   import { work } from '../lib/work-prefs.svelte';
@@ -31,7 +31,7 @@
     return off;
   });
 
-  const text = $derived(meter ? fill(strings.sidebar.quotaLeft, { percent: String(meter.left), window: quotaWindowName(meter.window) }) : strings.quotas.glance);
+  const text = $derived(meter ? fill(strings.sidebar.quotaLeft, { percent: String(meter.left), window: quotaLimitName(meter.window) }) : strings.quotas.glance);
   const tip = $derived(meter ? fill(strings.app.rail.limitsLeft, { percent: String(meter.left), window: quotaWindowName(meter.window), account: meter.account }) : strings.quotas.glance);
   let button = $state<HTMLButtonElement>();
   let glance = $state<ReturnType<typeof LimitsGlance>>();

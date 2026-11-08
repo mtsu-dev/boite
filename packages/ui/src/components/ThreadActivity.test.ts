@@ -35,6 +35,11 @@ test('pending questions open oldest first, including a restored unordered list',
   const store = render({ goal: null, loop: null, tasks: [] });
   flushSync(() => { store.pendingQuestions = [question('middle', 2), question('oldest', 1), question('newest', 3)]; });
   expect(shownQuestion()).toBe('oldest');
+  // The head holds the question, Skip and the fold; the pager is its own line under the choices.
+  const head = document.querySelector('[data-testid=activity-question]:not([hidden]) .decision-head')!;
+  expect(head.querySelector('[data-testid=activity-question-index]')).toBeNull();
+  expect(head.querySelector('[data-testid=activity-question-toggle]')).not.toBeNull();
+  expect(document.querySelector('[data-testid=activity-question]:not([hidden]) .pager-line [data-testid=activity-question-index]')).not.toBeNull();
   document.querySelector<HTMLButtonElement>('[data-testid=activity-question-next]')!.click();
   flushSync();
   expect(shownQuestion()).toBe('middle');

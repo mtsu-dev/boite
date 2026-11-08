@@ -1,4 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest';
+import type { ThreadSummary } from '@boite/contracts';
 import { flushSync, mount, unmount } from 'svelte';
 import { setExperiment } from '../lib/experiments';
 import { FakeClient } from '../lib/fake-client';
@@ -43,11 +44,17 @@ test('Activity gives each row its reason and its time, a sub-agent under its par
   client = new FakeClient({ delayMs: 0 });
   store = new Store(); store.attach(client); await store.connect();
   workspace.machines = [{ id: 'local', label: 'Local', store }]; workspace.active = store;
+  // A sub-agent that asks, under a top thread.
+  const parent = store.threads.find(thread => !thread.parentThreadId && thread.projectId && thread.id !== store.openThread?.id)!;
+  const child = { ...parent, id: 'helper-child', title: 'Check the parser', status: 'waiting', parentThreadId: parent.id } as ThreadSummary;
+  store.threads = [...store.threads, child];
+  store.pendingQuestions = [...store.pendingQuestions, { id: 'q-helper', threadId: child.id, text: 'Which retry policy?', options: [], createdAt: Date.now() } as never];
   mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'activity' } });
   await settle();
   const rows = Array.from(document.querySelectorAll<HTMLElement>('[data-testid=mobile-row]'));
   expect(rows.length).toBeGreaterThan(0);
   for (const row of rows) expect(row.querySelector('.feed-head time')?.textContent?.trim()).toBeTruthy();
+  const helpers = Array.from(document.querySelectorAll<HTMLElement>('[data-testid=thread-helper]'));
   const reasons = rows.map(row => row.querySelector('[data-testid=mobile-row-reason] .text')?.textContent ?? '');
   // A question is its own reason, a permission says what it runs.
   const asked = store.pendingQuestions.map(question => question.text.split('\n')[0]!.trim());
@@ -67,11 +74,13 @@ test('Activity gives each row its reason and its time, a sub-agent under its par
   if (updates) for (const row of rows.filter(row => updates.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING)) expect(row.querySelector('[data-testid=thread-verb]')).toBeNull();
   verb.click(); await settle();
   expect(store.openThread?.id).toBe(asking.dataset['threadId']);
-  for (const row of rows.filter(row => row.classList.contains('nested'))) {
-    const child = store.threads.find(t => t.id === row.dataset['threadId'])!;
-    const above = rows.slice(0, rows.indexOf(row)).reverse().find(other => !other.classList.contains('nested'))!;
-    expect(above.dataset['threadId']).toBe(child.parentThreadId);
+  // One thread, one row: a sub-agent that asks is a line inside its parent's row, never a row of its own.
+  expect(helpers.length).toBeGreaterThan(0);
+  for (const helper of helpers) {
+    const child = store.threads.find(t => t.id === helper.dataset['threadId'])!;
+    expect(helper.closest<HTMLElement>('[data-testid=mobile-row]')!.dataset['threadId']).toBe(child.parentThreadId);
   }
+  for (const row of rows) expect(store.threads.find(t => t.id === row.dataset['threadId'])?.parentThreadId ?? null).toBeNull();
 });
 
 test('selecting a conversation beyond the first mobile window finishes loading its history', async () => {
@@ -157,17 +166,13 @@ test('the header holds the search, opened in place, and the new thread; the bar 
   const threadId = row.dataset['threadId'];
   row.querySelector('[data-testid^=mobile-thread-]')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })); await settle();
   expect(id(`mobile-thread-menu-${threadId}-menu`)?.querySelector('[data-value=rename]')).not.toBeNull();
-  // Common actions first; a new title and the rest behind More, which opens in place and comes back.
+  // Every action on this one level, named: a new title among the common ones, the move with them, no More and no second level.
   const menuValues = () => Array.from(id(`mobile-thread-menu-${threadId}-menu`)?.querySelectorAll<HTMLElement>('[data-value]') ?? []).map(item => item.dataset['value']);
-  expect(menuValues()).not.toContain('retitle');
-  id(`mobile-thread-menu-${threadId}-menu`)!.querySelector<HTMLElement>('[data-value=more]')!.click(); await settle();
-  expect(menuValues()[0]).toBe('back');
   expect(menuValues()).toContain('retitle');
+  expect(menuValues()).not.toContain('more');
   expect(menuValues()).not.toContain('copy');
   // No panel in a row's menu: the panels have their own selector, in the panel.
   expect(menuValues().filter(value => value?.startsWith('kind:') || value === 'board-toggle')).toEqual([]);
-  id(`mobile-thread-menu-${threadId}-menu`)!.querySelector<HTMLElement>('[data-value=back]')!.click(); await settle();
-  expect(menuValues()).toContain('rename');
 
   // The new thread is the header's neutral "+", out of the bottom bar.
   expect(document.querySelector('[data-testid=mobile-tabs] [data-testid=mobile-new]')).toBeNull();

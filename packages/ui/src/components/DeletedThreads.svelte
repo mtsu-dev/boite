@@ -1,42 +1,18 @@
 <script lang="ts">
   import { errorText } from '../lib/errors';
-  import { untrack } from 'svelte';
-  import { DEFAULT_THREAD_DELETION_RETENTION_DAYS, type DeletedThreadSummary, type ThreadId, type ThreadSummary } from '@boite/contracts';
+  import { DEFAULT_THREAD_DELETION_RETENTION_DAYS, DEFAULT_THREAD_DONE_RETENTION_DAYS, type DeletedThreadSummary, type ThreadId, type ThreadSummary } from '@boite/contracts';
   import { exactTime, projectName } from '../lib/format';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
-  import SyncMark from './SyncMark.svelte';
-  import InfoTip from './InfoTip.svelte';
+  import SettingDays from './SettingDays.svelte';
 
   let { store, eager = false }: { store: Store; eager?: boolean } = $props();
-  const uid = $props.id();
   let threads = $state<DeletedThreadSummary[] | null>(null);
   let loading = $state(false);
   let restoring = $state<ThreadId | null>(null);
   let asked = false;
   let generation = 0;
-  let days = $state<number | undefined>(DEFAULT_THREAD_DELETION_RETENTION_DAYS);
-  let dirty = $state(false);
-  let saving = $state(false);
   let retention = $derived(store.settings?.threadDeletionRetentionDays ?? DEFAULT_THREAD_DELETION_RETENTION_DAYS);
-  let valid = $derived(typeof days === 'number' && Number.isInteger(days) && days >= 0 && days <= 3650);
-
-  $effect(() => {
-    const saved = retention;
-    untrack(() => { if (!dirty) days = saved; });
-  });
-
-  async function saveRetention(): Promise<void> {
-    if (!valid || saving) return;
-    const submitted = days!;
-    saving = true;
-    try {
-      if (await store.saveSettings({ threadDeletionRetentionDays: submitted })) {
-        if (days === submitted) dirty = false;
-        if (asked) await load();
-      }
-    } finally { saving = false; }
-  }
 
   $effect(() => {
     if (store.owner && store.connection === 'ready' && (eager || asked)) void load();
@@ -72,14 +48,11 @@
 {#if store.owner}
   <section class="card" data-testid="deleted-threads">
     <h2>{strings.settings.deleted.heading}</h2>
-    <form class="retention" onsubmit={(event) => { event.preventDefault(); void saveRetention(); }}>
-      <label class="ui-label-box" for="{uid}-days"><span class="ui-label">{strings.settings.deleted.retentionLabel}</span><InfoTip topic={strings.settings.deleted.retentionLabel} text={strings.settings.deleted.retentionHint} /><SyncMark {store} key="threadDeletionRetentionDays" /></label>
-      <div class="retention-actions">
-        <input id="{uid}-days" type="number" min="0" max="3650" step="1" bind:value={days} oninput={() => { dirty = true; }} aria-invalid={!valid} aria-describedby={valid ? undefined : `${uid}-error`} data-testid="deleted-retention-days" />
-        <button type="submit" disabled={!valid || !dirty || saving || !store.settings || store.connection !== 'ready'} data-testid="deleted-retention-save"><span class="ui-label">{strings.common.save}</span></button>
-      </div>
-      {#if !valid}<p id="{uid}-error" class="field-error" role="alert">{strings.settings.deleted.retentionError}</p>{/if}
-    </form>
+    <!-- How long a thread stays, done then deleted: two rows that save when left, out of the archive's list. -->
+    <SettingDays {store} key="threadDoneRetentionDays" label={strings.settings.archived.doneRetentionLabel} hint={strings.settings.archived.doneRetentionHint}
+      fallback={DEFAULT_THREAD_DONE_RETENTION_DAYS} testid="done-retention-days" />
+    <SettingDays {store} key="threadDeletionRetentionDays" label={strings.settings.deleted.retentionLabel} hint={strings.settings.deleted.retentionHint}
+      fallback={DEFAULT_THREAD_DELETION_RETENTION_DAYS} testid="deleted-retention-days" onsaved={() => { if (asked) return load(); }} />
     {#if threads === null}
       <button type="button" data-testid="deleted-show" disabled={loading || store.connection !== 'ready'} onclick={() => void load()}>
         <span class="ui-label">{strings.settings.deleted.show}</span>
@@ -109,12 +82,7 @@
 
 <style>
   ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
-  .retention { margin-bottom: 16px; }
-  /* As DoneRetentionSetting's label: the "i" stays beside the text instead of dropping under it. */
-  .retention label { display: flex; align-items: center; gap: 6px; font-size: var(--text-sm); margin-bottom: 6px; }
-  .retention-actions { display: flex; gap: 8px; align-items: center; }
-  .retention input { width: 100px; }
-  .retention p { margin: 6px 0 0; }
+  section > :is(button, p, ul) { margin-top: var(--space-3); }
   li { display: flex; align-items: center; gap: 10px; min-height: var(--row); padding: 4px 4px 4px 10px; border: 1px solid var(--color-border); border-radius: var(--radius-md); }
   .conversation { flex: 1; min-width: 0; }
   .title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

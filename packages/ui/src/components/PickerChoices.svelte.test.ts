@@ -92,15 +92,15 @@ test('a choice too long for a segment keeps the fold', () => {
   expect(document.querySelector<HTMLElement>('[data-testid=mode-menu]')!.hidden).toBe(true);
 });
 
-// Six effort levels side by side were cramped in the phone's model sheet: one row names the level and opens them.
-test('on a phone even short choices fold into one row naming the current one', () => {
+// The model menu has the same rows on every width: a phone's effort is the same segmented row, a finger tall.
+test('on a phone short choices are the same segmented row as on a desktop', () => {
   const width = window.innerWidth;
   Object.defineProperty(window, 'innerWidth', { value: 390, configurable: true });
   try {
     running = mount(PickerChoices, { target: document.body, props: { label: 'Effort', testid: 'effort-menu', items, active: 'high', onpick: () => {} } });
     flushSync();
-    expect(document.querySelector('.segments')).toBeNull();
-    expect(document.querySelector('[data-choices-trigger]')?.textContent).toContain('High');
+    expect(document.querySelector('.segments')).not.toBeNull();
+    expect(document.querySelector('[data-choices-trigger]')).toBeNull();
   } finally {
     Object.defineProperty(window, 'innerWidth', { value: width, configurable: true });
   }

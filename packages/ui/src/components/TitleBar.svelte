@@ -23,7 +23,8 @@
    * (App.svelte sets `--bar-left`); `edge` says nothing stands there (Settings),
    * so macOS's traffic lights land on the bar itself.
    */
-  let { store, edge = false }: { store: Store; edge?: boolean } = $props();
+  /** `listless`: the desktop draws no list column yet (lib/list-absent.ts), so there is nothing to fold. */
+  let { store, edge = false, listless = false }: { store: Store; edge?: boolean; listless?: boolean } = $props();
 
   const inShell = window.__TAURI_INTERNALS__ !== undefined;
   /** macOS draws its own traffic lights over the window's top left corner, and no caption buttons are drawn here. */
@@ -43,7 +44,7 @@
     if (!contactNotice || ContactRequestNotice) return;
     void import('./home/ContactRequestNotice.svelte').then(module => { ContactRequestNotice = module.default; }).catch(() => {});
   });
-  let foldable = $derived(store.booted && (store.page === 'chat' || store.page === 'home' || (store.page === 'agents' && !mobile.current)));
+  let foldable = $derived(store.booted && !listless && (store.page === 'chat' || store.page === 'home' || (store.page === 'agents' && !mobile.current)));
   function toggleSidebar() {
     if (mobile.current) store.sidebarOpen = !store.sidebarOpen;
     else store.toggleSidebar();

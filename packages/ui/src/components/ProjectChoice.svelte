@@ -540,7 +540,7 @@
     flex: none;
     display: inline-flex;
     width: 15px;
-    color: var(--color-foreground);
+    color: var(--color-accent);
   }
 
   .machine {

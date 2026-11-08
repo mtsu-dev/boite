@@ -17,6 +17,7 @@
 
 <style>
   .mark {
+    box-sizing: border-box;
     display: inline-block;
     width: var(--mark-size, 8px);
     height: var(--mark-size, 8px);
@@ -27,15 +28,16 @@
     transition: background var(--dur-2) var(--ease-out-quint);
   }
   .mark.unread { background: var(--color-foreground); border-color: var(--color-foreground); }
-  /* One shape per state, as the thread rows draw them (ThreadState.svelte): work is a grey ring, the user's
-     turn a filled amber dot, so the two never read alike at a glance; colour is kept for asks and failures. */
-  .mark.running {
+  /* One shape per state, as the thread rows draw them (ThreadState.svelte): work is a still grey arc, a spinner
+     at rest, the user's turn a filled amber dot, so the two never read alike at a glance; colour is kept for asks
+     and failures. */
+  .mark.running, .mark.queued {
     border-color: var(--color-muted-foreground);
-    animation: pulse 1.6s var(--loop-ease-in-out-48) infinite var(--loops);
+    border-top-color: transparent;
+    transform: rotate(45deg);
   }
   .mark.waiting { background: var(--color-live); border-color: var(--color-live); }
   .mark.paused { border-color: var(--color-live); }
-  .mark.queued { border-color: var(--color-muted-foreground); border-style: dashed; }
   .mark.skipped { border-color: var(--color-subtle); border-style: dashed; }
   .mark.error { background: var(--color-danger); border-color: var(--color-danger); }
   .mark.done { background: var(--color-success); border-color: var(--color-success); }
@@ -52,7 +54,4 @@
     background: var(--ring, var(--color-surface));
   }
 
-  /* An endless loop stops under reduced motion; the static mark keeps its colour. */
-  @media (prefers-reduced-motion: reduce) { .mark.running { animation: none; } }
-  :global(html[data-motion='reduced']) .mark.running { animation: none; }
 </style>

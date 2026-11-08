@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { ago, bytes, clockTime, dayClock, effortName, elapsed, formatTokens, levelName, levelTitle, longDay, millis, quotaResetTime, quotaWindowName, relativeTime } from './format';
+import { ago, bytes, clockTime, dayClock, effortName, elapsed, formatTokens, levelName, levelTitle, longDay, millis, quotaLimitName, quotaResetTime, quotaWindowName, relativeTime } from './format';
 import { setLocaleSetting } from './i18n.svelte';
 
 test('elapsed reads like a stopwatch', () => {
@@ -54,6 +54,8 @@ test('durations, sizes, effort levels and quota windows follow the language the 
   expect(levelName({ id: 'ultrathink', label: 'Ultrathink' })).toBe('Ultra');
   expect(levelTitle({ id: 'ultrathink', description: 'Extended thinking' })).toBe('Extended thinking (ultrathink)');
   expect(levelTitle({ id: 'high', description: 'Deeper reasoning' })).toBe('Deeper reasoning');
+  expect(quotaLimitName('Weekly')).toBe('weekly');
+  expect(quotaLimitName('5 hours')).toBe('5-hour');
   await setLocaleSetting('fr');
   try {
     expect(millis(38_000)).toBe('38s');
@@ -70,6 +72,9 @@ test('durations, sizes, effort levels and quota windows follow the language the 
     expect(quotaWindowName('Weekly · Opus')).toBe('Hebdomadaire · Opus');
     expect(quotaWindowName('Gemini Pro · 5 hours')).toBe('Gemini Pro · 5 heures');
     expect(quotaWindowName('Credits')).toBe('Crédits');
+    // The quota line's sentence: the period in lower case, a model's name as sent.
+    expect(quotaLimitName('Weekly · Opus')).toBe('hebdomadaire · Opus');
+    expect(quotaLimitName('5 hours')).toBe('de 5 heures');
     expect(quotaResetTime(friday, friday)).toBe('vendredi 20:55');
     expect(levelName({ id: 'none', label: 'None' })).toBe('Aucun');
     // A subagent row names its model's effort in French, an unknown id as sent.

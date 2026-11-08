@@ -1,4 +1,4 @@
-import { Archive, ArrowLeft, Check, Copy, Ellipsis, FolderInput, GitPullRequest, MessageSquare, PencilLine, Pin, PinOff, Sparkles, Trash2, X } from '@lucide/svelte';
+import { Archive, ArrowLeft, Check, Copy, FolderGit2, FolderInput, GitPullRequest, MessageSquare, PencilLine, Pin, PinOff, Sparkles, Trash2, X } from '@lucide/svelte';
 import type { ThreadSummary } from '@boite/contracts';
 import type { Store } from './store.svelte';
 import { separator, type MenuItem } from './menu';
@@ -16,29 +16,18 @@ interface ThreadMenuOptions {
   showDone?: boolean;
   /** Omitted where pull requests have no manual refresh action. */
   prLoading?: boolean;
-  /** The view's own tools (find), listed first in More. */
+  /** The view's own tools (find), first on the menu's first level. */
   tools?: MenuItem[];
   /** A phone's menu: the path and the pull request stay on the desktop. */
   phone?: boolean;
-  /** Kept for the callers that still pass it: every thread menu is grouped now. */
-  grouped?: boolean;
 }
 
 /**
- * More: what is done to the thread less often, under a way back to its menu.
- * The view's own tools (find), then what changes the thread's place or name
- * (a new title by the agent, a move, the path, the pull request). The panels
- * are not here: the panel selector lists them (`lib/panel-choices.ts`).
+ * Where the thread lives: its project, its folder, its branch's pull request.
+ * A phone keeps the move only; the path and the pull request stay on the desktop.
  */
-export function threadToolItems(store: Store, thread: ThreadSummary, options: ThreadMenuOptions = {}): MenuItem[] {
-  const retitling = store.retitling.includes(thread.id);
-  const own = options.tools ?? [];
+function placeItems(store: Store, thread: ThreadSummary, options: ThreadMenuOptions): MenuItem[] {
   return [
-    { id: 'back', label: strings.sidebar.backToThreadMenu, glyph: ArrowLeft, back: true },
-    separator('back-sep'),
-    ...own,
-    ...(own.length ? [separator('sep-thread-tools')] : []),
-    { id: 'retitle', label: retitling ? strings.sidebar.retitling : strings.sidebar.retitle, glyph: Sparkles, disabled: retitling },
     ...(canMove(thread) ? moveItems(store, thread).map(item => ({ ...item, glyph: item.id === 'move-cancel' ? X : FolderInput })) : []),
     ...(options.phone ? [] : [
       { id: 'copy', label: strings.sidebar.copyPath, glyph: Copy, title: thread.cwd },
@@ -47,22 +36,45 @@ export function threadToolItems(store: Store, thread: ThreadSummary, options: Th
   ];
 }
 
+/** A group of one is a row on the first level, and a phone has no second level: only a desktop folds two or more. */
+function folds(place: MenuItem[], options: ThreadMenuOptions): boolean {
+  return !options.phone && place.length > 1;
+}
+
+/**
+ * The named group "Project and branch" (`more`, kept for the rows that open
+ * it), under a way back to the thread's menu: the move, the path and the pull
+ * request. Empty where the first level already holds them.
+ */
+export function threadToolItems(store: Store, thread: ThreadSummary, options: ThreadMenuOptions = {}): MenuItem[] {
+  const place = placeItems(store, thread, options);
+  if (!folds(place, options)) return [];
+  return [{ id: 'back', label: strings.sidebar.backToThreadMenu, glyph: ArrowLeft, back: true }, separator('back-sep'), ...place];
+}
+
 /**
  * One menu for a thread wherever it opens (a row, its header, the phone's
- * long press, the header's menu), holding only what is done to the thread:
- * what it is called and who has it (Rename, Pin, Hand off), then where it
- * stands (Mark done, Archive), then More (`threadToolItems`), then Delete
- * apart. A row adds Open first; Archive is on every thread that can be kept.
+ * long press, the header's menu), holding only what is done to the thread,
+ * every path named for what it holds: the view's own tools (Find in this
+ * thread), what it is called and who has it (Rename, Regenerate title, Pin,
+ * Hand off), where it stands (Mark done, Archive), where it lives (Project
+ * and branch, or its one row), then Delete apart. A row adds Open first.
  * The panels have one door of their own, the panel selector.
  */
 export function threadMenuItems(store: Store, thread: ThreadSummary, options: ThreadMenuOptions = {}): MenuItem[] {
   // An incognito conversation lives on its own screen only: nothing pins, files
   // or moves it, and deleting it is what leaving does anyway.
   const kept = !thread.incognito;
+  const retitling = store.retitling.includes(thread.id);
+  const own = options.tools ?? [];
+  const place = placeItems(store, thread, options);
   const opening: MenuItem[] = options.open === undefined ? [] : [{ id: 'open', label: strings.common.open, glyph: MessageSquare, disabled: options.open }, separator('sep-open')];
   const items: MenuItem[] = [
     ...opening,
+    ...own,
+    ...(own.length ? [separator('sep-thread-tools')] : []),
     { id: 'rename', label: strings.common.rename, glyph: PencilLine },
+    { id: 'retitle', label: retitling ? strings.sidebar.retitling : strings.sidebar.retitle, glyph: Sparkles, disabled: retitling },
     ...(kept ? [{ id: 'pin', label: thread.pinned ? strings.sidebar.unpin : strings.sidebar.pin, glyph: thread.pinned ? PinOff : Pin }] : []),
     ...entrustItems(store, thread),
     ...(kept ? [
@@ -70,8 +82,8 @@ export function threadMenuItems(store: Store, thread: ThreadSummary, options: Th
       ...(options.showDone ? [{ id: 'done', label: strings.sidebar.markDone, glyph: Check, disabled: !canMarkDone(store, thread) }] : []),
       { id: 'archive', label: strings.sidebar.archive, glyph: Archive }
     ] : []),
-    separator('sep-tools'),
-    { id: 'more', label: strings.thread.moreActions, glyph: Ellipsis, submenu: true, ...(options.phone ? {} : { hint: '›' }) }
+    ...(place.length ? [separator('sep-tools')] : []),
+    ...(folds(place, options) ? [{ id: 'more', label: strings.thread.placeActions, glyph: FolderGit2, submenu: true, hint: '›' }] : place)
   ];
   if (canDeleteThread(thread)) items.push(separator('sep-delete'), { id: 'delete', label: strings.common.delete, glyph: Trash2, danger: true });
   return items;

@@ -137,6 +137,22 @@ test('a machine with no AI shows one action, Connect an AI, and the draft opens 
   expect(document.querySelector('[data-testid=draft-project]')).not.toBeNull();
 });
 
+test('a first launch draws no list column on a desktop: no fold toggle, the card on the rail, and the list back with the first project', async () => {
+  await mountOnFake('/?fake=1&uninstalled=1');
+  expect(store.projects).toHaveLength(0);
+  const body = query('.body');
+  // Folded with nothing to unfold: the main card starts one frame gap right of the rail.
+  await waitFor(() => body.classList.contains('sidebar-folded'));
+  expect(document.querySelector('[data-testid=sidebar-toggle]')).toBeNull();
+  expect(query('.app').style.getPropertyValue('--bar-left')).toBe('var(--frame-gap)');
+  expect(store.sidebarCollapsed).toBe(false);
+
+  await store.addProject('C:/Dev/First', { navigate: false });
+  await waitFor(() => !body.classList.contains('sidebar-folded'));
+  expect(document.querySelector('[data-testid=sidebar-toggle]')).not.toBeNull();
+  expect(query('.app').style.getPropertyValue('--bar-left')).not.toBe('var(--frame-gap)');
+});
+
 test('the keyboard stays in the connect dialog while its steps replace the button it pressed', async () => {
   await mountOnFake('/?fake=1&uninstalled=1');
   if (!store.draft) query<HTMLButtonElement>('[data-testid=new-thread]').click();

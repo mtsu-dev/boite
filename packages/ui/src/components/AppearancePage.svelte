@@ -227,16 +227,14 @@
 
   <section class="card" id="settings-reading">
     <h2 class="ui-label-box"><span class="ui-label">{strings.settings.reading}</span><InfoTip gather topic={strings.settings.reading} text="" testid="section-info" /></h2>
-    <!-- Each face is drawn in itself, its name and a sample that tells I, l, 1, O and 0 apart. -->
-    {#snippet sample(id: Font | undefined)}<span class="sample" style:font-family="var(--face-{id})">{strings.settings.fontSample}</span>{/snippet}
-    {#snippet code(id: Mono | undefined)}<span class="sample" style:font-family="var(--face-mono-{id})">{'{ }'}</span>{/snippet}
+    <!-- Each face's name is drawn in that face: the name is the sample. -->
     <div class="switch-row choice-row">
       <span class="text ui-label-box"><span class="ui-label">{strings.settings.font}</span><InfoTip topic={strings.settings.font} text={strings.settings.fontHint} /></span>
-      <ChoiceSelect label={strings.settings.font} options={faces} value={font} onpick={pickFont} preview={sample} face={(id) => `var(--face-${id})`} testid="font-current" optionTestid={(id) => `font-${id}`} />
+      <ChoiceSelect label={strings.settings.font} options={faces} value={font} onpick={pickFont} face={(id) => `var(--face-${id})`} testid="font-current" optionTestid={(id) => `font-${id}`} />
     </div>
     <div class="switch-row choice-row">
       <span class="text ui-label">{strings.settings.monoFont}</span>
-      <ChoiceSelect label={strings.settings.monoFont} options={monos} value={mono} onpick={pickMono} preview={code} face={(id) => `var(--face-mono-${id})`} testid="font-mono-current" optionTestid={(id) => `font-mono-${id}`} />
+      <ChoiceSelect label={strings.settings.monoFont} options={monos} value={mono} onpick={pickMono} face={(id) => `var(--face-mono-${id})`} testid="font-mono-current" optionTestid={(id) => `font-mono-${id}`} />
     </div>
     {#if zoomable}
       <div class="switch-row">
@@ -268,23 +266,21 @@
     {#each groups as group (group.id)}
       <div class="control-group" role="group" aria-labelledby="{uid}-{group.id}">
         <p class="section-label" id="{uid}-{group.id}">{group.label}</p>
-        <div class="toggles">
-          {#each group.entries as entry (entry.id)}
-            {@const shown = work.shows(entry.id)}
-            <label class="toggle" class:off={!shown}>
-              <span class="glyph" aria-hidden="true">
-                {#if entry.kind}
-                  <SurfaceIcon kind={entry.kind} size={15} />
-                {:else if entry.icon}
-                  {@const Icon = entry.icon}
-                  <Icon size={15} strokeWidth={1.75} />
-                {/if}
-              </span>
-              <span class="name ui-label">{entry.label}</span>
-              <input type="checkbox" role="switch" checked={shown} data-testid="control-{entry.id}" onchange={(event) => work.show(entry.id, event.currentTarget.checked)} />
-            </label>
-          {/each}
-        </div>
+        <!-- One plain row a button, its icon and name as the button wears them, its switch at the row's end. -->
+        {#each group.entries as entry (entry.id)}
+          <label class="switch-row">
+            <span class="text ui-label-box">
+              {#if entry.kind}
+                <SurfaceIcon kind={entry.kind} size={15} />
+              {:else if entry.icon}
+                {@const Icon = entry.icon}
+                <Icon size={15} strokeWidth={1.75} />
+              {/if}
+              <span class="ui-label">{entry.label}</span>
+            </span>
+            <input type="checkbox" role="switch" checked={work.shows(entry.id)} data-testid="control-{entry.id}" onchange={(event) => work.show(entry.id, event.currentTarget.checked)} />
+          </label>
+        {/each}
       </div>
     {/each}
   </section>
@@ -292,37 +288,14 @@
 </div>
 
 <style>
-  /* A face's sample, in the face it shows, a step quieter than its name. */
-  .sample { min-width: 2.5em; padding-left: var(--space-2); color: var(--color-muted-foreground); font-size: var(--text-md); line-height: 1.2; white-space: nowrap; }
   .zoom button { display: inline-flex; align-items: center; justify-content: center; padding: 0 8px; }
   .zoom-error { margin: 0; color: var(--color-danger); font-size: var(--text-xs); overflow-wrap: anywhere; }
   .zoom .zoom-value { min-width: 56px; font-variant-numeric: tabular-nums; color: var(--color-foreground); }
   .presets-row { margin-bottom: var(--space-4); }
   .control-group + .control-group { margin-top: var(--space-5); }
-  .control-group .section-label { margin-bottom: var(--space-2); }
-  /* Each button as a tile that reads like the button itself: its icon and its
-     name, dimmed while it is hidden, with the switch that brings it back. */
-  .toggles { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: var(--space-2); }
-  .toggle {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    min-height: 44px;
-    padding: 0 var(--space-3);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-surface-2);
-    color: var(--color-foreground);
-    font-size: var(--text-sm);
-    font-weight: 400;
-    cursor: pointer;
-    transition: background var(--dur-2), border-color var(--dur-2);
-  }
-  @media (hover: hover) { .toggle:hover { border-color: var(--color-edge); background: var(--color-surface-3); } }
-  .toggle .glyph { display: inline-flex; flex: none; color: var(--color-muted-foreground); transition: opacity var(--dur-2); }
-  .toggle .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: opacity var(--dur-2); }
-  .toggle.off .glyph, .toggle.off .name { opacity: 0.5; }
-  .toggle.off { background: transparent; border-style: dashed; }
+  .control-group .section-label { margin-bottom: 0; }
+  .control-group :global(svg) { flex: none; color: var(--color-muted-foreground); }
+  .control-group .ui-label-box { gap: var(--space-3); }
   /* Scoped under the page so it outranks the shared row, which centres its children.
      On a phone a label sits above its choices: side by side, a French label was
      squeezed to one word a line and ran under the three-option control. */

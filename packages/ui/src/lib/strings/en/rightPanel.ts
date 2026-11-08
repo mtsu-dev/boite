@@ -2,7 +2,6 @@ export const strings = {
 
   /** The panel on the right of the chat: its tab strip, its launcher, its surfaces. */
   rightPanel: {
-    chat: 'Chat',
     backToChat: 'Back to chat',
     resize: 'Resize the panel, double-click to reset',
     maximize: 'Maximize the panel',

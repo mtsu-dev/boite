@@ -13,7 +13,7 @@
   import { count, projectName } from '../lib/format';
   import { mobileOverlay } from '../lib/mobile-history';
   import { groupWorkingThread, recentPreferences } from '../lib/recent.svelte';
-  import { pickThreadAction, threadMenuItems, threadToolItems } from '../lib/thread-menu';
+  import { pickThreadAction, threadMenuItems } from '../lib/thread-menu';
   import { projectMenu } from '../lib/project-menu';
   import type { MenuItem } from '../lib/menu';
   import type { ThreadSummary } from '@boite/contracts';
@@ -38,7 +38,7 @@
   import { workingThread } from '../lib/recent.svelte';
   import { compareEntries } from '../lib/thread-order';
   import { rowPlaces } from '../lib/row-place';
-  import { activityFeed, storeNeedsYou, type FeedVerb } from '../lib/activity-feed';
+  import { activityFeed, feedGroups, storeNeedsYou, type FeedVerb } from '../lib/activity-feed';
   import { tabHeader } from '../lib/tab-header.svelte';
   import EmptyState from './EmptyState.svelte';
   import { threadsNeedingYou } from '../lib/app-rail';
@@ -183,13 +183,9 @@
     // Activity's own count over the project's threads: the card and the rail's badge never disagree.
     return storeNeedsYou(owner, owner.threadsOf(entry.project.id));
   }
-  /** A phone's row menu: the thread's lifecycle first, the rest behind More, as on a desktop row. */
+  /** A phone's row menu: every row on its first level, the move included; a phone has no second level. */
   function rowItems(owner: Store, thread: ThreadSummary): MenuItem[] {
-    return threadMenuItems(owner, thread, { showDone: listScreen === 'threads', phone: true, grouped: true });
-  }
-  /** What the row menu's More opens: a way back, a new title and a move. The panels have their own selector. */
-  function rowTools(owner: Store, thread: ThreadSummary): MenuItem[] {
-    return threadToolItems(owner, thread, { phone: true });
+    return threadMenuItems(owner, thread, { showDone: listScreen === 'threads', phone: true });
   }
   /** Thread ids can collide between machines: the row's own store acts, and its pickers hang under the row's own trigger. */
   function rowAction(owner: Store, thread: ThreadSummary, action: string, machineId: string) {
@@ -309,9 +305,13 @@
         {/if}
       </div>
     {/if}
-    {#snippet threadRow(row: typeof rows[number], grouped = false)}
-      <MobileThreadRow machine={row.machine} thread={row.thread} project={row.project} {now} compact={!grouped} reason={row.reason} at={row.at} nested={row.nested} verb={row.verb ?? null} where={!grouped && inRecent ? places(row) : undefined} items={rowItems(row.machine.store, row.thread)} tools={rowTools(row.machine.store, row.thread)}
-        onopen={() => { show('chat'); void workspace.select(row.machine.store, row.thread.id); }} onaction={action => rowAction(row.machine.store, row.thread, action, row.machine.id)} />
+    {#snippet threadRow(row: typeof rows[number], grouped = false, helpers: typeof rows = [])}
+      <!-- Activity: the row's verb is its own, else the first asking sub-agent's, which opens that sub-agent (ActivityRow.svelte). -->
+      {@const target = row.verb ? row : helpers.find(helper => helper.verb) ?? row}
+      <MobileThreadRow machine={row.machine} thread={row.thread} project={row.project} {now} compact={!grouped} reason={row.reason} at={row.at} {helpers} verb={target.verb ?? null} where={!grouped && inRecent ? places(row) : undefined} items={rowItems(row.machine.store, row.thread)}
+        onopen={() => { show('chat'); void workspace.select(row.machine.store, row.thread.id); }}
+        onverb={() => { show('chat'); void workspace.select(target.machine.store, target.thread.id); }}
+        onaction={action => rowAction(row.machine.store, row.thread, action, row.machine.id)} />
     {/snippet}
     {#if listScreen === 'threads' && workspace.view === 'projects'}
       {#snippet projectRows(projects: ProjectEntry[], later = false)}
@@ -389,19 +389,20 @@
       </WindowList>
     {:else if listScreen === 'activity'}
       <!-- Triage: what the user acts on (what contacts ask, then the threads), then what they only read. -->
-      {@const needs = rows.filter(row => row.section === 'needs')}
-      {@const updates = rows.filter(row => row.section === 'updates')}
+      <!-- One thread, one row: its asking sub-agents are lines of it (lib/activity-feed.ts), as on the desktop. -->
+      {@const needs = feedGroups(rows.filter(row => row.section === 'needs'))}
+      {@const updates = feedGroups(rows.filter(row => row.section === 'updates'))}
       {@const asked = ContactInboxRows && contactsShown(store) && !query}
-      {@const needsCount = needs.filter(row => !row.nested).length + (asked ? inbox.contacts : 0)}
+      {@const needsCount = needs.length + (asked ? inbox.contacts : 0)}
       <!-- The section's number is the tab's badge: its top rows (a sub-agent counts on its parent) and what contacts ask. -->
       {#if needsCount > 0}<h2 class="section-label feed-section" data-testid="activity-needs" data-count={needsCount}>{strings.sidebar.state.waiting}<span class="feed-count">{count(needsCount)}</span></h2>{/if}
       {#if asked && ContactInboxRows}<ContactInboxRows {store} />{/if}
-      <WindowList items={needs} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} estimate={66} measurements={measurements('activity')}>
-        {#snippet row(entry)}{@render threadRow(entry)}{/snippet}
+      <WindowList items={needs} keyOf={group => JSON.stringify([group.row.machine.id, group.row.thread.id])} {scrollRoot} estimate={66} measurements={measurements('activity')}>
+        {#snippet row(group)}{@render threadRow(group.row, false, group.helpers)}{/snippet}
       </WindowList>
       {#if updates.length > 0}<h2 class="section-label feed-section" data-testid="activity-updates">{strings.mobile.feed.updates}</h2>{/if}
-      <WindowList items={updates} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} estimate={66} measurements={measurements('activity-updates')}>
-        {#snippet row(entry)}{@render threadRow(entry)}{/snippet}
+      <WindowList items={updates} keyOf={group => JSON.stringify([group.row.machine.id, group.row.thread.id])} {scrollRoot} estimate={66} measurements={measurements('activity-updates')}>
+        {#snippet row(group)}{@render threadRow(group.row, false, group.helpers)}{/snippet}
       </WindowList>
     {:else}
       <WindowList items={attention} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} estimate={66} measurements={measurements(atWorkShown ? 'at-work' : listScreen)}>

@@ -36,14 +36,15 @@ for (const width of [1280, 390]) {
       await page.screenshot(join(import.meta.dir, '.artifacts', `done-retention-${width}.png`));
       expect(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true);
       await page.choose('[data-testid=done-retention-days]', '0.5');
-      expect(await page.evaluate(`document.querySelector('[data-testid=done-retention-save]').disabled`)).toBe(true);
+      // A value out of range is refused where it stands: the field says so and nothing is sent.
+      expect(await page.evaluate(`document.querySelector('[data-testid=done-retention-days]').getAttribute('aria-invalid')`)).toBe('true');
+      expect(await page.evaluate(`globalThis.__boiteTest.workspace.active.settings.threadDoneRetentionDays ?? 3`)).toBe(3);
+      // A valid value saves when the field changes, with no Save button.
       await page.choose('[data-testid=done-retention-days]', '7');
-      await page.click('[data-testid=done-retention-save]');
       await page.waitFor(`globalThis.__boiteTest.workspace.active.settings.threadDoneRetentionDays === 7`);
       const doneAt = await page.evaluate<number>(`globalThis.__boiteTest.workspace.active.client.call('threads.get', {threadId: ${JSON.stringify(threadId)}}).then(t => t.doneAt)`);
       expect(await page.evaluate(`document.querySelector('[data-testid=done-expires]').textContent.includes(new Date(${doneAt + 7 * 86_400_000}).toLocaleString())`)).toBe(true);
       await page.choose('[data-testid=done-retention-days]', '0');
-      await page.click('[data-testid=done-retention-save]');
       await page.waitFor(`globalThis.__boiteTest.workspace.active.settings.threadDoneRetentionDays === 0 && !document.querySelector('[data-testid=done-expires]')`);
       await page.click(`[data-thread-id="${threadId}"] [data-testid=archived-restore]`);
       await page.waitFor(`document.querySelector('[data-testid=archived-open]')`);

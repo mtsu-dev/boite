@@ -38,6 +38,7 @@
   import { installWhipEscape } from './lib/whip.svelte';
   import { rightPanel } from './lib/right-panel.svelte';
   import { workspace } from './lib/workspace.svelte';
+  import { listAbsent } from './lib/list-absent';
   import { hostLocalAgentBrowser } from './lib/agent-browser-host.svelte';
   import { tourRequested, tourSeen } from './lib/onboarding.svelte';
   import { needsAnAI } from './lib/first-run';
@@ -506,7 +507,10 @@
    * window's top, so the main column's bar starts right of them.
    */
   let railShown = $derived(booted && !wideRecovery);
-  let listFolded = $derived(store.sidebarCollapsed && store.page !== 'settings');
+  // Before the first project the desktop draws no list column (lib/list-absent.ts): it counts as folded, with no toggle.
+  let listGone = $derived(store.page !== 'settings' && !(store.page === 'agents' && experimentOn('resident-agents'))
+    && listAbsent(workspace.machinesOr(store).map((machine) => machine.store), narrow.current));
+  let listFolded = $derived((store.sidebarCollapsed || listGone) && store.page !== 'settings');
   let barLeft = $derived(!railShown ? '0px' : listFolded ? 'var(--frame-gap)' : `calc(${store.sidebarWidth}px + var(--frame-gap))`);
   let sidebarFolded = $derived(listFolded && store.booted);
   // A machine with no AI shows its one action first: the tour waits for something to show.
@@ -553,7 +557,7 @@
       </p>
     {/if}
   {/if}
-  <TitleBar {store} edge={!railShown} />
+  <TitleBar {store} edge={!railShown} listless={listGone} />
 
   <div class="body" class:mobile-covered={!inShell && store.page === 'chat' && (mobileScreen !== 'chat' || mobileRecovery)} class:panel-maximized={(store.page === 'chat' || store.page === 'agents') && rightPanel.maximized && !rightPanel.floating && store.panelOpen} class:sidebar-folded={sidebarFolded}>
     {#if !booted}

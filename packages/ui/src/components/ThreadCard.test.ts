@@ -332,16 +332,3 @@ test('a card unmounted with its rename open still writes the title typed so far'
   await settle();
   expect(rename.mock.calls).toEqual([[thread.id, 'Typed before it left']]);
 });
-
-test('an Activity row that needs the user offers its verb, which opens the thread like the row', async () => {
-  client = new FakeClient({ delayMs: 0 });
-  store = new Store(); store.attach(client); await store.connect();
-  const thread = store.threads.find(thread => !thread.parentThreadId && thread.projectId && thread.id !== store.openThread?.id)!;
-  const project = store.projects.find(project => project.id === thread.projectId)!;
-  mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'local', label: 'Local', store }, project, thread, now: Date.now(), reason: 'Wants to run git push', verb: 'allow' } });
-  await settle();
-  const verb = document.querySelector<HTMLButtonElement>('[data-testid=thread-verb]')!;
-  expect([verb.textContent, verb.dataset.verb]).toEqual(['Allow', 'allow']);
-  verb.click(); await settle();
-  await vi.waitFor(() => expect(store.openThread?.id).toBe(thread.id));
-});

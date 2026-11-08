@@ -169,7 +169,7 @@
           {#if item.glyph}
             <span class="glyph" aria-hidden="true"><item.glyph size={16} strokeWidth={1.75} /></span>
           {/if}
-          <span class="label ui-label">{item.label}</span>{#if item.checked}<Check size={16} aria-hidden="true" />{/if}
+          <span class="label ui-label">{item.label}</span>{#if item.checked || item.active}<span class="check"><Check size={16} aria-hidden="true" /></span>{/if}
           {#if item.hint}
             <span class="hint ui-label">{item.hint}</span>
           {/if}
@@ -265,15 +265,11 @@
     overflow-wrap: anywhere;
   }
 
-  .row.active .label::after {
-    content: '';
-    display: inline-block;
-    width: 5px;
-    height: 5px;
-    margin-left: 8px;
-    border-radius: 50%;
-    background: var(--color-foreground);
-    vertical-align: middle;
+  /* The one selection mark, as in Menu.svelte. */
+  .check {
+    display: flex;
+    flex: none;
+    color: var(--color-accent);
   }
 
   .hint {

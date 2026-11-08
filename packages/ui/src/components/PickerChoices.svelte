@@ -1,16 +1,16 @@
 <script lang="ts">
   import { Check, ChevronDown } from '@lucide/svelte';
-  import { innerWidth } from 'svelte/reactivity/window';
 
   /**
    * A setting of the model picker as one row (effort, speed, permissions).
    * Short choices (a level, a speed) are a segmented row under the setting's
-   * name: every choice in view, one tap, no list folded inside the popover.
-   * Long ones (a permission in words) keep the fold: the current choice at
-   * the row's end unfolds them one per row, a check on the picked one. A
-   * phone always folds: six levels side by side were cramped at 360 px, one
-   * row naming the current level is not. In either form the arrows walk and
-   * pick like a radio group; a click picks (and folds); Escape folds.
+   * name: every choice in view, one tap, no list folded inside the popover,
+   * on a desktop and a phone alike (a phone's segments are a finger tall and
+   * a two-word level takes a second line rather than losing its end). Long
+   * ones (a permission in words) keep the fold: the current choice at the
+   * row's end unfolds them one per row, a check on the picked one. In either
+   * form the arrows walk and pick like a radio group; a click picks (and
+   * folds); Escape folds.
    */
   let { label, items, active, onpick, testid, segmented }: {
     label: string;
@@ -18,15 +18,14 @@
     active: string | null;
     onpick: (id: string) => void;
     testid: string;
-    /** Forces one form; by default the choices are segmented on a desktop when every label is short enough to share a row. */
+    /** Forces one form; by default the choices are segmented when every label is short enough to share a row. */
     segmented?: boolean;
   } = $props();
 
   /** A segment holds a word or two: past this many letters, or this many choices, a row of them would cut a label at 360 px. */
   const SEGMENT_CHARS = 10;
   const SEGMENT_MAX = 7;
-  let phone = $derived((innerWidth.current ?? 1024) <= 720);
-  let flat = $derived(segmented ?? (!phone && items.length > 1 && items.length <= SEGMENT_MAX && items.every((item) => item.label.length <= SEGMENT_CHARS)));
+  let flat = $derived(segmented ?? (items.length > 1 && items.length <= SEGMENT_MAX && items.every((item) => item.label.length <= SEGMENT_CHARS)));
 
   let open = $state(false);
   let group = $state<HTMLDivElement | undefined>(undefined);

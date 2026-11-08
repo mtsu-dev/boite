@@ -59,21 +59,26 @@ test('faces picked in another window move the selected buttons here', () => {
 });
 
 for (const phone of [false, true]) {
-  test(`a palette and a face read the same on a ${phone ? 'phone' : 'desktop'}: the one in use as a row, a list with a preview each`, () => {
+  test(`a palette and a face read the same on a ${phone ? 'phone' : 'desktop'}: the one in use as a row, a palette by its preview, a face by its name drawn in it`, () => {
     const restore = phone ? phoneWidth() : () => {};
     try {
       running = mount(AppearancePage, { target: document.body, props: { store: { owner: true } as Store, phone } });
       flushSync();
       for (const [trigger, option] of [['palette-current', 'palette-'], ['font-current', 'font-']] as const) {
         const head = document.querySelector<HTMLButtonElement>(`[data-testid=${trigger}]`)!;
-        // Shut, the row is the whole choice: its preview and its name, no tiles beside it.
-        expect(head.querySelector('.preview')?.childElementCount).toBe(1);
+        // Shut, the row is the whole choice, no tiles beside it: a palette shows its preview, a face only its name,
+        // set in that face (no "Il1 O0 rn" specimen).
+        const face = trigger === 'font-current';
+        const shows = (row: Element) => face
+          ? row.querySelector('.preview') === null && (row.querySelector<HTMLElement>('.name')?.style.fontFamily ?? '').startsWith('var(--face-')
+          : row.querySelector('.preview')?.childElementCount === 1;
+        expect(shows(head)).toBe(true);
         expect(document.querySelector(`[data-testid=${trigger}-list]`)).toBeNull();
         head.click();
         flushSync();
         const rows = [...document.querySelectorAll(`[data-testid=${trigger}-list] [role=menuitemradio]`)];
         expect(rows.length).toBeGreaterThan(2);
-        expect(rows.every((row) => row.getAttribute('data-testid')!.startsWith(option) && row.querySelector('.preview')?.childElementCount === 1)).toBe(true);
+        expect(rows.every((row) => row.getAttribute('data-testid')!.startsWith(option) && shows(row))).toBe(true);
         // The one in use, checked once, by the same name the row shows.
         const on = rows.filter((row) => row.getAttribute('aria-checked') === 'true');
         expect(on).toHaveLength(1);

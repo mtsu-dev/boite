@@ -6,11 +6,11 @@
   import type { Store } from '../lib/store.svelte';
   import { boxWidth } from '../lib/box-width';
   import { diffCountsOf, type DiffSource } from '../lib/diff';
-  import type { MenuItem } from '../lib/menu';
+  import { separator, type MenuItem } from '../lib/menu';
   import DiffView, { SPLIT_MIN_WIDTH } from './DiffView.svelte';
   import Menu from './Menu.svelte';
   import DiffOptions from './DiffOptions.svelte';
-  import { panelTools } from '../lib/panel-tools.svelte';
+  import { panelTools, type PanelTools } from '../lib/panel-tools.svelte';
   import { shortPaths } from '../lib/short-paths';
   import { innerWidth } from 'svelte/reactivity/window';
 
@@ -139,20 +139,43 @@
   let phone = $derived((innerWidth.current ?? 1024) <= 720);
   /** Reading one file in a panel this narrow, the branch gives its room to the file's name. */
   let squeezed = $derived(oneFile && width > 0 && width < (tools ? 720 : 480));
+  /** A phone's head: one back arrow, then "Changed files" over the file being read (or the branch), whose list holds the files and the refresh. */
+  let headed = $derived(phone && !!tools);
+  /** A file row of the phone head's list, apart from the panels' ids. */
+  const FILE = 'changes-file:';
+  const REFRESH = 'changes-refresh';
+  /** Hands the phone head back to the panel's own name and rows. */
+  function unhead(tools: PanelTools): void {
+    tools.title = tools.detail = tools.pick = tools.back = null;
+    tools.items = [];
+  }
   $effect(() => {
     if (!tools) return;
     tools.bar = bar;
     return () => {
       if (tools.bar === bar) tools.bar = null;
-      tools.compact = false;
-      tools.nameless = false;
+      unhead(tools);
     };
   });
   $effect(() => {
     if (!tools) return;
-    tools.compact = phone;
-    // The file being read names the panel well enough.
-    tools.nameless = phone && oneFile;
+    if (!headed) return unhead(tools);
+    tools.title = strings.changes.title;
+    tools.detail = oneFile && picked ? (names.get(picked.path) ?? base(picked.path)) : (status?.branch ?? null);
+    tools.items = [
+      ...(oneFile ? files.map((file) => ({ ...file, id: FILE + file.id })) : []),
+      ...(oneFile ? [separator('sep-files')] : []),
+      { id: REFRESH, label: strings.common.refresh, glyph: RefreshCw, disabled: loading, testid: 'changes-refresh' },
+      separator('sep-changes')
+    ];
+    tools.pick = (id) => {
+      if (id === REFRESH) asked++;
+      else if (id.startsWith(FILE)) pickPath(id.slice(FILE.length));
+      else return false;
+      return true;
+    };
+    // From a file the arrow goes back to the list, and from the list out of the panel.
+    tools.back = oneFile ? { label: strings.changes.backToList, run: back } : null;
   });
 
   // On mount, and again on every turn that ends: the working tree is what the
@@ -210,8 +233,10 @@
 </script>
 
 {#snippet bar()}
-  <!-- One bar: the way back and the file choice when one file fills the panel, the branch, the count or the file's lines, the diff's switches. -->
-  <div class="panel-toolbar head" class:reading={oneFile} class:squeezed class:in-strip={!!tools} class:phone>
+  <!-- One bar: the way back and the file choice when one file fills the panel, the branch, the count or the file's lines, the diff's switches.
+       A phone's head holds the way back, the file and the refresh itself: its bar keeps the diff's switches. -->
+  <div class="panel-toolbar head" class:reading={oneFile} class:squeezed class:in-strip={!!tools}>
+    {#if !headed}
     {#if oneFile}
       <button type="button" class="ghost small icon back" data-testid="changes-back" title={strings.changes.backToList} aria-label={strings.changes.backToList} onclick={back}>
         <ChevronLeft size={16} strokeWidth={1.75} />
@@ -256,7 +281,11 @@
           : strings.changes.loading}
       </span>
     {/if}
+    {:else}
+      <span class="spacer"></span>
+    {/if}
     {#if textDiff}<DiffOptions split={codeWidth >= SPLIT_MIN_WIDTH} />{/if}
+    {#if !headed}
     <button
       type="button"
       class="ghost small icon refresh"
@@ -268,6 +297,7 @@
     >
       <RefreshCw size={13} strokeWidth={1.75} />
     </button>
+    {/if}
   </div>
 {/snippet}
 
@@ -432,11 +462,6 @@
   .squeezed .branch, .squeezed .track { display: none; }
   /* In the strip: no bar of its own, it takes the room the tabs leave. */
   .panel-toolbar.in-strip { flex: 1 1 auto; min-width: 0; min-height: 0; padding: 0 0 0 6px; gap: 6px; border-bottom: none; }
-  /* A phone's strip also holds the way back to the chat: the list's count gives way, its rows count themselves. */
-  .in-strip.phone .total { display: none; }
-  /* Reading on a phone, the file's name keeps the room: its lines are in the file menu's rows, and the list's refresh is one tap back. */
-  .in-strip.phone .lines, .in-strip.phone.reading .refresh { display: none; }
-  .in-strip.phone.reading .picker { min-width: min(96px, 100%); }
   .lines { flex: none; display: inline-flex; gap: 6px; }
   .dot { width: 6px; height: 6px; flex: none; border-radius: var(--radius-full); background: var(--mark); }
   .dot[data-status='added'], .dot[data-status='copied'] { --mark: var(--color-success); }

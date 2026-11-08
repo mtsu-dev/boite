@@ -246,6 +246,5 @@
   @media (max-width: 720px) {
     .panel { width: auto; padding: 8px 6px max(8px, env(safe-area-inset-bottom)); }
     .row { height: var(--touch-target); }
-    .side { height: 38px; }
   }
 </style>

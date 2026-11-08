@@ -29,14 +29,26 @@ export function feedThread(thread: ThreadSummary): boolean {
   return !thread.archived && !thread.incognito && !thread.teamId && !thread.councilId;
 }
 
+/**
+ * The whole command a thread asks to run, when its first held permission is
+ * one: Activity shows it in full under the ask, so Allow is never pressed on
+ * a cut line.
+ */
+export function feedOperation(owner: Pick<Requests, 'pendingPermissions'>, threadId: ThreadSummary['id']): string | null {
+  const permission = owner.pendingPermissions.find(p => p.threadId === threadId);
+  if (!permission) return null;
+  const { family, subject } = describeTool(permission.toolName, permission.input);
+  return family === 'command' && subject ? subject.trim() : null;
+}
+
 /** Why the thread waits on the user, in a few words, and since when; null when its request is not known here. */
 export function waitingReason(owner: Requests, thread: ThreadSummary): { text: string; since: number } | null {
   const question = owner.pendingQuestions.find(q => q.threadId === thread.id);
   if (question) return { text: question.text.split('\n')[0]!.trim(), since: question.createdAt };
   const permission = owner.pendingPermissions.find(p => p.threadId === thread.id);
   if (permission) {
-    const { family, subject } = describeTool(permission.toolName, permission.input);
-    const text = family === 'command' && subject ? fill(strings.mobile.feed.run, { command: subject.split('\n')[0]! }) : permissionSentence(permission.toolName, permission.input);
+    // A command reads whole under its row (`feedOperation`); the line only says what is asked.
+    const text = feedOperation(owner, thread.id) !== null ? strings.mobile.feed.run : permissionSentence(permission.toolName, permission.input);
     return { text, since: permission.createdAt };
   }
   const child = thread.subagentQuestions?.[0];
@@ -124,4 +136,15 @@ export function activityFeed<M extends { id: string; store: Owner }>(all: readon
     };
     return [row(top, false), ...children.map(child => row(child, true))];
   });
+}
+
+/** One thread, one row: a top row with the sub-agent rows that hang under it, which it shows as lines of its own. */
+export function feedGroups<R extends { nested?: boolean }>(rows: readonly R[]): { row: R; helpers: R[] }[] {
+  const groups: { row: R; helpers: R[] }[] = [];
+  for (const row of rows) {
+    const last = groups.at(-1);
+    if (row.nested && last) last.helpers.push(row);
+    else groups.push({ row, helpers: [] });
+  }
+  return groups;
 }

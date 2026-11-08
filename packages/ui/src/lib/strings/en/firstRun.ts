@@ -9,7 +9,8 @@ export const strings = {
     /** An agent whose program is already on this machine. */
     installed: 'Installed',
     go: 'Continue with {provider}',
-    /** The quiet way out for a machine that will not run its own agents. */
-    otherMachine: 'Use an AI on another machine',
+    /** The two ways in, named apart: an agent's login on this machine, or this machine linked to another computer or a phone. */
+    connect: 'Connect an AI account',
+    otherMachine: 'Connect another computer or a phone',
   }
 } as const;

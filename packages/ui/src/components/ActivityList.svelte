@@ -1,22 +1,22 @@
 <script lang="ts">
   import type { Store } from '../lib/store.svelte';
   import { workspace } from '../lib/workspace.svelte';
-  import { activityFeed } from '../lib/activity-feed';
+  import { activityFeed, feedGroups } from '../lib/activity-feed';
   import { contactsShown } from '../lib/contacts-rail.svelte';
   import { feedPlace, feedThread, inbox } from '../lib/inbox.svelte';
   import { minuteClock } from '../lib/clock.svelte';
   import { strings } from '../lib/strings';
   import { count } from '../lib/format';
-  import ThreadCard from './ThreadCard.svelte';
+  import ActivityRow from './ActivityRow.svelte';
   import EmptyState from './EmptyState.svelte';
 
   /**
    * Desktop Activity, the main card's page while the rail has it on
    * (App.svelte), as triage in two sections: Needs you (what contacts ask,
    * then the threads that ask or failed), then Updates (finished or stopped
-   * short), each with why and since when, as the phone's Activity lists them
-   * (lib/activity-feed.ts), in the list's own rows (menu, drag, rename). Every machine, as the rail's count. It loads on its own, out of
-   * the entry chunk.
+   * short), each with what it asks, whole, and since when, as the phone's Activity lists them
+   * (lib/activity-feed.ts), one row per thread (ActivityRow.svelte), in the chat's column. Every machine, as the
+   * rail's count. It loads on its own, out of the entry chunk.
    */
   let { store }: { store: Store } = $props();
   const machines = $derived(workspace.machinesOr(store));
@@ -24,10 +24,10 @@
     const byId = new Map(machine.store.projects.map(project => [project.id, project]));
     return machine.store.threads.filter(feedThread).map(thread => ({ machine, thread, project: thread.projectId === null ? undefined : byId.get(thread.projectId) }));
   }), feedPlace));
-  const needs = $derived(rows.filter(row => row.section === 'needs'));
-  const updates = $derived(rows.filter(row => row.section === 'updates'));
-  /** The section's number, the rail's badge's: its top rows (a sub-agent counts on its parent) and what contacts ask. */
-  const needsCount = $derived(needs.filter(row => !row.nested).length + inbox.contacts);
+  const needs = $derived(feedGroups(rows.filter(row => row.section === 'needs')));
+  const updates = $derived(feedGroups(rows.filter(row => row.section === 'updates')));
+  /** The section's number, the rail's badge's: its rows (a sub-agent counts on its parent) and what contacts ask. */
+  const needsCount = $derived(needs.length + inbox.contacts);
   const now = $derived(minuteClock.now);
 
   let ContactInboxRows = $state<typeof import('./home/ContactInboxRows.svelte').default>();
@@ -61,13 +61,9 @@
   <div class="column">
     {#if needsCount > 0}<h2 class="section-label" data-testid="activity-needs" data-count={needsCount}>{strings.sidebar.state.waiting}<span class="count">{count(needsCount)}</span></h2>{/if}
     {#if ContactInboxRows && contactsShown(store)}<ContactInboxRows {store} />{/if}
-    {#each needs as row (`${row.machine.id}:${row.thread.id}`)}
-      <ThreadCard machine={row.machine} project={row.project} thread={row.thread} {now} compact reason={row.reason} at={row.at} nested={row.nested} verb={row.verb} />
-    {/each}
+    {#each needs as { row, helpers } (`${row.machine.id}:${row.thread.id}`)}<ActivityRow {row} {helpers} {now} />{/each}
     {#if updates.length > 0}<h2 class="section-label" data-testid="activity-updates">{strings.mobile.feed.updates}</h2>{/if}
-    {#each updates as row (`${row.machine.id}:${row.thread.id}`)}
-      <ThreadCard machine={row.machine} project={row.project} thread={row.thread} {now} compact reason={row.reason} at={row.at} nested={row.nested} />
-    {/each}
+    {#each updates as { row, helpers } (`${row.machine.id}:${row.thread.id}`)}<ActivityRow {row} {helpers} {now} />{/each}
     {#if rows.length === 0 && inbox.contacts === 0}
       <!-- Nothing waits: the app's one empty view, small, with the one thing left to do. -->
       <EmptyState line={strings.mobile.emptyActivity} testid="activity-empty" small>
@@ -79,8 +75,8 @@
 
 <style>
   .activity-page { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; }
-  /* A reading column, as the chat's: rows of a thread's width read better than rows of the screen's. */
-  .column { display: flex; flex-direction: column; gap: 2px; width: min(100%, 720px); min-height: 100%; margin: 0 auto; padding: var(--space-8) var(--space-6) var(--space-6); }
+  /* The chat's reading column (--content): rows of a thread's width read better than rows of the screen's. */
+  .column { display: flex; flex-direction: column; gap: 2px; width: min(100%, var(--content)); min-height: 100%; margin: 0 auto; padding: var(--space-8) var(--space-6) var(--space-6); }
   /* A section's name over its rows, from the rows' text edge; the next section stands off the last row. */
   h2 { margin: 0 0 var(--space-2) var(--space-3); }
   h2 ~ h2 { margin-top: var(--space-6); }

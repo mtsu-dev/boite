@@ -10,14 +10,16 @@ import type { Store } from './store.svelte';
  * `Deferred` itself; the composer fetches it at idle, on a link that can
  * spare the bytes (the rule of `prefetch.ts`, which this file cannot import
  * without a cycle through the pages it warms), so the first ask draws at once.
+ * The context meter's details ride along: a hover opens them, never the first screen.
  */
 export const permissionCard = new LazyComponent(() => import('../components/PermissionCard.svelte'));
+export const contextPopup = new LazyComponent(() => import('../components/ContextPopup.svelte'));
 
-/** The idle fetch of the permission card's chunk; returns its cancel for an effect. */
+/** The idle fetch of the permission card's and the context details' chunks; returns its cancel for an effect. */
 export function prefetchPermissionCard(): () => void {
   const link = (globalThis.navigator as (Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }) | undefined)?.connection;
   if (link?.saveData || ['slow-2g', '2g', '3g'].includes(link?.effectiveType ?? '')) return () => undefined;
-  return whenIdle(() => void permissionCard.load().catch(() => undefined));
+  return whenIdle(() => { for (const part of [permissionCard, contextPopup]) void part.load().catch(() => undefined); });
 }
 
 /**

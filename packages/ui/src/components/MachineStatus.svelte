@@ -34,8 +34,8 @@
   const label = $derived(trouble ? `${name} · ${trouble}` : name);
   const items = $derived<MenuItem[]>([
     ...(machines.length > 1 ? [
-      { id: 'all', label: strings.machines.all, active: filter === null, hideActiveMark: true },
-      ...machines.map(m => ({ id: m.id, label: listedName(m), status: { tone: tones[health.get(m)!], label: health.get(m) === 'offline' ? strings.connection.offline : strings.connection[m.store.connection] }, active: m.id === filter })),
+      { id: 'all', label: strings.machines.all, checked: filter === null, radio: true },
+      ...machines.map(m => ({ id: m.id, label: listedName(m), status: { tone: tones[health.get(m)!], label: health.get(m) === 'offline' ? strings.connection.offline : strings.connection[m.store.connection] }, checked: m.id === filter, radio: true })),
       separator('manage-separator')
     ] : []),
     { id: 'manage', label: strings.connection.manage, icon: 'settings' }

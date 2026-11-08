@@ -91,7 +91,7 @@
   const hostItems = $derived<MenuItem[]>(workspace.machines.map(m => {
     const offline = m.store.connection !== 'ready';
     const usable = !offline && m.store.owner;
-    return { id: m.id, label: m.label, active: m.store === host, disabled: !usable, ...(usable ? {} : { hint: offline ? labels.machineOffline : labels.machineNotOwner }) };
+    return { id: m.id, label: m.label, checked: m.store === host, radio: true, disabled: !usable, ...(usable ? {} : { hint: offline ? labels.machineOffline : labels.machineNotOwner }) };
   }));
   const busy = $derived(view.pending || moving || saving || importing);
   /** The avatar the form saves: the imported picture, the robot once touched, else what the agent wears. */
@@ -347,7 +347,7 @@
     </fieldset>
     {#if embedded}
       <div class="agent-field"><span>{labels.status}</span>
-        <Menu placement="bottom" label={labels.status} items={(builtin ? ['active', 'paused'] as const : ['active', 'paused', 'archived'] as const).map(id => ({ id, label: labels[id], active: status === id }))} onpick={id => void pickStatus(id as AgentProfile['status'])} testid="agent-status"><span class="ui-label">{labels[status]}</span></Menu>
+        <Menu placement="bottom" label={labels.status} items={(builtin ? ['active', 'paused'] as const : ['active', 'paused', 'archived'] as const).map(id => ({ id, label: labels[id], checked: status === id, radio: true }))} onpick={id => void pickStatus(id as AgentProfile['status'])} testid="agent-status"><span class="ui-label">{labels[status]}</span></Menu>
       </div>
       {#if profile}<AgentMachine {view} agent={stored() ?? profile} />{/if}
       {#if builtin && view.store.owner}
@@ -390,7 +390,7 @@
           <div class="agent-row-field">
             <span class="agent-row-label">{labels.permissions}</span>
             <div class="agent-row-value">
-              <Menu placement="bottom" label={labels.permissions} items={PERMISSIONS.map(id => ({ id, label: permissionLabels[id], active: selection.permissionMode === id }))} onpick={id => { selection.permissionMode = id as ExecutionSelection['permissionMode']; }}><span class="ui-label">{permissionLabels[selection.permissionMode]}</span></Menu>
+              <Menu placement="bottom" label={labels.permissions} items={PERMISSIONS.map(id => ({ id, label: permissionLabels[id], checked: selection.permissionMode === id, radio: true }))} onpick={id => { selection.permissionMode = id as ExecutionSelection['permissionMode']; }}><span class="ui-label">{permissionLabels[selection.permissionMode]}</span></Menu>
               {#if provider?.capabilities.approvals === false}<span class="hint">{labels.noApprovals}</span>{/if}
             </div>
           </div>

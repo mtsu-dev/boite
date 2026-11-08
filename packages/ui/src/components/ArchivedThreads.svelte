@@ -1,9 +1,9 @@
 <script lang="ts">
   import { errorText } from '../lib/errors';
-  import DoneRetentionSetting from './DoneRetentionSetting.svelte';
-  import { RotateCcw, Trash2 } from '@lucide/svelte';
+  import { Ellipsis, RotateCcw, Trash2 } from '@lucide/svelte';
   import { DEFAULT_THREAD_DONE_RETENTION_DAYS, type ThreadId, type ThreadSummary } from '@boite/contracts';
   import InfoTip from './InfoTip.svelte';
+  import Menu from './Menu.svelte';
   import DeletedThreads from './DeletedThreads.svelte';
   import { archivedThreads, archivedTime } from '../lib/archive';
   import { projectThread } from '../lib/thread-rows';
@@ -134,7 +134,6 @@
 
 <section class="card" id="settings-archived" data-testid="archived-threads">
   <h2 class="ui-label-box"><span class="ui-label">{strings.settings.archived.heading}</span><InfoTip topic={strings.settings.archived.heading} text={strings.settings.archived.intro} /></h2>
-  <DoneRetentionSetting {store} />
   {#if threads === null}
     <button type="button" data-testid="archived-show" disabled={loading || store.connection !== 'ready'} onclick={() => void load()}>
       <span class="ui-label">{strings.settings.archived.show}</span>
@@ -142,12 +141,20 @@
   {:else if threads.length === 0}
     <p class="muted" data-testid="archived-empty">{strings.settings.archived.empty}</p>
   {:else}
-    <!-- One group of rows, as the lists draw them: the title, then where it was and why it left, then since when (a merge's own time when one put it away). -->
+    <!-- One group of rows, as the lists draw them: the title, then where it was and why it left, then since when (a merge's
+         own time when one put it away). The row itself restores (its one action, named under the pointer or the
+         keyboard), then opens; Delete waits in its menu. -->
     <ul class="archived" data-testid="archived-list">
       {#each threads as thread (thread.id)}
         {@const retention = store.settings?.threadDoneRetentionDays ?? DEFAULT_THREAD_DONE_RETENTION_DAYS}
         {@const at = thread.archiveReason?.type === 'pr-merged' ? thread.archiveReason.archivedAt : archivedTime(thread)}
-        <li data-thread-id={thread.id}>
+        {@const back = restored.includes(thread.id)}
+        <!-- The menu names the row's action too, so a phone, with no pointer to show it, finds it there. -->
+        {@const items = [
+          ...(back ? [] : [{ id: 'restore', label: strings.settings.archived.restore, glyph: RotateCcw, disabled: lock.busy, testid: 'archived-menu-restore' }]),
+          ...(canDeleteThread(thread) ? [{ id: 'delete', label: strings.common.delete, glyph: Trash2, danger: true, disabled: lock.busy, testid: 'archived-delete' }] : [])
+        ]}
+        <li data-thread-id={thread.id} class:back>
           <span class="title" title={thread.title}>{thread.title}</span>
           <span class="context">
             {#if projectOf(thread)}<span class="part">{projectOf(thread)}</span><span class="sep" aria-hidden="true">·</span>{/if}
@@ -160,20 +167,19 @@
             <time class="part" datetime={new Date(at).toISOString()} title={exactTime(at)}>{ago(at)}</time>
           </span>
           <span class="actions">
-            {#if restored.includes(thread.id)}
-              <button type="button" class="small" data-testid="archived-open" onclick={() => void workspace.select(store, thread.id)}>
+            <!-- The row's one action: its button covers the row, its word shows under the pointer or the keyboard. -->
+            {#if back}
+              <button type="button" class="ghost small main" data-testid="archived-open" title={thread.title} onclick={() => void workspace.select(store, thread.id)}>
                 <span class="ui-label">{strings.common.open}</span>
               </button>
             {:else}
-              <button type="button" class="small" data-testid="archived-restore" disabled={lock.busy} onclick={() => void restore(thread)}>
+              <button type="button" class="ghost small main" data-testid="archived-restore" title={thread.title} disabled={lock.busy} onclick={() => void restore(thread)}>
                 <RotateCcw size={14} /><span class="ui-label">{strings.settings.archived.restore}</span>
               </button>
             {/if}
-            {#if canDeleteThread(thread)}
-              <!-- The bin alone: its word is its tooltip, so a row's actions stay one button wide. -->
-              <button type="button" class="ghost icon small danger" data-testid="archived-delete"
-                aria-label={strings.common.delete} title={strings.common.delete} disabled={lock.busy}
-                onclick={() => void remove(thread)}><Trash2 size={14} /></button>
+            {#if items.length}
+              <Menu {items} onpick={id => void (id === 'delete' ? remove(thread) : restore(thread))}
+                label={strings.sidebar.threadMenu} placement="bottom" align="end" variant="ghost" testid="archived-menu-{thread.id}"><Ellipsis size={15} /></Menu>
             {/if}
           </span>
         </li>
@@ -194,15 +200,19 @@
     border-radius: var(--radius-md);
   }
 
+  /* The row is its own button: the main action's box covers it; the merge link and the menu stand above. */
   .archived li {
+    position: relative;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     gap: 2px 10px;
     min-height: var(--row);
     padding: 8px 10px;
+    transition: background var(--dur-2) var(--ease-out-quint);
   }
   .archived li + li { border-top: 1px solid var(--color-border); }
+  .archived li:hover { background: var(--color-hover); }
 
   .title {
     grid-column: 1;
@@ -224,9 +234,9 @@
   .part { min-width: 0; overflow-wrap: anywhere; }
   .sep { color: var(--color-subtle); }
   .context time { color: var(--color-subtle); }
-  .archive-reason a { color: inherit; text-underline-offset: 2px; }
+  .archive-reason a { position: relative; z-index: 1; color: inherit; text-underline-offset: 2px; }
 
-  /* The actions sit beside both lines, at the row's right. */
+  /* The action and the menu beside both lines, at the row's right. */
   .actions {
     grid-column: 2;
     grid-row: 1 / span 2;
@@ -235,4 +245,23 @@
     gap: 2px;
   }
   .archived button { gap: 4px; }
+  .main { position: static; }
+  .main::after { content: ''; position: absolute; inset: 0; border-radius: inherit; }
+  .main:focus-visible { outline: none; }
+  .archived li:has(.main:focus-visible) { outline: var(--focus-ring); outline-offset: -2px; }
+  .actions :global(.menu), .actions :global(.trigger) { position: relative; z-index: 1; }
+  /* At rest the row reads its words alone: its action names itself under the pointer or the keyboard, a restored
+     row's Open stays. */
+  .archived li:not(.back):not(:hover, :focus-within) .main,
+  .archived li:not(:hover, :focus-within) .actions :global(.trigger) { opacity: 0; }
+  /* A phone has no pointer to wait for: a tap on the row restores, its menu (Restore, Delete) always shows. The
+     settings card already frames the list there, so the rows lose their own border and line up with its edge. */
+  @media (max-width: 720px) {
+    .archived li:not(:hover, :focus-within) .actions :global(.trigger) { opacity: 1; }
+    .archived { border: none; border-radius: 0; }
+    .archived li { padding-inline: 0; }
+    /* Brought into view (Settings opened at the archive), the phone page's machine bar above stays whole rather than
+       cut. An id: the settings cards' own margin (app.css) is more specific than a class. */
+    #settings-archived { scroll-margin-top: 96px; }
+  }
 </style>

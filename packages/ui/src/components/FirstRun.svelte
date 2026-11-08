@@ -72,7 +72,7 @@
         </div>
       {/if}
       <button type="button" class="primary start" data-testid="first-run-connect" onclick={() => store.openConnect(chosen?.id ?? null)}>
-        {chosen ? fill(strings.firstRun.go, { provider: chosen.name }) : strings.connect.button}
+        {chosen ? fill(strings.firstRun.go, { provider: chosen.name }) : strings.firstRun.connect}
       </button>
       <button type="button" class="ghost small other" data-testid="first-run-other-machine" onclick={() => store.showSettings('machines')}>{strings.firstRun.otherMachine}</button>
     {:else}

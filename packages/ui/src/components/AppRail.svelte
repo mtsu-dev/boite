@@ -232,7 +232,9 @@
 
   <!-- The machines, once there are two or one is in trouble; the limits are the list column's foot. -->
   <div class="foot">
-    <div class="slot status">
+    <!-- Lit like the buttons above while it filters the list or its menu is open. -->
+    <div class="slot status" class:selected={machineFilter.shown(machines) !== null}>
+      <span class="pip" aria-hidden="true"></span>
       <MachineStatus {store} filter={machineFilter.shown(machines)} onfilter={pickMachine} card={statusName} />
     </div>
     <Deferred part={parts.UpdatesNotice} quiet>{#snippet children(UpdatesNotice)}<UpdatesNotice />{/snippet}</Deferred>
@@ -315,9 +317,11 @@
 
   /* The name card right of the rail, as a menu's surface: it waits a beat under the pointer, so a sweep down the
      rail does not flash every name, and shows at once for the keyboard. */
+  /* The card opens past the list column, over the main card's edge: never over a row's words. `--bar-left` is the
+     list's width and gap (App.svelte), the frame gap alone while the list is folded. */
   .rail-name {
     position: absolute;
-    left: calc(100% - 4px);
+    left: calc(100% + var(--bar-left, 0px) + 4px);
     top: 50%;
     z-index: 3;
     display: flex;
@@ -367,7 +371,7 @@
   .count.failed { background: var(--color-danger); color: var(--color-on-danger); }
   /* News on a bot: a badge top right of its picture, in full ink and cut out of the chrome; the edge pip is the open place alone. */
   .news { position: absolute; right: 0; top: 0; width: 10px; height: 10px; border-radius: 50%; background: var(--color-foreground); box-shadow: 0 0 0 3px var(--color-frame); }
-  /* At work: a still grey ring, as on the list rows; the open thread keeps the one live spinner. */
+  /* At work: the list rows' still grey arc, a spinner at rest; the open thread keeps the one live spinner. */
   .work {
     position: absolute;
     right: -3px;
@@ -381,7 +385,7 @@
   }
   .work svg { width: 14px; height: 14px; overflow: visible; }
   .work circle { fill: none; stroke-width: 2; }
-  .work .track { stroke: var(--color-muted-foreground); }
+  .work .track { stroke: var(--color-muted-foreground); stroke-dasharray: 23.6 31.4; transform: rotate(-45deg); transform-origin: 7px 7px; }
 
   .foot { display: flex; flex-direction: column; align-items: center; gap: 4px; align-self: stretch; }
   /* Settings marks itself selected like the buttons above, but its hover stays quiet like its neighbours. */
@@ -393,6 +397,8 @@
   /* One machine says nothing: the wrapper stays, empty, for its connection state. */
   .foot :global(.machines:not(:has(.trigger))) { display: none; }
   .foot .status:not(:has(:global(.trigger))) { display: none; }
+  .foot .status:has(:global(.trigger[aria-expanded='true'])) .pip { height: 36px; }
+  .foot :global(.machines.filtered .trigger), .foot :global(.machines .trigger[aria-expanded='true']) { background: var(--color-surface-3); color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-edge); border-radius: var(--radius-rail); }
   /* A filter names its machine beside the button: the rail has no room, so the button alone says it, lit. */
   .foot :global(.machines .name) { display: none; }
 

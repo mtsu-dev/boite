@@ -17,6 +17,7 @@
     docked = false,
     folded = false,
     head,
+    foot,
     answer,
     pending,
     picked = $bindable([]),
@@ -35,15 +36,17 @@
     /** Asked with `boite ask`: the agent did not stop for it and the answer reaches it later. */
     async?: boolean;
     /**
-     * Drawn at the top of the composer: the question once, in bold beside its
-     * tag, Skip at the right, the options as rows numbered for the keyboard
+     * Drawn at the top of the composer: the question once, in bold on a line
+     * of its own, Skip and the fold a compact group at its end, the options as rows numbered for the keyboard
      * (the composer's 1 to 9), and no second send while the box answers it.
      */
     docked?: boolean;
     /** Docked and folded: the head alone, the question on one line. */
     folded?: boolean;
-    /** What the dock adds to the head, before Skip: its pager and fold. */
+    /** What the dock adds to the head's end, after Skip: its fold. */
     head?: Snippet;
+    /** The dock's secondary line under the choices: its pager. */
+    foot?: Snippet;
     answer: QuestionAnswer | null;
     /** False on a card whose turn ended before anyone answered: nothing to press. */
     pending: boolean;
@@ -172,15 +175,16 @@
     </button>
   {:else}
   {#if docked}
-    <DecisionHead flow>
+    <DecisionHead>
       <span class="prompt" class:folded data-testid="question-text"><CodeText {text} /></span>
       {#snippet end()}
-        {@render head?.()}
         {#if pending && skip}
           <button type="button" class="ghost skip" data-testid="question-skip" disabled={sent} onmousedown={keepFocus} onclick={pass}><span class="ui-label">{strings.chat.questionSkip}</span></button>
         {/if}
+        {@render head?.()}
       {/snippet}
     </DecisionHead>
+    {#if folded}{@render foot?.()}{/if}
   {:else}
     <div class="head">
       <span class="glyph"><MessageCircleQuestionMark size={15} strokeWidth={1.75} /></span>
@@ -230,6 +234,7 @@
         <button type="button" class="ghost more" data-testid="question-more" onmousedown={keepFocus} onclick={more}><span class="ui-label">{fill(strings.chat.questionMore, { count: String(below) })}</span></button>
       {/if}
     {/if}
+    {@render foot?.()}
 
     {#if pending && !(docked && replying && !page)}
       <div class="actions">
@@ -279,10 +284,9 @@
     border-left-style: dashed;
   }
 
-  /* At the top of the composer the composer is the frame; a hairline parts it from the field. */
+  /* At the top of the composer the composer is the frame; the dock's own hairline parts it from the field. */
   .question.docked {
     border: none;
-    border-bottom: 1px solid var(--color-border);
     border-radius: 0;
     background: transparent;
     box-shadow: none;
@@ -290,11 +294,11 @@
     gap: 8px;
   }
 
-  /* A block beside the floated controls: its lines wrap under them; folded, it holds one line. */
+  /* The question's own column beside the compact controls; folded, it holds one line. */
   .docked .prompt { display: block; min-width: 0; padding-block: calc((var(--control) - 22px) / 2); font-weight: inherit; }
   .docked .prompt.folded { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   @media (max-width: 720px) {
-    .docked .skip { min-height: var(--touch-target); padding: 0 6px; }
+    .docked .skip { min-height: var(--touch-target); padding: 0 8px; }
     /* A phone keeps the whole dock in the room its activity gives it
        (`--dock-cap`, less the head): the choices take it first, then scroll
        in place, the field under them always in sight. A cut row fades and a
@@ -304,7 +308,7 @@
     .docked .options.clipped { mask-image: linear-gradient(to bottom, var(--color-foreground) calc(100% - 24px), transparent); }
   }
   .more { align-self: flex-start; height: 24px; padding: 0 8px; color: var(--color-muted-foreground); font-size: var(--text-sm); }
-  .skip { height: 24px; padding: 0 8px; border-radius: var(--radius-sm); color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 550; }
+  .skip { height: var(--control); padding: 0 8px; border-radius: var(--radius-sm); color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 550; }
 
   .docked .options { gap: 2px; }
   .docked .option { align-items: center; gap: 12px; padding: 8px 10px; border-color: transparent; border-radius: var(--radius-lg); background: transparent; }

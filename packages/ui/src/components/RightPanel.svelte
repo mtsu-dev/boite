@@ -97,16 +97,11 @@
   });
 
   /**
-   * `use:` on a tab or a surface: one created once the panel is in plays its
-   * entrance. Decided at creation, so the panel landing does not replay the
-   * entrance of what came in with it. An attribute, since Svelte rewrites the
-   * class list whenever `class:active` changes.
+   * A surface a tab switch brings: there in the frame the old one leaves,
+   * settling from a high opacity with a short rise (`lib/surface-swap.ts`).
+   * Only once the panel is in, so the panel landing plays no second entrance.
+   * The strip above stays still: a new tab appears in place.
    */
-  function arrive(node: HTMLElement): void {
-    if (untrack(() => entered)) node.dataset.arriving = '';
-  }
-
-  /** A surface a tab switch brings: there in the frame the old one leaves, settling from a high opacity (`lib/surface-swap.ts`). */
   function arriveAfter(node: HTMLElement): void {
     if (untrack(() => entered)) arriveSurface(node);
   }
@@ -182,6 +177,8 @@
 
   /** The X shuts the panel and hands the keys to the title bar's toggle that opens it again; clicked, it left them on the page. */
   function shut(): void {
+    // A phone's one back arrow steps back inside the surface first (a file to its list), then leaves the panel.
+    if (phone && tools.back) { tools.back.run(); return; }
     panel.hide();
     if (!phone) document.querySelector<HTMLElement>('[data-testid="panel-toggle"]')?.focus({ preventScroll: true });
   }
@@ -309,10 +306,24 @@
   let used = $derived(usedPanels(store, store.openThread, surfaces.map((surface) => surface.kind), changed?.thread === store.openThread?.id ? (changed?.count ?? null) : null));
   /** The panel selector's list: the panels in use, then every panel by group (`lib/panel-choices.ts`). */
   let choices = $derived(panelChoices(store, store.openThread, { phone, available, showing: active?.kind, used, full }));
+  /** The selector's row that closes the showing panel: a phone's tab has no glyph to close it by. */
+  const CLOSE_TAB = 'close-tab';
+  /**
+   * A phone's title opens the panel and the file switcher in one list: the
+   * surface's own rows (its files, its refresh), the panels, then a way to
+   * close this one. The full list is the panels alone.
+   */
+  let headChoices = $derived(!phone || full ? choices : [
+    ...tools.items,
+    ...choices,
+    ...(active ? [separator('sep-close'), { id: CLOSE_TAB, label: fill(strings.rightPanel.closeTab, { title: tools.title ?? label(active) }), glyph: X }] : [])
+  ]);
 
   function pickPanel(id: string): void {
     const thread = store.openThread;
-    if (id === ALL_PANELS || id === IN_USE) full = id === ALL_PANELS;
+    if (phone && tools.pick?.(id)) return;
+    if (id === CLOSE_TAB) { if (active) void closeTabs(panel, 'close', active.id); }
+    else if (id === ALL_PANELS || id === IN_USE) full = id === ALL_PANELS;
     else if (id === CUSTOMIZE) store.showSettings('appearance', CONTROLS_SECTION);
     else if (id === 'terminal-toggle') store.toggleTerminal();
     else if (id === 'board-toggle' || id === 'coordination') {
@@ -398,7 +409,6 @@
       {#each surfaces as surface (surface.id)}
         <div
           class="tab"
-          use:arrive
           class:active={surface.id === panel.activeSurfaceId}
           role="tab"
           tabindex="0"
@@ -432,8 +442,13 @@
             <!-- The panel selector: the showing panel's name opens the list of every panel and tool. -->
             <!-- The tooltip on the trigger, not the tab: the list lives inside the tab and a native tooltip would cover its rows. -->
             <span class="selector">
-              <Menu items={choices} onpick={pickPanel} cap={SELECTOR_CAP} placement="bottom" variant="ghost" label={tooltip(surface)} heading={strings.thread.panelMenu} testid="panel-add" onclose={() => (full = false)}>
-                {#if !tools.nameless}<span class="name ui-label">{label(surface)}</span>{/if}<ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
+              <Menu items={headChoices} onpick={pickPanel} cap={SELECTOR_CAP} placement="bottom" variant="ghost" label={tooltip(surface)} heading={strings.thread.panelMenu} testid="panel-add" onclose={() => (full = false)}>
+                {#if phone}
+                  <!-- A phone's title: the panel's name (or the surface's own, "Changed files"), the file it reads under it. -->
+                  <span class="title-lines"><span class="name ui-label" data-testid="panel-title">{tools.title ?? label(surface)}</span>{#if tools.detail}<span class="detail ui-label">{tools.detail}</span>{/if}</span>
+                {:else}
+                  <span class="name ui-label">{label(surface)}</span>
+                {/if}<ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
               </Menu>
             </span>
           {:else}
@@ -492,13 +507,13 @@
     <button
       type="button"
       class="ghost small icon panel-close"
-      title={phone ? strings.rightPanel.backToChat : strings.common.close}
-      aria-label={phone ? strings.rightPanel.backToChat : strings.common.close}
+      title={phone ? (tools.back?.label ?? strings.rightPanel.backToChat) : strings.common.close}
+      aria-label={phone ? (tools.back?.label ?? strings.rightPanel.backToChat) : strings.common.close}
       data-testid="panel-close"
       onclick={shut}
     >
       {#if phone}
-        <ArrowLeft size={16} strokeWidth={1.75} />{#if !tools.compact}<span class="ui-label">{strings.rightPanel.chat}</span>{/if}
+        <ArrowLeft size={20} strokeWidth={1.75} />
       {:else}
         <X size={14} strokeWidth={1.75} />
       {/if}
@@ -506,10 +521,10 @@
   </header>
 
   <div class="body">
-    <!-- Keyed on the tab, so picking another one fades the old surface out,
-         then the new one in, rather than swapping them in one frame. -->
+    <!-- Keyed on the tab: the old surface leaves at once and the new one is
+         there in the same frame, settling in. -->
     {#key active?.id}
-    <div class="surface" use:arriveAfter>
+    <div class="surface" data-native={active?.kind === 'browser' || active?.kind === 'agent-browser' || undefined} use:arriveAfter>
     {#if active?.kind === 'desk'}
       {#if store.openThread?.agentSessionId}
         {#key store.threadKey(store.openThread.id)}<AgentDesk {store} />{/key}
@@ -685,18 +700,6 @@
       color var(--dur-2) var(--ease-out-quint);
   }
 
-  /* A new tab opens from its left edge into the strip, the way the strip reads. */
-  .tab:global([data-arriving]) {
-    animation: tab-in var(--dur-3) var(--ease-out-quint);
-  }
-
-  @keyframes tab-in {
-    from {
-      opacity: 0;
-      transform: translateX(-6px);
-    }
-  }
-
   .tab:hover {
     background: var(--color-hover);
     color: var(--color-foreground);
@@ -797,13 +800,16 @@
     flex-direction: column;
   }
 
-  /* Opacity only: a browser tab's page is a native view laid over this box,
-     and a moving box would drag it along. */
+  /* From a high opacity, never from nothing, 4 px under its place: the first
+     frame already reads, and only the body moves. */
   .surface:global([data-arriving]) {
     animation: surface-in var(--dur-2) var(--ease-enter) both;
   }
-  /* From a high opacity, never from nothing: the first frame already reads. */
-  @keyframes surface-in { from { opacity: 0.85; } }
+  @keyframes surface-in { from { opacity: 0.85; transform: translateY(4px); } }
+  /* Opacity only for a browser: its page is a native view laid over this box,
+     and a moving box would drag it along. */
+  .surface[data-native]:global([data-arriving]) { animation-name: surface-fade; }
+  @keyframes surface-fade { from { opacity: 0.85; } }
   /* A cut under reduced motion, whatever the duration tokens say. */
   @media (prefers-reduced-motion: reduce) { .surface:global([data-arriving]) { animation: none; } }
   :global(html[data-motion='reduced']) .surface:global([data-arriving]) { animation: none; }
@@ -862,7 +868,17 @@
   }
 
   @media (max-width: 720px) {
-    .strip button.small.icon.panel-close { order: -1; width: auto; padding: 0 8px; gap: 6px; }
+    /* One back arrow, then the title: the showing panel's name in text, the one way to the others. */
+    .strip button.small.icon.panel-close { order: -1; width: var(--touch-target); height: var(--touch-target); margin-left: -6px; }
+    .tab:not(.active), .tab .closer { display: none; }
+    .tab.active { max-width: none; flex: 0 1 auto; min-width: 0; height: auto; padding: 0; background: transparent; }
+    .tabs { flex: 0 1 auto; }
+    .strip .selector :global(.trigger.ghost) { height: var(--touch-target); padding: 0 6px 0 2px; gap: 4px; }
+    .title-lines { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 0; line-height: 1.2; }
+    /* Two lines stacked: a label's trim to the capitals would pull the second over the first. */
+    .title-lines > .ui-label { max-width: 100%; margin-block: 0; padding-block: 0; text-box: normal; }
+    .title-lines .name { font-size: var(--text-base); font-weight: 600; color: var(--color-foreground); }
+    .title-lines .detail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); color: var(--color-muted-foreground); }
 
     .panel,
     .panel.maximized {
@@ -886,16 +902,6 @@
 
     .sheet-scrim {
       display: none;
-    }
-
-    /* The tab's icon is its close button: a finger needs the whole height of the tab. */
-    .tab {
-      padding-left: 0;
-    }
-
-    .closer {
-      width: var(--touch-target);
-      height: var(--touch-target);
     }
 
     /* The sheet already fills the screen. */

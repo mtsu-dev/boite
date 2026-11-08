@@ -125,21 +125,24 @@
     ];
   });
 
-  /** The view's own tool, first in More. A phone has no Ctrl+F: this row is its way to the find bar. */
+  /** The view's own tool, first on the menu. A phone has no Ctrl+F: this row is its way to the find bar. */
   let tools = $derived.by((): MenuItem[] => thread ? [{ id: 'find', label: strings.palette.find, glyph: Search }] : []);
-  let desktopItems = $derived(thread ? [...identity, ...(identity.length ? [separator('sep-identity')] : []), ...threadMenuItems(store, thread, {})] : []);
-  /** More: the thread's less frequent actions, the same on a desktop, a phone and a row. The panels have their own selector. */
-  let toolItems = $derived(thread ? threadToolItems(store, thread, { tools, phone: mobile.current }) : []);
+  let lead = $derived(identity.length ? [...identity, separator('sep-identity')] : []);
+  let desktopItems = $derived(thread ? [...lead, ...threadMenuItems(store, thread, { tools })] : []);
+  /** "Project and branch": the move, the path and the pull request, the same on a desktop header and a row. A phone has no second level. */
+  let toolItems = $derived(thread ? threadToolItems(store, thread, {}) : []);
 
   /**
-   * A phone's header menu is a desktop's: the thread's bot and watches, what
-   * is done to the thread, then More, which shows its one list in place
-   * until Back, a pick or a fresh open. Contact requests live in Activity.
+   * A phone's header menu is a desktop's, every row on its first level: the
+   * thread's bot and watches, find, then what is done to the thread. Contact
+   * requests live in Activity.
    */
-  let phoneItems = $derived(thread ? [...identity, ...(identity.length ? [separator('sep-identity')] : []), ...threadMenuItems(store, thread, { phone: true })] : []);
+  let phoneItems = $derived(thread ? [...lead, ...threadMenuItems(store, thread, { tools, phone: true })] : []);
   let inTools = $state(false);
+  /** Every row in view: the identity, find and the thread's actions run past the default 360 px, which hid Delete under a scroll. */
+  const MENU_CAP = 560;
   const menuShown = $derived(inTools ? toolItems : mobile.current ? phoneItems : desktopItems);
-  // Menu.svelte keeps its list open on More and Back and swaps the rows in place; a close puts the first list back.
+  // Menu.svelte keeps its list open on the named group and Back and swaps the rows in place; a close puts the first list back.
   function menuPick(action: string) {
     if (action === 'more') { inTools = true; return; }
     if (action === 'back') { inTools = false; return; }
@@ -221,7 +224,7 @@
           <!-- A small chevron exposes thread actions on the desktop. -->
           <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
           <span class="title-menu">
-            <Menu items={menuShown} onpick={menuPick} label={strings.sidebar.threadMenu} heading={thread?.title} placement="bottom" variant={mobile.current ? 'ghost' : 'text'} testid="thread-menu-trigger" onclose={() => (inTools = false)}>
+            <Menu items={menuShown} onpick={menuPick} cap={MENU_CAP} label={strings.sidebar.threadMenu} heading={thread?.title} placement="bottom" variant={mobile.current ? 'ghost' : 'text'} testid="thread-menu-trigger" onclose={() => (inTools = false)}>
               {#if mobile.current}<Ellipsis size={20} />{:else}<ChevronDown size={14} />{/if}
             </Menu>
           </span>

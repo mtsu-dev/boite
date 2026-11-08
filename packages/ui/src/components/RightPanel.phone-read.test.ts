@@ -79,6 +79,47 @@ test('a phone walks the changes one diff at a time, against HEAD only', async ()
   for (const [, params] of diffs) expect((params as { ref?: string }).ref).toBeUndefined();
 });
 
+test('a phone panel head is one back arrow and a text title holding the files, the refresh and the panels', async () => {
+  const width = Object.getOwnPropertyDescriptor(window, 'innerWidth');
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
+  try {
+    await phone(390);
+    button('launch-changes').click(); await settle();
+    const title = () => query('[data-testid=panel-title]')?.textContent;
+    expect(title()).toBe('Changed files');
+    // The refresh moved into the title's list; the strip has no second back.
+    expect(query('[data-testid=panel-titlebar] [data-testid=changes-refresh]')).toBeNull();
+    const rows = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-testid=changes-row]'));
+    rows[0]!.click(); await settle();
+    expect(query('[data-testid=changes-back]')).toBeNull();
+    expect(query('[data-testid=changes-pager]')).toBeNull();
+    expect(query('[data-testid=panel-titlebar] .detail')?.textContent).toBeTruthy();
+    expect(button('panel-close').getAttribute('aria-label')).toBe('All changes');
+
+    button('panel-add').click(); await settle();
+    const menu = query('[data-testid=panel-add-menu]')!;
+    const files = Array.from(menu.querySelectorAll<HTMLButtonElement>('[data-testid=changes-outline-file]'));
+    expect(files.map((file) => file.dataset.value)).toEqual(rows.map((row) => `changes-file:${row.dataset.path}`));
+    expect(menu.querySelector('[data-testid=changes-refresh]')).not.toBeNull();
+    // The panels follow the surface's rows, then a way to close this one.
+    expect(menu.querySelector('[data-value="all-panels"]')).not.toBeNull();
+    expect(menu.querySelector('[data-value="close-tab"]')?.textContent).toContain('Close Changed files');
+    files[1]!.click(); await settle();
+    expect(store.panel.active?.path).toBe(rows[1]!.dataset.path);
+
+    // The one arrow steps back to the list first, then leaves the panel.
+    button('panel-close').click(); await settle();
+    expect(store.panel.active?.path).toBeUndefined();
+    expect(store.panelOpen).toBe(true);
+    expect(button('panel-close').getAttribute('aria-label')).toBe('Back to chat');
+    expect(button('panel-close').textContent?.trim()).toBe('');
+    button('panel-close').click(); await settle();
+    expect(store.panelOpen).toBe(false);
+  } finally {
+    if (width) Object.defineProperty(window, 'innerWidth', width);
+  }
+});
+
 test('a wide panel keeps the list beside the diff, with no pager', async () => {
   await phone(1000);
   button('launch-changes').click(); await settle();

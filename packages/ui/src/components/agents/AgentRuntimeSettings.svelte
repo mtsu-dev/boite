@@ -169,7 +169,7 @@
       <div class="agent-inline">
         <ModelPicker store={view.store} choice={config.defaultRoute} onpick={patch => pickDefault({ effort: null, ...patch })} />
         {#if effort?.levels.length}<EffortSlider levels={effort.levels} active={config.defaultRoute.effort ?? effort.default ?? null} onpick={id => pickDefault({ effort: id })} />{/if}
-        <Menu placement="bottom" label={labels.permissions} items={PERMISSIONS.map(id => ({ id, label: permissionLabels[id], active: config?.defaultRoute.permissionMode === id }))} onpick={id => pickDefault({ permissionMode: id as AgentSelection['permissionMode'] })}><span class="ui-label">{permissionLabels[config.defaultRoute.permissionMode]}</span></Menu>
+        <Menu placement="bottom" label={labels.permissions} items={PERMISSIONS.map(id => ({ id, label: permissionLabels[id], checked: config?.defaultRoute.permissionMode === id, radio: true }))} onpick={id => pickDefault({ permissionMode: id as AgentSelection['permissionMode'] })}><span class="ui-label">{permissionLabels[config.defaultRoute.permissionMode]}</span></Menu>
       </div>
       {#if view.store.providerOf(config.defaultRoute.providerId)?.capabilities.approvals === false}<p class="hint">{labels.noApprovals}</p>{/if}
     </fieldset>

@@ -212,3 +212,20 @@ test('a thread archived live takes its place by archive time, not the top', asyn
   await settle();
   expect(rows()).toEqual(['t-parser', 't-trace', 't-bench']);
 });
+
+test('an archived row restores as its one action and keeps Delete behind its menu', async () => {
+  const { store } = await ready();
+  await store.archive('t-trace');
+  running = mount(ArchivedThreads, { target: document.body, props: { store, eager: true } });
+  await settle();
+  const row = () => document.querySelector<HTMLElement>('[data-testid=archived-list] [data-thread-id="t-trace"]');
+  // One action on the row; the bin is no longer a second button beside it.
+  expect([...row()!.querySelectorAll('.actions > button')].map(button => button.getAttribute('data-testid'))).toEqual(['archived-restore']);
+  expect(row()!.querySelector('[data-testid=archived-delete]')).toBeNull();
+  row()!.querySelector<HTMLButtonElement>('[data-testid=archived-menu-t-trace]')!.click();
+  await settle();
+  const remove = document.querySelector<HTMLElement>('[data-testid=archived-delete]')!;
+  expect(remove.closest('li')?.dataset['threadId']).toBe('t-trace');
+  remove.click();
+  await vi.waitFor(() => expect(row()).toBeNull());
+});

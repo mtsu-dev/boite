@@ -1,7 +1,7 @@
 <script lang="ts" generics="T extends string">
   // One choice that is seen before it is picked (a palette, a text face, a code
   // face): the value in use as one row with its preview, which opens the others,
-  // each with its own. A popover on a desktop, a bottom sheet on a phone
+  // each with its own. A face needs no picture: its name is drawn in it. A popover on a desktop, a bottom sheet on a phone
   // (lib/floating.ts), so the two read the same.
   import { tick, type Snippet } from 'svelte';
   import { Check, ChevronDown } from '@lucide/svelte';
@@ -17,8 +17,8 @@
     /** The trigger's words when no option matches. */
     fallback?: string;
     onpick: (id: T) => void;
-    /** An option's picture, drawn by the caller in the trigger and in the list. */
-    preview: Snippet<[T | undefined]>;
+    /** An option's picture, drawn by the caller in the trigger and in the list; none when the name is enough (a face). */
+    preview?: Snippet<[T | undefined]>;
     testid: string;
     optionTestid: (id: T) => string;
     /** The font an option's name is drawn in, so a face reads as itself. */
@@ -84,9 +84,9 @@
 <svelte:window onpointerdown={onWindowPointerdown} />
 
 <div class="choice-select" bind:this={root}>
-  <button type="button" class="trigger" aria-haspopup="menu" aria-expanded={popover.open} aria-label="{label}: {shown?.name ?? fallback}"
+  <button type="button" class="trigger" class:bare={!preview} aria-haspopup="menu" aria-expanded={popover.open} aria-label="{label}: {shown?.name ?? fallback}"
     data-testid={testid} bind:this={trigger} onclick={(event) => { event.stopPropagation(); popover.toggle(); }} {onkeydown}>
-    <span class="preview" aria-hidden="true">{@render preview(value)}</span>
+    {#if preview}<span class="preview" aria-hidden="true">{@render preview(value)}</span>{/if}
     <span class="name ui-label" style:font-family={shown && face ? face(shown.id) : undefined}>{shown?.name ?? fallback}</span>
     <ChevronDown size={14} strokeWidth={1.75} />
   </button>
@@ -98,7 +98,7 @@
       {#if sheet}<div class="sheet-title" aria-hidden="true">{label}</div>{/if}
       {#each options as option (option.id)}
         <button type="button" class="option" role="menuitemradio" aria-checked={option.id === value} data-testid={optionTestid(option.id)} onclick={() => pick(option.id)}>
-          <span class="preview" aria-hidden="true">{@render preview(option.id)}</span>
+          {#if preview}<span class="preview" aria-hidden="true">{@render preview(option.id)}</span>{/if}
           <span class="name ui-label" style:font-family={face?.(option.id)}>{option.name}</span>
           <span class="check" aria-hidden="true">{#if option.id === value}<Check size={14} strokeWidth={2} />{/if}</span>
         </button>
@@ -112,6 +112,7 @@
   /* The value in use, raised like a chip: its picture, its name, the chevron that opens the rest. */
   .trigger { display: inline-flex; align-items: center; gap: var(--space-3); min-width: 0; max-width: 100%; height: auto; min-height: var(--control); padding: var(--space-1) var(--space-3) var(--space-1) var(--space-1); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-2); color: var(--color-foreground); font-size: var(--text-sm); font-weight: 400; text-align: left; }
   @media (hover: hover) { .trigger:hover:not(:disabled) { background: var(--color-surface-3); border-color: var(--color-edge); } }
+  .trigger.bare { padding-left: var(--space-3); }
   .trigger[aria-expanded='true'] { background: var(--color-surface-3); border-color: var(--color-edge); }
   .trigger > :global(svg) { flex: none; color: var(--color-muted-foreground); transition: transform var(--dur-2) var(--ease-out-quint); }
   .trigger[aria-expanded='true'] > :global(svg) { transform: rotate(180deg); }

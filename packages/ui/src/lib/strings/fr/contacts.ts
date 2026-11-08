@@ -54,6 +54,7 @@ export const fr: Translation = {
       accept: 'Accepter',
       acceptInto: 'Accepter : partager {project}',
       acceptOther: 'Accepter dans un autre projet',
+      actions: 'Plus d\'actions',
       refuse: 'Refuser',
       reason: 'Raison',
       reasonPlaceholder: 'Pourquoi, en une phrase que l\'agent lira',

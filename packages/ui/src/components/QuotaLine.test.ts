@@ -21,7 +21,7 @@ test('the list foot says the tightest window in words, keeps the limits test ids
   const button = document.querySelector<HTMLButtonElement>('[data-testid=nav-limits]')!;
   const figure = document.querySelector<HTMLElement>('[data-testid=limits-gauge]')!;
   expect(figure.dataset.left).toBe('12');
-  expect(figure.textContent).toBe('12% left · Weekly');
+  expect(figure.textContent).toBe('12% of your weekly limit left');
   // The account is in the tooltip; the line itself stays short enough for a narrow column.
   expect(button.getAttribute('aria-label')).toContain('12% left: Weekly, Home');
   expect(button.querySelector('svg')!.classList.contains('low')).toBe(true);

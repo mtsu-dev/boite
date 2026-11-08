@@ -28,7 +28,7 @@ test('a first run lists the agents as one choice, acts on the picked one, and of
   expect(rows().map((row) => row.dataset.provider)).toEqual(['claude', 'codex']);
   expect(rows().map((row) => row.getAttribute('aria-checked'))).toEqual(['false', 'false']);
   const action = query<HTMLButtonElement>('[data-testid="first-run-connect"]');
-  expect(action.textContent!.trim()).toBe(strings.connect.button);
+  expect(action.textContent!.trim()).toBe(strings.firstRun.connect);
   action.click();
   expect(store.connectDialog).toEqual({ providerId: null, accountId: null });
   store.closeConnect();

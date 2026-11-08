@@ -128,7 +128,6 @@ for (const width of [1280, 390]) {
       await page.waitFor(`document.querySelectorAll('[data-testid=deleted-list] li').length === 2`);
       expect(await page.evaluate(`document.querySelector('[data-testid=deleted-retention-days]').value`)).toBe('30');
       await page.choose('[data-testid=deleted-retention-days]', '7');
-      await page.click('[data-testid=deleted-retention-save]');
       await page.waitFor(`globalThis.__boiteTest.workspace.active.settings.threadDeletionRetentionDays === 7`);
       expect(await page.evaluate(`document.querySelectorAll('[data-testid=deleted-list] .expiry').length`)).toBe(2);
       await page.evaluate(`document.querySelector('[data-testid=deleted-threads]').scrollIntoView({block:'center'}); document.querySelector('[data-testid=undo-toast] button:last-child')?.click()`);

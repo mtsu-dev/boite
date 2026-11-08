@@ -38,7 +38,22 @@ test('a running workflow keeps its own entry by name, with a timer, and opens it
   expect(store.panel.isOpen).toBe(true);
   expect(store.panel.active?.runId).toBe(run!.id);
 
+  // A running entry wears the tool rows' working mark.
+  expect(button?.querySelector('.spinner')).not.toBeNull();
+
+  // Finished, it shows its check a moment, its time frozen, then leaves.
   store.workflows[0]!.status = 'done';
+  await tick();
+  const done = document.querySelector<HTMLButtonElement>('[data-testid=active-subagent][data-done]');
+  expect(done?.textContent).toContain(run!.name);
+  expect(done?.querySelector('.spinner')).toBeNull();
+  await vi.waitFor(() => expect(document.querySelector('[data-testid=agent-dock]')).toBeNull(), { timeout: 3000 });
+
+  // A failed run leaves at once: no check for what did not finish well.
+  store.workflows = [{ ...run!, id: 'wf-failing', rootThreadId: 't-native', status: 'running', createdAt: Date.now(), nodes: [] }];
+  await tick();
+  expect(document.querySelector('[data-testid=active-subagent]')).not.toBeNull();
+  store.workflows[0]!.status = 'failed';
   await tick();
   expect(document.querySelector('[data-testid=agent-dock]')).toBeNull();
 });

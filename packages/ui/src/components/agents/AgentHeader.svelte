@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ArrowLeft, Brain, Ellipsis, Archive, Pause, Play, LampDesk, RotateCcw, Settings2 } from '@lucide/svelte';
+  import { ArrowLeft, Brain, Ellipsis, Archive, Pause, Play, PanelRight, RotateCcw, Settings2 } from '@lucide/svelte';
   import type { AgentProfile, AgentStatus, ThreadSummary } from '@boite/contracts';
   import { moodOf, liveState, liveStep, resetBuiltin, waitingOn, type AgentsView } from '../../lib/agents.svelte';
   import { confirmArchive } from '../../lib/agent-menu';
@@ -17,7 +17,7 @@
   /**
    * The top of an agent's conversation. On a desktop the column beside says
    * who the bot is and what it does, so this is one short line: its name and
-   * "Conversation", the desk toggle and a menu with its settings, its brain,
+   * "Conversation", the panel toggle (opening on the desk) and a menu with its settings, its brain,
    * pause and archive. On a phone (`onback`) it is the screen's only head: its
    * robot in its ring (breathing while it works), its name and one live line
    * that says what it does this second (the step its turn is on, with the time
@@ -44,8 +44,11 @@
   const state = $derived(liveState(agent, status, thread, !!pending));
   const step = $derived(liveStep(status, thread));
   const since = $derived(thread?.status === 'running' ? thread.runningSince ?? thread.progress?.since ?? null : null);
-  /** The desk is a surface of its thread's panel: pressed while the panel shows it. */
-  const deskOpen = $derived(store.panelOpen && store.panel.active?.kind === 'desk');
+  /** The panel button, as on a thread's header: it opens the panel on the desk, whose selector holds every other panel. */
+  function togglePanel() {
+    if (store.panelOpen) store.panel.hide();
+    else store.panel.toggleKind('desk');
+  }
 
   const menuItems = $derived([
     { id: 'settings', label: labels.settings, glyph: Settings2 },
@@ -104,7 +107,7 @@
     </span>
   </button>
   <nav class="agent-head-actions" aria-label={agent.name}>
-    <button type="button" class="ghost icon" class:active={deskOpen} aria-pressed={deskOpen} title={labels.desk} aria-label={labels.desk} onclick={() => store.panel.toggleKind('desk')} data-testid="agent-desk-toggle"><LampDesk size={17} strokeWidth={1.75} /></button>
+    <button type="button" class="ghost icon" class:active={store.panelOpen} aria-pressed={store.panelOpen} title={`${strings.thread.panelHint}${store.keyHint('panel')}`} aria-label={strings.thread.panelHint} onclick={togglePanel} data-testid="agent-desk-toggle"><PanelRight size={17} strokeWidth={1.75} /></button>
     <Menu placement="bottom" align="end" variant="ghost" label={labels.more} testid="agent-menu" items={menuItems} onpick={id => void pick(id)}>
       <Ellipsis size={18} strokeWidth={1.75} />
     </Menu>

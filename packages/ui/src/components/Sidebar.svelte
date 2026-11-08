@@ -38,6 +38,7 @@
   import { minuteClock } from '../lib/clock.svelte';
   import { doneFilter } from '../lib/inbox.svelte';
   import { needsAnAI } from '../lib/first-run';
+  import { listAbsent } from '../lib/list-absent';
   import { contactsRail, contactsShown } from '../lib/contacts-rail.svelte';
   import SideHead from './agents/SideHead.svelte';
   let { store }: { store: Store } = $props();
@@ -221,7 +222,7 @@
   }
 </script>
 
-<RailFrame {store} kind="sidebar" label={strings.sidebar.threads} testid="sidebar" drawer bind:scroller={scrollRoot} onscroll={() => { if (showRows && scrollRoot) savedScroll = scrollRoot.scrollTop; }}>
+<RailFrame {store} kind="sidebar" label={strings.sidebar.threads} testid="sidebar" drawer absent={listAbsent(workspace.machinesOr(store).map(machine => machine.store), mobile.current)} bind:scroller={scrollRoot} onscroll={() => { if (showRows && scrollRoot) savedScroll = scrollRoot.scrollTop; }}>
   {#snippet head()}
     {#if contactsSide}
       <SideHead {store} current="home">

@@ -117,6 +117,16 @@ export function quotaWindowName(label: string): string {
   return label.split(' · ').map(quotaPeriod).join(' · ');
 }
 
+/** A window as the words before "limit": `weekly`, `5-hour` (`de 5 heures`), for a line that reads as a sentence. */
+export function quotaLimitName(label: string): string {
+  return label.split(' · ').map((part) => {
+    const hours = /^(\d+(?:\.\d+)?) hours$/.exec(part)?.[1];
+    if (hours !== undefined) return strings.quotas.limitHours.replace('{hours}', formatters().plain.format(Number(hours)));
+    // A model or group name the core joins keeps its capitals; only a period reads as a word of the sentence.
+    return ['Weekly', 'Monthly', 'Credits'].includes(part) ? quotaPeriod(part).toLocaleLowerCase() : part;
+  }).join(' · ');
+}
+
 function quotaPeriod(part: string): string {
   if (part === 'Weekly') return strings.quotas.windowWeekly;
   if (part === 'Monthly') return strings.quotas.windowMonthly;

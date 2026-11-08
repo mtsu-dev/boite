@@ -214,8 +214,7 @@
   {/if}
 </RailFrame>
 
-{#snippet list()}
-  {#if teamsShown}
+{#snippet teamsBlock()}
     <div class="agents-section agents-section-head">
       <h2 class="section-label" id="{uid}-teams">{strings.teamChat.heading}</h2>
       {#if onnewteam && !view.store.owner}
@@ -242,8 +241,14 @@
         {#if onnewteam && view.store.owner}<button type="button" class="ghost small" onclick={newTeam} data-testid="agents-teams-empty-action"><Plus size={14} /><span class="ui-label">{strings.teamChat.newTeam}</span></button>{/if}
       </div>
     {/if}
-    {#if rows.length}<h2 class="agents-section section-label" data-testid="agents-bots-heading">{labels.heading}</h2>{/if}
+{/snippet}
+
+{#snippet list()}
+  <!-- Teams lead once there is one; before that their empty prompt waits under the bots, which are what there is. -->
+  {#if teamsShown && teams.length}
+    {@render teamsBlock()}
   {/if}
+  {#if teamsShown && rows.length}<h2 class="agents-section section-label" data-testid="agents-bots-heading">{labels.heading}</h2>{/if}
   {#if rows.length}
     <section class="agents-card" aria-label={labels.heading}>
       {#each rows as { machine, view: owner, row } (JSON.stringify([machine.id, row.profile.id]))}
@@ -272,6 +277,9 @@
         </AgentRow>
       {/each}
     </section>
+  {/if}
+  {#if teamsShown && !teams.length}
+    {@render teamsBlock()}
   {/if}
   {#if needle && !rows.length && !found.length && !teams.length}<p class="agent-empty">{labels.noMatch}</p>{/if}
 

@@ -30,7 +30,7 @@ describe('permission modes', () => {
   });
 
   it('says Codex writes in the folder on its default, and the open mode reaches the whole computer', () => {
-    expect(modeLabel('default', provider('codex-appserver'))).toBe('Ask outside this folder');
+    expect(modeLabel('default', provider('codex-appserver'))).toBe('Ask before working outside this folder');
     expect(modeHint('default', provider('codex-appserver'))).toContain('in this folder without asking');
     // Each mode named by what the agent does, so "Permission: Ask before running commands" reads at once.
     expect(modeLabel('default', provider('claude-sdk'))).toBe('Ask before edits and commands');

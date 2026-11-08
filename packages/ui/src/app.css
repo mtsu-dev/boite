@@ -263,11 +263,12 @@
   --color-subtle: #c8c8cd;
   /* Below reading contrast: a disabled mark, a placeholder glyph, never words that must be read. */
   --color-faint: #4a4a50;
-  /* A switch: a dark track off; on takes the accent, the one surface it may fill, so on and off never differ by grey alone. */
+  /* A switch: a dark track off, the light track of the foreground on, its knob the ink a primary wears. Neutral: the
+     accent stays for focus, checks and send, and on and off still differ by more than grey (track and knob swap). */
   --switch-off: var(--color-surface-3);
   --switch-knob: var(--color-subtle);
-  --switch-on: var(--color-accent);
-  --switch-knob-on: var(--color-accent-ink);
+  --switch-on: var(--color-foreground);
+  --switch-knob-on: var(--color-on-foreground);
   --color-selection: rgba(228, 228, 231, 0.18);
   --accent-hue: 295;
   --color-accent: oklch(75.5% 0.141 var(--accent-hue));
@@ -487,8 +488,8 @@
   --radius-bubble: 18px;
   /* Balanced timeline margins, with room for the message outline rail. */
   --outline-room: 38px;
-  /* Settings' column: the inset card's width less its gutters, up to where a row's label and its control drift apart. */
-  --settings-width: 1040px;
+  /* Settings' one calm column, centred in the inset card: a row's label and its control stay within reach of each other. */
+  --settings-width: 700px;
   --settings-gutter: clamp(var(--space-5), 3vw, 48px);
   --settings-padding: var(--space-6);
   /* The one spacing scale lists, cards, sheets and Settings share: a 4 px step up to
@@ -2510,11 +2511,13 @@ input[type=checkbox][role=switch]:disabled { opacity: .45; cursor: not-allowed; 
   .composer-wrap { padding-bottom: max(10px, env(safe-area-inset-bottom)); }
   .settings .page { padding: var(--space-6) var(--space-4); }
   .settings .page > header { margin-bottom: var(--space-5); }
-  .settings .page > .card, .settings .page > form > .card { padding: var(--space-4); }
   .settings .page > .card.flush { padding: 0; }
   .settings .page > .group-heading { margin-top: var(--space-6); }
   .settings .page .row { flex-wrap: wrap; }
-  .settings .page .switch-row { flex-wrap: wrap; gap: var(--space-3); }
+  .settings .page .switch-row { flex-wrap: wrap; gap: var(--space-2) var(--space-3); min-height: 48px; padding: var(--space-2) 0; }
+  /* A phone's grouped cards sit tighter: a smaller title step and less air under it, the rows keeping 44 px targets. */
+  .settings .page > .card, .settings .page > form > .card, .settings .page > .settings-stack > .card { padding: var(--space-3) var(--space-4); margin-bottom: var(--space-3); }
+  .settings .page .card h2 { min-height: 44px; margin-bottom: 0; font-size: var(--text-base); }
   /* Buttons under the last prompt and answer, or the message tapped (lib/message-reveal.svelte.ts). A settled prompt's ticks go with them; a pending one keeps its own. */
   .message[data-reveal]:not([data-latest]):not([data-revealed]) .message-actions,
   .message[data-reveal]:not([data-latest]):not([data-revealed]) .receipts.settled { display: none; }

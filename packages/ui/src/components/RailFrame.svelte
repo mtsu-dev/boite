@@ -27,6 +27,7 @@
     label,
     testid,
     drawer = false,
+    absent = false,
     scroller = $bindable(),
     onscroll,
     head,
@@ -38,6 +39,8 @@
     label?: string;
     testid?: string;
     drawer?: boolean;
+    /** No column on a desktop: nothing to list yet (lib/list-absent.ts). */
+    absent?: boolean;
     scroller?: HTMLDivElement;
     onscroll?: () => void;
     head: Snippet;
@@ -100,6 +103,8 @@
   class:drawer
   class:open={drawer && store.sidebarOpen}
   class:collapsed={store.sidebarCollapsed}
+  class:absent
+  aria-hidden={absent ? 'true' : undefined}
   class:was-folded={wasFolded}
   style:--sidebar-width={`${store.sidebarWidth}px`}
   aria-label={label}
@@ -180,6 +185,10 @@
       --slide-room: calc(var(--sidebar-width) + var(--frame-gap));
       transition: margin-left var(--dur-slide) var(--ease-slide), opacity var(--dur-3) var(--ease-out-quint), display var(--dur-slide) allow-discrete;
     }
+    /* No room taken, no head, no foot: the main card keeps the one frame gap of the row; a body that folds the column
+       itself (App.svelte's `sidebar-folded`) gives that gap as its padding, so then the column leaves the flow. */
+    .rail.absent { width: 0; padding: 0; overflow: hidden; visibility: hidden; transition: none; }
+    :global(.sidebar-folded) > .rail.absent { display: none; }
     .rail.collapsed {
       display: none;
       pointer-events: none;

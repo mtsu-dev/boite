@@ -15,12 +15,12 @@ export interface MenuItem {
   /** A project's tile before the label: its logo, its stack's mark or its initial, read through the Store that owns it. */
   projectTile?: { project: Project; store: Store };
   status?: { tone: 'success' | 'warning' | 'danger' | 'neutral'; label: string };
+  /** The chosen row of a list that is not a toggle: drawn with the same check as `checked`. */
   active?: boolean;
   /** A persistent toggle, announced and drawn as a checkbox in the context menu. */
   checked?: boolean;
   /** With `checked`: one choice of several, marked with a check instead of a switch. */
   radio?: boolean;
-  hideActiveMark?: boolean;
   /** A row that took over a button keeps that button's test id. */
   testid?: string;
   icon?: 'settings';
