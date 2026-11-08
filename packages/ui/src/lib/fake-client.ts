@@ -34,6 +34,7 @@ import {
   type ThreadId,
   type ThreadRetry,
   type ThreadWorktreeRemoval,
+  type TeamPostRef,
 } from '@boite/contracts';
 import { RpcFailure, type CallOptions, type ClientState, type EventHandler, type ObservableClient } from './client';
 import { closedFailure } from './rpc-error';
@@ -257,6 +258,15 @@ export class FakeClient implements ObservableClient {
     const thread = this.#ctx.threads.get(threadId);
     if (!thread) throw new Error(`no fake thread ${threadId}`);
     holdContactMail(this.#ctx, threadId, contacts);
+  }
+
+  /** Test fixture: a team post in its chat as an earlier routing rule recorded it, such as an owner post that woke nobody. */
+  recordTeamRouting(threadId: ThreadId, postId: string, routing: Pick<TeamPostRef, 'to' | 'routedBy' | 'notice'>): void {
+    const thread = this.#ctx.threads.get(threadId);
+    if (!thread) throw new Error(`no fake thread ${threadId}`);
+    const part = thread.messages.flatMap(message => message.parts).find(part => part.type === 'text' && part.teamPost?.id === postId);
+    if (part?.type !== 'text' || !part.teamPost) throw new Error(`no team post ${postId} in ${threadId}`);
+    Object.assign(part.teamPost, routing);
   }
 
   setMergedPrFixture(threadId: ThreadId, fixture: MergedPrFixture): void {

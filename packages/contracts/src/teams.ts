@@ -64,7 +64,7 @@ export interface Team {
 
 /** `team`: every member reads it. `private`: one recipient, a bot or the owner, and the owner. */
 export type TeamAudience = 'team' | 'private';
-/** Which routing rule picked the recipients (`docs/teams.md`). */
+/** Which routing rule picked the recipients (`docs/teams.md`). `single` and an owner's `none` only appear on posts routed before an owner post without a mention went to every member. */
 export type TeamRoute = 'mention' | 'everyone' | 'reply' | 'single' | 'dispatcher' | 'private' | 'none';
 
 export interface TeamPost {
@@ -123,16 +123,13 @@ export function teamMentions(text: string, members: readonly Pick<TeamMember, 'k
 /** `@tous` or `@everyone`. */
 export function mentionsEveryone(text: string): boolean { return /(^|[^\p{L}\p{N}_])@(tous|everyone)(?![\p{L}\p{N}_-])/iu.test(text); }
 
-/** An owner post nobody was named in, until the dispatcher replaces this one function: it wakes nobody and says so. */
-export function ownerFallback(): TeamRouting {
-  return { to: [], routedBy: 'none', notice: 'Nobody was pinged: name a bot with @name, or everyone with @tous.' };
-}
-
 /**
  * The first rule that applies (`docs/teams.md`, Routing): a private post to
  * its recipient; mentions, `@tous` or the recipients the composer picked; a
- * reply to its post's author; an owner post in a team of one bot to that bot;
- * otherwise an owner post to `ownerFallback` and a bot post to nobody.
+ * reply to its post's author; otherwise an owner post to every member, as
+ * `@tous` would, and a bot post to nobody, so bots never wake each other in a
+ * loop. An owner's reply to its own post names no one else and goes to every
+ * member too. Posts routed before carry their `routedBy` and notice as written.
  */
 export function routeTeamPost(
   team: Pick<Team, 'members'>,
@@ -145,9 +142,9 @@ export function routeTeamPost(
   if (mentionsEveryone(post.text)) return { to: others(members), routedBy: 'everyone' };
   const named = [...teamMentions(post.text, team.members), ...(post.to ?? []).filter(key => members.includes(key))];
   if (named.length > 0) return { to: others(named), routedBy: 'mention' };
-  if (post.inReplyTo && repliedAuthor !== null) return { to: others([repliedAuthor]), routedBy: 'reply' };
-  if (post.author === TEAM_OWNER && members.length === 1) return { to: others(members), routedBy: 'single' };
-  return post.author === TEAM_OWNER ? ownerFallback() : { to: [], routedBy: 'none' };
+  const owner = post.author === TEAM_OWNER;
+  if (post.inReplyTo && repliedAuthor !== null && !(owner && repliedAuthor === TEAM_OWNER)) return { to: others([repliedAuthor]), routedBy: 'reply' };
+  return owner ? { to: others(members), routedBy: 'everyone' } : { to: [], routedBy: 'none' };
 }
 
 /** What a member may read: group posts, and private posts it wrote or received. The owner reads all. */
