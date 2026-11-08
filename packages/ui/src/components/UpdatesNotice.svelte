@@ -280,7 +280,7 @@
   h3 span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   ul { list-style: none; margin: 0; padding: 0; }
   .part { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; column-gap: 8px; row-gap: 3px; padding: 5px 8px; border-radius: var(--radius-md); font-size: var(--text-sm); transition: opacity var(--dur-2); }
-  .part.done { opacity: 0.7; }
+  .part.done { color: var(--color-subtle); }
   .mark { display: grid; place-items: center; width: 18px; height: 18px; }
   .mark img { display: block; border-radius: 4px; }
   .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

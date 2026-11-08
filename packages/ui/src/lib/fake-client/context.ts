@@ -506,7 +506,7 @@ export class FakeContext {
     this.agentThreadId = options.agentThreadId ?? null;
     this.identity = {
       coreId,
-      name: options.coreName ?? 'This PC',
+      name: options.coreName ?? 'This computer',
       url: options.publicUrl ?? 'http://127.0.0.1:8777',
       publicKey: `fake-public-key-${coreId}`
     };

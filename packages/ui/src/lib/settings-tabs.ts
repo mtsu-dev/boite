@@ -13,6 +13,8 @@ interface SettingsPage {
    * where the phone has no such page.
    */
   phone: 'page' | 'sections' | 'home';
+  /** A phone routes it by its own entry, though the desktop shows it as a section of another. */
+  phoneOwn?: true;
 }
 
 /** The one table both layouts read a route from. */
@@ -25,37 +27,37 @@ const PAGES: Record<SettingsTab, SettingsPage> = {
   // A phone lists the providers, as the desktop does; plugins stay on the
   // desktop: a phone shows Home, and the window widened again shows the page.
   accounts: { owner: true, machine: true, phone: 'page' },
-  plugins: { owner: true, machine: true, phone: 'home' },
+  plugins: { owner: true, machine: true, phone: 'home', phoneOwn: true },
   brain: { owner: true, machine: true, phone: 'page' },
-  usage: { phone: 'page' },
+  usage: { phone: 'page', phoneOwn: true },
   limits: { machine: true, phone: 'page' },
   'task-manager': { phone: 'page' },
   resources: { owner: true, machine: true, phone: 'page' },
   machines: { phone: 'page' },
   advanced: { machine: true, phone: 'sections' },
   diagnostics: { owner: true, machine: true, phone: 'page' },
-  experiments: { machine: true, phone: 'page' }
+  experiments: { machine: true, phone: 'page', phoneOwn: true }
 };
 
 /** The cards of a long desktop page that a phone shows on a page of their own, and that page. */
 const SECTION_PAGES: Partial<Record<SettingsTab, Record<string, { page: PhoneSectionPage; owner?: true }>>> = {
   general: {
     conversations: { page: 'conversations' },
-    quiet: { page: 'quiet', owner: true },
+    // Quiet is a card of the conversations page, Browser profiles one of Secrets.
+    quiet: { page: 'conversations', owner: true },
     archived: { page: 'archived' },
     worktrees: { page: 'worktrees', owner: true },
     windows: { page: 'windows', owner: true },
     'window-exclusions': { page: 'windows', owner: true },
     secrets: { page: 'secrets' },
-    'browser-profiles': { page: 'browser-profiles', owner: true }
-  },
-  advanced: { 'auto-compact': { page: 'auto-compact', owner: true } }
+    'browser-profiles': { page: 'secrets', owner: true }
+  }
 };
 
-export type PhoneSectionPage = 'conversations' | 'quiet' | 'archived' | 'worktrees' | 'windows' | 'secrets' | 'browser-profiles' | 'auto-compact';
+export type PhoneSectionPage = 'conversations' | 'archived' | 'worktrees' | 'windows' | 'secrets';
 
 /**
- * The eight entries Settings lists, desktop and phone alike, each led by the
+ * The seven entries Settings lists, desktop and phone alike, each led by the
  * page its entry opens. The other pages of a group are tabs at the top of its
  * card (desktop) or rows of its index (phone): a page keeps its id, its route
  * and its test ids, so an old link lands on the same page, inside its group.
@@ -66,17 +68,24 @@ export const SETTINGS_GROUPS = [
   ['accounts', 'plugins'],
   ['brain'],
   ['limits', 'usage'],
-  ['resources'],
   ['machines'],
-  ['advanced', 'experiments', 'diagnostics', 'task-manager']
+  ['advanced', 'experiments', 'diagnostics', 'resources', 'task-manager']
 ] as const satisfies readonly (readonly SettingsTab[])[];
 
 /**
- * A page shown as the last section of another, once that one may open here:
- * the task manager is the live half of Diagnostics. A paired device, which
- * may not read the logs, still gets the task manager as a page of its own.
+ * A page shown as a last section of another, once that one may open here, in
+ * this order: Usage under Limits, Plugins under Accounts, Experiments under
+ * Advanced, then Resources and the task manager, the live half of
+ * Diagnostics. A paired device, which may not read the logs, still gets the
+ * task manager as a page of its own.
  */
-const MERGED: Partial<Record<SettingsTab, SettingsTab>> = { 'task-manager': 'diagnostics' };
+const MERGED: Partial<Record<SettingsTab, SettingsTab>> = {
+  usage: 'limits',
+  plugins: 'accounts',
+  experiments: 'advanced',
+  resources: 'diagnostics',
+  'task-manager': 'diagnostics'
+};
 
 /**
  * Cards that moved to another page, by their old page: a link to the old place
@@ -137,7 +146,7 @@ export function desktopPage(tab: SettingsTab, owner: boolean): SettingsTab {
 
 /** The page a phone shows for a route: a whole page, one card's page, or Home. */
 export function phonePage(route: SettingsTab, section: string | null | undefined, owner: boolean): SettingsTab | PhoneSectionPage {
-  const tab = viewOf(route, owner);
+  const tab = PAGES[route].phoneOwn ? route : viewOf(route, owner);
   const page = PAGES[tab];
   if (page.owner && !owner) return 'home';
   if (page.phone === 'page') return tab;

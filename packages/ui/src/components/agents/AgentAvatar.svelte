@@ -6,6 +6,7 @@
   import { avatarText, robotColor, robotOf, seededRobot, tintOf } from '../../lib/robots';
   import { agentPictures } from '../../lib/agent-pictures.svelte';
   import { threadTone } from '../../lib/thread-state';
+  import { avatarLit, moodFacts } from '../../lib/avatar-lit';
   import StatusMark from '../StatusMark.svelte';
   import Deferred, { parts } from '../Deferred.svelte';
   import type { RobotState } from './RobotFace.svelte';
@@ -29,8 +30,12 @@
    *
    * `squircle` rounds the corners instead of drawing a disc, about a third of
    * the side: the selected bot's picture in its column and on its desk.
+   *
+   * The picture is grey until `lit` (`lib/avatar-lit.ts`: the open bot, one
+   * that waits on the owner, failed or has news, which its own mood also
+   * says) or the pointer is over the control that holds it.
    */
-  let { kind, id, name, avatar = '', members = [], status = 'idle', mood, size = 40, ring = false, squircle = false, live = false }: {
+  let { kind, id, name, avatar = '', members = [], status = 'idle', mood, size = 40, ring = false, squircle = false, live = false, lit = false }: {
     kind: 'profile' | 'group' | 'team' | 'mission';
     id: string;
     name: string;
@@ -43,6 +48,7 @@
     ring?: boolean;
     squircle?: boolean;
     live?: boolean;
+    lit?: boolean;
   } = $props();
 
   const grouped = $derived(kind === 'group' || kind === 'team');
@@ -62,6 +68,7 @@
     return agentPictures.missing[own.trim()] !== undefined && !agentPictures.url(own) ? seededRobot(seed) : null;
   }
   const standing = $derived<AgentMood>(mood ?? (status === 'running' ? 'working' : status === 'waiting' ? 'waiting' : 'idle'));
+  const colored = $derived(lit || avatarLit(moodFacts(standing)));
   const face = $derived<RobotState>(size < 24 ? 'still' : standing === 'working' || standing === 'waiting' || standing === 'error' || standing === 'asleep' ? standing : 'idle');
   /** The ring's resting colour: the robot's body, else the disc's tint. */
   const ringTint = $derived(robot ? robotColor(robot) : tintOf(id));
@@ -75,7 +82,7 @@
   {#if image}<img class="agent-picture" src={image} alt="" draggable="false" />{:else if own}<Deferred part={parts.RobotFace} quiet>{#snippet children(RobotFace)}<RobotFace robot={own} {state} />{/snippet}</Deferred>{:else if !isAgentPicture(member.avatar)}<span class="ui-label">{avatarText(member.name, member.avatar)}</span>{/if}
 {/snippet}
 
-<span class="agent-avatar" class:robot={!!robot} class:pictured class:squircle style:--avatar-radius={squircle ? `${Math.round(size * 0.32)}px` : null} data-kind={kind} data-ring={ring ? standing : null} data-live={live || null} style:--size="{size}px" style:--tint={kind === 'mission' ? null : tintOf(id)} style:--ring-tint={ring ? ringTint : null} aria-hidden="true">
+<span class="agent-avatar" class:robot={!!robot} class:pictured class:squircle style:--avatar-radius={squircle ? `${Math.round(size * 0.32)}px` : null} data-kind={kind} data-ring={ring ? standing : null} data-live={live || null} data-lit={colored || null} style:--size="{size}px" style:--tint={kind === 'mission' ? null : tintOf(id)} style:--ring-tint={ring ? ringTint : null} aria-hidden="true">
   {#if ring}
     <svg class="avatar-ring" aria-hidden="true">
       <circle class="track" cx="50%" cy="50%" r={radius} pathLength="100" />
@@ -107,6 +114,15 @@
   /* Initials on a disc tinted by the id, a robot cropped to the same disc, two members stacked for a group. */
   .agent-avatar { --size: 40px; --tint: var(--series-other); position: relative; width: var(--size); height: var(--size); flex: none; display: grid; place-items: center; border-radius: 50%; background: color-mix(in srgb, var(--tint) 28%, var(--color-surface-2)); color: color-mix(in srgb, var(--tint) 40%, var(--color-foreground)); font-size: calc(var(--size) * 0.38); font-weight: 600; line-height: 1; user-select: none; }
   .agent-avatar.robot, .agent-avatar:has(.agent-avatar-stack) { background: none; }
+  /* Grey at rest, its colours when lit or under the pointer (the control that holds it, or the keyboard's row). */
+  .agent-avatar { filter: var(--avatar-rest); transition: filter var(--dur-2) var(--ease-out-quint); }
+  .agent-avatar[data-lit] { filter: none; }
+  @media (hover: hover) {
+    :global(:is(button, a, label, [role='button'], [role='option'], [role='menuitem'], [role='link']):hover:not(:disabled)) .agent-avatar { filter: none; }
+  }
+  :global(:is(button, a, [role='button'], [role='link']):focus-visible) .agent-avatar, :global([role='option'][aria-selected='true']) .agent-avatar { filter: none; }
+  @media (prefers-reduced-motion: reduce) { .agent-avatar { transition: none; } }
+  :global(html[data-motion='reduced']) .agent-avatar { transition: none; }
   .agent-avatar :global(svg.robot) { border-radius: 50%; overflow: hidden; transition: opacity var(--dur-3) var(--ease-out-quint); }
   /* An imported image fills the disc, cropped to it, whatever its shape. */
   .agent-picture { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; transition: opacity var(--dur-3) var(--ease-out-quint); }

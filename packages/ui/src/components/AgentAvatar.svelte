@@ -5,24 +5,27 @@
   import StatusMark from './StatusMark.svelte';
   import ProfileAvatar from './agents/AgentAvatar.svelte';
   import { threadTone } from '../lib/thread-state';
+  import { avatarLit } from '../lib/avatar-lit';
 
   /**
    * The other end of a discussion: its provider's mark, or for the persistent
    * agent that looks after this thread's project its robot, else a robot
    * glyph in that agent's colour, with its live state in the corner once it
    * works or failed. An idle agent has no dot: most discussions are with
-   * agents that finished.
+   * agents that finished. A bot's picture is grey unless it is the open one
+   * (`open`), waits on the owner or failed (`lib/avatar-lit.ts`).
    */
-  let { title, providerId, status, resident = false, agent, size = 30 }: {
+  let { title, providerId, status, resident = false, agent, size = 30, open = false, attention = false }: {
     title: string; providerId?: string; status?: ThreadStatus; resident?: boolean;
-    agent?: Pick<AgentProfile, 'id' | 'name' | 'avatar'>; size?: number;
+    agent?: Pick<AgentProfile, 'id' | 'name' | 'avatar'>; size?: number; open?: boolean; attention?: boolean;
   } = $props();
   let initial = $derived((title.trim()[0] ?? '?').toUpperCase());
 </script>
 
 {#if resident && agent}
   <span class="robot" data-testid="resident-avatar" data-agent-id={agent.id}>
-    <ProfileAvatar kind="profile" id={agent.id} name={agent.name} avatar={agent.avatar} status={status ?? 'idle'} {size} />
+    <ProfileAvatar kind="profile" id={agent.id} name={agent.name} avatar={agent.avatar} status={status ?? 'idle'} {size}
+      lit={avatarLit({ open, attention: attention || status === 'waiting', failed: status === 'error' })} />
   </span>
 {:else}
   <span class="avatar" class:resident style:--size="{size}px" aria-hidden="true">

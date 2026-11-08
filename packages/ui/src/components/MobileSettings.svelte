@@ -1,8 +1,8 @@
 <script lang="ts">
   import TelemetrySettings from './TelemetrySettings.svelte';
-  import { Activity, AppWindow, ArchiveRestore, ArrowLeft, Bell, Brain, ChevronRight, Coins, FlaskConical, FolderGit2, Gauge, KeyRound, Lock, MemoryStick, MessagesSquare, Monitor, Palette, Mic, Minimize2, Plug, Settings, Stethoscope, VolumeOff, Wrench } from '@lucide/svelte';
+  import { Activity, AppWindow, ArchiveRestore, ArrowLeft, Bell, Brain, ChevronRight, Coins, FlaskConical, FolderGit2, Gauge, KeyRound, MessagesSquare, Monitor, Palette, Mic, Plug, Settings, Stethoscope, Wrench } from '@lucide/svelte';
   import type { SettingsTab, Store } from '../lib/store.svelte';
-  import { workspace } from '../lib/workspace.svelte';
+  import { machineName, workspace } from '../lib/workspace.svelte';
   import { strings } from '../lib/strings';
   import { mobileOverlay } from '../lib/mobile-history';
   import { ScreenSlide } from '../lib/screen-slide.svelte';
@@ -45,17 +45,17 @@
    * under the desktop's names, each one a phone has a page for. General and Advanced open an index of their pages: the cards a phone
    * needs from the desktop's long pages, the archive or the keys, get a page
    * of their own, which a jump to the desktop's card (the palette, the project
-   * menu) lands on too (`lib/settings-tabs.ts`). Notifications and privacy are
-   * this phone's own screens, opened from General: they hold while the route
-   * that showed them does.
+   * menu) lands on too (`lib/settings-tabs.ts`). Notifications is this
+   * phone's own screen, opened from General: it holds while the route that
+   * showed it does.
    */
-  let local = $state.raw<{ screen: 'phone' | 'privacy'; tab: SettingsTab; section: unknown } | null>(null);
-  const openLocal = (screen: 'phone' | 'privacy') => { local = { screen, tab: store.settingsTab, section: store.settingsSection }; };
+  let local = $state.raw<{ screen: 'phone'; tab: SettingsTab; section: unknown } | null>(null);
+  const openLocal = (screen: 'phone') => { local = { screen, tab: store.settingsTab, section: store.settingsSection }; };
   let routed = $derived(phonePage(store.settingsTab, store.settingsSection?.id, store.owner));
   let page = $derived(local && local.tab === store.settingsTab && local.section === store.settingsSection ? local.screen : routed);
   const UNDER: Record<string, 'general' | 'advanced'> = {
-    phone: 'general', privacy: 'general', voice: 'general', conversations: 'general', quiet: 'general', archived: 'general', secrets: 'general', 'browser-profiles': 'general', windows: 'general', worktrees: 'general',
-    'auto-compact': 'advanced', 'task-manager': 'advanced', diagnostics: 'advanced', experiments: 'advanced'
+    phone: 'general', voice: 'general', conversations: 'general', archived: 'general', secrets: 'general', windows: 'general', worktrees: 'general',
+    'task-manager': 'advanced', diagnostics: 'advanced', experiments: 'advanced'
   };
   /** Home, a group's screen, or a page of a group's index. */
   const depthOf = (screen: string): number => screen === 'home' ? 0 : UNDER[screen] ? 2 : 1;
@@ -63,27 +63,20 @@
   const titleOf = (page: string): string => page === 'brain' ? strings.brain.heading : page === 'phone' ? strings.mobile.settingsPhone
     : page === 'general' ? strings.settings.tabs.general
     : page === 'advanced' ? strings.settings.tabs.advanced
-    : page === 'privacy' ? strings.mobile.settingsPrivacy
     : page === 'conversations' ? strings.settings.conversations
-    : page === 'quiet' ? strings.protection.quiet
     : page === 'accounts' ? strings.settings.tabs.accounts
     : page === 'archived' ? strings.settings.archived.heading
     : page === 'worktrees' ? strings.settings.worktrees.heading
     : page === 'windows' ? strings.windows.settings.allowedHeading
     : page === 'secrets' ? strings.secrets.heading
-    : page === 'browser-profiles' ? strings.browserProfiles.heading
-    : page === 'auto-compact' ? strings.settings.autoCompact
     : page === 'voice' ? strings.speech.heading : page === 'appearance' ? strings.settings.tabs.appearance
     : page === 'usage' ? strings.usage.heading : page === 'limits' ? strings.usage.limits
-    : page === 'resources' ? strings.settings.tabs.resources
     : page === 'task-manager' ? strings.taskManager.title
     : page === 'diagnostics' ? strings.diagnostics.heading
     : page === 'experiments' ? strings.settings.tabs.experiments : strings.settings.tabs.machines;
   /** The page's own title and its info mark step aside for the bar, so the bar carries the mark. */
   const infoOf = (page: string): string => page === 'usage' ? `${strings.usage.intro} ${strings.usage.note}`
-    : page === 'privacy' ? strings.telemetry.description
     : page === 'secrets' ? strings.secrets.info
-    : page === 'quiet' ? strings.protection.windows
     : page === 'worktrees' ? strings.settings.worktrees.intro
     : page === 'experiments' ? strings.settings.experiments.intro : '';
   let detail = $derived(page !== 'home');
@@ -128,12 +121,16 @@
     store.showSettings(group);
   }
 
-  // The task manager's route opens Diagnostics, where it is the last section: scroll to it.
+  // Resources and the task manager are Diagnostics' last sections: their route scrolls to its section, or to its card.
   $effect(() => {
-    if (page !== 'diagnostics' || store.settingsTab !== 'task-manager') return;
+    const route = store.settingsTab, section = store.settingsSection?.id;
+    if (page !== 'diagnostics' || (route !== 'task-manager' && route !== 'resources')) return;
     let release = () => {};
     let live = true;
-    void tick().then(() => { if (live && revealSettingsCard('task-manager', false, 'instant')) release = holdSettingsCard('task-manager'); });
+    void tick().then(() => {
+      const id = section && document.getElementById(`settings-${section}`) ? section : route;
+      if (live && revealSettingsCard(id, false, 'instant')) release = holdSettingsCard(id);
+    });
     return () => { live = false; release(); };
   });
 
@@ -165,10 +162,9 @@
         {#if store.owner}{@render row('settings-tab-brain', Brain, strings.brain.heading, () => store.showSettings('brain'))}{/if}
         <!-- Usage is a page of Limits, as on the desktop: the entry wears the rail's gauge and opens on the limits. -->
         {@render row('settings-tab-limits', Gauge, strings.usage.limits, () => store.showSettings('limits'))}
-        {#if store.owner}{@render row('settings-tab-resources', MemoryStick, strings.settings.tabs.resources, () => store.showSettings('resources'))}{/if}
         <!-- Machines carries the machine this phone reaches and how. -->
         <button class="ghost row machine-link" data-testid="mobile-settings-connection" onclick={() => store.showSettings('machines')}>
-          <Monitor size={20} /><span><strong class="ui-label">{strings.settings.tabs.machines}</strong><small>{#if machine}{`${machine.label} · `}{/if}<span class:ready={store.connection === 'ready'}>{store.pairingRequired ? strings.mobile.pairingRequired : strings.connection[store.connection]}</span></small></span><ChevronRight size={18} />
+          <Monitor size={20} /><span><strong class="ui-label">{strings.settings.tabs.machines}</strong><small>{#if machine}{`${machineName(machine)} · `}{/if}<span class:ready={store.connection === 'ready'}>{store.pairingRequired ? strings.mobile.pairingRequired : strings.connection[store.connection]}</span></small></span><ChevronRight size={18} />
         </button>
         {@render row('settings-tab-advanced', Wrench, strings.settings.tabs.advanced, () => store.showSettings('advanced'))}
       </div>
@@ -184,7 +180,7 @@
       <h1>{#if shown === 'limits'}<QuotaMachineScope store={target} fallback={title} />{:else}{title}{/if}{#if info}<InfoTip topic={title} text={info} testid="mobile-settings-info" />{/if}</h1>
     </header>
     <div class="detail" data-testid="mobile-settings-detail">
-      {#if bar && ['accounts', 'brain', 'voice', 'limits', 'resources', 'quiet', 'diagnostics', 'worktrees', 'windows', 'secrets', 'auto-compact', 'archived'].includes(shown)}<div class="bar">{@render bar()}</div>{/if}
+      {#if bar && ['accounts', 'brain', 'voice', 'limits', 'diagnostics', 'worktrees', 'windows', 'secrets', 'archived'].includes(shown)}<div class="bar">{@render bar()}</div>{/if}
       {#key target}
       {#if quota}
         <div class="tabs" role="tablist" aria-label={strings.usage.heading} data-testid="mobile-usage-tabs">
@@ -197,48 +193,50 @@
           <div class="rows">
             {@render row('mobile-settings-conversations', MessagesSquare, strings.settings.conversations, () => store.showSettings('general', 'conversations'))}
             {@render row('mobile-settings-phone', Bell, strings.mobile.settingsPhone, () => openLocal('phone'))}
-            {#if store.owner}{@render row('mobile-settings-quiet', VolumeOff, strings.protection.quiet, () => store.showSettings('general', 'quiet'))}{/if}
-            {@render row('mobile-settings-privacy', Lock, strings.mobile.settingsPrivacy, () => openLocal('privacy'))}
             {@render row('settings-tab-voice', Mic, strings.speech.heading, () => store.showSettings('voice'))}
             {@render row('mobile-settings-archived', ArchiveRestore, strings.settings.archived.heading, () => store.showSettings('general', 'archived'))}
             {@render row('mobile-settings-secrets', KeyRound, strings.secrets.heading, () => store.showSettings('general', 'secrets'))}
             {#if store.owner}
-              {@render row('mobile-settings-browser-profiles', Monitor, strings.browserProfiles.heading, () => store.showSettings('general', 'browser-profiles'))}
               {@render row('mobile-settings-windows', AppWindow, strings.windows.settings.allowedHeading, () => store.showSettings('general', 'windows'))}
               {@render row('mobile-settings-worktrees', FolderGit2, strings.settings.worktrees.heading, () => store.showSettings('general', 'worktrees'))}
             {/if}
           </div>
+          <!-- Privacy is two switches: a card at the index's foot, not a page of its own. -->
+          <TelemetrySettings {store} />
         </div>
       {:else if shown === 'advanced'}
         <div class="page index" data-testid="mobile-settings-advanced">
           <div class="rows">
-            {#if store.owner}{@render row('mobile-settings-compaction', Minimize2, strings.settings.autoCompact, () => store.showSettings('advanced', 'auto-compact'))}{/if}
             <!-- The phone follows the desktop app's experiments until it flips one here, and can follow it again from this page. -->
             {@render row('settings-tab-experiments', FlaskConical, strings.settings.tabs.experiments, () => store.showSettings('experiments'))}
             <!-- The task manager is Diagnostics' last section (lib/settings-tabs.ts); a paired phone, without the logs, opens it alone. -->
             {#if store.owner}{@render row('settings-tab-diagnostics', Stethoscope, strings.diagnostics.heading, () => store.showSettings('diagnostics'))}
             {:else}{@render row('settings-tab-task-manager', Activity, strings.taskManager.title, () => store.showSettings('task-manager'))}{/if}
           </div>
+          <!-- Compaction is one card: it sits at the index's foot, under the machine it changes. -->
+          {#if target.owner}
+            {#if bar}<div class="bar inline">{@render bar()}</div>{/if}
+            <div class="card-slot" id="settings-auto-compact"><CompactionSettings store={target} /></div>
+          {/if}
         </div>
       {:else if shown === 'accounts' && target.owner}
         <AccountsPage store={target} />
       {:else if shown === 'conversations'}
         <!-- General's Conversations card, the switches this phone keeps; the list groups from its own display options. -->
-        <div class="page"><section class="card" id="settings-conversations"><ConversationSwitches phone /></section></div>
-      {:else if shown === 'quiet' && target.owner}
-        <div class="page quiet-page"><QuietCard store={target} /></div>
+        <div class="page"><section class="card" id="settings-conversations"><ConversationSwitches phone /></section>
+          <!-- Quiet changes one machine: its bar sits above it, not above this phone's switches. -->
+          {#if target.owner}{#if bar}<div class="bar inline">{@render bar()}</div>{/if}<QuietCard store={target} />{/if}
+        </div>
       {:else if shown === 'brain' && target.owner}
         <BrainPage store={target} />
       {:else if shown === 'phone'}
         <div class="page phone-page">
           <!-- Which machine these apply to, once there is a choice, and the connection when it is not working. -->
           {#if workspace.machines.length > 1 || store.connection !== 'ready'}
-            <p class="scope" data-testid="mobile-settings-scope">{[workspace.machines.length > 1 ? (machine?.label ?? store.endpointUrl ?? strings.connection.current) : null, store.connection === 'ready' ? null : strings.connection[store.connection]].filter(Boolean).join(' · ')}</p>
+            <p class="scope" data-testid="mobile-settings-scope">{[workspace.machines.length > 1 ? (machine ? machineName(machine) : store.endpointUrl ?? strings.connection.current) : null, store.connection === 'ready' ? null : strings.connection[store.connection]].filter(Boolean).join(' · ')}</p>
           {/if}
           <PhoneSettings {store} showServerSettings={false} />
         </div>
-      {:else if shown === 'privacy'}
-        <div class="page phone-page privacy-page"><TelemetrySettings {store} /></div>
       {:else if shown === 'voice'}
         <VoiceSettings store={target} readOnly />
       {:else if shown === 'appearance'}
@@ -249,13 +247,12 @@
         <LimitsPage store={target} showTitle={false} />
       {:else if shown === 'task-manager'}
         <TaskManagerLoader {store} {onopenthread} />
-      {:else if shown === 'resources' && target.owner}
-        <ResourcesPage store={target} />
       {:else if shown === 'experiments'}
         <ExperimentsPage {store} {target} {bar} />
       {:else if shown === 'diagnostics' && target.owner}
         <div class="stack">
           <DiagnosticsPage store={target} {onopenthread} />
+          <div class="merged" id="settings-resources"><ResourcesPage store={target} /></div>
           <div class="merged" id="settings-task-manager"><TaskManagerLoader {store} {onopenthread} /></div>
         </div>
       {:else if shown === 'worktrees'}
@@ -263,11 +260,7 @@
       {:else if shown === 'windows'}
         <div class="page"><WindowAllowlistCard store={target} /><WindowExclusionsCard store={target} /></div>
       {:else if shown === 'secrets'}
-        <div class="page secrets-page"><SecretsCard /></div>
-      {:else if shown === 'browser-profiles'}
-        <div class="page"><BrowserProfilesCard /></div>
-      {:else if shown === 'auto-compact'}
-        <div class="page"><CompactionSettings store={target} /></div>
+        <div class="page secrets-page"><SecretsCard />{#if store.owner}<BrowserProfilesCard />{/if}</div>
       {:else if shown === 'archived'}
         <div class="page archived-page">
           <ArchivedThreads store={target} eager />
@@ -321,8 +314,6 @@
   .tab { min-width: 0; min-height: var(--touch-target); gap: var(--space-2); border: 1px solid transparent; border-radius: var(--radius-md); background: transparent; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 400; transition: background var(--dur-2) var(--ease-out-quint), color var(--dur-2) var(--ease-out-quint); }
   .tab.on { background: var(--color-foreground); border-color: var(--color-foreground); color: var(--color-on-foreground); }
   .tab :global(svg) { flex: none; }
-  /* The bar carries the page's name and its "i": the card's own heading steps aside. */
-  .privacy-page :global(.card > h2) { display: none; }
   .scope { overflow-wrap: anywhere; margin-top: 0; }
   .phone-page :global(.card) { padding: var(--space-4); }
   .detail :global(.page), .detail :global(.machines-page) { padding: var(--space-4); }
@@ -330,7 +321,8 @@
   /* Diagnostics then the task manager, one scroll: neither page scrolls on its own. */
   .stack > :global(.page), .stack > .merged > :global(.page) { height: auto; overflow: visible; }
   .stack > .merged > :global(.page) { padding-top: 0; }
-  .detail .stack > .merged > :global(.page.task-manager:not(.usage) > header) { display: flex; }
+  /* A merged page's title is its section's title. */
+  .detail .stack > .merged > :global(.page > header) { display: flex; }
   .stack > .merged :global(.page > header h1) { font-size: var(--text-md); }
   .bar + :global(.page) { padding-top: var(--space-3); }
   /* The bar above already names the page, so its own title steps aside. */
@@ -347,12 +339,11 @@
   /* The bar names the page and the line above says what it holds: the card's own heading and tip step aside. */
   .archived-page :global(#settings-archived > h2) { display: none; }
   .secrets-page :global(#settings-secrets > h2),
-  .worktrees-page :global(#settings-worktrees > h2),
-  .quiet-page :global(#settings-quiet > h2) { display: none; }
+  .worktrees-page :global(#settings-worktrees > h2) { display: none; }
   /* Its title stepped aside, the card keeps no room above it for one. */
   .archived-page :global(#settings-archived),
   .secrets-page :global(#settings-secrets),
-  .worktrees-page :global(#settings-worktrees),
-  .quiet-page :global(#settings-quiet),
-  .privacy-page :global(.card) { margin-top: 0; }
+  .worktrees-page :global(#settings-worktrees) { margin-top: 0; }
+  /* A bar inside a page, above the one card that changes a machine. */
+  .bar.inline { padding: var(--space-5) 0 0; }
 </style>

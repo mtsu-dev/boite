@@ -140,7 +140,7 @@
     <button type="button" class="ghost small icon back" data-testid="agent-discussion-back" aria-label={strings.agentMessages.back} title={strings.agentMessages.back} onclick={onback}>
       <ArrowLeft size={15} />
     </button>
-    <AgentAvatar title={discussion.title} providerId={discussion.providerId} status={discussion.status} resident={discussion.resident} agent={discussion.agent} size={32} />
+    <AgentAvatar title={discussion.title} providerId={discussion.providerId} status={discussion.status} resident={discussion.resident} agent={discussion.agent} size={32} open />
     <div class="who">
       <strong data-testid="agent-discussion-heading" tabindex="-1">{discussion.title}</strong>
       <span class="facts">

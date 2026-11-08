@@ -135,7 +135,7 @@
 
 <div
   class="question"
-  class:resolved={answer !== null || (!docked && !async && pending)}
+  class:resolved={answer !== null || (!docked && (!async || !pending))}
   class:async
   class:docked
   data-testid="question-card"
@@ -165,6 +165,12 @@
           </div>
         {/if}
       </div>
+    </div>
+  {:else if !pending && !docked}
+    <!-- Skipped, or dropped with its turn: the receipt, one quiet line, never the card again. -->
+    <div class="answered-row cancelled-row">
+      <span class="glyph"><MessageCircleQuestionMark size={15} strokeWidth={1.75} /></span>
+      <span class="given ui-label" data-testid="question-cancelled" title={text}>{fill(strings.chat.questionCancelled, { question: text })}</span>
     </div>
   {:else if !docked && !async && pending}
     <!-- The agent stopped for it: the question is written once, in the composer's dock; here a plain line and a quiet mark. -->
@@ -260,8 +266,6 @@
         </button>
         {/if}
       </div>
-    {:else if !pending}
-      <p class="muted description" data-testid="question-cancelled">{strings.chat.questionCancelled}</p>
     {/if}
   {/if}
   {/if}
@@ -290,9 +294,18 @@
     border-radius: 0;
     background: transparent;
     box-shadow: none;
-    padding: 10px 12px;
+    /* One inset on all four sides: the space under the last choice is the
+       space between two (a row's 8px, the 2px gap, then this). */
+    padding: 10px;
     gap: 8px;
   }
+  /* The choices are the card's one scroller: the head, the foot and the
+     card's own inset stay in sight however little room the dock gives it
+     (ThreadActivity hands the room down). A cut row fades and a line counts the rest. */
+  .question.docked > :global(*) { flex: none; }
+  .question.docked > .options { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  .question.docked > .options > .option { flex: none; }
+  .docked .options.clipped { mask-image: linear-gradient(to bottom, var(--color-foreground) calc(100% - 24px), transparent); }
 
   /* The question's own column beside the compact controls; folded, it holds one line. */
   .docked .prompt { display: block; min-width: 0; padding-block: calc((var(--control) - 22px) / 2); font-weight: inherit; }
@@ -301,11 +314,10 @@
     .docked .skip { min-height: var(--touch-target); padding: 0 8px; }
     /* A phone keeps the whole dock in the room its activity gives it
        (`--dock-cap`, less the head): the choices take it first, then scroll
-       in place, the field under them always in sight. A cut row fades and a
-       line counts the rest. */
-    .question.docked { padding: 8px 10px; gap: 4px; }
-    .docked .options { max-height: min(30dvh, calc(var(--dock-cap, 30dvh) - 64px)); overflow-y: auto; overscroll-behavior: contain; }
-    .docked .options.clipped { mask-image: linear-gradient(to bottom, var(--color-foreground) calc(100% - 24px), transparent); }
+       in place, the field under them always in sight. One 8px inset around
+       the card. */
+    .question.docked { padding: 8px; gap: 4px; }
+    .docked .options { max-height: min(30dvh, calc(var(--dock-cap, 30dvh) - 64px)); }
   }
   .more { align-self: flex-start; height: 24px; padding: 0 8px; color: var(--color-muted-foreground); font-size: var(--text-sm); }
   .skip { height: var(--control); padding: 0 8px; border-radius: var(--radius-sm); color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 550; }
@@ -384,6 +396,7 @@
   .answered-row { display: flex; align-items: center; justify-content: flex-start; gap: var(--activity-gap); width: 100%; height: auto; min-height: var(--control); padding: var(--activity-padding); border-radius: var(--radius-sm); font-weight: 400; text-align: left; }
   .answered-row:hover:not(:disabled) { background: var(--color-surface-2); }
   .answered-row:active:not(:disabled) { transform: none; }
+  .cancelled-row .given { color: var(--color-muted-foreground); }
   .answered-row .glyph { flex: none; width: var(--activity-glyph); justify-content: center; }
   .answer-detail { margin: 4px 0 8px calc(var(--activity-padding) + var(--activity-glyph) / 2); padding: 4px var(--activity-padding) 4px calc(var(--activity-glyph) / 2 + var(--activity-gap)); border-left: 1px solid var(--color-border); font-size: var(--text-sm); }
   .answer-detail p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }

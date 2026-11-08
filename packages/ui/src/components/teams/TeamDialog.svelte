@@ -13,6 +13,7 @@
   import { teamsOf } from '../../lib/teams.svelte';
   import type { Machine } from '../../lib/workspace.svelte';
   import AgentAvatar from '../agents/AgentAvatar.svelte';
+  import { avatarLit } from '../../lib/avatar-lit';
   import InfoTip from '../InfoTip.svelte';
 
   /**
@@ -171,7 +172,7 @@
               <li class="choice-row">
                 <button type="button" class="choice" class:on aria-pressed={on} aria-disabled={reason ? 'true' : undefined} title={reason ?? undefined}
                   onclick={() => toggle(choice)} data-testid="team-dialog-member" data-bot-id={choice.botId} data-key={choice.key}>
-                  <AgentAvatar kind="profile" id={choice.botId} name={choice.name} avatar={choice.avatar} size={26} />
+                  <AgentAvatar kind="profile" id={choice.botId} name={choice.name} avatar={choice.avatar} size={26} lit={avatarLit({ open: on })} />
                   <span class="choice-name">{choice.name}</span>
                   {#if choice.machine}<span class="choice-machine ui-label" data-testid="team-dialog-machine">{choice.machine}</span>{/if}
                   <span class="mark" aria-hidden="true">{#if on}<Check size={14} strokeWidth={2.25} />{/if}</span>

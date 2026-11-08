@@ -19,6 +19,7 @@
   import SaveStatus from '../SaveStatus.svelte';
   import { encodeRobot, robotOf, seededRobot, shuffledRobot } from '../../lib/robots';
   import AgentAvatar from './AgentAvatar.svelte';
+  import { avatarLit } from '../../lib/avatar-lit';
   import RobotPicker from './RobotPicker.svelte';
   import AgentMachine from './AgentMachine.svelte';
 
@@ -303,7 +304,7 @@
     <!-- The robot and the name read as one identity: the picture beside the field that names it. -->
     <div class="agent-identity">
       <div class="agent-portrait">
-        <AgentAvatar kind="profile" id={profile?.id ?? ''} {name} avatar={avatar()} size={72} />
+        <AgentAvatar kind="profile" id={profile?.id ?? ''} {name} avatar={avatar()} size={72} lit={avatarLit({ open: true })} />
         <div class="agent-portrait-tools">
           <button type="button" class="ghost icon small" title={labels.robot.shuffle} aria-label={labels.robot.shuffle} onclick={() => wearRobot(shuffledRobot(secureId(), robot.family))} data-testid="robot-shuffle"><Dices size={15} strokeWidth={1.75} /></button>
           <button type="button" class="ghost icon small" class:active={dressing} aria-pressed={dressing} title={labels.robot.customize} aria-label={labels.robot.customize} onclick={() => { dressing = !dressing; }} data-testid="robot-customize"><Palette size={15} strokeWidth={1.75} /></button>

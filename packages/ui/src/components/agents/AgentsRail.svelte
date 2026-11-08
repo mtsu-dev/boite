@@ -15,6 +15,7 @@
   import { workspace, type Machine } from '../../lib/workspace.svelte';
   import RailFrame from '../RailFrame.svelte';
   import AgentAvatar from './AgentAvatar.svelte';
+  import { avatarLit } from '../../lib/avatar-lit';
   import AgentRow from './AgentRow.svelte';
   import BotColumn from './BotColumn.svelte';
   import BotColumnHead from './BotColumnHead.svelte';
@@ -230,7 +231,7 @@
           <AgentRow title={row.team.name} open={row.machine.store === view.store && activeTeam === row.team.threadId} marked={!!row.chat?.unread}
             away={row.machine.store.connection !== 'ready'} at={lastPost(row)} {now} detail={names} tone={row.team.paused ? 'asleep' : 'idle'}
             machine={elsewhere(row.machine)} testid="agent-team-{row.team.id}" onclick={() => onteam(row.machine, row.team)}>
-            {#snippet picture()}<AgentAvatar kind="team" id={row.team.id} name={row.team.name} members={pictures(row)} size={34} />{/snippet}
+            {#snippet picture()}<AgentAvatar kind="team" id={row.team.id} name={row.team.name} members={pictures(row)} size={34} lit={avatarLit({ open: row.machine.store === view.store && activeTeam === row.team.threadId, unread: !!row.chat?.unread })} />{/snippet}
           </AgentRow>
         {/each}
       </section>
@@ -263,7 +264,8 @@
           machine={elsewhere(machine)} testid="agent-entry-{row.profile.id}" onclick={() => onopen(machine, row.profile.id)}
           pending={leavingLine(owner, row.profile.id)} pinned={row.profile.pinned === true} onmenu={event => menu(event, machine, owner, row.profile.id)}
           renaming={renaming === rowKey(machine, row.profile.id)} onrename={name => rename(owner, row.profile.id, name)}>
-          {#snippet picture()}<AgentAvatar kind="profile" id={row.profile.id} name={row.profile.name} avatar={row.profile.avatar} mood={moodOf(tone, unread)} size={34} />{/snippet}
+          {#snippet picture()}<AgentAvatar kind="profile" id={row.profile.id} name={row.profile.name} avatar={row.profile.avatar} mood={moodOf(tone, unread)} size={34}
+            lit={avatarLit({ open: owner === view && active === row.profile.id, attention: tone === 'waiting', failed: tone === 'error', unread })} />{/snippet}
         </AgentRow>
       {/each}
     </section>

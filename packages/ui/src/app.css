@@ -539,6 +539,8 @@
   --motion-in: var(--dur-enter) var(--ease-enter);
   --motion-out: var(--dur-exit) var(--ease-exit);
   --motion: 1;
+  /* A bot's picture at rest: grey, a touch under its lit tone (lib/avatar-lit.ts). */
+  --avatar-rest: grayscale(1) brightness(0.92) contrast(0.95);
   --z-whip: 100;
   --z-window-resize: 11000;
   --window-resize-edge: 5px;

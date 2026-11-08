@@ -2,6 +2,7 @@
   import { secondClock } from '../lib/clock.svelte';
   import { Bot, Brain, ChevronRight, FoldVertical, FilePen, FileText, Globe, Search, ShieldCheck, ShieldX, SquareTerminal, TriangleAlert, Wrench } from '@lucide/svelte';
   import type { PermissionRequest, RequestId } from '@boite/contracts';
+  import { verdictWord } from '../lib/verdict-word';
   import { fill, strings } from '../lib/strings';
   import { elapsed } from '../lib/format';
   import { agentSummary, compactionMark, compactionText, familyOf, liveLabel, pairPermissions, runSpan, runSummary, thinkingShown, ThoughtTitleScan, type ActivityPart, type CompactionPart, type PermissionStep, type ThinkingStep, type ToolPart } from '../lib/tool-groups';
@@ -73,7 +74,7 @@
     return thinkingShown(part, isLive(index)) ? [{ part, index }] : [];
   }));
   /** The run's answers on its folded line: a cross when the user refused any call. */
-  let verdict = $derived.by(() => {
+  let verdict = $derived.by((): 'allow' | 'deny' | null => {
     const decisions = [...asked.values()].map((permission) => permission.decision);
     return decisions.includes('deny') ? 'deny' : decisions.includes('allow') ? 'allow' : null;
   });
@@ -177,7 +178,7 @@
       {/if}
       {#if verdict}
         <span class="verdict" class:denied={verdict === 'deny'} data-testid="tool-group-permission" data-decision={verdict} title={said} aria-label={said}>
-          {#if verdict === 'allow'}<ShieldCheck size={13} strokeWidth={2} />{:else}<ShieldX size={13} strokeWidth={2} />{/if}
+          {#if verdict === 'allow'}<ShieldCheck size={13} strokeWidth={2} />{:else}<ShieldX size={13} strokeWidth={2} />{/if}<span class="ui-label verdict-word">{verdictWord(verdict)}</span>
         </span>
       {/if}
       {#if issues}
@@ -263,9 +264,13 @@
 
   .verdict {
     display: inline-flex;
+    align-items: center;
+    gap: 4px;
     flex: none;
     color: var(--color-success);
   }
+  /* The verdict's word, the receipt's own, beside the shield. */
+  .verdict-word { font-size: var(--text-sm); }
 
   .verdict.denied { color: var(--color-danger); }
 

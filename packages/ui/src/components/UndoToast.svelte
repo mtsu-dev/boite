@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { X } from '@lucide/svelte';
+  import { RotateCcw, X } from '@lucide/svelte';
   import { Closing } from '../lib/closing.svelte';
   import { toastSlot } from '../lib/notify-corner';
   import { collapseMs } from '../lib/row-collapse';
@@ -45,30 +45,21 @@
 
 {#if toast.shown}
   <div class="toast-slot" use:toastSlot>
-    <div class="undo-toast" class:closing={toast.closing} role="status" use:toast.attach onanimationend={toast.end} data-testid="undo-toast">
-      <span class="text">{text}</span>
+    <!-- The one notice card (notify-corner.css): its mark, its line, one way to act, the one dismiss. -->
+    <div class="notify-card undo-toast" data-tone="quiet" class:closing={toast.closing} role="status" use:toast.attach onanimationend={toast.end} data-testid="undo-toast">
+      <span class="notify-mark" aria-hidden="true"><RotateCcw size={16} strokeWidth={1.75} /></span>
+      <span class="notify-lines"><span class="notify-title text">{text}</span></span>
       <button type="button" class="small undo" data-testid="undo-action" title={strings.sidebar.undoHint} onclick={() => void undo.take(onerror)}><span class="ui-label">{strings.sidebar.undo}</span></button>
-      <button type="button" class="ghost small icon" aria-label={strings.common.dismiss} title={strings.common.dismiss} onclick={() => undo.dismiss()}><X size={14} /></button>
+      <button type="button" class="ghost icon notify-dismiss" aria-label={strings.common.dismiss} title={strings.common.dismiss} onclick={() => undo.dismiss()}><X size={14} /></button>
     </div>
   </div>
 {/if}
 
 <style>
-  .undo-toast {
-    position: relative;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    box-sizing: border-box;
-    width: 100%;
-    padding: 6px 6px 6px 14px;
-    border: 1px solid var(--color-edge);
-    border-radius: var(--radius-lg);
-    background: var(--color-surface-2);
-    box-shadow: var(--shadow-e3);
-    font-size: var(--text-sm);
-    animation: rise var(--motion-in);
-  }
+  /* The card's look is the shared one; a toast only arrives and leaves. */
+  .undo-toast { align-items: center; animation: rise var(--motion-in); }
+  .undo-toast .notify-mark { margin-top: 0; }
+  .undo-toast .notify-dismiss { margin: 0; }
 
   .undo-toast.closing {
     animation: fade-out var(--motion-out);
@@ -77,19 +68,13 @@
 
   /* Two lines before an ellipsis: a long title still reads on a phone. */
   .text {
-    min-width: 0;
-    overflow: hidden;
     display: -webkit-box;
+    overflow: hidden;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
     line-clamp: 2;
     line-height: 1.35;
-    overflow-wrap: anywhere;
   }
 
-  .undo {
-    flex: none;
-    color: var(--color-foreground);
-    font-weight: 600;
-  }
+  .undo { flex: none; font-weight: 600; }
 </style>

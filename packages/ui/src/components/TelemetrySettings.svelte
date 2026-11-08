@@ -52,10 +52,9 @@
 
 {#if store.owner}
   <section class="card" id="settings-privacy" data-testid="telemetry-settings">
-    <h2 class="ui-label-box"><span class="ui-label">{strings.telemetry.heading}</span><InfoTip topic={strings.telemetry.heading} text={strings.telemetry.description} /></h2>
+    <h2 class="ui-label-box"><span class="ui-label">{strings.telemetry.heading}</span><InfoTip topic={strings.telemetry.heading} text={`${strings.telemetry.description} ${strings.telemetry.choiceNotice}`} testid="telemetry-choice-notice" /></h2>
     {#if consent}
       {#if !consent.configured}<p class="hint">{strings.telemetry.unconfigured}</p>{/if}
-      {#if consent.configured}<p class="hint" data-testid="telemetry-choice-notice">{strings.telemetry.choiceNotice}</p>{/if}
       <label for="{uid}-basic" class="switch-row">
         <span class="text ui-label-box"><span class="ui-label" id="{uid}-basic-name">{strings.telemetry.basic}</span><InfoTip topic={strings.telemetry.basic} text={strings.telemetry.basicHint} />{#if ceiling === 'off'}<PolicyLock {store} keys={['analytics']} />{/if}</span>
         <input id="{uid}-basic" aria-labelledby="{uid}-basic-name" type="checkbox" role="switch" data-testid="telemetry-basic" checked={consent.mode !== 'off'} disabled={busy || ceiling === 'off'}
@@ -67,10 +66,10 @@
           onchange={event => void change(event.currentTarget.checked ? 'enhanced' : 'basic')} />
       </label>
       {#if consent.pendingDeletion}<p class="hint">{strings.telemetry.pending}</p>{/if}
-      <div class="actions">
+      {#if consent.mode === 'enhanced' || consent.pendingDeletion}<div class="actions">
         {#if consent.mode === 'enhanced'}<button disabled={busy} onclick={() => void dataAction('export')}><span class="ui-label">{strings.telemetry.export}</span></button>{/if}
         {#if consent.pendingDeletion}<button disabled={busy || ceiling === 'off'} onclick={() => void dataAction('retryForget')}><span class="ui-label">{strings.telemetry.retry}</span></button>{/if}
-      </div>
+      </div>{/if}
     {/if}
     {#if error}<p role="alert">{error}</p>{/if}
   </section>

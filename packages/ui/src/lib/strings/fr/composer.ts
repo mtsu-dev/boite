@@ -70,7 +70,7 @@ export const fr: Translation = {
     installInSettings: 'Installer dans les réglages',
     effortTitle: 'Effort',
     speed: 'Vitesse de réponse',
-    pickerMore: 'Vitesse de réponse et mémoire',
+    pickerMore: 'Accès, vitesse et contexte',
     effortDefault: 'Par défaut',
     effortDefaultHint: "Laisser l'agent choisir son propre niveau pour ce modèle",
     standardSpeed: 'Vitesse normale',

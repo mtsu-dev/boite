@@ -6,7 +6,8 @@
   export type SettingsEntry = { tab: SettingsTab; section: string | null; label: string; trail: string };
   export type SettingsTile = { id: SettingsTab; label: string; icon: Component<{ size?: number; strokeWidth?: number }> };
   /** A group of the nav and of Home: its first page, then the others it holds. */
-  export type SettingsGroup = SettingsTile & { members: SettingsTile[] };
+  /** A nav entry: its lead page, the pages tabbed beside it and the pages merged into it as sections. */
+  export type SettingsGroup = SettingsTile & { members: SettingsTile[]; sections?: SettingsTile[] };
 </script>
 
 <script lang="ts">
@@ -65,12 +66,13 @@
 
 
   /**
-   * What a tile holds when it has no state to show: its other pages, else the
+   * What a tile holds when it has no state to show: its other pages and merged sections, else the
    * first cards of its own page, so every tile says what is inside it.
    */
   function contents(tile: SettingsGroup): { text: string; tone?: 'call' } | null {
-    const names = tile.members.length > 0
-      ? tile.members.map((member) => member.label)
+    const inside = [...tile.members, ...tile.sections ?? []];
+    const names = inside.length > 0
+      ? inside.map((member) => member.label)
       : entries.filter((entry) => entry.tab === tile.id && entry.section !== null && entry.trail === tile.label).slice(0, 3).map((entry) => entry.label);
     return names.length > 0 ? { text: names.join(' · ') } : null;
   }

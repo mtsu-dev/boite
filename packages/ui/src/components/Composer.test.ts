@@ -464,9 +464,13 @@ function inPicker(testid: string): HTMLElement | null {
     document.querySelector<HTMLElement>('[data-testid=composer-picker]')?.click();
     flushSync();
   }
-  // Speed, permissions and context sit behind the picker's More row: unfold it to reach them.
+  // The permission, speed and context sit behind the picker's More row, a level of its own: open it to reach them, and come back when the row is not there.
   if (!document.querySelector(`[data-testid=${testid}]`)) {
     document.querySelector<HTMLElement>('[data-testid=composer-picker-more][aria-expanded=false]')?.click();
+    flushSync();
+  }
+  if (!document.querySelector(`[data-testid=${testid}]`)) {
+    document.querySelector<HTMLElement>('[data-testid=composer-picker-more][aria-expanded=true]')?.click();
     flushSync();
   }
   // The providers' lists sit behind All models when the picker opens on the models in use.
@@ -599,20 +603,55 @@ test('a first run shows the reasoning, mode and worktree chips at their defaults
   await waitFor(() => effortChip() !== null);
   // The built-in entry shows the scale at once; the account's catalog adds the fast mode.
   await waitFor(() => store.modelOf(store.defaultChoice())?.speeds !== undefined);
-  // The first level holds the models, the effort and the permission; More folds the rest.
-  expect(document.querySelector('[data-testid=composer-mode]')).not.toBeNull();
+  // The first level holds the models and the effort; More folds the permission and the rest.
+  expect(document.querySelector('[data-testid=composer-mode]')).toBeNull();
   expect(document.querySelector('[data-testid=effort-speed]')).toBeNull();
   expect(plusItem('composer-worktree')?.getAttribute('aria-checked')).toBe('false');
   expect(document.querySelector('[data-testid=composer-more]')).toBeNull();
   expect(document.querySelector('[data-testid=composer-pin-effort]')).toBeNull();
 
-  // Opus 5.5 has a fast mode: its own row under the levels, behind More, standard first, both by name.
+  // Opus 5.5 has a fast mode: its own row behind More, which opens as a level of its own in the picker's place, standard first, both by name.
+  const shown = () => Array.from(query('[data-testid=composer-picker-menu]').querySelectorAll('[data-testid=composer-effort],[data-testid=effort-speed],[data-testid=composer-mode],[data-testid=picker-shortlist],[data-testid=picker-all-models]')).map((row) => row.getAttribute('data-testid'));
+  await waitFor(() => inPicker('composer-effort') !== null);
+  expect(shown()).toEqual(expect.arrayContaining(['composer-effort']));
+  expect(shown()).not.toContain('effort-speed');
+  expect(shown()).not.toContain('composer-mode');
   await waitFor(() => inPicker('effort-speed-menu') !== null);
-  const rows = Array.from(query('[data-testid=composer-picker-menu]').querySelectorAll('[data-testid=composer-effort],[data-testid=effort-speed],[data-testid=composer-mode]'));
-  expect(rows.map((row) => row.getAttribute('data-testid'))).toEqual(['composer-effort', 'composer-mode', 'effort-speed']);
+  expect(shown()).toEqual(['composer-mode', 'effort-speed']);
   expect(picked('effort-speed-menu')).toBe('Standard speed');
   query<HTMLButtonElement>('[data-testid=effort-speed-menu] [data-value=fast]').click();
   await waitFor(() => picked('effort-speed-menu') === 'Fast');
+});
+
+test("the picker's speed and context row opens a level of its own, left comes back, and each opening starts on the models", async ({ app: _app }) => {
+  await openDraft();
+  await waitFor(() => store.modelOf(store.defaultChoice())?.speeds !== undefined);
+  const menu = () => document.querySelector<HTMLElement>('[data-testid=composer-picker-menu]');
+  const more = () => menu()?.querySelector<HTMLButtonElement>('[data-testid=composer-picker-more]') ?? null;
+  query<HTMLButtonElement>('[data-testid=composer-picker]').click(); flushSync();
+  await waitFor(() => more() !== null);
+  // The first level: the models, the effort, then one named row; speed waits behind it.
+  expect(more()!.textContent).toContain(strings.composer.pickerMore);
+  expect(menu()!.querySelector('[data-testid=composer-effort]')).not.toBeNull();
+  expect(menu()!.querySelector('[data-testid=effort-speed]')).toBeNull();
+  more()!.click(); flushSync();
+  // Its level alone, in the picker's place: the permission, then speed, no model and no effort, the row its way back.
+  await waitFor(() => menu()?.querySelector('[data-testid=effort-speed]') !== null);
+  expect(menu()!.querySelector('[data-testid=composer-effort], [data-testid=picker-shortlist], [data-testid=picker-all-models], [data-model]')).toBeNull();
+  expect(more()!.getAttribute('aria-expanded')).toBe('true');
+  await waitFor(() => menu()!.querySelector('[data-testid=composer-mode]')!.contains(document.activeElement));
+  press('ArrowLeft'); flushSync();
+  await waitFor(() => menu()?.querySelector('[data-testid=composer-effort]') !== null);
+  expect(menu()!.querySelector('[data-testid=effort-speed]')).toBeNull();
+  await waitFor(() => document.activeElement === more());
+  // Closed on the level, the picker opens again on its first one.
+  more()!.click(); flushSync();
+  await waitFor(() => menu()?.querySelector('[data-testid=composer-mode]')?.contains(document.activeElement) === true);
+  press('Escape'); flushSync();
+  await waitFor(() => menu() === null);
+  query<HTMLButtonElement>('[data-testid=composer-picker]').click(); flushSync();
+  await waitFor(() => menu()?.querySelector('[data-testid=composer-effort]') !== null);
+  expect(more()!.getAttribute('aria-expanded')).toBe('false');
 });
 
 test('the speed row picks fast, ultrafast and standard in a draft and saves each native tier on a thread', async ({ app: _app }) => {
@@ -948,12 +987,13 @@ test('Enter in the emptied composer allows the docked permission, then the input
   expect(Array.from(document.querySelectorAll('[data-testid=timeline] .part')).filter((part) => part.children.length === 0)).toHaveLength(0);
   // The decision takes the box's head and the row under the field stays whole:
   // the "+", the named model chip, then one round button, Stop or Send, never both.
+  // A turn standing on the owner's answer is not working: no Stop beside the ask, Deny is the way out.
   const row = () => Array.from(query('[data-testid=composer] .bar').querySelectorAll<HTMLElement>('[data-testid=composer-options], [data-testid=composer-picker], [data-testid=composer-stop], [data-testid=composer-send]:not(.resting)')).map((node) => node.dataset.testid);
-  expect(row()).toEqual(['composer-options', 'composer-picker', 'composer-stop']);
+  expect(row()).toEqual(['composer-options', 'composer-picker', 'composer-send']);
   expect(query('[data-testid=composer-picker]').querySelector('.label')?.textContent?.trim()).toBeTruthy();
   const rpc = vi.spyOn(store.client!, 'call');
   await type('Now please');
-  // A letter written turns Stop into Send in the same place; nothing else in the row moves.
+  // A letter written keeps Send in the same place; nothing else in the row moves.
   await waitFor(() => row().join() === 'composer-options,composer-picker,composer-send');
   press('Enter');
   await type('After that');

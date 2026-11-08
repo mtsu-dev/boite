@@ -242,6 +242,8 @@ test('a permission is one element with its call: the card stands for the call wh
     const shield = document.querySelector('[data-testid=tool-card] [data-testid=tool-permission]');
     expect(shield?.getAttribute('data-decision')).toBe('allow');
     expect(shield?.getAttribute('title')).toBe('Allowed by you');
+    // The verdict reads in words beside the shield, as the receipt line words it.
+    expect(shield?.textContent?.trim()).toBe('Allowed');
   } finally { store.detach(); client.close(); }
 });
 

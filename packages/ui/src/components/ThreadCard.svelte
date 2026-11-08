@@ -24,6 +24,7 @@
     showDone = false,
     compact = false,
     at,
+    ask,
     detail,
     action,
     where
@@ -40,7 +41,9 @@
     compact?: boolean;
     /** Activity's row (ActivityRow.svelte): since when, at the end of the title's line, before `action`. */
     at?: number;
-    /** Activity: what the thread asks, under its title, whole. */
+    /** Activity: what the thread asks, on the title's line when both fit, else under it, whole (ThreadHeadline.svelte). */
+    ask?: Snippet;
+    /** Activity: what runs under the title's line, whole: the command asked for, the sub-agents asking the same. */
     detail?: Snippet;
     /** Activity: the row's one action, at the end of the title's line, outside the row's own button; it wraps itself in `.feed-action`. */
     action?: Snippet;
@@ -141,10 +144,10 @@
       onclick={() => void workspace.select(owner, thread.id)}
       ondblclick={rename}
     >
-      <ThreadHeadline {owner} {thread} {now} {open} tile={compact ? project : undefined} {pullRequest} mark />
+      <ThreadHeadline {owner} {thread} {now} {open} tile={compact ? project : undefined} {pullRequest} mark {ask} />
       {#if detail}
-        <!-- Activity: who asks (the tile and the title, two lines of it), then what, whole; the time and the one
-             action end the title's line. -->
+        <!-- Activity: who asks (the tile and the title, two lines of it) and what, on one line when it fits; the
+             mark, the time and the one action end that line; a command runs whole under it. -->
         {@render detail()}
       {:else}
         {#if where}<span class="where ui-label" data-testid="thread-where">{where}</span>{/if}
@@ -200,8 +203,9 @@
     user-select: none;
   }
   /* Its machine dropped: the row still opens, to read what is held and queue a prompt. */
-  .thread.offline .row {
-    opacity: 0.55;
+  .thread.offline .row,
+  .thread.offline .row :global(*) {
+    color: var(--color-subtle);
   }
   /* One line of 32 px: the title's 20 px line in 6 px of padding. */
   .row {
@@ -234,6 +238,8 @@
      line, so only a descender's room is kept. */
   .feed .row :global(.headline .title) { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; padding-bottom: 0.25em; margin-bottom: -0.25em; }
   .feed .row :global(.headline > .tile) { margin-top: 2px; }
+  /* The mark centred on the title's first 20 px line, like the time and the action beside it. */
+  .feed .row :global(.headline > .when) { height: 20px; }
   .feed-side { position: absolute; top: 0; right: 0; display: flex; align-items: center; gap: 8px; height: calc(20px + 2 * var(--feed-pad)); padding-right: var(--pad-x); }
   .feed-side time { min-width: var(--feed-time); line-height: 20px; font-size: var(--text-xs); color: var(--color-subtle); text-align: end; font-variant-numeric: tabular-nums; }
   /* The menu takes the time's place, never the action's. */

@@ -2,7 +2,7 @@ import type { Translation } from '../../i18n.svelte';
 
 export const fr: Translation = {
   machines: {
-    heading: 'Machines', local: 'Ce PC', projects: 'Projets', recent: 'Récent',
+    heading: 'Machines', local: 'Cet ordinateur', projects: 'Projets', recent: 'Récent',
     intro: 'Chaque machine exécute ses propres agents sur ses propres fichiers.',
     details: 'Détails', address: 'Adresse', updateFailed: 'Mise à jour échouée',
     label: 'Nom de la machine', icon: 'Icône de la machine', icons: { desktop: 'Ordinateur fixe', laptop: 'Portable', phone: 'Téléphone', tablet: 'Tablette', apple: 'Mac', server: 'Serveur', rack: 'Baie', nas: 'NAS', database: 'Base de données', cloud: 'Cloud', cpu: 'Processeur', router: 'Routeur', terminal: 'Terminal', bot: 'Bot', gamepad: 'Console', tv: 'Télé', house: 'Maison' }, link: "Lien d'une autre machine", add: 'Ajouter une machine', adding: 'Connexion', connect: 'Connecter',

@@ -31,7 +31,6 @@ export const fr: Translation = {
     computer: 'Ordinateur connecté',
     pairAgain: 'Rajouter',
     settingsPhone: 'Notifications',
-    settingsPrivacy: 'Confidentialité',
     settingsBack: 'Retour aux réglages',
     /** Activity's second line: why the thread is listed. */
     feed: { run: 'Veut lancer :', helperAsks: '{title} vous attend', updates: 'Nouvelles', verb: { answer: 'Répondre', allow: 'Autoriser', review: 'Examiner' } },

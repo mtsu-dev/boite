@@ -225,3 +225,35 @@ test('a checkable row with a status dot keeps its hint on the label line', async
   // A plain checkable row keeps its description under the label.
   expect(query('[data-value=wrap]').classList.contains('inline-hint')).toBe(false);
 });
+
+test('a row with its own rows opens them in place, its way back and a close both return to the first level, and no pick reaches the caller', async () => {
+  const picked: string[] = [];
+  const group = [{ id: 'back', label: 'Back', back: true }, { id: 'move', label: 'Move' }];
+  running = mount(Menu, {
+    target: document.body,
+    props: {
+      items: [{ id: 'rename', label: 'Rename' }, { id: 'more', label: 'Manage', submenu: true, items: group }],
+      onpick: (id: string) => picked.push(id),
+      label: 'Thread actions',
+      testid: 'mode',
+      children: createRawSnippet(() => ({ render: () => '<span>Menu</span>' }))
+    }
+  });
+  flushSync();
+  const trigger = query<HTMLButtonElement>('[data-testid=mode]');
+  const ids = () => items().map(item => item.dataset['value']);
+  trigger.click(); await settle();
+  query<HTMLButtonElement>('[data-value=more]').click(); await settle();
+  expect(ids()).toEqual(['back', 'move']);
+  expect(document.activeElement).toBe(items()[0]);
+  press('ArrowLeft'); await settle();
+  expect(ids()).toEqual(['rename', 'more']);
+  // Closed on the group, the menu opens again on its first level.
+  query<HTMLButtonElement>('[data-value=more]').click(); await settle();
+  press('Escape'); await settle();
+  trigger.click(); await settle();
+  expect(ids()).toEqual(['rename', 'more']);
+  query<HTMLButtonElement>('[data-value=more]').click(); await settle();
+  query<HTMLButtonElement>('[data-value=move]').click(); await settle();
+  expect(picked).toEqual(['move']);
+});

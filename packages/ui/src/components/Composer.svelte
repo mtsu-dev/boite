@@ -6,6 +6,7 @@
   import { agentSlashItems, boiteSlashItems, skillSlashItems, slashCompletion, listKey, mentionQueryOf, slashQueryOf, type ChipCommand } from '../lib/composer-menus';
   import { AgentsView, agentOfThread } from '../lib/agents.svelte';
   import { composerPlaceholder } from '../lib/composer-placeholder';
+  import { collapsesOnLeave } from '../lib/arrival';
   import { readyToSend, receiveDroppedFiles, takeFiles } from '../lib/composer-attachments';
   import { rewindComposerEdit } from '../lib/composer-edit';
   import { editWhole } from '../lib/reading-window';
@@ -772,7 +773,7 @@
     event.stopPropagation();
   }}>
     <!-- The card's head, under one height budget: the subagents' quiet rows, then the decision, the one raised card. -->
-    <div class="deck">
+    <div class="deck" {@attach collapsesOnLeave(() => permissions.length + store.pendingQuestions.filter((question) => question.threadId === thread?.id).length, () => thread?.id)}>
     {#if thread}<AgentDock {store} threadId={thread.id} bind:height={deckRoom} />{/if}
     {#if permission}{#key permission.id}<Deferred part={permissionCard}>{#snippet children(PermissionCard)}<PermissionCard docked toolName={permission.toolName} decision={null} request={permission} answer={(decision) => store.answer(permission.id, decision)} index={1} total={permissions.length} />{/snippet}</Deferred>{/key}{/if}
     {#if !target}<ThreadActivity {store} />{/if}
@@ -979,6 +980,9 @@
     .composer > .deck { flex: 0 1 auto; min-height: 0; --dock-cap: calc(45dvh - 120px - var(--deck-room, 0px)); }
     .deck :global(.decision-card) { margin: 4px 4px 2px; }
     textarea, .input-mirror { font-size: var(--text-md); }
+    /* The gap under the field becomes its own padding: the same height on screen, the whole of it a finger's target. */
+    .input-wrap { margin-bottom: 0; }
+    textarea, .input-paint { min-height: var(--composer-input-height, 44px); padding-bottom: var(--composer-input-gap, 6px); }
     .composer-wrap, .composer-wrap.centered {
       padding: 8px 12px max(10px, env(safe-area-inset-bottom));
     }

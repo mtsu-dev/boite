@@ -188,13 +188,14 @@
      each a finger's target through a hit area wider than their ink. Two
      chips show, more scroll, so the card stays under its share of the screen. */
   @media (max-width: 720px) {
-    .queued { gap: 0; max-height: calc(2 * var(--touch-target)); }
+    /* The scroller reaches 6 px past the chips, so the menu's hit area is not clipped at its edge. */
+    .queued { gap: 0; max-height: calc(2 * var(--touch-target) + 12px); margin: -6px; padding: 6px; }
     .line { min-height: var(--touch-target); }
     .pill { height: 34px; }
     .tool { margin-right: -10px; }
     .text { height: var(--touch-target); }
     .tool :global(.trigger) { width: 34px; height: 34px; }
-    .tool :global(.trigger::after) { content: ''; position: absolute; inset: -5px 0; }
+    .tool :global(.trigger::after) { content: ''; position: absolute; inset: -6px; }
     .line .ghost.small { height: var(--touch-target); }
   }
   /* A 360 px phone keeps the line for the prompt: the outbox's word goes, the "i" still says why. */

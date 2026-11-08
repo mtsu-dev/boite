@@ -383,6 +383,7 @@
       <div class="who">
         <h3>
           <span class="name">{plugin.name}</span>
+          {#if plugin.description}<InfoTip topic={plugin.name} text={plugin.description} />{/if}
           {#if plugin.version ?? plugin.availableVersion}<span class="version">v{plugin.version ?? plugin.availableVersion}</span>{/if}
           {#if plugin.origin === 'dev'}<span class="dev-tag" data-testid="plugin-dev">{t.dev}</span>{/if}
           {#if plugin.homepage && !plugin.source}
@@ -395,7 +396,6 @@
               class:bad={plugin.status === 'error' || plugin.status === 'rejected'}></span><span class="ui-label">{state}</span>
           </p>
         {/if}
-        {#if plugin.description}<p class="description">{plugin.description}</p>{/if}
       </div>
       <div class="act">
         {#if plugin.status === 'installing'}
@@ -670,7 +670,6 @@
   .track { height: 2px; border-radius: 999px; background: var(--color-surface-3); overflow: hidden; }
   .bar { display: block; height: 100%; background: var(--color-foreground); transition: width var(--dur-2) var(--ease-out-quint); }
 
-  .description { margin: 0; font-size: var(--text-sm); line-height: 1.5; color: var(--color-muted-foreground); }
   .meta { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 8px; font-size: var(--text-sm); color: var(--color-muted-foreground); }
   .meta a { color: var(--color-muted-foreground); overflow-wrap: anywhere; }
   .meta a:hover { color: var(--color-foreground); }

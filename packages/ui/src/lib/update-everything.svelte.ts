@@ -134,7 +134,7 @@ export const APP_MACHINE = 'app';
  * The app's own release needs no core: without this computer's, it gets an
  * entry of its own under `localLabel`.
  */
-export function planOf(machines: readonly MachineReading[], app: AppReading | null, localLabel = 'This PC'): PlannedMachine[] {
+export function planOf(machines: readonly MachineReading[], app: AppReading | null, localLabel = 'This computer'): PlannedMachine[] {
   const own = app ? appPart(app) : null;
   const ready = machines.filter((machine) => machine.ready);
   const planned = ready.map((machine) => {

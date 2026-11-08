@@ -62,8 +62,9 @@ export function machineName(machine: Machine): string {
  * then (English, French), or by an older version. The French one is written
  * out rather than read: its catalogue loads only once the app speaks French.
  */
+const LOCAL_DEFAULTS = ['This computer', 'Cet ordinateur', 'This PC', 'Ce PC', 'My computer'];
 function localDefault(label: string): boolean {
-  return label === strings.machines.local || ['This PC', 'Ce PC', 'My computer', 'This computer'].includes(label);
+  return label === strings.machines.local || LOCAL_DEFAULTS.includes(label);
 }
 
 /** A machine in a list of machines: this computer by its name and "(you)", once it has a name of its own. */
@@ -315,7 +316,8 @@ export class Workspace {
     const saved = profiles()[profileKey(machine)];
     if (typeof saved?.label === 'string' && saved.label.trim()) machine.label = saved.label;
     if (saved?.icon && machineIcons.includes(saved.icon)) machine.icon = saved.icon;
-    if (isThisPC(machine) && ['My computer', 'This computer'].includes(machine.label)) machine.label = strings.machines.local;
+    // A default name saved in another language, or an older one, speaks the app's language now.
+    if (isThisPC(machine) && localDefault(machine.label)) machine.label = strings.machines.local;
   }
 
   /**

@@ -54,8 +54,8 @@ export const fr: Translation = {
     panel: 'Panneau',
     panelHint: 'Afficher ou masquer le panneau',
     panelMenu: 'Panneaux',
-    /** A thread menu's named group: the move, the path and the pull request. */
-    placeActions: 'Projet et branche',
+    /** A thread menu's named group: what is done to it less often (its title made again, hand-off, move, path, pull request). */
+    manage: 'Gérer la conversation',
     /** A desktop header's project crumb: back to the thread list, at this thread. */
     backToList: 'Revenir aux conversations de {project}',
     terminalHint: 'Terminal dans le dossier de cette conversation',

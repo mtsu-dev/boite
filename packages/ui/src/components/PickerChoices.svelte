@@ -157,6 +157,7 @@
   @media (max-width: 720px) {
     .current { min-height: var(--touch-target); }
     .choice { min-height: var(--touch-target); }
-    .segment { height: auto; min-height: var(--touch-target); }
+    /* A finger wide too: at 360 px a short word (Low, Max) left its segment at 42 px. */
+    .segment { height: auto; min-width: var(--touch-target); min-height: var(--touch-target); }
   }
 </style>

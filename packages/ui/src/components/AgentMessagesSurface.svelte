@@ -66,7 +66,7 @@
         <button type="button" class="row" class:selected={discussion === current} class:resident={discussion.resident}
           data-testid="agent-discussion" data-peer={discussion.key} aria-current={discussion === current ? 'true' : undefined}
           onclick={() => choose(discussion.key)}>
-          <AgentAvatar title={discussion.title} providerId={discussion.providerId} status={discussion.status} resident={discussion.resident} agent={discussion.agent} size={34} />
+          <AgentAvatar title={discussion.title} providerId={discussion.providerId} status={discussion.status} resident={discussion.resident} agent={discussion.agent} size={34} open={discussion === current} />
           <span class="main">
             <span class="line">
               <strong>{discussion.title}</strong>
@@ -116,7 +116,7 @@
   .where { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .preview .text { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; }
   .preview .text :global(svg) { flex: none; }
-  .preview .text > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: color-mix(in srgb, var(--color-foreground) 78%, transparent); }
+  .preview .text > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-subtle); }
   .count { flex: none; min-width: 20px; padding: 1px 6px; border-radius: var(--radius-full); background: var(--color-surface-3); text-align: center; font-variant-numeric: tabular-nums; }
   .no-mail { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; color: var(--color-muted-foreground); text-align: center; font-size: var(--text-sm); }
   @container messages (max-width: 640px) {

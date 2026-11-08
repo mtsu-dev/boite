@@ -20,6 +20,7 @@
   import { inbox } from '../lib/inbox.svelte';
   import { followActivityReturn } from '../lib/activity-return.svelte';
   import AgentAvatar from './agents/AgentAvatar.svelte';
+  import { avatarLit } from '../lib/avatar-lit';
   import MachineStatus from './MachineStatus.svelte';
   import WhipButton from './WhipButton.svelte';
   import FailMark from './FailMark.svelte';
@@ -185,7 +186,8 @@
           <button type="button" class="bot" class:dim={state === 'paused'} aria-label={unread && !selected ? `${labelOf(bot.row.profile.name, state)}, ${strings.app.rail.unread}` : labelOf(bot.row.profile.name, state)}
             aria-current={selected ? 'page' : undefined} data-testid="rail-bot" data-agent-id={bot.row.profile.id} data-state={state}
             onclick={() => workspace.showAgents(bot.machine.store, bot.row.profile.id)}>
-            <AgentAvatar kind="profile" id={bot.row.profile.id} name={bot.row.profile.name} avatar={bot.row.profile.avatar} size={44} squircle={selected} />
+            <AgentAvatar kind="profile" id={bot.row.profile.id} name={bot.row.profile.name} avatar={bot.row.profile.avatar} size={44} squircle={selected}
+              lit={avatarLit({ open: selected, attention: state === 'waiting', failed: state === 'failed', unread })} />
             <!-- One overlay, in one slot: the user's turn first, then a failure, work, news. A count is Activity's alone. -->
             {#if state === 'waiting'}<span class="badge" aria-hidden="true"><span class="needs"></span></span>
             {:else if state === 'failed'}<span class="badge" aria-hidden="true"><FailMark /></span>
@@ -202,7 +204,7 @@
           <span class="pip" aria-hidden="true"></span>
           <button type="button" class="bot team" aria-label={news ? `${row.team.name}, ${strings.app.rail.unread}` : row.team.name} aria-current={selected ? 'page' : undefined}
             data-testid="rail-team" data-team-id={row.team.id} onclick={() => openTeamChat(row)}>
-            <AgentAvatar kind="team" id={row.team.id} name={row.team.name} members={pictures(row)} size={44} squircle />
+            <AgentAvatar kind="team" id={row.team.id} name={row.team.name} members={pictures(row)} size={44} squircle lit={avatarLit({ open: selected, unread: news })} />
             {#if news}<span class="badge" aria-hidden="true"><span class="news"></span></span>{/if}
           </button>
           {@render railName(row.team.name)}
@@ -303,13 +305,8 @@
 
   .bot { background: none; border-radius: var(--radius-full); }
   .bot:hover:not(:disabled) { background: none; }
-  /* At rest a bot's picture is grey; the open one and the one under the pointer
-     take their colours, so the rail stays quiet and the eye finds where it is. */
-  .bot :global(.agent-avatar) { filter: grayscale(1) brightness(0.92) contrast(0.95); transition: filter var(--dur-2) var(--ease-out-quint); }
-  .bot:hover :global(.agent-avatar), .bot:focus-visible :global(.agent-avatar), .selected .bot :global(.agent-avatar) { filter: none; }
+  /* Grey at rest, lit when open, under the pointer or with news: one rule for every bot picture (lib/avatar-lit.ts). */
   .bot.dim :global(.agent-avatar) { opacity: 0.55; }
-  @media (prefers-reduced-motion: reduce) { .bot :global(.agent-avatar) { transition: none; } }
-  :global(html[data-motion='reduced']) .bot :global(.agent-avatar) { transition: none; }
   .bot:active:not(:disabled) { transform: translateY(1px); }
   .team :global(.agent-avatar) { background: var(--color-surface-3); }
 

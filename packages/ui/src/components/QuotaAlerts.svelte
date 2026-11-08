@@ -93,7 +93,7 @@
 <style>
   .alerts { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface-3); }
   .heading { margin: 0; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 500; }
-  .heading .unit { margin-left: 6px; opacity: 0.75; }
+  .heading .unit { margin-left: 6px; color: var(--color-subtle); }
   .line { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
   .period { font-size: var(--text-sm); }
   /* Each share its own toggle, filled with the foreground when on; several may be. */

@@ -36,6 +36,6 @@
   }
   /* In a list row it sits beside the reasoning level and takes its size. */
   .context-mode.compact { height: auto; padding: 2px 6px 2px 5px; gap: 3px; }
-  .rules { font-weight: 500; opacity: 0.85; }
+  .rules { font-weight: 500; color: var(--color-subtle); }
   .context-mode :global(svg) { flex: none; }
 </style>

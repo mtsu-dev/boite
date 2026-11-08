@@ -4,6 +4,7 @@
   import { Bot, ChevronRight, FilePen, FileText, Globe, Search, ShieldCheck, ShieldX, SquareTerminal, Wrench } from '@lucide/svelte';
   import type { ToolDocument, ToolStatus } from '@boite/contracts';
   import { elapsed, json } from '../lib/format';
+  import { verdictWord } from '../lib/verdict-word';
   import { fill, strings } from '../lib/strings';
   import { familyOf, liveLabel, runSummary, toolLine, type ToolPart } from '../lib/tool-groups';
   import { describeTool, fileName } from '../lib/tool-summary';
@@ -199,7 +200,7 @@
     {#if permission}
       {@const verdict = permission === 'allow' ? strings.chat.permissionAllowedBy : strings.chat.permissionDeniedBy}
       <span class="verdict" class:denied={permission === 'deny'} data-testid="tool-permission" data-decision={permission} title={verdict} aria-label={verdict}>
-        {#if permission === 'allow'}<ShieldCheck size={13} strokeWidth={2} />{:else}<ShieldX size={13} strokeWidth={2} />{/if}
+        {#if permission === 'allow'}<ShieldCheck size={13} strokeWidth={2} />{:else}<ShieldX size={13} strokeWidth={2} />{/if}<span class="ui-label verdict-word">{verdictWord(permission)}</span>
       </span>
     {/if}
     {#if status === 'running'}
@@ -389,9 +390,13 @@
   /* The user's answer to the agent's ask: the shield in the answer's colour. */
   .verdict {
     display: inline-flex;
+    align-items: center;
+    gap: 4px;
     flex: none;
     color: var(--color-success);
   }
+  /* The verdict's word, the receipt's own, beside the shield. */
+  .verdict-word { font-size: var(--text-sm); }
 
   .verdict.denied { color: var(--color-danger); }
 

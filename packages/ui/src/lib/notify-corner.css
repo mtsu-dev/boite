@@ -8,6 +8,10 @@
   transition: bottom var(--motion-in);
 }
 
+/* In the toasts' room (notify-corner.ts): centred on what gave way, its shadow the toasts' own. */
+.notify-corner[data-slot='bottom'] { right: auto; left: var(--toast-left, 50%); translate: -50% 0; }
+.notify-corner[data-slot='bottom'] .notify-card { box-shadow: var(--shadow-e1); }
+
 /* The room a page keeps for the toasts (notify-corner.ts sets it), so they
    cover nothing: the timeline or the phone's list gives way at its bottom. */
 [data-corner-room='bottom'] { margin-bottom: var(--corner-room); }

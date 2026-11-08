@@ -9,7 +9,7 @@
   import ModelSearch from './ModelSearch.svelte';
   import ProviderLogo from './ProviderLogo.svelte';
   import ProviderTiles from './ProviderTiles.svelte';
-  import PickerMore from './PickerMore.svelte';
+  import PickerMore, { provideMoreLevel, type MoreLevel } from './PickerMore.svelte';
   import { floating } from '../lib/floating';
   import { focusInitial } from '../lib/focus';
   import { Closing } from '../lib/closing.svelte';
@@ -75,6 +75,9 @@
   let shownProviderId = $state<string | null>(null);
   /** The first level (the models in use) or every provider's list. */
   let level = $state<'home' | 'all'>('all');
+  /** The settings' named row (speed and context) open as its own level, in place of the rest. */
+  const more = $state<MoreLevel>({ open: false, rows: null });
+  provideMoreLevel(more);
   let pickPending = $state(false);
   // Nothing typed on a long list: its first rows, the current model and a show-all row.
   let expandedFor = $state<string | null>(null);
@@ -84,6 +87,7 @@
   export function reset() {
     shownProviderId = choice?.providerId ?? null;
     level = hasHome ? 'home' : 'all';
+    more.open = false;
     legacy.hide();
     modelQuery = '';
     expandedFor = null;
@@ -384,6 +388,7 @@
   class:closing={popover.closing}
   class:single
   class:home={level === 'home'}
+  class:deep={more.open && !!more.rows}
   role="menu"
   tabindex="-1"
   aria-label={strings.composer.picker}
@@ -396,7 +401,10 @@
 >
   <!-- A phone sheet's title, as on its other sheets; the chip names the model on desktop. -->
   <span class="sheet-title ui-label">{strings.composer.model}</span>
-  {#if level === 'home'}
+  {#if more.open && more.rows}
+  <!-- The More level alone: its way back, then speed and context. -->
+  <div class="settings" data-picker-settings><PickerMore summary="">{@render more.rows?.()}</PickerMore></div>
+  {:else if level === 'home'}
   <div class="column models short-list" data-testid="picker-shortlist">
     <!-- Name and provider only: stars are set under All models. -->
     {#each home as row (`${row.providerId}:${row.accountId}:${row.model.id}`)}
@@ -533,7 +541,7 @@
     {/key}
   </div>
   {/if}
-  {#if settings}<div class="settings" data-picker-settings>{@render settings(PickerMore)}</div>{/if}
+  {#if settings && !(more.open && more.rows)}<div class="settings" data-picker-settings>{@render settings(PickerMore)}</div>{/if}
 </div>
 {#if popover.shown && legacy.shown && level === 'all' && !pending && filteredLegacy.length > 0}
 <div class="popover legacy-menu" class:closing={legacy.closing} role="menu" tabindex="-1" data-testid="picker-legacy-menu" aria-label={strings.composer.legacyModels} use:legacy.attach onanimationend={legacy.end} use:floating={{ anchor: () => menu ?? null, side: 'right' }} onkeydown={keydown}>
@@ -574,7 +582,8 @@
   /** A paired device reads the owner's stars without changing them. */
   .favorite-mark { display: inline-flex; align-items: center; justify-content: center; color: var(--color-foreground); }
   /* The first level stacks its title (phone), its rows and the effort: no grid areas to hold. */
-  .popover.home { display: flex; flex-direction: column; }
+  .popover.home, .popover.deep { display: flex; flex-direction: column; }
+  .deep .settings { border-top: none; }
   /* The first level has the phone sheet's air: the same rows, a finger tall, and room around them. */
   .home .short-list { padding: 8px; gap: 2px; }
   .home .short-list .row { min-height: var(--touch-target); padding: 4px 10px; }

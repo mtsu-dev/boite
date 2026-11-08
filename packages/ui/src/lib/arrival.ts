@@ -8,15 +8,58 @@ import { glides } from './motion';
  */
 export function growFrom(element: HTMLElement, from: number): void {
   const to = element.getBoundingClientRect().height;
-  if (to - from < 1 || !glides() || typeof element.animate !== 'function') return;
+  if (to - from < 1) return;
+  move(element, [{ height: `${from}px`, opacity: from > 0 ? 1 : 0, overflow: 'hidden' }, { height: `${to}px`, opacity: 1, overflow: 'hidden' }]);
+}
+
+/** The dock's own motion: `--dur-enter` on `--ease-enter`, nothing under reduced motion. */
+function move(element: HTMLElement, frames: Keyframe[]): void {
+  if (!glides() || typeof element.animate !== 'function') return;
   const style = getComputedStyle(element);
   const token = style.getPropertyValue('--dur-enter').trim();
   const duration = parseFloat(token) * (token.endsWith('ms') ? 1 : 1000) || 0;
   if (duration <= 0) return;
-  element.animate(
-    [{ height: `${from}px`, opacity: from > 0 ? 1 : 0, overflow: 'hidden' }, { height: `${to}px`, opacity: 1, overflow: 'hidden' }],
-    { duration, easing: style.getPropertyValue('--ease-enter').trim() || 'ease-out' }
-  );
+  element.animate(frames, { duration, easing: style.getPropertyValue('--ease-enter').trim() || 'ease-out' });
+}
+
+/**
+ * Closes an element that just got shorter from the height it had: an
+ * answered decision leaves the dock as the box closes over its place, in
+ * `--dur-enter` (200 ms), while its receipt lands in the transcript. Reduced
+ * motion cuts.
+ */
+export function collapseFrom(element: HTMLElement, from: number): void {
+  const to = element.getBoundingClientRect().height;
+  if (from - to < 1) return;
+  move(element, [{ height: `${from}px`, overflow: 'hidden' }, { height: `${to}px`, overflow: 'hidden' }]);
+}
+
+/**
+ * Watches a dock for decisions leaving it: when `count` falls on the same
+ * thread (`owner`) and the dock got shorter, it closes from its last height.
+ * A thread switch changes both at once and moves nothing.
+ */
+export function collapsesOnLeave(count: () => number, owner: () => string | undefined): (element: HTMLElement) => () => void {
+  return (element) => {
+    if (typeof ResizeObserver !== 'function') return () => {};
+    let tall = element.getBoundingClientRect().height;
+    let seen = count();
+    let whose = owner();
+    const watch = new ResizeObserver(() => {
+      const now = count();
+      const who = owner();
+      const height = element.getBoundingClientRect().height;
+      const from = tall;
+      const left = who === whose && now < seen && height < from - 1;
+      seen = now;
+      whose = who;
+      // An animation in flight reports its frames: keep the height it ends on.
+      if (left || !element.getAnimations?.().length) tall = height;
+      if (left) collapseFrom(element, from);
+    });
+    watch.observe(element);
+    return () => watch.disconnect();
+  };
 }
 
 /** An attachment for a decision that mounts with its content: it grows in from nothing. */

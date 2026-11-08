@@ -54,8 +54,8 @@ export const strings = {
     panel: 'Panel',
     panelHint: 'Show or hide the side panel',
     panelMenu: 'Panels',
-    /** A thread menu's named group: the move, the path and the pull request. */
-    placeActions: 'Project and branch',
+    /** A thread menu's named group: what is done to it less often (its title made again, hand-off, move, path, pull request). */
+    manage: 'Manage thread',
     /** A desktop header's project crumb: back to the thread list, at this thread. */
     backToList: 'Back to the {project} threads',
     terminalHint: "Terminal in this thread's folder",

@@ -249,8 +249,9 @@ test('a question whose turn ended says so instead of offering a button', () => {
 
   expect(query('[data-testid=question-card]').getAttribute('data-state')).toBe('cancelled');
   expect(document.querySelector('[data-testid=question-submit]')).toBeNull();
-  expect(query('[data-testid=question-cancelled]').textContent).toContain('No longer waiting');
-  expect(options()[0]?.disabled).toBe(true);
+  // A receipt, one line naming the question, never the card with its choices again.
+  expect(query('[data-testid=question-cancelled]').textContent).toBe('Not answered: Which shape should the echo take?');
+  expect(options()).toHaveLength(0);
 });
 
 test('a card asked without waiting says so until it is answered', () => {

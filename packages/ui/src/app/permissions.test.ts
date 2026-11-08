@@ -23,5 +23,7 @@ test('a permission left pending is read back on connect and answered from its ca
   query<HTMLButtonElement>('[data-testid=permission-allow]').click();
   await waitFor(() => query('[data-testid=permission-card]').getAttribute('data-decision') === 'allow');
   expect(store.pendingPermissions.some((p) => p.threadId === 't-bench')).toBe(false);
-  expect(query('[data-testid=permission-verdict]').textContent?.trim()).toBe('Allowed');
+  // The receipt: the verdict, then what was allowed, on one line.
+  expect(query('[data-testid=permission-verdict]').textContent?.trim()).toBe('Allowed:');
+  expect(query('[data-testid=permission-sentence]').textContent).toMatch(/^Allowed: \S/);
 });

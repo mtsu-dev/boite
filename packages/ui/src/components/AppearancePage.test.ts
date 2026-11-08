@@ -72,6 +72,29 @@ test('a desktop shows every palette as its picture with its name, the one in use
 });
 
 for (const phone of [false, true]) {
+  test(`a ${phone ? 'phone' : 'desktop'} shows a few palettes in front, the one in use among them, and "All themes" opens the rest`, async () => {
+    const restore = phone ? phoneWidth() : () => {};
+    try {
+      running = mount(AppearancePage, { target: document.body, props: { store: { owner: true } as Store, phone } });
+      flushSync();
+      if (phone) { document.querySelector<HTMLButtonElement>('[data-testid=palette-current]')!.click(); flushSync(); }
+      const box = phone ? '[data-testid=palette-current-list]' : '[data-testid=palette-current]';
+      const shown = () => [...document.querySelectorAll(`${box} :is([aria-pressed], [role=menuitemradio])`)].map((tile) => tile.getAttribute('data-testid'));
+      const all = () => document.querySelector<HTMLButtonElement>(`[data-testid=${phone ? 'palette-current-all' : 'palette-all'}]`);
+      expect(shown()).toEqual(['palette-default', 'palette-oled', 'palette-catppuccin', 'palette-tokyo-night']);
+      expect(all()?.textContent?.trim()).toBe('All themes');
+      all()!.click();
+      flushSync();
+      expect(shown()).toHaveLength(7);
+      expect(all()).toBeNull();
+      // Focus lands on the first palette the button revealed, not on the page.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(document.activeElement?.getAttribute('data-testid')).toBe('palette-nord');
+    } finally { restore(); }
+  });
+}
+
+for (const phone of [false, true]) {
   test(`a face reads the same on a ${phone ? 'phone' : 'desktop'}, and a phone's palette too: the one in use as a row, a palette by its preview, a face by its name drawn in it`, () => {
     const restore = phone ? phoneWidth() : () => {};
     try {

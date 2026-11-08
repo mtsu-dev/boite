@@ -4,11 +4,12 @@
   // each with its own. A face needs no picture: its name is drawn in it. A popover on a desktop, a bottom sheet on a phone
   // (lib/floating.ts), so the two read the same.
   import { tick, type Snippet } from 'svelte';
-  import { Check, ChevronDown } from '@lucide/svelte';
+  import { Check, ChevronDown, LayoutGrid } from '@lucide/svelte';
   import { Closing } from '../lib/closing.svelte';
+  import { curated } from '../lib/curated';
   import { floating } from '../lib/floating';
 
-  let { label, options, value, fallback = '', onpick, preview, testid, optionTestid, face }: {
+  let { label, options, value, fallback = '', onpick, preview, testid, optionTestid, face, front, all }: {
     /** What is chosen: the list's name and the sheet's title. */
     label: string;
     options: { id: T; name: string }[];
@@ -23,6 +24,10 @@
     optionTestid: (id: T) => string;
     /** The font an option's name is drawn in, so a face reads as itself. */
     face?: (id: T) => string;
+    /** How many options the list shows before `all` opens the rest: the one in use and the first others. */
+    front?: number;
+    /** The row that opens the rest. */
+    all?: string;
   } = $props();
 
   const popover = new Closing();
@@ -30,10 +35,12 @@
   let trigger = $state<HTMLButtonElement>();
   let sheet = $state(false);
   let shown = $derived(options.find((option) => option.id === value));
+  let everything = $state(false);
+  let listed = $derived(everything || !front ? options : curated(options, value, front));
 
   // The keys land on the option in use; a phone sheet holds the focus itself, as a menu's does.
   $effect(() => {
-    if (!popover.open) { sheet = false; return; }
+    if (!popover.open) { sheet = false; everything = false; return; }
     void tick().then(() => {
       const list = root?.querySelector<HTMLElement>('[role=menu]');
       sheet = !!list?.dataset['mobileSheet'];
@@ -43,7 +50,14 @@
   });
 
   function rows(): HTMLElement[] {
-    return root ? [...root.querySelectorAll<HTMLElement>('[role=menuitemradio]')] : [];
+    return root ? [...root.querySelectorAll<HTMLElement>('[role=menuitemradio], [role=menuitem]')] : [];
+  }
+
+  /** The rest of the list opens where "All" stood, the first of them in focus. */
+  function openAll() {
+    const at = listed.length;
+    everything = true;
+    void tick().then(() => rows().filter((row) => row.getAttribute('role') === 'menuitemradio')[at]?.focus({ preventScroll: true }));
   }
 
   function pick(id: T) {
@@ -96,13 +110,19 @@
       use:floating={{ anchor: () => trigger ?? null, placement: 'bottom', align: 'end', cap: 480, dismiss: () => popover.hide() }}
       data-testid="{testid}-list">
       {#if sheet}<div class="sheet-title" aria-hidden="true">{label}</div>{/if}
-      {#each options as option (option.id)}
+      {#each listed as option (option.id)}
         <button type="button" class="option" role="menuitemradio" aria-checked={option.id === value} data-testid={optionTestid(option.id)} onclick={() => pick(option.id)}>
           {#if preview}<span class="preview" aria-hidden="true">{@render preview(option.id)}</span>{/if}
           <span class="name ui-label" style:font-family={face?.(option.id)}>{option.name}</span>
           <span class="check" aria-hidden="true">{#if option.id === value}<Check size={14} strokeWidth={2} />{/if}</span>
         </button>
       {/each}
+      {#if all && listed.length < options.length}
+        <button type="button" class="option all" role="menuitem" aria-expanded="false" data-testid="{testid}-all" onclick={(event) => { event.stopPropagation(); openAll(); }}>
+          <span class="preview all-mark" aria-hidden="true"><LayoutGrid size={16} strokeWidth={1.75} /></span>
+          <span class="name ui-label">{all}</span>
+        </button>
+      {/if}
     </div>
   {/if}
 </div>
@@ -130,6 +150,8 @@
   .option:active { transform: none; background: var(--color-active); }
   .option .name { flex: 1; }
   .check { display: inline-flex; flex: none; width: 14px; }
+  .all { color: var(--color-muted-foreground); }
+  .all-mark { justify-content: center; width: 52px; }
   @media (max-width: 720px) {
     .choice-select, .trigger { width: 100%; }
     .trigger { min-height: var(--touch-target); }

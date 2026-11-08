@@ -24,7 +24,8 @@
   const target = $derived(workspace.view === 'recent' && selected ? selected.project : store.openProject ?? store.projects.find(p => !p.archived));
   const targetOwner = $derived(workspace.view === 'recent' && selected ? selected.machine.store : store);
   const newLabel = $derived(target ? fill(strings.sidebar.newThreadIn, { project: projectName(target) }) : strings.sidebar.newThread);
-  const filtered = $derived((workspace.view === 'recent' && selected !== undefined) || machineFilter.shown(workspace.machinesOr(store)) !== null);
+  /** The filters that hide threads, counted on the display button: the project Recent lists, the machine. */
+  const filters = $derived(Number(workspace.view === 'recent' && selected !== undefined) + Number(machineFilter.shown(workspace.machinesOr(store)) !== null));
   const addProject = $derived(store.owner && work.shows('sidebar.add-project') ? () => { store.projectPickerOpen = true; } : undefined);
   /** Always a new draft: one already written stays in the list, where it was. */
   async function create() {
@@ -41,7 +42,7 @@
   <h2 class="title" data-testid="list-view-name"><ViewSwitch label={strings.sidebar.displayView} current={workspace.view} onpick={view => workspace.setView(view as 'projects' | 'recent')}
     options={[{ id: 'projects', label: strings.sidebar.projectsView }, { id: 'recent', label: strings.sidebar.recentView }]} testid="view-switch" /></h2>
   <div class="actions">
-    <DisplayOptions {entries} {target} owner={targetOwner} {filtered} onaddproject={addProject} />
+    <DisplayOptions {entries} {target} owner={targetOwner} {filters} onaddproject={addProject} />
     {#if entries.length}
       <button class="ghost icon small" title={`${strings.sidebar.search}${store.keyHint('palette')}`} aria-label={strings.sidebar.search} data-testid="sidebar-search-open" onclick={() => store.paletteOpen = true}><Search size={16} /></button>
       <button class="ghost icon small new" title={`${newLabel}${store.keyHint('new-thread')}`} aria-label={newLabel} data-testid="new-thread" onclick={create}><Plus size={16} /></button>

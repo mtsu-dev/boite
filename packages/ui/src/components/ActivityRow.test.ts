@@ -45,6 +45,9 @@ test('a permission reads whole under its row, its sub-agent\'s question is a row
   await settle();
   expect(document.querySelectorAll('[data-testid=thread-row]')).toHaveLength(1);
   expect(document.querySelector('[data-testid=thread-reason]')?.textContent).toBe('Wants to run:');
+  // What is asked follows the title on the headline's own line, which wraps it under the title only when both do not fit.
+  expect(document.querySelector('[data-testid=thread-reason]')?.parentElement?.classList.contains('lead')).toBe(true);
+  expect(document.querySelector('[data-testid=thread-reason]')?.previousElementSibling?.classList.contains('title')).toBe(true);
   // The command whole, both lines, never cut to its first.
   expect(document.querySelector('[data-testid=thread-operation]')?.textContent).toBe(command);
   expect(document.querySelector('[data-testid=thread-helper]')).toBeNull();

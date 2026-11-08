@@ -33,7 +33,9 @@
   .jump:hover { background: var(--color-surface-3); }
 
   @media (max-width: 720px) {
-    .jump { width: 30px; padding: 0; justify-content: center; }
+    /* The 30 px disc stays; a finger gets the platform's 44 px around it. */
+    .jump { position: relative; z-index: 1; width: 30px; padding: 0; justify-content: center; }
+    .jump::after { content: ''; position: absolute; inset: calc((30px - var(--touch-target)) / 2 - 2px); }
     .jump .ui-label { display: none; }
   }
 </style>

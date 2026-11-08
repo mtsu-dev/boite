@@ -494,6 +494,12 @@ test('a folded project keeps saying what its hidden threads do, and the mark goe
   expect(head().querySelector('[data-testid=project-rollup]')).toBeNull();
   store.toggleProject(project.id);
   await waitFor(() => head().querySelector('[data-testid=project-rollup]') === null);
+  // Open, the rows show their own work: the header counts only what needs the user, and counts nothing else.
+  flushSync();
+  expect(head().parentElement!.querySelector('[data-testid=project-working-toggle]')).toBeNull();
+  second!.status = 'waiting';
+  await waitFor(() => head().parentElement!.querySelector('[data-testid=project-waiting-count]')?.getAttribute('data-count') === '1');
+  expect(head().parentElement!.querySelector('[data-testid=project-working-toggle]')).toBeNull();
 });
 
 async function openIdleThread(): Promise<string> {

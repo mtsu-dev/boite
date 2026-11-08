@@ -5,26 +5,23 @@
   import type { Machine } from '../lib/workspace.svelte';
   import type { MenuItem } from '../lib/menu';
   import { strings } from '../lib/strings';
-  import { ago, exactTime } from '../lib/format';
   import { closeSwipedRow, swipeRow } from '../lib/swipe-row';
   import { longPress } from '../lib/long-press';
   import Menu from './Menu.svelte';
   import ThreadHeadline from './ThreadHeadline.svelte';
-  import ThreadState from './ThreadState.svelte';
   import { threadState } from '../lib/thread-state';
   import { feedOperation, type FeedVerb } from '../lib/activity-feed';
   import { collapseRow } from '../lib/row-collapse';
 
   /**
-   * A phone's thread row, the desktop row's grammar at a finger's size: the
-   * title gets the width, two lines of it before any ellipsis, then its state
-   * and its time on the line under it, so neither cuts the title. The pull
-   * request waits in the thread, the pin under the slide. `compact` is the flat lists' form (Recent, Activity): the
-   * project's tile first. Activity (the phone's screen) is the title, two lines of it, with its mark and since when at
-   * its end, then `reason`, what the thread wants, whole: a command it asks to run reads in full in a mono block
-   * under it. A sub-agent with the same ask is a line of its own (`helpers`), one event per row, as on the desktop;
-   * `verb` names what a Needs you row asks, a button at the end of the title's line, Review when the command
-   * is too long to read here. `onverb` opens what the verb is for, the row itself unless a sub-agent asks.
+   * A phone's thread row, the desktop row's grammar at a finger's size (ThreadHeadline.svelte): the title gets the
+   * width, two lines of it before any ellipsis, its mark and its time at the end of its first line, then where it
+   * lives under it when the list says so. The pull request waits in the thread, the pin under the slide. `compact` is
+   * the flat lists' form (Recent, Activity): the project's tile first. Activity (the phone's screen) is the whole
+   * title with `reason`, what the thread wants, beside it when both fit and under it when not, whole; a command it
+   * asks to run reads in full in a mono block under them. A sub-agent with the same ask is a line of its own
+   * (`helpers`), one event per row, as on the desktop; `verb` names what a Needs you row asks, a button after all of
+   * it at the row's end, Review when the command is too long to read here. `onverb` opens what the verb is for, the row itself unless a sub-agent asks.
    * The row menu has no button of its own: a long press opens it, a slide
    * left shows pin and archive. Its trigger stays for the keyboard, drawn
    * only while focused.
@@ -59,6 +56,8 @@
   function swiped(action: string) { closeSwipedRow(); onaction(action); }
 </script>
 
+{#snippet why()}<span class="why" data-testid="mobile-row-reason"><span class="text">{reason}</span></span>{/snippet}
+
 <div class="row" out:collapseRow|global={() => !owner.threads.some(entry => entry.id === thread.id)} class:reason={reason !== undefined} class:tiled={compact && project !== undefined} data-testid="mobile-row" data-thread-id={thread.id} data-machine-id={machine.id}>
   <!-- Under the row, for a finger that slides it left; the long press offers the same to everyone else. -->
   {#if pin || archive}
@@ -71,19 +70,18 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="body" class:verbed={action !== null} use:swipeRow oncontextmenu={openMenu}>
     <button class="ghost thread" class:offline={away} class:stated={kind !== null} data-testid="mobile-thread-{thread.id}" title={[thread.title, reason, thread.branch].filter(Boolean).join('\n')} onclick={onopen} use:longPress>
+      <!-- One line for every list (ThreadHeadline.svelte): the title, then the mark in the row's one slot and the time
+           after it; in Activity what is asked shares that line when it fits. The project's header says how many
+           need the user, so no row repeats the word. -->
+      <ThreadHeadline {owner} {thread} {now} tile={compact ? project : undefined} mark ask={reason === undefined ? undefined : why}
+        at={reason !== undefined ? at : form !== null ? thread.lastUserMessageAt ?? thread.createdAt : undefined} />
       {#if reason !== undefined}
-        <!-- The mark in the row's one slot, at the title line's end before since when; then what is asked, whole. -->
-        <span class="feed-head"><ThreadHeadline {owner} {thread} tile={compact ? project : undefined} />{#if form !== null}<ThreadState {thread} {now} subagents={rowAsks(owner, thread.id)} {away} mark />{/if}{#if at !== undefined}<time class="ui-label" title={exactTime(at)}>{ago(at, now)}</time>{/if}</span>
-        <span class="why" data-testid="mobile-row-reason"><span class="text">{reason}</span></span>
         {#if operation}<code class="operation" class:long data-testid="thread-operation">{operation}</code>{/if}
         {#each helpers as helper (helper.thread.id)}
           <span class="why helper" data-testid="thread-helper" data-thread-id={helper.thread.id}><span class="text"><span class="who">{helper.thread.title}</span> <span class="sep" aria-hidden="true">·</span> {helper.reason}</span></span>
         {/each}
-      {:else}
-        <ThreadHeadline {owner} {thread} tile={compact ? project : undefined} />
-        <!-- The state, then the time: a dot when the user must act (amber) or a failure (red), the still arc for work,
-             each named in its tooltip; the project's header says how many need the user, so no row repeats the word. -->
-        <span class="meta" data-testid="mobile-row-meta">{#if where}<span class="where" data-testid="mobile-row-where">{where}</span><span class="sep" aria-hidden="true">·</span>{/if}<ThreadState {thread} {now} subagents={rowAsks(owner, thread.id)} {away} mark />{#if form !== null}<time title={exactTime(thread.lastUserMessageAt ?? thread.createdAt)}>{ago(thread.lastUserMessageAt ?? thread.createdAt, now)}</time>{/if}</span>
+      {:else if where}
+        <span class="meta" data-testid="mobile-row-meta"><span class="where" data-testid="mobile-row-where">{where}</span></span>
       {/if}
     </button>
     {#if action}<button type="button" class="small verb" data-testid="thread-verb" data-verb={action} onclick={onverb}>{strings.mobile.feed.verb[action]}</button>{/if}
@@ -100,44 +98,44 @@
   .swipe .ui-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .body { position: relative; touch-action: pan-y; transform: translateX(var(--swipe, 0px)); transition: transform var(--dur-3) var(--ease-out-quint); background: var(--row-background, var(--color-background)); }
   .body:global(.dragging) { transition: none; }
-  /* The title, then its state and time under it: well over a finger's 44 px. */
+  /* The title's line, its mark and time at its end, then where it lives: a finger's 44 px at least. */
   .thread { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 4px; width: 100%; min-height: var(--touch-target); height: auto; padding: 10px 12px; border-radius: 0; text-align: left; font-size: var(--text-reading); color: var(--color-foreground); }
-  /* The second line, in the list's quiet ink, from the title's edge. */
+  /* The line under the title, in the list's quiet ink, from the title's edge: where the row lives, or a sub-agent
+     that asks the same. */
   .meta, .why { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--text-sm); line-height: 1.4; color: var(--color-muted-foreground); }
-  .tiled :is(.meta, .why, .operation) { margin-left: 26px; }
+  .tiled :is(.meta, .helper, .operation) { margin-left: 26px; }
   .helper .who { color: var(--color-foreground); font-weight: 500; }
-  .meta time { flex: none; color: var(--color-subtle); font-variant-numeric: tabular-nums; }
   .sep { flex: none; color: var(--color-subtle); }
-  /* Where the row lives gives way first: the state and the time stay whole. */
   .meta .where { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .meta :global(.when), .why :global(.when) { font-size: inherit; }
-  .meta > :global(.when:not(.state)) { font-weight: 400; }
-  /* Activity: the mark and since when end the title's first line; what is asked, whole, under it. */
-  .feed-head { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
-  .feed-head :global(.headline) { flex: 1; }
-  .feed-head > :global(.state) { height: 22px; }
-  .feed-head time { flex: none; line-height: 22px; font-size: var(--text-sm); color: var(--color-subtle); font-variant-numeric: tabular-nums; }
+  /* The title line's end: the mark, then the time, centred on the first line's capitals (the title's box is trimmed
+     to them, .ui-label), whose middle sits 0.36 em down at the title's size. */
+  .thread :global(.headline > :is(.when, .at)) { height: 22px; margin-top: calc(0.36 * var(--text-reading) - 11px); }
+  .thread :global(.headline > .when) { font-size: var(--text-sm); }
+  .thread :global(.headline > .when:not(.state)) { font-weight: 400; }
+  .thread :global(.headline > .at) { line-height: 22px; font-size: var(--text-sm); }
+  /* Activity: what is asked beside the title when both fit, under it when not, whole. */
   .why .text { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
   /* The command as it will run: mono, wrapped, every line; too long, its first lines and Review. */
   .operation { display: block; padding: 6px 8px; border-radius: var(--radius-sm); background: var(--color-code-background); color: var(--color-code-foreground); font-family: var(--font-mono); font-size: var(--text-xs); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
   .operation.long { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; line-clamp: 6; overflow: hidden; }
-  /* The verb ends the title's line, centred on it, at one width and one offset on every row; the title's line keeps
-     its room, what is asked runs under it to the row's end. */
-  .body { --verb: 88px; }
-  .verb { position: absolute; top: max(0px, calc(10px + 11px - var(--touch-target) / 2)); right: 12px; justify-content: center; width: var(--verb); min-height: var(--touch-target); font-size: var(--text-sm); font-weight: 600; }
-  /* The button is a finger's height, taller than one title line: what is asked starts below it. */
-  .verbed .feed-head { min-height: calc(var(--touch-target) - 10px); margin-right: calc(var(--verb) + 8px); }
+  /* The verb comes after what is asked, at the row's end, one width on every row: the title and the ask keep the
+     row's whole width, so neither is cut at 360 px. */
+  .verbed { display: flex; flex-direction: column; }
+  .verb { align-self: flex-end; justify-content: center; width: 88px; min-height: var(--touch-target); margin: -4px 12px 10px; font-size: var(--text-sm); font-weight: 600; }
   /* The ring every row draws, inside the box: the list's edge would clip one outside it. */
   .thread:focus-visible { outline-offset: -2px; }
   .thread :global(.headline) { gap: 10px; align-items: flex-start; }
-  .thread:not(:has(.feed-head)) :global(.headline > .tile) { margin-top: 3px; }
-  /* A phone reads every title at full ink: the line under it says which rows need the user. Two lines of it
-     before the ellipsis, in every list. */
+  .thread :global(.headline > .tile) { margin-top: calc(0.36 * var(--text-reading) - 8px); }
+  /* A phone reads every title at full ink: the mark says which rows need the user. Two lines of it before the
+     ellipsis in the lists; Activity's are whole, since the row is about them. */
   .thread :global(.headline .title) { color: var(--color-foreground); font-weight: 400; }
   /* A clamped title's second line keeps its untrimmed box: .ui-label's half-em under it showed the top of the third
      line, so only a descender's room is kept. */
   .thread :global(.headline .title) { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; padding-bottom: 0.25em; margin-bottom: -0.25em; }
-  .thread.offline { opacity: 0.55; }
+  .reason .thread :global(.headline .title) { display: block; -webkit-line-clamp: none; line-clamp: none; overflow: visible; }
+  /* What is asked, once under the title, clears its descenders. */
+  .reason .thread :global(.lead) { row-gap: 8px; }
+  .thread.offline, .thread.offline :global(*) { color: var(--color-subtle); }
   .thread :global(.headline .pin) { display: none; }
   /* One status per row: a state outranks the unsent draft's mark, which the thread shows once open. */
   .thread.stated :global(.headline > .draft) { display: none; }

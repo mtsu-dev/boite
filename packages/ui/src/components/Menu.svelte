@@ -46,7 +46,10 @@
   } = $props();
 
   const popover = new Closing();
-  let ordered = $derived(dangerLast(items));
+  /** The rows a row's own `items` opened in place, until its way back or the close. */
+  let nested = $state<MenuItem[] | null>(null);
+  let shownItems = $derived(nested ?? items);
+  let ordered = $derived(dangerLast(shownItems));
   let root = $state<HTMLDivElement | undefined>(undefined);
   let trigger = $state<HTMLButtonElement | undefined>(undefined);
   /** The list opened as a phone sheet (lib/floating.ts marks it), which shows a title. */
@@ -55,7 +58,7 @@
   /** The keyboard lands on the first item the moment the list is there. A phone
       sheet holds the focus on itself instead: no row, Delete included, opens lit. */
   $effect(() => {
-    if (!popover.open) { sheet = false; onclose?.(); return; }
+    if (!popover.open) { sheet = false; nested = null; onclose?.(); return; }
     void tick().then(() => {
       const list = root?.querySelector<HTMLElement>('[role=menu]');
       sheet = !!list?.dataset['mobileSheet'];
@@ -80,7 +83,9 @@
     // gives it back there, as Escape does.
     // A submenu or its way back swaps the rows in place: the list stays, the keys land on its first row.
     if (item.submenu || item.back) {
-      onpick(item.id);
+      if (item.items) nested = item.items;
+      else if (item.back && nested) nested = null;
+      else onpick(item.id);
       void tick().then(() => rows()[0]?.focus({ preventScroll: true }));
       return;
     }
@@ -114,7 +119,7 @@
     if (list.length === 0) return;
     const active = document.activeElement as HTMLElement | null;
     const index = active ? list.indexOf(active) : -1;
-    const focused = items.find((item) => item.id === active?.dataset['value']);
+    const focused = shownItems.find((item) => item.id === active?.dataset['value']);
     if (event.key === 'Enter' || (event.key === 'ArrowRight' && focused?.submenu)) {
       if (index < 0) return;
       event.preventDefault();
@@ -122,7 +127,7 @@
       return;
     }
     if (event.key === 'ArrowLeft') {
-      const back = items.find((item) => item.back);
+      const back = shownItems.find((item) => item.back);
       if (back) { event.preventDefault(); pick(back); }
       return;
     }
@@ -224,7 +229,8 @@
 
 <style>
   .separator { height: 1px; background: var(--color-border); margin: var(--space-1) var(--overlay-row-pad); }
-  .section { padding: var(--space-3) var(--overlay-row-pad) var(--space-2); font-size: var(--text-meta); font-weight: 600; color: var(--color-subtle); }
+  /* A section title is read, never tapped: its trimmed label box (`.ui-label`) reaches over the row above, which keeps the tap. */
+  .section { padding: var(--space-3) var(--overlay-row-pad) var(--space-2); font-size: var(--text-meta); font-weight: 600; color: var(--color-subtle); pointer-events: none; }
   .section:first-child, .sheet-title + .section { padding-top: var(--space-1); }
   /* A sheet's rows are taller, so its section labels take more air above and keep a clear gap to their first row. */
   /* One sheet inset (ContextMenu.svelte too): rows, rules and section titles start on one line. */

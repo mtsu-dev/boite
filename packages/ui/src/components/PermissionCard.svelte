@@ -116,11 +116,12 @@
     <span class="glyph" class:denied={decision === 'deny'} class:allowed={decision === 'allow'}>
       {#if decision === 'allow'}<ShieldCheck size={15} strokeWidth={1.75} />{:else if decision === 'deny'}<ShieldX size={15} strokeWidth={1.75} />{:else}<ShieldQuestion size={15} strokeWidth={1.75} />{/if}
     </span>
-    <span class="sentence ui-label" data-testid="permission-sentence" title={described.subject || toolName}>{sentence}</span>
     {#if decision !== null}
-      <span class="verdict ui-label" class:denied={decision === 'deny'} data-testid="permission-verdict">
-        {decision === 'allow' ? strings.chat.allowed : strings.chat.denied}
-      </span>
+      <!-- The receipt: the verdict, then what it was about, on one quiet line. -->
+      {@const receipt = (decision === 'allow' ? strings.chat.allowedReceipt : strings.chat.deniedReceipt).split('{subject}')}
+      <span class="sentence receipt ui-label" data-testid="permission-sentence" title={described.subject || sentence}><span class="verdict" data-testid="permission-verdict">{receipt[0]}</span>{described.subject || sentence}{receipt[1] ?? ''}</span>
+    {:else}
+      <span class="sentence ui-label" data-testid="permission-sentence" title={described.subject || toolName}>{sentence}</span>
     {/if}
   </div>
 
@@ -210,15 +211,9 @@
 
   .resolved .sentence { font-weight: 500; }
 
-  .verdict {
-    margin-left: auto;
-    flex: none;
-    font-size: var(--text-xs);
-    font-weight: 600;
-    color: var(--color-success);
-  }
-
-  .verdict.denied { color: var(--color-danger); }
+  /* One line however long the subject: its whole text is in the title. */
+  .receipt { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .verdict { color: var(--color-foreground); }
 
   .description { font-size: var(--text-sm); }
 
@@ -255,7 +250,8 @@
      stays put and the subject under it scrolls, so Deny and Allow are always
      in sight however long the command. */
   .permission.docked {
-    padding: 10px 12px;
+    /* One inset on all four sides, the question's own. */
+    padding: 10px;
     gap: 8px;
     outline: none;
   }
@@ -278,7 +274,7 @@
   .choice.allow .kbd { border-color: color-mix(in srgb, currentColor 30%, transparent); background: transparent; color: inherit; }
   @media (max-width: 720px) {
     /* The ask is one short sentence: it keeps Deny and Allow on its line at 360. */
-    .permission.docked { --decision-title: 6rem; padding: 8px 10px; }
+    .permission.docked { --decision-title: 6rem; padding: 8px; }
     .choice .kbd { display: none; }
     .choice { height: var(--touch-target); padding: 0 12px; }
   }

@@ -126,22 +126,24 @@ test('the phone settings list the desktop\'s groups, General and Advanced hold t
   store.showSettings();
   await waitFor(home);
   expect(rows('mobile-settings-home')).toEqual([
-    'settings-tab-general', 'settings-tab-appearance', 'settings-tab-accounts', 'settings-tab-brain', 'settings-tab-limits', 'settings-tab-resources', 'mobile-settings-connection', 'settings-tab-advanced'
+    'settings-tab-general', 'settings-tab-appearance', 'settings-tab-accounts', 'settings-tab-brain', 'settings-tab-limits', 'mobile-settings-connection', 'settings-tab-advanced'
   ]);
   // The header already says Settings, and the list's display options group the threads.
   expect(document.querySelector('[data-testid=mobile-settings-home] h1')).toBeNull();
   expect(query('[data-testid=settings]').dataset.detail).toBeUndefined();
   await open('settings-tab-general', general);
   expect(rows('mobile-settings-general')).toEqual([
-    'mobile-settings-conversations', 'mobile-settings-phone', 'mobile-settings-quiet', 'mobile-settings-privacy', 'settings-tab-voice', 'mobile-settings-archived', 'mobile-settings-secrets',
-    'mobile-settings-browser-profiles', 'mobile-settings-windows', 'mobile-settings-worktrees'
+    'mobile-settings-conversations', 'mobile-settings-phone', 'settings-tab-voice', 'mobile-settings-archived', 'mobile-settings-secrets',
+    'mobile-settings-windows', 'mobile-settings-worktrees'
   ]);
+  // Privacy is two switches: a card at the index's foot, out of the notifications.
+  await waitFor(() => document.querySelector('[data-testid=mobile-settings-general] [data-testid=telemetry-settings]') !== null);
   // A page carries its own header, so the app drops its own over it: one header a screen.
   expect(query('[data-testid=settings]').dataset.detail).toBe('true');
   await back();
   await open('settings-tab-advanced', advanced);
   // The task manager is the last section of Diagnostics, so the owner's index has no row of its own for it.
-  expect(rows('mobile-settings-advanced')).toEqual(['mobile-settings-compaction', 'settings-tab-experiments', 'settings-tab-diagnostics']);
+  expect(rows('mobile-settings-advanced')).toEqual(['settings-tab-experiments', 'settings-tab-diagnostics']);
   expect(document.querySelector('[data-testid=setting-group-working-threads]')).toBeNull();
 
   // Experiments are this phone's own: Bots on the computer does not give the phone its tab until it is switched on here.
@@ -153,29 +155,25 @@ test('the phone settings list the desktop\'s groups, General and Advanced hold t
   await back(advanced);
 
   Element.prototype.scrollIntoView ??= vi.fn();
-  query<HTMLButtonElement>('[data-testid=mobile-settings-compaction]').click();
-  await waitFor(() => document.querySelector('[data-testid=compaction-settings]') !== null);
+  // Compaction is one card, at the index's foot.
+  await waitFor(() => document.querySelector('[data-testid=mobile-settings-advanced] [data-testid=compaction-settings]') !== null);
   for (const type of ['common', 'agent', 'subagent', 'bot']) {
     expect(document.querySelector(`[data-testid=compaction-target-${type}]`)).not.toBeNull();
   }
   query<HTMLButtonElement>('[data-testid=compaction-target-subagent]').click();
   await waitFor(() => document.querySelector('[data-testid=compaction-inherited]') !== null);
   expect(query<HTMLInputElement>('[data-testid=compaction-customize]').checked).toBe(false);
-  await back(advanced);
   await back();
 
+  // Browser profiles sit beside the keys, on one page.
   await open('settings-tab-general', general);
-  query<HTMLButtonElement>('[data-testid=mobile-settings-browser-profiles]').click();
+  query<HTMLButtonElement>('[data-testid=mobile-settings-secrets]').click();
   await waitFor(() => document.querySelector('[data-testid=browser-profiles-card]') !== null);
   await back(general);
 
-  // The analytics switches have a screen of their own, out of the notifications.
   query<HTMLButtonElement>('[data-testid=mobile-settings-phone]').click();
   await waitFor(() => document.querySelector('[data-testid=phone-settings]') !== null);
   expect(document.querySelector('[data-testid=telemetry-settings]')).toBeNull();
-  await back(general);
-  query<HTMLButtonElement>('[data-testid=mobile-settings-privacy]').click();
-  await waitFor(() => document.querySelector('[data-testid=telemetry-settings]') !== null);
   await back(general);
   await back();
 

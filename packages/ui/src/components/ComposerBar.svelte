@@ -33,7 +33,8 @@
    * width: one "+" for what adds to the message, one model chip naming the
    * model (its effort, speed, permission and context rows inside; the
    * context's number beside it once it matters), then dictation and one round
-   * button that is Send, or Stop while a turn runs and nothing waits to go.
+   * button that is Send, or Stop while a turn runs and nothing waits to go
+   * (not while it stands on a decision of the owner's).
    * Nothing comes or goes with a decision docked above: the row keeps its
    * place and its controls. A pick on a thread is saved at once, after the
    * switch warnings; on a draft the whole choice is remembered. `choice`,
@@ -92,8 +93,10 @@
   let meter = $state<ContextControl | undefined>(undefined);
   const askAnchor = () => composer;
   let stopping = $derived(!!(target ? target.busy && target.stop : store.busy));
+  /** The turn stands still on the owner's answer (a permission, a question it stopped for): Deny or Skip is the way out, Escape still stops. */
+  let held = $derived(!target && store.openThread?.status === 'waiting');
   /** One round button at the row's end: Stop while a turn runs and nothing waits to go, Send otherwise. */
-  let stopShown = $derived(stopping && !canSend && !waiting);
+  let stopShown = $derived(stopping && !held && !canSend && !waiting);
 
   let picker = $state<HTMLInputElement | undefined>(undefined);
   let bar = $state<HTMLDivElement | undefined>(undefined);
@@ -166,8 +169,9 @@
   let effortItems = $derived([...agentDefault ? [{ id: '', label: strings.composer.effortDefault, title: strings.composer.effortDefaultHint }] : [],
     ...effortLevels.map((level) => ({ id: level.id, label: levelName(level), title: levelTitle(level) }))]);
   let speedItems = $derived([{ id: '', label: strings.composer.standardSpeed }, ...speeds.map((entry) => ({ id: entry.id, label: levelName(entry), title: levelTitle(entry) }))]);
-  /** What the picker's More row holds, by its current value: a speed other than the standard one. */
-  let moreSummary = $derived(speedItems.find((item) => item.id !== '' && item.id === speedOptions.speed)?.label ?? '');
+  /** What the picker's More row holds, by its current values: the permission, then a speed other than the standard one. */
+  let moreSummary = $derived([modes.length > 0 ? modeItems.find((item) => item.id === displayedMode)?.label : undefined,
+    speedItems.find((item) => item.id !== '' && item.id === speedOptions.speed)?.label].filter(Boolean).join(' · '));
 
   /** A null effort runs at the model's own default, not at a preset the client configured. */
   function cacheKey(selection: Choice): CacheKey {
@@ -302,13 +306,13 @@
         <div class="setting" data-testid="composer-effort" tabindex="-1"><span class="setting-name ui-label">{strings.composer.effortTitle}</span>
           <PickerChoices label={strings.composer.effortTitle} testid="composer-effort-menu" items={effortItems} active={activeEffort ?? (agentDefault ? '' : null)} onpick={pickEffort} /></div>
       {/if}
-      {#if modes.length > 0}
-        <div class="setting" data-testid="composer-mode" tabindex="-1"><span class="setting-name ui-label">{strings.composer.mode}</span>
-          <PickerChoices label={strings.composer.mode} testid="composer-mode-menu" items={modeItems} active={displayedMode} onpick={pickMode} /></div>
-      {/if}
-      {#if speeds.length > 0 || bound}
-        <!-- The rest waits behind one quiet row that reads its values: the first level is the model, its effort and its permission. -->
+      {#if modes.length > 0 || speeds.length > 0 || bound}
+        <!-- The rest waits behind one quiet row that reads its values: the first level is the model and its effort. -->
         <More summary={moreSummary}>
+          {#if modes.length > 0}
+            <div class="setting" data-testid="composer-mode" tabindex="-1"><span class="setting-name ui-label">{strings.composer.mode}</span>
+              <PickerChoices label={strings.composer.mode} testid="composer-mode-menu" items={modeItems} active={displayedMode} onpick={pickMode} /></div>
+          {/if}
           {#if speeds.length > 0}
             <div class="setting" data-testid="effort-speed" tabindex="-1"><span class="setting-name ui-label">{strings.composer.speed}</span>
               <PickerChoices label={strings.composer.speed} testid="effort-speed-menu" items={speedItems} active={speedOptions.speed ?? ''} onpick={(id) => void pick(speedOptions.pick(id || null))} /></div>
@@ -513,6 +517,9 @@
     .bar { gap: 0; }
     .chips :global(.picker > .trigger) { padding: 0 2px; }
     .chips :global(.picker > .trigger > .lucide-chevron-down) { display: none; }
+    /* At 360 the model's whole name and its effort keep the row: the meter
+       is its glyph alone, amber once nearly spent, its number in its label and its details. */
     .context-control :global(.trigger) { min-width: 34px; }
+    .context-control :global(.percent) { display: none; }
   }
 </style>

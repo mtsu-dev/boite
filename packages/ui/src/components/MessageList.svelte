@@ -847,7 +847,15 @@
      back: whatever lies below, the last line over the dock fades instead of
      being cut. A state, not a scroll timeline, so a still frame shows it too;
      two attributes outrank app.css's shared `.scroll-edges` rule. */
-  .timeline[data-scroll-root][data-testid]::after { animation: none; opacity: 0; transition: opacity var(--dur-2) var(--ease-out-quint); }
+  .timeline[data-scroll-root][data-testid]::after {
+    --edge-ground: var(--scroll-edge-ground, var(--color-background));
+    animation: none;
+    opacity: 0;
+    transition: opacity var(--dur-2) var(--ease-out-quint);
+    /* Eased, not a straight ramp: a bordered block thins out over the 24 px
+       instead of meeting a band whose upper edge reads as a cut. */
+    background: linear-gradient(to top, var(--edge-ground), color-mix(in oklab, var(--edge-ground) 84%, transparent) 30%, color-mix(in oklab, var(--edge-ground) 52%, transparent) 55%, color-mix(in oklab, var(--edge-ground) 18%, transparent) 80%, transparent);
+  }
   .timeline.below[data-scroll-root][data-testid]::after { opacity: 1; }
   /* The top edge fades deeper than the shared one: a bubble scrolled up to the
      header thins out over 40 px instead of reading as a card cut by it. At the

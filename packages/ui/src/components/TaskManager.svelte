@@ -16,7 +16,7 @@
   import { threadTone } from '../lib/thread-state';
 
   let { store, onopenthread }: { store: Store; onopenthread?: () => void } = $props();
-  // This PC first. The agents listed are those of the machine picked, at first
+  // This computer first. The agents listed are those of the machine picked, at first
   // the one the page was opened for; another store prop forgets the choice.
   const machines = $derived([...workspace.machinesOr(store)].sort((a, b) => Number(isThisPC(b)) - Number(isThisPC(a))));
   let picked = $derived.by<string | null>(() => { void store; return null; });

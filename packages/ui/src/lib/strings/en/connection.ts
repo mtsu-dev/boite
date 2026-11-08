@@ -2,7 +2,7 @@ export const strings = {
 
   connection: {
     machine: 'Machine',
-    local: 'This PC',
+    local: 'This computer',
     current: 'Current machine',
     machines: 'machines connected',
     issues: 'need attention',

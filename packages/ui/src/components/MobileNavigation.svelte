@@ -4,7 +4,7 @@
   import WindowList from './WindowList.svelte';
   import MobileTabs from './MobileTabs.svelte';
   import ThreadHeader from './ThreadHeader.svelte';
-  import { ArrowLeft, ArrowUpDown, ChevronDown, Ellipsis, Folder, MessageSquare, Plus, Search, Radar, X } from '@lucide/svelte';
+  import { ArrowLeft, ArrowUpDown, ChevronDown, Ellipsis, MessageSquare, Monitor, Plus, Search, X } from '@lucide/svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import MobileConnect from './MobileConnect.svelte';
   import type { Store } from '../lib/store.svelte';
@@ -140,11 +140,6 @@
   /** This app's own machine goes unsaid on Recent's place line and on the cards: the other machines are named. */
   const home = $derived(machines.find(m => m.store === workspace.primary));
   const places = $derived(rowPlaces(rows, home?.id));
-  /** Recent shows one project or all of them: the filter's choices. */
-  const filterItems = $derived([
-    { id: 'all', label: strings.sidebar.allProjects, active: !selected },
-    ...groups.map(entry => ({ id: projectKey(entry), label: projectName(entry.project), hint: several ? entry.machine.label : '', active: projectKey(entry) === projectView.filter, projectTile: { project: entry.project, store: entry.machine.store } }))
-  ]);
   const recentGroups = $derived(selected ? [selected] : groups);
   let workingOpen = $state(false);
   const groupWorking = $derived(inRecent && recentPreferences.groupWorking && !query);
@@ -152,6 +147,9 @@
   const atWorkRows = $derived(inRecent && !query ? rows.filter(row => workingThread(row.machine.store, row.thread)) : []);
   let atWorkOnly = $state(false);
   const atWorkShown = $derived(atWorkOnly && atWorkRows.length > 0);
+  /** The Recent filters, in the display menu: the rows at work alone, the project it lists; their count is on its button. */
+  const atWork = $derived(atWorkRows.length > 0 ? { count: atWorkRows.length, on: atWorkShown, toggle: () => { atWorkOnly = !atWorkShown; } } : undefined);
+  const filters = $derived(Number(atWorkShown) + Number(inRecent && selected !== undefined));
   // The chip goes with the last of that work: the filter does not come back by itself with the next turn.
   // Only the Recent list watches it: opening a conversation, searching or visiting Projects keeps the filter.
   $effect(() => { if (atWorkOnly && inRecent && !query && atWorkRows.length === 0) atWorkOnly = false; });
@@ -190,7 +188,7 @@
     // Activity's own count over the project's threads: the card and the rail's badge never disagree.
     return storeNeedsYou(owner, owner.threadsOf(entry.project.id));
   }
-  /** A phone's row menu: every row on its first level, the move included; a phone has no second level. */
+  /** A phone's row menu: the desktop's short first level, its named group opening in the same sheet (`Menu.svelte`). */
   function rowItems(owner: Store, thread: ThreadSummary): MenuItem[] {
     return threadMenuItems(owner, thread, { showDone: listScreen === 'threads', phone: true });
   }
@@ -244,6 +242,13 @@
   /** A set-aside project shows its archived conversations as its body, with no pill for them. */
 </script>
 
+{#snippet connection()}
+  <!-- The machine: on the first run its name, the screen's one line; on the list's row a monitor and its dot, the name in its tooltip. -->
+  <button class="ghost connection" class:icon={!firstRun} data-testid="mobile-connection" title={place} onclick={() => store.showSettings('machines')}>
+    {#if !firstRun}<Monitor size={20} aria-hidden="true" />{/if}<span class="dot" class:ready={store.connection === 'ready'}></span><span class="ui-label" class:visually-hidden={!firstRun}>{place}</span>{#if firstRun}<ChevronDown size={12} />{/if}
+  </button>
+{/snippet}
+
 <header class="mobile-header" class:chatting={chatting && !firstRun} class:settings={store.page !== 'chat'} data-testid="mobile-header" data-slide={slide.direction} bind:this={header}>
   {#if chatting && !firstRun}
     <!-- The only way out of a conversation on a phone. A thread that waits elsewhere is in its name and the tab bar's count, not a dot on the arrow. -->
@@ -257,20 +262,21 @@
     <!-- The magnifier opened the field in the title's place; the display options close its row, as on the desktop list. -->
     <div class="search"><Search size={17} /><input type="search" bind:value={() => lent ? tabHeader.query : search, value => { if (lent) tabHeader.query = value; else search = value; }}
       aria-label={lent?.searchLabel ?? strings.mobile.search} placeholder={lent?.searchLabel ?? strings.mobile.search} data-testid="mobile-search" use:focusOnMount onkeydown={event => { if (event.key === 'Escape') closeSearch(); }} />
-      {#if listScreen === 'threads' && groups.length}<span class="display"><DisplayOptions entries={groups} target={undefined} owner={store} prefix="mobile-" compact onaddproject={store.owner ? addProject : undefined} /></span>{/if}
+      {#if listScreen === 'threads' && groups.length}<span class="display"><DisplayOptions entries={groups} target={undefined} owner={store} prefix="mobile-" compact filters={filters} {atWork} onaddproject={store.owner ? addProject : undefined} /></span>{/if}
     </div>
     <button class="ghost icon" data-testid="mobile-search-close" aria-label={strings.mobile.clearSearch} onclick={closeSearch}><X size={20} /></button>
   {:else}
-  <!-- The machine over the page's name; the places themselves are the bottom bar's. -->
+  <!-- The page's name, then the machine, the display menu and the search on its row; the places themselves are the bottom bar's. -->
   <div class="identity brand">
-    {#if placeShown || firstRun}<button class="ghost connection" data-testid="mobile-connection" onclick={() => store.showSettings('machines')}><span class="dot" class:ready={store.connection === 'ready'}></span><span class="ui-label">{place}</span><ChevronDown size={12} /></button>{/if}
+    {#if firstRun}{@render connection()}{/if}
     <!-- The first run's screen says what Boite is: the header keeps the machine alone, the way to its settings. -->
     <!-- The thread list's name is its two views, both in sight, the one on marked; the display menu sits beside the magnifier. -->
     {#if !firstRun}<strong data-testid="mobile-title">{#if threadViews}<ViewSwitch size="title" label={strings.sidebar.displayView} current={workspace.view} onpick={view => workspace.setView(view as 'projects' | 'recent')}
       options={[{ id: 'projects', label: strings.sidebar.projectsView }, { id: 'recent', label: strings.sidebar.recentView }]} testid="mobile-view-switch" />{:else if botsAndContacts}<ViewSwitch size="title" label={strings.agents.heading} current={store.page === 'home' ? 'home' : 'agents'}
       onpick={id => id === 'home' ? store.showHome() : store.showAgents()} options={[{ id: 'agents', label: strings.agents.heading, testid: 'mobile-bots-view', preload: 'agents' }, { id: 'home', label: strings.contacts.heading, testid: 'mobile-contacts', preload: 'home' }]} />{:else}{title}{/if}</strong>{/if}
   </div>
-  {#if threadViews}<span class="header-display"><DisplayOptions entries={groups} target={undefined} owner={store} prefix="mobile-" compact onaddproject={store.owner ? addProject : undefined} /></span>{/if}
+  {#if placeShown && !firstRun}{@render connection()}{/if}
+  {#if threadViews}<span class="header-display"><DisplayOptions entries={groups} target={undefined} owner={store} prefix="mobile-" compact filters={filters} {atWork} onaddproject={store.owner ? addProject : undefined} /></span>{/if}
   {#if searchable}<button class="ghost icon" data-testid={lent?.searchTestid ?? 'mobile-search-open'} aria-label={lent?.searchLabel ?? strings.mobile.search} title={lent?.searchLabel ?? strings.mobile.search} onclick={() => searching = true}><Search size={20} /></button>{/if}
   {/if}
   {#if !recover && !chatting && experimentOn('whip')}<WhipButton mobile />{/if}
@@ -295,23 +301,11 @@
 {/snippet}
 
 {#if narrow.current && store.page === 'chat' && (screen !== 'chat' || recover || leaving)}
-  <section class="mobile-list" class:recent={inRecent} class:tabbed={tabbed || leaving} inert={leaving} bind:this={scrollRoot} onscroll={() => { if (scrollRoot) scrollPositions.set(listKey, scrollRoot.scrollTop); }} data-testid="mobile-list" aria-label={listScreen === 'activity' ? strings.mobile.activity : strings.sidebar.threads}>
+  <section class="mobile-list scroll-edges" class:recent={inRecent} class:tabbed={tabbed || leaving} inert={leaving} bind:this={scrollRoot} onscroll={() => { if (scrollRoot) scrollPositions.set(listKey, scrollRoot.scrollTop); }} data-testid="mobile-list" aria-label={listScreen === 'activity' ? strings.mobile.activity : strings.sidebar.threads}>
     {#if recover && narrow.current}
       <MobileConnect {store} onpaired={() => show('threads')} />
     {:else}
-    <!-- Recent's filters open the list; the search and the display options are the header's. -->
-    {#if (inRecent && groups.length) || atWorkRows.length > 0}
-      <div class="filters list-heading">
-        {#if inRecent && groups.length}
-          <Menu items={filterItems} onpick={key => projectView.pick(key)} label={strings.sidebar.filterProject} placement="bottom" variant="ghost" testid="mobile-project-filter">
-            {#if selected}<ProjectTile project={selected.project} store={selected.machine.store} size={16} />{:else}<Folder size={14} />{/if}<span class="ui-label">{selected ? projectName(selected.project) : strings.sidebar.allProjects}</span>{#if selected && several}<span class="filter-machine ui-label">{selected.machine.label}</span>{/if}<ChevronDown size={13} />
-          </Menu>
-        {/if}
-        {#if atWorkRows.length > 0}
-          <button class="ghost at-work" class:on={atWorkShown} aria-pressed={atWorkShown} title={strings.mobile.atWorkFilter} data-testid="mobile-at-work" onclick={() => atWorkOnly = !atWorkShown}><Radar size={14} aria-hidden="true" /><span class="ui-label">{fill(strings.mobile.atWork, { count: String(atWorkRows.length) })}</span></button>
-        {/if}
-      </div>
-    {/if}
+    <!-- Recent's filters are the display menu's, counted on its button: the list starts with its rows. -->
     {#snippet threadRow(row: typeof rows[number], grouped = false, helpers: typeof rows = [])}
       <!-- Activity: the row's verb is its own, else the first asking sub-agent's, which opens that sub-agent (ActivityRow.svelte). -->
       {@const target = row.verb ? row : helpers.find(helper => helper.verb) ?? row}
@@ -456,6 +450,9 @@
     .chat-heading :global(.launcher span) { display: none; }
     .chat-heading :global(.launcher) { width: 44px; padding: 0; justify-content: center; flex: none; }
     .mobile-header > .icon { flex: none; color: var(--color-muted-foreground); }
+    /* A list's row holds the view switch and up to four finger squares (the machine, the display menu, the search, a
+       new thread): the squares touch, their glyphs still 24 px apart, so the switch keeps its room at 360 px. */
+    .mobile-header:not(.chatting) > :is(.icon, .header-display) { margin-left: -10px; }
     .search { display: flex; flex: 1; min-width: 0; gap: 8px; align-items: center; padding: 0 0 0 12px; background: var(--color-surface-2); border: 1px solid var(--color-border); border-radius: var(--radius-lg); color: var(--color-muted-foreground); }
     .search > :global(svg) { flex: none; }
     /* The display options close the field's row, after a hairline. */
@@ -464,15 +461,6 @@
     .search input { flex: 1; min-width: 0; border: 0; background: transparent; min-height: 44px; font-size: 16px; padding: 8px 0; }
     .search:focus-within { border-color: var(--color-muted-foreground); }
     .search input:focus { outline: none; }
-    .filters { display: flex; flex-wrap: wrap; gap: 8px; }
-    .filters :global(.menu) { min-width: 0; max-width: 100%; }
-    .at-work, .filters :global(.trigger) { display: inline-flex; gap: 6px; align-items: center; height: auto; min-height: var(--touch-target); max-width: 100%; padding: 0 12px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface-2); font-size: var(--text-sm); font-weight: 500; }
-    .at-work { color: var(--color-foreground); }
-    .filters :global(.trigger) { color: var(--color-foreground); }
-    .filters :global(.trigger svg) { flex: none; color: var(--color-muted-foreground); }
-    .filters :global(.trigger .ui-label) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .filters .filter-machine { color: var(--color-muted-foreground); font-weight: 400; }
-    .at-work.on { border-color: var(--color-muted-foreground); background: var(--color-surface); }
     .brand-icon { flex: none; border-radius: var(--radius-md); }
     .back { position: relative; flex: none; }
     /* The page's name, under the machine it reads. */
@@ -484,14 +472,19 @@
     .connection > span:not(.dot) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--color-muted-foreground); }
     .dot.ready { background: var(--color-success); }
+    /* On the list's row: a finger's square, the monitor with its dot on the corner, like the desktop rail's machines. */
+    .connection.icon { flex: none; justify-content: center; width: var(--touch-target); height: var(--touch-target); margin: 0; color: var(--color-muted-foreground); }
+    .connection.icon .dot { position: absolute; top: 9px; right: 8px; width: 7px; height: 7px; box-shadow: 0 0 0 2px var(--color-background); }
     .identity { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; flex: 1; }
     .mobile-header > :global(.menu) { flex: none; }
     .header-display { display: flex; flex: none; }
     .header-display :global(.trigger) { width: var(--touch-target); height: var(--touch-target); color: var(--color-muted-foreground); }
-    .mobile-list { display: block; position: absolute; inset: 0; overflow-y: auto; overscroll-behavior: contain; background: var(--color-background); padding: 8px max(16px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
+    .mobile-list { display: block; position: absolute; inset: 0; overflow-y: auto; overscroll-behavior: contain; background: var(--color-background); padding: 8px max(16px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
     /* The bottom bar owns the home indicator's inset. */
-    .mobile-list.tabbed { padding-bottom: 20px; }
-    .list-heading { padding: 8px 0 12px; }
+    .mobile-list.tabbed { padding-bottom: 24px; }
+    /* The foot's fade (app.css `.scroll-edges`): 24 px of the ground over the rows while more lies below, gone at the
+       end, where the padding leaves the last row whole above the tab bar. */
+    .mobile-list { --scroll-edge: 24px; --scroll-edge-top: 8px; --scroll-edge-bottom: 24px; }
     p { font-size: var(--text-sm); }
     /* One frame: a quiet surface, no border and no banded header inside it. */
     .project-group { --row-background: var(--color-surface); border-radius: var(--radius-lg); background: var(--color-surface); margin-bottom: 12px; overflow: hidden; }

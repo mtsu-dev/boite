@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { onMount, untrack } from 'svelte';
-  import { RotateCcw, SlidersHorizontal } from '@lucide/svelte';
+  import { onMount, tick, untrack } from 'svelte';
+  import { LayoutGrid, RotateCcw, SlidersHorizontal } from '@lucide/svelte';
+  import { curated } from '../lib/curated';
   import { ACCENT_PRESETS, readAccent, setAccent } from '../lib/accent';
   import { accentHex, contrast, editPalette, paletteTokens, improvePaletteContrast, type ColorRole, type Palette } from '../lib/color-math';
   import { setTheme } from '../lib/theme';
@@ -11,8 +12,23 @@
   import ColorPicker from './ColorPicker.svelte';
   import InfoTip from './InfoTip.svelte';
 
-  /** A phone picks from a sheet; a desktop shows every palette as its picture, under the row. */
+  /**
+   * A phone picks from a sheet; a desktop shows the palettes as their pictures,
+   * under the row. Both put the one in use and the first others in front
+   * (`FRONT` in all); "All themes" opens the rest.
+   */
   let { phone = false }: { phone?: boolean } = $props();
+  const FRONT = 4;
+  let everything = $state(false);
+  let grid = $state<HTMLElement>();
+
+  /** The rest opens where "All themes" stood, the first of them in focus. */
+  async function openAll() {
+    const at = front.length;
+    everything = true;
+    await tick();
+    grid?.querySelectorAll<HTMLElement>('.palette')[at]?.focus();
+  }
   let mode = $state<ColorMode>(untrack(colorMode));
   let palette = $state<Palette>(untrack(() => readPalette(mode)));
   let custom = $state(untrack(() => hasCustomColors(mode)));
@@ -29,6 +45,7 @@
   let ratio = $derived(Math.min(...grounds.map(ground => contrast(palette.foreground, ground))));
   let matching = $derived(presets.find(p => roles.every(key => p.palette[key] === palette[key]) && JSON.stringify(p.palette.details ?? {}) === JSON.stringify(palette.details ?? {}))?.id);
   let choices = $derived(presets.map((preset) => ({ id: preset.id, name: strings.settings.colors.palettes[preset.id] })));
+  let front = $derived(everything ? choices : curated(choices, matching, FRONT));
   let canUndo = $derived(!!undo && JSON.stringify(undo) !== JSON.stringify(palette));
   function follow() {
     const nextMode = colorMode();
@@ -87,17 +104,22 @@
       {#if canUndo}<button type="button" class="small ghost" onclick={undoEdit} data-testid="colors-undo"><span class="ui-label">{strings.settings.colors.undo}</span></button>{/if}
       {#if custom}<button type="button" class="small ghost" onclick={reset} data-testid="colors-reset"><RotateCcw size={13} /><span class="ui-label">{strings.settings.colors.reset}</span></button>{/if}
       <button type="button" class="ghost small customize" aria-expanded={customizing} aria-controls={editorId} onclick={() => { customizing = !customizing; }} data-testid="colors-customize"><SlidersHorizontal size={14} /><span class="ui-label">{strings.settings.colors.customize}</span></button>
-      {#if phone}<ChoiceSelect label={strings.settings.colors.palette} options={choices} value={matching} fallback={strings.settings.colors.custom} onpick={pick} preview={tile} testid="palette-current" optionTestid={(id) => `palette-${id}`} />{/if}
+      {#if phone}<ChoiceSelect label={strings.settings.colors.palette} options={choices} value={matching} fallback={strings.settings.colors.custom} onpick={pick} preview={tile} testid="palette-current" optionTestid={(id) => `palette-${id}`} front={FRONT} all={strings.settings.colors.allThemes} />{/if}
     </div>
   </div>
   {#if !phone}
     <!-- Each palette by its picture, its name under it; edited colours check none. -->
-    <div class="palettes" role="group" aria-label={strings.settings.colors.palette} data-testid="palette-current">
-      {#each choices as choice (choice.id)}
+    <div class="palettes" role="group" aria-label={strings.settings.colors.palette} data-testid="palette-current" bind:this={grid}>
+      {#each front as choice (choice.id)}
         <button type="button" class="palette" aria-pressed={choice.id === matching} data-testid="palette-{choice.id}" onclick={() => pick(choice.id)}>
           {@render tile(choice.id)}<span class="ui-label">{choice.name}</span>
         </button>
       {/each}
+      {#if front.length < choices.length}
+        <button type="button" class="palette all" aria-expanded="false" data-testid="palette-all" onclick={() => void openAll()}>
+          <span class="tile more" aria-hidden="true"><LayoutGrid size={16} strokeWidth={1.75} /></span><span class="ui-label">{strings.settings.colors.allThemes}</span>
+        </button>
+      {/if}
     </div>
   {/if}
   <div class="editor" class:customizing id={editorId}>
@@ -138,6 +160,8 @@
   .palette .ui-label { text-align: center; }
   @media (hover: hover) { .palette:hover { background: var(--color-hover); color: var(--color-foreground); } }
   .palette[aria-pressed='true'] { color: var(--color-foreground); }
+  /* "All themes" stands as one more tile, an empty frame round its mark. */
+  .tile.more { align-items: center; justify-content: center; background: transparent; color: var(--color-muted-foreground); box-shadow: inset 0 0 0 1px var(--color-border); }
   .palette[aria-pressed='true'] .tile { box-shadow: inset 0 0 0 1px var(--color-edge), 0 0 0 2px var(--color-accent); }
   /* A settings row: the words on the left; the palette in use and what edits it on the right. */
   .heading { display: flex; justify-content: space-between; align-items: center; gap: var(--space-5); min-height: 44px; }

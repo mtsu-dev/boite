@@ -30,7 +30,7 @@ export const fr: Translation = {
       exclusionsHeading: 'Ne jamais capturer', exclusionsIntro: 'Aucun agent ne peut capturer les fenêtres de ces exécutables, même avec votre accord. Indiquez leur nom ou leur chemin.',
       always: "Les gestionnaires de mots de passe et l'écran de connexion sont toujours exclus : {list}.",
       add: 'Ajouter', addLabel: "Nom ou chemin de l'exécutable", placeholder: 'game.exe ou C:\\Games\\game.exe',
-      none: "Aucune autre application n'est exclue.", removeExclusion: 'Ne plus exclure {name}'
+      none: 'Aucune application ajoutée.', removeExclusion: 'Ne plus exclure {name}'
     }
   }
 };

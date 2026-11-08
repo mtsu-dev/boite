@@ -4,7 +4,7 @@ export const fr: Translation = {
 
   connection: {
     machine: 'Machine',
-    local: 'Ce PC',
+    local: 'Cet ordinateur',
     current: 'Machine actuelle',
     machines: 'machines connectées',
     issues: 'à vérifier',

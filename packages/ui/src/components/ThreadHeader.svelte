@@ -10,7 +10,7 @@
   import { pendingLine } from '../lib/thread-move.svelte';
   import { pickThreadAction, threadMenuItems, threadToolItems } from '../lib/thread-menu';
   import { closeCoordination, coordinationRequest } from '../lib/coordination-request.svelte';
-  import { separator, type MenuItem } from '../lib/menu';
+  import type { MenuItem } from '../lib/menu';
   import { fill, strings } from '../lib/strings';
   import { work } from '../lib/work-prefs.svelte';
   import type { Store } from '../lib/store.svelte';
@@ -127,29 +127,17 @@
 
   /** The view's own tool, first on the menu. A phone has no Ctrl+F: this row is its way to the find bar. */
   let tools = $derived.by((): MenuItem[] => thread ? [{ id: 'find', label: strings.palette.find, glyph: Search }] : []);
-  let lead = $derived(identity.length ? [...identity, separator('sep-identity')] : []);
-  let desktopItems = $derived(thread ? [...lead, ...threadMenuItems(store, thread, { tools })] : []);
-  /** "Project and branch": the move, the path and the pull request, the same on a desktop header and a row. A phone has no second level. */
-  let toolItems = $derived(thread ? threadToolItems(store, thread, {}) : []);
-
   /**
-   * A phone's header menu is a desktop's, every row on its first level: the
-   * thread's bot and watches, find, then what is done to the thread. Contact
-   * requests live in Activity.
+   * One menu on a desktop and a phone: find, then the frequent actions, then
+   * the named group, which opens in place (`Menu.svelte`) and starts with
+   * what the thread is. A phone's has no path or pull request.
    */
-  let phoneItems = $derived(thread ? [...lead, ...threadMenuItems(store, thread, { tools, phone: true })] : []);
-  let inTools = $state(false);
-  /** Every row in view: the identity, find and the thread's actions run past the default 360 px, which hid Delete under a scroll. */
+  let menuShown = $derived(thread ? threadMenuItems(store, thread, { tools, lead: identity, showDone: true, phone: mobile.current }) : []);
+  /** The right-click's two levels, which the shared context menu swaps through the picks. */
+  let toolItems = $derived(thread ? threadToolItems(store, thread, { lead: identity }) : []);
+  let desktopItems = $derived(thread ? threadMenuItems(store, thread, { tools, lead: identity, showDone: true }) : []);
+  /** Every row in view on a desktop: the first level and its group stay short, but a long bot name still wants the room. */
   const MENU_CAP = 560;
-  const menuShown = $derived(inTools ? toolItems : mobile.current ? phoneItems : desktopItems);
-  // Menu.svelte keeps its list open on the named group and Back and swaps the rows in place; a close puts the first list back.
-  function menuPick(action: string) {
-    if (action === 'more') { inTools = true; return; }
-    if (action === 'back') { inTools = false; return; }
-    inTools = false;
-    titleAction(action);
-  }
-
   function titleAction(action: string) {
     const open = store.openThread;
     if (!open) return;
@@ -224,7 +212,7 @@
           <!-- A small chevron exposes thread actions on the desktop. -->
           <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
           <span class="title-menu">
-            <Menu items={menuShown} onpick={menuPick} cap={MENU_CAP} label={strings.sidebar.threadMenu} heading={thread?.title} placement="bottom" variant={mobile.current ? 'ghost' : 'text'} testid="thread-menu-trigger" onclose={() => (inTools = false)}>
+            <Menu items={menuShown} onpick={titleAction} cap={MENU_CAP} label={strings.sidebar.threadMenu} heading={thread?.title} placement="bottom" variant={mobile.current ? 'ghost' : 'text'} testid="thread-menu-trigger">
               {#if mobile.current}<Ellipsis size={20} />{:else}<ChevronDown size={14} />{/if}
             </Menu>
           </span>
@@ -341,7 +329,8 @@
 
   /* One fill when the panel is open. */
   .panel-switch { display: inline-flex; flex: none; align-items: center; border-radius: var(--radius-md); }
-  .panel-switch > button { width: var(--control-sm); height: var(--control-sm); border-radius: var(--radius-md); }
+  /* 28 px, as the title's menu beside it: the panel's one door from the header. */
+  .panel-switch > button { width: 28px; height: 28px; border-radius: var(--radius-md); }
   .panel-switch.on { background: var(--color-active); }
   .panel-switch.on > button { color: var(--color-foreground); }
   .watch-chip { flex: none; display: inline-flex; color: var(--color-muted-foreground); }

@@ -85,7 +85,7 @@
     <div class="lines">
       <p class="head">
         <!-- The title opens the contact's page, with the whole of it. -->
-        <button type="button" class="ghost title ui-label" title={labels.review} onclick={() => void openContact(row.machine.store, (row.request ?? row.letter!).coreId)} data-testid="activity-contact-open">{row.letter ? fill(strings.contacts.mail.writes, { contact: row.letter.contact, thread: row.letter.thread }) : fill(labels.asks, { contact: row.request.contact })}</button>
+        <button type="button" class="ghost title ui-label" title={labels.review} onclick={() => void openContact(row.machine.store, (row.request ?? row.letter!).coreId)} data-testid="activity-contact-open"><span class="clamp">{row.letter ? fill(strings.contacts.mail.writes, { contact: row.letter.contact, thread: row.letter.thread }) : fill(labels.asks, { contact: row.request.contact })}</span></button>
         {#if same.length > 1}{@const many = fill(labels.same, { count: String(same.length) })}<span class="times" data-testid="activity-contact-count" title={many} aria-label={many}>×{same.length}</span>{/if}
       </p>
       <p class="text">{text}</p>
@@ -153,7 +153,9 @@
   /* Baseline: the count reads on the name's first line, whatever height a phone gives the button. */
   .head { display: flex; align-items: baseline; gap: 8px; margin: 0 calc(var(--side-room) - var(--pad-x)) 0 0; }
   /* Two lines of who asks before any ellipsis, as a thread row's title. */
-  .title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; min-width: 0; height: auto; padding: 0; background: none; overflow: hidden; white-space: normal; overflow-wrap: anywhere; text-align: start; font-weight: 500; line-height: 20px; color: var(--color-foreground); }
+  /* The clamp sits on an inner span, so the button itself does not clip and can carry a wider hit area. */
+  .title { position: relative; display: block; min-width: 0; height: auto; padding: 0; background: none; white-space: normal; text-align: start; font-weight: 500; line-height: 20px; color: var(--color-foreground); }
+  .clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
   .title:hover { text-decoration: underline; background: none; }
   .times { flex: none; line-height: 20px; font-size: var(--text-xs); font-weight: 600; color: var(--color-muted-foreground); font-variant-numeric: tabular-nums; }
   /* What is asked, whole: the answer is never given to a cut line. */
@@ -183,8 +185,8 @@
     .top :global(.trigger) { opacity: 1; min-width: var(--touch-target); }
     .contact-row:is(:hover, :focus-within) time { visibility: visible; }
     .answer, .actions :global(button) { min-height: var(--touch-target); }
-    /* The title line is the row's open button: a finger needs more than its 14 px of text. */
-    .title { padding-block: 6px; margin-block: -6px; }
+    /* The title line is the row's open button: a finger needs 44 px, not its text's height, with no taller row. */
+    .title::after { content: ''; position: absolute; inset: 50% 0 auto; height: var(--touch-target); translate: 0 -50%; }
     /* The answer is a finger's height, taller than the title's line: the text under it starts below the button. */
     .head { min-height: calc(var(--touch-target) - var(--feed-pad)); }
   }

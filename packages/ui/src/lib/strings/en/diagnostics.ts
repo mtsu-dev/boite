@@ -8,7 +8,9 @@ export const strings = {
     system: 'System',
     uptime: 'Core running for',
     lastDay: 'Last 24 hours',
-    levels: { debug: 'debug', info: 'info', warn: 'warnings', error: 'errors' },
+    levels: { debug: 'details', info: 'info', warn: 'warnings', error: 'errors' },
+    /** The same words for a count of one. */
+    levelOne: { debug: 'detail', info: 'info', warn: 'warning', error: 'error' },
     files: 'Log files',
     noFiles: 'No log file yet',
     problems: 'Problems',

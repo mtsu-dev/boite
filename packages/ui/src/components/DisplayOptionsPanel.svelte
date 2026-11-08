@@ -1,3 +1,8 @@
+<script module lang="ts">
+  /** A phone's Recent filter on the rows at work: how many there are, whether it is on, and its switch. */
+  export type AtWork = { count: number; on: boolean; toggle: () => void };
+</script>
+
 <script lang="ts">
   import { tick, type Component } from 'svelte';
   import { Check, ChevronDown, Folder, FolderPlus } from '@lucide/svelte';
@@ -9,7 +14,7 @@
   import { recentPreferences } from '../lib/recent.svelte';
   import { doneFilter } from '../lib/inbox.svelte';
   import { projectName } from '../lib/format';
-  import { strings } from '../lib/strings';
+  import { fill, strings } from '../lib/strings';
   import type { Project } from '@boite/contracts';
   import type { Store } from '../lib/store.svelte';
   import Menu from './Menu.svelte';
@@ -24,7 +29,7 @@
    * the project section speaks for, owned by `owner`, which may be another
    * machine's Store.
    */
-  let { popover, anchor, onclose, entries, target, owner, prefix = '', compact = false, onaddproject }: {
+  let { popover, anchor, onclose, entries, target, owner, prefix = '', compact = false, atWork, onaddproject }: {
     popover: Closing;
     anchor: () => HTMLElement | null;
     onclose: (refocus?: boolean) => void;
@@ -32,8 +37,9 @@
     target: Project | undefined;
     owner: Store;
     prefix?: string;
-    /** A phone's menu: the view and the groups only. */
+    /** A phone's menu: the project Recent lists and the groups only. */
     compact?: boolean;
+    atWork?: AtWork;
     /** Given, the menu ends on Add a project. */
     onaddproject?: () => void;
   } = $props();
@@ -121,7 +127,7 @@
   onanimationend={popover.end}
 >
   <!-- No view switch here: both views are named in the list's own head (ViewSwitch.svelte). -->
-  {#if !projects && !compact && entries.length}
+  {#if !projects && entries.length}
     <!-- The project Recent lists: its own menu, so a long list of projects scrolls there and not here. -->
     <div class="filter">
       <Menu items={filterItems} onpick={key => projectView.pick(key)} label={strings.sidebar.filterProject} placement="bottom" variant="text" testid={`${prefix}project-filter`}>
@@ -146,6 +152,11 @@
     </div>
   {/if}
   <div class="separator" role="separator"></div>
+  {#if atWork && atWork.count > 0}
+    <button type="button" role="switch" class="row" class:on={atWork.on} aria-checked={atWork.on} data-value="at-work" data-testid={`${prefix}at-work`} title={strings.mobile.atWorkFilter} onclick={atWork.toggle}>
+      <span class="ui-label">{fill(strings.mobile.atWork, { count: String(atWork.count) })}</span><span class="switch" class:on={atWork.on} aria-hidden="true"></span>
+    </button>
+  {/if}
   {@render toggle('working', strings.sidebar.groupWorkingRow, recentPreferences.groupWorking, strings.settings.groupWorkingThreadsHint,
     () => recentPreferences.setGroupWorking(!recentPreferences.groupWorking))}
   {@render toggle('done', strings.sidebar.showDoneRow, doneFilter.shown, strings.sidebar.showDoneHint, () => doneFilter.set(!doneFilter.shown))}

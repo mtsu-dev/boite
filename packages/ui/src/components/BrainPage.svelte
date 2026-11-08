@@ -189,8 +189,7 @@
         {/if}
       </div>
       <div class="boite-guide">
-        <label class="sharing"><input type="checkbox" role="switch" checked={status.config.boiteGuide !== false} disabled={busy || !status.config.enabled} data-testid="brain-guide" onchange={event => { event.currentTarget.checked = status!.config.boiteGuide !== false; void run('guide'); }} /><span class="ui-label">{t.boiteGuide}</span><SyncMark {store} key="brain:boiteGuide" /></label>
-        <p>{t.boiteGuideHint}</p>
+        <label class="sharing"><input type="checkbox" role="switch" checked={status.config.boiteGuide !== false} disabled={busy || !status.config.enabled} data-testid="brain-guide" onchange={event => { event.currentTarget.checked = status!.config.boiteGuide !== false; void run('guide'); }} /><span class="ui-label">{t.boiteGuide}</span><SyncMark {store} key="brain:boiteGuide" /><InfoTip topic={t.boiteGuide} text={t.boiteGuideHint} /></label>
       </div>
       {#if status.git?.upstream || status.config.autoPull}
         <div class="automation">
@@ -270,7 +269,6 @@
   .connection-bottom { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 20px 12px 24px; border-top: 1px solid var(--color-border); }
   .sharing { display: flex; align-items: center; gap: 10px; font-size: var(--text-sm); }
   .global-instructions, .boite-guide { padding: 16px 24px; border-top: 1px solid var(--color-border); }
-  .boite-guide p { margin: 8px 0 0; }
   .global-links { margin-top: 12px; font-size: var(--text-sm); }
   .link-help { margin-top: 12px; padding: 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: var(--text-sm); }
   .link-help p { margin: 0 0 8px; }

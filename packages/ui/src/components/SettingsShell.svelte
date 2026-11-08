@@ -161,17 +161,17 @@
 
   let tabs = $derived(all.filter((tab) => store.owner || !ownerOnly(tab.id)));
   /**
-   * The nav's eight entries (`SETTINGS_GROUPS`), the same list a phone shows,
+   * The nav's seven entries (`SETTINGS_GROUPS`), the same list a phone shows,
    * each led by the first page of it this window may open. Its other pages
    * are tabs at the top of its card; the search still finds every card.
    */
   let groups = $derived(SETTINGS_GROUPS
     .map((ids) => pagesOf(ids[0], store.owner).flatMap((id) => tabs.filter((entry) => entry.id === id)))
     .filter((members) => members.length > 0)
-    .map(([lead, ...rest]): SettingsGroup => ({ ...lead!, members: rest })));
+    .map(([lead, ...rest]): SettingsGroup => ({ ...lead!, members: rest, sections: sectionsOf(lead!.id, store.owner).flatMap((id) => tabs.filter((entry) => entry.id === id)) })));
   /** The group the shown page sits in, by its first page this window lists. */
   let group = $derived(groups.find((entry) => entry.id === tab || entry.members.some((member) => member.id === tab)));
-  /** The pages merged into the shown one as its last sections (the task manager under Diagnostics). */
+  /** The pages merged into the shown one as its last sections (`lib/settings-tabs.ts`). */
   let merged = $derived(sectionsOf(tab, store.owner));
   /** A group of several pages shows them as tabs at the top of its card. */
   let strip = $derived((group?.members.length ?? 0) > 0);
@@ -303,7 +303,8 @@
   // merged into another is that page's section: its route scrolls to it.
   $effect(() => {
     const route = store.settingsTab, section = store.settingsSection;
-    const id = tab === route ? section?.id : merged.includes(route) ? route : undefined;
+    const inside = merged.includes(route);
+    const id = tab === route ? section?.id : inside ? route : undefined;
     if (!id) return;
     void section?.request;
     let release = () => {};
@@ -311,8 +312,10 @@
     void tick().then(() => {
       if (!live) return;
       // A merged section jumps and holds: the page above it is still filling in.
-      revealSettingsCard(id, section?.flash === true, tab === route ? motion() : 'instant');
-      if (tab !== route) release = holdSettingsCard(id);
+      // A card of a merged page is found by its own id, the page by its section's.
+      const card = inside && section && document.getElementById(`settings-${section.id}`) ? section.id : id;
+      revealSettingsCard(card, section?.flash === true, tab === route ? motion() : 'instant');
+      if (tab !== route) release = holdSettingsCard(card);
     });
     return () => { live = false; release(); };
   });
@@ -376,46 +379,53 @@
       <PolicyBanner store={target} />
       {#if tab === 'home'}
         <SettingsHome {store} tiles={groups} {entries} onopen={open} />
-      {:else if tab === 'brain'}
-        <BrainPage store={target} />
-      {:else if tab === 'voice'}
-        <VoiceSettings store={target} />
-      {:else if tab === 'general'}
-        <GeneralSettings store={target} here={store} />
-      {:else if tab === 'machines'}
-        <MachinesPage {onopenthread} />
-      {:else if tab === 'advanced'}
-        <AdvancedSettings store={target} />
-      {:else if tab === 'appearance'}
-        <AppearancePage {store} />
-      {:else if tab === 'keyboard'}
-        <KeyboardPage store={target} />
-      {:else if tab === 'accounts'}
-        <AccountsPage store={target} />
-      {:else if tab === 'usage'}
-        <UsagePage {store} />
-      {:else if tab === 'limits'}
-        <LimitsPage store={target} />
-      {:else if tab === 'task-manager'}
-        <TaskManagerLoader {store} {onopenthread} />
-      {:else if tab === 'plugins'}
-        <PluginsPage store={target} />
-      {:else if tab === 'experiments'}
-        <ExperimentsPage {store} {target} bar={bar ? machineBar : undefined} />
-      {:else if tab === 'diagnostics'}
-        <DiagnosticsPage store={target} {onopenthread} />
-        {#if merged.includes('task-manager')}
-          <!-- The live half of Diagnostics: its route scrolls here. -->
-          <div class="merged" id="settings-task-manager"><TaskManagerLoader {store} {onopenthread} /></div>
-        {/if}
       {:else}
-        <ResourcesPage store={target} />
+        {@render view(tab)}
+        {#each merged as section (section)}
+          <!-- A page merged into this one, as its last section: its route scrolls here. -->
+          <div class="merged" id="settings-{section}">{@render view(section)}</div>
+        {/each}
       {/if}
       {/key}
     </section>
   {/key}
 </div>
 {/if}
+
+{#snippet view(page: SettingsTab)}
+      {#if page === 'brain'}
+        <BrainPage store={target} />
+      {:else if page === 'voice'}
+        <VoiceSettings store={target} />
+      {:else if page === 'general'}
+        <GeneralSettings store={target} here={store} />
+      {:else if page === 'machines'}
+        <MachinesPage {onopenthread} />
+      {:else if page === 'advanced'}
+        <AdvancedSettings store={target} />
+      {:else if page === 'appearance'}
+        <AppearancePage {store} />
+      {:else if page === 'keyboard'}
+        <KeyboardPage store={target} />
+      {:else if page === 'accounts'}
+        <AccountsPage store={target} />
+      {:else if page === 'usage'}
+        <UsagePage {store} />
+      {:else if page === 'limits'}
+        <LimitsPage store={target} />
+      {:else if page === 'task-manager'}
+        <TaskManagerLoader {store} {onopenthread} />
+      {:else if page === 'plugins'}
+        <PluginsPage store={target} />
+      {:else if page === 'experiments'}
+        <!-- Shown alone it carries the bar between its two halves; under Advanced, the bar above serves both. -->
+        <ExperimentsPage {store} {target} bar={bar && page === tab ? machineBar : undefined} />
+      {:else if page === 'diagnostics'}
+        <DiagnosticsPage store={target} {onopenthread} />
+      {:else if page === 'resources'}
+        <ResourcesPage store={target} />
+      {/if}
+{/snippet}
 
 <style>
   /* With the machine bar, the panel scrolls bar and page together, on one column. */
@@ -462,7 +472,9 @@
   .framed.with-bar > .pages + :global(.page) { padding-top: var(--space-6); }
 
   /* A page merged into another reads as its last section: its title a section title, the same column. */
-  .merged { min-height: 100%; scroll-margin-top: var(--space-6); }
+  .merged { scroll-margin-top: var(--space-6); }
+  /* The last one fills the panel, so its route can scroll it to the top. */
+  .merged:last-child { min-height: 100%; }
   .merged > :global(.page) { height: auto; overflow: visible; padding-top: 0; padding-inline: max(var(--settings-gutter), calc((100% - var(--settings-width)) / 2)); }
   .merged > :global(.page > header h1) { font-size: var(--text-md); }
 

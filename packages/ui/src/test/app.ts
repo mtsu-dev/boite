@@ -238,10 +238,10 @@ export async function showMobileThreads(): Promise<void> {
 /** Everything owner-only that is drawn without leaving the chat. The panel is not: its Agents and Workflows surfaces are the device's to follow. */
 export const OWNER_ONLY_IN_CHAT = ['[data-testid=add-project]'];
 
-/** Everything owner-only on the settings nav and its Machines page. Plugins is a page of Providers, so the nav's Providers entry stands for it. */
+/** Everything owner-only on the settings nav and its Machines page. Plugins is a section of Providers, so the nav's Providers entry stands for it. */
 export const OWNER_ONLY_IN_SETTINGS = [
   '[data-testid=settings-tab-accounts]',
-  '[data-testid=settings-tab-resources]',
+  '[data-testid=settings-tab-brain]',
   '[data-testid=group-add-device]'
 ];
 

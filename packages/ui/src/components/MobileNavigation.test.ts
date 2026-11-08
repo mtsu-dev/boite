@@ -55,7 +55,8 @@ test('Activity gives each row its reason and its time, a sub-agent under its par
   await settle();
   const rows = Array.from(document.querySelectorAll<HTMLElement>('[data-testid=mobile-row]'));
   expect(rows.length).toBeGreaterThan(0);
-  for (const row of rows) expect(row.querySelector('.feed-head time')?.textContent?.trim()).toBeTruthy();
+  // Since when ends the title's line, after the mark (ThreadHeadline.svelte).
+  for (const row of rows) expect(row.querySelector('.headline > time.at')?.textContent?.trim()).toBeTruthy();
   const helpers = Array.from(document.querySelectorAll<HTMLElement>('[data-testid=thread-helper]'));
   const reasons = rows.map(row => row.querySelector('[data-testid=mobile-row-reason] .text')?.textContent ?? '');
   // A question is its own reason, a permission says what it runs.
@@ -171,11 +172,16 @@ test('the header holds the search, opened in place, and the new thread; the bar 
   const threadId = row.dataset['threadId'];
   row.querySelector('[data-testid^=mobile-thread-]')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })); await settle();
   expect(id(`mobile-thread-menu-${threadId}-menu`)?.querySelector('[data-value=rename]')).not.toBeNull();
-  // Every action on this one level, named: a new title among the common ones, the move with them, no More and no second level.
+  // A short first level, then one named group that opens in the same sheet and comes back: a new title is in it, the path is not.
   const menuValues = () => Array.from(id(`mobile-thread-menu-${threadId}-menu`)?.querySelectorAll<HTMLElement>('[data-value]') ?? []).map(item => item.dataset['value']);
+  const first = menuValues();
+  expect(first.length).toBeLessThanOrEqual(7);
+  expect(first).not.toContain('retitle');
+  id(`mobile-thread-menu-${threadId}-menu`)!.querySelector<HTMLButtonElement>('[data-value=more]')!.click(); await settle();
   expect(menuValues()).toContain('retitle');
-  expect(menuValues()).not.toContain('more');
   expect(menuValues()).not.toContain('copy');
+  id(`mobile-thread-menu-${threadId}-menu`)!.querySelector<HTMLButtonElement>('[data-value=back]')!.click(); await settle();
+  expect(menuValues()).toEqual(first);
   // No panel in a row's menu: the panels have their own selector, in the panel.
   expect(menuValues().filter(value => value?.startsWith('kind:') || value === 'board-toggle')).toEqual([]);
 
@@ -215,6 +221,8 @@ test('a parent on another machine shows its working sub-agents, counted, and Rec
     // Recent marks the state, as a computer's Recent row does; the count stays in the tooltip, never written out.
     expect(state()?.dataset['state']).toBe('delegating');
     expect(state()?.textContent).not.toContain('sub-agents');
+    // The mark ends the title's own line, as on the desktop, instead of a line of its own under it.
+    expect(state()?.parentElement?.classList.contains('headline')).toBe(true);
     expect(state()?.getAttribute('title')).toMatch(/^Waiting on 2 sub-agents/);
     // A child is never a row of its own.
     expect(document.querySelector('[data-thread-id="child-1"]')).toBeNull();
@@ -222,18 +230,25 @@ test('a parent on another machine shows its working sub-agents, counted, and Rec
     const rows = () => [...document.querySelectorAll<HTMLElement>('.mobile-list .row')].map(row => row.dataset['threadId']);
     const everything = rows().length;
     expect(everything).toBeGreaterThan(1);
+    // The filter lives in the display menu, its count on the menu's button: the list keeps no row of chips.
+    expect(document.querySelector('.mobile-list [data-testid=mobile-at-work]')).toBeNull();
+    const count = () => document.querySelector('[data-testid=mobile-filter-count]')?.textContent ?? null;
+    expect(count()).toBeNull();
+    document.querySelector<HTMLButtonElement>('[data-testid=mobile-grouping-options]')!.click();
+    await vi.waitFor(() => expect(document.querySelector('[data-testid=mobile-at-work]')).not.toBeNull());
     const chip = () => document.querySelector<HTMLButtonElement>('[data-testid=mobile-at-work]');
-    expect(chip()?.textContent).toBe('1 at work');
-    expect(chip()?.getAttribute('aria-pressed')).toBe('false');
+    expect(chip()?.textContent?.trim()).toBe('1 at work');
+    expect(chip()?.getAttribute('aria-checked')).toBe('false');
     chip()!.click(); await settle();
-    expect(chip()?.getAttribute('aria-pressed')).toBe('true');
+    expect(chip()?.getAttribute('aria-checked')).toBe('true');
+    expect(count()).toBe('1');
     expect(rows()).toEqual([parent.id]);
 
     // Opening the parent and coming Back finds the list still filtered.
     document.querySelector<HTMLButtonElement>(`[data-testid="mobile-thread-${parent.id}"]`)!.click(); await settle();
     expect(document.querySelector('.mobile-list')).toBeNull();
     document.querySelector<HTMLButtonElement>('[data-testid=mobile-back]')!.click(); await settle();
-    expect(chip()?.getAttribute('aria-pressed')).toBe('true');
+    expect(count()).toBe('1');
     expect(rows()).toEqual([parent.id]);
 
     // The Projects list reads the same store: the same radar there. Back in Recent, the filter holds.
@@ -243,7 +258,7 @@ test('a parent on another machine shows its working sub-agents, counted, and Rec
     expect(state()?.querySelector('[data-testid=thread-state-text]')).toBeNull();
     expect(state()?.getAttribute('title')).toMatch(/sub-agents\n1m/);
     workspace.view = 'recent'; await settle();
-    expect(chip()?.getAttribute('aria-pressed')).toBe('true');
+    expect(count()).toBe('1');
     expect(rows()).toEqual([parent.id]);
 
     // The last sub-agent ends: the radar, the chip and its filter go. The parent was read when opened, so nothing replaces the radar.
@@ -251,7 +266,7 @@ test('a parent on another machine shows its working sub-agents, counted, and Rec
     await settle();
     expect(document.querySelector(`[data-thread-id="${parent.id}"]`)).not.toBeNull();
     expect(state()).toBeNull();
-    expect(chip()).toBeNull();
+    expect(count()).toBeNull();
     expect(rows().length).toBe(everything);
   } finally {
     remote.detach(); remoteClient.close();
@@ -309,6 +324,8 @@ test('with two machines the machine line shows on the threads list only: Activit
   mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'threads' } });
   await settle();
   expect(document.querySelector('[data-testid=mobile-connection]')?.textContent).toContain('Local');
+  // One row: the machine sits beside the view switch and the display menu, not on a line of its own over them.
+  expect(document.querySelector('[data-testid=mobile-connection]')?.parentElement?.dataset['testid']).toBe('mobile-header');
   await unmount(mounted);
   mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'activity' } });
   await settle();

@@ -41,7 +41,7 @@
 .bot-nav.selected { background: var(--color-active); color: var(--color-foreground); }
 .bot-work { display: flex; flex-direction: column; }
 .bot-section { margin: 0; padding: 14px 10px 6px; font-size: var(--text-xs); font-weight: 600; color: var(--color-subtle); }
-.bot-section-count { margin-left: 4px; font-weight: 500; color: var(--color-faint); font-variant-numeric: tabular-nums; }
+.bot-section-count { margin-left: 4px; font-weight: 500; color: var(--color-subtle); font-variant-numeric: tabular-nums; }
 /* An empty desk: its one prompt at the column's optical middle, not a line tucked under Conversation. */
 .bot-work.idle { flex: 1; justify-content: center; align-items: center; gap: 10px; padding: 0 12px 15%; text-align: center; }
 .bot-work-empty { margin: 0; font-size: var(--text-sm); line-height: 1.5; color: var(--color-muted-foreground); }

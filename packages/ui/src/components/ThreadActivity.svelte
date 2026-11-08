@@ -458,7 +458,15 @@
      scrolls inside itself. */
   .activity { display: flex; flex-direction: column; overflow-y: auto; padding: 4px; font-size: var(--text-sm); }
   .activity > * { flex: none; }
-  .activity > .decision-card { flex: 0 1 auto; min-height: 0; margin: 2px 2px 4px; overflow-y: auto; }
+  .activity > .decision-card { flex: 0 1 auto; min-height: 0; margin: 2px 2px 4px; overflow-y: auto; display: flex; flex-direction: column; }
+  /* The room is handed down to the question's choices, the one part that
+     scrolls: the card's head, its foot and its inset never slide out of the
+     card, so it never ends on a row cut flat at its edge. */
+  .decision-card > * { flex: none; }
+  .decision-card > .questions, .questions > .disclosure-fold, .questions > .disclosure-fold > div, .asked:not([hidden]) { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  .questions > .disclosure-fold { display: grid; }
+  .questions > *, .asked > :global(*) { flex: none; }
+  .questions > .disclosure-fold, .asked > :global(.question.docked) { flex: 0 1 auto; min-height: 0; }
   .activity.hidden { display: none; }
   /* A decision arrives by growing the dock from its last height, content and
      box together (`lib/arrival.ts`); reduced motion shows it at once. */

@@ -10,6 +10,7 @@
   import { teamsOf } from '../../lib/teams.svelte';
   import type { Machine } from '../../lib/workspace.svelte';
   import AgentAvatar from '../agents/AgentAvatar.svelte';
+  import { avatarLit } from '../../lib/avatar-lit';
   import Menu from '../Menu.svelte';
   import TeamDialog from './TeamDialog.svelte';
 
@@ -85,7 +86,7 @@
 <header class="agent-head" data-testid="team-header" data-paused={team?.paused ? 'true' : undefined} data-archived={team?.archived ? 'true' : undefined}>
   {#if onback}<button type="button" class="ghost icon agent-mobile-back" aria-label={strings.agents.list} title={strings.agents.list} onclick={onback} data-testid="agent-back"><ArrowLeft size={18} strokeWidth={1.75} /></button>{/if}
   <span class="team-head-identity">
-    <span class="agent-head-robot"><AgentAvatar kind="team" id={team?.id ?? thread.id} name={team?.name ?? thread.title} members={pictures} size={36} /></span>
+    <span class="agent-head-robot"><AgentAvatar kind="team" id={team?.id ?? thread.id} name={team?.name ?? thread.title} members={pictures} size={36} lit={avatarLit({ open: true })} /></span>
     <span class="agent-head-text">
       <strong data-testid="team-title">{team?.name ?? thread.title}</strong>
       <span class="agent-live"><span class="agent-live-text" data-testid="team-room">{room}</span></span>

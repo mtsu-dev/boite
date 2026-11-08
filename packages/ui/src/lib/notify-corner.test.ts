@@ -79,3 +79,32 @@ test('on a phone thread an arriving card takes the room at the bottom of the tim
   corner.destroy();
   expect(timeline.style.getPropertyValue('--corner-room')).toBe('');
 });
+
+test('on a desktop thread an arriving card takes the toasts\' room too, centred above the composer, never over a line', () => {
+  window.innerWidth = 1440;
+  window.innerHeight = 768;
+  const timeline = box('timeline', { top: 48, bottom: 700, left: 300, right: 1300, height: 652, width: 1000 });
+  box('composer', { top: 700, bottom: 768, left: 400, right: 1200, height: 68, width: 800 });
+  const card = document.createElement('div');
+  Object.defineProperty(card, 'offsetHeight', { value: 80 });
+  document.body.append(card);
+  const corner = notifyCorner(card);
+  expect(timeline.style.getPropertyValue('--corner-room')).toBe('96px');
+  expect(card.dataset.slot).toBe('bottom');
+  expect(card.style.getPropertyValue('--toast-left')).toBe('800px');
+  // Its bottom at 692, 8 above the timeline's end: 768 - 12 - 692.
+  expect(card.style.getPropertyValue('--corner-lift')).toBe('64px');
+  corner.destroy();
+  expect(timeline.style.getPropertyValue('--corner-room')).toBe('');
+});
+
+test('a desktop page with no thread keeps the arriving card in the bottom-right corner', () => {
+  window.innerWidth = 1440;
+  const card = document.createElement('div');
+  Object.defineProperty(card, 'offsetHeight', { value: 80 });
+  document.body.append(card);
+  const corner = notifyCorner(card);
+  expect(card.dataset.slot).toBeUndefined();
+  expect(card.style.getPropertyValue('--corner-lift')).toBe('0px');
+  corner.destroy();
+});

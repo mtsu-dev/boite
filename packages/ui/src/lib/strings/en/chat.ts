@@ -188,8 +188,9 @@ export const strings = {
     revealFailed: 'The folder could not be opened: {reason}',
     allow: 'Allow',
     deny: 'Deny',
-    allowed: 'Allowed',
-    denied: 'Denied',
+    /** A decided ask with no call to carry it: one line in the run, the verdict then what it was about. */
+    allowedReceipt: 'Allowed: {subject}',
+    deniedReceipt: 'Denied: {subject}',
     /** The shield on a call's line once the user answered the agent's ask for it. */
     permissionAllowedBy: 'Allowed by you',
     permissionDeniedBy: 'Denied by you',
@@ -198,7 +199,8 @@ export const strings = {
     questionAsyncHint: 'The agent keeps working. Without an answer it goes on with a default.',
     questionAnswer: 'Answer',
     questionAnswered: 'You answered: {answer}',
-    questionCancelled: 'No longer waiting for an answer',
+    /** A question skipped or dropped with its turn: one line in the run, never the card again. */
+    questionCancelled: 'Not answered: {question}',
     questionMore: '{count} more',
     questionSkip: 'Skip',
     questionOpenPage: 'Open',

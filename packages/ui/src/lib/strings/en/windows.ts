@@ -29,7 +29,7 @@ export const strings = {
       exclusionsHeading: 'Never capture', exclusionsIntro: 'Executable names or paths no agent may capture, even with your permission.',
       always: 'Password managers and the sign-in screen are always excluded: {list}.',
       add: 'Add', addLabel: 'Executable name or path', placeholder: 'game.exe or C:\\Games\\game.exe',
-      none: 'No other app is excluded.', removeExclusion: 'Stop excluding {name}'
+      none: 'No app added.', removeExclusion: 'Stop excluding {name}'
     }
   }
 } as const;

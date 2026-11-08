@@ -610,18 +610,18 @@
     min-width: 0;
   }
 
-  /* The strip's controls are as tall as its tabs. */
+  /* The strip's controls are as tall as its tabs: a target of 28 px at least. */
   .strip button.small.icon,
   .strip :global(.trigger.ghost) {
-    height: var(--control-sm);
-    width: var(--control-sm);
+    height: var(--control);
+    width: var(--control);
   }
   /* The selector is the active tab's name: the tab's type and fill, a chevron after the words. */
   .strip .selector :global(.trigger.ghost) {
     width: auto;
     min-width: 0;
     max-width: 100%;
-    height: var(--control-sm);
+    height: var(--control);
     padding: 0 2px 0 0;
     gap: 3px;
     background: transparent;
@@ -664,10 +664,10 @@
     display: flex;
     align-items: center;
     gap: 2px;
-    height: var(--control-sm);
-    max-width: 144px;
+    height: var(--control);
+    max-width: 160px;
     flex: none;
-    padding: 0 8px 0 5px;
+    padding: 0 8px 0 1px;
     border-radius: var(--radius-md);
     color: var(--color-muted-foreground);
     font-size: var(--text-xs);
@@ -687,7 +687,7 @@
     background: var(--color-active);
     color: var(--color-foreground);
     /* The selector holds the tab's whole name and its chevron. */
-    max-width: 176px;
+    max-width: 192px;
     padding-right: 4px;
   }
 
@@ -697,12 +697,13 @@
     white-space: nowrap;
   }
 
+  /* The tab's icon is its close target: 28 px, as every target in the strip. */
   .closer {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 16px;
-    height: 16px;
+    width: 28px;
+    height: 28px;
     padding: 0;
     flex: none;
     border: none;

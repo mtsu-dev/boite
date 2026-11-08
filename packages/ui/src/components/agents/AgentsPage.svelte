@@ -19,6 +19,7 @@
   import { awaitsFirstTask } from '../../lib/bot-first-task';
   import { focusComposer } from '../../lib/focus';
   import AgentAvatar from './AgentAvatar.svelte';
+  import { avatarLit } from '../../lib/avatar-lit';
   import AgentsRail from './AgentsRail.svelte';
   import AgentHeader from './AgentHeader.svelte';
   import AgentSheet from './AgentSheet.svelte';
@@ -256,7 +257,7 @@
         <ChatView {store} {locked} />
         {#if firstTask && agent}
           <div class="agent-first-task" data-testid="bot-first-task">
-            <AgentAvatar kind="profile" id={agent.id} name={agent.name} avatar={agent.avatar} size={40} />
+            <AgentAvatar kind="profile" id={agent.id} name={agent.name} avatar={agent.avatar} size={40} lit={avatarLit({ open: true })} />
             <p>{labels.deskPanel.workEmpty}</p>
             {#if store.owner}<button type="button" class="small" data-testid="desk-work-start" onclick={() => focusComposer({ typing: true })}><span class="ui-label">{labels.deskPanel.workStart}</span></button>{/if}
           </div>

@@ -9,6 +9,7 @@
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import AgentAvatar from './agents/AgentAvatar.svelte';
+  import { avatarLit } from '../lib/avatar-lit';
 
   /**
    * A card asking the user to change one setting of a persistent agent
@@ -146,9 +147,9 @@
         <span class="name">{agentSettingLabel(setting.key)}</span>
         {#if setting.key === 'avatar'}
           <span class="values">
-            <span class="picture old" data-testid="agent-setting-previous"><AgentAvatar kind="profile" id={setting.agentId} name={setting.agentName} avatar={String(setting.previous ?? '')} size={28} /></span>
+            <span class="picture old" data-testid="agent-setting-previous"><AgentAvatar kind="profile" id={setting.agentId} name={setting.agentName} avatar={String(setting.previous ?? '')} size={28} lit={avatarLit({ attention: pending })} /></span>
             <ArrowRight size={14} strokeWidth={1.75} aria-label={words.to} />
-            <span class="picture" data-testid="agent-setting-proposed"><AgentAvatar kind="profile" id={setting.agentId} name={setting.agentName} avatar={String(setting.value ?? '')} size={28} /></span>
+            <span class="picture" data-testid="agent-setting-proposed"><AgentAvatar kind="profile" id={setting.agentId} name={setting.agentName} avatar={String(setting.value ?? '')} size={28} lit={avatarLit({ attention: pending })} /></span>
           </span>
         {:else}
           <span class="values">

@@ -13,6 +13,7 @@
   import Spinner from '../Spinner.svelte';
   import StatusMark from '../StatusMark.svelte';
   import AgentAvatar from './AgentAvatar.svelte';
+  import { avatarLit } from '../../lib/avatar-lit';
   import BuiltinBadge from './BuiltinBadge.svelte';
 
   /**
@@ -72,7 +73,7 @@
 {#if agent || team}
 <header class="bot-head" data-state={state} data-testid="bot-column-head">
   {#if agent}
-    <AgentAvatar kind="profile" id={agent.id} name={agent.name} avatar={agent.avatar} size={40} squircle />
+    <AgentAvatar kind="profile" id={agent.id} name={agent.name} avatar={agent.avatar} size={40} squircle lit={avatarLit({ open: true })} />
     <div class="bot-head-text">
       <strong class="bot-head-name">{agent.name}{#if agent.builtin}<BuiltinBadge />{/if}</strong>
       <span class="bot-head-live" data-state={state} title={line} aria-live="polite" data-testid="bot-column-live">
@@ -87,7 +88,7 @@
       <Menu placement="bottom" align="end" variant="ghost" label={labels.more} testid="bot-column-menu" {items} onpick={pick}><Ellipsis size={16} strokeWidth={1.75} /></Menu>
     {/if}
   {:else if team}
-    <AgentAvatar kind="team" id={team.id} name={team.name} members={pictures} size={40} squircle />
+    <AgentAvatar kind="team" id={team.id} name={team.name} members={pictures} size={40} squircle lit={avatarLit({ open: true })} />
     <div class="bot-head-text">
       <strong class="bot-head-name">{team.name}</strong>
       <span class="bot-head-live"><span class="bot-head-line">{team.archived ? strings.teamChat.archivedShort : team.paused ? strings.teamChat.pausedShort

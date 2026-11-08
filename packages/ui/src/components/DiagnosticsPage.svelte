@@ -12,6 +12,7 @@
   import { bytes, count, exactTime, millis, relativeTime, time } from '../lib/format';
   import { errorText, olderCore } from '../lib/errors';
   import { fill, strings } from '../lib/strings';
+  import { activeLocale } from '../lib/i18n.svelte';
   import type { Store } from '../lib/store.svelte';
 
   /**
@@ -241,6 +242,10 @@
 
   let environment = $derived(summary?.environment ?? null);
   let errorsFirst = $derived(summary ? summary.problems.slice().sort((a, b) => (b.level === 'error' ? 1 : 0) - (a.level === 'error' ? 1 : 0) || b.lastAt - a.lastAt) : []);
+  /** A level's word by its count: "1 error", "2 errors", in the app's language. */
+  function levelWord(level: CoreLogLevel, value: number): string {
+    return new Intl.PluralRules(activeLocale()).select(value) === 'one' ? s.levelOne[level] : s.levels[level];
+  }
 </script>
 
 {#if store.owner}
@@ -264,7 +269,7 @@
           <dt>{s.lastDay}</dt>
           <dd class="counts" data-testid="diagnostics-counts">
             {#each [...LOG_LEVELS].reverse() as level (level)}
-              <span class="count" data-level={level}><strong>{count(summary.counts[level])}</strong> {s.levels[level]}</span>
+              <span class="count" data-level={level}><strong>{count(summary.counts[level])}</strong> {levelWord(level, summary.counts[level])}</span>
             {/each}
           </dd>
         </div>

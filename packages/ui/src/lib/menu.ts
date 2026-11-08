@@ -29,6 +29,8 @@ export interface MenuItem {
   separator?: boolean;
   /** Opens another list in the same menu: ArrowRight picks it, as Enter does. */
   submenu?: boolean;
+  /** With `submenu`: the rows it opens, which `Menu.svelte` swaps in itself; without, the caller does. */
+  items?: MenuItem[];
   /** Goes back to the list a submenu came from: ArrowLeft picks it from anywhere in that submenu. */
   back?: boolean;
 }

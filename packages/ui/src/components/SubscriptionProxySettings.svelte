@@ -93,8 +93,7 @@
 
 <section class="card proxy-settings" data-testid="subscription-proxy-settings">
   <h2 class="ui-label-box"><span class="ui-label">{strings.subscriptionProxy.heading}</span><InfoTip topic={strings.subscriptionProxy.heading} text={strings.subscriptionProxy.hint} /><PolicyLock {store} keys={['gateway', 'gateway.allowedBaseUrls']} /></h2>
-  <label class="switch-row"><span class="text ui-label">{strings.subscriptionProxy.enable}</span><input type="checkbox" role="switch" bind:checked={config.enabled} disabled={gatewayOff} data-testid="subscription-proxy-enabled" /></label>
-  <p class="hint" data-testid="subscription-proxy-enabled-hint">{strings.subscriptionProxy.enabledHint}</p>
+  <label class="switch-row"><span class="text ui-label-box"><span class="ui-label">{strings.subscriptionProxy.enable}</span><InfoTip topic={strings.subscriptionProxy.enable} text={strings.subscriptionProxy.enabledHint} testid="subscription-proxy-enabled-hint" /></span><input type="checkbox" role="switch" bind:checked={config.enabled} disabled={gatewayOff} data-testid="subscription-proxy-enabled" /></label>
   <div class="mode">
     <span class="ui-label-box"><span class="ui-label">{strings.subscriptionProxy.where}</span><InfoTip topic={strings.subscriptionProxy.local} text={strings.subscriptionProxy.localHint} /></span>
     <div class="segmented" role="group" aria-label={strings.subscriptionProxy.where}>
@@ -146,7 +145,6 @@
   form > label { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: var(--text-sm); }
   form input:not([type='checkbox']) { width: 100%; min-width: 0; }
   .clear-key { min-height: var(--row); }
-  .proxy-settings > .hint { margin: 2px 0 10px; color: var(--color-muted-foreground); font-size: var(--text-sm); }
   .error { color: var(--color-danger); }
   [aria-pressed='true'] { background: var(--color-active); }
   .actions { display: flex; flex-wrap: wrap; gap: 6px; }

@@ -1,4 +1,4 @@
-import { Archive, ArrowLeft, CircleCheck, Copy, FolderGit2, FolderInput, GitPullRequest, MessageSquare, PencilLine, Pin, PinOff, Sparkles, Trash2, X } from '@lucide/svelte';
+import { Archive, ArrowLeft, CircleCheck, Copy, FolderInput, GitPullRequest, MessageSquare, PencilLine, Pin, PinOff, Settings2, Sparkles, Trash2, X } from '@lucide/svelte';
 import type { ThreadSummary } from '@boite/contracts';
 import type { Store } from './store.svelte';
 import { separator, type MenuItem } from './menu';
@@ -18,6 +18,8 @@ interface ThreadMenuOptions {
   prLoading?: boolean;
   /** The view's own tools (find), first on the menu's first level. */
   tools?: MenuItem[];
+  /** What the thread is (the header's bot, watches and branch), first in the named group. */
+  lead?: MenuItem[];
   /** A phone's menu: the path and the pull request stay on the desktop. */
   phone?: boolean;
 }
@@ -36,55 +38,61 @@ function placeItems(store: Store, thread: ThreadSummary, options: ThreadMenuOpti
   ];
 }
 
-/** A group of one is a row on the first level, and a phone has no second level: only a desktop folds two or more. */
-function folds(place: MenuItem[], options: ThreadMenuOptions): boolean {
-  return !options.phone && place.length > 1;
+/**
+ * The named group's rows, what is done to a thread less often: what it is
+ * (`lead`), its title made again, its hand-off to a bot, then where it lives.
+ */
+function manageItems(store: Store, thread: ThreadSummary, options: ThreadMenuOptions): MenuItem[] {
+  const lead = options.lead ?? [];
+  const retitling = store.retitling.includes(thread.id);
+  return [
+    ...lead,
+    ...(lead.length ? [separator('sep-lead')] : []),
+    { id: 'retitle', label: retitling ? strings.sidebar.retitling : strings.sidebar.retitle, glyph: Sparkles, disabled: retitling },
+    ...entrustItems(store, thread),
+    ...placeItems(store, thread, options)
+  ];
 }
 
 /**
- * The named group "Project and branch" (`more`, kept for the rows that open
- * it), under a way back to the thread's menu: the move, the path and the pull
- * request. Empty where the first level already holds them.
+ * The named group "Manage thread" (`more`, kept for the rows that open it),
+ * under a way back to the thread's menu. Empty for a group of one, which is a
+ * row on the first level instead. A phone folds it too, in its sheet.
  */
 export function threadToolItems(store: Store, thread: ThreadSummary, options: ThreadMenuOptions = {}): MenuItem[] {
-  const place = placeItems(store, thread, options);
-  if (!folds(place, options)) return [];
-  return [{ id: 'back', label: strings.sidebar.backToThreadMenu, glyph: ArrowLeft, back: true }, separator('back-sep'), ...place];
+  const manage = manageItems(store, thread, options);
+  if (manage.filter(item => !item.separator).length < 2) return [];
+  return [{ id: 'back', label: strings.sidebar.backToThreadMenu, glyph: ArrowLeft, back: true }, separator('back-sep'), ...manage];
 }
 
 /**
  * One menu for a thread wherever it opens (a row, its header, the phone's
- * long press, the header's menu), holding only what is done to the thread,
- * every path named for what it holds: the view's own tools (Find in this
- * thread), what it is called and who has it (Rename, Regenerate title, Pin,
- * Hand off), where it stands (Mark done, Archive), where it lives (Project
- * and branch, or its one row), then Delete apart. A row adds Open first.
- * The panels have one door of their own, the panel selector.
+ * long press, the header's menu): a short first level of what is done most
+ * (the view's own Find, Rename, Pin, Mark done, Archive), one named group for
+ * the rest (`threadToolItems`), then Delete apart. A row adds Open first.
+ * Seven rows at most. The panels have one door of their own, the panel strip.
  */
 export function threadMenuItems(store: Store, thread: ThreadSummary, options: ThreadMenuOptions = {}): MenuItem[] {
   // An incognito conversation lives on its own screen only: nothing pins, files
   // or moves it, and deleting it is what leaving does anyway.
   const kept = !thread.incognito;
-  const retitling = store.retitling.includes(thread.id);
   const own = options.tools ?? [];
-  const place = placeItems(store, thread, options);
+  const group = threadToolItems(store, thread, options);
   const opening: MenuItem[] = options.open === undefined ? [] : [{ id: 'open', label: strings.common.open, glyph: MessageSquare, disabled: options.open }, separator('sep-open')];
   const items: MenuItem[] = [
     ...opening,
     ...own,
     ...(own.length ? [separator('sep-thread-tools')] : []),
     { id: 'rename', label: strings.common.rename, glyph: PencilLine },
-    { id: 'retitle', label: retitling ? strings.sidebar.retitling : strings.sidebar.retitle, glyph: Sparkles, disabled: retitling },
     ...(kept ? [{ id: 'pin', label: thread.pinned ? strings.sidebar.unpin : strings.sidebar.pin, glyph: thread.pinned ? PinOff : Pin }] : []),
-    ...entrustItems(store, thread),
     ...(kept ? [
       separator('sep-archive'),
       // A ringed check: the bare one is every menu's selection mark, and Done is an action, not a chosen row.
       ...(options.showDone ? [{ id: 'done', label: strings.sidebar.markDone, glyph: CircleCheck, disabled: !canMarkDone(store, thread) }] : []),
       { id: 'archive', label: strings.sidebar.archive, glyph: Archive }
     ] : []),
-    ...(place.length ? [separator('sep-tools')] : []),
-    ...(folds(place, options) ? [{ id: 'more', label: strings.thread.placeActions, glyph: FolderGit2, submenu: true, hint: '›' }] : place)
+    separator('sep-tools'),
+    ...(group.length ? [{ id: 'more', label: strings.thread.manage, glyph: Settings2, submenu: true, hint: '›', items: group }] : manageItems(store, thread, options))
   ];
   if (canDeleteThread(thread)) items.push(separator('sep-delete'), { id: 'delete', label: strings.common.delete, glyph: Trash2, danger: true });
   return items;

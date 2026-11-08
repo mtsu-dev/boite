@@ -364,7 +364,7 @@
   .note.away-note > .ui-label { white-space: normal; }
   @media (max-width: 720px), (hover: none) { .note.away-note { display: flex; } }
   .resume-row { padding: 0 9px 6px 49px; }
-  .result { grid-column: 2 / -1; margin-top: 8px; padding: 6px 9px; border-radius: var(--radius-sm); background: var(--color-surface-2); color: color-mix(in srgb, var(--color-foreground) 82%, transparent); font-size: var(--text-xs); line-height: 1.45; }
+  .result { grid-column: 2 / -1; margin-top: 8px; padding: 6px 9px; border-radius: var(--radius-sm); background: var(--color-surface-2); color: var(--color-subtle); font-size: var(--text-xs); line-height: 1.45; }
   .result > span { display: -webkit-box; -webkit-box-orient: vertical; line-clamp: 3; -webkit-line-clamp: 3; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; }
   @container (max-width: 520px) {
     .profile { grid-template-columns: minmax(0, 1fr) auto; }
