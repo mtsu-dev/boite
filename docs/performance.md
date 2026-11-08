@@ -1030,6 +1030,38 @@ core answered or two seconds passed, so a fast start shows no empty frame and a
 slow one shows the page's "connecting" state. After ten seconds it appears
 whatever the page said, so a broken bundle still gets a window to quit from.
 
+## App update restart
+
+On Windows an in-app update closes the window when the shell starts the
+installer, and the new window shows once the installer has written the app's
+files, the new shell has started and its core has answered
+([shell startup](#shell-startup)). On 2026-11-07 that gap was 6.2 seconds
+(nightly 20261107.2, Ryzen 7 9800X3D, NVMe), from `shell.update.install` to
+the next `shell.window.show` in the shell's log, split with the install
+directory's times: 1.2 s until the installer began writing, 3.4 s writing
+148 MB in 828 files, 0.7 s to the new `shell.start`, 0.9 s until its core
+answered and the window showed.
+
+Most of the writing was LZMA decompression. The installer now packs with zlib
+(`bundle.windows.nsis.compression` in `tauri.bundle.windows.conf.json`).
+`bench/installer-extract.ps1` packs an installed copy with each NSIS
+compressor into an installer that only extracts it, then times a silent run
+(median of 5, same machine, 2026-11-08):
+
+| Compressor | Installer | Extraction | makensis |
+| --- | --- | --- | --- |
+| lzma, before | 55.3 MB | 5.21 s | 53.3 s |
+| zlib, now | 70.5 MB | 2.27 s | 12.1 s |
+| bzip2 | 66.0 MB | 6.25 s | 9.6 s |
+| none | 148.3 MB | 1.54 s | 0.7 s |
+
+The bench times the installer's start and its extraction, not a whole update:
+the 2.9 s it gives zlib is an estimate of what the closed-window gap loses, for
+15 MB more download, which happens while the old window still runs. The next
+update's `shell.update.install` to `shell.window.show` measures it. No compression would save another
+0.7 s for 78 MB more. LZMA's cost grows on a slower CPU: Tauri's own
+documentation gives it 10 to 20 MB/s at 2 GHz.
+
 ## What a frame costs
 
 Rendering regressions are measured with `bench/ui-frames.ts`. The current UI
@@ -1726,6 +1758,7 @@ bun bench/ui-heap.ts --machines --load 4 --tick 25 --switch 0 --minutes 9   # he
 bun bench/process-log-replay.ts <logs directory>          # process records a log directory holds, and what this store writes of them
 bun run bench/checkpoint-store.ts --source <checkpoints>  # store passes and retention on a copy: bytes, inodes, 20 rewinds
 bun bench/pr-review-context.ts [commit ...]               # bytes of each pull request file page, from real commits, no network
+powershell -File bench/installer-extract.ps1 -Work <scratch>   # Windows: time to extract the installed app per NSIS compressor
 ```
 
 `bench/bandwidth.ts` puts a TCP relay between the client and the core, counts
