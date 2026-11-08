@@ -1,6 +1,6 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { builtinSettingRefusal, isAgentPicture } from '@boite/contracts';
+import { builtinSettingRefusal, isAgentPicture, turnIsNews } from '@boite/contracts';
 import type {
   AccountId, AgentBrain, AgentBuiltin, AgentProfile, AgentRoutine, AgentSave, AgentSession, AgentStatus, AgentWatch, AgentsSnapshot, ModelInfo, RpcParams, ThreadSummary, Turn,
 } from '@boite/contracts';
@@ -551,8 +551,7 @@ export class AgentStore {
   /** A finished turn the user will read: one more unread while its thread is. */
   countUnread(turn: Turn): void {
     const thread = this.core.journal.getThread(turn.threadId);
-    const operation = turn.execution?.operation;
-    if (!thread?.unread || turn.quiet || operation === 'compact' || operation === 'keepalive' || (turn.status !== 'done' && turn.status !== 'error')) return;
+    if (!thread?.unread || !turnIsNews(turn)) return;
     this.core.journal.setSetting(`${UNREAD}${turn.threadId}`, ((this.core.journal.getSetting(`${UNREAD}${turn.threadId}`) as number | undefined) ?? 0) + 1);
   }
   #readUp(threadId: string): void {

@@ -218,6 +218,30 @@ describe('automatic compaction', () => {
     client.close();
   });
 
+  test('a thread read before its compaction or a stop stays read: neither is news', async () => {
+    // Read bots lit up again an hour later, when their prompt cache lapsed and the core compacted them.
+    const client = await h.connect();
+    const { threadId } = await quiet(client);
+    await client.call('settings.set', { autoCompact: { tokens: null, moments: ['cache-expiry'] } });
+    AUTO_COMPACT.cacheMarginMs = 300_000 - 200;
+    const compacted = client.next('turn.finished', t => t.threadId === threadId && t.execution?.operation === 'compact');
+    await turn(client, threadId, 'hello');
+    expect((await client.call('threads.get', { threadId })).unread).toBe(true);
+    await client.call('threads.markRead', { threadId });
+    expect((await compacted).status).toBe('done');
+    expect((await client.call('threads.get', { threadId })).unread).toBe(false);
+
+    // The next cache moment minutes away again: only the stop settles here.
+    AUTO_COMPACT.cacheMarginMs = saved.cacheMarginMs;
+    const stopped = client.next('turn.finished', t => t.threadId === threadId);
+    await client.call('turns.start', { threadId, prompt: '[sleep:5000]' });
+    await waitFor(() => h.core.threads.require(threadId).status === 'running');
+    await client.call('turns.stop', { threadId });
+    expect((await stopped).status).toBe('stopped');
+    expect((await client.call('threads.get', { threadId })).unread).toBe(false);
+    client.close();
+  });
+
   test('a thread left above a limit set later compacts once when a client shows it, not at its next prompt', async () => {
     // A thread idle at 212k before a 200k limit existed made its next prompt wait a minute for the agent's own compaction.
     // Its turn armed the cache's moment minutes ahead: the lower limit must not wait for that timer.

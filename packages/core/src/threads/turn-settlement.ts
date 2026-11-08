@@ -1,4 +1,4 @@
-import type { ThreadId, ThreadSummary, Turn, TurnId } from '@boite/contracts';
+import { turnIsNews, type ThreadId, type ThreadSummary, type Turn, type TurnId } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import type { TurnResult } from '../drivers/types.ts';
 import { logMessageOf } from '../log-errors.ts';
@@ -115,13 +115,12 @@ function finishThread(core: Core, { thread, finished, result }: Settlement): Com
     sameSession = (current.sessionGeneration ?? 0) === (thread.sessionGeneration ?? 0)
       && current.sessionId === thread.sessionId && current.providerId === thread.providerId && current.accountId === thread.accountId;
     const sessionId = sameSession ? result.sessionId ?? current.sessionId : current.sessionId;
-    // A keepalive is the core's housekeeping: it says nothing new, so it leaves the thread as read as it was.
-    // A quiet wake of a persistent agent had nothing to say either.
-    const silent = finished.execution?.operation === 'keepalive' || finished.quiet === true;
+    // A compaction, a keepalive, a quiet wake or a stop says nothing new: the thread stays as read as it was.
+    const news = turnIsNews(finished);
     return {
       ...current, sessionId,
       sessionResumeAt: !sameSession ? current.sessionResumeAt : current.sessionResumeAt && sessionId === current.sessionId && sessionId === thread.sessionId ? current.sessionResumeAt : null,
-      unread: silent ? current.unread : current.unread || !core.subscribers.hasSubscribers(thread.id),
+      unread: news ? current.unread || !core.subscribers.hasSubscribers(thread.id) : current.unread,
       promptCache: sameSession ? promptCacheOf(result, thread, finished.finishedAt ?? Date.now(), current.promptCache ?? null) ?? current.promptCache ?? null : current.promptCache ?? null,
     };
   });

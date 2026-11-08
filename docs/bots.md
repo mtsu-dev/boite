@@ -817,7 +817,9 @@ thread:
   the catalog;
 - `nextWake`: the next enabled routine occurrence;
 - `unread`: answers the user has not read on its thread, counted since it was
-  last read;
+  last read. Only an answer or a failure counts: a compaction (the hourly one
+  before the prompt cache lapses included), a keepalive, a quiet wake or a
+  stopped turn leaves the thread as read as it was (`turnIsNews`);
 - `last`: the final text block of its last non-quiet answer, first 200
   characters;
 - `today`: its turns since local midnight, the wakes among them (`routine` and
