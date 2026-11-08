@@ -58,13 +58,13 @@
     return !!previous && previous.ref.author === post.ref.author && previous.ref.audience === 'team' && post.ref.audience === 'team'
       && !post.ref.inReplyTo && post.at - previous.at < 5 * 60_000 && dayOf(previous.at) === dayOf(post.at);
   }
-  /** Who a group post woke; the owner's post that woke nobody says how to name one. */
+  /** Who a group post woke; an owner post routed before every unnamed one woke the whole team says it woke nobody. */
   function woke({ ref }: Post): { text: string; nobody: boolean } | null {
     if (ref.audience === 'private') return null;
     const woken = ref.to.filter(party => party !== TEAM_OWNER);
     if (ref.routedBy === 'everyone' && woken.length > 0) return { text: labels.wokeEveryone, nobody: false };
     if (woken.length > 0) return { text: fill(labels.woke, { names: listNames(woken.map(party => nameOf(party))) }), nobody: false };
-    if (ref.author === TEAM_OWNER && ref.routedBy === 'none') return { text: fill(labels.nobody, { mention: labels.composer.name, everyone: labels.composer.everyone }), nobody: true };
+    if (ref.author === TEAM_OWNER && ref.routedBy === 'none') return { text: labels.nobody, nobody: true };
     return null;
   }
   const excerpt = (text: string) => text.replace(/\s+/g, ' ').trim().slice(0, 140);
@@ -138,7 +138,7 @@
       {#if loading}
         <p class="placeholder" data-testid="team-loading">{labels.loading}</p>
       {:else if posts.length === 0}
-        <p class="placeholder" data-testid="team-empty">{fill(labels.empty, { mention: labels.composer.name, everyone: labels.composer.everyone })}</p>
+        <p class="placeholder" data-testid="team-empty">{fill(labels.empty, { mention: labels.composer.name })}</p>
       {/if}
       {#each posts as post, index (post.message.id)}
         {@const previous = posts[index - 1]}

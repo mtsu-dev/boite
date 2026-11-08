@@ -23,9 +23,10 @@
   import Menu from '../Menu.svelte';
 
   /**
-   * The owner's composer in a team chat (`docs/teams.md`). `@name` or the
-   * mention menu names who is woken, `@everyone` or `@tous` wakes every member,
-   * and the line under the field says who the core will wake, from the same
+   * The owner's composer in a team chat (`docs/teams.md`). A post that names
+   * nobody wakes every member; `@name` or the mention menu wakes only the bots
+   * it names, `@everyone` or `@tous` every member, and the line under the field
+   * says who the core will wake, from the same
    * rule it applies (`routeTeamPost`). The audience menu makes the post private
    * to one member. A post keeps its id until it lands, so a retry after a lost
    * answer returns the same post.
@@ -68,13 +69,11 @@
     to: recipient ? [recipient.key] : [],
     inReplyTo: reply?.id ?? null,
   }, reply?.author ?? null));
-  const nobody = $derived(fill(labels.wakesNobody, { mention: labels.name, everyone: labels.everyone }));
-  /** Who the post wakes, said before it goes. */
+  /** Who the post wakes, said before it goes: a post that names nobody wakes every member. */
   const wakes = $derived.by(() => {
     if (recipient) return fill(labels.wakesPrivate, { name: recipient.name });
+    if (routing.routedBy === 'everyone') return labels.wakesEveryone;
     const woken = routing.to.filter(party => party !== TEAM_OWNER);
-    if (routing.routedBy === 'everyone' && woken.length > 0) return labels.wakesEveryone;
-    if (woken.length === 0) return nobody;
     if (routing.routedBy === 'reply') return fill(labels.wakesReply, { name: partyName(team, woken[0]!) });
     return fill(labels.wakes, { names: listNames(woken.map(party => partyName(team, party))) });
   });
@@ -199,7 +198,7 @@
   </div>
   {#if error}<p class="note error" role="alert" data-testid="team-composer-error">{error}</p>
   {:else if tooLong}<p class="note error" role="alert" data-testid="team-composer-error">{fill(labels.tooLong, { max: count(TEAM_POST_MAX) })}</p>
-  {:else}<p class="note" class:quiet={routing.to.length === 0 && !recipient} data-testid="team-wakes" aria-live="polite">{wakes}</p>{/if}
+  {:else}<p class="note" data-testid="team-wakes" aria-live="polite">{wakes}</p>{/if}
 </div>
 
 <style>
@@ -242,7 +241,6 @@
   .replying .ui-label { flex: none; font-weight: 600; }
   .excerpt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-muted-foreground); }
   .note { max-width: var(--content); margin: 6px auto 0; padding: 0 14px; color: var(--color-muted-foreground); font-size: var(--text-xs); }
-  .note.quiet { color: var(--color-subtle); }
   .note.error { color: var(--color-danger); }
   @media (prefers-reduced-motion: reduce) { .send :global(.spinner) { animation: none; } }
   @media (max-width: 720px) {

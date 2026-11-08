@@ -84,13 +84,25 @@ test('the owner finds a team on the Bots page on a desktop and a phone, reads it
     await page.waitFor(`document.querySelector('${row}') && !document.querySelector('${row}').dataset.unread`);
     expect(await page.evaluate(`document.querySelector('${row}').getAttribute('aria-current')`)).toBe('page');
 
+    // A post that names nobody wakes the whole team, bot by bot as @tous would.
+    await page.type('[data-testid=team-composer-input]', 'Où en est-on ?');
+    await page.waitFor(`document.querySelector('[data-testid=team-wakes]')?.textContent === 'Réveille toute l\\'équipe'`);
+    await page.settleAnimations();
+    await page.screenshot(join(import.meta.dir, '.artifacts', 'team-chat-no-mention-desktop.png'));
+    await page.click('[data-testid=team-send]');
+    await page.waitFor(`document.querySelectorAll('[data-testid=team-post]').length === 3`);
+    const unnamed = (await owner.call('teams.read', { team: team.id })).posts.at(-1);
+    expect([unnamed?.routedBy, unnamed?.to.toSorted(), unnamed?.notice]).toEqual(['everyone', [keyOf(huginn.id), keyOf(jeux.id)].toSorted(), undefined]);
+    expect((await page.evaluate<unknown[][]>(posts)).at(-1)).toEqual(['Vous', 'team', null, 'A réveillé toute l\'équipe']);
+
     await page.type('[data-testid=team-composer-input]', '@Jeux (Producteur) tu valides le budget ?');
     await page.waitFor(`document.querySelector('[data-testid=team-wakes]')?.textContent === 'Réveille Jeux (Producteur)'`);
     await page.click('[data-testid=team-send]');
-    await page.waitFor(`document.querySelectorAll('[data-testid=team-post]').length === 3`);
+    await page.waitFor(`document.querySelectorAll('[data-testid=team-post]').length === 4`);
     const mentioned = (await owner.call('teams.read', { team: team.id })).posts.at(-1);
     expect([mentioned?.author, mentioned?.routedBy, mentioned?.to]).toEqual(['owner', 'mention', [keyOf(jeux.id)]]);
-    expect((await page.evaluate<unknown[][]>(posts)).at(-1)).toEqual(['Vous', 'team', null, 'A réveillé Jeux (Producteur)']);
+    // Under the owner's post just before, it reads as its continuation.
+    expect((await page.evaluate<unknown[][]>(posts)).at(-1)).toEqual([null, 'team', null, 'A réveillé Jeux (Producteur)']);
     await page.settleAnimations();
     await page.screenshot(join(import.meta.dir, '.artifacts', 'team-chat-desktop.png'));
 
@@ -105,14 +117,18 @@ test('the owner finds a team on the Bots page on a desktop and a phone, reads it
     await page.settleAnimations();
     await page.screenshot(join(import.meta.dir, '.artifacts', 'team-chat-list-phone.png'));
     await page.click(row);
-    await page.waitFor(`${shown('[data-testid=team-chat]')} && !${shown(row)} && document.querySelectorAll('[data-testid=team-post]').length === 3`);
+    await page.waitFor(`${shown('[data-testid=team-chat]')} && !${shown(row)} && document.querySelectorAll('[data-testid=team-post]').length === 4`);
+    await page.type('[data-testid=team-composer-input]', 'Où en est-on ?');
+    await page.waitFor(`document.querySelector('[data-testid=team-wakes]')?.textContent === 'Réveille toute l\\'équipe'`);
+    await page.settleAnimations();
+    await page.screenshot(join(import.meta.dir, '.artifacts', 'team-chat-no-mention-phone.png'));
     await page.click('[data-testid=team-audience]');
     await page.click(`[data-testid=team-audience-menu] [data-value="${keyOf(huginn.id)}"]`);
     await page.waitFor(`!document.querySelector('[data-testid=team-mention]')`);
     await page.type('[data-testid=team-composer-input]', 'Tu peux relancer le client demain ?');
     expect(await page.text('[data-testid=team-wakes]')).toContain('Huginn (Réseaux)');
     await page.click('[data-testid=team-send]');
-    await page.waitFor(`document.querySelectorAll('[data-testid=team-post]').length === 4`);
+    await page.waitFor(`document.querySelectorAll('[data-testid=team-post]').length === 5`);
     const secret = (await owner.call('teams.read', { team: team.id })).posts.at(-1);
     expect([secret?.audience, secret?.to]).toEqual(['private', [keyOf(huginn.id)]]);
     expect((await page.evaluate<unknown[][]>(posts)).at(-1)).toEqual(['Vous', 'private', 'Privé pour Huginn (Réseaux)', null]);
