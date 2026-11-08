@@ -39,8 +39,8 @@ test('the active tab is the panel selector: the panels in use, every panel behin
   expect(selector().textContent?.trim()).toBe('Files');
   selector().click(); await settle();
   const listed = () => Array.from(document.querySelectorAll<HTMLElement>('[data-testid=panel-add-menu] [data-value]')).map((row) => row.dataset['value']);
-  // Short: the open Files and the thread's changes, then one row to every panel.
-  expect(listed()).toEqual(['changes', 'files', 'all-panels']);
+  // Short: the open Files and the thread's changes, one row to every panel, then the window's switch that left the head.
+  expect(listed()).toEqual(['changes', 'files', 'all-panels', 'panel-maximize']);
   expect(query('[data-testid=panel-add-menu] [data-value=files]')?.classList.contains('active')).toBe(true);
   // "All panels" swaps the rows in place: every kind, open or not, once; the coordination and the way to hide some.
   query<HTMLButtonElement>('[data-testid=panel-add-menu] [data-value=all-panels]')!.click(); await settle();
@@ -84,8 +84,9 @@ test('an empty panel keeps the selector as its title', async () => {
   expect(store.panel.active?.kind).toBe('changes');
 });
 
-// The Changes title row and its branch and file row were two: the bar now sits in the strip beside the tab.
-test('the Changes bar shares the strip with the tabs: one head row', async () => {
+// The head held the Changes bar, a maximize and a dock beside the tabs: it now holds the selector and the close,
+// the bar is the body's own first line and the window's switches are rows of the selector.
+test('the panel head holds the selector and the close only: refresh in the body, maximize in the selector', async () => {
   client = new FakeClient({ delayMs: 0 });
   store = new Store(); store.attach(client); await store.connect();
   await store.open('t-trace');
@@ -93,8 +94,15 @@ test('the Changes bar shares the strip with the tabs: one head row', async () =>
   store.panel.openChanges();
   app = mount(RightPanel, { target: document.body, props: { store, panel: store.panel, attach: () => ({ destroy() {} }), onexit() {} } });
   await settle();
-  expect(query('[data-testid=panel-titlebar] [data-testid=changes-refresh]')).not.toBeNull();
-  expect(query('[data-testid=changes-panel] .panel-toolbar')).toBeNull();
+  const head = query('[data-testid=panel-titlebar]')!;
+  const controls = Array.from(head.querySelectorAll<HTMLElement>('button')).filter((one) => !one.closest('[data-testid=panel-tab]'));
+  expect(controls.map((one) => one.dataset.testid)).toEqual(['panel-close']);
+  expect(head.querySelector('[data-testid=changes-refresh]')).toBeNull();
+  expect(query('[data-testid=changes-panel] > .panel-toolbar [data-testid=changes-refresh]')).not.toBeNull();
+  query<HTMLButtonElement>('[data-testid=panel-add]')!.click(); await settle();
+  query<HTMLButtonElement>('[data-testid=panel-add-menu] [data-testid=panel-maximize]')!.click(); await settle();
+  expect(rightPanel.maximized).toBe(true);
+  rightPanel.maximized = false;
   store.panel.openFiles(); await settle();
   expect(query('[data-testid=changes-refresh]')).toBeNull();
 });

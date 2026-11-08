@@ -18,9 +18,11 @@
   import { isMac } from '../lib/keybindings';
   import { railBotState, threadsNeedingYou, type RailBotState } from '../lib/app-rail';
   import { inbox } from '../lib/inbox.svelte';
+  import { followActivityReturn } from '../lib/activity-return.svelte';
   import AgentAvatar from './agents/AgentAvatar.svelte';
   import MachineStatus from './MachineStatus.svelte';
   import WhipButton from './WhipButton.svelte';
+  import FailMark from './FailMark.svelte';
   import Deferred, { parts } from './Deferred.svelte';
 
   /**
@@ -46,6 +48,8 @@
 
   // Every machine's bots stay read while the rail is drawn, so their pictures say how each one stands.
   followAgentDirectories(() => stores, () => botsOn);
+  // Acting from Activity opens a thread; this rail lives as long as the desktop frame, so it walks the way back.
+  followActivityReturn();
   const watchedTeams = watchTeams(() => teamsOn ? machines : []);
 
   /** Pinned bots first, then in the order they were made: a picture keeps its place as its bot talks. */
@@ -80,13 +84,6 @@
     const state = railBotState(row.profile, row.status, thread, waitingOn(machine.store, threadId) !== null);
     // A queued turn is work on its way: the picture draws it as work.
     return state === 'queued' ? 'working' : state;
-  }
-  /** The questions and permissions its thread holds open: at least one while it waits. */
-  function asksOf({ machine, row }: Bot): number {
-    const threadId = row.status?.threadId;
-    if (!threadId) return 1;
-    const open = machine.store.pendingQuestions.filter(q => q.threadId === threadId).length + machine.store.pendingPermissions.filter(p => p.threadId === threadId).length;
-    return Math.max(1, open);
   }
   function labelOf(name: string, state: RailBotState): string {
     if (state === 'waiting') return fill(strings.app.rail.botWaiting, { name });
@@ -169,7 +166,7 @@
       aria-label={waiting ? `${strings.mobile.activity}, ${waitingLabel}` : strings.mobile.activity}
       data-testid="nav-activity" onclick={showActivity}>
       <Activity size={19} strokeWidth={1.75} />
-      {#if waiting}<span class="count" data-testid="rail-activity-waiting">{count(waiting)}</span>{/if}
+      {#if waiting}<span class="count" data-testid="rail-activity-waiting">{waiting > 99 ? '99+' : count(waiting)}</span>{/if}
     </button>
     {@render railName(strings.mobile.activity, null, waiting ? waitingLabel : null)}
   </div>
@@ -189,10 +186,11 @@
             aria-current={selected ? 'page' : undefined} data-testid="rail-bot" data-agent-id={bot.row.profile.id} data-state={state}
             onclick={() => workspace.showAgents(bot.machine.store, bot.row.profile.id)}>
             <AgentAvatar kind="profile" id={bot.row.profile.id} name={bot.row.profile.name} avatar={bot.row.profile.avatar} size={44} squircle={selected} />
-            {#if state === 'waiting'}<span class="count">{count(asksOf(bot))}</span>
-            {:else if state === 'failed'}<span class="count failed">!</span>
-            {:else if state === 'working'}<span class="work" aria-hidden="true"><svg viewBox="0 0 14 14"><circle class="track" cx="7" cy="7" r="5" /></svg></span>{/if}
-            {#if unread && !selected}<span class="news" data-testid="rail-bot-unread" aria-hidden="true"></span>{/if}
+            <!-- One overlay, in one slot: the user's turn first, then a failure, work, news. A count is Activity's alone. -->
+            {#if state === 'waiting'}<span class="badge" aria-hidden="true"><span class="needs"></span></span>
+            {:else if state === 'failed'}<span class="badge" aria-hidden="true"><FailMark /></span>
+            {:else if state === 'working'}<span class="badge work" aria-hidden="true"><svg viewBox="0 0 14 14"><circle class="track" cx="7" cy="7" r="5" /></svg></span>
+            {:else if unread && !selected}<span class="badge" data-testid="rail-bot-unread" aria-hidden="true"><span class="news"></span></span>{/if}
           </button>
           {@render railName(bot.row.profile.name, null, several ? bot.machine.label : null)}
         </div>
@@ -205,7 +203,7 @@
           <button type="button" class="bot team" aria-label={news ? `${row.team.name}, ${strings.app.rail.unread}` : row.team.name} aria-current={selected ? 'page' : undefined}
             data-testid="rail-team" data-team-id={row.team.id} onclick={() => openTeamChat(row)}>
             <AgentAvatar kind="team" id={row.team.id} name={row.team.name} members={pictures(row)} size={44} squircle />
-            {#if news}<span class="news" aria-hidden="true"></span>{/if}
+            {#if news}<span class="badge" aria-hidden="true"><span class="news"></span></span>{/if}
           </button>
           {@render railName(row.team.name)}
         </div>
@@ -349,30 +347,30 @@
   .separator { flex: none; width: 28px; height: 1px; background: var(--color-edge); }
   .bots { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; min-height: 0; }
 
-  /* Bottom right of a button: what asks, in the waiting colour, ringed in the chrome so it reads cut out. */
+  /* Activity's count, bottom right, ringed in the chrome so it reads cut out; two digits fit inside the button's corner. */
   .count {
     position: absolute;
-    right: -4px;
-    bottom: -3px;
-    min-width: 18px;
-    height: 18px;
+    right: -5px;
+    bottom: -4px;
+    min-width: 16px;
+    height: 16px;
     box-sizing: border-box;
-    padding: 0 5px;
+    padding: 0 4px;
     display: grid;
     place-items: center;
     border-radius: var(--radius-full);
     background: var(--color-live);
     color: var(--color-accent-ink);
-    box-shadow: 0 0 0 3px var(--color-frame);
-    font-size: var(--text-xs);
+    box-shadow: 0 0 0 2px var(--color-frame);
+    font-size: 11px;
     font-weight: 700;
     line-height: 1;
+    font-variant-numeric: tabular-nums;
   }
-  .count.failed { background: var(--color-danger); color: var(--color-on-danger); }
-  /* News on a bot: a badge top right of its picture, in full ink and cut out of the chrome; the edge pip is the open place alone. */
-  .news { position: absolute; right: 0; top: 0; width: 10px; height: 10px; border-radius: 50%; background: var(--color-foreground); box-shadow: 0 0 0 3px var(--color-frame); }
-  /* At work: the list rows' still grey arc, a spinner at rest; the open thread keeps the one live spinner. */
-  .work {
+  /* A bot's or a team's one overlay, bottom right of its picture, cut out of the chrome: the amber dot for its turn,
+     the failure's "!", the list rows' still grey arc for work (the open thread keeps the one live spinner), a full
+     ink dot for news. */
+  .badge {
     position: absolute;
     right: -3px;
     bottom: -3px;
@@ -383,6 +381,8 @@
     border-radius: 50%;
     background: var(--color-frame);
   }
+  .needs, .news { width: 10px; height: 10px; border-radius: 50%; background: var(--color-live); }
+  .news { background: var(--color-foreground); }
   .work svg { width: 14px; height: 14px; overflow: visible; }
   .work circle { fill: none; stroke-width: 2; }
   .work .track { stroke: var(--color-muted-foreground); stroke-dasharray: 23.6 31.4; transform: rotate(-45deg); transform-origin: 7px 7px; }

@@ -74,7 +74,7 @@ export const fr: Translation = {
     diffWhitespaceOnly: 'Seuls des espaces ont changé.',
     diffShowAll: 'Afficher les {count} lignes',
     diffAdded: '+{count}',
-    diffRemoved: '-{count}',
+    diffRemoved: '−{count}',
     noOutput: 'Aucune sortie',
     toolExitCode: 'Code de sortie {code}',
     /** A failed step's mark when no exit code says more. */

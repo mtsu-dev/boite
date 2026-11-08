@@ -119,7 +119,7 @@ test('the open file counts the lines its diff draws, not a figure from another r
     expect(added + removed).toBeGreaterThan(0);
     const row = document.querySelector(`[data-testid=changes-row][data-path="${PATH}"]`)!;
     expect(row.querySelector('.count.added')?.textContent).toBe(added ? `+${added}` : '');
-    expect(row.querySelector('.count.removed')?.textContent).toBe(removed ? `-${removed}` : '');
+    expect(row.querySelector('.count.removed')?.textContent).toBe(removed ? `−${removed}` : '');
     expect(row.textContent).not.toContain('+99');
   } finally {
     if (component) await unmount(component);

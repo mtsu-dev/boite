@@ -68,7 +68,7 @@
         <div class="chips" role="group" aria-labelledby="{uid}-{period}" aria-busy={saving === period}>
           {#each shown as left (left)}
             {@const on = chosen.includes(left)}
-            <button type="button" class="chip" class:on class:custom={!QUOTA_ALERT_PRESETS.includes(left)} aria-pressed={on} disabled={saving !== null}
+            <button type="button" class="ui-chip" class:on class:custom={!QUOTA_ALERT_PRESETS.includes(left)} aria-pressed={on} disabled={saving !== null}
               title={QUOTA_ALERT_PRESETS.includes(left) ? undefined : fill(strings.quotas.alertRemove, { percent: String(left) })}
               data-testid="quota-alert-{period}-{left}" onclick={() => toggle(period, left)}>
               <span class="ui-label">{fill(strings.quotas.alertAt, { percent: String(left) })}</span>
@@ -80,7 +80,7 @@
               onkeydown={(event) => { if (event.key === 'Enter') commit(period); else if (event.key === 'Escape') { event.stopPropagation(); editing = null; } }}
               onblur={() => commit(period)} />
           {:else if chosen.length < QUOTA_ALERT_MAX}
-            <button type="button" class="chip add" disabled={saving !== null} data-testid="quota-alert-{period}-custom" onclick={() => { draft = ''; editing = period; }}>
+            <button type="button" class="ui-chip add" disabled={saving !== null} data-testid="quota-alert-{period}-custom" onclick={() => { draft = ''; editing = period; }}>
               <Plus size={13} aria-hidden="true" /><span class="ui-label">{strings.quotas.alertCustom}</span>
             </button>
           {/if}
@@ -98,16 +98,16 @@
   .period { font-size: var(--text-sm); }
   /* Each share its own toggle, filled with the foreground when on; several may be. */
   .chips { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
-  .chip { display: inline-flex; align-items: center; gap: 4px; height: var(--control-sm); min-width: 44px; justify-content: center; padding: 0 9px; border: 1px solid var(--color-edge); border-radius: var(--radius-md);
+  .ui-chip { display: inline-flex; align-items: center; gap: 4px; height: var(--control-sm); min-width: 44px; justify-content: center; padding: 0 9px; border: 1px solid var(--color-edge); border-radius: var(--radius-md);
     background: var(--color-surface-2); color: var(--color-muted-foreground); font-size: var(--text-sm); font-variant-numeric: tabular-nums;
     transition: background-color var(--dur-2) var(--ease-out-quint), color var(--dur-2) var(--ease-out-quint), border-color var(--dur-2) var(--ease-out-quint); }
-  .chip:hover:not(.on):not(:disabled) { background: var(--color-surface-3); color: var(--color-foreground); }
-  .chip.on { background: var(--color-foreground); border-color: var(--color-foreground); color: var(--color-background); }
-  .chip.add { border-style: dashed; }
+  .ui-chip:hover:not(.on):not(:disabled) { background: var(--color-surface-3); color: var(--color-foreground); }
+  .ui-chip.on { background: var(--color-foreground); border-color: var(--color-foreground); color: var(--color-background); }
+  .ui-chip.add { border-style: dashed; }
   .field { width: 64px; height: var(--control-sm); padding: 0 8px; border: 1px solid var(--color-edge); border-radius: var(--radius-md); background: var(--color-surface-2); color: var(--color-foreground); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
   .chips[aria-busy='true'] { opacity: 0.7; }
   @media (max-width: 720px) {
     .chips { flex: 1 1 100%; justify-content: flex-start; }
-    .chip { flex: 1 0 auto; }
+    .ui-chip { flex: 1 0 auto; }
   }
 </style>

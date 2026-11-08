@@ -24,7 +24,7 @@ export const strings = {
     launcher: 'Open a surface in this panel',
     untitled: 'Browser',
     /** The selector's way from the panels in use to every panel, and back. */
-    allPanels: 'All panels', inUse: 'In use',
+    allPanels: 'All panels', inUse: 'Open panels',
     /** The full list's groups. */
     groups: { work: 'Work', agents: 'Agents', tools: 'Tools' },
     /** A renamed row's tooltip: the name it had before. */

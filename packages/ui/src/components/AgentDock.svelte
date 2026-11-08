@@ -75,10 +75,11 @@
 {/if}
 
 <style>
-  /* Quiet rows on the card's top edge, a hairline under them when a decision or
-     the field follows. Every entry its own plain line, whole at every width
-     (never folded into a count); past three the rows scroll in place. */
-  .dock { flex: none; padding: 4px 4px 2px; border-bottom: 1px solid var(--color-border); }
+  /* Quiet rows on the card's top edge, on its own surface with no rule under
+     them: only a decision below is raised. Every entry its own plain line,
+     whole at every width (never folded into a count); past three the rows
+     scroll in place, past two on a phone. */
+  .dock { flex: none; padding: 4px 4px 0; }
   .entries {
     display: flex;
     flex-direction: column;
@@ -99,7 +100,7 @@
   /* A phone gives the names the room: the mark says it runs, the panel says
      how long. Rows a finger still hits (over the 24 px floor). */
   @media (max-width: 720px) {
-    .entries { max-height: calc(3 * var(--control)); }
+    .entries { max-height: calc(2 * var(--control)); }
     .entry { height: var(--control); padding: 0 6px; }
     .entry :global(.elapsed) { display: none; }
   }

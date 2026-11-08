@@ -31,6 +31,12 @@
   let problem = $state<string | null>(null);
   let filter = $state('');
   let cursor = $state(0);
+  /**
+   * The tree is still opening on the path it was asked for: no row is marked
+   * until that one is, so the mark lands once instead of moving from the
+   * first row while the panel fades in.
+   */
+  let placing = $state(0);
   let list = $state<HTMLDivElement | undefined>(undefined);
   /** The thread whose directories `loaded` holds. */
   let shownFor: string | null = null;
@@ -108,6 +114,11 @@
 
   /** The root, then every ancestor of the directory the tab was opened on. */
   async function openAt(path: string): Promise<void> {
+    placing += 1;
+    try { await place(path); } finally { placing -= 1; }
+  }
+
+  async function place(path: string): Promise<void> {
     await read('');
     if (path === '') return;
     let at = '';
@@ -254,7 +265,7 @@
       <button
         type="button"
         class="row"
-        class:on={index === cursor}
+        class:on={placing === 0 && index === cursor}
         role="treeitem"
         aria-level={row.depth + 1}
         aria-selected={index === cursor}
@@ -378,6 +389,8 @@
     font-size: var(--text-sm);
     font-weight: 400;
     text-align: left;
+    /* The mark and the hover land at once: a fading fill read as a second thing moving beside the panel's own fade. */
+    transition: color var(--dur-2) var(--ease-out-quint);
   }
 
   .row:hover:not(:disabled),

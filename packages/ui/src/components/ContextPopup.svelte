@@ -155,7 +155,8 @@
   .remaining { margin: 10px 0 0; font-size: var(--text-xs); line-height: 1.5; color: var(--color-muted-foreground); }
   .reading-detail { margin-top: 12px; padding-top: 4px; border-top: 1px solid var(--color-border); }
   .bar { display: flex; height: 7px; overflow: hidden; background: var(--color-border); border-radius: var(--radius-sm); }
-  .input { background: var(--color-accent); }
+  /* The input share in neutral ink: the accent stays on send. */
+  .input { background: var(--color-subtle); }
   .cache { background: var(--color-success); }
   .output { background: var(--color-live); }
   dl { margin: 12px 0; font-size: var(--text-xs); }

@@ -71,7 +71,7 @@
         <span class="notify-mark" aria-hidden="true"><Puzzle size={16} strokeWidth={1.75} /></span>
         <div class="notify-lines">
           <span class="notify-title">{fill(t.noticeTitle, { name: notice.plugin.name, version: notice.version })}</span>
-          <p class="notify-text">{t.noticeBody}{#if several}<span class="sep" aria-hidden="true"> · </span>{notice.host.label}{/if}</p>
+          <p class="notify-text">{t.noticeBody}{#if several}<span class="sep" aria-hidden="true">{' · '}</span>{notice.host.label}{/if}</p>
           <div class="notify-actions">
             <button type="button" class="small" data-testid="plugin-update-run" onclick={() => answer(notice, true)}>{t.noticeUpdate}</button>
             <button type="button" class="ghost small" data-testid="plugin-update-later" onclick={() => answer(notice, false)}>{t.noticeLater}</button>

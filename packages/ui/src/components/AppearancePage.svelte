@@ -192,7 +192,7 @@
         {/each}
       </div>
     </div>
-    <ThemeColors />
+    <ThemeColors {phone} />
     {#if !phone}
     <div class="switch-row">
       <span class="text ui-label">{strings.settings.chatWidth}</span>
@@ -250,22 +250,25 @@
   </section>
 
   {#if !phone}
-  <!-- Every optional button in one place, grouped by where it sits. A button's
-       own right click hides it and leads here; this is the only way back. -->
-  <section class="card" id="settings-buttons" data-testid="settings-buttons">
-    <h2 class="ui-label-box"><span class="ui-label">{strings.controls.heading}</span><InfoTip gather topic={strings.controls.heading} text={strings.controls.headingHint} testid="section-info" /></h2>
-    <!-- The two presets as a row like the others, the "i" saying what each keeps. -->
-    <div class="switch-row presets-row">
-      <span class="text ui-label">{strings.controls.preset}</span>
-      <div class="segmented" role="group" aria-label={strings.controls.preset}>
-        {#each presets as option (option.id)}
-          <button type="button" class:on={preset === option.id} aria-pressed={preset === option.id} data-testid="controls-preset-{option.id}" onclick={() => work.showPreset(option.id)}><span class="ui-label">{option.label}</span></button>
-        {/each}
+  <!-- Every optional button in one place, grouped by where it sits: the presets,
+       then one card a place, titled by it. A button's own right click hides it and
+       leads here; this is the only way back. -->
+  <div class="settings-stack" id="settings-buttons" data-testid="settings-buttons">
+    <section class="card">
+      <h2 class="ui-label-box"><span class="ui-label">{strings.controls.heading}</span><InfoTip gather topic={strings.controls.heading} text={strings.controls.headingHint} testid="section-info" /></h2>
+      <!-- The two presets as a row like the others, the "i" saying what each keeps. -->
+      <div class="switch-row">
+        <span class="text ui-label">{strings.controls.preset}</span>
+        <div class="segmented" role="group" aria-label={strings.controls.preset}>
+          {#each presets as option (option.id)}
+            <button type="button" class:on={preset === option.id} aria-pressed={preset === option.id} data-testid="controls-preset-{option.id}" onclick={() => work.showPreset(option.id)}><span class="ui-label">{option.label}</span></button>
+          {/each}
+        </div>
       </div>
-    </div>
+    </section>
     {#each groups as group (group.id)}
-      <div class="control-group" role="group" aria-labelledby="{uid}-{group.id}">
-        <p class="section-label" id="{uid}-{group.id}">{group.label}</p>
+      <section class="card control-group" role="group" aria-labelledby="{uid}-{group.id}">
+        <h2 id="{uid}-{group.id}"><span class="ui-label">{group.label}</span></h2>
         <!-- One plain row a button, its icon and name as the button wears them, its switch at the row's end. -->
         {#each group.entries as entry (entry.id)}
           <label class="switch-row">
@@ -281,9 +284,9 @@
             <input type="checkbox" role="switch" checked={work.shows(entry.id)} data-testid="control-{entry.id}" onchange={(event) => work.show(entry.id, event.currentTarget.checked)} />
           </label>
         {/each}
-      </div>
+      </section>
     {/each}
-  </section>
+  </div>
   {/if}
 </div>
 
@@ -291,11 +294,8 @@
   .zoom button { display: inline-flex; align-items: center; justify-content: center; padding: 0 8px; }
   .zoom-error { margin: 0; color: var(--color-danger); font-size: var(--text-xs); overflow-wrap: anywhere; }
   .zoom .zoom-value { min-width: 56px; font-variant-numeric: tabular-nums; color: var(--color-foreground); }
-  .presets-row { margin-bottom: var(--space-4); }
-  .control-group + .control-group { margin-top: var(--space-5); }
-  .control-group .section-label { margin-bottom: 0; }
-  .control-group :global(svg) { flex: none; color: var(--color-muted-foreground); }
-  .control-group .ui-label-box { gap: var(--space-3); }
+  .control-group .switch-row :global(svg) { flex: none; color: var(--color-muted-foreground); }
+  .control-group .switch-row .ui-label-box { gap: var(--space-3); }
   /* Scoped under the page so it outranks the shared row, which centres its children.
      On a phone a label sits above its choices: side by side, a French label was
      squeezed to one word a line and ran under the three-option control. */

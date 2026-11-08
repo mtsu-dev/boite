@@ -143,10 +143,10 @@ test('a finished answer lists the files it changed, and a row opens one in the p
   query<HTMLButtonElement>('[data-testid=composer-send]').click();
 
   await waitFor(() => document.querySelector('[data-testid=turn-files]') !== null);
-  // Folded: the count and the lines added and removed, the list on a click.
+  // Folded: the one count of changes, files then lines added and removed, the list on a click.
   const toggle = query<HTMLButtonElement>('[data-testid=turn-files-toggle]');
   expect(toggle.getAttribute('aria-expanded')).toBe('false');
-  expect(toggle.querySelector('[data-testid=turn-lines]')?.textContent).toBe('+2-1');
+  expect(toggle.querySelector('[data-testid=turn-lines]')?.textContent).toBe('1 file, +2 −1');
   expect(document.querySelector('[data-testid=turn-file-folder]')).toBeNull();
   toggle.click();
   await waitFor(() => document.querySelector('[data-testid=turn-file-folder]') !== null);
@@ -207,7 +207,8 @@ test('a tool card shows the diff, the markdown and the image it produced', async
   expect(
     Array.from(document.querySelectorAll('[data-testid=tool-document-chip]')).map((el) => el.textContent)
   ).toEqual(['1 doc', '1 doc']);
-  expect(query('[data-testid=tool-diff-counts]').textContent?.replace(/\s+/g, ' ').trim()).toBe('+2 -1');
+  // A real minus sign, as in every change count (`lib/change-count.ts`).
+  expect(query('[data-testid=tool-diff-counts]').textContent?.replace(/\s+/g, ' ').trim()).toBe('+2 −1');
   expect(query('[data-testid=tool-card][data-family=edit] [data-testid=tool-toggle]').getAttribute('aria-expanded')).toBe('false');
   query<HTMLButtonElement>('[data-testid=tool-card][data-family=edit] [data-testid=tool-toggle]').click();
   flushSync();

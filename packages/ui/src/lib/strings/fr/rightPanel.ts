@@ -24,7 +24,7 @@ export const fr: Translation = {
     ownerOnly: "Seulement dans l'application du propriétaire",
     launcher: 'Ouvrir une surface dans ce panneau',
     untitled: 'Navigateur',
-    allPanels: 'Tous les panneaux', inUse: 'En cours',
+    allPanels: 'Tous les panneaux', inUse: 'Panneaux ouverts',
     groups: { work: 'Travail', agents: 'Agents', tools: 'Outils' },
     formerly: {
       trace: 'Anciennement Trace', tasks: 'Anciennement Tâches', messages: 'Anciennement Discussions',

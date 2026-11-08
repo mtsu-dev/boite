@@ -652,8 +652,8 @@ test('the settings bar picks the machine a page changes without moving the windo
   await waitFor(() => document.querySelector('[data-testid=settings-machine]') !== null && document.querySelector('[data-testid=plugins-page]') !== null);
   expect(query('[data-testid=settings-machine]').textContent).toContain('DESK-PC (you)');
   // Every other page opens on the window's machine.
-  remote.store.showSettings('resources');
-  await waitFor(() => query('[data-testid=settings-machine]').textContent?.includes(remote.label) === true);
+  remote.store.showSettings('general', 'quiet');
+  await waitFor(() => query('[data-testid=settings-machine]').textContent?.includes(remote.label) === true && document.querySelector('[data-testid=setting-mute-agents]') !== null);
   await remote.store.client!.call('settings.set', { muteAgents: true });
   await store.client!.call('settings.set', { muteAgents: true });
   query<HTMLButtonElement>('[data-testid=settings-machine]').click();
@@ -664,5 +664,5 @@ test('the settings bar picks the machine a page changes without moving the windo
   await waitFor(() => store.settings?.muteAgents === false);
   expect(remote.store.settings?.muteAgents).toBe(true);
   // The window never moved: same machine, same conversation, still on the page it showed.
-  expect([workspace.active, remote.store.openThread, remote.store.settingsTab]).toEqual([remote.store, thread, 'resources']);
+  expect([workspace.active, remote.store.openThread, remote.store.settingsTab]).toEqual([remote.store, thread, 'general']);
 });

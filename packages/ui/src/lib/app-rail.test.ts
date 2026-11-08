@@ -39,7 +39,7 @@ test("the rail's badge is the number of Activity's Needs you rows: a failure cou
     // Asks without stopping: the user's turn, not work.
     thread('question', { status: 'running', openQuestions: 1 }),
     thread('failed', { status: 'error' }),
-    // A parent that asks, its sub-agent interrupted under it: one row of the section, the child nested.
+    // A parent that asks, its sub-agent interrupted under it: two events, the stop a row of Updates of its own.
     thread('parent', { status: 'waiting' }),
     thread('child', { status: 'idle', unread: true, backgroundWait: { state: 'interrupted', for: 'tests', reason: 'core-restarted', at: 1 }, parentThreadId: 'parent' as ThreadSummary['parentThreadId'] }),
     thread('done', { unread: true }),
@@ -47,7 +47,7 @@ test("the rail's badge is the number of Activity's Needs you rows: a failure cou
   ];
   const store = { threads, pendingQuestions: [], pendingPermissions: [], subagents: () => 0 as const };
   const needs = activityFeed(threads.map(t => ({ machine: { id: 'm', store }, thread: t, project: undefined }))).filter(row => row.section === 'needs');
-  expect(needs.map(row => row.thread.id)).toEqual(['asks', 'question', 'parent', 'child', 'failed']);
+  expect(needs.map(row => row.thread.id)).toEqual(['asks', 'question', 'parent', 'failed']);
   expect(threadsNeedingYou([store])).toBe(needs.filter(row => !row.nested).length);
   expect(threadsNeedingYou([store])).toBe(4);
 });

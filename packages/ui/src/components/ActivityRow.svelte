@@ -3,13 +3,16 @@
   import { workspace } from '../lib/workspace.svelte';
   import { feedOperation, type FeedRow, type FeedVerb } from '../lib/activity-feed';
   import { strings } from '../lib/strings';
+  import { leaveForAct } from '../lib/activity-return.svelte';
   import ThreadCard from './ThreadCard.svelte';
 
   /**
    * One Activity row, desktop (ActivityList.svelte): the list's own row (menu, drag, rename) with who asks, its title
    * on two lines at most, then what is asked, whole: the command of a permission in a mono block, each sub-agent
-   * that asks as a line of its own, so one thread is one row. Since when and the row's one action stand at the
-   * right edge. A command too long to read here turns Allow into Review, which opens the thread first.
+   * that asks the same as a line of its own (lib/activity-feed.ts: one event, one row). Since when and the row's one
+   * action end the title's line. A command too long to read here turns Allow into Review, which opens the thread
+   * first. Acting leaves Activity for the thread; once the ask is settled, Activity comes back where it was
+   * (lib/activity-return.svelte.ts).
    */
   let { row, helpers = [], now }: { row: FeedRow<Machine>; helpers?: FeedRow<Machine>[]; now: number } = $props();
   const operation = $derived(feedOperation(row.machine.store, row.thread.id));
@@ -28,8 +31,13 @@
     {/each}
   {/snippet}
   {#snippet action()}
-    {#if target && verb}
-      <button type="button" class="small verb" data-testid="thread-verb" data-verb={verb} onclick={() => void workspace.select(target.machine.store, target.thread.id)}>{strings.mobile.feed.verb[verb]}</button>
+    <!-- Every Needs you row keeps the action's place, so the time stands at one offset down the section. -->
+    {#if row.section === 'needs'}
+      <span class="feed-action">
+        {#if target && verb}
+          <button type="button" class="small verb" data-testid="thread-verb" data-verb={verb} onclick={(event) => { leaveForAct(target.machine.store, target.thread.id, event.currentTarget); void workspace.select(target.machine.store, target.thread.id); }}>{strings.mobile.feed.verb[verb]}</button>
+        {/if}
+      </span>
     {/if}
   {/snippet}
 </ThreadCard>
@@ -43,5 +51,7 @@
   .operation { display: block; margin-left: 26px; padding: 6px 8px; border-radius: var(--radius-sm); background: var(--color-code-background); color: var(--color-code-foreground); font-family: var(--font-mono); font-size: var(--text-xs); line-height: 1.5; text-align: start; white-space: pre-wrap; overflow-wrap: anywhere; }
   /* Too long to read here: its first lines, and Review opens the whole before Allow. */
   .operation.long { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; line-clamp: 6; overflow: hidden; }
-  .verb { justify-content: center; min-width: 11ch; height: var(--control-sm); font-size: var(--text-xs); font-weight: 600; }
+  /* One width for every action (ThreadCard's `--feed-verb`), so each starts at the same offset. */
+  .feed-action { display: flex; flex: none; width: var(--feed-verb); }
+  .verb { justify-content: center; width: 100%; height: var(--control-sm); font-size: var(--text-xs); font-weight: 600; }
 </style>

@@ -11,6 +11,8 @@
   import ColorPicker from './ColorPicker.svelte';
   import InfoTip from './InfoTip.svelte';
 
+  /** A phone picks from a sheet; a desktop shows every palette as its picture, under the row. */
+  let { phone = false }: { phone?: boolean } = $props();
   let mode = $state<ColorMode>(untrack(colorMode));
   let palette = $state<Palette>(untrack(() => readPalette(mode)));
   let custom = $state(untrack(() => hasCustomColors(mode)));
@@ -85,9 +87,19 @@
       {#if canUndo}<button type="button" class="small ghost" onclick={undoEdit} data-testid="colors-undo"><span class="ui-label">{strings.settings.colors.undo}</span></button>{/if}
       {#if custom}<button type="button" class="small ghost" onclick={reset} data-testid="colors-reset"><RotateCcw size={13} /><span class="ui-label">{strings.settings.colors.reset}</span></button>{/if}
       <button type="button" class="ghost small customize" aria-expanded={customizing} aria-controls={editorId} onclick={() => { customizing = !customizing; }} data-testid="colors-customize"><SlidersHorizontal size={14} /><span class="ui-label">{strings.settings.colors.customize}</span></button>
-      <ChoiceSelect label={strings.settings.colors.palette} options={choices} value={matching} fallback={strings.settings.colors.custom} onpick={pick} preview={tile} testid="palette-current" optionTestid={(id) => `palette-${id}`} />
+      {#if phone}<ChoiceSelect label={strings.settings.colors.palette} options={choices} value={matching} fallback={strings.settings.colors.custom} onpick={pick} preview={tile} testid="palette-current" optionTestid={(id) => `palette-${id}`} />{/if}
     </div>
   </div>
+  {#if !phone}
+    <!-- Each palette by its picture, its name under it; edited colours check none. -->
+    <div class="palettes" role="group" aria-label={strings.settings.colors.palette} data-testid="palette-current">
+      {#each choices as choice (choice.id)}
+        <button type="button" class="palette" aria-pressed={choice.id === matching} data-testid="palette-{choice.id}" onclick={() => pick(choice.id)}>
+          {@render tile(choice.id)}<span class="ui-label">{choice.name}</span>
+        </button>
+      {/each}
+    </div>
+  {/if}
   <div class="editor" class:customizing id={editorId}>
     {#if customizing}
     <div class="role-list" role="group" aria-label={strings.settings.colors.edit}>
@@ -118,9 +130,15 @@
 </div>
 
 <style>
-  .colors { padding: var(--space-3) 0; border-bottom: 1px solid var(--color-border); }
-  /* Last in its card (a phone has no width row under it): the card's edge closes it. */
-  .colors:last-child { padding-bottom: 0; border-bottom: 0; }
+  .colors { padding: var(--space-2) 0 var(--space-3); }
+  /* The palettes in one row of pictures, the one in use ringed. */
+  .palettes { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: var(--space-2); margin-top: var(--space-1); }
+  .palette { display: flex; flex-direction: column; align-items: stretch; gap: 6px; height: auto; min-width: 0; padding: var(--space-1); border: 1px solid transparent; border-radius: var(--radius-md); background: transparent; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 400; }
+  .palette .tile { width: 100%; height: 44px; }
+  .palette .ui-label { text-align: center; }
+  @media (hover: hover) { .palette:hover { background: var(--color-hover); color: var(--color-foreground); } }
+  .palette[aria-pressed='true'] { color: var(--color-foreground); }
+  .palette[aria-pressed='true'] .tile { box-shadow: inset 0 0 0 1px var(--color-edge), 0 0 0 2px var(--color-accent); }
   /* A settings row: the words on the left; the palette in use and what edits it on the right. */
   .heading { display: flex; justify-content: space-between; align-items: center; gap: var(--space-5); min-height: 44px; }
   .actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: var(--space-1); min-width: 0; }

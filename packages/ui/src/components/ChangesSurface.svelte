@@ -6,11 +6,13 @@
   import type { Store } from '../lib/store.svelte';
   import { boxWidth } from '../lib/box-width';
   import { diffCountsOf, type DiffSource } from '../lib/diff';
-  import { separator, type MenuItem } from '../lib/menu';
+  import type { MenuItem } from '../lib/menu';
+  import { changeCount, changeText } from '../lib/change-count';
+  import ChangeCount from './ChangeCount.svelte';
   import DiffView, { SPLIT_MIN_WIDTH } from './DiffView.svelte';
   import Menu from './Menu.svelte';
   import DiffOptions from './DiffOptions.svelte';
-  import { panelTools, type PanelTools } from '../lib/panel-tools.svelte';
+  import { panelTools } from '../lib/panel-tools.svelte';
   import { shortPaths } from '../lib/short-paths';
   import { innerWidth } from 'svelte/reactivity/window';
 
@@ -104,7 +106,7 @@
     id: change.path,
     label: names.get(change.path) ?? base(change.path),
     title: change.path,
-    hint: ((lines) => [lines.added ? `+${lines.added}` : '', lines.removed ? `-${lines.removed}` : ''].filter(Boolean).join(' ') || undefined)(countsOf(change)),
+    hint: ((lines) => changeText(changeCount(null, lines.added, lines.removed)) || undefined)(countsOf(change)),
     status: { tone: TONES[change.status], label: strings.changes.status[change.status] },
     checked: change.path === selected,
     radio: true,
@@ -134,49 +136,25 @@
     panel.update(surface.id, { path: undefined });
   }
 
-  // The bar goes up into the panel's strip, beside the tab that names it: one head row.
+  /**
+   * The panel's head holds its selector and close only: this bar is the body's
+   * own first line, the file choice, the count, the diff's View and the refresh.
+   * On a phone the head's one arrow steps back from a file to the list first.
+   */
   const tools = panelTools();
   let phone = $derived((innerWidth.current ?? 1024) <= 720);
   /** Reading one file in a panel this narrow, the branch gives its room to the file's name. */
-  let squeezed = $derived(oneFile && width > 0 && width < (tools ? 720 : 480));
-  /** A phone's head: one back arrow, then "Changed files" over the file being read (or the branch), whose list holds the files and the refresh. */
-  let headed = $derived(phone && !!tools);
-  /** A file row of the phone head's list, apart from the panels' ids. */
-  const FILE = 'changes-file:';
-  const REFRESH = 'changes-refresh';
-  /** Hands the phone head back to the panel's own name and rows. */
-  function unhead(tools: PanelTools): void {
-    tools.title = tools.detail = tools.pick = tools.back = null;
-    tools.items = [];
-  }
+  let squeezed = $derived(oneFile && width > 0 && width < 480);
   $effect(() => {
     if (!tools) return;
-    tools.bar = bar;
-    return () => {
-      if (tools.bar === bar) tools.bar = null;
-      unhead(tools);
-    };
+    tools.back = phone && oneFile ? { label: strings.changes.backToList, run: back } : null;
+    return () => { tools.back = null; };
   });
-  $effect(() => {
-    if (!tools) return;
-    if (!headed) return unhead(tools);
-    tools.title = strings.changes.title;
-    tools.detail = oneFile && picked ? (names.get(picked.path) ?? base(picked.path)) : (status?.branch ?? null);
-    tools.items = [
-      ...(oneFile ? files.map((file) => ({ ...file, id: FILE + file.id })) : []),
-      ...(oneFile ? [separator('sep-files')] : []),
-      { id: REFRESH, label: strings.common.refresh, glyph: RefreshCw, disabled: loading, testid: 'changes-refresh' },
-      separator('sep-changes')
-    ];
-    tools.pick = (id) => {
-      if (id === REFRESH) asked++;
-      else if (id.startsWith(FILE)) pickPath(id.slice(FILE.length));
-      else return false;
-      return true;
-    };
-    // From a file the arrow goes back to the list, and from the list out of the panel.
-    tools.back = oneFile ? { label: strings.changes.backToList, run: back } : null;
-  });
+  /** Every file's lines in all: git's figures, the open file's counted from its diff. */
+  let total = $derived(changes.reduce((sum, change) => {
+    const lines = countsOf(change);
+    return { added: sum.added + (lines.added ?? 0), removed: sum.removed + (lines.removed ?? 0) };
+  }, { added: 0, removed: 0 }));
 
   // On mount, and again on every turn that ends: the working tree is what the
   // agent is changing, so the list is stale the moment a turn finishes.
@@ -232,12 +210,11 @@
   });
 </script>
 
-{#snippet bar()}
-  <!-- One bar: the way back and the file choice when one file fills the panel, the branch, the count or the file's lines, the diff's switches.
-       A phone's head holds the way back, the file and the refresh itself: its bar keeps the diff's switches. -->
-  <div class="panel-toolbar head" class:reading={oneFile} class:squeezed class:in-strip={!!tools}>
-    {#if !headed}
-    {#if oneFile}
+<div class="changes-surface" class:narrow class:stacked class:reading={oneFile} class:has-file={selected !== null} data-testid="changes-panel" bind:clientWidth={width}>
+  <!-- The body's own first line: the file choice when one file fills the panel, the branch, the one count of changes, View and the refresh. -->
+  <div class="panel-toolbar head" class:reading={oneFile} class:squeezed>
+    <!-- A phone's way back is the head's one arrow (tools.back): no second arrow under it. -->
+    {#if oneFile && !(phone && tools)}
       <button type="button" class="ghost small icon back" data-testid="changes-back" title={strings.changes.backToList} aria-label={strings.changes.backToList} onclick={back}>
         <ChevronLeft size={16} strokeWidth={1.75} />
       </button>
@@ -257,6 +234,7 @@
       </span>
     {/if}
     {#if oneFile && picked}
+      <!-- The file picker: titled by the file, it lists the changed files. The panel's own selector, in the head, lists panels only. -->
       <span class="picker">
         <Menu items={files} onpick={pickPath} placement="bottom" variant="text" label={picked.path} testid="changes-pager">
           <span class="dot" data-status={picked.status} aria-hidden="true"></span>
@@ -266,26 +244,17 @@
       </span>
     {/if}
     <span class="spacer"></span>
-    {#if oneFile && picked && !tight}
-      {@const lines = countsOf(picked)}
-      <span class="lines" data-testid="changes-lines">
-        {#if lines.added}<span class="count added ui-label">+{lines.added}</span>{/if}
-        {#if lines.removed}<span class="count removed ui-label">-{lines.removed}</span>{/if}
-      </span>
-    {:else if !(oneFile && picked)}
-      <span class="total" data-testid="changes-count">
-        {status
-          ? status.changes.length === 1
-            ? strings.changes.oneCount
-            : fill(strings.changes.count, { count: String(status.changes.length) })
-          : strings.changes.loading}
-      </span>
-    {/if}
+    {#if oneFile && picked}
+      {#if !tight}
+        {@const lines = countsOf(picked)}
+        <span class="lines" data-testid="changes-lines"><ChangeCount added={lines.added} removed={lines.removed} /></span>
+      {/if}
+    {:else if status}
+      <span class="total" data-testid="changes-count"><ChangeCount files={status.changes.length} added={total.added} removed={total.removed} /></span>
     {:else}
-      <span class="spacer"></span>
+      <span class="total" data-testid="changes-count">{strings.changes.loading}</span>
     {/if}
     {#if textDiff}<DiffOptions split={codeWidth >= SPLIT_MIN_WIDTH} />{/if}
-    {#if !headed}
     <button
       type="button"
       class="ghost small icon refresh"
@@ -297,12 +266,7 @@
     >
       <RefreshCw size={13} strokeWidth={1.75} />
     </button>
-    {/if}
   </div>
-{/snippet}
-
-<div class="changes-surface" class:narrow class:stacked class:reading={oneFile} class:has-file={selected !== null} data-testid="changes-panel" bind:clientWidth={width}>
-  {#if !tools}{@render bar()}{/if}
 
   <div class="split">
     <div class="list" role="listbox" aria-label={strings.rightPanel.changes} tabindex="-1">
@@ -311,6 +275,7 @@
       {/if}
       {#each status?.changes ?? [] as change (change.path)}
         {@const lines = countsOf(change)}
+        {@const count = changeCount(null, lines.added, lines.removed)}
         <button
           type="button"
           class="row"
@@ -330,8 +295,8 @@
             <span class="dir">{directory(change.path)}</span><span class="base">{base(change.path)}</span>
           </span>
           <!-- Both counts keep their column, empty or not, so every row's figures line up. -->
-          <span class="count added ui-label">{lines.added ? `+${lines.added}` : ''}</span>
-          <span class="count removed ui-label">{lines.removed ? `-${lines.removed}` : ''}</span>
+          <span class="count added ui-label">{count.added ?? ''}</span>
+          <span class="count removed ui-label">{count.removed ?? ''}</span>
         </button>
       {/each}
     </div>
@@ -460,9 +425,7 @@
   .head.reading .branch { flex-shrink: 4; }
   /* A narrow bar has room for the file or the branch, not both: the file being read wins, the list shows the branch. */
   .squeezed .branch, .squeezed .track { display: none; }
-  /* In the strip: no bar of its own, it takes the room the tabs leave. */
-  .panel-toolbar.in-strip { flex: 1 1 auto; min-width: 0; min-height: 0; padding: 0 0 0 6px; gap: 6px; border-bottom: none; }
-  .lines { flex: none; display: inline-flex; gap: 6px; }
+  .lines { flex: none; display: inline-flex; }
   .dot { width: 6px; height: 6px; flex: none; border-radius: var(--radius-full); background: var(--mark); }
   .dot[data-status='added'], .dot[data-status='copied'] { --mark: var(--color-success); }
   .dot[data-status='modified'] { --mark: var(--color-live); }

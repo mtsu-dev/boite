@@ -6,6 +6,7 @@ import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
 import { workspace } from '../lib/workspace.svelte';
 import MobileNavigation from './MobileNavigation.svelte';
+import { activityReturn } from '../lib/activity-return.svelte';
 
 let mounted: ReturnType<typeof mount> | undefined;
 let client: FakeClient;
@@ -17,6 +18,7 @@ afterEach(async () => {
   mounted = undefined; store?.detach(); client?.close();
   workspace.machines = []; workspace.active = previousActive;
   setExperiment('contacts', false);
+  activityReturn.away = null; activityReturn.back = null;
   vi.restoreAllMocks(); document.body.innerHTML = ''; localStorage.clear();
 });
 
@@ -72,8 +74,11 @@ test('Activity gives each row its reason and its time, a sub-agent under its par
   const verb = asking.querySelector<HTMLButtonElement>('[data-testid=thread-verb]')!;
   expect(['Answer', 'Allow']).toContain(verb.textContent);
   if (updates) for (const row of rows.filter(row => updates.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING)) expect(row.querySelector('[data-testid=thread-verb]')).toBeNull();
+  const pressed = [...document.querySelectorAll('[data-testid=mobile-list] [data-testid=thread-verb]')].indexOf(verb);
   verb.click(); await settle();
   expect(store.openThread?.id).toBe(asking.dataset['threadId']);
+  // The way back to Activity is kept, for the phone's own screens (lib/activity-return.svelte.ts).
+  expect(activityReturn.away).toMatchObject({ threadId: asking.dataset['threadId'], phone: true, index: pressed });
   // One thread, one row: a sub-agent that asks is a line inside its parent's row, never a row of its own.
   expect(helpers.length).toBeGreaterThan(0);
   for (const helper of helpers) {
@@ -308,4 +313,32 @@ test('with two machines the machine line shows on the threads list only: Activit
   mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'activity' } });
   await settle();
   expect(document.querySelector('[data-testid=mobile-connection]')).toBeNull();
+});
+
+test("an unreachable machine's project header reads Offline as on the desktop: a grey dot, the word in its name", async () => {
+  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
+    media, matches: true, onchange: null, addListener() {}, removeListener() {}
+  }));
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  const remoteClient = new FakeClient({ delayMs: 0, coreId: 'fake-builder', coreName: 'Builder' });
+  const remote = new Store(); remote.machineId = 'http://builder.test'; remote.visible = false;
+  remote.attach(remoteClient); await remote.connect();
+  try {
+    workspace.machines = [{ id: 'local', label: 'Local', store }, { id: remote.machineId, label: 'Builder', store: remote }];
+    workspace.active = store;
+    workspace.view = 'projects';
+    mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'threads' } });
+    await settle();
+    const host = () => document.querySelector<HTMLElement>(`[data-testid=mobile-project-group][data-machine-id="${remote.machineId}"] [data-testid=mobile-project-host]`);
+    expect(host()?.getAttribute('aria-label')).toBe('Builder');
+    expect(host()?.querySelector('.off-dot')).toBeNull();
+    remote.connection = 'closed'; await settle();
+    expect(host()?.classList.contains('offline')).toBe(true);
+    expect(host()?.querySelector('.off-dot')).not.toBeNull();
+    expect(host()?.getAttribute('aria-label')).toBe('Builder, Offline');
+    expect(host()?.textContent).toBe('Builder');
+  } finally {
+    remote.detach(); remoteClient.close();
+  }
 });

@@ -3,7 +3,7 @@
   import { Check, ChevronRight, Settings } from '@lucide/svelte';
   import { Closing } from '../lib/closing.svelte';
   import { floating } from '../lib/floating';
-  import type { MenuItem } from '../lib/menu';
+  import { dangerLast, type MenuItem } from '../lib/menu';
   import ProjectTile from './ProjectTile.svelte';
 
   let {
@@ -46,6 +46,7 @@
   } = $props();
 
   const popover = new Closing();
+  let ordered = $derived(dangerLast(items));
   let root = $state<HTMLDivElement | undefined>(undefined);
   let trigger = $state<HTMLButtonElement | undefined>(undefined);
   /** The list opened as a phone sheet (lib/floating.ts marks it), which shows a title. */
@@ -141,7 +142,7 @@
   <button
     type="button"
     class="trigger"
-    class:chip={variant === 'chip'}
+    class:ui-chip={variant === 'chip'}
     class:ghost={variant === 'ghost'}
     class:text={variant === 'text'}
     aria-haspopup="menu"
@@ -174,7 +175,7 @@
     >
       {#if switches}<div class="heading ui-label" aria-hidden="true">{label}</div>
       {:else if sheet}<div class="sheet-title" aria-hidden="true">{heading ?? label}</div>{/if}
-      {#each items as item (item.id)}
+      {#each ordered as item (item.id)}
         {#if item.separator && item.label}
           <!-- A labelled rule opens a section: its words, no line. -->
           <div class="section ui-label" role="presentation">{item.label}</div>
@@ -226,7 +227,9 @@
   .section { padding: var(--space-3) var(--overlay-row-pad) var(--space-2); font-size: var(--text-meta); font-weight: 600; color: var(--color-subtle); }
   .section:first-child, .sheet-title + .section { padding-top: var(--space-1); }
   /* A sheet's rows are taller, so its section labels take more air above and keep a clear gap to their first row. */
-  .popover:global([data-mobile-sheet='true']) .section { padding: var(--space-4) var(--space-4) var(--space-2); }
+  /* One sheet inset (ContextMenu.svelte too): rows, rules and section titles start on one line. */
+  .popover:global([data-mobile-sheet='true']) { padding-inline: var(--space-2); }
+  .popover:global([data-mobile-sheet='true']) .section { padding: var(--space-4) var(--overlay-row-pad) var(--space-2); }
   .popover:global([data-mobile-sheet='true']) .section:first-child,
   .popover:global([data-mobile-sheet='true']) .sheet-title + .section { padding-top: 0; }
   /* A rule only ever separates: one left first or last by a hidden item draws nothing. */
@@ -238,7 +241,10 @@
   .glyph { display: inline-flex; flex: 0 0 16px; color: var(--color-muted-foreground); margin-right: 2px; }
   .glyph.live { color: var(--color-live); }
   .item.danger .glyph { color: inherit; }
-  .item.checkable { display: grid; grid-template-columns: minmax(0, 1fr) 14px; column-gap: 8px; }
+  /* The rows pack in the middle of a tall phone row: stretched, they left the label high and the check low. */
+  .item.checkable { display: grid; grid-template-columns: minmax(0, 1fr) 14px; column-gap: 8px; align-content: center; }
+  /* With no hint there is no second line for the check to centre across. */
+  .item.checkable:not(:has(> .hint)) .check { grid-row: 1; }
   .checkable .hint { grid-column: 1; grid-row: 2; }
   /* The one selection mark of every menu: a chosen row (`checked` or `active`) wears this check, nothing else. */
   .check { display: flex; grid-column: 2; grid-row: 1 / span 2; align-self: center; color: var(--color-accent); }

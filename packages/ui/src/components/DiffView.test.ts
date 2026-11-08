@@ -28,6 +28,12 @@ test('a long diff draws its first rows and the rest on demand, with exact counts
   expect(document.querySelector('[data-testid=diff-show-all]')).toBeNull();
 });
 
+test('the head counts its lines like every change count: "+2 −1" in one span, a real minus', () => {
+  running = mount(DiffView, { target: document.body, props: { path: 'a.ts', oldText: 'a\nb\n', newText: 'a\nc\nd\n' } });
+  flushSync();
+  expect(document.querySelector('[data-testid=diff-view] .head .change-count')?.textContent).toBe('+2 −1');
+});
+
 test('a short diff has no show-all button', () => {
   running = mount(DiffView, { target: document.body, props: { path: 'a.ts', oldText: 'a\n', newText: 'b\n' } });
   flushSync();

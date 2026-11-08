@@ -2,6 +2,7 @@
   import { tick, untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import WindowList from './WindowList.svelte';
+  import FailMark from './FailMark.svelte';
   import { ChevronRight, Ellipsis, FolderPlus, FolderX, GripVertical, LoaderCircle, PanelRightClose, PanelRightOpen, UserPlus } from '@lucide/svelte';
   import type { Project, ThreadId, ThreadSummary } from '@boite/contracts';
   import type { Store } from '../lib/store.svelte';
@@ -334,10 +335,10 @@
             >
               {#if projectView.order === 'manual'}<GripVertical size={12} />{/if}<span class="mark"><ProjectTile {project} store={owner} size={18} /><span class="fold-caret" class:open={!collapsed} aria-hidden="true"><ChevronRight size={16} /></span></span
               ><span class="name project-title ui-label" class:gone={project.missing === true}>{projectName(project)}</span
-              >{#if elsewhere(machine) || (multi && owner.connection !== 'ready')}<span class="host" data-testid="project-host" class:offline={owner.connection !== 'ready'}
-                title={`${machine.label} · ${strings.connection[owner.connection]}`} aria-label={machine.label}>{machine.label}</span>{/if}{#if project.missing === true}<span class="missing" data-testid="project-missing" title={strings.sidebar.projectMissing} aria-label={strings.sidebar.projectMissing}><FolderX size={13} aria-hidden="true" /></span>{/if}{#if rollup && !needsYou(rollup.kind) && rollup.kind !== 'done' && lists.working.length === 0}{@const label = fill(rollup.count === 1 ? strings.sidebar.rollupOne : strings.sidebar.rollupMany, { count: String(rollup.count), state: strings.sidebar.state[rollup.kind] })}<span
+              >{#if elsewhere(machine) || (multi && owner.connection !== 'ready')}{@const reach = owner.connection === 'ready' ? null : owner.connection === 'connecting' ? strings.connection.connecting : strings.connection.offline}<span class="host" data-testid="project-host" class:offline={reach !== null}
+                title={reach ? `${machine.label} · ${reach}` : machine.label} aria-label={reach ? `${machine.label}, ${reach}` : machine.label}>{#if reach}<span class="off-dot" aria-hidden="true"></span>{/if}{machine.label}</span>{/if}{#if project.missing === true}<span class="missing" data-testid="project-missing" title={strings.sidebar.projectMissing} aria-label={strings.sidebar.projectMissing}><FolderX size={13} aria-hidden="true" /></span>{/if}{#if rollup && !needsYou(rollup.kind) && rollup.kind !== 'done' && lists.working.length === 0}{@const label = fill(rollup.count === 1 ? strings.sidebar.rollupOne : strings.sidebar.rollupMany, { count: String(rollup.count), state: strings.sidebar.state[rollup.kind] })}<span
                   class="rollup {rollup.kind}" data-testid="project-rollup" data-state={rollup.kind} title={label} aria-label={label}
-                  >{#if rollup.kind === 'interrupted'}<span class="dot" aria-hidden="true"></span>{:else}<span class="work-ring" aria-hidden="true"></span>{/if}{#if rollup.count > 1}<span class="ui-label">{rollup.count}</span>{/if}</span
+                  >{#if rollup.kind === 'interrupted'}<FailMark size={10} />{:else}<span class="work-ring" aria-hidden="true"></span>{/if}{#if rollup.count > 1}<span class="ui-label">{rollup.count}</span>{/if}</span
                 >{/if}
             </button>
             <ProjectThreadCounters {entry} working={lists.working.length} waiting={away ? 0 : waitingCount(entry)} {controls} {collapsed} {away} />
@@ -529,10 +530,9 @@
     font-variant-numeric: tabular-nums;
   }
   .rollup { color: var(--color-muted-foreground); }
-  /* The rows' marks: a grey ring for work (dotted in the queue), a red dot for work that stopped short. */
+  /* The rows' marks: a grey ring for work (dotted in the queue), the failure's "!" for work that stopped short. */
   .rollup .work-ring { box-sizing: border-box; width: 8px; height: 8px; border: 1.5px dashed var(--color-muted-foreground); border-radius: var(--radius-full); }
   .rollup.queued .work-ring { border-style: dotted; }
-  .rollup .dot { width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--color-danger); }
   /* The project's mark and its fold chevron share one slot: the mark gives way
      to the chevron while a pointer or the keyboard is on the header. */
   .mark {
@@ -568,10 +568,10 @@
     font-weight: 400;
     color: var(--color-subtle);
   }
-  /* The rows under it carry no machine icon, so the header says the machine is unreachable. */
-  .host.offline {
-    color: var(--color-danger);
-  }
+  /* The rows under it carry no machine icon, so the header says the machine is unreachable: quiet, a grey dot in
+     the status grammar (the rail's machine button wears the same), the word in its tooltip and name. */
+  .host.offline { display: inline-flex; align-items: center; gap: 5px; color: var(--color-muted-foreground); }
+  .off-dot { flex: none; width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--color-subtle); }
   .head :global(.counters) { margin-right: 2px; transition: margin-right var(--dur-2) var(--ease-out-quint); }
   /* The menu appears at the right end on hover and the counters step left of it, as a row's state does. */
   .project-actions {

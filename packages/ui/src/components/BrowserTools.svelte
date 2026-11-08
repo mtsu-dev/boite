@@ -96,8 +96,8 @@
     <div class="body">
       {#if view === 'diagnostics'}
         <div class="actions">
-          <button type="button" class="chip" disabled={busy} onclick={() => void diagnostics()}><RefreshCw size={14} /><span class="ui-label">{strings.common.refresh}</span></button>
-          <button type="button" class="chip" disabled={busy} onclick={() => void diagnostics(true)}><Trash2 size={14} /><span class="ui-label">{strings.browserTools.clear}</span></button>
+          <button type="button" class="ui-chip" disabled={busy} onclick={() => void diagnostics()}><RefreshCw size={14} /><span class="ui-label">{strings.common.refresh}</span></button>
+          <button type="button" class="ui-chip" disabled={busy} onclick={() => void diagnostics(true)}><Trash2 size={14} /><span class="ui-label">{strings.browserTools.clear}</span></button>
         </div>
         <h3>{strings.browserTools.pageEvents}</h3>
         {#if report.dropped}<p class="muted">{fill(strings.browserTools.omitted, { count: String(report.dropped) })}</p>{/if}
@@ -113,8 +113,8 @@
         <p class="muted">{fill(strings.browserTools.recorded, { seconds: String(Math.round(toolsState.result.durationMs / 1000)), fps: String(toolsState.result.frameRate ?? 30), mb: (toolsState.result.bytes / 1024 / 1024).toFixed(1), format })}</p>
         {#if toolsState.result.reason !== 'stopped'}<p role="status" data-testid="browser-recording-reason">{toolsState.result.reason === 'error' ? strings.browserTools.recordingError : fill(strings.browserTools.recordingLimit, { mb: String(BROWSER_RECORDING_MAX_BYTES / 1024 / 1024) })}{toolsState.result.error ? ` ${toolsState.result.error}` : ''}</p>{/if}
         <div class="actions">
-          <a class="chip" href={toolsState.url} download={`boite-browser-${toolsState.result.id}.${BROWSER_RECORDING_TYPES[toolsState.result.mime]}`} data-testid="browser-recording-download"><Download size={14} /><span class="ui-label">{strings.browserTools.download}</span></a>
-          <button type="button" class="chip" onclick={() => { void act({ kind: 'recording-discard', recordingId: toolsState.result!.id }); view = null; }}><Trash2 size={14} /><span class="ui-label">{strings.browserTools.discard}</span></button>
+          <a class="ui-chip" href={toolsState.url} download={`boite-browser-${toolsState.result.id}.${BROWSER_RECORDING_TYPES[toolsState.result.mime]}`} data-testid="browser-recording-download"><Download size={14} /><span class="ui-label">{strings.browserTools.download}</span></a>
+          <button type="button" class="ui-chip" onclick={() => { void act({ kind: 'recording-discard', recordingId: toolsState.result!.id }); view = null; }}><Trash2 size={14} /><span class="ui-label">{strings.browserTools.discard}</span></button>
         </div>
       {/if}
     </div>
@@ -130,8 +130,8 @@
   h2 { flex: 1; margin: 0; font-size: var(--text-md); } h3 { font-size: var(--text-sm); margin: 20px 0 8px; }
   .body { overflow: auto; padding: 16px 18px; min-height: 0; }
   .actions { display: flex; flex-wrap: wrap; gap: 8px; }
-  .actions .chip { min-height: 36px; gap: 8px; padding: 8px 12px; text-decoration: none; }
-  @media (max-width: 720px) { .actions .chip { min-height: 44px; } }
+  .actions .ui-chip { min-height: 36px; gap: 8px; padding: 8px 12px; text-decoration: none; }
+  @media (max-width: 720px) { .actions .ui-chip { min-height: 44px; } }
   ol { padding: 0; list-style: none; } li { border-bottom: 1px solid var(--color-border); padding: 8px 0; font-size: var(--text-sm); overflow-wrap: anywhere; }
   pre { white-space: pre-wrap; margin: 4px 0; font-size: var(--text-sm); } small, .muted { color: var(--color-muted-foreground); }
   .error pre { color: var(--color-danger); }

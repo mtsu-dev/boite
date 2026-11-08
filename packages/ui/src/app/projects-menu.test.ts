@@ -63,6 +63,8 @@ test('project menus keep Mark done separate from Archive, which can stop pending
   await waitFor(() => document.querySelector('[data-thread-id="t-bench"]') === null);
   expect(store.pendingPermissions.some(p => p.threadId === 't-bench')).toBe(false);
   expect(document.querySelector('[data-testid=confirm-dialog]')).toBeNull();
+  // The undo toast follows the row's collapse (row-collapse.ts), not the archive call.
+  await waitFor(() => document.querySelector('[data-testid=undo-action]') !== null);
   query<HTMLButtonElement>('[data-testid=undo-action]').click();
   await waitFor(() => document.querySelector('[data-thread-id="t-bench"]') !== null);
   query<HTMLButtonElement>('[data-thread-id="t-bench"]').click();

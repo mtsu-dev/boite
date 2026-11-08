@@ -65,3 +65,32 @@ test('ArrowRight opens a submenu from its row and ArrowLeft goes back from any r
   expect(picked).toEqual(['manage', 'back']);
   expect(document.querySelector('[data-value=manage]')).not.toBeNull();
 });
+
+// The long-press sheet drew its first frame at the finger before docking, its own check and inset: one grammar now.
+test('a phone long press is the shared sheet from its first frame: docked, its check at the far edge, Delete last, groups titled', async () => {
+  const media = window.matchMedia;
+  window.matchMedia = ((query: string) => ({ matches: query.includes('max-width'), media: query, addEventListener() {}, removeEventListener() {} })) as unknown as typeof window.matchMedia;
+  try {
+    running = mount(ContextMenu, { target: document.body }); await settle();
+    const row = document.body.appendChild(document.createElement('div'));
+    const items = [
+      { id: 'place', label: 'Project and branch', separator: true },
+      { id: 'delete', label: 'Delete', danger: true },
+      { id: 'pin', label: 'Pin', checked: true, hint: 'P' }
+    ];
+    row.addEventListener('contextmenu', event => contextMenu.open(event, items, () => {}));
+    row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 200, clientY: 300 }));
+    flushSync();
+    const sheet = document.querySelector<HTMLElement>('[data-testid=context-menu]')!;
+    expect(sheet.dataset['mobileSheet']).toBe('true');
+    expect([sheet.style.left, sheet.style.bottom]).toEqual(['0px', '0px']);
+    await settle();
+    expect(Array.from(sheet.children).map((one) => one.getAttribute('data-value') ?? one.className.split(' ')[0])).toEqual(['section', 'pin', 'rule', 'delete']);
+    expect(sheet.querySelector('.section')?.textContent).toBe('Project and branch');
+    const pin = sheet.querySelector('[data-value=pin]')!;
+    expect(pin.lastElementChild?.classList.contains('check')).toBe(true);
+    expect(pin.querySelector('.check svg')?.getAttribute('width')).toBe('14');
+  } finally {
+    window.matchMedia = media;
+  }
+});

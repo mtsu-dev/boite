@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { SETTINGS_GROUPS, SETTINGS_TABS, desktopPage, groupOf, pagesOf, phonePage, sectionsOf, viewOf } from './settings-tabs';
+import { SETTINGS_GROUPS, SETTINGS_TABS, desktopPage, groupOf, movedTo, pagesOf, phonePage, sectionsOf, viewOf } from './settings-tabs';
 
 describe('the merged settings', () => {
   test('eight entries hold every page once, the same list on desktop and phone', () => {
@@ -28,6 +28,15 @@ describe('the merged settings', () => {
     expect(sectionsOf('diagnostics', false)).toEqual([]);
     expect(pagesOf('advanced', false)).toContain('task-manager');
     expect(pagesOf('advanced', false)).not.toContain('diagnostics');
+  });
+
+  test('a card that moved opens on its new page from a link to the old one; the windows-and-sound card is the owner\'s own phone page', () => {
+    expect(movedTo('appearance', 'workspace')).toBe('general');
+    expect(movedTo('resources', 'quiet')).toBe('general');
+    expect(movedTo('resources', 'limits')).toBeUndefined();
+    expect(movedTo('resources', null)).toBeUndefined();
+    expect(phonePage('general', 'quiet', true)).toBe('quiet');
+    expect(phonePage('general', 'quiet', false)).toBe('home');
   });
 
   test('a page that is not merged opens itself', () => {

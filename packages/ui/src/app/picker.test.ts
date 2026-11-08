@@ -254,6 +254,8 @@ test('the picker opens on the models in use, one row each, with every provider b
   // The keys start on the current row.
   expect(document.activeElement).toBe(query('[data-testid=picker-shortlist] .row.current'));
 
+  // "All models" keeps the check's empty column, so its words start where the model names do.
+  expect(query('[data-testid=picker-all-models]').firstElementChild?.classList.contains('mark')).toBe(true);
   // All models opens the full frame, its first tile the way back.
   query<HTMLButtonElement>('[data-testid=picker-all-models]').click();
   await waitFor(() => tiles().length > 1);

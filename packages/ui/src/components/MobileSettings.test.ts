@@ -133,7 +133,7 @@ test('the phone settings list the desktop\'s groups, General and Advanced hold t
   expect(query('[data-testid=settings]').dataset.detail).toBeUndefined();
   await open('settings-tab-general', general);
   expect(rows('mobile-settings-general')).toEqual([
-    'mobile-settings-conversations', 'mobile-settings-phone', 'mobile-settings-privacy', 'settings-tab-voice', 'mobile-settings-archived', 'mobile-settings-secrets',
+    'mobile-settings-conversations', 'mobile-settings-phone', 'mobile-settings-quiet', 'mobile-settings-privacy', 'settings-tab-voice', 'mobile-settings-archived', 'mobile-settings-secrets',
     'mobile-settings-browser-profiles', 'mobile-settings-windows', 'mobile-settings-worktrees'
   ]);
   // A page carries its own header, so the app drops its own over it: one header a screen.
@@ -220,7 +220,7 @@ test('on a phone too, a page of one machine is picked above it without moving th
   const remote = workspace.machines.find((machine) => machine.store !== store)!;
   await remote.store.client!.call('settings.set', { muteAgents: true });
   await store.client!.call('settings.set', { muteAgents: true });
-  store.showSettings('resources');
+  store.showSettings('general', 'quiet');
   await waitFor(() => document.querySelector('[data-testid=settings-machine]') !== null && document.querySelector('[data-testid=setting-mute-agents]') !== null);
   query<HTMLButtonElement>('[data-testid=settings-machine]').click();
   await waitFor(() => document.querySelector('[data-testid=settings-machine-menu]') !== null);

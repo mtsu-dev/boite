@@ -18,7 +18,7 @@
   ].join('\n'));
 </script>
 
-<span class="chip context-mode" class:compact data-testid={testid} data-mode={mode.label} title={detail} aria-label={detail}>
+<span class="ui-chip context-mode" class:compact data-testid={testid} data-mode={mode.label} title={detail} aria-label={detail}>
   <Icon size={compact ? 11 : 13} strokeWidth={1.75} />
   <span class="label ui-label">{label}{#if mode.rules}<span class="rules">{` + ${strings.contextMode.rules}`}</span>{/if}</span>
 </span>

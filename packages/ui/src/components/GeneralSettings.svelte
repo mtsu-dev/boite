@@ -18,6 +18,7 @@
   import SyncMark from './SyncMark.svelte';
   import PolicySettings from './PolicySettings.svelte';
   import WorkspaceCard from './WorkspaceCard.svelte';
+  import QuietCard from './QuietCard.svelte';
   import { untrack } from 'svelte';
   import { readTerminalGpu, setTerminalGpu } from '../lib/terminal-cursor';
 
@@ -81,6 +82,8 @@
     {/if}
   </section>
 
+  <!-- Notifications above, the sound and the windows of the machine here: what reaches the person at it. -->
+  {#if store.owner}<QuietCard {store} />{/if}
   <WorkspaceCard />
   <ArchivedThreads {store} />
   <WorktreesCard {store} />

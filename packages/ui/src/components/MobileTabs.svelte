@@ -44,7 +44,7 @@
   </button>
   {#if bots}
     <button type="button" class="tab" data-testid="mobile-agents" data-preload-view="agents" aria-current={page('agents')} aria-label={atWork.count ? `${strings.agents.heading}, ${fill(atWork.waiting ? strings.sidebar.surfaceWaiting : strings.sidebar.surfaceWorking, { count: String(atWork.count) })}` : undefined} onclick={() => store.showAgents()}>
-      <span class="glyph"><Bot size={20} />{#if atWork.count}<span class="badge" class:working={!atWork.waiting} data-testid="mobile-agents-at-work" data-waiting={atWork.waiting}>{atWork.count > 99 ? '99+' : atWork.count}</span>{/if}</span><span class="name ui-label">{strings.agents.heading}</span>
+      <span class="glyph"><Bot size={20} />{#if atWork.count}<span class="dot" class:working={!atWork.waiting} data-testid="mobile-agents-at-work" data-waiting={atWork.waiting}></span>{/if}</span><span class="name ui-label">{strings.agents.heading}</span>
     </button>
   {/if}
   {#if contactsShown(store) && !bots}
@@ -85,8 +85,14 @@
       position: absolute; top: -2px; left: calc(50% + 6px); min-width: 17px; height: 17px; padding: 0 4px; box-sizing: border-box;
       border-radius: var(--radius-full); background: var(--color-live); color: var(--color-accent-ink);
       box-shadow: 0 0 0 2px var(--color-background); font-size: 10px; font-weight: 700; line-height: 17px; text-align: center;
+      /* Two digits and "99+" on one line, at the tab's own spacing: it grows to the right, never wraps. */
+      white-space: nowrap; letter-spacing: 0; font-variant-numeric: tabular-nums;
     }
-    /* Bots at work and none asking: a neutral count, the accent stays on actions. */
-    .badge.working { background: var(--color-surface-3); color: var(--color-foreground); }
+    /* Bots: a dot, the count is Activity's alone (the number stays in the tab's name). Amber once one asks, grey while they work. */
+    .dot {
+      position: absolute; top: 1px; left: calc(50% + 8px); width: 8px; height: 8px; border-radius: var(--radius-full);
+      background: var(--color-live); box-shadow: 0 0 0 2px var(--color-background);
+    }
+    .dot.working { background: var(--color-muted-foreground); }
   }
 </style>

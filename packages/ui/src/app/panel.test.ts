@@ -9,6 +9,11 @@ import { mountOnFake, query, test, type, waitFor } from '../test/app';
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
 
 test('a floating panel can dock after leaving or closing its browser tab and changing threads', async ({ app: _app }) => {
+  // Dock is a row of the panel's selector: the head holds the selector and the close only.
+  const dockRow = () => {
+    if (!document.querySelector('[data-testid=panel-add-menu]')) { document.querySelector<HTMLButtonElement>('[data-testid=panel-add]')?.click(); flushSync(); }
+    return document.querySelector<HTMLButtonElement>('[data-testid=panel-add-menu] [data-testid=panel-dock]');
+  };
   await waitFor(() => document.querySelector('[data-thread-id="t-trace"]') !== null);
   query<HTMLButtonElement>('[data-thread-id="t-trace"]').click();
   await waitFor(() => store.openThread?.id === 't-trace');
@@ -16,21 +21,22 @@ test('a floating panel can dock after leaving or closing its browser tab and cha
   const browser = store.panel.active!.id;
   rightPanel.floating = true;
   store.panel.openTasks();
-  await waitFor(() => document.querySelector('[data-testid=panel-dock]') !== null);
+  await waitFor(() => document.querySelector('[data-testid=panel-add]') !== null);
+  expect(document.querySelector('[data-testid=panel-titlebar] > [data-testid=panel-dock]')).toBeNull();
   store.panel.close(browser);
   flushSync();
   expect(document.querySelector('[data-testid=browser-slot]')).toBeNull();
-  query<HTMLButtonElement>('[data-testid=panel-dock]').click();
+  dockRow()!.click();
   flushSync();
   expect(rightPanel.floating).toBe(false);
-  expect(document.querySelector('[data-testid=panel-dock]')).toBeNull();
+  expect(dockRow()).toBeNull();
   rightPanel.floating = true;
   const other = store.threads.find(thread => thread.id !== 't-trace' && !thread.archived)!;
   await store.open(other.id);
   store.panel.openTasks();
-  await waitFor(() => document.querySelector('[data-testid=panel-dock]') !== null);
+  await waitFor(() => dockRow() !== null);
   rightPanel.maximized = true;
-  query<HTMLButtonElement>('[data-testid=panel-dock]').click();
+  dockRow()!.click();
   expect(rightPanel.floating).toBe(false);
   expect(rightPanel.maximized).toBe(false);
 });

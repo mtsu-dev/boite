@@ -200,6 +200,9 @@
 
 {#if activity || asked.length > 0 || waits.length > 0 || childQuestions.length > 0}
   <section class="activity" class:hidden={!visible} {@attach growsOnArrival(() => asked.length + waits.length + childQuestions.length)} data-testid="thread-activity" aria-label={shown || childQuestions.length ? strings.activity.question : strings.activity.tasks} inert={!visible}>
+    {#if (childQuestions.length > 0 && store.openThread) || shown || waits.length > 0}
+    <!-- The decisions, the one raised card of the dock; the goal, the loop and the tasks stay plain lines under it. -->
+    <div class="decision-card">
     {#if childQuestions.length > 0 && store.openThread}
       <div class="child-questions"><SubagentQuestions {store} threadId={store.openThread.id} /></div>
     {/if}
@@ -327,6 +330,8 @@
         {/each}
       </div>
     {/if}
+    </div>
+    {/if}
     {#each ['goal', 'loop'] as kind (kind)}
       {@const entry = kind === 'goal' ? goal : loop}
       {@const waiting = kind === 'goal' && blocked}
@@ -446,14 +451,20 @@
      the timeline gives way to it and no line of the thread runs under it. A
      desktop caps it with the dock's budget (Composer's `.deck`), a phone here.
      Four pixels around every line: the rows carry their own inline padding,
-     so a hover fill sits inset by the same four pixels on every side. */
-  .activity { overflow-y: auto; padding: 8px 4px 4px; border-bottom: 1px solid var(--color-border); font-size: var(--text-sm); }
+     so a hover fill sits inset by the same four pixels on every side. No rule
+     under it: the decisions are the one raised card (Composer's
+     `.decision-card`), the goal, the loop and the tasks plain lines on the
+     composer's surface. The card gives way first when room runs out and
+     scrolls inside itself. */
+  .activity { display: flex; flex-direction: column; overflow-y: auto; padding: 4px; font-size: var(--text-sm); }
+  .activity > * { flex: none; }
+  .activity > .decision-card { flex: 0 1 auto; min-height: 0; margin: 2px 2px 4px; overflow-y: auto; }
   .activity.hidden { display: none; }
   /* A decision arrives by growing the dock from its last height, content and
      box together (`lib/arrival.ts`); reduced motion shows it at once. */
   .activity-row { display: flex; align-items: center; gap: 8px; min-height: var(--control); min-width: 0; padding: 0 2px 0 8px; }
-  /* The questions sit above the goal, the loop and the tasks, a hairline between. */
-  .child-questions + :is(.questions, .entry, .tasks-toggle, .waits), .questions + :is(.entry, .tasks-toggle, .waits), .waits + :is(.entry, .tasks-toggle) { margin-top: 4px; border-top: 1px solid var(--color-border); padding-top: 4px; }
+  /* Two kinds of decision in the one card: a hairline parts them. */
+  .child-questions + :is(.questions, .waits), .questions + .waits { border-top: 1px solid var(--color-border); }
   /* A sub-agent's request: whose it is, muted, and the way into its conversation on the right. */
   .from-child, .wait { display: flex; align-items: center; gap: 8px; min-height: var(--control); min-width: 0; padding: 0 2px 0 8px; }
   .from-child { color: var(--color-muted-foreground); }
@@ -468,7 +479,6 @@
   .question-toggle { display: flex; align-items: center; gap: 6px; height: var(--control-sm); padding: 0 6px; font-weight: 400; color: var(--color-foreground); justify-content: flex-start; }
   .question-toggle > :global(svg) { flex: none; color: var(--color-muted-foreground); transition: transform var(--dur-2) var(--ease-out-quint); }
   .question-toggle > :global(.turned), .fold-toggle > :global(.turned) { transform: rotate(180deg); }
-  .questions.plain { margin: -8px -4px 0; }
   .question-line { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: left; }
   .pager { display: inline-flex; align-items: center; gap: 2px; flex: none; }
   .pager .meta { font-variant-numeric: tabular-nums; }
@@ -537,10 +547,6 @@
   .open-review { margin-top: 4px; padding-inline: 6px; color: var(--color-accent); }
   .error { color: var(--color-danger); margin: 2px 8px 6px; overflow-wrap: anywhere; }
   @media (max-width: 720px) {
-    /* The conversation keeps 40% of the screen: the header (about 60 px), the
-       field and its row (about 110 px), the deck above the card and the
-       bottom gap come out of the other 60%, the decision gets the rest. */
-    .activity { --dock-cap: max(120px, calc(60dvh - 186px - var(--deck-room, 0px))); max-height: var(--dock-cap); }
     .activity-row { gap: 6px; }
     /* The pager's arrows stay a finger tall but narrow, so the question beside them keeps its words. */
     .pager .icon { min-width: 32px; width: 32px; }

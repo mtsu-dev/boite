@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import type { PermissionRequest, QuestionRequest, ThreadSummary } from '@boite/contracts';
-import { activityFeed, feedOperation } from './activity-feed';
+import { activityFeed, feedOperation, needsYouCount } from './activity-feed';
 
 const NOW = Date.UTC(2026, 10, 7, 12);
 
@@ -64,4 +64,30 @@ test('a sub-agent that failed under a parent still at work is the parent\'s busi
   const machine = { id: 'local', store: { pendingQuestions: [], pendingPermissions: [], subagents: () => null } };
   const feed = activityFeed(threads.map(t => ({ machine, thread: t, project: undefined })), entry => entry.thread.id === 'bot' ? 'Scout' : null);
   expect(feed.map(row => [row.thread.id, row.reason])).toEqual([['bot', 'Scout']]);
+});
+
+test('one event per row: a sub-agent shares its parent\'s row only for the same ask, so a permission never carries a stopped helper', () => {
+  const permissions = [
+    { id: 'p1', threadId: 'parent', toolName: 'Bash', input: { command: 'git push' }, description: null, createdAt: NOW - 60_000 },
+    { id: 'p2', threadId: 'same', toolName: 'Bash', input: { command: 'npm test' }, description: null, createdAt: NOW - 50_000 }
+  ] as unknown as PermissionRequest[];
+  const questions = [{ id: 'q', threadId: 'asks', text: 'Which port?', options: [], createdAt: NOW - 40_000 }] as unknown as QuestionRequest[];
+  const child = (id: string, fields: Partial<ThreadSummary>) => thread(id, { parentThreadId: 'parent' as ThreadSummary['parentThreadId'], ...fields });
+  const threads = [
+    thread('parent', { status: 'waiting', updatedAt: NOW - 10_000 }),
+    child('stopped', { unread: true, backgroundWait: { state: 'interrupted', for: 'tests', reason: 'core-restarted', at: NOW }, updatedAt: NOW - 20_000 }),
+    child('same', { status: 'waiting', updatedAt: NOW - 30_000 }),
+    child('asks', { status: 'waiting', updatedAt: NOW - 40_000 })
+  ];
+  const store = { pendingQuestions: questions, pendingPermissions: permissions, subagents: () => null };
+  const machine = { id: 'local', store };
+  const feed = activityFeed(threads.map(t => ({ machine, thread: t, project: undefined })));
+  // The two permissions share the parent's row; the question leads its own; the stop is news, a row of Updates.
+  expect(feed.map(row => [row.thread.id, row.nested, row.section, row.verb])).toEqual([
+    ['parent', false, 'needs', 'allow'], ['same', true, 'needs', 'allow'],
+    ['asks', false, 'needs', 'answer'],
+    ['stopped', false, 'updates', null]
+  ]);
+  // Every count says the rows the section lists.
+  expect(needsYouCount(threads.map(t => ({ machine, thread: t, project: undefined })))).toBe(2);
 });

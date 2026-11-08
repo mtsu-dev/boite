@@ -362,13 +362,13 @@
   {@const items = addsItems(adds)}
   {#if items.length > 0}
     <dt class="with-tip"><span class="ui-label">{t.adds}</span><InfoTip topic={t.adds} text={t.addsHint} /></dt>
-    <dd><ul class="chips">{#each items as item (item)}<li class="chip" class:mono={item !== t.addsPrompt} data-testid="plugin-adds-item">{item}</li>{/each}</ul></dd>
+    <dd><ul class="chips">{#each items as item (item)}<li class="ui-chip" class:mono={item !== t.addsPrompt} data-testid="plugin-adds-item">{item}</li>{/each}</ul></dd>
   {/if}
   {#if permissions.length > 0 || scoped}
     <dt class="with-tip"><span class="ui-label">{t.reaches}</span><InfoTip topic={t.reaches} text={t.reachesHint} /></dt>
     <dd>
       {#if permissions.length > 0}
-        <ul class="chips">{#each permissions as permission (permission)}<li class="chip" title={permission} data-testid="plugin-permission">{t.permission[permission]}</li>{/each}</ul>
+        <ul class="chips">{#each permissions as permission (permission)}<li class="ui-chip" title={permission} data-testid="plugin-permission">{t.permission[permission]}</li>{/each}</ul>
       {:else}<span class="subtle">{t.reachesNothing}</span>{/if}
     </dd>
   {/if}
@@ -706,7 +706,7 @@
   .extras { align-items: baseline; }
   .with-tip { display: inline-flex; align-items: center; gap: 4px; }
   .chips { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 4px; }
-  .chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 1px 6px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); font-size: var(--text-xs); color: var(--color-foreground); }
+  .ui-chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 1px 6px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); font-size: var(--text-xs); color: var(--color-foreground); }
   .tag { flex: none; padding: 1px 6px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--color-success) 16%, transparent); color: var(--color-success); font-size: var(--text-xs); font-weight: 500; }
   .account-actions { display: flex; margin-left: auto; gap: 4px; flex: none; }
 

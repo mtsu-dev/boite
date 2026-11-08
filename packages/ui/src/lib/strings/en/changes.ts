@@ -2,14 +2,13 @@ export const strings = {
 
   /** The changes surface: `git status` of the thread's working directory. */
   changes: {
-    /** A phone panel's title over Changes. */
-    title: 'Changed files',
     clean: 'Working tree clean',
     noBranch: 'No branch',
     ahead: '{count} ahead',
     behind: '{count} behind',
-    count: '{count} changed',
-    oneCount: '1 changed',
+    /** How many files a count of changes covers (`lib/change-count.ts`): "1 file, +7 −2". */
+    files: '{count} files',
+    oneFile: '1 file',
     staged: 'Staged',
     binary: 'Binary file, nothing to show line by line',
     truncated: 'This file was cut short: the diff below is not the whole file.',

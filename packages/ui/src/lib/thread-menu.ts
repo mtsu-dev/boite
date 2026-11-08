@@ -1,4 +1,4 @@
-import { Archive, ArrowLeft, Check, Copy, FolderGit2, FolderInput, GitPullRequest, MessageSquare, PencilLine, Pin, PinOff, Sparkles, Trash2, X } from '@lucide/svelte';
+import { Archive, ArrowLeft, CircleCheck, Copy, FolderGit2, FolderInput, GitPullRequest, MessageSquare, PencilLine, Pin, PinOff, Sparkles, Trash2, X } from '@lucide/svelte';
 import type { ThreadSummary } from '@boite/contracts';
 import type { Store } from './store.svelte';
 import { separator, type MenuItem } from './menu';
@@ -79,7 +79,8 @@ export function threadMenuItems(store: Store, thread: ThreadSummary, options: Th
     ...entrustItems(store, thread),
     ...(kept ? [
       separator('sep-archive'),
-      ...(options.showDone ? [{ id: 'done', label: strings.sidebar.markDone, glyph: Check, disabled: !canMarkDone(store, thread) }] : []),
+      // A ringed check: the bare one is every menu's selection mark, and Done is an action, not a chosen row.
+      ...(options.showDone ? [{ id: 'done', label: strings.sidebar.markDone, glyph: CircleCheck, disabled: !canMarkDone(store, thread) }] : []),
       { id: 'archive', label: strings.sidebar.archive, glyph: Archive }
     ] : []),
     ...(place.length ? [separator('sep-tools')] : []),

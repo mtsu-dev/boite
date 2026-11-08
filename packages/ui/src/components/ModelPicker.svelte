@@ -128,12 +128,12 @@
 <div class="picker" class:pill={!!trailing} bind:this={root}>
   {#if !choice && store.owner}
     <!-- Nothing to pick from yet: the chip is the way to get something. -->
-    <button type="button" class="chip trigger connect" data-testid="composer-connect" onclick={() => store.openConnect()}>
+    <button type="button" class="ui-chip trigger connect" data-testid="composer-connect" onclick={() => store.openConnect()}>
       <Plug size={14} strokeWidth={1.75} />
       <span class="label ui-label">{strings.connect.button}</span>
     </button>
   {:else if readonly}
-  <span class="chip trigger readonly" data-testid="composer-picker" title={readonlyHint || label}>
+  <span class="ui-chip trigger readonly" data-testid="composer-picker" title={readonlyHint || label}>
     {#if provider}<ProviderLogo providerId={provider.id} size={14} />{/if}
     <span class="label ui-label">{label}</span>
     {#if effortLabel}<span class="effort ui-label" data-testid="composer-picker-effort">· {effortLabel}</span>{/if}
@@ -141,7 +141,7 @@
   {:else}
   <button
     type="button"
-    class="chip trigger"
+    class="ui-chip trigger"
     aria-haspopup="menu"
     aria-expanded={popover.open}
     aria-label={[label, effortLabel, accountLabel].filter(Boolean).join(', ')}
@@ -188,10 +188,17 @@
       color var(--dur-2) var(--ease-out-quint);
   }
 
-  .trigger:hover,
   .trigger[aria-expanded='true'] {
     background: var(--control-glaze) var(--color-control-hover);
     color: var(--color-foreground);
+  }
+
+  /* Only under a pointer that hovers: a finger's tap left :hover on the chip, pressed after its sheet closed. */
+  @media (hover: hover) {
+    .trigger:hover {
+      background: var(--control-glaze) var(--color-control-hover);
+      color: var(--color-foreground);
+    }
   }
 
   /* Provider marks in one ink, here and in the popover: the names carry them. */
@@ -207,7 +214,7 @@
   /* A phone keeps the row for the model's whole name: the sheet's head names the login. */
   @media (max-width: 720px) { .trigger .account { display: none; } }
   .trigger.readonly { cursor: default; }
-  .trigger.readonly:hover { background: transparent; color: inherit; }
+  @media (hover: hover) { .trigger.readonly:hover { background: transparent; color: inherit; } }
   /* The composer's chip: the name and the context ring read as one control. */
   .picker.pill { align-items: center; border-radius: var(--radius-md); }
 </style>

@@ -84,6 +84,13 @@
   $effect(() => { if (recall === null) recallRead = null; });
   /** The box has the keyboard: one of the two things that open the slash menu. */
   let focused = $state(false);
+  /**
+   * The last press came from keys, not a pointer. A touch screen focuses the
+   * card itself so no keyboard opens, and the browser counted that script
+   * focus as a keyboard one: the accent ring lit at every tap. It shows only
+   * after a key now.
+   */
+  let viaKeys = $state(false);
   /** Escape shuts the menu on text it keeps, until that text changes again. */
   let slashDismissed = $state(false);
   /** The row the keyboard is on in the slash menu. */
@@ -749,6 +756,7 @@
   }
 </script>
 
+<svelte:window onkeydowncapture={() => { viaKeys = true; }} onpointerdowncapture={() => { viaKeys = false; }} />
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="composer-wrap" class:centered class:stopped style:--deck-room="{deckRoom}px" onkeydowncapture={(event) => {
   if (!event.isComposing && event.key === 'Escape' && !mentionOpen && !slashOpen && attachmentStrip?.closePreview()) {
@@ -757,13 +765,13 @@
 }}>
   {#if !target}<ComposerStrip />{/if}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="composer" class:dictating data-testid="composer" tabindex="-1" bind:this={shell} hidden={stopped} {ondragover} {ondrop} onkeydown={(event) => {
+  <div class="composer" class:dictating class:keys={viaKeys} data-testid="composer" tabindex="-1" bind:this={shell} hidden={stopped} {ondragover} {ondrop} onkeydown={(event) => {
     if (event.target !== event.currentTarget || event.key !== 'Escape') return;
     // The touch focus target shares the box's Escape handling, including pending questions.
     onkeydown(event);
     event.stopPropagation();
   }}>
-    <!-- The card's head, under one height budget: the subagents' quiet rows, then the decision, the one block with weight. -->
+    <!-- The card's head, under one height budget: the subagents' quiet rows, then the decision, the one raised card. -->
     <div class="deck">
     {#if thread}<AgentDock {store} threadId={thread.id} bind:height={deckRoom} />{/if}
     {#if permission}{#key permission.id}<Deferred part={permissionCard}>{#snippet children(PermissionCard)}<PermissionCard docked toolName={permission.toolName} decision={null} request={permission} answer={(decision) => store.answer(permission.id, decision)} index={1} total={permissions.length} />{/snippet}</Deferred>{/key}{/if}
@@ -888,15 +896,33 @@
     transition: border-color var(--dur-3) var(--ease-out-quint), box-shadow var(--dur-3) var(--ease-out-quint);
   }
 
+  /* A card the script focused for a touch screen shows no ring: only a key lights it. */
+  .composer:not(.keys):focus-visible { outline: none; }
+
   /* The card's head under one budget: on a desktop the whole dock, field
      included, keeps to about 40% of the conversation; the subagents' rows
-     and an ask keep their size and the question or the tasks scroll inside
-     the rest. Empty, it takes no room. */
+     keep their size and the decision or the tasks scroll inside the rest.
+     Empty, it takes no room. */
   .deck { display: flex; flex-direction: column; }
   .deck > :global(*) { flex: none; }
+  .deck > :global(:is(.activity, .decision-card)) { flex: 0 1 auto; min-height: 0; }
   @media (min-width: 721px) {
     .deck { max-height: max(160px, calc(40dvh - 126px)); }
-    .deck > :global(.activity) { flex: 0 1 auto; min-height: 0; }
+  }
+  /* A decision is the one raised thing in the card: its own edge, a lifted
+     surface and a shadow, inset from the card's sides. The subagents' rows,
+     the tasks and the queued chips sit flat on the composer's surface. A long
+     one scrolls inside itself; the ask keeps its head and the question its
+     answer in sight (their own files). */
+  .deck :global(.decision-card) {
+    --decision-ground: color-mix(in oklab, var(--color-surface-2), var(--color-foreground) 4%);
+    margin: 6px 6px 2px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: 1px solid var(--color-edge);
+    border-radius: var(--radius-lg);
+    background: var(--decision-ground);
+    box-shadow: var(--shadow-e1);
   }
 
   /* The bottom gap sits under the box: a textarea scrolls its text through its own padding, up to the bar. */
@@ -944,7 +970,14 @@
   }
 
   @media (max-width: 720px) {
-    .composer { --composer-rest: var(--shadow-e1); border-radius: var(--radius-xl); }
+    /* A phone keeps the conversation: the whole card, rows, decision, queued
+       chips and field, stays under 45% of the screen. The deck gives way
+       first; a question's choices scroll in the room left once the rows,
+       the head and the field are counted (`--dock-cap`). */
+    .composer { --composer-rest: var(--shadow-e1); border-radius: var(--radius-xl); max-height: 45dvh; }
+    .composer > :global(*) { flex: none; }
+    .composer > .deck { flex: 0 1 auto; min-height: 0; --dock-cap: calc(45dvh - 120px - var(--deck-room, 0px)); }
+    .deck :global(.decision-card) { margin: 4px 4px 2px; }
     textarea, .input-mirror { font-size: var(--text-md); }
     .composer-wrap, .composer-wrap.centered {
       padding: 8px 12px max(10px, env(safe-area-inset-bottom));

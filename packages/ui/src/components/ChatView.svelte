@@ -226,7 +226,7 @@
 
 <style>
   .salon-page { display: flex; flex-direction: column; width: 100%; max-width: var(--content); height: 100%; min-height: 0; margin: 0 auto; }
-  /* The quiet chip every picker wears (app.css .chip, the model chip): a raised
+  /* The quiet chip every picker wears (app.css .ui-chip, the model chip): a raised
      fill and a hairline, brighter on hover. A dashed outline was used nowhere else. */
   .project-choice { display: inline-flex; max-width: 100%; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-2); transition: background var(--dur-2) var(--ease-out-quint), border-color var(--dur-2) var(--ease-out-quint); }
   .project-choice:hover, .project-choice:focus-within { border-color: var(--color-edge); background: var(--control-glaze) var(--color-control-hover); }

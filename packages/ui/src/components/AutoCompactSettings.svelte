@@ -154,7 +154,7 @@
               <span class="size">
                 <span class="presets" role="group" aria-label={strings.settings.autoCompactThreshold}>
                   {#each PRESETS as preset (preset)}
-                    <button type="button" class="chip" class:picked={tokens === preset} aria-pressed={tokens === preset} data-testid="auto-compact-preset-{preset}"
+                    <button type="button" class="ui-chip" class:picked={tokens === preset} aria-pressed={tokens === preset} data-testid="auto-compact-preset-{preset}"
                       onclick={() => typeTokens(0, preset)}><span class="ui-label">{formatTokens(preset)}</span></button>
                   {/each}
                 </span>
@@ -208,7 +208,7 @@
   .size, .field-error { grid-column: 2; }
   .size { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
   .presets { display: flex; flex-wrap: wrap; gap: 6px; }
-  .chip.picked { border-color: var(--color-muted-foreground); color: var(--color-foreground); }
+  .ui-chip.picked { border-color: var(--color-muted-foreground); color: var(--color-foreground); }
   .field { display: flex; align-items: center; gap: 8px; }
   input[type='number'] { width: 120px; text-align: right; }
   input[aria-invalid='true'] { border-color: var(--color-danger); }

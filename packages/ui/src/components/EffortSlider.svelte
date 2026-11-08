@@ -187,7 +187,7 @@
 <div class="effort" bind:this={root}>
   <button
     type="button"
-    class="chip trigger"
+    class="ui-chip trigger"
     aria-haspopup="dialog"
     aria-expanded={popover.open}
     aria-label={strings.composer.effortTitle}
@@ -282,7 +282,9 @@
 @supports (text-box: trim-both cap alphabetic) {
   .trigger .accented-cap { translate: 0 0.1em; }
 }
-.trigger:hover, .trigger[aria-expanded='true'] { background: var(--control-glaze) var(--color-control-hover); color: var(--color-foreground); }
+.trigger[aria-expanded='true'] { background: var(--control-glaze) var(--color-control-hover); color: var(--color-foreground); }
+/* A tap leaves :hover behind on a touch screen: the chip would stay pressed once its popover closed. */
+@media (hover: hover) { .trigger:hover { background: var(--control-glaze) var(--color-control-hover); color: var(--color-foreground); } }
 .fast-mark { display: inline-flex; margin-left: -2px; color: var(--color-accent); }
 .popover { position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 40; width: 280px; padding: 10px 12px 12px; background: var(--color-surface-3); border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-e2); animation: pop var(--dur-2) var(--ease-out-quint); transform-origin: bottom left; }
 .popover.closing { animation-name: pop-out; pointer-events: none; }
@@ -291,8 +293,10 @@
 .level { grid-column: 2; white-space: nowrap; }
 .speed { grid-column: 1; justify-self: start; display: inline-flex; align-items: center; gap: 5px; height: 24px; margin-left: -4px; padding: 0 6px; border: none; border-radius: var(--radius-md); background: transparent; font-size: var(--text-xs); font-weight: 500; color: var(--color-muted-foreground); transition: color var(--dur-2), background var(--dur-2), box-shadow var(--dur-2); }
 .speed :global(svg) { transition: transform var(--dur-2) var(--ease-out-quint); }
-.speed:hover { color: var(--color-foreground); background: var(--color-hover); }
-.speed:hover :global(svg) { transform: rotate(-12deg) scale(1.16); }
+@media (hover: hover) {
+  .speed:hover { color: var(--color-foreground); background: var(--color-hover); }
+  .speed:hover :global(svg) { transform: rotate(-12deg) scale(1.16); }
+}
 .speed.active { color: var(--color-foreground); background: var(--color-active); }
 .speed:active :global(svg) { transform: scale(.9); }
 .agent-default { grid-column: 3; justify-self: end; margin: 0 -4px 0 0; }

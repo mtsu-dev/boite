@@ -86,7 +86,7 @@ export const strings = {
     diffWhitespaceOnly: 'Only whitespace changed.',
     diffShowAll: 'Show all {count} lines',
     diffAdded: '+{count}',
-    diffRemoved: '-{count}',
+    diffRemoved: '−{count}',
     noOutput: 'No output',
     toolExitCode: 'Exit code {code}',
     /** A failed step's mark when no exit code says more. */

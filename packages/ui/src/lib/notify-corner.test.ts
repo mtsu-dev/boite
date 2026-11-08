@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'vitest';
-import { toastSlot } from './notify-corner';
+import { notifyCorner, toastSlot } from './notify-corner';
 
 function box(testid: string, rect: Partial<DOMRect>): HTMLElement {
   const node = document.createElement('div');
@@ -11,7 +11,7 @@ function box(testid: string, rect: Partial<DOMRect>): HTMLElement {
   return node;
 }
 
-afterEach(() => { document.body.replaceChildren(); window.innerWidth = 1024; });
+afterEach(() => { document.body.replaceChildren(); window.innerWidth = 1024; window.innerHeight = 768; });
 
 test('on a desktop a toast sits in room at the bottom of the timeline, right above the composer, never over a line or in the strip', () => {
   window.innerWidth = 1440;
@@ -53,4 +53,29 @@ test('on a phone list a toast sits in room at the bottom of the list, above the 
   expect(toast.style.getPropertyValue('--toast-left')).toBe('195px');
   slot.destroy();
   expect(list.dataset.cornerRoom).toBeUndefined();
+});
+
+test('on a phone thread an arriving card takes the room at the bottom of the timeline too, under the toast, never over a line', () => {
+  window.innerWidth = 390;
+  window.innerHeight = 844;
+  const timeline = box('timeline', { top: 56, bottom: 700, left: 0, right: 390, height: 644, width: 390 });
+  box('composer', { top: 700, bottom: 844, left: 0, right: 390, height: 144, width: 390 });
+  const card = document.createElement('div');
+  Object.defineProperty(card, 'offsetHeight', { value: 80 });
+  document.body.append(card);
+  const corner = notifyCorner(card);
+  // 8 above the card, the card, 8 under it, then the composer.
+  expect(timeline.style.getPropertyValue('--corner-room')).toBe('96px');
+  // Its bottom at 692, 8 above the timeline's end: 844 - 12 - 692.
+  expect(card.style.getPropertyValue('--corner-lift')).toBe('140px');
+  const toast = document.createElement('div');
+  Object.defineProperty(toast, 'offsetHeight', { value: 40 });
+  document.body.append(toast);
+  const slot = toastSlot(toast);
+  expect(timeline.style.getPropertyValue('--corner-room')).toBe('144px');
+  expect(toast.style.getPropertyValue('--toast-top')).toBe('564px');
+  expect(card.style.getPropertyValue('--corner-lift')).toBe('140px');
+  slot.destroy();
+  corner.destroy();
+  expect(timeline.style.getPropertyValue('--corner-room')).toBe('');
 });

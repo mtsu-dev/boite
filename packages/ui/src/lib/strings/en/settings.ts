@@ -23,7 +23,7 @@ export const strings = {
       accounts: 'Providers',
       plugins: 'Plugins',
       usage: 'Usage',
-      resources: 'Windows, sound and memory',
+      resources: 'Memory and processes',
       experiments: 'Experiments',
       diagnostics: 'Diagnostics'
     },

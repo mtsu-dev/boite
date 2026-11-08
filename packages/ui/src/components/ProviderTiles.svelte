@@ -125,10 +125,16 @@
   .tile :global(.logo) { flex: none; filter: grayscale(1); }
   .tile-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-  .tile:hover:not(:disabled),
   .tile:focus-visible {
     background: var(--color-hover);
     color: var(--color-foreground);
+  }
+
+  @media (hover: hover) {
+    .tile:hover:not(:disabled) {
+      background: var(--color-hover);
+      color: var(--color-foreground);
+    }
   }
 
   .tile.current {

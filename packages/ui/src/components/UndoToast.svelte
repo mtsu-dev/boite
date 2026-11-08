@@ -1,7 +1,9 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { X } from '@lucide/svelte';
   import { Closing } from '../lib/closing.svelte';
   import { toastSlot } from '../lib/notify-corner';
+  import { collapseMs } from '../lib/row-collapse';
   import { strings } from '../lib/strings';
   import { typing, undo } from '../lib/undo.svelte';
 
@@ -23,7 +25,11 @@
       return;
     }
     text = offer.message;
-    toast.show();
+    // The archived row closes first (row-collapse.ts): the toast arrives as the list settles, not over a moving row.
+    const wait = collapseMs();
+    if (wait === 0 || untrack(() => toast.shown)) return void toast.show();
+    const timer = setTimeout(() => toast.show(), wait);
+    return () => clearTimeout(timer);
   });
 
   function onkeydown(event: KeyboardEvent): void {

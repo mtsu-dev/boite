@@ -368,6 +368,23 @@ test('on a touch keyboard Enter writes a new line and only the button sends', as
   expect(send.mock.calls[0]![0]).toBe('first line');
 });
 
+test('the card the script focuses on a touch screen lights its ring only after a key, never after a tap', async ({ app: _app }) => {
+  await store.open('t-trace');
+  await waitFor(() => !store.busy);
+  const card = query<HTMLElement>('[data-testid=composer]');
+  // A tap anywhere, then the script focus a touch screen gives the card: the browser counted it as keyboard focus.
+  document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+  card.focus();
+  flushSync();
+  expect(card.classList.contains('keys')).toBe(false);
+  document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+  flushSync();
+  expect(card.classList.contains('keys')).toBe(true);
+  document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+  flushSync();
+  expect(card.classList.contains('keys')).toBe(false);
+});
+
 test('ArrowUp recalls the sent prompts of this thread and ArrowDown comes back', async ({ app: _app }) => {
   await store.open('t-trace');
   await waitFor(() => store.openThread?.id === 't-trace' && !store.busy);
@@ -734,7 +751,7 @@ async function queuedAction(line: Element, testid: 'composer-queued-edit' | 'com
   query<HTMLButtonElement>(`[data-testid=composer-queued-menu-menu] [data-testid=${testid}]`).click();
 }
 
-test('a queued prompt is a dimmed line in the box with one menu for edit and remove, not a pill', async ({ queueApp: _app }) => {
+test('a queued prompt is a small chip in the box with its one menu for edit and remove on it', async ({ queueApp: _app }) => {
   await store.open('t-trace');
   await store.client!.call('turns.start', { threadId: 't-trace', prompt: 'Wait [permission]' });
   await waitFor(() => store.openThread?.status === 'waiting');
@@ -745,8 +762,8 @@ test('a queued prompt is a dimmed line in the box with one menu for edit and rem
   await waitFor(() => input().value === '' && store.composerStates['t-trace']?.queued.length === 2);
   const lines = Array.from(document.querySelectorAll<HTMLElement>('[data-testid=composer-queued-item]'));
   expect(lines.map((line) => line.classList.contains('line'))).toEqual([true, true]);
-  // One menu button per line in place of three small icons; edit and remove wait inside it.
-  expect(lines.every((line) => line.querySelector('[data-testid=composer-queued-menu]') && !line.querySelector('[data-testid=composer-queued-edit], [data-testid=composer-queued-remove]'))).toBe(true);
+  // One menu button per chip, on the chip, in place of three small icons; edit and remove wait inside it.
+  expect(lines.every((line) => line.querySelector('.pill [data-testid=composer-queued-menu]') && !line.querySelector('[data-testid=composer-queued-edit], [data-testid=composer-queued-remove]'))).toBe(true);
   // Edit takes that prompt, and only it, back into the box.
   await queuedAction(lines[0]!, 'composer-queued-edit');
   await waitFor(() => input().value === 'first pending');

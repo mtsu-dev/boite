@@ -58,13 +58,26 @@ test('faces picked in another window move the selected buttons here', () => {
   expect(checked('font-mono-current')).toBe('font-mono-jetbrains');
 });
 
+test('a desktop shows every palette as its picture with its name, the one in use checked', () => {
+  running = mount(AppearancePage, { target: document.body, props: { store: { owner: true } as Store } });
+  flushSync();
+  const group = document.querySelector('[data-testid=palette-current]')!;
+  expect(group.getAttribute('role')).toBe('group');
+  const tiles = () => [...group.querySelectorAll('button[aria-pressed]')];
+  expect(tiles().length).toBeGreaterThan(2);
+  expect(tiles().every((tile) => tile.getAttribute('data-testid')!.startsWith('palette-') && tile.querySelector('.tile') !== null && tile.textContent!.trim() !== '')).toBe(true);
+  expect(tiles().filter((tile) => tile.getAttribute('aria-pressed') === 'true').map((tile) => tile.getAttribute('data-testid'))).toEqual(['palette-default']);
+  // No selector to open: the pictures are the choice.
+  expect(document.querySelector('[data-testid=palette-current-list]')).toBeNull();
+});
+
 for (const phone of [false, true]) {
-  test(`a palette and a face read the same on a ${phone ? 'phone' : 'desktop'}: the one in use as a row, a palette by its preview, a face by its name drawn in it`, () => {
+  test(`a face reads the same on a ${phone ? 'phone' : 'desktop'}, and a phone's palette too: the one in use as a row, a palette by its preview, a face by its name drawn in it`, () => {
     const restore = phone ? phoneWidth() : () => {};
     try {
       running = mount(AppearancePage, { target: document.body, props: { store: { owner: true } as Store, phone } });
       flushSync();
-      for (const [trigger, option] of [['palette-current', 'palette-'], ['font-current', 'font-']] as const) {
+      for (const [trigger, option] of phone ? [['palette-current', 'palette-'], ['font-current', 'font-']] as const : [['font-current', 'font-']] as const) {
         const head = document.querySelector<HTMLButtonElement>(`[data-testid=${trigger}]`)!;
         // Shut, the row is the whole choice, no tiles beside it: a palette shows its preview, a face only its name,
         // set in that face (no "Il1 O0 rn" specimen).

@@ -143,7 +143,7 @@
   .list { display: flex; flex: 1 0 100%; flex-direction: column; gap: 1px; padding: 2px 0 4px; animation: rise var(--dur-2) var(--ease-out-quint); }
   .list[hidden] { display: none; }
   .choice { display: flex; align-items: center; justify-content: flex-start; gap: 8px; width: 100%; min-height: var(--row); padding: 4px 10px 4px 6px; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 400; text-align: left; box-shadow: none; }
-  .choice:hover { background: var(--color-hover); color: var(--color-foreground); }
+  @media (hover: hover) { .choice:hover { background: var(--color-hover); color: var(--color-foreground); } }
   .choice[aria-checked='true'] { color: var(--color-foreground); font-weight: 500; }
   .mark { display: inline-flex; flex: none; width: 14px; color: var(--color-accent); }
   /* Under the setting's name, the full width of the row: the same track as the settings' segmented switches. */

@@ -456,7 +456,9 @@
   --caption: 46px;
   --sidebar: 280px;
   --panel: 360px;
-  --content: 820px;
+  /* The one column a screen reads in: the conversation's default width, Activity's and Settings'. */
+  --column: 820px;
+  --content: var(--column);
   /* The measure an answer is read at, inside the 820 px column. */
   --prose: 720px;
   --row: 34px;
@@ -488,10 +490,12 @@
   --radius-bubble: 18px;
   /* Balanced timeline margins, with room for the message outline rail. */
   --outline-room: 38px;
-  /* Settings' one calm column, centred in the inset card: a row's label and its control stay within reach of each other. */
-  --settings-width: 700px;
+  /* Settings read in the conversation's column (its default width, whatever width a thread was set to). */
+  --settings-width: var(--column);
   --settings-gutter: clamp(var(--space-5), 3vw, 48px);
   --settings-padding: var(--space-6);
+  /* The room a settings card keeps above it for its title (44 px on a phone: the title's "i" is a target). */
+  --card-head: 32px;
   /* The one spacing scale lists, cards, sheets and Settings share: a 4 px step up to
      16, then 20, 24 and 32. A gap, a padding or a margin picks one of these. */
   --space-1: 4px;
@@ -1222,7 +1226,7 @@ button {
 }
 
 /* Filled controls share the surface reflection without adding a blur layer per button. */
-button:is(.icon, .primary, .chip):not(.ghost):not(.quiet) {
+button:is(.icon, .primary, .ui-chip):not(.ghost):not(.quiet) {
   box-shadow: var(--shadow-control);
 }
 
@@ -1233,7 +1237,7 @@ button:is(.icon, .primary, .chip):not(.ghost):not(.quiet) {
  */
 button.icon:active:not(:disabled),
 button.primary:active:not(:disabled),
-.chip:active:not(:disabled) {
+.ui-chip:active:not(:disabled) {
   transform: scale(0.97);
 }
 
@@ -1582,7 +1586,8 @@ details[open] > summary .fold-caret {
   box-shadow: var(--shadow-e1);
 }
 
-.chip {
+/* `ui-chip`, not `chip`: a component's own `.chip` class stays its own. */
+.ui-chip {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -1598,7 +1603,7 @@ details[open] > summary .fold-caret {
   transition: transform var(--dur-1) var(--ease-out-quint);
 }
 
-button.chip {
+button.ui-chip {
   background: var(--control-glaze) var(--color-control-surface);
 }
 
@@ -1715,35 +1720,56 @@ tr:last-child td {
   flex: none;
 }
 
+/*
+ * One settings card, desktop and phone alike: its title stands above it in
+ * the one small heading style, its rows sit inside with a line between every
+ * two. The title leaves the card's flow (absolute, anchored by its foot), so
+ * the card keeps the room above it and a title that wraps grows into the
+ * gap over it, never onto its rows.
+ */
 .settings .page > .card,
 .settings .page > form > .card,
 .settings .page > .settings-stack > .card {
+  position: relative;
   max-width: var(--settings-width);
-  padding: var(--settings-padding);
-  margin-bottom: var(--space-4);
+  padding: var(--space-1) var(--space-4);
+  margin-bottom: var(--space-6);
   box-shadow: none;
-  scroll-margin-top: var(--space-6);
+  scroll-margin-top: calc(var(--card-head) + var(--space-6));
+}
+
+/* The card above's margin folds into this one: the title's room plus the air between two cards. */
+:is(.settings .page > .card, .settings .page > form > .card, .settings .page > .settings-stack > .card):has(> h2:first-child) {
+  margin-top: calc(var(--card-head) + var(--space-4));
+}
+
+:is(.settings .page > .card, .settings .page > form > .card, .settings .page > .settings-stack > .card) > h2:first-child {
+  position: absolute;
+  left: var(--space-4);
+  right: var(--space-4);
+  bottom: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) 6px;
+  min-height: var(--card-head);
+  margin: 0;
+  padding-bottom: 2px;
+}
+
+/* A line between every two rows of a card. What belongs to the row above (a
+   hint, an error, a status) joins it without one. */
+:is(.settings .page > .card, .settings .page > form > .card, .settings .page > .settings-stack > .card) > :not(h2, :first-child) {
+  border-top: 1px solid var(--color-border);
+}
+:is(.settings .page > .card, .settings .page > form > .card, .settings .page > .settings-stack > .card) > :is(h2 + *, .hint, [role=alert], .error, [hidden]) {
+  border-top: 0;
 }
 
 /* A card that is a list or a table runs its rows to its edges. */
 .settings .page > .card.flush {
   padding: 0;
   overflow: hidden;
-}
-
-/* In the desktop's inset card a settings section is a plain group, its title
-   over its rows: no second card inside the card. A failure, a loading ghost
-   and the search's floating results keep their own fill. A phone keeps its
-   grouped cards on the bare screen. */
-.settings .framed > .page > .card:not(.failed, .ghost-card, .results),
-.settings .framed > .page > :is(form, section, .settings-stack) > .card:not(.failed, .ghost-card, .results) {
-  background: none;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-  padding: 0;
-  overflow: visible;
-  margin-bottom: var(--space-8);
 }
 
 /* A settings choice: the options in one dark track, the chosen one raised on it,
@@ -1786,10 +1812,14 @@ tr:last-child td {
    its rows' own step aside; that one says what they said. */
 .card:has(.info-tip[data-gather]) .info-tip[data-tip-text] { display: none; }
 
-.settings .page .card h2 {
-  margin-bottom: var(--space-4);
-  color: var(--color-foreground);
-  font-size: var(--text-md);
+/* The one heading under a screen's title: small, muted, over its card. */
+.settings .page .card h2,
+.settings .page > .group-heading h2 {
+  margin-bottom: var(--space-3);
+  color: var(--color-muted-foreground);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1.4;
 }
 
 /*
@@ -1836,13 +1866,9 @@ tr:last-child td {
   flex: none;
 }
 
-/* A hint straight under a card title belongs to it; the rows start after. */
-.settings .page .card h2:has(+ .hint) {
-  margin-bottom: var(--space-1);
-}
-
-.settings .page .card h2 + .hint {
-  margin-bottom: var(--space-4);
+/* A line straight under a card title opens the card; the rows start after. */
+.settings .page .card > h2 + .hint {
+  padding: var(--space-3) 0;
 }
 
 .settings .page .hint {
@@ -1851,20 +1877,22 @@ tr:last-child td {
   line-height: 1.5;
 }
 
-/* A group that is a list of cards rather than one card gets a title between
-   them, the size of a card title and the air of a new section above it. */
+/* A group that is a list of cards rather than one card gets the same title
+   over them, at a card title's inset. */
 .settings .page > .group-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
   max-width: var(--settings-width);
-  margin: var(--space-8) 0 var(--space-3);
+  min-height: var(--card-head);
+  margin: var(--space-6) 0 0;
+  padding: 0 var(--space-4) 2px;
   scroll-margin-top: var(--space-6);
 }
 
 .settings .page > .group-heading h2 {
-  font-size: var(--text-md);
+  margin: 0;
 }
 
 .settings .page > .group-heading p {
@@ -1886,25 +1914,13 @@ tr:last-child td {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-5);
-  min-height: 56px;
-  padding: var(--space-3) 0;
+  min-height: 52px;
+  padding: var(--space-2) 0;
 }
 
+/* Rows a wrapper groups inside a card keep the card's line between them. */
 .settings .page .switch-row + .switch-row {
   border-top: 1px solid var(--color-border);
-}
-
-/* The card's own padding is the air at its edges, so a row touching an edge
-   or following the title drops that side of its own. */
-.settings .page .card > .switch-row:first-child,
-.settings .page .card > h2 + .switch-row {
-  min-height: 44px;
-  padding-top: 0;
-}
-
-.settings .page .card > .switch-row:last-child {
-  min-height: 44px;
-  padding-bottom: 0;
 }
 
 .settings .page .switch-row .text {
@@ -2300,8 +2316,12 @@ html[data-glass] #app {
 }
 
 /* The focused composer (Composer.svelte): only its hairline brightens, no glow and no accent. Under
-   `.composer-wrap` so it outranks the component's own resting border whichever stylesheet loads last. */
-.composer-wrap .composer:focus-within { border-color: var(--color-composer-focus); }
+   `.composer-wrap` so it outranks the component's own resting border whichever stylesheet loads last.
+   Like its ring, a tap keeps it quiet: under a fine pointer, or once a key was pressed (`.keys`). */
+@media (hover: hover) and (pointer: fine) {
+  .composer-wrap .composer:focus-within { border-color: var(--color-composer-focus); }
+}
+.composer-wrap .composer.keys:focus-within { border-color: var(--color-composer-focus); }
 
 @supports (color: color-mix(in oklab, white 50%, black)) {
   /* The translucent themes keep a see-through composer, blurred (Composer.svelte) so the timeline under it never reads. */
@@ -2505,19 +2525,17 @@ input[type=checkbox][role=switch]:disabled { opacity: .45; cursor: not-allowed; 
   [data-mobile-sheet='true'].closing { animation-name: sheet-down !important; animation-duration: var(--dur-exit) !important; animation-timing-function: var(--ease-exit) !important; }
   /* No outline rail on a phone (MessageList.svelte): the timeline's left edge matches its right. */
   :root { --outline-room: 20px; }
-  :root { --settings-padding: var(--space-4); --control: var(--touch-target); --control-sm: var(--touch-target); --control-lg: var(--touch-target); --input: var(--touch-target); --row: var(--touch-target); }
+  :root { --settings-padding: var(--space-4); --card-head: var(--touch-target); --control: var(--touch-target); --control-sm: var(--touch-target); --control-lg: var(--touch-target); --input: var(--touch-target); --row: var(--touch-target); }
   input, textarea { font-size: var(--text-md); }
   button.icon { min-width: var(--touch-target); min-height: var(--touch-target); }
   .composer-wrap { padding-bottom: max(10px, env(safe-area-inset-bottom)); }
   .settings .page { padding: var(--space-6) var(--space-4); }
   .settings .page > header { margin-bottom: var(--space-5); }
   .settings .page > .card.flush { padding: 0; }
-  .settings .page > .group-heading { margin-top: var(--space-6); }
   .settings .page .row { flex-wrap: wrap; }
   .settings .page .switch-row { flex-wrap: wrap; gap: var(--space-2) var(--space-3); min-height: 48px; padding: var(--space-2) 0; }
   /* A phone's grouped cards sit tighter: a smaller title step and less air under it, the rows keeping 44 px targets. */
-  .settings .page > .card, .settings .page > form > .card, .settings .page > .settings-stack > .card { padding: var(--space-3) var(--space-4); margin-bottom: var(--space-3); }
-  .settings .page .card h2 { min-height: 44px; margin-bottom: 0; font-size: var(--text-base); }
+  .settings .page > .card, .settings .page > form > .card, .settings .page > .settings-stack > .card { padding: var(--space-1) var(--space-4); margin-bottom: var(--space-4); }
   /* Buttons under the last prompt and answer, or the message tapped (lib/message-reveal.svelte.ts). A settled prompt's ticks go with them; a pending one keeps its own. */
   .message[data-reveal]:not([data-latest]):not([data-revealed]) .message-actions,
   .message[data-reveal]:not([data-latest]):not([data-revealed]) .receipts.settled { display: none; }

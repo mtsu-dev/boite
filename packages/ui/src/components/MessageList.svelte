@@ -849,6 +849,10 @@
      two attributes outrank app.css's shared `.scroll-edges` rule. */
   .timeline[data-scroll-root][data-testid]::after { animation: none; opacity: 0; transition: opacity var(--dur-2) var(--ease-out-quint); }
   .timeline.below[data-scroll-root][data-testid]::after { opacity: 1; }
+  /* The top edge fades deeper than the shared one: a bubble scrolled up to the
+     header thins out over 40 px instead of reading as a card cut by it. At the
+     top of the scroll it stays clear, the first message whole under the header. */
+  .timeline[data-scroll-root][data-testid]::before { height: 40px; margin-bottom: -40px; }
 
   .column {
     flex: none;

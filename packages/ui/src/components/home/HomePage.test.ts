@@ -75,6 +75,23 @@ test('a contact request stays visible in the rail in Settings and opens the mach
   await vi.waitFor(() => { flushSync(); expect(one('contact-request-notice')).toBeNull(); });
 });
 
+test('two asks waiting read the machine, a spaced dot and their count on the toast', async () => {
+  const store = await connect();
+  store.page = 'settings';
+  const client = store.client!;
+  const call = client.call.bind(client);
+  vi.spyOn(client, 'call').mockImplementation((async (method, params) => {
+    const value = await call(method, params);
+    if (method !== 'contacts.get') return value;
+    const state = value as Awaited<ReturnType<typeof contacts>>;
+    const pending = state.requests.find(request => request.status === 'pending' && request.direction === 'in')!;
+    return { ...state, requests: [...state.requests, { ...pending, id: 'creq-second', createdAt: pending.createdAt + 1 }] };
+  }) as typeof client.call);
+  components.push(mount(AppRail, { target: document.body, props: { store } }));
+  await vi.waitFor(() => { flushSync(); expect(one('contact-request-notice')?.querySelector('.notify-meta .count')).toBeTruthy(); });
+  expect(one('contact-request-notice')!.querySelector('.notify-meta')!.textContent).toMatch(/^\S.* · 2$/);
+});
+
 test('a dismissed request still counts on the rail\'s Activity, which refreshes after a reconnect without an update', async () => {
   const store = await connect();
   store.page = 'settings';

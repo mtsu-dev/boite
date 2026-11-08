@@ -200,8 +200,8 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 .agent-schedule .segmented button { height: var(--control-sm); padding: 0 12px; border: 0; background: none; color: var(--color-muted-foreground); font-weight: 500; }
 .agent-schedule .segmented button.on { background: var(--color-active); color: var(--color-foreground); box-shadow: var(--shadow-e1); }
 .schedule-detail { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
-.schedule-detail .chip { cursor: pointer; }
-.schedule-detail .chip.on { border-color: var(--color-muted-foreground); background: var(--color-active); color: var(--color-foreground); }
+.schedule-detail .ui-chip { cursor: pointer; }
+.schedule-detail .ui-chip.on { border-color: var(--color-muted-foreground); background: var(--color-active); color: var(--color-foreground); }
 .schedule-detail input[type=datetime-local], .schedule-detail input[type=time] { width: auto; }
 .schedule-detail .agent-inline { font-size: var(--text-sm); }
 .weekdays { display: flex; flex-wrap: wrap; gap: 6px; }

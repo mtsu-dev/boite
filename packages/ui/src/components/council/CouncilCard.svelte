@@ -53,7 +53,7 @@
     </span>
   </div>
   <div class="spread">
-    {#if status}<span class="chip {status.tone}" data-testid="council-card-status">{status.text}</span>{:else}<span></span>{/if}
+    {#if status}<span class="ui-chip {status.tone}" data-testid="council-card-status">{status.text}</span>{:else}<span></span>{/if}
     <button type="button" class="small" onclick={() => store.panel.openCouncil(councilId)} data-testid="council-card-open">{labels.open}</button>
   </div>
 </div>
@@ -79,11 +79,11 @@
   .name { font-size: var(--text-sm); font-weight: 600; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
   .cast { color: var(--color-muted-foreground); font-size: var(--text-xs); }
   .spread { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
-  .chip { padding: 1px 8px; border-radius: var(--radius-full); font-size: var(--text-xs); font-weight: 500; font-variant-numeric: tabular-nums; }
-  .chip.live { background: color-mix(in oklch, var(--color-live) 16%, transparent); color: var(--color-live); }
-  .chip.success { background: color-mix(in oklch, var(--color-success) 14%, transparent); color: var(--color-success); }
-  .chip.quiet { background: var(--color-surface-3); color: var(--color-muted-foreground); }
-  .chip.danger { background: color-mix(in oklch, var(--color-danger) 14%, transparent); color: var(--color-danger); }
+  .ui-chip { padding: 1px 8px; border-radius: var(--radius-full); font-size: var(--text-xs); font-weight: 500; font-variant-numeric: tabular-nums; }
+  .ui-chip.live { background: color-mix(in oklch, var(--color-live) 16%, transparent); color: var(--color-live); }
+  .ui-chip.success { background: color-mix(in oklch, var(--color-success) 14%, transparent); color: var(--color-success); }
+  .ui-chip.quiet { background: var(--color-surface-3); color: var(--color-muted-foreground); }
+  .ui-chip.danger { background: color-mix(in oklch, var(--color-danger) 14%, transparent); color: var(--color-danger); }
   /* `--dur-2` is all but zero when motion is reduced (app.css). */
   @keyframes arrive { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 </style>

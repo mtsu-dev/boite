@@ -69,6 +69,8 @@
   {#each queued as entry, at (entry)}
     {@const failed = entry.request?.failed}
     <div class="line" class:failed={failed !== undefined} data-testid="composer-queued-item">
+      <!-- One chip per held prompt: its state, its text (a tap brings it back) and its menu, on the chip. -->
+      <span class="pill">
       {#if failed !== undefined}
         <span class="state error" data-testid="composer-outbox-failed" title={fill(strings.composer.outboxFailed, { reason: failed })}>{fill(strings.composer.outboxFailed, { reason: failed })}</span>
       {:else if entry.request}
@@ -84,6 +86,12 @@
         onclick={() => onrestore(at)}>{entry.text || strings.composer.attachAlt}</button>
       {#if entry.attachments.length}<span class="extra"><Paperclip size={12} />{entry.attachments.length}</span>{/if}
       {#if entry.previewReferences?.length}<span class="extra">@{entry.previewReferences.length}</span>{/if}
+      <!-- Answers already given come with no menu: they are not the user's to edit either, only the "i" says why they wait. -->
+      {#if onremove}
+        <span class="tool"><Menu items={actions(at, !!entry.request?.start)} variant="ghost" align="end" label={strings.composer.queuedActions} heading={entry.text || strings.composer.attachAlt} testid="composer-queued-menu"
+          onpick={(id) => { if (id === 'edit') onrestore(at); else if (id === 'remove') onremove(at); }}><Ellipsis size={14} /></Menu></span>
+      {:else if at === 0}<InfoTip text={why} topic={strings.composer.queuedLabel} testid="composer-queued-why" />{/if}
+      </span>
       {#if sendNow && at === queued.length - 1}
         <button type="button" class="ghost small send-now" data-testid="composer-send-now"
           title={sendNow === 'steer' ? strings.composer.sendNowHint : strings.composer.retryQueuedHint}
@@ -92,23 +100,19 @@
       {#if failed !== undefined && onretry}
         <button type="button" class="ghost small" data-testid="composer-outbox-retry" disabled={sending} onclick={() => onretry(at)}><span class="ui-label">{strings.composer.outboxRetry}</span></button>
       {/if}
-      <!-- Answers already given come with no menu: they are not the user's to edit either, only the "i" says why they wait. -->
-      {#if onremove}
-        <span class="tool"><Menu items={actions(at, !!entry.request?.start)} variant="ghost" align="end" label={strings.composer.queuedActions} heading={entry.text || strings.composer.attachAlt} testid="composer-queued-menu"
-          onpick={(id) => { if (id === 'edit') onrestore(at); else if (id === 'remove') onremove(at); }}><Ellipsis size={16} /></Menu></span>
-      {:else if at === 0}<InfoTip text={why} topic={strings.composer.queuedLabel} testid="composer-queued-why" />{/if}
     </div>
   {/each}
 </div>
 
 <style>
-  /* Dimmed lines inside the card, over its field: no frame and no fill, so the
-     decision stays the one card above the text. Each held prompt is cut to one
-     line, its clock before it, its menu at its end. */
+  /* Small chips inside the field's area, one per held prompt: a fill, no edge,
+     so the decision stays the one raised card above the text. Each chip is
+     cut to one line, its clock before the text, its menu on it. */
   .queued {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    align-items: flex-start;
+    gap: 4px;
     min-width: 0;
     max-width: 100%;
     max-height: 30vh;
@@ -120,10 +124,22 @@
     align-items: center;
     gap: 6px;
     min-width: 0;
-    min-height: 26px;
+    max-width: 100%;
     color: var(--color-muted-foreground);
     font-size: var(--text-sm);
     animation: rise var(--motion-in);
+  }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex: 0 1 auto;
+    min-width: 0;
+    height: 26px;
+    padding: 0 10px;
+    border-radius: var(--radius-full);
+    background: var(--color-active);
   }
 
   .state {
@@ -136,10 +152,10 @@
 
   .state.error { flex: 0 1 auto; min-width: 0; max-width: 50%; overflow: hidden; text-overflow: ellipsis; color: var(--color-danger); }
 
-  /* The text takes the line's room, so every line's controls end at the same edge. */
+  /* The text sizes the chip, up to the line's width, then ends in an ellipsis. */
   .text {
     display: block;
-    flex: 1 1 auto;
+    flex: 0 1 auto;
     min-width: 0;
     height: auto;
     padding: 0;
@@ -155,25 +171,31 @@
   }
 
   .text:hover:not(:disabled) { background: none; color: var(--color-foreground); }
-  /* Still waiting to go while the box holds other text: the line stays legible. */
+  /* Still waiting to go while the box holds other text: the chip stays legible. */
   .text:disabled { opacity: 1; }
 
   .extra { display: inline-flex; align-items: center; gap: 3px; flex: none; font-size: var(--text-xs); }
-  .line :global(.info-tip) { flex: none; margin: 0; }
-  /* One menu at the line's end, a whole control high: its target is the button, not a 12 px glyph. */
-  .tool { display: flex; flex: none; }
-  .tool :global(.trigger) { width: var(--control-sm); height: var(--control-sm); padding: 0; justify-content: center; border-radius: var(--radius-full); color: inherit; }
+  /* Its menu or its "i", round controls closing the chip's end. */
+  .pill :global(.info-tip) { flex: none; margin: 0 -6px 0 0; }
+  .tool { display: flex; flex: none; margin-right: -8px; }
+  .tool :global(.trigger) { position: relative; width: 22px; height: 22px; padding: 0; justify-content: center; border-radius: var(--radius-full); color: inherit; }
   .tool :global(.trigger:hover), .tool :global(.trigger[aria-expanded='true']) { color: var(--color-foreground); }
   .line .ghost.small { flex: none; height: 22px; padding: 0 6px; font-size: var(--text-xs); }
   /* Send now is the line's one word in ink: it acts on the whole queue. */
   .line .send-now { color: var(--color-foreground); font-weight: 550; }
 
-  /* A phone keeps the same single line, the whole line a target; the text ends in an ellipsis, never half a word on a second line. */
+  /* A phone keeps the same single line: a taller chip, its text and its menu
+     each a finger's target through a hit area wider than their ink. Two
+     chips show, more scroll, so the card stays under its share of the screen. */
   @media (max-width: 720px) {
+    .queued { gap: 0; max-height: calc(2 * var(--touch-target)); }
     .line { min-height: var(--touch-target); }
-    .text { padding-block: 12px; }
-    .tool :global(.trigger) { width: var(--touch-target); height: var(--touch-target); }
-    .line .ghost.small { height: 32px; }
+    .pill { height: 34px; }
+    .tool { margin-right: -10px; }
+    .text { height: var(--touch-target); }
+    .tool :global(.trigger) { width: 34px; height: 34px; }
+    .tool :global(.trigger::after) { content: ''; position: absolute; inset: -5px 0; }
+    .line .ghost.small { height: var(--touch-target); }
   }
   /* A 360 px phone keeps the line for the prompt: the outbox's word goes, the "i" still says why. */
   @media (max-width: 400px) { .word { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; } }

@@ -9,13 +9,14 @@
   import { count } from '../lib/format';
   import ActivityRow from './ActivityRow.svelte';
   import EmptyState from './EmptyState.svelte';
+  import { restoreActivity } from '../lib/activity-return.svelte';
 
   /**
    * Desktop Activity, the main card's page while the rail has it on
    * (App.svelte), as triage in two sections: Needs you (what contacts ask,
    * then the threads that ask or failed), then Updates (finished or stopped
    * short), each with what it asks, whole, and since when, as the phone's Activity lists them
-   * (lib/activity-feed.ts), one row per thread (ActivityRow.svelte), in the chat's column. Every machine, as the
+   * (lib/activity-feed.ts), one row per event (ActivityRow.svelte), in the chat's column. Every machine, as the
    * rail's count. It loads on its own, out of the entry chunk.
    */
   let { store }: { store: Store } = $props();
@@ -43,6 +44,9 @@
     if (last && next.some((value, index) => value !== last![index]) && (next[1] || next[2])) inbox.open = false;
     last = next;
   });
+  // Back from a thread an action opened: the scroll it had and the keyboard where the user was.
+  let page = $state<HTMLElement>();
+  $effect(() => { if (page) void restoreActivity(page); });
   /** Out of Activity into a fresh draft, as the list's New thread. */
   function newThread() {
     inbox.open = false;
@@ -57,7 +61,7 @@
 <svelte:window onkeydowncapture={onkeydown} />
 
 <!-- The window's band names the page, in its empty state too: the card carries no second title. -->
-<section class="activity-page" data-testid="activity-list" aria-label={strings.mobile.activity}>
+<section class="activity-page" data-testid="activity-list" aria-label={strings.mobile.activity} tabindex="-1" bind:this={page}>
   <div class="column">
     {#if needsCount > 0}<h2 class="section-label" data-testid="activity-needs" data-count={needsCount}>{strings.sidebar.state.waiting}<span class="count">{count(needsCount)}</span></h2>{/if}
     {#if ContactInboxRows && contactsShown(store)}<ContactInboxRows {store} />{/if}
@@ -74,14 +78,14 @@
 </section>
 
 <style>
-  .activity-page { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; }
-  /* The chat's reading column (--content): rows of a thread's width read better than rows of the screen's. */
-  .column { display: flex; flex-direction: column; gap: 2px; width: min(100%, var(--content)); min-height: 100%; margin: 0 auto; padding: var(--space-8) var(--space-6) var(--space-6); }
+  /* The chat's own column (MessageList.svelte): the same side room and gutters, then --content, so a thread and
+     Activity read at one width, centred in the card. */
+  .activity-page { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable both-edges; padding: 0 var(--outline-room); outline: none; }
+  .column { display: flex; flex-direction: column; gap: 2px; width: 100%; max-width: var(--content); min-height: 100%; margin: 0 auto; padding: var(--space-8) 0 var(--space-6); }
   /* A section's name over its rows, from the rows' text edge; the next section stands off the last row. */
-  h2 { margin: 0 0 var(--space-2) var(--space-3); }
+  /* From the rows' tile edge (ThreadCard's compact 10 px). */
+  h2 { margin: 0 0 var(--space-2) 10px; }
   h2 ~ h2 { margin-top: var(--space-6); }
   /* The section's count, the rail badge's number: amber marks it, the word stays grey. */
   h2 .count { margin-left: 6px; color: var(--color-live); font-variant-numeric: tabular-nums; }
-  /* A reading column's rows: a step taller than the list's. */
-  .column :global([data-testid=thread-row] .row) { padding-block: 8px; }
 </style>

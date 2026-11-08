@@ -11,6 +11,7 @@
   import { diffCountsOf } from '../lib/diff';
   import Deferred, { parts } from './Deferred.svelte';
   import DocumentView from './DocumentView.svelte';
+  import ChangeCount from './ChangeCount.svelte';
   import Spinner from './Spinner.svelte';
   import { chatPrefs } from '../lib/chat-prefs.svelte';
   import type { Store } from '../lib/store.svelte';
@@ -184,16 +185,13 @@
     <span class="glyph"><Glyph size={15} strokeWidth={1.75} /></span>
     <span class="line ui-label" class:mono={!compact && line.mono} class:live={status === 'running'} title={diffs[0]?.path ?? line.title}>{label}</span>
     {#if counts.added > 0 || counts.removed > 0}
-      <span class="counts" data-testid="tool-diff-counts">
-        {#if counts.added > 0}<span class="added">{fill(strings.chat.diffAdded, { count: String(counts.added) })}</span>{/if}
-        {#if counts.removed > 0}<span class="removed">{fill(strings.chat.diffRemoved, { count: String(counts.removed) })}</span>{/if}
-      </span>
+      <span class="counts" data-testid="tool-diff-counts"><ChangeCount added={counts.added} removed={counts.removed} /></span>
     {/if}
     {#if chip}
-      <span class="chip" data-testid="tool-document-chip"><span class="ui-label">{chip}</span></span>
+      <span class="ui-chip" data-testid="tool-document-chip"><span class="ui-label">{chip}</span></span>
     {/if}
     {#if background}
-      <span class="chip live" data-testid="tool-background"><span class="pulse" aria-hidden="true"></span><span class="ui-label">{strings.chat.backgroundChip}</span></span>
+      <span class="ui-chip live" data-testid="tool-background"><span class="pulse" aria-hidden="true"></span><span class="ui-label">{strings.chat.backgroundChip}</span></span>
     {/if}
     {#if took}
       <span class="took ui-label" class:settled={status !== 'running'} data-testid="tool-elapsed">{took}</span>
@@ -340,7 +338,7 @@
   .line.live { color: var(--color-accent); }
   .error-preview { margin: 0 0 4px; color: var(--color-danger); font-size: var(--text-sm); overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 
-  .chip {
+  .ui-chip {
     flex: none;
     height: 18px;
     display: inline-flex;
@@ -354,7 +352,7 @@
     font-variant-numeric: tabular-nums;
   }
 
-  .chip.live {
+  .ui-chip.live {
     gap: 5px;
     color: var(--color-muted-foreground);
     border-color: var(--color-edge);
@@ -442,13 +440,8 @@
   .counts {
     display: inline-flex;
     flex: none;
-    gap: 6px;
     font-size: var(--text-sm);
-    font-variant-numeric: tabular-nums;
   }
-
-  .counts .added { color: var(--color-success); }
-  .counts .removed { color: var(--color-danger); }
 
   .diffs {
     display: flex;

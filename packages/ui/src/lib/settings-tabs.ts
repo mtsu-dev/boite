@@ -41,6 +41,7 @@ const PAGES: Record<SettingsTab, SettingsPage> = {
 const SECTION_PAGES: Partial<Record<SettingsTab, Record<string, { page: PhoneSectionPage; owner?: true }>>> = {
   general: {
     conversations: { page: 'conversations' },
+    quiet: { page: 'quiet', owner: true },
     archived: { page: 'archived' },
     worktrees: { page: 'worktrees', owner: true },
     windows: { page: 'windows', owner: true },
@@ -51,7 +52,7 @@ const SECTION_PAGES: Partial<Record<SettingsTab, Record<string, { page: PhoneSec
   advanced: { 'auto-compact': { page: 'auto-compact', owner: true } }
 };
 
-export type PhoneSectionPage = 'conversations' | 'archived' | 'worktrees' | 'windows' | 'secrets' | 'browser-profiles' | 'auto-compact';
+export type PhoneSectionPage = 'conversations' | 'quiet' | 'archived' | 'worktrees' | 'windows' | 'secrets' | 'browser-profiles' | 'auto-compact';
 
 /**
  * The eight entries Settings lists, desktop and phone alike, each led by the
@@ -76,6 +77,20 @@ export const SETTINGS_GROUPS = [
  * may not read the logs, still gets the task manager as a page of its own.
  */
 const MERGED: Partial<Record<SettingsTab, SettingsTab>> = { 'task-manager': 'diagnostics' };
+
+/**
+ * Cards that moved to another page, by their old page: a link to the old place
+ * (a setting an agent asks for, a route kept from before) opens the new one.
+ */
+const MOVED: Partial<Record<SettingsTab, Record<string, SettingsTab>>> = {
+  appearance: { workspace: 'general' },
+  resources: { quiet: 'general' }
+};
+
+/** The page a card lives on now, when a route still names its old one. */
+export function movedTo(tab: SettingsTab, section: string | null | undefined): SettingsTab | undefined {
+  return section ? MOVED[tab]?.[section] : undefined;
+}
 
 /** The page that leads a page's group: what the group's entry opens and marks. */
 export function groupOf(tab: SettingsTab): SettingsTab {

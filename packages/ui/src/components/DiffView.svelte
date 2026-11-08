@@ -8,6 +8,7 @@
   import { diffPrefs } from '../lib/diff-prefs.svelte';
   import { markHtml, markText, wordMarks } from '../lib/diff-words';
   import DiffOptions from './DiffOptions.svelte';
+  import ChangeCount from './ChangeCount.svelte';
   import { fill, strings } from '../lib/strings';
   import { codeLanguage, highlightCode } from '../lib/code-highlight';
   import { whenIdle } from '../lib/idle';
@@ -86,11 +87,8 @@
   {#if !headless}
     <div class="head">
       <span class="path mono ui-label" title={path}>{path}</span>
-      {#if counts.added > 0}
-        <span class="count added ui-label">{fill(strings.chat.diffAdded, { count: String(counts.added) })}</span>
-      {/if}
-      {#if counts.removed > 0}
-        <span class="count removed ui-label">{fill(strings.chat.diffRemoved, { count: String(counts.removed) })}</span>
+      {#if counts.added > 0 || counts.removed > 0}
+        <span class="count"><ChangeCount added={counts.added} removed={counts.removed} /></span>
       {/if}
       <DiffOptions split={splittable} />
     </div>
@@ -186,17 +184,9 @@
   }
 
   .count {
+    display: inline-flex;
     font-size: var(--text-xs);
-    font-variant-numeric: tabular-nums;
     flex: none;
-  }
-
-  .count.added {
-    color: var(--color-success);
-  }
-
-  .count.removed {
-    color: var(--color-danger);
   }
 
   .rows {
@@ -313,14 +303,13 @@
   }
 
   .row.gap .text { text-indent: 0; }
-  /* A phone's column: a narrower number column leaves the code its width.
-     Code keeps its lines whole and the rows scroll sideways together: a line
-     broken mid-word at 360 px read as two. Every row is as wide as the widest,
-     so a changed line's tint runs to the end of the scroll. */
+  /* A phone's column: a narrower number column leaves the code its width. Lines
+     wrap as on desktop, hanging under their first, so nothing hides past the
+     screen's edge; a break falls between words first, inside one only when it
+     alone is wider than the screen. */
   @media (max-width: 720px) {
     .num { width: 28px; padding-right: 6px; }
     .gutter { width: 12px; }
-    .rows { display: grid; grid-template-columns: minmax(100%, max-content); overflow-x: auto; }
-    .text { flex: 1 0 auto; white-space: pre; overflow-wrap: normal; text-indent: 0; padding-left: 0; }
+    .text { overflow-wrap: break-word; }
   }
 </style>

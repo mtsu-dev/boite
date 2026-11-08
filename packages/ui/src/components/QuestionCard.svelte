@@ -284,7 +284,7 @@
     border-left-style: dashed;
   }
 
-  /* At the top of the composer the composer is the frame; the dock's own hairline parts it from the field. */
+  /* At the top of the composer the dock's raised card is the frame (Composer's `.decision-card`). */
   .question.docked {
     border: none;
     border-radius: 0;
@@ -319,7 +319,8 @@
   /* The shared keycap, one square per option; muted until its option is picked. */
   .kbd { flex: none; width: 20px; height: 20px; padding: 0; color: var(--color-muted-foreground); }
   .option.picked .kbd { color: var(--color-foreground); }
-  .docked .actions { justify-content: flex-end; }
+  /* A card taller than its room scrolls; the answer stays at its foot, in sight. */
+  .docked .actions { position: sticky; bottom: 0; justify-content: flex-end; background: var(--decision-ground); }
   /* After the rows' own padding, so the phone's tighter one wins. */
   @media (max-width: 720px) { .docked .option { min-height: var(--touch-target); padding: 4px 8px; } }
 

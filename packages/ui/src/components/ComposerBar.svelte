@@ -322,14 +322,14 @@
     <!-- A bot's model is its own setting: its chip names it and changes nothing here. -->
     <ModelPicker bind:this={chip} {store} {choice} disabled={picking} readonly={bot !== null} readonlyHint={bot ? fill(strings.composer.botModel, { name: bot }) : ''} anchor={askAnchor} settings={bot === null ? rows : undefined} trailing={ring} onpick={pick} />
     {#if signedOut && store.owner}
-      <button type="button" class="chip signed-out" data-testid="composer-reconnect" title={fill(strings.connect.signedOut, { provider: provider?.name ?? '' })} onclick={() => store.openConnect(signedOut.providerId, signedOut.id)}><span class="ui-label">{strings.connect.reconnect}</span></button>
+      <button type="button" class="ui-chip signed-out" data-testid="composer-reconnect" title={fill(strings.connect.signedOut, { provider: provider?.name ?? '' })} onclick={() => store.openConnect(signedOut.providerId, signedOut.id)}><span class="ui-label">{strings.connect.reconnect}</span></button>
     {/if}
     {#if providerOff}
       {@const sentence = fill(strings.providerSettings.threadOff, { provider: providerOff.name })}
       {#if providersReachable}
-        <button type="button" class="chip signed-out" data-testid="composer-provider-off" title={sentence} aria-label={sentence} onclick={() => store.showSettings('accounts')}><span class="ui-label">{strings.providerSettings.off}</span></button>
+        <button type="button" class="ui-chip signed-out" data-testid="composer-provider-off" title={sentence} aria-label={sentence} onclick={() => store.showSettings('accounts')}><span class="ui-label">{strings.providerSettings.off}</span></button>
       {:else}
-        <span class="chip signed-out" data-testid="composer-provider-off" title={sentence} aria-label={sentence}><span class="ui-label">{strings.providerSettings.off}</span></span>
+        <span class="ui-chip signed-out" data-testid="composer-provider-off" title={sentence} aria-label={sentence}><span class="ui-label">{strings.providerSettings.off}</span></span>
       {/if}
     {/if}
     {#if bound && bot !== null && !showContext}
@@ -337,7 +337,7 @@
       <ContextControl bind:this={meter} {store} anchor={meterAnchor} quiet />
     {/if}
     {#if accountRemoved}
-      <button type="button" class="chip signed-out" data-testid="composer-account-removed" title={strings.accounts.removedHint} onclick={() => void openChip('composer-picker')}><span class="ui-label">{strings.accounts.removed}</span></button>
+      <button type="button" class="ui-chip signed-out" data-testid="composer-account-removed" title={strings.accounts.removedHint} onclick={() => void openChip('composer-picker')}><span class="ui-label">{strings.accounts.removed}</span></button>
     {/if}
   </div>
   {/if}
@@ -401,7 +401,7 @@
   .context-control { display: flex; flex: none; }
   .bar .chips .context-control :global(.trigger) { padding: 0 8px 0 4px; gap: 5px; }
 
-  .chips .chip.signed-out { color: var(--color-live); }
+  .chips .ui-chip.signed-out { color: var(--color-live); }
 
   /* The rows under the models: the setting's name, its choices at the end, or
      under it when the picker is too narrow for both on one line. */
@@ -444,11 +444,19 @@
     color: var(--color-muted-foreground);
   }
 
-  .bar .chips :global(.trigger:hover),
   .bar .chips :global(.trigger[aria-expanded='true']) {
     border-color: transparent;
     background: var(--color-hover);
     color: var(--color-foreground);
+  }
+
+  /* Only under a pointer that hovers: a tap left :hover behind and the chip stayed pressed. */
+  @media (hover: hover) {
+    .bar .chips :global(.trigger:hover) {
+      border-color: transparent;
+      background: var(--color-hover);
+      color: var(--color-foreground);
+    }
   }
 
   /* Nothing to pick yet: the one chip that gets somewhere reads at full ink. */

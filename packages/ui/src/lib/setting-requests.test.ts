@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { readSettings, settledSetting, type RequestableKey, type Settings, type SettingAsk } from '@boite/contracts';
+import { REQUESTABLE_SETTINGS, readSettings, settledSetting, type RequestableKey, type Settings, type SettingAsk } from '@boite/contracts';
 import { retiredHint, settingLabel, settingsReachable, settingValueText } from './setting-requests';
 
 const open = (page: SettingAsk['page'], section: string | null): SettingAsk => ({ kind: 'open', page, section });
@@ -18,6 +18,13 @@ test('Show and Open are offered only where this client draws the target card', (
   expect(settingsReachable(open('advanced', 'origins'), { owner: true, phone: true })).toBe(false);
   expect(settingsReachable(open('machines', 'devices'), { owner: true, phone: true })).toBe(false);
   expect(settingsReachable(open('advanced', 'origins'), { owner: true, phone: false })).toBe(true);
+  // Windows and sound sit on General, the owner's only, a page of its own on a phone too.
+  expect(REQUESTABLE_SETTINGS.focusGuard).toMatchObject({ page: 'general', section: 'quiet' });
+  expect(REQUESTABLE_SETTINGS.muteAgents).toMatchObject({ page: 'general', section: 'quiet' });
+  expect(settingsReachable(open('general', 'quiet'), { owner: true, phone: true })).toBe(true);
+  expect(settingsReachable(open('general', 'quiet'), { owner: true, phone: false })).toBe(true);
+  expect(settingsReachable(open('general', 'quiet'), { owner: false, phone: false })).toBe(false);
+  expect(settingsReachable(open('resources', 'quiet'), { owner: true, phone: true })).toBe(false);
 });
 
 test('an automatic compaction change that only adds a moment reads differently from the current one', () => {

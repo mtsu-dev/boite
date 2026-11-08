@@ -100,14 +100,14 @@
   .context { position: relative; flex: none; color: var(--color-muted-foreground); }
   .trigger { display: flex; align-items: center; gap: 5px; padding: 4px; }
   @media (max-width: 720px) { .trigger { min-width: var(--touch-target); min-height: var(--touch-target); justify-content: center; } }
-  /* The number alone in neutral ink; it warms only as the window fills. */
+  /* The number alone in neutral ink, grey however full until the window is
+     nearly spent (90%), then amber: never the accent, never a warning early. */
   .quiet { display: contents; }
   .percent { font-size: var(--text-xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
   /* The percent names its measure: the word on a desktop; on a phone, where the model's name needs the row, the meter's glyph. */
   .trigger :global(.measure) { display: none; }
   @media (max-width: 720px) { .trigger :global(.measure) { display: block; } .word { display: none; } }
-  [data-level='high'] :is(.percent, .trigger :global(.measure)) { color: var(--color-live); }
-  [data-level='full'] :is(.percent, .trigger :global(.measure)) { color: var(--color-danger); }
+  [data-level='full'] :is(.percent, .trigger :global(.measure)) { color: var(--color-live); }
   .cache-chip { display: flex; align-items: center; gap: 3px; margin-left: 4px; font-size: var(--text-xs); }
   .cache-chip[data-state='warm'] :global(svg) { color: var(--color-success); }
   .cache-chip[data-state='maybe'] :global(svg), .cache-chip.low :global(svg) { color: var(--color-live); }

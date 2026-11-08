@@ -44,13 +44,19 @@ function shown(selector: string): HTMLElement | null {
  * centred on it, where the eye and the hand that made the change are. The
  * timeline gives way at its bottom on every width. A desktop page with no
  * timeline keeps the bottom-right corner.
+ *
+ * On a phone the corner cards span the screen's width, so they take that
+ * room too, under the toasts: a card never sits over a line of the
+ * conversation or a row of the list. Returns the cards it placed.
  */
-function placeToasts(): void {
+function placeToasts(): HTMLElement[] {
   const up = toasts.filter((toast) => toast.offsetHeight > 0);
-  const room = up.reduce((sum, toast) => sum + toast.offsetHeight + 8, 0);
   const phone = innerWidth <= 720;
   // On a phone the list screen lies over the thread, which still lays out under it.
   const over = (phone && shown('[data-testid=mobile-list]')) || shown('[data-testid=timeline]');
+  // Last first: the first card to arrive sits lowest, as in the corner.
+  const slotted = phone && over ? cards.filter((card) => card.offsetHeight > 0).reverse() : [];
+  const room = [...up, ...slotted].reduce((sum, node) => sum + node.offsetHeight + 8, 0);
   reserve(over, room > 0 ? room + 8 : 0);
   let top: number, centre: number | null;
   if (over) {
@@ -69,14 +75,20 @@ function placeToasts(): void {
     toast.dataset.slot = centre === null ? 'end' : 'bottom';
     top += toast.offsetHeight + 8;
   }
+  // A card's place is its lift from the window's bottom edge (notify-corner.css adds 12).
+  for (const card of slotted) {
+    card.style.setProperty('--corner-lift', `${Math.round(innerHeight - 12 - top - card.offsetHeight)}px`);
+    top += card.offsetHeight + 8;
+  }
+  return slotted;
 }
 
-function placeCards(): void {
+function placeCards(slotted: HTMLElement[]): void {
   let lift = -1;
   const bar = shown('[data-testid=composer-strip]')?.getBoundingClientRect();
   for (const card of cards) {
-    // A card hidden on this page (display: none) keeps no room.
-    if (!card.offsetHeight) continue;
+    // A card hidden on this page (display: none) keeps no room; a phone's card is in the toasts' room.
+    if (!card.offsetHeight || slotted.includes(card)) continue;
     if (lift < 0) {
       const { left, right } = card.getBoundingClientRect();
       lift = 0;
@@ -93,8 +105,7 @@ function placeCards(): void {
 }
 
 function place(): void {
-  placeToasts();
-  placeCards();
+  placeCards(placeToasts());
 }
 
 // The composer grows as one types and the strip comes and goes: a slow poll

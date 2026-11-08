@@ -408,6 +408,8 @@
       </button>
     {/each}
     <button type="button" class="row fold all" data-row data-testid="picker-all-models" onclick={openAll} onkeydown={(event) => { if (event.key === 'ArrowRight') { event.preventDefault(); openAll(); } }}>
+      <!-- The check's empty column: "All models" starts where the model names do. -->
+      <span class="mark" aria-hidden="true"></span>
       <span class="name ui-label">{strings.composer.allModels}</span>
       <ChevronRight size={14} strokeWidth={2} />
     </button>
@@ -642,7 +644,7 @@
   .single .main-models .head { padding-right: 44px; }
   .single .refresh { position: absolute; top: 6px; right: 6px; margin: 0; width: var(--control-sm); height: var(--control-sm); border: none; background: transparent; }
   .refresh { grid-area: 2 / 2; align-self: start; margin: 6px 6px 0 0; position: relative; z-index: 3; display: grid; place-items: center; width: var(--control-sm); height: var(--control-sm); padding: 0; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--color-muted-foreground); }
-  .refresh:hover:not(:disabled) { background: var(--color-hover); color: var(--color-foreground); }
+  @media (hover: hover) { .refresh:hover:not(:disabled) { background: var(--color-hover); color: var(--color-foreground); } }
   .head {
     display: flex;
     align-items: center;
@@ -693,9 +695,13 @@
     white-space: normal;
   }
 
-  .row:hover:not(:disabled),
   .row:focus-visible {
     background: var(--color-hover);
+  }
+
+  /* A finger's last row kept its fill once the sheet closed and opened again. */
+  @media (hover: hover) {
+    .row:hover:not(:disabled) { background: var(--color-hover); }
   }
 
   /* A full width row does not shrink under the finger, it fills one step more. */

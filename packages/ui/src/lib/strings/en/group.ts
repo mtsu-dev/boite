@@ -12,7 +12,7 @@ export const strings = {
     unreachable: 'Not reachable from here. It may be off, asleep or on another network.',
     insecure: 'That machine gives no address this device may use, and no machine of the group can carry it there. Give it a public HTTPS address.',
     loopback: 'This machine listens only on itself, so the others cannot reach it. Connect it to Tailscale, or turn on listening on the network.',
-    loopbackShort: 'Only this machine can reach it',
+    loopbackShort: 'Private to this machine',
     copied: 'Copied',
     addDevice: 'Add a device', adding: 'Preparing',
     addOlder: 'Boite on {machine} is too old to add a device. Update it under Updates on this page, then come back.',

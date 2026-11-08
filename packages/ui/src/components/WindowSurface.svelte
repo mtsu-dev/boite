@@ -117,8 +117,8 @@
         {#if watch.title}<span class="title" title={watch.title} data-testid="window-title">{watch.title}</span>{/if}
       </div>
       <div class="actions">
-        {#if showing}<button type="button" class="chip" data-testid="window-hide" aria-label={s.hideHint} title={s.hideHint} onclick={hide}><EyeOff size={15} /><span class="ui-label">{s.hide}</span></button>{/if}
-        <button type="button" class="chip" disabled={busy} aria-label={s.closeHint} title={s.closeHint} data-testid="window-close" onclick={() => void close()}><X size={16} /></button>
+        {#if showing}<button type="button" class="ui-chip" data-testid="window-hide" aria-label={s.hideHint} title={s.hideHint} onclick={hide}><EyeOff size={15} /><span class="ui-label">{s.hide}</span></button>{/if}
+        <button type="button" class="ui-chip" disabled={busy} aria-label={s.closeHint} title={s.closeHint} data-testid="window-close" onclick={() => void close()}><X size={16} /></button>
       </div>
     </div>
   {/if}
@@ -159,7 +159,7 @@
   .title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); }
   .actions { display: flex; gap: 6px; align-items: center; flex: none; }
   /* A desktop panel's controls are its size; a finger gets the touch target (the rule at the end of this block). */
-  .chip { min-height: var(--control); min-width: var(--control); justify-content: center; }
+  .ui-chip { min-height: var(--control); min-width: var(--control); justify-content: center; }
   .muted, small { color: var(--color-muted-foreground); font-size: var(--text-sm); }
   .error { margin: 0; padding: 0 16px 8px; font-size: var(--text-sm); color: var(--color-danger); overflow-wrap: anywhere; max-height: 90px; overflow: auto; }
   .viewer { position: relative; flex: 1; min-height: 80px; display: flex; overflow: hidden; background: var(--color-background); }
@@ -173,5 +173,5 @@
   footer { padding: 10px 16px max(12px, env(safe-area-inset-bottom)); }
   @media (max-width: 720px) { .toolbar, footer { padding-inline: 12px; } }
   /* Last, so it outranks the desktop sizes of the same weight above. */
-  @media (pointer: coarse) { .chip { min-height: var(--touch-target); min-width: var(--touch-target); } .card button { min-height: var(--touch-target); } }
+  @media (pointer: coarse) { .ui-chip { min-height: var(--touch-target); min-width: var(--touch-target); } .card button { min-height: var(--touch-target); } }
 </style>

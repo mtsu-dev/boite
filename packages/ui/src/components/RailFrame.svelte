@@ -160,7 +160,8 @@
        foot. The fade is exactly the padding, so at rest it covers nothing; a
        mask, not a scroll-driven animation, because tests and closing elements
        wait on every running animation and that one would never end. */
-    --fade: 10px;
+    /* Deep at the foot: a row the quota line's edge would slice fades out over a row's height instead. */
+    --fade: 24px;
     /* Shorter on top: the head's tools sit right above, and a deeper fade
        there opened a wider gap under them than between them and the switch. */
     --fade-top: 6px;

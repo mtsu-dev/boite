@@ -563,3 +563,22 @@ test('a file the agent opens at a line lands on that line, and asking again move
   expect(query('[data-testid=file-line][data-line="7"]').classList.contains('on')).toBe(true);
   expect(store.panel.surfaces.length).toBe(1);
 });
+
+test('a tree opened on a path marks no row until that path is the marked one, so the mark lands once', async () => {
+  await openWorkbench();
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  const real = store.listFiles.bind(store);
+  const spy = vi.spyOn(store, 'listFiles').mockImplementation(async (...args: Parameters<typeof store.listFiles>) => {
+    if (args[1] === 'src/lib') await held;
+    return real(...args);
+  });
+  store.panel.openFiles('src/lib/store.svelte.ts');
+  await waitFor(() => document.querySelector('[data-testid=files-row][data-path="src/lib"]') !== null);
+  // The root and src are drawn while src/lib is still read: the first row is not marked meanwhile.
+  expect(document.querySelectorAll('[data-testid=files-row].on').length).toBe(0);
+  release();
+  await waitFor(() => document.querySelector('[data-testid=files-row].on') !== null);
+  expect([...document.querySelectorAll<HTMLElement>('[data-testid=files-row].on')].map((row) => row.dataset.path)).toEqual(['src/lib/store.svelte.ts']);
+  spy.mockRestore();
+});

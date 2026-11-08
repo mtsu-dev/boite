@@ -36,3 +36,14 @@ export interface MenuItem {
 export function separator(id = 'sep'): MenuItem {
   return { id, label: '', separator: true };
 }
+
+/**
+ * One order for every menu and sheet: a destructive row comes last, behind a
+ * rule, wherever its caller listed it, so a thumb running down a list meets
+ * it only at the end. A list already ending on it comes back as it was.
+ */
+export function dangerLast(items: MenuItem[]): MenuItem[] {
+  const last = items.findLastIndex((item) => !item.separator && !item.danger);
+  if (!items.some((item, at) => item.danger && !item.separator && at < last)) return items;
+  return [...items.filter((item) => !item.danger), separator('sep-danger'), ...items.filter((item) => item.danger)];
+}

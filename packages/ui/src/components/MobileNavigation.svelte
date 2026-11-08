@@ -49,6 +49,7 @@
   import { contactsShown } from '../lib/contacts-rail.svelte';
   import { ScreenSlide } from '../lib/screen-slide.svelte';
   import { doneFilter, feedPlace, feedThread, inbox } from '../lib/inbox.svelte';
+  import { followActivityReturn, leaveForAct, restoreActivity } from '../lib/activity-return.svelte';
 
   let { store, recover = false, screen = $bindable('chat'), tabbed = $bindable(false) }: { store: Store; recover?: boolean; screen: 'chat' | 'threads' | 'activity'; tabbed?: boolean } = $props();
   const narrow = new MediaQuery('(max-width: 720px)');
@@ -177,6 +178,12 @@
     from = next === 'chat' && screen !== 'chat' ? screen : null;
     screen = next;
   }
+  // Allow, Answer or Review pressed in Activity: once the thread no longer needs the user, Activity comes back where it stood.
+  followActivityReturn({
+    activity: () => screen === 'activity',
+    chat: () => screen === 'chat',
+    reopen: () => { show('activity'); void tick().then(() => { if (scrollRoot) void restoreActivity(scrollRoot); }); }
+  });
   /** The threads of a project that wait on the user, its heading's amber count, as on the desktop card. */
   function waitingCount(entry: ProjectEntry): number {
     const owner = entry.machine.store;
@@ -310,7 +317,7 @@
       {@const target = row.verb ? row : helpers.find(helper => helper.verb) ?? row}
       <MobileThreadRow machine={row.machine} thread={row.thread} project={row.project} {now} compact={!grouped} reason={row.reason} at={row.at} {helpers} verb={target.verb ?? null} where={!grouped && inRecent ? places(row) : undefined} items={rowItems(row.machine.store, row.thread)}
         onopen={() => { show('chat'); void workspace.select(row.machine.store, row.thread.id); }}
-        onverb={() => { show('chat'); void workspace.select(target.machine.store, target.thread.id); }}
+        onverb={(event) => { leaveForAct(target.machine.store, target.thread.id, event?.currentTarget as Element ?? null, true); show('chat'); void workspace.select(target.machine.store, target.thread.id); }}
         onaction={action => rowAction(row.machine.store, row.thread, action, row.machine.id)} />
     {/snippet}
     {#if listScreen === 'threads' && workspace.view === 'projects'}
@@ -329,7 +336,7 @@
         {#if !query || groupRows.length > 0 || doneOpen || archivedOpen}
         <section class="project-group" class:inactive={!activeProject(group)} data-testid="mobile-project-group" data-project-id={group.project.id} data-machine-id={group.machine.id}>
           <div class="project-heading">
-            <ProjectTile project={group.project} store={group.machine.store} /><h2><span class="name">{projectName(group.project)}</span>{#if several && (group.machine !== home || group.machine.store.connection !== 'ready')}<span class="host">{group.machine.label}</span>{/if}</h2>
+            <ProjectTile project={group.project} store={group.machine.store} /><h2><span class="name">{projectName(group.project)}</span>{#if several && (group.machine !== home || group.machine.store.connection !== 'ready')}{@const reach = group.machine.store.connection === 'ready' ? null : group.machine.store.connection === 'connecting' ? strings.connection.connecting : strings.connection.offline}<span class="host" class:offline={reach !== null} data-testid="mobile-project-host" title={reach ? `${group.machine.label} · ${reach}` : group.machine.label} aria-label={reach ? `${group.machine.label}, ${reach}` : group.machine.label}>{#if reach}<span class="off-dot" aria-hidden="true"></span>{/if}{group.machine.label}</span>{/if}</h2>
             <ProjectThreadCounters entry={group} working={group.machine.store.threadsOf(group.project.id).filter(thread => workingThread(group.machine.store, thread)).length} waiting={group.machine.store.connection === 'ready' ? waitingCount(group) : 0} {controls} searching={!!query} away={group.machine.store.connection !== 'ready'} />
             {#if projectView.order === 'manual'}
               <Menu items={[
@@ -493,6 +500,9 @@
     .project-heading h2 { display: flex; align-items: baseline; gap: 6px; margin: 0; flex: 1; min-width: 0; font-size: var(--text-sm); }
     .project-heading .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .project-heading .host { flex: 0 1000 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); font-weight: 400; color: var(--color-subtle); }
+    /* An unreachable machine as on the desktop header (Sidebar.svelte): quiet, a grey dot, the word in its name. */
+    .project-heading .host.offline { color: var(--color-muted-foreground); }
+    .off-dot { display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: var(--radius-full); background: var(--color-subtle); vertical-align: 1px; }
     /* A whole touch target that eats the heading's padding rather than making it taller. */
     /* The folded quiet threads' line: a finger's height, subtle ink, on the rows' text edge. */
     .more-threads { display: flex; width: 100%; height: auto; min-height: var(--touch-target); padding: 0 12px; justify-content: flex-start; border-radius: 0; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 400; }

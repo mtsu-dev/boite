@@ -38,7 +38,7 @@ test('Activity carries the count of conversations waiting on the user, capped so
   expect(tab('mobile-activity')!.getAttribute('aria-label')).toContain('140');
 });
 
-test('Bots carries the count of bots at work, in the waiting colour once one asks the user', async () => {
+test('Bots carries a dot while bots work, in the waiting colour once one asks the user; the count is in its name only', async () => {
   setExperiment('resident-agents', true);
   onTestFinished(() => setExperiment('resident-agents', false));
   const { agentDirectory } = await import('../lib/agent-directory.svelte');
@@ -49,7 +49,9 @@ test('Bots carries the count of bots at work, in the waiting colour once one ask
   await settle();
   expect(tab('mobile-agents-at-work')).toBeNull();
   store.threads = store.threads.map(thread => thread.id === 't-trace' ? { ...thread, status: 'running' } : thread); await settle();
-  expect(tab('mobile-agents-at-work')!.textContent).toBe('1');
+  // A dot, no number: the count on the bar is Activity's alone.
+  expect(tab('mobile-agents-at-work')!.textContent).toBe('');
+  expect(tab('mobile-agents')!.getAttribute('aria-label')).toBe('Bots, 1 at work');
   expect(tab('mobile-agents-at-work')!.dataset.waiting).toBe('false');
   store.threads = store.threads.map(thread => thread.id === 't-trace' ? { ...thread, status: 'idle', openQuestions: 1 } : thread); await settle();
   expect(tab('mobile-agents-at-work')!.dataset.waiting).toBe('true');

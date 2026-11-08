@@ -8,6 +8,7 @@
   import { threadState } from '../lib/thread-state';
   import { stateForm } from '../lib/status-order';
   import type { WorkingChildren } from '../lib/thread-rows';
+  import FailMark from './FailMark.svelte';
 
   /**
    * `subagents`: the thread's delegated agents at work or asking, from its
@@ -95,6 +96,7 @@
   <!-- A mark alone stands for its word: an image named by it. -->
   <span class="when state {kind}" class:mark={bare} data-testid="thread-state" data-state={kind} title={label} aria-label={label} role={bare ? 'img' : undefined}>
     {#if form === 'mark'}<span class="work-ring" aria-hidden="true"></span>
+    {:else if kind === 'error' || kind === 'interrupted'}<FailMark />
     {:else}<span class="dot" class:needs-dot={kind === 'waiting'} aria-hidden="true"></span>{/if}
     {#if !bare}<span class="ui-label">{strings.sidebar.state[kind]}</span>{/if}
   </span>
@@ -120,8 +122,7 @@
   /* Every mark is 8 px. Work, of any kind: a still grey arc, a spinner at rest, so it never reads as an idle ring;
      which work it is lives in the tooltip. */
   .work-ring { flex: none; box-sizing: border-box; width: 9px; height: 9px; border: 1.5px solid var(--color-muted-foreground); border-top-color: transparent; border-radius: var(--radius-full); transform: rotate(45deg); }
-  /* The two colours of every list: amber for the user's turn, red for a failure. */
+  /* The user's turn is an amber dot; a failure has its own shape (FailMark.svelte). */
   .dot { flex: none; width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--color-live); }
-  .error .dot, .interrupted .dot { background: var(--color-danger); }
   .state :global(svg) { flex: none; }
 </style>

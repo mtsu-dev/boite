@@ -3,14 +3,12 @@ import type { Translation } from '../../i18n.svelte';
 export const fr: Translation = {
 
   changes: {
-    /** A phone panel's title over Changes. */
-    title: 'Fichiers modifiés',
     clean: 'Copie de travail propre',
     noBranch: 'Aucune branche',
     ahead: '{count} en avance',
     behind: '{count} en retard',
-    count: '{count} modifiés',
-    oneCount: '1 modifié',
+    files: '{count} fichiers',
+    oneFile: '1 fichier',
     staged: 'Indexé',
     binary: 'Fichier binaire, rien à montrer ligne par ligne',
     truncated: "Ce fichier a été tronqué : le diff ci-dessous n'est pas le fichier entier.",

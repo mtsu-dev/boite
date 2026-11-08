@@ -30,7 +30,10 @@
   const chosen = $derived(filter === null ? null : machines.find(m => m.id === filter) ?? null);
   const shown = $derived(machines.length > 1 || issues > 0 || chosen !== null);
   const name = strings.machines.filter;
-  const trouble = $derived(issues > 0 ? `${issues} ${strings.connection.issues}` : null);
+  // Off by choice or by sleep, not a fault: quiet, in the status grammar's grey, named in the tooltip and the name.
+  const away = $derived(machines.filter(m => health.get(m) === 'offline'));
+  const trouble = $derived(issues > 0 ? `${issues} ${strings.connection.issues}`
+    : away.length > 0 ? `${strings.connection.offline}: ${away.map(m => machineName(m)).join(', ')}` : null);
   const label = $derived(trouble ? `${name} · ${trouble}` : name);
   const items = $derived<MenuItem[]>([
     ...(machines.length > 1 ? [
@@ -50,7 +53,7 @@
 <div class="machines" class:problem={issues > 0} class:filtered={chosen !== null} data-testid={testid === 'machine-status' ? 'status-connection' : `${testid}-status`} data-state={store.connection} aria-live="polite">
   {#if shown}
     <Menu {items} onpick={choose} {label} variant="ghost" {testid} titled={!card}>
-      {#if issues}<TriangleAlert size={16} />{:else}<Monitor size={16} />{/if}
+      {#if issues}<TriangleAlert size={16} />{:else}<Monitor size={16} />{#if away.length > 0}<span class="off" data-testid="machine-offline" aria-hidden="true"></span>{/if}{/if}
       {#if chosen}<span class="name ui-label">{machineName(chosen)}</span>{/if}
     </Menu>
     {@render card?.(name, trouble ?? (chosen ? machineName(chosen) : null))}
@@ -65,6 +68,9 @@
   /* min-width: a flex item never shrinks below its text otherwise, and a long
      name ran out of the button instead of ending in an ellipsis. */
   .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .machines :global(.trigger) { position: relative; }
+  /* The rail's overlay slot (AppRail.svelte's `.badge`): a grey dot cut out of the chrome. */
+  .off { position: absolute; right: 4px; bottom: 4px; width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--color-subtle); box-shadow: 0 0 0 2px var(--color-frame); }
   .problem { color: var(--color-live); }
   .problem :global(.trigger) { color: var(--color-live); }
 </style>

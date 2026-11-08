@@ -1,6 +1,6 @@
 <script lang="ts">
   import TelemetrySettings from './TelemetrySettings.svelte';
-  import { Activity, AppWindow, ArchiveRestore, ArrowLeft, Bell, Brain, ChevronRight, Coins, FlaskConical, FolderGit2, Gauge, KeyRound, Lock, MessagesSquare, Monitor, Palette, Mic, Minimize2, Plug, Settings, ShieldCheck, Stethoscope, Wrench } from '@lucide/svelte';
+  import { Activity, AppWindow, ArchiveRestore, ArrowLeft, Bell, Brain, ChevronRight, Coins, FlaskConical, FolderGit2, Gauge, KeyRound, Lock, MemoryStick, MessagesSquare, Monitor, Palette, Mic, Minimize2, Plug, Settings, Stethoscope, VolumeOff, Wrench } from '@lucide/svelte';
   import type { SettingsTab, Store } from '../lib/store.svelte';
   import { workspace } from '../lib/workspace.svelte';
   import { strings } from '../lib/strings';
@@ -14,6 +14,7 @@
   import LimitsPage from './LimitsPage.svelte';
   import QuotaMachineScope from './QuotaMachineScope.svelte';
   import ResourcesPage from './ResourcesPage.svelte';
+  import QuietCard from './QuietCard.svelte';
   import TaskManagerLoader from './TaskManagerLoader.svelte';
   import MachinesPage from './MachinesPage.svelte';
   import PhoneSettings from './PhoneSettings.svelte';
@@ -53,7 +54,7 @@
   let routed = $derived(phonePage(store.settingsTab, store.settingsSection?.id, store.owner));
   let page = $derived(local && local.tab === store.settingsTab && local.section === store.settingsSection ? local.screen : routed);
   const UNDER: Record<string, 'general' | 'advanced'> = {
-    phone: 'general', privacy: 'general', voice: 'general', conversations: 'general', archived: 'general', secrets: 'general', 'browser-profiles': 'general', windows: 'general', worktrees: 'general',
+    phone: 'general', privacy: 'general', voice: 'general', conversations: 'general', quiet: 'general', archived: 'general', secrets: 'general', 'browser-profiles': 'general', windows: 'general', worktrees: 'general',
     'auto-compact': 'advanced', 'task-manager': 'advanced', diagnostics: 'advanced', experiments: 'advanced'
   };
   /** Home, a group's screen, or a page of a group's index. */
@@ -64,6 +65,7 @@
     : page === 'advanced' ? strings.settings.tabs.advanced
     : page === 'privacy' ? strings.mobile.settingsPrivacy
     : page === 'conversations' ? strings.settings.conversations
+    : page === 'quiet' ? strings.protection.quiet
     : page === 'accounts' ? strings.settings.tabs.accounts
     : page === 'archived' ? strings.settings.archived.heading
     : page === 'worktrees' ? strings.settings.worktrees.heading
@@ -81,6 +83,7 @@
   const infoOf = (page: string): string => page === 'usage' ? `${strings.usage.intro} ${strings.usage.note}`
     : page === 'privacy' ? strings.telemetry.description
     : page === 'secrets' ? strings.secrets.info
+    : page === 'quiet' ? strings.protection.windows
     : page === 'worktrees' ? strings.settings.worktrees.intro
     : page === 'experiments' ? strings.settings.experiments.intro : '';
   let detail = $derived(page !== 'home');
@@ -162,7 +165,7 @@
         {#if store.owner}{@render row('settings-tab-brain', Brain, strings.brain.heading, () => store.showSettings('brain'))}{/if}
         <!-- Usage is a page of Limits, as on the desktop: the entry wears the rail's gauge and opens on the limits. -->
         {@render row('settings-tab-limits', Gauge, strings.usage.limits, () => store.showSettings('limits'))}
-        {#if store.owner}{@render row('settings-tab-resources', ShieldCheck, strings.settings.tabs.resources, () => store.showSettings('resources'))}{/if}
+        {#if store.owner}{@render row('settings-tab-resources', MemoryStick, strings.settings.tabs.resources, () => store.showSettings('resources'))}{/if}
         <!-- Machines carries the machine this phone reaches and how. -->
         <button class="ghost row machine-link" data-testid="mobile-settings-connection" onclick={() => store.showSettings('machines')}>
           <Monitor size={20} /><span><strong class="ui-label">{strings.settings.tabs.machines}</strong><small>{#if machine}{`${machine.label} · `}{/if}<span class:ready={store.connection === 'ready'}>{store.pairingRequired ? strings.mobile.pairingRequired : strings.connection[store.connection]}</span></small></span><ChevronRight size={18} />
@@ -181,7 +184,7 @@
       <h1>{#if shown === 'limits'}<QuotaMachineScope store={target} fallback={title} />{:else}{title}{/if}{#if info}<InfoTip topic={title} text={info} testid="mobile-settings-info" />{/if}</h1>
     </header>
     <div class="detail" data-testid="mobile-settings-detail">
-      {#if bar && ['accounts', 'brain', 'voice', 'limits', 'resources', 'diagnostics', 'worktrees', 'windows', 'secrets', 'auto-compact', 'archived'].includes(shown)}<div class="bar">{@render bar()}</div>{/if}
+      {#if bar && ['accounts', 'brain', 'voice', 'limits', 'resources', 'quiet', 'diagnostics', 'worktrees', 'windows', 'secrets', 'auto-compact', 'archived'].includes(shown)}<div class="bar">{@render bar()}</div>{/if}
       {#key target}
       {#if quota}
         <div class="tabs" role="tablist" aria-label={strings.usage.heading} data-testid="mobile-usage-tabs">
@@ -194,6 +197,7 @@
           <div class="rows">
             {@render row('mobile-settings-conversations', MessagesSquare, strings.settings.conversations, () => store.showSettings('general', 'conversations'))}
             {@render row('mobile-settings-phone', Bell, strings.mobile.settingsPhone, () => openLocal('phone'))}
+            {#if store.owner}{@render row('mobile-settings-quiet', VolumeOff, strings.protection.quiet, () => store.showSettings('general', 'quiet'))}{/if}
             {@render row('mobile-settings-privacy', Lock, strings.mobile.settingsPrivacy, () => openLocal('privacy'))}
             {@render row('settings-tab-voice', Mic, strings.speech.heading, () => store.showSettings('voice'))}
             {@render row('mobile-settings-archived', ArchiveRestore, strings.settings.archived.heading, () => store.showSettings('general', 'archived'))}
@@ -221,6 +225,8 @@
       {:else if shown === 'conversations'}
         <!-- General's Conversations card, the switches this phone keeps; the list groups from its own display options. -->
         <div class="page"><section class="card" id="settings-conversations"><ConversationSwitches phone /></section></div>
+      {:else if shown === 'quiet' && target.owner}
+        <div class="page quiet-page"><QuietCard store={target} /></div>
       {:else if shown === 'brain' && target.owner}
         <BrainPage store={target} />
       {:else if shown === 'phone'}
@@ -341,5 +347,12 @@
   /* The bar names the page and the line above says what it holds: the card's own heading and tip step aside. */
   .archived-page :global(#settings-archived > h2) { display: none; }
   .secrets-page :global(#settings-secrets > h2),
-  .worktrees-page :global(#settings-worktrees > h2) { display: none; }
+  .worktrees-page :global(#settings-worktrees > h2),
+  .quiet-page :global(#settings-quiet > h2) { display: none; }
+  /* Its title stepped aside, the card keeps no room above it for one. */
+  .archived-page :global(#settings-archived),
+  .secrets-page :global(#settings-secrets),
+  .worktrees-page :global(#settings-worktrees),
+  .quiet-page :global(#settings-quiet),
+  .privacy-page :global(.card) { margin-top: 0; }
 </style>

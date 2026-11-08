@@ -25,7 +25,7 @@ export const fr: Translation = {
       accounts: 'Fournisseurs',
       plugins: 'Extensions',
       usage: 'Consommation',
-      resources: 'Fenêtres, son et mémoire',
+      resources: 'Mémoire et processus',
       experiments: 'Expérimentations',
       diagnostics: 'Diagnostic'
     },

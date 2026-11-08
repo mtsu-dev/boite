@@ -8,7 +8,7 @@
   import { longPress } from '../lib/long-press';
   import { controlMenu, CONTROLS_SECTION } from '../lib/controls';
   import type { ControlId } from '../lib/work-prefs.svelte';
-  import { separator } from '../lib/menu';
+  import { separator, type MenuItem } from '../lib/menu';
   import { closeTabs } from '../lib/panel-close';
   import { innerWidth } from 'svelte/reactivity/window';
   import { clampPanel, panelSibling, rightPanel } from '../lib/right-panel.svelte';
@@ -54,7 +54,7 @@
   } = $props();
 
   const inShell = window.__TAURI_INTERNALS__ !== undefined;
-  /** The showing surface's own bar, drawn in the strip (`lib/panel-tools.svelte.ts`). */
+  /** The showing surface's way back, which a phone's head arrow takes first (`lib/panel-tools.svelte.ts`). */
   const tools = providePanelTools();
   const phone = $derived((innerWidth.current ?? window.innerWidth) <= 720);
   /**
@@ -98,7 +98,7 @@
 
   /**
    * A surface a tab switch brings: there in the frame the old one leaves,
-   * settling from a high opacity with a short rise (`lib/surface-swap.ts`).
+   * one fade from a high opacity (`lib/surface-swap.ts`).
    * Only once the panel is in, so the panel landing plays no second entrance.
    * The strip above stays still: a new tab appears in place.
    */
@@ -308,21 +308,29 @@
   let choices = $derived(panelChoices(store, store.openThread, { phone, available, showing: active?.kind, used, full }));
   /** The selector's row that closes the showing panel: a phone's tab has no glyph to close it by. */
   const CLOSE_TAB = 'close-tab';
+  /** The panel's own window rows, in its selector since the head holds the selector and the close only. They keep the buttons' test ids. */
+  const MAXIMIZE = 'panel-maximize';
+  const DOCK = 'panel-dock';
   /**
-   * A phone's title opens the panel and the file switcher in one list: the
-   * surface's own rows (its files, its refresh), the panels, then a way to
-   * close this one. The full list is the panels alone.
+   * The selector's list: which panel, then what the panel's window does
+   * (a desktop's expand, a floating panel's dock), then a phone's way to close
+   * the showing one, last as every menu's closing action is.
    */
-  let headChoices = $derived(!phone || full ? choices : [
-    ...tools.items,
+  let headChoices = $derived<MenuItem[]>([
     ...choices,
-    ...(active ? [separator('sep-close'), { id: CLOSE_TAB, label: fill(strings.rightPanel.closeTab, { title: tools.title ?? label(active) }), glyph: X }] : [])
+    ...(phone ? [] : [
+      separator('sep-window'),
+      { id: MAXIMIZE, label: rightPanel.maximized ? strings.rightPanel.restore : strings.rightPanel.maximize, glyph: rightPanel.maximized ? Minimize2 : Maximize2, testid: MAXIMIZE },
+      ...(rightPanel.floating ? [{ id: DOCK, label: strings.browser.dock, glyph: PanelsTopLeft, testid: DOCK }] : [])
+    ]),
+    ...(phone && active ? [separator('sep-close'), { id: CLOSE_TAB, label: fill(strings.rightPanel.closeTab, { title: label(active) }), glyph: X }] : [])
   ]);
 
   function pickPanel(id: string): void {
     const thread = store.openThread;
-    if (phone && tools.pick?.(id)) return;
-    if (id === CLOSE_TAB) { if (active) void closeTabs(panel, 'close', active.id); }
+    if (id === MAXIMIZE) rightPanel.maximized = !rightPanel.maximized;
+    else if (id === DOCK) { rightPanel.floating = false; rightPanel.maximized = false; }
+    else if (id === CLOSE_TAB) { if (active) void closeTabs(panel, 'close', active.id); }
     else if (id === ALL_PANELS || id === IN_USE) full = id === ALL_PANELS;
     else if (id === CUSTOMIZE) store.showSettings('appearance', CONTROLS_SECTION);
     else if (id === 'terminal-toggle') store.toggleTerminal();
@@ -395,7 +403,6 @@
 
     <div
       class="tabs"
-      class:held={!!tools.bar && surfaces.length === 1}
       class:hidden-start={overflowing && hiddenStart}
       class:hidden-end={overflowing && hiddenEnd}
       role="tablist"
@@ -443,12 +450,8 @@
             <!-- The tooltip on the trigger, not the tab: the list lives inside the tab and a native tooltip would cover its rows. -->
             <span class="selector">
               <Menu items={headChoices} onpick={pickPanel} cap={SELECTOR_CAP} placement="bottom" variant="ghost" label={tooltip(surface)} heading={strings.thread.panelMenu} testid="panel-add" onclose={() => (full = false)}>
-                {#if phone}
-                  <!-- A phone's title: the panel's name (or the surface's own, "Changed files"), the file it reads under it. -->
-                  <span class="title-lines"><span class="name ui-label" data-testid="panel-title">{tools.title ?? label(surface)}</span>{#if tools.detail}<span class="detail ui-label">{tools.detail}</span>{/if}</span>
-                {:else}
-                  <span class="name ui-label">{label(surface)}</span>
-                {/if}<ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
+                <!-- A phone's title is the panel's name alone: the file it reads has its own picker in the body. -->
+                <span class="name ui-label" data-testid={phone ? 'panel-title' : undefined}>{label(surface)}</span><ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
               </Menu>
             </span>
           {:else}
@@ -459,7 +462,7 @@
       {#if empty}
         <!-- No panel yet: the selector stands alone, the launcher's title. -->
         <span class="selector alone">
-          <Menu items={choices} onpick={pickPanel} cap={SELECTOR_CAP} placement="bottom" variant="ghost" label={strings.thread.panelMenu} heading={strings.thread.panelMenu} titled={false} testid="panel-add" onclose={() => (full = false)}>
+          <Menu items={headChoices} onpick={pickPanel} cap={SELECTOR_CAP} placement="bottom" variant="ghost" label={strings.thread.panelMenu} heading={strings.thread.panelMenu} titled={false} testid="panel-add" onclose={() => (full = false)}>
             <span class="name ui-label">{strings.thread.panelMenu}</span><ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
           </Menu>
         </span>
@@ -479,31 +482,8 @@
       </button>
     {/if}
 
-    {#if tools.bar}{@render tools.bar()}{:else}<span class="spacer"></span>{/if}
+    <span class="spacer"></span>
 
-    {#if rightPanel.floating}
-      <button type="button" class="ghost small icon" data-testid="panel-dock"
-        title={strings.browser.dock} aria-label={strings.browser.dock}
-        onclick={() => { rightPanel.floating = false; rightPanel.maximized = false; }}>
-        <PanelsTopLeft size={14} strokeWidth={1.75} />
-      </button>
-    {/if}
-
-    <button
-      type="button"
-      class="ghost small icon maximize"
-      title={rightPanel.maximized ? strings.rightPanel.restore : strings.rightPanel.maximize}
-      aria-label={rightPanel.maximized ? strings.rightPanel.restore : strings.rightPanel.maximize}
-      aria-pressed={rightPanel.maximized}
-      data-testid="panel-maximize"
-      onclick={() => (rightPanel.maximized = !rightPanel.maximized)}
-    >
-      {#if rightPanel.maximized}
-        <Minimize2 size={14} strokeWidth={1.75} />
-      {:else}
-        <Maximize2 size={14} strokeWidth={1.75} />
-      {/if}
-    </button>
     <button
       type="button"
       class="ghost small icon panel-close"
@@ -524,7 +504,7 @@
     <!-- Keyed on the tab: the old surface leaves at once and the new one is
          there in the same frame, settling in. -->
     {#key active?.id}
-    <div class="surface" data-native={active?.kind === 'browser' || active?.kind === 'agent-browser' || undefined} use:arriveAfter>
+    <div class="surface" use:arriveAfter>
     {#if active?.kind === 'desk'}
       {#if store.openThread?.agentSessionId}
         {#key store.threadKey(store.openThread.id)}<AgentDesk {store} />{/key}
@@ -659,8 +639,6 @@
     flex: none;
   }
 
-  /* One tab beside a surface's bar keeps its size: the bar gives way, not the tab into a scroller. */
-  .tabs.held { flex: none; }
   .tabs {
     display: flex;
     align-items: center;
@@ -800,15 +778,12 @@
     flex-direction: column;
   }
 
-  /* From a high opacity, never from nothing, 4 px under its place: the first
-     frame already reads, and only the body moves. */
+  /* One fade of the incoming body, from a high opacity, never from nothing:
+     the first frame already reads. No rise: a moving box drew the old place
+     under the new one for a frame, and dragged a browser's native view along. */
   .surface:global([data-arriving]) {
-    animation: surface-in var(--dur-2) var(--ease-enter) both;
+    animation: surface-fade var(--dur-2) var(--ease-enter) both;
   }
-  @keyframes surface-in { from { opacity: 0.85; transform: translateY(4px); } }
-  /* Opacity only for a browser: its page is a native view laid over this box,
-     and a moving box would drag it along. */
-  .surface[data-native]:global([data-arriving]) { animation-name: surface-fade; }
   @keyframes surface-fade { from { opacity: 0.85; } }
   /* A cut under reduced motion, whatever the duration tokens say. */
   @media (prefers-reduced-motion: reduce) { .surface:global([data-arriving]) { animation: none; } }
@@ -874,11 +849,7 @@
     .tab.active { max-width: none; flex: 0 1 auto; min-width: 0; height: auto; padding: 0; background: transparent; }
     .tabs { flex: 0 1 auto; }
     .strip .selector :global(.trigger.ghost) { height: var(--touch-target); padding: 0 6px 0 2px; gap: 4px; }
-    .title-lines { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 0; line-height: 1.2; }
-    /* Two lines stacked: a label's trim to the capitals would pull the second over the first. */
-    .title-lines > .ui-label { max-width: 100%; margin-block: 0; padding-block: 0; text-box: normal; }
-    .title-lines .name { font-size: var(--text-base); font-weight: 600; color: var(--color-foreground); }
-    .title-lines .detail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); color: var(--color-muted-foreground); }
+    .tab.active .name { font-size: var(--text-base); font-weight: 600; color: var(--color-foreground); }
 
     .panel,
     .panel.maximized {
@@ -904,10 +875,6 @@
       display: none;
     }
 
-    /* The sheet already fills the screen. */
-    .maximize {
-      display: none;
-    }
   }
 
   .panel.floating {

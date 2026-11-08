@@ -258,7 +258,7 @@
           <span class="label">{strings.drafts.incognito}</span>
         </button>
       {:else if thread?.incognito}
-        <span class="chip incognito" title={strings.drafts.incognitoOn} aria-label={strings.drafts.incognitoOn} data-testid="thread-incognito">
+        <span class="ui-chip incognito" title={strings.drafts.incognitoOn} aria-label={strings.drafts.incognitoOn} data-testid="thread-incognito">
           <VenetianMask size={13} strokeWidth={1.75} />
           <span class="label">{strings.drafts.incognito}</span>
         </span>
@@ -398,7 +398,7 @@
     .pending-text { display: none; }
     .trace { padding: 0; min-width: var(--touch-target); justify-content: center; }
     .trace .label, .incognito .label, .context-chip :global(.label) { display: none; }
-    .context-chip :global(.chip) { min-width: var(--touch-target); justify-content: center; }
+    .context-chip :global(.ui-chip) { min-width: var(--touch-target); justify-content: center; }
     /* The header's one menu holds these on a phone. */
     .watch-chip { display: none; }
     .panel-switch > button { width: var(--touch-target); height: var(--touch-target); }

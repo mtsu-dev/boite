@@ -32,28 +32,36 @@ async function rows(command: string) {
   return { parent, child, groups };
 }
 
-test('a permission reads whole under its row, with its sub-agent on a line of its own, and its one action opens the thread', async () => {
+test('a permission reads whole under its row, its sub-agent\'s question is a row of its own, and each row\'s one action opens its thread', async () => {
   const command = 'git push --force-with-lease origin feature/a-branch-name-long-enough-to-wrap-in-the-row\n&& gh pr create --fill';
   const { parent, child, groups } = await rows(command);
-  // One thread, one row: the sub-agent that asks is a line of its parent's row.
-  expect(groups).toHaveLength(1);
-  expect(groups[0]!.helpers.map(helper => helper.thread.id)).toEqual([child.id]);
-  mounted = mount(ActivityRow, { target: document.body, props: { ...groups[0]!, now: Date.now() } });
+  // One event, one row: a question is not the same ask as a permission, so the sub-agent does not ride its parent's row.
+  expect(groups).toHaveLength(2);
+  const own = groups.find(group => group.row.thread.id === parent.id)!;
+  const asks = groups.find(group => group.row.thread.id === child.id)!;
+  expect(own.helpers).toEqual([]);
+  expect(asks.helpers).toEqual([]);
+  mounted = mount(ActivityRow, { target: document.body, props: { ...own, now: Date.now() } });
   await settle();
   expect(document.querySelectorAll('[data-testid=thread-row]')).toHaveLength(1);
   expect(document.querySelector('[data-testid=thread-reason]')?.textContent).toBe('Wants to run:');
   // The command whole, both lines, never cut to its first.
   expect(document.querySelector('[data-testid=thread-operation]')?.textContent).toBe(command);
-  expect(document.querySelector('[data-testid=thread-helper]')?.textContent).toBe('Check the parser · Which retry policy?');
+  expect(document.querySelector('[data-testid=thread-helper]')).toBeNull();
   const verbs = document.querySelectorAll<HTMLButtonElement>('[data-testid=thread-verb]');
   expect([...verbs].map(verb => [verb.textContent?.trim(), verb.dataset.verb])).toEqual([['Allow', 'allow']]);
   verbs[0]!.click(); await settle();
   await vi.waitFor(() => expect(store.openThread?.id).toBe(parent.id));
+  await unmount(mounted); document.body.innerHTML = '';
+  mounted = mount(ActivityRow, { target: document.body, props: { ...asks, now: Date.now() } });
+  await settle();
+  const verb = document.querySelector<HTMLButtonElement>('[data-testid=thread-verb]')!;
+  expect([verb.textContent?.trim(), verb.dataset.verb]).toEqual(['Answer', 'answer']);
 });
 
 test('a command too long to read in the row asks for Review before any Allow', async () => {
-  const { groups } = await rows(Array.from({ length: 12 }, (_, line) => `echo step ${line}`).join('\n'));
-  mounted = mount(ActivityRow, { target: document.body, props: { ...groups[0]!, now: Date.now() } });
+  const { parent, groups } = await rows(Array.from({ length: 12 }, (_, line) => `echo step ${line}`).join('\n'));
+  mounted = mount(ActivityRow, { target: document.body, props: { ...groups.find(group => group.row.thread.id === parent.id)!, now: Date.now() } });
   await settle();
   expect(document.querySelector('[data-testid=thread-operation]')?.classList.contains('long')).toBe(true);
   const verb = document.querySelector<HTMLButtonElement>('[data-testid=thread-verb]')!;

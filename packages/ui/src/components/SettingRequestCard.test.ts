@@ -58,7 +58,7 @@ test('Apply writes the setting through settings.set, the card closes as applied 
     expect(query('[data-testid=setting-reason]').textContent).toBe('Builds stall under the cap');
     expect(query('[data-testid=setting-previous]').textContent).toBe('75%');
     expect(query('[data-testid=setting-proposed]').textContent).toBe('60%');
-    expect(query('[data-testid=setting-place]').textContent).toBe('Windows, sound and memory › Resource limits');
+    expect(query('[data-testid=setting-place]').textContent).toBe('Memory and processes › Resource limits');
 
     query<HTMLButtonElement>('[data-testid=setting-apply]').click();
     await vi.waitFor(() => expect(store.pendingQuestions.some((question) => question.id === questionId)).toBe(false));

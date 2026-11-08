@@ -4,7 +4,7 @@
   import MobileSettings from './MobileSettings.svelte';
   import BrainPage from './BrainPage.svelte';
   import InfoTip from './InfoTip.svelte';
-  import { Activity, Brain, ChevronLeft, Coins, FlaskConical, Gauge, Keyboard, Mic, Monitor, Palette, Puzzle, Plug, Settings, ShieldCheck, Stethoscope, Wrench } from '@lucide/svelte';
+  import { Activity, Brain, ChevronLeft, Coins, FlaskConical, Gauge, Keyboard, MemoryStick, Mic, Monitor, Palette, Puzzle, Plug, Settings, Stethoscope, Wrench } from '@lucide/svelte';
   import KeyboardPage from './KeyboardPage.svelte';
   import LimitsPage from './LimitsPage.svelte';
   import PluginsPage from './PluginsPage.svelte';
@@ -31,7 +31,7 @@
   import SettingsMachineBar from './SettingsMachineBar.svelte';
   import { untrack } from 'svelte';
   import { holdSettingsCard, revealSettingsCard } from '../lib/settings-flash';
-  import { desktopPage, desktopSettings, groupOf, machinePage, ownerOnly, pagesOf, sectionsOf, SETTINGS_GROUPS } from '../lib/settings-tabs';
+  import { desktopPage, desktopSettings, groupOf, machinePage, movedTo, ownerOnly, pagesOf, sectionsOf, SETTINGS_GROUPS } from '../lib/settings-tabs';
   import { titleSlot } from '../lib/title-slot.svelte';
 
   let { store, onopenthread }: { store: Store; onopenthread?: () => void } = $props();
@@ -73,10 +73,11 @@
     if (machine === store) return;
     untrack(() => { machine.settingsTab = tab; machine.settingsSection = section; });
   });
-  /** The Workspace card moved from Appearance to General: an old link to it lands on its new page. */
+  /** A card that moved (Workspace to General, Windows and sound to General): a link to its old page lands on its new one. */
   $effect(() => {
     const section = store.settingsSection;
-    if (store.settingsTab === 'appearance' && section?.id === 'workspace') untrack(() => store.showSettings('general', 'workspace', { flash: section.flash === true }));
+    const page = section && movedTo(store.settingsTab, section.id);
+    if (page && section) untrack(() => store.showSettings(page, section.id, { flash: section.flash === true }));
   });
   const narrow = new MediaQuery('(max-width: 720px)');
   const inShell = window.__TAURI_INTERNALS__ !== undefined;
@@ -96,7 +97,7 @@
     { id: 'usage', label: strings.settings.tabs.usage, icon: Coins },
     { id: 'limits', label: strings.usage.limits, icon: Gauge },
     { id: 'task-manager', label: strings.taskManager.title, icon: Activity },
-    { id: 'resources', label: strings.settings.tabs.resources, icon: ShieldCheck },
+    { id: 'resources', label: strings.settings.tabs.resources, icon: MemoryStick },
     { id: 'machines', label: strings.settings.tabs.machines, icon: Monitor },
     { id: 'advanced', label: strings.settings.tabs.advanced, icon: Wrench },
     { id: 'diagnostics', label: strings.settings.tabs.diagnostics, icon: Stethoscope },
@@ -108,6 +109,7 @@
   let children: Partial<Record<SettingsTab, { id: string; label: string }[]>> = $derived({
     general: [
       { id: 'conversations', label: strings.settings.conversations },
+      ...(store.owner ? [{ id: 'quiet', label: strings.protection.quiet }] : []),
       { id: 'workspace', label: strings.settings.workspace },
       { id: 'archived', label: strings.settings.archived.heading },
       ...(store.owner ? [{ id: 'worktrees', label: strings.settings.worktrees.heading }] : []),
@@ -136,7 +138,6 @@
       { id: 'usage-threads', label: strings.usage.threads }
     ],
     resources: [
-      { id: 'quiet', label: strings.protection.quiet },
       { id: 'limits', label: strings.protection.limits },
       { id: 'tasks', label: strings.protection.tasks }
     ],
@@ -257,8 +258,8 @@
     ['accounts', 'agent-updates', strings.harnessUpdates.auto],
     ['accounts', 'agent-updates', strings.harnessUpdates.heading],
     ['machines', 'updates', strings.serverUpdate.updates],
-    ['resources', 'quiet', strings.settings.focusGuard],
-    ['resources', 'quiet', strings.settings.muteAgents],
+    ['general', 'quiet', strings.settings.focusGuard],
+    ['general', 'quiet', strings.settings.muteAgents],
     ['resources', 'limits', strings.settings.memoryProtection],
     ['resources', 'tasks', strings.settings.reapOrphans],
     ['advanced', 'phone', strings.settings.listenOnLan],

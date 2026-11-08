@@ -10,6 +10,7 @@
   import type { Store } from '../lib/store.svelte';
   import { countsOf, turnFileTree, turnLineCounts, type TurnDiff, type TurnFile, type TurnFileNode } from '../lib/turn-files';
   import Deferred, { parts } from './Deferred.svelte';
+  import ChangeCount from './ChangeCount.svelte';
   import { chatPrefs } from '../lib/chat-prefs.svelte';
 
   /**
@@ -72,8 +73,8 @@
     <button type="button" class="ghost small fold" data-testid="turn-files-toggle" aria-expanded={open} onclick={() => (open = !open)}>
       <ChevronRight size={14} class={open ? 'fold-caret open' : 'fold-caret'} />
       <span class="ui-label">{strings.chat.turnFiles}</span>
-      <span class="count ui-label">{files.length}</span>
-      {#if diffs.length > 0}{@render counts(lines.total)}{/if}
+      <!-- "1 file, +7 −2": the one count of changes (lib/change-count.ts). -->
+      <span class="count"><ChangeCount files={files.length} added={diffs.length > 0 ? lines.total.added : null} removed={diffs.length > 0 ? lines.total.removed : null} testid="turn-lines" /></span>
     </button>
     {#if open && hasFolders}
       <button type="button" class="ghost small icon expand" data-testid="turn-files-expand"
@@ -113,10 +114,6 @@
     onclick={() => store.panel.openChanges(files.find(openable)?.relative ?? undefined)}>
     <PanelRightOpen size={14} /><span class="ui-label">{strings.chat.allChanges}</span>
   </button>
-{/snippet}
-
-{#snippet counts(value: { added: number; removed: number })}
-  <span class="lines" data-testid="turn-lines"><span class="added">+{value.added}</span><span class="removed">-{value.removed}</span></span>
 {/snippet}
 
 {#snippet fileIcon(file: TurnFile)}
@@ -165,7 +162,7 @@
             <span class="name ui-label">{file.name}</span>
           </span>
         {/if}
-        {#if fileLines}{@render counts(fileLines)}{/if}
+        {#if fileLines}<span class="lines"><ChangeCount added={fileLines.added} removed={fileLines.removed} /></span>{/if}
         {#if store.pickerAvailable && file.absolute !== null && file.change !== 'deleted'}
           <button
             type="button"
@@ -229,13 +226,9 @@
   .lines {
     display: inline-flex;
     flex: none;
-    gap: 4px;
     font-size: var(--text-xs);
-    font-variant-numeric: tabular-nums;
     font-weight: 400;
   }
-  .added { color: var(--color-success); }
-  .removed { color: var(--color-danger); }
   .row .lines { padding-right: 6px; }
   .expand, .tools { margin-left: auto; }
   .expand ~ .tools { margin-left: 0; }

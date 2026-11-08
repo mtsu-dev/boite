@@ -8,6 +8,7 @@
   import { canMove, moveBlocked, pendingLine, startThreadDrag, threadDrag } from '../lib/thread-move.svelte';
   import { pickThreadAction, threadMenuItems, threadToolItems } from '../lib/thread-menu';
   import { focusOnMount } from '../lib/actions';
+  import { collapseRow } from '../lib/row-collapse';
   import { strings } from '../lib/strings';
   import ThreadHeadline, { pullRequestLabel } from './ThreadHeadline.svelte';
   import { ago, exactTime } from '../lib/format';
@@ -37,11 +38,11 @@
     showDone?: boolean;
     /** Recent's flat list: the project's tile leads the row, since no card names it. */
     compact?: boolean;
-    /** Activity's row (ActivityRow.svelte): since when, at the row's right edge above `action`. */
+    /** Activity's row (ActivityRow.svelte): since when, at the end of the title's line, before `action`. */
     at?: number;
     /** Activity: what the thread asks, under its title, whole. */
     detail?: Snippet;
-    /** Activity: the row's one action, under the time, outside the row's own button. */
+    /** Activity: the row's one action, at the end of the title's line, outside the row's own button; it wraps itself in `.feed-action`. */
     action?: Snippet;
     /** Recent: where the row lives (its project, its machine among several), when the tile alone may not tell rows apart (lib/row-place.ts). */
     where?: string;
@@ -112,6 +113,7 @@
 {:else}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
+    out:collapseRow|global={() => !owner.threads.some(entry => entry.id === thread.id)}
     class="thread"
     class:open
     class:unread={thread.unread}
@@ -142,7 +144,7 @@
       <ThreadHeadline {owner} {thread} {now} {open} tile={compact ? project : undefined} {pullRequest} mark />
       {#if detail}
         <!-- Activity: who asks (the tile and the title, two lines of it), then what, whole; the time and the one
-             action stand at the right edge, after the words they act on. -->
+             action end the title's line. -->
         {@render detail()}
       {:else}
         {#if where}<span class="where ui-label" data-testid="thread-where">{where}</span>{/if}
@@ -221,15 +223,22 @@
      the tooltip; how long work has run lives in the thread. */
   .thread:not(:hover, :has(:focus-visible)) .row :global(.headline > :is(.draft, .pin, .pr)),
   .thread:not(:hover, :has(:focus-visible)) .row :global(.headline > .when:not(.waiting, .error, .interrupted, .working, .delegating, .monitoring, .background, .watching)) { display: none; }
-  /* Activity's row: the words take the width, two lines of title before any ellipsis; the time and the one action
-     stand in a column at the right edge, the time on the title's line, the action under it. */
-  .feed { display: flex; }
-  .feed > .row { flex: 1; min-width: 0; }
-  .feed .row :global(.headline) { align-items: flex-start; }
-  .feed .row :global(.headline .title) { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; }
+  /* Activity's row, built like a list row: the title's line ends in since when and the one action, at the same
+     offset on every row; what is asked runs under it to the row's end. `--side-room` keeps that line's end free:
+     the time alone in Updates, the time and the action in Needs you. */
+  .feed { --feed-pad: 8px; --feed-time: 44px; --feed-verb: 92px; --side-room: calc(var(--feed-time) + var(--pad-x)); }
+  .feed:has(:global(.feed-action)) { --side-room: calc(var(--feed-time) + 8px + var(--feed-verb) + var(--pad-x)); }
+  .feed > .row { padding-block: var(--feed-pad); }
+  .feed .row :global(.headline) { align-items: flex-start; margin-right: calc(var(--side-room) - var(--pad-x)); }
+  /* A clamped title's second line keeps its untrimmed box: .ui-label's half-em under it showed the top of the third
+     line, so only a descender's room is kept. */
+  .feed .row :global(.headline .title) { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; padding-bottom: 0.25em; margin-bottom: -0.25em; }
   .feed .row :global(.headline > .tile) { margin-top: 2px; }
-  .feed-side { display: flex; flex: none; flex-direction: column; align-items: flex-end; justify-content: space-between; gap: 6px; padding: 6px var(--pad-x) 8px 0; }
-  .feed-side time { line-height: 20px; font-size: var(--text-xs); color: var(--color-subtle); font-variant-numeric: tabular-nums; }
+  .feed-side { position: absolute; top: 0; right: 0; display: flex; align-items: center; gap: 8px; height: calc(20px + 2 * var(--feed-pad)); padding-right: var(--pad-x); }
+  .feed-side time { min-width: var(--feed-time); line-height: 20px; font-size: var(--text-xs); color: var(--color-subtle); text-align: end; font-variant-numeric: tabular-nums; }
+  /* The menu takes the time's place, never the action's. */
+  .feed .actions { top: calc(var(--feed-pad) + 10px - var(--act) / 2); }
+  .feed:has(:global(.feed-action)) .actions { right: calc(var(--pad-x) + var(--feed-verb) + 8px); }
   /* Recent's second line, on the title's edge: where the row lives, when the tile alone may not say it. */
   .where { margin-top: -3px; padding-left: 26px; overflow: hidden; font-size: var(--text-xs); color: var(--color-muted-foreground); text-align: start; text-overflow: ellipsis; white-space: nowrap; }
   /* The Recent list: a step wider inside, the project's tile first. */

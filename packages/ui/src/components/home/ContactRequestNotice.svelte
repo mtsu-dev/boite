@@ -96,7 +96,7 @@
 {/if}
 
 {#snippet heading(text: string)}
-  <span class="notify-title"><span class="who">{text}</span><span class="notify-meta">{machineName(displayed!.machine)}{#if pending.length > 1}<span class="count"> · {count(pending.length)}</span>{/if}</span></span>
+  <span class="notify-title"><span class="who">{text}</span><span class="notify-meta">{machineName(displayed!.machine)}{#if pending.length > 1}<span class="count">{` · ${count(pending.length)}`}</span>{/if}</span></span>
 {/snippet}
 
 <style>

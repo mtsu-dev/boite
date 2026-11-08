@@ -13,6 +13,7 @@
   import ThreadState from './ThreadState.svelte';
   import { threadState } from '../lib/thread-state';
   import { feedOperation, type FeedVerb } from '../lib/activity-feed';
+  import { collapseRow } from '../lib/row-collapse';
 
   /**
    * A phone's thread row, the desktop row's grammar at a finger's size: the
@@ -21,8 +22,8 @@
    * request waits in the thread, the pin under the slide. `compact` is the flat lists' form (Recent, Activity): the
    * project's tile first. Activity (the phone's screen) is the title, two lines of it, with its mark and since when at
    * its end, then `reason`, what the thread wants, whole: a command it asks to run reads in full in a mono block
-   * under it. Each sub-agent that asks is a line of its own (`helpers`), so one thread is one row, as on the desktop;
-   * `verb` names what a Needs you row asks, a button under the words at the row's right edge, Review when the command
+   * under it. A sub-agent with the same ask is a line of its own (`helpers`), one event per row, as on the desktop;
+   * `verb` names what a Needs you row asks, a button at the end of the title's line, Review when the command
    * is too long to read here. `onverb` opens what the verb is for, the row itself unless a sub-agent asks.
    * The row menu has no button of its own: a long press opens it, a slide
    * left shows pin and archive. Its trigger stays for the keyboard, drawn
@@ -35,7 +36,7 @@
     helpers?: { thread: ThreadSummary; reason?: string }[];
     /** Recent: where the row lives, first on its line under the title (lib/row-place.ts). */
     where?: string;
-    onopen: () => void; onverb?: () => void; onaction: (action: string) => void;
+    onopen: () => void; onverb?: (event?: MouseEvent) => void; onaction: (action: string) => void;
   } = $props();
   const owner = $derived(machine.store);
   const pin = $derived(items.find(item => item.id === 'pin'));
@@ -58,7 +59,7 @@
   function swiped(action: string) { closeSwipedRow(); onaction(action); }
 </script>
 
-<div class="row" class:reason={reason !== undefined} class:tiled={compact && project !== undefined} data-testid="mobile-row" data-thread-id={thread.id} data-machine-id={machine.id}>
+<div class="row" out:collapseRow|global={() => !owner.threads.some(entry => entry.id === thread.id)} class:reason={reason !== undefined} class:tiled={compact && project !== undefined} data-testid="mobile-row" data-thread-id={thread.id} data-machine-id={machine.id}>
   <!-- Under the row, for a finger that slides it left; the long press offers the same to everyone else. -->
   {#if pin || archive}
     <div class="swipe-actions" data-swipe-actions aria-hidden="true">
@@ -120,9 +121,12 @@
   /* The command as it will run: mono, wrapped, every line; too long, its first lines and Review. */
   .operation { display: block; padding: 6px 8px; border-radius: var(--radius-sm); background: var(--color-code-background); color: var(--color-code-foreground); font-family: var(--font-mono); font-size: var(--text-xs); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
   .operation.long { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; line-clamp: 6; overflow: hidden; }
-  /* The verb under the words at the row's right edge: they keep the whole width. One width for every verb. */
-  .body.verbed { display: flex; flex-direction: column; }
-  .verb { align-self: flex-end; justify-content: center; min-width: 88px; min-height: var(--touch-target); margin: -4px 12px 10px; font-size: var(--text-sm); font-weight: 600; }
+  /* The verb ends the title's line, centred on it, at one width and one offset on every row; the title's line keeps
+     its room, what is asked runs under it to the row's end. */
+  .body { --verb: 88px; }
+  .verb { position: absolute; top: max(0px, calc(10px + 11px - var(--touch-target) / 2)); right: 12px; justify-content: center; width: var(--verb); min-height: var(--touch-target); font-size: var(--text-sm); font-weight: 600; }
+  /* The button is a finger's height, taller than one title line: what is asked starts below it. */
+  .verbed .feed-head { min-height: calc(var(--touch-target) - 10px); margin-right: calc(var(--verb) + 8px); }
   /* The ring every row draws, inside the box: the list's edge would clip one outside it. */
   .thread:focus-visible { outline-offset: -2px; }
   .thread :global(.headline) { gap: 10px; align-items: flex-start; }
@@ -130,7 +134,9 @@
   /* A phone reads every title at full ink: the line under it says which rows need the user. Two lines of it
      before the ellipsis, in every list. */
   .thread :global(.headline .title) { color: var(--color-foreground); font-weight: 400; }
-  .thread :global(.headline .title) { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; }
+  /* A clamped title's second line keeps its untrimmed box: .ui-label's half-em under it showed the top of the third
+     line, so only a descender's room is kept. */
+  .thread :global(.headline .title) { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; padding-bottom: 0.25em; margin-bottom: -0.25em; }
   .thread.offline { opacity: 0.55; }
   .thread :global(.headline .pin) { display: none; }
   /* One status per row: a state outranks the unsent draft's mark, which the thread shows once open. */

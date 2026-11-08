@@ -80,7 +80,7 @@
 
 {#if docked}
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-<div class="permission docked" data-testid="permission-card" data-decision="pending" data-family={described.family} role="group" aria-label={sentence} tabindex="-1" {@attach keys} {@attach arrive}>
+<div class="permission docked decision-card" data-testid="permission-card" data-decision="pending" data-family={described.family} role="group" aria-label={sentence} tabindex="-1" {@attach keys} {@attach arrive}>
   <DecisionHead>
     <span class="sentence ui-label" data-testid="permission-sentence" title={described.subject || toolName}>{sentence}</span>
     {#if request}<InfoTip text={`${why ? `${why}\n\n` : ''}${toolName}\n${json(request.input)}`} topic={sentence} testid="permission-input" />{/if}
@@ -97,7 +97,7 @@
     {/snippet}
   </DecisionHead>
   {#if subjectBlock}
-    <pre class="mono subject" data-testid="permission-subject">{subjectBlock}</pre>
+    <pre class="mono subject scroll-edges" data-testid="permission-subject">{subjectBlock}</pre>
   {/if}
   {#if described.change}
     {@const change = described.change}
@@ -250,24 +250,25 @@
     gap: 6px;
   }
 
-  /* At the top of the composer the composer is the frame; a hairline parts it from the field. */
+  /* At the top of the composer, the one raised card in it: its edge, surface
+     and height budget are the dock's (Composer's `.decision-card`). Its head
+     stays put and the subject under it scrolls, so Deny and Allow are always
+     in sight however long the command. */
   .permission.docked {
-    border: none;
-    border-bottom: 1px solid var(--color-border);
-    border-radius: 0;
-    background: transparent;
-    box-shadow: none;
     padding: 10px 12px;
     gap: 8px;
     outline: none;
   }
+  .permission.docked > :global(*) { flex: none; }
+  .permission.docked > :global(:not(.decision-head)) { flex: 0 1 auto; min-height: 0; overflow: auto; }
   .docked:focus-visible { box-shadow: inset 0 0 0 2px var(--color-accent); }
   .docked .sentence { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .docked :global(.info-tip) { flex: none; }
   .docked :global(.info-bubble) { font-family: var(--font-mono); font-size: var(--text-xs); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 50vh; overflow: auto; }
   .choices { display: flex; align-items: center; gap: 6px; }
   .count { flex: none; color: var(--color-muted-foreground); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
-  .docked pre { max-height: 120px; padding: 9px 12px; border-radius: var(--radius-md); background: var(--color-surface); font-size: var(--text-meta); }
+  /* Squeezed by the dock's budget, it scrolls; a line under its edge fades instead of being cut (app.css `.scroll-edges`). */
+  .docked pre { --scroll-edge-ground: var(--color-surface); --scroll-edge-top: 9px; --scroll-edge-bottom: 9px; max-height: 120px; padding: 9px 12px; border: none; border-radius: var(--radius-md); background: var(--color-surface); font-size: var(--text-meta); }
   .choice { flex: none; height: 30px; gap: 8px; padding: 0 12px; border-radius: var(--radius-md); font-size: var(--text-sm); font-weight: 600; }
   /* Neutral ink, never the accent: the accent stays for send. */
   .choice.allow { background: var(--color-foreground); color: var(--color-background); }
@@ -277,7 +278,7 @@
   .choice.allow .kbd { border-color: color-mix(in srgb, currentColor 30%, transparent); background: transparent; color: inherit; }
   @media (max-width: 720px) {
     /* The ask is one short sentence: it keeps Deny and Allow on its line at 360. */
-    .permission.docked { --decision-title: 6rem; }
+    .permission.docked { --decision-title: 6rem; padding: 8px 10px; }
     .choice .kbd { display: none; }
     .choice { height: var(--touch-target); padding: 0 12px; }
   }

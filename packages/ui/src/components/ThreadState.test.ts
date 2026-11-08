@@ -196,16 +196,17 @@ test('a working row holds a still ring, the open thread the one spinner, and cou
   expect(state.getAttribute('title')).toBe('Working for 1m 07s');
 });
 
-test('words show only where the user must act, each beside its 8 px dot; the queue is a ring and news is its time alone', () => {
+test('words show only where the user must act, beside a mark of its own shape: the amber dot, the failure\'s "!" disc; the queue is a ring and news is its time alone', () => {
   for (const [thread, kind, word, mark] of [
     [{ status: 'waiting' }, 'waiting', 'Needs you', '.dot'],
-    [{ status: 'error' }, 'error', 'Failed', '.dot'],
+    [{ status: 'error' }, 'error', 'Failed', '.fail'],
     [{ status: 'queued' }, 'queued', '', '.work-ring'],
     [{ status: 'idle', unread: true }, 'done', '2m ago', null]
   ] as const) {
     const state = draw(thread);
     expect(state.dataset['state']).toBe(kind);
     expect(state.querySelector('svg, .spinner')).toBeNull();
+    if (mark) expect(state.querySelectorAll('.dot, .fail, .work-ring')).toHaveLength(1);
     if (mark) expect(state.querySelector(mark)).not.toBeNull();
     else expect(state.querySelector('.dot, .work-ring')).toBeNull();
     expect(state.textContent?.trim()).toMatch(kind === 'done' ? /\d/ : new RegExp(`^${word}$`));
@@ -217,7 +218,7 @@ test('words show only where the user must act, each beside its 8 px dot; the que
 test('the desktop list draws every state as its mark alone, the words kept in their name', () => {
   for (const [thread, kind, mark, name] of [
     [{ status: 'waiting' }, 'waiting', '.dot', /^Needs you$/],
-    [{ status: 'error' }, 'error', '.dot', /^Failed$/],
+    [{ status: 'error' }, 'error', '.fail', /^Failed$/],
     [{ status: 'running', runningSince: NOW - 65_000 }, 'working', '.work-ring', /^Working for /],
   ] as const) {
     running = mount(ThreadState, { target: document.body, props: { thread: { unread: false, runningSince: null, backgroundWork: null, lastUserMessageAt: NOW, createdAt: NOW, ...thread }, now: NOW, mark: true } });

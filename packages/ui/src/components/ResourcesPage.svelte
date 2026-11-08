@@ -11,7 +11,7 @@
   import { Autosave, toggled, typed, whole } from '../lib/autosave.svelte';
   import { threadTone } from '../lib/thread-state';
 
-  let { store, limitsOnly = false }: { store: Store; limitsOnly?: boolean } = $props();
+  let { store }: { store: Store } = $props();
   const uid = $props.id();
 
   let cpuCap = $state(untrack(() => store.settings?.agentCpuCapPercent ?? 75));
@@ -50,29 +50,12 @@
 </script>
 
 <div class="page" data-testid="resources-page">
-  {#if !limitsOnly}
   <header>
     <div>
       <h1>{strings.settings.tabs.resources}</h1>
     </div>
   </header>
 
-  <section class="card" id="settings-quiet">
-    <h2 class="ui-label-box"><span class="ui-label">{strings.protection.quiet}</span><InfoTip topic={strings.protection.quiet} text={strings.protection.windows} /></h2>
-    <label for="{uid}-focus-guard" class="switch-row">
-      <span class="text"><span id="{uid}-focus-guard-name">{strings.settings.focusGuard}</span><SyncMark {store} key="focusGuard" /></span>
-      <input id="{uid}-focus-guard" aria-labelledby="{uid}-focus-guard-name" type="checkbox" role="switch" data-testid="setting-focus-guard" checked={store.settings?.focusGuard ?? true} onchange={(event) => void toggled(event.currentTarget, focusGuard => store.saveSettings({ focusGuard }))} />
-    </label>
-    <label for="{uid}-mute-agents" class="switch-row">
-      <span class="text"><span id="{uid}-mute-agents-name">{strings.settings.muteAgents}</span><SyncMark {store} key="muteAgents" /></span>
-      <input id="{uid}-mute-agents" aria-labelledby="{uid}-mute-agents-name" type="checkbox" role="switch" data-testid="setting-mute-agents" checked={store.settings?.muteAgents ?? true} onchange={(event) => void toggled(event.currentTarget, muteAgents => store.saveSettings({ muteAgents }))} />
-    </label>
-    <label for="{uid}-reap-orphans" class="switch-row">
-      <span class="text ui-label-box"><span class="ui-label" id="{uid}-reap-orphans-name">{strings.settings.reapOrphans}</span><InfoTip topic={strings.settings.reapOrphans} text={strings.settings.reapOrphansHint} /><SyncMark {store} key="reapOrphans" /></span>
-      <input id="{uid}-reap-orphans" aria-labelledby="{uid}-reap-orphans-name" type="checkbox" role="switch" data-testid="setting-reap-orphans" checked={store.settings?.reapOrphans ?? true} onchange={(event) => void toggled(event.currentTarget, reapOrphans => store.saveSettings({ reapOrphans }))} />
-    </label>
-  </section>
-  {/if}
   <section class="card" id="settings-limits">
     <h2 class="ui-label-box"><span class="ui-label">{strings.protection.limits}</span><InfoTip gather topic={strings.protection.limits} text="" testid="section-info" /><SaveStatus save={limitsSave} /></h2>
     <label for="{uid}-memory-protection" class="switch-row">
@@ -105,10 +88,14 @@
       </dl>
     {:else}<p class="hint">{strings.resources.unknown}</p>{/if}
   </section>
-  {#if !limitsOnly}
-  <div class="group-heading" id="settings-tasks">
+  <!-- The live list, led by the switch that closes what a closed thread left running. -->
+  <section class="card" id="settings-tasks">
     <h2 class="tasks-heading"><span class="ui-label">{strings.protection.tasks}</span><span class="live-dot" aria-hidden="true"></span></h2>
-  </div>
+    <label for="{uid}-reap-orphans" class="switch-row">
+      <span class="text ui-label-box"><span class="ui-label" id="{uid}-reap-orphans-name">{strings.settings.reapOrphans}</span><InfoTip topic={strings.settings.reapOrphans} text={strings.settings.reapOrphansHint} /><SyncMark {store} key="reapOrphans" /></span>
+      <input id="{uid}-reap-orphans" aria-labelledby="{uid}-reap-orphans-name" type="checkbox" role="switch" data-testid="setting-reap-orphans" checked={store.settings?.reapOrphans ?? true} onchange={(event) => void toggled(event.currentTarget, reapOrphans => store.saveSettings({ reapOrphans }))} />
+    </label>
+  </section>
 
   {#if store.resources.length === 0}
     <p class="empty" data-testid="resources-empty">{strings.resources.empty}</p>
@@ -152,15 +139,14 @@
       </table></div>
     </section>
   {/each}
-  {/if}
 </div>
 
 <style>
-  .memory-reading { display: flex; flex-wrap: wrap; gap: 16px 32px; margin: 0; font-size: var(--text-sm); }
+  .memory-reading { display: flex; flex-wrap: wrap; gap: 16px 32px; margin: 0; padding: var(--space-3) 0; font-size: var(--text-sm); }
   dt { color: var(--color-muted-foreground); }
   dd { margin: 6px 0 0; font-variant-numeric: tabular-nums; }
   dd[data-state="critical"] { color: var(--color-danger); }
-  form { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+  form { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; padding: var(--space-3) 0; }
   form label { display: grid; gap: 6px; justify-items: start; }
   form .name { display: inline-flex; align-items: center; font-size: var(--text-sm); color: var(--color-muted-foreground); }
   /* A PID and a run time are figures, not code: the sans in tabular figures, at the size of the name beside them. */
@@ -169,7 +155,8 @@
   .process-table { overflow-x: auto; }
   @media (max-width: 720px) { form { grid-template-columns: 1fr; } .head { flex-wrap: wrap; } .load { margin-left: 0; flex-basis: 100%; order: 3; } }
 
-  section {
+  /* A thread's processes: its table runs to the card's edges, its head filled. */
+  .flush {
     margin-bottom: 10px;
     overflow: hidden;
   }

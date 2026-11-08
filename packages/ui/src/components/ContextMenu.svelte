@@ -4,7 +4,7 @@
   import { Closing } from '../lib/closing.svelte';
   import { contextMenu, type ContextMenuState } from '../lib/context-menu.svelte';
   import { restoreFocus } from '../lib/focus';
-  import type { MenuItem } from '../lib/menu';
+  import { dangerLast, type MenuItem } from '../lib/menu';
 
   const GAP = 6;
 
@@ -32,18 +32,17 @@
     opened = true;
     held = current;
     popover.show();
-    left = current.x;
-    top = current.y;
     sheet = window.matchMedia?.('(max-width: 720px)').matches ?? false;
+    // A sheet is docked from its first frame: placed at the finger first, it drew there once, labels cut by the edge.
+    left = sheet ? 0 : current.x;
+    top = current.y;
     void tick().then(() => {
       const el = root;
       if (!el) return;
       // Match anchored menus: the top layer stays above the whip and its control.
       if (el.showPopover && !el.matches(':popover-open')) el.showPopover();
       if (sheet) {
-        // Docked to the bottom edge over the tab bar; no row opens lit under the finger.
-        left = 0;
-        top = Math.max(GAP, window.innerHeight - el.offsetHeight);
+        // Docked to the bottom edge over the tab bar (its style); no row opens lit under the finger.
         el.focus({ preventScroll: true });
         return;
       }
@@ -142,13 +141,16 @@
     bind:this={root}
     use:popover.attach
     onanimationend={popover.end}
-    style="left: {left}px; top: {top}px;"
+    style={sheet ? 'left: 0; bottom: 0;' : `left: ${left}px; top: ${top}px;`}
     data-testid="context-menu"
     data-mobile-sheet={sheet ? 'true' : undefined}
     oncontextmenu={(event) => event.preventDefault()}
   >
-    {#each request.items as item (item.id)}
-      {#if item.separator}
+    {#each dangerLast(request.items) as item (item.id)}
+      {#if item.separator && item.label}
+        <!-- A labelled rule opens a group, as in Menu.svelte: a long menu names its groups. -->
+        <div class="section ui-label" role="presentation">{item.label}</div>
+      {:else if item.separator}
         <div class="rule" role="separator"></div>
       {:else}
         <button
@@ -169,10 +171,11 @@
           {#if item.glyph}
             <span class="glyph" aria-hidden="true"><item.glyph size={16} strokeWidth={1.75} /></span>
           {/if}
-          <span class="label ui-label">{item.label}</span>{#if item.checked || item.active}<span class="check"><Check size={16} aria-hidden="true" /></span>{/if}
+          <span class="label ui-label">{item.label}</span>
           {#if item.hint}
             <span class="hint ui-label">{item.hint}</span>
           {/if}
+          {#if item.checked || item.active}<span class="check"><Check size={14} aria-hidden="true" /></span>{/if}
         </button>
       {/if}
     {/each}
@@ -208,17 +211,30 @@
     pointer-events: none;
   }
 
+  /* The one sheet inset, as Menu.svelte's: rows, rules and section titles start on one line. */
   .context-menu[data-mobile-sheet='true'] {
     width: 100vw;
     max-height: 85dvh;
     padding-inline: var(--space-2);
   }
 
+  .section {
+    flex-shrink: 0;
+    padding: var(--space-3) var(--overlay-row-pad) var(--space-2);
+    font-size: var(--text-meta);
+    font-weight: 600;
+    color: var(--color-subtle);
+  }
+
+  .section:first-child { padding-top: var(--space-1); }
+  .context-menu[data-mobile-sheet='true'] .section { padding-top: var(--space-4); }
+  .context-menu[data-mobile-sheet='true'] .section:first-child { padding-top: 0; }
+
   .row {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-3);
+    gap: var(--space-2);
     width: 100%;
     height: auto;
     min-height: var(--overlay-row);
@@ -248,9 +264,11 @@
     color: var(--color-danger);
   }
 
+  /* Glyph to label as in Menu.svelte: the gap and 2 px. */
   .glyph {
     display: flex;
     flex: 0 0 16px;
+    margin-right: 2px;
     color: var(--color-muted-foreground);
   }
 
@@ -265,10 +283,10 @@
     overflow-wrap: anywhere;
   }
 
-  /* The one selection mark, as in Menu.svelte. */
+  /* The one selection mark, as in Menu.svelte: 14 px, at the row's far edge. */
   .check {
     display: flex;
-    flex: none;
+    flex: 0 0 14px;
     color: var(--color-accent);
   }
 
