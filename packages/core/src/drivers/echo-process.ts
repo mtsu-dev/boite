@@ -73,6 +73,13 @@ export class EchoProcess {
     });
   }
 
+  /** The turn was stopped: the request in flight resolves now and what the child still writes goes nowhere. */
+  cancel(): void {
+    const waiting = this.#waiting;
+    this.#waiting = null;
+    waiting?.resolve();
+  }
+
   /** The turn is over: the child's stdin ends and it exits; a stopped turn kills it. */
   end(kill: boolean): Promise<void> {
     if (this.#gone) return this.exited;

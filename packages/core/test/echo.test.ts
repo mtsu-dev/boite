@@ -4,6 +4,9 @@ import { echoThread, scriptedClaude, startTestCore, waitFor } from './harness.ts
 import type { TestCore } from './harness.ts';
 import { connect } from '../src/client.ts';
 import { thrown } from './settle.ts';
+import { spawn } from 'node:child_process';
+import { echoDriver } from '../src/drivers/echo.ts';
+import type { TurnContext } from '../src/drivers/types.ts';
 
 let harness: TestCore;
 
@@ -850,4 +853,40 @@ describe('echo driver', () => {
     await client.call('threads.archive', { threadId });
     expect((await client.call('threads.get', { threadId })).commands).toEqual([]);
   });
+});
+
+test('a stopped [process] turn emits no text after the stop', async () => {
+  const pids: number[] = [];
+  let stopped = false;
+  let afterStop = 0;
+  let first!: () => void;
+  const firstDelta = new Promise<void>((resolve) => { first = resolve; });
+  const ctx = {
+    thread: { id: 'stop-process', cwd: process.cwd() },
+    prompt: '[process][flood:400000000]',
+    attachments: [],
+    sessionId: null,
+    commands: () => {},
+    context: () => {},
+    spawnChild: (cmd: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv }) => {
+      const child = spawn(cmd, args, { ...options, stdio: ['pipe', 'pipe', 'pipe'] });
+      if (child.pid !== undefined) pids.push(child.pid);
+      return child;
+    },
+    emit: {
+      startMessage: () => 'm1',
+      part: () => {},
+      complete: () => {},
+      delta: () => { if (stopped) afterStop += 1; first(); },
+    },
+  } as unknown as TurnContext;
+  const handle = echoDriver.startTurn(ctx);
+  await firstDelta;
+  stopped = true;
+  handle.stop();
+  expect((await handle.done).status).toBe('stopped');
+  // What the pipe still held when the child was killed has had time to arrive.
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  for (const pid of pids) { try { process.kill(pid, 0); throw new Error(`echo child ${pid} still runs`); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error; } }
+  expect(afterStop).toBe(0);
 });

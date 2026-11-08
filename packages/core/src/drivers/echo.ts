@@ -261,6 +261,7 @@ export const echoDriver: Driver = {
       },
       stop(): void {
         state.stopped = true;
+        state.agent?.cancel();
         for (const wake of [...state.waiters]) wake();
       },
     };
@@ -303,7 +304,7 @@ async function run(ctx: TurnContext, state: RunState): Promise<TurnResult> {
   const writeText = async (text: string): Promise<void> => {
     if (text.length === 0) return;
     if (state.agent !== null) {
-      await Promise.race([state.agent.stream({ text }, delta), untilStopped(state)]);
+      await state.agent.stream({ text }, delta);
       return;
     }
     for (let at = 0; at < text.length; at += CHUNK_SIZE) {
@@ -598,7 +599,7 @@ async function run(ctx: TurnContext, state: RunState): Promise<TurnResult> {
         break;
       case 'flood':
         state.agent ??= new EchoProcess(ctx, ctx.thread.cwd);
-        await Promise.race([state.agent.stream({ flood: segment.chars }, delta), untilStopped(state)]);
+        await state.agent.stream({ flood: segment.chars }, delta);
         break;
       case 'notice':
         ctx.emit.part(messageId, takeIndex(), { type: 'error', message: NOTICE_MESSAGE });
