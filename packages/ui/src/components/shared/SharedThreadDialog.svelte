@@ -80,6 +80,5 @@
   form { border-top: 1px solid var(--color-border); padding-top: 12px; }
   label { display: grid; gap: 8px; font-size: var(--text-sm); }
   textarea { width: 100%; resize: vertical; }
-  .error { color: var(--color-danger); font-size: var(--text-sm); }
   @media (max-width: 720px) { button { min-height: var(--touch-target); } }
 </style>

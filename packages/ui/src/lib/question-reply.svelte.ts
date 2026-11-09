@@ -3,8 +3,7 @@ import type { Store } from './store.svelte';
 import { isLoading, unresolvedAssetId } from './draft-attachments';
 import { readyToSend } from './composer-attachments';
 import { focusComposer } from './focus';
-import { fill, strings } from './strings';
-import { answerSummary } from './answer-receipt';
+import { strings } from './strings';
 
 /*
  * A question that takes a written answer is answered from the composer: one
@@ -31,13 +30,6 @@ class QuestionReplies {
   /** Composers typed in within their last pause, by key: each has its own, so typing in one never ends another's. */
   typing = $state<Record<string, true>>({});
   pauses = new Map<string, ReturnType<typeof setTimeout>>();
-  /**
-   * The answer just given while the agent works, whichever control gave it:
-   * the decision card at the timeline's end folds to this one line
-   * ("You answered: X", "Allowed: git push") until the turn ends or the
-   * thread changes (`ThreadDecision`).
-   */
-  receipt = $state<{ threadId: string; text: string } | null>(null);
 }
 
 /** How long a composer sits untouched before a question that arrived during typing may take it. */
@@ -131,7 +123,6 @@ export function replyOf(store: Store, questionId: string): { replying: boolean; 
 export async function sendAnswer(store: Store, question: QuestionRequest): Promise<boolean> {
   const held = repliesOf(store);
   // Read as the press lands: the answer may restart the turn before it comes back.
-  const working = store.busy && question.threadId === store.openThread?.id;
   const state = replyTarget(store)?.id === question.id ? store.composerStates[question.threadId] : undefined;
   const optionIds = held.picks[question.id] ?? [];
   const text = state?.text ?? '';
@@ -143,7 +134,6 @@ export async function sendAnswer(store: Store, question: QuestionRequest): Promi
   if (attachments.some(unresolvedAssetId)) { store.error = strings.errors.draftAttachment; return false; }
   // The card's own button skips the composer's wait: a file still being read has no bytes to send.
   if (attachments.some(isLoading)) { store.error = strings.errors.filesLoading; return false; }
-  const said = answerSummary(question.options, optionIds, text.trim(), attachments.length);
   if (state) state.sending = true;
   try {
     if (!await store.answerQuestion(question.threadId, question.id, optionIds, text.trim(), attachments)) return false;
@@ -154,7 +144,6 @@ export async function sendAnswer(store: Store, question: QuestionRequest): Promi
   if (state?.attachments === attachments) state.attachments = [];
   if ((held.picks[question.id] ?? []) === optionIds) delete held.picks[question.id];
   if (held.chosen === question.id) held.chosen = null;
-  if (working && said) held.receipt = { threadId: question.threadId, text: fill(strings.chat.questionAnswered, { answer: said }) };
   return true;
 }
 

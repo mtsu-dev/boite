@@ -77,7 +77,6 @@
     background: none;
     color: var(--color-muted-foreground);
     font-size: var(--text-xs);
-    font-weight: 500;
   }
   .label:disabled { opacity: 1; cursor: default; }
   .label:hover:not(:disabled), .label:focus-visible { background: none; }

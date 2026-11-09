@@ -766,7 +766,7 @@
       width: min(42vw, 448px);
       min-width: 320px;
       flex: none;
-      box-shadow: var(--shadow-e3);
+      box-shadow: var(--shadow-overlay);
       /* Over the chat it takes no room: it slides across from the right edge. */
       --slide-room: calc(100% + var(--frame-gap));
       animation: slide-over-left var(--motion-duration) var(--motion-curve);
@@ -842,7 +842,7 @@
     flex: none;
     z-index: 34;
     background: var(--color-surface);
-    box-shadow: var(--shadow-e3);
+    box-shadow: var(--shadow-overlay);
   }
   /* A floating panel appears where it was left and fades away from there. */
   .panel.floating:not(.closing) { animation: none; }

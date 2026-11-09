@@ -18,7 +18,7 @@
 <script lang="ts">
   import { FolderMinus, Plus } from '@lucide/svelte';
   import type { Store } from '../lib/store.svelte';
-  import ThreadNotice from './ThreadNotice.svelte';
+  import Notice from './Notice.svelte';
 
   /*
    * In the composer's place of a live thread whose worktree Boite removed once
@@ -30,8 +30,8 @@
   const t = $derived(strings.sidebar.worktreeGone);
 </script>
 
-<ThreadNotice icon={FolderMinus} tone="quiet" testid="worktree-gone" title={t.title} info={removalInfo(removal)} docked replaces>
+<Notice icon={FolderMinus} tone="info" testid="worktree-gone" title={t.title} info={removalInfo(removal)} docked replaces>
   {#snippet actions()}
     <button type="button" class="small primary" data-testid="worktree-gone-new" onclick={() => store.startDraft(projectId)}><Plus size={13} strokeWidth={1.75} /><span class="ui-label">{t.startHere}</span></button>
   {/snippet}
-</ThreadNotice>
+</Notice>

@@ -42,7 +42,7 @@
 </section>
 
 <style>
-  .side-answer { position: relative; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-activity-surface); margin-bottom: 8px; overflow: hidden; }
+  .side-answer { position: relative; border-radius: var(--radius-lg); background: var(--color-activity-surface); margin-bottom: 8px; overflow: hidden; }
   .close { position: absolute; top: 6px; right: 8px; }
   .content { padding: 8px 42px 8px 10px; max-height: 40dvh; overflow: auto; overflow-wrap: anywhere; }
   footer { display: flex; justify-content: flex-end; padding: 0 8px 6px; }

@@ -801,23 +801,6 @@
   .switch-slot { flex: 0 0 var(--switch-width, 40px); }
 
 
-  /* A link that does a button's job: leaving for a sign-in page or an installer. */
-  a.button {
-    display: inline-flex;
-    align-items: center;
-    min-height: var(--control-sm);
-    padding: 2px 10px;
-    border: 1px solid var(--color-edge);
-    border-radius: var(--radius-sm);
-    font-size: var(--text-sm);
-    font-weight: 400;
-    color: var(--color-foreground);
-    text-decoration: none;
-    transition: background var(--dur-2) var(--ease-out-quint);
-  }
-  a.button:hover { background: var(--color-hover); }
-  a.button.primary { background: var(--primary-fill); border-color: transparent; color: var(--primary-ink); justify-self: start; }
-  a.button.primary:hover { background: var(--primary-hover); }
 
   .track { height: 2px; border-radius: 999px; background: var(--color-surface-3); overflow: hidden; }
   .bar { display: block; height: 100%; background: var(--color-foreground); transition: width var(--dur-2) var(--ease-out-quint); }
@@ -835,7 +818,7 @@
   .details { display: grid; gap: 10px; margin-left: 32px; padding: 4px 0 6px; }
   .section-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 12px; min-height: var(--control-sm); margin-top: 6px; }
   .section-label { display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; }
-  .account { display: grid; gap: 6px; padding: 12px 14px 8px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-2); }
+  .account { display: grid; gap: 6px; padding: 12px 14px 8px; border-radius: var(--radius-lg); background: var(--color-surface-2); }
   /* Name and state read as one line, the state's own fix at its end; a long name wraps the state under it. */
   /* Name and state wrap inside their own block, so a Sign in stays on the first line at any width. */
   .account .account-line { flex-wrap: nowrap; gap: 10px; min-height: 26px; }

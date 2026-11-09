@@ -154,6 +154,6 @@
   .actions { display: flex; flex-wrap: wrap; gap: 6px; }
   .hint { margin: 8px 0 0; color: var(--color-muted-foreground); font-size: var(--text-sm); }
   /* Not a `.hint`: the settings pages paint every hint muted, and a refusal reads as one. */
-  .error { margin: 0; color: var(--color-danger); font-size: var(--text-sm); line-height: 1.5; overflow-wrap: anywhere; }
+  .error { margin: 0; line-height: 1.5; }
   .error::first-letter { text-transform: uppercase; }
 </style>

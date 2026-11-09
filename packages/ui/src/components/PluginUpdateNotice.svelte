@@ -5,6 +5,7 @@
   import { fill, strings } from '../lib/strings';
   import { workspace } from '../lib/workspace.svelte';
   import { notifyCorner } from '../lib/notify-corner';
+  import NoticeBox from './Notice.svelte';
   import { answerPluginUpdate, pluginUpdateOffer, readPluginUpdateAnswers } from '../lib/plugin-update-notice';
 
   interface Host { id: string; label: string; store: Store }
@@ -67,17 +68,14 @@
 {#if notices.length > 0}
   <div class="update-notices notify-corner" class:off-chat={offChat} use:notifyCorner data-testid="plugin-update-notices" role="region" aria-label={t.noticeLabel}>
     {#each notices as notice (notice.key)}
-      <article class="notice notify-card" data-tone="quiet" data-testid="plugin-update-notice" data-plugin={notice.plugin.id} data-version={notice.version}>
-        <span class="notify-mark" aria-hidden="true"><Puzzle size={16} strokeWidth={1.75} /></span>
-        <div class="notify-lines">
-          <span class="notify-title">{fill(t.noticeTitle, { name: notice.plugin.name, version: notice.version })}</span>
-          <p class="notify-text">{t.noticeBody}{#if several}<span class="sep" aria-hidden="true">{' · '}</span>{notice.host.label}{/if}</p>
-          <div class="notify-actions">
+      <div class="notice" data-testid="plugin-update-notice" data-plugin={notice.plugin.id} data-version={notice.version}>
+        <NoticeBox icon={Puzzle} floating title={fill(t.noticeTitle, { name: notice.plugin.name, version: notice.version })} detail={several ? `${t.noticeBody} · ${notice.host.label}` : t.noticeBody}>
+          {#snippet actions()}
             <button type="button" class="small" data-testid="plugin-update-run" onclick={() => answer(notice, true)}>{t.noticeUpdate}</button>
             <button type="button" class="ghost small" data-testid="plugin-update-later" onclick={() => answer(notice, false)}>{t.noticeLater}</button>
-          </div>
-        </div>
-      </article>
+          {/snippet}
+        </NoticeBox>
+      </div>
     {/each}
   </div>
 {/if}

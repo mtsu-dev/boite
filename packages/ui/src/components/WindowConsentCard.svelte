@@ -74,11 +74,8 @@
 
 <style>
   .consent {
-    border: 1px solid var(--color-edge);
-    border-left-style: dashed;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     background: var(--color-surface);
-    box-shadow: var(--shadow-e1);
     padding: 8px 12px 10px;
     display: flex;
     flex-direction: column;
@@ -100,7 +97,7 @@
   }
   .path { font-size: var(--text-xs); color: var(--color-muted-foreground); overflow-wrap: anywhere; }
   .hint { margin: 0; font-size: var(--text-sm); color: var(--color-muted-foreground); }
-  .error { margin: 0; font-size: var(--text-sm); color: var(--color-danger); overflow-wrap: anywhere; }
+  .error { margin: 0; }
 
   /* Answered or expired: one quiet row in the timeline, like an answered question. */
   .consent.resolved {

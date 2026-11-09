@@ -401,6 +401,8 @@
   /* One step over the edge, toward the text, in every theme and palette: a menu reads off the page behind it. */
   --overlay-edge: color-mix(in srgb, var(--color-edge), var(--color-foreground) 6%);
   --radius-overlay: var(--radius-lg);
+  /* The card's one fill (.card). */
+  --card-fill: var(--color-surface);
   --shadow-overlay: 0 12px 36px rgb(0 0 0 / 0.5), 0 1px 2px rgb(0 0 0 / 0.4);
   --overlay-pad: var(--space-1);
   --overlay-row: max(32px, var(--control));
@@ -545,7 +547,7 @@
   --control-head: 32px;
   --control-touch: 40px;
   /* The one icon button (`button.icon-button`): its drawn box and the target the pointer gets. */
-  --icon-button: 28px;
+  --icon-button: var(--control);
   --icon-button-target: 32px;
   /* Lucide's chevron-right, the one shape every disclosure turns. */
   --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E");
@@ -973,6 +975,7 @@ html[data-chat-width='full'] {
 /* Light, stamped by `lib/theme.ts` and by the boot script of `index.html`; dark stamps nothing. */
 [data-theme='light'] {
   --color-background: #f3f3f6;
+  --card-fill: var(--color-surface-2);
   /* The frame one step deeper (6.9 L* under the page); white is the ceiling above. */
   --color-frame: #dfdfe5;
   --color-frame-edge: rgba(0, 0, 0, 0.14);
@@ -1284,16 +1287,30 @@ a {
   min-block-size: 1lh;
 }
 
+/*
+ * The one button family. Every button is one of these, sized by one of two
+ * heights (`--control`, or `--control-sm` with `.small`), one corner, one
+ * weight, and one glyph size per height:
+ * - secondary, the default (`button`, `.secondary`): an outline on no fill;
+ * - `.primary`: solid in the text colour, the one action a view leads with
+ *   (the accent fills only `.primary.send`);
+ * - `.ghost` (`.quiet` is the same): no frame at rest, a fill under the pointer;
+ * - `.text`: the words alone, for a way out inside a sentence or a notice;
+ * - `.icon-button`: a glyph alone in a square of the height, no frame at rest;
+ * - `.danger`: a secondary or a primary that removes something.
+ * A component places its buttons and never redraws them.
+ */
 button {
+  --button-icon: 16px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   height: var(--control);
-  padding: 0 10px;
+  padding: 0 12px;
   border: 1px solid var(--color-edge);
   border-radius: var(--radius-md);
-  background: var(--control-glaze) var(--color-control-surface);
+  background: transparent;
   color: var(--color-foreground);
   font-weight: 400;
   cursor: pointer;
@@ -1309,13 +1326,8 @@ button {
 /* Hover fills only under a pointer that hovers: on a touch screen a tap left them stuck after release. */
 @media (hover: hover) {
   button:hover:not(:disabled) {
-    background: var(--control-glaze) var(--color-control-hover);
+    background: var(--color-hover);
   }
-}
-
-/* Filled controls share the surface reflection without adding a blur layer per button. */
-button:is(.icon, .primary, .ui-chip):not(.ghost):not(.quiet) {
-  box-shadow: var(--shadow-control);
 }
 
 /*
@@ -1334,7 +1346,6 @@ button:disabled {
   opacity: 0.45;
 }
 
-/* A primary action is filled in the text colour: the accent is kept for the send button. */
 /* A primary that cannot act yet is drawn as an outline: a faded filled slab
    read as heavy grey weight in the middle of a card. */
 button.primary:disabled {
@@ -1344,18 +1355,17 @@ button.primary:disabled {
   opacity: 1;
 }
 
-/* Chrome speaks in two weights (see the faces above): regular for every
-   control, semibold for the one action a view leads with. */
+/* A primary action is filled in the text colour: the accent is kept for the send button. */
 button.primary {
-  font-weight: 600;
-  background: var(--control-glaze) var(--primary-fill);
+  background: var(--primary-fill);
   border-color: var(--primary-fill);
   color: var(--primary-ink);
+  box-shadow: var(--shadow-control);
 }
 
 @media (hover: hover) {
   button.primary:hover:not(:disabled) {
-    background: var(--control-glaze) var(--primary-hover);
+    background: var(--primary-hover);
   }
 }
 
@@ -1391,37 +1401,89 @@ button.ghost {
 @media (hover: hover) {
   button.quiet:hover:not(:disabled),
   button.ghost:hover:not(:disabled) {
-    background: var(--color-surface-3);
+    background: var(--color-active);
     color: var(--color-foreground);
   }
 }
 
+/* Words that act inside a line: the type and colour of what they sit in, a fill only under the pointer or while their menu is open. */
+button.text {
+  height: auto;
+  padding: 2px 6px;
+  gap: 4px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+button.text[aria-expanded='true'] {
+  background: var(--color-hover);
+}
+
+/* Something that removes: a secondary in the danger ink, or a primary filled with it. */
 button.danger {
-  border-color: var(--color-edge);
-  color: var(--color-muted-foreground);
+  color: var(--color-danger);
 }
 
 @media (hover: hover) {
   button.danger:hover:not(:disabled) {
-    border-color: var(--color-danger);
-    color: var(--color-danger);
-    background: transparent;
+    background: color-mix(in oklab, var(--color-danger) 12%, transparent);
+    border-color: color-mix(in oklab, var(--color-danger) 45%, transparent);
   }
 }
 
+button.primary.danger {
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+  color: var(--color-on-danger);
+}
+
+@media (hover: hover) {
+  button.primary.danger:hover:not(:disabled) {
+    background: var(--color-danger-hover);
+  }
+}
+
+/* A link that does a button's job (a sign-in page, an installer): the same box as a button. */
+a.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: var(--control);
+  padding: 0 12px;
+  border: 1px solid var(--color-edge);
+  border-radius: var(--radius-md);
+  color: var(--color-foreground);
+  font-weight: 400;
+  text-decoration: none;
+  white-space: nowrap;
+}
+a.button.primary { background: var(--primary-fill); border-color: var(--primary-fill); color: var(--primary-ink); box-shadow: var(--shadow-control); }
+@media (hover: hover) {
+  a.button:hover { background: var(--color-hover); }
+  a.button.primary:hover { background: var(--primary-hover); }
+}
+
+button.small {
+  --button-icon: 14px;
+  height: var(--control-sm);
+  padding: 0 10px;
+  font-size: var(--text-sm);
+}
+
+button.small.text {
+  height: auto;
+  padding: 2px 6px;
+}
+
+/* A glyph alone: a square of the height. */
 button.icon {
   width: var(--control);
   padding: 0;
 }
 
-button.small {
-  height: var(--control-sm);
-  padding: 0 8px;
-  font-size: var(--text-sm);
-}
-
-/* `button.small` comes after `button.icon` at the same specificity, so its side
-   padding won here and left a 26 px icon button 8 px for its glyph. */
 button.small.icon {
   width: var(--control-sm);
   padding: 0;
@@ -1459,6 +1521,13 @@ button.icon-button:is(:focus-visible, [aria-haspopup][aria-expanded='true'], [ar
   button.icon-button:hover:not(:disabled) { background: var(--color-active); color: var(--color-foreground); }
 }
 button.icon-button:active:not(:disabled) { transform: scale(0.94); }
+
+/* One glyph size a height: 16 px on a control, 14 on a small one, whatever size a caller drew. */
+button:is(.primary, .secondary, .small, .ghost, .quiet, .text, .danger, .icon, .icon-button):not(.row) > svg.lucide,
+a.button > svg.lucide {
+  width: var(--button-icon);
+  height: var(--button-icon);
+}
 
 /* One stroke for the line set, by optical size: an icon drawn at 1.5 to 2 (Lucide's default included)
    takes `--icon-stroke`, heavier under 14 px and lighter from 18 px, so a 12 px glyph and a 28 px one
@@ -1706,11 +1775,20 @@ details[open] > summary .fold-caret {
   color: var(--color-muted-foreground);
 }
 
+/* The one card: one radius and one fill, no hairline and no shadow. A row
+   has no frame; an overlay (menus, popovers, dialogs, sheets) has the
+   overlay's edge, fill and one elevation (--shadow-overlay). */
 .card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  background: var(--card-fill);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-e1);
+}
+
+/* The one inline error: a sentence under what failed, in the danger ink. */
+p.error {
+  color: var(--color-danger);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 /* `ui-chip`, not `chip`: a component's own `.chip` class stays its own. */

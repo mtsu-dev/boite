@@ -70,7 +70,6 @@
   <div
     class="toast toast-slot"
     class:closing={toast.closing}
-    role="alert"
     use:toast.attach
     use:toastSlot
     onanimationend={toast.end}

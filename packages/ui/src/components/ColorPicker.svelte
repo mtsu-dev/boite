@@ -78,6 +78,5 @@
   .hue::-moz-range-thumb { width: 12px; height: 12px; background: var(--color-foreground); border: 2px solid var(--color-background); border-radius: 50%; }
   .hex { min-width: 0; width: 100%; font-family: var(--font-mono); font-size: var(--text-sm); }
   .sample { width: var(--control); height: var(--control); flex: none; border-radius: var(--radius-sm); border: 1px solid var(--color-edge); }
-  .error { color: var(--color-danger); font-size: var(--text-sm); }
   @media (max-width: 720px) { .hue-row { min-height: var(--touch-target); } .hue { height: 14px; } }
 </style>

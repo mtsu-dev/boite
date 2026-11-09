@@ -88,8 +88,8 @@ test('two asks waiting read the machine, a spaced dot and their count on the toa
     return { ...state, requests: [...state.requests, { ...pending, id: 'creq-second', createdAt: pending.createdAt + 1 }] };
   }) as typeof client.call);
   components.push(mount(AppRail, { target: document.body, props: { store } }));
-  await vi.waitFor(() => { flushSync(); expect(one('contact-request-notice')?.querySelector('.notify-meta .count')).toBeTruthy(); });
-  expect(one('contact-request-notice')!.querySelector('.notify-meta')!.textContent).toMatch(/^\S.* · 2$/);
+  await vi.waitFor(() => { flushSync(); expect(one('contact-request-notice')?.querySelector('[data-testid=contact-request-meta]')?.textContent).toMatch(/ · 2$/); });
+  expect(one('contact-request-notice')!.querySelector('[data-testid=contact-request-meta]')!.textContent).toMatch(/^\S.* · 2$/);
 });
 
 test('a dismissed request still counts on the rail\'s Activity, which refreshes after a reconnect without an update', async () => {

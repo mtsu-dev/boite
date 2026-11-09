@@ -93,7 +93,6 @@
   .tabs button[aria-selected='true'] { color: var(--color-foreground); background: var(--color-active); }
   .panel { padding-top: 12px; }
   footer { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--color-border); }
-  .error { color: var(--color-danger); font-size: var(--text-sm); overflow-wrap: anywhere; }
   .revoke { padding: 12px; background: var(--color-surface-2); border-radius: var(--radius-md); font-size: var(--text-sm); }
   .actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
   @media (max-width: 720px) { button { min-height: var(--touch-target); } }

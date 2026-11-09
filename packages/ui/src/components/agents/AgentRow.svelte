@@ -160,7 +160,7 @@
   .agent-row { position: relative; border-radius: var(--radius-md); transition: background var(--dur-2) var(--ease-out-quint), box-shadow var(--dur-2) var(--ease-out-quint); }
   .agent-row:hover { background: var(--color-hover); }
   /* The open row lifts: the active fill and the card shadow. */
-  .agent-row.open { background: var(--color-active); box-shadow: var(--shadow-e1); }
+  .agent-row.open { background: var(--color-active); }
   /* The picture spans both lines, the messenger way: one row tall, nothing under it. */
   .row { display: flex; align-items: center; width: 100%; height: auto; min-height: var(--row); padding: 7px 10px 7px 8px; gap: 10px; background: transparent; text-align: left; }
   .row:hover:not(:disabled) { background: transparent; }

@@ -192,10 +192,10 @@
     padding: 5px;
     display: flex;
     flex-direction: column;
-    background: var(--color-surface-2);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-e2);
+    background: var(--overlay-surface);
+    border: 1px solid var(--overlay-edge);
+    border-radius: var(--radius-overlay);
+    box-shadow: var(--shadow-overlay);
     font-size: var(--text-sm);
     z-index: 40;
     animation: pop var(--dur-2) var(--ease-out-quint);
@@ -255,7 +255,7 @@
   .filter :global(.trigger svg) { flex: none; }
   @media (prefers-reduced-motion: reduce) { .switch, .switch::after { transition: none; } }
   @media (max-width: 720px) {
-    .panel { width: auto; padding: 8px 6px max(8px, env(safe-area-inset-bottom)); }
+    .panel { width: auto; padding: 8px 6px max(8px, env(safe-area-inset-bottom)); border: 1px solid var(--overlay-edge); background: var(--overlay-surface); box-shadow: var(--shadow-overlay); border-radius: var(--radius-overlay); }
     .row { height: var(--touch-target); }
   }
 </style>

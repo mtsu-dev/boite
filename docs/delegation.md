@@ -113,29 +113,31 @@ reconstructed from its journal.
 
 ## Follow and steer
 
-The parent chat keeps one "Started N agents" row per launch: the children
-started after the same message share a row, placed where the first of them
-started, and it stays once they finish. A launch older than the loaded history
-shows when that page loads. Each row shows successful completions out of its
-agents, failed or stopped tasks, and elapsed time, in hours past an hour. Click
-it to open every agent's model, task, status and result in the right panel. The timer runs locally while work is active and freezes when
-all agents settle. Sending a follow-up to a child resumes its status and timer.
+The parent chat keeps one grouped row per launch: the children started after
+the same message share a row, placed where the first of them started, and it
+stays once they finish. A launch older than the loaded history shows when that
+page loads. The row shows up to three provider marks then "+N", "4 subagents"
+over one muted line of counts ("4 working", or "2 working, 1 needs you, 1
+done", with failed and stopped ones), the elapsed time, in hours past an hour,
+and a chevron. A click unfolds it in place on one row per subagent: its
+provider's mark, its name, its state (a spinner, the amber dot when it waits on
+the user, a check, the red mark, a square when stopped) and its time. Clicking
+a subagent opens its own conversation (on its machine, under "parent /
+subagent" in the header, a back arrow to the parent on a phone); one whose
+machine is not connected opens the team overview. The timer runs locally while
+work is active and freezes when all agents settle. Sending a follow-up to a
+child resumes its status and timer. A workflow the thread started has one
+grouped row of its own, where it started, with its state, its steps and one
+tick per phase; a click opens its graph. The components are
+`DelegationActivity.svelte` and `WorkflowActivity.svelte` on `ActivityCard.svelte`.
 
-One row at the top of the composer card stands for the subagents at work and
-the running workflows. One alone shows its name and elapsed time; several fold
-into "3 active" with a working spinner and a chevron, and a click, Enter or
-Space opens the list above that row: one line each with its name, its state
-(working, needs you, done, failed with the red mark) and its time, cut at a
-word, about five lines on a desktop and four on a phone before the list
-scrolls. The fold starts folded and stays open for its thread while it is
-shown; Escape folds it. While a child waits on the user the row carries the
-amber dot and how many wait; the question itself is the decision card at the
-end of the parent's timeline. A row appears for a running workflow even before
-a child starts. Clicking a subagent opens its own conversation (on its machine,
-under "parent / subagent" in the header, a back arrow to the parent on a
-phone); a workflow opens its graph and a
-provider's own agent the team overview. A finished entry keeps its check or its
-red mark for a moment, then leaves; the panel keeps completed results. A
+While the thread waits on work it sent, one quiet line stands above the
+composer card, outside it: a spinner, "Waiting on 4 subagents" (or workflows),
+their names whole as far as they fit, and a Stop text button that stops the
+subagents and the running workflows. Queued messages stand under that line. A
+provider's own running subagents count in it, and Stop ends the turn that runs
+them. An agent a command started follows its own process: it counts too, but
+the line offers no Stop for it alone. A
 subagent's own conversation counts only the children it started, never itself
 or its siblings. The component is `AgentDock.svelte`.
 
@@ -143,14 +145,15 @@ A parent's row in the sidebar, the Recent list and the phone's list carries a
 chip with the number of its subagents at work, in every state of the parent.
 When a child asks the user something or waits on a permission, the chip takes
 the waiting colour and the parent reads Needs you, unless the parent itself
-failed. The parent's decision card, at the end of its timeline, shows each such child's question, "Asked by"
-its title, with its options and an Open button that goes to the child's
-conversation; a permission gets a row with the tool it asks for and Open, since
-it is approved in the child's conversation only. Text typed in the parent's
-composer never answers a child's question: it stays a message to the parent,
-and a written answer goes through Open. The core sends a child's `question.*`
-and `permission.*` events to the windows that have its parent open, and the
-card reads the children's open questions when the parent opens.
+failed. A child's question is the question at the top of the parent's
+composer, titled "Asked by" the child's name, with its options and an Open
+button that goes to the child's conversation. A child's permission is approved
+in the child's conversation only: the parent's grouped row marks that child as
+needing the user, and its row opens it. Text typed in the parent's composer
+never answers a child's question: it stays a message to the parent, and a
+written answer goes through Open. The core sends a child's `question.*` and
+`permission.*` events to the windows that have its parent open, and the
+composer reads the children's open questions when the parent opens.
 
 Messages carry the authenticated sender and appear as forwarded messages.
 Claude receives them at a tool boundary; Codex, Muse, pi and Grok can accept

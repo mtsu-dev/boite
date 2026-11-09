@@ -163,10 +163,10 @@
   /* A desktop panel's controls are its size; a finger gets the touch target (the rule at the end of this block). */
   .ui-chip { min-height: var(--control); min-width: var(--control); justify-content: center; }
   .muted, small { color: var(--color-muted-foreground); font-size: var(--text-sm); }
-  .error { margin: 0; padding: 0 16px 8px; font-size: var(--text-sm); color: var(--color-danger); overflow-wrap: anywhere; max-height: 90px; overflow: auto; }
+  .error { margin: 0; padding: 0 16px 8px; max-height: 90px; overflow: auto; }
   .viewer { position: relative; flex: 1; min-height: 80px; display: flex; overflow: hidden; background: var(--color-background); }
   .cover { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; }
-  .card { display: flex; flex-direction: column; align-items: center; gap: 10px; max-width: 360px; width: 100%; padding: 20px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface-2); box-shadow: var(--shadow-e2); }
+  .card { display: flex; flex-direction: column; align-items: center; gap: 10px; max-width: 360px; width: 100%; padding: 20px; border-radius: var(--radius-lg); background: var(--color-surface-2); }
   .card p { margin: 0; overflow-wrap: anywhere; } .card .heading { font-weight: 600; } .card button { min-height: var(--control); min-width: 120px; justify-content: center; }
   .center { margin: auto; padding: 24px; text-align: center; }
   .screen { position: relative; flex: 1; min-width: 0; -webkit-user-select: none; user-select: none; }

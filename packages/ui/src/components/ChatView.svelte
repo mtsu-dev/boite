@@ -252,7 +252,6 @@
     width: min(calc(100% - 40px), var(--content));
     margin: 0 auto 16px;
     padding: 12px 14px;
-    border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
     background: var(--color-surface);
     color: var(--color-muted-foreground);

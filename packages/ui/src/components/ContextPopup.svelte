@@ -143,7 +143,7 @@
   .state[data-state='warm'] { color: var(--color-success); }
   .state[data-state='maybe'] { color: var(--color-caution); }
   .state[data-state='cold'] { color: var(--color-muted-foreground); }
-  .popup { position: fixed; width: min(320px, calc(100vw - 24px)); z-index: 60; padding: 16px; border: 1px solid var(--color-edge); border-radius: var(--radius-lg); background: var(--color-surface-2); box-shadow: var(--shadow-e3); animation: pop var(--dur-2) var(--ease-out-quint); color: var(--color-foreground); overflow-y: auto; overscroll-behavior: contain; }
+  .popup { position: fixed; width: min(320px, calc(100vw - 24px)); z-index: 60; padding: 16px; border: 1px solid var(--overlay-edge); border-radius: var(--radius-overlay); background: var(--overlay-surface); box-shadow: var(--shadow-overlay); animation: pop var(--dur-2) var(--ease-out-quint); color: var(--color-foreground); overflow-y: auto; overscroll-behavior: contain; }
   .popup.closing { animation: pop-out var(--dur-2) var(--ease-out-quint); pointer-events: none; }
   .heading { display: flex; justify-content: space-between; font-size: var(--text-sm); font-weight: 600; }
   .title { display: flex; align-items: center; gap: 4px; }

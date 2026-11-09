@@ -151,7 +151,7 @@ test('a file fetched too late for the tap is kept for the next one, and a dismis
   // A remote file is not read ahead: it may be large.
   expect(fetch).not.toHaveBeenCalled();
   query<HTMLButtonElement>('[data-testid=image-viewer-share]').click();
-  await vi.waitFor(() => expect(query('[data-testid=image-viewer-notice]').textContent).toBe('clip is ready: tap Share again.'));
+  await vi.waitFor(() => expect(query('[data-testid=image-viewer-notice]').textContent?.trim()).toBe('clip is ready: tap Share again.'));
   expect((share.mock.calls[0] as unknown as [{ files: File[] }])[0].files[0]!.name).toBe('clip.mp4');
   share.mockImplementation(async () => { throw new DOMException('dismissed', 'AbortError'); });
   query<HTMLButtonElement>('[data-testid=image-viewer-share]').click();

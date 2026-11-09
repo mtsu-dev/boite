@@ -75,6 +75,6 @@
   .add { display: flex; gap: 8px; margin-top: 8px; }
   .add input { flex: 1; min-width: 0; }
   .add button { flex: none; }
-  .error { margin: 4px 0 0; font-size: var(--text-sm); color: var(--color-danger); }
+  .error { margin: 4px 0 0; }
   @media (pointer: coarse) { .icon { min-width: var(--touch-target); min-height: var(--touch-target); } }
 </style>

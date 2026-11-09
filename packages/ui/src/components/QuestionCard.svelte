@@ -82,9 +82,9 @@
   const answers = $derived(docked && options.length > 0);
 
   /**
-   * The docked choices get a room: in the timeline, its height less what the
-   * decision holds besides them, so the whole card stands above the composer;
-   * elsewhere a CSS max-height, never the card's animated height. Whole rows
+   * The docked choices get a room: the composer's cap on the question
+   * (`ThreadDecision`'s `--question-cap`) less what the question holds
+   * besides them, so its head and its pair always show whole. Whole rows
    * only: when they do not all fit, the list stops under the last row that
    * does and a line counts the rest. Settled before the card arrives, so its
    * growth never reflows the count, and the end frame is the reduced-motion one.
@@ -101,12 +101,12 @@
   const MORE_LINE = 36;
   function roomOf(node: HTMLElement): number {
     const cap = parseFloat(getComputedStyle(node).maxHeight);
-    const root = node.closest<HTMLElement>('[data-scroll-root]');
     const card = node.closest<HTMLElement>('[data-testid=thread-decision]');
-    if (!root?.clientHeight || !card) return cap;
+    const total = card ? parseFloat(getComputedStyle(card).maxHeight) : NaN;
+    if (!card || !Number.isFinite(total)) return cap;
     // scrollHeight counts the card whole while its arrival still squeezes it.
-    const around = card.scrollHeight - node.clientHeight + MORE_LINE + 24;
-    const room = Math.max(96, root.clientHeight - around);
+    const around = card.scrollHeight - node.clientHeight + MORE_LINE;
+    const room = Math.max(96, total - around);
     return Number.isFinite(cap) ? Math.min(cap, room) : room;
   }
   function fit(): void {
@@ -128,17 +128,13 @@
   $effect(() => {
     void options.length;
     if (!list || !docked || typeof ResizeObserver !== 'function') return;
-    // A new width rewraps the rows; a new timeline height changes the room.
-    const root = list.closest<HTMLElement>('[data-scroll-root]');
-    let width = list.clientWidth, height = root?.clientHeight ?? 0;
+    // A new width rewraps the rows; a new window height changes the cap (`svelte:window` below).
+    let width = list.clientWidth;
     const watch = new ResizeObserver(() => {
-      if (!list) return;
-      const now = root?.clientHeight ?? 0;
-      if (list.clientWidth === width && now === height) return;
-      width = list.clientWidth; height = now; fit();
+      if (!list || list.clientWidth === width) return;
+      width = list.clientWidth; fit();
     });
     watch.observe(list);
-    if (root) watch.observe(root);
     fit();
     return () => watch.disconnect();
   });
@@ -217,7 +213,7 @@
       <span class="given ui-label" data-testid="question-cancelled" title={text}>{fill(strings.chat.questionCancelled, { question: text })}</span>
     </div>
   {:else if !docked && !async && pending}
-    <!-- The agent stopped for it: the question is written once, in the composer's dock; here a plain line and a quiet mark. -->
+    <!-- The agent stopped for it: the question is written once, at the top of the composer; here a plain line and a quiet mark. -->
     <button type="button" class="ghost answered-row waiting-row" data-testid="question-waiting" title={strings.chat.questionDocked} disabled={!onwrite} onclick={() => onwrite?.()}>
       <span class="glyph"><MessageCircleQuestionMark size={15} strokeWidth={1.75} /></span>
       <span class="given ui-label">{strings.chat.questionHeading}</span>
@@ -319,10 +315,8 @@
 
 <style>
   .question {
-    border: 1px solid var(--color-edge);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     background: var(--color-surface);
-    box-shadow: var(--shadow-e1);
     padding: 8px 12px 10px;
     display: flex;
     flex-direction: column;
@@ -330,11 +324,7 @@
   }
 
   /* Nobody waits on it: a dashed edge instead of the live one that says the agent is stopped. */
-  .question.async {
-    border-left-style: dashed;
-  }
-
-  /* At the top of the composer, inside the dock's raised tile (Composer's `.decision-card`). */
+  /* At the top of the composer card, on its surface (`ThreadDecision`). */
   .question.docked {
     border: none;
     border-radius: 0;
@@ -344,13 +334,15 @@
     padding: 10px var(--dock-inset, 10px);
     gap: 8px;
   }
-  /* The choices take the room the timeline leaves them (`fit`), in whole
-     rows, and the rest scroll in place. The edge fades and a line counts the rest. */
+  /* The choices take the room the composer's cap leaves them (`fit`), in
+     whole rows, and the rest scroll in place. The edge fades and a line counts the rest. */
   .question.docked > :global(*) { flex: none; }
   /* Pressed under its room, the choices alone give way and scroll: the
      question over them and the pair under them stay whole. */
   .question.docked { min-height: 0; }
   .question.docked > .options { flex: 0 1 auto; min-height: calc(var(--touch-target) + 4px); overflow-y: auto; overscroll-behavior: contain; }
+  /* A question of many lines gives way after the choices: it scrolls under its first line. */
+  .question.docked > :global(.decision-head) { flex: 0 1 auto; min-height: var(--dock-row, var(--control)); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
   /* A list that runs past its edge fades it, whether the budget or a tighter cap cut it (app.css `.scroll-edges`). */
   .docked .options { --scroll-edge-ground: var(--decision-fill, var(--color-composer-surface)); }
   .docked .options.scroll-edges::before { margin-bottom: calc(-1 * var(--scroll-edge) - 2px); }

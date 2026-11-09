@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Notice from './Notice.svelte';
   import { untrack } from 'svelte';
   import { lockedBy } from '../lib/policy';
   import { errorText } from '../lib/errors';
@@ -336,14 +337,13 @@
 </script>
 
 {#snippet refusal(rejected: PluginRejected)}
-  <div class="refusal" role="alert" data-testid="plugin-rejected" data-field={rejected.field}>
-    <p class="refusal-title"><ShieldAlert size={15} strokeWidth={1.75} /><span class="ui-label">{t.refusedTitle}</span></p>
-    <dl class="facts">
+  <Notice icon={ShieldAlert} tone="danger" role="alert" testid="plugin-rejected" kind={rejected.field} title={t.refusedTitle}>
+    <dl class="facts refusal">
       <dt>{t.refusedFile}</dt><dd class="mono">{rejected.file}</dd>
       <dt>{t.refusedField}</dt><dd class="mono">{rejected.field}</dd>
       <dt>{t.refusedExpected}</dt><dd>{rejected.expected}</dd>
     </dl>
-  </div>
+  </Notice>
 {/snippet}
 
 {#snippet autostartSwitch(plugin: PluginState, on: boolean | undefined)}
@@ -675,8 +675,7 @@
   .meta a:hover { color: var(--color-foreground); }
   .meta .mono { font-size: var(--text-xs); }
 
-  .refusal { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--color-danger) 35%, var(--color-border)); border-radius: var(--radius-md); background: color-mix(in srgb, var(--color-danger) 6%, transparent); }
-  .refusal-title { margin: 0; display: flex; align-items: center; gap: 6px; font-size: var(--text-sm); font-weight: 600; color: var(--color-danger); }
+  .refusal { margin-top: 4px; }
 
   .facts { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 14px; font-size: var(--text-sm); }
   .facts dt { color: var(--color-muted-foreground); }
@@ -698,7 +697,7 @@
   h5 { margin: 0; font-size: var(--text-sm); font-weight: 600; }
   .pool { display: grid; gap: 8px; }
   /* One box per saved login: its name, its buttons and its limits together. */
-  .saved-account { display: grid; gap: 10px; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-2); }
+  .saved-account { display: grid; gap: 10px; padding: 10px 12px; border-radius: var(--radius-lg); background: var(--color-surface-2); }
   .account-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .account-head strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); font-weight: 600; }
   .dev-tag { flex: none; padding: 1px 6px; border-radius: var(--radius-sm); background: var(--color-active); color: var(--color-muted-foreground); font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 500; }

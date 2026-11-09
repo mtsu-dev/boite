@@ -31,7 +31,7 @@
   import { AgentsView, agentOfThread } from '../lib/agents.svelte';
   import AgentAvatar from './agents/AgentAvatar.svelte';
   import { experimentOn } from '../lib/experiments.svelte';
-  import { asksDocked, cardedCall, dockedRun, failedCall, questionDocked } from '../lib/one-status';
+  import { asksDocked, cardedCall, failedCall, questionDocked } from '../lib/one-status';
 
   /**
    * An assistant or system message in the timeline: the model that wrote it,
@@ -78,7 +78,7 @@
   const execution = $derived(turn?.execution);
   /** The failed call the error card already says: its line drops its exit code (`cardedCall`). */
   const carded = $derived(cardedCall(turn, store.openThread?.messages ?? [], message));
-  /** An ask docked in the composer is its one copy: the stream draws no line for it meanwhile (`lib/one-status.ts`). */
+  /** A question at the top of the composer is its one copy: the stream draws no line for it meanwhile (`lib/one-status.ts`). */
   const asking = $derived(asksDocked(store, threadId));
   /** The persistent agent whose own thread this is: its answers carry its name. */
   const agent = $derived(store.openThread?.id === threadId && store.openThread.agentSessionId ? agentOfThread(AgentsView.of(store).snapshot, threadId) : null);
@@ -147,7 +147,7 @@
       {@const tail = message.parts[lastAt]}
       {@const thinkingLive = message.state === 'streaming' && lastAt === message.parts.length - 1 && tail?.type === 'thinking' && tail.finishedAt == null}
       {@const hosted = changes && run.indices.includes(changes.at) ? changes.line : undefined}
-      {#if activityShown(activity, thinkingLive) && !(asking && dockedRun(activity, thinkingLive, (requestId) => store.permissionRequests[requestId] !== undefined))}
+      {#if activityShown(activity, thinkingLive)}
       <div class="part" data-kind={activity.every((part) => part.type === 'thinking') ? 'thinking' : 'tool'}>
         <ToolGroup parts={activity} {compactions} {thinkingLive} {isBackground} {store} {threadId} {carded} changes={hosted}
           loadOutput={toolId => store.loadToolOutput(threadId, message.id, toolId)}
@@ -188,7 +188,7 @@
       {:else if part.type === 'tool' && planOf(part.name, part.input) !== null}
         <PlanCard {store} {threadId} plan={planOf(part.name, part.input) ?? ''} />
       {:else if part.type === 'question' && part.async === true && (part.answer ?? null) === null && store.pendingQuestions.some((q) => q.id === part.questionId)}
-        <!-- Waiting in the card at the timeline's end: here only a line that brings it up. -->
+        <!-- Waiting at the top of the composer: here only a line that brings it up. -->
         <button type="button" class="ghost docked-question" data-testid="question-docked" title={strings.chat.questionOpen} onclick={() => showDecision(part.questionId)}>
           {#if part.setting}<Settings2 size={15} strokeWidth={1.75} />{:else if part.agentSetting}<Bot size={15} strokeWidth={1.75} />{:else if part.team}<Users size={15} strokeWidth={1.75} />{:else}<MessageCircleQuestionMark size={15} strokeWidth={1.75} />{/if}
           <span class="docked-text ui-label">{strings.chat.questionHeading}</span>

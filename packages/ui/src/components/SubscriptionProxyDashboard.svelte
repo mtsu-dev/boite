@@ -69,6 +69,5 @@
   .slot img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
   iframe { width: 100%; height: 100%; border: 0; color-scheme: dark; }
   .hint { margin: 0; color: var(--color-muted-foreground); font-size: var(--text-sm); }
-  .error { color: var(--color-danger); font-size: var(--text-sm); }
   @media (max-width: 720px) { .proxy-dashboard { min-height: 420px; height: calc(100dvh - 115px); } h1 { display: none; } header { justify-content: flex-end; } }
 </style>

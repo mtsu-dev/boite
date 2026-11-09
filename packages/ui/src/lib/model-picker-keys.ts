@@ -2,7 +2,7 @@ import type { Closing } from './closing.svelte';
 
 /**
  * What the model picker's keyboard reads and moves. The arrows cross the whole
- * popover (tiles, account chips, model rows, the legacy submenu), so every
+ * popover (tiles, the account button, model rows, the legacy submenu), so every
  * query starts from the picker's root or its open menu.
  */
 export interface PickerKeyState {
@@ -27,9 +27,9 @@ export function pickerKeydown(picker: PickerKeyState): (event: KeyboardEvent) =>
     return picker.legacyOpen() ? picker.root()?.querySelector<HTMLElement>('[data-testid=picker-legacy-menu]') ?? null : picker.menu() ?? null;
   }
 
-  /** The model rows alone: what the arrows walk once the search field has the focus. */
+  /** The model rows alone: what the arrows walk once the search field has the focus. The account button heads the column above them. */
   function modelRows(): HTMLElement[] {
-    return Array.from(activeMenu()?.querySelectorAll<HTMLElement>('.models [data-row]:not(:disabled)') ?? []);
+    return Array.from(activeMenu()?.querySelectorAll<HTMLElement>('.models [data-row]:not(:disabled):not([data-testid=picker-account])') ?? []);
   }
 
   function handleEscape(event: KeyboardEvent) {
@@ -80,26 +80,22 @@ export function pickerKeydown(picker: PickerKeyState): (event: KeyboardEvent) =>
     const list = modelRows();
     const here = active === searchBox || !active ? -1 : list.indexOf(active);
     if (event.key === 'ArrowDown') list[Math.min(here + 1, list.length - 1)]?.focus();
-    else if (here <= 0) searchBox?.focus();
+    else if (here === 0) searchBox?.focus();
+    // Above the field, the provider's name when it switches accounts.
+    else if (here === -1) activeMenu()?.querySelector<HTMLElement>('[data-testid=picker-account]:not(:disabled)')?.focus();
     else list[here - 1]?.focus();
-    return true;
-  }
-
-  function handleAccountNavigation(event: KeyboardEvent, active: HTMLElement | null): boolean {
-    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return false;
-    // The account chips are a segmented control: the arrows walk them.
-    const root = picker.root();
-    const chips = root ? Array.from(root.querySelectorAll<HTMLElement>('.popover [data-seat]:not(:disabled)')) : [];
-    const here = active ? chips.indexOf(active) : -1;
-    if (here === -1) return false;
-    event.preventDefault();
-    const step = event.key === 'ArrowRight' ? 1 : -1;
-    chips[(here + step + chips.length) % chips.length]?.focus();
     return true;
   }
 
   function handleRowNavigation(event: KeyboardEvent, active: HTMLElement | null) {
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    // Below the account button comes the search field, then the models.
+    const searchBox = picker.searchBox();
+    if (event.key === 'ArrowDown' && active?.dataset.testid === 'picker-account' && picker.searchable() && searchBox) {
+      event.preventDefault();
+      searchBox.focus();
+      return;
+    }
     const list = focusable();
     if (list.length === 0) return;
     event.preventDefault();
@@ -109,7 +105,7 @@ export function pickerKeydown(picker: PickerKeyState): (event: KeyboardEvent) =>
   }
 
   /**
-   * A letter typed on a tile, a chip or a row goes to the search field: the
+   * A letter typed on a tile, a button or a row goes to the search field: the
    * focus moves before the browser inserts it, so the field receives it. Space
    * stays a button's own key.
    */
@@ -127,7 +123,6 @@ export function pickerKeydown(picker: PickerKeyState): (event: KeyboardEvent) =>
     handleTyping(event, active);
     if (handleLegacyNavigation(event, active)) return;
     if (handleModelSearch(event, active)) return;
-    if (handleAccountNavigation(event, active)) return;
     handleRowNavigation(event, active);
   };
 }

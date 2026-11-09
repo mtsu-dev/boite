@@ -93,7 +93,6 @@
     gap: 10px;
     height: auto;
     padding: 16px 12px;
-    border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
     background: var(--color-surface-2);
     color: var(--color-muted-foreground);

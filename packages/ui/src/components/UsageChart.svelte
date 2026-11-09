@@ -198,10 +198,10 @@
     width: max-content;
     max-width: calc(100% - 20px);
     padding: 8px 10px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-surface-2);
-    box-shadow: var(--shadow-e2);
+    border: 1px solid var(--overlay-edge);
+    border-radius: var(--radius-overlay);
+    background: var(--overlay-surface);
+    box-shadow: var(--shadow-overlay);
     font-size: var(--text-sm);
     pointer-events: none;
     animation: fade var(--dur-1) var(--ease-out-quint);

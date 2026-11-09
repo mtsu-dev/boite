@@ -7,7 +7,7 @@
 
 /* The column stands in the thread list's frame (RailFrame); on a phone it is the list of bots under the phone header. */
 .agents-rail { --ring: var(--color-frame); }
-.agents-rail .agents-card { margin-bottom: 10px; padding: 4px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--color-surface-2) 55%, transparent); }
+.agents-rail .agents-card { margin-bottom: 10px; padding: 4px; border-radius: var(--radius-lg); background: var(--card-fill); }
 /* With teams listed, each card stands under its heading: Teams, then Bots. */
 .agents-rail .agents-section { margin: 4px 10px 6px; }
 /* The Teams heading carries its New team button; the line under it stands in for the card before the first team. */
@@ -98,10 +98,9 @@
 .agent-head-actions { display: flex; align-items: center; gap: 2px; flex: none; }
 /* A header's targets are 32 px, the glyph unchanged. */
 .agent-head-actions .menu .trigger.ghost { width: var(--control-head); height: var(--control-head); padding: 0; }
-.agent-problem { flex: none; display: flex; align-items: center; gap: 10px; margin: 0; padding: 8px clamp(12px, 3vw, 24px); border-bottom: 1px solid var(--color-border); background: color-mix(in srgb, var(--color-live) 10%, transparent); color: var(--color-foreground); font-size: var(--text-sm); }
-.agent-problem > svg { flex: none; color: var(--color-live); }
-.agent-problem > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.agent-problem > button { flex: none; }
+/* The bot's problem: the one notice form, on the conversation's column above it. */
+.agent-problem { flex: none; padding-top: 8px; }
+.agent-problem > .notice { margin-bottom: 0; }
 
 /* Settings and brain: a sheet over the conversation, which stays where it was underneath. */
 .agent-sheet { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; background: var(--color-background); animation: rise var(--dur-3) var(--ease-out-quint); outline: none; }
@@ -119,7 +118,7 @@
 /* The file picker opens from its button; the input itself is never drawn. */
 .agent-picture-input { display: none; }
 .agent-identity-name { flex: 1; align-self: center; }
-.agent-dressing { display: flex; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-2); }
+.agent-dressing { display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: var(--radius-lg); background: var(--color-surface-2); }
 
 /* Where and how an agent runs: one labelled row per choice, the label in a column of its own. */
 .agent-rows { display: flex; flex-direction: column; }
@@ -152,7 +151,7 @@
 .agents-form .card > h2, .agents-form.card > h2 { margin-bottom: -4px; }
 .agents-form .card > h2 + .hint, .agents-form.card > h2 + .hint { margin: -8px 0 0; }
 .agents-main fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
-fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-padding); }
+fieldset.card { border: 0; padding: var(--settings-padding); }
 .agent-field { display: flex; flex-direction: column; gap: 6px; font-size: var(--text-sm); font-weight: 500; min-width: 0; }
 .agent-field > span:first-child { display: flex; flex-direction: column; gap: 2px; }
 .agent-field legend { padding: 0; margin-bottom: 8px; font-size: var(--text-sm); font-weight: 500; }
@@ -199,7 +198,7 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 .agents-main [data-status=done].agent-state { color: var(--color-success); }
 .agents-main [data-status=waiting].agent-state { color: var(--color-live); }
 .agents-main [data-status=error].agent-state, .agents-main [data-status=interrupted].agent-state { color: var(--color-danger); }
-.agent-error { display: flex; align-items: center; gap: 12px; justify-content: space-between; margin: 12px clamp(20px, 4vw, 48px) 0; padding: 10px 14px; border-radius: var(--radius-md); background: var(--color-surface-2); border-left: 3px solid var(--color-danger); overflow-wrap: anywhere; font-size: var(--text-sm); }
+.agent-error { margin: 12px clamp(20px, 4vw, 48px) 0; }
 .agent-prewrap { white-space: pre-wrap; overflow-wrap: anywhere; }
 .agent-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 
@@ -252,7 +251,7 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
   .agent-head-actions .menu .trigger.ghost, .agent-head > button.icon, .agent-head-actions > button.icon, .agents-detail-head > button.icon { width: var(--control-touch); height: var(--control-touch); }
   .agents-detail-head { gap: 2px; min-height: 56px; padding: 6px 8px 6px 4px; }
   .agents-body, .agent-sheet-body { padding: 16px 16px 32px; }
-  .agent-error { margin: 12px 16px 0; }
+  .agent-error { margin: 12px clamp(20px, 4vw, 48px) 0; }
   .agents-main .card { padding: 16px; }
   .agent-more > summary { padding: 14px 16px; }
   .agent-row-field { grid-template-columns: minmax(0, 1fr); gap: 6px; }
@@ -274,7 +273,7 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 .agent-brain-root-form .agent-inline input:not([type=checkbox]) { flex: 1 1 220px; min-width: 0; font-family: var(--font-mono); }
 .agent-brain-folders { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .agent-brain-folders > code { flex: 1 0 100%; font-size: var(--text-xs); color: var(--color-muted-foreground); overflow-wrap: anywhere; }
-.agent-brain-root ~ .agent-error { margin: 12px 0 0; }
+.agent-brain-root ~ .agent-error { margin: 12px clamp(20px, 4vw, 48px) 0; }
 
 /*
  * The desk is the quiet side column beside the bot's chat: who the bot is on

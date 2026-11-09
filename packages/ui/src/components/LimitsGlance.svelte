@@ -143,7 +143,7 @@
 {/if}
 
 <style>
-  .glance { display: flex; flex-direction: column; width: 360px; padding: 0; color: var(--color-foreground); background: var(--color-surface-2); border: 1px solid var(--color-edge); border-radius: var(--radius-lg); box-shadow: var(--shadow-e2); overflow: hidden; animation: pop var(--dur-2) var(--ease-out-quint); }
+  .glance { display: flex; flex-direction: column; width: 360px; padding: 0; color: var(--color-foreground); background: var(--overlay-surface); border: 1px solid var(--overlay-edge); border-radius: var(--radius-overlay); box-shadow: var(--shadow-overlay); overflow: hidden; animation: pop var(--dur-2) var(--ease-out-quint); }
   .glance.closing { animation-name: pop-out; pointer-events: none; }
   .glance :global(.quota-popup) { flex: 1; }
 </style>

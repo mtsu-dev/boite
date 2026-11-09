@@ -203,7 +203,7 @@
     background: var(--color-scrim); animation: fade var(--dur-2) var(--ease-out-quint); }
   .scrim.closing { animation-name: fade-out; pointer-events: none; }
   .dialog { width: min(460px, calc(100vw - 32px)); max-height: min(80vh, 720px); display: flex; flex-direction: column;
-    background: var(--color-surface); border: 1px solid var(--color-edge); border-radius: var(--radius-xl); box-shadow: var(--shadow-e3);
+    background: var(--overlay-surface); border: 1px solid var(--overlay-edge); border-radius: var(--radius-overlay); box-shadow: var(--shadow-overlay);
     overflow: hidden; animation: pop var(--dur-2) var(--ease-out-quint); color: var(--color-foreground); }
   .dialog.closing { animation-name: pop-out; }
   .dialog:focus { outline: none; }
@@ -219,8 +219,7 @@
   .field textarea { resize: vertical; min-height: 56px; font-family: inherit; line-height: 1.5; }
   .members-head { display: flex; justify-content: space-between; align-items: baseline; }
   .count { font-weight: 400; font-size: var(--text-xs); color: var(--color-muted-foreground); font-variant-numeric: tabular-nums; }
-  .choices { list-style: none; margin: 0; padding: 4px; display: flex; flex-direction: column; gap: 2px; max-height: 260px; overflow: auto;
-    border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--color-surface-2) 55%, transparent); }
+  .choices { list-style: none; margin: 0; padding: 4px; display: flex; flex-direction: column; gap: 2px; max-height: 260px; overflow: auto; border-radius: var(--radius-lg); background: color-mix(in srgb, var(--color-surface-2) 55%, transparent); }
   .choice-row { display: flex; align-items: center; gap: 2px; }
   .choice { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; min-height: var(--row); padding: 4px 8px; border: none; border-radius: var(--radius-md);
     background: transparent; color: inherit; font-weight: 400; text-align: left; cursor: pointer; transition: background var(--dur-2) var(--ease-out-quint); }
@@ -239,7 +238,7 @@
   .actions { display: flex; justify-content: flex-end; gap: 6px; }
   @media (max-width: 720px) {
     .scrim { padding-top: 0; align-items: flex-end; }
-    .dialog { width: 100%; max-height: calc(100dvh - 24px); border-radius: var(--radius-xl) var(--radius-xl) 0 0; border-bottom: none; }
+    .dialog { width: 100%; max-height: calc(100dvh - 24px); border-radius: var(--radius-overlay) var(--radius-overlay) 0 0; border-bottom: none; }
     .head { padding: 14px 8px 10px 14px; }
     .head .icon { width: var(--touch-target); height: var(--touch-target); }
     .body { padding: 4px 14px 12px; }

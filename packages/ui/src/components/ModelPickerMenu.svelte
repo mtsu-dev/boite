@@ -21,9 +21,9 @@
    * The model picker's popover, its own chunk: only a click on the chip
    * (`ModelPicker.svelte`) draws it. A fixed frame: provider logos in a rail
    * beside a scrolling model list on desktop, the same tiles as a top row on a
-   * phone. The shown provider's name heads the column, its accounts sit below
-   * the name as a segmented control when there is more than one, and its
-   * models fill the rest. A click on a model closes the picker; nothing else does.
+   * phone. The shown provider's name heads the column; when it has more than
+   * one account the name is a button whose small list switches between them
+   * (`AccountSeats.svelte`), and its models fill the rest. A click on a model closes the picker; nothing else does.
    */
   let {
     store,
@@ -377,8 +377,7 @@
       </div>
     {:else}
     <div class="head">
-      <span class="provider-name ui-label">{shown ? shown.name : strings.composer.models}</span>
-      <AccountSeats {shown} {seats} {shownAccountId} {choice} {locked} busy={disabled || pickPending} onpick={pickSeat} />
+      <AccountSeats name={shown ? shown.name : strings.composer.models} {shown} {seats} {shownAccountId} {choice} {locked} {disabled} busy={disabled || pickPending} onpick={pickSeat} />
     </div>
     {#key `${shown?.id}:${shownAccountId}`}
     <div class="model-list">
@@ -545,7 +544,9 @@
 
   .models > * { flex-shrink: 0; }
   .main-models { grid-area: 1 / 2 / 3 / 3; overflow: hidden; padding: 0; gap: 0; border-left: 1px solid var(--color-border); }
-  .main-models .head { flex-direction: column; align-items: stretch; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--color-border); }
+  .main-models .head { flex-direction: column; align-items: stretch; justify-content: center; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--color-border); }
+  /* The favorites' heading stands as tall as a provider's name line (AccountSeats). */
+  .main-models .head > .provider-name { min-height: var(--control-sm); display: flex; align-items: center; }
   .model-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; padding: 6px; }
   .rail { grid-area: 1 / 1; }
   /* One provider: its model list is the whole popover, the refresh sits in the list's head. */

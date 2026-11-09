@@ -332,7 +332,7 @@
   .sample.code { font-size: var(--text-body); line-height: 1.5; }
   /* The chat width's sample: the window as a well, the paragraph at the column's share of a 1440 px window. */
   /* The conversation in small: the card stands for the window, so each width keeps its proportion to it. */
-  .width-sample { margin: 0 0 var(--space-2); padding: var(--space-3); border-radius: var(--radius-md); background: var(--color-background); box-shadow: inset 0 0 0 1px var(--color-border); }
+  .width-sample { margin: 0 0 var(--space-2); padding: var(--space-3); border-radius: var(--radius-md); background: var(--color-background); }
   .sample-chat { display: flex; flex-direction: column; gap: var(--space-2); margin: 0 auto; max-width: 50%; transition: max-width var(--dur-3) var(--ease-out-quint); }
   .width-sample[data-width='wide'] .sample-chat { max-width: 72%; }
   .width-sample[data-width='full'] .sample-chat { max-width: 100%; }

@@ -111,7 +111,7 @@
   meter::-webkit-meter-bar { background: var(--color-edge); border: none; border-radius: var(--radius-md); }
   meter::-webkit-meter-optimum-value { background: var(--color-accent); border-radius: var(--radius-md); }
   meter::-moz-meter-bar { background: var(--color-accent); border-radius: var(--radius-md); }
-  .error { margin: 8px 0 0; color: var(--color-danger); font-size: var(--text-sm); overflow-wrap: anywhere; }
+  .error { margin: 8px 0 0; }
   @media (max-width: 480px) {
     .microphone-row { flex-direction: column; align-items: stretch; gap: 10px; }
     .picker { max-width: 100%; }

@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
-  import { Brain, CalendarDays, Check, ChevronRight, Monitor, Pencil, TriangleAlert } from '@lucide/svelte';
+  import { Brain, CalendarDays, Check, ChevronRight, CircleAlert, Monitor, Pencil, TriangleAlert } from '@lucide/svelte';
+  import Notice from '../Notice.svelte';
   import type { AgentBrain } from '@boite/contracts';
   import { AgentsView, agentOfThread, liveState, liveStep, statusOf, waitingOn } from '../../lib/agents.svelte';
   import { calendarDay, memoryNotes, runningTurn, turnSteps } from '../../lib/agent-desk';
@@ -137,7 +138,7 @@
           </section>
         {/if}
 
-        {#if view.error}<p class="agent-error desk-error" role="alert">{view.error}</p>{/if}
+        {#if view.error}<div class="desk-error"><Notice icon={CircleAlert} tone="danger" role="alert" detail={view.error} /></div>{/if}
 
         <section class="desk-card desk-schedule" data-testid="desk-schedule">
           <AgentRoutines {view} agentId={agent.id} compact />

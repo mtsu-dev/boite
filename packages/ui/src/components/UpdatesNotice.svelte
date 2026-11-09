@@ -262,7 +262,7 @@
   .dot { position: absolute; width: 6px; height: 6px; right: 3px; top: 3px; border-radius: 50%; background: var(--color-caution); box-shadow: 0 0 0 2px var(--color-frame); }
   .update-trigger.busy .dot { animation: pulse 1.4s var(--ease-out-quint) infinite var(--loops); }
 
-  .updates-card { display: flex; flex-direction: column; width: 336px; max-width: calc(100vw - 24px); padding: 0; color: var(--color-foreground); background: var(--color-surface-2); border: 1px solid var(--color-edge); border-radius: var(--radius-lg); box-shadow: var(--shadow-e2); overflow: hidden; transform-origin: bottom left; animation: pop var(--dur-2) var(--ease-out-quint); }
+  .updates-card { display: flex; flex-direction: column; width: 336px; max-width: calc(100vw - 24px); padding: 0; color: var(--color-foreground); background: var(--overlay-surface); border-radius: var(--radius-overlay); box-shadow: var(--shadow-overlay); overflow: hidden; transform-origin: bottom left; animation: pop var(--dur-2) var(--ease-out-quint); border: 1px solid var(--overlay-edge); }
   .updates-card:focus { outline: none; }
   .updates-card.closing { animation-name: pop-out; pointer-events: none; }
 

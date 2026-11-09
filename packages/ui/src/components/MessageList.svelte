@@ -19,13 +19,11 @@
   import { groupTimeline } from '../lib/timeline-group';
   import { agentMailFor } from '../lib/agent-mail';
   import { timelineCards } from '../lib/timeline-cards';
-  import { asksDocked, failureCarded, settledCards } from '../lib/one-status';
+  import { asksDocked, failureCarded } from '../lib/one-status';
   import UserMessage from './UserMessage.svelte';
   import Deferred from './Deferred.svelte';
   import { parts } from '../lib/deferred-parts';
-  import { threadDecision } from '../lib/idle-parts';
-  import { decisionsWaiting } from '../lib/decision-tail.svelte';
-  import { repliesOf } from '../lib/question-reply.svelte';
+  import { decisionTail } from '../lib/decision-tail.svelte';
   import { ListViewer } from '../lib/list-viewer.svelte';
   import AssistantMessage from './AssistantMessage.svelte';
   import FailedAttempts from './FailedAttempts.svelte';
@@ -72,14 +70,17 @@
     const account = store.accountOf(thread.accountId);
     return account?.status === 'unauthenticated' && store.usableAccountOf(account.providerId, account.id) === null ? account : null;
   });
-  /** Launches, workflow runs and contact requests, each a card where it happened (`timelineCards`); the strip holds the live ones (`settledCards`). */
-  const cards = $derived(settledCards(store, threadId, timelineCards(store, threadId, messages)));
-  /** An ask docked in the composer is the turn's status: the stream drops the running summary meanwhile, and its rows drop their own line for it. */
+  /** Launches, workflow runs and contact requests, each a card where it happened, live or ended (`timelineCards`). */
+  const cards = $derived(timelineCards(store, threadId, messages));
+  /** A question at the top of the composer is the turn's status: the stream drops the running summary meanwhile, and its rows drop their own line for it. */
   const asking = $derived(asksDocked(store, threadId));
-  /** What the thread waits on, or the line of what was just given, closes its timeline (`ThreadDecision`). */
-  // Its own derived: state made while a derived runs is not tracked by that same derived.
-  const replies = $derived(repliesOf(store));
-  const tailed = $derived(store.openThread?.id === threadId && (decisionsWaiting(store, threadId) > 0 || (replies.receipt?.threadId === threadId && store.busy)));
+  /** The open thread's permissions waiting on their command rows, drawn or not: the strip's pill counts them (`DecisionPill`). */
+  const permissionsWaiting = $derived(store.openThread?.id === threadId ? store.pendingPermissions.filter((request) => request.threadId === threadId).length : 0);
+  $effect(() => {
+    if (store.openThread?.id !== threadId) return;
+    decisionTail.count = permissionsWaiting;
+    return () => { decisionTail.count = 0; };
+  });
   /** The turns of the thread this list shows, open or delegated. */
   const shownTurns = $derived(store.openThread?.id === threadId ? store.openThread.turns : store.delegationThread?.id === threadId ? store.delegationThread.turns : []);
   const grouped = $derived.by(() => groupTimeline(messages, threadId, shownTurns, mail, cards));
@@ -769,7 +770,7 @@
           {/if}
           {#if turn && closes}
             {#if !host}{@render changes(false)}{/if}
-            <!-- A failure's card holds its cause and its one Retry; a docked ask is a running turn's status. -->
+            <!-- A failure's card holds its cause and its one Retry; a question at the composer's top is a running turn's status. -->
             {#if !failureCarded(turn, messages) && !(asking && turn.status === 'running')}
             <MessageTurnSummary {store} {threadId} {turn} turns={shownTurns} message={source ?? message} {messages} pointed={pointed === turn.id}
               {...summaryMarks(shaped, turn.id, () => store.panel.open('desk'))}>
@@ -788,7 +789,6 @@
       {/each}
       {#if view.below > 0}<div class="spacer" data-testid="timeline-below" style="height: {view.below}px"></div>{/if}
       {#if store.loadingNewer}<p class="loading-older" data-testid="loading-newer">{strings.chat.loadingNewer}</p>{/if}
-      {#if tailed}<Deferred part={threadDecision}>{#snippet children(ThreadDecision)}<ThreadDecision {store} {threadId} />{/snippet}</Deferred>{/if}
       {#if pendingMove}<MoveMarker notice={pendingMove} pending />{/if}
       {#if closingShown && closing}<ThreadClosing text={closing} />{/if}
     </div>

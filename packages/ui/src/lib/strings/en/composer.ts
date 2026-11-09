@@ -10,8 +10,12 @@ export const strings = {
     filesUnavailable: 'The messages were rewound, but this edit has no complete file backup. The code could not be restored.',
     filesBusy: 'The messages were rewound. Another agent is still working in this folder, so the files were left as they are.',
     editingCancel: 'Stop editing (Esc)',
-    /** The box while the agent works or a decision (a question, an ask to run a tool) waits above it: what is written answers. One line on a 360 px phone. */
+    /** The box while the agent works or a question waits at its top: what is written answers. One line on a 360 px phone. */
     replyPlaceholder: 'Reply to {name}',
+    /** The box while a permission waits on its command row: Send denies it, stops the turn and sends the message as the next one. */
+    permissionPlaceholder: 'Send a message to decline and redirect',
+    /** The same on a phone, one line on a 360 px screen. */
+    permissionPlaceholderShort: 'Reply to decline and redirect',
     replySend: 'Send the answer',
     switchTitle: 'Switch a {tokens} token thread to {provider}?',
     switchBody: '{provider} starts a new session and receives excerpts of the opening and of the most recent exchanges, about 20k tokens. The rest is lost to it. Compacting first changes nothing.',
@@ -95,6 +99,8 @@ export const strings = {
     compactNoSession: 'Send a message before compacting',
     newBadge: 'new',
     lockedHint: 'A thread keeps its provider and account',
+    /** The model menu's provider name when it has several accounts: the button that lists them. */
+    switchAccount: 'Switch account',
     /** The permission chip's name; on a phone, the "+" row that reads the mode beside it. */
     mode: 'Permission',
     model: 'Model',

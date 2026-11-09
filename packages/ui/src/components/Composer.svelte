@@ -32,13 +32,15 @@
   import ComposerIntent from './ComposerIntent.svelte';
   import ComposerQueueRegion from './ComposerQueueRegion.svelte';
   import ComposerStrip from './ComposerStrip.svelte';
+  import AgentDock from './AgentDock.svelte';
   import ComposerDeck from './ComposerDeck.svelte';
   import ComposerField from './ComposerField.svelte';
   import ComposerSpeechPreview from './ComposerSpeechPreview.svelte';
   import MentionMenu from './MentionMenu.svelte';
   import SlashMenu from './SlashMenu.svelte';
-  import { answerPermission } from '../lib/decision-tail.svelte';
   import SideAnswer from './SideAnswer.svelte';
+  import { permissionRedirect } from '../lib/permission-redirect.svelte';
+  import { MediaQuery } from 'svelte/reactivity';
   import { ComposerSide } from '../lib/composer-side.svelte';
   import { chipChoice, queuedChoice, sendToTarget, type ComposerTarget } from '../lib/composer-target';
 
@@ -180,9 +182,9 @@
   let accountGone = $derived(!target && (botGone || (!!thread && store.accounts.length > 0 && store.accountOf(thread.accountId) === null
     && store.usableAccountOf(thread.providerId, thread.accountId) === null)));
 
-  /** The thread's oldest ask to run a tool, at the timeline's end; a message sent meanwhile is queued. */
+  /** The thread's oldest ask to run a tool, on its command row in the timeline; a message sent meanwhile declines it and redirects (`redirect`). */
   let permission = $derived(target || !thread ? null : store.pendingPermissions.find((request) => request.threadId === thread.id) ?? null);
-  /** The question on screen at the timeline's end, whose options 1 to 9 pick while the field is empty. */
+  /** The question on screen at the top of the box, whose options 1 to 9 pick while the field is empty. */
   let docked = $derived(target ? undefined : store.pendingQuestions.find((question) => question.id === repliesOf(store).docked && question.threadId === thread?.id));
 
   /**
@@ -194,7 +196,8 @@
   let stopped = $derived(!target && (!!thread?.worktreeRemoved || (store.openProject?.missing === true && !thread?.agentSessionId)
     || (!!thread?.contactHold && !thread.archived)));
 
-  let placeholder = $derived(composerPlaceholder({ target, replying: !!reply || !!permission || (!!thread && store.busy), bot, offline, accountGone, onThread: !!thread,
+  const narrow = new MediaQuery('(max-width: 720px)');
+  let placeholder = $derived(composerPlaceholder({ target, replying: !!reply || (!!thread && store.busy), permission: !!permission && !reply, narrow: narrow.current, bot, offline, accountGone, onThread: !!thread,
     machine: machineLabel, provider: provider?.name ?? null }));
 
   // -- the slash menu -----------------------------------------------------------
@@ -437,6 +440,7 @@
       if (!inputStore.queuePrompt(inputKey, { text: prompt, attachments: images, afterBoundary: store.inputBoundaries[key]?.boundary, choice: kept, ...(references.length ? { previewReferences: references } : {}) },
         offline ? { choice: { ...kept } } : undefined)) return;
       if (state.queued[0]?.request?.failed !== undefined) inputStore.retryQueued(inputKey, 0);
+      if (!offline && inputStore === store && inputKey === key && permission) void redirect(inputStore, inputKey);
       state.editing = null;
       emptyBox(state);
       resetHistory(state);
@@ -537,6 +541,9 @@
 
   /** What Send now does to the queue: interrupt the running turn, resume a held one, or nothing. */
   let sendNow = $derived(sendNowAction(composer, thread, store));
+
+  /** A message sent while a permission waits declines it and redirects the agent (`permissionRedirect`). */
+  const redirect = permissionRedirect(() => ({ store, key, queued: composer?.queued.length ?? 0, sendNow, busy: store.busy }), () => sendQueuedNow());
 
   /**
    * Send now interrupts the active turn before submitting queued prompts. A queue held after a refusal is resumed too.
@@ -728,10 +735,10 @@
       event.preventDefault();
       return;
     }
-    // An empty field lends the keyboard to the decision at the timeline's end; typing is never taken.
+    // An empty field lends the keyboard to the permission on its command row; typing is never taken.
     if (boxEmpty && permission && !composer?.editing && (event.key === 'Enter' && !event.shiftKey && !touchScreen() || event.key === 'Escape')) {
       event.preventDefault();
-      void answerPermission(store, permission, event.key === 'Enter' ? 'allow' : 'deny');
+      void store.answer(permission.id, event.key === 'Enter' ? 'allow' : 'deny');
       return;
     }
     if (boxEmpty && docked && !event.shiftKey && pickOption(store, docked, event.key)) { event.preventDefault(); return; }
@@ -766,6 +773,7 @@
   }
 }}>
   {#if !target}<ComposerStrip />{/if}
+  {#if thread}<AgentDock {store} threadId={thread.id} />{/if}
   <ComposerQueueRegion {store} {key} {thread} {composer} machine={machineLabel} {sendNow}
     blocked={text.length > 0 || attachments.length > 0 || previewReferences.length > 0} onrestore={restoreQueued} onsendnow={sendQueuedNow} />
   {#if accountGone && !botGone}<AccountGoneNotice onpick={() => void toolbar?.openChip('composer-picker')} />{/if}
@@ -861,12 +869,15 @@
   .composer:not(.keys):focus-visible { outline: none; }
 
   /* Each block of the card stands this far under the one above it (ComposerDeck). */
-  /* One row form for the deck's lines (AgentDock, the activity): its height, its icon box and its type. */
-  .composer { --deck-gap: 6px; --dock-row: 28px; --dock-icon: 16px; --dock-type: var(--text-meta); }
+  /* One row form for the lines over and in the card (the waiting line, the queue, the activity): their height, their icon box and their type. */
+  .composer-wrap { --deck-gap: 6px; --dock-row: 28px; --dock-icon: 16px; --dock-type: var(--text-meta); }
   @media (max-width: 720px) {
     /* A phone keeps the conversation: the whole card, rows, chips and
        field, stays under 45% of the screen. The deck gives way first. */
-    .composer { --dock-row: 30px; --composer-cap: 45dvh; border-radius: var(--radius-xl); max-height: var(--composer-cap); }
+    .composer-wrap { --dock-row: 30px; }
+    .composer { --composer-cap: 45dvh; border-radius: var(--radius-xl); max-height: var(--composer-cap); }
+    /* A question keeps its own cap, half the conversation (ThreadDecision), and the field and chips stay whole under it. */
+    .composer:has(> :global(.deck > .thread-decision)) { max-height: none; }
     .composer > :global(*) { flex: none; }
     .composer > :global(.deck) { flex: 0 1 auto; min-height: 0; }
     /* The microphone and send stand at the field's end (ComposerBar): its text, mirror and dictation preview stop short of them. */

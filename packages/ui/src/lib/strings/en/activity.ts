@@ -4,16 +4,16 @@ export const strings = {
     goal: 'Goal',
     /** An agent's question it did not stop for (`boite ask`), docked above the composer like a goal. */
     question: 'Needs you',
-    questionOf: 'Question {index} of {total}',
+    /** The pager of several questions waiting at the top of the composer. */
+    questionOf: '{index} of {total}',
     questionPrev: 'Previous question',
     questionNext: 'Next question',
     questionFold: 'Fold the question',
     questionUnfold: 'Open the question',
     /** The fold of the question the box answers: folding sets it aside, and the box writes an ordinary message. */
     questionSetAside: 'Fold the question and write a message',
-    /** A sub-agent's question or permission, docked in its parent: whose it is, and the way into its conversation. */
+    /** A sub-agent's question at the top of its parent's composer: whose it is, and the way into its conversation. */
     subagentAsks: 'Asked by {title}',
-    subagentPermission: '{title} waits for your permission',
     openSubagent: 'Open',
     openSubagentHint: 'Open {title}',
     loop: 'Loop',

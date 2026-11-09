@@ -93,7 +93,7 @@ test('each section holds its plugins, every state drawn with what the owner can 
 
   // The refused one says which file, which field, and what was expected; it can only go.
   const refused = row('pool-legacy')?.querySelector('[data-testid="plugin-rejected"]');
-  expect(refused?.getAttribute('data-field')).toBe('manifest.schema');
+  expect(refused?.getAttribute('data-kind')).toBe('manifest.schema');
   expect(refused?.textContent).toContain('installed.json');
   expect(row('pool-legacy')?.querySelector('[data-testid="plugin-retry"]')).toBeNull();
   expect(row('pool-legacy')?.querySelector('[data-testid="plugin-uninstall"]')).not.toBeNull();
@@ -260,7 +260,7 @@ test('a refused manifest shows the file, the field and what was expected, with n
   await vi.waitFor(() => expect(q('[data-testid="plugin-preview"]')).not.toBeNull());
   expect(q('[data-testid="plugin-preview"]')?.getAttribute('data-rejected')).toBe('true');
   const refused = q('[data-testid="plugin-preview"] [data-testid="plugin-rejected"]');
-  expect(refused?.getAttribute('data-field')).toBe('artifacts.win32-x64.sha256');
+  expect(refused?.getAttribute('data-kind')).toBe('artifacts.win32-x64.sha256');
   expect(refused?.textContent).toContain('boite-plugin.json');
   expect(refused?.textContent).toContain('64 lowercase hexadecimal characters');
   expect(q('[data-testid="plugin-add"]')).toBeNull();

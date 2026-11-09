@@ -246,7 +246,7 @@
       /* A drawer from the left edge, where its button is. */
       transform: translateX(calc(-100% - 12px));
       transition: opacity var(--dur-3) var(--ease-out-quint), transform var(--motion-duration) var(--motion-curve), visibility var(--motion-duration);
-      box-shadow: var(--shadow-e3);
+      box-shadow: var(--shadow-overlay);
     }
     .rail.drawer.open {
       visibility: visible;

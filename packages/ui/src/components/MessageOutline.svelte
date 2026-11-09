@@ -266,13 +266,13 @@
   .marker.active { color: var(--color-foreground); }
   .marker.active i { transform: scaleX(calc((16 + 6 * var(--weight, 0)) / 22)); opacity: 1; }
   /* The group menu is placed from script: reduced motion's blanket transition would slide it there. */
-  .group-menu { position: fixed; z-index: 30; width: min(300px, calc(100vw - 70px)); max-height: 264px; overflow-y: auto; padding: 6px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface-2); box-shadow: var(--shadow-e2); animation: pop var(--dur-2); transition-property: none; }
+  .group-menu { position: fixed; z-index: 30; width: min(300px, calc(100vw - 70px)); max-height: 264px; overflow-y: auto; padding: 6px; border: 1px solid var(--overlay-edge); border-radius: var(--radius-overlay); background: var(--overlay-surface); box-shadow: var(--shadow-overlay); animation: pop var(--dur-2); transition-property: none; }
   .group-menu.closing { animation-name: pop-out; pointer-events: none; }
   .group-menu button { width: 100%; height: auto; min-height: var(--control); padding: 6px 8px; gap: 10px; justify-content: flex-start; text-align: left; font-size: var(--text-sm); }
   .group-menu button span:last-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .group-menu button:hover, .group-menu button:focus-visible { background: var(--color-hover); color: var(--color-foreground); }
   /* The user bubble of the timeline, laid on the page colour so the tint matches, its short corner toward the bar. */
-  .preview { position: fixed; z-index: 30; display: flex; align-items: baseline; gap: 10px; width: max-content; max-width: min(360px, calc(100vw - 70px)); padding: 10px 14px; border: 1px solid var(--color-edge); border-radius: var(--radius-lg); border-top-left-radius: var(--radius-sm); background: var(--color-surface-2); box-shadow: var(--shadow-e2); pointer-events: none; transform-origin: 0 21px; animation: pop var(--dur-2) var(--ease-out-quint); transition: top var(--dur-2) var(--ease-out-quint); }
+  .preview { position: fixed; z-index: 30; display: flex; align-items: baseline; gap: 10px; width: max-content; max-width: min(360px, calc(100vw - 70px)); padding: 10px 14px; border: 1px solid var(--overlay-edge); border-radius: var(--radius-overlay); border-top-left-radius: var(--radius-sm); background: var(--overlay-surface); box-shadow: var(--shadow-overlay); pointer-events: none; transform-origin: 0 21px; animation: pop var(--dur-2) var(--ease-out-quint); transition: top var(--dur-2) var(--ease-out-quint); }
   .number { flex: none; color: var(--color-subtle); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
   .preview .number { color: var(--color-muted-foreground); font-family: var(--font-mono); }
   .command { color: var(--color-accent); font-weight: 600; }

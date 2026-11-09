@@ -23,7 +23,6 @@ export const strings = {
     close: 'Close details',
     notStarted: 'Not started yet.',
     skipped: 'Skipped: its condition did not hold.',
-    card: 'Workflow',
     show: 'Show the workflow',
     tokens: '{tokens} tokens',
     tokensHelp: 'Reported usage from completed turns, including cache reads, cache writes and retries.'

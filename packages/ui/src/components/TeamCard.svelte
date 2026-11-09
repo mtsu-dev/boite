@@ -104,11 +104,8 @@
 
 <style>
   .team-card {
-    border: 1px solid var(--color-edge);
-    border-left-style: dashed;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     background: var(--color-surface);
-    box-shadow: var(--shadow-e1);
     padding: 8px 12px 10px;
     display: flex;
     flex-direction: column;

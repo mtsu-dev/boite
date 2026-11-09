@@ -1,6 +1,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { RotateCcw, X } from '@lucide/svelte';
+  import { RotateCcw } from '@lucide/svelte';
+  import Notice from './Notice.svelte';
   import { Closing } from '../lib/closing.svelte';
   import { toastSlot } from '../lib/notify-corner';
   import { collapseMs } from '../lib/row-collapse';
@@ -45,36 +46,22 @@
 
 {#if toast.shown}
   <div class="toast-slot" use:toastSlot>
-    <!-- The one notice card (notify-corner.css): its mark, its line, one way to act, the one dismiss. -->
-    <div class="notify-card undo-toast" data-tone="quiet" class:closing={toast.closing} role="status" use:toast.attach onanimationend={toast.end} data-testid="undo-toast">
-      <span class="notify-mark" aria-hidden="true"><RotateCcw size={16} strokeWidth={1.75} /></span>
-      <span class="notify-lines"><span class="notify-title text">{text}</span></span>
-      <button type="button" class="small undo" data-testid="undo-action" title={strings.sidebar.undoHint} onclick={() => void undo.take(onerror)}><span class="ui-label">{strings.sidebar.undo}</span></button>
-      <button type="button" class="ghost icon notify-dismiss" aria-label={strings.common.dismiss} title={strings.common.dismiss} onclick={() => undo.dismiss()}><X size={14} /></button>
+    <!-- The one notice (Notice.svelte), floating: its mark, its line, one way to act, the dismiss. -->
+    <div class="toast" class:closing={toast.closing} use:toast.attach onanimationend={toast.end}>
+      <Notice icon={RotateCcw} floating testid="undo-toast" detail={text} ondismiss={() => undo.dismiss()}>
+        {#snippet actions()}
+          <button type="button" class="small" data-testid="undo-action" title={strings.sidebar.undoHint} onclick={() => void undo.take(onerror)}><span class="ui-label">{strings.sidebar.undo}</span></button>
+        {/snippet}
+      </Notice>
     </div>
   </div>
 {/if}
 
 <style>
-  /* The card's look is the shared one; a toast only arrives and leaves. */
-  .undo-toast { align-items: center; animation: rise var(--motion-duration) var(--motion-curve); }
-  .undo-toast .notify-mark { margin-top: 0; }
-  .undo-toast .notify-dismiss { margin: 0; }
-
-  .undo-toast.closing {
+  /* The look is the notice's; a toast only arrives and leaves. */
+  .toast { animation: rise var(--motion-duration) var(--motion-curve); }
+  .toast.closing {
     animation: fade-out var(--motion-duration) var(--motion-curve);
     pointer-events: none;
   }
-
-  /* Two lines before an ellipsis: a long title still reads on a phone. */
-  .text {
-    display: -webkit-box;
-    overflow: hidden;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-    line-height: 1.35;
-  }
-
-  .undo { flex: none; font-weight: 600; }
 </style>

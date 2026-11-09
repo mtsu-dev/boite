@@ -84,9 +84,8 @@
   .exchanges { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
   .discussion {
     display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 10px;
-    width: min(100%, 560px); height: auto; min-height: var(--control); padding: 5px 10px 5px 8px;
-    border: 1px solid var(--color-border); border-radius: var(--radius-lg); border-bottom-left-radius: var(--radius-sm); background: var(--color-surface-2);
-    color: var(--color-muted-foreground); box-shadow: var(--shadow-e1); text-align: left; font-size: var(--text-sm); white-space: normal;
+    width: min(100%, 560px); height: auto; min-height: var(--control); padding: 5px 10px 5px 8px; border-radius: var(--radius-lg); border-bottom-left-radius: var(--radius-sm); background: var(--color-surface-2);
+    color: var(--color-muted-foreground); text-align: left; font-size: var(--text-sm); white-space: normal;
     transition: background var(--dur-1) var(--ease-out-quint), border-color var(--dur-1) var(--ease-out-quint), transform var(--dur-1) var(--ease-out-quint);
   }
   .discussion:hover { background: var(--color-surface-3); border-color: var(--color-edge); color: var(--color-foreground); }

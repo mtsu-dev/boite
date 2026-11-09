@@ -7,6 +7,7 @@
   import { accountName } from '../../lib/account-name';
   import { fill, strings } from '../../lib/strings';
   import Menu from '../Menu.svelte';
+  import Notice from '../Notice.svelte';
 
   /**
    * What stops a bot, said over its conversation, with the remedy beside it.
@@ -43,22 +44,22 @@
   }
 </script>
 
-<div class="agent-problem" role="alert" data-testid="agent-problem">
-  <!-- A removed account reads as the composer's chip says it: the same glyph, the same cause, the same one remedy;
-       the sentence that names the bot and the core's own words stay in the title. -->
-  {#if gone}
-    <UserX size={15} strokeWidth={1.75} />
-    <span data-testid="agent-problem-cause" title={`${fill(strings.composer.botAccountGone, { name: agent.name })}\n${problem}`}>{strings.accounts.removed}</span>
-  {:else}<TriangleAlert size={15} strokeWidth={1.75} /><span>{problem}</span>{/if}
-  {#if store.owner}
-    {#if gone && others.length > 0}
-      <Menu items={others.map(account => ({ id: account.id, label: store.providerOf(account.providerId)?.name ?? accountName(account), hint: accountName(account) }))} onpick={id => void pick(id)} label={labels.pickAccount} placement="bottom" align="end" disabled={busy} testid="agent-problem-account">
-        <span class="ui-label">{labels.pickAccount}</span>
-      </Menu>
-    {:else if gone}
-      <button type="button" class="small" data-testid="agent-problem-add-account" onclick={() => store.showSettings('accounts')}>{labels.addAccount}</button>
-    {:else}
-      <button type="button" class="small" onclick={onfix}>{labels.fix}</button>
-    {/if}
+{#snippet remedy()}
+  {#if gone && others.length > 0}
+    <Menu items={others.map(account => ({ id: account.id, label: store.providerOf(account.providerId)?.name ?? accountName(account), hint: accountName(account) }))} onpick={id => void pick(id)} label={labels.pickAccount} variant="button" placement="bottom" align="end" disabled={busy} testid="agent-problem-account">
+      <span class="ui-label">{labels.pickAccount}</span>
+    </Menu>
+  {:else if gone}
+    <button type="button" class="small" data-testid="agent-problem-add-account" onclick={() => store.showSettings('accounts')}>{labels.addAccount}</button>
+  {:else}
+    <button type="button" class="small" onclick={onfix}>{labels.fix}</button>
   {/if}
+{/snippet}
+
+<!-- A removed account reads as the composer's chip says it: the same glyph, the same cause, the same one remedy;
+     the sentence that names the bot and the core's own words stay in its tooltip. -->
+<div class="agent-problem">
+  <Notice icon={gone ? UserX : TriangleAlert} tone="caution" role="alert" testid="agent-problem" docked
+    detail={gone ? strings.accounts.removed : problem} tip={gone ? `${fill(strings.composer.botAccountGone, { name: agent.name })}\n${problem}` : undefined}
+    ids={{ detail: gone ? 'agent-problem-cause' : undefined }} actions={store.owner ? remedy : undefined} />
 </div>

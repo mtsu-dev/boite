@@ -235,6 +235,22 @@ test('new questions keep the oldest open and the last answer readable on desktop
     await capture(phone ? 'question-dock-latest-phone' : 'question-dock-latest-desktop');
     expect(await page.evaluate(lastAboveDock)).toBe(true);
   }
+  // At 360 px the question at the top of the composer keeps its pager and both buttons whole, inside the screen and the card.
+  await page.send('Emulation.setDeviceMetricsOverride', { width: 360, height: 740, deviceScaleFactor: 1, mobile: true });
+  await page.waitFor('innerWidth === 360');
+  await capture('question-dock-360');
+  const whole = await page.evaluate<Record<string, boolean>>(`(() => {
+    const card = document.querySelector('${id('thread-decision')}').getBoundingClientRect();
+    const inside = (selector) => {
+      const node = document.querySelector('${visibleQuestion} ' + selector);
+      if (!node) return false;
+      const box = node.getBoundingClientRect();
+      return box.width > 0 && box.height > 0 && box.left >= card.left - 0.5 && box.right <= Math.min(card.right, innerWidth) + 0.5
+        && box.top >= card.top - 0.5 && box.bottom <= Math.min(card.bottom, innerHeight) + 0.5 && node.scrollWidth <= node.clientWidth + 1;
+    };
+    return { pager: inside('${id('activity-question-index')}'), next: inside('${id('activity-question-next')}'), skip: inside('${id('question-skip')}'), answer: inside('${id('question-submit')}') };
+  })()`);
+  expect(whole).toEqual({ pager: true, next: true, skip: true, answer: true });
   await page.click(`${visibleQuestion} ${id('question-skip')}`);
   await page.waitFor(`document.querySelector('${id('activity-questions')}').dataset.count === '2'`);
   expect(await page.evaluate(`document.querySelector('${visibleQuestion} ${id('question-text')}').textContent`)).toBe('Which module should come next?');

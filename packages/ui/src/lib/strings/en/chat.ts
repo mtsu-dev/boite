@@ -208,10 +208,10 @@ export const strings = {
       edit: 'Edit {path}',
       write: 'Create {path}'
     },
-    permissionTechnical: 'Technical details',
-    /** The tag of an ask docked at the top of the composer, and its line in the timeline. */
+    /** The live dot of a decision that waits on the owner, for screen readers and on hover. */
     permissionNeedsYou: 'Needs you',
-    permissionOf: '{index} of {total}',
+    /** The state line of a command row whose permission waits, beside its Deny and Allow once. */
+    permissionWaiting: 'Waiting for approval',
     turnFiles: 'Changed files',
     showTurnDiff: 'Show diff',
     hideTurnDiff: 'Hide diff',
@@ -227,7 +227,6 @@ export const strings = {
     revealFailed: 'The folder could not be opened: {reason}',
     /** An answer covers this one call only: the agent asks again for the next one. */
     allowOnce: 'Allow once',
-    allowOnceHint: 'Lets this one call run; the agent asks again next time',
     allowOnceKey: 'Lets this one call run (Enter)',
     deny: 'Deny',
     denyKey: 'Deny (Esc)',

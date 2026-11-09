@@ -349,7 +349,7 @@
   .hint.ok { color: var(--color-success); }
   .bytes { font-variant-numeric: tabular-nums; }
   progress { display: block; width: 100%; height: 4px; margin-top: 12px; accent-color: var(--color-accent); }
-  .error { max-width: var(--settings-width); margin: 0 0 16px; color: var(--color-danger); font-size: var(--text-sm); overflow-wrap: anywhere; }
+  .error { max-width: var(--settings-width); margin: 0 0 16px; }
 
   .language { width: 88px; text-align: center; }
 

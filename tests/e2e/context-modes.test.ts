@@ -85,7 +85,8 @@ test('the phone shows the badge in the child header and the Subagents list witho
   await page.screenshot(join(import.meta.dir, '.artifacts/context-mode-thread-phone.png'));
   await page.evaluate(`document.querySelector('[data-testid=delegation-back-parent]').click()`);
   await page.waitFor(`!document.querySelector("[data-testid=thread-context-mode]")`);
-  await page.click('[data-testid="delegation-activity"]');
+  await page.click('[data-testid=thread-menu-trigger]');
+  await page.click('[data-testid=thread-menu-trigger-menu] [data-value=agents]');
   await page.waitFor('!!document.querySelector("[data-testid=delegation-member-context]")');
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
   await page.waitFor(settledAnimations);

@@ -217,7 +217,7 @@
    * One height for every step, so Next stays under the pointer from one screen to the next.
    * Every screen fits it in both languages; only a window shorter than the panel scrolls.
    */
-  .panel { display: flex; flex-direction: column; width: min(600px, 100%); height: min(600px, calc(100dvh - 32px)); background: var(--color-surface); border: 1px solid var(--color-edge); border-radius: var(--radius-xl); box-shadow: var(--shadow-e3); animation: pop var(--dur-3) var(--ease-out-quint); }
+  .panel { display: flex; flex-direction: column; width: min(600px, 100%); height: min(600px, calc(100dvh - 32px)); background: var(--overlay-surface); border: 1px solid var(--overlay-edge); border-radius: var(--radius-overlay); box-shadow: var(--shadow-overlay); animation: pop var(--dur-3) var(--ease-out-quint); }
   .panel.privacy { width: min(680px, 100%); }
   .panel:focus, h1:focus { outline: none; }
   .panel.closing { animation: pop-out var(--dur-2) var(--ease-out-quint); }
@@ -272,7 +272,7 @@
   .dot::after { content: ''; position: absolute; width: 6px; height: 6px; left: 10px; top: 13px; border-radius: 999px; background: var(--color-edge); }
   .dot.on::after { background: var(--color-foreground); width: 14px; left: 6px; }
   @media (max-width: 480px) {
-    .panel { height: min(640px, calc(100dvh - 32px)); }
+    .panel { height: min(640px, calc(100dvh - 32px)); border: 1px solid var(--overlay-edge); background: var(--overlay-surface); box-shadow: var(--shadow-overlay); border-radius: var(--radius-overlay); }
     .scrim.shell .panel { height: min(640px, calc(100dvh - 32px - var(--titlebar))); }
     /* The last step has three consent choices, so use the phone's available height. */
     .panel.privacy { height: calc(100dvh - 32px); }

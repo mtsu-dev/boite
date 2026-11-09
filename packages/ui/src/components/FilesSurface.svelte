@@ -1,20 +1,10 @@
 <script lang="ts">
+  import Notice from './Notice.svelte';
   // The working directory as a tree. One `files.list` per directory, on the
   // expand and never before: a repository with ten thousand files costs the
   // same as a small one until someone opens a folder.
   import { tick, untrack } from 'svelte';
-  import {
-    ChevronRight,
-    File,
-    FileAudio,
-    FileImage,
-    FileText,
-    FileVideo,
-    Folder,
-    FolderOpen,
-    FolderTree,
-    RefreshCw
-  } from '@lucide/svelte';
+  import { ChevronRight, File, FileAudio, FileImage, FileText, FileVideo, Folder, FolderOpen, FolderTree, RefreshCw, CircleAlert } from '@lucide/svelte';
   import { FILES_LIST_MAX, type FileEntry } from '@boite/contracts';
   import { bytes } from '../lib/format';
   import type { BoundPanel, Surface } from '../lib/right-panel.svelte';
@@ -251,7 +241,7 @@
   </SurfaceHead>
 
   {#if problem !== null}
-    <p class="notice" data-testid="files-error">{fill(strings.files.failed, { reason: problem })}</p>
+    <div class="problem"><Notice icon={CircleAlert} tone="danger" testid="files-error" detail={fill(strings.files.failed, { reason: problem })} /></div>
   {/if}
 
   <div
@@ -449,7 +439,6 @@
   }
 
   .empty,
-  .notice,
   .footer {
     margin: 0;
     font-size: var(--text-sm);
@@ -460,9 +449,8 @@
     padding: 10px 6px;
   }
 
-  .notice {
-    padding: 4px 12px 6px;
-    color: var(--color-danger);
+  .problem {
+    padding: 4px 8px 6px;
   }
 
   .footer {

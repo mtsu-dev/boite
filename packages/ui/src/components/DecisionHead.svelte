@@ -22,7 +22,7 @@
 <style>
   .decision-head { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px 8px; width: 100%; min-width: 0; margin: 0; padding: 0; color: var(--color-foreground); text-align: left; }
   /* The composer's row form (Composer sets `--dock-row`, `--dock-icon` and
-     `--dock-type`, AgentDock draws the same rows): the dot in the icon box,
+     `--dock-type`, the waiting line and the queue draw the same rows): the dot in the icon box,
      the decision in bold in the ink, one row high; a question longer than a
      line pads its own top. Outside the composer, the controls' sizes. */
   .title { display: flex; align-items: center; gap: 8px; flex: 1 1 var(--decision-title, 12rem); min-width: 0; min-height: var(--dock-row, var(--control)); font-size: var(--dock-type, var(--text-base)); font-weight: 600; line-height: 20px; }

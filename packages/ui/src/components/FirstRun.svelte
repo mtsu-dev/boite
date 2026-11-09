@@ -102,7 +102,7 @@
   .other { gap: var(--space-2); height: auto; min-height: 32px; padding: 4px 10px; color: var(--color-muted-foreground); font-size: var(--text-sm); }
   .other > :global(svg) { flex: none; color: var(--color-subtle); }
   /* The legend: a card of its own under the steps, at their width, its marks in their number column. */
-  .legend { width: min(360px, calc(100vw - 2 * var(--space-6))); margin: var(--space-3) 0 0; padding: var(--space-3) var(--space-3) var(--space-2); border-radius: var(--radius-lg); background: var(--color-surface); box-shadow: inset 0 0 0 1px var(--color-border); text-align: left; }
+  .legend { width: min(360px, calc(100vw - 2 * var(--space-6))); margin: var(--space-3) 0 0; padding: var(--space-3) var(--space-3) var(--space-2); border-radius: var(--radius-lg); background: var(--color-surface-2); text-align: left; }
   .legend h2 { margin: 0 0 var(--space-2); color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 400; }
   .legend ul { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
   .legend li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px var(--space-3); font-size: var(--text-sm); line-height: 1.4; }

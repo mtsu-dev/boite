@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { CirclePause, CirclePlay, Network, RefreshCw } from '@lucide/svelte';
+  import Notice from './Notice.svelte';
+  import { CirclePause, CirclePlay, Network, RefreshCw, Info, TriangleAlert } from '@lucide/svelte';
   import { onMount } from 'svelte';
   import { defaultCoordinationConfig, type CoordinationConfig, type CoordinationMode } from '@boite/contracts';
   import { fill, strings } from '../lib/strings';
@@ -58,7 +59,7 @@
 
   <div class="body">
     <p class="summary">{summary}</p>
-    {#if !store.owner}<p class="notice">{strings.coordination.ownerOnly}</p>{/if}
+    {#if !store.owner}<Notice icon={Info} detail={strings.coordination.ownerOnly} />{/if}
 
     <div class="modes" role="radiogroup" aria-label={strings.coordination.heading}>
       {#each ['off', 'on'] as const as choice (choice)}
@@ -140,9 +141,10 @@
           </ul>
         {/if}
         {#if (store.coordinationDirectory?.unavailable.length ?? 0) > 0}
-          <div class="warnings" role="status">
-            <strong>{strings.coordination.unavailable}</strong>
-            {#each store.coordinationDirectory?.unavailable ?? [] as warning (warning)}<p>{warning}</p>{/each}
+          <div class="warnings">
+            <Notice icon={TriangleAlert} tone="caution" title={strings.coordination.unavailable}>
+              {#each store.coordinationDirectory?.unavailable ?? [] as warning (warning)}<span class="warning">{warning}</span>{/each}
+            </Notice>
           </div>
         {/if}
       </section>
@@ -154,14 +156,13 @@
 </details>
 
 <style>
-  .coordination { flex: none; margin: 8px auto 0; width: min(calc(100% - 40px), var(--content)); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); }
+  .coordination { flex: none; margin: 8px auto 0; width: min(calc(100% - 40px), var(--content)); border-radius: var(--radius-lg); background: var(--color-surface); }
   .coordination > summary { min-height: var(--control-lg); width: 100%; padding: 0 12px; display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: var(--text-sm); font-weight: 600; color: var(--color-foreground); border-radius: var(--radius-lg); }
   .coordination > summary:hover { background: var(--color-hover); }
   .mode, .paused { padding: 2px 6px; border-radius: var(--radius-sm); background: var(--color-surface-3); color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 500; }
   .mode { margin-left: auto; }
   .body { padding: 0 14px 14px; border-top: 1px solid var(--color-border); max-height: min(48dvh, 480px); overflow-y: auto; overscroll-behavior: contain; }
-  .summary, .empty, .notice { margin: 10px 0; color: var(--color-muted-foreground); font-size: var(--text-sm); line-height: 1.45; }
-  .notice { padding: 8px 10px; border-left: 2px solid var(--color-edge); background: var(--color-surface-2); }
+  .summary, .empty { margin: 10px 0; color: var(--color-muted-foreground); font-size: var(--text-sm); line-height: 1.45; }
   .modes { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; padding: 3px; border-radius: var(--radius-md); background: var(--color-surface-2); }
   .modes button { width: 100%; }
   .modes .chosen { background: var(--color-active); color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-edge); }
@@ -186,9 +187,9 @@
   .contacts strong, .contacts small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .contacts strong { font-size: var(--text-sm); font-weight: 500; }
   .contacts small, .contact-status { color: var(--color-muted-foreground); font-size: var(--text-xs); }
-  .warnings { margin-top: 8px; padding: 8px 10px; border-left: 2px solid var(--color-live); background: var(--color-surface-2); font-size: var(--text-sm); }
-  .warnings p { margin-top: 4px; }
-  .error { margin-top: 10px; color: var(--color-danger); font-size: var(--text-sm); }
+  .warnings { margin-top: 8px; }
+  .warning { display: block; }
+  .error { margin-top: 10px; }
   .coordination.expanded { width: 100%; margin: 0; border: 0; background: transparent; }
   .coordination.expanded > summary { display: none; }
   .coordination.expanded .body { border: 0; max-height: none; }

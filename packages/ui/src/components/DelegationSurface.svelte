@@ -324,7 +324,7 @@
   .spacer { flex: 1; }
   .settings { flex: none; padding: 4px 16px 14px; }
   .profiles-head { margin-top: 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-  .error { margin: 12px 16px; color: var(--color-danger); font-size: var(--text-sm); }
+  .error { margin: 12px 16px; }
   .switch-row { min-height: var(--control-lg); padding: 6px 0; display: flex; align-items: center; gap: 14px; }
   .switch-row > span, .profiles-head > span { flex: 1; min-width: 0; }
   .switch-row small, .profiles-head small { display: block; margin-top: 2px; color: var(--color-muted-foreground); font-size: var(--text-xs); line-height: 1.4; font-weight: normal; }

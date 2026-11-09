@@ -41,5 +41,5 @@
 </label>
 {#if login.state.error}<p class="error" role="alert">{login.state.error}</p>{/if}
 <style>
-  .error { margin: 0 0 12px; color: var(--color-danger); font-size: var(--text-sm); }
+  .error { margin: 0 0 12px; }
 </style>

@@ -25,7 +25,6 @@ export const fr: Translation = {
     close: 'Fermer le détail',
     notStarted: 'Pas encore démarrée.',
     skipped: "Sautée : sa condition n'était pas remplie.",
-    card: 'Workflow',
     show: 'Voir le workflow',
     tokens: '{tokens} jetons',
     tokensHelp: 'Usage transmis par les tours terminés, lectures et écritures du cache et nouvelles tentatives comprises.'

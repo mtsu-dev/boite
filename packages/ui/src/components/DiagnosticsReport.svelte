@@ -152,7 +152,7 @@
 <style>
   .scrim { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; background: var(--color-scrim); animation: fade var(--dur-2) var(--ease-out-quint); }
   .scrim.closing { animation-name: fade-out; pointer-events: none; }
-  .dialog { display: grid; gap: 10px; width: min(620px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; padding: 18px; background: var(--color-surface); border: 1px solid var(--color-edge); border-radius: var(--radius-xl); box-shadow: var(--shadow-e3); animation: pop var(--dur-2) var(--ease-out-quint); }
+  .dialog { display: grid; gap: 10px; width: min(620px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; padding: 18px; background: var(--overlay-surface); border: 1px solid var(--overlay-edge); border-radius: var(--radius-overlay); box-shadow: var(--shadow-overlay); animation: pop var(--dur-2) var(--ease-out-quint); }
   .dialog.closing { animation-name: pop-out; }
   h2 { font-size: var(--text-md); }
   .hint { color: var(--color-muted-foreground); font-size: var(--text-sm); line-height: 1.5; overflow-wrap: anywhere; }

@@ -157,7 +157,7 @@
   .quiet[aria-pressed='true'] { background: var(--color-active); }
   .actions { display: flex; flex-wrap: wrap; gap: 6px; }
   .mode { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; font-size: var(--text-sm); }
-  .plugin { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-2); font-size: var(--text-sm); }
+  .plugin { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; padding: 10px 12px; border-radius: var(--radius-lg); background: var(--color-surface-2); font-size: var(--text-sm); }
   .plugin .line { flex: 1; min-width: 0; color: var(--color-muted-foreground); font-variant-numeric: tabular-nums; }
   .dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--color-subtle); }
   .dot.ok { background: var(--color-success); }

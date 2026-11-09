@@ -3,8 +3,8 @@ import './notify-corner.css';
 /**
  * One home for every notice: the undo and error toasts (`toastSlot`) and the
  * arriving cards (contact mail and requests, plugin updates, memory notes,
- * `class="notify-corner" use:notifyCorner`), all one card (notify-corner.css
- * `.notify-card`). With a thread or a phone list on screen they sit in room
+ * `class="notify-corner" use:notifyCorner`), all one form (Notice.svelte,
+ * floating). With a thread or a phone list on screen they sit in room
  * the page keeps at its bottom, right above the composer or the tab bar,
  * centred on it, so none covers a line, a title or the field being typed in.
  * With neither, a desktop keeps the bottom-right corner, the cards stacked

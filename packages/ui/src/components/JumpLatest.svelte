@@ -22,11 +22,9 @@
     gap: 6px;
     padding: 0 10px;
     border: 1px solid var(--color-edge);
-    border-radius: var(--radius-lg);
     background: var(--color-surface-2);
     color: var(--color-foreground);
     font-size: var(--text-sm);
-    font-weight: 550;
     animation: rise var(--motion-duration) var(--motion-curve);
   }
 

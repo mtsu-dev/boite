@@ -43,7 +43,7 @@ test('a thinking part is folded, opens on its toggle, and a new turn shows it be
   expect(document.querySelectorAll('[data-testid=thinking-part]').length).toBe(2);
 });
 
-test('an async question waits on one card at the timeline\'s end, stacked, and its turn draws no second copy', async ({ app: _app }) => {
+test('an async question waits at the top of the composer card, stacked, and its turn draws no second copy', async ({ app: _app }) => {
   query<HTMLButtonElement>('[data-testid=new-thread]').click();
   await waitFor(() => store.draft !== null);
 
@@ -61,21 +61,21 @@ test('an async question waits on one card at the timeline\'s end, stacked, and i
   query<HTMLButtonElement>('[data-testid=activity-question-toggle]').click();
   await waitFor(() => query('[data-testid=activity-question-toggle]').getAttribute('aria-expanded') === 'true');
 
-  // New arrivals leave the oldest up; the tail card is their one copy, in the timeline and not in the composer.
-  expect(query('[data-testid=activity-question-index]').textContent).toBe('Question 1 of 2');
+  // New arrivals leave the oldest up; the top of the composer card is their one copy, never the timeline.
+  expect(query('[data-testid=activity-question-index]').textContent).toBe('1 of 2');
   expect(document.querySelectorAll('[data-testid=question-docked]').length).toBe(0);
-  const cards = Array.from(document.querySelectorAll('[data-testid=timeline] [data-testid=question-card]'));
+  const cards = Array.from(document.querySelectorAll('[data-testid=composer] [data-testid=question-card]'));
   expect(cards.length).toBe(2);
   expect(cards.every((card) => card.closest('[data-testid=thread-decision]'))).toBe(true);
-  expect(document.querySelector('[data-testid=composer] [data-testid=question-card]')).toBeNull();
+  expect(document.querySelector('[data-testid=timeline] [data-testid=question-card]')).toBeNull();
   const visible = () => Array.from(document.querySelectorAll<HTMLElement>('[data-testid=activity-question]')).filter((el) => !el.hidden);
   expect(visible().length).toBe(1);
   const oldest = visible()[0]?.dataset.question;
   query<HTMLButtonElement>('[data-testid=activity-question-next]').click();
-  await waitFor(() => query('[data-testid=activity-question-index]').textContent === 'Question 2 of 2');
+  await waitFor(() => query('[data-testid=activity-question-index]').textContent === '2 of 2');
   expect(visible()[0]?.dataset.question).not.toBe(oldest);
   query<HTMLButtonElement>('[data-testid=activity-question-prev]').click();
-  await waitFor(() => query('[data-testid=activity-question-index]').textContent === 'Question 1 of 2');
+  await waitFor(() => query('[data-testid=activity-question-index]').textContent === '1 of 2');
   expect(visible()[0]?.dataset.question).toBe(oldest);
 
   // Answered from the card, it leaves it and folds to its answer in its turn.

@@ -373,8 +373,7 @@
     gap: 6px;
     flex: none;
     padding: 8px 6px 8px 10px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-md);
     background: var(--color-surface-2);
     font-size: var(--text-sm);
     line-height: 1.4;

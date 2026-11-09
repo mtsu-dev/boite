@@ -1,7 +1,7 @@
 <script lang="ts">
   import { UserX } from '@lucide/svelte';
   import { strings } from '../lib/strings';
-  import ThreadNotice from './ThreadNotice.svelte';
+  import Notice from './Notice.svelte';
 
   /*
    * Over the composer of a conversation whose account was removed, with no other
@@ -12,8 +12,8 @@
   let { onpick }: { onpick: () => void } = $props();
 </script>
 
-<ThreadNotice icon={UserX} tone="live" testid="composer-account-removed" title={strings.accounts.removed} info={strings.accounts.removedHint} docked replaces>
+<Notice icon={UserX} tone="caution" testid="composer-account-removed" title={strings.accounts.removed} info={strings.accounts.removedHint} docked replaces>
   {#snippet actions()}
     <button type="button" class="small" data-testid="account-gone-pick" onclick={onpick}><span class="ui-label">{strings.agents.pickAccount}</span></button>
   {/snippet}
-</ThreadNotice>
+</Notice>

@@ -77,8 +77,7 @@
     gap: 10px;
     margin: 10px 0 0;
     padding: 14px 16px 14px 34px;
-    border: 1px solid var(--color-edge);
-    border-radius: var(--radius-xl);
+    border-radius: var(--radius-lg);
     background: var(--color-surface);
   }
   li { font-size: var(--text-sm); line-height: 1.5; }

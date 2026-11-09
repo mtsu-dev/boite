@@ -1,10 +1,11 @@
 <script lang="ts">
+  import Notice from './Notice.svelte';
   // One file per tab: a text editor with a gutter and a save, a picture with
   // zoom and pan, the native player for a sound or a video, and a download for
   // anything else. Everything reaches the disk through the core, never through
   // the browser's own file system.
   import { tick, untrack } from 'svelte';
-  import { Download, Maximize2, Minus, Plus, Save, Scan } from '@lucide/svelte';
+  import { Download, Maximize2, Minus, Plus, Save, Scan, CircleAlert } from '@lucide/svelte';
   import type { FileContent } from '@boite/contracts';
   import { bytes } from '../lib/format';
   import { baseName } from '../lib/right-panel.svelte';
@@ -375,7 +376,7 @@
   </SurfaceHead>
 
   {#if problem !== null}
-    <p class="notice bad" data-testid="file-error">{problem}</p>
+    <div class="problem"><Notice icon={CircleAlert} tone="danger" testid="file-error" detail={problem} /></div>
   {:else if path === null}
     <p class="notice">{strings.files.noFile}</p>
   {:else if content === null}
@@ -557,8 +558,9 @@
     color: var(--color-muted-foreground);
   }
 
-  .notice.bad {
-    color: var(--color-danger);
+  .problem {
+    flex: none;
+    padding: 6px 8px;
   }
 
   /* -------------------------------------------------------------- the editor */

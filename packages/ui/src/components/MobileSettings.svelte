@@ -345,7 +345,7 @@
   /* A family: its head in the meta size over its card of rows, air between two. */
   .family + .family { margin-top: var(--space-5); }
   .family-head { margin: 0 0 var(--space-2) var(--space-1); color: var(--color-subtle); font-size: var(--text-meta); font-weight: var(--weight-title); }
-  .rows { border: 1px solid var(--color-border); border-radius: var(--radius-lg); overflow: hidden; background: var(--color-surface); }
+  .rows { border-radius: var(--radius-lg); overflow: hidden; background: var(--color-surface); }
   /* A ghost button is muted; a row title reads like any other settings label. */
   .row { display: flex; align-items: center; width: 100%; height: auto; min-height: 48px; gap: var(--space-3); padding: var(--space-3) var(--space-4); font-size: var(--text-base); font-weight: 400; text-align: left; border-radius: 0; white-space: normal; color: var(--color-foreground); }
   .row + .row { border-top: 1px solid var(--color-border); }

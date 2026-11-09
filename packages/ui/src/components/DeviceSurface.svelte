@@ -492,16 +492,16 @@
   .dot { width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--color-muted-foreground); flex: none; }
   .dot.ready { background: var(--color-success); } .dot.failed { background: var(--color-danger); }
   .muted, small { color: var(--color-muted-foreground); font-size: var(--text-sm); }
-  .error { margin: 0; padding: 0 16px 8px; font-size: var(--text-sm); color: var(--color-danger); overflow-wrap: anywhere; max-height: 90px; overflow: auto; }
+  .error { margin: 0; padding: 0 16px 8px; max-height: 90px; overflow: auto; }
   .picker { padding: 8px 16px 16px; display: grid; gap: 8px; align-content: start; overflow: auto; }
   .picker p { margin: 0; } .heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .reason { overflow-wrap: anywhere; }
   ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-  li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface-2); }
+  li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border-radius: var(--radius-lg); background: var(--color-surface-2); }
   .name { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
   .viewer { position: relative; flex: 1; min-height: 80px; display: flex; overflow: hidden; background: var(--color-background); }
   .cover { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; }
-  .card { display: flex; flex-direction: column; align-items: center; gap: 10px; max-width: 360px; width: 100%; padding: 20px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface-2); box-shadow: var(--shadow-e2); }
+  .card { display: flex; flex-direction: column; align-items: center; gap: 10px; max-width: 360px; width: 100%; padding: 20px; border-radius: var(--radius-lg); background: var(--color-surface-2); }
   .card p { margin: 0; overflow-wrap: anywhere; } .card .heading { font-weight: 600; } .card button { min-height: var(--control); min-width: 120px; justify-content: center; }
   .center { margin: auto; padding: 24px; text-align: center; } .center .error { padding: 0; } .detail { margin: 8px 0 0; overflow-wrap: anywhere; }
   .screen { position: relative; flex: 1; height: auto; min-width: 0; padding: 0; border: 0; border-radius: 0; background: transparent; touch-action: none; cursor: crosshair; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }

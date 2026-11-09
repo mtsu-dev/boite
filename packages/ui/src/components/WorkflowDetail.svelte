@@ -115,9 +115,9 @@
   .instance.chosen { background: var(--color-active); }
   .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); }
   .time { flex: none; color: var(--color-subtle); font-size: var(--text-xs); }
-  .well { margin: 0; max-height: 220px; padding: 8px 10px; overflow: auto; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-2); white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit; font-size: var(--text-sm); }
+  .well { margin: 0; max-height: 220px; padding: 8px 10px; overflow: auto; border-radius: var(--radius-lg); background: var(--color-surface-2); white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit; font-size: var(--text-sm); }
   .well.mono { font-family: var(--font-mono); font-size: 13px; }
   .open { align-self: flex-start; margin-top: 6px; gap: 6px; }
   .muted { margin: 0; color: var(--color-muted-foreground); font-size: var(--text-sm); }
-  .error { margin: 0; color: var(--color-danger); font-size: var(--text-sm); overflow-wrap: anywhere; }
+  .error { margin: 0; }
 </style>

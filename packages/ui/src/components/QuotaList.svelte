@@ -29,5 +29,4 @@
   .quota { display: grid; gap: 10px; }
   small, .muted { color: var(--color-muted-foreground); font-size: var(--text-sm); }
   p { margin: 0; }
-  .error { color: var(--color-danger); font-size: var(--text-sm); }
 </style>

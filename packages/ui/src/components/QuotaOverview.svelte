@@ -249,7 +249,7 @@
   .paid .track { grid-column: 1 / -1; }
   .extras { padding: 4px 4px 0 32px; }
   .extras:not(:has(> :global(*))) { display: none; }
-  .error { margin: 4px 4px 0 32px; color: var(--color-danger); font-size: var(--text-sm); overflow-wrap: anywhere; }
+  .error { margin: 4px 4px 0 32px; }
   .details { --quota-bar: 7px; margin: 6px 4px 0 32px; display: grid; gap: 10px; animation: rise var(--dur-2) var(--ease-out-quint); }
   .empty { display: grid; justify-items: start; gap: 10px; padding: 16px 4px; }
   .empty p { margin: 0; color: var(--color-muted-foreground); font-size: var(--text-sm); }

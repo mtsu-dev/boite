@@ -76,6 +76,5 @@
   .profiles { display: grid; gap: 8px; padding-block: 8px; font-size: var(--text-sm); }
   .profiles label { display: flex; gap: 8px; align-items: center; }
   .hint { margin: 0 0 8px; color: var(--color-muted-foreground); font-size: var(--text-xs); line-height: 1.5; }
-  .error { color: var(--color-danger); font-size: var(--text-sm); overflow-wrap: anywhere; }
   @media (max-width: 720px) { .profiles label, summary { min-height: var(--touch-target); } .row { flex-wrap: wrap; } }
 </style>

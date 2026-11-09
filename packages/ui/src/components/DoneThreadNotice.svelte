@@ -5,7 +5,7 @@
   import { ThreadRestore } from '../lib/thread-restore.svelte';
   import { strings } from '../lib/strings';
   import { patchFields } from '../lib/thread-rows';
-  import ThreadNotice from './ThreadNotice.svelte';
+  import Notice from './Notice.svelte';
   import { removalInfo } from './WorktreeGoneNotice.svelte';
 
   /** `removal`: Boite also removed its worktree, said in the same sentence, the details behind the "i". */
@@ -21,11 +21,11 @@
 </script>
 
 <div class="done-notice">
-  <ThreadNotice icon={Archive} tone="quiet" testid="done-thread-notice" detail={removal ? strings.sidebar.worktreeGone.done : strings.sidebar.doneNotice} info={removal ? removalInfo(removal) : undefined} docked>
+  <Notice icon={Archive} tone="info" testid="done-thread-notice" detail={removal ? strings.sidebar.worktreeGone.done : strings.sidebar.doneNotice} info={removal ? removalInfo(removal) : undefined} docked>
     {#snippet actions()}
       <button type="button" class="small" data-testid="done-thread-reopen" disabled={lock.busy || store.connection !== 'ready'} onclick={() => void reopen()}><ArchiveRestore size={14} /><span class="ui-label">{strings.sidebar.reopenThread}</span></button>
     {/snippet}
-  </ThreadNotice>
+  </Notice>
 </div>
 
 <style>

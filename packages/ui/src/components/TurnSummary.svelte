@@ -228,7 +228,7 @@
   @media (prefers-reduced-motion: reduce) { .mark.memory[data-status='running'] { animation: none; } }
   :global(html[data-motion='reduced']) .mark.memory[data-status='running'] { animation: none; }
   .summary[data-status='error'] > :global(svg) { color: var(--color-danger); }
-  .summary.compacting { align-self: flex-start; align-items: flex-start; flex-wrap: nowrap; gap: 10px; max-width: 520px; box-sizing: border-box; padding: 12px 14px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-2); }
+  .summary.compacting { align-self: flex-start; align-items: flex-start; flex-wrap: nowrap; gap: 10px; max-width: 520px; box-sizing: border-box; padding: 12px 14px; border-radius: var(--radius-lg); background: var(--color-surface-2); }
   .compaction-copy { min-width: 0; }
   .compaction-title { display: block; color: var(--color-foreground); font-size: var(--text-sm); font-weight: 400; }
   .compaction-elapsed { display: block; margin-top: 8px; color: var(--color-muted-foreground); }

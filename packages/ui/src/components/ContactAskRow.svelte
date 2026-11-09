@@ -92,12 +92,11 @@
 <style>
   .ask {
     display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 10px;
-    width: min(100%, 560px); height: auto; min-height: var(--control); padding: 6px 10px 6px 8px;
-    border: 1px solid var(--color-border); border-radius: var(--radius-lg); border-bottom-left-radius: var(--radius-sm); background: var(--color-surface-2);
-    color: var(--color-muted-foreground); box-shadow: var(--shadow-e1); text-align: left; font-size: var(--text-sm); white-space: normal;
+    width: min(100%, 560px); height: auto; min-height: var(--control); padding: 6px 10px 6px 8px; border-radius: var(--radius-lg); border-bottom-left-radius: var(--radius-sm); background: var(--color-surface-2);
+    color: var(--color-muted-foreground); text-align: left; font-size: var(--text-sm); white-space: normal;
     transition: background var(--dur-1) var(--ease-out-quint), border-color var(--dur-1) var(--ease-out-quint), transform var(--dur-1) var(--ease-out-quint);
   }
-  .ask:hover { background: var(--color-surface-3); border-color: var(--color-edge); color: var(--color-foreground); }
+  .ask:hover { background: var(--color-surface-3); color: var(--color-foreground); }
   .ask:active { transform: scale(0.99); }
   .ask > :global(svg) { align-self: center; }
   .ask :global(.caret) { transition: transform var(--dur-1) var(--ease-out-quint); }

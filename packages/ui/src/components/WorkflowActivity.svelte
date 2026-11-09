@@ -8,7 +8,7 @@
   import StatusMark from './StatusMark.svelte';
   import { workflowTone } from '../lib/thread-state';
 
-  /** A run as one row of the chat where it started: its name, its state, one tick per phase, and the way to its graph. */
+  /** A run grouped on one row of the chat where it started, like the subagents it runs: its name over its state, steps and one tick per phase, its time, and the way to its graph. */
   let { store, run }: { store: Store; run: WorkflowRun } = $props();
   let steps = $derived(runProgress(run));
   let phases = $derived(phasesOf(run));
@@ -28,13 +28,11 @@
   }
 </script>
 
-<ActivityCard live={run.status === 'running'} heading={`${strings.workflow.card} · ${run.name}`} timing={{ startedAt: run.createdAt, finishedAt: run.finishedAt, active: run.status === 'running' }} onclick={open} data-testid="workflow-activity" data-run-id={run.id} data-status={run.status} title={strings.workflow.show}>
+<ActivityCard live={run.status === 'running'} heading={run.name} timing={{ startedAt: run.createdAt, finishedAt: run.finishedAt, active: run.status === 'running' }} onclick={open} data-testid="workflow-activity" data-run-id={run.id} data-status={run.status} title={strings.workflow.show}>
   {#snippet mark()}<Workflow size={15} strokeWidth={1.75} />{/snippet}
   {#snippet progress()}
-    <!-- A running row has the spinner at its end; the mark says how a run ended. -->
-    {#if run.status !== 'running'}<StatusMark {...workflowTone(run.status, true)} />{/if}
-    <span class="ui-label">{strings.workflow.status[run.status]}</span>
-    <span class="ui-label">· {fill(strings.workflow.steps, { done: String(steps.done), total: String(steps.total) })}</span>
+    <StatusMark {...workflowTone(run.status, true)} />
+    <span>{strings.workflow.status[run.status]} · {fill(strings.workflow.steps, { done: String(steps.done), total: String(steps.total) })}</span>
   {/snippet}
   {#snippet extra()}
     <span class="phases" aria-hidden="true">

@@ -67,9 +67,8 @@
   .contacts {
     margin-bottom: 10px;
     padding: 4px;
-    border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
-    background: color-mix(in srgb, var(--color-surface-2) 55%, transparent);
+    background: var(--card-fill);
   }
   .head { display: flex; align-items: center; gap: 2px; }
   .toggle { flex: 1; min-width: 0; height: var(--control-lg); padding: 0 4px; justify-content: flex-start; gap: 6px; }

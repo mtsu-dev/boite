@@ -26,11 +26,11 @@ afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);
 test('the chat card opens the run top to bottom, an arrow per dependency, in the panel at its default width', async () => {
   await page.click(`${id('thread-row')}[data-thread-id="t-trace"]`);
   await page.waitFor(`document.querySelector('${id('workflow-activity')}')`);
-  expect(await page.text(id('workflow-activity'))).toContain('1/5 steps');
-  await page.waitFor(`document.querySelector('${id('active-subagents')}')?.dataset.runs === '1'`);
-  // The running subagent, the one at rest on its own background work and the run, folded into one row.
-  expect(await page.evaluate(`document.querySelector('${id('active-subagents')}').dataset.count`)).toBe('2');
-  expect(await page.text(id('agent-dock-toggle'))).toContain('3 active');
+  expect(await page.text(id('workflow-activity'))).toContain('1 of 5 done');
+  await page.waitFor(`document.querySelector('${id('agent-dock')}')?.dataset.runs === '1'`);
+  // The running subagent, the one at rest on its own background work and the run, on one waiting line.
+  expect(await page.evaluate(`document.querySelector('${id('agent-dock')}').dataset.count`)).toBe('2');
+  expect(await page.text(id('agent-dock-label'))).toBe('Waiting on 3 subagents and workflows');
   await capture('workflow-card.png');
   await page.click(id('workflow-activity'));
   await page.waitFor(`document.querySelector('${id('workflow-graph')}')?.dataset.layout === 'rows'`);

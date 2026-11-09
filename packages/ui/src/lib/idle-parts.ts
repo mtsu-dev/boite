@@ -3,8 +3,8 @@ import { LazyComponent } from './lazy-component.svelte';
 
 /**
  * Chunks outside `deferred-parts.ts` because they draw its parts through
- * `Deferred` themselves: the card of decisions at the end of a timeline, the
- * permission card a run draws for its call, and the context meter's details,
+ * `Deferred` themselves: the question at the top of the composer, the
+ * permission row a run draws for its call, and the context meter's details,
  * which a hover opens, never the first screen. The composer fetches them at
  * idle, on a link that can spare the bytes (the rule of `prefetch.ts`, which
  * this file cannot import without a cycle through the pages it warms), so the

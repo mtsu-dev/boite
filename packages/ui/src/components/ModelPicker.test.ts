@@ -1,6 +1,8 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
-import type { Account, ModelInfo } from '@boite/contracts';
+import type { ComponentProps } from 'svelte';
+import type { Account, ModelInfo, ProviderSummary } from '@boite/contracts';
+import { strings } from '../lib/strings';
 import AccountSeats from './AccountSeats.svelte';
 import App from '../App.svelte';
 import { store } from '../lib/store.svelte';
@@ -52,16 +54,80 @@ async function mountAt(open: 'landing' | 'recent'): Promise<FakeClient> {
 const rows = () => document.querySelectorAll('[data-testid=composer-picker-menu] [data-model]').length;
 const showAll = () => document.querySelector<HTMLButtonElement>('[data-testid=picker-show-all]');
 
-test('account chips never reveal the login email in their tooltip', () => {
+const shownClaude = { id: 'claude', name: 'Claude', available: true } as ProviderSummary;
+const twoSeats: Account[] = [
+  { id: 'work', providerId: 'claude', label: 'Work', identity: 'work@example.com', isolationDir: null, status: 'ok', createdAt: 0 },
+  { id: 'personal', providerId: 'claude', label: 'Personal', identity: 'personal@example.com', isolationDir: '/accounts/personal', status: 'ok', createdAt: 0 }
+];
+
+function mountSeats(props: Partial<ComponentProps<typeof AccountSeats>>) {
+  running = mount(AccountSeats, { target: document.body, props: { name: 'Claude', shown: shownClaude, seats: twoSeats, shownAccountId: 'work', choice: null, locked: false, onpick: () => {}, ...props } });
+  flushSync();
+}
+
+function key(target: Element, name: string) {
+  target.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true }));
+  flushSync();
+}
+
+const accountButton = () => document.querySelector<HTMLButtonElement>('[data-testid=picker-account]');
+const accountItems = () => [...document.querySelectorAll<HTMLButtonElement>('[data-seat]')];
+
+test('account rows never reveal the login email in their tooltip', async () => {
   const seats: Account[] = [
     { id: 'work', providerId: 'claude', label: 'Work', identity: 'work@example.com', isolationDir: '/accounts/work', status: 'ok', createdAt: 0 },
     { id: 'personal', providerId: 'claude', label: 'Personal', identity: 'personal@example.com', isolationDir: '/accounts/personal', status: 'unauthenticated', createdAt: 0 }
   ];
-  running = mount(AccountSeats, { target: document.body, props: { shown: null, seats, shownAccountId: 'work', choice: null, locked: false, onpick: () => {} } });
+  mountSeats({ shown: null, seats });
+  accountButton()!.click();
+  await waitFor(() => accountItems().length === 2);
+  expect(accountItems().map(item => item.title)).toEqual(['Work', 'Personal']);
+  expect(accountItems().map(item => item.querySelector('.seat-name')?.textContent?.trim())).toEqual(['Work', 'Personal']);
+  // A signed-out login says so on a quiet second line.
+  expect(accountItems().map(item => item.querySelector('.seat-note')?.textContent ?? null)).toEqual([null, strings.accounts.status.unauthenticated]);
+});
+
+test('one account: the provider name is plain text, no button', () => {
+  mountSeats({ seats: twoSeats.slice(0, 1) });
+  expect(accountButton()).toBeNull();
+  expect(document.querySelector('.provider-name')?.textContent).toBe('Claude');
+});
+
+test('two accounts: the dropdown on the name switches the account and walks by keys', async () => {
+  const picked: string[] = [];
+  mountSeats({ onpick: (seat) => picked.push(seat.id) });
+  // The provider's own login goes unnamed; the button reads "Claude" and a chevron.
+  expect(accountButton()!.textContent?.trim()).toBe('Claude');
+  expect(accountButton()!.getAttribute('aria-expanded')).toBe('false');
+  expect(accountItems()).toEqual([]);
+
+  accountButton()!.click();
+  await waitFor(() => accountItems().length === 2);
+  // The current account carries the check and takes the focus.
+  expect(accountItems().map(item => item.getAttribute('aria-checked'))).toEqual(['true', 'false']);
+  expect(document.activeElement).toBe(accountItems()[0]);
+  accountItems()[1]!.click();
   flushSync();
-  const chips = [...document.querySelectorAll<HTMLButtonElement>('[data-seat]')];
-  expect(chips.map(chip => chip.title)).toEqual(['Work', 'Personal']);
-  expect(chips.map(chip => chip.textContent?.trim())).toEqual(['Work', 'Personal']);
+  expect(picked).toEqual(['personal']);
+  expect(accountItems()).toEqual([]);
+  expect(document.activeElement).toBe(accountButton());
+
+  // Keys: the arrows walk the list and wrap, Escape closes it and hands the focus back.
+  accountButton()!.click();
+  await waitFor(() => accountItems().length === 2);
+  key(document.activeElement!, 'ArrowDown');
+  expect(document.activeElement).toBe(accountItems()[1]);
+  key(document.activeElement!, 'ArrowDown');
+  expect(document.activeElement).toBe(accountItems()[0]);
+  key(document.activeElement!, 'Escape');
+  expect(accountItems()).toEqual([]);
+  expect(document.activeElement).toBe(accountButton());
+});
+
+test('another login than the provider own one is named on the line', () => {
+  mountSeats({ shownAccountId: 'personal' });
+  expect(document.querySelector('[data-testid=picker-account-name]')?.textContent).toBe('Personal');
+  expect(accountButton()!.getAttribute('aria-label')).toBe(`Claude, Personal, ${strings.composer.switchAccount}`);
 });
 
 test('a column of hundreds of models draws its first rows until asked for all', async () => {
@@ -277,7 +343,9 @@ test('a signed-in Claude seat is probed before its model and account are applied
 
   try {
     document.querySelector<HTMLButtonElement>('[data-testid=composer-picker]')!.click();
-    await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null && document.querySelector('[data-instance="claude::a-claude-side"]') !== null);
+    await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null && accountButton() !== null);
+    accountButton()!.click();
+    await waitFor(() => document.querySelector('[data-instance="claude::a-claude-side"]') !== null);
     const seat = document.querySelector<HTMLButtonElement>('[data-instance="claude::a-claude-side"]')!;
     expect(seat.disabled).toBe(false);
     seat.click();
@@ -288,7 +356,10 @@ test('a signed-in Claude seat is probed before its model and account are applied
     expect(calls.some(({ method, params }) => method === 'threads.update' && (params as { accountId?: string }).accountId === 'a-claude-side')).toBe(false);
     expect(store.openThread?.accountId).toBe('a-claude-main');
     expect(store.probedModels[sideKey]).toBeUndefined();
-    expect(seat.disabled).toBe(true);
+    // The list closed on the pick; opened again meanwhile, it waits for the probe.
+    accountButton()!.click();
+    await waitFor(() => document.querySelector('[data-instance="claude::a-claude-side"]') !== null);
+    expect(document.querySelector<HTMLButtonElement>('[data-instance="claude::a-claude-side"]')!.disabled).toBe(true);
 
     gate.resolve();
     await waitFor(() => calls.some(({ method, params }) => method === 'threads.update' && (params as { accountId?: string }).accountId === 'a-claude-side') && store.openThread?.accountId === 'a-claude-side');

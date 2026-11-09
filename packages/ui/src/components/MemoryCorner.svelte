@@ -42,7 +42,3 @@
   </div>
 {/if}
 
-<style>
-  /* The thread notice's form, lifted onto the corner like every arriving card. */
-  .memory-corner :global(.thread-notice) { box-shadow: var(--shadow-e3); border-color: var(--color-edge); }
-</style>

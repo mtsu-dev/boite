@@ -90,7 +90,7 @@
   [data-state='cancelled'] .text { color: var(--color-muted-foreground); }
   .note { font-size: var(--text-xs); line-height: 1.45; }
   .source { margin: 0 4px 4px 28px; color: var(--color-muted-foreground); font-size: var(--text-xs); line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
-  .error { margin: 2px 8px 6px; color: var(--color-danger); overflow-wrap: anywhere; }
+  .error { margin: 2px 8px 6px; }
   .dropped { padding-top: 0; }
   .foot { display: flex; align-items: center; gap: 6px; margin: 0 4px 4px; }
   .more { gap: 4px; padding-inline: 4px 6px; color: var(--color-muted-foreground); font-weight: 400; }

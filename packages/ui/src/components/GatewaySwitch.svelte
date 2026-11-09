@@ -52,5 +52,5 @@
 <style>
   .gateway-switch { flex: none; max-width: var(--settings-width); margin-bottom: 12px; padding: 6px var(--settings-padding); }
   .where { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-muted-foreground); font-size: var(--text-sm); }
-  .error { margin: 0 0 10px; color: var(--color-danger); font-size: var(--text-sm); overflow-wrap: anywhere; }
+  .error { margin: 0 0 10px; }
 </style>

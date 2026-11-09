@@ -191,8 +191,8 @@
   .panel {
     z-index: 40; display: flex; align-items: center; gap: 4px;
     padding: 4px 10px 4px 4px;
-    background: var(--color-surface-3); border: 1px solid var(--color-border); border-radius: var(--radius-full);
-    box-shadow: var(--shadow-e2);
+    background: var(--overlay-surface); border: 1px solid var(--overlay-edge); border-radius: var(--radius-full);
+    box-shadow: var(--shadow-overlay);
     animation: pop var(--dur-2) var(--ease-out-quint);
   }
   .panel.closing { animation-name: pop-out; pointer-events: none; }

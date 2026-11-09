@@ -173,9 +173,8 @@ export const fr: Translation = {
       edit: 'Modifier {path}',
       write: 'Créer {path}'
     },
-    permissionTechnical: 'Détails techniques',
     permissionNeedsYou: 'Vous attend',
-    permissionOf: '{index} sur {total}',
+    permissionWaiting: "En attente d'approbation",
     turnFiles: 'Fichiers modifiés',
     showTurnDiff: 'Voir le diff',
     hideTurnDiff: 'Masquer le diff',
@@ -189,7 +188,6 @@ export const fr: Translation = {
     revealFile: 'Afficher dans le dossier',
     revealFailed: "Le dossier n'a pas pu s'ouvrir : {reason}",
     allowOnce: 'Autoriser une fois',
-    allowOnceHint: "Laisse passer cet appel seul ; l'agent redemandera la prochaine fois",
     allowOnceKey: 'Laisse passer cet appel seul (Entrée)',
     deny: 'Refuser',
     denyKey: 'Refuser (Échap)',

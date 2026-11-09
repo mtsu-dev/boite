@@ -5,10 +5,12 @@
   import type { Store } from '../lib/store.svelte';
   import DecisionHead from './DecisionHead.svelte';
 
-  let { store, threadId }: { store: Store; threadId: string } = $props();
+  /** `only` keeps these children: the composer draws the questions it holds itself (`ThreadDecision`). */
+  let { store, threadId, only }: { store: Store; threadId: string; only?: string[] } = $props();
+  let listed = $derived(store.subagentQuestions(threadId).filter((child) => !only || only.includes(child.threadId)));
 </script>
 
-{#each store.subagentQuestions(threadId) as child (`${child.machine?.coreId ?? store.machineId}:${child.threadId}`)}
+{#each listed as child (`${child.machine?.coreId ?? store.machineId}:${child.threadId}`)}
   {@const machine = child.machine ? workspace.machineOf(child.machine.coreId) : workspace.machines.find(entry => entry.store === store)}
   {@const target = child.machine ? machine?.store : store}
   {@const away = child.machine && target?.connection !== 'ready'}

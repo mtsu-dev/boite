@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
-  import { ArrowLeft } from '@lucide/svelte';
+  import { ArrowLeft, CircleAlert, WifiOff } from '@lucide/svelte';
+  import Notice from '../Notice.svelte';
   import EmptyState from '../EmptyState.svelte';
   import type { Team } from '@boite/contracts';
   import { AgentsView, agentOfThread, agentRows, firstDeskVisit, lastOpenedAgent, openAgent, rememberAgent, statusOf, type AgentFocus } from '../../lib/agents.svelte';
@@ -230,9 +231,11 @@
 <main class="agents-main" class:open={detail} data-testid="agents-page">
   <div class="agents-card framed" class:chat={!focus && !!(thread || teamThread)}>
     {#if view.error || view.loadError}
-      <div class="agent-error" role="alert">{view.error || view.loadError}<button type="button" class="ghost small" onclick={() => { view.error = ''; void view.refresh(); }}>{labels.retry}</button></div>
+      <div class="agent-error"><Notice icon={CircleAlert} tone="danger" role="alert" detail={view.error || view.loadError}>
+        {#snippet actions()}<button type="button" class="small" onclick={() => { view.error = ''; void view.refresh(); }}>{labels.retry}</button>{/snippet}
+      </Notice></div>
     {/if}
-    {#if snapshot && store.connection !== 'ready'}<p class="agent-error" role="status">{labels.stale}</p>{/if}
+    {#if snapshot && store.connection !== 'ready'}<div class="agent-error"><Notice icon={WifiOff} detail={labels.stale} /></div>{/if}
 
     {#if focus}
       <header class="agents-detail-head">
@@ -279,7 +282,9 @@
         {/snippet}
       </EmptyState>
     {:else if openFailed}
-      <div class="agent-error" role="alert">{labels.openFailed}<button type="button" class="ghost small" onclick={openDefault} data-testid="agents-open-retry">{labels.retry}</button></div>
+      <div class="agent-error"><Notice icon={CircleAlert} tone="danger" role="alert" detail={labels.openFailed}>
+        {#snippet actions()}<button type="button" class="small" onclick={openDefault} data-testid="agents-open-retry">{labels.retry}</button>{/snippet}
+      </Notice></div>
     {:else}
       <p class="agent-empty">{strings.app.loading}</p>
     {/if}

@@ -3,10 +3,8 @@ import { flushSync, mount, unmount } from 'svelte';
 import type { QuestionRequest, Thread, ThreadSummary } from '@boite/contracts';
 import { Store } from '../lib/store.svelte';
 import { replyTarget, repliesOf } from '../lib/question-reply.svelte';
-import { decisionTail } from '../lib/decision-tail.svelte';
 import { workspace } from '../lib/workspace.svelte';
 import ThreadDecision from './ThreadDecision.svelte';
-import DecisionPill from './DecisionPill.svelte';
 
 let view: ReturnType<typeof mount> | undefined;
 afterEach(() => {
@@ -58,7 +56,7 @@ test('new questions leave the current question and selection in place, then answ
   flushSync(() => { store.pendingQuestions = [...store.pendingQuestions, question('middle', 2), question('newest', 3)]; });
   expect(fold.getAttribute('aria-expanded')).toBe('false');
   expect(shownQuestion()).toBe('oldest');
-  expect(document.querySelector('[data-testid=activity-question-index]')!.textContent).toBe('Question 1 of 3');
+  expect(document.querySelector('[data-testid=activity-question-index]')!.textContent).toBe('1 of 3');
   expect(option.getAttribute('aria-checked')).toBe('true');
   // Explicit navigation remains possible, and later arrivals do not steal it.
   document.querySelector<HTMLButtonElement>('[data-testid=activity-question-next]')!.click();
@@ -93,12 +91,11 @@ test('a card holds its own thread\'s questions; one for another thread opens its
   expect(document.querySelector('[data-testid=activity-question]:not([hidden])')!.getAttribute('data-question')).toBe('second');
 });
 
-test('a subagent\'s questions stay out of its parent\'s card while permissions still link to the child', async () => {
+test('a subagent\'s question is the parent\'s composer question, asked by its name, the reply stays the parent\'s, and its permission stays in its own conversation', async () => {
   const question = (id: string, threadId: string, async: boolean): QuestionRequest => ({
     id, threadId, turnId: 'turn', text: `Which way for ${id}?`, options: [{ id: 'a', label: 'A' }], allowText: true, multiple: false, ...(async ? { async: true } : {}), createdAt: 1
   });
   const store = render();
-  const open = vi.spyOn(store, 'open').mockResolvedValue(undefined as never);
   const row = (id: string, title: string, parentThreadId: string | null, archived = false) => ({ id, title, parentThreadId, archived, status: 'running' }) as ThreadSummary;
   flushSync(() => {
     store.threads = [row('thread', 'Parent', null), row('child', 'Migrate the keys', 'thread'), row('gone', 'Archived child', 'thread', true), row('stranger', 'Elsewhere', null)];
@@ -106,19 +103,23 @@ test('a subagent\'s questions stay out of its parent\'s card while permissions s
     store.pendingQuestions = [question('own', 'thread', true), question('child-async', 'child', true), question('child-stop', 'child', false), question('archived', 'gone', true), question('stranger', 'stranger', true)];
     store.pendingPermissions = [{ id: 'perm', threadId: 'child', turnId: 'turn', toolName: 'Bash', input: { command: 'bun run migrate' }, description: 'Run it', createdAt: 2 }];
   });
+  // Its own first, then its live child's, the one that stopped before the one that did not; no archived child's, no stranger's.
   const docked = () => [...document.querySelectorAll<HTMLElement>('[data-testid=activity-question]')];
-  expect(docked().map(card => card.dataset['question'])).toEqual(['own']);
+  expect(docked().map(card => card.dataset['question'])).toEqual(['own', 'child-stop', 'child-async']);
   const shown = () => document.querySelector<HTMLElement>('[data-testid=activity-question]:not([hidden])')!;
   expect(shown().dataset['question']).toBe('own');
   expect(shown().querySelector('[data-testid=activity-subagent-question]')).toBeNull();
   expect(replyTarget(store)?.id).toBe('own');
+  document.querySelector<HTMLButtonElement>('[data-testid=activity-question-next]')!.click();
+  flushSync();
+  expect(shown().dataset['question']).toBe('child-stop');
+  expect(shown().querySelector('[data-testid=activity-subagent-question]')?.textContent).toContain('Asked by Migrate the keys');
+  // Text typed in the parent's composer answers neither: it stays a message to the parent.
+  expect(replyTarget(store)).toBeNull();
 
-  const wait = document.querySelector<HTMLElement>('[data-testid=activity-subagent-permission]')!;
-  expect(wait.dataset['thread']).toBe('child');
-  expect(wait.textContent).toContain('Migrate the keys waits for your permission');
-  await vi.waitFor(() => expect(wait.textContent).toContain('Run migrate'));
-  wait.querySelector<HTMLButtonElement>('[data-testid=activity-open-subagent]')!.click();
-  expect(open).toHaveBeenLastCalledWith('child');
+  // The child's permission is approved where it asked; the parent's grouped row marks that child as needing the user.
+  expect(document.querySelector('[data-testid=thread-decision] [data-testid=permission-card]')).toBeNull();
+  expect(document.body.textContent).not.toContain('bun run migrate');
 });
 
 test('the card links child questions on their owning machine without taking the parent reply', async () => {
@@ -154,7 +155,7 @@ test('the card links child questions on their owning machine without taking the 
 });
 
 
-test('with no field focused, the keys answer the card: 1 to 9 pick, Enter allows, Escape denies', async () => {
+test('with no field focused, 1 to 9 pick the question\'s choices, and a permission never joins the question', async () => {
   const store = render('running');
   const answer = vi.spyOn(store, 'answer').mockResolvedValue(true);
   flushSync(() => { store.pendingQuestions = [{ ...question('pick', 1), options: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] }]; });
@@ -165,61 +166,10 @@ test('with no field focused, the keys answer the card: 1 to 9 pick, Enter allows
   const field = document.body.appendChild(document.createElement('textarea'));
   key(field, '1');
   expect(repliesOf(store).picks['pick']).toEqual(['b']);
+  // A permission waits on its command row in the timeline: the top of the composer keeps the question alone.
   flushSync(() => { store.pendingPermissions = [push]; });
-  expect(document.querySelector('[data-testid=permission-card]')).not.toBeNull();
-  key(document.body, 'Escape');
-  expect(answer).toHaveBeenLastCalledWith('perm', 'deny');
-  key(document.body, 'Enter');
-  expect(answer).toHaveBeenLastCalledWith('perm', 'allow');
-});
-
-test('allowed while the agent works, the card folds in place to one line that says what was allowed', async () => {
-  const store = render('running');
-  vi.spyOn(store, 'busy', 'get').mockReturnValue(true);
-  vi.spyOn(store, 'answer').mockImplementation(async () => { store.pendingPermissions = []; return true; });
-  flushSync(() => { store.pendingPermissions = [push]; });
-  expect(decisionTail.count).toBe(1);
-  document.querySelector<HTMLButtonElement>('[data-testid=permission-allow]')!.click();
-  await vi.waitFor(() => expect(document.querySelector('[data-testid=answer-receipt]')?.textContent).toBe('Allowed: git push'));
   expect(document.querySelector('[data-testid=permission-card]')).toBeNull();
-  expect(decisionTail.count).toBe(0);
-});
-
-test('out of view, the card leaves a pill over the composer that brings it back and never holds the form', async () => {
-  let seen: ((entries: Partial<IntersectionObserverEntry>[]) => void) | null = null;
-  vi.stubGlobal('IntersectionObserver', class { constructor(callback: typeof seen) { seen = callback; } observe() {} disconnect() {} });
-  const scroll = vi.fn();
-  Element.prototype.scrollIntoView = scroll;
-  const store = new Store();
-  store.connection = 'ready';
-  store.openThread = { id: 'thread', status: 'waiting', turns: [], activity: null } as unknown as Thread;
-  const root = document.body.appendChild(Object.assign(document.createElement('div'), { tabIndex: -1 }));
-  root.setAttribute('data-scroll-root', '');
-  Object.defineProperty(root, 'clientHeight', { value: 400 });
-  const strip = document.body.appendChild(document.createElement('div'));
-  store.pendingPermissions = [push];
-  view = mount(ThreadDecision, { target: root, props: { store, threadId: 'thread' } });
-  const pill = mount(DecisionPill, { target: strip });
-  flushSync();
-  const away = (ratio: number) => { flushSync(() => seen!([{ intersectionRatio: ratio, intersectionRect: { height: ratio * 100 } as DOMRectReadOnly }])); };
-  try {
-    away(1);
-    expect(strip.querySelector('[data-testid=decision-pill]')).toBeNull();
-    away(0);
-    const button = strip.querySelector<HTMLButtonElement>('[data-testid=decision-pill]')!;
-    expect([button.textContent?.trim(), button.title]).toEqual(['1 decision waiting', '1 decision waiting']);
-    expect(strip.querySelector('[data-testid=permission-card], [data-testid=permission-allow]')).toBeNull();
-    // Several: a bare count, the words in its name.
-    flushSync(() => { store.pendingPermissions = [push, { ...push, id: 'perm-2' }]; });
-    expect([button.textContent?.trim(), button.getAttribute('aria-label')]).toEqual(['2', '2 decisions waiting']);
-    button.click();
-    const card = root.querySelector('[data-testid=thread-decision]')!;
-    expect(scroll.mock.contexts.at(-1)).toBe(card);
-    expect(document.activeElement).toBe(card);
-    away(1);
-    expect(strip.querySelector('[data-testid=decision-pill]')).toBeNull();
-  } finally {
-    unmount(pill);
-    vi.unstubAllGlobals();
-  }
+  key(document.body, 'Escape');
+  key(document.body, 'Enter');
+  expect(answer).not.toHaveBeenCalledWith('perm', expect.anything());
 });

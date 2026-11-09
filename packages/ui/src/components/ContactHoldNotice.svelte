@@ -2,7 +2,7 @@
   import { MailWarning } from '@lucide/svelte';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
-  import ThreadNotice from './ThreadNotice.svelte';
+  import Notice from './Notice.svelte';
 
   /*
    * In the composer's place on a thread whose history read contact mail sent
@@ -20,9 +20,9 @@
   }
 </script>
 
-<ThreadNotice icon={MailWarning} tone="live" testid="contact-hold" title={t.title} detail={store.owner ? undefined : t.ownerOnly}
+<Notice icon={MailWarning} tone="caution" testid="contact-hold" title={t.title} detail={store.owner ? undefined : t.ownerOnly}
   info={`${fill(t.body, { contacts: contacts.join(', ') })} ${store.owner ? t.trustTip : ''}`.trim()} docked replaces>
   {#snippet actions()}
     {#if store.owner}<button type="button" class="small" data-testid="contact-hold-trust" disabled={trusting} onclick={trust}><span class="ui-label">{t.trust}</span></button>{/if}
   {/snippet}
-</ThreadNotice>
+</Notice>

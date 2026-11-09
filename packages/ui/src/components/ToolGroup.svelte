@@ -8,12 +8,10 @@
   import { agentSummary, compactionMark, compactionText, familyOf, liveLabel, pairPermissions, runSpan, runSummary, thinkingShown, ThoughtTitleScan, type ActivityPart, type CompactionPart, type PermissionStep, type ThinkingStep, type ToolPart } from '../lib/tool-groups';
   import Deferred from './Deferred.svelte';
   import { permissionCard } from '../lib/idle-parts';
-  import { describeTool, permissionSentence } from '../lib/tool-summary';
   import ThinkingPart from './ThinkingPart.svelte';
   import ToolCard from './ToolCard.svelte';
   import Spinner from './Spinner.svelte';
   import type { Store } from '../lib/store.svelte';
-  import { asksDocked } from '../lib/one-status';
   import type { Snippet } from 'svelte';
 
   /*
@@ -25,7 +23,8 @@
    * on) while one runs. The fold opens on the steps, each one the same line it
    * would be alone. Reasoning with no words that took under a second is not
    * drawn at all. A permission the agent asked is one thing with its call:
-   * while it waits, its card stands for the call under the run; once answered,
+   * while it waits, its command row stands for the call under the run, with
+   * Deny and Allow once at its end; once answered,
    * the call's line carries the answer as a shield.
    */
   let {
@@ -68,18 +67,8 @@
   let pairs = $derived(pairPermissions(parts));
   /** The permission each paired call was asked under, by the call's index. */
   let asked = $derived(new Map([...pairs].map(([at, call]) => [call, parts[at] as PermissionStep])));
-  /** The thread on screen holds its ask in the composer's dock: that card is the one copy (`asksDocked`). */
-  let docked = $derived(store !== undefined && threadId !== undefined && asksDocked(store, threadId));
-  /** Waiting permissions: each card stands for its call, under the run, unless the dock holds it. */
-  let waiting = $derived(parts.filter((part): part is PermissionStep => part.type === 'permission' && part.decision === null && !(docked && permissionRequest(part.requestId))));
-  /**
-   * An ask reads like the composer's live decision ("Push orbit/csv-import"), from lib/decision-title. That helper
-   * stays out of the entry chunk this component sits in: it loads with the first ask, the generic sentence until then.
-   */
-  let titleOf = $state.raw<(name: string, input: unknown) => string>(permissionSentence);
-  $effect(() => {
-    if (waiting.length > 0 && titleOf === permissionSentence) void import('../lib/decision-title').then((module) => { titleOf = module.decisionTitle; });
-  });
+  /** Waiting permissions: each one's command row stands for its call, under the run, with Deny and Allow once. */
+  let waiting = $derived(parts.filter((part): part is PermissionStep => part.type === 'permission' && part.decision === null));
   let steps = $derived(parts.flatMap((part, index): { part: ActivityPart; index: number }[] => {
     if (part.type === 'permission') return part.decision !== null && !pairs.has(index) ? [{ part, index }] : [];
     if (part.type === 'tool') return asked.get(index)?.decision === null ? [] : [{ part, index }];
@@ -217,18 +206,7 @@
   </div>
 {/if}
 {#each waiting as part (part.requestId)}
-  {@const request = permissionRequest(part.requestId)}
-  <div class="waiting" class:after={steps.length > 0}>
-    {#if request}
-      {@const Family = ICONS[describeTool(part.toolName, request.input).family]}
-      <!-- The ask is answered in the composer, its only copy: here a plain tool line and a quiet mark. -->
-      <div class="asked" data-testid="permission-waiting" data-request={part.requestId}>
-        <span class="glyph"><Family size={15} strokeWidth={1.75} /></span>
-        <span class="asked-text ui-label">{titleOf(part.toolName, request.input)}</span>
-        <span class="asked-mark" role="img" title={strings.chat.permissionNeedsYou} aria-label={strings.chat.permissionNeedsYou}></span>
-      </div>
-    {:else}{@render ask(part)}{/if}
-  </div>
+  <div class="waiting" class:after={steps.length > 0}>{@render ask(part)}</div>
 {/each}
 
 <style>
@@ -300,11 +278,6 @@
   .verdict.denied { color: var(--color-danger); }
 
   .waiting.after { margin-top: var(--chat-part-gap); }
-  .asked { display: flex; align-items: center; gap: var(--activity-gap); min-height: var(--control); padding: var(--activity-padding); font-size: var(--instrument-size); line-height: var(--instrument-leading); color: var(--instrument-ink); }
-  .asked .glyph { display: inline-flex; flex: none; width: var(--activity-glyph); justify-content: center; }
-  .asked-text { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-  /* Waiting on the owner: a small live dot, the word is in its tooltip. */
-  .asked-mark { flex: none; width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--color-live); }
 
   .label {
     flex: 0 1 auto;

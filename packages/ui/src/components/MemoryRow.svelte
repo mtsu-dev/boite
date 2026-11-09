@@ -2,8 +2,8 @@
   import type { MemoryEvent } from '@boite/contracts';
   import { strings } from '../lib/strings';
   import { bytes } from '../lib/format';
-  import { Settings, TriangleAlert, X } from '@lucide/svelte';
-  import ThreadNotice from './ThreadNotice.svelte';
+  import { TriangleAlert } from '@lucide/svelte';
+  import Notice from './Notice.svelte';
 
   /**
    * A memory stop or limit as one line of the thread: what was stopped, how
@@ -34,8 +34,6 @@
 
 {#snippet actions()}
   <!-- The corner card stays two lines high, so it covers as little of the thread as it can: its way to the settings is an icon. -->
-  {#if onconfigure && ondismiss}<button type="button" class="ghost small icon configure" title={strings.resources.memorySettings} aria-label={strings.resources.memorySettings} onclick={onconfigure}><Settings size={14} /></button>
-  {:else if onconfigure}<button type="button" class="small configure" onclick={onconfigure}><span class="ui-label">{strings.resources.memorySettings}</span></button>{/if}
-  {#if ondismiss}<button type="button" class="ghost small icon" data-testid="memory-row-dismiss" title={strings.common.dismiss} aria-label={strings.common.dismiss} onclick={ondismiss}><X size={14} /></button>{/if}
+  {#if onconfigure}<button type="button" class="small configure" onclick={onconfigure}><span class="ui-label">{strings.resources.memorySettings}</span></button>{/if}
 {/snippet}
-<ThreadNotice icon={TriangleAlert} testid="memory-row" kind={event.kind} {title} {detail} {info} actions={onconfigure || ondismiss ? actions : undefined} />
+<Notice icon={TriangleAlert} tone="caution" testid="memory-row" kind={event.kind} {title} {detail} {info} floating={!!ondismiss} actions={onconfigure ? actions : undefined} {ondismiss} dismissId="memory-row-dismiss" />

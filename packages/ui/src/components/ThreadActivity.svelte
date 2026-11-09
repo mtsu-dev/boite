@@ -221,7 +221,7 @@
   .blocker p { flex: 1; min-width: 0; margin: 0; line-height: 1.45; overflow-wrap: anywhere; }
   .ask { font-weight: 600; color: var(--color-foreground); }
   .hint { color: var(--color-muted-foreground); }
-  .reply { flex: none; gap: 6px; padding-inline: 10px; border: none; border-radius: var(--radius-full); background: var(--color-surface-3); color: var(--color-foreground); font-weight: 600; }
+  .reply { flex: none; gap: 6px; color: var(--color-foreground); }
   .reply:hover { background: var(--color-hover); }
   .objective, .current { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; min-width: 0; text-align: left; }
   .meta, .count { color: var(--color-muted-foreground); font-size: var(--text-xs); flex: none; }
@@ -261,7 +261,7 @@
   .verdict[data-verdict='running']::before { animation: pulse 1.8s var(--loop-ease-in-out-54) infinite var(--loops); }
   .verdict-name { color: var(--verdict); font-weight: 600; }
   .open-review { margin-top: 4px; padding-inline: 6px; color: var(--color-accent); }
-  .error { color: var(--color-danger); margin: 2px 8px 6px; overflow-wrap: anywhere; }
+  .error { margin: 2px 8px 6px; }
   @media (max-width: 720px) {
     .activity-row { gap: 6px; }
     .kind .wide { display: none; }

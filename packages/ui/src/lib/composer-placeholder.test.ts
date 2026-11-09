@@ -18,3 +18,13 @@ test('the box says two things at most: who reads it at rest, and reply while the
   expect(composerPlaceholder({ ...base, accountGone: true, replying: true })).toBe(t.placeholderPickAccount);
   expect(t.placeholderPickAccount).toBe('Pick another account to send');
 });
+
+test('a waiting permission says a message declines it and redirects, in a short form on a phone, after offline and a removed account', () => {
+  const t = strings.composer;
+  expect(composerPlaceholder({ ...base, permission: true })).toBe('Send a message to decline and redirect');
+  expect(composerPlaceholder({ ...base, permission: true, replying: true })).toBe(t.permissionPlaceholder);
+  expect(composerPlaceholder({ ...base, permission: true, narrow: true })).toBe('Reply to decline and redirect');
+  // Send does something else in those states: they keep their own words.
+  expect(composerPlaceholder({ ...base, permission: true, offline: true })).toBe(fill(t.placeholderOffline, { machine: 'This PC' }));
+  expect(composerPlaceholder({ ...base, permission: true, accountGone: true })).toBe(t.placeholderPickAccount);
+});

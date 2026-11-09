@@ -3,7 +3,7 @@
   import type { Project } from '@boite/contracts';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
-  import ThreadNotice from './ThreadNotice.svelte';
+  import Notice from './Notice.svelte';
 
   /*
    * In the composer's place on a project whose folder was deleted, moved or
@@ -21,9 +21,9 @@
   }
 </script>
 
-<ThreadNotice icon={FolderX} tone="danger" testid="folder-gone" title={strings.sidebar.projectMissing}
+<Notice icon={FolderX} tone="danger" testid="folder-gone" title={strings.sidebar.projectMissing}
   info={fill(strings.sidebar.projectMissingBody, { path: project.path })} docked {replaces}>
   {#snippet actions()}
     <button type="button" class="small primary" data-testid="folder-gone-check" disabled={checking} onclick={check}><span class="ui-label">{strings.sidebar.projectMissingCheck}</span></button>
   {/snippet}
-</ThreadNotice>
+</Notice>

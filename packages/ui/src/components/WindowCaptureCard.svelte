@@ -62,10 +62,8 @@
     gap: 12px;
     min-width: 0;
     padding: 8px 12px;
-    border: 1px solid var(--color-edge);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     background: var(--color-surface);
-    box-shadow: var(--shadow-e1);
   }
   .thumb {
     flex: none;

@@ -38,8 +38,11 @@ test('the picker rails the providers as logos and gives the shown one its accoun
   // One tile per provider an account answers for, in the core's order: the
   // one still to download or sign into is Settings' business, one tile away.
   expect(tiles()).toEqual(['favorites', 'claude', 'echo', 'opencode', 'codex', 'pi', 'grok', 'muse', 'more']);
-  // Claude is the shown one and has two logins, so they sit beside its name.
-  expect(seats()).toEqual(['claude::a-claude-main', 'claude::a-claude-side']);
+  // Claude is the shown one and has two logins: its name is the button that lists them.
+  expect(query('[data-testid=picker-account]').getAttribute('aria-expanded')).toBe('false');
+  expect(seats()).toEqual([]);
+  // On the provider's own login the name line names no account.
+  expect(document.querySelector('[data-testid=picker-account-name]')).toBeNull();
   // On the provider's own login the chip names the model alone.
   expect(document.querySelector('[data-testid=composer-picker-account]')).toBeNull();
   expect(shownModels()).toEqual(['claude-fable-5-1', 'claude-opus-5-5', 'claude-sonnet-5-5']);
@@ -47,10 +50,11 @@ test('the picker rails the providers as logos and gives the shown one its accoun
   expect(query('[data-testid=composer-picker-menu] .provider-name').textContent).toBe('Claude');
   expect(query('[data-testid=composer-picker-menu] .tile.current').dataset.provider).toBe('claude');
 
-  // One account: nothing beside the name.
+  // One account: the plain name, nothing to click.
   query<HTMLButtonElement>('[data-testid=composer-picker-menu] [data-provider=echo]').click();
   await waitFor(() => shownModels().length === 1);
-  expect(seats()).toEqual([]);
+  expect(document.querySelector('[data-testid=picker-account]')).toBeNull();
+  expect(query('[data-testid=composer-picker-menu] .provider-name').textContent).toBe('Echo');
 
   query<HTMLButtonElement>('[data-testid=composer-picker-menu] [data-provider=claude]').click();
   await waitFor(() => shownModels().length === 3);
@@ -59,8 +63,20 @@ test('the picker rails the providers as logos and gives the shown one its accoun
   await waitFor(() => document.querySelectorAll('[data-model]').length === 7);
 
   // The second account of the same provider, then a model: one thread with both.
+  query<HTMLButtonElement>('[data-testid=picker-account]').click();
+  await waitFor(() => seats().length === 2);
+  expect(seats()).toEqual(['claude::a-claude-main', 'claude::a-claude-side']);
+  // Escape closes the account list alone; the model menu stays.
+  press('Escape');
+  await waitFor(() => seats().length === 0);
+  expect(document.querySelector('[data-testid=composer-picker-menu]')).not.toBeNull();
+  expect(document.activeElement).toBe(query('[data-testid=picker-account]'));
+  query<HTMLButtonElement>('[data-testid=picker-account]').click();
+  await waitFor(() => seats().length === 2);
+  expect(query('[data-instance="claude::a-claude-main"]').getAttribute('aria-checked')).toBe('true');
   query<HTMLButtonElement>('[data-instance="claude::a-claude-side"]').click();
-  await waitFor(() => document.querySelector('[data-instance="claude::a-claude-side"]')?.getAttribute('aria-pressed') === 'true' &&
+  // The list closes on the pick and the name line says which login the column runs on.
+  await waitFor(() => seats().length === 0 && document.querySelector('[data-testid=picker-account-name]')?.textContent === 'Second seat' &&
     store.probedModels['claude::a-claude-side'] !== undefined && document.querySelector('[data-model="claude-opus-5-5"]') !== null);
   query<HTMLButtonElement>('[data-model="claude-opus-5-5"]').click();
   await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') === null);
@@ -69,7 +85,7 @@ test('the picker rails the providers as logos and gives the shown one its accoun
   expect(query('[data-testid=composer-picker-account]').textContent?.trim()).toBe(store.accountOf('a-claude-side')!.label);
   query<HTMLButtonElement>('[data-testid=composer-picker]').click();
   await menuLoaded();
-  await waitFor(() => document.querySelector('[data-instance="claude::a-claude-side"]')?.getAttribute('aria-pressed') === 'true');
+  await waitFor(() => document.querySelector('[data-testid=picker-account-name]')?.textContent === 'Second seat');
   query<HTMLButtonElement>('[data-testid=composer-picker]').click();
   await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') === null);
 
@@ -264,6 +280,11 @@ test('with a starred model the picker opens on its favorites; the arrows walk th
   query<HTMLButtonElement>(`${menu} .tile[data-provider=claude]`).click();
   await waitFor(() => shownModels().length === 3);
   await waitFor(() => document.activeElement === document.querySelector('[data-testid=picker-search]'));
+  // Above the field, Claude's name: the button of its two accounts, then back down.
+  press('ArrowUp');
+  expect(document.activeElement).toBe(query('[data-testid=picker-account]'));
+  press('ArrowDown');
+  expect(document.activeElement).toBe(query('[data-testid=picker-search]'));
   press('ArrowDown');
   expect((document.activeElement as HTMLElement).getAttribute('data-model')).toBe('claude-fable-5-1');
   expect(query(`${menu} .row.current`).dataset.model).toBe('claude-opus-5-5');

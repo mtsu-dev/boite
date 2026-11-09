@@ -111,6 +111,5 @@
   .actions { display: flex; gap: 8px; margin-top: 4px; }
   .result { padding: 10px; background: var(--color-surface-2); border-radius: var(--radius-sm); font-size: var(--text-sm); overflow-wrap: anywhere; }
   .text { white-space: pre-wrap; } dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; } dd { margin: 0; font-family: var(--font-mono); font-size: var(--text-xs); }
-  .error { color: var(--color-danger); font-size: var(--text-sm); overflow-wrap: anywhere; }
   @media (max-width: 720px) { button { min-height: var(--touch-target); } .row { flex-wrap: wrap; } }
 </style>

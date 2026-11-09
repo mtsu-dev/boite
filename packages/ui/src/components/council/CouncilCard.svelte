@@ -66,10 +66,8 @@
     min-width: 0;
     max-width: 520px;
     padding: 12px;
-    border: 1px solid var(--color-edge);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     background: var(--color-surface);
-    box-shadow: var(--shadow-e1);
     animation: arrive var(--dur-2) var(--ease-out-quint);
   }
   .top { display: flex; align-items: center; gap: 8px; min-width: 0; }

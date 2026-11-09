@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Notice from './Notice.svelte';
   import { untrack } from 'svelte';
   import type { FirewallStatus, NetworkCategory } from '@boite/contracts';
   import { TriangleAlert } from '@lucide/svelte';
@@ -75,18 +76,19 @@
   const outcome = $derived(!status?.detail || status.state === 'error' ? '' : status.detail === 'cancelled' ? text.cancelled : text.failed);
 </script>
 
+{#snippet fix()}
+  <button type="button" class="small" data-testid="firewall-allow" disabled={busy || store.connection !== 'ready'} onclick={() => void allow()}>
+    <span class="ui-label">{busy ? text.allowing : text.allow}</span>
+  </button>
+{/snippet}
+
 {#if listening && store.owner}
   {#if problem}
-    <!-- One row: what blocks the phone, and the one button that fixes it. The outcome of a refused try is the only second line. -->
+    <!-- The one notice form: what blocks the phone and the one button that fixes it. The outcome of a refused try is the only second line. -->
     <div class="firewall" data-testid="firewall-notice" data-state={status?.state}>
-      <TriangleAlert class="mark" size={15} strokeWidth={1.75} aria-hidden="true" />
-      <p class="problem">{problem}</p>
-      {#if status?.state !== 'error' && status?.state !== 'public'}
-        <button type="button" class="small" data-testid="firewall-allow" disabled={busy || store.connection !== 'ready'} onclick={() => void allow()}>
-          <span class="ui-label">{busy ? text.allowing : text.allow}</span>
-        </button>
-      {/if}
-      {#if outcome}<p class="hint outcome" data-testid="firewall-outcome">{outcome}</p>{/if}
+      <Notice icon={TriangleAlert} tone="caution" detail={problem} actions={status?.state !== 'error' && status?.state !== 'public' ? fix : undefined}>
+        {#if outcome}<span data-testid="firewall-outcome">{outcome}</span>{/if}
+      </Notice>
     </div>
   {:else if done}
     <p class="hint allowed" data-testid="firewall-allowed">{text.allowed}</p>
@@ -94,25 +96,6 @@
 {/if}
 
 <style>
-  .firewall {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px 10px;
-    margin-top: 14px;
-    padding: 6px 6px 6px 12px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    background: var(--color-surface-2);
-    font-size: var(--text-sm);
-    color: var(--color-muted-foreground);
-  }
-  .firewall :global(.mark) { flex: none; align-self: flex-start; margin-top: 2px; color: var(--color-caution); }
-  /* The mark stays on the first line's height however the sentence wraps. */
-  .firewall p { margin: 0; }
-  .problem { flex: 1 1 16em; min-width: 0; line-height: 1.4; }
-  .firewall button { flex: none; margin-left: auto; }
-  .outcome { flex-basis: 100%; padding-left: 25px; }
+  .firewall { margin-top: 14px; }
   .allowed { margin: 14px 0 0; }
-  @media (max-width: 720px) { .firewall button { min-height: var(--touch-target); } }
 </style>

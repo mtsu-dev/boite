@@ -1,7 +1,8 @@
 <script lang="ts">
+  import Notice from './Notice.svelte';
   import { errorText } from '../lib/errors';
   import { exactTime } from '../lib/format';
-  import { ArrowUp, Brain, Check, ChevronRight, FileText, Folder, GitBranch, Puzzle, RefreshCw, Sparkles } from '@lucide/svelte';
+  import { ArrowUp, Brain, Check, ChevronRight, FileText, Folder, GitBranch, Puzzle, RefreshCw, Sparkles, TriangleAlert } from '@lucide/svelte';
   import { RpcErrorCode, type BrainConfig, type BrainStatus, type RpcResult } from '@boite/contracts';
   import { RpcFailure } from '../lib/client';
   import HooksCard from './HooksCard.svelte';
@@ -127,17 +128,20 @@
 
 {#snippet linkHelp()}
   {#if blockedLinks}
-    <div class="link-help" role="alert" data-testid="brain-link-help">
-      <p>{windowsPermission ? t.windowsPermission : t.linkFailure}</p>
-      {#if windowsPermission}
-        <ol>
-          <li>{t.windowsOpen} <code>ms-settings:developers</code></li>
-          <li>{t.windowsEnable}</li>
-          <li>{t.windowsRetry}</li>
-        </ol>
-        <p>{t.windowsAdmin}</p>
-      {/if}
-      <button disabled={busy} onclick={() => void run('retry-links')} data-testid="brain-link-retry"><RefreshCw size={14} /><span class="ui-label">{strings.common.retry}</span></button>
+    <div class="link-help">
+      <Notice icon={TriangleAlert} tone="caution" role="alert" testid="brain-link-help" detail={windowsPermission ? t.windowsPermission : t.linkFailure}>
+        {#if windowsPermission}
+          <ol>
+            <li>{t.windowsOpen} <code>ms-settings:developers</code></li>
+            <li>{t.windowsEnable}</li>
+            <li>{t.windowsRetry}</li>
+          </ol>
+          <span>{t.windowsAdmin}</span>
+        {/if}
+        {#snippet actions()}
+          <button type="button" class="small" disabled={busy} onclick={() => void run('retry-links')} data-testid="brain-link-retry"><RefreshCw /><span class="ui-label">{strings.common.retry}</span></button>
+        {/snippet}
+      </Notice>
     </div>
   {/if}
 {/snippet}
@@ -257,7 +261,7 @@
   header { margin-bottom: 28px; }
   p { color: var(--color-muted-foreground); font-size: var(--text-sm); line-height: 1.5; }
   #settings-brain-folder { scroll-margin-top: 24px; }
-  .brain-connection { border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); overflow: hidden; }
+  .brain-connection { border-radius: var(--radius-lg); background: var(--color-surface); overflow: hidden; }
   .connection-top { display: flex; align-items: center; gap: 14px; padding: 24px 24px 0; }
   .folder-mark { width: 44px; height: 44px; display: grid; place-items: center; border-radius: var(--radius-md); background: var(--color-surface-2); flex: none; }
   .folder-info { flex: 1; min-width: 0; }
@@ -270,9 +274,8 @@
   .sharing { display: flex; align-items: center; gap: 10px; font-size: var(--text-sm); }
   .global-instructions, .boite-guide { padding: 16px 24px; border-top: 1px solid var(--color-border); }
   .global-links { margin-top: 12px; font-size: var(--text-sm); }
-  .link-help { margin-top: 12px; padding: 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: var(--text-sm); }
-  .link-help p { margin: 0 0 8px; }
-  .link-help ol { margin: 8px 0; padding-left: 20px; }
+  .link-help { margin-top: 12px; }
+  .link-help ol { margin: 6px 0; padding-left: 20px; }
   .link-help li { margin: 4px 0; }
   .link-help code { display: inline; overflow-wrap: anywhere; }
   .global-links summary { display: flex; gap: 10px; align-items: center; cursor: pointer; color: var(--color-muted-foreground); }
@@ -285,7 +288,7 @@
   .interval-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: var(--control); }
   .interval-value { display: flex; align-items: center; gap: 8px; font-size: var(--text-sm); color: var(--color-muted-foreground); }
   .interval-value input { width: 78px; }
-  .folder-form { padding: 24px; margin-top: 16px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); }
+  .folder-form { padding: 24px; margin-top: 16px; background: var(--color-surface); border-radius: var(--radius-lg); }
   .folder-form h2 { margin-top: 16px; }
   .folder-form p { margin: 6px 0 24px; }
   .folder-form label { font-size: var(--text-sm); }
@@ -313,7 +316,6 @@
   .git-details { margin-top: 20px; color: var(--color-muted-foreground); font-size: var(--text-sm); }
   .git-details summary { display: flex; align-items: center; gap: 8px; cursor: pointer; width: fit-content; list-style: none; }
   .git-details > div { padding: 12px 0; }
-  .error { color: var(--color-danger); overflow-wrap: anywhere; }
   .error-indicator { color: var(--color-danger); font-weight: 600; }
   .warning { color: var(--color-live); }
   .folders { display: flex; flex-direction: column; gap: 4px; max-height: 300px; overflow-y: auto; padding: 12px; margin-bottom: 16px; border: 1px solid var(--color-border); border-radius: var(--radius-md); }

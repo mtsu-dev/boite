@@ -718,19 +718,27 @@ test('the picker keeps row, account and legacy keyboard navigation separate', as
   query<HTMLButtonElement>('[data-testid=composer-picker]').click();
   await waitFor(() => document.querySelector('[data-testid=composer-picker-menu] [data-provider=claude]') !== null);
 
-  // The rail's arrows walk the tiles; the account chips are a segmented control the side arrows walk.
+  // The rail's arrows walk the tiles; the account list under the name owns its own arrows and Escape.
   const claudeTile = query<HTMLButtonElement>('[data-provider=claude]');
   claudeTile.focus();
   expect(press('ArrowDown')).toBe(false);
   expect(document.activeElement).toBe(query('[data-provider=echo]'));
 
+  query<HTMLButtonElement>('[data-provider=claude]').click();
+  await waitFor(() => document.querySelector('[data-testid=picker-account]') !== null);
+  const accountButton = query<HTMLButtonElement>('[data-testid=picker-account]');
+  accountButton.click();
+  await waitFor(() => document.querySelector('[data-instance="claude::a-claude-main"]') !== null);
   const firstSeat = query<HTMLButtonElement>('[data-instance="claude::a-claude-main"]');
   const secondSeat = query<HTMLButtonElement>('[data-instance="claude::a-claude-side"]');
-  firstSeat.focus();
-  expect(press('ArrowRight')).toBe(false);
+  await waitFor(() => document.activeElement === firstSeat);
+  expect(press('ArrowDown')).toBe(false);
   expect(document.activeElement).toBe(secondSeat);
-  expect(press('ArrowLeft')).toBe(false);
+  expect(press('ArrowUp')).toBe(false);
   expect(document.activeElement).toBe(firstSeat);
+  expect(press('Escape')).toBe(false);
+  await waitFor(() => document.querySelector('[data-testid=picker-accounts]') === null);
+  expect(document.activeElement).toBe(accountButton);
 
   await waitFor(() => document.querySelector('[data-testid=picker-legacy]') !== null);
   const legacyRow = query<HTMLButtonElement>('[data-testid=picker-legacy]');
@@ -793,6 +801,8 @@ test('each queued prompt is a row of its own above the composer card, its Send n
   await store.open('t-trace');
   await store.client!.call('turns.start', { threadId: 't-trace', prompt: 'Wait [permission]' });
   await waitFor(() => store.openThread?.status === 'waiting');
+  // The turn holds on a permission the core will not let go of: what is sent meanwhile waits in the queue.
+  vi.spyOn(store, 'answer').mockResolvedValue(false);
   await type('first pending');
   press('Enter');
   await type('second pending');
@@ -827,6 +837,8 @@ test('ArrowUp removes the latest queued prompt and restores its images for editi
   await store.open('t-trace');
   await store.client!.call('turns.start', { threadId: 't-trace', prompt: 'Wait [permission]' });
   await waitFor(() => store.openThread?.status === 'waiting');
+  // The turn holds on a permission the core will not let go of: what is sent meanwhile waits in the queue.
+  vi.spyOn(store, 'answer').mockResolvedValue(false);
   await type('first pending');
   press('Enter');
   await type('edit this pending prompt');
@@ -988,16 +1000,16 @@ function asks(): typeof store.pendingPermissions {
   return store.pendingPermissions.filter((request) => request.threadId === 't-trace');
 }
 
-test('the permission is a card at the end of the timeline, not in the composer, and Enter in the emptied field allows it', async ({ app: _app }) => {
+test('the permission waits on its command row in the timeline, the field says a message declines it, and Enter or Escape in the emptied field answer it', async ({ app: _app }) => {
   await store.open('t-trace');
   await type('Hold on [permission]');
   press('Enter');
-  await waitFor(() => store.openThread?.status === 'waiting' && document.querySelector('[data-testid=timeline] [data-testid=thread-decision] [data-testid=permission-card]') !== null);
-  expect(input().placeholder).toBe(fill(strings.composer.replyPlaceholder, { name: 'Echo' }));
-  // The decision lives in the transcript, once: the composer card holds the field and its chips only.
+  await waitFor(() => store.openThread?.status === 'waiting' && document.querySelector('[data-testid=timeline] [data-testid=permission-card][data-decision=pending]') !== null);
+  expect(input().placeholder).toBe('Send a message to decline and redirect');
+  // The decision lives in the transcript, once, on its own row: neither the composer card nor the question above it holds it.
   expect(document.querySelectorAll('[data-testid=permission-card]')).toHaveLength(1);
   expect(document.querySelector('[data-testid=composer] [data-testid=permission-card]')).toBeNull();
-  expect(document.querySelector('[data-testid=timeline] [data-testid=permission-waiting]')).toBeNull();
+  expect(document.querySelector('[data-testid=thread-decision] [data-testid=permission-card]')).toBeNull();
   // A run that held only that ask leaves no empty row behind it.
   expect(Array.from(document.querySelectorAll('[data-testid=timeline] .part')).filter((part) => part.children.length === 0)).toHaveLength(0);
   // The row under the field stays whole:
@@ -1007,18 +1019,6 @@ test('the permission is a card at the end of the timeline, not in the composer, 
   expect(row()).toEqual(['composer-options', 'composer-picker', 'composer-send']);
   expect(query('[data-testid=composer-picker]').querySelector('.label')?.textContent?.trim()).toBeTruthy();
   const rpc = vi.spyOn(store.client!, 'call');
-  await type('Now please');
-  // A letter written keeps Send in the same place; nothing else in the row moves.
-  await waitFor(() => row().join() === 'composer-options,composer-picker,composer-send');
-  press('Enter');
-  await type('After that');
-  press('Enter');
-  await waitFor(() => input().value === '' && store.composerStates['t-trace']?.queued.length === 2);
-  expect(query('[data-testid=composer-queued]').textContent).toContain('Now please');
-  // The queue is one row per prompt just above the box, out of it and out of the strip.
-  expect(query('[data-testid=composer-queued]').closest('[data-testid=composer]')).toBeNull();
-  expect(query('[data-testid=composer-strip]').querySelector('[data-testid=composer-queued]')).toBeNull();
-  expect(document.querySelectorAll('[data-testid=composer-queued-item]')).toHaveLength(2);
   // Shift+Enter starts a line, never a decision.
   input().focus();
   press('Enter', { shiftKey: true });
@@ -1026,32 +1026,35 @@ test('the permission is a card at the end of the timeline, not in the composer, 
   input().focus();
   press('Enter');
   await waitFor(() => asks().length === 0);
-  expect(rpc.mock.calls.filter(([method]) => method === 'permissions.answer').map(([, params]) => (params as { decision: string }).decision)).toEqual(['allow']);
-  await waitFor(() => !store.busy && store.composerStates['t-trace']?.queued.length === 0 && !store.composerStates['t-trace']?.sending);
-  const prompts = store.openThread!.messages.filter((message) => message.role === 'user').slice(-1)
-    .map((message) => message.parts.map((part) => (part.type === 'text' ? part.text : '')).join(''));
-  expect(prompts).toEqual(['Now please\n\nAfter that']);
+  await waitFor(() => !store.busy);
+  // Escape in the emptied field denies the next one.
+  await type('Again [permission]');
+  press('Enter');
+  await waitFor(() => asks().length > 0);
+  input().focus();
+  press('Escape');
+  await waitFor(() => asks().length === 0);
+  expect(rpc.mock.calls.filter(([method]) => method === 'permissions.answer').map(([, params]) => (params as { decision: string }).decision)).toEqual(['allow', 'deny']);
   expect(rpc.mock.calls.filter(([method]) => method === 'turns.stop')).toHaveLength(0);
+  await waitFor(() => !store.busy);
 });
 
-test('Escape in the emptied composer denies the docked permission, and text typed over it waits behind the decision', async ({ app: _app }) => {
+test('a message sent while a permission waits declines it and redirects: the denial goes, and the message is the next turn', async ({ app: _app }) => {
   await store.open('t-trace');
   await type('Hold on [permission]');
   press('Enter');
   await waitFor(() => asks().length > 0);
+  const turnId = asks()[0]!.turnId;
+  const rpc = vi.spyOn(store.client!, 'call');
   await type('Write it somewhere else');
   press('Enter');
-  await waitFor(() => input().value === '' && store.composerStates['t-trace']?.queued.length === 1);
-  // Typing is never a decision: the ask still waits for one.
-  expect(asks()).toHaveLength(1);
-  const rpc = vi.spyOn(store.client!, 'call');
-  input().focus();
-  press('Escape');
   await waitFor(() => asks().length === 0);
   expect(rpc.mock.calls.filter(([method]) => method === 'permissions.answer').map(([, params]) => (params as { decision: string }).decision)).toEqual(['deny']);
-  expect(rpc.mock.calls.filter(([method]) => method === 'turns.stop')).toHaveLength(0);
-  // The note goes once the turn has the denial.
-  await waitFor(() => !store.busy && store.openThread!.messages.some((message) => message.role === 'user' && message.parts.some((part) => part.type === 'text' && part.text === 'Write it somewhere else')));
+  // Never an answer to the ask, never part of the turn that asked: its own turn after it.
+  await waitFor(() => !store.busy && store.composerStates['t-trace']?.queued.length === 0
+    && store.openThread!.messages.some((message) => message.role === 'user' && message.parts.some((part) => part.type === 'text' && part.text === 'Write it somewhere else')));
+  const sent = store.openThread!.messages.find((message) => message.role === 'user' && message.parts.some((part) => part.type === 'text' && part.text === 'Write it somewhere else'))!;
+  expect(sent.turnId).not.toBe(turnId);
 });
 
 test('Send now interrupts a turn on the default model, though the chips show the model it resolves to', async () => {
@@ -1467,9 +1470,10 @@ test('a waiting question takes the composer as its free answer, with the card pi
   await waitFor(() => document.querySelector('[data-testid=composer-reply]') !== null, TYPING_PAUSE_MS);
   expect(input().placeholder).toBe(REPLY_PLACEHOLDER);
   expect(query('[data-testid=composer-send]').getAttribute('aria-label')).toBe(ANSWER_LABEL);
-  // The question is written once, on its card at the timeline's end: its own row draws no second copy.
+  // The question is written once, at the top of the composer card: the timeline draws no second copy.
   expect(document.querySelectorAll('[data-testid=question-text]')).toHaveLength(1);
-  expect(document.querySelector('[data-testid=composer] [data-testid=question-text]')).toBeNull();
+  expect(document.querySelector('[data-testid=composer] [data-testid=thread-decision] [data-testid=question-text]')).not.toBeNull();
+  expect(document.querySelector('[data-testid=timeline] [data-testid=question-text]')).toBeNull();
   expect(document.querySelector('[data-testid=timeline] [data-testid=question-waiting]')).toBeNull();
   expect(document.querySelector('[data-testid=question-reply-hint]')).toBeNull();
 

@@ -135,7 +135,7 @@
 </aside>
 
 <style>
-  .pinned-quota { position: absolute; z-index: 5; width: min(var(--quota-width), calc(100% - 24px)); max-height: min(320px, calc(100% - 24px)); display: flex; flex-direction: column; overflow: hidden; color: var(--color-foreground); background: color-mix(in srgb, var(--color-surface-2) 92%, transparent); border: 1px solid var(--color-edge); border-radius: var(--radius-lg); box-shadow: var(--shadow-e1); opacity: 0.9; transition: opacity var(--dur-2), background-color var(--dur-2); cursor: grab; touch-action: pan-y; }
+  .pinned-quota { position: absolute; z-index: 5; width: min(var(--quota-width), calc(100% - 24px)); max-height: min(320px, calc(100% - 24px)); display: flex; flex-direction: column; overflow: hidden; color: var(--color-foreground); background: color-mix(in srgb, var(--color-surface-2) 92%, transparent); border: 1px solid var(--overlay-edge); border-radius: var(--radius-overlay); box-shadow: var(--shadow-overlay); opacity: 0.9; transition: opacity var(--dur-2), background-color var(--dur-2); cursor: grab; touch-action: pan-y; }
   .pinned-quota.dragging { z-index: 100; cursor: grabbing; user-select: none; opacity: 1; }
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .pinned-quota:hover, .pinned-quota:focus-within { opacity: 1; background: var(--color-surface-2); }

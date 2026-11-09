@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { ArrowLeft, Pause, Play, RotateCcw, Square, Workflow } from '@lucide/svelte';
+  import Notice from './Notice.svelte';
+  import { ArrowLeft, Pause, Play, RotateCcw, Square, Workflow, CircleAlert } from '@lucide/svelte';
   import type { WorkflowRun } from '@boite/contracts';
   import { confirm } from '../lib/confirm.svelte';
   import { fill, strings } from '../lib/strings';
@@ -76,8 +77,8 @@
     </div>
   </header>
 
-  {#if run.error && run.status !== 'done'}<p class="notice" data-testid="workflow-error">{run.error}</p>{/if}
-  {#if !run.delivered && run.deliveryError}<p class="notice" data-testid="workflow-delivery-error">{run.deliveryError}</p>{/if}
+  {#if run.error && run.status !== 'done'}<div class="run-notice"><Notice icon={CircleAlert} tone="danger" testid="workflow-error" detail={run.error} /></div>{/if}
+  {#if !run.delivered && run.deliveryError}<div class="run-notice"><Notice icon={CircleAlert} tone="danger" testid="workflow-delivery-error" detail={run.deliveryError} /></div>{/if}
 
   <div class="main">
     {#if node}
@@ -97,7 +98,7 @@
   .meta { margin: 3px 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 5px; color: var(--color-muted-foreground); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
   .actions { flex: none; display: flex; align-items: center; gap: 4px; }
   .stop { color: var(--color-danger); }
-  .notice { flex: none; margin: 10px 16px 0; padding: 8px 10px; border-radius: var(--radius-md); background: var(--color-surface-2); color: var(--color-danger); font-size: var(--text-sm); overflow-wrap: anywhere; }
+  .run-notice { flex: none; margin: 10px 16px 0; }
   .main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
   .main > :global(*) { flex: 1; }
 </style>

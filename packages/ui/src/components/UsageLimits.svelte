@@ -149,7 +149,6 @@
   small, .muted { color: var(--color-muted-foreground); font-size: var(--text-xs); }
   p { margin: 0; }
   .muted { font-size: var(--text-sm); }
-  .error { color: var(--color-danger); font-size: var(--text-sm); }
   /* The reading on screen is the previous one until the new one lands. */
   article[aria-busy='true'] .track { filter: saturate(0.15); }
   article[aria-busy='true'] .fill { animation: breathe 1.1s ease-in-out infinite alternate var(--loops); }

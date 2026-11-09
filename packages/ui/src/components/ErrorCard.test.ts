@@ -14,12 +14,13 @@ test('a stopped run reads as one notice: its cause, one Retry, then the exit cod
   running = mount(ErrorCard, { target: document.body, props: { message: STOP, retry: () => { retried += 1; }, call: { exitCode: 1, output: 'Error: the emulator did not answer' } } });
   flushSync();
   expect(document.querySelector('[data-testid=error-description]')?.textContent).toBe(STOP);
-  const actions = document.querySelector('[data-testid=error-part] .actions')!;
-  // One action and the fold on one row: no second Retry, no exit code outside the fold.
+  const part = document.querySelector('[data-testid=error-part]')!;
+  const actions = part.querySelector('.actions')!;
+  // One action beside the words and the fold under them: no second Retry, no exit code outside the fold.
   expect(actions.querySelectorAll('button')).toHaveLength(1);
-  expect(actions.querySelector('details summary')).not.toBeNull();
-  expect(document.querySelector('[data-testid=error-part]')!.textContent!.replace(actions.querySelector('pre')!.textContent!, '')).not.toContain('Exit code');
-  expect(actions.querySelector('[data-testid=error-diagnostic]')?.textContent).toBe(`${STOP}\n\nExit code 1\nError: the emulator did not answer`);
+  expect(part.querySelector('details summary')).not.toBeNull();
+  expect(part.textContent!.replace(part.querySelector('pre')!.textContent!, '')).not.toContain('Exit code');
+  expect(part.querySelector('[data-testid=error-diagnostic]')?.textContent).toBe(`${STOP}\n\nExit code 1\nError: the emulator did not answer`);
   actions.querySelector<HTMLButtonElement>('[data-testid=error-retry]')!.click();
   expect(retried).toBe(1);
 });

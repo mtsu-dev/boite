@@ -100,7 +100,7 @@
   .name :global(svg) { flex: none; }
   .progress, .empty-agents { color: var(--color-muted-foreground); }
   .empty-agents { margin: 0; }
-  .error { color: var(--color-danger); overflow-wrap: anywhere; margin: 6px 0 0; }
+  .error { margin: 6px 0 0; }
   .track { height: 3px; margin-top: 8px; background: var(--color-surface-3); border-radius: var(--radius-sm); overflow: hidden; }
   .track span { display: block; height: 100%; background: var(--color-foreground); }
   .auto { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; color: var(--color-muted-foreground); }
