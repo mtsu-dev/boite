@@ -996,7 +996,13 @@ a Job Object and in the trace like any other, then asks the protocol's own quest
   (an empty `mcpServers` alone passes no flag). The CLI quota read, titles and
   side questions do the same. Effort levels, adaptive
   thinking and Fast support come from each returned model. Descriptor effort
-  controls stay hidden until that account has answered.
+  controls stay hidden until that account has answered. Once answered, the
+  probe and the quota read end the prompt stream, which closes the CLI's stdin,
+  and give it up to 30 seconds to exit before the stop (`ProbeContext.letExit`).
+  The CLI refreshes an expired login at startup and can answer before that
+  refresh is written; the server has already rotated the refresh token, so a
+  stop in between leaves the account a spent token and a stale
+  `.oauth_refresh.lock`, and the next CLI signs it out with `invalid_grant`.
 - ACP: `initialize` and `session/new`, then whichever of two answers the agent
   sent. The `configOptions` whose category is `model` and `thought_level` win
   when there is a `model` one, since that option is what a turn sets.
