@@ -266,3 +266,19 @@ test('Escape on a row closes, Tab stays in the search field, and closing gives t
   expect(store.paletteOpen).toBe(false);
   expect(document.activeElement).toBe(before);
 });
+
+test('a subagent row names the thread that started it, and the parent title finds it', async () => {
+  const parent = store.threads.find((thread) => !thread.parentThreadId && thread.projectId && !thread.archived)!;
+  store.threads.push({ ...parent, id: 't-sub-explore', title: 'Explore the parser', parentThreadId: parent.id, lastUserMessageAt: Date.now() });
+  store.paletteOpen = true;
+  flushSync(); await tick();
+  await type('Explore the parser');
+  const row = document.querySelector<HTMLElement>('[data-testid=palette-row][data-palette-id$="t-sub-explore"]')!;
+  expect(row.querySelector('[data-testid=palette-parent]')?.textContent).toBe(`in ${parent.title}`);
+  // A thread of its own carries no such line.
+  await type(parent.title);
+  const own = document.querySelector<HTMLElement>(`[data-testid=palette-row][data-palette-id$="${parent.id}"]`)!;
+  expect(own.querySelector('[data-testid=palette-parent]')).toBeNull();
+  // The parent's name finds its helpers too.
+  expect(rows().some((id) => id.endsWith('t-sub-explore'))).toBe(true);
+});

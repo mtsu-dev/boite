@@ -4,6 +4,7 @@
   import type { AgentsView } from '../../lib/agents.svelte';
   import { routeCatalog, routeGone, withDefaultRoute } from '../../lib/agent-route';
   import { errorText } from '../../lib/errors';
+  import { accountName } from '../../lib/account-name';
   import { strings } from '../../lib/strings';
   import Menu from '../Menu.svelte';
 
@@ -47,7 +48,7 @@
   <span>{problem}</span>
   {#if store.owner}
     {#if gone && others.length > 0}
-      <Menu items={others.map(account => ({ id: account.id, label: store.providerOf(account.providerId)?.name ?? account.label, hint: account.label }))} onpick={id => void pick(id)} label={labels.pickAccount} placement="bottom" align="end" disabled={busy} testid="agent-problem-account">
+      <Menu items={others.map(account => ({ id: account.id, label: store.providerOf(account.providerId)?.name ?? accountName(account), hint: accountName(account) }))} onpick={id => void pick(id)} label={labels.pickAccount} placement="bottom" align="end" disabled={busy} testid="agent-problem-account">
         <span class="ui-label">{labels.pickAccount}</span>
       </Menu>
     {:else if gone}

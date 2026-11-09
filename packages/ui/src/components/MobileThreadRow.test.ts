@@ -42,6 +42,9 @@ test('a phone row that needs you says it once, by its named dot, and an Activity
   expect(document.querySelector('[data-testid=mobile-row-reason]')!.textContent?.trim()).toBe('Wants to run:');
   expect(document.querySelector('[data-testid=mobile-row] code')!.textContent).toBe(command);
   expect(document.querySelector<HTMLElement>('[data-testid=thread-verb]')!.dataset['verb']).toBe('allow');
+  // The desktop's pair: Deny outlined, then Allow solid, right-aligned under the content.
+  const deny = document.querySelector<HTMLElement>('[data-testid=thread-verb-secondary]')!;
+  expect([deny.dataset['verb'], deny.classList.contains('secondary'), deny.parentElement!.classList.contains('decision-actions')]).toEqual(['deny', true, true]);
 });
 
 test('an Activity row keeps the title on the row\'s width: the ask is one line under it, the verb follows the content', () => {

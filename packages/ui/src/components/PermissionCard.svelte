@@ -9,6 +9,7 @@
   import Deferred, { parts } from './Deferred.svelte';
   import InfoTip from './InfoTip.svelte';
   import DecisionHead from './DecisionHead.svelte';
+  import DecisionActions from './DecisionActions.svelte';
   import { arrive } from '../lib/arrival';
 
   let {
@@ -99,14 +100,16 @@
     {/if}
   </div>
   <div class="choices" aria-busy={sending !== null}>
-    {#if total > 1}<span class="count ui-label" data-testid="permission-count">{fill(strings.chat.permissionOf, { index: String(index), total: String(total) })}</span>{/if}
-    <button type="button" class="ghost choice" data-testid="permission-deny" title={strings.chat.denyKey} disabled={sending !== null} onclick={() => void choose('deny')}>
-      <span class="ui-label">{strings.chat.deny}</span>
-    </button>
-    <!-- An answer covers this one call: the button says so, the agent asks again next time. -->
-    <button type="button" class="choice allow" data-testid="permission-allow" title={strings.chat.allowOnceKey} disabled={sending !== null || previewMissing} onclick={() => void choose('allow')}>
-      <span class="ui-label">{strings.chat.allowOnce}</span>
-    </button>
+    <DecisionActions>
+      {#if total > 1}<span class="count ui-label" data-testid="permission-count">{fill(strings.chat.permissionOf, { index: String(index), total: String(total) })}</span>{/if}
+      <button type="button" class="secondary" data-testid="permission-deny" title={strings.chat.denyKey} disabled={sending !== null} onclick={() => void choose('deny')}>
+        <span class="ui-label">{strings.chat.deny}</span>
+      </button>
+      <!-- An answer covers this one call: the button says so, the agent asks again next time. -->
+      <button type="button" class="primary" data-testid="permission-allow" title={strings.chat.allowOnceKey} disabled={sending !== null || previewMissing} onclick={() => void choose('allow')}>
+        <span class="ui-label">{strings.chat.allowOnce}</span>
+      </button>
+    </DecisionActions>
   </div>
 </div>
 {:else}
@@ -278,7 +281,7 @@
     .docked:is(:hover, :focus-within) :global(.info-tip), .docked :global(.info-tip[aria-expanded='true']) { opacity: 1; }
   }
   .docked :global(.info-bubble) { font-family: var(--font-mono); font-size: var(--text-xs); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 50vh; overflow: auto; }
-  .choices { display: flex; align-items: center; gap: 6px; }
+  .choices { min-width: 0; }
   .count { flex: none; color: var(--color-muted-foreground); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
   /* Squeezed by the dock's budget, it scrolls; a line under its edge fades instead of being cut (app.css `.scroll-edges`). */
   /* The command belongs to the ask's line: right under its title, starting
@@ -287,15 +290,9 @@
   .docked pre { --scroll-edge-ground: var(--decision-fill, var(--color-composer-surface)); max-height: 120px; margin-top: -4px; padding: 0 0 0 14px; border: none; border-radius: 0; background: none; font-size: var(--text-meta); line-height: 20px; white-space: pre; word-break: normal; overflow: auto; scrollbar-width: none; }
   /* A why under the ask takes the space the command's pull-up gave back. */
   .why + pre { margin-top: 0; }
-  .choice { flex: none; height: 30px; gap: 8px; padding: 0 12px; border-radius: var(--radius-md); font-size: var(--text-sm); font-weight: 600; }
-  /* Neutral ink, never the accent: the accent stays for send. */
-  .choice.allow { background: var(--color-foreground); color: var(--color-background); }
-  .choice.allow:hover:not(:disabled) { background: var(--color-foreground); opacity: .9; }
   @media (max-width: 720px) {
     /* The sentence asks for its whole width: when it and the two choices do not fit one
        line, the choices wrap under it rather than cutting the ask. */
     .permission.docked.decision-card { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; padding: 8px var(--dock-inset, 8px); }
-    .choices { justify-content: flex-end; }
-    .choice { height: var(--touch-target); padding: 0 12px; }
   }
 </style>

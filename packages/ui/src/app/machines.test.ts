@@ -88,10 +88,10 @@ test('background compaction turns on for the machine picked above it, not the wi
   const remote = workspace.machines.find(machine => machine.store !== store)!;
   store.showSettings('experiments');
   await waitFor(() => document.querySelector('[data-testid=settings-machine]') !== null && document.querySelector('[data-testid=background-compaction-on]') !== null);
-  // Experiments is a section of Advanced: the one bar above both names the machine of the cards below it.
+  // Experiments is a page of its own in the Advanced family: its one bar names the machine of the cards below it.
   const bar = query('[data-testid=settings-machine-bar]');
   expect(document.querySelectorAll('[data-testid=settings-machine-bar]')).toHaveLength(1);
-  expect(query('[data-testid=advanced-page]').compareDocumentPosition(query('[data-testid=experiments-page]')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(document.querySelector('[data-testid=advanced-page]')).toBeNull();
   expect(bar.compareDocumentPosition(query('[data-testid=background-compaction-on]')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   query<HTMLButtonElement>('[data-testid=settings-machine]').click();
   flushSync();

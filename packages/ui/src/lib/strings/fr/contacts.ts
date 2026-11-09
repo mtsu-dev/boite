@@ -49,6 +49,7 @@ export const fr: Translation = {
       title: 'Demandes',
       review: 'Voir la demande du contact',
       asks: '{contact} demande',
+      sentMany: '{contact} a envoyé {count} demandes',
       asked: 'Vous avez demandé à {contact}',
       remote: 'Remote git',
       accept: 'Accepter',

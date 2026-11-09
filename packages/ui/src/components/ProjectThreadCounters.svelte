@@ -33,13 +33,13 @@
   {/if}
 {:else}<div class="counters">
   {#if waiting > 0}
-    <span class="counter waiting" data-testid="project-waiting-count" data-count={waiting} role="img" title={waitingLabel} aria-label={waitingLabel}><span class="ui-label word">{strings.sidebar.state.waiting}</span><span class="ui-label number">{formatCount(waiting)}</span></span>
+    <span class="counter waiting" data-testid="project-waiting-count" data-count={waiting} role="img" title={waitingLabel} aria-label={waitingLabel}><span class="dot" aria-hidden="true"></span><span class="ui-label word">{strings.sidebar.state.waiting}</span><span class="ui-label number">{formatCount(waiting)}</span></span>
   {/if}
   {#if working > 0 && waiting === 0 && (grouped || collapsed)}
     <button type="button" class="ghost counter working" class:away class:active={open && grouped} data-testid="project-working-toggle" data-count={working}
       title={workingLabel} aria-label={workingLabel} aria-expanded={grouped ? open : undefined} aria-controls={grouped ? `${controls}-working` : undefined} disabled={!grouped || searching}
       onclick={() => projectThreadView.toggle(entry, 'working', collapsed)}>
-      <span class="work-ring" aria-hidden="true"></span><span class="ui-label">{formatCount(working)}</span>
+      <span class="work-ring" aria-hidden="true"></span><span class="ui-label word">{strings.sidebar.workingThreads}</span><span class="ui-label">{formatCount(working)}</span>
     </button>
   {/if}
 </div>{/if}
@@ -52,6 +52,9 @@
     background: transparent; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 400; font-variant-numeric: tabular-nums; }
   .counter:disabled { opacity: 1; }
   .waiting .number { color: var(--color-live); font-weight: var(--weight-title); }
+  /* The word beside the mark the rows wear, so the dot is learned where it is first named (round 20). */
+  .dot { width: 8px; height: 8px; flex: none; border-radius: var(--radius-full); background: var(--color-live); }
+  .counter .word { margin-right: 2px; }
   /* Work, still: the rows' accent arc (ThreadState.svelte). The open thread keeps the one live spinner. */
   .work-ring { box-sizing: border-box; width: 9px; height: 9px; border: 1.5px solid var(--color-accent); border-top-color: transparent; border-radius: var(--radius-full); transform: rotate(45deg); }
   .counter:hover:not(:disabled) { background: var(--color-hover); color: var(--color-foreground); }

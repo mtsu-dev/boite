@@ -50,6 +50,8 @@ export const strings = {
       title: 'Requests',
       review: 'Review the contact request',
       asks: '{contact} asks',
+      /** Identical asks merged into one row, said in words rather than a multiplier. */
+      sentMany: '{contact} sent {count} requests',
       asked: 'You asked {contact}',
       remote: 'Git remote',
       accept: 'Accept',

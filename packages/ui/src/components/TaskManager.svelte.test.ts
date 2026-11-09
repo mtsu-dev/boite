@@ -86,9 +86,9 @@ test('a paired phone sent to the task manager by a link has no process-stop cont
   const beforeOpen = vi.fn(() => expect(open).not.toHaveBeenCalled());
   mounted = mount(MobileSettings, { target: document.body, props: { store, onopenthread: beforeOpen } });
   await settle();
-  // The phone's settings list no longer offers it: a link, the palette or a card in a conversation, still leads there.
-  expect(document.querySelector('[data-testid="settings-tab-task-manager"]')).toBeNull();
-  store.showSettings('task-manager');
+  // Round 20: a peer in the Advanced family of the phone's list, where a paired phone has no Diagnostics to hold it.
+  expect(document.querySelector('[data-testid="settings-tab-diagnostics"]')).toBeNull();
+  await click(element('[data-testid="settings-tab-task-manager"]'));
   await vi.waitFor(() => expect(document.querySelector('[data-testid="task-manager-agent"]')).not.toBeNull());
   expect(element('[data-testid="task-manager"]').textContent).not.toContain(strings.taskManager.stop);
   await expect(client.call('resources.killTree', { threadId: rows()[0]!.dataset.threadId! })).rejects.toMatchObject({ code: RpcErrorCode.Refused });
@@ -99,9 +99,7 @@ test('a paired phone sent to the task manager by a link has no process-stop cont
   expect(store.openThread?.id).toBe(threadId);
   expect(store.page).toBe('chat');
   store.showSettings('task-manager');
-  // Back climbs to its group, Advanced, then Home.
-  await click(element('[data-testid="mobile-settings-back"]'));
-  expect(document.querySelector('[data-testid="mobile-settings-advanced"]')).not.toBeNull();
+  // Back climbs to Home: a page of a family, not of an index.
   await click(element('[data-testid="mobile-settings-back"]'));
   expect(document.querySelector('[data-testid="mobile-settings-home"]')).not.toBeNull();
   expect(document.querySelector('[data-testid="task-manager"]')).toBeNull();

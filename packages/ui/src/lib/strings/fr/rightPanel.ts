@@ -23,12 +23,9 @@ export const fr: Translation = {
     window: 'Fenêtre',
     ownerOnly: "Seulement dans l'application du propriétaire",
     launcher: 'Ouvrir une surface dans ce panneau',
-    /** The short list's way to every panel, named by the first panels it holds that the short list does not show. */
-    morePanels: { one: '{first}', two: '{first} et {second}', many: '{first}, {second} et {count} autres' },
     untitled: 'Navigateur',
-    allPanels: 'Tous les panneaux', inUse: 'Panneaux ouverts',
     roles: { board: 'Les tâches du projet en colonnes', tasks: 'Objectif, liste et suivis de cette conversation' },
-    groups: { work: 'Travail', agents: 'Agents', tools: 'Outils' },
+    groups: { recent: 'Récents', work: 'Travail', agents: 'Agents', tools: 'Outils' },
     formerly: {
       trace: 'Anciennement Trace', tasks: 'Anciennement Tâches', messages: 'Anciennement Discussions',
       coordination: 'Anciennement Liens entre conversations', customize: 'Anciennement Choisir les boutons'

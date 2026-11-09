@@ -2,7 +2,7 @@ import { beforeEach, expect, test } from 'vitest';
 import type { ThreadSummary } from '@boite/contracts';
 import type { Store } from './store.svelte';
 import { strings } from './strings';
-import { ALL_PANELS, IN_USE, notePanelUse, panelChoices, usedPanels } from './panel-choices';
+import { notePanelUse, panelChoices } from './panel-choices';
 import { offeredCards } from './surface-labels';
 import { work } from './work-prefs.svelte';
 
@@ -28,17 +28,21 @@ const stub = (patch: Record<string, unknown> = {}) => ({
 const ids = (items: { id: string; separator?: boolean }[]) => items.filter((item) => !item.separator).map((item) => item.id);
 const sections = (items: { label: string; separator?: boolean }[]) => items.filter((item) => item.separator && item.label).map((item) => item.label);
 
-test('the full list holds every panel once in named groups, the showing panel marked, the old names on hover', () => {
-  const items = panelChoices(stub(), thread(), { available: () => true, full: true });
+test('one list holds every panel once in named groups, the showing panel checked, the old names on hover', () => {
+  const items = panelChoices(stub(), thread(), { available: () => true });
   const list = ids(items);
   for (const card of offeredCards()) expect(list.filter((id) => id === card.kind)).toHaveLength(1);
+  // Nothing picked yet: no Recent group, the three families, Changes first.
   expect(sections(items)).toEqual(['Work', 'Agents', 'Tools']);
-  // The panel showing is in use: the way back to the short list leads.
-  expect(list.slice(0, 2)).toEqual(['panels-in-use', 'changes']);
+  expect(list[0]).toBe('changes');
   expect(list.slice(-1)).toEqual(['customize']);
   expect(list).toContain('terminal-toggle');
   expect(list).toContain('board-toggle');
   expect(list).toContain('coordination');
+  // No door to the rest: the old "N more" and its way back are gone.
+  expect(list).not.toContain('all-panels');
+  expect(list).not.toContain('panels-in-use');
+  expect(items.some((item) => item.submenu || item.back)).toBe(false);
   expect(new Set(list).size).toBe(list.length);
   expect(items.filter((item) => item.active).map((item) => item.id)).toEqual(['files']);
   const named = Object.fromEntries(items.map((item) => [item.id, item]));
@@ -51,56 +55,32 @@ test('the full list holds every panel once in named groups, the showing panel ma
   expect(named['customize']).toMatchObject({ label: 'Customize', title: 'Formerly Choose the buttons' });
 });
 
-test('the short list holds the panels in use, then one row to all of them; the full one comes back to it', () => {
-  const store = stub({ terminalShown: () => true });
-  const used = usedPanels(store, thread(), ['files'], 3);
-  const short = panelChoices(store, thread(), { available: () => true, used });
-  expect(ids(short)).toEqual(['changes', 'files', 'terminal-toggle', ALL_PANELS]);
-  expect(short.at(-1)).toMatchObject({ submenu: true });
-  const full = panelChoices(store, thread(), { available: () => true, used, full: true });
-  expect(full[0]).toMatchObject({ id: IN_USE, back: true });
-  // Nothing in use: Changes and Files still lead, a click from the header, then the way to the rest.
-  const fresh = panelChoices(stub({ panel: { active: null } }), thread(), { available: () => true, showing: undefined });
-  expect(ids(fresh)).toEqual(['changes', 'files', ALL_PANELS]);
-  // The way to the rest names what it holds, the best known first, so it is no door to guess at.
-  const more = fresh.at(-1)!;
-  expect(more.label).toMatch(/^Terminal, Browser and \d+ more$/);
-  expect(more.title).toBe(strings.rightPanel.allPanels);
-  expect(short.at(-1)!.label).not.toContain('Terminal');
-  // A short list that would hold every row is the full list at once, with no way back to itself.
-  const all = panelChoices(stub({ panel: { active: null } }), thread(), { available: () => true, showing: undefined, used: new Set(ids(panelChoices(stub(), thread(), { available: () => true, full: true }))) });
-  expect(ids(all)).not.toContain(ALL_PANELS);
-  expect(ids(all)).not.toContain(IN_USE);
-  expect(sections(all)).toHaveLength(3);
-});
-
-test('a thread uses its subagents, its letters and its changes; none of them when it has none', () => {
-  expect([...usedPanels(stub(), thread(), [], 0)]).toEqual([]);
-  expect([...usedPanels(stub(), thread(), [], null)]).toEqual([]);
-  const busy = stub({ delegation: { rootThreadId: 't1', agents: [{ thread: { id: 't2' } }] }, boardShown: true });
-  expect([...usedPanels(busy, thread({ agentSessionId: 's1' }), ['file'], 2)].sort()).toEqual(['agents', 'board-toggle', 'changes', 'desk', 'files']);
-});
-
 test('a phone, a bot or a team thread lists what it can open, and an unreachable kind says why', () => {
   // A phone runs no terminal; a bot's thread has its desk first and no coordination.
-  const bot = ids(panelChoices(stub(), thread({ agentSessionId: 's1' }), { phone: true, available: () => true, full: true }));
+  const bot = ids(panelChoices(stub(), thread({ agentSessionId: 's1' }), { phone: true, available: () => true }));
   expect(bot).toContain('desk');
   expect(bot).not.toContain('terminal-toggle');
   expect(bot).not.toContain('coordination');
-  const team = ids(panelChoices(stub(), thread({ teamId: 'team-1' } as Partial<ThreadSummary>), { available: () => true, full: true }));
+  const team = ids(panelChoices(stub(), thread({ teamId: 'team-1' } as Partial<ThreadSummary>), { available: () => true }));
   expect(team).not.toContain('terminal-toggle');
-  const shut = panelChoices(stub(), thread(), { available: (kind) => kind !== 'changes', full: true }).find((item) => item.id === 'changes');
+  const shut = panelChoices(stub(), thread(), { available: (kind) => kind !== 'changes' }).find((item) => item.id === 'changes');
   expect(shut).toMatchObject({ disabled: true });
   expect(shut?.hint).toBeTruthy();
 });
 
-test('the panels picked last lead the short list, newest first, a click from the header', () => {
+test('the panels picked last lead as a short Recent group, newest first, and leave their usual group', () => {
   const store = stub({ panel: { active: null } });
   notePanelUse('trace');
   notePanelUse('board-toggle');
   notePanelUse('file');
-  // A file tab counts as Files; Processes and the board, never used by this thread, stay one click away.
-  expect(ids(panelChoices(store, thread(), { available: () => true, showing: undefined }))).toEqual(['files', 'board-toggle', 'trace', 'changes', ALL_PANELS]);
+  const items = panelChoices(store, thread(), { available: () => true, showing: undefined });
+  // A file tab counts as Files; each row stays once, so the families lose what Recent took.
+  expect(sections(items)).toEqual(['Recent', 'Work', 'Agents', 'Tools']);
+  expect(ids(items).slice(0, 4)).toEqual(['files', 'board-toggle', 'trace', 'changes']);
+  expect(new Set(ids(items)).size).toBe(ids(items).length);
   notePanelUse('trace');
   expect(ids(panelChoices(store, thread(), { available: () => true, showing: undefined })).slice(0, 3)).toEqual(['trace', 'files', 'board-toggle']);
+  // A recent kind this thread cannot show is no Recent row (a bot's desk on a plain thread); the oldest drops out of three.
+  notePanelUse('desk');
+  expect(ids(panelChoices(store, thread(), { available: () => true, showing: undefined })).slice(0, 3)).toEqual(['trace', 'files', 'changes']);
 });

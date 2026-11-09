@@ -32,7 +32,7 @@
   import SettingsMachineBar from './SettingsMachineBar.svelte';
   import { untrack } from 'svelte';
   import { holdSettingsCard, revealSettingsCard } from '../lib/settings-flash';
-  import { desktopPage, desktopSettings, familyOf, groupOf, machinePage, movedTo, navOf, ownerOnly, sectionsOf, SETTINGS_FAMILIES, SETTINGS_GROUPS } from '../lib/settings-tabs';
+  import { desktopPage, desktopSettings, familyOf, machinePage, movedTo, navOf, ownerOnly, sectionsOf, SETTINGS_FAMILIES } from '../lib/settings-tabs';
   import { titleSlot } from '../lib/title-slot.svelte';
 
   let { store, onopenthread }: { store: Store; onopenthread?: () => void } = $props();
@@ -168,23 +168,15 @@
 
   let tabs = $derived(all.filter((tab) => store.owner || !ownerOnly(tab.id)));
   /**
-   * The nav's seven entries (`SETTINGS_GROUPS`), the same list a phone shows,
-   * each led by the first page of it this window may open, its other pages
-   * and its merged sections listed under it (`navOf`): two levels, the nav and
-   * the page, nothing between.
+   * The nav's families (`SETTINGS_FAMILIES`), the same list a phone shows,
+   * each page a peer inside its family (`navOf`): two levels, the nav and the
+   * page, nothing between. A family this window has no page of is left out.
    */
-  let groups = $derived(SETTINGS_GROUPS
-    .map((ids) => navOf(ids[0], store.owner).flatMap((id) => tabs.filter((entry) => entry.id === id)))
-    .filter((members) => members.length > 0)
-    .map(([lead, ...rest]) => ({ ...lead!, members: rest })));
-  /** The entries under their family heads (`SETTINGS_FAMILIES`), a family this window has no entry of left out. */
   let families = $derived(SETTINGS_FAMILIES
-    .map((family) => ({ id: family.id, label: family.id ? strings.settings.families[family.id] : '', groups: groups.filter((group) => (family.leads as readonly SettingsTab[]).includes(group.id)) }))
-    .filter((family) => family.groups.length > 0));
+    .map((family) => ({ id: family.id, label: strings.settings.families[family.id], pages: navOf(family.id, store.owner).flatMap((id) => tabs.filter((entry) => entry.id === id)) }))
+    .filter((family) => family.pages.length > 0));
   /** The pages merged into the shown one as its last sections (`lib/settings-tabs.ts`). */
   let merged = $derived(sectionsOf(tab, store.owner));
-  /** The nav entry lit: a merged section's own once its route asked for it, else the page's. */
-  let current = $derived(merged.includes(store.settingsTab) ? store.settingsTab : tab);
 
   /**
    * What each page is for, said once behind the "i" beside the screen's title
@@ -297,12 +289,11 @@
   let entries = $derived<SettingsEntry[]>(tabs.flatMap((entry) => {
     const sections = children[entry.id] ?? [];
     const words = settingsWords.filter(([tab, section]) => tab === entry.id && (section === null || sections.some((child) => child.id === section)));
-    const lead = groupOf(entry.id);
     // "agents" finds Providers and Limits: a family's name is searched, never shown in a result.
     const home = familyOf(entry.id);
     const family = home ? strings.settings.families[home] : '';
     return [
-      { tab: entry.id, section: null, label: entry.label, trail: lead === entry.id ? '' : tabs.find((other) => other.id === lead)?.label ?? '', family },
+      { tab: entry.id, section: null, label: entry.label, trail: '', family },
       ...sections.map((child) => ({ tab: entry.id, section: child.id, label: child.label, trail: entry.label, family })),
       ...words.map(([, section, label]) => ({
         tab: entry.id,
@@ -413,28 +404,25 @@
       <Search size={14} strokeWidth={1.75} aria-hidden="true" />
       <input type="search" bind:this={field} bind:value={query} oninput={() => (active = 0)} placeholder={strings.settings.search} aria-label={strings.settings.search} data-testid="settings-search" onkeydown={onkey} spellcheck="false" autocomplete="off" />
     </label>
-    <!-- The groups under their family heads, as on a phone; each group's other pages listed under its entry. -->
-    {#each families as family (family.id ?? 'more')}
-      <div class="family" role="group" aria-label={family.label || undefined} data-testid="settings-family" data-family={family.id ?? 'more'}>
-      {#if family.label}<p class="family-head ui-label" aria-hidden="true">{family.label}</p>{/if}
-    {#each family.groups as entry (entry.id)}
-      {#each [entry, ...entry.members] as page, index (page.id)}
-        {@const here = !searching && current === page.id}
-        {@const Icon = SETTINGS_ICONS[page.id as keyof typeof SETTINGS_ICONS]}
-        <button
-          type="button"
-          class="ghost tab"
-          class:sub={index > 0}
-          class:active={here}
-          data-testid="settings-tab-{page.id}"
-          aria-current={here ? 'page' : undefined}
-          onclick={() => go(page.id)}
-        >
-          {#if Icon}<Icon size={SETTINGS_ICON_SIZE} strokeWidth={SETTINGS_ICON_STROKE} aria-hidden="true" />{/if}
-          <span class="ui-label">{page.label}</span>
-        </button>
-      {/each}
-    {/each}
+    <!-- The pages under their family heads, as on a phone, every page a peer of its family. -->
+    {#each families as family (family.id)}
+      <div class="family" role="group" aria-label={family.label} data-testid="settings-family" data-family={family.id}>
+        <p class="family-head ui-label" aria-hidden="true">{family.label}</p>
+        {#each family.pages as page (page.id)}
+          {@const here = !searching && tab === page.id}
+          {@const Icon = SETTINGS_ICONS[page.id as keyof typeof SETTINGS_ICONS]}
+          <button
+            type="button"
+            class="ghost tab"
+            class:active={here}
+            data-testid="settings-tab-{page.id}"
+            aria-current={here ? 'page' : undefined}
+            onclick={() => go(page.id)}
+          >
+            {#if Icon}<Icon size={SETTINGS_ICON_SIZE} strokeWidth={SETTINGS_ICON_STROKE} aria-hidden="true" />{/if}
+            <span class="ui-label">{page.label}</span>
+          </button>
+        {/each}
       </div>
     {/each}
   </nav>
@@ -535,8 +523,6 @@
   .tab { gap: 10px; }
   .tab :global(svg) { flex: none; color: var(--color-subtle); }
   .tab.active :global(svg) { color: var(--color-foreground); }
-  /* A group's other pages, under its entry: the same row with its icon, set in one step. */
-  .tab.sub { padding-left: 30px; }
   /* A family: its head in the meta size over its entries, and air between two families. */
   .family { display: flex; flex-direction: column; gap: 2px; }
   .family + .family { margin-top: var(--space-4); }
@@ -692,7 +678,7 @@
     /* In a row, the head is the first chip, then the search, then each page a chip. */
     .title { height: var(--control); margin: 0; font-size: var(--text-sm); white-space: nowrap; }
     .search { width: 180px; margin: 0; }
-    .tab, .tab.sub { width: auto; white-space: nowrap; padding-left: 10px; }
+    .tab { width: auto; white-space: nowrap; padding-left: 10px; }
     .family { flex-direction: row; }
     .family + .family, .search + .family { margin-top: 0; }
     .family-head { display: none; }

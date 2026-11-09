@@ -7,6 +7,7 @@
   import { acceptItems, acceptProject } from '../../lib/contact-accept';
   import { fill, strings } from '../../lib/strings';
   import Menu from '../Menu.svelte';
+  import DecisionActions from '../DecisionActions.svelte';
 
   /**
    * One request between contacts, a row of a Requests card. Waiting on this
@@ -68,17 +69,18 @@
           </div>
         </form>
       {:else}
-        <div class="buttons">
+        <!-- The app's one decision pair (DecisionActions.svelte): Refuse in outline, then the solid Accept. -->
+        <DecisionActions>
+          <button type="button" class="secondary" disabled={busy} onclick={() => void openRefusal()} data-testid="contact-refuse-{request.id}"><span class="ui-label">{labels.refuse}</span></button>
           <button type="button" class="primary" disabled={busy || !chosen} title={acceptTip} aria-label={acceptTip}
-            onclick={() => chosen && void view.decide(request.id, { accept: true, projectId: chosen.id })} data-testid="contact-accept-{request.id}"><Check size={14} strokeWidth={2.25} /><span class="ui-label">{labels.accept}</span></button>
-          <button type="button" class="ghost" disabled={busy} onclick={() => void openRefusal()} data-testid="contact-refuse-{request.id}"><X size={14} /><span class="ui-label">{labels.refuse}</span></button>
+            onclick={() => chosen && void view.decide(request.id, { accept: true, projectId: chosen.id })} data-testid="contact-accept-{request.id}"><span class="ui-label">{labels.accept}</span></button>
           <!-- The project choice behind the row's menu: Accept itself takes the one the request points at. -->
           <span class="more">
             <Menu {items} onpick={id => void view.decide(request.id, { accept: true, projectId: id })} label={labels.acceptOther} placement="bottom" align="end" variant="ghost" disabled={busy} testid="contact-accept-into-{request.id}">
               <Ellipsis size={15} />
             </Menu>
           </span>
-        </div>
+        </DecisionActions>
       {/if}
     {/if}
   </article>
@@ -114,7 +116,6 @@
   .remote :global(svg) { flex: none; }
   .buttons { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 2px; }
   .buttons > button { gap: 6px; }
-  .more { margin-left: auto; }
   .refusal { display: grid; gap: 8px; }
   .refusal input { width: 100%; min-width: 0; }
   .decided { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--radius-md); }

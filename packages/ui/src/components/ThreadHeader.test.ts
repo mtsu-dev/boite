@@ -138,18 +138,21 @@ test("a desktop header's menu has find first, seven rows at most and names its g
 test("a desktop header's panel button shows and hides the panel, with no list of its own beside it", async () => {
   await start();
   // A door with its name, not a glyph to guess: "Panels" while none shows.
+  if (store.panelOpen) { store.togglePanel(); await settle(); }
   const door = document.querySelector<HTMLButtonElement>('[data-testid=panel-toggle]')!;
   expect(door.textContent?.trim()).toBe(strings.thread.panelMenu);
   expect(door.querySelector('[data-testid=panel-toggle-count]')).toBeNull();
-  // It says where you are: the open panel's name, and how many more stand behind it.
+  // Open, it is pressed with no name: the panel's own selector names the panel, once.
   store.panel.openChanges(); store.panel.open('files'); await settle();
   expect(store.panelOpen).toBe(true);
-  expect(door.querySelector('[data-testid=panel-toggle-name]')?.textContent).toBe(strings.rightPanel.files);
-  expect(door.textContent).not.toContain(strings.thread.panelMenu);
-  expect(door.querySelector('[data-testid=panel-toggle-count]')?.textContent).toBe('+1');
+  expect(door.getAttribute('aria-pressed')).toBe('true');
+  expect(door.textContent?.trim()).toBe('');
+  expect(door.textContent).not.toContain(strings.rightPanel.files);
+  expect(door.getAttribute('aria-label')).toBe(strings.thread.panelMenu);
+  expect(door.querySelector('svg')).not.toBeNull();
   // Closed, it is the door again, with what it holds.
   store.togglePanel(); await settle();
-  expect(door.querySelector('[data-testid=panel-toggle-name]')).toBeNull();
+  expect(door.getAttribute('aria-pressed')).toBe('false');
   expect(door.textContent).toContain(strings.thread.panelMenu);
   expect(door.querySelector('[data-testid=panel-toggle-count]')?.textContent).toBe('2');
   store.togglePanel(); await settle();

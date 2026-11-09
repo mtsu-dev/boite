@@ -58,7 +58,7 @@ test('new questions leave the current question and selection in place, then answ
   flushSync(() => { store.pendingQuestions = [...store.pendingQuestions, question('middle', 2), question('newest', 3)]; });
   expect(fold.getAttribute('aria-expanded')).toBe('false');
   expect(shownQuestion()).toBe('oldest');
-  expect(document.querySelector('[data-testid=activity-question-index]')!.textContent).toBe('1/3');
+  expect(document.querySelector('[data-testid=activity-question-index]')!.textContent).toBe('Question 1 of 3');
   expect(option.getAttribute('aria-checked')).toBe('true');
   // Explicit navigation remains possible, and later arrivals do not steal it.
   document.querySelector<HTMLButtonElement>('[data-testid=activity-question-next]')!.click();

@@ -87,11 +87,11 @@ test('a desktop menu keeps seven rows at most on its first level and names its o
   expect(ids(threadMenuItems(store, t, { ...options, open: undefined }))).toHaveLength(7);
   expect(ids(threadMenuItems(store, t, { ...options, tools: [] }))).toHaveLength(7);
   // The door says what a user does there, in words to act on: move it, give it to a bot.
-  expect(main.find(item => item.id === 'more')).toMatchObject({ submenu: true, label: 'Move or give to a bot' });
+  expect(main.find(item => item.id === 'more')).toMatchObject({ submenu: true, label: 'Move to a project or a bot' });
   expect(main.some(item => item.label === 'More')).toBe(false);
   const tools = threadToolItems(store, t, options);
   // The way back names the level it stands on, as the model picker's levels do.
-  expect(tools[0]).toMatchObject({ back: true, label: 'Move or give to a bot' });
+  expect(tools[0]).toMatchObject({ back: true, label: 'Move to a project or a bot' });
   // What is done less often, in the door's order: the hand-off, a new title, then where the thread lives. The panels have their own selector.
   expect(ids(tools)).toEqual(['back', 'entrust', 'retitle', 'move', 'copy', 'pr']);
   // What the header says of the thread leads each part: its bot the bot rows, its branch the folder rows.

@@ -422,8 +422,9 @@
     flex-wrap: wrap;
     min-width: 0;
   }
+  /* A desktop chip is a 32 px target, the head's control height. */
   .chips :global(.trigger) {
-    height: var(--control);
+    height: var(--control-head);
     padding: 0 10px;
     gap: 7px;
     border-radius: var(--radius-md);
@@ -474,7 +475,6 @@
 
   .send { box-shadow: var(--shadow-send); }
   .send.resting { display: none; }
-  .send:not(:disabled):active { transform: scale(.92); }
   .send :global(.spinner) { animation: spin 1s linear infinite var(--loops); }
   @media (prefers-reduced-motion: reduce) { .send :global(.spinner) { animation: none; } }
 
@@ -500,6 +500,17 @@
     .bar :global(:is(.opener, .microphone)), .dictation-stand-in button, .send, .stop { width: 32px; height: 32px; }
   }
 
+  /* A short press: a chip or the disc gives under the finger at once and
+     settles back in the motion family's time; reduced motion (`--motion` 0)
+     keeps it still. */
+  .bar :global(:is(.chips .trigger, .opener)), .send, .stop {
+    transition: background var(--dur-2) var(--ease-out-quint), border-color var(--dur-2) var(--ease-out-quint), color var(--dur-2) var(--ease-out-quint), opacity var(--dur-2) var(--ease-out-quint), transform var(--motion-duration) var(--motion-curve);
+  }
+  .bar :global(:is(button.trigger, .opener):active:not(:disabled)), .send:active:not(:disabled), .stop:active:not(:disabled) {
+    transform: scale(calc(1 - .06 * var(--motion)));
+    transition-duration: var(--dur-1);
+  }
+
   @media (max-width: 720px) {
     .bar { position: relative; gap: 2px; padding: var(--composer-bar-padding, 0 8px 6px); }
     /* The microphone and send stand at the field's end, on its last line, so
@@ -513,13 +524,13 @@
        ::after below keeps the 44 px target. */
     .tools :global(:is(.send, .stop, .microphone, .dictation-stand-in button)) { position: relative; width: 36px; height: 36px; min-width: 0; min-height: 0; margin: 4px; }
     .tools :global(:is(.send, .stop, .microphone, .dictation-stand-in button))::after { content: ''; position: absolute; inset: -5px; border-radius: inherit; }
-    /* One row that never wraps: a value too long for it scrolls sideways
-       under the finger, and ends before the microphone, never under it. */
-    .chips { --chips-gap: 6px; flex: 1; flex-wrap: nowrap; gap: var(--chips-gap); min-height: var(--touch-target); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
-    .chips::-webkit-scrollbar { display: none; }
-    /* That scroller clips anything drawn outside it: the focus ring sits inside the chip. */
-    .chips :global(.trigger:focus-visible) { outline-offset: -2px; }
-    .chips > :global(*) { flex: none; }
+    /* Every value whole: a row too short for them wraps onto a second one
+       under it, each row a 44 px target (36 px chips, 8 px between rows). The
+       "+" stays on the first row, the field above never changes its place in
+       the card. */
+    .chips { flex: 1; flex-wrap: wrap; align-content: center; gap: 8px 6px; min-height: var(--touch-target); padding-block: 4px; }
+    .bar > :global(.options) { align-self: flex-start; }
+    .chips > :global(*) { flex: none; max-width: 100%; }
     /* Each setting reads as a control at rest: a quiet surface and a hairline
        around its icon, its value and its chevron, 36 px drawn in a 44 px target. */
     .bar .chips :global(:is(.picker, .effort, .permission) > .trigger), .bar .chips .gone {
@@ -531,55 +542,19 @@
       border-radius: var(--radius-full);
       background: color-mix(in oklab, var(--color-foreground) 4%, transparent);
     }
-    .bar .chips :global(:is(.picker, .effort, .permission) > .trigger)::after, .bar .chips .gone::after { content: ''; position: absolute; inset: -5px 0; }
+    .bar .chips :global(:is(.picker, .effort, .permission) > .trigger)::after, .bar .chips .gone::after { content: ''; position: absolute; inset: -4px 0; }
     .chips :global(.picker > .trigger) { max-width: none; }
     .chips :global(.picker > .trigger > .label) { max-width: none; overflow: visible; }
     .bar .chips :global(.picker > .trigger.connect) { padding: 0 12px; background: var(--color-active); color: var(--color-foreground); }
   }
   /* A 360 px phone: the "+" narrows to 32 px, its 44 px target kept by a hit
      zone over the bar's padding, and the chips' sides close in. A value never
-     shrinks: past the row's end the chips scroll sideways. */
+     shrinks: what does not fit goes to the next row. */
   @media (max-width: 379px) {
     .bar { gap: 0; padding-inline: 4px; }
     .bar :global(.opener) { position: relative; width: 32px; }
     .bar :global(.opener)::after { content: ''; position: absolute; inset: 0 -4px 0 -8px; }
     .bar .chips :global(:is(.picker, .effort, .permission) > .trigger) { padding: 0 7px; gap: 4px; }
-    .chips { --chips-gap: 4px; }
-  }
-  /* A phone row that runs past its end fades there, the lists' scroll-driven
-     edge turned sideways: the end with more chips beyond it fades, the start
-     once scrolled, and a row that fits has no scroll range, so no fade. Each
-     edge takes no room: its negative margin cancels its width and the gap. */
-  @supports (animation-timeline: scroll()) {
-    @media (max-width: 720px) {
-      .chips::before, .chips::after {
-        content: '';
-        position: sticky;
-        z-index: 1;
-        flex: none;
-        align-self: stretch;
-        width: var(--scroll-edge);
-        pointer-events: none;
-        opacity: 0;
-        animation-duration: auto;
-        animation-timing-function: linear;
-        animation-fill-mode: both;
-        animation-timeline: scroll(nearest inline);
-      }
-      .chips::before {
-        left: 0;
-        margin-right: calc(-1 * (var(--scroll-edge) + var(--chips-gap)));
-        background: linear-gradient(to right, var(--color-composer-surface), transparent);
-        animation-name: scroll-edge-in;
-        animation-range: 0px var(--scroll-edge);
-      }
-      .chips::after {
-        right: 0;
-        margin-left: calc(-1 * (var(--scroll-edge) + var(--chips-gap)));
-        background: linear-gradient(to left, var(--color-composer-surface), transparent);
-        animation-name: scroll-edge-out;
-        animation-range: calc(100% - var(--scroll-edge)) 100%;
-      }
-    }
+    .chips { column-gap: 4px; }
   }
 </style>

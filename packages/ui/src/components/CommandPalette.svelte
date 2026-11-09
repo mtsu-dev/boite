@@ -1,7 +1,7 @@
 <script lang="ts">
   import { rowAsks } from '../lib/status-order';
   import { tick, untrack } from 'svelte';
-  import { Search } from '@lucide/svelte';
+  import { CornerDownRight, Search } from '@lucide/svelte';
   import type { AgentProfile, Project, ProjectId, ThreadSummary } from '@boite/contracts';
   import { Closing } from '../lib/closing.svelte';
   import { minuteClock } from '../lib/clock.svelte';
@@ -62,6 +62,8 @@
     thread: ThreadSummary | null;
     /** A bot's thread: its picture leads the row. */
     bot?: Pick<AgentProfile, 'id' | 'name' | 'avatar'> | null;
+    /** A subagent's parent thread title: the row says whose helper it is. */
+    parent?: string | null;
   }
   /** Bots and team chats have no project: they gather under one heading of their own, never under Drafts. */
   const BOTS = 'bots';
@@ -84,7 +86,8 @@
         const bot = project ? null : agentDirectory(machine.store).ownerOf(thread);
         const botThread = !project && (bot !== null || !!thread.agentSessionId || !!thread.teamId);
         const section = botThread ? BOTS : `in:${machine.id}:${thread.projectId}`;
-        places.set(id, { machine, project, thread, bot });
+        const parent = thread.parentThreadId ? machine.store.threads.find(one => one.id === thread.parentThreadId)?.title ?? null : null;
+        places.set(id, { machine, project, thread, bot, parent });
         if (!botThread && !places.has(section)) places.set(section, { machine, project, thread: null });
         entries.push({ at: thread.lastUserMessageAt ?? thread.createdAt, item: {
           id,
@@ -92,7 +95,7 @@
           // A bot's own conversation goes by the bot's name; its helpers keep their titles.
           label: bot && thread.agentSessionId ? bot.name : thread.title,
           // What a query may also land on: the project and the machine, never drawn on the row.
-          hint: [project ? projectName(project) : '', bot ? `${bot.name} ${thread.title}` : '', several ? machine.label : ''].filter(Boolean).join(' '),
+          hint: [project ? projectName(project) : '', bot ? `${bot.name} ${thread.title}` : '', parent ?? '', several ? machine.label : ''].filter(Boolean).join(' '),
           keywords: thread.status,
           section
         } });
@@ -290,9 +293,11 @@
                 <span class="mark-slot">
                   {#if place?.bot}<AgentAvatar kind="profile" id={place.bot.id} name={place.bot.name} avatar={place.bot.avatar} size={16} />
                   {:else if place?.thread?.teamId}<AgentAvatar kind="team" id={place.thread.teamId} name={place.thread.title} size={16} />
-                  {:else if !place?.thread && item.kind === 'project' && place?.project}<ProjectTile project={place.project} store={place.machine.store} size={16} />{/if}
+                  {:else if !place?.thread && item.kind === 'project' && place?.project}<ProjectTile project={place.project} store={place.machine.store} size={16} />
+                  {:else if place?.parent}<span class="sub-mark" aria-hidden="true"><CornerDownRight size={14} /></span>{/if}
                 </span>
-                <span class="label ui-label">{item.label}</span>
+                <span class="label ui-label" class:sub={!!place?.parent}>{item.label}</span>
+                {#if place?.parent}{@const [before, after = ''] = strings.palette.subagentOf.split('{parent}')}<span class="parent ui-label" data-testid="palette-parent"><span class="joint">{before}</span><span class="parent-title">{place.parent}</span>{#if after}<span class="joint">{after}</span>{/if}</span>{/if}
                 {#if place?.thread}
                   <span class="state"><ThreadState thread={place.thread} {now} subagents={rowAsks(place.machine.store, place.thread.id)} away={place.machine.store.connection !== 'ready'} mark /></span>
                 {:else if item.kind === 'project' && place}
@@ -473,6 +478,14 @@
     white-space: nowrap;
     font-weight: 400;
   }
+
+  /* A subagent's title gives its room to the parent's name only past its own width. */
+  .label.sub { flex: 0 1 auto; }
+  /* "in" stays whole; only the parent's title, the user's words, ends in an ellipsis when the row is short. */
+  .parent { flex: 1 1 0; display: flex; min-width: 0; white-space: nowrap; font-size: var(--text-sm); color: var(--color-muted-foreground); }
+  .parent .joint { flex: none; white-space: pre; }
+  .parent-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .sub-mark { display: inline-flex; color: var(--color-subtle); }
 
   .state,
   .meta {

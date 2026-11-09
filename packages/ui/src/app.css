@@ -258,14 +258,16 @@
   /* The lift a hovered or selected row takes: light over the ground, never a new grey. */
   --color-hover: rgba(255, 255, 255, 0.045);
   --color-active: rgba(255, 255, 255, 0.075);
-  --color-foreground: #fafafb;
+  --color-foreground: #ffffff;
   /* Three text tiers a visible step apart (4 to 7 L*), the faintest still 8:1 on every surface in both
      themes: subtle carries times, machine names and meta, which must read as well as any secondary line
      (lib/contrast.test.ts). Round 15 lifts all three one step, secondary to 12:1 on every ground; round 16
      lifts them once more (the seats still read the 12 px meta as dim), subtle to 11:1; round 19 lifts
-     all three a last step, secondary to 13:1, subtle to 11.8:1. */
-  --color-muted-foreground: #eeeef0;
-  --color-subtle: #e2e2e6;
+     all three a step, secondary to 13:1, subtle to 11.8:1; round 20 one more (timestamps, counts, diff
+     line numbers, the quota line), secondary to 13.7:1, subtle to 12.3:1, the primary to white so the
+     step above them stays 4 L*. */
+  --color-muted-foreground: #f3f3f4;
+  --color-subtle: #e7e7ea;
   /* Below reading contrast: a disabled mark, a placeholder glyph, never words that must be read. */
   --color-faint: #4a4a50;
   /* A switch: off is a dark track with a dim knob at the left, on the filled track of the foreground ink with the
@@ -319,6 +321,42 @@
      sheet's own edge and grabber already set it apart (round 19: the seats read 0.55 as a blackout). */
   --sheet-scrim: rgba(6, 6, 8, 0.32);
   --color-on-foreground: #131314;
+
+  /* Four constant roles for the neutrals, so a layer is named by what it is, never by the nearest grey:
+     the ground a screen sits on, a surface (list, card, panel), a raise (chip, composer, a pressed segment)
+     and the selection. Each stands a clear L* step from the one under it in both themes and in every
+     palette (lib/contrast.test.ts), so an active layer never differs by a near-identical grey. */
+  --role-ground: var(--color-background);
+  --role-surface: var(--color-surface);
+  --role-raised: var(--color-surface-2);
+  --role-selected: var(--color-selection);
+
+  /* The instrumental tier of a thread (round 20): tool lines, plans, timers and their meta, one consistent
+     step under the agent's words (16 px reading text at full ink). One size down, the secondary ink and
+     the body's leading, so the reply is the only full-weight layer and the decision card the only other
+     one. Text tokens: they clear the secondary floors (lib/contrast.test.ts). */
+  --instrument-ink: var(--color-muted-foreground);
+  --instrument-meta: var(--color-subtle);
+  --instrument-size: var(--text-body);
+  --instrument-meta-size: var(--text-meta);
+  --instrument-leading: 1.5;
+
+  /* A changed line in a diff: the status colour mixed into the well's own fill, low enough that the
+     wash reads as the thread's grey with a cast, while the bar and the sign carry add and remove.
+     The words that changed take a deeper wash of the same. Code text on each keeps reading
+     contrast (lib/contrast.test.ts). Round 19 drew 7 and 26 percent. */
+  --diff-add-wash: color-mix(in srgb, var(--color-success) 5%, var(--color-surface-2));
+  --diff-remove-wash: color-mix(in srgb, var(--color-danger) 5%, var(--color-surface-2));
+  --diff-add-word: color-mix(in srgb, var(--color-success) 16%, var(--color-surface-2));
+  --diff-remove-word: color-mix(in srgb, var(--color-danger) 16%, var(--color-surface-2));
+
+  /* Lucide's line set in one voice (svg.lucide below): one stroke at 14 to 17 px, a heavier one under
+     it and a lighter one over it, so every icon draws a line about 1.1 px wide whatever its size. */
+  --icon-stroke: 1.75;
+  --icon-stroke-small: 2;
+  --icon-stroke-large: 1.5;
+  /* The smallest text a user may act on or must read to decide (a time, a count, a quota): meta's 13 px. */
+  --text-min: var(--text-meta);
 
   /*
    * Chart series, one hue per provider in a fixed order: Claude, Codex,
@@ -586,7 +624,7 @@
   --palette-dark-default-background: #151517;
   --palette-dark-default-frame: #0b0b0c;
   --palette-dark-default-surface: #212124;
-  --palette-dark-default-foreground: #fafafb;
+  --palette-dark-default-foreground: #ffffff;
   --palette-light-default-background: #f3f3f6;
   --palette-light-default-frame: #e3e3e9;
   --palette-light-default-surface: #ffffff;
@@ -625,7 +663,7 @@
   --palette-dark-catppuccin-background: #1e1e2e;
   --palette-dark-catppuccin-frame: #11111b;
   --palette-dark-catppuccin-surface: #181825;
-  --palette-dark-catppuccin-foreground: #cfd8f6;
+  --palette-dark-catppuccin-foreground: #d0d9f6;
   --palette-dark-catppuccin-accent: #cba6f7;
   --palette-dark-catppuccin-surface-low: #181825;
   --palette-dark-catppuccin-surface-high: #313244;
@@ -648,12 +686,12 @@
   --palette-light-catppuccin-background: #eff1f5;
   --palette-light-catppuccin-frame: #dce0e8;
   --palette-light-catppuccin-surface: #ffffff;
-  --palette-light-catppuccin-foreground: #333650;
+  --palette-light-catppuccin-foreground: #2d2f46;
   --palette-light-catppuccin-accent: #8839ef;
   --palette-light-catppuccin-surface-low: #e6e9ef;
   --palette-light-catppuccin-surface-high: #ccd0da;
-  --palette-light-catppuccin-muted-foreground: #3e4055;
-  --palette-light-catppuccin-subtle: #494c5c;
+  --palette-light-catppuccin-muted-foreground: #37394c;
+  --palette-light-catppuccin-subtle: #424453;
   --palette-light-catppuccin-border: #ccd0da;
   --palette-light-catppuccin-edge: #bcc0cc;
   --palette-light-catppuccin-frame-edge: #ccd0da;
@@ -694,18 +732,18 @@
   --palette-light-tokyo-night-background: #e1e2e7;
   --palette-light-tokyo-night-frame: #d0d5e3;
   --palette-light-tokyo-night-surface: #e9eaf0;
-  --palette-light-tokyo-night-foreground: #103267;
+  --palette-light-tokyo-night-foreground: #0e2b59;
   --palette-light-tokyo-night-accent: #2e7de9;
   --palette-light-tokyo-night-surface-low: #d0d5e3;
   --palette-light-tokyo-night-surface-high: #c4c8da;
-  --palette-light-tokyo-night-muted-foreground: #2f3b66;
-  --palette-light-tokyo-night-subtle: #404664;
+  --palette-light-tokyo-night-muted-foreground: #2a345a;
+  --palette-light-tokyo-night-subtle: #393f5a;
   --palette-light-tokyo-night-border: #b4b5b9;
   --palette-light-tokyo-night-edge: #8990b3;
   --palette-light-tokyo-night-frame-edge: #b4b5b9;
   --palette-light-tokyo-night-hover: #d0d5e3;
   --palette-light-tokyo-night-active: #c4c8da;
-  --palette-light-tokyo-night-selection: #b7c1e3;
+  --palette-light-tokyo-night-selection: #afb8d9;
   --palette-light-tokyo-night-accent-soft: #cdd9ee;
   --palette-light-tokyo-night-code-background: #d0d5e3;
   --palette-light-tokyo-night-code-foreground: #3760bf;
@@ -717,18 +755,18 @@
   --palette-dark-nord-background: #2e3440;
   --palette-dark-nord-frame: #242933;
   --palette-dark-nord-surface: #3b4252;
-  --palette-dark-nord-foreground: #f1f4f9;
+  --palette-dark-nord-foreground: #f5f8fb;
   --palette-dark-nord-accent: #88c0d0;
   --palette-dark-nord-surface-low: #2e3440;
   --palette-dark-nord-surface-high: #434c5e;
-  --palette-dark-nord-muted-foreground: #e2e8f3;
-  --palette-dark-nord-subtle: #d1d9e7;
+  --palette-dark-nord-muted-foreground: #e6ebf4;
+  --palette-dark-nord-subtle: #d4dbe8;
   --palette-dark-nord-border: #434c5e;
   --palette-dark-nord-edge: #4c566a;
   --palette-dark-nord-frame-edge: #3b4252;
   --palette-dark-nord-hover: #3b4252;
   --palette-dark-nord-active: #434c5e;
-  --palette-dark-nord-selection: #4c566a;
+  --palette-dark-nord-selection: #50596d;
   --palette-dark-nord-accent-soft: #354b58;
   --palette-dark-nord-code-background: #242933;
   --palette-dark-nord-code-foreground: #eceff4;
@@ -744,14 +782,14 @@
   --palette-light-nord-accent: #5e81ac;
   --palette-light-nord-surface-low: #e5e9f0;
   --palette-light-nord-surface-high: #d8dee9;
-  --palette-light-nord-muted-foreground: #3b4456;
-  --palette-light-nord-subtle: #444e61;
+  --palette-light-nord-muted-foreground: #3a4254;
+  --palette-light-nord-subtle: #434d60;
   --palette-light-nord-border: #d8dee9;
   --palette-light-nord-edge: #b5bfce;
   --palette-light-nord-frame-edge: #c4cdd9;
   --palette-light-nord-hover: #e5e9f0;
   --palette-light-nord-active: #d8dee9;
-  --palette-light-nord-selection: #c0d5e1;
+  --palette-light-nord-selection: #bcd1dc;
   --palette-light-nord-accent-soft: #dce5ef;
   --palette-light-nord-code-background: #e5e9f0;
   --palette-light-nord-code-foreground: #2e3440;
@@ -786,12 +824,12 @@
   --palette-light-gruvbox-background: #fbf1c7;
   --palette-light-gruvbox-frame: #ebdbb2;
   --palette-light-gruvbox-surface: #f9f5d7;
-  --palette-light-gruvbox-foreground: #3c3836;
+  --palette-light-gruvbox-foreground: #3a3735;
   --palette-light-gruvbox-accent: #af3a03;
   --palette-light-gruvbox-surface-low: #f2e5bc;
   --palette-light-gruvbox-surface-high: #ebdbb2;
-  --palette-light-gruvbox-muted-foreground: #48413d;
-  --palette-light-gruvbox-subtle: #564e47;
+  --palette-light-gruvbox-muted-foreground: #47403c;
+  --palette-light-gruvbox-subtle: #534b45;
   --palette-light-gruvbox-border: #d5c4a1;
   --palette-light-gruvbox-edge: #bdae93;
   --palette-light-gruvbox-frame-edge: #d5c4a1;
@@ -836,8 +874,8 @@
   --palette-light-amethyst-accent: #7048ad;
   --palette-light-amethyst-surface-low: #f3edf9;
   --palette-light-amethyst-surface-high: #ece3f5;
-  --palette-light-amethyst-muted-foreground: #574669;
-  --palette-light-amethyst-subtle: #645077;
+  --palette-light-amethyst-muted-foreground: #4f3f5f;
+  --palette-light-amethyst-subtle: #5c496d;
   --palette-light-amethyst-border: #ded1ec;
   --palette-light-amethyst-edge: #c9b5dd;
   --palette-light-amethyst-frame-edge: #d9c9e9;
@@ -928,9 +966,10 @@ html[data-chat-width='full'] {
   --color-active: rgba(0, 0, 0, 0.07);
   --color-foreground: #141418;
   /* Round 18: one step darker, so both tiers keep their floors on the deeper frame; round 19 one more,
-     secondary to 12.7:1, subtle to 11.2:1, each still 4 L* from the tier above. */
-  --color-muted-foreground: #202025;
-  --color-subtle: #2a2a30;
+     secondary to 12.7:1, subtle to 11.2:1; round 20 one more, secondary to 13.2:1, subtle to 11.7:1,
+     each still 4 L* from the tier above. */
+  --color-muted-foreground: #1c1c21;
+  --color-subtle: #26262c;
   --color-faint: #b4b4bb;
   --color-selection: rgba(28, 28, 33, 0.14);
   --color-terminal-background: var(--color-surface-2);
@@ -1363,9 +1402,12 @@ button.icon-only {
   min-height: 32px;
 }
 
-/* One stroke for the line set: most icons pass 1.75 already, and Lucide's
-   default 2 joins them here. A width other than 2 is a deliberate weight. */
-svg.lucide[stroke-width='2'] { stroke-width: 1.75; }
+/* One stroke for the line set, by optical size: an icon drawn at 1.5 to 2 (Lucide's default included)
+   takes `--icon-stroke`, heavier under 14 px and lighter from 18 px, so a 12 px glyph and a 28 px one
+   draw the same line. A width over 2 (a check, a bold mark) is a deliberate weight and keeps it. */
+svg.lucide:is([stroke-width='1.5'], [stroke-width='1.6'], [stroke-width='1.75'], [stroke-width='2']) { stroke-width: var(--icon-stroke); }
+svg.lucide:is([stroke-width='1.5'], [stroke-width='1.6'], [stroke-width='1.75'], [stroke-width='2']):is([width='10'], [width='11'], [width='12'], [width='13']) { stroke-width: var(--icon-stroke-small); }
+svg.lucide:is([stroke-width='1.5'], [stroke-width='1.6'], [stroke-width='1.75'], [stroke-width='2']):is([width='18'], [width='20'], [width='22'], [width='24'], [width='28'], [width='32'], [width='40'], [width='48']) { stroke-width: var(--icon-stroke-large); }
 
 /* A glyph keeps the size it was drawn at: a flex row too narrow for it
    overflows rather than shrinking the icon to a speck. */

@@ -1,18 +1,21 @@
 <script lang="ts">
   import type { Machine } from '../lib/workspace.svelte';
   import { workspace } from '../lib/workspace.svelte';
-  import { feedOperation, type FeedRow, type FeedVerb } from '../lib/activity-feed';
+  import { feedOperation, feedSecondary, type FeedRow, type FeedVerb } from '../lib/activity-feed';
   import { strings } from '../lib/strings';
   import { leaveForAct } from '../lib/activity-return.svelte';
   import ThreadCard from './ThreadCard.svelte';
   import CommandWords from './CommandWords.svelte';
+  import DecisionActions from './DecisionActions.svelte';
 
   /**
    * One Activity row, desktop (ActivityList.svelte): the list's own row (menu, drag, rename) with who asks, its title
    * on two lines at most, and what is asked as one line under it, whole in the row's tooltip; the
    * command of a permission in a mono block under them, each sub-agent that asks the same as a line of its own
-   * (lib/activity-feed.ts: one event, one row). The mark, since when and the row's one action end the title's line. A command too long to read here turns Allow into Review, which opens the thread
-   * first. Acting leaves Activity for the thread; once the ask is settled, Activity comes back where it was
+   * (lib/activity-feed.ts: one event, one row). The mark and since when end the title's line; the decision pair
+   * (DecisionActions.svelte, the composer's) stands under the content at the row's right edge: Deny or Skip
+   * outlined, settled here, then Allow or Answer solid, which opens the thread where it is done. Review is
+   * outlined alone. A command too long to read here turns Allow into Review, which opens the thread first. Acting leaves Activity for the thread; once the ask is settled, Activity comes back where it was
    * (lib/activity-return.svelte.ts).
    */
   let { row, helpers = [], now }: { row: FeedRow<Machine>; helpers?: FeedRow<Machine>[]; now: number } = $props();
@@ -21,6 +24,13 @@
   /** The row's action is its own, else the first sub-agent's that asks, which opens that sub-agent. */
   const target = $derived(row.verb ? row : helpers.find(helper => helper.verb) ?? null);
   const verb = $derived<FeedVerb | null>(target?.verb === 'allow' && long ? 'review' : target?.verb ?? null);
+  const secondary = $derived(target ? feedSecondary(target.machine.store, target.thread.id, verb) : null);
+  let settling = $state(false);
+  async function settle() {
+    if (!secondary || settling) return;
+    settling = true;
+    try { await secondary.run(); } finally { settling = false; }
+  }
 </script>
 
 <ThreadCard machine={row.machine} project={row.project} thread={row.thread} {now} compact at={row.at}>
@@ -32,13 +42,12 @@
     {/each}
   {/snippet}
   {#snippet action()}
-    <!-- Every row keeps the action's place, Updates included, so the mark, the time and the actions stand in one
-         column each down the whole page. -->
-    <span class="feed-action">
-      {#if target && verb}
-        <button type="button" class={['small', 'verb', verb === 'review' ? 'ghost' : 'primary']} data-testid="thread-verb" data-verb={verb} onclick={(event) => { leaveForAct(target.machine.store, target.thread.id, event.currentTarget); void workspace.select(target.machine.store, target.thread.id); }}>{strings.mobile.feed.verb[verb]}</button>
-      {/if}
-    </span>
+    {#if target && verb}
+      <DecisionActions>
+        {#if secondary}<button type="button" class="secondary" data-testid="thread-verb-secondary" data-verb={secondary.kind} disabled={settling} onclick={() => void settle()}>{strings.mobile.feed.verb[secondary.kind]}</button>{/if}
+        <button type="button" class={verb === 'review' ? 'secondary' : 'primary'} data-testid="thread-verb" data-verb={verb} onclick={(event) => { leaveForAct(target.machine.store, target.thread.id, event.currentTarget); void workspace.select(target.machine.store, target.thread.id); }}>{strings.mobile.feed.verb[verb]}</button>
+      </DecisionActions>
+    {/if}
   {/snippet}
 </ThreadCard>
 
@@ -53,9 +62,4 @@
   .operation { display: block; margin-left: 26px; padding: 6px 8px; border-radius: var(--radius-sm); background: var(--color-code-background); color: var(--color-code-foreground); font-family: var(--font-mono); font-size: var(--text-xs); line-height: 1.5; text-align: start; white-space: pre-wrap; overflow-x: auto; scrollbar-width: none; }
   /* Too long to read here: its first lines, and Review opens the whole before Allow. */
   .operation.long { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; line-clamp: 6; overflow: hidden; }
-  /* One width for every action (ThreadCard's `--feed-verb`), so each starts at the same offset. The row's one
-     action ranks by what it does: answering and allowing are the solid neutral fill of the composer's Allow (never
-     the accent), reading a long command first is a text action. */
-  .feed-action { display: flex; flex: none; width: var(--feed-verb); }
-  .verb { justify-content: center; width: 100%; height: var(--control-sm); font-size: var(--text-xs); font-weight: 600; }
 </style>

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { ArrowRight, Check, ChevronRight, Plus } from '@lucide/svelte';
+  import { ArrowRight, ChevronRight, Plus } from '@lucide/svelte';
+  import type { Snippet } from 'svelte';
   import type { ProviderSummary } from '@boite/contracts';
   import ProviderLogo from './ProviderLogo.svelte';
   import { strings } from '../lib/strings';
@@ -7,13 +8,12 @@
   import type { Choice, Store } from '../lib/store.svelte';
 
   /**
-   * The model picker's sources, unfolded in place under its search row: one
-   * row per provider in the order the core listed them, its mark in monochrome
-   * beside its name, the shown one checked. A row only moves the list under it;
-   * its end says where it leads: a chevron to its models, "Set up" with the
-   * reason under the name when it cannot run yet, an arrow out to Settings.
-   * Folded, the rows stay in the page (the same nodes when they unfold) but
-   * leave the arrows' path.
+   * The model picker's providers: one row per provider in the order the core
+   * listed them, its mark in monochrome beside its name. A row opens its models
+   * in place under itself (`body`), its chevron turning down; its end says where
+   * it leads: a chevron to its models, "Set up" with the reason under the name
+   * when it cannot run yet, an arrow out to Settings. Folded, the rows stay in
+   * the page but leave the arrows' path.
    */
   let {
     store,
@@ -21,14 +21,20 @@
     locked,
     current,
     open = true,
+    filter,
+    body,
     onpick,
     onmore
   }: {
     store: Store;
     choice: Choice | null;
     locked: boolean;
-    /** The provider whose column is shown. */
+    /** The provider whose models are open. */
     current: string | null;
+    /** The providers this group draws, out of the listed ones. */
+    filter?: (providerId: string) => boolean;
+    /** The open provider's models, drawn under its row. */
+    body?: Snippet;
     /** Folded: no row is on the arrows' path. */
     open?: boolean;
     onpick: (providerId: string) => void;
@@ -45,8 +51,9 @@
   }
 
   let listed = $derived(listedProviders(store, choice));
+  let drawn = $derived(filter ? listed.filter((entry) => filter(entry.id)) : listed);
   let tiles = $derived.by((): Tile[] => {
-    return listed.map((entry) => {
+    return drawn.map((entry) => {
       const reason = !entry.available
         ? strings.composer.unavailable
         : store.accountsOf(entry.id).length === 0
@@ -73,6 +80,7 @@
     type="button"
     class="tile"
     class:current={current === tile.provider.id}
+    aria-expanded={current === tile.provider.id}
     class:dim={tile.reason !== null}
     disabled={tile.held}
     role="menuitem"
@@ -81,12 +89,13 @@
     title={tileTitle(tile)}
     onclick={() => pickTile(tile)}
   >
-    <span class="mark" aria-hidden="true">{#if current === tile.provider.id}<Check size={14} />{/if}</span>
+    <span class="mark" aria-hidden="true"></span>
     <ProviderLogo providerId={tile.provider.id} size={14} />
     <span class="text"><span class="tile-name ui-label">{tile.provider.name}</span>{#if tile.reason}<span class="reason">{tile.reason}</span>{/if}</span>
     {#if tile.reason}<span class="lead ui-label">{strings.composer.setUp}</span>{/if}
     <ChevronRight size={14} strokeWidth={2} class="chevron" />
   </button>
+  {#if body && current === tile.provider.id}<div class="tile-body" data-models-of={tile.provider.id}>{@render body()}</div>{/if}
 {/each}
 {#if onmore && listed.length < store.providers.length}
   <button type="button" class="tile more" role="menuitem" data-row={open || undefined} data-provider="more" data-testid="picker-more-providers" onclick={onmore}><span class="mark" aria-hidden="true"></span><Plus size={14} /><span class="text"><span class="tile-name ui-label">{strings.settings.connectProvider}</span></span><ArrowRight size={14} strokeWidth={2} class="chevron" /></button>
@@ -118,7 +127,10 @@
   .mark { display: inline-flex; flex: none; width: 14px; color: var(--color-accent); }
   .reason { color: var(--color-subtle); font-size: var(--text-xs); line-height: 16px; }
   .lead { flex: none; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 500; }
-  .tile :global(.chevron) { flex: none; color: var(--color-subtle); }
+  .tile :global(.chevron) { flex: none; color: var(--color-subtle); transition: transform var(--motion-duration) var(--motion-curve); }
+  /* Open: the chevron points at the models under the row, which start under the provider's mark. */
+  .tile.current :global(.chevron) { transform: rotate(90deg); }
+  .tile-body { display: flex; flex-direction: column; gap: 1px; padding-left: 22px; }
 
   .tile:focus-visible { background: var(--color-hover); }
   @media (hover: hover) { .tile:hover:not(:disabled) { background: var(--color-hover); } }

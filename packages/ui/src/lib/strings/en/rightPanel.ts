@@ -23,14 +23,10 @@ export const strings = {
     ownerOnly: "Only in the owner's app",
     launcher: 'Open a surface in this panel',
     untitled: 'Browser',
-    /** The short list's way to every panel, named by the first panels it holds that the short list does not show. */
-    morePanels: { one: '{first}', two: '{first} and {second}', many: '{first}, {second} and {count} more' },
-    /** The selector's way from the panels in use to every panel, and back. */
-    allPanels: 'All panels', inUse: 'Open panels',
     /** A line under the two lists of work to do, so they read apart. */
     roles: { board: "The project's todos in columns", tasks: "This thread's goal, checklist and watches" },
-    /** The full list's groups. */
-    groups: { work: 'Work', agents: 'Agents', tools: 'Tools' },
+    /** The selector's groups: the panels picked last, then every panel by family. */
+    groups: { recent: 'Recent', work: 'Work', agents: 'Agents', tools: 'Tools' },
     /** A renamed row's tooltip: the name it had before. */
     formerly: {
       trace: 'Formerly Trace', tasks: 'Formerly Tasks', messages: 'Formerly Discussions',

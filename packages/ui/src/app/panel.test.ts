@@ -53,9 +53,7 @@ test("the panel selector lists the terminal, and a control's right click leads t
   if (!wasOpen) query<HTMLButtonElement>('[data-testid=panel-toggle]').click();
   await waitFor(() => document.querySelector('[data-testid=panel-add]') !== null);
   query<HTMLButtonElement>('[data-testid=panel-add]').click();
-  // A hidden terminal is not in use: it waits in the full list, behind "All panels".
-  await waitFor(() => document.querySelector('[data-testid=panel-add-menu] [data-value=all-panels]') !== null);
-  query<HTMLButtonElement>('[data-testid=panel-add-menu] [data-value=all-panels]').click();
+  // A hidden terminal is listed by name with every other panel, behind no door.
   await waitFor(() => document.querySelector('[data-testid=panel-add-menu] [data-value=terminal-toggle]') !== null);
   query<HTMLButtonElement>('[data-testid=panel-add]').click();
   if (!wasOpen) query<HTMLButtonElement>('[data-testid=panel-toggle]').click();

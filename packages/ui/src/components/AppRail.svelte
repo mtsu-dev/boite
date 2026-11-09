@@ -348,12 +348,13 @@
   .separator { flex: none; width: 28px; height: 1px; background: var(--color-edge); }
   .bots { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; min-height: 0; }
 
-  /* Activity's count, bottom right, a bare amber number cut out of the chrome (amber is a dot or a count, never a
-     filled badge); two digits fit inside the button's corner. */
+  /* Activity's count on the inbox's lower right corner, as the machines dot sits on its screen: a bare amber number
+     cut out of the tile under it (amber is a dot or a count, never a filled badge), so the glyph and its count
+     read as one picture. */
   .count {
     position: absolute;
-    right: -5px;
-    bottom: -4px;
+    left: calc(50% + 3px);
+    top: calc(50% + 1px);
     min-width: 16px;
     height: 16px;
     box-sizing: border-box;
@@ -368,6 +369,8 @@
     line-height: 1;
     font-variant-numeric: tabular-nums;
   }
+  .rail-button:hover:not(:disabled) .count { background: var(--color-surface-2); }
+  .rail-button.on .count, .rail-button.on:hover:not(:disabled) .count { background: var(--color-surface-3); }
   /* A bot's or a team's one overlay, bottom right of its picture, cut out of the chrome: the amber dot for its turn,
      the failure's "!", the list rows' still accent arc for work (the open thread keeps the one live spinner), a full
      ink dot for news. */

@@ -59,13 +59,37 @@ test('a permission reads whole under its row, its sub-agent\'s question is a row
   // The row's action ranks: Allow is the solid neutral fill (button.primary), never the accent's send.
   expect(verbs[0]!.classList.contains('primary')).toBe(true);
   expect(verbs[0]!.classList.contains('send')).toBe(false);
+  // One decision pair, the composer's: Deny outlined before Allow, in one right-aligned group.
+  const deny = document.querySelector<HTMLButtonElement>('[data-testid=thread-verb-secondary]')!;
+  expect([deny.textContent?.trim(), deny.dataset.verb, deny.classList.contains('secondary')]).toEqual(['Deny', 'deny', true]);
+  expect(deny.parentElement).toBe(verbs[0]!.parentElement);
+  expect(deny.parentElement!.classList.contains('decision-actions')).toBe(true);
+  expect(deny.compareDocumentPosition(verbs[0]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   verbs[0]!.click(); await settle();
   await vi.waitFor(() => expect(store.openThread?.id).toBe(parent.id));
   await unmount(mounted); document.body.innerHTML = '';
+  // Opening the parent kept only its own requests; Activity holds every thread's (permissionRead 'all').
+  store.pendingQuestions = [{ id: 'q', threadId: child.id, text: 'Which retry policy?', options: [], createdAt: Date.now() } as never];
   mounted = mount(ActivityRow, { target: document.body, props: { ...asks, now: Date.now() } });
   await settle();
   const verb = document.querySelector<HTMLButtonElement>('[data-testid=thread-verb]')!;
   expect([verb.textContent?.trim(), verb.dataset.verb]).toEqual(['Answer', 'answer']);
+  // Skip settles the question in place, without leaving Activity.
+  const answer = vi.spyOn(store, 'skipQuestion').mockResolvedValue(true);
+  const skip = document.querySelector<HTMLButtonElement>('[data-testid=thread-verb-secondary]')!;
+  expect([skip.textContent?.trim(), skip.dataset.verb]).toEqual(['Skip', 'skip']);
+  skip.click(); await settle();
+  expect(answer).toHaveBeenCalledWith(child.id, 'q');
+});
+
+test('Deny settles the permission in place, with the request the row shows', async () => {
+  const { parent, groups } = await rows('bun test');
+  const deny = vi.spyOn(store, 'answer').mockResolvedValue(true);
+  mounted = mount(ActivityRow, { target: document.body, props: { ...groups.find(group => group.row.thread.id === parent.id)!, now: Date.now() } });
+  await settle();
+  document.querySelector<HTMLButtonElement>('[data-testid=thread-verb-secondary]')!.click(); await settle();
+  expect(deny).toHaveBeenCalledWith('perm', 'deny');
+  expect(store.openThread?.id).not.toBe(parent.id);
 });
 
 test('a command too long to read in the row asks for Review before any Allow', async () => {
@@ -75,17 +99,19 @@ test('a command too long to read in the row asks for Review before any Allow', a
   expect(document.querySelector('[data-testid=thread-operation]')?.classList.contains('long')).toBe(true);
   const verb = document.querySelector<HTMLButtonElement>('[data-testid=thread-verb]')!;
   expect([verb.textContent?.trim(), verb.dataset.verb]).toEqual(['Review', 'review']);
-  // Reading first is the secondary kind: a text action, in the same width.
-  expect(verb.classList.contains('ghost')).toBe(true);
+  // Reading first is not a decision: an outline button, never plain text, and no Deny beside it.
+  expect(verb.classList.contains('secondary')).toBe(true);
   expect(verb.classList.contains('primary')).toBe(false);
+  expect(document.querySelector('[data-testid=thread-verb-secondary]')).toBeNull();
 });
 
-test('an Updates row keeps the action\'s place empty, so its time and mark stand in the Needs you rows\' columns', async () => {
+test('an Updates row has no pair, and its time stands where the Needs you rows\' time stands', async () => {
   const { parent, groups } = await rows('bun test');
   const own = groups.find(group => group.row.thread.id === parent.id)!;
   mounted = mount(ActivityRow, { target: document.body, props: { ...own, row: { ...own.row, section: 'updates', verb: null }, now: Date.now() } });
   await settle();
-  const slot = document.querySelector('.feed-side .feed-action');
-  expect(slot).not.toBeNull();
-  expect(slot!.querySelector('[data-testid=thread-verb]')).toBeNull();
+  // The time ends the title's line on every row; the pair lives under the content, so none is reserved here.
+  expect(document.querySelector('.feed-side > time')).not.toBeNull();
+  expect(document.querySelector('.feed-side [data-testid=thread-verb]')).toBeNull();
+  expect(document.querySelector('[data-testid=thread-verb]')).toBeNull();
 });

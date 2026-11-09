@@ -4,6 +4,8 @@
   import type { Store } from '../lib/store.svelte';
   import EmptyState from './EmptyState.svelte';
   import ProviderLogo from './ProviderLogo.svelte';
+  import StatusMark from './StatusMark.svelte';
+  import FailMark from './FailMark.svelte';
 
   /**
    * The first screen of a machine with no AI, desktop and phone alike: the
@@ -60,6 +62,13 @@
         <li class="step"><span class="number" aria-hidden="true">2</span><span class="ui-label">{strings.firstRun.stepProject}</span></li>
         <li class="step"><span class="number" aria-hidden="true">3</span><span class="ui-label">{strings.firstRun.stepTask}</span></li>
       </ol>
+      <!-- The marks the lists use, each beside its word, met once here so a dot or a ring is never a code to guess (round 20). -->
+      <p class="marks" data-testid="first-run-marks">
+        <span class="ui-label lead">{strings.firstRun.marks}</span>
+        <span class="key"><StatusMark tone="waiting" label="" /><span class="ui-label">{strings.sidebar.state.waiting}</span></span>
+        <span class="key"><StatusMark tone="running" label="" /><span class="ui-label">{strings.sidebar.state.working}</span></span>
+        <span class="key"><FailMark size={10} /><span class="ui-label">{strings.sidebar.state.error}</span></span>
+      </p>
       <button type="button" class="ghost small other" data-testid="first-run-other-machine" onclick={() => store.showSettings('machines')}>{strings.firstRun.otherMachine}</button>
     {:else}
       <p data-testid="first-run-device">{strings.connect.device}</p>
@@ -85,6 +94,9 @@
   .found { flex: none; font-size: var(--text-xs); color: var(--color-muted-foreground); }
   .agent > :global(svg) { flex: none; color: var(--color-subtle); }
   .other { margin-top: var(--space-1); }
+  .marks { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 14px; max-width: min(360px, calc(100vw - 2 * var(--space-6))); margin: var(--space-2) 0 0; font-size: var(--text-sm); color: var(--color-muted-foreground); }
+  .marks .lead { flex-basis: 100%; }
+  .key { display: inline-flex; align-items: center; gap: 6px; color: var(--color-foreground); }
   @media (max-width: 720px) {
     .agent { min-height: var(--touch-target); }
   }

@@ -99,6 +99,9 @@
     chatWidth = next;
     setChatWidth(next);
   }
+  // A width pointed at or focused shows in the sample before it is picked; leaving it shows the one in use.
+  let pointedWidth = $state<ChatWidth | null>(null);
+  let sampleWidth = $derived(pointedWidth ?? chatWidth);
 
   function pickTheme(next: Theme) {
     theme = next;
@@ -203,10 +206,12 @@
       <span class="text"><span class="ui-label">{strings.settings.chatWidth}</span><span class="hint">{strings.settings.chatWidthResult[chatWidth]}</span></span>
       <div class="segmented" role="group" aria-label={strings.settings.chatWidth}>
         {#each widths as option (option.id)}
-          <button type="button" class:on={chatWidth === option.id} aria-pressed={chatWidth === option.id} data-testid="chat-width-{option.id}" onclick={() => pickChatWidth(option.id)}><span class="glyph width {option.id}" aria-hidden="true"><i></i></span><span class="ui-label">{option.label}</span></button>
+          <button type="button" class:on={chatWidth === option.id} aria-pressed={chatWidth === option.id} data-testid="chat-width-{option.id}" onclick={() => pickChatWidth(option.id)} onpointerenter={() => { pointedWidth = option.id; }} onpointerleave={() => { pointedWidth = null; }} onfocus={() => { pointedWidth = option.id; }} onblur={() => { pointedWidth = null; }}><span class="glyph width {option.id}" aria-hidden="true"><i></i></span><span class="ui-label">{option.label}</span></button>
         {/each}
       </div>
     </div>
+    <!-- A small window under the row: a paragraph set at the width in use, or at the one pointed at. -->
+    <div class="width-sample" data-testid="chat-width-sample" data-width={sampleWidth} aria-hidden="true"><p>{strings.settings.chatWidthSample}</p></div>
     {/if}
     {#if hasMaterial}
       <div class="switch-row">
@@ -220,7 +225,7 @@
               data-testid="glass-{option.id}"
               onclick={() => pickMaterial(option.id)}
             >
-              <span class="ui-label">{option.label}</span>
+              <span class="glyph material {option.id}" aria-hidden="true"><i></i></span><span class="ui-label">{option.label}</span>
             </button>
           {/each}
         </div>
@@ -230,14 +235,17 @@
 
   <section class="card" id="settings-reading">
     <h2 class="ui-label-box"><span class="ui-label">{strings.settings.reading}</span><InfoTip gather topic={strings.settings.reading} text="" testid="section-info" /></h2>
-    <!-- Each face's name is drawn in that face: the name is the sample. -->
-    <div class="switch-row choice-row" class:value={phone}>
+    <!-- Each face's name is drawn in that face in its list, and a line under the row shows the one in use
+         at the size it is read at: a reply's for the text, a code block's for the code. -->
+    <div class="switch-row choice-row sampled" class:value={phone}>
       <span class="text ui-label-box"><span class="ui-label">{strings.settings.font}</span><InfoTip topic={strings.settings.font} text={strings.settings.fontHint} /></span>
       <ChoiceSelect label={strings.settings.font} options={faces} value={font} onpick={pickFont} face={(id) => `var(--face-${id})`} testid="font-current" optionTestid={(id) => `font-${id}`} row={phone} />
+      <span class="sample prose" style:font-family="var(--face-{font})" data-testid="font-sample" aria-hidden="true">{strings.settings.fontSample}</span>
     </div>
-    <div class="switch-row choice-row" class:value={phone}>
+    <div class="switch-row choice-row sampled" class:value={phone}>
       <span class="text ui-label">{strings.settings.monoFont}</span>
       <ChoiceSelect label={strings.settings.monoFont} options={monos} value={mono} onpick={pickMono} face={(id) => `var(--face-mono-${id})`} testid="font-mono-current" optionTestid={(id) => `font-mono-${id}`} row={phone} />
+      <span class="sample code" style:font-family="var(--face-mono-{mono})" data-testid="font-mono-sample" aria-hidden="true">{strings.settings.monoSample}</span>
     </div>
     {#if zoomable}
       <div class="switch-row">
@@ -310,6 +318,21 @@
   .glyph.width.wide i { width: 70%; }
   .glyph.width.full i { width: 100%; }
   .glyph.buttons { gap: 1.5px; justify-content: flex-end; }
+  /* A material by its look: the desktop blurred through, a wallpaper's tint, one flat fill. */
+  .glyph.material i { width: 100%; height: 100%; border-radius: 1px; background: currentColor; }
+  .glyph.material.acrylic i { opacity: 0.35; background: radial-gradient(circle at 30% 40%, currentColor 0 22%, transparent 60%), radial-gradient(circle at 75% 65%, currentColor 0 18%, transparent 55%); filter: blur(0.6px); }
+  .glyph.material.mica i { opacity: 0.5; background: linear-gradient(135deg, currentColor, transparent); }
+  .glyph.material.solid i { opacity: 0.55; }
+  /* A face's sample: the whole row's width under its label and choice, at the size it is read at. */
+  :global(.settings .page) .switch-row.sampled { flex-wrap: wrap; row-gap: var(--space-1); }
+  .sample { flex: 1 0 100%; min-width: 0; color: var(--color-muted-foreground); overflow-wrap: anywhere; }
+  .sample.prose { font-size: var(--text-reading); line-height: var(--leading-reading); }
+  .sample.code { font-size: var(--text-body); line-height: 1.5; }
+  /* The chat width's sample: the window as a well, the paragraph at the column's share of a 1440 px window. */
+  .width-sample { margin: 0 0 var(--space-2); padding: var(--space-3); border-radius: var(--radius-md); background: var(--color-background); box-shadow: inset 0 0 0 1px var(--color-border); }
+  .width-sample p { margin: 0 auto; max-width: 50%; color: var(--color-muted-foreground); font-size: var(--text-meta); line-height: 1.5; transition: max-width var(--dur-3) var(--ease-out-quint); }
+  .width-sample[data-width='wide'] p { max-width: 72%; }
+  .width-sample[data-width='full'] p { max-width: 100%; }
   .glyph.buttons i { width: 2.5px; height: 2.5px; border-radius: 50%; background: currentColor; }
   .zoom button { display: inline-flex; align-items: center; justify-content: center; padding: 0 8px; }
   .zoom-error { margin: 0; color: var(--color-danger); font-size: var(--text-xs); overflow-wrap: anywhere; }

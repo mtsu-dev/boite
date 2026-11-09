@@ -55,7 +55,7 @@ export const strings = {
     panelHint: 'Show or hide the side panel',
     panelMenu: 'Panels',
     /** A thread menu's second level, named by what a user does there: the bot rows, a new title, the folder (branch, move, path, pull request). */
-    manage: 'Move or give to a bot',
+    manage: 'Move to a project or a bot',
     /** The same with no bot row (bots off, none to give it to). */
     manageNoBot: 'Move or retitle',
     /** The same with no move row (a phone that cannot move it, a thread that cannot move). */
@@ -77,6 +77,9 @@ export const strings = {
     onMachine: 'on',
     /** Under a desktop draft's heading: what starting here does. The mode, model and effort are the chips' to say. */
     startHint: 'Describe a task below: the agent works in this folder, and the thread joins your list.',
+    /** The same with the folder's whole path and the machine, so where it runs reads in full. */
+    startWhere: 'Describe a task below: the agent works in {path} on {machine}, and the thread joins your list.',
+    startWhereHere: 'Describe a task below: the agent works in {path}, and the thread joins your list.',
     draftMode: {
       default: 'with approval requests',
       acceptEdits: 'with edits allowed',

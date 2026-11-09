@@ -10,6 +10,7 @@
   import type { Store } from '../lib/store.svelte';
   import AgentAvatar from './agents/AgentAvatar.svelte';
   import { avatarLit } from '../lib/avatar-lit';
+  import DecisionActions from './DecisionActions.svelte';
 
   /**
    * A card asking the user to change one setting of a persistent agent
@@ -170,15 +171,16 @@
       <p class="hint" data-testid="agent-setting-guest-hint">{words.guestHint}</p>
     {/if}
 
-    <div class="actions">
+    <!-- The app's one decision pair (DecisionActions.svelte): outlines first, the solid primary last. -->
+    <DecisionActions>
+      <button type="button" class="secondary" data-testid="agent-setting-refuse" disabled={busy} onmousedown={keepFocus} onclick={refuse}><span class="ui-label">{words.refuse}</span></button>
+      {#if canShow}
+        <button type="button" class="secondary" data-testid="agent-setting-show" onmousedown={keepFocus} onclick={show}><span class="ui-label">{words.show}</span></button>
+      {/if}
       {#if store.owner}
         <button type="button" class="primary" data-testid="agent-setting-apply" disabled={busy || unchanged} onmousedown={keepFocus} onclick={apply}><span class="ui-label">{words.apply}</span></button>
       {/if}
-      {#if canShow}
-        <button type="button" class="ghost" data-testid="agent-setting-show" onmousedown={keepFocus} onclick={show}><span class="ui-label">{words.show}</span></button>
-      {/if}
-      <button type="button" class="ghost" data-testid="agent-setting-refuse" disabled={busy} onmousedown={keepFocus} onclick={refuse}><span class="ui-label">{words.refuse}</span></button>
-    </div>
+    </DecisionActions>
   </div>
 {/if}
 
@@ -259,7 +261,6 @@
   .place { margin: 0; font-size: var(--text-xs); color: var(--color-subtle); }
   .hint { margin: 0; font-size: var(--text-sm); color: var(--color-muted-foreground); }
 
-  .actions { display: flex; flex-wrap: wrap; gap: 6px; }
 
   /* Closed: one quiet row in the timeline, like an answered question. */
   .agent-setting-card.resolved {

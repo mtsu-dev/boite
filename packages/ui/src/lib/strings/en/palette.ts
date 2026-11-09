@@ -10,6 +10,8 @@ export const strings = {
     commands: 'Commands',
     empty: 'Nothing matches.',
     newThread: 'New thread',
+    /** A subagent's row, after its title: the thread that started it, so two "Explore" rows read apart. */
+    subagentOf: 'in {parent}',
     addProject: 'Add a project',
     importSession: 'Import a Claude Code session',
     settings: 'Open settings',

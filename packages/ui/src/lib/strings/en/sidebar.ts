@@ -5,8 +5,6 @@ export const strings = {
     /** Archived by hand to pick up later; done threads have their own group. */
     archivedGroup: 'Archived',
     workingThreads: 'Working',
-    /** Recent's label over the threads that show only a time, under the ones with something to say. */
-    earlierThreads: 'Earlier',
     projectWorkingThreads: '{project}: {count} working',
     projectWaitingThreads: '{project}: {count} need you',
     loadingProjects: 'Loading projects',

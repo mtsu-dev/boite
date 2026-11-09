@@ -29,6 +29,10 @@ test('a first run lists the agents as rows that each connect in one click, then 
   expect(steps.map((step) => step.textContent!.replace(/^\d/, '').trim())).toEqual([strings.firstRun.stepConnect, strings.firstRun.stepProject, strings.firstRun.stepTask]);
   expect(steps.map((step) => step.getAttribute('aria-current'))).toEqual(['step', null, null]);
   expect(steps[0]!.nextElementSibling!.querySelectorAll('[data-testid="first-run-agent"]').length).toBe(rows().length);
+  // The lists' marks met once, each beside its word: the amber dot, the working ring, the red "!".
+  const keys = [...document.querySelectorAll<HTMLElement>('[data-testid="first-run-marks"] .key')];
+  expect(keys.map((key) => key.textContent!.trim())).toEqual([strings.sidebar.state.waiting, strings.sidebar.state.working, strings.sidebar.state.error]);
+  expect(keys.map((key) => key.firstElementChild!.getAttribute('data-tone') ?? key.firstElementChild!.className.split(' ')[0])).toEqual(['waiting', 'running', 'fail']);
 
   // The two services most people pay for first, each row its own button: no choice to make, then a second action.
   expect(rows().map((row) => row.dataset.provider)).toEqual(['claude', 'codex']);

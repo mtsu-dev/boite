@@ -38,9 +38,7 @@ async function pick(model: string) {
   await settle();
   document.querySelector<HTMLButtonElement>('[data-testid=agent-runtime] [data-testid=composer-picker]')!.click();
   await settle();
-  // The picker opens on the models in use; All models unfolds the providers in place, Claude's tile shows its list.
-  document.querySelector<HTMLButtonElement>('[data-testid=picker-all-models]')?.click();
-  await settle();
+  // The picker opens on the current provider's list; Claude's row opens its own in place.
   document.querySelector<HTMLButtonElement>('[data-testid=composer-picker-menu] .tile[data-provider="claude"]')?.click();
   await settle();
   document.querySelector<HTMLButtonElement>(`[data-model="${model}"]`)!.click();

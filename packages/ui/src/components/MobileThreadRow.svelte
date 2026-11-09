@@ -13,7 +13,8 @@
   import type { RowPlace } from '../lib/row-place';
   import ThreadHeadline from './ThreadHeadline.svelte';
   import { threadState } from '../lib/thread-state';
-  import { feedOperation, type FeedVerb } from '../lib/activity-feed';
+  import { feedOperation, feedSecondary, type FeedVerb } from '../lib/activity-feed';
+  import DecisionActions from './DecisionActions.svelte';
   import { collapseRow } from '../lib/row-collapse';
 
   /**
@@ -24,8 +25,9 @@
    * project in words. Activity (the phone's screen) is the whole
    * title on the row's width with `reason`, what the thread wants, one line under it; a command it asks to run
    * reads in full in a mono block under them. A sub-agent with the same ask is a line of its own (`helpers`), one
-   * event per row, as on the desktop; `verb` names what a Needs you row asks, a button after the content at its text
-   * edge (the desktop keeps it at the end of the title's line), Review when the command is too long to read here.
+   * event per row, as on the desktop; `verb` names what a Needs you row asks: the decision pair after the content,
+   * right-aligned as on the desktop (DecisionActions.svelte), Deny or Skip outlined and settled here, then the verb
+   * solid; Review, when the command is too long to read here, outlined alone.
    * `onverb` opens what the verb is for, the row itself unless a sub-agent asks.
    * The row menu has no button of its own: a long press opens it, a slide
    * left shows pin and archive. Its trigger stays for the keyboard, drawn
@@ -51,6 +53,14 @@
   const operation = $derived(reason === undefined ? null : feedOperation(owner, thread.id));
   const long = $derived(!!operation && (operation.split('\n').length > 6 || operation.length > 480));
   const action = $derived<FeedVerb | null>(verb === 'allow' && long ? 'review' : verb);
+  /** The pair's other half, for the row's own request only: a sub-agent's is settled in its thread. */
+  const secondary = $derived(reason === undefined ? null : feedSecondary(owner, thread.id, action));
+  let settling = $state(false);
+  async function settle() {
+    if (!secondary || settling) return;
+    settling = true;
+    try { await secondary.run(); } finally { settling = false; }
+  }
   let menu = $state<HTMLElement>();
   /** A long press, or Android's own, opens the row's menu where its hidden trigger stands. */
   function openMenu(event: MouseEvent) {
@@ -89,7 +99,14 @@
         <span class="meta" data-testid="mobile-row-meta"><span class="where" data-testid="mobile-row-where" title={where.text}>{#if where.project}<span class="ui-label">{where.project}</span>{/if}{#if where.host}<MachinePlace host={where.host} />{/if}</span></span>
       {/if}
     </button>
-    {#if action}<button type="button" class={['small', 'verb', action === 'review' ? 'ghost' : 'primary']} data-testid="thread-verb" data-verb={action} onclick={onverb}>{strings.mobile.feed.verb[action]}</button>{/if}
+    {#if action}
+      <div class="verbs">
+        <DecisionActions>
+          {#if secondary}<button type="button" class="secondary" data-testid="thread-verb-secondary" data-verb={secondary.kind} disabled={settling} onclick={() => void settle()}>{strings.mobile.feed.verb[secondary.kind]}</button>{/if}
+          <button type="button" class={action === 'review' ? 'secondary' : 'primary'} data-testid="thread-verb" data-verb={action} onclick={onverb}>{strings.mobile.feed.verb[action]}</button>
+        </DecisionActions>
+      </div>
+    {/if}
     <span class="row-menu" bind:this={menu}><Menu {items} onpick={onaction} label={strings.sidebar.threadMenu} heading={thread.title} placement="bottom" variant="ghost" testid="mobile-thread-menu-{thread.id}"><Ellipsis size={18} /></Menu></span>
   </div>
 </div>
@@ -113,7 +130,9 @@
   .tiled :is(.meta, .helper, .operation) { margin-left: 26px; }
   .helper .who { color: var(--color-foreground); font-weight: 500; }
   .sep { flex: none; color: var(--color-subtle); }
-  .meta .where { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; }
+  /* The label inside is trimmed to its capitals, so the clip gets the room of its descenders back without
+     moving the line ("atlas-api" lost its p). */
+  .meta .where { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; min-width: 0; padding-block: 0.3em; margin-block: -0.3em; overflow: hidden; white-space: nowrap; }
   .meta .where > .ui-label { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   /* The title line's end: the mark, then the time, centred on the first line's capitals (the title's box is trimmed
      to them, .ui-label), whose middle sits 0.36 em down at the title's size. */
@@ -126,11 +145,9 @@
   /* The command as it will run: mono, wrapped, every line; too long, its first lines and Review. */
   .operation { display: block; padding: 6px 8px; border-radius: var(--radius-sm); background: var(--color-code-background); color: var(--color-code-foreground); font-family: var(--font-mono); font-size: var(--text-xs); line-height: 1.5; white-space: pre-wrap; overflow-x: auto; scrollbar-width: none; }
   .operation.long { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; line-clamp: 6; overflow: hidden; }
-  /* The verb follows what it answers, at the text's edge under it, one width on every row and a finger's height: the
-     title keeps the row's width up to its mark and time, which stand in one column down the page. */
-  .verb { display: flex; justify-content: center; width: var(--verb-width); min-height: var(--touch-target); margin: -4px 12px 10px; font-size: var(--text-sm); font-weight: 600; }
-  .tiled .verb { margin-left: 38px; }
-  .reason { --verb-width: 88px; }
+  /* The pair follows what it answers, right-aligned on the row's edge as on the desktop: the title keeps the row's
+     width up to its mark and time, which stand in one column down the page. */
+  .verbs { padding: 0 12px 10px; margin-top: -2px; }
   /* The ring every row draws, inside the box: the list's edge would clip one outside it. */
   .thread:focus-visible { outline-offset: -2px; }
   .thread :global(.headline) { gap: 10px; align-items: flex-start; }

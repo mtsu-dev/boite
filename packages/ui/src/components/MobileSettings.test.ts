@@ -99,7 +99,7 @@ test('a thread archived on the phone comes back from its own settings list', asy
   expect(await client.sweepMergedPrArchives()).toBe(0);
 });
 
-test('the phone settings list the desktop\'s groups, General and Advanced hold the phone\'s pages, Usage and Limits on one screen', async () => {
+test('the phone settings list the desktop\'s families, each page a peer row, General holding the phone\'s pages, Usage and Limits on one screen', async () => {
   phoneWidth();
   // The usage chart and the composer measure themselves; jsdom has no observer.
   vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
@@ -126,28 +126,32 @@ test('the phone settings list the desktop\'s groups, General and Advanced hold t
   store.showSettings();
   await waitFor(home);
   expect(rows('mobile-settings-home')).toEqual([
-    'settings-tab-general', 'settings-tab-appearance', 'settings-tab-accounts', 'settings-tab-brain', 'settings-tab-limits', 'settings-tab-browser', 'mobile-settings-connection', 'settings-tab-advanced'
+    'settings-tab-general', 'settings-tab-voice', 'settings-tab-appearance', 'settings-tab-accounts', 'settings-tab-brain', 'settings-tab-limits', 'settings-tab-usage',
+    'settings-tab-browser', 'mobile-settings-connection', 'settings-tab-advanced', 'settings-tab-experiments', 'settings-tab-diagnostics'
   ]);
-  // The rows stand under the desktop's family heads, Advanced last without one.
+  // The rows stand under the desktop's four family heads, Advanced named like the others (round 20).
   expect([...document.querySelectorAll<HTMLElement>('[data-testid=mobile-settings-home] [data-testid=settings-family]')].map(family => [family.dataset.family, family.querySelector('h2')?.textContent ?? null])).toEqual([
-    ['app', 'App'], ['agents', 'Agents'], ['connections', 'Connections'], ['more', null]
+    ['app', 'App'], ['agents', 'Agents'], ['connections', 'Connections'], ['advanced', 'Advanced']
   ]);
   // The header already says Settings, and the list's display options group the threads.
   expect(document.querySelector('[data-testid=mobile-settings-home] h1')).toBeNull();
   expect(query('[data-testid=settings]').dataset.detail).toBeUndefined();
   await open('settings-tab-general', general);
   expect(rows('mobile-settings-general')).toEqual([
-    'mobile-settings-conversations', 'mobile-settings-phone', 'settings-tab-voice', 'mobile-settings-archived', 'mobile-settings-worktrees'
+    'mobile-settings-conversations', 'mobile-settings-phone', 'mobile-settings-archived', 'mobile-settings-worktrees'
   ]);
   // Privacy is two switches: a card at the index's foot, out of the notifications.
   await waitFor(() => document.querySelector('[data-testid=mobile-settings-general] [data-testid=telemetry-settings]') !== null);
   // A page carries its own header, so the app drops its own over it: one header a screen.
   expect(query('[data-testid=settings]').dataset.detail).toBe('true');
   await back();
+  // Experiments and Diagnostics are rows of Home now, so System's index holds its compaction card alone; the task
+  // manager is the last section of Diagnostics, so the owner's Home has no row of its own for it.
+  expect(document.querySelector('[data-testid=settings-tab-task-manager]')).toBeNull();
   await open('settings-tab-advanced', advanced);
-  // The task manager is the last section of Diagnostics, so the owner's index has no row of its own for it.
-  expect(rows('mobile-settings-advanced')).toEqual(['settings-tab-experiments', 'settings-tab-diagnostics']);
+  expect(rows('mobile-settings-advanced')).toEqual([]);
   expect(document.querySelector('[data-testid=setting-group-working-threads]')).toBeNull();
+  await back();
 
   // Experiments are this phone's own: Bots on the computer does not give the phone its tab until it is switched on here.
   expect(document.querySelector('[data-testid=mobile-agents]')).toBeNull();
@@ -155,7 +159,8 @@ test('the phone settings list the desktop\'s groups, General and Advanced hold t
   await waitFor(() => document.querySelector('[data-testid=experiment-resident-agents]') !== null);
   query<HTMLInputElement>('[data-testid=experiment-resident-agents]').click();
   await waitFor(() => document.querySelector('[data-testid=mobile-tabs] [data-testid=mobile-agents]') !== null);
-  await back(advanced);
+  await back();
+  await open('settings-tab-advanced', advanced);
 
   Element.prototype.scrollIntoView ??= vi.fn();
   // Compaction is one card, at the index's foot.

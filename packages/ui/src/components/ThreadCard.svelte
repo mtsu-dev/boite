@@ -41,13 +41,13 @@
     showDone?: boolean;
     /** Recent's flat list: the project's tile leads the row while no place line names the project (`where`). */
     compact?: boolean;
-    /** Activity's row (ActivityRow.svelte): since when, at the end of the title's line, before `action`. */
+    /** Activity's row (ActivityRow.svelte): since when, at the end of the title's line. */
     at?: number;
     /** Activity: what the thread asks, on the title's line when both fit, else under it, whole (ThreadHeadline.svelte). */
     ask?: Snippet;
     /** Activity: what runs under the title's line, whole: the command asked for, the sub-agents asking the same. */
     detail?: Snippet;
-    /** Activity: the row's one action, at the end of the title's line, outside the row's own button; it wraps itself in `.feed-action`. */
+    /** Activity: the row's decision pair, under its content at the row's right edge, outside the row's own button. */
     action?: Snippet;
     /** Recent: where the row lives (its project, its machine among several), when the tile alone may not tell rows apart (lib/row-place.ts). */
     where?: RowPlace;
@@ -161,7 +161,8 @@
         <span class="pending" data-testid="thread-pending" title={pending}><FolderInput size={12} /><span class="ui-label">{pending}</span></span>
       {/if}
     </button>
-    {#if detail}<span class="feed-side">{#if at !== undefined}<time title={exactTime(at)}>{ago(at, now)}</time>{/if}{@render action?.()}</span>{/if}
+    {#if detail}<span class="feed-side">{#if at !== undefined}<time title={exactTime(at)}>{ago(at, now)}</time>{/if}</span>{/if}
+    {#if action}<div class="feed-actions">{@render action()}</div>{/if}
     {#if showDone && doneAllowed}<button type="button" class="ghost small icon done" data-testid="thread-done"
       aria-label={strings.sidebar.markDone} title={strings.sidebar.markDone} onclick={() => void markDone(owner, thread)}><Check size={14} /></button>{/if}
     <button
@@ -233,10 +234,10 @@
      the tooltip; how long work has run lives in the thread. */
   .thread:not(:hover, :has(:focus-visible)) .row :global(.headline > :is(.draft, .pin, .pr)),
   .thread:not(:hover, :has(:focus-visible)) .row :global(.headline > .when:not(.waiting, .error, .interrupted, .working, .delegating, .monitoring, .background, .watching)) { display: none; }
-  /* Activity's row, built like a list row: the title's line ends in since when and the action's place, at the same
-     offset on every row of both sections; what is asked runs under it to the row's end. `--side-room` keeps that
-     line's end free. */
-  .feed { --feed-pad: 8px; --feed-time: 44px; --feed-verb: 92px; --side-room: calc(var(--feed-time) + 8px + var(--feed-verb) + var(--pad-x)); }
+  /* Activity's row, built like a list row: the title's line ends in its mark then since when, at the same offset on
+     every row of both sections; what is asked runs under it to the row's end, the decision pair under that.
+     `--side-room` keeps that line's end free. */
+  .feed { --feed-pad: 8px; --feed-time: 44px; --side-room: calc(var(--feed-time) + 8px + var(--pad-x)); }
   .feed > .row { padding-block: var(--feed-pad); }
   .feed .row :global(.headline) { align-items: flex-start; margin-right: calc(var(--side-room) - var(--pad-x)); }
   /* A clamped title's second line keeps its untrimmed box: .ui-label's half-em under it showed the top of the third
@@ -247,13 +248,21 @@
   .feed .row :global(.headline > .when) { height: 20px; }
   .feed-side { position: absolute; top: 0; right: 0; display: flex; align-items: center; gap: 8px; height: calc(20px + 2 * var(--feed-pad)); padding-right: var(--pad-x); }
   .feed-side time { min-width: var(--feed-time); line-height: 20px; font-size: var(--text-xs); color: var(--color-subtle); text-align: end; font-variant-numeric: tabular-nums; }
-  /* The menu takes the time's place, never the action's. */
-  .feed .actions { top: calc(var(--feed-pad) + 10px - var(--act) / 2); right: calc(var(--pad-x) + var(--feed-verb) + 8px); }
+  /* The menu takes the time's place, never the pair's. */
+  .feed .actions { top: calc(var(--feed-pad) + 10px - var(--act) / 2); }
+  /* The pair answers what is asked, right under it: right-aligned on the row's edge, clear of the next row. */
+  .feed-actions { padding: 0 var(--pad-x) var(--feed-pad); margin-top: -2px; }
   /* Recent's second line, on the title's edge: where the row lives, in words, so no tile repeats it. */
-  .where { display: flex; align-items: center; gap: 8px; min-width: 0; margin-top: -2px; overflow: hidden; font-size: var(--text-xs); color: var(--color-subtle); text-align: start; white-space: nowrap; }
+  /* One fixed line, whatever it holds (a name, a machine with its icon, an Offline chip): every Recent row the same height,
+     and room for the descenders the overflow would cut. */
+  .where { display: flex; align-items: center; gap: 8px; min-width: 0; height: 18px; line-height: 18px; margin-top: -2px; overflow: hidden; font-size: var(--text-xs); color: var(--color-subtle); text-align: start; white-space: nowrap; }
+  .where :global(.away) { padding-block: 0; line-height: 14px; }
   .where > .ui-label { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   /* The title's room first: its mark and time sit a step closer than the headline's own gap. */
   .row :global(.headline) { gap: 6px; }
+  /* Recent is a history read down one rhythm: every row the same height (its title on one line cut between words,
+     then where it lives), so the times stand on one beat (round 20). The tooltip and the keyboard hold the rest. */
+  .thread.compact:not(.feed) .row :global(.headline .title) { -webkit-line-clamp: 1; line-clamp: 1; }
   /* The keyboard reads the whole title: the focused row's title wraps, and word-fit (lib/word-fit.ts) shows it uncut
      once its line is no longer one. The pointer gets it in the tooltip, so the list never moves under it. */
   .thread:not(.feed) .row:focus-visible :global(.headline .title) { display: block; -webkit-line-clamp: none; line-clamp: none; }

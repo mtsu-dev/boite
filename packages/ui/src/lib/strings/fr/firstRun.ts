@@ -14,5 +14,6 @@ export const fr: Translation = {
     installed: 'Installé',
     others: 'Autres agents',
     otherMachine: 'Connecter un autre ordinateur ou un téléphone',
+    marks: 'Dans vos listes, chaque fil porte son état :',
   }
 };

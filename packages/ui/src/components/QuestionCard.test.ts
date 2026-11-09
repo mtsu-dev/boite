@@ -75,6 +75,25 @@ test('an option turns Answer on, and what was picked goes out once', () => {
   expect(sent).toHaveLength(1);
 });
 
+test('a docked question speaks the decision pair: Skip outlined then Answer primary, on one right-aligned line, Answer waiting as an outline until a pick', () => {
+  running = mount(QuestionCard, {
+    target: document.body,
+    props: { text: 'Which shape?', options: OPTIONS, allowText: false, multiple: false, answer: null, pending: true, docked: true, submit: () => true, skip: () => true }
+  });
+  flushSync();
+  const pair = query('.decision-actions');
+  const buttons = [...pair.querySelectorAll<HTMLButtonElement>(':scope > button')];
+  expect(buttons.map((entry) => [entry.dataset.testid, entry.className.split(' ').find((name) => name === 'secondary' || name === 'primary')]))
+    .toEqual([['question-skip', 'secondary'], ['question-submit', 'primary']]);
+  // Skip leaves the head: the pair is the only place a decision is made.
+  expect(document.querySelector('.decision-head [data-testid=question-skip]')).toBeNull();
+  expect(submit().disabled).toBe(true);
+  options()[0]!.click();
+  flushSync();
+  expect(submit().disabled).toBe(false);
+  expect(submit().classList.contains('primary')).toBe(true);
+});
+
 test('Skip sends no answer, prevents duplicate presses and allows retry after failure', async () => {
   const submit = vi.fn();
   let settle!: (accepted: boolean) => void;

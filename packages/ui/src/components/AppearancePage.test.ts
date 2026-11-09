@@ -183,3 +183,30 @@ test('the language segment lights the language set elsewhere (another window, a 
   flushSync();
   expect(pressed('locale-system')).toBe('true');
 });
+
+test('round 20: each face shows a sample line in itself, and the chat width a paragraph at the width pointed at before it is picked', () => {
+  running = mount(AppearancePage, { target: document.body, props: { store: { owner: true } as Store } });
+  flushSync();
+  const sample = () => document.querySelector<HTMLElement>('[data-testid=font-sample]')!;
+  expect(sample().style.fontFamily).toBe('var(--face-inter)');
+  expect(document.querySelector<HTMLElement>('[data-testid=font-mono-sample]')!.style.fontFamily).toBe('var(--face-mono-geist)');
+  document.querySelector<HTMLButtonElement>('[data-testid=font-current]')!.click();
+  flushSync();
+  document.querySelector<HTMLButtonElement>('[data-testid=font-current-list] [data-testid=font-atkinson]')!.click();
+  flushSync();
+  expect(sample().style.fontFamily).toBe('var(--face-atkinson)');
+
+  const width = () => document.querySelector('[data-testid=chat-width-sample]')!.getAttribute('data-width');
+  expect(width()).toBe('comfortable');
+  const wide = document.querySelector<HTMLButtonElement>('[data-testid=chat-width-wide]')!;
+  wide.dispatchEvent(new PointerEvent('pointerenter'));
+  flushSync();
+  expect(width(), 'pointed at, not picked').toBe('wide');
+  expect(wide.getAttribute('aria-pressed')).toBe('false');
+  wide.dispatchEvent(new PointerEvent('pointerleave'));
+  flushSync();
+  expect(width()).toBe('comfortable');
+  document.querySelector<HTMLButtonElement>('[data-testid=chat-width-full]')!.click();
+  flushSync();
+  expect(width()).toBe('full');
+});

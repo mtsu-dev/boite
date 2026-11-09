@@ -179,7 +179,7 @@ export const fr: Translation = {
     questionDocked: 'Réponse en bas',
     questionOpen: 'Y répondre',
     streaming: 'écrit',
-    jumpToLatest: 'Plus récent',
+    jumpToLatest: 'Aller au plus récent',
     loadingOlder: 'Chargement des messages précédents',
     loadingNewer: 'Chargement des messages suivants',
     opening: 'Chargement de la conversation',

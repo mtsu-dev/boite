@@ -91,8 +91,9 @@ test('a phone panel head is one back arrow and the panel selector; the file pick
     const menu = query('[data-testid=panel-add-menu]')!;
     expect(menu.querySelector('[data-testid=changes-outline-file]')).toBeNull();
     expect(menu.querySelector('[data-testid=changes-refresh]')).toBeNull();
-    // The panels, then a way to close this one.
-    expect(menu.querySelector('[data-value="all-panels"]')).not.toBeNull();
+    // Every panel by name, then a way to close this one.
+    expect(menu.querySelector('[data-value="files"]')).not.toBeNull();
+    expect(menu.querySelector('[data-value="all-panels"]')).toBeNull();
     expect(menu.querySelector('[data-value="close-tab"]')?.textContent).toContain('Close Changes');
     button('panel-add').click(); await settle();
 

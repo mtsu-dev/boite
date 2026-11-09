@@ -215,7 +215,7 @@ export const strings = {
     questionDocked: 'Answer below',
     questionOpen: 'Answer it',
     streaming: 'writing',
-    jumpToLatest: 'Latest',
+    jumpToLatest: 'Jump to newest',
     /** The one line at the top of the timeline while an older page is being fetched. */
     loadingOlder: 'Loading earlier messages',
     loadingNewer: 'Loading later messages',

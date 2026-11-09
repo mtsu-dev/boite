@@ -436,7 +436,7 @@ test('removing a machine asks first, and cancel keeps its card', async () => {
   expect(document.querySelectorAll('[data-testid=machine-card]')).toHaveLength(2);
 });
 
-test('the sidebar floats a thread that waits on the user, in both views, and Recent keeps each to one line', async () => {
+test('the project cards float a thread that waits on the user, Recent keeps strict time order with its mark, and each row to one line', async () => {
   await mountOnFake();
   workspace.view = 'projects';
   await waitFor(() => document.querySelectorAll('[data-testid=thread-row]').length >= 2);
@@ -464,7 +464,12 @@ test('the sidebar floats a thread that waits on the user, in both views, and Rec
   for (const mark of document.querySelectorAll('[data-testid=thread-pr]')) expect(mark.textContent).toMatch(/^#\d+$/);
 
   workspace.view = 'recent';
-  await waitFor(() => rows()[0] === last);
+  // Recent is a history (round 20): under its pins, strictly newest first; the waiting thread keeps its place by
+  // time and says it needs the user by its mark, so no row sits out of time order.
+  const time = (id: string | null) => { const t = store.threads.find((thread) => thread.id === id)!; return t.lastUserMessageAt ?? t.createdAt; };
+  await waitFor(() => rowsOf().includes(last) && document.querySelector('[data-testid=thread-row] [data-testid=thread-where]') !== null);
+  const unpinned = rowsOf().filter((id) => !store.threads.find((t) => t.id === id)?.pinned);
+  expect(unpinned.map(time)).toEqual(unpinned.map(time).sort((a, b) => b - a));
   // Recent: each row says its project once, the name in words under the title or else the tile before it, never
   // both, with no provider glyph or branch.
   await waitFor(() => Array.from(document.querySelectorAll('[data-testid=thread-row]')).every((row) =>

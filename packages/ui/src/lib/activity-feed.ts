@@ -42,6 +42,30 @@ export function feedOperation(owner: Pick<Requests, 'pendingPermissions'>, threa
   return family === 'command' && subject ? subject.trim() : null;
 }
 
+/** The other half of a row's decision pair, done in place: Deny a permission, Skip a question. */
+export type FeedSecondary = 'deny' | 'skip';
+type Answering = Requests & {
+  answer(requestId: string, decision: 'allow' | 'deny'): Promise<boolean>;
+  skipQuestion(threadId: ThreadSummary['id'], questionId: QuestionRequest['id']): Promise<boolean>;
+};
+
+/**
+ * The outline action beside a row's primary (Allow, Answer), as the composer pairs Deny with Allow once: it settles
+ * the thread's own request where it is listed. Null when the request is not held here (a sub-agent's only) or the
+ * primary is not a decision (Review).
+ */
+export function feedSecondary(owner: Answering, threadId: ThreadSummary['id'], verb: FeedVerb | null): { kind: FeedSecondary; run: () => Promise<boolean> } | null {
+  if (verb === 'allow') {
+    const permission = owner.pendingPermissions.find(p => p.threadId === threadId);
+    return permission ? { kind: 'deny', run: () => owner.answer(permission.id, 'deny') } : null;
+  }
+  if (verb === 'answer') {
+    const question = owner.pendingQuestions.find(q => q.threadId === threadId);
+    return question ? { kind: 'skip', run: () => owner.skipQuestion(threadId, question.id) } : null;
+  }
+  return null;
+}
+
 /** Why the thread waits on the user, in a few words, and since when; null when its request is not known here. */
 export function waitingReason(owner: Requests, thread: ThreadSummary): { text: string; since: number } | null {
   const question = owner.pendingQuestions.find(q => q.threadId === thread.id);

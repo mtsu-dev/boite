@@ -118,8 +118,10 @@
   textarea { display: block; width: 100%; height: auto; min-height: 72px; padding: 8px 10px; margin-bottom: 12px; font-family: var(--font-mono); font-size: var(--text-sm); resize: vertical; }
   /* The settings row grammar: the name at the start, its value at the end, a hairline between rows,
      so the card reads across its whole width instead of leaving its right half empty. */
-  dl { display: grid; grid-template-columns: 140px 1fr; align-items: baseline; margin: 0; }
-  dt, dd { padding: 7px 0; }
+  dl { display: grid; grid-template-columns: 140px 1fr; margin: 0; }
+  /* Both cells fill the row on one line height, so each row's hairline runs straight across both columns
+     (baseline alignment let the 13 px name and the 14 px value draw theirs at two heights). */
+  dt, dd { padding: 7px 0; line-height: 20px; }
   dt:not(:first-of-type), dd:not(:first-of-type) { border-top: 1px solid var(--color-border); }
   dt { color: var(--color-muted-foreground); font-size: var(--text-sm); }
   /* Versions and numbers read in the sans; only an address and a path stay mono. */

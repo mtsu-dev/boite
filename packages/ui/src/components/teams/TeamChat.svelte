@@ -217,7 +217,7 @@
   .post:hover { background: var(--color-hover); }
   .gutter { display: flex; justify-content: center; padding-top: 2px; }
   .owner-avatar { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--color-active); color: var(--color-foreground); }
-  .aside { visibility: hidden; padding-top: 3px; color: var(--color-subtle); font-size: 10px; font-variant-numeric: tabular-nums; }
+  .aside { visibility: hidden; padding-top: 3px; color: var(--color-subtle); font-size: 11px; font-variant-numeric: tabular-nums; }
   .post:hover .aside { visibility: visible; }
   .main { min-width: 0; }
   .head { display: flex; align-items: baseline; gap: 8px; }

@@ -220,6 +220,11 @@ test('a draft names its project in the heading and the dropdown moves it to anot
   // The mode, the model and the effort are the chips' to say, once.
   expect(heading.textContent).not.toContain('with approval requests');
   expect(heading.querySelector('h1')?.textContent).toContain('notes');
+  // Where it runs, in full over the composer: the folder's whole path and the machine, which is plain words, not a picker.
+  const notesPath = store.projects.find((project) => project.id === 'p-notes')!.path;
+  expect(query('[data-testid=draft-hint]').textContent).toContain(notesPath);
+  const machine = document.querySelector('[data-testid=draft-machine]');
+  if (machine) expect([machine.querySelector('svg'), machine.closest('button')]).toEqual([null, null]);
   // The heading says the project, so the header chip no longer repeats it.
   expect(query('[data-testid=thread-header]').textContent).not.toContain('notes');
 

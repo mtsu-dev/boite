@@ -423,8 +423,8 @@
     color: var(--color-muted-foreground);
   }
 
-  /* A table is a code well's cousin: the surface-2 ground, hairlines, the head one step up.
-     It takes its content's width up to the column's and its cells wrap their text
+  /* A table sits in the text flow (round 20): no box or ground, a hairline under each row, its first
+     column on the text's left edge. It takes its content's width up to the column's and its cells wrap their text
      to stay inside it. Only what cannot break, a long path or too many columns,
      scrolls inside the table: a table box ignores overflow, so it is a block here,
      or a wide one pans the whole conversation on a phone. */
@@ -437,9 +437,6 @@
     margin: 0 0 var(--chat-block-gap);
     border-collapse: separate;
     border-spacing: 0;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-surface-2);
     font-size: var(--text-sm);
     line-height: 1.5;
   }
@@ -458,9 +455,10 @@
     word-break: normal;
   }
 
+  .prose :global(:is(th, td):first-child) { padding-left: 0; }
+
   .prose :global(th) {
     font-weight: 600;
-    background: var(--color-surface-3);
     color: var(--color-muted-foreground);
   }
 

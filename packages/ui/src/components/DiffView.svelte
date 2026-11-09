@@ -277,16 +277,15 @@
     overflow-wrap: break-word;
   }
 
-  /* A changed line keeps its code's own colours on a light tint, marked by a
-     bar in its gutter and its sign: no saturated block to read through. The
-     family has no green or red surface token, so the tint is the status
-     colour mixed into the well's own fill rather than a new hex. */
+  /* A changed line keeps its code's own colours on a light tint (app.css's
+     diff washes), marked by a bar in its gutter and its sign: no saturated
+     block to read through. */
   .row.add {
-    --row-bg: color-mix(in srgb, var(--color-success) 7%, var(--color-surface-2));
+    --row-bg: var(--diff-add-wash);
   }
 
   .row.remove {
-    --row-bg: color-mix(in srgb, var(--color-danger) 7%, var(--color-surface-2));
+    --row-bg: var(--diff-remove-wash);
   }
 
   /* The bar rides on the number, which stays put while the code scrolls sideways. */
@@ -297,9 +296,9 @@
   .text :global(mark.word) {
     border-radius: 2px;
     color: inherit;
-    background: color-mix(in srgb, var(--color-success) 26%, transparent);
+    background: var(--diff-add-word);
   }
-  .row.remove .text :global(mark.word) { background: color-mix(in srgb, var(--color-danger) 26%, transparent); }
+  .row.remove .text :global(mark.word) { background: var(--diff-remove-word); }
 
   .row.add .gutter { color: var(--color-success); }
   .row.remove .gutter { color: var(--color-danger); }

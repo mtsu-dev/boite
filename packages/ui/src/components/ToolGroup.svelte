@@ -245,8 +245,9 @@
     height: auto;
     padding: var(--activity-padding);
     border-radius: var(--radius-sm);
-    color: var(--color-muted-foreground);
-    font-size: var(--text-sm);
+    color: var(--instrument-ink);
+    font-size: var(--instrument-size);
+    line-height: var(--instrument-leading);
     font-weight: 400;
     justify-content: flex-start;
   }
@@ -274,8 +275,8 @@
     align-items: center;
     gap: 3px;
     flex: none;
-    color: var(--color-muted-foreground);
-    font-size: var(--text-sm);
+    color: var(--instrument-meta);
+    font-size: var(--instrument-meta-size);
   }
 
   .verdict {
@@ -286,12 +287,12 @@
     color: var(--color-success);
   }
   /* The verdict's word, the receipt's own, beside the shield. */
-  .verdict-word { font-size: var(--text-sm); }
+  .verdict-word { font-size: var(--instrument-meta-size); }
 
   .verdict.denied { color: var(--color-danger); }
 
   .waiting.after { margin-top: var(--chat-part-gap); }
-  .asked { display: flex; align-items: center; gap: var(--activity-gap); min-height: var(--control); padding: var(--activity-padding); font-size: var(--text-sm); color: var(--color-muted-foreground); }
+  .asked { display: flex; align-items: center; gap: var(--activity-gap); min-height: var(--control); padding: var(--activity-padding); font-size: var(--instrument-size); line-height: var(--instrument-leading); color: var(--instrument-ink); }
   .asked .glyph { display: inline-flex; flex: none; width: var(--activity-glyph); justify-content: center; }
   .asked-text { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   /* Waiting on the owner: a small live dot, the word is in its tooltip. */
@@ -310,7 +311,7 @@
      sweep, one every fourth tick of the loops' 60 Hz grid (app.css): the text
      clipped gradient repaints on each step, not on every frame. */
   .label.shimmer {
-    background: linear-gradient(90deg, var(--color-muted-foreground) 35%, var(--color-foreground) 50%, var(--color-muted-foreground) 65%) 0 0 / 300% 100%;
+    background: linear-gradient(90deg, var(--instrument-ink) 35%, var(--color-foreground) 50%, var(--instrument-ink) 65%) 0 0 / 300% 100%;
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
@@ -322,11 +323,11 @@
     to { background-position: 0 0; }
   }
 
-  .compacted { flex: none; display: inline-flex; align-items: center; gap: 4px; color: var(--color-muted-foreground); font-size: var(--text-sm); }
+  .compacted { flex: none; display: inline-flex; align-items: center; gap: 4px; color: var(--instrument-meta); font-size: var(--instrument-meta-size); }
   .took {
     flex: none;
-    color: var(--color-muted-foreground);
-    font-size: var(--text-sm);
+    color: var(--instrument-meta);
+    font-size: var(--instrument-meta-size);
     font-variant-numeric: tabular-nums;
   }
 
@@ -363,7 +364,7 @@
     border-left: 1px solid var(--color-border);
   }
 
-  @media (prefers-reduced-motion: reduce) { :is(.pulse, .label.shimmer) { animation: none; } .label.shimmer { color: var(--color-muted-foreground); background: none; } }
+  @media (prefers-reduced-motion: reduce) { :is(.pulse, .label.shimmer) { animation: none; } .label.shimmer { color: var(--instrument-ink); background: none; } }
   :global(html[data-motion='reduced']) :is(.pulse, .label.shimmer) { animation: none; }
-  :global(html[data-motion='reduced']) .label.shimmer { color: var(--color-muted-foreground); background: none; }
+  :global(html[data-motion='reduced']) .label.shimmer { color: var(--instrument-ink); background: none; }
 </style>

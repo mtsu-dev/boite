@@ -28,6 +28,7 @@
   import WindowCard from './WindowCardLoader.svelte';
   import { keepaliveRun } from '../lib/message-order';
   import { AgentsView, agentOfThread } from '../lib/agents.svelte';
+  import AgentAvatar from './agents/AgentAvatar.svelte';
   import { experimentOn } from '../lib/experiments.svelte';
   import { asksDocked, cardedCall, dockedRun, failedCall, questionDocked } from '../lib/one-status';
 
@@ -79,7 +80,8 @@
   /** An ask docked in the composer is its one copy: the stream draws no line for it meanwhile (`lib/one-status.ts`). */
   const asking = $derived(asksDocked(store, threadId));
   /** The persistent agent whose own thread this is: its answers carry its name. */
-  const agentName = $derived(store.openThread?.id === threadId && store.openThread.agentSessionId ? agentOfThread(AgentsView.of(store).snapshot, threadId)?.name ?? null : null);
+  const agent = $derived(store.openThread?.id === threadId && store.openThread.agentSessionId ? agentOfThread(AgentsView.of(store).snapshot, threadId) : null);
+  const agentName = $derived(agent?.name ?? null);
   /** Boite's ping of the prompt cache: one line in place of its message (`quietKeepalives`). */
   const ping = $derived(execution?.operation === 'keepalive' ? turn : undefined);
   const compacting = $derived(execution?.operation === 'compact' ||
@@ -119,8 +121,9 @@
 {#if showModel && message.role === 'assistant' && execution}
   {@const model = store.modelsOf(execution.providerId, execution.accountId).find((model) => model.id === execution.model)}
   {@const engine = execution.model && isNamedModel(model ?? { id: execution.model, name: execution.model }) ? model?.name ?? execution.model : providerName(store, execution.providerId)}
-  <!-- A persistent agent's answers are signed with its name; the model it ran on is the tooltip. -->
-  <div class="model-attribution" data-testid="message-model" title={agentName ? engine : undefined}>{agentName ?? engine}</div>
+  <!-- A persistent agent's answers are signed with its face, grey at rest (lib/avatar-lit.ts), and its name, at rest
+       too, so a bot's words read as its own; the model it ran on is the tooltip. -->
+  <div class="model-attribution" class:bot={agent} data-testid="message-model" title={agentName ? engine : undefined}>{#if agent}<span class="face" data-testid="message-bot"><AgentAvatar kind="profile" id={agent.id} name={agent.name} avatar={agent.avatar} size={18} /></span>{/if}{agentName ?? engine}</div>
 {/if}
 {#if ping}
   {#if from === 0}<KeepaliveMarker turn={ping} count={keepaliveRun(store.openThread?.turns ?? [], ping.id)} />{/if}
@@ -274,9 +277,11 @@
 
 <style>
   /* On the same 4 px rest as the parts it names. */
-  .model-attribution { color: var(--color-muted-foreground); font-size: var(--text-sm); margin-bottom: calc(var(--chat-block-gap) - var(--chat-part-gap)); padding-left: var(--activity-padding); opacity: 0; transition: opacity var(--dur-2); }
+  .model-attribution { color: var(--instrument-meta); font-size: var(--instrument-meta-size); margin-bottom: calc(var(--chat-block-gap) - var(--chat-part-gap)); padding-left: var(--activity-padding); opacity: 0; transition: opacity var(--dur-2); }
   /* Read on demand, as a message's time and buttons are. */
   :global(.message:hover) .model-attribution, :global(.message:focus-within) .model-attribution { opacity: 1; }
+  .model-attribution.bot { display: flex; align-items: center; gap: 8px; opacity: 1; color: var(--instrument-ink); }
+  .face { display: inline-flex; flex: none; }
   @media (hover: none) { .model-attribution { opacity: 1; } }
   /* Narration between calls: the agent thinking aloud, read at the answer's size and quieter only by its colour. */
   .part.narration { padding: 0 2px; color: var(--color-muted-foreground); }

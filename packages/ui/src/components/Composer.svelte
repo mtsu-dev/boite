@@ -940,6 +940,13 @@
     box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-foreground) 9%, transparent);
     --dock-inset: 8px;
   }
+  /* Three sections, not nested boxes: the entries, the decision, then one
+     inset hairline before the queued line and the field, so drafting reads
+     apart from what waits on the owner. */
+  .deck:has(> :global(:is(.dock, .decision-card, .activity:not(.hidden), .receipt))) {
+    padding-bottom: 8px;
+    background: linear-gradient(var(--color-border), var(--color-border)) no-repeat center bottom / calc(100% - 2 * var(--dock-inset)) 1px;
+  }
   /* The answer as sent: one quiet line in the dock's own ink, cut to one line, its check where the question's dot stood. */
   .receipt { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0; padding: var(--deck-gap) var(--dock-inset) 0; color: var(--color-subtle); font-size: var(--text-meta); }
   .receipt span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1032,4 +1039,7 @@
   }
   /* A 390 or 360 px phone gives the card's side margins to the chips' words. */
   @media (max-width: 400px) { .composer-wrap, .composer-wrap.centered { padding-inline: 8px; } }
+  /* At 360 the chips take a second row (ComposerBar): a permission gets that
+     row back, so its ask and the command it approves stay whole over the pair. */
+  @media (max-width: 380px) { .composer:has(:global(.permission.docked)) { --composer-cap: 58dvh; } }
 </style>

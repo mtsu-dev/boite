@@ -8,7 +8,8 @@
   import { strings } from '../lib/strings';
   import { count } from '../lib/format';
   import ActivityRow from './ActivityRow.svelte';
-  import EmptyState from './EmptyState.svelte';
+  import EmptyState, { HOUSE_BOT } from './EmptyState.svelte';
+  import RobotFace from './agents/RobotFace.svelte';
   import { restoreActivity } from '../lib/activity-return.svelte';
 
   /**
@@ -63,7 +64,9 @@
 <!-- The window's band names the page, in its empty state too: the card carries no second title. -->
 <section class="activity-page" data-testid="activity-list" aria-label={strings.mobile.activity} tabindex="-1" bind:this={page}>
   <div class="column">
-    {#if needsCount > 0}<h2 class="section-label" data-testid="activity-needs" data-count={needsCount}>{strings.sidebar.state.waiting}<span class="count">{count(needsCount)}</span></h2>{/if}
+    <!-- The section names the mark its rows wear: the amber dot beside "Needs you", learned together. -->
+    {#if needsCount > 0}<h2 class="section-label" data-testid="activity-needs" data-count={needsCount}><span class="dot" aria-hidden="true"></span>{strings.sidebar.state.waiting}<span class="count">{count(needsCount)}</span></h2>
+    {:else if rows.length > 0}<p class="all-done" data-testid="activity-all-done"><span class="face" aria-hidden="true"><RobotFace robot={HOUSE_BOT} /></span>{strings.mobile.nothingNeedsYou}</p>{/if}
     {#if ContactInboxRows && contactsShown(store)}<ContactInboxRows {store} />{/if}
     {#each needs as { row, helpers } (`${row.machine.id}:${row.thread.id}`)}<ActivityRow {row} {helpers} {now} />{/each}
     {#if updates.length > 0}<h2 class="section-label" data-testid="activity-updates">{strings.mobile.feed.updates}</h2>{/if}
@@ -81,14 +84,21 @@
   /* The chat's own column (MessageList.svelte): the same side room and gutters, then --content, so a thread and
      Activity read at one width, centred in the card. */
   .activity-page { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable both-edges; padding: 0 var(--outline-room); outline: none; }
-  /* Centred like Settings and sized to what it holds, between a reading measure and the column; a short list sits
-     around the card's optical centre (a little above the middle) instead of in its top third over a void, and a long
-     one starts at the top and scrolls (safe). */
-  .column { display: flex; flex-direction: column; justify-content: safe center; gap: 2px; width: fit-content; min-width: min(100%, var(--prose)); max-width: var(--content); min-height: 100%; margin: 0 auto; padding: var(--space-8) 0 max(var(--space-6), 10vh); }
+  /* Centred across like Settings and sized to what it holds, between a reading measure and the column; anchored at
+     the card's top as a thread starts at its top (round 20: centred, a short list began 230 px down over a void).
+     Only the empty state sits in the middle. */
+  .column { display: flex; flex-direction: column; gap: 2px; width: fit-content; min-width: min(100%, var(--prose)); max-width: var(--content); min-height: 100%; margin: 0 auto; padding: var(--space-6) 0 max(var(--space-6), 10vh); }
+  .column:has(:global([data-testid=activity-empty])) { justify-content: center; }
   /* A section's name over its rows, from the rows' text edge; the next section stands off the last row. */
   /* From the rows' tile edge (ThreadCard's compact 10 px). */
   h2 { margin: 0 0 var(--space-2) 10px; }
   h2 ~ h2 { margin-top: var(--space-6); }
   /* The section's count, the rail badge's number: amber marks it, the word stays grey. */
   h2 .count { margin-left: 6px; color: var(--color-live); font-variant-numeric: tabular-nums; }
+  h2 { display: flex; align-items: center; }
+  .dot { width: 8px; height: 8px; margin-right: 8px; flex: none; border-radius: var(--radius-full); background: var(--color-live); }
+  /* Only updates left: the house mascot, small, says nothing waits; the moment is rare, so it may smile. */
+  .all-done { display: flex; align-items: center; gap: 10px; margin: 0 0 var(--space-4) 10px; font-size: var(--text-sm); font-weight: 500; color: var(--color-muted-foreground); }
+  .face { display: block; width: 24px; height: 24px; flex: none; }
+  .face :global(svg.robot) { display: block; width: 100%; height: 100%; border-radius: 50%; }
 </style>

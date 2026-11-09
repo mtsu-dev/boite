@@ -143,3 +143,30 @@ test('Nova\'s threads: what it handles, needs-you first, then what it is done wi
     setExperiment('resident-agents', false);
   }
 });
+
+test('an empty desk on the Desk panel is a line under its heading, its action beside it, not a prompt mid-panel', async ({ ready }) => {
+  setExperiment('resident-agents', true);
+  let list: ReturnType<typeof mount> | null = null;
+  try {
+    const { store } = await ready({ delayMs: 0, agentsDemo: true });
+    const view = AgentsView.of(store);
+    await view.refresh();
+    const idle = view.snapshot!.profiles.find(p => !view.snapshot!.watches.some(w => w.agentId === p.id))!;
+    const ontask = vi.fn();
+    list = mount(BotWorkList, { target: document.body, props: { view, agentId: idle.id, ontask } });
+    flushSync();
+    const work = document.querySelector('[data-testid=desk-work]')!;
+    expect(work.classList.contains('idle')).toBe(false);
+    expect(work.querySelector('.bot-work-face')).toBeNull();
+    const heading = work.querySelector('h3.bot-section')!;
+    const line = heading.nextElementSibling!;
+    expect(line.matches('.desk-empty-row')).toBe(true);
+    expect(line.firstElementChild!.textContent).toBe('Nothing on its desk yet.');
+    line.querySelector<HTMLButtonElement>('[data-testid=desk-work-start]')!.click();
+    expect(ontask).toHaveBeenCalledOnce();
+  } finally {
+    if (list) await unmount(list);
+    document.body.innerHTML = '';
+    setExperiment('resident-agents', false);
+  }
+});

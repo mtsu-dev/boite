@@ -9,7 +9,7 @@
   import { Closing } from '../lib/closing.svelte';
   import { floating } from '../lib/floating';
   import { glides } from '../lib/motion';
-  import { strings } from '../lib/strings';
+  import { fill, strings } from '../lib/strings';
   import { levelName } from '../lib/format';
   import SheetHead from './SheetHead.svelte';
 
@@ -100,11 +100,10 @@
   let cost = $derived.by(() => {
     if (levels.length === 0) return null;
     if (shown < 0) return strings.composer.effortDefaultHint;
-    const words = strings.composer.effortCost;
-    const named = LEVEL_COST[levels[shown]?.id ?? ''];
-    if (named) return words[named];
     const ratio = last === 0 ? 0.5 : shown / last;
-    return ratio <= 0 ? words.low : ratio >= 1 ? words.top : ratio > 0.5 ? words.high : words.middle;
+    const step = LEVEL_COST[levels[shown]?.id ?? ''] ?? (ratio <= 0 ? 'low' : ratio >= 1 ? 'top' : ratio > 0.5 ? 'high' : 'middle');
+    // Fast on: one sentence, the level's depth then what the tier adds.
+    return selectedSpeed ? fill(strings.composer.effortWithFast, { depth: strings.composer.effortDepth[step], fast: levelName(selectedSpeed) }) : strings.composer.effortCost[step];
   });
 
   type Streak = { top: number; from: number; length: number; delay: number; duration: number; thick: number; alpha: number };

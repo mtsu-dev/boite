@@ -3,6 +3,7 @@
   import type { AgentsView } from '../../lib/agents.svelte';
   import { Autosave } from '../../lib/autosave.svelte';
   import { providerName } from '../../lib/format';
+  import { accountName } from '../../lib/account-name';
   import { strings } from '../../lib/strings';
   import SaveStatus from '../SaveStatus.svelte';
   let { view }: { view: AgentsView } = $props();
@@ -28,7 +29,7 @@
     {@const access = grants.find(g => g.accountId === account.id)}
     <div class="agent-grant">
       <label class="switch-row">
-        <span class="text">{account.label}<span class="hint">{providerName(view.store, account.providerId)} · {strings.agents.allAgents}</span></span>
+        <span class="text">{accountName(account)}<span class="hint">{providerName(view.store, account.providerId)} · {strings.agents.allAgents}</span></span>
         <input type="checkbox" role="switch" checked={!access || access.agentIds === null} onchange={e => grant(account.id, e.currentTarget.checked ? null : [])} />
       </label>
       {#if access?.agentIds}

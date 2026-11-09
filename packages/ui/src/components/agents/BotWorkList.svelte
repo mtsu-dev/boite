@@ -19,8 +19,11 @@
    * machine that holds it, answers its question in place, and its cross takes
    * it off the desk. The snapshot carries the open bot's desk only.
    */
-  /** `onstart`: an empty desk's one action, the conversation with the composer ready. */
-  let { view, agentId, onstart }: { view: AgentsView; agentId: string; onstart?: () => void } = $props();
+  /**
+   * `onstart`: the column's empty desk, one prompt in its middle, the conversation with the composer ready.
+   * `ontask`: the Desk panel's, the composer beside it; without `onstart` an empty list is a line under its heading.
+   */
+  let { view, agentId, onstart, ontask }: { view: AgentsView; agentId: string; onstart?: () => void; ontask?: () => void } = $props();
   const store = $derived(view.store);
   const t = $derived(strings.agents.deskPanel);
   const now = $derived(minuteClock.now);
@@ -85,6 +88,10 @@
       <h3 class="bot-section" data-testid="bot-done">{t.done} <span class="bot-section-count">{sections.done.length}</span></h3>
       {@render rows(sections.done, true)}
     {/if}
+  {:else if !onstart}
+    <!-- On the Desk panel the empty line sits under the heading it describes, its action beside it (round 20). -->
+    <h3 class="bot-section">{t.handling}</h3>
+    <p class="desk-empty desk-empty-row"><span>{t.workEmpty}</span>{#if ontask && store.owner}<button type="button" class="ghost small" data-testid="desk-work-start" onclick={ontask}><span class="ui-label">{t.workStart}</span></button>{/if}</p>
   {:else if !first}
     <!-- An empty desk is one prompt in the column's middle; with no conversation either it moves over the chat (AgentsPage). -->
     <!-- Its face over the line, the open bot's so in its colours: an empty desk reads as this bot's, not a blank. -->

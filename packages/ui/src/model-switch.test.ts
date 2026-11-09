@@ -52,8 +52,7 @@ test('the existing thread picker switches providers and back without losing the 
   await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') === null);
   click('[data-testid=composer-picker]');
   await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null);
-  // Two models used now: the picker opens on them, the providers behind its source button.
-  click('[data-testid=picker-all-models]');
+  // The picker opens on the current provider, every other one a row under it.
   await waitFor(() => document.querySelector(`[data-testid=composer-picker-menu] [data-provider="${original.providerId}"]`) !== null);
   click(`[data-testid=composer-picker-menu] [data-provider="${original.providerId}"]`);
   await waitFor(() => document.querySelector(`[data-model="${original.model}"]`) !== null);

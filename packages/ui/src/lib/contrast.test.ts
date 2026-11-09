@@ -59,10 +59,12 @@ function alpha(scope: string, name: string): number {
  * floors below fail on round 15's values (secondary 12.27:1 and 10.61:1 at
  * worst, subtle 10.75:1 and 9.14:1).
  */
-// Round 19 raises the small tier a last step: round 18's 12.84:1 and 11.39:1 (dark), 11.77:1 and 10.26:1 (light) fail.
+// Round 19 raises the small tier a step: round 18's 12.84:1 and 11.39:1 (dark), 11.77:1 and 10.26:1 (light) fail.
+// Round 20 one more (timestamps, counts, diff line numbers, the quota line): round 19's 13.19:1 and 11.83:1
+// (dark), 12.69:1 and 11.16:1 (light) fail.
 const FLOORS = {
-  dark: { muted: 13.1, subtle: 11.8, border: 0.09, edge: 0.13 },
-  light: { muted: 12.6, subtle: 11.1, border: 0.095, edge: 0.19 }
+  dark: { muted: 13.6, subtle: 12.3, border: 0.09, edge: 0.13 },
+  light: { muted: 13.2, subtle: 11.7, border: 0.095, edge: 0.19 }
 };
 
 describe.each([
@@ -71,7 +73,7 @@ describe.each([
 ] as const)('%s theme', (theme, selector) => {
   const scope = block(selector);
 
-  test('secondary and tertiary text sit one step brighter than round 18', () => {
+  test('secondary and tertiary text sit one step brighter than round 19', () => {
     for (const ground of GROUNDS) {
       expect(ratio(token(scope, '--color-muted-foreground'), token(scope, ground)), `muted on ${ground}`).toBeGreaterThanOrEqual(FLOORS[theme].muted);
       expect(ratio(token(scope, '--color-subtle'), token(scope, ground)), `subtle on ${ground}`).toBeGreaterThanOrEqual(FLOORS[theme].subtle);
@@ -163,7 +165,12 @@ test('a menu or popover edge sits one step over the edge, toward the text, in ev
  * margin over AA: muted 6.5:1 and subtle 5.5:1 on every ground the palette
  * draws (round 18 sat at 4.5:1: light Catppuccin's muted at 4.65, light Tokyo
  * Night's subtle at 4.51, light Amethyst's at 4.50), and the foreground stays
- * 4 L* clear of the lifted muted so the hierarchy still reads.
+ * 4 L* clear of the lifted muted so the hierarchy still reads. Round 20 lifts
+ * them one more step, to 7:1 and 6:1, each palette set 0.2 over the floor
+ * (round 19 sat on it: light Tokyo Night's muted at 6.51, light Catppuccin's
+ * subtle at 5.50). The selection stands 5 L* off the surface and the raised
+ * fill, so a selected row never differs by a near-identical grey (round 19:
+ * light Tokyo Night's 2.5 L* under its raised fill, Nord's 4.2).
  */
 describe('curated palettes', () => {
   const ids = [...css.matchAll(/--palette-((?:dark|light)-[\w-]+?)-subtle:/g)].map((match) => match[1]!);
@@ -173,19 +180,25 @@ describe('curated palettes', () => {
     expect(ids.length).toBeGreaterThanOrEqual(11);
   });
 
-  test.each(ids)('%s: muted clears 6.5:1 and subtle 5.5:1 on every ground, subtle within 7 L* of muted, the foreground 4 L* past muted', (id) => {
+  test.each(ids)('%s: muted clears 7:1 and subtle 6:1 on every ground, subtle within 7 L* of muted, the foreground 4 L* past muted', (id) => {
     const value = (name: string) => new RegExp(`--palette-${id}-${name}:\\s*(#[0-9a-f]{6})\\s*;`, 'i').exec(css)?.[1];
     const grounds = PALETTE_GROUNDS.map(value).filter((hex): hex is string => !!hex);
     const [foreground, muted, subtle] = [value('foreground'), value('muted-foreground'), value('subtle')];
     expect(grounds.length, 'grounds').toBeGreaterThanOrEqual(4);
     expect(muted && subtle, 'muted and subtle').toBeTruthy();
     for (const ground of grounds) {
-      expect(ratio(subtle!, ground), `subtle on ${ground}`).toBeGreaterThanOrEqual(5.5);
-      expect(ratio(muted!, ground), `muted on ${ground}`).toBeGreaterThanOrEqual(6.5);
+      expect(ratio(subtle!, ground), `subtle on ${ground}`).toBeGreaterThanOrEqual(6);
+      expect(ratio(muted!, ground), `muted on ${ground}`).toBeGreaterThanOrEqual(7);
       expect(ratio(foreground!, ground), `foreground on ${ground}`).toBeGreaterThanOrEqual(7);
     }
     expect(Math.abs(lightness(muted!) - lightness(subtle!)), 'muted to subtle').toBeLessThanOrEqual(7);
     expect(Math.abs(lightness(foreground!) - lightness(muted!)), 'foreground to muted').toBeGreaterThanOrEqual(4);
+  });
+
+  test.each(ids)('%s: the selection stands 5 L* off the surface and the raised fill', (id) => {
+    const value = (name: string) => new RegExp(`--palette-${id}-${name}:\\s*(#[0-9a-f]{6})\\s*;`, 'i').exec(css)?.[1];
+    const selection = lightness(value('selection')!);
+    for (const ground of ['surface', 'surface-high']) expect(Math.abs(selection - lightness(value(ground)!)), `selection to ${ground}`).toBeGreaterThanOrEqual(5);
   });
 });
 
@@ -204,6 +217,8 @@ describe('text in the components stays at or above the subtle tier', () => {
     '--color-accent-ink', '--color-on-danger', '--color-on-foreground', '--primary-ink', '--color-background', '--color-surface',
     // Code's inks and the warning that asks nothing, each set in app.css at reading contrast.
     '--syntax-keyword', '--syntax-string', '--syntax-comment', '--color-caution',
+    // The instrumental tier of a thread (app.css): the secondary and subtle inks under other names.
+    '--instrument-ink', '--instrument-meta',
     // Set by a component to one of the above.
     '--tone', '--verdict', '--mark', '--tint',
     // A palette tile's sample: that palette's own foreground on its own ground (ThemeColors.svelte).
@@ -317,5 +332,94 @@ describe('the chosen segment', () => {
       if (/\.segmented button(?:\.on|\[aria-pressed='true'\])[^{]*\{[^}]*background/.test(style)) own.push(file);
     }
     expect(own).toEqual([]);
+  });
+});
+
+/** `color-mix(in srgb, a p%, b)` on two hex colours: sRGB mixes the encoded channels. */
+function mixHex(a: string, share: number, b: string): string {
+  const channel = (hex: string, i: number) => parseInt(hex.slice(i, i + 2), 16);
+  return `#${[1, 3, 5].map((i) => Math.round(channel(a, i) * share + channel(b, i) * (1 - share)).toString(16).padStart(2, '0')).join('')}`;
+}
+
+/** An `rgba(r, g, b, a)` token laid over a hex ground. */
+function over(scope: string, name: string, ground: string): string {
+  const match = new RegExp(`${name}:\\s*rgba\\((\\d+),\\s*(\\d+),\\s*(\\d+),\\s*([\\d.]+)\\)\\s*;`, 'i').exec(scope);
+  if (!match) throw new Error(`no rgba ${name}`);
+  const top = `#${match.slice(1, 4).map((v) => Number(v).toString(16).padStart(2, '0')).join('')}`;
+  return mixHex(top, Number(match[4]), ground);
+}
+
+/**
+ * Round 20: a diff's washes softened toward the thread's greys (round 19 drew
+ * 7 and 26 percent of the status colour, which the seats read as the loudest
+ * green in the app). The line wash stays within 4 L* of the raised fill it is
+ * mixed into, the word wash a clear step deeper, add and remove still apart,
+ * and the code and its line numbers keep reading contrast on each.
+ */
+describe.each([
+  ['dark', ':root'],
+  ['light', "[data-theme='light']"]
+] as const)('%s: diff washes', (_theme, selector) => {
+  const scope = block(selector);
+  const root = block(':root');
+  const share = (name: string) => {
+    const match = new RegExp(`${name}:\\s*color-mix\\(in srgb, var\\((--color-\\w+)\\) (\\d+)%, var\\(--color-surface-2\\)\\);`).exec(root);
+    if (!match) throw new Error(`no ${name}`);
+    return mixHex(token(scope, match[1]!), Number(match[2]) / 100, token(scope, '--color-surface-2'));
+  };
+  const raised = token(scope, '--color-surface-2');
+  const [addWash, removeWash, addWord, removeWord] = ['--diff-add-wash', '--diff-remove-wash', '--diff-add-word', '--diff-remove-word'].map(share);
+  const distance = (a: string, b: string) => Math.hypot(...[1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16) - parseInt(b.slice(i, i + 2), 16)));
+
+  test('a changed line is the grey with a cast, the changed words a step deeper', () => {
+    for (const wash of [addWash!, removeWash!]) {
+      expect(Math.abs(lightness(wash) - lightness(raised)), `${wash} toward the grey`).toBeLessThanOrEqual(4);
+      expect(distance(wash, raised), `${wash} still tinted`).toBeGreaterThanOrEqual(6);
+    }
+    expect(distance(addWash!, removeWash!), 'add and remove apart').toBeGreaterThanOrEqual(8);
+    expect(Math.abs(lightness(addWord!) - lightness(addWash!)), 'added words').toBeGreaterThanOrEqual(4);
+    expect(Math.abs(lightness(removeWord!) - lightness(removeWash!)), 'removed words').toBeGreaterThanOrEqual(4);
+  });
+
+  test('code reads at 11:1 on every wash, its line number at the subtle floor on the line', () => {
+    for (const wash of [addWash!, removeWash!, addWord!, removeWord!]) expect(ratio(token(scope, '--color-foreground'), wash), `code on ${wash}`).toBeGreaterThanOrEqual(11);
+    for (const wash of [addWash!, removeWash!]) expect(ratio(token(scope, '--color-subtle'), wash), `line number on ${wash}`).toBeGreaterThanOrEqual(11);
+  });
+
+  test('the selection stands a clear step off the surface and the raised fill', () => {
+    for (const ground of ['--color-surface', '--color-surface-2']) {
+      const base = token(scope, ground);
+      expect(Math.abs(lightness(over(scope, '--color-selection', base)) - lightness(base)), `selection on ${ground}`).toBeGreaterThanOrEqual(10);
+    }
+  });
+});
+
+/** Round 20: four neutral roles, an instrumental tier on the secondary inks, one icon stroke by optical size. */
+describe('round 20 roles', () => {
+  const root = block(':root');
+
+  test('ground, surface, raised and selected name one layer each', () => {
+    expect(root).toMatch(/--role-ground:\s*var\(--color-background\);/);
+    expect(root).toMatch(/--role-surface:\s*var\(--color-surface\);/);
+    expect(root).toMatch(/--role-raised:\s*var\(--color-surface-2\);/);
+    expect(root).toMatch(/--role-selected:\s*var\(--color-selection\);/);
+  });
+
+  test('the instrumental tier sits one step under the agent words: smaller, on the secondary inks', () => {
+    expect(root).toMatch(/--instrument-ink:\s*var\(--color-muted-foreground\);/);
+    expect(root).toMatch(/--instrument-meta:\s*var\(--color-subtle\);/);
+    expect(root).toMatch(/--instrument-size:\s*var\(--text-body\);/);
+    expect(parseInt(/--text-body:\s*(\d+)px/.exec(root)![1]!)).toBeLessThan(parseInt(/--text-title:\s*(\d+)px/.exec(root)![1]!));
+    expect(root).toMatch(/--text-min:\s*var\(--text-meta\);/);
+  });
+
+  test('every line-set Lucide icon takes the stroke token by optical size; heavier marks keep theirs', () => {
+    expect(root).toMatch(/--icon-stroke:\s*1\.75;/);
+    const small = Number(/--icon-stroke-small:\s*([\d.]+);/.exec(root)![1]);
+    const large = Number(/--icon-stroke-large:\s*([\d.]+);/.exec(root)![1]);
+    // About one drawn pixel at 12, 16 and 24 px: stroke times size over Lucide's 24 unit box.
+    for (const [stroke, size] of [[small, 12], [1.75, 16], [large, 24]] as const) expect((stroke * size) / 24).toBeGreaterThanOrEqual(0.95);
+    expect(css).toMatch(/svg\.lucide:is\(\[stroke-width='1\.5'\], \[stroke-width='1\.6'\], \[stroke-width='1\.75'\], \[stroke-width='2'\]\) \{ stroke-width: var\(--icon-stroke\); \}/);
+    expect(css).not.toMatch(/svg\.lucide[^{]*\[stroke-width='2\.25'\]/);
   });
 });

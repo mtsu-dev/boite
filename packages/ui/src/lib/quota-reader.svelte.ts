@@ -3,6 +3,7 @@ import { errorText } from './errors';
 import { RpcErrorCode, providerEnabled, type Account, type AccountQuota, type CoreInfo, type QuotaAlertPeriod, type ProviderSummary, type SubscriptionProxyQuotas } from '@boite/contracts';
 import { RpcFailure, type Client } from './client';
 import { fill, strings } from './strings';
+import { accountName } from './account-name';
 
 /**
  * Subscription limits as every view shows them: the last reading stays on
@@ -48,11 +49,12 @@ export function quotaProviderOff(row: AccountQuota, providers?: readonly Pick<Pr
   return providers?.some((provider) => provider.id === row.providerId && !providerEnabled(provider)) === true;
 }
 
-/** Account labels are current metadata, independent of the cached usage reading. */
+/** Account labels are current metadata, independent of the cached usage reading; the adopted "Default" login reads as its address (lib/account-name.ts). */
 export function namedQuotas(rows: AccountQuota[], accounts?: Account[]): AccountQuota[] {
   return rows.map((row) => {
     const account = accounts?.find((entry) => entry.id === row.accountId);
-    return account && typeof account.label === 'string' && account.label !== row.label ? { ...row, label: account.label } : row;
+    const label = account && typeof account.label === 'string' ? accountName(account) : undefined;
+    return label !== undefined && label !== row.label ? { ...row, label } : row;
   });
 }
 

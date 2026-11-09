@@ -460,18 +460,10 @@ test('Ctrl+S folds the sidebar without stashing, and Ctrl+Shift+S stashes and re
   expect(press('s', { ctrlKey: true, shiftKey: true })).toBe(false);
 });
 
-/** The model chip's popover: open it, then find a row (the providers' lists sit behind its source button). */
+/** The model chip's popover: open it, then find a row (the chip's provider opens on its list). */
 function inPicker(testid: string): HTMLElement | null {
   if (!document.querySelector('[data-testid=composer-picker-menu]')) {
     document.querySelector<HTMLElement>('[data-testid=composer-picker]')?.click();
-    flushSync();
-  }
-  // The providers' lists sit behind the source button when the picker opens on the models in use: it unfolds them, and the chip's provider shows its list.
-  if (!document.querySelector(`[data-testid=${testid}]`)) {
-    document.querySelector<HTMLElement>('[data-testid=picker-all-models][aria-expanded=false]')?.click();
-    flushSync();
-    const id = store.openThread?.providerId ?? store.draftChoice?.providerId ?? store.defaultChoice()?.providerId;
-    document.querySelector<HTMLElement>(`[data-testid=composer-picker-menu] .tile[data-provider="${id}"]`)?.click();
     flushSync();
   }
   return document.querySelector<HTMLElement>(`[data-testid=${testid}]`);
@@ -725,13 +717,13 @@ test('the picker keeps row, account and legacy keyboard navigation separate', as
   await openDraft();
   query<HTMLButtonElement>('[data-testid=composer-picker]').click();
   await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null);
-  query<HTMLButtonElement>('[data-testid=picker-all-models]').click();
-  await waitFor(() => document.querySelector('[data-provider=claude]') !== null);
+  await waitFor(() => document.querySelector('[data-models-of=claude] [data-model]') !== null);
 
+  // The arrows go from a provider row down into the models open under it.
   const claudeTile = query<HTMLButtonElement>('[data-provider=claude]');
   claudeTile.focus();
   expect(press('ArrowDown')).toBe(false);
-  expect(document.activeElement).toBe(query('[data-provider=echo]'));
+  expect(document.activeElement).toBe(query('[data-models-of=claude] [data-row]'));
   // A provider row shows its list, its accounts beside its name.
   claudeTile.click();
   flushSync();

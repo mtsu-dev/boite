@@ -87,15 +87,15 @@
 </section>
 
 <style>
-  /* A fine outline on the page, no fill: the plan is read, not pressed. */
+  /* In the text flow under one hairline, no box: the plan is read, not pressed; bordered cards are kept for what
+     the user decides or operates (round 20). */
   .plan {
     display: flex;
     flex-direction: column;
     gap: 4px;
     min-width: 0;
-    padding: 8px 10px 10px 14px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
+    padding: 4px 0 0;
+    border-top: 1px solid var(--color-border);
   }
 
   .head {
@@ -104,11 +104,11 @@
     gap: 10px;
     min-width: 0;
     min-height: var(--control-sm);
-    font-size: var(--text-sm);
-    color: var(--color-subtle);
+    font-size: var(--instrument-meta-size);
+    color: var(--instrument-meta);
   }
 
-  .title { color: var(--color-muted-foreground); font-weight: 550; }
+  .title { color: var(--instrument-ink); font-weight: 600; }
   .count { font-variant-numeric: tabular-nums; }
   .saved { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -119,17 +119,17 @@
   .actions button:hover:not(:disabled) { color: var(--color-foreground); }
   @media (hover: none) { .actions { opacity: 1; } }
 
-  .body { min-width: 0; padding-right: 4px; color: var(--color-foreground); }
-  /* The plan is content: a step under the answer's size, above the tool rows. */
-  .body :global(.prose) { font-size: var(--text-reading); line-height: var(--leading-reading); }
+  .body { min-width: 0; padding-right: 4px; color: var(--instrument-ink); }
+  /* The instrumental tier under the agent's words (app.css --instrument-*): the reply stays the one full-size layer. */
+  .body :global(.prose) { font-size: var(--instrument-size); line-height: var(--instrument-leading); }
   /* Normal weight: the agent's bold lead words read as the step, not as a shout. */
   .body :global(strong) { font-weight: inherit; }
-  .body :global(:is(h1, h2, h3, h4, h5, h6)) { font-size: var(--text-sm); font-weight: 600; margin: 10px 0 4px; }
+  .body :global(:is(h1, h2, h3, h4, h5, h6)) { font-size: var(--instrument-meta-size); font-weight: 600; margin: 10px 0 4px; }
   /* A plan headed "Plan" says it once, in the head above. */
   .lead .body :global(.paragraph:first-child > :is(h1, h2, h3, h4, h5, h6):first-child) { display: none; }
   .lead .body :global(.paragraph:first-child:has(> :is(h1, h2, h3, h4, h5, h6):only-child)) { display: none; }
   /* Steps the agent ticked are struck and grey; the next one is in full ink, the rest wait in grey. */
-  .body :global(li.task) { color: var(--color-muted-foreground); }
+  .body :global(li.task) { color: var(--instrument-ink); }
   .body :global(li.task:has(> input:checked)) { color: var(--color-subtle); text-decoration: line-through; text-decoration-color: var(--color-edge); }
   .body :global(li.task:first-child:not(:has(> input:checked))),
   .body :global(li.task:has(> input:checked) + li.task:not(:has(> input:checked))) { color: var(--color-foreground); }

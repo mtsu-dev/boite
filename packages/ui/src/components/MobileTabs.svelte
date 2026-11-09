@@ -81,10 +81,12 @@
     .tab[aria-current=page] { color: var(--color-foreground); }
     .tab[aria-current=page] .glyph { background: var(--color-surface-3); }
     .tab:active .glyph { background: var(--color-surface-2); }
+    /* A bare amber count cut out of the bar, as the rail's (AppRail.svelte .count): amber is a dot or a count, never a
+       filled badge. 11 px, the smallest a count may read at. */
     .badge {
-      position: absolute; top: -2px; left: calc(50% + 6px); min-width: 17px; height: 17px; padding: 0 4px; box-sizing: border-box;
-      border-radius: var(--radius-full); background: var(--color-live); color: var(--color-accent-ink);
-      box-shadow: 0 0 0 2px var(--color-background); font-size: 10px; font-weight: 700; line-height: 17px; text-align: center;
+      position: absolute; top: -3px; left: calc(50% + 5px); min-width: 18px; height: 18px; padding: 0 4px; box-sizing: border-box;
+      border-radius: var(--radius-full); background: var(--color-background); color: var(--color-live);
+      font-size: 11px; font-weight: 700; line-height: 18px; text-align: center;
       /* Two digits and "99+" on one line, at the tab's own spacing: it grows to the right, never wraps. */
       white-space: nowrap; letter-spacing: 0; font-variant-numeric: tabular-nums;
     }

@@ -113,6 +113,17 @@ test('the cost line follows the level by its name, not its place: High on a six-
   expect(query('[data-testid=effort-cost]').textContent).toBe('Thinks it through, a little slower');
 });
 
+test('with Fast on, the cost line says what the level and Fast do together, never slower and sooner at once', () => {
+  const scale: EffortLevel[] = ['low', 'medium', 'high', 'xhigh', 'max'].map((id) => ({ id, label: id }));
+  mounted = mount(EffortSlider, { target: document.body, props: { levels: scale, active: 'high', onpick() {}, speeds: [{ id: 'fast', label: 'Fast' }], speed: 'fast', onspeed() {} } });
+  flushSync();
+  query<HTMLButtonElement>('[data-testid=composer-effort]').click();
+  flushSync();
+  const line = query('[data-testid=effort-cost]').textContent;
+  expect(line).toBe('Thinks it through, with Fast replying sooner for more of your limits');
+  expect(line).not.toContain('slower');
+});
+
 test('the fast switch reads its name beside the bolt whether it is on or off', async () => {
   const onspeed = vi.fn();
   mounted = mount(EffortSlider, { target: document.body, props: { levels: LEVELS, active: 'low', onpick() {}, speeds: [{ id: 'fast', label: 'Fast' }], speed: null, onspeed } });

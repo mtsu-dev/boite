@@ -5,7 +5,7 @@
   import { pinnedQuotas, PINNED_QUOTA_WIDTH } from '../lib/pinned-quotas.svelte';
   import Deferred, { parts } from './Deferred.svelte';
   import { ChevronDown, FolderOpen, VenetianMask } from '@lucide/svelte';
-  import { strings } from '../lib/strings';
+  import { fill, strings } from '../lib/strings';
   import { modePhrase } from '../lib/permission-modes';
   import { projectName } from '../lib/format';
   import type { Store } from '../lib/store.svelte';
@@ -21,7 +21,6 @@
   import ThreadRetry from './ThreadRetry.svelte';
   import ForkReturn from './ForkReturn.svelte';
   import ProjectTile from './ProjectTile.svelte';
-  import MachineIcon from './MachineIcon.svelte';
   import { workspace } from '../lib/workspace.svelte';
   import DoneThreadNotice from './DoneThreadNotice.svelte';
   import WorktreeGoneNotice from './WorktreeGoneNotice.svelte';
@@ -162,7 +161,7 @@
           <p>{strings.mobile.draftHint}</p>
           <span class="mobile-place">
             <span class="project-choice"><ProjectChoice {store} testid="mobile-draft-project" phone>{#if project}<ProjectTile {project} {store} />{:else}<FolderOpen size={15} />{/if}<span class="project-label ui-label">{project ? projectName(project) : strings.drafts.name}</span><ChevronDown size={14} /></ProjectChoice></span>
-            {#if machine}<span class="ui-label">{strings.thread.onMachine}</span><span class="machine" data-testid="mobile-draft-machine"><MachineIcon icon={machine.icon} os={store.core?.os} size={15} /><span class="ui-label">{machine.label}</span></span>{/if}
+            {#if machine}<span class="ui-label">{strings.thread.onMachine}</span><span class="machine" data-testid="mobile-draft-machine"><span class="ui-label">{machine.label}</span></span>{/if}
           </span>
           {#if draftChoice}<small>{modePhrase(draftChoice.permissionMode, draftProvider)}</small>{/if}
           {#if store.draft?.worktree}<small>{strings.thread.inWorktree}</small>{/if}
@@ -182,11 +181,13 @@
             </ProjectChoice></span>
             {#if machine}
               <span class="ui-label">{strings.thread.onMachine}</span>
-              <span class="machine" data-testid="draft-machine"><MachineIcon icon={machine.icon} os={store.core?.os} size={20} /><span class="ui-label">{machine.label}</span></span>
+              <!-- Plain words, not a picker's look: the machine follows the project, so nothing here changes it (round 20). -->
+              <span class="machine" data-testid="draft-machine"><span class="ui-label">{machine.label}</span></span>
             {/if}
           </h1>
           <!-- What this pane is for, said once: the task goes in the box, the agent works there, the thread lands in the list. -->
-          <p class="start-hint" data-testid="draft-hint">{strings.thread.startHint}</p>
+          <!-- Over the composer, the folder and the machine in full: where the task will run, before it is sent. -->
+          <p class="start-hint" data-testid="draft-hint">{project ? fill(machine ? strings.thread.startWhere : strings.thread.startWhereHere, { path: project.path, machine: machine?.label ?? '' }) : strings.thread.startHint}</p>
         </div>
     {/if}
 
@@ -245,7 +246,6 @@
   .mobile-welcome { display: none; }
   /* The machine reads as part of the sentence: no outline, since nothing opens from it. */
   .machine { display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
-  .machine :global(svg) { flex: none; color: var(--color-muted-foreground); }
   .machine .ui-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .locked {
     width: min(calc(100% - 40px), var(--content));
@@ -358,6 +358,7 @@
 
   .start-hint {
     max-width: 52ch;
+    overflow-wrap: anywhere;
     margin: 0;
     color: var(--color-muted-foreground);
     font-size: var(--text-base);

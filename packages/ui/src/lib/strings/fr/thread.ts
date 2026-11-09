@@ -54,7 +54,7 @@ export const fr: Translation = {
     panel: 'Panneau',
     panelHint: 'Afficher ou masquer le panneau',
     panelMenu: 'Panneaux',
-    manage: 'Déplacer ou confier à un bot',
+    manage: 'Déplacer vers un projet ou un bot',
     manageNoBot: 'Déplacer ou régénérer le titre',
     manageNoFolder: 'Confier à un bot ou régénérer le titre',
     manageTitle: 'Régénérer le titre ou copier le chemin',
@@ -70,6 +70,8 @@ export const fr: Translation = {
     inProject: 'dans',
     onMachine: 'sur',
     startHint: "Décrivez une tâche ci-dessous : l'agent travaille dans ce dossier, et le fil rejoint votre liste.",
+    startWhere: "Décrivez une tâche ci-dessous : l'agent travaille dans {path} sur {machine}, et le fil rejoint votre liste.",
+    startWhereHere: "Décrivez une tâche ci-dessous : l'agent travaille dans {path}, et le fil rejoint votre liste.",
     draftMode: {
       default: 'avec demandes d\'autorisation',
       acceptEdits: 'avec les modifications autorisées',

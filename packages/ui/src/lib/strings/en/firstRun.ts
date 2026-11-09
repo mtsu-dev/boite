@@ -16,5 +16,7 @@ export const strings = {
     /** The last row of the first run's agents: the connect dialog's whole list. */
     others: 'Other agents',
     otherMachine: 'Connect another computer or a phone',
+    /** Over the marks the lists use, each shown beside its word. */
+    marks: 'In your lists, each thread wears its state:',
   }
 } as const;

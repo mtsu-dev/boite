@@ -12,6 +12,7 @@ export const fr: Translation = {
     commands: 'Commandes',
     empty: 'Rien ne correspond.',
     newThread: 'Nouvelle conversation',
+    subagentOf: 'dans {parent}',
     addProject: 'Ajouter un projet',
     importSession: 'Importer une session Claude Code',
     settings: 'Ouvrir les réglages',

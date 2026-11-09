@@ -11,6 +11,7 @@
   import { machineName, workspace } from '../../lib/workspace.svelte';
   import { fill, strings } from '../../lib/strings';
   import { toolLine } from '../../lib/tool-groups';
+  import { focusComposer } from '../../lib/focus';
   import Elapsed from '../Elapsed.svelte';
   import Spinner from '../Spinner.svelte';
   import ProviderLogo from '../ProviderLogo.svelte';
@@ -160,7 +161,7 @@
       </section>
 
       {#if listsWork}
-        <section class="desk-card desk-work-card"><BotWorkList {view} agentId={agent.id} /></section>
+        <section class="desk-card desk-work-card"><BotWorkList {view} agentId={agent.id} ontask={phone.current ? undefined : () => focusComposer({ typing: true })} /></section>
       {/if}
     </div>
   {/if}

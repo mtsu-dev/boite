@@ -19,10 +19,11 @@
 
   /**
    * The top of an agent's conversation, in a thread header's pattern: on a
-   * desktop its name, the chevron that opens its view menu (find in the
-   * conversation, then its settings, its brain, pause and archive), and the
-   * same "Panels" door (`PanelDoor.svelte`), which opens on the desk. On a
-   * phone (`onback`) it is the screen's only head: its
+   * desktop its name where a thread's crumb starts, the chevron that opens
+   * its view menu (find in the conversation, then its settings, its brain,
+   * pause and archive), and the same "Panels" door (`PanelDoor.svelte`),
+   * which opens on the desk. On a phone (`onback`) it is the screen's only
+   * head: its
    * robot in its ring (breathing while it works), its name and one live line
    * that says what it does this second (the step its turn is on, with the time
    * it has run), what it waits on, or when it next wakes. A problem that keeps

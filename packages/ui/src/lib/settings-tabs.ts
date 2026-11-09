@@ -9,12 +9,10 @@ interface SettingsPage {
   machine?: true;
   /**
    * What a phone shows for it: the page itself, a phone page for some of its
-   * cards (`SECTION_PAGES`, the rest landing on the group's index), or Home,
+   * cards (`SECTION_PAGES`, the rest landing on its index), or Home,
    * where the phone has no such page.
    */
   phone: 'page' | 'sections' | 'home';
-  /** A phone routes it by its own entry, though the desktop shows it as a section of another. */
-  phoneOwn?: true;
 }
 
 /** The one table both layouts read a route from. */
@@ -23,22 +21,22 @@ const PAGES: Record<SettingsTab, SettingsPage> = {
   general: { machine: true, phone: 'sections' },
   appearance: { phone: 'page' },
   keyboard: { machine: true, phone: 'home' },
-  voice: { machine: true, phone: 'page', phoneOwn: true },
+  voice: { machine: true, phone: 'page' },
   // A phone lists the providers, as the desktop does; plugins stay on the
   // desktop: a phone shows Home, and the window widened again shows the page.
   accounts: { owner: true, machine: true, phone: 'page' },
-  plugins: { owner: true, machine: true, phone: 'home', phoneOwn: true },
+  plugins: { owner: true, machine: true, phone: 'home' },
   // The built-in browser of this device: its profiles and the sign-ins it hands to a machine's agent browser.
   browser: { owner: true, phone: 'page' },
   brain: { owner: true, machine: true, phone: 'page' },
-  usage: { phone: 'page', phoneOwn: true },
+  usage: { phone: 'page' },
   limits: { machine: true, phone: 'page' },
   'task-manager': { phone: 'page' },
   resources: { owner: true, machine: true, phone: 'page' },
   machines: { phone: 'page' },
   advanced: { machine: true, phone: 'sections' },
   diagnostics: { owner: true, machine: true, phone: 'page' },
-  experiments: { machine: true, phone: 'page', phoneOwn: true }
+  experiments: { machine: true, phone: 'page' }
 };
 
 /** The cards of a long desktop page that a phone shows on a page of their own, and that page. */
@@ -57,57 +55,34 @@ const SECTION_PAGES: Partial<Record<SettingsTab, Record<string, { page: PhoneSec
 export type PhoneSectionPage = 'conversations' | 'archived' | 'worktrees';
 
 /**
- * The eight entries Settings lists, desktop and phone alike, each led by the
- * page its entry opens. The other pages of a group are tabs at the top of its
- * card (desktop) or rows of its index (phone): a page keeps its id, its route
- * and its test ids, so an old link lands on the same page, inside its group.
- */
-export const SETTINGS_GROUPS = [
-  ['general', 'keyboard', 'voice'],
-  ['appearance'],
-  ['accounts', 'plugins'],
-  ['brain'],
-  ['limits', 'usage'],
-  ['browser'],
-  ['machines'],
-  ['advanced', 'experiments', 'diagnostics', 'resources', 'task-manager']
-] as const satisfies readonly (readonly SettingsTab[])[];
-
-/**
- * The few families the entries stand under, desktop nav and phone list alike,
- * each named for what a person comes to change (round 19: eight entries in one
- * column read as a heap): the app in front of them, the agents and what they
- * may spend, what connects outward. Advanced closes the list without a head,
- * as the last thing anyone looks for.
+ * The families Settings lists, desktop nav and phone list alike, each page a
+ * peer inside its family (round 20: a page indented under an unrelated one,
+ * Usage under Limits or Plugins under Providers, was only found by guessing
+ * its parent). Each family is named for what a person comes to change: the
+ * app in front of them, the agents and what they may spend, what connects
+ * outward, and the advanced pages last. A page merged into another
+ * (`MERGED`) stays out of the nav and opens as that page's section.
  */
 export const SETTINGS_FAMILIES = [
-  { id: 'app', leads: ['general', 'appearance'] },
-  { id: 'agents', leads: ['accounts', 'brain', 'limits'] },
-  { id: 'connections', leads: ['browser', 'machines'] },
-  { id: null, leads: ['advanced'] }
-] as const satisfies readonly { id: string | null; leads: readonly SettingsTab[] }[];
+  { id: 'app', pages: ['general', 'keyboard', 'voice', 'appearance'] },
+  { id: 'agents', pages: ['accounts', 'plugins', 'brain', 'limits', 'usage'] },
+  { id: 'connections', pages: ['browser', 'machines'] },
+  { id: 'advanced', pages: ['advanced', 'experiments', 'diagnostics', 'resources', 'task-manager'] }
+] as const satisfies readonly { id: string; pages: readonly SettingsTab[] }[];
 
-export type SettingsFamily = NonNullable<typeof SETTINGS_FAMILIES[number]['id']>;
+export type SettingsFamily = typeof SETTINGS_FAMILIES[number]['id'];
 
-/** The family a page stands under, by its group's lead. */
+/** The family a page stands under. */
 export function familyOf(tab: SettingsTab): SettingsFamily | null {
-  const lead = groupOf(tab);
-  return SETTINGS_FAMILIES.find((family) => (family.leads as readonly SettingsTab[]).includes(lead))?.id ?? null;
+  return SETTINGS_FAMILIES.find((family) => (family.pages as readonly SettingsTab[]).includes(tab))?.id ?? null;
 }
 
 /**
- * A page shown as a last section of another, once that one may open here, in
- * this order: Voice under General (round 16: three cards alone on a desktop
- * page read as an empty screen), Usage under Limits, Plugins under Accounts,
- * Experiments under Advanced, then Resources and the task manager, the live
- * half of Diagnostics. A paired device, which may not read the logs, still
- * gets the task manager as a page of its own.
+ * A page shown as a last section of another: Resources and the task manager,
+ * the live half of Diagnostics. A paired device, which may not read the logs,
+ * still gets the task manager as a page of its own.
  */
 const MERGED: Partial<Record<SettingsTab, SettingsTab>> = {
-  voice: 'general',
-  usage: 'limits',
-  plugins: 'accounts',
-  experiments: 'advanced',
   resources: 'diagnostics',
   'task-manager': 'diagnostics'
 };
@@ -132,11 +107,6 @@ export function movedTo(tab: SettingsTab, section: string | null | undefined): S
   return section ? MOVED[tab]?.[section] : undefined;
 }
 
-/** The page that leads a page's group: what the group's entry opens and marks. */
-export function groupOf(tab: SettingsTab): SettingsTab {
-  return SETTINGS_GROUPS.find((group) => (group as readonly SettingsTab[]).includes(tab))?.[0] ?? tab;
-}
-
 /** The page whose view shows a route: its own, or the one it is a section of. */
 export function viewOf(tab: SettingsTab, owner: boolean): SettingsTab {
   const host = MERGED[tab];
@@ -148,22 +118,10 @@ export function sectionsOf(view: SettingsTab, owner: boolean): SettingsTab[] {
   return (Object.keys(MERGED) as SettingsTab[]).filter((tab) => MERGED[tab] === view && viewOf(tab, owner) === view);
 }
 
-/** The tabs a group's card shows: its pages this window may open, those merged into another left out. */
-export function pagesOf(lead: SettingsTab, owner: boolean): SettingsTab[] {
-  const group: readonly SettingsTab[] = SETTINGS_GROUPS.find((members) => members[0] === lead) ?? [lead];
-  return group.filter((tab) => (owner || !ownerOnly(tab)) && viewOf(tab, owner) === tab);
-}
-
-/**
- * What the desktop nav lists under a group's entry, in the group's order: its
- * pages, and a page merged into the entry's own as a jump to that section, so
- * a section keeps its name in the nav (Voice, Usage, Plugins, Experiments, as
- * a phone lists them). A page merged into another member (Resources into
- * Diagnostics) stays out.
- */
-export function navOf(lead: SettingsTab, owner: boolean): SettingsTab[] {
-  const group: readonly SettingsTab[] = SETTINGS_GROUPS.find((members) => members[0] === lead) ?? [lead];
-  return group.filter((tab) => (owner || !ownerOnly(tab)) && (viewOf(tab, owner) === tab || viewOf(tab, owner) === lead));
+/** What the nav lists in a family, in its order: the pages this window may open, those merged into another left out. */
+export function navOf(family: SettingsFamily, owner: boolean): SettingsTab[] {
+  const pages: readonly SettingsTab[] = SETTINGS_FAMILIES.find((one) => one.id === family)?.pages ?? [];
+  return pages.filter((tab) => (owner || !ownerOnly(tab)) && viewOf(tab, owner) === tab);
 }
 
 export function ownerOnly(tab: SettingsTab): boolean {
@@ -195,7 +153,7 @@ export function desktopPage(tab: SettingsTab, owner: boolean): SettingsTab {
 /** The page a phone shows for a route: a whole page, one card's page, or Home. */
 export function phonePage(route: SettingsTab, section: string | null | undefined, owner: boolean): SettingsTab | PhoneSectionPage {
   const moved = movedTo(route, section) ?? route;
-  const tab = PAGES[moved].phoneOwn ? moved : viewOf(moved, owner);
+  const tab = viewOf(moved, owner);
   const page = PAGES[tab];
   if (page.owner && !owner) return 'home';
   if (page.phone === 'page') return tab;

@@ -60,4 +60,9 @@ test('Allow says its scope, one call, and the keys live in the titles, not as ke
   expect(button('permission-deny').textContent?.trim()).toBe('Deny');
   expect(button('permission-deny').title).toBe('Deny (Esc)');
   expect(document.querySelector('[data-testid=permission-card] kbd')).toBeNull();
+  // The decision pair: Deny outlined then Allow once solid, the same pair as a question's Skip and Answer.
+  const pair = [...document.querySelectorAll<HTMLButtonElement>('.decision-actions > button')];
+  expect(pair.map((entry) => entry.dataset.testid)).toEqual(['permission-deny', 'permission-allow']);
+  expect(button('permission-deny').classList.contains('secondary')).toBe(true);
+  expect(button('permission-allow').classList.contains('primary')).toBe(true);
 });

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { PauseCircle } from '@lucide/svelte';
   import { providerName } from '../lib/format';
+  import { accountName } from '../lib/account-name';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
 
@@ -8,9 +9,10 @@
   let pending = $state(false);
   let held = $derived(store.scheduler?.queued.find(entry => entry.threadId === store.openThread?.id && entry.queueHold));
   let execution = $derived(store.openThread?.turns.find(turn => turn.id === held?.turnId)?.execution);
+  let account = $derived(execution ? store.accounts.find(entry => entry.id === execution.accountId) : undefined);
   let target = $derived(execution ? fill(strings.thread.recoveryTarget, {
     model: execution.model ?? providerName(store, execution.providerId),
-    account: store.accounts.find(account => account.id === execution.accountId)?.label ?? execution.accountId,
+    account: account ? accountName(account) : execution.accountId,
   }) : null);
 
   async function recover(action: 'resume' | 'discard') {

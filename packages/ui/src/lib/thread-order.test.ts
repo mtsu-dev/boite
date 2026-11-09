@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { compareEntries, compareThreads } from './thread-order';
+import { compareEntries, compareRecent, compareThreads } from './thread-order';
 
 const base = { pinned: false, status: 'idle' as const, lastUserMessageAt: null, createdAt: 0 };
 
@@ -33,4 +33,15 @@ test('one status order: the user\'s turn (a question asked at work, a helper tha
   expect(entries.sort(compareEntries).map(entry => entry.thread.id)).toEqual(['helper-asks', 'asks-at-work', 'failed', 'running']);
   // Without the helpers, a thread's own state decides.
   expect(rows.sort(compareThreads).map(t => t.id)).toEqual(['asks-at-work', 'failed', 'running', 'helper-asks']);
+});
+
+test('Recent reads in strict time order under its pins: a thread that asks keeps its place by time', () => {
+  const store = { subagents: () => 0 as const };
+  const rows = [
+    { ...base, id: 'asks-old', status: 'waiting' as const, lastUserMessageAt: 1 },
+    { ...base, id: 'quiet-new', lastUserMessageAt: 9 },
+    { ...base, id: 'working-mid', status: 'running' as const, lastUserMessageAt: 5 },
+    { ...base, id: 'pinned-old', pinned: true, lastUserMessageAt: 0 }
+  ].map(thread => ({ thread, machine: { store } }));
+  expect(rows.sort(compareRecent).map(entry => entry.thread.id)).toEqual(['pinned-old', 'quiet-new', 'working-mid', 'asks-old']);
 });

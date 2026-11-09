@@ -65,7 +65,9 @@ test('Activity gives each row its reason and its time, a sub-agent under its par
   // Triage: what asks the user under "Needs you", before the updates' heading when there is one.
   const needs = document.querySelector<HTMLElement>('[data-testid=activity-needs]')!;
   // The section says its number, the tab badge's own: one count for both.
-  expect(needs.firstChild?.textContent).toBe('Needs you');
+  // The amber dot opens the head, as on the desktop Activity, then the words.
+  expect(needs.firstElementChild?.classList.contains('feed-dot')).toBe(true);
+  expect(needs.querySelector('.feed-dot')?.nextSibling?.textContent).toBe('Needs you');
   expect(needs.querySelector('.feed-count')?.textContent).toBe(document.querySelector('[data-testid=mobile-activity-waiting]')?.textContent);
   const updates = document.querySelector<HTMLElement>('[data-testid=activity-updates]');
   const asking = rows.find(row => asked.includes(row.querySelector('[data-testid=mobile-row-reason] .text')?.textContent ?? '') || /^Wants to run /.test(row.textContent ?? ''))!;

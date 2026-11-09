@@ -2,6 +2,7 @@
   import { Check, ChevronDown, UserRound } from '@lucide/svelte';
   import type { Account, ProviderSummary } from '@boite/contracts';
   import { strings } from '../lib/strings';
+  import { accountName } from '../lib/account-name';
   import type { Choice } from '../lib/store.svelte';
 
   /**
@@ -47,7 +48,7 @@
   function seatTitle(seat: Account): string {
     if (seatHeld(seat)) return strings.composer.lockedHint;
     const reason = seatReason(seat);
-    return reason === null ? seat.label : `${seat.label}, ${reason}`;
+    return reason === null ? accountName(seat) : `${accountName(seat)}, ${reason}`;
   }
 
   /** A signed-out login cannot run a turn: it signs in again from Providers, not from here. */
@@ -75,7 +76,7 @@
 {#if seats.length > 1}
   <div class="seats" class:start bind:this={root} aria-busy={busy}>
     <button type="button" class="current" data-testid="picker-account" aria-haspopup="true" aria-expanded={open} title={strings.accounts.heading} onclick={() => (open = !open)}>
-      {#if start}<UserRound size={14} strokeWidth={2} />{/if}<span class="ui-label">{current?.label}</span><ChevronDown size={12} strokeWidth={2} />
+      {#if start}<UserRound size={14} strokeWidth={2} />{/if}<span class="ui-label">{current ? accountName(current) : ''}</span><ChevronDown size={12} strokeWidth={2} />
     </button>
     <!-- Kept in the page while closed, so the list is the same nodes when it opens. -->
     <div class="list" role="group" aria-label={strings.accounts.heading} hidden={!open}>
@@ -91,7 +92,7 @@
           onclick={() => pickSeat(seat)}
         >
           <span class="mark" aria-hidden="true">{#if seat.id === shownAccountId}<Check size={14} />{/if}</span>
-          <span class="ui-label">{seat.label}</span>
+          <span class="ui-label">{accountName(seat)}</span>
         </button>
       {/each}
     </div>
@@ -100,6 +101,8 @@
 
 <style>
   .seats { position: relative; flex: none; min-width: 0; max-width: 50%; }
+  /* Alone on its line, the login reads whole: an address is longer than a label. */
+  .seats.start { max-width: 100%; }
 
   .current {
     display: flex;
@@ -130,7 +133,7 @@
     flex-direction: column;
     gap: 1px;
     min-width: 140px;
-    max-width: 220px;
+    max-width: 280px;
     padding: var(--overlay-pad);
     /* Every menu's one edge, radius and shadow. */
     border: 1px solid var(--overlay-edge);

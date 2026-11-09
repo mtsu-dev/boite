@@ -28,12 +28,13 @@ export const fr: Translation = {
     emptyTitle: 'Commencez une conversation',
     emptyBody: 'Confiez une tâche à un agent. Vos conversations apparaîtront ici.',
     emptyActivity: 'Tout est à jour',
+    nothingNeedsYou: 'Rien ne vous attend',
     computer: 'Ordinateur connecté',
     pairAgain: 'Rajouter',
     settingsPhone: 'Notifications',
     settingsBack: 'Retour aux réglages',
     /** Activity's second line: why the thread is listed. */
-    feed: { run: 'Veut lancer :', helperAsks: '{title} vous attend', updates: 'Nouvelles', verb: { answer: 'Répondre', allow: 'Autoriser', review: 'Examiner' } },
+    feed: { run: 'Veut lancer :', helperAsks: '{title} vous attend', updates: 'Nouvelles', verb: { answer: 'Répondre', allow: 'Autoriser', review: 'Examiner', deny: 'Refuser', skip: 'Passer' } },
     navigation: 'Navigation', activity: 'Activité',
     waitingElsewhere: '{count} en attente de vous',
     search: 'Trouver une conversation', noThreads: 'Aucune conversation ne correspond.'

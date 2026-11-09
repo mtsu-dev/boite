@@ -59,7 +59,7 @@ function manageParts(store: Store, thread: ThreadSummary, options: ThreadMenuOpt
 }
 
 /**
- * The named group ("Move or give to a bot", `more`, kept for the rows that
+ * The named group ("Move to a project or a bot", `more`, kept for the rows that
  * open it), under a way back to the thread's menu. Empty for a group of one,
  * which is a row on the first level instead. A phone folds it too, in its sheet.
  */

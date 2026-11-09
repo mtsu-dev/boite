@@ -16,7 +16,7 @@
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import { offeredCards, available as availableTo, label, tooltip } from '../lib/surface-labels';
-  import { ALL_PANELS, CUSTOMIZE, IN_USE, notePanelUse, panelChoices, usedPanels } from '../lib/panel-choices';
+  import { CUSTOMIZE, notePanelUse, panelChoices } from '../lib/panel-choices';
   import { openCoordination } from '../lib/coordination-request.svelte';
   import { arriveSurface } from '../lib/surface-swap';
   import { providePanelTools } from '../lib/panel-tools.svelte';
@@ -288,26 +288,10 @@
   }
 
 
-  /** Every panel kind at once: about 13 rows of 33 px, so the default 360 px cap cut the last one at 900 px tall. */
-  const SELECTOR_CAP = 560;
-  /** The selector shows every panel, after "All panels"; it opens on the short list again. */
-  let full = $state(false);
-  /** How many files the open thread changed, read when it opens and when a turn ends: the Changes row joins the short list. */
-  let changed = $state<{ thread: string; count: number } | null>(null);
-  let turnsDone = $derived(store.openThread?.turns.filter((turn) => turn.finishedAt !== null).length ?? 0);
-  $effect(() => {
-    const thread = store.openThread;
-    const id = thread?.id;
-    void turnsDone;
-    // Only a repository has a status to read: anywhere else the read fails out loud.
-    if (!id || !(thread.branch || store.projects?.find((project) => project.id === thread.projectId)?.repository)) return;
-    void store.gitStatus(id).then((status) => {
-      if (store.openThread?.id === id) changed = { thread: id, count: status?.changes.length ?? 0 };
-    });
-  });
-  let used = $derived(usedPanels(store, store.openThread, surfaces.map((surface) => surface.kind), changed?.thread === store.openThread?.id ? (changed?.count ?? null) : null));
-  /** The panel selector's list: the panels in use, then every panel by group (`lib/panel-choices.ts`). */
-  let choices = $derived(panelChoices(store, store.openThread, { phone, available, showing: active?.kind, used, full }));
+  /** Every panel at once, a Recent group on top: about 17 rows of 33 px and 4 headings; a shorter window scrolls the rest. */
+  const SELECTOR_CAP = 640;
+  /** The panel selector's list: the recent panels, then every panel by group (`lib/panel-choices.ts`). */
+  let choices = $derived(panelChoices(store, store.openThread, { phone, available, showing: active?.kind }));
   /** The selector's row that closes the showing panel: a phone's tab has no glyph to close it by. */
   const CLOSE_TAB = 'close-tab';
   /** The panel's own window rows, in its selector since the head holds the selector and the close only. They keep the buttons' test ids. */
@@ -340,7 +324,6 @@
     if (id === MAXIMIZE) rightPanel.maximized = !rightPanel.maximized;
     else if (id === DOCK) { rightPanel.floating = false; rightPanel.maximized = false; }
     else if (id === CLOSE_TAB) { if (active) void closeTabs(panel, 'close', active.id); }
-    else if (id === ALL_PANELS || id === IN_USE) full = id === ALL_PANELS;
     else if (id === CUSTOMIZE) store.showSettings('appearance', CONTROLS_SECTION);
     else if (id === 'terminal-toggle') store.toggleTerminal();
     else if (id === 'board-toggle' || id === 'coordination') {
@@ -457,8 +440,8 @@
             </button>
             <!-- The panel selector: the showing panel's name opens the list of every panel and tool. -->
             <!-- The tooltip on the trigger, not the tab: the list lives inside the tab and a native tooltip would cover its rows. -->
-            <span class="selector" class:with-thread={phone && !!threadTitle} use:arriveAfter>
-              <Menu items={headChoices} onpick={pickPanel} cap={SELECTOR_CAP} placement="bottom" variant="ghost" label={tooltip(surface)} heading={strings.thread.panelMenu} testid="panel-add" onclose={() => (full = false)}>
+            <span class="selector" class:with-thread={phone && !!threadTitle}>
+              <Menu items={headChoices} onpick={pickPanel} cap={SELECTOR_CAP} placement="bottom" variant="ghost" label={tooltip(surface)} heading={strings.thread.panelMenu} testid="panel-add">
                 <!-- A phone's title is the panel's name alone: the file it reads has its own picker in the body. -->
                 <!-- A phone's panel covers the thread: its title stays on top, one line, the panel named under it. -->
                 {#if phone && threadTitle}<span class="thread-line ui-label" data-testid="panel-thread-title">{threadTitle}</span>{/if}
@@ -486,7 +469,7 @@
       {#if empty}
         <!-- No panel yet: the selector stands alone, the launcher's title. -->
         <span class="selector alone">
-          <Menu items={headChoices} onpick={pickPanel} cap={SELECTOR_CAP} placement="bottom" variant="ghost" label={strings.thread.panelMenu} heading={strings.thread.panelMenu} titled={false} testid="panel-add" onclose={() => (full = false)}>
+          <Menu items={headChoices} onpick={pickPanel} cap={SELECTOR_CAP} placement="bottom" variant="ghost" label={strings.thread.panelMenu} heading={strings.thread.panelMenu} titled={false} testid="panel-add">
             <span class="name ui-label">{strings.thread.panelMenu}</span><ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
           </Menu>
         </span>
@@ -831,22 +814,20 @@
     flex-direction: column;
   }
 
-  /* A panel switch reads as one: the incoming body fades up from a low
-     opacity while it slides in a few pixels from the right, and the head's name
-     arrives with it, so the change shows even between two lists that look
-     alike. The old body has left in the same frame (keyed), so no frame holds
-     two. A browser's native view does not follow a transform: it only fades. */
+  /* A panel switch moves the body only: it slides in a few pixels from the
+     right while the head and the strip stay still, so the eye keeps its place
+     and reads the change where it happened. The old body has left in the same
+     frame (keyed), so no frame holds two. A browser's native view does not
+     follow a transform: it only fades. */
   .surface:global([data-arriving]) {
     animation: surface-in var(--motion-duration) var(--motion-curve) both;
   }
   .surface.native:global([data-arriving]) { animation-name: surface-fade; }
-  .selector:global([data-arriving]) { animation: title-in var(--motion-duration) var(--motion-curve) both; }
-  @keyframes surface-in { from { opacity: 0.25; transform: translateX(12px); } }
-  @keyframes surface-fade { from { opacity: 0.25; } }
-  @keyframes title-in { from { opacity: 0.2; transform: translateX(6px); } }
+  @keyframes surface-in { from { opacity: 0.4; transform: translateX(8px); } }
+  @keyframes surface-fade { from { opacity: 0.4; } }
   /* A cut under reduced motion, whatever the duration tokens say. */
-  @media (prefers-reduced-motion: reduce) { .surface:global([data-arriving]), .selector:global([data-arriving]) { animation: none; } }
-  :global(html[data-motion='reduced']) .surface:global([data-arriving]), :global(html[data-motion='reduced']) .selector:global([data-arriving]) { animation: none; }
+  @media (prefers-reduced-motion: reduce) { .surface:global([data-arriving]) { animation: none; } }
+  :global(html[data-motion='reduced']) .surface:global([data-arriving]) { animation: none; }
 
   @media (min-width: 721px) {
     .body {

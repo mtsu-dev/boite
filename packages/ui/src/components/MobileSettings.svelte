@@ -40,8 +40,8 @@
    */
   let { store, target = store, bar, onopenthread }: { store: Store; target?: Store; bar?: Snippet; onopenthread?: () => void } = $props();
   /**
-   * Home lists the desktop's groups (`SETTINGS_GROUPS`) in the desktop's order
-   * under the desktop's names, each one a phone has a page for. General and Advanced open an index of their pages: the cards a phone
+   * Home lists the desktop's families (`SETTINGS_FAMILIES`) in the desktop's order
+   * under the desktop's names, each page a phone has. General opens an index of its cards: the cards a phone
    * needs from the desktop's long pages, the archive or the keys, get a page
    * of their own, which a jump to the desktop's card (the palette, the project
    * menu) lands on too (`lib/settings-tabs.ts`). Notifications is this
@@ -52,9 +52,8 @@
   const openLocal = (screen: 'phone') => { local = { screen, tab: store.settingsTab, section: store.settingsSection }; };
   let routed = $derived(phonePage(store.settingsTab, store.settingsSection?.id, store.owner));
   let page = $derived(local && local.tab === store.settingsTab && local.section === store.settingsSection ? local.screen : routed);
-  const UNDER: Record<string, 'general' | 'advanced'> = {
-    phone: 'general', voice: 'general', conversations: 'general', archived: 'general', worktrees: 'general',
-    'task-manager': 'advanced', diagnostics: 'advanced', experiments: 'advanced'
+  const UNDER: Record<string, 'general'> = {
+    phone: 'general', conversations: 'general', archived: 'general', worktrees: 'general'
   };
   /** Home, a group's screen, or a page of a group's index. */
   const depthOf = (screen: string): number => screen === 'home' ? 0 : UNDER[screen] ? 2 : 1;
@@ -167,6 +166,7 @@
         <h2 class="family-head ui-label" id="mobile-family-app">{strings.settings.families.app}</h2>
         <div class="rows">
           {@render row('settings-tab-general', strings.settings.tabs.general, () => store.showSettings('general'), 'general')}
+          {@render row('settings-tab-voice', strings.speech.heading, () => store.showSettings('voice'), 'voice')}
           {@render row('settings-tab-appearance', strings.settings.tabs.appearance, () => store.showSettings('appearance'), 'appearance')}
         </div>
       </section>
@@ -175,8 +175,9 @@
         <div class="rows">
           {#if store.owner}{@render row('settings-tab-accounts', strings.settings.tabs.accounts, () => store.showSettings('accounts'), 'accounts')}{/if}
           {#if store.owner}{@render row('settings-tab-brain', strings.brain.heading, () => store.showSettings('brain'), 'brain')}{/if}
-          <!-- Usage is a page of Limits, as on the desktop: the entry wears the rail's gauge and opens on the limits. -->
+          <!-- Limits and Usage are peers, as on the desktop; their screen keeps both as two tabs. -->
           {@render row('settings-tab-limits', strings.usage.limits, () => store.showSettings('limits'), 'limits')}
+          {@render row('settings-tab-usage', strings.usage.heading, () => store.showSettings('usage'), 'usage')}
         </div>
       </section>
       <section class="family" aria-labelledby="mobile-family-connections" data-testid="settings-family" data-family="connections">
@@ -189,10 +190,18 @@
           </button>
         </div>
       </section>
-      <!-- Advanced closes the list without a head, as on the desktop. -->
-      <div class="family rows" data-testid="settings-family" data-family="more">
-        {@render row('settings-tab-advanced', strings.settings.tabs.advanced, () => store.showSettings('advanced'), 'advanced')}
-      </div>
+      <section class="family" aria-labelledby="mobile-family-advanced" data-testid="settings-family" data-family="advanced">
+        <h2 class="family-head ui-label" id="mobile-family-advanced">{strings.settings.families.advanced}</h2>
+        <div class="rows">
+          <!-- System holds one card on a phone, the machine's compaction: a paired phone has none to show. -->
+          {#if target.owner}{@render row('settings-tab-advanced', strings.settings.tabs.advanced, () => store.showSettings('advanced'), 'advanced')}{/if}
+          <!-- The phone follows the desktop app's experiments until it flips one here, and can follow it again from this page. -->
+          {@render row('settings-tab-experiments', strings.settings.tabs.experiments, () => store.showSettings('experiments'), 'experiments')}
+          <!-- The task manager is Diagnostics' last section (lib/settings-tabs.ts); a paired phone, without the logs, opens it alone. -->
+          {#if store.owner}{@render row('settings-tab-diagnostics', strings.diagnostics.heading, () => store.showSettings('diagnostics'), 'diagnostics')}
+          {:else}{@render row('settings-tab-task-manager', strings.taskManager.title, () => store.showSettings('task-manager'), 'task-manager')}{/if}
+        </div>
+      </section>
       <PolicySettings store={target} />
     </div>
   {:else}
@@ -203,11 +212,14 @@
     {@const quota = shown === 'usage' || shown === 'limits'}
     <header class:limits={shown === 'limits'} data-testid="mobile-settings-header">
       <button class="ghost icon" data-testid="mobile-settings-back" aria-label={strings.mobile.settingsBack} onclick={back}><ArrowLeft size={20} /></button>
-      <h1>{#if shown === 'limits'}<QuotaMachineScope store={target} fallback={title} />{:else}{title}{/if}{#if info}<InfoTip topic={title} text={info} testid="mobile-settings-info" />{/if}</h1>
+      <!-- The thread header's grammar: back, the title, one context line under it (where these settings apply). -->
+      <div class="heading">
+        <h1>{#if shown === 'limits'}<QuotaMachineScope store={target} fallback={title} />{:else}{title}{/if}{#if info}<InfoTip topic={title} text={info} testid="mobile-settings-info" />{/if}</h1>
+        {#if scope}<p class="scope page-scope" data-testid="mobile-settings-page-scope">{#if scope.device}<MonitorSmartphone size={14} strokeWidth={1.75} aria-hidden="true" />{:else}<Monitor size={14} strokeWidth={1.75} aria-hidden="true" />{/if}<span class="ui-label">{scope.text}</span></p>{/if}
+      </div>
     </header>
     <div class="detail" data-testid="mobile-settings-detail">
       {#if bar && ['accounts', 'brain', 'voice', 'limits', 'diagnostics', 'worktrees', 'archived'].includes(shown)}<div class="bar">{@render bar()}</div>{/if}
-      {#if scope}<p class="scope page-scope" data-testid="mobile-settings-page-scope">{#if scope.device}<MonitorSmartphone size={14} strokeWidth={1.75} aria-hidden="true" />{:else}<Monitor size={14} strokeWidth={1.75} aria-hidden="true" />{/if}<span class="ui-label">{scope.text}</span></p>{/if}
       {#key target}
       {#if quota}
         <div class="tabs" role="tablist" aria-label={strings.usage.heading} data-testid="mobile-usage-tabs">
@@ -220,7 +232,6 @@
           <div class="rows">
             {@render row('mobile-settings-conversations', strings.settings.conversations, () => store.showSettings('general', 'conversations'), 'conversations')}
             {@render row('mobile-settings-phone', strings.mobile.settingsPhone, () => openLocal('phone'), 'phone')}
-            {@render row('settings-tab-voice', strings.speech.heading, () => store.showSettings('voice'), 'voice')}
             {@render row('mobile-settings-archived', strings.settings.archived.heading, () => store.showSettings('general', 'archived'), 'archived')}
             <!-- The keys agents ask for live under Providers, the windows agents may see under Machines (round 18). -->
             {#if store.owner}
@@ -232,14 +243,7 @@
         </div>
       {:else if shown === 'advanced'}
         <div class="page index" data-testid="mobile-settings-advanced">
-          <div class="rows">
-            <!-- The phone follows the desktop app's experiments until it flips one here, and can follow it again from this page. -->
-            {@render row('settings-tab-experiments', strings.settings.tabs.experiments, () => store.showSettings('experiments'), 'experiments')}
-            <!-- The task manager is Diagnostics' last section (lib/settings-tabs.ts); a paired phone, without the logs, opens it alone. -->
-            {#if store.owner}{@render row('settings-tab-diagnostics', strings.diagnostics.heading, () => store.showSettings('diagnostics'), 'diagnostics')}
-            {:else}{@render row('settings-tab-task-manager', strings.taskManager.title, () => store.showSettings('task-manager'), 'task-manager')}{/if}
-          </div>
-          <!-- Compaction is one card: it sits at the index's foot, under the machine it changes. -->
+          <!-- Compaction is the one card of System a phone carries, under the machine it changes. -->
           {#if target.owner}
             {#if bar}<div class="bar inline">{@render bar()}</div>{/if}
             <div class="card-slot" id="settings-auto-compact"><CompactionSettings store={target} /></div>
@@ -334,7 +338,7 @@
   header { flex: none; display: flex; align-items: center; gap: var(--space-2); min-height: 52px; padding: max(var(--space-2), env(safe-area-inset-top)) max(var(--space-3), env(safe-area-inset-right)) var(--space-2) max(var(--space-3), env(safe-area-inset-left)); border-bottom: 1px solid var(--color-border); }
   header .icon { width: 44px; min-height: 44px; }
   header h1 { margin: 0; font-size: var(--text-md); font-weight: 600; }
-  header.limits h1 { flex: 1; min-width: 0; margin-right: 54px; }
+  header.limits h1 { flex: 1; min-width: 0; }
   .phone-page { padding: var(--space-4); }
   /* Usage and Limits: two tabs of one screen, in one track, the chosen one filled. */
   .tabs { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 2px; margin: var(--space-4) var(--space-4) 0; padding: 2px; border: 1px solid var(--color-edge); border-radius: var(--radius-lg); background: var(--color-surface-2); }
@@ -373,8 +377,12 @@
   /* Its title stepped aside, the card keeps no room above it for one. */
   .archived-page :global(#settings-archived),
   .worktrees-page :global(#settings-worktrees) { margin-top: 0; }
-  /* The page's scope, under its header, before its first card's title. */
-  .page-scope { margin: var(--space-3) var(--space-4) 0; }
+  /* The title and its one context line, stacked as the thread header's (ThreadHeader.svelte). */
+  .heading { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+  header.limits .heading h1 { margin-right: 54px; }
+  .page-scope { display: flex; align-items: center; gap: 6px; min-width: 0; margin: 2px 0 0; color: var(--color-subtle); font-size: var(--text-meta); line-height: 1.3; }
+  .page-scope > .ui-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .page-scope > :global(svg) { flex: none; }
   /* A row's icon leads it in the grey of the chrome's icons; the chevron at its end stays the quietest. */
   .row :global(svg.lead) { color: var(--color-muted-foreground); }
   /* A bar inside a page, above the one card that changes a machine. */

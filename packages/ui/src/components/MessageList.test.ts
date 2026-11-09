@@ -304,6 +304,9 @@ test('an agent thread folds a finished turn\'s steps behind the count on its sum
   const worked = [...document.querySelectorAll<HTMLElement>('[data-testid="turn-steps"]')];
   // Its answers are signed with its name, not the provider's.
   expect([...document.querySelectorAll('[data-testid="message-model"]')].map(node => node.textContent?.trim())).toContain('Nova');
+  // With its face beside the name, grey at rest by the owner's rule: no colour until the pointer or a notice lights it.
+  const signed = [...document.querySelectorAll('[data-testid="message-model"]')].find(node => node.textContent?.trim() === 'Nova')!;
+  expect(signed.querySelector('[data-testid="message-bot"] .agent-avatar')?.hasAttribute('data-lit')).toBe(false);
   expect(timeline()).not.toMatch(/^Echo|\bEcho\b/);
   expect(worked.map(button => button.textContent?.trim())).toEqual(['Ran 2 commands', 'Ran 3 commands and read 1 file']);
   expect(worked[1]!.closest('[data-testid="turn-summary"]')?.textContent).toMatch(/Worked for 2m 0\ds.*done/);
@@ -927,7 +930,7 @@ test('what arrives while the reader is scrolled up is counted on the way back, a
   timeline.dispatchEvent(new Event('scroll'));
   await settle();
   const jumpButton = () => document.querySelector<HTMLButtonElement>('[data-testid=jump-to-latest]');
-  expect(jumpButton()?.textContent?.trim()).toBe('Latest');
+  expect(jumpButton()?.textContent?.trim()).toBe('Jump to newest');
 
   const last = messages.at(-1)!;
   messages.push({ ...JSON.parse(JSON.stringify(last)), id: 'm-new-1' }, { ...JSON.parse(JSON.stringify(last)), id: 'm-new-2' });
@@ -950,7 +953,7 @@ test('a thread reopened where the reader left it, above the bottom, counts what 
   running = mount(MessageList, { target: document.body, props: { store: live, threadId: 't-long', messages } });
   await settle();
   const jumpButton = () => document.querySelector<HTMLButtonElement>('[data-testid=jump-to-latest]');
-  expect(jumpButton()?.textContent?.trim()).toBe('Latest');
+  expect(jumpButton()?.textContent?.trim()).toBe('Jump to newest');
 
   messages.push({ ...JSON.parse(JSON.stringify(messages.at(-1)!)), id: 'm-new-1' });
   scrollHeight = messages.length * ESTIMATE;

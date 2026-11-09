@@ -143,13 +143,14 @@ test('a desktop has two levels: the gear opens the nav, its search and the first
   expect(document.querySelector('[data-testid^=settings-home-]')).toBeNull();
   await waitFor(() => document.querySelector('[data-testid=settings-tab-general]')?.getAttribute('aria-current') === 'page');
   expect(query('[data-testid=settings-crumb] h1').textContent?.trim()).toBe('General');
-  // The entries stand under a few family heads, Advanced last without one (round 19).
+  // The entries stand under four family heads, Advanced named like the others (round 20).
   expect([...document.querySelectorAll<HTMLElement>('nav [data-testid=settings-family]')].map((family) => [family.dataset.family, family.querySelector('.family-head')?.textContent ?? null])).toEqual([
-    ['app', 'App'], ['agents', 'Agents'], ['connections', 'Connections'], ['more', null]
+    ['app', 'App'], ['agents', 'Agents'], ['connections', 'Connections'], ['advanced', 'Advanced']
   ]);
   expect(query('[data-family=connections] [data-testid=settings-tab-browser]')).toBeTruthy();
-  // A group's other pages are nav entries under it: Keyboard is one click from anywhere.
-  expect(query('[data-testid=settings-tab-keyboard]').classList.contains('sub')).toBe(true);
+  // Every page is a peer in its family, none indented under another: Keyboard is one click from anywhere.
+  expect(query('[data-family=app] [data-testid=settings-tab-keyboard]')).toBeTruthy();
+  expect(document.querySelector('nav [data-testid^=settings-tab-].sub')).toBeNull();
   expect(document.querySelector('[data-testid=settings-pages]')).toBeNull();
 
   const field = query<HTMLInputElement>('[data-testid=settings-search]');
@@ -177,15 +178,15 @@ test('a desktop has two levels: the gear opens the nav, its search and the first
   await waitFor(() => document.querySelector('[data-testid=settings]') === null);
 });
 
-test('Voice closes General on a desktop and keeps its nav entry, which lands on its section and lights', async ({ app: _app }) => {
+test('Voice is a peer of General in the App family on a desktop: its nav entry opens its own page and lights', async ({ app: _app }) => {
   query<HTMLButtonElement>('[data-testid=nav-settings]').click();
   await waitFor(() => document.querySelector('[data-testid=settings-tab-voice]') !== null);
-  expect(query('[data-testid=settings-tab-voice]').classList.contains('sub')).toBe(true);
+  expect(query('[data-family=app] [data-testid=settings-tab-voice]')).toBeTruthy();
   query<HTMLButtonElement>('[data-testid=settings-tab-voice]').click();
-  await waitFor(() => document.querySelector('#settings-voice [data-testid=voice-settings]') !== null);
-  // One page: General's cards above, Voice its last section.
-  expect(query('[data-testid=settings-crumb] h1').textContent?.trim()).toBe('General');
-  expect(document.querySelector('#settings-conversations')).not.toBeNull();
+  await waitFor(() => document.querySelector('[data-testid=voice-settings]') !== null);
+  // Its own page: the crumb names it, General's cards stay on General.
+  expect(query('[data-testid=settings-crumb] h1').textContent?.trim()).toBe('Voice');
+  expect(document.querySelector('#settings-conversations')).toBeNull();
   expect(query('[data-testid=settings-tab-voice]').getAttribute('aria-current')).toBe('page');
   expect(query('[data-testid=settings-tab-general]').getAttribute('aria-current')).toBeNull();
   query<HTMLButtonElement>('[data-testid=settings-back]').click();

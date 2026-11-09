@@ -17,7 +17,7 @@ export const strings = {
       home: 'Home',
       general: 'General',
       machines: 'Machines and updates',
-      advanced: 'Advanced',
+      advanced: 'System',
       appearance: 'Appearance',
       keyboard: 'Keyboard',
       accounts: 'Providers',
@@ -29,7 +29,7 @@ export const strings = {
       browser: 'Browser'
     },
     /** The heads the Settings entries stand under (lib/settings-tabs.ts `SETTINGS_FAMILIES`). */
-    families: { app: 'App', agents: 'Agents', connections: 'Connections' },
+    families: { app: 'App', agents: 'Agents', connections: 'Connections', advanced: 'Advanced' },
     back: 'Back to threads',
     search: 'Search settings',
     searchEmpty: 'No setting matches',
@@ -120,6 +120,10 @@ export const strings = {
     /** What the reading studies found, behind the label's "i": why there is a choice at all. */
     fontHint: 'No face reads fastest for everyone: in a 2022 study each reader was about 35% faster in their best face than in their worst, and taste seldom picked the fastest. Each name in the list is set in its own face.',
     fontSystem: 'System',
+    /** A line under the text font row, drawn in the face in use at the reading size: what a reply looks like. */
+    fontSample: 'The agent read four files, fixed the parser and ran 128 tests.',
+    /** The same under the code font row, in the code face: the glyphs that get confused (Il1, O0, rn) side by side. */
+    monoSample: 'const rows = parse(file); // Il1 O0 rn',
     /** Drawn in every face of the picker: mixed case, digits, and the glyphs that get confused (Il1, O0, rn). */
     monoFont: 'Code font',
     monoSystem: 'System',
@@ -165,6 +169,8 @@ export const strings = {
     chatWidthWide: 'Wide',
     chatWidthFull: 'Full',
     /** One plain line under the chat width row: what the chosen width does. */
+    /** A paragraph in a small window under the chat width row, set at the width picked or pointed at. */
+    chatWidthSample: 'A reply sets its lines at the width you pick: the conversation, the composer and the cards beside them widen together.',
     chatWidthResult: { comfortable: 'Lines stop at an easy reading width.', wide: 'Lines run wider, for code and tables.', full: 'Lines fill the whole window.' },
     terminalCursor: 'Terminal cursor',
     terminalCursorBar: 'Bar',

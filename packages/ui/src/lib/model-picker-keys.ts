@@ -71,7 +71,8 @@ export function pickerKeydown(picker: PickerKeyState): (event: KeyboardEvent) =>
     if (event.key === 'Enter') {
       // A focused row is activated by the browser too; taking the default keeps it to one pick.
       event.preventDefault();
-      const row = active === searchBox ? modelRows()[0] : active;
+      // From the field, the first model: a provider row above it only opens a list.
+      const row = active === searchBox ? modelRows().find((entry) => entry.classList.contains('model')) : active;
       row?.click();
       return true;
     }

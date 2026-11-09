@@ -227,7 +227,9 @@
     padding: 0;
   }
 
-  /* The row is its own button: the main action's box covers it; the merge link and the menu stand above. */
+  /* The row is its own button: the main action's box covers it; the merge link and the menu stand above.
+     The thread list's rhythm (ThreadCard, MobileThreadRow): a 20 px title line in 7 px of padding, the place
+     2 px under it on an 18 px line, so an archived row stands as tall as the live row it was. */
   .archived li {
     position: relative;
     display: grid;
@@ -235,18 +237,24 @@
     align-items: center;
     gap: 2px 10px;
     min-height: var(--row);
-    padding: 6px 10px;
+    padding: 7px 8px;
     transition: background var(--dur-2) var(--ease-out-quint);
   }
   .archived li + li { border-top: 1px solid var(--color-border); }
   .archived li:hover { background: var(--color-hover); }
 
+  /* Two lines at most, as a list's title: the whole one is the row's tooltip. */
   .title {
     grid-column: 1;
     grid-row: 1;
     min-width: 0;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
     overflow-wrap: anywhere;
-    line-height: 1.45;
+    line-height: 20px;
     font-size: var(--text-body);
   }
   /* Since when, at the title line's end, the live rows' place; the row's action takes it under the pointer. */
@@ -261,20 +269,30 @@
   }
   .archived li:is(:hover, :focus-within):not(.back) .at { visibility: hidden; }
 
+  /* One line, as the list's place line. A part that does not fit beside the others (a deletion date at 360 px)
+     takes a second line whole rather than losing its last characters: a date cut short reads as another date. */
   .context {
     grid-column: 1;
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
-    gap: 2px 6px;
+    gap: 0;
     min-width: 0;
-    font-size: var(--text-sm);
-    line-height: 1.4;
+    margin-top: -2px;
+    /* Every part carries its dot before it, and the line starts one dot's width early, clipped: a part that
+       opens a line (the first, or one that wrapped at 360 px) shows no dot, so a second line never starts with one. */
+    margin-left: -16px;
+    clip-path: inset(0 0 0 16px);
+    overflow: hidden;
+    white-space: nowrap;
+    font-size: var(--text-xs);
+    line-height: 18px;
     color: var(--color-subtle);
   }
-  .part { min-width: 0; overflow-wrap: anywhere; }
-  /* The dot between two parts, whichever are there. */
-  .part + .part::before { content: '·'; margin-right: 6px; color: var(--color-subtle); }
+  /* Only a part longer than the whole line (a long project name) ends in an ellipsis. */
+  .part { flex: 0 1 auto; min-width: calc(3ch + 16px); overflow: hidden; text-overflow: ellipsis; }
+  /* The dot between two parts, whichever are there: 6 px either side of it. */
+  .part::before { content: '·'; display: inline-block; width: 16px; text-align: center; color: var(--color-subtle); }
   .archive-reason a { position: relative; z-index: 1; color: inherit; text-underline-offset: 2px; }
 
   /* The action and the menu at the row's right, over the time's place. */
@@ -301,13 +319,14 @@
   @media (max-width: 720px) {
     .archived li:not(:hover, :focus-within) .actions :global(.trigger) { opacity: 1; }
     /* The menu always shows there, so it takes the second line's end and the time keeps the first's; its target
-       overhangs the line rather than growing it, so the rows keep the live list's rhythm (title, place, time). */
-    .actions { grid-row: 2; margin-block: -12px; }
+       overhangs the 18 px place line rather than growing it (44 less 2 x 13), so the rows keep the live list's
+       rhythm (title, place, time). */
+    .actions { grid-row: 2; margin-block: -13px; }
     /* The tap on the row restores there, so its unseen Restore word gives its width back to the title; its box
        still covers the row, since that box belongs to the row, not to the button. */
     .archived li:not(.back) .main { width: 0; min-width: 0; padding: 0; border: 0; margin: 0; overflow: hidden; }
     .archived li { padding-block: 10px; row-gap: 4px; }
-    .title { font-size: var(--text-reading); line-height: 1.35; }
+    .title { font-size: var(--text-reading); line-height: 22px; }
     .archived li:is(:hover, :focus-within):not(.back) .at { visibility: visible; }
     .archived li { padding-inline: 0; }
     /* Brought into view (Settings opened at the archive), the phone page's machine bar above stays whole rather than

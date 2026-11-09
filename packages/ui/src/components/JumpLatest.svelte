@@ -10,7 +10,7 @@
 
 {#if latest.behind && latest.jump}
   <button type="button" class="jump" data-testid="jump-to-latest" aria-label={label} onclick={() => latest.jump?.()}>
-    <ArrowDown size={14} strokeWidth={2} />
+    <ArrowDown size={14} />
     <span class="ui-label">{label}</span>
   </button>
 {/if}

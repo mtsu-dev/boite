@@ -6,6 +6,7 @@
   import { dayClock } from '../lib/format';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
+  import DecisionActions from './DecisionActions.svelte';
 
   /**
    * An agent asked to capture an app its project does not allow (docs/windows.md):
@@ -62,11 +63,12 @@
     </div>
     <p class="hint">{fill(s.waits, { time: dayClock(part.expiresAt) })}</p>
     {#if error}<p class="error" role="status" data-testid="window-consent-error">{error}</p>{/if}
-    <div class="actions">
+    <!-- The app's one decision pair (DecisionActions.svelte): outlines first, the solid primary last. -->
+    <DecisionActions>
+      <button type="button" class="secondary" data-testid="window-consent-refuse" disabled={busy} onmousedown={keepFocus} onclick={() => answer('refuse')}><span class="ui-label">{s.refuse}</span></button>
+      <button type="button" class="secondary" data-testid="window-consent-always" disabled={busy} onmousedown={keepFocus} onclick={() => answer('always')}><span class="ui-label">{s.always}</span></button>
       <button type="button" class="primary" data-testid="window-consent-once" disabled={busy} onmousedown={keepFocus} onclick={() => answer('once')}><span class="ui-label">{s.once}</span></button>
-      <button type="button" class="ghost" data-testid="window-consent-always" disabled={busy} onmousedown={keepFocus} onclick={() => answer('always')}><span class="ui-label">{s.always}</span></button>
-      <button type="button" class="ghost" data-testid="window-consent-refuse" disabled={busy} onmousedown={keepFocus} onclick={() => answer('refuse')}><span class="ui-label">{s.refuse}</span></button>
-    </div>
+    </DecisionActions>
   </div>
 {/if}
 
@@ -99,7 +101,6 @@
   .path { font-size: var(--text-xs); color: var(--color-muted-foreground); overflow-wrap: anywhere; }
   .hint { margin: 0; font-size: var(--text-sm); color: var(--color-muted-foreground); }
   .error { margin: 0; font-size: var(--text-sm); color: var(--color-danger); overflow-wrap: anywhere; }
-  .actions { display: flex; flex-wrap: wrap; gap: 6px; }
 
   /* Answered or expired: one quiet row in the timeline, like an answered question. */
   .consent.resolved {

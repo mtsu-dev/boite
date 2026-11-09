@@ -6,6 +6,7 @@
   import { strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import { teamHeading, teamOfAsk } from '../lib/team-requests';
+  import DecisionActions from './DecisionActions.svelte';
 
   /**
    * A bot's team card (`boite team propose|invite|leave`). The core offers
@@ -91,12 +92,13 @@
     {#if !store.owner}
       <p class="hint" data-testid="team-card-guest-hint">{words.guestHint}</p>
     {/if}
-    <div class="actions">
+    <!-- The app's one decision pair (DecisionActions.svelte): the outline first, the solid primary last. -->
+    <DecisionActions>
+      <button type="button" class="secondary" data-testid="team-card-refuse" disabled={busy} onmousedown={keepFocus} onclick={refuse}><span class="ui-label">{words.refuse}</span></button>
       {#if store.owner}
         <button type="button" class="primary" data-testid="team-card-apply" disabled={busy} onmousedown={keepFocus} onclick={apply}><span class="ui-label">{words.apply[team.kind]}</span></button>
       {/if}
-      <button type="button" class="ghost" data-testid="team-card-refuse" disabled={busy} onmousedown={keepFocus} onclick={refuse}><span class="ui-label">{words.refuse}</span></button>
-    </div>
+    </DecisionActions>
   </div>
 {/if}
 
@@ -127,7 +129,6 @@
 
   .reason { margin: 0; font-weight: 500; white-space: pre-wrap; overflow-wrap: anywhere; }
   .hint { margin: 0; font-size: var(--text-sm); color: var(--color-muted-foreground); }
-  .actions { display: flex; flex-wrap: wrap; gap: 6px; }
 
   /* Closed: one quiet row in the timeline, like an answered question. */
   .team-card.resolved {

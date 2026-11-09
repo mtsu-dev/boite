@@ -46,7 +46,10 @@
 .bot-work.idle { flex: 1; justify-content: center; align-items: center; gap: 10px; padding: 0 12px 15%; text-align: center; }
 .bot-work-face { display: block; }
 .bot-work-empty { margin: 0; font-size: var(--text-sm); line-height: 1.5; color: var(--color-muted-foreground); }
-.agent-desk .bot-section { padding: 6px 8px 4px; }
+.agent-desk .bot-section { padding: 6px 0 4px; }
+/* The Desk's sections share one inset, the body's: headings, labels and the rows' marks start on one edge, and a
+   row's hover ground bleeds out past it (round 20: Handling and Done sat 8 px in). */
+.agent-desk .desk-row { margin-inline: -10px; }
 .agent-desk .bot-work > .bot-section:first-child { padding-top: 2px; }
 .bot-member { display: flex; align-items: center; justify-content: flex-start; gap: 10px; height: auto; min-height: 34px; padding: 6px 10px; border: 0; border-radius: var(--radius-md); background: none; box-shadow: none; text-align: left; color: var(--color-foreground); }
 .bot-member:hover:not(:disabled) { background: var(--color-hover); }
@@ -84,11 +87,13 @@
 .agent-live[data-state='working'] .agent-live-text { color: var(--color-foreground); }
 /* A desktop draws it in the window's top bar: the name and "Conversation" from the left, the buttons at the far right. */
 .agent-head.compact { flex: 1; min-width: 0; min-height: 0; height: 100%; padding: 0 6px 0 0; border-bottom: none; }
-.agent-head.compact .agent-head-identity { flex: 0 1 auto; height: var(--control); margin-left: 0; padding: 0 8px; border-radius: var(--radius-md); }
+/* The thread header's grammar and spacing (ThreadHeader.svelte): the name starts where a thread's crumb does
+   (6 px of padding pulled back over the bar's edge), in the title's weight, and its chevron keeps the title's gap. */
+.agent-head.compact .agent-head-identity { flex: 0 1 auto; height: var(--control); margin-left: -6px; padding: 0 6px; border-radius: var(--radius-md); }
 .agent-head.compact .agent-head-actions { margin-left: auto; }
 .agent-head.compact .agent-head-text strong { font-size: inherit; font-weight: 550; }
 /* The view menu's chevron beside the name, as a thread title's (ThreadHeader.svelte). */
-.agent-head-menu { display: flex; flex: none; margin-left: -6px; }
+.agent-head-menu { display: flex; flex: none; }
 .agent-head-menu .trigger { min-width: 32px; min-height: 32px; justify-content: center; }
 .agent-head-actions { display: flex; align-items: center; gap: 2px; flex: none; }
 .agent-head-actions .menu .trigger.ghost { width: var(--control); height: var(--control); padding: 0; }
@@ -302,10 +307,6 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 .desk-progress > span { position: absolute; inset: 0 auto 0 0; width: 40%; border-radius: inherit; background: var(--color-accent); animation: desk-sweep 1.8s var(--loop-ease-in-out-48) infinite var(--loops); }
 @keyframes desk-sweep { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
 .desk-work-card { padding: 8px 0; }
-/* An empty desk is a prompt in the room left under memory, around its optical centre, not a line over a void. */
-.agent-desk > .desk-body { flex: 1 0 auto; }
-.desk-work-card:has(.bot-work-empty) { flex: 1; }
-.agent-desk .bot-work:has(> .bot-work-empty) { flex: 1; justify-content: center; align-items: center; gap: 10px; padding: 0 12px 15%; text-align: center; }
 .desk-activity { border-top: 1px solid var(--color-border); padding-top: 4px; }
 .desk-activity > summary { display: flex; align-items: center; gap: 6px; min-height: var(--control-sm); color: var(--color-muted-foreground); font-size: var(--text-xs); cursor: pointer; list-style: none; }
 .desk-activity > summary:hover { color: var(--color-foreground); }

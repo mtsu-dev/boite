@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { accountName } from '../lib/account-name';
   import InfoTip from './InfoTip.svelte';
   import PolicyLock from './PolicyLock.svelte';
   import HarnessUpdatesCard from './HarnessUpdatesCard.svelte';
@@ -527,7 +528,7 @@
     <div class="section-head">
       <span class="section-label"><span class="ui-label">{strings.providerSettings.defaultModel}</span><InfoTip topic={strings.providerSettings.defaultModel} text={strings.settings.modelDefaultsHint} /></span>
       <!-- A default is the account's: the row says whose, where it is changed. -->
-      <CardScope account={account.label} />
+      <CardScope account={accountName(account)} />
     </div>
     <div class="default-model" data-testid="model-default" data-default-provider={provider.id}>
       <ModelPicker

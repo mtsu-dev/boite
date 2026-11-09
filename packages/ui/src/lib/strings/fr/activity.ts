@@ -5,7 +5,7 @@ export const fr: Translation = {
   activity: {
     goal: 'Objectif',
     question: 'Vous attend',
-    questionOf: '{index}/{total}',
+    questionOf: 'Question {index} sur {total}',
     questionPrev: 'Question précédente',
     questionNext: 'Question suivante',
     questionFold: 'Replier la question',

@@ -37,12 +37,13 @@
   import { projectKey, projectView, type ProjectEntry } from '../lib/project-view.svelte';
   import { activeProject, archiveCount, projectSections, projectThreadView } from '../lib/project-threads.svelte';
   import { workingThread } from '../lib/recent.svelte';
-  import { compareEntries } from '../lib/thread-order';
+  import { compareEntries, compareRecent } from '../lib/thread-order';
   import { rowPlaces } from '../lib/row-place';
   import { hostName } from '../lib/machine-host';
   import { activityFeed, feedGroups, storeNeedsYou, type FeedVerb } from '../lib/activity-feed';
   import { tabHeader } from '../lib/tab-header.svelte';
-  import EmptyState from './EmptyState.svelte';
+  import EmptyState, { HOUSE_BOT } from './EmptyState.svelte';
+  import RobotFace from './agents/RobotFace.svelte';
   import { threadsNeedingYou } from '../lib/app-rail';
   import { needsUser, threadState } from '../lib/thread-state';
   import { foldQuiet } from '../lib/card-fold';
@@ -136,7 +137,8 @@
   let rows: (typeof entries[number] & { reason?: string; at?: number; nested?: boolean; section?: 'needs' | 'updates'; verb?: FeedVerb | null })[] = $derived(listScreen === 'activity'
     ? activityFeed(entries.filter(matches), feedPlace)
     : entries.filter(e => matches(e) && !e.thread.parentThreadId && !e.project?.archived && (workspace.view !== 'recent' || !selected || (e.machine.id === selected.machine.id && e.thread.projectId === selected.project.id)))
-      .sort(compareEntries));
+      // Recent is a flat history, newest first under the pins, as on the desktop; the cards rank by status.
+      .sort(listScreen === 'threads' && workspace.view === 'recent' ? compareRecent : compareEntries));
   const inRecent = $derived(listScreen === 'threads' && workspace.view === 'recent');
   /** Recent's line under the title starts with where the row lives, once the tiles alone may not tell rows apart. */
   /** This app's own machine goes unsaid on Recent's place line and on the cards: the other machines are named. */
@@ -398,7 +400,9 @@
       {@const asked = ContactInboxRows && contactsShown(store) && !query}
       {@const needsCount = needs.length + (asked ? inbox.contacts : 0)}
       <!-- The section's number is the tab's badge: its top rows (a sub-agent counts on its parent) and what contacts ask. -->
-      {#if needsCount > 0}<h2 class="section-label feed-section" data-testid="activity-needs" data-count={needsCount}>{strings.sidebar.state.waiting}<span class="feed-count">{count(needsCount)}</span></h2>{/if}
+      <!-- The amber dot beside "Needs you", as on the desktop page; only updates left, the house bot says nothing waits. -->
+      {#if needsCount > 0}<h2 class="section-label feed-section" data-testid="activity-needs" data-count={needsCount}><span class="feed-dot" aria-hidden="true"></span>{strings.sidebar.state.waiting}<span class="feed-count">{count(needsCount)}</span></h2>
+      {:else if rows.length > 0}<p class="all-done" data-testid="activity-all-done"><span class="face" aria-hidden="true"><RobotFace robot={HOUSE_BOT} /></span>{strings.mobile.nothingNeedsYou}</p>{/if}
       {#if asked && ContactInboxRows}<ContactInboxRows {store} />{/if}
       <WindowList items={needs} keyOf={group => JSON.stringify([group.row.machine.id, group.row.thread.id])} {scrollRoot} estimate={66} measurements={measurements('activity')}>
         {#snippet row(group)}{@render threadRow(group.row, false, group.helpers)}{/snippet}
@@ -494,7 +498,8 @@
     .project-heading { display: flex; align-items: center; padding: 8px 12px; gap: 8px; color: var(--color-muted-foreground); }
     /* The name, then its machine in quiet ink, on one line: the machine gives way first. */
     .project-heading h2 { display: flex; align-items: center; gap: 8px; margin: 0; flex: 1; min-width: 0; font-size: var(--text-sm); }
-    .project-heading .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* The card's title at the title weight and ink, as the desktop card's name (Sidebar.svelte .name). */
+    .project-heading .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--weight-title); color: var(--color-foreground); }
     /* The machine as a place (MachinePlace.svelte): its name gives way before the project's, its state never. */
     .project-heading h2 :global(.machine-place) { flex: 0 1000 auto; }
     /* A whole touch target that eats the heading's padding rather than making it taller. */
@@ -528,5 +533,10 @@
     .feed-section ~ .feed-section { margin-top: 20px; }
     /* The section's count, the tab badge's number: amber marks it, the word stays grey. */
     .feed-count { margin-left: 6px; color: var(--color-live); font-variant-numeric: tabular-nums; }
+    .feed-section[data-testid=activity-needs] { display: flex; align-items: center; }
+    .feed-dot { width: 8px; height: 8px; margin-right: 8px; flex: none; border-radius: var(--radius-full); background: var(--color-live); }
+    .all-done { display: flex; align-items: center; gap: 10px; margin: 8px 12px 4px; font-size: var(--text-sm); font-weight: 500; color: var(--color-muted-foreground); }
+    .face { display: block; width: 24px; height: 24px; flex: none; }
+    .face :global(svg.robot) { display: block; width: 100%; height: 100%; border-radius: 50%; }
   }
 </style>

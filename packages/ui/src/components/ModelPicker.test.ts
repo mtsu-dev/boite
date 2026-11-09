@@ -29,18 +29,11 @@ async function waitFor(check: () => boolean): Promise<void> {
   throw new Error(`gave up waiting, body was:\n${document.body.textContent ?? ''}`);
 }
 
-/** The picker opens on the models in use once there are two of them; every provider sits behind "All models". */
+/** The picker opens on the chip's own provider with its models open under its row. */
 async function allModels(): Promise<void> {
   await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null);
-  const refresh = () => document.querySelector('[data-testid=composer-picker-menu] [data-testid=picker-refresh]');
-  if (!refresh()) {
-    // The source button unfolds the providers in place; the chip's own provider shows its catalogue.
-    document.querySelector<HTMLButtonElement>('[data-testid=picker-all-models]')!.click();
-    const providerId = store.openThread?.providerId ?? store.draftChoice?.providerId ?? store.defaultChoice()?.providerId;
-    await waitFor(() => document.querySelector(`[data-testid=composer-picker-menu] .tile[data-provider="${providerId}"][data-row]`) !== null);
-    document.querySelector<HTMLButtonElement>(`[data-testid=composer-picker-menu] .tile[data-provider="${providerId}"]`)!.click();
-  }
-  await waitFor(() => refresh() !== null);
+  const providerId = store.openThread?.providerId ?? store.draftChoice?.providerId ?? store.defaultChoice()?.providerId;
+  await waitFor(() => document.querySelector(`[data-testid=composer-picker-menu] [data-models-of="${providerId}"]`) !== null);
 }
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
@@ -137,14 +130,13 @@ test('a short gateway catalog identifies each upstream provider, including after
   await waitFor(() => rows() === 2);
   expect(sources()).toEqual(['douane/opencode', 'douane/openrouter']);
   expect(document.querySelector<HTMLButtonElement>(`[data-model="${models[1]!.id}"]`)!.title).toBe(models[1]!.id);
-  // The models in use are the first source the source button unfolds, so no back row stacks over the list.
-  document.querySelector<HTMLButtonElement>('[data-testid=picker-all-models]')!.click();
-  const back = document.querySelector<HTMLButtonElement>('[data-testid=picker-back]')!;
-  await waitFor(() => !back.closest('.sources')!.hasAttribute('hidden'));
-  expect(back.textContent?.trim()).toBe('Your models');
+  // Back on another provider, the two starred models read under Recent, no back row over the list,
+  // each with its route beside the provider in the line under its name.
+  search.value = '';
+  search.dispatchEvent(new Event('input', { bubbles: true }));
+  await waitFor(() => document.querySelector('[data-testid=composer-picker-menu] .tile[data-provider=claude]') !== null);
+  document.querySelector<HTMLButtonElement>('[data-testid=composer-picker-menu] .tile[data-provider=claude]')!.click();
   expect(document.querySelector('[data-testid=composer-picker-menu] .back-row')).toBeNull();
-  // That source lists the two starred models, each with its route beside the provider in the line under its name.
-  back.click();
   await waitFor(() => document.querySelectorAll('[data-testid=favorite-model]').length >= 2);
   for (const [index, source] of ['douane/opencode', 'douane/openrouter'].entries()) {
     const favorite = document.querySelector<HTMLButtonElement>(`[data-testid=favorite-model][title="${models[index]!.id}"]`)!;

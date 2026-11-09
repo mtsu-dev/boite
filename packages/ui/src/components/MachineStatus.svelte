@@ -53,7 +53,8 @@
 <div class="machines" class:problem={issues > 0} class:filtered={chosen !== null} data-testid={testid === 'machine-status' ? 'status-connection' : `${testid}-status`} data-state={store.connection} aria-live="polite">
   {#if shown}
     <Menu {items} onpick={choose} {label} variant="ghost" {testid} titled={!card}>
-      {#if issues}<TriangleAlert size={16} />{:else}<Monitor size={16} />{#if away.length > 0}<span class="off" data-testid="machine-offline" aria-hidden="true"></span>{/if}{/if}
+      <!-- The rail's optical size and stroke (the chat icon's), and one connection dot: green while this machine is connected, grey while one is away. -->
+      {#if issues}<TriangleAlert size={19} />{:else}<Monitor size={19} />{#if away.length > 0}<span class="dot off" data-testid="machine-offline" aria-hidden="true"></span>{:else if store.connection === 'ready'}<span class="dot on" data-testid="machine-online" aria-hidden="true"></span>{/if}{/if}
       {#if chosen}<span class="name ui-label">{machineName(chosen)}</span>{/if}
     </Menu>
     {@render card?.(name, trouble ?? (chosen ? machineName(chosen) : null))}
@@ -69,8 +70,12 @@
      name ran out of the button instead of ending in an ellipsis. */
   .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .machines :global(.trigger) { position: relative; }
-  /* The rail's overlay slot (AppRail.svelte's `.badge`): a grey dot cut out of the chrome. */
-  .off { position: absolute; right: 4px; bottom: 4px; width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--color-subtle); box-shadow: 0 0 0 2px var(--color-frame); }
+  /* On the screen's lower right corner (the glyph is 19 px in the middle of the button), cut out of the chrome:
+     the phone header's dot (MobileNavigation.svelte), so a connection reads the same on both. */
+  .dot { position: absolute; left: calc(50% + 5px); top: calc(50% - 1px); width: 7px; height: 7px; border-radius: var(--radius-full); box-shadow: 0 0 0 2px var(--color-frame); }
+  .dot.on { background: var(--color-success); }
+  .dot.off { background: var(--color-subtle); }
+  .machines :global(.trigger:hover .dot) { box-shadow: 0 0 0 2px var(--color-hover); }
   .problem { color: var(--color-caution); }
   .problem :global(.trigger) { color: var(--color-caution); }
 </style>

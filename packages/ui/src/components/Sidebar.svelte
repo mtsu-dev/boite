@@ -9,7 +9,7 @@
   import { workspace, type Machine } from '../lib/workspace.svelte';
   import { fill, strings } from '../lib/strings';
   import { projectName } from '../lib/format';
-  import { compareEntries } from '../lib/thread-order';
+  import { compareRecent } from '../lib/thread-order';
   import { rowPlaces } from '../lib/row-place';
   import { hostName } from '../lib/machine-host';
   import { projectRollup, threadState } from '../lib/thread-state';
@@ -131,7 +131,7 @@
           .threadsOf(project.id)
           .map((thread) => ({ machine, project, thread }))
       )
-      .sort(compareEntries)
+      .sort(compareRecent)
   );
   /** Recent's second line: where each row lives, once the tiles alone may not tell them apart; this app's own machine goes unsaid. */
   const places = $derived(rowPlaces(recent, machines.find(machine => machine.store === workspace.primary)?.id));
@@ -154,15 +154,6 @@
   }
   let working = $derived(recentPreferences.groupWorking ? recent.filter(({ machine, thread }) => groupWorkingThread(machine.store, thread)) : []);
   let attention = $derived(recentPreferences.groupWorking ? recent.filter(({ machine, thread }) => !groupWorkingThread(machine.store, thread)) : recent);
-  /**
-   * Recent puts the threads with something to say (the user's turn, a failure, work, news) and the pinned ones above a
-   * hairline, the ones that only show a time under it; each part keeps the list's order, and Alt+digit counts them as drawn.
-   */
-  let split = $derived.by(() => {
-    const active: typeof attention = [], older: typeof attention = [];
-    for (const entry of attention) (entry.thread.pinned || threadState(entry.thread, rowAsks(entry.machine.store, entry.thread.id)) !== null ? active : older).push(entry);
-    return { active, older };
-  });
   const listsFor = projectListMap();
   /** The cards whose quiet threads the user unfolded, by project key, for this session. */
   let unfolded = $state<Record<string, true>>({});
@@ -194,7 +185,7 @@
   // Alt+1 to Alt+9 count the rows as drawn: this view, open projects, then unfolded idle history.
   $effect(() => {
     sidebarRows.list = (workspace.view === 'recent'
-      ? [...split.active, ...split.older].map(({ machine, thread }) => ({ store: machine.store, threadId: thread.id })).concat(doneRows, (workingOpen ? working : []).map(({ machine, thread }) => ({ store: machine.store, threadId: thread.id })), archivedRows)
+      ? attention.map(({ machine, thread }) => ({ store: machine.store, threadId: thread.id })).concat(doneRows, (workingOpen ? working : []).map(({ machine, thread }) => ({ store: machine.store, threadId: thread.id })), archivedRows)
       : projectRows().concat(idleRows)
     ).slice(0, 9);
   });
@@ -265,11 +256,8 @@
           <DraftRow owner={machine.store} {entry} />
         {/each}
       {/each}
-      <WindowList items={split.active} keyOf={entry => JSON.stringify([entry.machine.id, entry.thread.id])} {scrollRoot} estimate={34} measurements={measurements('recent')}>
-        {#snippet row(entry)}<ThreadCard {...entry} {now} compact showDone where={places(entry)} />{/snippet}
-      </WindowList>
-      {#if split.active.length > 0 && split.older.length > 0}<p class="rest-line" data-testid="recent-earlier"><span class="ui-label">{strings.sidebar.earlierThreads}</span></p>{/if}
-      <WindowList items={split.older} keyOf={entry => JSON.stringify([entry.machine.id, entry.thread.id])} {scrollRoot} estimate={34} measurements={measurements('recent-rest')}>
+      <!-- One history, newest first under the pins (lib/thread-order.ts compareRecent): the marks say what needs you. -->
+      <WindowList items={attention} keyOf={entry => JSON.stringify([entry.machine.id, entry.thread.id])} {scrollRoot} estimate={54} measurements={measurements('recent')}>
         {#snippet row(entry)}<ThreadCard {...entry} {now} compact showDone where={places(entry)} />{/snippet}
       </WindowList>
       <!-- Done is the display menu's filter: on, the finished threads follow the live ones. -->
@@ -430,8 +418,6 @@
   }
   /* Recent's label between the threads with something to say and the ones at rest: a word, not a bare rule, on
      the titles' edge in the label's ink, a hairline running on to the row's end. */
-  .rest-line { display: flex; align-items: center; gap: 8px; margin: 10px 0 4px; padding: 0 10px; color: var(--color-muted-foreground); font-size: var(--text-meta); }
-  .rest-line::after { content: ''; flex: 1; height: 1px; background: var(--color-border); }
   .empty {
     display: flex;
     flex-direction: column;

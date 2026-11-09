@@ -33,3 +33,11 @@ export function compareEntries(a: Entry, b: Entry): number {
     || threadRank(a.thread as ThreadSummary, rowAsks(a.machine.store, a.thread.id)) - threadRank(b.thread as ThreadSummary, rowAsks(b.machine.store, b.thread.id))
     || lastActivity(b.thread) - lastActivity(a.thread);
 }
+
+/**
+ * Recent's order, a flat history: pinned threads, then strictly the last message, newest first. Its rows keep their
+ * marks (a dot, a ring), so what needs the user still shows; the cards and Activity rank by status instead.
+ */
+export function compareRecent(a: Pick<Entry, 'thread'>, b: Pick<Entry, 'thread'>): number {
+  return Number(b.thread.pinned) - Number(a.thread.pinned) || lastActivity(b.thread) - lastActivity(a.thread);
+}
