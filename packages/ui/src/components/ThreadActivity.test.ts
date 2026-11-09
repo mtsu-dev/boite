@@ -147,7 +147,7 @@ test('another thread\'s question comes up open over one folded here, as many que
   expect(document.querySelector('[data-testid=activity-question]:not([hidden])')!.getAttribute('data-question')).toBe('second');
 });
 
-test('a subagent\'s questions stay out of its parent\'s dock while permissions still link to the child', () => {
+test('a subagent\'s questions stay out of its parent\'s dock while permissions still link to the child', async () => {
   const question = (id: string, threadId: string, async: boolean): QuestionRequest => ({
     id, threadId, turnId: 'turn', text: `Which way for ${id}?`, options: [{ id: 'a', label: 'A' }], allowText: true, multiple: false, ...(async ? { async: true } : {}), createdAt: 1
   });
@@ -170,7 +170,7 @@ test('a subagent\'s questions stay out of its parent\'s dock while permissions s
   const wait = document.querySelector<HTMLElement>('[data-testid=activity-subagent-permission]')!;
   expect(wait.dataset['thread']).toBe('child');
   expect(wait.textContent).toContain('Migrate the keys waits for your permission');
-  expect(wait.textContent).toContain('Run a command');
+  await vi.waitFor(() => expect(wait.textContent).toContain('Run migrate'));
   wait.querySelector<HTMLButtonElement>('[data-testid=activity-open-subagent]')!.click();
   expect(open).toHaveBeenLastCalledWith('child');
 });

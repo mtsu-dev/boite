@@ -16,7 +16,7 @@
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import { offeredCards, available as availableTo, label, tooltip } from '../lib/surface-labels';
-  import { CUSTOMIZE, notePanelUse, panelChoices } from '../lib/panel-choices';
+  import { CUSTOMIZE, notePanelUse, panelChoices, panelPlace, usedPanels } from '../lib/panel-choices';
   import { panelSwitch } from '../lib/panel-switch.svelte';
   import { surfaceGlyph } from '../lib/surface-glyphs';
   import { openCoordination } from '../lib/coordination-request.svelte';
@@ -101,12 +101,18 @@
 
   /**
    * A surface a tab switch brings: there in the frame the old one leaves,
-   * one fade from a high opacity (`lib/surface-swap.ts`).
-   * Only once the panel is in, so the panel landing plays no second entrance.
-   * The strip above stays still: a new tab appears in place.
+   * one fade from a high opacity and a few pixels from the side of its place
+   * in the launcher (`lib/surface-swap.ts`). Only once the panel is in, so the
+   * panel landing plays no second entrance. The strip above stays still.
    */
+  let shownKind: string | null = null;
   function arriveAfter(node: HTMLElement): void {
-    if (untrack(() => entered)) arriveSurface(node);
+    const kind = untrack(() => active?.kind) ?? null, before = shownKind;
+    shownKind = kind;
+    if (!untrack(() => entered)) return;
+    // A browser's native view would not follow a transform: it only fades.
+    const still = !kind || !before || kind === 'browser' || kind === 'agent-browser';
+    arriveSurface(node, undefined, still ? 0 : panelPlace(kind) - panelPlace(before));
   }
 
   /** What a phone's head keeps beside the panel's door: the thread, or the bot whose desk this is. */
@@ -282,15 +288,18 @@
   }
 
 
-  /** The recent panels live in storage: a use noted makes the list again, so the door, mounted before the panel, lists it first. */
+  /** The panels this thread used live outside the runes: a use noted makes the list again. */
   let noted = $state(0);
-  /** The switcher's list, every panel at once: a Recent group on top, then every panel by group (`lib/panel-choices.ts`). */
+  /** The launcher's list, every panel at once: the ones this thread used on top, then every panel by group (`lib/panel-choices.ts`). */
   let choices = $derived.by(() => {
     void noted;
-    return panelChoices(store, store.openThread, { phone, available, showing: active?.kind });
+    const thread = store.openThread?.id ?? null;
+    return panelChoices(store, store.openThread, { phone, available, showing: active?.kind, used: usedPanels(store, thread, active?.kind) });
   });
   function note(kind: string): void {
-    notePanelUse(kind);
+    const thread = store.openThread?.id;
+    if (!thread) return;
+    notePanelUse(store, thread, kind);
     noted++;
   }
   /** The switcher's closing rows: a desktop's door no longer shuts the panel on a click, a phone's tab has no glyph to close it by. */
@@ -327,10 +336,10 @@
     return () => { if (panelSwitch.store === store) panelSwitch.store = null; };
   });
 
-  // The panel showing is the one used last: the switcher lists it first next time, on any thread.
+  // The panel showing is the one this thread used last: the launcher lists it first.
   $effect(() => {
     const kind = active?.kind;
-    if (kind) untrack(() => note(kind));
+    if (kind && store.openThread) untrack(() => note(kind));
   });
 
   function pickPanel(id: string): void {
@@ -469,7 +478,8 @@
       </button>
     {/if}
 
-    <span class="spacer"></span>
+    <!-- The showing surface's head goes here (SurfaceHead.svelte): one head, named on the door. A phone's strip holds the thread and the door. -->
+    {#if phone}<span class="spacer"></span>{:else}<div class="surface-head" data-testid="panel-surface-head" bind:this={tools.slot}></div>{/if}
 
     {#if phone}
       <!-- A phone's panel covers the thread: its title stays on top, and the door beside it names the panel and switches it. -->
@@ -479,7 +489,7 @@
 
     <button
       type="button"
-      class="ghost small icon panel-close"
+      class="icon-button panel-close"
       title={phone ? (tools.back?.label ?? strings.rightPanel.backToChat) : strings.common.close}
       aria-label={phone ? (tools.back?.label ?? strings.rightPanel.backToChat) : strings.common.close}
       data-testid="panel-close"
@@ -608,15 +618,18 @@
     height: var(--control);
     width: var(--control);
   }
-  /* The close, the head's one exit, takes a full 32 px square (as the header's buttons do). */
-  .strip button.small.icon.panel-close { width: var(--control-head); height: var(--control-head); }
+  /* The close and the head's refresh are app.css's icon button, their box as large as their 32 px target. */
+  .panel-close, .surface-head :global(button.icon-button) { flex: none; margin: calc((var(--icon-button-target) - var(--icon-button)) / 2); }
   /* The tabs scroll, so they clip: a keyboard ring drawn outside a tab or its close would be cut, it goes inside. */
   .tabs :global(:focus-visible) { outline-offset: -2px; }
 
   /* Only the tabs give way. A control that shrank too took part of the room the
      chevrons cost, so the tabs lost less than `measure` counted and the
      chevrons went and came back on every frame at the panel's narrowest. */
-  .strip > :not(.tabs, .spacer, .thread-line) {
+  .surface-head { flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; padding-left: 8px; overflow: hidden; color: var(--color-muted-foreground); font-size: var(--text-sm); }
+  /* Its actions are the strip's targets: 32 px, each named by its tooltip. */
+  .surface-head :global(button.small.icon) { width: var(--control-head); height: var(--control-head); }
+  .strip > :not(.tabs, .spacer, .thread-line, .surface-head) {
     flex: none;
   }
 
@@ -717,14 +730,15 @@
     flex-direction: column;
   }
 
-  /* A panel switch changes the body only: it fades in while the head and the
-     strip stay still, so the eye keeps its place. The old body has left in the
-     same frame (keyed), so no frame holds two. No transform: a browser's native
-     view would not follow one. */
+  /* A panel switch changes the body only: it fades in and slides a few pixels
+     from its side while the strip stays still, so the eye keeps its place. The
+     old body has left in the same frame (keyed), so no frame holds two. Filled
+     backwards only: a transform left on after the end would hold the surface's
+     fixed children. */
   .surface:global([data-arriving]) {
-    animation: surface-fade var(--motion-duration) var(--motion-curve) both;
+    animation: surface-fade var(--motion-duration) var(--motion-curve) backwards;
   }
-  @keyframes surface-fade { from { opacity: 0.4; } }
+  @keyframes surface-fade { from { opacity: 0.4; transform: translateX(var(--arrive-x, 0px)); } }
   /* A cut under reduced motion, whatever the duration tokens say. */
   @media (prefers-reduced-motion: reduce) { .surface:global([data-arriving]) { animation: none; } }
   :global(html[data-motion='reduced']) .surface:global([data-arriving]) { animation: none; }
@@ -784,7 +798,7 @@
 
   @media (max-width: 720px) {
     /* One back arrow, the thread's title, then the door that names the panel and switches it. */
-    .strip button.small.icon.panel-close { order: -1; width: var(--touch-target); height: var(--touch-target); margin-left: -6px; }
+    .panel-close { order: -1; margin-left: -2px; }
     .tabs, .chev, .spacer { display: none; }
     .strip { gap: 6px; }
     .strip :global(.panel-door) { margin-left: auto; }

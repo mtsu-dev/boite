@@ -11,6 +11,7 @@
   import AgentAvatar from './AgentAvatar.svelte';
   import RemoteChip from './RemoteChip.svelte';
   import AgentDiscussion from './AgentDiscussion.svelte';
+  import SurfaceHead from './SurfaceHead.svelte';
 
   /**
    * The conversations this thread's agent talked with, one row each, the most
@@ -54,6 +55,7 @@
 </script>
 
 <section class="mail" data-testid="agent-messages-surface">
+{#if discussions.length > 0}<SurfaceHead><h2 class="ui-label head-line" data-testid="agent-messages-head">{discussions.length === 1 ? strings.agentMessages.headOne : fill(strings.agentMessages.headMany, { count: count(discussions.length) })}</h2></SurfaceHead>{/if}
 <div class="split" class:detail={current !== undefined}>
   <div class="discussions" data-testid="agent-discussions" bind:this={rows}>
     {#if discussions.length === 0}
@@ -98,6 +100,7 @@
 </section>
 
 <style>
+  .head-line { min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-foreground); font-size: var(--text-sm); font-weight: 500; }
   .mail { container: messages / inline-size; flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .split { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
   .split.detail { grid-template-columns: minmax(220px, 0.42fr) minmax(0, 1fr); }

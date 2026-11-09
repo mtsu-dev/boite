@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ArrowUp, LoaderCircle, Mic, MicOff, Square, UserX } from '@lucide/svelte';
+  import { ArrowUp, LoaderCircle, Mic, MicOff, Square } from '@lucide/svelte';
   import { tick } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import { effectiveCompaction, type PermissionMode, type ProviderSummary } from '@boite/contracts';
@@ -139,27 +139,10 @@
    */
   const phoneWidth = new MediaQuery('(max-width: 720px)');
   let providersReachable = $derived(store.owner && desktopSettings(phoneWidth.current));
-  /**
-   * The thread names an account that was removed and its agent has no other
-   * account to move to on the next send: it sends again once another one is picked.
-   */
-  let accountRemoved = $derived(!target && store.openThread !== null && store.accounts.length > 0 && store.accountOf(store.openThread.accountId) === null
-    && store.usableAccountOf(store.openThread.providerId, store.openThread.accountId) === null);
   // One word per mode, one plain line under it, the long sentence on hover.
   // A legacy mode still live (`plan`) keeps its own choice until another is picked.
   let modeChoices = $derived<ModeChoice[]>([...modes, ...modes.includes(displayedMode) ? [] : [displayedMode]]
     .map((mode) => ({ id: mode, label: modeWord(mode, provider), hint: modeLabel(mode, provider), title: modeHint(mode, provider), icon: modeIcon(mode) })));
-  /** The account behind this box is gone: the row says so first, with its remedy. */
-  let accountGone = $derived(botGone || accountRemoved);
-  /**
-   * The remedy: a bot's other accounts are the banner's menu (AgentProblem),
-   * opened from here; a thread picks a model on another account.
-   */
-  function pickAccount() {
-    const menu = botGone ? bar?.ownerDocument.querySelector<HTMLElement>('[data-testid="agent-problem-account"]') : null;
-    if (menu) { menu.scrollIntoView?.({ block: 'nearest' }); menu.click(); return; }
-    void openChip('composer-picker');
-  }
   /** A bot keeps its model, effort and mode in its settings: its chips read them and open nothing. */
   let botHint = $derived(bot ? fill(botGone ? strings.composer.botAccountGone : strings.composer.botSettings, { name: bot }) : '');
   // The worktree switch exists where the core can honour it: a draft on a
@@ -302,12 +285,6 @@
   <!-- Two lines on a phone, each control in its own place: what runs the turn (model, effort), then how it runs (permission) with the context at the end. A desktop reads them as one row. -->
   <div class="chips">
     <div class="line runs">
-    {#if accountGone}
-      <!-- The state and its remedy in one chip, first in the row: the chips after it name a route that no longer runs. -->
-      <button type="button" class="ui-chip trigger gone" data-testid={botGone ? 'composer-bot-gone' : 'composer-account-removed'} title={botGone ? botHint : strings.accounts.removedHint} onclick={pickAccount}>
-        <UserX size={14} strokeWidth={1.75} /><span class="ui-label state">{strings.accounts.removed}</span><span class="ui-label">{strings.agents.pickAccount}</span>
-      </button>
-    {/if}
     <!-- A bot's model is its own setting: its chip names it and changes nothing here. -->
     <ModelPicker bind:this={chip} {store} {choice} disabled={picking} readonly={bot !== null} readonlyHint={botHint} onpick={pick} />
     {#if choice && (effortLevels.length > 0 || speeds.length > 0)}
@@ -359,9 +336,9 @@
       <Deferred part={parts.Dictation}>
         {#snippet children(Dictation)}<Dictation {store} onbusy={(busy) => dictating = busy} {onpreview} ontext={ontranscript} />{/snippet}
         <!-- The microphone's idle face until its chunk lands (App starts it with the app): same box, same glyph, nothing to press yet. -->
-        {#snippet pending()}<span class="dictation-stand-in"><button type="button" class="icon" title={strings.speech.start} aria-label={strings.speech.start} disabled><Mic size={16} strokeWidth={1.75} /></button></span>{/snippet}
+        {#snippet pending()}<span class="dictation-stand-in"><button type="button" class="icon-button" title={strings.speech.start} aria-label={strings.speech.start} disabled><Mic size={16} strokeWidth={1.75} /></button></span>{/snippet}
         <!-- A chunk that failed: the same button says so and asks again. -->
-        {#snippet failure(retry)}<span class="dictation-stand-in failed"><button type="button" class="icon" data-testid="dictation-retry" title={strings.parts.dictationFailed} aria-label={strings.parts.dictationFailed} onclick={retry}><MicOff size={16} strokeWidth={1.75} /></button></span>{/snippet}
+        {#snippet failure(retry)}<span class="dictation-stand-in failed"><button type="button" class="icon-button" data-testid="dictation-retry" title={strings.parts.dictationFailed} aria-label={strings.parts.dictationFailed} onclick={retry}><MicOff size={16} strokeWidth={1.75} /></button></span>{/snippet}
       </Deferred>
     {/key}
   {/key}
@@ -391,7 +368,7 @@
 
 <style>
   .dictation-stand-in { display: flex; align-items: center; flex: none; }
-  .dictation-stand-in button { flex: none; width: var(--control); height: var(--control); }
+  .dictation-stand-in button { flex: none; margin: calc((var(--icon-button-target) - var(--icon-button)) / 2); }
   .dictation-stand-in.failed button { color: var(--color-danger); }
   /* The button in the chip bar is what opens it; the field itself never shows. */
   .file {
@@ -401,13 +378,8 @@
   .context-control { display: flex; flex: none; }
 
   .chips .ui-chip.signed-out { color: var(--color-live); }
-  /* The gone account: the glyph in the live ink, the state at full ink, the
-     remedy one step quieter; no tinted pill. */
-  .bar .chips .gone { color: var(--color-muted-foreground); }
-  .gone .state { color: var(--color-foreground); font-weight: 500; }
   /* Every chip's chevron is the same quiet mark: the value stays what the eye reads. */
   .chips :global(.trigger > .lucide-chevron-down) { flex: none; opacity: .6; }
-  .gone :global(svg) { color: var(--color-live); }
 
   /* Every child is one control high, so the end is the centre on one row; on a
      composer too narrow for one, the tools sit on the chips' last row. */
@@ -491,9 +463,6 @@
   /* Stop is send's circle at send's size in a neutral fill: the accent stays send's. */
   .bar .stop { border-color: transparent; background: var(--color-active); box-shadow: none; color: var(--color-foreground); }
   .bar .stop:hover:not(:disabled) { background: color-mix(in oklab, var(--color-foreground) 12%, transparent); }
-  .bar :global(.microphone:not(.listening)) { border-radius: var(--radius-full); }
-  .bar :global(.microphone:not(.listening)) { border-color: transparent; box-shadow: none; }
-  .bar :global(.microphone:not(.listening):not(:hover)) { background: transparent; }
 
   /* A composer the side panel narrowed keeps its tools on one row. */
   @container composer (max-width: 600px) {
@@ -503,9 +472,9 @@
     .bar, .tools { gap: 6px; }
   }
 
-  /* A desktop's small round targets reach 32 px: the "+", the microphone, send and stop. */
+  /* A desktop's round targets reach 32 px: send and stop ("+" and the microphone are app.css's icon button). */
   @media (min-width: 721px) {
-    .bar :global(:is(.opener, .microphone)), .dictation-stand-in button, .send, .stop { width: 32px; height: 32px; }
+    .send, .stop { width: 32px; height: 32px; }
   }
 
   /* A short press: a chip or the disc gives under the finger at once and
@@ -530,8 +499,8 @@
     /* 36 px drawn, not --control-lg or the touch screen's 44 px icon minimum:
        those pushed the disc onto the card's edge on a one line field. The
        ::after below keeps the 44 px target. */
-    .tools :global(:is(.send, .stop, .microphone, .dictation-stand-in button)) { position: relative; width: 36px; height: 36px; min-width: 0; min-height: 0; margin: 4px; }
-    .tools :global(:is(.send, .stop, .microphone, .dictation-stand-in button))::after { content: ''; position: absolute; inset: -5px; border-radius: inherit; }
+    .tools :is(.send, .stop) { position: relative; width: 36px; height: 36px; min-width: 0; min-height: 0; margin: 4px; }
+    .tools :is(.send, .stop)::after { content: ''; position: absolute; inset: -5px; border-radius: inherit; }
     /* Every value whole: a row too short for them wraps onto a second one
        under it, each row a 44 px target (36 px chips, 8 px between rows). The
        "+" stays on the first row, the field above never changes its place in
@@ -548,7 +517,7 @@
     .line.how > .context-control { margin-inline-start: auto; }
     /* Each setting reads as a control at rest: a quiet surface and a hairline
        around its icon, its value and its chevron, 36 px drawn in a 44 px target. */
-    .bar .chips :global(:is(.picker, .effort, .permission) > .trigger), .bar .chips .gone {
+    .bar .chips :global(:is(.picker, .effort, .permission) > .trigger) {
       position: relative;
       height: 36px;
       padding: 0 8px;
@@ -557,18 +526,17 @@
       border-radius: var(--radius-full);
       background: color-mix(in oklab, var(--color-foreground) 4%, transparent);
     }
-    .bar .chips :global(:is(.picker, .effort, .permission) > .trigger)::after, .bar .chips .gone::after { content: ''; position: absolute; inset: -4px 0; }
+    .bar .chips :global(:is(.picker, .effort, .permission) > .trigger)::after { content: ''; position: absolute; inset: -4px 0; }
     .chips :global(.picker > .trigger) { max-width: none; }
     .chips :global(.picker > .trigger > .label) { max-width: none; overflow: visible; }
     .bar .chips :global(.picker > .trigger.connect) { padding: 0 12px; background: var(--color-active); color: var(--color-foreground); }
   }
-  /* A 360 px phone: the "+" narrows to 32 px, its 44 px target kept by a hit
-     zone over the bar's padding, and the chips' sides close in. A value never
+  /* A 360 px phone: the "+" takes a 32 px column, its 44 px target kept by
+     the icon button's hit zone, and the chips' sides close in. A value never
      shrinks: what does not fit goes to the next row. */
   @media (max-width: 379px) {
     .bar { gap: 0; padding-inline: 4px; }
-    .bar :global(.opener) { position: relative; width: 32px; }
-    .bar :global(.opener)::after { content: ''; position: absolute; inset: 0 -4px 0 -8px; }
+    .bar :global(.options .opener) { margin-inline: -2px; }
     .bar .chips :global(:is(.picker, .effort, .permission) > .trigger) { padding: 0 7px; gap: 4px; }
     .line { column-gap: 4px; }
   }

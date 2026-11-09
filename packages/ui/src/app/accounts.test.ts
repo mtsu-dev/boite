@@ -1,6 +1,7 @@
 import { expect, vi } from 'vitest';
 import { confirm } from '../lib/confirm.svelte';
 import { store } from '../lib/store.svelte';
+import { strings } from '../lib/strings';
 import { mountOnFake, openProviderDetails, query, test, type, waitFor } from '../test/app';
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
@@ -112,6 +113,26 @@ test('a thread on a signed-out account offers the sign-in only once no other acc
   expect(document.querySelector('[data-testid=composer-reconnect]')).toBeNull();
   for (const entry of store.accounts) if (entry.providerId === 'claude') entry.status = 'unauthenticated';
   await waitFor(() => document.querySelector('[data-testid=composer-reconnect]') !== null);
+});
+
+test('a plain thread whose account was removed says so once over the composer, and its remedy opens the model list', async ({ app: _app }) => {
+  const client = store.client!;
+  const account = await client.call('accounts.add', { providerId: 'claude', label: 'Spare', useDefaultLocation: false });
+  const [project] = await client.call('projects.list', {});
+  const thread = await client.call('threads.create', { projectId: project!.id, providerId: 'claude', accountId: account.id, title: 'Orphan' });
+  await waitFor(() => store.threads.some((entry) => entry.id === thread.id));
+  await store.removeAccount(account.id);
+  await store.open(thread.id);
+  await waitFor(() => document.querySelector('[data-testid=composer-options]') !== null);
+  for (const entry of store.accounts) if (entry.providerId === 'claude') entry.status = 'unauthenticated';
+  // Not a bot: no bot banner, so the composer carries the notice and its own remedy.
+  await waitFor(() => document.querySelector('[data-testid=composer-account-removed]') !== null);
+  expect(document.querySelector('[data-testid=agent-problem]')).toBeNull();
+  expect(document.querySelector('[data-testid=composer-bot-gone]')).toBeNull();
+  const pick = query<HTMLButtonElement>('[data-testid=account-gone-pick]');
+  expect(pick.textContent?.trim()).toBe(strings.agents.pickAccount);
+  pick.click();
+  await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null);
 });
 
 test('account lifecycle provider metadata gates login and the command-line login', async ({ app: _app }) => {

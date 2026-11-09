@@ -63,14 +63,20 @@ test('changes panel and phone conversation list stay within the viewport with an
   // Report the same branch from the fake Git status as from the thread summary.
   await page.evaluate(`(() => { const client = ${state}.client; const call = client.call.bind(client); client.call = async (method, params) => { const result = await call(method, params); return method === 'git.status' ? { ...result, branch: ${JSON.stringify(branch)} } : result; }; })()`);
   await page.evaluate(`${state}.panel.open('changes')`);
-  await page.waitFor(`document.querySelector('[data-testid="changes-panel"] .branch')?.textContent.includes(${JSON.stringify(branch)})`);
+  // On a desktop the panel's head lives in its strip (SurfaceHead.svelte); the branch is a row of the view menu.
+  await page.waitFor(`document.querySelector('[data-testid="panel-surface-head"] [data-testid="changes-count"]')`);
   expect(await page.evaluate(`(() => {
-    const panel = document.querySelector('[data-testid="changes-panel"]');
-    const bar = panel.querySelector('.panel-toolbar');
-    const text = bar.querySelector('.branch-name');
-    return !!text && text.scrollWidth > text.clientWidth && bar.scrollWidth <= bar.clientWidth;
+    const head = document.querySelector('[data-testid="panel-surface-head"]');
+    return head.scrollWidth <= head.clientWidth;
+  })()`)).toBe(true);
+  await page.click('[data-testid="diff-options"]');
+  await page.waitFor(`document.querySelector('[data-testid="diff-branch"]')?.textContent.includes(${JSON.stringify(branch)})`);
+  expect(await page.evaluate(`(() => {
+    const row = document.querySelector('[data-testid="diff-branch"]').getBoundingClientRect();
+    return row.left >= 0 && row.right <= innerWidth && document.documentElement.scrollWidth <= innerWidth;
   })()`)).toBe(true);
   await capture('changes');
+  await page.click('[data-testid="diff-options"]');
   await page.click('[data-testid="panel-toggle"]');
   for (const width of [390, 320]) {
     await page.send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 1, mobile: true });

@@ -30,11 +30,14 @@ test('a bot whose account is gone offers its other accounts in place, and one pi
     // The remedy is the accounts themselves, not a trip to the settings that hold them.
     const trigger = banner()!.querySelector<HTMLButtonElement>('[data-testid="agent-problem-account"]')!;
     expect(trigger.textContent).toContain(strings.agents.pickAccount);
-    // The composer names the state and the same remedy at the field, and opens that menu.
-    const gone = () => document.querySelector<HTMLButtonElement>('[data-testid="composer-bot-gone"]');
-    expect(gone()?.textContent).toContain(strings.accounts.removed);
-    expect(gone()?.textContent).toContain(strings.agents.pickAccount);
-    gone()!.click();
+    // The composer says it once, in its locked field: no second chip repeating the banner.
+    const gone = () => document.querySelector<HTMLElement>('[data-testid="composer-bot-gone"]');
+    const field = () => document.querySelector<HTMLTextAreaElement>('[data-testid="composer-input"]')!;
+    expect(gone()?.textContent).toBe(fill(strings.composer.botAccountGone, { name: 'Bolt' }));
+    expect(field().disabled).toBe(true);
+    expect(field().placeholder).toBe(strings.composer.placeholderPickAccount);
+    expect(document.querySelector('[data-testid="composer"] .ui-chip.gone')).toBeNull();
+    trigger.click();
     flushSync();
     const account = store.accounts.find(entry => store.providerOf(entry.providerId) && entry.status !== 'unauthenticated')!;
     const row = await vi.waitFor(() => {
@@ -51,6 +54,7 @@ test('a bot whose account is gone offers its other accounts in place, and one pi
     flushSync();
     expect(banner()).toBeNull();
     expect(gone()).toBeNull();
+    expect(field().disabled).toBe(false);
     await vi.waitFor(() => expect(effort()?.title).toBe(fill(strings.composer.botSettings, { name: 'Bolt' })));
   } finally {
     if (page) unmount(page);

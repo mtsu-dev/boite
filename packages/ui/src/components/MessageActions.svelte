@@ -68,7 +68,7 @@
     <time class="stamp" data-testid="message-time" datetime={new Date(at).toISOString()} title={fill(strings.chat.sentAt, { time: full })}>{clockTime(at)}</time>
   {/if}
   {#each actions as action (action.id)}
-    <button type="button" class="act" data-testid={`message-${action.id}`} title={action.label} aria-label={action.label} aria-haspopup={action.id === 'fork' ? 'menu' : undefined} onclick={action.run}><action.icon size={13} /></button>
+    <button type="button" class="act icon-button" data-testid={`message-${action.id}`} title={action.label} aria-label={action.label} aria-haspopup={action.id === 'fork' ? 'menu' : undefined} onclick={action.run}><action.icon size={14} /></button>
   {/each}
 </span>
 
@@ -107,37 +107,11 @@
     white-space: nowrap;
   }
 
-  /* 28 px wide, and 28 px tall through the band around it: a pointer's least
-     target, while the row still draws 20 px under its message. */
-  .act {
-    position: relative;
-    display: inline-grid;
-    place-items: center;
-    width: 28px;
-    height: 20px;
-    min-height: 0;
-    padding: 0;
-    border: 1px solid transparent;
-    border-radius: var(--radius-sm);
-    background: transparent;
-    color: var(--color-muted-foreground);
-  }
+  /* The app's one icon button (app.css `button.icon-button`): its drawn box overhangs the row under the
+     message, which keeps the gap's height, and its target reaches the gaps around it. */
+  .act { margin-block: calc((var(--chat-message-gap) - var(--icon-button)) / 2); }
 
-  .act::after { content: ''; position: absolute; inset: -4px 0; }
-
-  .act:hover:not(:disabled) {
-    background: var(--color-surface-3);
-    color: var(--color-foreground);
-  }
-
-  /* A finger takes the full target, as every other phone control does. The
-     row draws 24 px tall, its glyph about 10 px under the bubble, and the
-     target reaches the rest over the gaps around it (the bubble's own bottom
-     padding included), so the buttons read as the message's, not a band of
-     their own. */
   @media (pointer: coarse), (max-width: 720px) {
     .message-actions { gap: 4px; }
-    .act { position: relative; width: 36px; height: 24px; }
-    .act::after { content: ''; position: absolute; inset: calc((24px - var(--touch-target)) / 2) -2px; }
   }
 </style>

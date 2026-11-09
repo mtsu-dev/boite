@@ -2,7 +2,7 @@ import { beforeEach, expect, test } from 'vitest';
 import type { ThreadSummary } from '@boite/contracts';
 import type { Store } from './store.svelte';
 import { strings } from './strings';
-import { notePanelUse, panelChoices } from './panel-choices';
+import { notePanelUse, panelChoices, usedPanels } from './panel-choices';
 import { offeredCards } from './surface-labels';
 import { work } from './work-prefs.svelte';
 
@@ -52,10 +52,12 @@ test('one list holds every panel once in named groups, the showing panel checked
   // The two lists of work to do say whose work each holds, by name and by line: the project's or the thread's.
   expect(named['board-toggle']).toMatchObject({ label: 'Project board', hint: "The whole project's todos, in columns" });
   expect(named['tasks']).toMatchObject({ label: 'Goal and todos', hint: "This thread's goal, loop, todos and watches", title: 'Formerly Task manager' });
-  // A name that does not say what it holds gets one plain line.
+  // Every row says in one plain line what it holds.
+  for (const item of items.filter((one) => !one.separator)) expect(item.hint, item.id).toBeTruthy();
   expect(named['trace']?.hint).toBe(strings.rightPanel.roles.trace);
-  expect(named['messages']?.hint).toBe(strings.rightPanel.roles.messages);
-  expect(named['coordination']?.hint).toBe(strings.rightPanel.roles.coordination);
+  expect(named['changes']?.hint).toBe(strings.rightPanel.roles.changes);
+  expect(named['agent-browser']?.hint).toBe(strings.rightPanel.roles.browser);
+  expect(named['terminal-toggle']?.hint).toBe(strings.rightPanel.roles.terminal);
   expect(named['customize']).toMatchObject({ label: 'Customize', title: 'Formerly Choose the buttons' });
 });
 
@@ -72,19 +74,33 @@ test('a phone, a bot or a team thread lists what it can open, and an unreachable
   expect(shut?.hint).toBeTruthy();
 });
 
-test('the panels picked last lead as a short Recent group, newest first, and leave their usual group', () => {
+test('the panels this thread used lead, newest first, and leave their usual group; another thread has its own', () => {
   const store = stub({ panel: { active: null } });
-  notePanelUse('trace');
-  notePanelUse('board-toggle');
-  notePanelUse('file');
-  const items = panelChoices(store, thread(), { available: () => true, showing: undefined });
-  // A file tab counts as Files; each row stays once, so the families lose what Recent took.
-  expect(sections(items)).toEqual(['Recent', 'Work', 'Agents', 'Tools']);
+  const other = stub({ panel: { active: null } });
+  notePanelUse(store, 't1', 'trace');
+  notePanelUse(store, 't1', 'board-toggle');
+  notePanelUse(store, 't1', 'file');
+  const list = (used: string[]) => panelChoices(store, thread(), { available: () => true, showing: undefined, used });
+  // A file tab counts as Files; each row stays once, so the families lose what the used group took.
+  const items = list(usedPanels(store, 't1'));
+  expect(sections(items)).toEqual(['Used in this thread', 'Work', 'Agents', 'Tools']);
   expect(ids(items).slice(0, 4)).toEqual(['files', 'board-toggle', 'trace', 'changes']);
   expect(new Set(ids(items)).size).toBe(ids(items).length);
-  notePanelUse('trace');
-  expect(ids(panelChoices(store, thread(), { available: () => true, showing: undefined })).slice(0, 3)).toEqual(['trace', 'files', 'board-toggle']);
-  // A recent kind this thread cannot show is no Recent row (a bot's desk on a plain thread); the oldest drops out of three.
-  notePanelUse('desk');
-  expect(ids(panelChoices(store, thread(), { available: () => true, showing: undefined })).slice(0, 3)).toEqual(['trace', 'files', 'changes']);
+  notePanelUse(store, 't1', 'trace');
+  // Only what was noted: the showing panel adds nothing once the thread has used some.
+  expect(usedPanels(store, 't1', 'changes')).toEqual(['trace', 'files', 'board-toggle']);
+  // A kind this thread cannot show is no row (a bot's desk on a plain thread).
+  notePanelUse(store, 't1', 'desk');
+  expect(ids(list(usedPanels(store, 't1'))).slice(0, 4)).toEqual(['trace', 'files', 'board-toggle', 'changes']);
+  // At most four, newest first; the older ones go back to their own group.
+  for (const id of ['messages', 'agents', 'terminal-toggle']) notePanelUse(store, 't1', id);
+  const capped = list(usedPanels(store, 't1'));
+  expect(ids(capped).slice(0, 5)).toEqual(['terminal-toggle', 'agents', 'messages', 'trace', 'changes']);
+  expect(ids(capped).filter((id) => id === 'files')).toEqual(['files']);
+  // Nothing noted: the showing panel alone, a page counting as the Browser; every other open tab stays in its group.
+  expect(usedPanels(store, 't2', 'browser')).toEqual(['agent-browser']);
+  // Another thread, or the same id on another machine, starts with its own.
+  expect(usedPanels(store, 't2')).toEqual([]);
+  expect(usedPanels(other, 't1')).toEqual([]);
+  expect(sections(panelChoices(store, thread(), { available: () => true, showing: undefined }))).toEqual(['Work', 'Agents', 'Tools']);
 });

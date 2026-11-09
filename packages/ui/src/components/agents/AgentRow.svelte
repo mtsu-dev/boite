@@ -167,9 +167,9 @@
   .row:active:not(:disabled) { transform: none; }
   .picture { display: inline-flex; flex: none; margin: 3px; }
   .machine { display: inline-flex; align-items: center; flex: none; margin-right: -4px; color: var(--color-muted-foreground); }
-  /* Out of reach is a state, not a fault: the row reads dimmed and its machine stands as a place, "on <machine>"
-     with its Offline chip, where the time stood. */
-  .agent-row.away .row { opacity: 0.6; }
+  /* Out of reach is a state, not a fault: its machine stands as a place, "on <machine>" with its Offline chip,
+     where the time stood. The picture alone is dimmed; the words keep their ink. */
+  .agent-row.away .picture { opacity: 0.6; }
   .offline-name { display: inline-flex; flex: 0 1 auto; min-width: 0; }
   .text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .headline { display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -179,7 +179,7 @@
   /* A built-in bot's name keeps its badge right after it, the time still on the far right. */
   .name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
   .name .title { flex: 0 1 auto; }
-  /* Meta under and after the bot's name: a size under it, in the subtle ink, at the body's weight (round 17). */
+  /* Meta under and after the bot's name: a size under it, in the subtle ink, at the body's weight. */
   .when { flex: none; color: var(--color-subtle); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
   .spent { flex: none; color: var(--color-subtle); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
   .detail-line { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: var(--text-xs); color: var(--color-subtle); }

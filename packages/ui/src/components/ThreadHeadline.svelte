@@ -36,9 +36,11 @@
    * keeps the row's width. `at` is the row's time (its last message in the
    * lists, since when in Activity): it follows the mark, and stands alone when
    * there is none. The title is cut between words (lib/word-fit.ts).
-   * `offline`: its machine is out of reach. An "Offline" chip says so before
-   * the time and the title steps down to the muted ink, as a Machines row does,
-   * so the row stays readable instead of fading whole.
+   * `offline`: its machine is out of reach. The title steps down to the muted
+   * ink, as a Machines row does, so the row stays readable instead of fading
+   * whole; the word "Offline" is said once, by the card's head or on the row's
+   * place line (ThreadCard.svelte, MobileThreadRow.svelte), never on the title's
+   * line, where it would push the title to a second one.
    */
   let {
     owner,
@@ -102,7 +104,6 @@
       {#if pullRequest.state === 'MERGED'}<GitMerge size={12} aria-hidden="true" />{:else if pullRequest.state === 'CLOSED'}<GitPullRequestClosed size={12} aria-hidden="true" />{:else}<GitPullRequest size={12} aria-hidden="true" />{/if}<span class="ui-label">#{pullRequest.number}</span>
     </span>
   {/if}
-  {#if offline}<span class="offline-chip" data-testid="thread-offline">{strings.connection.offline}</span>{/if}
   {#if now !== undefined && (at === undefined || stateForm(thread.archived ? null : kind) !== null)}<ThreadState {thread} {now} subagents={rowAsks(owner, thread.id)} away={owner.connection !== 'ready'} {mark} />{/if}
   {#if now !== undefined && at !== undefined}<time class="at" title={exactTime(at)}>{ago(at, now)}</time>{/if}
 </span>
@@ -155,24 +156,9 @@
   .headline.hot .title {
     color: var(--color-foreground);
   }
-  /* Out of reach: the title in the muted ink, the state in words on a chip (MachinesPage's away status). */
+  /* Out of reach: the title in the muted ink (MachinesPage's away status). */
   .headline.offline .title {
     color: var(--color-muted-foreground);
-  }
-  /* MachinePlace's away mark, whole: no label trim, so the border keeps its room around the word. */
-  .offline-chip {
-    display: inline-flex;
-    align-items: center;
-    flex: none;
-    box-sizing: border-box;
-    height: 20px;
-    padding: 0 6px;
-    border: 1px solid var(--color-edge);
-    border-radius: var(--radius-sm);
-    color: var(--color-muted-foreground);
-    font-size: var(--text-xs);
-    line-height: 1;
-    white-space: nowrap;
   }
   .bot,
   .draft,

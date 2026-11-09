@@ -56,6 +56,15 @@
     return { type: 'secret_request', requestId: request.id, name: request.name, reason: request.reason, placeholder: request.placeholder, status: request.status, ref: request.ref, expiresAt: request.expiresAt };
   }
   let waits = $derived(store.pendingPermissions.filter((request) => children.has(request.threadId)));
+  /**
+   * A wait reads by what it does ("Run migrate"), from lib/decision-title. That
+   * helper weighs about 3.5 KB and this component sits in the entry chunk, so it
+   * loads with the first subagent wait; the generic sentence holds until then.
+   */
+  let titleOf = $state.raw<(name: string, input: unknown) => string>(permissionSentence);
+  $effect(() => {
+    if (waits.length > 0 && titleOf === permissionSentence) void import('../lib/decision-title').then((module) => { titleOf = module.decisionTitle; });
+  });
   let shownId = $state<string | null>(null);
   let shown = $derived(asked.find((question) => question.id === shownId) ?? asked[0]);
   let at = $derived(shown ? asked.indexOf(shown) : 0);
@@ -323,7 +332,7 @@
               <ShieldQuestion size={16} />
               <span class="wait-text">
                 <span>{fill(strings.activity.subagentPermission, { title: child.title })}</span>
-                <span class="meta">{permissionSentence(request.toolName, request.input)}</span>
+                <span class="meta">{titleOf(request.toolName, request.input)}</span>
               </span>
               {@render openChild(child)}
             </div>

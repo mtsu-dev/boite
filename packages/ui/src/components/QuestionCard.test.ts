@@ -125,7 +125,7 @@ test('Skip sends no answer, prevents duplicate presses and allows retry after fa
 });
 
 test('a docked question with options keeps its own Answer while the composer is its field, and a pick shows at once', () => {
-  // Round 18: while the agent worked, the card said "then send it" and the only round button was Stop.
+  // While the agent works, the card has its own Answer: it never leaves Stop as the only round button.
   const sent: string[][] = [];
   running = mount(QuestionCard, {
     target: document.body,
@@ -434,7 +434,7 @@ test('a docked list taller than its room stops under its last whole row, counts 
     });
     flushSync();
     expect(query<HTMLElement>('.options').style.maxHeight).toBe('80px');
-    expect(query('[data-testid=question-more]').textContent).toBe('3 more');
+    expect(query('[data-testid=question-more]').textContent).toBe('Show 3 more options');
     expect(query('.options').classList.contains('clipped')).toBe(true);
     query<HTMLButtonElement>('[data-testid=question-more]').click();
     expect(scrolled).toEqual(['c']);

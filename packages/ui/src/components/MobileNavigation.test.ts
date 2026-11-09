@@ -1,4 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest';
+import { projectName } from '../lib/format';
 import type { ThreadSummary } from '@boite/contracts';
 import { flushSync, mount, unmount } from 'svelte';
 import { setExperiment } from '../lib/experiments';
@@ -55,8 +56,15 @@ test('Activity gives each row its reason and its time, a sub-agent under its par
   await settle();
   const rows = Array.from(document.querySelectorAll<HTMLElement>('[data-testid=mobile-row]'));
   expect(rows.length).toBeGreaterThan(0);
-  // Since when ends the title's line, after the mark (ThreadHeadline.svelte).
-  for (const row of rows) expect(row.querySelector('.headline > time.at')?.textContent?.trim()).toBeTruthy();
+  // Every row says where it comes from, its project, and since when ends that place line.
+  for (const row of rows) {
+    expect(row.querySelector('[data-testid=mobile-row-where]')?.textContent?.trim()).toBeTruthy();
+    expect(row.querySelector('[data-testid=mobile-row-meta] > time.since')?.textContent?.trim()).toBeTruthy();
+  }
+  for (const row of rows) {
+    const project = store.projects.find(entry => entry.id === store.threads.find(thread => thread.id === row.dataset['threadId'])?.projectId);
+    if (project) expect(row.querySelector('[data-testid=mobile-row-where]')?.textContent).toContain(projectName(project));
+  }
   const helpers = Array.from(document.querySelectorAll<HTMLElement>('[data-testid=thread-helper]'));
   const reasons = rows.map(row => row.querySelector('[data-testid=mobile-row-reason] .text')?.textContent ?? '');
   // A question is its own reason, a permission says what it runs.
@@ -109,9 +117,18 @@ test('selecting a conversation beyond the first mobile window finishes loading i
   workspace.machines = [{ id: 'local', label: 'Local', store }]; workspace.active = store;
   mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'threads' } });
   await settle();
-  // A big project opens folded to a few rows; its "N more" line unfolds it in place, into the window below.
-  expect(document.querySelectorAll('[data-testid^=mobile-thread-]').length).toBeLessThan(10);
-  document.querySelector<HTMLButtonElement>('[data-testid=project-more]')!.click(); await settle();
+  // A big project opens folded to a few rows; its "Show N more" action unfolds it in place, into the window below,
+  // and turns into "Show less", which folds it back.
+  const folded = document.querySelectorAll('[data-testid^=mobile-thread-]').length;
+  expect(folded).toBeLessThan(10);
+  const more = document.querySelector<HTMLButtonElement>('[data-testid=project-more]')!;
+  expect([more.textContent?.trim(), more.getAttribute('aria-expanded')]).toEqual([expect.stringMatching(/^Show \d+ more$/), 'false']);
+  more.click(); await settle();
+  expect([more.textContent?.trim(), more.getAttribute('aria-expanded')]).toEqual(['Show less', 'true']);
+  more.click(); await settle();
+  expect(document.querySelectorAll('[data-testid^=mobile-thread-]').length).toBe(folded);
+  expect(more.textContent?.trim()).toMatch(/^Show \d+ more$/);
+  more.click(); await settle();
   const selector = `[data-testid="mobile-thread-${summary.id}"]`;
   expect(document.querySelector(selector)).toBeNull();
   const root = document.querySelector<HTMLElement>('[data-testid=mobile-list]')!;
@@ -233,9 +250,9 @@ test('a parent on another machine shows its working sub-agents, counted, and Rec
     const rows = () => [...document.querySelectorAll<HTMLElement>('.mobile-list .row')].map(row => row.dataset['threadId']);
     const everything = rows().length;
     expect(everything).toBeGreaterThan(1);
-    // The filter lives in the display menu, named on the menu's button once on: the list keeps no row of chips.
+    // The filter lives in the display menu; once on, it is a chip in words under the head, the button keeps its glyph.
     expect(document.querySelector('.mobile-list [data-testid=mobile-at-work]')).toBeNull();
-    const count = () => document.querySelector('[data-testid=mobile-filter-name]')?.textContent ?? null;
+    const count = () => document.querySelector('[data-testid=mobile-filter-chips]')?.textContent?.trim() ?? null;
     expect(count()).toBeNull();
     document.querySelector<HTMLButtonElement>('[data-testid=mobile-grouping-options]')!.click();
     await vi.waitFor(() => expect(document.querySelector('[data-testid=mobile-at-work]')).not.toBeNull());
@@ -245,6 +262,8 @@ test('a parent on another machine shows its working sub-agents, counted, and Rec
     chip()!.click(); await settle();
     expect(chip()?.getAttribute('aria-checked')).toBe('true');
     expect(count()).toBe('Working');
+    expect(document.querySelector('[data-testid=mobile-filter-name]')).toBeNull();
+    expect(document.querySelector('[data-testid=mobile-filter-count]')).not.toBeNull();
     expect(rows()).toEqual([parent.id]);
 
     // Opening the parent and coming Back finds the list still filtered.
@@ -357,7 +376,7 @@ test("a project header names another machine as a place once two are connected, 
     const reconnect = () => document.querySelector<HTMLButtonElement>(`[data-testid=mobile-project-group][data-machine-id="${remote.machineId}"] [data-testid=project-reconnect]`);
     expect(reconnect()).toBeNull();
     remote.connection = 'closed'; await settle();
-    // The offline card ends on its next step, never on the Offline label alone (round 21).
+    // The offline card ends on its next step, never on the Offline label alone.
     expect(reconnect()?.textContent).toBe('Reconnect');
     reconnect()!.click();
     await vi.waitFor(() => expect(remote.connection).toBe('ready'));

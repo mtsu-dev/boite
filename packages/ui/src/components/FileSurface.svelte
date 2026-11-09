@@ -11,6 +11,7 @@
   import type { BoundPanel, Surface } from '../lib/right-panel.svelte';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
+  import SurfaceHead from './SurfaceHead.svelte';
   import { codeLanguage, highlightCode } from '../lib/code-highlight';
 
   let { store, surface, panel }: { store: Store; surface: Surface; panel: BoundPanel } = $props();
@@ -283,7 +284,7 @@
 
 
 <div class="file-surface" data-testid="file-panel" data-path={path ?? ''} data-kind={content?.kind ?? ''}>
-  <div class="bar">
+  <SurfaceHead>
     <span class="path" title={path ?? ''} data-testid="file-path">
       <span class="dir">{directory(path ?? '')}</span><span class="base">{baseName(path ?? '')}</span>
     </span>
@@ -371,7 +372,7 @@
         <span class="ui-label">{saving ? strings.files.saving : strings.common.save}</span>
       </button>
     {/if}
-  </div>
+  </SurfaceHead>
 
   {#if problem !== null}
     <p class="notice bad" data-testid="file-error">{problem}</p>
@@ -491,17 +492,6 @@
     height: 100%;
   }
 
-  .bar {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    height: var(--row);
-    padding: 0 6px 0 12px;
-    flex: none;
-    font-size: var(--text-xs);
-    color: var(--color-muted-foreground);
-  }
-
   .path {
     min-width: 0;
     flex: 0 1 auto;
@@ -552,7 +542,7 @@
     text-align: center;
   }
 
-  .bar button.small {
+  button.small {
     gap: 4px;
     display: inline-flex;
     align-items: center;

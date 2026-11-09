@@ -37,7 +37,7 @@ test('Nova\'s desk is one column: who it is, its routines and its notes, its liv
     const ident = document.querySelector('[data-testid=desk-ident]')!;
     expect(ident.textContent).not.toContain('Nova');
     expect(ident.querySelector('.agent-avatar')).toBeNull();
-    expect(ident.textContent).toContain(nova.domain);
+    expect(document.querySelector('[data-testid=desk-domain]')?.textContent).toBe(nova.domain);
     expect(document.querySelector('[data-testid=desk-model]')?.textContent?.trim()).not.toBe('');
     expect(document.querySelector('[data-testid=desk-since]')?.textContent).toMatch(/^Since /);
     expect(document.querySelector('[role=tablist]')).toBeNull();
@@ -116,11 +116,12 @@ test('Nova\'s threads: what it handles, needs-you first, then what it is done wi
     const away = card('Fix the save migration')!;
     expect(away.querySelector('[data-testid=desk-card-machine]')?.textContent).toBe('skoll');
     expect(away.querySelector('[data-testid=desk-card-unreachable]')?.getAttribute('title')).toContain('its events reach you once it is back');
-    // Out of reach is a machine state in words after its name, the card dimmed, never the failure red.
+    // Out of reach is a machine state in words after its name, the tile dimmed and the words at full ink, never the failure red.
     expect(away.querySelector('[data-testid=desk-card-unreachable]')?.textContent).toBe('skoll offline');
     expect(away.classList.contains('away')).toBe(true);
     expect(deskCss).toMatch(/\.desk-card-unreachable \{[^}]*color: var\(--color-muted-foreground\)/);
-    expect(deskCss).toMatch(/\.desk-row\.away \.desk-row-tile, \.desk-row\.away \.desk-row-text \{ opacity: 0\.6; \}/);
+    expect(deskCss).toMatch(/\.desk-row\.away \.desk-row-tile \{ opacity: 0\.6; \}/);
+    expect(deskCss).not.toMatch(/\.desk-row-text \{[^}]*opacity/);
     expect(deskCss).not.toMatch(/\.desk-card-unreachable[^{]*\{[^}]*--color-danger/);
     expect(away.querySelector('.desk-card-open')).toBeNull();
 

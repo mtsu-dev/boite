@@ -20,9 +20,9 @@ export const strings = {
     laterProjectsHint: 'Conversations you archived to pick up later, in projects with nothing else open.',
     idleProjectsHint: 'Nothing to do here: no open or set-aside conversation. Choose one to start a thread.',
     filter: 'Filter',
-    /** The Filter button with a filter on: the first that hides threads; "+N" counts the others. */
-    filterOn: 'Filter: {name}',
-    /** Recent's filter on the rows still at work, named on the button. */
+    /** A filter on, as a chip under the list's head (FilterChips.svelte): its press removes it. */
+    filterClear: 'Remove the {name} filter',
+    /** Recent's filter on the rows still at work, named on its chip. */
     filterWorking: 'Working',
     groupingOptions: 'Display options',
     /** The thread list's name, in the rail and over the list. */
@@ -34,8 +34,10 @@ export const strings = {
     projectsView: 'Projects',
     recentView: 'Recent',
     /** The display options panel: its sections, and the short names its rows use under them. */
-    /** A project card's quiet threads folded under one line (Sidebar.svelte); a press shows them in place. */
-    moreThreads: '{count} more',
+    /** A project card's quiet threads folded under one action (FoldMore.svelte); a press shows them in place. */
+    moreThreads: 'Show {count} more',
+    /** The same action once they show: a press folds them back. */
+    lessThreads: 'Show less',
     displayView: 'View',
     displayOrder: 'Sort by',
     groupWorkingRow: 'Working threads',

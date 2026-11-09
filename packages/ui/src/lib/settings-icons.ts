@@ -3,7 +3,7 @@ import type { SettingsTab } from './settings-tabs';
 
 /**
  * One lucide icon a Settings entry, the desktop's nav and the phone's rows
- * alike (round 18: a list of words alone was slow to scan). One family, one
+ * alike (a list of words alone was slow to scan). One family, one
  * size and one stroke where they are drawn (`SETTINGS_ICON_SIZE`).
  */
 export const SETTINGS_ICONS: Record<Exclude<SettingsTab, 'home'> | 'conversations' | 'phone' | 'archived' | 'worktrees', typeof Palette> = {

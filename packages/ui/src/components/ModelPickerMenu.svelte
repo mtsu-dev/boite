@@ -11,6 +11,7 @@
   import ProviderLogo from './ProviderLogo.svelte';
   import ProviderTiles from './ProviderTiles.svelte';
   import { floating } from '../lib/floating';
+  import { clearOfDecision } from '../lib/clear-of-decision';
   import { focusInitial } from '../lib/focus';
   import { Closing } from '../lib/closing.svelte';
   import { fill, strings } from '../lib/strings';
@@ -363,8 +364,8 @@
     return seat ? { providerId, accountId: seat.id } : null;
   }
 
-  /** The desktop popover opens from its chip, its start edge on the chip's: never from the composer, over the conversation. */
-  const anchorBox = (): HTMLElement | null => root() ?? null;
+  /** The desktop popover opens from its chip, its start edge on the chip's; over a pending decision's answers it opens above the decision (lib/clear-of-decision.ts). */
+  const anchorBox = (): HTMLElement | null => clearOfDecision(root(), menu, { cap: 560 });
 
   /** The keys of the whole picker; the chip hands its own to it. */
   const pickerKeys = pickerKeydown({

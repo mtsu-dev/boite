@@ -85,7 +85,7 @@
   function pickAccent(hue: number) { editingRole = undefined; undo = { ...palette }; setAccent(hue); follow(); }
 </script>
 
-<!-- A palette in its own colours, so two dark palettes differ at a glance (round 18): the chrome with its accent
+<!-- A palette in its own colours, so two dark palettes differ at a glance: the chrome with its accent
      mark, a large sample in the palette's ink on its ground, its status colours, and the composer on its surface
      with the accent's send button. Default has no status colours of its own: the tile shows the app's. -->
 {#snippet tile(id: PaletteId)}

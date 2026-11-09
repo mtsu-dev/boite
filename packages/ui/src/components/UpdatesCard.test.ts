@@ -115,7 +115,7 @@ test("another machine's update is listed under the app's, starts with the same b
   const row = one('updates-other')!;
   expect(row.textContent).toContain('builder');
   expect(row.textContent).toContain('2.0.0-beta.2');
-  // One state: the app is current but builder is not, so the card offers the update and never says "Up to date" beside its button (round 16 said both).
+  // One state: the app is current but builder is not, so the card offers the update and never says "Up to date" beside its button.
   expect(one('app-update-status')!.textContent).toContain(strings.harnessUpdates.availableShort);
   expect(one('app-update-status')!.textContent).not.toContain(strings.serverUpdate.current);
   one<HTMLButtonElement>('updates-run-all')!.click();

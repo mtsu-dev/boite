@@ -240,7 +240,7 @@
   --ansi-bright-cyan: #29b8db;
   --ansi-bright-white: #ffffff;
   /* The inset panel the work sits in. */
-  /* Round 21 widens the ladder downward to about 4 L* a step: frame 0.9, page 5.2, card 8.9, raised 12.9,
+  /* The ladder climbs about 4 L* a step: frame 0.9, page 5.2, card 8.9, raised 12.9,
      so each layer reads as its own tone without glass or a glow. The pressed fill stays at 14.8, where the
      secondary text still clears its floor on it (lib/contrast.test.ts). */
   --color-background: #111114;
@@ -255,7 +255,7 @@
   --color-surface-3: #252528;
   /* A sheet or a dialog: half a step over the raised fill, so a menu inside it still reads as raised. */
   --color-sheet: color-mix(in oklab, var(--color-surface-2), var(--color-surface-3) 50%);
-  /* The two hairlines: a quiet separator, and an edge that must read. Round 15 lifts both one step. */
+  /* The two hairlines: a quiet separator, and an edge that must read. Both read on every ground. */
   --color-border: rgba(255, 255, 255, 0.09);
   --color-edge: rgba(255, 255, 255, 0.13);
   /* The lift a hovered or selected row takes: light over the ground, never a new grey. */
@@ -264,11 +264,8 @@
   --color-foreground: #ffffff;
   /* Three text tiers a visible step apart (4 to 7 L*), the faintest still 8:1 on every surface in both
      themes: subtle carries times, machine names and meta, which must read as well as any secondary line
-     (lib/contrast.test.ts). Round 15 lifts all three one step, secondary to 12:1 on every ground; round 16
-     lifts them once more (the seats still read the 12 px meta as dim), subtle to 11:1; round 19 lifts
-     all three a step, secondary to 13:1, subtle to 11.8:1; round 20 one more (timestamps, counts, diff
-     line numbers, the quota line), secondary to 13.7:1, subtle to 12.3:1, the primary to white so the
-     step above them stays 4 L*. */
+     (lib/contrast.test.ts). Under a white primary these sit at the 4 L* step, the brightest the hierarchy
+     allows: secondary 13.7:1 and subtle 12.3:1 on the raised fill. */
   --color-muted-foreground: #f3f3f4;
   --color-subtle: #e7e7ea;
   /* Below reading contrast: a disabled mark, a placeholder glyph, never words that must be read. */
@@ -304,10 +301,10 @@
   --color-live: #f5b84a;
   --color-live-soft: rgba(245, 184, 74, 0.12);
   /* A warning that asks nothing of the user (a quota running low, a setting left open): the full ink and its own
-     glyph, never the amber, which means only that something needs the user (round 17). */
+     glyph, never the amber, which means only that something needs the user. */
   --color-caution: var(--color-foreground);
   /* Code in the diff and the file viewer: keywords in the accent's hue, strings in a cool blue, a step more
-     saturated than the round 14 greys so a line's parts read apart; names keep the text colour and comments
+     saturated than the greys so a line's parts read apart; names keep the text colour and comments
      the subtle tier, so the added and removed tints stay what the eye finds first. */
   --syntax-keyword: color-mix(in oklch, var(--color-accent) 80%, var(--color-foreground));
   --syntax-string: oklch(80% 0.1 225);
@@ -321,7 +318,7 @@
   --color-caption-close: #c42b1c;
   --color-scrim: rgba(6, 6, 8, 0.55);
   /* A phone's bottom sheet keeps the screen it rose from in view: lighter than a dialog's scrim, since the
-     sheet's own edge and grabber already set it apart (round 19: the seats read 0.55 as a blackout). */
+     sheet's own edge and grabber already set it apart (the seats read 0.55 as a blackout). */
   --sheet-scrim: rgba(6, 6, 8, 0.32);
   --color-on-foreground: #131314;
 
@@ -334,7 +331,7 @@
   --role-raised: var(--color-surface-2);
   --role-selected: var(--color-selection);
 
-  /* The instrumental tier of a thread (round 20): tool lines, plans, timers and their meta, one consistent
+  /* The instrumental tier of a thread: tool lines, plans, timers and their meta, one consistent
      step under the agent's words (16 px reading text at full ink). One size down, the secondary ink and
      the body's leading, so the reply is the only full-weight layer and the decision card the only other
      one. Text tokens: they clear the secondary floors (lib/contrast.test.ts). */
@@ -344,11 +341,15 @@
   --instrument-meta-size: var(--text-meta);
   --instrument-leading: 1.5;
 
-  /* A changed line in a diff: the status colour mixed into the well's own fill, a wash the eye finds at a
-     glance (round 21: 5 and 16 percent read as no change at all), and the words that changed a deeper wash
-     of the same. Code keeps 12:1 on a line and 9:1 on a word, its line number 11:1 (lib/contrast.test.ts). */
-  --diff-add-wash: color-mix(in srgb, var(--color-success) 12%, var(--color-surface-2));
-  --diff-remove-wash: color-mix(in srgb, var(--color-danger) 12%, var(--color-surface-2));
+  /* A changed line in a diff: a tint of the status colour mixed into the well's own fill. The tint keeps the
+     status colour's lightness at half its chroma, so the line keeps its step off the fill while the green and
+     red stay quieter than the accent; the changed words take the full status colour, a deeper wash, and carry
+     the signal with the gutter's sign and bar. Code keeps 12:1 on a line and 9:1 on a word, its line number
+     11:1 (lib/contrast.test.ts). */
+  --diff-add-tint: #84b79a;
+  --diff-remove-tint: #c77b78;
+  --diff-add-wash: color-mix(in srgb, var(--diff-add-tint) 12%, var(--color-surface-2));
+  --diff-remove-wash: color-mix(in srgb, var(--diff-remove-tint) 12%, var(--color-surface-2));
   --diff-add-word: color-mix(in srgb, var(--color-success) 24%, var(--color-surface-2));
   --diff-remove-word: color-mix(in srgb, var(--color-danger) 24%, var(--color-surface-2));
 
@@ -384,8 +385,9 @@
   /* A framed card's corner, and the frame between two cards and the window edge. */
   --radius-frame: 12px;
   --frame-gap: 8px;
-  /* How far a scroll area fades its edge while content runs past it (`.scroll-edges`). */
-  --scroll-edge: 16px;
+  /* How far a scroll area fades its edge while content runs past it (`.scroll-edges`): under half a line, so
+     the row passing the edge keeps its glyphs readable and only its last sliver dissolves. */
+  --scroll-edge: 10px;
 
   /* A soft lift for raised things (cards, decisions, a chosen segment): a contact shadow and a short
      falloff under it, a fine top light; no glass and no wide glow. */
@@ -406,7 +408,7 @@
   --radius-overlay-row: var(--radius-sm);
   /* The panel's border draws its hairline; then a top light and a contact shadow.
      No wide blur: 40 px of it read as a darker band on the chrome beside the card.
-     Round 19 doubles the top light, so the inset card reads as a layer over the frame (lib/contrast.test.ts). */
+     The top light is doubled, so the inset card reads as a layer over the frame (lib/contrast.test.ts). */
   --shadow-frame: inset 0 1px 0 rgb(255 255 255 / 0.07), 0 1px 2px rgb(0 0 0 / 0.6);
   /* The left edge of a phone's screen sliding over another (`lib/screen-slide.svelte.ts`). */
   --shadow-screen: -8px 0 24px -6px rgb(0 0 0 / 0.5);
@@ -420,7 +422,7 @@
   --color-composer-focus: rgba(255, 255, 255, 0.2);
   --radius-composer: 18px;
   --composer-glaze: none;
-  /* The one soft elevation (round 21) for the composer card and a sheet: a top light no stronger than the
+  /* The one soft elevation for the composer card and a sheet: a top light no stronger than the
      hairline, a contact shadow and a short falloff pulled in under the card, so it lifts without a glow. */
   --elevation-soft: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 1px 2px rgb(0 0 0 / 0.35), 0 12px 28px -12px rgb(0 0 0 / 0.6);
   --shadow-composer: var(--elevation-soft);
@@ -467,7 +469,7 @@
   --text-meta: 13px;
   --text-body: 14px;
   /* A list's own titles on the desktop (a project card's name, the list's view switch): one size over the rows
-     under them and the one weight over the body, so title, row, label and meta read as four steps (round 17). */
+     under them and the one weight over the body, so title, row, label and meta read as four steps. */
   --text-head: 15px;
   --text-title: 16px;
   /* Weight is for titles only: a row, a label and meta stay at the body's 400. */
@@ -542,6 +544,9 @@
   /* Header and panel targets (thread header, Panels door): between control and control-lg. */
   --control-head: 32px;
   --control-touch: 40px;
+  /* The one icon button (`button.icon-button`): its drawn box and the target the pointer gets. */
+  --icon-button: 28px;
+  --icon-button-target: 32px;
   /* Lucide's chevron-right, the one shape every disclosure turns. */
   --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E");
   --input: 34px;
@@ -620,8 +625,12 @@
 @media (max-width: 380px) {
   :root { --text-lg: 18px; }
 }
+/* A finger's icon button: a larger drawn box and the platform's 44 px target. */
+@media (max-width: 720px) {
+  :root { --icon-button: 36px; --icon-button-target: var(--touch-target); }
+}
 /* The desktop's secondary tier (times, paths, menu descriptions, timers, sublines) half a step up and the
-   instrument meta in the secondary ink, so it reads like the phone's beside 14 px rows (round 21). 14 px
+   instrument meta in the secondary ink, so it reads like the phone's beside 14 px rows. 14 px
    would equal the body and flatten title, row and meta into one size; Inter ships no 450 or 500 weight. */
 @media (min-width: 721px) {
   :root { --text-meta: 13.5px; --instrument-meta: var(--color-muted-foreground); }
@@ -964,7 +973,7 @@ html[data-chat-width='full'] {
 /* Light, stamped by `lib/theme.ts` and by the boot script of `index.html`; dark stamps nothing. */
 [data-theme='light'] {
   --color-background: #f3f3f6;
-  /* Round 21: the frame one step deeper (6.9 L* under the page); white is the ceiling above. */
+  /* The frame one step deeper (6.9 L* under the page); white is the ceiling above. */
   --color-frame: #dfdfe5;
   --color-frame-edge: rgba(0, 0, 0, 0.14);
   --color-surface: #fafafb;
@@ -979,11 +988,10 @@ html[data-chat-width='full'] {
   --color-hover: rgba(0, 0, 0, 0.04);
   --color-active: rgba(0, 0, 0, 0.07);
   --color-foreground: #0b0b0e;
-  /* Round 18: one step darker, so both tiers keep their floors on the deeper frame; round 19 one more,
-     secondary to 12.7:1, subtle to 11.2:1; round 20 one more, secondary to 13.2:1, subtle to 11.7:1;
-     round 21 one more for the deeper frame, each still 4 L* from the tier above. */
-  --color-muted-foreground: #17171c;
-  --color-subtle: #202026;
+  /* As near the ink as the hierarchy allows: each tier 4 L* from the one above (secondary 13.6:1 and
+     subtle 12.5:1 on the frame), the darkest the 4 L* step leaves. */
+  --color-muted-foreground: #16161a;
+  --color-subtle: #1e1e23;
   --color-faint: #b4b4bb;
   --color-selection: rgba(28, 28, 33, 0.14);
   --color-terminal-background: var(--color-surface-2);
@@ -1013,6 +1021,8 @@ html[data-chat-width='full'] {
   --color-success: #16a34a;
   --color-danger: #dc2626;
   --color-danger-hover: #bb2020;
+  --diff-add-tint: #63976c;
+  --diff-remove-tint: #b05f56;
   --color-on-danger: #ffffff;
   --color-scrim: rgba(20, 20, 24, 0.35);
   --sheet-scrim: rgba(20, 20, 24, 0.2);
@@ -1426,6 +1436,30 @@ button.icon-only {
   min-height: 32px;
 }
 
+/* One icon button for the thread and the composer (+, mic, copy, edit, retry, "...", info, close): one drawn box
+   and corner, no ground at rest, the raised hover ground under the pointer, the keyboard and an open menu, the one
+   focus ring. The hit area reaches `--icon-button-target` (32 px on a desktop, the platform's 44 on a phone)
+   past the drawn box, so a row keeps its height. */
+button.icon-button {
+  position: relative;
+  width: var(--icon-button);
+  height: var(--icon-button);
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  box-shadow: none;
+  color: var(--color-muted-foreground);
+}
+button.icon-button::before { content: ''; position: absolute; inset: calc((var(--icon-button) - var(--icon-button-target)) / 2); }
+button.icon-button:is(:focus-visible, [aria-haspopup][aria-expanded='true'], [aria-pressed='true']) { background: var(--color-active); color: var(--color-foreground); }
+@media (hover: hover) {
+  button.icon-button:hover:not(:disabled) { background: var(--color-active); color: var(--color-foreground); }
+}
+button.icon-button:active:not(:disabled) { transform: scale(0.94); }
+
 /* One stroke for the line set, by optical size: an icon drawn at 1.5 to 2 (Lucide's default included)
    takes `--icon-stroke`, heavier under 14 px and lighter from 18 px, so a 12 px glyph and a 28 px one
    draw the same line. A width over 2 (a check, a bold mark) is a deliberate weight and keeps it. */
@@ -1598,7 +1632,9 @@ details[open] > summary .fold-caret {
 }
 
 .disclosure-fold.open { grid-template-rows: 1fr; opacity: 1; }
-.disclosure-fold > * { min-height: 0; overflow: hidden; }
+/* `clip`, not `hidden`: the child clips its rows while the track grows but is
+   no scroll box, so a scrolling list still sees its rows' snap positions. */
+.disclosure-fold > * { min-height: 0; overflow: clip; }
 
 /* A closed body stops being styled and laid out once its close has run: a
    group opened once kept every call it built in each layout of its row. The
@@ -1865,9 +1901,9 @@ tr:last-child td {
 
 /* One segmented control everywhere (settings, onboarding, a contact's
    sharing): every option in one dark track, the chosen one raised a step
-   above it with a hairline edge and the text at full ink. Round 17: a
-   full-white segment outshouted the accent and the primary button of the
-   page; the raise still reads as chosen at a glance in both themes
+   above it with a hairline edge and the text at full ink. Not full white,
+   which would outshout the accent and the primary button of the page; the
+   raise still reads as chosen at a glance in both themes
    (lib/contrast.test.ts). Neutral, never the accent; a page sizes it with
    its own scoped rule. */
 .segmented {
@@ -1909,7 +1945,7 @@ tr:last-child td {
    its rows' own step aside; that one says what they said. */
 .card:has(.info-tip[data-gather]) .info-tip[data-tip-text] { display: none; }
 
-/* The one heading under a screen's title, over its card: a size and the ink over the rows it leads (round 18). */
+/* The one heading under a screen's title, over its card: a size and the ink over the rows it leads. */
 .settings .page .card h2,
 .settings .page > .group-heading h2 {
   margin-bottom: var(--space-3);
@@ -2250,6 +2286,8 @@ tr:last-child td {
     flex: none;
     align-self: stretch;
     height: var(--scroll-edge);
+    /* Eased, not linear: the ground closes in over the sliver at the very edge, the rest of the line stays legible. */
+    --scroll-edge-fill: var(--scroll-edge-ground, var(--color-background));
     pointer-events: none;
     opacity: 0;
     animation-duration: auto;
@@ -2260,14 +2298,14 @@ tr:last-child td {
   :is(.scroll-edges, [data-scroll-root], .settings .framed, .settings .framed > .page)::before {
     top: calc(-1 * var(--scroll-edge-top, 0px));
     margin-bottom: calc(-1 * var(--scroll-edge));
-    background: linear-gradient(to bottom, var(--scroll-edge-ground, var(--color-background)), transparent);
+    background: linear-gradient(to bottom, var(--scroll-edge-fill), color-mix(in oklab, var(--scroll-edge-fill) 45%, transparent) 50%, transparent);
     animation-name: scroll-edge-in;
     animation-range: var(--scroll-edge-top, 0px) calc(var(--scroll-edge-top, 0px) + var(--scroll-edge));
   }
   :is(.scroll-edges, [data-scroll-root], .settings .framed, .settings .framed > .page)::after {
     bottom: calc(-1 * var(--scroll-edge-bottom, 0px));
     margin-top: calc(-1 * var(--scroll-edge));
-    background: linear-gradient(to top, var(--scroll-edge-ground, var(--color-background)), transparent);
+    background: linear-gradient(to top, var(--scroll-edge-fill), color-mix(in oklab, var(--scroll-edge-fill) 45%, transparent) 50%, transparent);
     animation-name: scroll-edge-out;
     animation-range: calc(100% - var(--scroll-edge-bottom, 0px) - var(--scroll-edge)) calc(100% - var(--scroll-edge-bottom, 0px));
   }
@@ -2649,7 +2687,7 @@ input[type=checkbox][role=switch]:disabled { opacity: .45; cursor: not-allowed; 
      over real top air, and the home indicator's room under its last row. The grabber sits out of the
      flow, so a grid or flex sheet keeps its own layout. */
   [data-mobile-sheet='true'] { position: fixed !important; max-width: none !important; box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain; border-width: 1px 0 0 !important; border-radius: var(--radius-xl) var(--radius-xl) 0 0 !important; padding-top: var(--space-6) !important; padding-bottom: max(var(--space-3), env(safe-area-inset-bottom)) !important; }
-  /* A sheet is the top of the ladder: the sheet fill and the one soft elevation (round 21). */
+  /* A sheet is the top of the ladder: the sheet fill and the one soft elevation. */
   [data-mobile-sheet='true'] { background: var(--color-sheet) !important; box-shadow: var(--elevation-soft) !important; }
   [data-mobile-sheet='true']::before { content: ''; position: absolute; top: var(--space-2); left: calc(50% - 18px); width: 36px; height: 5px; border-radius: var(--radius-full); background: var(--color-edge); pointer-events: none; }
   /* A sheet rises from the bottom edge and goes back down, where its popover pops in place (lib/floating.ts). */

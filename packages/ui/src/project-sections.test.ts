@@ -124,7 +124,7 @@ test('a project whose only conversations were archived by hand shows them under 
   await store.archive(shipped.id, true);
 
   // The set-aside conversation is the card's body, drawn without a click, and put away as quietly as a done one
-  // (round 14: no brighter "pending" row).
+  // (no brighter "pending" row).
   const row = `[data-testid=later-projects] section[data-project-id="${paused.id}"] [data-testid=done-thread][data-thread-id="${later.id}"]`;
   await waitFor(() => document.querySelector(row) !== null);
   expect(document.querySelector(row)!.classList.contains('pending')).toBe(false);

@@ -53,6 +53,8 @@ test('Activity lists what needs the user, failures included, then the updates, e
   expect(row('push').at).toBe(NOW - 60_000);
   // A failure or news says where it lives, and when it last changed.
   expect(row('failed')).toMatchObject({ reason: 'Drafts', at: NOW - 2_000 });
+  // Every row knows where it comes from for its place line, the decisions included, not only the news.
+  expect(feed.map(row => row.place)).toEqual(feed.map(() => 'Drafts'));
 });
 
 test('a sub-agent that failed under a parent still at work is the parent\'s business; a thread outside projects says its bot', () => {
@@ -63,7 +65,7 @@ test('a sub-agent that failed under a parent still at work is the parent\'s busi
   ];
   const machine = { id: 'local', store: { pendingQuestions: [], pendingPermissions: [], subagents: () => null } };
   const feed = activityFeed(threads.map(t => ({ machine, thread: t, project: undefined })), entry => entry.thread.id === 'bot' ? 'Scout' : null);
-  expect(feed.map(row => [row.thread.id, row.reason])).toEqual([['bot', 'Scout']]);
+  expect(feed.map(row => [row.thread.id, row.reason, row.place])).toEqual([['bot', 'Scout', 'Scout']]);
 });
 
 test('one event per row: a sub-agent shares its parent\'s row only for the same ask, so a permission never carries a stopped helper', () => {

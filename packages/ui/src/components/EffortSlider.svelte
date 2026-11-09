@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { Brain, ChevronDown, Zap } from '@lucide/svelte';
+  import { ChevronDown, Zap } from '@lucide/svelte';
+  import { clearOfDecision } from '../lib/clear-of-decision';
   /** The agents' level ids and the cost line each one reads. */
   const LEVEL_COST: Record<string, 'off' | 'low' | 'middle' | 'deeper' | 'high' | 'top' | 'extended'> = {
     off: 'off', none: 'off', minimal: 'off', low: 'low', medium: 'middle', high: 'deeper', xhigh: 'high', max: 'top', ultra: 'extended', ultrathink: 'extended'
@@ -63,6 +64,7 @@
   let root = $state<HTMLDivElement | undefined>(undefined);
   let trigger = $state<HTMLButtonElement | undefined>(undefined);
   let track = $state<HTMLDivElement | undefined>(undefined);
+  let panel = $state<HTMLDivElement | undefined>(undefined);
   let line = $state<HTMLDivElement | undefined>(undefined);
   let dragging = $state(false);
   let preview = $state<number | null>(null);
@@ -226,12 +228,26 @@
 
 <svelte:window onpointerdown={onWindowPointerdown} />
 
+<!--
+  The chip's face is the slider in small: its bolt, the level's word whole,
+  and a meter of the scale's steps rising like its track, lit up to the level.
+  A fast mode switched on fills the bolt, so it shows with the popover shut.
+-->
+{#snippet face()}
+  {@const fast = levels.length > 0 && !!selectedSpeed}
+  <span class="bolt-mark" class:fast data-testid={fast ? 'effort-fast-mark' : undefined} title={fast && selectedSpeed ? levelName(selectedSpeed) : undefined}><Zap size={14} strokeWidth={1.75} fill={fast ? 'currentColor' : 'none'} /></span>
+  <span class="ui-label" class:accented-cap={accentedCap}>{label}</span>
+  {#if levels.length > 1}
+    <span class="meter" aria-hidden="true" data-testid="effort-meter" data-step={index + 1}>
+      {#each levels as level, at (level.id)}<span class="step" class:on={at <= index} style:--rise={(at + 1) / levels.length}></span>{/each}
+    </span>
+  {/if}
+{/snippet}
+
 <div class="effort" bind:this={root}>
   {#if readonly}
   <span class="ui-chip trigger readonly" data-testid="composer-effort" title={readonlyHint || strings.composer.effortTitle} aria-label={`${strings.composer.effortTitle}: ${label}`}>
-    <Brain size={14} strokeWidth={1.75} />
-    <span class="ui-label" class:accented-cap={accentedCap}>{label}</span>
-    {#if levels.length > 0 && selectedSpeed}<span class="fast-mark" data-testid="effort-fast-mark" title={levelName(selectedSpeed)}><Zap size={12} fill="currentColor" /></span>{/if}
+    {@render face()}
   </span>
   {:else}
   <button
@@ -246,10 +262,7 @@
     onclick={toggle}
     {onkeydown}
   >
-    <Brain size={14} strokeWidth={1.75} />
-    <span class="ui-label" class:accented-cap={accentedCap}>{label}</span>
-    <!-- A fast mode switched on stays in sight with the popover closed. -->
-    {#if levels.length > 0 && selectedSpeed}<span class="fast-mark" data-testid="effort-fast-mark" title={levelName(selectedSpeed)}><Zap size={12} fill="currentColor" /></span>{/if}
+    {@render face()}
     <ChevronDown size={12} strokeWidth={2} class="chevron" />
   </button>
   {/if}
@@ -263,7 +276,8 @@
       aria-label={strings.composer.effortTitle}
       data-testid="composer-effort-menu"
       use:popover.attach
-      use:floating={{ anchor: () => trigger ?? null, placement: 'top', dismiss: () => popover.hide() }}
+      bind:this={panel}
+      use:floating={{ anchor: () => clearOfDecision(trigger, panel), placement: 'top', dismiss: () => popover.hide() }}
       onanimationend={popover.end}
       {onkeydown}
     >
@@ -350,7 +364,13 @@
 .trigger[aria-expanded='true'] { background: var(--control-glaze) var(--color-control-hover); color: var(--color-foreground); }
 /* A tap leaves :hover behind on a touch screen: the chip would stay pressed once its popover closed. */
 @media (hover: hover) { .trigger:not(.readonly):hover { background: var(--control-glaze) var(--color-control-hover); color: var(--color-foreground); } }
-.fast-mark { display: inline-flex; margin-left: -2px; color: var(--color-accent); filter: drop-shadow(0 0 4px var(--color-accent-soft)); }
+.bolt-mark { display: inline-flex; flex: none; }
+/* Fast on is a live state: the bolt fills in the accent. */
+.bolt-mark.fast { color: var(--color-accent); filter: drop-shadow(0 0 4px var(--color-accent-soft)); }
+/* One bar per step of the scale, rising like the slider's glow; only the lit ones take the accent. */
+.meter { display: inline-flex; align-items: flex-end; gap: 2px; flex: none; height: 12px; }
+.step { width: 3px; height: calc(4px + var(--rise) * 8px); border-radius: 1px; background: color-mix(in oklab, currentColor 28%, transparent); }
+.step.on { background: var(--color-accent); }
 /* Every menu's one edge, radius and shadow. */
 .popover { --track-pad: 12px; position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 40; width: 288px; padding: 10px 12px 12px; background: var(--overlay-surface); border: 1px solid var(--overlay-edge); border-radius: var(--radius-overlay); box-shadow: var(--shadow-overlay); animation: pop var(--dur-2) var(--ease-out-quint); transform-origin: bottom left; }
 .popover.closing { animation-name: pop-out; pointer-events: none; }

@@ -77,8 +77,8 @@
         <span class="state" data-testid="composer-outbox-pending"><Clock size={12} /><span class="word">{at < outgoing ? strings.composer.outboxSending
           : connected ? strings.composer.outboxNext : fill(strings.composer.outboxWaiting, { machine })}</span></span>
       {:else}
-        <!-- The clock says it waits; the word stays for screen readers, the "i" says why. -->
-        <span class="state"><Clock size={12} /><span class="visually-hidden">{strings.composer.queuedLabel}</span></span>
+        <!-- The clock in the dock's icon box, then "Then:": what goes next, read as the line's title. -->
+        <span class="state icon"><Clock size={12} /></span><span class="then">{strings.composer.queuedThen}</span>
       {/if}
       <button type="button" class="text"
         title={strings.composer.editQueued}
@@ -111,7 +111,7 @@
   .queued {
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
+    align-items: stretch;
     gap: 4px;
     min-width: 0;
     max-width: 100%;
@@ -119,10 +119,12 @@
     overflow-y: auto;
   }
 
+  /* The dock's row form (AgentDock): the icon box, the title cut first, the menu at the row's end. */
   .line {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
+    min-height: var(--dock-row, var(--control-sm));
     min-width: 0;
     max-width: 100%;
     /* One step under the decision, like the subagents' entries: the tertiary ink. */
@@ -135,11 +137,13 @@
   .pill {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    flex: 0 1 auto;
+    gap: 8px;
+    flex: 1 1 auto;
     min-width: 0;
-    height: var(--control-sm);
+    height: var(--dock-row, var(--control-sm));
   }
+  .icon { justify-content: center; width: var(--dock-icon, 12px); }
+  .then { flex: none; color: var(--color-muted-foreground); font-weight: 550; }
 
   .state {
     display: inline-flex;
@@ -176,26 +180,23 @@
   .extra { display: inline-flex; align-items: center; gap: 3px; flex: none; font-size: var(--text-xs); }
   /* Its menu or its "i", round controls closing the line. */
   .pill :global(.info-tip) { flex: none; }
-  .tool { display: flex; flex: none; }
-  /* A 32 px target around a small glyph: the line grows to it, the ink stays quiet. */
-  .tool :global(.trigger) { position: relative; width: 32px; height: 32px; padding: 0; justify-content: center; border-radius: var(--radius-full); color: inherit; }
+  .tool { display: flex; flex: none; margin-left: auto; }
+  /* A row-high target around a small glyph, the ink quiet. */
+  .tool :global(.trigger) { position: relative; width: var(--dock-row, 28px); height: var(--dock-row, 28px); padding: 0; justify-content: center; border-radius: var(--radius-full); color: inherit; }
   .tool :global(.trigger:hover), .tool :global(.trigger[aria-expanded='true']) { color: var(--color-foreground); }
   .line .ghost.small { flex: none; height: 22px; padding: 0 6px; font-size: var(--text-xs); }
   /* Send now is the line's one word in ink: it acts on the whole queue. */
   .line .send-now { color: var(--color-foreground); font-weight: 550; }
 
-  /* A phone keeps the same single quiet line, a little taller: its text and
-     its menu each a finger's target through a hit area wider than their ink. Two lines
+  /* A phone keeps the same single quiet line: its text and its menu each a
+     finger's target through a hit area wider than their ink. Two lines
      show, more scroll, so the card stays under its share of the screen. */
   @media (max-width: 720px) {
     /* The scroller reaches 6 px past the lines, so the menu's hit area is not clipped at its edge. */
-    .queued { gap: 0; max-height: calc(2 * 36px + 12px); margin: -6px; padding: 6px; }
-    .line { min-height: 36px; }
-    .pill { height: 34px; }
-    .text { height: 36px; }
-    .tool :global(.trigger) { width: 34px; height: 34px; }
-    .tool :global(.trigger::after) { content: ''; position: absolute; inset: -6px; }
-    .line .ghost.small { height: 36px; }
+    .queued { gap: 0; max-height: calc(2 * var(--dock-row, 30px) + 12px); margin: -6px; padding: 6px; }
+    .text { height: var(--dock-row, 30px); }
+    .tool :global(.trigger::after) { content: ''; position: absolute; inset: -7px; }
+    .line .ghost.small { height: var(--dock-row, 30px); }
   }
   /* A 360 px phone keeps the line for the prompt: the outbox's word goes, the "i" still says why. */
   @media (max-width: 400px) { .word { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; } }

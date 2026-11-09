@@ -7,8 +7,8 @@ const css = readFileSync(resolve('src/app.css'), 'utf8');
 /**
  * The text tiers of `app.css` against every ground they sit on, in both
  * themes. The subtle tier carries paths, timestamps and hints, so it is text
- * and has to clear WCAG AA (4.5:1) on the raised surface-3 too. Round 14 lifts
- * it one step: 8:1 on every ground, and within 7 L* of the muted tier, while
+ * and has to clear WCAG AA (4.5:1) on the raised surface-3 too, with margin:
+ * 8:1 on every ground, and within 7 L* of the muted tier, while
  * the three tiers stay at least 4 L* apart so the hierarchy still reads.
  */
 
@@ -53,18 +53,15 @@ function alpha(scope: string, name: string): number {
 }
 
 /**
- * Round 15 lifted the grey one step: secondary text, the hairline and the edge
- * that must read (round 14: hairline 0.075 and 0.08, edge 0.11 and 0.16).
- * Round 16 lifts the text once more, the small meta still read as dim: the
- * floors below fail on round 15's values (secondary 12.27:1 and 10.61:1 at
- * worst, subtle 10.75:1 and 9.14:1).
+ * Secondary text, the hairline and the edge that must read sit high enough
+ * that small meta (timestamps, counts, diff line numbers, the quota line)
+ * never reads as dim. A dimmer pair, such as 13.19:1 and 11.83:1 in dark or
+ * 12.69:1 and 11.16:1 in light, fails the floors below.
  */
-// Round 19 raises the small tier a step: round 18's 12.84:1 and 11.39:1 (dark), 11.77:1 and 10.26:1 (light) fail.
-// Round 20 one more (timestamps, counts, diff line numbers, the quota line): round 19's 13.19:1 and 11.83:1
-// (dark), 12.69:1 and 11.16:1 (light) fail.
+// The light tiers sit at the 4 L* step under the ink: the previous 13.46:1 and 12.21:1 on the frame fail.
 const FLOORS = {
   dark: { muted: 13.6, subtle: 12.3, border: 0.09, edge: 0.13 },
-  light: { muted: 13.2, subtle: 11.7, border: 0.095, edge: 0.19 }
+  light: { muted: 13.55, subtle: 12.45, border: 0.095, edge: 0.19 }
 };
 
 describe.each([
@@ -99,17 +96,17 @@ describe.each([
     const [primary, muted, subtle] = ['--color-foreground', '--color-muted-foreground', '--color-subtle'].map((name) => lightness(token(scope, name)));
     expect(Math.abs(primary! - muted!), 'primary to muted').toBeGreaterThanOrEqual(4);
     expect(Math.abs(muted! - subtle!), 'muted to subtle').toBeGreaterThanOrEqual(4);
-    // More than one step under muted reads as dim (round 13: 8.6 L* in dark, 8.8 in light).
+    // More than one step under muted reads as dim (8.6 L* in dark, 8.8 in light).
     expect(Math.abs(muted! - subtle!), 'muted to subtle').toBeLessThanOrEqual(7);
   });
 });
 
 /**
- * Round 18: the frame, the page, a card and a raised fill each sit one visible
+ * The frame, the page, a card and a raised fill each sit one visible
  * tonal step apart, so a card reads as a card without glass or a gradient.
- * Round 21 widens the dark ladder to about 4 L* a step (round 20: frame to
- * page 3.8, page to card 3.5, card to raised 2.5) and the light frame to 6.9
- * L* under the page (round 20: 5.5); each new floor fails on round 20's values.
+ * The dark ladder climbs about 4 L* a step and the light frame sits 6.9 L*
+ * under the page; a ladder of 3.8, 3.5 and 2.5 (dark) or a frame 5.5 under
+ * the page (light) fails these floors.
  */
 test.each([
   ['dark', ':root', { framePage: 4, pageCard: 3.5, cardRaised: 3.5, pageRaised: 7.5 }],
@@ -124,7 +121,7 @@ test.each([
 });
 
 /**
- * Round 21: one soft elevation for the composer card and a sheet, its top light
+ * One soft elevation for the composer card and a sheet, its top light
  * no stronger than the hairline and its falloff short, so it lifts without a
  * glow; a phone sheet wears it on the sheet fill, the top of the ladder.
  */
@@ -145,10 +142,10 @@ test.each([
 });
 
 /**
- * Round 19: a phone's sheet dims the screen behind it less than a dialog does,
- * so the screen it rose from stays in view (round 18 drew the dialog's 0.55 and
- * 0.35). The inset card's top light reads as a layer over the frame without a
- * wide blur, glass or a gradient (round 18: 0.035 in dark).
+ * A phone's sheet dims the screen behind it less than a dialog does,
+ * so the screen it rose from stays in view (a dialog's 0.55 and 0.35 would hide
+ * it). The inset card's top light reads as a layer over the frame without a
+ * wide blur, glass or a gradient (0.035 in dark).
  */
 test.each([
   ['dark', ':root', { sheet: 0.35, light: 0.06 }],
@@ -184,16 +181,12 @@ test('a menu or popover edge sits one step over the edge, toward the text, in ev
 /**
  * The curated palettes carry their own text tiers. Their subtle gets the same
  * lift as the default: within 7 L* of its muted tier, so tertiary text does
- * not read dim on any theme. Round 19 raises the small tier one step, with
- * margin over AA: muted 6.5:1 and subtle 5.5:1 on every ground the palette
- * draws (round 18 sat at 4.5:1: light Catppuccin's muted at 4.65, light Tokyo
- * Night's subtle at 4.51, light Amethyst's at 4.50), and the foreground stays
- * 4 L* clear of the lifted muted so the hierarchy still reads. Round 20 lifts
- * them one more step, to 7:1 and 6:1, each palette set 0.2 over the floor
- * (round 19 sat on it: light Tokyo Night's muted at 6.51, light Catppuccin's
- * subtle at 5.50). The selection stands 5 L* off the surface and the raised
- * fill, so a selected row never differs by a near-identical grey (round 19:
- * light Tokyo Night's 2.5 L* under its raised fill, Nord's 4.2).
+ * not read dim on any theme. The small tier keeps a margin over AA: muted 7:1
+ * and subtle 6:1 on every ground the palette draws, each palette set 0.2 over
+ * the floor, and the foreground stays 4 L* clear of the lifted muted so the
+ * hierarchy still reads. The selection stands 5 L* off the surface and the
+ * raised fill, so a selected row never differs by a near-identical grey (2.5
+ * L* under a raised fill does).
  */
 describe('curated palettes', () => {
   const ids = [...css.matchAll(/--palette-((?:dark|light)-[\w-]+?)-subtle:/g)].map((match) => match[1]!);
@@ -203,7 +196,7 @@ describe('curated palettes', () => {
     expect(ids.length).toBeGreaterThanOrEqual(11);
   });
 
-  // Round 21: each palette with margin over the floor (round 20 sat on it: dark Nord's subtle at 6.20, light Tokyo Night's muted at 7.26 before the deeper frame).
+  // Each palette with margin over the floor, not on it (a subtle at 6.20 or a muted at 7.26 fails).
   test.each(ids)('%s: muted clears 7.25:1 and subtle 6.25:1 on every ground, subtle within 7 L* of muted, the foreground 4 L* past muted', (id) => {
     const value = (name: string) => new RegExp(`--palette-${id}-${name}:\\s*(#[0-9a-f]{6})\\s*;`, 'i').exec(css)?.[1];
     const grounds = PALETTE_GROUNDS.map(value).filter((hex): hex is string => !!hex);
@@ -220,8 +213,8 @@ describe('curated palettes', () => {
   });
 
   /**
-   * Round 21: every palette's ladder a clear step a layer. Dark: frame, page, card, raised and pressed climb
-   * (round 20: Catppuccin's raised fill sat 3 L* under its page, Tokyo Night's frame 2.5 under it); OLED keeps
+   * Every palette's ladder a clear step a layer. Dark: frame, page, card, raised and pressed climb
+   * (Catppuccin's raised fill sat 3 L* under its page, Tokyo Night's frame 2.5 under it); OLED keeps
    * its black frame and page. Light: the frame well under the page, the raised fill over it, the pressed fill under.
    */
   test.each(ids)('%s: frame, page, card, raised and pressed fills are a clear step apart', (id) => {
@@ -337,8 +330,8 @@ describe('text in the components stays at or above the subtle tier', () => {
 /**
  * One segmented control everywhere, its chosen option a raised neutral: a
  * step over the frame its track sits on, with the edge hairline, never the
- * full ink (round 16 drew it white, louder than the accent and every primary
- * button on the page). A component that restyles the chosen segment brings a
+ * full ink (white would be louder than the accent and every primary button
+ * on the page). A component that restyles the chosen segment brings a
  * second look back.
  */
 describe('the chosen segment', () => {
@@ -380,6 +373,18 @@ describe('the chosen segment', () => {
 });
 
 /** `color-mix(in srgb, a p%, b)` on two hex colours: sRGB mixes the encoded channels. */
+/** OKLab chroma: how coloured a fill reads, whatever its lightness. */
+function chroma(hex: string): number {
+  const [r, g, b] = [1, 3, 5].map((i) => {
+    const v = parseInt(hex.slice(i, i + 2), 16) / 255;
+    return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  }) as [number, number, number];
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  return Math.hypot(1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s, 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s);
+}
+
 function mixHex(a: string, share: number, b: string): string {
   const channel = (hex: string, i: number) => parseInt(hex.slice(i, i + 2), 16);
   return `#${[1, 3, 5].map((i) => Math.round(channel(a, i) * share + channel(b, i) * (1 - share)).toString(16).padStart(2, '0')).join('')}`;
@@ -394,8 +399,8 @@ function over(scope: string, name: string, ground: string): string {
 }
 
 /**
- * Round 21: a diff reads again. Round 20's 5 and 16 percent washes read as no
- * change at all: a changed line now carries a wash the eye finds at a glance,
+ * A diff reads at a glance: 5 and 16 percent washes read as no change at
+ * all, so a changed line carries a wash the eye finds at a glance,
  * the changed words a clear step deeper, add and remove well apart, and code
  * keeps 12:1 on a line, 9:1 on a word, its line number (the secondary ink) 11:1.
  */
@@ -406,7 +411,7 @@ describe.each([
   const scope = block(selector);
   const root = block(':root');
   const share = (name: string) => {
-    const match = new RegExp(`${name}:\\s*color-mix\\(in srgb, var\\((--color-\\w+)\\) (\\d+)%, var\\(--color-surface-2\\)\\);`).exec(root);
+    const match = new RegExp(`${name}:\\s*color-mix\\(in srgb, var\\((--(?:color|diff)-[\\w-]+)\\) (\\d+)%, var\\(--color-surface-2\\)\\);`).exec(root);
     if (!match) throw new Error(`no ${name}`);
     return mixHex(token(scope, match[1]!), Number(match[2]) / 100, token(scope, '--color-surface-2'));
   };
@@ -415,11 +420,24 @@ describe.each([
   const distance = (a: string, b: string) => Math.hypot(...[1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16) - parseInt(b.slice(i, i + 2), 16)));
 
   test('a changed line carries a visible wash, the changed words a step deeper', () => {
-    // Round 20's washes sat 10 and 12 apart from the raised fill in sRGB: under this floor.
+    // Washes 10 and 12 apart from the raised fill in sRGB sit under this floor.
     for (const wash of [addWash!, removeWash!]) expect(distance(wash, raised), `${wash} reads as tinted`).toBeGreaterThanOrEqual(18);
-    expect(distance(addWash!, removeWash!), 'add and remove apart').toBeGreaterThanOrEqual(20);
+    // The lines are quiet tints, still told apart by hue; the words, the sign and the bar carry the full colours.
+    expect(distance(addWash!, removeWash!), 'add and remove lines apart').toBeGreaterThanOrEqual(10);
+    expect(distance(addWord!, removeWord!), 'add and remove words apart').toBeGreaterThanOrEqual(20);
     expect(Math.abs(lightness(addWord!) - lightness(addWash!)), 'added words').toBeGreaterThanOrEqual(4);
     expect(Math.abs(lightness(removeWord!) - lightness(removeWash!)), 'removed words').toBeGreaterThanOrEqual(4);
+  });
+
+  // A line's wash is a tint, the words the signal: a wash mixed from the full status colour (0.020 OKLab
+  // chroma dark, 0.023 light) is the loudest surface of the app. Half the chroma, the same lightness step.
+  test('a changed line is a quiet tint: half the chroma of the words, its lightness step kept', () => {
+    const pairs: [string, string][] = [[addWash!, addWord!], [removeWash!, removeWord!]];
+    for (const [wash, word] of pairs) {
+      expect(chroma(wash), `${wash} chroma`).toBeLessThanOrEqual(0.015);
+      expect(chroma(wash), `${wash} under its words`).toBeLessThanOrEqual(chroma(word) / 2.5);
+      expect(Math.abs(lightness(wash) - lightness(raised)), `${wash} lightness step`).toBeGreaterThanOrEqual(4.5);
+    }
   });
 
   test('code reads at 12:1 on a changed line and 9:1 on a changed word, its line number at 11:1', () => {
@@ -436,7 +454,7 @@ describe.each([
   });
 });
 
-/** Round 20: four neutral roles, an instrumental tier on the secondary inks, one icon stroke by optical size. */
+/** Four neutral roles, an instrumental tier on the secondary inks, one icon stroke by optical size. */
 describe('round 20 roles', () => {
   const root = block(':root');
 
@@ -455,7 +473,7 @@ describe('round 20 roles', () => {
     expect(root).toMatch(/--text-min:\s*var\(--text-meta\);/);
   });
 
-  // Round 21: the desktop's secondary tier half a step up and the instrument meta in the secondary ink; the phone keeps 13 px.
+  // The desktop's secondary tier half a step up and the instrument meta in the secondary ink; the phone keeps 13 px.
   test('the desktop meta reads half a step larger and brighter, still under the body', () => {
     const desktop = /@media \(min-width: 721px\) \{\s*:root \{ --text-meta: ([\d.]+)px; --instrument-meta: var\(--color-muted-foreground\); \}/.exec(css);
     expect(desktop, 'desktop meta rule').not.toBeNull();

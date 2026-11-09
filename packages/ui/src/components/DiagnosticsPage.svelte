@@ -449,7 +449,7 @@
   .muted { color: var(--color-muted-foreground); font-size: var(--text-sm); }
   .link { height: auto; padding: 0; gap: 6px; color: var(--color-foreground); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--color-edge); }
 
-  /* A level is a word, in sentence case like every label (round 17: no small capitals). */
+  /* A level is a word, in sentence case like every label (no small capitals). */
   .level { flex: none; display: inline-block; min-width: 44px; font-size: var(--text-xs); color: var(--color-muted-foreground); }
   .level::first-letter { text-transform: uppercase; }
   .level[data-level='error'] { color: var(--color-danger); font-weight: 600; }

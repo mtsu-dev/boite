@@ -182,12 +182,12 @@
             </ProjectChoice></span>
             {#if machine}
               <span class="ui-label">{strings.thread.onMachine}</span>
-              <!-- Plain words, not a picker's look: the machine follows the project, so nothing here changes it (round 20). -->
+              <!-- Plain words, not a picker's look: the machine follows the project, so nothing here changes it. -->
               <span class="machine" data-testid="draft-machine"><span class="ui-label">{machine.label}</span></span>
             {/if}
           </h1>
           <!-- What this pane is for, one line over the composer: the task goes in the box, the agent works in this folder,
-               in full; the heading above names the machine (round 21: two lines read as a paragraph). -->
+               in full; the heading above names the machine (two lines read as a paragraph). -->
           <p class="start-hint" data-testid="draft-hint">{project ? fill(strings.thread.startWhere, { path: project.path }) : strings.thread.startHint}</p>
         </div>
     {/if}
@@ -292,10 +292,12 @@
     --composer-bar-padding: 8px 16px 16px;
   }
 
-  /* Zero basis on both halves, so the heading sits exactly as far below the
-     top as the composer sits above the bottom: one centred block. */
+  /* The heading, its place and the composer are one block on the column's
+     optical centre: the free space splits 3 above to 4 below, so the block
+     rides a little above the middle, about 3% of the column's height at
+     1280 to 1920, and the lower half never reads as the empty one. */
   .draft-body {
-    flex: 1 1 0;
+    flex: 3 1 auto;
     min-height: auto;
     display: flex;
     flex-direction: row;
@@ -306,7 +308,7 @@
   }
 
   .draft-tail {
-    flex: 1 1 0;
+    flex: 4 1 0;
     min-height: 0;
     display: flex;
     justify-content: center;

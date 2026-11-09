@@ -14,6 +14,13 @@ test('the plugin choice saves local mode at the Douane plugin\'s port and says i
   const call = vi.spyOn(client, 'call');
   mounted = mount(SubscriptionProxySettings, { target: document.body, props: { store } });
   flushSync();
+  // Off, the card is its switch and one line of what it does: the form waits for the switch.
+  expect(q('subscription-proxy-off')?.textContent).toContain('Douane');
+  expect(q('subscription-proxy-remote')).toBeNull();
+  expect(q('subscription-proxy-save')).toBeNull();
+  q('subscription-proxy-enabled')!.click();
+  flushSync();
+  expect(q('subscription-proxy-off')).toBeNull();
   expect(q('subscription-proxy-remote')?.getAttribute('aria-pressed')).toBe('true');
   expect(q('subscription-proxy-url')).not.toBeNull();
 
@@ -29,7 +36,6 @@ test('the plugin choice saves local mode at the Douane plugin\'s port and says i
   expect(q('subscription-proxy-plugin')?.textContent).toContain('Douane 0.3.0 answers on 127.0.0.1:8787.');
   expect(q('subscription-proxy-open-plugins')).toBeNull();
 
-  q('subscription-proxy-enabled')!.click();
   q('subscription-proxy-save')!.click();
   await vi.waitFor(() => expect(store.settings?.subscriptionProxy?.mode).toBe('local'));
   expect(store.settings?.subscriptionProxy).toMatchObject({ enabled: true, kind: 'douane', baseUrl: 'http://127.0.0.1:8787/v1', dashboardUrl: 'http://127.0.0.1:8787/admin/' });
@@ -48,6 +54,8 @@ test('on a phone, which leaves Plugins to the desktop, the card says the plugin 
     await client.call('plugins.uninstall', { id: 'douane' });
     mounted = mount(SubscriptionProxySettings, { target: document.body, props: { store } });
     flushSync();
+    q('subscription-proxy-enabled')!.click();
+    flushSync();
     q('subscription-proxy-local')!.click();
     await vi.waitFor(() => expect(q('subscription-proxy-plugin')?.dataset.state).toBe('missing'));
     expect(q('subscription-proxy-open-plugins')).toBeNull();
@@ -61,6 +69,8 @@ test('without the plugin installed the card says so and leads to Plugins', async
   await client.call('plugins.uninstall', { id: 'douane' });
   const show = vi.spyOn(store, 'showSettings');
   mounted = mount(SubscriptionProxySettings, { target: document.body, props: { store } });
+  flushSync();
+  q('subscription-proxy-enabled')!.click();
   flushSync();
   q('subscription-proxy-local')!.click();
   await vi.waitFor(() => expect(q('subscription-proxy-plugin')?.dataset.state).toBe('missing'));

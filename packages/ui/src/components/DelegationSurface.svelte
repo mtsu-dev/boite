@@ -18,6 +18,7 @@
   import Elapsed from './Elapsed.svelte';
   import NativeAgents from './NativeAgents.svelte';
   import WorkflowRunPane from './WorkflowRunPane.svelte';
+  import SurfaceHead from './SurfaceHead.svelte';
   import { agentProgress } from '../lib/delegation-progress';
   import { machineName, workspace, type Machine } from '../lib/workspace.svelte';
 
@@ -43,6 +44,12 @@
   let doneAgents = $derived(agents.filter(agent => !agentProgress(agent).active).sort((a, b) => endOf(b) - endOf(a)));
   let liveRuns = $derived(runs.filter(isLive));
   let doneRuns = $derived(runs.filter(entry => !isLive(entry)));
+  /** "2 at work, 3 done": the head's words, the panel's own name being on its door. */
+  let headline = $derived.by(() => {
+    const live = liveAgents.length + liveRuns.length, done = doneAgents.length + doneRuns.length;
+    const parts = [live && fill(strings.delegation.headLive, { count: String(live) }), done && fill(strings.delegation.headDone, { count: String(done) })].filter(Boolean);
+    return parts.length ? parts.join(', ') : strings.delegation.headNone;
+  });
   let busy = $derived(agents.some(agent => threadBusy(agent.thread)) || runs.some(isLive));
   /** The interrupted subagents a Resume was just sent to: the button stays off until the core answers. */
   let resuming = $state(new Set<string>());
@@ -228,9 +235,9 @@
   {#if run}
     <WorkflowRunPane {store} {run} onback={() => showRun(undefined)} />
   {:else}
-    <!-- Every panel's own first row (app.css `.panel-toolbar`): what it holds, then its one set of actions. -->
-    <header class="panel-toolbar surface-head">
-      <h2 class="ui-label">{strings.delegation.heading}</h2>
+    <!-- Its head says what it holds (the door already names the panel), then its one set of actions. -->
+    <SurfaceHead>
+      <h2 class="ui-label" data-testid="delegation-head">{headline}</h2>
       {#if view && (!config.enabled || config.paused)}<span class="state ui-label-box" data-testid="delegation-state"><span class="ui-label">{config.enabled ? strings.delegation.paused : strings.delegation.off}</span></span>{/if}
       <span class="spacer"></span>
       {#if busy}
@@ -239,7 +246,7 @@
       {#if store.owner && view}
         <button type="button" class="ghost small icon" class:on={settings} aria-label={strings.delegation.configure} title={strings.delegation.configure} aria-pressed={settings} data-testid="delegation-settings-toggle" onclick={() => (settings = !settings)}><Settings size={15} strokeWidth={1.75} /></button>
       {/if}
-    </header>
+    </SurfaceHead>
 
     {#if settings && view && store.owner}
       <div class="settings" data-testid="delegation-settings">
@@ -311,8 +318,8 @@
 
 <style>
   .delegation { container-type: inline-size; height: 100%; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; }
-  .surface-head h2 { min-width: 0; color: var(--color-foreground); font-size: inherit; font-weight: 500; }
-  .surface-head .on { background: var(--color-active); color: var(--color-foreground); }
+  h2 { min-width: 0; margin: 0; color: var(--color-foreground); font-size: inherit; font-weight: 500; }
+  .on { background: var(--color-active); color: var(--color-foreground); }
   .state { padding: 1px 7px; border-radius: 999px; background: var(--color-surface-3); color: var(--color-muted-foreground); font-size: var(--text-xs); }
   .spacer { flex: 1; }
   .settings { flex: none; padding: 4px 16px 14px; }

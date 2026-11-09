@@ -2,6 +2,7 @@ import type { Translation } from '../../i18n.svelte';
 
 export const fr: Translation = {
   subscriptionProxy: {
+    offLine: 'Fait passer Claude et Codex par une passerelle, comme Douane, au lieu des comptes connectés ici.',
     heading: 'Proxy d\'abonnements', enable: 'Utiliser un proxy d\'abonnements',
     hint: 'Claude et Codex utilisent la passerelle de cette machine, Grok aussi derrière Douane, et OpenCode 2 ajoute ses autres modèles aux siens. Limites ouvre son tableau de bord dans Boite. Les autres agents gardent leur configuration.',
     baseUrl: 'URL de l\'API', dashboardUrl: 'URL du tableau de bord des limites', key: 'Clé API (facultative)',

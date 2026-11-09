@@ -3,7 +3,7 @@
  * door names the showing one and is the panel switcher, the one door to every
  * panel and tool.
  */
-import { afterEach, beforeEach, expect, test } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import { FakeClient } from '../lib/fake-client';
 import { rightPanel } from '../lib/right-panel.svelte';
@@ -59,7 +59,7 @@ test('the header door names the showing panel and switches it: every panel in on
   expect(listed()).not.toContain('all-panels');
   expect(listed().slice(-2)).toEqual(['panel-maximize', 'panel-hide']);
   expect(new Set(listed()).size).toBe(listed().length);
-  expect(sections()).toEqual(['Recent', 'Work', 'Agents', 'Tools']);
+  expect(sections()).toEqual(['Used in this thread', 'Work', 'Agents', 'Tools']);
   expect(query('[data-testid=panel-add-menu] [data-value=files]')?.classList.contains('active')).toBe(true);
   expect(query('[data-testid=panel-add-menu] [data-value=files] .check')).not.toBeNull();
 
@@ -88,6 +88,44 @@ test('the header door names the showing panel and switches it: every panel in on
   query<HTMLButtonElement>('[data-testid=panel-add-menu] [data-testid=panel-hide]')!.click(); await settle();
   expect(store.panelOpen).toBe(false);
   expect(query('[data-testid=panel-toggle]')?.textContent).toContain('Panels');
+});
+
+test('the launcher finds a panel by its name or its line: Enter opens the first, the arrows walk the rows, Escape closes', async () => {
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  await store.open('t-trace');
+  store.panel.closeAll();
+  store.panel.openChanges();
+  mountPanel();
+  await settle();
+  query<HTMLButtonElement>('[data-testid=panel-add]')!.click(); await settle();
+  const field = query<HTMLInputElement>('[data-testid=panel-add-menu] [data-testid=panel-find]')!;
+  // The search comes first and holds the keys.
+  expect(document.activeElement).toBe(field);
+  const rows = () => Array.from(document.querySelectorAll<HTMLElement>('[data-testid=panel-add-menu] [data-row]')).map((row) => row.dataset['value']);
+  const type = (text: string) => { field.value = text; field.dispatchEvent(new Event('input', { bubbles: true })); };
+  const key = (key: string) => (document.activeElement ?? field).dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+  // A word of its line finds a panel whose name does not say it.
+  type('programs'); await settle();
+  expect(rows()).toEqual(['trace']);
+  type('zzz'); await settle();
+  expect(rows()).toEqual([]);
+  expect(query('[data-testid=panel-find-none]')).not.toBeNull();
+  type('files'); await settle();
+  expect(rows()[0]).toBe('files');
+  // The arrows leave the field for the rows and come back up to it.
+  key('ArrowDown'); await settle();
+  expect((document.activeElement as HTMLElement).dataset['value']).toBe('files');
+  key('ArrowUp'); await settle();
+  expect(document.activeElement).toBe(field);
+  key('Enter'); await settle();
+  expect(store.panel.active?.kind).toBe('files');
+  expect(query('[data-testid=panel-add-menu]:not(.closing)')).toBeNull();
+  // Escape closes the launcher and gives the keys back to the door.
+  query<HTMLButtonElement>('[data-testid=panel-add]')!.click(); await settle();
+  key('Escape'); await settle();
+  expect(query('[data-testid=panel-add-menu]:not(.closing)')).toBeNull();
+  expect(document.activeElement).toBe(query('[data-testid=panel-add]'));
 });
 
 // A panel switch moves the body only: the head and its selector stay where they were.
@@ -123,9 +161,9 @@ test('an empty panel keeps the door as its switcher, named Panels', async () => 
   expect(store.panel.active?.kind).toBe('changes');
 });
 
-// The head held the Changes bar, a maximize and a dock beside the tabs: it now holds the tabs and the close,
-// the bar is the body's own first line and the window's switches are rows of the door's list.
-test('the panel head holds the tabs and the close only: refresh in the body, maximize in the switcher', async () => {
+// The panel has one head: it says what the showing surface holds, then that surface's actions, the close
+// last; the window's switches stay rows of the door's list.
+test('the panel head says what the surface holds and carries its actions, the close last: maximize in the switcher', async () => {
   client = new FakeClient({ delayMs: 0 });
   store = new Store(); store.attach(client); await store.connect();
   await store.open('t-trace');
@@ -134,14 +172,20 @@ test('the panel head holds the tabs and the close only: refresh in the body, max
   mountPanel();
   await settle();
   const head = query('[data-testid=panel-titlebar]')!;
+  await vi.waitFor(() => expect(head.querySelector('[data-testid=changes-count]')).not.toBeNull());
+  // Its words are the content's, never the panel's name a second time.
+  expect(head.querySelector('[data-testid=panel-surface-head]')?.textContent).not.toContain('Changes');
+  expect(head.querySelector('[data-testid=changes-refresh]')).not.toBeNull();
+  expect(query('[data-testid=changes-panel] .panel-toolbar')).toBeNull();
   const controls = Array.from(head.querySelectorAll<HTMLElement>('button')).filter((one) => !one.closest('[data-testid=panel-tab]'));
-  expect(controls.map((one) => one.dataset.testid)).toEqual(['panel-close']);
-  expect(head.querySelector('[data-testid=changes-refresh]')).toBeNull();
-  expect(query('[data-testid=changes-panel] > .panel-toolbar [data-testid=changes-refresh]')).not.toBeNull();
+  expect(controls.at(-1)?.dataset.testid).toBe('panel-close');
+  // Every action there is named, by its words or its tooltip.
+  for (const one of controls) expect(one.getAttribute('aria-label') || one.textContent?.trim() || one.title).toBeTruthy();
   query<HTMLButtonElement>('[data-testid=panel-add]')!.click(); await settle();
   query<HTMLButtonElement>('[data-testid=panel-add-menu] [data-testid=panel-maximize]')!.click(); await settle();
   expect(rightPanel.maximized).toBe(true);
   rightPanel.maximized = false;
   store.panel.openFiles(); await settle();
   expect(query('[data-testid=changes-refresh]')).toBeNull();
+  await vi.waitFor(() => expect(head.querySelector('[data-testid=files-refresh]')).not.toBeNull());
 });

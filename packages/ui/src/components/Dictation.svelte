@@ -153,7 +153,7 @@
 <svelte:document onvisibilitychange={() => { if (document.hidden && (phase === 'recording' || phase === 'opening')) cancel(); }} />
 
 <div class="dictation" data-testid="dictation" data-phase={phase}>
-  <button type="button" class="icon microphone" class:listening={phase === 'recording'} class:busy bind:this={microphone}
+  <button type="button" class="icon-button microphone" class:listening={phase === 'recording'} class:busy bind:this={microphone}
     data-testid={phase === 'recording' ? 'dictation-stop' : 'dictation-start'}
     title={phase === 'recording' ? `${strings.speech.stop} · ${engine === 'local' ? strings.speech.private : strings.speech.cloud}` : strings.speech.start}
     aria-label={phase === 'recording' ? strings.speech.stop : strings.speech.start} aria-pressed={phase === 'recording'}
@@ -182,7 +182,8 @@
 
 <style>
   .dictation { display: flex; align-items: center; flex: none; }
-  .dictation button { flex: none; width: var(--control); height: var(--control); }
+  /* The shared icon button (app.css), its box as large as its target so the row keeps its place. */
+  .microphone { flex: none; margin: calc((var(--icon-button-target) - var(--icon-button)) / 2); }
   /* Same face and place as the attach button beside it; while it records it is the Finish button, tinted. */
   .microphone { transition: background var(--dur-2), color var(--dur-2), border-color var(--dur-2), box-shadow var(--dur-2); }
   .microphone.listening { color: var(--color-foreground); background: var(--color-active); border-color: var(--color-muted-foreground); }
@@ -204,8 +205,6 @@
   :global(.dictation .spinner) { animation: spin 1s linear infinite var(--loops); }
   @keyframes spin { to { transform: rotate(360deg); } }
   @media (max-width: 720px) {
-    .dictation button { width: var(--touch-target); height: var(--touch-target); border-radius: 50%; }
-    .microphone:not(.listening) { background: transparent; border-color: transparent; }
     .panel button { width: var(--touch-target); height: var(--touch-target); }
     .wave { width: 150px; height: 26px; }
   }

@@ -103,7 +103,7 @@
       agents: store.owner ? store.harnessUpdates : []
     });
   }
-  /** The version the updates card heads with: a row repeats it only where it differs (round 16 read it three times). */
+  /** The version the updates card heads with: a row repeats it only where it differs. */
   const headVersion = $derived(showAppUpdateUi() && appUpdater.snapshot.supported ? appUpdater.snapshot.currentVersion : workspace.active.core?.version ?? '');
   const updateLabels: Record<MachineUpdateState, string> = {
     failed: strings.machines.updateFailed,
@@ -286,7 +286,7 @@
   <!-- Chosen on the device itself, a phone included: it says where that device opens. -->
   <MainMachine />
 
-  <!-- What agents may see on this window's machine, the task these cards serve (round 18, once under General). -->
+  <!-- What agents may see on this window's machine, the task these cards serve . -->
   {#if here?.owner}
     <p class="scope cards-scope" data-testid="machines-windows-scope">{fill(strings.machines.scopeOn, { machine: thisName })}</p>
     <WindowAllowlistCard store={here} />
@@ -432,7 +432,7 @@
   .version::before,
   .updates::before { content: '·'; margin-right: 6px; color: var(--color-subtle); font-family: var(--font-sans); }
   /* Out of reach: still named and still removable, its state an Offline chip like the one a thread's
-     machine wears (MachinePlace), so the row never reads as off by its dimmed logo alone (round 21). */
+     machine wears (MachinePlace), so the row never reads as off by its dimmed logo alone. */
   .away .logo { opacity: 0.5; }
   .away .machine-name { color: var(--color-muted-foreground); }
   .away .dot { display: none; }

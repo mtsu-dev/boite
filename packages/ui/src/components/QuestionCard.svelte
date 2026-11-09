@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import { Check, ChevronRight, MessageCircleQuestionMark, Paperclip } from '@lucide/svelte';
+  import { Check, ChevronDown, ChevronRight, MessageCircleQuestionMark, Paperclip } from '@lucide/svelte';
   import type { QuestionAnswer, QuestionOption } from '@boite/contracts';
   import { keepFocus } from '../lib/focus';
   import { glides } from '../lib/motion';
@@ -41,7 +41,7 @@
      * Drawn at the top of the composer: the question once, in bold on a line
      * of its own, Skip and the fold a compact group at its end, the options as rows numbered for the keyboard
      * (the composer's 1 to 9), then the hint and the card's own Answer: the
-     * composer's round button stays Stop while the turn runs (round 19).
+     * composer's round button stays Stop while the turn runs.
      * A question with no options is answered from the box's Send alone.
      */
     docked?: boolean;
@@ -254,7 +254,7 @@
         {/each}
       </div>
       {#if below > 0}
-        <button type="button" class="ghost more" data-testid="question-more" onmousedown={keepFocus} onclick={more}><span class="ui-label">{fill(strings.chat.questionMore, { count: String(below) })}</span></button>
+        <button type="button" class="ghost more" data-testid="question-more" onmousedown={keepFocus} onclick={more}><span class="ui-label">{below === 1 ? strings.chat.questionMoreOne : fill(strings.chat.questionMore, { count: String(below) })}</span><ChevronDown size={14} strokeWidth={2} aria-hidden="true" /></button>
       {/if}
     {/if}
     {@render foot?.()}
@@ -338,7 +338,7 @@
   .docked .options.scroll-edges::after { margin-top: calc(-1 * var(--scroll-edge) - 2px); }
 
   /* The question's own column beside the compact controls; folded, it holds one line. */
-  .docked .prompt { display: block; min-width: 0; padding-block: calc((var(--control) - 22px) / 2); font-weight: inherit; }
+  .docked .prompt { display: block; min-width: 0; padding-block: calc((var(--dock-row, var(--control)) - 20px) / 2); font-weight: inherit; }
   .docked .prompt.folded { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   @media (max-width: 720px) {
     /* A phone gives the choices what the card's budget leaves once the
@@ -348,7 +348,10 @@
        the head, the count line, the Answer row and the deck's inset. */
     .question.docked > .options { max-height: max(96px, calc(var(--dock-cap, 30dvh) - 146px)); }
   }
-  .more { align-self: flex-start; height: 24px; padding: 0 8px; color: var(--color-muted-foreground); font-size: var(--text-sm); }
+  /* An action, not a caption: the words in ink, underlined like a link, the chevron saying the list goes on below. */
+  .more { align-self: flex-start; gap: 4px; height: 28px; padding: 0 8px; color: var(--color-foreground); font-size: var(--text-sm); font-weight: 550; }
+  .more .ui-label { text-decoration: underline; text-decoration-color: color-mix(in oklab, currentColor 45%, transparent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  .more:hover .ui-label { text-decoration-color: currentColor; }
 
   .how { margin: 0; color: var(--color-muted-foreground); font-size: var(--text-xs); line-height: 16px; }
   /* The choices are lines of the decision, not boxes in it: no fill and no

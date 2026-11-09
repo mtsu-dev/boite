@@ -142,7 +142,7 @@ test('a phone shows each short choice in place as a desktop does: every option o
   try {
     running = mount(AppearancePage, { target: document.body, props: { store: { owner: true } as Store, phone: true } });
     flushSync();
-    // Round 16: a value row hid three or four options behind a sheet; the segments show them all, the one in use lit.
+    // A value row hid three or four options behind a sheet; the segments show them all, the one in use lit.
     for (const [group, options] of [['locale-current', ['locale-system', 'locale-en', 'locale-fr']], ['theme-current', ['theme-system', 'theme-light', 'theme-dark']]] as const) {
       const box = document.querySelector(`[data-testid=${group}]`)!;
       expect(box.classList.contains('segmented'), group).toBe(true);
@@ -199,7 +199,7 @@ test('round 20: each face shows a sample line in itself, and the chat width a pa
 
   const width = () => document.querySelector('[data-testid=chat-width-sample]')!.getAttribute('data-width');
   expect(width()).toBe('comfortable');
-  // Round 21: a question and its reply, not an empty box, so the width reads as lines of a conversation.
+  // A question and its reply, not an empty box, so the width reads as lines of a conversation.
   expect(document.querySelector('[data-testid=chat-width-sample] .sample-ask')!.textContent).toBe(strings.settings.chatWidthAsk);
   expect(document.querySelector('[data-testid=chat-width-sample] .sample-reply')!.textContent).toBe(strings.settings.chatWidthSample);
   const wide = document.querySelector<HTMLButtonElement>('[data-testid=chat-width-wide]')!;

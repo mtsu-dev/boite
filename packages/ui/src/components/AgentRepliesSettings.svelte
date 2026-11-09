@@ -10,8 +10,7 @@
   /**
    * How a machine's agents answer: the questions they may leave, the length
    * and the tool summaries of a reply, the models that title a thread and
-   * keep its checklist. Saved on the machine, so its own card under General
-   * (round 19: once rows of the Conversations card, among this device's switches).
+   * keep its checklist. Saved on the machine, so it has its own card under General.
    */
   let { store }: { store: Store } = $props();
   const uid = $props.id();

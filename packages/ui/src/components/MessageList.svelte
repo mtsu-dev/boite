@@ -821,10 +821,10 @@
     scrollbar-gutter: stable both-edges;
     /* Balance the outline rail on both sides. The dock below is in the flow,
        so the timeline ends where it starts and nothing runs under it; a line
-       cut by that end fades over the last 24 px (`.below`). That fade takes
-       its own room in the flow (`::after` below), so at the end the last
-       table or code row sits clear of it and of the composer card. */
-    --scroll-edge: var(--space-6);
+       cut by that end fades over the shared edge (app.css `--scroll-edge`,
+       `.below`). That fade takes its own room in the flow (`::after` below),
+       so at the end the last table or code row sits clear of it and of the
+       composer card. */
     --scroll-edge-bottom: 20px;
     padding: 20px var(--outline-room) var(--scroll-edge-bottom);
     overscroll-behavior: contain;
@@ -838,24 +838,16 @@
      being cut. A state, not a scroll timeline, so a still frame shows it too;
      two attributes outrank app.css's shared `.scroll-edges` rule. */
   .timeline[data-scroll-root][data-testid]::after {
-    --edge-ground: var(--scroll-edge-ground, var(--color-background));
     /* In the flow, not pulled over the last row: scrolled to the end, the fade
        lies on empty room under it instead of on a table's last line. */
     margin-top: 0;
     animation: none;
     opacity: 0;
     transition: opacity var(--motion-duration) var(--motion-curve);
-    /* Eased, not a straight ramp: a bordered block thins out over the edge
-       instead of meeting a band whose upper edge reads as a cut. */
-    background: linear-gradient(to top, var(--edge-ground), color-mix(in oklab, var(--edge-ground) 84%, transparent) 30%, color-mix(in oklab, var(--edge-ground) 52%, transparent) 55%, color-mix(in oklab, var(--edge-ground) 18%, transparent) 80%, transparent);
   }
   .timeline.below[data-scroll-root][data-testid]::after { opacity: 1; }
-  /* Where the fade exists it is the end's room, 24 px, plus this padding. */
+  /* Where the fade exists it is the end's room, the shared edge, plus this padding. */
   @supports (animation-timeline: scroll()) { .timeline { --scroll-edge-bottom: var(--space-2); } }
-  /* The top edge fades deeper than the shared one: a bubble scrolled up to the
-     header thins out over 40 px instead of reading as a card cut by it. At the
-     top of the scroll it stays clear, the first message whole under the header. */
-  .timeline[data-scroll-root][data-testid]::before { height: 40px; margin-bottom: -40px; }
 
   .column {
     flex: none;

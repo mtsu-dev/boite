@@ -14,7 +14,7 @@ test('the box says two things at most: who reads it at rest, and reply while the
   // A state that changes what Send does says why instead.
   expect(composerPlaceholder({ ...base, offline: true })).toBe(fill(t.placeholderOffline, { machine: 'This PC' }));
   expect(composerPlaceholder({ ...base, offline: true, target: { placeholder: 'Side box' } })).toBe('Side box');
-  // A thread still loading cannot take a message yet: the field says it is loading, not who reads it.
-  expect(composerPlaceholder({ ...base, loading: true })).toBe(t.placeholderLoading);
-  expect(composerPlaceholder({ ...base, loading: true, replying: true })).toBe(t.placeholderLoading);
+  // A removed account locks the box: the field says what unlocks it, whatever else is going on.
+  expect(composerPlaceholder({ ...base, accountGone: true, replying: true })).toBe(t.placeholderPickAccount);
+  expect(t.placeholderPickAccount).toBe('Pick another account to send');
 });

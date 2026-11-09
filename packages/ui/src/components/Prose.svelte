@@ -424,7 +424,7 @@
     color: var(--color-muted-foreground);
   }
 
-  /* A table sits in the text flow (round 20): no box or ground, a hairline under each row, its first
+  /* A table sits in the text flow: no box or ground, a hairline under each row, its first
      column on the text's left edge. It takes its content's width up to the column's and its cells wrap their text
      to stay inside it. Only what cannot break, a long path or too many columns,
      scrolls inside the table: a table box ignores overflow, so it is a block here,

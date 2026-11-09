@@ -56,7 +56,7 @@ describe('the settings families', () => {
     expect(movedTo('resources', null)).toBeUndefined();
     expect(phonePage('general', 'quiet', true)).toBe('conversations');
     expect(phonePage('general', 'quiet', false)).toBe('home');
-    // Round 18: General's odd cards live with their task, a project menu's old link included.
+    // General's odd cards live with their task, a project menu's old link included.
     expect(movedTo('general', 'secrets')).toBe('accounts');
     expect(movedTo('general', 'windows')).toBe('machines');
     expect(movedTo('general', 'window-exclusions')).toBe('machines');

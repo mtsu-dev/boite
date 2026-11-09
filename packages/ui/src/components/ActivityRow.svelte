@@ -2,23 +2,28 @@
   import type { Machine } from '../lib/workspace.svelte';
   import { workspace } from '../lib/workspace.svelte';
   import { feedOperation, feedSecondary, feedVerbLabel, type FeedRow, type FeedVerb } from '../lib/activity-feed';
+  import { feedAsk, feedWhere } from '../lib/feed-row';
   import { leaveForAct } from '../lib/activity-return.svelte';
   import ThreadCard from './ThreadCard.svelte';
   import CommandWords from './CommandWords.svelte';
   import DecisionActions from './DecisionActions.svelte';
 
   /**
-   * One Activity row, desktop (ActivityList.svelte): the list's own row (menu, drag, rename) with who asks, its title
-   * on two lines at most, and what is asked as one line under it, whole in the row's tooltip; the
-   * command of a permission in a mono block under them, each sub-agent that asks the same as a line of its own
-   * (lib/activity-feed.ts: one event, one row). The mark and since when end the title's line; the decision pair
-   * (DecisionActions.svelte, the composer's) stands under the content at the row's right edge: Deny or Skip
-   * outlined, settled here, then Allow or Answer solid, which opens the thread where it is done. Review is
-   * outlined alone. A command too long to read here turns Allow into Review, which opens the thread first. Acting leaves Activity for the thread; once the ask is settled, Activity comes back where it was
-   * (lib/activity-return.svelte.ts).
+   * One Activity row, desktop (ActivityList.svelte): the list's own row (menu, drag, rename) with its title on two
+   * lines at most, ended by its mark; the place line under it, where the decision comes from (the project, the
+   * machine among several, lib/feed-row.ts) and since when; what is asked as one line under that, whole in its
+   * tooltip, a permission titled by what it does as the composer titles it ("Push orbit/csv-import"); the command
+   * of a permission in a mono block under them, each sub-agent that asks the same as a line of its own
+   * (lib/activity-feed.ts: one event, one row). The decision pair (DecisionActions.svelte, the composer's) stands at
+   * the row's right edge: Deny or Skip outlined, settled here, then Allow or Answer solid, which opens the thread
+   * where it is done. Review is outlined alone. A command too long to read here turns Allow into Review, which
+   * opens the thread first. Acting leaves Activity for the thread; once the ask is settled, Activity comes back
+   * where it was (lib/activity-return.svelte.ts).
    */
   let { row, helpers = [], now }: { row: FeedRow<Machine>; helpers?: FeedRow<Machine>[]; now: number } = $props();
   const operation = $derived(feedOperation(row.machine.store, row.thread.id));
+  const ask = $derived(feedAsk(row.machine.store, row.thread.id, row));
+  const where = $derived(feedWhere(row, workspace.machines.length > 1));
   const long = $derived(!!operation && (operation.split('\n').length > 6 || operation.length > 480));
   /** The row's action is its own, else the first sub-agent's that asks, which opens that sub-agent. */
   const target = $derived(row.verb ? row : helpers.find(helper => helper.verb) ?? null);
@@ -32,9 +37,9 @@
   }
 </script>
 
-<ThreadCard machine={row.machine} project={row.project} thread={row.thread} {now} compact at={row.at}>
-  {#snippet ask()}<span class="ask" data-testid="thread-reason" title={row.reason}>{row.reason}</span>{/snippet}
+<ThreadCard machine={row.machine} project={row.project} thread={row.thread} {now} compact at={row.at} {where}>
   {#snippet detail()}
+    {#if ask}<span class="ask" data-testid="thread-reason" title={ask}>{ask}</span>{/if}
     {#if operation}<code class="operation" class:long data-testid="thread-operation"><CommandWords text={operation} /></code>{/if}
     {#each helpers as helper (helper.thread.id)}
       <span class="ask helper" data-testid="thread-helper" data-thread-id={helper.thread.id} title={`${helper.thread.title} · ${helper.reason}`}><span class="who">{helper.thread.title}</span> <span class="sep" aria-hidden="true">·</span> {helper.reason}</span>
@@ -51,15 +56,15 @@
 </ThreadCard>
 
 <style>
-  /* Under the title's edge: what is asked, one secondary line; its tooltip and the thread hold the whole. */
-  /* It never widens the page's column (ActivityList.svelte sizes it to the titles): it takes the width it is given. */
-  .ask { display: block; min-width: 0; contain: inline-size; font-size: var(--text-sm); line-height: 1.45; color: var(--color-subtle); text-align: start; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  /* A sub-agent's line, under the title's text edge (the 16 px tile and its 10 px gap). */
-  .helper { display: block; flex: none; padding-left: 26px; }
+  /* Under the place line: what is asked, one line in the secondary ink, a step above the place's meta; its tooltip
+     and the thread hold the whole. It takes the width it is given, never widening the row's text column. */
+  .ask { display: block; min-width: 0; contain: inline-size; font-size: var(--text-sm); line-height: 1.45; color: var(--color-muted-foreground); text-align: start; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* A sub-agent's line, on the title's edge. */
+  .helper { display: block; flex: none; }
   .who { color: var(--color-foreground); font-weight: 500; }
   .sep { color: var(--color-subtle); }
   /* The command as it will run: mono, wrapped at spaces only, so a path or a branch name stays whole. */
-  .operation { display: block; contain: inline-size; margin-left: 26px; padding: 6px 8px; border-radius: var(--radius-sm); background: var(--color-code-background); color: var(--color-code-foreground); font-family: var(--font-mono); font-size: var(--text-xs); line-height: 1.5; text-align: start; white-space: pre-wrap; overflow-x: auto; scrollbar-width: none; }
+  .operation { display: block; contain: inline-size; padding: 6px 8px; border-radius: var(--radius-sm); background: var(--color-code-background); color: var(--color-code-foreground); font-family: var(--font-mono); font-size: var(--text-xs); line-height: 1.5; text-align: start; white-space: pre-wrap; overflow-x: auto; scrollbar-width: none; }
   /* Too long to read here: its first lines, and Review opens the whole before Allow. */
   .operation.long { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; line-clamp: 6; overflow: hidden; }
 </style>

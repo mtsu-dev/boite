@@ -48,7 +48,7 @@
 .bot-work-empty { margin: 0; font-size: var(--text-sm); line-height: 1.5; color: var(--color-muted-foreground); }
 .agent-desk .bot-section { padding: 6px 0 4px; }
 /* The Desk's sections share one inset, the body's: headings, labels and the rows' marks start on one edge, and a
-   row's hover ground bleeds out past it (round 20: Handling and Done sat 8 px in). */
+   row's hover ground bleeds out past it (Handling and Done sat 8 px in). */
 .agent-desk .desk-row { margin-inline: -10px; }
 .agent-desk .bot-work > .bot-section:first-child { padding-top: 2px; }
 .bot-member { display: flex; align-items: center; justify-content: flex-start; gap: 10px; height: auto; min-height: 34px; padding: 6px 10px; border: 0; border-radius: var(--radius-md); background: none; box-shadow: none; text-align: left; color: var(--color-foreground); }
@@ -285,7 +285,6 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 .agent-desk > * { flex: none; }
 .agent-desk .hint { color: var(--color-muted-foreground); font-size: var(--text-sm); line-height: 1.5; }
 .desk-ident { display: flex; flex-direction: column; gap: 10px; padding: 18px 20px 8px; }
-.desk-ident-domain { margin: 0; font-size: var(--text-sm); line-height: 1.45; color: var(--color-muted-foreground); }
 .desk-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 /* A value is never cut: a long model or machine name wraps inside its chip, the chip grows a line. */
 .desk-meta { display: inline-flex; align-items: center; gap: 6px; min-height: 24px; padding: 3px 8px; box-sizing: border-box; border-radius: var(--radius-md); background: var(--color-surface-2); box-shadow: inset 0 0 0 1px var(--color-border); font-size: var(--text-xs); font-weight: 500; line-height: 18px; color: var(--color-muted-foreground); max-width: 100%; overflow-wrap: anywhere; }
@@ -294,7 +293,8 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 .desk-card { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 14px 0; }
 /* Sections part by space, not lines: the chat's edge is the desk's one hairline. */
 .desk-card + .desk-card, .desk-error + .desk-card { margin-top: 6px; }
-.desk-label { display: flex; align-items: center; gap: 6px; min-height: 22px; margin: 0; font-size: var(--text-xs); font-weight: 600; color: var(--color-subtle); }
+/* 28 px, the height a label holding an icon button reaches, so labels with and without one share a baseline. */
+.desk-label { display: flex; align-items: center; gap: 6px; min-height: 28px; margin: 0; font-size: var(--text-xs); font-weight: 600; color: var(--color-subtle); }
 .desk-label > svg { flex: none; }
 .desk-label-value { margin-left: auto; font-weight: 500; font-variant-numeric: tabular-nums; }
 .desk-label .ghost.icon { width: 22px; height: 22px; margin: -2px -6px -2px 0; color: var(--color-subtle); }
@@ -365,8 +365,8 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 .desk-chip { color: var(--color-subtle); font-weight: 500; animation: pop var(--dur-2) var(--ease-out-quint); }
 /* Out of reach is a machine state, not a failure: the offline machine's grey dot (Sidebar.svelte), not red. */
 .desk-card-unreachable { color: var(--color-muted-foreground); }
-/* A card of a machine out of reach reads dimmed, its tile and words alike, as the lists' offline rows do. */
-.desk-row.away .desk-row-tile, .desk-row.away .desk-row-text { opacity: 0.6; }
+/* A card of a machine out of reach: its tile is dimmed, its words keep their ink and the machine's chip says why. */
+.desk-row.away .desk-row-tile { opacity: 0.6; }
 .desk-card-pr { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
 .desk-card-pr[data-pr='merged'], .desk-card-pr[data-checks='passing'] { color: var(--color-success); }
 .desk-card-pr:is([data-pr='closed'], [data-checks='failing']):not([data-pr='merged']) { color: var(--color-danger); }

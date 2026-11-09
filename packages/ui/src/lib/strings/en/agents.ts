@@ -63,6 +63,8 @@ export const strings = {
     accountAccessHint: 'Which bots may use each account, subagents included. Removing access stops the executions that use it.',
     allAgents: "All bots, including future bots",
     heading: 'Bots',
+    backToList: 'Back to the bot list',
+    needsAccount: 'Needs an account',
     list: 'All bots', edit: 'Edit', remove: 'Remove',
     search: 'Search',
     name: 'Name', domain: 'Role', instructions: 'Instructions', identityHint: 'The identity and memory stay when you change its model.',

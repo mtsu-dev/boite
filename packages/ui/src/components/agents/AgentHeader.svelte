@@ -16,6 +16,8 @@
   import BuiltinBadge from './BuiltinBadge.svelte';
   import PanelDoor from '../PanelDoor.svelte';
   import { separator, type MenuItem } from '../../lib/menu';
+  import { routeGone } from '../../lib/agent-route';
+  import { tick } from 'svelte';
 
   /**
    * The top of an agent's conversation, in a thread header's pattern: on a
@@ -55,6 +57,19 @@
     else store.panel.toggleKind('desk');
   }
 
+  /** A bot whose account was removed failed for that reason: the line says what it needs, the banner how to give it. */
+  const gone = $derived(routeGone(store, agent.selection));
+
+  /**
+   * The desktop's way back once the bot column is folded: the column again,
+   * its open row focused, as a thread's project crumb does for its list.
+   */
+  async function backToList() {
+    if (store.sidebarCollapsed) store.toggleSidebar();
+    await tick();
+    document.querySelector<HTMLElement>(`[data-testid="agent-entry-${CSS.escape(agent.id)}"]`)?.focus({ preventScroll: true });
+  }
+
   /** How many panels the door holds, as a thread's header counts them. */
   const panelCount = $derived(store.panel.surfaces.length);
 
@@ -91,6 +106,11 @@
   {#if onback}
     <button type="button" class="ghost icon agent-mobile-back" aria-label={labels.list} title={labels.list} onclick={onback} data-testid="agent-back"><ArrowLeft size={18} strokeWidth={1.75} /></button>
   {/if}
+  {#if !onback && store.sidebarCollapsed}
+    <!-- The column folded away: a named way back to every bot, before this one's name. -->
+    <button type="button" class="ghost agent-crumb" data-testid="agent-list-crumb" title={labels.backToList} onclick={() => void backToList()}><span class="ui-label">{labels.heading}</span></button>
+    <span class="agent-crumb-sep" aria-hidden="true">/</span>
+  {/if}
   <button type="button" class="ghost agent-head-identity" onclick={() => onpane('settings')} aria-label={fill(labels.settingsOf, { name: agent.name })}>
     {#if onback}<span class="agent-head-robot"><AgentAvatar kind="profile" id={agent.id} name={agent.name} avatar={agent.avatar} mood={moodOf(state)} size={32} lit={avatarLit({ open: true })} /></span>{/if}
     <span class="agent-head-text">
@@ -107,7 +127,7 @@
           {:else if state === 'waiting'}
             <span class="agent-live-text">{pending ? fill(labels.waitingOn, { what: pending }) : labels.state.waiting}</span>
           {:else if state === 'error'}
-            <span class="agent-live-text">{labels.state.error}</span>
+            <span class="agent-live-text" data-testid="agent-live-error">{gone ? labels.needsAccount : labels.state.error}</span>
           {:else if state === 'paused' || state === 'archived'}
             <span class="agent-live-text">{labels.state[state]}</span>
           {:else if status?.nextWake}
@@ -136,3 +156,10 @@
     {/if}
   </nav>
 </header>
+
+<style>
+  .agent-crumb { flex: none; height: var(--control); padding: 0 6px; margin-left: -6px; color: var(--color-muted-foreground); font-weight: 500; }
+  .agent-crumb:hover { color: var(--color-foreground); }
+  /* The slash sits midway, as in a thread's "project / title": the name's button has a narrower inset than a title's. */
+  .agent-crumb-sep { flex: none; margin: 0 3px 0 -4px; color: var(--color-subtle); }
+</style>

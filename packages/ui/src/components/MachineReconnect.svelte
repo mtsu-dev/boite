@@ -7,7 +7,7 @@
 
   /**
    * The next step at the foot of a project card whose machine is out of reach (Sidebar.svelte, the phone list), so
-   * the Offline mark never ends the card on a label (round 21): a closed client opens again, one waiting out its
+   * the Offline mark never ends the card on a label: a closed client opens again, one waiting out its
    * backoff tries now, as Machines' Reconnect does. The card comes back by itself once the machine answers.
    */
   let { store, testid = 'project-reconnect', inline = false }: {

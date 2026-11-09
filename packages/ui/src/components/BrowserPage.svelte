@@ -3,7 +3,7 @@
   import { strings } from '../lib/strings';
 
   /**
-   * The built-in browser's own entry (round 19): its profiles and the
+   * The built-in browser's own entry: its profiles and the
    * sign-ins it hands to a machine's agent browser, once a card under
    * Providers, where nobody looked for a browser.
    */

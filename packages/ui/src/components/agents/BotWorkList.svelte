@@ -89,7 +89,7 @@
       {@render rows(sections.done, true)}
     {/if}
   {:else if !onstart}
-    <!-- On the Desk panel the empty line sits under the heading it describes, its action beside it (round 20). -->
+    <!-- On the Desk panel the empty line sits under the heading it describes, its action beside it. -->
     <h3 class="bot-section">{t.handling}</h3>
     <p class="desk-empty desk-empty-row"><span>{t.workEmpty}</span>{#if ontask && store.owner}<button type="button" class="small" data-testid="desk-work-start" onclick={ontask}><span class="ui-label">{t.workStart}</span></button>{/if}</p>
   {:else if !first}

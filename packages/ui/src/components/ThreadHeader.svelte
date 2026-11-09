@@ -225,8 +225,8 @@
           <!-- A small chevron exposes thread actions on the desktop. -->
           <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
           <span class="title-menu">
-            <Menu items={menuShown} onpick={titleAction} cap={MENU_CAP} label={strings.sidebar.threadMenu} heading={thread?.title} placement="bottom" variant={mobile.current ? 'ghost' : 'text'} testid="thread-menu-trigger">
-              {#if mobile.current}<Ellipsis size={20} />{:else}<ChevronDown size={16} />{/if}
+            <Menu items={menuShown} onpick={titleAction} cap={MENU_CAP} label={strings.sidebar.threadMenu} heading={thread?.title} placement="bottom" variant={mobile.current ? 'icon' : 'text'} testid="thread-menu-trigger">
+              {#if mobile.current}<Ellipsis size={16} />{:else}<ChevronDown size={16} />{/if}
             </Menu>
           </span>
         {/if}
@@ -388,7 +388,8 @@
     .title.team { max-width: none; }
     /* Back, the title, then the menu at the row's end, whatever the header draws between. */
     .title-menu { order: 1; }
-    .title-menu :global(.trigger) { width: var(--touch-target); height: var(--touch-target); padding: 0; justify-content: center; color: var(--color-muted-foreground); }
+    /* app.css's icon button, its box as large as its 44 px target. */
+    .title-menu :global(.trigger.icon-button) { margin: calc((var(--icon-button-target) - var(--icon-button)) / 2); }
     .title-lines { display: flex; flex: 1; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 0; line-height: 1.25; font-weight: 600; color: var(--color-foreground); }
     .title-lines ~ .spacer { display: none; }
     /* Two lines stacked: a label's ascender room and its trim to the capitals would pull the second over the first. */

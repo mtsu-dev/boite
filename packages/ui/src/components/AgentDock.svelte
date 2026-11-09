@@ -31,11 +31,12 @@
     void store.selectDelegatedAgent(id);
   }
 
-  interface Entry { key: string; name: string; startedAt: number; kind: string; open: () => void; workflow: boolean; doneAt?: number }
+  /** `progress` is a real fraction where one exists (a workflow's finished steps), null where only "at work" is known. */
+  interface Entry { key: string; name: string; startedAt: number; kind: string; open: () => void; workflow: boolean; progress: number | null; doneAt?: number }
   let entries = $derived<Entry[]>([
-    ...active.map((agent) => ({ key: agent.thread.id, name: agent.thread.title, startedAt: agent.lastTurn?.startedAt ?? agent.lastTurn?.queuedAt ?? agent.thread.createdAt, kind: 'agent', open: () => openAgent(agent.thread.id), workflow: false })),
-    ...native.map((agent) => ({ key: agent.id, name: agent.name ?? agent.task ?? agent.id, startedAt: agent.startedAt, kind: 'native', open: () => store.showTeam(), workflow: false })),
-    ...runs.map((run) => ({ key: run.id, name: run.name, startedAt: run.createdAt, kind: 'workflow', open: () => store.panel.openWorkflow(run.id), workflow: true }))
+    ...active.map((agent) => ({ key: agent.thread.id, name: agent.thread.title, startedAt: agent.lastTurn?.startedAt ?? agent.lastTurn?.queuedAt ?? agent.thread.createdAt, kind: 'agent', open: () => openAgent(agent.thread.id), workflow: false, progress: null })),
+    ...native.map((agent) => ({ key: agent.id, name: agent.name ?? agent.task ?? agent.id, startedAt: agent.startedAt, kind: 'native', open: () => store.showTeam(), workflow: false, progress: null })),
+    ...runs.map((run) => ({ key: run.id, name: run.name, startedAt: run.createdAt, kind: 'workflow', open: () => store.panel.openWorkflow(run.id), workflow: true, progress: run.nodes.length ? run.nodes.filter(node => node.status === 'done' || node.status === 'skipped').length / run.nodes.length : null }))
   ]);
 
   /** Finished well: an entry that leaves for this shows its check a moment first. */
@@ -80,10 +81,11 @@
           <span class="mark">{#if done}<Check size={12} strokeWidth={2.25} aria-label={workflowTone('done', true).label} />{:else}<Spinner size={11} label={(entry.workflow ? workflowTone('running', true) : threadTone('running')).label} />{/if}</span>
           <span class="name ui-label">{entry.name}</span>
           <Elapsed startedAt={entry.startedAt} finishedAt={entry.doneAt ?? null} active={!done} />
+          {#if !done}<span class="track" class:known={entry.progress !== null} style:--progress={entry.progress ?? undefined} aria-hidden="true"></span>{/if}
         </button>
       {/each}
       {#if folded || open && rows.length > limit + 1}
-        <button type="button" class="entry more" data-testid="agent-dock-more" aria-expanded={open} title={open ? undefined : fill(strings.delegation.dockMoreHint, { count: String(folded) })} onclick={() => { open = !open; }}>
+        <button type="button" class="more" data-testid="agent-dock-more" aria-expanded={open} title={open ? undefined : fill(strings.delegation.dockMoreHint, { count: String(folded) })} onclick={() => { open = !open; }}>
           <span class="ui-label">{open ? strings.delegation.dockLess : fill(strings.delegation.dockMore, { count: String(folded) })}</span>
         </button>
       {/if}
@@ -92,27 +94,39 @@
 {/if}
 
 <style>
-  /* Quiet chips on the card's top edge, on its own surface with no rule
-     under them: only a decision below is raised. Every entry keeps its own
-     name, mark and time, side by side while they fit and wrapping when they
-     do not (never folded into a count); past the limit a "+N" entry opens the
-     rest. Their marks line up with the field's text (8 px of chip padding). */
+  /* The dock's row form, shared with the decision's head, the question's head
+     and the queued line (Composer sets `--dock-row` and `--dock-icon`): the
+     mark in a fixed box at the left, the name, the time at the row's end, one
+     row height and the meta type. Every entry keeps its own name and time, one
+     per line on a phone, in even columns on a desktop; past the limit a "Show
+     N more" action opens the rest in place. */
   .dock { flex: none; padding: var(--deck-gap, 6px) 6px 0; }
-  .entries { display: flex; flex-wrap: wrap; align-items: center; gap: 0 4px; }
-  /* One step under the decision: the smallest type and the tertiary ink, no
-     pill; a hover brings the ink and the fill. */
-  .entry { flex: 0 1 auto; min-width: 0; max-width: 100%; height: var(--control-sm); gap: 6px; padding: 0 8px; border: none; border-radius: var(--radius-md); background: transparent; box-shadow: none; color: var(--color-subtle); font-size: var(--text-meta); font-weight: 400; overflow: hidden; }
+  .entries { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr)); gap: 0 4px; }
+  /* One step under the decision: the meta type and the tertiary ink, no pill; a hover brings the ink and the fill. */
+  .entry { position: relative; display: flex; align-items: center; justify-content: flex-start; gap: 8px; min-width: 0; min-height: var(--dock-row, 28px); height: auto; padding: 3px 8px; border: none; border-radius: var(--radius-md); background: transparent; box-shadow: none; color: var(--color-subtle); font-size: var(--text-meta); font-weight: 400; text-align: left; overflow: hidden; }
   .entry:hover { background: var(--color-hover); color: var(--color-foreground); }
-  /* The mark sits in the box the tool rows give theirs, so a check takes the spinner's place. */
-  .mark { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 12px; }
+  /* The mark sits in the box every dock row gives its icon, so a check takes the spinner's place and the names line up with the decision's title. */
+  .mark { display: inline-flex; align-items: center; justify-content: center; flex: none; width: var(--dock-icon, 16px); }
   .done .mark { color: var(--color-success); }
-  .name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .entry :global(.elapsed) { flex: none; color: var(--color-subtle); font-variant-numeric: tabular-nums; }
-  .more { flex: none; color: var(--color-foreground); font-weight: 600; }
-  /* A phone keeps every name readable on rows a finger still hits (over the
-     28 px floor), the time at the end of each. */
-  @media (max-width: 720px) {
-    .entries { gap: 2px 4px; }
-    .entry { height: 30px; padding: 0 6px; }
-  }
+  /* The name gives way first, before the time loses a digit: a column too narrow for it (a side panel narrows the
+     composer) takes it onto a second line at a space, so no word is hidden; only a third line would be cut. */
+  .name { flex: 0 1 auto; min-width: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; white-space: normal; line-height: 1.3; }
+  .entry :global(.elapsed) { flex: none; margin-left: auto; color: var(--color-subtle); font-variant-numeric: tabular-nums; }
+  /* A thin line under a running entry, from its name to its time: a known
+     share fills solid from the start, an unknown one runs a segment with soft
+     ends to and fro. Held by reduced motion (`--loops`), the segment stands
+     still mid-track (the negative delay), so it never reads as a share. */
+  .track { position: absolute; left: calc(8px + var(--dock-icon, 16px) + 8px); right: 8px; bottom: 0; height: 2px; border-radius: var(--radius-full); background: color-mix(in oklab, var(--color-subtle) 22%, transparent); overflow: hidden; pointer-events: none; }
+  .track::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 32%; border-radius: inherit; background: linear-gradient(90deg, transparent, var(--color-accent), transparent); animation: dock-track 1.6s var(--loop-ease-in-out-48) -0.8s infinite alternate var(--loops); }
+  .track.known::before { width: calc(var(--progress) * 100%); background: var(--color-accent); animation: none; transition: width var(--motion-duration) var(--motion-curve); }
+  /* From the track's start to its end and back, the segment whole in sight at both ends. */
+  @keyframes dock-track { from { transform: translateX(0); } to { transform: translateX(212.5%); } }
+  /* The system's own ask holds it too, where `--loops` is not set: paused, not removed, so it stays mid-track. */
+  @media (prefers-reduced-motion: reduce) { .track::before { animation-play-state: paused; } }
+  /* "Show N more": an action in ink, underlined like a link, not a caption. */
+  .more { justify-self: start; height: var(--dock-row, 28px); padding: 0 8px 0 calc(8px + var(--dock-icon, 16px) + 8px); border: none; background: transparent; box-shadow: none; color: var(--color-foreground); font-size: var(--text-meta); font-weight: 550; }
+  .more .ui-label { text-decoration: underline; text-decoration-color: color-mix(in oklab, currentColor 45%, transparent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  .more:hover { background: transparent; }
+  .more:hover .ui-label { text-decoration-color: currentColor; }
+  @media (max-width: 720px) { .entries { grid-template-columns: minmax(0, 1fr); } }
 </style>

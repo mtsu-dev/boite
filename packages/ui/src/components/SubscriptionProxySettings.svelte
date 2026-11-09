@@ -33,6 +33,9 @@
     untrack(() => { if (saved) config = { ...saved }; });
   });
   const local = $derived(config.mode === 'local');
+  /** Off and saved off, the card is its switch and one line of what it does; the form shows once either is on, so a
+   * proxy turned off keeps its Save until the change is saved. */
+  const open = $derived(config.enabled || store.settings?.subscriptionProxy?.enabled === true);
   /** What the form leaves when it switches to the plugin, so switching back finds the address typed. */
   let remote = $state<Pick<SubscriptionProxy, 'kind' | 'baseUrl' | 'dashboardUrl'> | null>(null);
   /** The Douane plugin as `plugins.list` reads it: undefined before an answer, null on a core without it. */
@@ -94,6 +97,8 @@
 <section class="card proxy-settings" data-testid="subscription-proxy-settings">
   <h2 class="ui-label-box"><span class="ui-label">{strings.subscriptionProxy.heading}</span><InfoTip topic={strings.subscriptionProxy.heading} text={strings.subscriptionProxy.hint} /><PolicyLock {store} keys={['gateway', 'gateway.allowedBaseUrls']} /></h2>
   <label class="switch-row"><span class="text ui-label-box"><span class="ui-label">{strings.subscriptionProxy.enable}</span><InfoTip topic={strings.subscriptionProxy.enable} text={strings.subscriptionProxy.enabledHint} testid="subscription-proxy-enabled-hint" /></span><input type="checkbox" role="switch" bind:checked={config.enabled} disabled={gatewayOff} data-testid="subscription-proxy-enabled" /></label>
+  {#if !open}<p class="hint off-line" data-testid="subscription-proxy-off">{strings.subscriptionProxy.offLine}</p>{/if}
+  {#if open}
   <div class="mode">
     <span class="ui-label-box"><span class="ui-label">{strings.subscriptionProxy.where}</span><InfoTip topic={strings.subscriptionProxy.local} text={strings.subscriptionProxy.localHint} /></span>
     <div class="segmented" role="group" aria-label={strings.subscriptionProxy.where}>
@@ -136,11 +141,14 @@
     </div>
     <GatewayMoveDialog {store} open={moving} onclose={() => moving = false} />
   {/if}
+  {/if}
 </section>
 
 <style>
   .proxy-settings { max-width: var(--settings-width); padding: var(--settings-padding); }
   h2 { display: flex; align-items: center; }
+  .off-line { margin: -2px 0 0; }
+  .mode { margin-top: 14px; }
   form { display: grid; gap: 12px; margin-top: 16px; }
   form > label { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: var(--text-sm); }
   form input:not([type='checkbox']) { width: 100%; min-width: 0; }

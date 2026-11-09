@@ -129,7 +129,7 @@ test('the phone settings list the desktop\'s families, each page a peer row, Gen
     'settings-tab-general', 'settings-tab-voice', 'settings-tab-appearance', 'settings-tab-accounts', 'settings-tab-brain', 'settings-tab-limits', 'settings-tab-usage',
     'settings-tab-browser', 'mobile-settings-connection', 'settings-tab-advanced', 'settings-tab-experiments', 'settings-tab-diagnostics'
   ]);
-  // The rows stand under the desktop's four family heads, Advanced named like the others (round 20).
+  // The rows stand under the desktop's four family heads, Advanced named like the others.
   expect([...document.querySelectorAll<HTMLElement>('[data-testid=mobile-settings-home] [data-testid=settings-family]')].map(family => [family.dataset.family, family.querySelector('h2')?.textContent ?? null])).toEqual([
     ['app', 'App'], ['agents', 'Agents'], ['connections', 'Connections'], ['advanced', 'Advanced']
   ]);
@@ -173,7 +173,7 @@ test('the phone settings list the desktop\'s families, each page a peer row, Gen
   expect(query<HTMLInputElement>('[data-testid=compaction-customize]').checked).toBe(false);
   await back();
 
-  // The keys sit at the foot of Providers (round 18); the browser profiles have their own page under Connections (round 19).
+  // The keys sit at the foot of Providers; the browser profiles have their own page under Connections.
   await open('settings-tab-accounts', () => document.querySelector('[data-testid=secrets-card]') !== null);
   expect(document.querySelector('[data-testid=browser-profiles-card]')).toBeNull();
   await back();
@@ -208,7 +208,7 @@ test('the phone settings list the desktop\'s families, each page a peer row, Gen
   query<HTMLButtonElement>('[data-testid=mobile-settings-conversations]').click();
   await waitFor(() => document.querySelector('[data-testid=setting-chat-artifacts]') !== null);
   for (const id of ['setting-preview-comments', 'chat-group-changes', 'chat-expand-diffs']) expect(document.querySelector(`[data-testid=${id}]`), id).not.toBeNull();
-  // How agents answer is the machine's, a phone reaches it here too, under the machine's name (round 19).
+  // How agents answer is the machine's, a phone reaches it here too, under the machine's name.
   for (const id of ['setting-async-questions', 'setting-short-answers', 'setting-tool-summaries']) expect(document.querySelector(`[data-testid=agent-replies] [data-testid=${id}]`), id).not.toBeNull();
   expect(query('[data-testid=agent-replies] [data-testid=card-scope]').dataset.kind).toBe('machine');
   expect(document.querySelector('[data-testid=setting-group-working-threads]')).toBeNull();
@@ -244,7 +244,7 @@ test('on a phone too, a page of one machine is picked above it without moving th
   await waitFor(() => remote.store.settings?.muteAgents === false);
   expect(store.settings?.muteAgents).toBe(true);
   expect(workspace.active).toBe(store);
-  // Round 21: on a page that changes one machine whole, the header's scope word is the picker, and there is one.
+  // On a page that changes one machine whole, the header's scope word is the picker, and there is one.
   store.showSettings('voice');
   await waitFor(() => document.querySelector('[data-testid=mobile-settings-page-scope] [data-testid=settings-machine]') !== null);
   expect(document.querySelectorAll('[data-testid=settings-machine]')).toHaveLength(1);

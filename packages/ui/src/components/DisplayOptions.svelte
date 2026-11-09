@@ -2,10 +2,8 @@
   import { ListFilter } from '@lucide/svelte';
   import { workspace } from '../lib/workspace.svelte';
   import { Closing } from '../lib/closing.svelte';
-  import { projectView, type ProjectEntry } from '../lib/project-view.svelte';
-  import { machineFilter } from '../lib/machine-filter.svelte';
-  import { projectName } from '../lib/format';
-  import { fill, strings } from '../lib/strings';
+  import type { ProjectEntry } from '../lib/project-view.svelte';
+  import { strings } from '../lib/strings';
   import type { Project } from '@boite/contracts';
   import type { Store } from '../lib/store.svelte';
   import type { AtWork } from './DisplayOptionsPanel.svelte';
@@ -16,11 +14,10 @@
    * the list has drawn, so it stays out of the entry chunk and the first press
    * still opens it at once. It stays open while the user adjusts it; a press
    * outside or Escape puts it away. `filters` counts the filters that hide
-   * threads, on the button, since the menu that says so is closed: the list's
-   * head keeps one row, no chip of its own per filter. `word` names it beside
-   * its glyph ("Filter") where the head has the room; the glyph alone keeps
-   * the name in its tooltip. A filter on names itself on the button
-   * ("Filter: Working"), the others counted after it.
+   * threads: a dot on the button says one is on, and the line under the head
+   * (FilterChips.svelte) names each, so the head never has to fit a name.
+   * `word` names the button ("Filter") where the head has the room; the glyph
+   * alone keeps the name in its tooltip.
    */
   /** `compact`: the phone's choices only, the project Recent lists and the groups; the order and a project's own switches stay on the desktop. */
   let { entries, target, owner, prefix = '', compact = false, filters = 0, word = false, atWork, onaddproject }: {
@@ -30,18 +27,7 @@
     onaddproject?: () => void;
   } = $props();
 
-  /** The first filter that hides threads, in the order the menu lists them: at work, the project Recent lists, the machine (a desktop's). */
-  const first = $derived.by(() => {
-    if (atWork?.on) return strings.sidebar.filterWorking;
-    const project = workspace.view === 'recent' ? projectView.selected(entries) : null;
-    if (project) return projectName(project.project);
-    const list = workspace.machinesOr(owner);
-    const id = compact ? null : machineFilter.shown(list);
-    return id ? list.find((machine) => machine.id === id)?.label : undefined;
-  });
-  const named = $derived(first ? fill(strings.sidebar.filterOn, { name: first }) : null);
-  /** The words on the button: "Filter" or the filter on where the head has room; a phone's, only a short one ("Working"), as a project's name would not fit and its list heads with it. */
-  const spoken = $derived(word ? (named ?? strings.sidebar.filter) : compact && atWork?.on ? strings.sidebar.filterWorking : null);
+  const spoken = $derived(word ? strings.sidebar.filter : null);
 
   const popover = new Closing();
   let root = $state<HTMLDivElement>();
@@ -77,13 +63,13 @@
 <svelte:window onpointerdown={onWindowPointerdown} />
 
 <div class="display-options" bind:this={root}>
-  <!-- With words the visible text is its name, and a filter on says which; the tooltip says what it opens. -->
+  <!-- With words the visible text is its name; the tooltip says what it opens. -->
   <button type="button" class="ghost trigger small" class:icon={!spoken} class:worded={!!spoken} class:filtered={filters > 0} bind:this={trigger} aria-haspopup="dialog" aria-expanded={popover.open}
-    aria-label={spoken ? undefined : (named ?? strings.sidebar.groupingOptions)} title={named ? `${named}. ${strings.sidebar.groupingOptions}` : strings.sidebar.groupingOptions} data-testid={`${prefix}grouping-options`} data-view={workspace.view} onclick={toggle}>
+    aria-label={spoken ? undefined : strings.sidebar.groupingOptions} title={strings.sidebar.groupingOptions} data-testid={`${prefix}grouping-options`} data-view={workspace.view} data-filters={filters} onclick={toggle}>
     <ListFilter size={16} />
     {#if spoken}<span class="word ui-label" data-testid={`${prefix}filter-name`}>{spoken}</span>{/if}
-    <!-- Beside a named filter, the others as "+N"; otherwise every filter, counted in the corner. -->
-    {#if filters > (spoken && named ? 1 : 0)}<span class="count ui-label" class:more={spoken && named} data-testid={`${prefix}filter-count`}>{spoken && named ? `+${filters - 1}` : filters}</span>{/if}
+    <!-- A filter on: a dot on the glyph's corner; the line under the head names it. -->
+    {#if filters > 0}<span class="dot" aria-hidden="true" data-testid={`${prefix}filter-count`}></span>{/if}
   </button>
   {#if popover.shown && Panel}
     <Panel {popover} anchor={() => trigger ?? null} onclose={close} {entries} {target} {owner} {prefix} {compact} {atWork} {onaddproject} />
@@ -94,10 +80,8 @@
   .display-options { position: relative; display: inline-flex; max-width: 100%; }
   .trigger { position: relative; }
   .trigger[aria-expanded='true'] { background: var(--color-surface-3); color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-edge); }
-  /* A name on the button: at most a project's short name, the full one in the tooltip. */
-  .word { min-width: 0; max-width: 14ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  /* Filters on: how many, small in the corner, in the selected thing's ink. */
-  .count { position: absolute; top: 1px; right: 1px; min-width: 13px; height: 13px; padding: 0 3px; border-radius: var(--radius-full); background: var(--color-foreground); color: var(--color-background);
-    font-size: 9.5px; font-weight: 700; line-height: 13px; text-align: center; font-variant-numeric: tabular-nums; }
-  .count.more { position: static; flex: none; min-width: 0; height: auto; padding: 0; background: none; color: var(--color-muted-foreground); font: inherit; line-height: inherit; }
+  .word { white-space: nowrap; }
+  /* A filter on: the selected thing's ink, small on the glyph's corner, ringed off the ground. */
+  .dot { position: absolute; top: 5px; left: 17px; width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--color-foreground); box-shadow: 0 0 0 2px var(--color-background); pointer-events: none; }
+  .trigger.icon .dot { top: calc(50% - 11px); left: calc(50% + 4px); }
 </style>

@@ -256,7 +256,7 @@
     font-size: var(--text-sm);
   }
 
-  /* The line number in the secondary ink (round 21): read beside the code, not hunted for. */
+  /* The line number in the secondary ink: read beside the code, not hunted for. */
   .num {
     flex: none;
     width: var(--num-w);

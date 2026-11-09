@@ -34,7 +34,7 @@ test('a first run lists the agents as rows that each connect in one click, then 
   expect(keys.map((key) => key.textContent!.trim())).toEqual([strings.sidebar.state.waiting, strings.sidebar.state.working, strings.sidebar.state.error]);
   const marks = keys.map((key) => key.querySelector('.slot')!.firstElementChild!);
   expect(marks.map((mark) => mark.getAttribute('data-tone') ?? mark.className.split(' ')[0])).toEqual(['waiting', 'running', 'fail']);
-  // Round 21: the legend is a titled card of its own after the steps, each mark saying what it asks of you.
+  // The legend is a titled card of its own after the steps, each mark saying what it asks of you.
   const legend = query<HTMLElement>('[data-testid="first-run-marks"]');
   expect(legend.closest('[data-testid="first-run-steps"]')).toBeNull();
   expect(legend.querySelector('h2')!.textContent).toBe(strings.firstRun.marks);

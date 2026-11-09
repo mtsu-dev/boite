@@ -48,7 +48,7 @@ async function openOrphan(page: BrowserPage, name: string): Promise<void> {
   await page.waitFor(`document.querySelector('[data-testid="composer-account-removed"]')`);
   await page.evaluate(settle);
   await shot(page, name);
-  await page.click('[data-testid="composer-account-removed"]');
+  await page.click('[data-testid="account-gone-pick"]');
   await page.waitFor(`document.querySelector('[data-testid="composer-picker-menu"]')`);
 }
 

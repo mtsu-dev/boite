@@ -14,6 +14,8 @@
   import ThreadHeadline from './ThreadHeadline.svelte';
   import { threadState } from '../lib/thread-state';
   import { feedOperation, feedSecondary, feedVerbLabel, type FeedVerb } from '../lib/activity-feed';
+  import { feedAsk } from '../lib/feed-row';
+  import { ago, exactTime } from '../lib/format';
   import DecisionActions from './DecisionActions.svelte';
   import { collapseRow } from '../lib/row-collapse';
 
@@ -23,8 +25,10 @@
    * lives under it when the list says so. The pull request waits in the thread, the pin under the slide. `compact` is
    * the flat lists' form (Recent, Activity): the project's tile first, unless the line under the title names the
    * project in words. Activity (the phone's screen) is the whole
-   * title on the row's width with `reason`, what the thread wants, one line under it; a command it asks to run
-   * reads in full in a mono block under them. A sub-agent with the same ask is a line of its own (`helpers`), one
+   * title on the row's width, ended by its mark; under it the place line, where the decision comes from and
+   * since when (`where`, lib/feed-row.ts), then what the thread wants, one line, a permission titled by what it
+   * does as the composer titles it; a command it asks to run reads in full in a mono block under them.
+   * Its machine out of reach, "Offline" is said once: on the place line, unless the card above says it (`placed`). A sub-agent with the same ask is a line of its own (`helpers`), one
    * event per row, as on the desktop; `verb` names what a Needs you row asks: the decision pair after the content,
    * right-aligned as on the desktop (DecisionActions.svelte), Deny or Skip outlined and settled here, then the verb
    * solid; Review, when the command is too long to read here, outlined alone.
@@ -33,13 +37,15 @@
    * left shows pin and archive. Its trigger stays for the keyboard, drawn
    * only while focused.
    */
-  let { machine, thread, project, now, items, compact = false, reason, at, helpers = [], verb = null, where, onopen, onverb = onopen, onaction }: {
+  let { machine, thread, project, now, items, compact = false, reason, at, helpers = [], verb = null, where, placed = false, onopen, onverb = onopen, onaction }: {
     machine: Machine; thread: ThreadSummary; project: Project | undefined; now: number; items: MenuItem[]; compact?: boolean;
     reason?: string; at?: number; verb?: FeedVerb | null;
     /** Activity: the sub-agents of this thread that ask, each with what it asks. */
     helpers?: { thread: ThreadSummary; reason?: string }[];
-    /** Recent: where the row lives, first on its line under the title (lib/row-place.ts). */
+    /** Recent and Activity: where the row lives, first on its line under the title (lib/row-place.ts, lib/feed-row.ts). */
     where?: RowPlace;
+    /** The card above names the machine and says it is out of reach: the row only mutes its title. */
+    placed?: boolean;
     onopen: () => void; onverb?: (event?: MouseEvent) => void; onaction: (action: string) => void;
   } = $props();
   const owner = $derived(machine.store);
@@ -49,6 +55,10 @@
   /** A dot when the user must act or a turn failed, the arc for work, the time alone otherwise (ThreadState draws it then). */
   const form = $derived(stateForm(kind));
   const away = $derived(owner.connection !== 'ready');
+  /** "Offline" said once: on the place line, unless the card's head or the place's machine already says it. */
+  const chip = $derived(away && !placed && !where?.host?.away);
+  /** Activity: what the thread asks, in words; nothing when its reason only names the place line's project. */
+  const ask = $derived(reason === undefined ? null : feedAsk(owner, thread.id, { reason, place: where?.project }));
   /** Activity: the whole command the thread asks to run, read before Allow. */
   const operation = $derived(reason === undefined ? null : feedOperation(owner, thread.id));
   const long = $derived(!!operation && (operation.split('\n').length > 6 || operation.length > 480));
@@ -71,7 +81,13 @@
   function swiped(action: string) { closeSwipedRow(); onaction(action); }
 </script>
 
-{#snippet why()}<span class="why" data-testid="mobile-row-reason"><span class="text">{reason}</span></span>{/snippet}
+{#snippet placeLine(since?: number)}
+  <span class="meta" data-testid="mobile-row-meta"><span class="where" data-testid="mobile-row-where" title={where?.text}>{#if where?.project}<span class="ui-label">{where.project}</span>{/if}{#if where?.host}<MachinePlace host={where.host} />{/if}{#if chip}<span class="away" data-testid="thread-offline">{strings.connection.offline}</span>{/if}</span>{#if since !== undefined}<time class="since" title={exactTime(since)}>{ago(since, now)}</time>{/if}</span>
+{/snippet}
+{#snippet why()}
+  {@render placeLine(at)}
+  {#if ask}<span class="why" data-testid="mobile-row-reason"><span class="text">{ask}</span></span>{/if}
+{/snippet}
 
 <div class="row" out:collapseRow|global={() => !owner.threads.some(entry => entry.id === thread.id)} class:reason={reason !== undefined} class:tiled={compact && project !== undefined && where === undefined} data-testid="mobile-row" data-thread-id={thread.id} data-machine-id={machine.id}>
   <!-- Under the row, for a finger that slides it left; the long press offers the same to everyone else. -->
@@ -89,14 +105,14 @@
            after it; in Activity what is asked is one line under the title. The project's header says how many need
            the user, so no row repeats the word. -->
       <ThreadHeadline {owner} {thread} {now} tile={compact && where === undefined ? project : undefined} mark offline={away} ask={reason === undefined ? undefined : why}
-        at={reason !== undefined ? at : form !== null ? thread.lastUserMessageAt ?? thread.createdAt : undefined} />
+        at={reason === undefined && form !== null ? thread.lastUserMessageAt ?? thread.createdAt : undefined} />
       {#if reason !== undefined}
         {#if operation}<code class="operation" class:long data-testid="thread-operation"><CommandWords text={operation} /></code>{/if}
         {#each helpers as helper (helper.thread.id)}
           <span class="why helper" data-testid="thread-helper" data-thread-id={helper.thread.id}><span class="text"><span class="who">{helper.thread.title}</span> <span class="sep" aria-hidden="true">·</span> {helper.reason}</span></span>
         {/each}
-      {:else if where}
-        <span class="meta" data-testid="mobile-row-meta"><span class="where" data-testid="mobile-row-where" title={where.text}>{#if where.project}<span class="ui-label">{where.project}</span>{/if}{#if where.host}<MachinePlace host={where.host} />{/if}</span></span>
+      {:else if where || chip}
+        {@render placeLine()}
       {/if}
     </button>
     {#if action}
@@ -134,11 +150,14 @@
      moving the line ("atlas-api" lost its p). */
   .meta .where { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; min-width: 0; padding-block: 0.3em; margin-block: -0.3em; overflow: hidden; white-space: nowrap; }
   .meta .where > .ui-label { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  /* "Offline" when nothing above says it: MachinePlace's state mark, alone. */
+  .where > .away { flex: none; padding: 0 6px; border: 1px solid var(--color-edge); border-radius: var(--radius-sm); font-size: var(--text-xs); line-height: 1.5; }
+  /* Activity's since when, last on the place line: the title keeps its line whole. */
+  .meta .since { flex: none; color: var(--color-subtle); font-variant-numeric: tabular-nums; }
   /* The title line's end: the mark, then the time, centred on the first line's capitals (the title's box is trimmed
      to them, .ui-label), whose middle sits 0.36 em down at the title's size. */
   .thread :global(.headline > :is(.when, .at)) { height: 22px; margin-top: calc(0.36 * var(--text-reading) - 11px); }
   .thread :global(.headline > .when) { font-size: var(--text-sm); }
-  .thread :global(.headline > .offline-chip) { margin-top: calc(0.36 * var(--text-reading) - 10px); }
   .thread :global(.headline > .when:not(.state)) { font-weight: 400; }
   .thread :global(.headline > .at) { line-height: 22px; font-size: var(--text-sm); }
   /* Activity: what is asked, one line under the title; the row's tooltip and the thread hold the whole. */
@@ -156,7 +175,7 @@
   /* A phone reads every title at full ink: the mark says which rows need the user. Two lines of it before the
      ellipsis in the lists; Activity's are whole, since the row is about them. */
   .thread :global(.headline .title) { color: var(--color-foreground); font-weight: 400; }
-  /* Its machine out of reach: the muted title and the Offline chip (ThreadHeadline.svelte), no fading of the row. */
+  /* Its machine out of reach: the muted title (ThreadHeadline.svelte), no fading of the row. */
   .thread :global(.headline.offline .title) { color: var(--color-muted-foreground); }
   /* A clamped title's second line keeps its untrimmed box: .ui-label's half-em under it showed the top of the third
      line, so only a descender's room is kept. */

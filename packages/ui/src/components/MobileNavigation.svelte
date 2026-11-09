@@ -22,9 +22,12 @@
   import { experimentOn } from '../lib/experiments.svelte';
   import { mobileChrome } from '../lib/mobile-chrome.svelte';
   import { focusOnMount } from '../lib/actions';
+  import { watchRowCut } from '../lib/row-cut';
   import MobileThreadRow from './MobileThreadRow.svelte';
+  import FoldMore from './FoldMore.svelte';
   import DisplayOptions from './DisplayOptions.svelte';
   import ViewSwitch from './ViewSwitch.svelte';
+  import FilterChips from './FilterChips.svelte';
   import RecentGroup from './RecentGroup.svelte';
   import RecentDone from './RecentDone.svelte';
   import ProjectThreadCounters from './ProjectThreadCounters.svelte';
@@ -39,7 +42,8 @@
   import { activeProject, archiveCount, projectSections, projectThreadView } from '../lib/project-threads.svelte';
   import { workingThread } from '../lib/recent.svelte';
   import { compareEntries, compareRecent } from '../lib/thread-order';
-  import { rowPlaces } from '../lib/row-place';
+  import { rowPlaces, type RowPlace } from '../lib/row-place';
+  import { feedWhere } from '../lib/feed-row';
   import { hostName } from '../lib/machine-host';
   import { activityFeed, feedGroups, storeNeedsYou, type FeedVerb } from '../lib/activity-feed';
   import { tabHeader } from '../lib/tab-header.svelte';
@@ -92,6 +96,9 @@
   const title = $derived(store.page === 'settings' ? strings.settings.heading : store.page === 'agents' ? strings.agents.heading : store.page === 'home' ? strings.contacts.heading
     : recover ? 'Boite' : screen === 'activity' ? strings.mobile.activity : workspace.view === 'recent' ? strings.sidebar.recentView : strings.sidebar.projectsView);
   let scrollRoot = $state<HTMLElement>();
+  /** How far above the foot the list's fade ends at rest, so no row shows half above the tabs (lib/row-cut.ts). */
+  let cut = $state(0);
+  $effect(() => { const box = scrollRoot; if (box) return watchRowCut(box, value => { cut = value; }); });
   const scrollPositions = new Map<string, number>();
   const measuredRows = new Map<string, Map<string, number>>();
   function measurements(key: string): Map<string, number> {
@@ -107,6 +114,11 @@
   let several = $derived(machines.length > 1);
   /** The project cards whose quiet threads were asked for, by project key, for this session. */
   let unfolded = $state<Record<string, true>>({});
+  /** Shows a card's quiet threads, or folds them back. */
+  function toggleFold(key: string) {
+    const { [key]: was, ...rest } = unfolded;
+    unfolded = was ? rest : { ...rest, [key]: true };
+  }
   /**
    * The machine line names where the page reads: worth a line only once there is another to pick, or this one is not
    * there. Activity, Bots and Contacts gather every machine's rows, so there it only says trouble.
@@ -135,7 +147,7 @@
   let elsewhere = $derived(waiting.filter(e => !(e.machine.store === store && e.thread.id === store.openThread?.id)).length);
   const matches = (e: typeof entries[number]) => !query || [e.thread.title, projectName(e.project), e.thread.branch, e.machine.label].some(value => value?.toLocaleLowerCase().includes(query));
   /** Activity: what needs the user, failures included, then the updates, each with its reason; sub-agents under their parent. */
-  let rows: (typeof entries[number] & { reason?: string; at?: number; nested?: boolean; section?: 'needs' | 'updates'; verb?: FeedVerb | null })[] = $derived(listScreen === 'activity'
+  let rows: (typeof entries[number] & { reason?: string; place?: string; at?: number; nested?: boolean; section?: 'needs' | 'updates'; verb?: FeedVerb | null })[] = $derived(listScreen === 'activity'
     ? activityFeed(entries.filter(matches), feedPlace)
     : entries.filter(e => matches(e) && !e.thread.parentThreadId && !e.project?.archived && (workspace.view !== 'recent' || !selected || (e.machine.id === selected.machine.id && e.thread.projectId === selected.project.id)))
       // Recent is a flat history, newest first under the pins, as on the desktop; the cards rank by status.
@@ -145,6 +157,11 @@
   /** This app's own machine goes unsaid on Recent's place line and on the cards: the other machines are named. */
   const home = $derived(machines.find(m => m.store === workspace.primary));
   const places = $derived(rowPlaces(rows, home?.id));
+  /** The line under a row's title: Recent's place, or where an Activity decision comes from (lib/feed-row.ts). */
+  function rowWhere(row: typeof rows[number], grouped: boolean): RowPlace | undefined {
+    if (listScreen === 'activity' && row.place !== undefined) return feedWhere({ ...row, place: row.place }, several);
+    return !grouped && inRecent ? places(row) : undefined;
+  }
   const recentGroups = $derived(selected ? [selected] : groups);
   let workingOpen = $state(false);
   const groupWorking = $derived(inRecent && recentPreferences.groupWorking && !query);
@@ -296,6 +313,8 @@
     {#if create.items}<Menu items={create.items} onpick={id => create.onpick(id)} label={create.label} placement="bottom" align="end" variant="ghost" testid={create.testid}><Plus size={20} /></Menu>
     {:else}<button class="ghost icon new" data-testid={create.testid} aria-label={create.label} title={create.label} onclick={() => create.onpick()}><Plus size={20} /></button>{/if}
   {/if}
+  <!-- The filters on, in words on a line of their own: the row above keeps the views, the machine and three squares. -->
+  {#if threadViews && !chatting}<FilterChips entries={groups} owner={store} prefix="mobile-" compact {atWork} />{/if}
 </header>
 
 {#if tabbed || leaving}
@@ -307,7 +326,7 @@
 {/snippet}
 
 {#if narrow.current && store.page === 'chat' && (screen !== 'chat' || recover || leaving)}
-  <section class="mobile-list scroll-edges" class:recent={inRecent} class:tabbed={tabbed || leaving} inert={leaving} bind:this={scrollRoot} onscroll={() => { if (scrollRoot) scrollPositions.set(listKey, scrollRoot.scrollTop); }} data-testid="mobile-list" aria-label={listScreen === 'activity' ? strings.mobile.activity : strings.sidebar.threads}>
+  <section class="mobile-list scroll-edges" class:recent={inRecent} class:tabbed={tabbed || leaving} inert={leaving} bind:this={scrollRoot} style:--cut={cut ? `${cut}px` : undefined} onscroll={() => { if (scrollRoot) scrollPositions.set(listKey, scrollRoot.scrollTop); }} data-testid="mobile-list" aria-label={listScreen === 'activity' ? strings.mobile.activity : strings.sidebar.threads}>
     {#if recover && narrow.current}
       <MobileConnect {store} onpaired={() => show('threads')} />
     {:else}
@@ -315,7 +334,7 @@
     {#snippet threadRow(row: typeof rows[number], grouped = false, helpers: typeof rows = [])}
       <!-- Activity: the row's verb is its own, else the first asking sub-agent's, which opens that sub-agent (ActivityRow.svelte). -->
       {@const target = row.verb ? row : helpers.find(helper => helper.verb) ?? row}
-      <MobileThreadRow machine={row.machine} thread={row.thread} project={row.project} {now} compact={!grouped} reason={row.reason} at={row.at} {helpers} verb={target.verb ?? null} where={!grouped && inRecent ? places(row) : undefined} items={rowItems(row.machine.store, row.thread)}
+      <MobileThreadRow machine={row.machine} thread={row.thread} project={row.project} {now} compact={!grouped} reason={row.reason} at={row.at} {helpers} verb={target.verb ?? null} where={rowWhere(row, grouped)} placed={grouped && !!hostName(row.machine, machines, home?.id)?.away} items={rowItems(row.machine.store, row.thread)}
         onopen={() => { show('chat'); void workspace.select(row.machine.store, row.thread.id); }}
         onverb={(event) => { leaveForAct(target.machine.store, target.thread.id, event?.currentTarget as Element ?? null, true); show('chat'); void workspace.select(target.machine.store, target.thread.id); }}
         onaction={action => rowAction(row.machine.store, row.thread, action, row.machine.id)} />
@@ -330,13 +349,14 @@
         {@const workingRows = groupRows.filter(row => workingThread(row.machine.store, row.thread))}
         {@const waitingHere = group.machine.store.connection === 'ready' ? waitingCount(group) : 0}
         {@const attentionAll = query || !recentPreferences.groupWorking ? groupRows : groupRows.filter(row => workingOpen ? !workingThread(row.machine.store, row.thread) : !groupWorkingThread(group.machine.store, row.thread))}
-        {@const fold = query || unfolded[projectKey(group)] ? { shown: attentionAll, folded: [] } : foldQuiet(attentionAll, row => row.thread.pinned === true || threadState(row.thread, rowAsks(row.machine.store, row.thread.id)) !== null)}
-        {@const attentionRows = fold.shown}
+        {@const fold = query ? { shown: attentionAll, folded: [] } : foldQuiet(attentionAll, row => row.thread.pinned === true || threadState(row.thread, rowAsks(row.machine.store, row.thread.id)) !== null)}
+        {@const foldOpen = !!unfolded[projectKey(group)] && fold.folded.length > 0}
+        {@const attentionRows = foldOpen ? attentionAll : fold.shown}
         {@const controls = `mobile-project-${encodeURIComponent(projectKey(group))}`}
         {@const drafts = group.machine.store.draftEntries.filter(entry => entry.projectId === group.project.id)}
         {#if !query || groupRows.length > 0 || doneOpen || archivedOpen}
         <section class="project-group" class:inactive={!activeProject(group)} data-testid="mobile-project-group" data-project-id={group.project.id} data-machine-id={group.machine.id}>
-          <div class="project-heading">
+          <div class="project-heading" data-row-edge>
             <ProjectTile project={group.project} store={group.machine.store} /><h2><span class="name">{projectName(group.project)}</span>{#if hostName(group.machine, machines, home?.id)}<MachinePlace host={hostName(group.machine, machines, home?.id)!} testid="mobile-project-host" />{/if}</h2>
             <ProjectThreadCounters entry={group} working={group.machine.store.threadsOf(group.project.id).filter(thread => workingThread(group.machine.store, thread)).length} waiting={waitingHere} {controls} searching={!!query} away={group.machine.store.connection !== 'ready'} />
             {#if projectView.order === 'manual'}
@@ -353,12 +373,7 @@
           <WindowList items={attentionRows} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} estimate={66} measurements={measurements(projectKey(group))}>
             {#snippet row(entry)}{@render threadRow(entry, true)}{/snippet}
           </WindowList>
-          {#if fold.folded.length}
-            <!-- A big card's quiet threads, one line: a press shows them in place (Sidebar.svelte does the same). -->
-            <button type="button" class="ghost more-threads" data-testid="project-more" onclick={() => { unfolded = { ...unfolded, [projectKey(group)]: true }; }}>
-              <span class="ui-label">{fill(strings.sidebar.moreThreads, { count: String(fold.folded.length) })}</span>
-            </button>
-          {/if}
+          {#if fold.folded.length}<div class="fold-more"><FoldMore count={fold.folded.length} open={foldOpen} ontoggle={() => toggleFold(projectKey(group))} /></div>{/if}
           <ProjectThreadCounters entry={group} working={workingRows.length} waiting={waitingHere} {controls} searching={!!query} away={group.machine.store.connection !== 'ready'} place="fold" />
           <div id="{controls}-working" hidden={!workingOpen || !!query || workingRows.length === 0} data-testid="project-working">
             {#if workingOpen && !query && workingRows.length > 0}
@@ -447,10 +462,12 @@
 {/if}
 
 <style>
+  /* Typed, so the foot's fade eases to a row's top when the list settles instead of jumping. */
+  @property --cut { syntax: '<length>'; inherits: false; initial-value: 0px; }
   .mobile-header, .mobile-list { display: none; }
   @media (max-width: 720px) {
 
-    .mobile-header { display: flex; align-items: center; gap: 10px; min-height: 60px; padding: 8px max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left)); background: var(--color-background); border-bottom: 1px solid var(--color-border); padding-top: max(8px, env(safe-area-inset-top)); }
+    .mobile-header { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-height: 60px; padding: 8px max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left)); background: var(--color-background); border-bottom: 1px solid var(--color-border); padding-top: max(8px, env(safe-area-inset-top)); }
     .chat-heading { flex: 1; min-width: 0; height: 44px; }
     .mobile-header.chatting { gap: 6px; padding-left: max(8px, env(safe-area-inset-left)); padding-right: max(8px, env(safe-area-inset-right)); }
     .chat-heading :global(.thread-header) { gap: 2px; }
@@ -460,6 +477,8 @@
     /* A list's row holds the view switch and up to four finger squares (the machine, the display menu, the search, a
        new thread): the squares touch, their glyphs still 24 px apart, so the switch keeps its room at 360 px. */
     .mobile-header:not(.chatting) > :is(.icon, .header-display) { margin-left: -10px; }
+    /* The filters' line under the row, the whole width. */
+    .mobile-header > :global(.filter-chips) { flex-basis: 100%; padding-bottom: 4px; }
     .search { display: flex; flex: 1; min-width: 0; gap: 8px; align-items: center; padding: 0 0 0 12px; background: var(--color-surface-2); border: 1px solid var(--color-border); border-radius: var(--radius-lg); color: var(--color-muted-foreground); }
     .search > :global(svg) { flex: none; }
     /* The display options close the field's row, after a hairline. */
@@ -483,34 +502,34 @@
     .connection.icon { flex: none; justify-content: center; width: var(--touch-target); height: var(--touch-target); margin: 0; color: var(--color-muted-foreground); }
     .connection.icon .dot { position: absolute; top: 9px; right: 8px; width: 7px; height: 7px; box-shadow: 0 0 0 2px var(--color-background); }
     .identity { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; flex: 1; }
+    /* The views never shrink under the squares beside them: the squares sit after the switch, never on it. */
+    .identity:has(:global(.view-switch)) { flex: 1 0 auto; }
     .mobile-header > :global(.menu) { flex: none; }
     .header-display { display: flex; flex: none; }
     .header-display :global(.trigger) { width: var(--touch-target); height: var(--touch-target); color: var(--color-muted-foreground); }
-    /* A filter on names itself ("Working"): the glyph and its word, the touch height kept. */
-    .header-display :global(.trigger.worded) { width: auto; display: inline-flex; align-items: center; gap: 5px; padding: 0 10px; font-size: var(--text-sm); font-weight: 500; color: var(--color-foreground); white-space: nowrap; }
     .mobile-list { display: block; position: absolute; inset: 0; overflow-y: auto; overscroll-behavior: contain; background: var(--color-background); padding: 8px max(16px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
     /* The bottom bar owns the home indicator's inset. */
     .mobile-list.tabbed { padding-bottom: 24px; }
-    /* The foot's fade (app.css `.scroll-edges`): 12 px of the ground over the rows while more lies below, shallow
-       enough that the last row in view reads whole, gone at the end, where the padding leaves the last row whole
-       above the tab bar. */
-    .mobile-list { --scroll-edge: 12px; --scroll-edge-top: 8px; --scroll-edge-bottom: 24px; scroll-padding-block: calc(var(--scroll-edge) + 8px); }
+    /* The foot's fade (app.css `.scroll-edges`, the shared depth): the ground over the rows while more lies below,
+       gone at the end, where the padding leaves the last row whole above the tab bar. A scroll that ends near a row
+       settles with that row whole under its card's stuck heading (`--heading`). */
+    .mobile-list { --scroll-edge-top: 8px; --scroll-edge-bottom: 24px; --heading: 44px; scroll-padding-block: calc(var(--scroll-edge) + 8px); scroll-snap-type: y proximity; }
+    /* The foot fades over the bottom padding while rows pass it; at rest it ends on the top of the row the tabs would
+       slice (`--cut`, set by the script), so a row is whole or gone. A mask on the box, which does not scroll. */
+    .mobile-list { --fade: var(--scroll-edge); mask-image: linear-gradient(to bottom, black calc(100% - var(--fade) - var(--cut)), rgb(0 0 0 / 0.55) calc(100% - var(--fade) / 2 - var(--cut)), transparent calc(100% - var(--cut))); transition: --cut var(--motion-duration) var(--motion-curve); }
+    .project-group { scroll-snap-align: start; scroll-margin-top: calc(var(--scroll-edge-top) - var(--scroll-edge) - 8px); }
+    .project-group :global([data-testid=mobile-row]) { scroll-snap-align: start; scroll-margin-top: calc(var(--heading) - var(--scroll-edge) - 8px); }
     p { font-size: var(--text-sm); }
     /* One frame: a quiet surface, no border and no banded header inside it. */
     /* Clipped to its corners without being a scroll box, so its heading can stick to the list's scroll. */
     .project-group { --row-background: var(--color-surface); border-radius: var(--radius-lg); background: var(--color-surface); margin-bottom: 12px; overflow: clip; }
     /* The heading stays at the list's top edge while its threads scroll under it, over the edge fade, on the card's
-       ground; the next card's heading pushes it off (round 21). */
-    .project-heading { position: sticky; top: calc(-1 * var(--scroll-edge-top, 0px)); z-index: 4; display: flex; align-items: center; padding: 8px 12px; gap: 8px; color: var(--color-muted-foreground); background: var(--color-surface); }
+       ground; the next card's heading pushes it off. */
+    .project-heading { position: sticky; top: calc(-1 * var(--scroll-edge-top, 0px)); z-index: 4; display: flex; align-items: center; min-height: var(--heading); box-sizing: border-box; padding: 8px 12px; gap: 8px; color: var(--color-muted-foreground); background: var(--color-surface); }
     /* A row passing under it melts into the heading instead of being sliced; over the card's ground it shows nothing. */
-    .project-heading::after { content: ''; position: absolute; inset: 100% 0 auto; height: 8px; background: linear-gradient(var(--color-surface), transparent); pointer-events: none; }
-    /* Stuck over rows (a scroll-state query on the heading itself), its ground runs on opaque past its edge, then a
-       short fade, so a row cut mid-line hides under it instead of showing its lower half; at rest the first row
-       keeps its whole text. */
-    .project-heading { container-type: scroll-state; }
-    @container scroll-state(stuck: top) {
-      .project-heading::after { height: 22px; background: linear-gradient(var(--color-surface) 14px, transparent); }
-    }
+    /* The shared edge's depth and easing: the list settles on a row's top (the snap above), so the fade covers that
+       row's top padding, never its text. */
+    .project-heading::after { content: ''; position: absolute; inset: 100% 0 auto; height: var(--scroll-edge); background: linear-gradient(var(--color-surface), color-mix(in oklab, var(--color-surface) 45%, transparent) 50%, transparent); pointer-events: none; }
     /* The name, then its machine in quiet ink, on one line: the machine gives way first. */
     .project-heading h2 { display: flex; align-items: center; gap: 8px; margin: 0; flex: 1; min-width: 0; font-size: var(--text-sm); }
     /* The card's title at the title weight and ink, as the desktop card's name (Sidebar.svelte .name). */
@@ -518,8 +537,8 @@
     /* The machine as a place (MachinePlace.svelte): its name gives way before the project's, its state never. */
     .project-heading h2 :global(.machine-place) { flex: 0 1000 auto; }
     /* A whole touch target that eats the heading's padding rather than making it taller. */
-    /* The folded quiet threads' line: a finger's height, subtle ink, on the rows' text edge. */
-    .more-threads { display: flex; width: 100%; height: auto; min-height: var(--touch-target); padding: 0 12px; justify-content: flex-start; border-radius: 0; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 400; }
+    /* The folded quiet threads' action (FoldMore.svelte): a finger's height, on the rows' text edge. */
+    .fold-more { --fold-more-height: var(--touch-target); --fold-more-inset: 12px; }
     .project-heading .project-actions { flex: none; margin: -8px -8px -8px 0; color: var(--color-muted-foreground); }
     .project-heading :global(.counters) { margin: -8px 0; }
     /* The list's content box, the empty view a little above its centre, where the eye lands. */

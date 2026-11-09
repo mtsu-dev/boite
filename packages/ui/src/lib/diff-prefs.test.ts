@@ -9,7 +9,7 @@ async function prefs() {
   return (await import('./diff-prefs.svelte')).diffPrefs;
 }
 
-// Round 17: code cut at the panel's edge read as broken, so a diff wraps unless the user chose No wrap.
+// Code cut at the panel's edge read as broken, so a diff wraps unless the user chose No wrap.
 test('a diff wraps its long lines until the user picks No wrap', async () => {
   expect((await prefs()).wrap).toBe(true);
 });
@@ -22,7 +22,7 @@ test('prefs saved before the wrap choice existed still wrap; a saved No wrap sta
   expect((await prefs()).wrap).toBe(false);
 });
 
-// Round 21: a phone's line cut at the edge read as broken; it now wraps at spaces and operators (lib/diff-breaks).
+// A phone's line cut at the edge reads as broken, so it wraps at spaces and operators (lib/diff-breaks).
 test('a phone wraps a diff by default too; a saved No wrap stays', async () => {
   vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(max-width: 720px)' }));
   try {

@@ -4,7 +4,8 @@ import { fill, strings } from './strings';
  * The composer's placeholder, two at most: at rest it names who reads the
  * message; while the agent works or a decision (a question, an ask to run a
  * tool) waits, what is written replies. A state that changes what Send does
- * says so instead: the machine is away. `target` is a side box's own text, `bot` the persistent agent
+ * says so instead: the machine is away, or the account is gone. A thread
+ * still loading keeps its usual words: the conversation's centre says it loads. `target` is a side box's own text, `bot` the persistent agent
  * whose thread this is.
  */
 export function composerPlaceholder(input: {
@@ -13,15 +14,15 @@ export function composerPlaceholder(input: {
   replying: boolean;
   bot: string | null;
   offline: boolean;
-  /** The open thread's first page is still on its way: nothing can be sent to it yet. */
-  loading?: boolean;
+  /** The account behind the box was removed: nothing sends until another is picked. */
+  accountGone?: boolean;
   onThread: boolean;
   machine: string;
   provider: string | null;
 }): string {
   const t = strings.composer;
   if (input.target) return input.target.placeholder;
-  if (input.loading) return t.placeholderLoading;
+  if (input.accountGone) return t.placeholderPickAccount;
   if (input.offline) return fill(input.onThread ? t.placeholderOffline : t.placeholderOfflineDraft, { machine: input.machine });
   const name = input.bot ?? input.provider ?? t.placeholderAgent;
   return fill(input.replying ? t.replyPlaceholder : t.placeholder, { name });

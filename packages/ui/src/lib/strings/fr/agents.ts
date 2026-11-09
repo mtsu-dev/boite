@@ -53,6 +53,8 @@ export const fr: Translation = {
     accountAccessHint: 'Quels bots peuvent utiliser chaque compte, sous-agents compris. Retirer un accès arrête les exécutions qui s\'en servent.',
     allAgents: "Tous les bots, actuels et futurs",
     heading: 'Bots',
+    backToList: 'Revenir à la liste des bots',
+    needsAccount: 'A besoin d’un compte',
     list: 'Tous les bots', edit: 'Modifier', remove: 'Supprimer',
     search: 'Rechercher',
     name: 'Nom', domain: 'Rôle', instructions: 'Instructions', identityHint: 'Changer de modèle conserve son identité et sa mémoire.',

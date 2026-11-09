@@ -5,9 +5,9 @@
   import { machineName, workspace } from '../lib/workspace.svelte';
 
   /**
-   * Where a settings card's rows apply, at the right of its head (round 19:
-   * the page's head alone left a card of this device under a machine's bar
-   * reading as that machine's). No `store` and no `account`: this device.
+   * Where a settings card's rows apply, at the right of its head:
+   * the page's head alone would leave a card of this device under a machine's
+   * bar reading as that machine's). No `store` and no `account`: this device.
    * A `store`: the machine it is, by name. An `account`: that account.
    */
   let { store, account }: { store?: Store; account?: string } = $props();

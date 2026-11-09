@@ -9,7 +9,7 @@
 
   /**
    * The first screen of a machine with no AI, desktop and phone alike: the
-   * house bot, one line, then the path in three numbered steps (round 17: a
+   * house bot, one line, then the path in three numbered steps (a
    * list of agents alone left a first-time user without a next step). The
    * first step, the one to take now, is filled and holds the agents as rows,
    * each one the button that connects it, and a last row for the whole list;
@@ -62,7 +62,7 @@
         <li class="step"><span class="number" aria-hidden="true">2</span><span class="ui-label">{strings.firstRun.stepProject}</span></li>
         <li class="step"><span class="number" aria-hidden="true">3</span><span class="ui-label">{strings.firstRun.stepTask}</span></li>
       </ol>
-      <!-- The marks the lists use, met once here on a card of their own (round 21: squeezed under step 3 they read
+      <!-- The marks the lists use, met once here on a card of their own (squeezed under step 3 they read
            as a fourth step): each mark in the steps' number column, its word, then what it asks of you. -->
       <section class="legend" aria-labelledby="first-run-marks-head" data-testid="first-run-marks">
         <h2 id="first-run-marks-head" class="ui-label">{strings.firstRun.marks}</h2>

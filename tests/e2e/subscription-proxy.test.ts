@@ -63,8 +63,10 @@ test('disabled mode retains the native glance; Douane brings its quota bars and 
   await page.click('[data-testid="provider-settings"][data-provider-id="opencode"] [data-testid="provider-details-toggle"]');
   await page.click('[data-testid="provider-enabled"][data-provider-id="opencode-v2"]');
   await page.waitFor('document.querySelector("[data-testid=provider-enabled][data-provider-id=opencode-v2]")?.checked === true');
-  expect(await page.evaluate('document.querySelector("[data-testid=subscription-proxy-url]").value')).toBe('http://127.0.0.1:8787');
+  // Off, the section is its switch and one line; the form opens with the switch.
+  expect(await page.evaluate('!!document.querySelector("[data-testid=subscription-proxy-off]") && !document.querySelector("[data-testid=subscription-proxy-url]")')).toBe(true);
   await page.click('[data-testid="subscription-proxy-enabled"]');
+  expect(await page.evaluate('document.querySelector("[data-testid=subscription-proxy-url]").value')).toBe('http://127.0.0.1:8787');
   await page.type('[data-testid="subscription-proxy-url"]', dashboard);
   await page.type('[data-testid="subscription-proxy-dashboard"]', `${dashboard}/admin/#quotas`);
   expect(await page.text('[data-testid=subscription-proxy-enabled-hint]')).toContain('no longer used for Claude and Codex');
@@ -266,11 +268,11 @@ test('the Douane plugin: its row in Plugins and the proxy card pointing at it, a
 
     await local.click('[data-testid="settings-tab-accounts"]');
     await local.waitFor('document.querySelector("[data-testid=subscription-proxy-settings]")');
+    await local.click('[data-testid="subscription-proxy-enabled"]');
     await local.click('[data-testid="subscription-proxy-local"]');
     await local.waitFor('document.querySelector("[data-testid=subscription-proxy-plugin]")?.dataset.state === "running"');
     expect(await local.evaluate('document.querySelector("[data-testid=subscription-proxy-key]")?.type')).toBe('password');
     await local.type('[data-testid="subscription-proxy-key"]', 'dk_local-fixture');
-    await local.click('[data-testid="subscription-proxy-enabled"]');
     await local.click('[data-testid="subscription-proxy-save"]');
     await local.waitFor('document.querySelector("[data-testid=subscription-proxy-result]")?.textContent.includes("saved")');
     expect(await local.text('[data-testid=subscription-proxy-plugin]')).toContain('Douane 0.3.0 answers on 127.0.0.1:8787.');

@@ -58,7 +58,7 @@
 
   /*
    * One state in words and buttons: "Up to date" never sits beside an Update
-   * it cannot start (round 16), and another machine's pending update reads as
+   * it cannot start, and another machine's pending update reads as
    * one available here, where its button is.
    */
   function status(): string {
@@ -136,7 +136,7 @@
       </div>
     {/if}
   </div>
-  <!-- A channel that cannot be picked says why in the card, not only on hover a phone has not (round 18). -->
+  <!-- A channel that cannot be picked says why in the card, not only on hover a phone has not. -->
   {#if supported && !RELEASE_PUBLISHED}<p class="why" data-testid="app-update-no-release">{strings.appUpdate.noRelease}</p>{/if}
   <div class="line">
     <p class="status" class:offer={app?.phase === 'available' || app?.phase === 'ready' || othersStartable} class:error={app?.phase === 'error'} role="status" aria-live="polite" data-testid="app-update-status">

@@ -7,7 +7,7 @@
 
   /**
    * A project card's one count: the threads that need the user (`waiting`), "Needs you" and its amber number on
-   * every device (round 17: a bare number said nothing on the desktop). The working count stands only where no row says it:
+   * every device (a bare number said nothing on the desktop). The working count stands only where no row says it:
    * a folded card, or the fold of working threads (the display menu's grouping), whose toggle it is, so there it
    * stays beside Needs you. The archived ones live in the card's menu (lib/project-menu.ts).
    * `away`: the machine is not connected; its last known working count stays, the counts that ask are not drawn.
@@ -52,7 +52,7 @@
     background: transparent; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 400; font-variant-numeric: tabular-nums; }
   .counter:disabled { opacity: 1; }
   .waiting .number { color: var(--color-live); font-weight: var(--weight-title); }
-  /* The word beside the mark the rows wear, so the dot is learned where it is first named (round 20). */
+  /* The word beside the mark the rows wear, so the dot is learned where it is first named. */
   .dot { width: 8px; height: 8px; flex: none; border-radius: var(--radius-full); background: var(--color-live); }
   .counter .word { margin-right: 2px; }
   /* Work, still: the rows' accent arc (ThreadState.svelte). The open thread keeps the one live spinner. */

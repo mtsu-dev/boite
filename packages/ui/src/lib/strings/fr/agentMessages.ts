@@ -4,6 +4,7 @@ export const fr: Translation = {
 
   agentMessages: {
     heading: 'Messages',
+    headOne: '1 discussion', headMany: '{count} discussions',
     open: 'Ouvrir les messages', back: 'Tous les messages', openThread: 'Ouvrir cette conversation',
     empty: 'Aucun message avec un autre agent pour le moment.',
     sentReceived: '{sent} envoyés, {received} reçus',

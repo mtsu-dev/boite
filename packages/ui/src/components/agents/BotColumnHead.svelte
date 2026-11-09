@@ -4,6 +4,7 @@
   import { agentMenuItems, pickAgentAction } from '../../lib/agent-menu';
   import { botLeaving } from '../../lib/agent-move-flow';
   import { liveState, liveStep, waitingOn, type AgentsView } from '../../lib/agents.svelte';
+  import { routeGone } from '../../lib/agent-route';
   import { separator, type MenuItem } from '../../lib/menu';
   import type { AgentPane } from '../../lib/store/layout.svelte';
   import { strings } from '../../lib/strings';
@@ -43,10 +44,12 @@
   const state = $derived(agent ? liveState(agent, status, thread, !!pending) : 'idle');
   const step = $derived(liveStep(status, thread));
   const since = $derived(thread?.status === 'running' ? thread.runningSince ?? thread.progress?.since ?? null : null);
+  /** A removed account is a need, not a failed turn: the banner over the chat says how to meet it. */
+  const failure = $derived(agent && routeGone(store, agent.selection) ? labels.needsAccount : status?.problem ?? labels.state.error);
   /** The one status line, cut at the column's width; its title keeps it whole. The next routine is the desk's to show. */
   const line = $derived(state === 'working' ? step ?? labels.state.working
     : state === 'waiting' ? pending ?? labels.state.waiting
-    : state === 'error' ? status?.problem ?? labels.state.error
+    : state === 'error' ? failure
     : state === 'queued' || state === 'paused' || state === 'archived' ? labels.state[state]
     : agent?.domain || labels.state.idle);
   const pictures = $derived((team?.members ?? []).map(member => view.snapshot?.profiles.find(profile => profile.id === member.botId) ?? { id: member.botId, name: member.name, avatar: '' }));
@@ -79,7 +82,7 @@
       <span class="bot-head-live" data-state={state} title={line} aria-live="polite" data-testid="bot-column-live">
         <!-- One signal per state: the spinner or the mark carries the hue, the words stay neutral. -->
         {#if state === 'working'}<span class="bot-spin"><Spinner size={11} /></span>
-        {:else if state === 'waiting' || state === 'error'}<span class="bot-spin"><StatusMark tone={state} label={labels.state[state]} /></span>{/if}
+        {:else if state === 'waiting' || state === 'error'}<span class="bot-spin"><StatusMark tone={state} label={state === 'error' ? failure : labels.state[state]} /></span>{/if}
         <span class="bot-head-line">{line}</span>
         {#if state === 'working' && since !== null}<span class="bot-head-sep" aria-hidden="true">&nbsp;·&nbsp;</span><span class="bot-head-time"><Elapsed startedAt={since} finishedAt={null} active /></span>{/if}
       </span>

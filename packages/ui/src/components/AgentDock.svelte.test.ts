@@ -107,7 +107,7 @@ test('more entries than a phone dock shows fold behind a "+N" entry that opens t
     store.workflows = running(5);
     await tick();
     expect(names()).toEqual(['Run 1', 'Run 2', 'Run 3']);
-    expect(more()?.textContent?.trim()).toBe('+2');
+    expect(more()?.textContent?.trim()).toBe('Show 2 more');
     expect(more()?.getAttribute('aria-expanded')).toBe('false');
     more()!.click();
     await tick();

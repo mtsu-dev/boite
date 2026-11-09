@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from 'vitest';
-import { arriveSurface, reducedMotion } from './surface-swap';
+import { ARRIVE_SHIFT, arriveSurface, reducedMotion } from './surface-swap';
+import { panelPlace } from './panel-choices';
 
 afterEach(() => { delete document.documentElement.dataset['motion']; document.body.innerHTML = ''; });
 
@@ -24,4 +25,21 @@ test('under reduced motion the switch is a cut: no settle', () => {
   const next = surface();
   arriveSurface(next);
   expect(next.dataset['arriving']).toBeUndefined();
+});
+
+// A switch says where the new panel sits: it starts a few
+// pixels from its side of the launcher's order, and a kind with no side (or a browser's native view) only fades.
+test('a panel switch slides in from the side of the new panel in the launcher, a few pixels only', () => {
+  expect(panelPlace('files')).toBeGreaterThan(panelPlace('changes'));
+  expect(panelPlace('file')).toBe(panelPlace('files'));
+  const later = surface();
+  arriveSurface(later, false, panelPlace('trace') - panelPlace('changes'));
+  expect(later.style.getPropertyValue('--arrive-x')).toBe(`${ARRIVE_SHIFT}px`);
+  const earlier = surface();
+  arriveSurface(earlier, false, panelPlace('changes') - panelPlace('trace'));
+  expect(earlier.style.getPropertyValue('--arrive-x')).toBe(`${-ARRIVE_SHIFT}px`);
+  expect(ARRIVE_SHIFT).toBeLessThanOrEqual(12);
+  const same = surface();
+  arriveSurface(same, false, 0);
+  expect(same.style.getPropertyValue('--arrive-x')).toBe('');
 });

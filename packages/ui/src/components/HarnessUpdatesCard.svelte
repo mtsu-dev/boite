@@ -93,7 +93,8 @@
   .agent-updates { font-size: var(--text-sm); }
   header, .agent-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
   .agent-updates h2 { display: inline-flex; align-items: center; margin: 0; }
-  .agents { display: grid; gap: 12px; margin-top: 16px; }
+  /* The card's row line runs over the list (app.css): the first agent keeps the same air under it as between two agents. */
+  .agents { display: grid; gap: 12px; margin-top: 16px; padding-top: 12px; }
   .agent-row { justify-content: flex-start; }
   .name { display: inline-flex; flex: 1; align-items: center; gap: 8px; min-width: 140px; }
   .name :global(svg) { flex: none; }
@@ -107,8 +108,14 @@
   .auto input { flex: 0 0 40px; width: 40px; }
   @media (max-width: 720px) {
     header button { min-height: var(--touch-target); }
-    .agent-row { align-items: flex-start; }
-    .name { flex-basis: 100%; }
+    /* The version stays at the end of its agent's line, in one column with the others: the
+       version's actions (Update, Skip, Run its updater) join the row and start a line of their own. */
+    .agent-row { align-items: center; }
+    .name { flex: 1 1 auto; min-width: 0; }
+    .agent-row :global(.update) { display: contents; }
+    .agent-row :global(.update > .version) { order: 1; margin-left: auto; }
+    .agent-row :global(.update > :not(.version)), .agent-row > .progress, .agent-row > button { order: 3; }
+    .agent-row:has(:global(.update > :not(.version)), > .progress, > button)::after { content: ''; order: 2; flex-basis: 100%; }
     .auto { min-height: var(--touch-target); }
   }
 </style>

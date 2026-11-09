@@ -1,4 +1,5 @@
 import type { PermissionRequest, ThreadSummary } from '@boite/contracts';
+import { projectName } from '../lib/format';
 import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import { FakeClient } from '../lib/fake-client';
@@ -44,11 +45,15 @@ test('a permission reads whole under its row, its sub-agent\'s question is a row
   mounted = mount(ActivityRow, { target: document.body, props: { ...own, now: Date.now() } });
   await settle();
   expect(document.querySelectorAll('[data-testid=thread-row]')).toHaveLength(1);
-  expect(document.querySelector('[data-testid=thread-reason]')?.textContent).toBe('Wants to run:');
-  // What is asked is the headline's second line, under the title, whole in its tooltip.
-  expect(document.querySelector('[data-testid=thread-reason]')?.parentElement?.classList.contains('lead')).toBe(true);
-  expect(document.querySelector('[data-testid=thread-reason]')?.previousElementSibling?.classList.contains('title')).toBe(true);
-  expect(document.querySelector('[data-testid=thread-reason]')?.getAttribute('title')).toBe('Wants to run:');
+  // The decision is titled by what it does, the composer's own title (lib/decision-title.ts), whole in its tooltip.
+  const reason = document.querySelector('[data-testid=thread-reason]')!;
+  expect(reason.textContent).toBe('Push feature/a-branch-name-long-enough-to-wrap-in-the-row');
+  expect(reason.getAttribute('title')).toBe(reason.textContent);
+  // Where it comes from first: the place line under the title names its project, then the ask, then the command.
+  const where = document.querySelector('[data-testid=thread-where]')!;
+  expect(where.textContent).toContain(projectName(store.projects.find(project => project.id === parent.projectId)!));
+  expect(where.compareDocumentPosition(reason) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(reason.compareDocumentPosition(document.querySelector('[data-testid=thread-operation]')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   // The command whole, both lines, never cut to its first.
   expect(document.querySelector('[data-testid=thread-operation]')?.textContent).toBe(command);
   // It wraps at spaces only: the branch name is one unbreakable word, never cut at a hyphen.
@@ -110,8 +115,7 @@ test('an Updates row has no pair, and its time stands where the Needs you rows\'
   const own = groups.find(group => group.row.thread.id === parent.id)!;
   mounted = mount(ActivityRow, { target: document.body, props: { ...own, row: { ...own.row, section: 'updates', verb: null }, now: Date.now() } });
   await settle();
-  // The time ends the title's line on every row; the pair lives under the content, so none is reserved here.
-  expect(document.querySelector('.feed-side > time')).not.toBeNull();
-  expect(document.querySelector('.feed-side [data-testid=thread-verb]')).toBeNull();
+  // The time ends the place line on every row, beside where it comes from; the pair lives under the content.
+  expect(document.querySelector('[data-testid=thread-where] > time.since')).not.toBeNull();
   expect(document.querySelector('[data-testid=thread-verb]')).toBeNull();
 });

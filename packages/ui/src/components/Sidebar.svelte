@@ -39,6 +39,7 @@
   import MachinePlace from './MachinePlace.svelte';
   import MachineReconnect from './MachineReconnect.svelte';
   import RailFrame from './RailFrame.svelte';
+  import FoldMore from './FoldMore.svelte';
   import { minuteClock } from '../lib/clock.svelte';
   import { doneFilter } from '../lib/inbox.svelte';
   import { needsAnAI } from '../lib/first-run';
@@ -158,12 +159,19 @@
   const listsFor = projectListMap();
   /** The cards whose quiet threads the user unfolded, by project key, for this session. */
   let unfolded = $state<Record<string, true>>({});
-  /** A card's rows as drawn: what has something to say, then its quiet threads, folded on a big card until asked for. */
-  function cardRows(entry: ProjectEntry, attention: ThreadSummary[]): { shown: ThreadSummary[]; folded: ThreadSummary[] } {
+  /** A card's rows as drawn: what has something to say, then its quiet threads, folded on a big card until asked for.
+      `folded` keeps naming the quiet threads once shown (`open`), so the card can fold them back. */
+  function cardRows(entry: ProjectEntry, attention: ThreadSummary[]): { shown: ThreadSummary[]; folded: ThreadSummary[]; open: boolean } {
     const owner = entry.machine.store;
-    if (unfolded[projectKey(entry)]) return { shown: attention, folded: [] };
-    return foldQuiet(attention, thread => thread.pinned === true || threadState(thread, rowAsks(owner, thread.id)) !== null
+    const fold = foldQuiet(attention, thread => thread.pinned === true || threadState(thread, rowAsks(owner, thread.id)) !== null
       || (owner === workspace.active && owner.openThread?.id === thread.id));
+    const open = !!unfolded[projectKey(entry)] && fold.folded.length > 0;
+    return open ? { shown: attention, folded: fold.folded, open } : { ...fold, open };
+  }
+  /** Shows a card's quiet threads, or folds them back. */
+  function toggleFold(key: string) {
+    const { [key]: was, ...rest } = unfolded;
+    unfolded = was ? rest : { ...rest, [key]: true };
   }
   /** Each listed project's sorted rows, shared by its section and by Alt+digit. */
   let projectLists = $derived(listsFor(activeGroups));
@@ -229,8 +237,8 @@
     {#if contactsSide}
       <SideHead {store} current="home">
         {#snippet actions()}
-          <button type="button" class="ghost icon small" title={strings.contacts.add} aria-label={strings.contacts.add} data-testid="side-contacts-add" onclick={() => store.showHome()}><UserPlus size={16} /></button>
-          <button type="button" class="ghost icon small" title={foldLabel} aria-label={foldLabel} aria-expanded={!contactsRail.folded} data-testid="contacts-toggle" onclick={() => contactsRail.toggle()}>
+          <button type="button" class="icon-button" title={strings.contacts.add} aria-label={strings.contacts.add} data-testid="side-contacts-add" onclick={() => store.showHome()}><UserPlus size={16} /></button>
+          <button type="button" class="icon-button" title={foldLabel} aria-label={foldLabel} aria-expanded={!contactsRail.folded} data-testid="contacts-toggle" onclick={() => contactsRail.toggle()}>
             {#if contactsRail.folded}<PanelRightOpen size={16} />{:else}<PanelRightClose size={16} />{/if}
           </button>
         {/snippet}
@@ -352,19 +360,14 @@
               <SharedProjectThreads store={owner} projectId={project.id} active={!collapsed && !away}>
               {#each draftsHere as draft (draft.id)}<DraftRow {owner} entry={draft} />{/each}
               <WindowList items={fold.shown} keyOf={thread => JSON.stringify([machine.id, thread.id])} {scrollRoot} active={!collapsed} estimate={36} measurements={measurements(JSON.stringify([machine.id, project.id]))}>
-                {#snippet row(thread)}<ThreadCard {machine} {project} {thread} {now} showDone />{/snippet}
+                {#snippet row(thread)}<ThreadCard {machine} {project} {thread} {now} showDone placed={!!host(machine)?.away} />{/snippet}
               </WindowList>
-              {#if fold.folded.length}
-                <!-- The quiet threads of a big card, one line: a press shows them in place, in the list's order. -->
-                <button type="button" class="ghost more-threads" data-testid="project-more" onclick={() => { unfolded = { ...unfolded, [key]: true }; }}>
-                  <span class="ui-label">{fill(strings.sidebar.moreThreads, { count: String(fold.folded.length) })}</span>
-                </button>
-              {/if}
+              {#if fold.folded.length}<FoldMore count={fold.folded.length} open={fold.open} ontoggle={() => toggleFold(key)} />{/if}
               <ProjectThreadCounters {entry} working={lists.working.length} waiting={away ? 0 : waitingCount(entry)} {controls} {collapsed} {away} place="fold" />
               <div id="{controls}-working" hidden={!workingOpen || lists.working.length === 0} data-testid="project-working">
                 {#if workingOpen && lists.working.length > 0}
                   <WindowList items={lists.working} keyOf={thread => JSON.stringify([machine.id, thread.id])} {scrollRoot} active={!collapsed} estimate={36} measurements={measurements(JSON.stringify([machine.id, project.id, 'working']))}>
-                    {#snippet row(thread)}<ThreadCard {machine} {project} {thread} {now} showDone />{/snippet}
+                    {#snippet row(thread)}<ThreadCard {machine} {project} {thread} {now} showDone placed={!!host(machine)?.away} />{/snippet}
                   </WindowList>
                 {/if}
               </div>
@@ -482,7 +485,7 @@
     user-select: none;
   }
   /* The card's head stays at the list's top while its threads scroll under it, on the card's own ground so no
-     row reads through, and the next card's head pushes it off: the card bounds it (round 21). */
+     row reads through, and the next card's head pushes it off: the card bounds it. */
   .head {
     position: sticky;
     /* At the scroll box's very edge, over its 3 px top inset (RailFrame.svelte), so no row shows above it. */
@@ -497,12 +500,18 @@
   .project.drop .head { background: transparent; }
   /* A row passing under it melts into the head instead of being sliced; over the card's own ground it shows nothing. */
   .head::after { content: ''; position: absolute; inset: 100% 0 auto; height: 6px; background: linear-gradient(var(--color-surface), transparent); pointer-events: none; }
-  /* Stuck over rows (a scroll-state query on the head itself), its ground runs on opaque past its edge, then a short
-     fade, so a row cut mid-line hides under it; at rest the first row keeps its whole text (as the phone's heading). */
+  /* Stuck over rows (a scroll-state query on the head itself), the shared eased edge under it, as the phone's
+     heading: the list comes to rest with a whole row under the head (the snap below), so the fade only softens
+     the row passing under it in motion and covers nothing but that row's top padding at rest. */
   .head { container-type: scroll-state; }
   @container scroll-state(stuck: top) {
-    .head::after { height: 24px; background: linear-gradient(var(--color-surface) 12px, transparent); }
+    .head::after { height: var(--scroll-edge); background: linear-gradient(var(--color-surface), color-mix(in oklab, var(--color-surface) 45%, transparent) 50%, transparent); }
   }
+  /* Where the list comes to rest (RailFrame snaps it): a card's top, its head whole, or a row's top right under the
+     stuck head (38 px, pinned 3 px over the scroll box's edge), never a row sliced by the head. Both offsets undo
+     the box's scroll padding (`--fade-top` + 4 px). */
+  .project { scroll-snap-align: start; scroll-margin-top: 4px; }
+  .project :global(:is([data-testid=thread-row], [data-testid=draft-row])) { scroll-snap-align: start; scroll-margin-top: calc(38px - 2 * var(--fade-top, 0px) - 4px); }
   .project.drop .head::after { display: none; }
   .toggle {
     flex: 1;
@@ -525,7 +534,7 @@
     text-overflow: ellipsis;
     text-align: left;
     white-space: nowrap;
-    /* A full size step over the rows' 14 px (round 19): the card reads as a place, its rows as what is in it. */
+    /* A full size step over the rows' 14 px: the card reads as a place, its rows as what is in it. */
     font-size: var(--text-title);
     font-weight: var(--weight-title);
     letter-spacing: -0.01em;
@@ -593,20 +602,6 @@
   .head:focus-within :global(.counters) {
     margin-right: 28px;
   }
-  /* The folded quiet threads' one line: a row's height, the list's quiet ink, on the titles' edge. */
-  .more-threads {
-    display: flex;
-    width: 100%;
-    height: auto;
-    min-height: 30px;
-    padding: 0 10px;
-    justify-content: flex-start;
-    border-radius: var(--radius-md);
-    color: var(--color-muted-foreground);
-    font-size: var(--text-sm);
-    font-weight: 400;
-  }
-  .more-threads:hover:not(:disabled) { color: var(--color-foreground); }
   .none {
     padding: 4px 10px;
     color: var(--color-muted-foreground);

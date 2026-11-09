@@ -34,7 +34,7 @@
     <h1>{strings.settings.tabs.general}</h1>
   </header>
 
-  <!-- This device's switches, then the machine's: two cards, each saying where it applies (round 19). -->
+  <!-- This device's switches, then the machine's: two cards, each saying where it applies. -->
   <section class="card" id="settings-conversations">
     <h2 class="ui-label-box"><span class="ui-label">{strings.settings.conversations}</span><InfoTip gather topic={strings.settings.conversations} text="" testid="section-info" /><CardScope /></h2>
     <ConversationSwitches />
@@ -55,7 +55,7 @@
   <WorkspaceCard />
   <ArchivedThreads {store} />
   <WorktreesCard {store} />
-  <!-- The keys agents ask for live under Providers, the windows agents may see under Machines (round 18), the browser logins under Browser (round 19). -->
+  <!-- The keys agents ask for live under Providers, the windows agents may see under Machines, the browser logins under Browser. -->
 
   <section class="card" id="settings-app">
     <h2><span class="ui-label">{strings.settings.app}</span><CardScope /></h2>

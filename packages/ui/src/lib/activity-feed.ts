@@ -18,7 +18,9 @@ export type FeedSource<M> = { machine: M; thread: ThreadSummary; project: Projec
 export type FeedSection = 'needs' | 'updates';
 /** The one thing a Needs you row asks the user to do, offered on the row itself: each opens the thread where it is done. */
 export type FeedVerb = 'answer' | 'allow' | 'review';
-export type FeedRow<M> = FeedSource<M> & { reason: string; at: number; nested: boolean; section: FeedSection; verb: FeedVerb | null };
+/** `place`: where the row lives in words (its project, a bot's name, Drafts), for its place line; `reason` repeats it
+    when the thread has nothing more to say. */
+export type FeedRow<M> = FeedSource<M> & { reason: string; place: string; at: number; nested: boolean; section: FeedSection; verb: FeedVerb | null };
 type Requests = { pendingQuestions: readonly QuestionRequest[]; pendingPermissions: readonly PermissionRequest[] };
 type Owner = Requests & { subagents: (id: ThreadSummary['id']) => Delegated };
 
@@ -98,14 +100,15 @@ export type FeedPlace<M> = (entry: FeedSource<M>) => string | null | undefined;
 const LIVE: ReadonlySet<ThreadState> = new Set(['working', 'delegating', 'monitoring', 'background', 'watching', 'queued']);
 
 /** The row's second line: what the thread wants, or else where it lives, and since when. */
-function reasonOf<M>(owner: Owner, entry: FeedSource<M>, kind: ThreadState | null, place?: FeedPlace<M>): { reason: string; at: number } {
+function reasonOf<M>(owner: Owner, entry: FeedSource<M>, kind: ThreadState | null, place?: FeedPlace<M>): { reason: string; place: string; at: number } {
   const { thread, project } = entry;
+  const where = project ? projectName(project) : place?.(entry) || strings.drafts.name;
   const asked = kind === 'waiting' ? waitingReason(owner, thread) : null;
   const wait = thread.backgroundWait;
   const stopped = kind === 'interrupted' && wait?.state === 'interrupted' ? fill(strings.sidebar.state.interruptedBy, { what: wait.for, reason: strings.sidebar.state.interruption[wait.reason] }) : null;
   const reason = asked?.text ?? (stopped && stopped.charAt(0).toLocaleUpperCase() + stopped.slice(1))
-    ?? (kind === 'waiting' ? strings.sidebar.state.waiting : project ? projectName(project) : place?.(entry) || strings.drafts.name);
-  return { reason, at: asked?.since ?? thread.updatedAt };
+    ?? (kind === 'waiting' ? strings.sidebar.state.waiting : where);
+  return { reason, place: where, at: asked?.since ?? thread.updatedAt };
 }
 
 /** One Activity row: the thread that leads it and the threads whose event it shares, with its rank. */

@@ -18,29 +18,44 @@ const GROUPS: { name: () => string; ids: string[] }[] = [
   { name: () => strings.rightPanel.groups.tools, ids: ['terminal-toggle', 'board-toggle', 'tasks', 'trace'] }
 ];
 
-/** The panels picked last, newest first: a short group on top of the list. */
-const RECENT_KEY = 'boite.panels.recent';
-const RECENT_MAX = 3;
+/**
+ * The panels each thread used, newest first, by Store and thread: the
+ * launcher's first group. Kept for the session only.
+ */
+const used = new WeakMap<Store, Map<string, string[]>>();
 
-function recentPanels(): string[] {
-  try {
-    const raw = JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]') as unknown;
-    return Array.isArray(raw) ? raw.filter((id): id is string => typeof id === 'string').slice(0, RECENT_MAX) : [];
-  } catch {
-    return [];
-  }
+/** The row a surface kind is listed under: a file tab counts as Files, a page as the Browser. */
+function rowOf(kind: string): string {
+  return kind === 'file' ? 'files' : kind === 'browser' ? 'agent-browser' : kind;
 }
 
-/** A panel or tool was picked or shown: it moves to the front of the recent ones. A file tab counts as Files. */
-export function notePanelUse(id: string): void {
-  const kind = id === 'file' ? 'files' : id;
-  const list = recentPanels();
-  if (list[0] === kind) return;
-  try {
-    localStorage.setItem(RECENT_KEY, JSON.stringify([kind, ...list.filter((one) => one !== kind)].slice(0, RECENT_MAX)));
-  } catch {
-    /* a browser that refuses storage keeps the plain order */
-  }
+/** A kind's place in the launcher's groups, kept still by the used ones: a panel switch slides in from the new one's side. */
+export function panelPlace(kind: string): number {
+  const ids = GROUPS.flatMap((group) => group.ids);
+  const at = ids.indexOf(rowOf(kind));
+  return at < 0 ? ids.length : at;
+}
+
+/** A panel or tool was shown or picked in a thread: it moves to the front of that thread's used ones. */
+export function notePanelUse(store: Store, thread: string, id: string): void {
+  const threads = used.get(store) ?? new Map<string, string[]>();
+  used.set(store, threads);
+  const row = rowOf(id);
+  const list = threads.get(thread) ?? [];
+  if (list[0] !== row) threads.set(thread, [row, ...list.filter((one) => one !== row)]);
+}
+
+/** At most this many rows in the used group: a short list read at a glance, the rest stay in their families. */
+export const USED_MAX = 4;
+
+/**
+ * The panels this thread really showed or picked (noted), newest first. When
+ * nothing is noted yet, the showing panel alone: an open tab the thread never
+ * looked at stays in its own group, so the section is not every open tab.
+ */
+export function usedPanels(store: Store, thread: string | null, showing?: string): string[] {
+  const noted = thread === null ? [] : (used.get(store)?.get(thread) ?? []);
+  return noted.length > 0 ? [...noted] : showing ? [rowOf(showing)] : [];
 }
 
 /** A renamed row says its old name on hover, for the hands that knew it. */
@@ -53,27 +68,36 @@ const FORMERLY: Record<string, () => string> = {
 };
 
 /**
- * A plain line under a name that does not say what it holds. The board and
- * the goal both hold work to do: theirs say whose, the project's or the thread's.
+ * The plain line under every row: what the panel holds. The board and the
+ * goal both hold work to do: theirs say whose, the project's or the thread's.
  */
 const ROLES: Record<string, () => string> = {
+  changes: () => strings.rightPanel.roles.changes,
+  files: () => strings.rightPanel.roles.files,
+  'agent-browser': () => strings.rightPanel.roles.browser,
+  device: () => strings.rightPanel.roles.device,
+  desk: () => strings.rightPanel.roles.desk,
+  agents: () => strings.rightPanel.roles.agents,
+  messages: () => strings.rightPanel.roles.messages,
+  coordination: () => strings.rightPanel.roles.coordination,
+  'terminal-toggle': () => strings.rightPanel.roles.terminal,
   'board-toggle': () => strings.rightPanel.roles.board,
   tasks: () => strings.rightPanel.roles.tasks,
   trace: () => strings.rightPanel.roles.trace,
-  messages: () => strings.rightPanel.roles.messages,
-  coordination: () => strings.rightPanel.roles.coordination
+  [CUSTOMIZE]: () => strings.rightPanel.roles.customize
 };
 
 /**
- * The panel switcher's list (`RightPanel.svelte`, shown by the door) (`RightPanel.svelte`), the same on a desktop and
- * a phone: every panel by name in one scroll, nothing behind a door. The ones
- * picked last lead as a short Recent group; the rest follow in their named
- * groups (Work, Agents, Tools), then the Appearance page that hides some.
- * Ids are the kinds, plus the drawers (`terminal-toggle`, `board-toggle`) and
- * `coordination`. The panel showing is checked; a kind this device cannot show
- * stays listed, greyed with why.
+ * The panel launcher's list (`PanelSwitcher.svelte`, shown by the door), the
+ * same on a desktop and a phone: every panel by name in one scroll, nothing
+ * behind a door. The ones this thread used lead, newest first (`used`, from
+ * `usedPanels`); the rest follow in their named groups (Work, Agents, Tools),
+ * then the Appearance page that hides some. Every row says in one line what
+ * it holds. Ids are the kinds, plus the drawers (`terminal-toggle`,
+ * `board-toggle`) and `coordination`. The panel showing is checked; a kind
+ * this device cannot show stays listed, greyed with why.
  */
-export function panelChoices(store: Store, thread: ThreadSummary | null, options: { phone?: boolean; available?: (kind: SurfaceKind) => boolean; showing?: SurfaceKind } = {}): MenuItem[] {
+export function panelChoices(store: Store, thread: ThreadSummary | null, options: { phone?: boolean; available?: (kind: SurfaceKind) => boolean; showing?: SurfaceKind; used?: readonly string[] } = {}): MenuItem[] {
   const inShell = typeof window !== 'undefined' && window.__TAURI_INTERNALS__ !== undefined;
   const can = options.available ?? ((kind: SurfaceKind) => availableTo(kind, inShell, store.owner));
   const showing = 'showing' in options ? options.showing : store.panelOpen ? store.panel.active?.kind : undefined;
@@ -103,10 +127,10 @@ export function panelChoices(store: Store, thread: ThreadSummary | null, options
     if (ROLES[id] && !row.hint) row.hint = ROLES[id]();
   }
 
-  // Each row once: a recent panel leads in its own group and leaves its usual one.
-  const recent = recentPanels().filter((id) => rows.has(id));
+  // Each row once: a used panel leads in its own group and leaves its usual one.
+  const recent = (options.used ?? []).filter((id) => rows.has(id)).slice(0, USED_MAX);
   const groups = [
-    { name: strings.rightPanel.groups.recent, ids: recent },
+    { name: strings.rightPanel.groups.used, ids: recent },
     ...GROUPS.map((group, index) => ({
       name: group.name(),
       ids: [...group.ids, ...(index === GROUPS.length - 1 ? [...rows.keys()].filter((id) => !GROUPS.some((one) => one.ids.includes(id))) : [])].filter((id) => rows.has(id) && !recent.includes(id))
@@ -115,6 +139,6 @@ export function panelChoices(store: Store, thread: ThreadSummary | null, options
   return [
     ...groups.filter((group) => group.ids.length > 0).flatMap((group) => [{ ...separator(`sep-${group.ids[0]}`), label: group.name }, ...group.ids.map((id) => rows.get(id)!)]),
     separator('sep-customize'),
-    { id: CUSTOMIZE, label: strings.controls.customize, title: FORMERLY[CUSTOMIZE]!() }
+    { id: CUSTOMIZE, label: strings.controls.customize, title: FORMERLY[CUSTOMIZE]!(), hint: ROLES[CUSTOMIZE]!() }
   ];
 }

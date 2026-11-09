@@ -11,6 +11,8 @@
   import { fill, strings } from '../../lib/strings';
   import { workspace, type Machine } from '../../lib/workspace.svelte';
   import { mergeAsks } from '../../lib/contact-inbox';
+  import { hostMark } from '../../lib/machine-host';
+  import MachinePlace from '../MachinePlace.svelte';
   import Menu from '../Menu.svelte';
   import DecisionActions from '../DecisionActions.svelte';
 
@@ -20,8 +22,9 @@
    * at (lib/contact-accept.ts), another one picked in the row's menu, or
    * refused with the reason its agent reads; a held message is
    * delivered or refused. Open shows the contact's page with the whole of it.
-   * One line per fact: who asks, what (cut, whole in its tooltip), since when,
-   * then the decision pair under them (DecisionActions.svelte, the composer's):
+   * One line per fact: who asks, where it arrived (the machine among several)
+   * and since when, as a thread row's place line, what (cut, whole in its
+   * tooltip), then the decision pair under them (DecisionActions.svelte, the composer's):
    * Refuse outlined, Accept or Deliver solid. Identical asks merge into one row
    * that says how many in words ("Chris sent 2 requests"), and an answer
    * settles them all (lib/contact-inbox.ts).
@@ -36,6 +39,7 @@
     ...(view.state?.mail ?? []).map(letter => ({ machine, view, key: `${machine.id}:mail:${letter.id}`, createdAt: letter.createdAt, letter }))
   ]));
   const merged = $derived(mergeAsks(rows));
+  const several = $derived(workspace.machinesOr(store).length > 1);
   const labels = strings.contacts.requests;
   /** The menu's own rows, beside the projects (whose ids are never these). */
   const INTO = '\u0000into';
@@ -81,9 +85,9 @@
 {#each merged as { row, same } (row.key)}
   {@const busy = row.view.isBusy(row.request ? `decide:${row.request.id}` : `mail:${row.letter!.id}`)}
   {@const text = (row.request ?? row.letter).text}
-  <!-- Activity's row (ActivityRow.svelte): who asks, then what, one line, whole in its tooltip and on the contact's
-       page; since when and the one answer end the title's line, the answer after the content on a phone. Refusing
-       and another project wait in the row's menu. -->
+  <!-- Activity's row (ActivityRow.svelte): who asks, then where and since when, then what, one line, whole in its
+       tooltip and on the contact's page; the answer beside the content, under it on a phone. Refusing and another
+       project wait in the row's menu. -->
   <article class="contact-row" data-testid="activity-contact" data-kind={row.letter ? 'mail' : 'request'} data-count={same.length}>
     <div class="main">
       <span class="mark" aria-hidden="true">{#if row.letter}<Mail size={14} />{:else}<UserRound size={14} />{/if}</span>
@@ -94,6 +98,7 @@
           <!-- Merged letters say how many in words beside who writes; merged requests say it in the title. -->
           {#if same.length > 1}<span class="times" data-testid="activity-contact-count" data-count={same.length}>{#if row.letter}{fill(labels.same, { count: String(same.length) })}{/if}</span>{/if}
         </p>
+        <p class="place">{#if several}<MachinePlace host={hostMark(row.machine.label)} />{/if}<time datetime={new Date(row.createdAt).toISOString()}>{ago(row.createdAt, minuteClock.now)}</time></p>
         <p class="text" title={text}>{text}</p>
         {#if row.request && refusing === row.key}
           {@const request = row.request}
@@ -129,28 +134,25 @@
         </DecisionActions>
       </div>
     {/if}
-    <!-- The title's line ends in since when, the menu in its place under the pointer: another project to accept into. -->
-    <div class="side">
-      <span class="top">
-        <time datetime={new Date(row.createdAt).toISOString()}>{ago(row.createdAt, minuteClock.now)}</time>
-        {#if row.request}
-          {@const request = row.request}
-          {@const chosen = acceptProject(row.view.store, request)}
-          <Menu items={[{ id: INTO, label: labels.acceptOther, separator: true }, ...acceptItems(row.view.store, chosen)]}
-            onpick={id => void accept({ ...row, request }, same, id as Project['id'])}
-            label={labels.actions} placement="bottom" align="end" variant="ghost" disabled={busy} testid="activity-accept-into-{request.id}">
-            <Ellipsis size={15} />
-          </Menu>
-        {/if}
-      </span>
-    </div>
+    <!-- The title line's end, the menu under the pointer: another project to accept into. -->
+    {#if row.request}
+      {@const request = row.request}
+      {@const chosen = acceptProject(row.view.store, request)}
+      <div class="side">
+        <Menu items={[{ id: INTO, label: labels.acceptOther, separator: true }, ...acceptItems(row.view.store, chosen)]}
+          onpick={id => void accept({ ...row, request }, same, id as Project['id'])}
+          label={labels.actions} placement="bottom" align="end" variant="ghost" disabled={busy} testid="activity-accept-into-{request.id}">
+          <Ellipsis size={15} />
+        </Menu>
+      </div>
+    {/if}
   </article>
 {/each}
 
 <style>
   /* Built as Activity's thread rows (ThreadCard.svelte's `.feed`): 10 px in, a 16 px mark, 10 px to the words; the
-     title's line keeps its end for the time, the text runs under it to the row's end, the pair under that. */
-  .contact-row { --feed-pad: 8px; --feed-time: 44px; --pad-x: 10px; --side-room: calc(var(--feed-time) + 8px + var(--pad-x));
+     title's line keeps its end for the menu, the place line and the text run under it, the pair beside or under. */
+  .contact-row { --feed-pad: 8px; --menu-room: 32px; --pad-x: 10px; --side-room: calc(var(--menu-room) + 8px + var(--pad-x));
     position: relative; display: flex; flex-direction: column; padding: var(--feed-pad) var(--pad-x); border-radius: var(--radius-md); }
   .main { display: flex; gap: 10px; min-width: 0; }
   .contact-row + .contact-row { margin-top: 2px; }
@@ -171,16 +173,14 @@
   .times:empty { display: none; }
   /* What is asked, one secondary line: the title opens the contact's page with the whole, its tooltip holds it too. */
   .text { contain: inline-size; margin: 0; font-size: var(--text-sm); color: var(--color-muted-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  /* Its end on the thread rows' (ThreadCard's 8 px), so the time stands in one column down both sections. */
+  /* Where it arrived and since when, a thread row's place line (ThreadCard.svelte's `.where`). */
+  .place { display: flex; align-items: center; gap: 8px; min-width: 0; margin: -2px 0 0; font-size: var(--text-xs); line-height: 18px; color: var(--color-subtle); white-space: nowrap; overflow: hidden; }
+  time { flex: none; font-variant-numeric: tabular-nums; }
+  /* The menu at the title line's end, its end on the thread rows' (ThreadCard's 8 px), shown under the pointer or
+     the keyboard as on a thread row; a 20 px track, so its taller trigger never grows the row. */
   .side { position: absolute; top: 0; right: 0; display: flex; align-items: center; height: calc(20px + 2 * var(--feed-pad)); padding-right: 8px; }
-  /* One 20 px track: the menu's taller trigger overflows it instead of growing the row and pushing the time down. */
-  .top { display: grid; grid-template-rows: 20px; justify-items: end; align-items: center; width: var(--feed-time); height: 20px; }
-  .top > :global(*) { grid-area: 1 / 1; }
-  time { font-size: var(--text-xs); color: var(--color-subtle); text-align: end; font-variant-numeric: tabular-nums; }
-  /* The menu takes the time's place under the pointer or the keyboard, as on a thread row. */
-  .top :global(.trigger) { opacity: 0; }
-  .contact-row:is(:hover, :focus-within) .top :global(.trigger) { opacity: 1; }
-  .contact-row:is(:hover, :focus-within) .top:has(:global(.trigger)) time { visibility: hidden; }
+  .side :global(.trigger) { opacity: 0; }
+  .contact-row:is(:hover, :focus-within) .side :global(.trigger) { opacity: 1; }
   /* The pair under what it decides, at the row's right edge as on a thread row (ThreadCard's `.feed-actions`). */
   .pair { margin-top: 8px; }
   /* Beside the text where Activity has room, as a thread row's pair (ThreadCard.svelte): Refuse in the outline
@@ -202,21 +202,18 @@
   .refusal .actions { justify-content: flex-end; }
   .failed { margin: 0; font-size: var(--text-xs); color: var(--color-danger); overflow-wrap: anywhere; }
   /* On the desktop the title and the time stand on the thread rows' columns (ThreadCard.svelte's `.feed`): their
-     tile leaves 6 px to the title and their headline rides 5 px over the padding; measured in Activity, round 20. */
+     tile leaves 6 px to the title and their headline rides 5 px over the padding; measured in Activity. */
   @media (min-width: 721px) {
     .main { gap: 4px; }
     .lines { margin-top: -5px; }
-    time { line-height: 20px; }
   }
   @media (max-width: 720px) {
-    /* The phone row's own edge (MobileThreadRow.svelte): 12 px in; the menu always shows before the time on the
-       title's line, so who asks keeps the row's width up to them. */
-    .contact-row { --feed-pad: 10px; --pad-x: 12px; --feed-time: 32px; --side-room: calc(var(--feed-time) + var(--touch-target) + 2px + var(--pad-x)); }
-    .side { right: var(--pad-x); height: calc(22px + 2 * var(--feed-pad)); padding-right: 0; }
-    /* The menu before the time, so the time stands in the thread rows' column. */
-    .top { display: flex; flex-direction: row-reverse; gap: 2px; width: auto; }
-    .top :global(.trigger) { opacity: 1; min-width: var(--touch-target); }
-    .contact-row:is(:hover, :focus-within) .top:has(:global(.trigger)) time { visibility: visible; }
+    /* The phone row's own edge (MobileThreadRow.svelte): 12 px in; the menu always shows at the title line's end,
+       so who asks keeps the row's width up to it. */
+    .contact-row { --feed-pad: 10px; --pad-x: 12px; --side-room: calc(var(--touch-target) + 2px + var(--pad-x)); }
+    .side { right: calc(var(--pad-x) - 12px); height: calc(22px + 2 * var(--feed-pad)); padding-right: 0; }
+    .side :global(.trigger) { opacity: 1; min-width: var(--touch-target); }
+    .place { font-size: var(--text-sm); line-height: 1.4; margin: 0; }
     .actions :global(button) { min-height: var(--touch-target); }
     /* The title line is the row's open button: a finger needs 44 px, not its text's height, with no taller row. */
     .title::after { content: ''; position: absolute; inset: 50% 0 auto; height: var(--touch-target); translate: 0 -50%; }

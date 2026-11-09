@@ -72,6 +72,14 @@
   let docked = $derived(store !== undefined && threadId !== undefined && asksDocked(store, threadId));
   /** Waiting permissions: each card stands for its call, under the run, unless the dock holds it. */
   let waiting = $derived(parts.filter((part): part is PermissionStep => part.type === 'permission' && part.decision === null && !(docked && permissionRequest(part.requestId))));
+  /**
+   * An ask reads like the composer's live decision ("Push orbit/csv-import"), from lib/decision-title. That helper
+   * stays out of the entry chunk this component sits in: it loads with the first ask, the generic sentence until then.
+   */
+  let titleOf = $state.raw<(name: string, input: unknown) => string>(permissionSentence);
+  $effect(() => {
+    if (waiting.length > 0 && titleOf === permissionSentence) void import('../lib/decision-title').then((module) => { titleOf = module.decisionTitle; });
+  });
   let steps = $derived(parts.flatMap((part, index): { part: ActivityPart; index: number }[] => {
     if (part.type === 'permission') return part.decision !== null && !pairs.has(index) ? [{ part, index }] : [];
     if (part.type === 'tool') return asked.get(index)?.decision === null ? [] : [{ part, index }];
@@ -216,7 +224,7 @@
       <!-- The ask is answered in the composer, its only copy: here a plain tool line and a quiet mark. -->
       <div class="asked" data-testid="permission-waiting" data-request={part.requestId}>
         <span class="glyph"><Family size={15} strokeWidth={1.75} /></span>
-        <span class="asked-text ui-label">{permissionSentence(part.toolName, request.input)}</span>
+        <span class="asked-text ui-label">{titleOf(part.toolName, request.input)}</span>
         <span class="asked-mark" role="img" title={strings.chat.permissionNeedsYou} aria-label={strings.chat.permissionNeedsYou}></span>
       </div>
     {:else}{@render ask(part)}{/if}

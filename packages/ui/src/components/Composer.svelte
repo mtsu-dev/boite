@@ -23,10 +23,11 @@
   import { rankItems, type PaletteItem } from '../lib/palette';
   import { clearStash, DRAFT_STASH_KEY, readStash, writeStash } from '../lib/prefs';
   import { claudeKeywords, promptSegments } from '../lib/message-display';
-  import { strings } from '../lib/strings';
+  import { fill, strings } from '../lib/strings';
   import type { Choice, Store } from '../lib/store.svelte';
   import { machineName, workspace } from '../lib/workspace.svelte';
   import ComposerAttachments from './ComposerAttachments.svelte';
+  import AccountGoneNotice from './AccountGoneNotice.svelte';
   import ComposerBar from './ComposerBar.svelte';
   import ComposerIntent from './ComposerIntent.svelte';
   import ComposerQueueRegion from './ComposerQueueRegion.svelte';
@@ -177,6 +178,9 @@
   const bot = $derived(botProfile?.name ?? null);
   /** The bot's account is gone: its chips point at the banner's remedy (`agents/AgentProblem.svelte`). */
   const botGone = $derived(!!botProfile && routeGone(store, botProfile.selection));
+  /** The account behind the box is gone with no other to move to: the box locks, its placeholder the remedy (the banner's or the model chip's). */
+  let accountGone = $derived(!target && (botGone || (!!thread && store.accounts.length > 0 && store.accountOf(thread.accountId) === null
+    && store.usableAccountOf(thread.providerId, thread.accountId) === null)));
 
   /** The thread's asks to run a tool dock at the top of the box, the oldest first; a message sent meanwhile is queued. */
   let permissions = $derived(target || !thread ? [] : store.pendingPermissions.filter((request) => request.threadId === thread.id));
@@ -193,7 +197,7 @@
   let stopped = $derived(!target && (!!thread?.worktreeRemoved || (store.openProject?.missing === true && !thread?.agentSessionId)
     || (!!thread?.contactHold && !thread.archived)));
 
-  let placeholder = $derived(composerPlaceholder({ target, replying: !!reply || !!permission || (!!thread && store.busy), bot, offline, loading: loadingThread, onThread: !!thread,
+  let placeholder = $derived(composerPlaceholder({ target, replying: !!reply || !!permission || (!!thread && store.busy), bot, offline, accountGone, onThread: !!thread,
     machine: machineLabel, provider: provider?.name ?? null }));
 
   // -- the slash menu -----------------------------------------------------------
@@ -765,8 +769,9 @@
   }
 }}>
   {#if !target}<ComposerStrip />{/if}
+  {#if accountGone && !botGone}<AccountGoneNotice onpick={() => void toolbar?.openChip('composer-picker')} />{/if}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="composer" class:dictating class:keys={viaKeys} data-testid="composer" tabindex="-1" bind:this={shell} hidden={stopped} {ondragover} {ondrop} onkeydown={(event) => {
+  <div class="composer" class:dictating class:keys={viaKeys} class:loading={loadingThread} data-testid="composer" tabindex="-1" bind:this={shell} hidden={stopped} {ondragover} {ondrop} onkeydown={(event) => {
     if (event.target !== event.currentTarget || event.key !== 'Escape') return;
     // The touch focus target shares the box's Escape handling, including pending questions.
     onkeydown(event);
@@ -783,7 +788,7 @@
     {/if}
 
     <ComposerField bind:box {store} {key} {text} {highlighted} {keywords} command={commandToken} references={previewReferences} {attachments}
-      gutter={inputGutter} scroll={inputScroll} {placeholder} disabled={stopped}
+      gutter={inputGutter} scroll={inputScroll} {placeholder} disabled={stopped || accountGone}
       onreference={(reference) => { if (box && reference.mention) { box.focus({ preventScroll: true }); box.setSelectionRange(reference.mention.end, reference.mention.end); track(); } }}
       onopenimage={(attachment) => attachmentStrip?.open(attachment)} onhoverimage={(attachment) => highlightedImage = attachment}
       onbeforeinput={(event) => {
@@ -798,8 +803,10 @@
     <MentionMenu open={mentionOpen} items={mentions.items} selected={mentions.at} more={mentions.more} onpick={pickMention} onhover={(index) => (mentions.at = index)} />
 
     <ComposerSpeechPreview status={speechStatus} preview={speechPreview} error={speechError} />
+    <!-- A bot's gone account said once, to a screen reader: the placeholder and its banner (AgentProblem) show it. -->
+    {#if botGone}<span class="visually-hidden" role="status" data-testid="composer-bot-gone">{bot ? fill(strings.composer.botAccountGone, { name: bot }) : strings.accounts.removedHint}</span>{/if}
 
-    <ComposerBar bind:this={toolbar} {store} {key} {target} {bot} {botGone} {provider} canSend={sendable && !stopped} typed={!reply || text.trim().length > 0 || attachments.length > 0} waiting={sendWhenLoaded !== null} answering={!!reply}
+    <ComposerBar bind:this={toolbar} {store} {key} {target} {bot} {botGone} {provider} canSend={sendable && !stopped && !accountGone} typed={!reply || text.trim().length > 0 || attachments.length > 0} waiting={sendWhenLoaded !== null} answering={!!reply}
       onmention={!target && !reply && mentionProject !== null ? startMention : undefined} oncommand={!target && !reply && text.trim() === '' ? startCommand : undefined} sendLabel={reply ? strings.composer.replySend : undefined} bind:choice bind:picking bind:dictating
       onsubmit={() => void submit()}
       onfiles={(files) => void take(files)}
@@ -851,17 +858,20 @@
     transition: border-color var(--motion-duration) var(--motion-curve), box-shadow var(--motion-duration) var(--motion-curve);
   }
 
+  /* The first page on its way is said by the conversation's centre: the box keeps its words at full ink and takes typing. */
+
   /* A card the script focused for a touch screen shows no ring: only a key lights it. */
   .composer:not(.keys):focus-visible { outline: none; }
 
   /* Each block of the card stands this far under the one above it (ComposerDeck, the queued line). */
-  .composer { --deck-gap: 6px; }
+  /* One row form for the deck's lines (AgentDock, DecisionHead, the queued line): its height, its icon box and its type. */
+  .composer { --deck-gap: 6px; --dock-row: 28px; --dock-icon: 16px; --dock-type: var(--text-meta); }
   @media (max-width: 720px) {
     /* A phone keeps the conversation: the whole card, rows, decision, queued
        chips and field, stays under 45% of the screen. The deck gives way
        first; a question's choices scroll in the room left once the rows,
        the head and the field are counted (`--dock-cap`). */
-    .composer { --composer-cap: 45dvh; border-radius: var(--radius-xl); max-height: var(--composer-cap); }
+    .composer { --dock-row: 30px; --composer-cap: 45dvh; border-radius: var(--radius-xl); max-height: var(--composer-cap); }
     /* A docked question with its choices may take a little more, so four of them and its Answer show whole at 390
        over the bar's two chip lines. */
     .composer:has(:global(.question.docked)) { --composer-cap: 64dvh; }

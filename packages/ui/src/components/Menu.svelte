@@ -28,8 +28,8 @@
     align?: 'start' | 'end';
     /** Where the popover sits: above the trigger, the composer's way, or under it. */
     placement?: 'top' | 'bottom';
-    /** `text` reads as the sentence it sits in: no fill, no border, the parent's type. */
-    variant?: 'chip' | 'ghost' | 'text';
+    /** `text` reads as the sentence it sits in: no fill, no border, the parent's type. `icon` is app.css's icon button. */
+    variant?: 'chip' | 'ghost' | 'text' | 'icon';
     /** Show persistent toggles with switches and keep the menu open while adjusting them. */
     switches?: boolean;
     disabled?: boolean;
@@ -151,6 +151,7 @@
     class:ui-chip={variant === 'chip'}
     class:ghost={variant === 'ghost'}
     class:text={variant === 'text'}
+    class:icon-button={variant === 'icon'}
     aria-haspopup="menu"
     aria-expanded={popover.open}
     aria-label={label}
@@ -290,12 +291,13 @@
 
   .trigger {
     cursor: pointer;
-    height: var(--control-sm);
     justify-content: center;
     transition:
       background var(--dur-2) var(--ease-out-quint),
       color var(--dur-2) var(--ease-out-quint);
   }
+  /* The icon button draws its own box, ground and states (app.css). */
+  .trigger:not(.icon-button) { height: var(--control-sm); }
 
   .trigger.ghost {
     width: var(--control-sm);
@@ -309,7 +311,7 @@
     border-radius: var(--radius-md);
   }
 
-  .trigger[aria-expanded='true'] {
+  .trigger[aria-expanded='true']:not(.icon-button) {
     background: var(--color-surface-3);
     color: var(--color-foreground);
   }
@@ -319,7 +321,7 @@
   }
 
   @media (hover: hover) {
-    .trigger:hover {
+    .trigger:hover:not(.icon-button) {
       background: var(--color-surface-3);
       color: var(--color-foreground);
     }

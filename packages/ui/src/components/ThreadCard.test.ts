@@ -3,6 +3,7 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
+import { hostMark } from '../lib/machine-host';
 import ThreadCard from './ThreadCard.svelte';
 
 let mounted: ReturnType<typeof mount> | undefined;
@@ -375,4 +376,37 @@ test('a thread a bot started shows that bot\'s face before its title, grey at re
   await settle();
   expect(document.querySelector('[data-testid=thread-bot]')).toBeNull();
   agentDirectory(store).snapshot = null;
+});
+
+test('an unreachable machine is said once: by the card head above, by its place, or by one chip on the place line', async () => {
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  vi.spyOn(client, 'call').mockResolvedValue(null);
+  const thread = store.threads.find(thread => thread.status === 'idle' && !thread.parentThreadId && thread.projectId)!;
+  const project = store.projects.find(project => project.id === thread.projectId)!;
+  store.connection = 'disconnected' as typeof store.connection;
+  const machine = { id: 'laptop', label: 'Laptop', store };
+  const show = async (props: Record<string, unknown>) => {
+    if (mounted) await unmount(mounted);
+    document.body.innerHTML = '';
+    mounted = mount(ThreadCard, { target: document.body, props: { machine, project, thread, now: Date.now(), ...props } });
+    await settle();
+    const row = document.querySelector<HTMLElement>('[data-testid=thread-row]')!;
+    return {
+      muted: row.closest('.offline') !== null,
+      chips: document.querySelectorAll('[data-testid=thread-offline]').length,
+      places: document.querySelectorAll('[data-testid=machine-away]').length,
+      title: row.querySelector('.headline')?.textContent ?? ''
+    };
+  };
+  // Under a card head that names the machine and says Offline: the row only mutes its title.
+  expect(await show({ placed: true })).toMatchObject({ muted: true, chips: 0, places: 0 });
+  // A row with no head above (a flat list): one chip, on the place line, never beside the title.
+  const flat = await show({});
+  expect(flat).toMatchObject({ muted: true, chips: 1 });
+  expect(flat.title).not.toContain('Offline');
+  expect(document.querySelector('[data-testid=thread-where] [data-testid=thread-offline]')).not.toBeNull();
+  // Recent names the machine as a place, with its state: no second chip.
+  const host = hostMark(machine.label, 'offline');
+  expect(await show({ where: { project: project.name, host, text: `${project.name} ${host.text}` } })).toMatchObject({ chips: 0, places: 1 });
 });

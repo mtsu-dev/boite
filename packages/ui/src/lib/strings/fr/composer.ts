@@ -28,8 +28,7 @@ export const fr: Translation = {
     botAccountGone: 'Le compte de {name} a été supprimé. Choisissez un autre compte pour continuer.',
     placeholder: 'Message à {name}',
     placeholderAgent: "l'agent",
-    /** The field while the open thread's first page is on its way; Send waits for it. */
-    placeholderLoading: 'Chargement de la conversation',
+    placeholderPickAccount: 'Choisissez un autre compte pour envoyer',
     placeholderOffline: '{machine} est hors ligne : les messages attendent ici et partent à sa reconnexion',
     placeholderOfflineDraft: '{machine} est hors ligne : la conversation démarre à sa reconnexion',
     send: 'Envoyer',
@@ -37,6 +36,7 @@ export const fr: Translation = {
     stop: 'Arrêter',
     queued: 'Envoyé après le prochain outil, ou à la fin du tour',
     queuedLabel: 'En attente',
+    queuedThen: 'Ensuite :',
     queuedPaused: 'Retenu après un envoi refusé',
     sendNow: 'Envoyer maintenant',
     sendNowHint: "Arrête le tour en cours et envoie les messages en attente. Entrée dans le champ vide fait de même.",

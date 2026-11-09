@@ -311,7 +311,7 @@
   .swatch.system { background: linear-gradient(135deg, var(--palette-light-default-background) 50%, var(--palette-dark-default-background) 50%); }
   .swatch.grain { background: linear-gradient(135deg, var(--palette-light-default-frame), var(--palette-dark-default-frame)); }
   .segmented button:has(.swatch, .glyph) { gap: 6px; }
-  /* A choice's picture beside its word (round 18): the column inside the window for a width,
+  /* A choice's picture beside its word: the column inside the window for a width,
      the bar's buttons for a preset, drawn in the button's own ink so the lit one reads as lit. */
   .glyph { flex: none; display: inline-flex; align-items: center; width: 20px; height: 13px; padding: 2px; border-radius: calc(var(--radius-sm) / 2); box-shadow: inset 0 0 0 1px currentColor; opacity: 0.85; }
   .glyph.width { justify-content: center; }
@@ -346,7 +346,7 @@
   .control-group .switch-row :global(svg) { flex: none; color: var(--color-muted-foreground); }
   .control-group .switch-row .ui-label-box { gap: var(--space-3); }
   /* Where the column is wide, the button groups pair up: a few short switch rows each, one under the other
-     they left the column's right half empty (round 21). The presets keep the whole width above them. */
+     they left the column's right half empty. The presets keep the whole width above them. */
   @media (min-width: 1100px) {
     .page .settings-stack { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: var(--space-4); align-items: start; max-width: var(--settings-width); }
     .page .settings-stack > .card { margin-bottom: 0; }

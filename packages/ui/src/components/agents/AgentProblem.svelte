@@ -10,7 +10,7 @@
 
   /**
    * What stops a bot, said over its conversation, with the remedy beside it.
-   * A bot whose account is gone gets its other accounts in place (round 18):
+   * A bot whose account is gone gets its other accounts in place:
    * one pick moves its default route there and repairs its allowed routes, as
    * its settings would. Any other problem opens its settings.
    */

@@ -37,7 +37,7 @@ const tableRows = () => all('[data-testid=council-table] tr').map(row => [...row
 
 /**
  * The demo thread (`?fake=1&council=1`): a council closed after two rounds, one in
- * round 2 with GPT-6 Astra still reviewing, and a debate from before the council.
+ * its second round with GPT-6 Astra still reviewing, and a debate from before the council.
  * `on` is the Council experiment, in the app and on the core alike.
  */
 async function demo(on = true) {
@@ -188,7 +188,7 @@ test('the salon shows who reviews, each answer with its score, round by round, t
   expect(owner.querySelector('[data-testid=council-post-score]')).toBeNull();
   expect(text('[data-testid=council-status-line]')).toBe('GPT-6 Astra is writing…');
 
-  // Only the rounds that closed: round 2 is still under way.
+  // Only the rounds that closed: the second is still under way.
   expect(tableRows()).toEqual([['Delegate', 'Round 1'], ['Sonnet 5.5', '8/10'], ['GPT-6 Astra', '7/10'], ['Gemini 4 Pro', '6/10']]);
   expect(text('[data-testid=council-table]')).toContain('Council review');
   expect(text('[data-testid=council-table]')).toContain('Rounds: 1');
@@ -248,7 +248,7 @@ test('@ lists the members, Enter picks one, and the message goes to that member 
   const mine = all('[data-testid=council-post][data-author=owner]').at(-1)!;
   expect(mine.dataset.to).toBe('p3');
   expect(mine.dataset.round).toBe('3');
-  // No round 3 has begun: the line over the message says who it waits for.
+  // No third round has begun: the line over the message says who it waits for.
   expect(all('[data-testid=council-divider]').at(-1)?.textContent?.trim()).toBe('For the next round');
 });
 

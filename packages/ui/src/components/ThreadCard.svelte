@@ -26,10 +26,10 @@
     showDone = false,
     compact = false,
     at,
-    ask,
     detail,
     action,
-    where
+    where,
+    placed = false
   }: {
     machine: Machine;
     project: Project | undefined;
@@ -41,18 +41,22 @@
     showDone?: boolean;
     /** Recent's flat list: the project's tile leads the row while no place line names the project (`where`). */
     compact?: boolean;
-    /** Activity's row (ActivityRow.svelte): since when, at the end of the title's line. */
+    /** Activity's row (ActivityRow.svelte): since when, at the end of its place line. */
     at?: number;
-    /** Activity: what the thread asks, on the title's line when both fit, else under it, whole (ThreadHeadline.svelte). */
-    ask?: Snippet;
-    /** Activity: what runs under the title's line, whole: the command asked for, the sub-agents asking the same. */
+    /** Activity: what runs under the place line, whole: what is asked, the command, the sub-agents asking the same. */
     detail?: Snippet;
     /** Activity: the row's decision pair, under its content at the row's right edge, outside the row's own button. */
     action?: Snippet;
-    /** Recent: where the row lives (its project, its machine among several), when the tile alone may not tell rows apart (lib/row-place.ts). */
+    /** Recent and Activity: where the row lives (its project, its machine among several), when the tile alone may
+        not tell rows apart (lib/row-place.ts, lib/feed-row.ts). */
     where?: RowPlace;
+    /** The card above names the machine and says it is out of reach: the row only mutes its title. */
+    placed?: boolean;
   } = $props();
   let owner = $derived(machine.store);
+  const away = $derived(owner.connection !== 'ready');
+  /** "Offline" said once: on the place line, unless the card's head or the place's machine already says it. */
+  const chip = $derived(away && !placed && !where?.host?.away);
   let open = $derived(workspace.active === owner && owner.openThread?.id === thread.id);
   /** The rename in progress, bound to the machine and thread it began on. */
   let renaming = $state<ThreadRename | null>(null);
@@ -125,7 +129,7 @@
     class:pinned={thread.pinned}
     class:compact
     class:feed={detail !== undefined}
-    class:offline={owner.connection !== 'ready'}
+    class:offline={away}
     class:dragging={threadDrag.current?.threadId === thread.id && threadDrag.current.machineId === machine.id}
     data-movable={movable}
     onpointerdown={dragStart}
@@ -147,21 +151,19 @@
       ondblclick={rename}
     >
       <!-- Every list row ends its title's line the same way: the mark when there is one, then the time of the
-           last message. Activity keeps its own since when at the line's end (feed-side). -->
-      <ThreadHeadline {owner} {thread} {now} {open} tile={compact && !where ? project : undefined} {pullRequest} mark {ask} offline={owner.connection !== 'ready'}
+           last message. Activity's title line ends on its mark, its since when on the place line. -->
+      <ThreadHeadline {owner} {thread} {now} {open} tile={compact && !where ? project : undefined} {pullRequest} mark offline={away}
         at={detail ? undefined : thread.lastUserMessageAt ?? thread.createdAt} />
-      {#if detail}
-        <!-- Activity: who asks (the tile and the title, two lines of it) and what, on one line when it fits; the
-             mark, the time and the one action end that line; a command runs whole under it. -->
-        {@render detail()}
-      {:else}
-        {#if where}<span class="where" data-testid="thread-where" title={where.text}>{#if where.project}<span class="ui-label">{where.project}</span>{/if}{#if where.host}<MachinePlace host={where.host} />{/if}</span>{/if}
+      <!-- Where the row lives, under the title: the project, the machine among several, Offline once. -->
+      {#if where || chip || (detail && at !== undefined)}
+        <span class="where" data-testid="thread-where" title={where?.text}>{#if where?.project}<span class="ui-label">{where.project}</span>{/if}{#if where?.host}<MachinePlace host={where.host} />{/if}{#if chip}<span class="away" data-testid="thread-offline">{strings.connection.offline}</span>{/if}{#if detail && at !== undefined}<time class="since" title={exactTime(at)}>{ago(at, now)}</time>{/if}</span>
       {/if}
+      <!-- Activity: what is asked, then the command whole and the sub-agents asking the same. -->
+      {#if detail}{@render detail()}{/if}
       {#if pending}
         <span class="pending" data-testid="thread-pending" title={pending}><FolderInput size={12} /><span class="ui-label">{pending}</span></span>
       {/if}
     </button>
-    {#if detail}<span class="feed-side">{#if at !== undefined}<time title={exactTime(at)}>{ago(at, now)}</time>{/if}</span>{/if}
     {#if action}<div class="feed-actions">{@render action()}</div>{/if}
     {#if showDone && doneAllowed}<button type="button" class="ghost small icon done" data-testid="thread-done"
       aria-label={strings.sidebar.markDone} title={strings.sidebar.markDone} onclick={() => void markDone(owner, thread)}><Check size={14} /></button>{/if}
@@ -229,21 +231,20 @@
      the tooltip; how long work has run lives in the thread. */
   .thread:not(:hover, :has(:focus-visible)) .row :global(.headline > :is(.draft, .pin, .pr)),
   .thread:not(:hover, :has(:focus-visible)) .row :global(.headline > .when:not(.waiting, .error, .interrupted, .working, .delegating, .monitoring, .background, .watching)) { display: none; }
-  /* Activity's row, built like a list row: the title's line ends in its mark then since when, at the same offset on
-     every row of both sections; what is asked runs under it to the row's end, the decision pair under that.
-     `--side-room` keeps that line's end free. */
-  .feed { --feed-pad: 8px; --feed-time: 44px; --side-room: calc(var(--feed-time) + 8px + var(--pad-x)); }
+  /* Activity's row, built like a list row: the title, two lines at most, ends on its mark, right after its last
+     word rather than across an empty stretch; the place line under it says where the row lives and since when;
+     what is asked runs under that, the decision pair under it or beside it. The title's line keeps the menu's
+     room free at its end. */
+  .feed { --feed-pad: 8px; }
   .feed > .row { padding-block: var(--feed-pad); }
-  .feed .row :global(.headline) { align-items: flex-start; margin-right: calc(var(--side-room) - var(--pad-x)); }
+  .feed .row :global(.headline) { align-items: flex-start; margin-right: calc(var(--act-room) - var(--pad-x)); }
   /* A clamped title's second line keeps its untrimmed box: .ui-label's half-em under it showed the top of the third
      line, so only a descender's room is kept. */
-  .feed .row :global(.headline .title) { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; padding-bottom: 0.25em; margin-bottom: -0.25em; }
+  .feed .row :global(.headline .title) { flex: 0 1 auto; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; padding-bottom: 0.25em; margin-bottom: -0.25em; }
   .feed .row :global(.headline > :is(.tile, .bot)) { margin-top: 2px; }
-  /* The mark centred on the title's first 20 px line, like the time and the action beside it. */
+  /* The mark centred on the title's first 20 px line, like the menu beside it. */
   .feed .row :global(.headline > .when) { height: 20px; }
-  .feed-side { position: absolute; top: 0; right: 0; display: flex; align-items: center; gap: 8px; height: calc(20px + 2 * var(--feed-pad)); padding-right: var(--pad-x); }
-  .feed-side time { min-width: var(--feed-time); line-height: 20px; font-size: var(--text-xs); color: var(--color-subtle); text-align: end; font-variant-numeric: tabular-nums; }
-  /* The menu takes the time's place, never the pair's. */
+  /* The menu at the title line's end, never over the pair. */
   .feed .actions { top: calc(var(--feed-pad) + 10px - var(--act) / 2); }
   /* The pair answers what is asked, right under it: right-aligned on the row's edge, clear of the next row. */
   .feed-actions { padding: 0 var(--pad-x) var(--feed-pad); margin-top: -2px; }
@@ -252,26 +253,26 @@
      other two, the outline action in one and the solid one in the next, so every pair lines up. */
   @container activity (min-width: 640px) {
     .thread.feed { display: grid; grid-template-columns: subgrid; align-items: start; }
-    .thread.feed > .row, .feed-side, .feed .actions { grid-column: 1; grid-row: 1; }
+    .thread.feed > .row, .feed .actions { grid-column: 1; grid-row: 1; }
     /* In the flow of the text's cell, at its end: an absolute box would take the whole row as its edge. */
-    .feed-side { position: static; justify-self: end; }
     .feed .actions { position: relative; top: auto; right: auto; justify-self: end; align-self: start; margin: calc(var(--feed-pad) + 10px - var(--act) / 2) 3px 0 0; }
     .feed-actions { grid-column: 2 / -1; grid-row: 1; display: grid; grid-template-columns: subgrid; margin: 0; padding: calc(var(--feed-pad) + 10px - var(--control) / 2) var(--pad-x) 0 0; }
     .feed-actions > :global(.decision-actions) { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; gap: 0; }
     .feed-actions :global(.decision-actions > button) { grid-column: 2; }
     .feed-actions :global(.decision-actions > button:not(:last-child)) { grid-column: 1; margin: 0 8px 0 var(--space-4); }
   }
-  /* Recent's second line, on the title's edge: where the row lives, in words, so no tile repeats it. */
-  /* One fixed line, whatever it holds (a name, a machine with its icon, an Offline chip): every Recent row the same height,
-     and room for the descenders the overflow would cut. */
+  /* Recent's second line, on the title's edge: where the row lives, in words, so no tile repeats it. One fixed line,
+     whatever it holds (a name, a machine with its icon, an Offline chip), with room for the descenders the overflow
+     would cut. */
   .where { display: flex; align-items: center; gap: 8px; min-width: 0; height: 18px; line-height: 18px; margin-top: -2px; overflow: hidden; font-size: var(--text-xs); color: var(--color-subtle); text-align: start; white-space: nowrap; }
   .where :global(.away) { padding-block: 0; line-height: 14px; }
   .where > .ui-label { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  /* "Offline" when nothing above says it: MachinePlace's state mark, alone. */
+  .where > .away { flex: none; padding-inline: 6px; border: 1px solid var(--color-edge); border-radius: var(--radius-sm); color: var(--color-muted-foreground); }
+  /* Activity's since when, last on the place line: the title line keeps its room for the title. */
+  .where > .since { flex: none; font-variant-numeric: tabular-nums; }
   /* The title's room first: its mark and time sit a step closer than the headline's own gap. */
   .row :global(.headline) { gap: 6px; }
-  /* Recent is a history read down one rhythm: every row the same height (its title on one line cut between words,
-     then where it lives), so the times stand on one beat (round 20). The tooltip and the keyboard hold the rest. */
-  .thread.compact:not(.feed) .row :global(.headline .title) { -webkit-line-clamp: 1; line-clamp: 1; }
   /* The keyboard reads the whole title: the focused row's title wraps, and word-fit (lib/word-fit.ts) shows it uncut
      once its line is no longer one. The pointer gets it in the tooltip, so the list never moves under it. */
   .thread:not(.feed) .row:focus-visible :global(.headline .title) { display: block; -webkit-line-clamp: none; line-clamp: none; }
@@ -280,7 +281,7 @@
      opens 5 px down and their middle sits 0.36 em under that. */
   .thread:not(.feed) .row :global(.headline) { align-items: flex-start; padding-top: 5px; }
   .thread:not(.feed) .row :global(.headline .title) { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; padding-bottom: 0.25em; margin-bottom: -0.25em; }
-  .thread:not(.feed) .row :global(.headline > :is(.when, .at, .bot, .draft, .pin, .pr, .offline-chip)) { height: 20px; margin-top: calc(0.36 * var(--text-body) - 10px); }
+  .thread:not(.feed) .row :global(.headline > :is(.when, .at, .bot, .draft, .pin, .pr)) { height: 20px; margin-top: calc(0.36 * var(--text-body) - 10px); }
   .thread:not(.feed) .row :global(.headline > .at) { line-height: 20px; }
   .thread:not(.feed) .row :global(.headline > .tile) { margin-top: calc(0.36 * var(--text-body) - 8px); }
   /* The Recent list keeps the cards' insets and gaps, so its titles get the same room (about 30 characters). */
@@ -321,8 +322,7 @@
   /* While the buttons show, the title's line ends where they begin: the time gives up its place and a state
      steps left, whole, so they never cover a word. */
   .thread:not(.feed):is(:hover, :focus-within) .row > :global(.headline) { margin-right: calc(var(--act-room) + 4px - var(--pad-x)); }
-  .thread:is(:hover, :focus-within) :global(.headline .when:not(.state)),
-  .thread:is(:hover, :focus-within) .feed-side time { visibility: hidden; }
+  .thread:is(:hover, :focus-within) :global(.headline .when:not(.state)) { visibility: hidden; }
   /* The time leaves its room to the title rather than to an empty slot. */
   .thread:not(.feed):is(:hover, :focus-within) :global(.headline > .at) { display: none; }
   .rename {

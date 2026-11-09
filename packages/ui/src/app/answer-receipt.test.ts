@@ -13,7 +13,7 @@ test('a question answered while the agent works leaves a receipt in the dock unt
   // The agent keeps working while the question waits (`boite ask`).
   store.openThread!.status = 'running';
   query<HTMLButtonElement>('[data-testid=question-option]').click();
-  // A pick alone leaves Stop as Stop (round 18 turned it into Send): the card's own Answer sends.
+  // A pick alone leaves Stop as Stop (never turned into Send): the card's own Answer sends.
   await waitFor(() => document.querySelector<HTMLButtonElement>('[data-testid=question-submit]')?.disabled === false);
   expect(document.querySelector('[data-testid=composer-stop]')).not.toBeNull();
   expect(query('[data-testid=composer-send]').classList.contains('resting')).toBe(true);

@@ -20,6 +20,7 @@
   import type { BoundPanel, Surface } from '../lib/right-panel.svelte';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
+  import SurfaceHead from './SurfaceHead.svelte';
 
   let { store, surface, panel }: { store: Store; surface: Surface; panel: BoundPanel } = $props();
 
@@ -222,7 +223,7 @@
 </script>
 
 <div class="files-surface" data-testid="files-panel" data-path={surface.path ?? ''}>
-  <div class="panel-toolbar">
+  <SurfaceHead>
     <span class="root" title={store.openThread?.cwd ?? ''} data-testid="files-root">
       <FolderTree size={13} strokeWidth={1.75} />
       <span class="ui-label">{rootName}</span>
@@ -238,16 +239,16 @@
     />
     <button
       type="button"
-      class="ghost small icon"
+      class="icon-button"
       title={strings.common.refresh}
       aria-label={strings.common.refresh}
       data-testid="files-refresh"
       disabled={reading > 0}
       onclick={refresh}
     >
-      <RefreshCw size={13} strokeWidth={1.75} />
+      <RefreshCw size={14} strokeWidth={1.75} />
     </button>
-  </div>
+  </SurfaceHead>
 
   {#if problem !== null}
     <p class="notice" data-testid="files-error">{fill(strings.files.failed, { reason: problem })}</p>

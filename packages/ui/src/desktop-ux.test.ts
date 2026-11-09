@@ -464,7 +464,7 @@ test('the project cards float a thread that waits on the user, Recent keeps stri
   for (const mark of document.querySelectorAll('[data-testid=thread-pr]')) expect(mark.textContent).toMatch(/^#\d+$/);
 
   workspace.view = 'recent';
-  // Recent is a history (round 20): under its pins, strictly newest first; the waiting thread keeps its place by
+  // Recent is a history: under its pins, strictly newest first; the waiting thread keeps its place by
   // time and says it needs the user by its mark, so no row sits out of time order.
   const time = (id: string | null) => { const t = store.threads.find((thread) => thread.id === id)!; return t.lastUserMessageAt ?? t.createdAt; };
   await waitFor(() => rowsOf().includes(last) && document.querySelector('[data-testid=thread-row] [data-testid=thread-where]') !== null);
@@ -706,7 +706,7 @@ test('the settings bar picks the machine a page changes without moving the windo
   remote.store.showSettings('plugins');
   await waitFor(() => document.querySelector('[data-testid=settings-machine]') !== null && document.querySelector('[data-testid=plugins-page]') !== null);
   expect(query('[data-testid=settings-machine]').textContent).toContain(`${store.core!.hostname} (you)`);
-  // Round 21: the picker is the machine's name in the title's scope line, and every title says where it applies.
+  // The picker is the machine's name in the title's scope line, and every title says where it applies.
   expect(query('[data-testid=settings-scope]').contains(query('[data-testid=settings-machine]'))).toBe(true);
   expect(query('[data-testid=settings-scope]').textContent).toContain(strings.machines.scopeOn.split('{machine}')[0]!.trim());
   expect(document.querySelectorAll('[data-testid=settings-machine]')).toHaveLength(1);

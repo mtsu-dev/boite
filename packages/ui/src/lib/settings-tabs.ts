@@ -45,7 +45,7 @@ const SECTION_PAGES: Partial<Record<SettingsTab, Record<string, { page: PhoneSec
     conversations: { page: 'conversations' },
     // Quiet is a card of the conversations page.
     quiet: { page: 'conversations', owner: true },
-    // How agents answer is the machine's card under the same page, under its bar (round 19).
+    // How agents answer is the machine's card under the same page, under its bar.
     'agent-replies': { page: 'conversations', owner: true },
     archived: { page: 'archived' },
     worktrees: { page: 'worktrees', owner: true }
@@ -56,7 +56,7 @@ export type PhoneSectionPage = 'conversations' | 'archived' | 'worktrees';
 
 /**
  * The families Settings lists, desktop nav and phone list alike, each page a
- * peer inside its family (round 20: a page indented under an unrelated one,
+ * peer inside its family (a page indented under an unrelated one,
  * Usage under Limits or Plugins under Providers, was only found by guessing
  * its parent). Each family is named for what a person comes to change: the
  * app in front of them, the agents and what they may spend, what connects
@@ -90,14 +90,14 @@ const MERGED: Partial<Record<SettingsTab, SettingsTab>> = {
 /**
  * Cards that moved to another page, by their old page: a link to the old place
  * (a setting an agent asks for, a route kept from before) opens the new one.
- * Round 18 takes General's odd cards to the task they serve: the keys agents
- * ask for to Providers, the windows agents may see to Machines; round 19 the
- * browser logins to Browser.
+ * General's odd cards live with the task they serve: the keys agents
+ * ask for under Providers, the windows agents may see under Machines, the
+ * browser logins under Browser.
  */
 const MOVED: Partial<Record<SettingsTab, Record<string, SettingsTab>>> = {
   appearance: { workspace: 'general' },
   resources: { quiet: 'general' },
-  // Round 19 gives the browser its own entry, out of Providers: its profiles are not a provider's.
+  // The browser has its own entry, out of Providers: its profiles are not a provider's.
   accounts: { 'browser-profiles': 'browser' },
   general: { secrets: 'accounts', 'browser-profiles': 'browser', windows: 'machines', 'window-exclusions': 'machines' }
 };

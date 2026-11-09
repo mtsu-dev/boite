@@ -32,8 +32,8 @@ export const strings = {
     placeholder: 'Message {name}',
     /** `{name}` in the two placeholders when the provider is unknown. */
     placeholderAgent: 'the agent',
-    /** The field while the open thread's first page is on its way; Send waits for it. */
-    placeholderLoading: 'Loading the conversation',
+    /** The field while the account behind the box is removed: it stays locked until another is picked. */
+    placeholderPickAccount: 'Pick another account to send',
     placeholderOffline: '{machine} is offline: messages wait here and go out when it reconnects',
     placeholderOfflineDraft: '{machine} is offline: the conversation starts when it reconnects',
     send: 'Send',
@@ -41,6 +41,8 @@ export const strings = {
     stop: 'Stop',
     queued: 'Sent after the next tool, or when the turn ends',
     queuedLabel: 'Queued',
+    /** The word before a queued prompt's text: it goes after the running turn. */
+    queuedThen: 'Then:',
     /** A refused send held the pending messages until the user sends again. */
     queuedPaused: 'Held after a refused send',
     sendNow: 'Send now',

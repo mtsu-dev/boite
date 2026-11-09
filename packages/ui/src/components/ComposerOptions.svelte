@@ -6,6 +6,7 @@
   import { tick } from 'svelte';
   import { Closing } from '../lib/closing.svelte';
   import { floating } from '../lib/floating';
+  import { clearOfDecision } from '../lib/clear-of-decision';
   import { strings } from '../lib/strings';
   import SheetHead from './SheetHead.svelte';
 
@@ -55,10 +56,10 @@
 
 {#if !empty}
 <div class="options">
-  <button class="icon ghost opener" bind:this={trigger} data-testid="composer-options" aria-label={strings.composer.options} title={strings.composer.options} aria-haspopup="menu" aria-expanded={panel.open} onclick={() => panel.open ? close() : void open()}><Plus size={18} strokeWidth={1.75} /></button>
+  <button type="button" class="icon-button opener" bind:this={trigger} data-testid="composer-options" aria-label={strings.composer.options} title={strings.composer.options} aria-haspopup="menu" aria-expanded={panel.open} onclick={() => panel.open ? close() : void open()}><Plus size={16} strokeWidth={1.75} /></button>
   {#if panel.shown}
     <div class="options-menu" class:closing={panel.closing} bind:this={content} role="menu" tabindex="-1" aria-label={strings.composer.options} data-testid="composer-options-sheet" onkeydown={keydown}
-      use:panel.attach onanimationend={panel.end} use:floating={{ anchor: () => trigger ?? null, placement: 'top', dismiss: close }}>
+      use:panel.attach onanimationend={panel.end} use:floating={{ anchor: () => clearOfDecision(trigger, content), placement: 'top', dismiss: close }}>
       <SheetHead title={strings.composer.options} />
       {#if canAttach}
         <button class="row" role="menuitem" data-testid="composer-attach" onclick={() => run(onattach)}><Paperclip size={16} strokeWidth={1.75} /><span class="ui-label">{strings.composer.attach}</span></button>
@@ -79,8 +80,8 @@
 
 <style>
   .options { display: flex; flex: none; }
-  .opener { width: var(--control); height: var(--control); border-radius: var(--radius-full); color: var(--color-muted-foreground); }
-  .opener:hover, .opener[aria-expanded='true'] { color: var(--color-foreground); }
+  /* The shared icon button (app.css), its box as large as its target so the row keeps its place. */
+  .opener { margin: calc((var(--icon-button-target) - var(--icon-button)) / 2); }
   /* Every menu's one edge, radius and shadow. */
   .options-menu { min-width: 220px; padding: 6px; color: var(--color-foreground); background: var(--overlay-surface); border: 1px solid var(--overlay-edge); border-radius: var(--radius-overlay); box-shadow: var(--shadow-overlay); overflow-y: auto; animation: pop var(--dur-2) var(--ease-out-quint); }
   .options-menu.closing { animation-name: pop-out; pointer-events: none; }
@@ -92,7 +93,6 @@
   .switch { --switch-width: 28px; --switch-height: 16px; }
 
   @media (max-width: 720px) {
-    .opener { width: var(--touch-target); height: var(--touch-target); }
     .options-menu { padding: 8px; }
     .row { min-height: var(--touch-target); gap: 12px; font-size: var(--text-base); }
   }

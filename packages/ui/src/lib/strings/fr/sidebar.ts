@@ -18,7 +18,7 @@ export const fr: Translation = {
     laterProjectsHint: 'Les conversations archivées pour plus tard, dans les projets où rien d’autre n’est ouvert.',
     idleProjectsHint: 'Rien à faire ici : aucune conversation ouverte ou mise de côté. Choisissez-en un pour lancer une conversation.',
     filter: 'Filtrer',
-    filterOn: 'Filtre : {name}',
+    filterClear: 'Retirer le filtre {name}',
     filterWorking: 'En cours',
     groupingOptions: "Options d'affichage",
     threads: 'Conversations',
@@ -26,8 +26,9 @@ export const fr: Translation = {
     surfaceWaiting: '{count} au travail, quelque chose vous attend',
     projectsView: 'Projets',
     recentView: 'Récent',
-    /** A project card's quiet threads folded under one line (Sidebar.svelte); a press shows them in place. */
-    moreThreads: '{count} autres',
+    /** A project card's quiet threads folded under one action (FoldMore.svelte); a press shows them in place. */
+    moreThreads: 'Voir {count} de plus',
+    lessThreads: 'Voir moins',
     displayView: 'Affichage',
     displayOrder: 'Trier par',
     groupWorkingRow: 'Conversations en cours',

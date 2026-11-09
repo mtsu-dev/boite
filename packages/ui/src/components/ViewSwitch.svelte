@@ -44,7 +44,8 @@
   .side .ui-label { white-space: nowrap; }
   /* The list's head: a 30 px track, its words at the meta step. */
   .list .side { height: 24px; padding: 0 8px; font-size: var(--text-sm); }
-  /* A phone's large title: the words a step larger, the track a finger's height. */
+  /* A phone's large title: the words a step larger, the track a finger's height. 10 px sides leave a 360 px row
+     room for the machine and three finger squares after it. */
   .title { padding: 3px; }
-  .title .side { height: 36px; padding: 0 12px; font-size: var(--text-body); }
+  .title .side { height: 36px; padding: 0 10px; font-size: var(--text-body); }
 </style>

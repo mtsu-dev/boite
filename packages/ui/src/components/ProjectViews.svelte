@@ -9,6 +9,7 @@
   import type { Store } from '../lib/store.svelte';
   import DisplayOptions from './DisplayOptions.svelte';
   import ViewSwitch from './ViewSwitch.svelte';
+  import FilterChips from './FilterChips.svelte';
   import { inbox } from '../lib/inbox.svelte';
 
   /**
@@ -16,7 +17,8 @@
    * segmented switch with the side on raised, then the display menu named
    * "Filter" and search; under it "New thread" in words, with its key.
    * Recent's project filter and the machine filter live in the display menu,
-   * which marks its button while one of them hides threads.
+   * which dots its button while one of them hides threads; each one on is a
+   * chip in words on the line under the head, removed with a press.
    */
   /** `quiet`: the first run, no AI and no project yet: the head stays empty, its height kept, so nothing points at an empty list. */
   let { entries, store, quiet = false }: { entries: ProjectEntry[]; store: Store; quiet?: boolean } = $props();
@@ -50,6 +52,7 @@
     {/if}
   </div>
 </div>
+<FilterChips {entries} owner={store} />
 {#if entries.length}
   <!-- The list's main action in words, over the rows: a head of one row has no room for "New thread" beside
        both views, Filter and search at the column's default width. -->

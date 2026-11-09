@@ -3,7 +3,8 @@
   import type { PermissionRequest } from '@boite/contracts';
   import { json } from '../lib/format';
   import { fill, strings } from '../lib/strings';
-  import { describeTool, permissionSentence } from '../lib/tool-summary';
+  import { decisionTitle } from '../lib/decision-title';
+  import { describeTool } from '../lib/tool-summary';
   import CodeText from './CodeText.svelte';
   import CommandWords from './CommandWords.svelte';
   import Deferred from './Deferred.svelte';
@@ -59,7 +60,7 @@
    * from the shield: a question while it waits, a check or a cross once answered.
    */
   let described = $derived(describeTool(toolName, request?.input ?? null));
-  let sentence = $derived(permissionSentence(toolName, request?.input ?? null));
+  let sentence = $derived(decisionTitle(toolName, request?.input ?? null));
   let subjectBlock = $derived(
     described.change === null && (described.family === 'command' || described.family === 'fetch' || described.family === 'search' || described.family === 'web')
       ? described.subject
@@ -270,14 +271,15 @@
     overflow: hidden;
     outline: none;
   }
-  /* A short fade: in the least room the body has, the command over it stays readable. */
-  .ask { --scroll-edge: 10px; --scroll-edge-ground: var(--decision-fill, var(--color-composer-surface)); display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 0; max-height: 100%; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+  /* The body on one grid: the head one dock row, then the command and the
+     reason in 20 px lines with no gap between them. It scrolls only when the
+     budget is shorter than its lines, and its height is then rounded down to
+     a whole line, so the cut falls between two lines. Its fades are 4 px, the
+     leading under a 13 px glyph on a 20 px line: they never reach a letter. */
+  .ask { --scroll-edge: 4px; --scroll-edge-ground: var(--decision-fill, var(--color-composer-surface)); display: flex; flex-direction: column; gap: 0; min-width: 0; min-height: 0; max-height: 100%; max-height: calc(var(--dock-row, 30px) + round(down, 100% - var(--dock-row, 30px) + 1px, 20px)); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
   .ask > :global(*) { flex: none; }
-  /* The fades take no room: they cancel the column's gap as well as their own height. */
-  .docked .ask::before { margin-bottom: calc(-1 * var(--scroll-edge) - 6px); }
-  .docked .ask::after { margin-top: calc(-1 * var(--scroll-edge) - 6px); }
   /* The agent's own words for the call, under the command, past the dot like it. */
-  .why { margin: -2px 0 0; padding-left: 14px; color: var(--color-muted-foreground); font-size: var(--text-sm); line-height: 20px; overflow-wrap: anywhere; }
+  .why { margin: 0; padding-left: calc(var(--dock-icon, 6px) + 8px); color: var(--color-muted-foreground); font-size: var(--text-sm); line-height: 20px; overflow-wrap: anywhere; }
   .docked:focus-visible { box-shadow: inset 0 0 0 2px var(--color-accent); }
   .docked .sentence { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .docked :global(.info-tip) { flex: none; }
@@ -293,7 +295,7 @@
   /* The command belongs to the ask's line: right under its title, starting
      where the title's words do (past the dot), with no fill and no edge of
      its own. A long one scrolls sideways, its whole text behind the "i". */
-  .docked pre { --scroll-edge-ground: var(--decision-fill, var(--color-composer-surface)); max-height: 120px; margin-top: -4px; padding: 0 0 0 14px; border: none; border-radius: 0; background: none; font-size: var(--text-meta); line-height: 20px; white-space: pre; word-break: normal; overflow: auto; scrollbar-width: none; }
+  .docked pre { --scroll-edge-ground: var(--decision-fill, var(--color-composer-surface)); max-height: 120px; margin: 0; padding: 0 0 0 calc(var(--dock-icon, 6px) + 8px); border: none; border-radius: 0; background: none; font-size: var(--text-meta); line-height: 20px; white-space: pre; word-break: normal; overflow: auto; scrollbar-width: none; }
   @media (max-width: 720px) {
     /* The sentence asks for its whole width: when it and the two choices do not fit one
        line, the choices wrap under it rather than cutting the ask. */

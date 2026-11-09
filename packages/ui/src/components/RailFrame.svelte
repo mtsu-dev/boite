@@ -98,6 +98,17 @@
   let resizeFrom = 0;
   /** Rows scrolled under the head: it takes a hairline and the fade deepens, so no sliced row shows below it. */
   let scrolled = $state(false);
+
+  /** At rest the foot never shows half a row: its fade ends at the top of the row the edge slices (lib/row-cut.ts). */
+  let cut = $state(0);
+  $effect(() => {
+    const box = scroller;
+    if (!box) return;
+    let stop: (() => void) | undefined;
+    let gone = false;
+    void import('../lib/row-cut').then(({ watchRowCut }) => { if (!gone) stop = watchRowCut(box, value => { cut = value; }); });
+    return () => { gone = true; stop?.(); };
+  });
 </script>
 
 <aside
@@ -116,7 +127,7 @@
 >
   <div class="views" class:scrolled={scrolled && !subhead}>{@render head()}</div>
   {@render subhead?.()}
-  <div class="scroll" class:scrolled data-project-list={kind === 'sidebar' ? '' : undefined} bind:this={scroller}
+  <div class="scroll" class:scrolled data-project-list={kind === 'sidebar' ? '' : undefined} bind:this={scroller} style:--cut={cut ? `${cut}px` : undefined}
     onscroll={() => { scrolled = (scroller?.scrollTop ?? 0) > 0; onscroll?.(); }}>
     {@render children()}
   </div>
@@ -144,6 +155,8 @@
 </aside>
 
 <style>
+  /* Typed, so the foot's fade eases to a row's top when the list settles instead of jumping. */
+  @property --cut { syntax: '<length>'; inherits: false; initial-value: 0px; }
   /* The container name `sidebar` is also read by Sidebar.svelte's narrow-column layout. */
   .rail {
     container: sidebar / inline-size;
@@ -164,9 +177,9 @@
        foot. The fade is exactly the padding, so at rest it covers nothing; a
        mask, not a scroll-driven animation, because tests and closing elements
        wait on every running animation and that one would never end. */
-    /* Shallow at the foot, a third of a row: the first and last rows read whole, only the sliver the quota line's
-       edge would slice fades. */
-    --fade: 12px;
+    /* Shallow at the foot, the shared edge (app.css `--scroll-edge`): the last row reads whole at the end, where the
+       fade covers only the padding; at rest it ends on a row's top (`--cut`, set by the script). */
+    --fade: var(--scroll-edge);
     /* Shorter on top: the head's tools sit right above, and a deeper fade
        there opened a wider gap under them than between them and the switch. */
     --fade-top: 3px;
@@ -176,11 +189,17 @@
     display: flex;
     flex-direction: column;
     --mask-top: var(--fade-top);
-    mask-image: linear-gradient(to bottom, transparent, black var(--mask-top), black calc(100% - var(--fade)), transparent);
+    /* Eased like the shared edge: the sliver at the very edge closes, the rest of the line stays legible. */
+    mask-image: linear-gradient(to bottom, transparent, black var(--mask-top), black calc(100% - var(--fade) - var(--cut)), rgb(0 0 0 / 0.55) calc(100% - var(--fade) / 2 - var(--cut)), transparent calc(100% - var(--cut)));
+    transition: --cut var(--motion-duration) var(--motion-curve);
   }
-  /* Scrolled: the head reads as an opaque edge the rows pass under (round 17: a sliced card title showed through
-     the 3 px fade), the top fade as deep as the foot's. */
+  /* Scrolled: the head reads as an opaque edge the rows pass under, so no sliced card title shows through the
+     3 px fade; the top fade as deep as the foot's. */
   .scroll.scrolled { --mask-top: var(--fade); }
+  /* The project list settles on a boundary (Sidebar.svelte names them), close by only, so a long fling still ends
+     where it was thrown; a drag's own auto-scroll is never pulled back to one. */
+  .scroll[data-project-list] { scroll-snap-type: y proximity; }
+  :global(:is(html.thread-dragging, html.project-dragging)) .scroll { scroll-snap-type: none; }
   .scroll > :global(*) { flex-shrink: 0; }
 
   /* The edge that drags the width, centred in the frame gap (ResizeHandle). */

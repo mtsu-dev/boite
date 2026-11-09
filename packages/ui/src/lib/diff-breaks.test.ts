@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest';
 import { breakAfterOperators, escapeCode } from './diff-breaks';
 
-// Round 17 kept a phone's diff on one line because a wrap broke inside a token ("i +=" over "500").
+// A wrap never breaks inside a token ("i +=" over "500"), so a phone's diff can wrap.
 test('a line may break after the last operator of a run, before the code that follows', () => {
   expect(breakAfterOperators('total+=500;')).toBe('total+=<wbr>500;');
   expect(breakAfterOperators('a.b(c,d)')).toBe('a.<wbr>b(<wbr>c,<wbr>d)');

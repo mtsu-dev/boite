@@ -88,7 +88,7 @@
 
 <style>
   /* In the text flow under one hairline, no box: the plan is read, not pressed; bordered cards are kept for what
-     the user decides or operates (round 20). */
+     the user decides or operates. */
   .plan {
     display: flex;
     flex-direction: column;

@@ -2,6 +2,8 @@ export const strings = {
 
   agentMessages: {
     heading: 'Messages',
+    /** The panel's head: what the list holds, never the panel's name. With none, the body says so alone. */
+    headOne: '1 discussion', headMany: '{count} discussions',
     open: 'Open the messages', back: 'All messages', openThread: 'Open this thread',
     empty: 'No message with another agent yet.',
     /** The two halves of a discussion's count, for screen readers and hover. */

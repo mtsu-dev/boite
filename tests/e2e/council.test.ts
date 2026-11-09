@@ -5,7 +5,7 @@ import { BrowserPage, freePort } from './lib/cdp.ts';
 import { startUi } from './lib/ui.ts';
 
 // `?fake=1&council=1` seeds `t-council`: a council with two finished rounds, one
-// under way in round 2 with a post of the owner's to one member, and a debate
+// under way in its second round with a post of the owner's to one member, and a debate
 // from before the council.
 const ARTIFACTS = join(import.meta.dir, '.artifacts', 'council');
 const DESKTOP = { width: 816, height: 900, deviceScaleFactor: 1, mobile: false };

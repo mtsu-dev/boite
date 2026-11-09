@@ -475,36 +475,40 @@
     </div>
   {/if}
   {#each gateway ? [] : accounts as entry (entry.id)}
+    <!-- Every account the same card: its name and state on the first line, with the sign-in that state needs; the
+         address under it; then one action row in one order, Remove last and quiet (its dialog says the cost). -->
     <div class="account" data-testid="account-row" data-account-id={entry.id}>
-      <div class="account-line">
-        <div class="who">
-          {#if editing === entry.id}
-            <form class="code rename" onsubmit={event => void rename(event, entry.id)}>
-              <input aria-label={strings.providerSettings.accountName} data-testid="account-name" maxlength="100" bind:value={label} />
-              <button class="small" type="submit" disabled={saving || !label.trim()}><span class="ui-label">{strings.common.save}</span></button>
-              <button class="quiet small" type="button" disabled={saving} onclick={() => editing = null}><span class="ui-label">{strings.install.removeCancel}</span></button>
-            </form>
-          {:else}<h3>{entry.label}</h3>{/if}
-          {#if entry.identity}<p class="identity"><button type="button" class="private-email" class:revealed={revealed[entry.id]} aria-label={strings.providerSettings.revealEmail} aria-pressed={revealed[entry.id] === true} data-testid="account-email" onclick={() => revealed[entry.id] = !revealed[entry.id]}><span class="ui-label">{entry.identity}</span></button></p>{/if}
-          <p class="state">
-            <span class="kind ui-label">{entry.isolationDir === null ? strings.providerSettings.default : strings.providerSettings.isolated}</span>
-            {#if entry.status !== 'ok'}
-              <span class="ui-label" class:bad={entry.status !== 'unknown'}>· {strings.accounts.status[entry.status]}</span>
-            {/if}
-          </p>
-        </div>
-        <div class="act">
+      {#if editing === entry.id}
+        <form class="code rename" onsubmit={event => void rename(event, entry.id)}>
+          <input aria-label={strings.providerSettings.accountName} data-testid="account-name" maxlength="100" bind:value={label} />
+          <button class="small" type="submit" disabled={saving || !label.trim()}><span class="ui-label">{strings.common.save}</span></button>
+          <button class="quiet small" type="button" disabled={saving} onclick={() => editing = null}><span class="ui-label">{strings.install.removeCancel}</span></button>
+        </form>
+      {:else}
+        <div class="account-line">
+          <div class="who">
+            <h3>{entry.label}</h3>
+            <p class="state">
+              <span class="kind ui-label">{entry.isolationDir === null ? strings.providerSettings.default : strings.providerSettings.isolated}</span>
+              {#if entry.status !== 'ok'}
+                <span class="ui-label" class:bad={entry.status !== 'unknown'}>· {strings.accounts.status[entry.status]}</span>
+              {/if}
+            </p>
+          </div>
           {#if on && provider.available && provider.login && (entry.isolationDir !== null || inTerminal(provider)) && !loggingIn(entry.id)}
-            <button class="quiet small" data-testid="account-login" data-account-id={entry.id} onclick={() => void startLogin(provider, entry)}>
+            <button class="small sign" class:quiet={entry.status === 'ok'} data-testid="account-login" data-account-id={entry.id} onclick={() => void startLogin(provider, entry)}>
               <span class="ui-label">{entry.status === 'ok' ? strings.providerSettings.reconnect : strings.accounts.login}</span>
             </button>
           {/if}
-          <button class="quiet small" data-testid="account-rename" onclick={() => { editing = entry.id; label = entry.label; }}><span class="ui-label">{strings.common.rename}</span></button>
-          <button class="quiet small" disabled={!on || checking !== null || loggingIn(entry.id)} data-testid="account-verify" onclick={() => void verify(entry)}><span class="ui-label">{checking === entry.id ? strings.providerSettings.checking : strings.providerSettings.check}</span></button>
-          <button class="quiet small" data-testid="account-remove" data-account-id={entry.id} onclick={() => void remove(entry)}><span class="ui-label">{strings.accounts.remove}</span></button>
         </div>
-      </div>
+      {/if}
+      {#if entry.identity}<p class="identity"><button type="button" class="private-email" class:revealed={revealed[entry.id]} aria-label={strings.providerSettings.revealEmail} aria-pressed={revealed[entry.id] === true} data-testid="account-email" onclick={() => revealed[entry.id] = !revealed[entry.id]}><span class="ui-label">{entry.identity}</span></button></p>{/if}
       {#if verified[entry.id] !== undefined}<p class="hint" role="status">{entry.status === 'ok' ? strings.providerSettings.connectionOk : strings.accounts.status[entry.status]}</p>{/if}
+      <div class="act account-act">
+        <button class="quiet small" data-testid="account-rename" onclick={() => { editing = entry.id; label = entry.label; }}><span class="ui-label">{strings.common.rename}</span></button>
+        <button class="quiet small" disabled={!on || checking !== null || loggingIn(entry.id)} data-testid="account-verify" onclick={() => void verify(entry)}><span class="ui-label">{checking === entry.id ? strings.providerSettings.checking : strings.providerSettings.check}</span></button>
+        <button class="quiet small remove" data-testid="account-remove" data-account-id={entry.id} onclick={() => void remove(entry)}><span class="ui-label">{strings.accounts.remove}</span></button>
+      </div>
     </div>
   {/each}
 
@@ -717,15 +721,15 @@
   {#if store.owner}<LocalAcpCard {store} />{/if}
   {#if store.owner}<HarnessUpdatesCard {store} />{/if}
   {#if store.owner}<SubscriptionProxySettings {store} />{/if}
-  <!-- What agents sign in with beyond a provider: the keys they ask for in a card (round 18, once under General).
-       The browser's logins have their own entry since round 19 (BrowserPage.svelte). -->
+  <!-- What agents sign in with beyond a provider: the keys they ask for in a card.
+       The browser's logins have their own entry (BrowserPage.svelte). -->
   <SecretsCard />
 </div>
 
 <style>
-  .private-email { display: inline-block; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; filter: blur(5px); cursor: pointer; transition: filter var(--dur-2); overflow-wrap: anywhere; }
+  .private-email { position: relative; display: inline-block; height: auto; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; filter: blur(5px); cursor: pointer; transition: filter var(--dur-2); overflow-wrap: anywhere; }
   .private-email:hover, .private-email:focus-visible, .private-email.revealed { filter: none; }
-  .identity { margin: 4px 0; color: var(--color-muted-foreground); }
+  .identity { margin: 0; font-size: var(--text-sm); color: var(--color-muted-foreground); }
   .rename { flex-wrap: wrap; }
 
 
@@ -829,9 +833,19 @@
 
   /* Under the name, not under the chevron: the fold reads as belonging to the row. */
   .details { display: grid; gap: 10px; margin-left: 32px; padding: 4px 0 6px; }
-  .section-head { display: flex; align-items: center; justify-content: space-between; min-height: var(--control-sm); margin-top: 6px; }
-  .section-label { display: inline-flex; align-items: center; gap: 2px; }
-  .account { display: grid; gap: 10px; padding: 12px 14px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-2); }
+  .section-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 12px; min-height: var(--control-sm); margin-top: 6px; }
+  .section-label { display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; }
+  .account { display: grid; gap: 6px; padding: 12px 14px 8px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-2); }
+  /* Name and state read as one line, the state's own fix at its end; a long name wraps the state under it. */
+  /* Name and state wrap inside their own block, so a Sign in stays on the first line at any width. */
+  .account .account-line { flex-wrap: nowrap; gap: 10px; min-height: 26px; }
+  .account .who { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; flex: 1 1 auto; min-width: 0; }
+  .account .sign { flex: none; }
+  /* The blurred email keeps its line height; its tap area reaches over the card's air. */
+  .private-email::before { content: ''; position: absolute; inset: -8px -4px; }
+  /* One row, one order, on every account: the buttons sit flush with the text above, Remove at the far end. */
+  .account-act { justify-content: flex-start; gap: 4px; margin: 2px 0 0 -8px; flex-wrap: nowrap; }
+  .account-act .remove { margin-left: auto; margin-right: -8px; color: var(--color-subtle); }
   .kind { color: var(--color-muted-foreground); }
   .more { display: flex; gap: 6px; flex-wrap: wrap; }
   .facts { display: grid; gap: 6px; margin: 0; }
@@ -856,10 +870,10 @@
   /* Phones never reach this page. Beside the settings nav a small window leaves
      the row about 480 px, where the action drops under the name. */
   @media (max-width: 900px) {
-    .line, .account-line, .member-line { flex-wrap: wrap; }
-    .line .summary { flex: 1 1 260px; }
+    .line, .member-line { flex-wrap: wrap; }
+    .line .summary { flex: 1 1 200px; }
     .line .act { margin-left: auto; }
-    .account-line .act, .member-line .act { order: 3; flex-basis: 100%; justify-content: flex-start; }
+    .member-line .act { order: 3; flex-basis: 100%; justify-content: flex-start; }
     .details { margin-left: 0; }
     .fact { grid-template-columns: 1fr; gap: 2px; }
   }

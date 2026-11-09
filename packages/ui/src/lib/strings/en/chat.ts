@@ -168,6 +168,43 @@ export const strings = {
       agent: 'Start a helper agent',
       other: 'Use its {tool} tool'
     },
+    /**
+     * A decision's title by what it does (`lib/decision-title.ts`): the command's
+     * verb and object, or the file an edit changes. `{ref}` a branch or tag,
+     * `{target}` a file or folder, `{host}` a web address's host, `{program}` a
+     * command's own name, `{path}` a short path.
+     */
+    decisionTitle: {
+      push: 'Push {ref}',
+      pushBranch: 'Push the branch',
+      commit: 'Commit the changes',
+      switch: 'Switch to {ref}',
+      pull: 'Pull the latest changes',
+      merge: 'Merge {ref}',
+      rebase: 'Rebase onto {ref}',
+      reset: 'Reset the branch to {ref}',
+      resetBranch: 'Reset the branch',
+      clone: 'Clone {target}',
+      stage: 'Stage {target}',
+      stageAll: 'Stage the changes',
+      tag: 'Tag {ref}',
+      stash: 'Stash the changes',
+      delete: 'Delete {target}',
+      create: 'Create {target}',
+      move: 'Move {target}',
+      copy: 'Copy {target}',
+      download: 'Download from {host}',
+      install: 'Install {target}',
+      installAll: 'Install the dependencies',
+      test: 'Run the tests',
+      build: 'Build the project',
+      script: 'Run {target}',
+      openPr: 'Open a pull request',
+      mergePr: 'Merge the pull request',
+      program: 'Run {program}',
+      edit: 'Edit {path}',
+      write: 'Create {path}'
+    },
     permissionTechnical: 'Technical details',
     /** The tag of an ask docked at the top of the composer, and its line in the timeline. */
     permissionNeedsYou: 'Needs you',
@@ -204,7 +241,8 @@ export const strings = {
     questionAnswered: 'You answered: {answer}',
     /** A question skipped or dropped with its turn: one line in the run, never the card again. */
     questionCancelled: 'Not answered: {question}',
-    questionMore: '{count} more',
+    questionMore: 'Show {count} more options',
+    questionMoreOne: 'Show 1 more option',
     questionSkip: 'Skip',
     /** Over a docked question's choices: a pick marks the row, the composer's Send answers. */
     questionPickOne: 'Pick one, then press Answer',

@@ -203,7 +203,7 @@
   let title = $derived(tabs.find((entry) => entry.id === tab)?.label ?? '');
   let info = $derived(infoOf(tab));
   /**
-   * Where the page's settings apply, under every title (round 21): this device, every machine, or the one
+   * Where the page's settings apply, under every title: this device, every machine, or the one
    * machine a page changes. Where there is a machine to pick, its name in that line is the picker, the
    * way the panel door names the open panel and switches it.
    */

@@ -9,6 +9,7 @@
   import type { MenuItem } from '../lib/menu';
   import { changeCount, changeText } from '../lib/change-count';
   import { onView } from '../lib/on-view';
+  import SurfaceHead from './SurfaceHead.svelte';
   import ChangeCount from './ChangeCount.svelte';
   import DiffView, { SPLIT_MIN_WIDTH } from './DiffView.svelte';
   import Menu from './Menu.svelte';
@@ -257,8 +258,8 @@
 </script>
 
 <div class="changes-surface" class:narrow data-testid="changes-panel" bind:clientWidth={width}>
-  <!-- The body's own first line: the files and their one count (the chip lists them), the layout, the refresh. -->
-  <div class="panel-toolbar head">
+  <!-- Its head: the files and their one count (the chip lists them), the layout, the refresh. -->
+  <SurfaceHead>
     {#if status && changes.length > 0}
       <span class="picker">
         <Menu items={files} onpick={pickPath} placement="bottom" variant="text" label={strings.changes.fileList} testid="changes-pager">
@@ -275,16 +276,16 @@
     {#if status}<DiffOptions split={codeWidth >= SPLIT_MIN_WIDTH} branch={{ name: status.branch ?? strings.changes.noBranch, title: branchTitle, hint: tracking || undefined }} />{/if}
     <button
       type="button"
-      class="ghost small icon refresh"
+      class="icon-button refresh"
       title={strings.common.refresh}
       aria-label={strings.common.refresh}
       data-testid="changes-refresh"
       disabled={loading}
       onclick={() => asked++}
     >
-      <RefreshCw size={13} strokeWidth={1.75} />
+      <RefreshCw size={14} strokeWidth={1.75} />
     </button>
-  </div>
+  </SurfaceHead>
 
   <!-- The reader's own wheel, touch, press or key lets go of a jump's hold; the scroll itself is no control. -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->

@@ -36,10 +36,15 @@ test('a phone row that needs you says it once, by its named dot, and an Activity
   expect(document.querySelector('[data-testid=mobile-row]')!.textContent).not.toContain('Needs you');
   await unmount(mounted);
 
-  // Activity: what it asks, then the command as it will run, both lines of it.
-  mounted = mount(MobileThreadRow, { target: document.body, props: { ...props, compact: true, reason: 'Wants to run:', at: Date.now(), verb: 'allow' } });
+  // Activity: where it comes from, what it asks by what it does (the composer's title), then the command as it will
+  // run, both lines of it.
+  mounted = mount(MobileThreadRow, { target: document.body, props: { ...props, compact: true, reason: 'Wants to run:', at: Date.now(), verb: 'allow', where: { project: 'orbit', text: 'orbit' } } });
   flushSync();
-  expect(document.querySelector('[data-testid=mobile-row-reason]')!.textContent?.trim()).toBe('Wants to run:');
+  const place = document.querySelector('[data-testid=mobile-row-where]')!;
+  const ask = document.querySelector('[data-testid=mobile-row-reason]')!;
+  expect(place.textContent).toBe('orbit');
+  expect(ask.textContent?.trim()).toBe('Build the project');
+  expect(place.compareDocumentPosition(ask) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(document.querySelector('[data-testid=mobile-row] code')!.textContent).toBe(command);
   expect(document.querySelector<HTMLElement>('[data-testid=thread-verb]')!.dataset['verb']).toBe('allow');
   // The desktop's pair: Deny outlined, then Allow solid, right-aligned under the content.

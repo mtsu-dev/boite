@@ -52,7 +52,7 @@ describe('permission modes', () => {
   });
 
   it('gives each offered level its own glyph, so the chip reads without its word', () => {
-    // Round 18 drew Auto and No limits with the same robot.
+    // Auto and No limits never share a glyph.
     const glyphs = modesFor(provider('claude-sdk')).map(modeIcon);
     expect(new Set(glyphs).size).toBe(4);
   });

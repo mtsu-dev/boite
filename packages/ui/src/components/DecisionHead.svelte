@@ -21,9 +21,12 @@
 
 <style>
   .decision-head { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px 8px; width: 100%; min-width: 0; margin: 0; padding: 0; color: var(--color-foreground); text-align: left; }
-  /* One controls' row high: a one-line decision sits in its middle, the dot
-     beside its first line (a question longer than a line pads its own top). */
-  .title { display: flex; align-items: center; gap: 8px; flex: 1 1 var(--decision-title, 12rem); min-width: 0; min-height: var(--control); font-size: var(--text-base); font-weight: 600; line-height: 22px; }
-  .mark { flex: none; align-self: flex-start; width: 6px; height: 6px; margin-top: calc(var(--control) / 2 - 3px); border-radius: var(--radius-full); background: var(--color-live); }
-  .end { display: flex; align-items: center; gap: 4px; flex: none; min-height: var(--control); margin-left: auto; }
+  /* The composer's row form (Composer sets `--dock-row`, `--dock-icon` and
+     `--dock-type`, AgentDock draws the same rows): the dot in the icon box,
+     the decision in bold in the ink, one row high; a question longer than a
+     line pads its own top. Outside the composer, the controls' sizes. */
+  .title { display: flex; align-items: center; gap: 8px; flex: 1 1 var(--decision-title, 12rem); min-width: 0; min-height: var(--dock-row, var(--control)); font-size: var(--dock-type, var(--text-base)); font-weight: 600; line-height: 20px; }
+  .mark { display: flex; align-items: center; justify-content: center; flex: none; align-self: flex-start; width: var(--dock-icon, 6px); height: var(--dock-row, var(--control)); }
+  .mark::before { content: ''; width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--color-live); }
+  .end { display: flex; align-items: center; gap: 4px; flex: none; min-height: var(--dock-row, var(--control)); margin-left: auto; }
 </style>

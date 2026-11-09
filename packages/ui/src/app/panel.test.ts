@@ -11,8 +11,10 @@ vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
 test('a floating panel can dock after leaving or closing its browser tab and changing threads', async ({ app: _app }) => {
   // Dock is a row of the panel switcher on the header's door: the head holds the tabs and the close only.
   const dockRow = () => {
-    if (!document.querySelector('[data-testid=panel-add-menu]')) { document.querySelector<HTMLButtonElement>('[data-testid=panel-add]')?.click(); flushSync(); }
-    return document.querySelector<HTMLButtonElement>('[data-testid=panel-add-menu] [data-testid=panel-dock]');
+    // A launcher playing its exit holds the rows it opened with: the next open reads them again.
+    const open = '[data-testid=panel-add-menu]:not(.closing)';
+    if (!document.querySelector(open)) { document.querySelector<HTMLButtonElement>('[data-testid=panel-add]')?.click(); flushSync(); }
+    return document.querySelector<HTMLButtonElement>(`${open} [data-testid=panel-dock]`);
   };
   await waitFor(() => document.querySelector('[data-thread-id="t-trace"]') !== null);
   query<HTMLButtonElement>('[data-thread-id="t-trace"]').click();

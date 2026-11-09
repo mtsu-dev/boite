@@ -86,7 +86,7 @@ test('a paired phone sent to the task manager by a link has no process-stop cont
   const beforeOpen = vi.fn(() => expect(open).not.toHaveBeenCalled());
   mounted = mount(MobileSettings, { target: document.body, props: { store, onopenthread: beforeOpen } });
   await settle();
-  // Round 20: a peer in the Advanced family of the phone's list, where a paired phone has no Diagnostics to hold it.
+  // A peer in the Advanced family of the phone's list, where a paired phone has no Diagnostics to hold it.
   expect(document.querySelector('[data-testid="settings-tab-diagnostics"]')).toBeNull();
   await click(element('[data-testid="settings-tab-task-manager"]'));
   await vi.waitFor(() => expect(document.querySelector('[data-testid="task-manager-agent"]')).not.toBeNull());

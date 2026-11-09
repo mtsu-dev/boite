@@ -88,8 +88,8 @@
   /** The pages that change one machine whole, its bar under their header. */
   const MACHINE_PAGES = ['accounts', 'brain', 'voice', 'limits', 'diagnostics', 'worktrees', 'archived'];
   /**
-   * Where a page's settings apply, under its header (round 18): this device, every machine, or the machine,
-   * its name the picker where there are several (round 21). Limits names its machine in its title already.
+   * Where a page's settings apply, under its header: this device, every machine, or the machine,
+   * its name the picker where there are several. Limits names its machine in its title already.
    */
   const scopeOf = (page: string): { device: boolean; text: string } | null => {
     if (page === 'appearance' || page === 'phone') return { device: true, text: strings.settings.scopeDevice };
@@ -250,7 +250,7 @@
             {@render row('mobile-settings-conversations', strings.settings.conversations, () => store.showSettings('general', 'conversations'), 'conversations')}
             {@render row('mobile-settings-phone', strings.mobile.settingsPhone, () => openLocal('phone'), 'phone')}
             {@render row('mobile-settings-archived', strings.settings.archived.heading, () => store.showSettings('general', 'archived'), 'archived')}
-            <!-- The keys agents ask for live under Providers, the windows agents may see under Machines (round 18). -->
+            <!-- The keys agents ask for live under Providers, the windows agents may see under Machines. -->
             {#if store.owner}
               {@render row('mobile-settings-worktrees', strings.settings.worktrees.heading, () => store.showSettings('general', 'worktrees'), 'worktrees')}
             {/if}
