@@ -27,6 +27,8 @@
   const overlay = new Closing();
   let query = $state('');
   let selected = $state(0);
+  /** The selection moved by the keys: the row then draws the focus ring, as a row reached by Tab does anywhere else. */
+  let keyed = $state(false);
   let input = $state<HTMLInputElement | undefined>(undefined);
   let list = $state<HTMLDivElement | undefined>(undefined);
   let dialog = $state<HTMLDivElement | undefined>(undefined);
@@ -218,6 +220,7 @@
     else if (event.key === 'Home') selected = 0;
     else if (event.key === 'End') selected = rows.length - 1;
     else return;
+    keyed = true;
     event.preventDefault();
   }
 
@@ -280,13 +283,14 @@
                 type="button"
                 class="row"
                 class:selected={index === selected}
+                class:keyed={keyed && index === selected}
                 role="option"
                 tabindex="-1"
                 aria-selected={index === selected}
                 data-index={index}
                 data-testid="palette-row"
                 data-palette-id={item.id}
-                onmousemove={() => (selected = index)}
+                onmousemove={() => { selected = index; keyed = false; }}
                 onclick={() => pick(item)}
               >
                 <!-- A thread's slot stays empty, its title under its project's name; a bot's holds its picture. The state reads at the right. -->
@@ -457,6 +461,8 @@
     background: var(--color-accent-soft);
     box-shadow: inset 2px 0 0 var(--color-muted-foreground);
   }
+  /* The field keeps the keys, so no row is focused: the one the arrows reached draws the ring itself, inside it. */
+  .row.keyed { outline: var(--focus-ring); outline-offset: -2px; }
 
 
   .row:active:not(:disabled) {

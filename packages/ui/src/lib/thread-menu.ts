@@ -1,4 +1,4 @@
-import { Archive, CircleCheck, Copy, FolderInput, GitPullRequest, MessageSquare, PencilLine, Pin, PinOff, Settings2, Sparkles, Trash2, X } from '@lucide/svelte';
+import { Archive, ArrowRightLeft, CircleCheck, Copy, FolderInput, GitPullRequest, MessageSquare, PencilLine, Pin, PinOff, Sparkles, Trash2, X } from '@lucide/svelte';
 import type { ThreadSummary } from '@boite/contracts';
 import type { Store } from './store.svelte';
 import { separator, type MenuItem } from './menu';
@@ -42,20 +42,18 @@ function placeItems(store: Store, thread: ThreadSummary, options: ThreadMenuOpti
 }
 
 /**
- * The named group's rows, what is done to a thread less often, in the order
- * its name says them: the bot (who holds it, the hand-off), the title made
- * again, then the folder (branch, move, path, pull request). The name is
- * built from the parts present, so it never promises a row that is not there.
+ * The named group's rows, where the thread goes, in the order its name says
+ * them: the bot (who holds it, the hand-off), then the folder (branch, move,
+ * path, pull request). The name is built from the parts present, so it never
+ * promises a row that is not there. The new title sits by Rename instead.
  */
 function manageParts(store: Store, thread: ThreadSummary, options: ThreadMenuOptions): { name: string; rows: MenuItem[] } {
-  const retitling = store.retitling.includes(thread.id);
   const bot = [...(options.lead ?? []), ...entrustItems(store, thread)];
   const folder = placeItems(store, thread, options);
-  const title: MenuItem[] = [{ id: 'retitle', label: retitling ? strings.sidebar.retitling : strings.sidebar.retitle, glyph: Sparkles, disabled: retitling }];
   // Named by what a user does there: the move only when a move row is in it, so the name never promises one.
   const moves = folder.some(item => item.id.startsWith('move'));
   const name = bot.length ? (moves ? strings.thread.manage : strings.thread.manageNoFolder) : moves ? strings.thread.manageNoBot : strings.thread.manageTitle;
-  return { name, rows: [...bot, ...(bot.length ? [separator('sep-bot')] : []), ...title, ...(folder.length ? [separator('sep-folder')] : []), ...folder] };
+  return { name, rows: [...bot, ...(bot.length && folder.length ? [separator('sep-folder')] : []), ...folder] };
 }
 
 /**
@@ -78,9 +76,10 @@ function doneItem(store: Store, thread: ThreadSummary): MenuItem {
 /**
  * One menu for a thread wherever it opens (a row, its header, the phone's
  * long press, the header's menu): a short first level of what is done most
- * (the view's own Find, Rename, Pin, Mark done, Archive), one named group for
- * the rest (`threadToolItems`), then Delete apart. A row adds Open first.
- * Seven rows at most. The panels have one door of their own, the panel strip.
+ * (the view's own Find, Rename and its made-again title, Pin, Mark done,
+ * Archive), one named group for where it goes (`threadToolItems`), then Delete
+ * apart. A row adds Open first. Eight rows at most. The panels have one door
+ * of their own, beside the title.
  */
 export function threadMenuItems(store: Store, thread: ThreadSummary, options: ThreadMenuOptions = {}): MenuItem[] {
   // An incognito conversation lives on its own screen only: nothing pins, files
@@ -88,12 +87,16 @@ export function threadMenuItems(store: Store, thread: ThreadSummary, options: Th
   const kept = !thread.incognito;
   const own = options.tools ?? [];
   const group = threadToolItems(store, thread, options);
+  const loose = group.length ? [] : manageParts(store, thread, options).rows;
+  const retitling = store.retitling.includes(thread.id);
   const opening: MenuItem[] = options.open === undefined ? [] : [{ id: 'open', label: strings.common.open, glyph: MessageSquare, disabled: options.open }, separator('sep-open')];
   const items: MenuItem[] = [
     ...opening,
     ...own,
     ...(own.length ? [separator('sep-thread-tools')] : []),
     { id: 'rename', label: strings.common.rename, glyph: PencilLine },
+    // The title made again sits with the one typed: both name the thread.
+    { id: 'retitle', label: retitling ? strings.sidebar.retitling : strings.sidebar.retitle, glyph: Sparkles, disabled: retitling },
     ...(kept ? [{ id: 'pin', label: thread.pinned ? strings.sidebar.unpin : strings.sidebar.pin, glyph: thread.pinned ? PinOff : Pin }] : []),
     ...(kept ? [
       separator('sep-archive'),
@@ -102,8 +105,9 @@ export function threadMenuItems(store: Store, thread: ThreadSummary, options: Th
       ...(options.showDone ? [doneItem(store, thread)] : []),
       { id: 'archive', label: strings.sidebar.archive, glyph: Archive }
     ] : []),
-    separator('sep-tools'),
-    ...(group.length ? [{ id: 'more', label: group[0]!.label, glyph: Settings2, submenu: true, hint: '›', items: group }] : manageParts(store, thread, options).rows)
+    ...(group.length || loose.length ? [separator('sep-tools')] : []),
+    // A transfer sign: the group moves the thread or hands it over, it sets nothing.
+    ...(group.length ? [{ id: 'more', label: group[0]!.label, glyph: ArrowRightLeft, submenu: true, hint: '›', items: group }] : loose)
   ];
   if (canDeleteThread(thread)) items.push(separator('sep-delete'), { id: 'delete', label: strings.common.delete, glyph: Trash2, danger: true });
   return items;

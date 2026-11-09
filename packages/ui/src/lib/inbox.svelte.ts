@@ -3,7 +3,6 @@ import { agentDirectory } from './agent-directory.svelte';
 import type { FeedSource } from './activity-feed';
 export { feedThread } from './activity-feed';
 import type { Store } from './store.svelte';
-import { LazyComponent } from './lazy-component.svelte';
 
 /**
  * The one inbox. On a desktop, Activity is the rail's second place: the main
@@ -18,9 +17,6 @@ class Inbox {
 }
 
 export const inbox = new Inbox();
-
-/** Desktop Activity's page, loaded the first time the rail opens it. */
-export const activityPage = new LazyComponent(() => import('../components/ActivityList.svelte'));
 
 const DONE_KEY = 'boite.done.v1';
 

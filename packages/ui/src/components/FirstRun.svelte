@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ChevronRight, Plus } from '@lucide/svelte';
+  import { ChevronRight, MonitorSmartphone, Plus } from '@lucide/svelte';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import EmptyState from './EmptyState.svelte';
@@ -62,14 +62,19 @@
         <li class="step"><span class="number" aria-hidden="true">2</span><span class="ui-label">{strings.firstRun.stepProject}</span></li>
         <li class="step"><span class="number" aria-hidden="true">3</span><span class="ui-label">{strings.firstRun.stepTask}</span></li>
       </ol>
-      <!-- The marks the lists use, each beside its word, met once here so a dot or a ring is never a code to guess (round 20). -->
-      <p class="marks" data-testid="first-run-marks">
-        <span class="ui-label lead">{strings.firstRun.marks}</span>
-        <span class="key"><StatusMark tone="waiting" label="" /><span class="ui-label">{strings.sidebar.state.waiting}</span></span>
-        <span class="key"><StatusMark tone="running" label="" /><span class="ui-label">{strings.sidebar.state.working}</span></span>
-        <span class="key"><FailMark size={10} /><span class="ui-label">{strings.sidebar.state.error}</span></span>
-      </p>
-      <button type="button" class="ghost small other" data-testid="first-run-other-machine" onclick={() => store.showSettings('machines')}>{strings.firstRun.otherMachine}</button>
+      <!-- The marks the lists use, met once here on a card of their own (round 21: squeezed under step 3 they read
+           as a fourth step): each mark in the steps' number column, its word, then what it asks of you. -->
+      <section class="legend" aria-labelledby="first-run-marks-head" data-testid="first-run-marks">
+        <h2 id="first-run-marks-head" class="ui-label">{strings.firstRun.marks}</h2>
+        <ul>
+          <li><span class="key"><span class="slot"><StatusMark tone="waiting" label="" /></span><span class="ui-label">{strings.sidebar.state.waiting}</span></span><span class="means">{strings.firstRun.marksWaiting}</span></li>
+          <li><span class="key"><span class="slot"><StatusMark tone="running" label="" /></span><span class="ui-label">{strings.sidebar.state.working}</span></span><span class="means">{strings.firstRun.marksWorking}</span></li>
+          <li><span class="key"><span class="slot"><FailMark size={10} /></span><span class="ui-label">{strings.sidebar.state.error}</span></span><span class="means">{strings.firstRun.marksFailed}</span></li>
+        </ul>
+      </section>
+      <button type="button" class="ghost other" data-testid="first-run-other-machine" onclick={() => store.showSettings('machines')}>
+        <MonitorSmartphone size={15} strokeWidth={1.75} aria-hidden="true" /><span class="ui-label">{strings.firstRun.otherMachine}</span><ChevronRight size={14} aria-hidden="true" />
+      </button>
     {:else}
       <p data-testid="first-run-device">{strings.connect.device}</p>
     {/if}
@@ -93,10 +98,17 @@
   .plan { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); color: var(--color-muted-foreground); }
   .found { flex: none; font-size: var(--text-xs); color: var(--color-muted-foreground); }
   .agent > :global(svg) { flex: none; color: var(--color-subtle); }
-  .other { margin-top: var(--space-1); }
-  .marks { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 14px; max-width: min(360px, calc(100vw - 2 * var(--space-6))); margin: var(--space-2) 0 0; font-size: var(--text-sm); color: var(--color-muted-foreground); }
-  .marks .lead { flex-basis: 100%; }
-  .key { display: inline-flex; align-items: center; gap: 6px; color: var(--color-foreground); }
+  /* A quiet way out for a second device: an icon, its words and a chevron, so it reads as the door it is. */
+  .other { gap: var(--space-2); height: auto; min-height: 32px; padding: 4px 10px; color: var(--color-muted-foreground); font-size: var(--text-sm); }
+  .other > :global(svg) { flex: none; color: var(--color-subtle); }
+  /* The legend: a card of its own under the steps, at their width, its marks in their number column. */
+  .legend { width: min(360px, calc(100vw - 2 * var(--space-6))); margin: var(--space-3) 0 0; padding: var(--space-3) var(--space-3) var(--space-2); border-radius: var(--radius-lg); background: var(--color-surface); box-shadow: inset 0 0 0 1px var(--color-border); text-align: left; }
+  .legend h2 { margin: 0 0 var(--space-2); color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 400; }
+  .legend ul { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+  .legend li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px var(--space-3); font-size: var(--text-sm); line-height: 1.4; }
+  .key { display: inline-flex; flex: none; align-items: center; gap: var(--space-3); min-width: 112px; color: var(--color-foreground); font-weight: 600; }
+  .slot { display: grid; place-items: center; width: 24px; height: 18px; }
+  .means { flex: 1 1 140px; min-width: 0; color: var(--color-muted-foreground); }
   @media (max-width: 720px) {
     .agent { min-height: var(--touch-target); }
   }

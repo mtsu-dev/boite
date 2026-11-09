@@ -240,18 +240,21 @@
   --ansi-bright-cyan: #29b8db;
   --ansi-bright-white: #ffffff;
   /* The inset panel the work sits in. */
-  /* Round 18 widens the steps: frame, page, card and raised fills each sit one clear tone apart,
-     surface-3 kept where muted text still clears its round 16 floor on it. */
-  --color-background: #151517;
+  /* Round 21 widens the ladder downward to about 4 L* a step: frame 0.9, page 5.2, card 8.9, raised 12.9,
+     so each layer reads as its own tone without glass or a glow. The pressed fill stays at 14.8, where the
+     secondary text still clears its floor on it (lib/contrast.test.ts). */
+  --color-background: #111114;
   /* The window's chrome: the app rail, the sidebar and the top bars on one
      near black, the work inset in panels of the page colour with a hairline. */
-  --color-frame: #0b0b0c;
+  --color-frame: #030306;
   --color-frame-edge: rgba(255, 255, 255, 0.09);
-  --color-surface: #1c1c1f;
+  --color-surface: #19191c;
   /* The two raised fills: a chip, a card, the composer; then a pressed or selected raise.
      The first sits a clear step over the page, so a card and the composer read off the timeline. */
   --color-surface-2: #212124;
   --color-surface-3: #252528;
+  /* A sheet or a dialog: half a step over the raised fill, so a menu inside it still reads as raised. */
+  --color-sheet: color-mix(in oklab, var(--color-surface-2), var(--color-surface-3) 50%);
   /* The two hairlines: a quiet separator, and an edge that must read. Round 15 lifts both one step. */
   --color-border: rgba(255, 255, 255, 0.09);
   --color-edge: rgba(255, 255, 255, 0.13);
@@ -341,14 +344,13 @@
   --instrument-meta-size: var(--text-meta);
   --instrument-leading: 1.5;
 
-  /* A changed line in a diff: the status colour mixed into the well's own fill, low enough that the
-     wash reads as the thread's grey with a cast, while the bar and the sign carry add and remove.
-     The words that changed take a deeper wash of the same. Code text on each keeps reading
-     contrast (lib/contrast.test.ts). Round 19 drew 7 and 26 percent. */
-  --diff-add-wash: color-mix(in srgb, var(--color-success) 5%, var(--color-surface-2));
-  --diff-remove-wash: color-mix(in srgb, var(--color-danger) 5%, var(--color-surface-2));
-  --diff-add-word: color-mix(in srgb, var(--color-success) 16%, var(--color-surface-2));
-  --diff-remove-word: color-mix(in srgb, var(--color-danger) 16%, var(--color-surface-2));
+  /* A changed line in a diff: the status colour mixed into the well's own fill, a wash the eye finds at a
+     glance (round 21: 5 and 16 percent read as no change at all), and the words that changed a deeper wash
+     of the same. Code keeps 12:1 on a line and 9:1 on a word, its line number 11:1 (lib/contrast.test.ts). */
+  --diff-add-wash: color-mix(in srgb, var(--color-success) 12%, var(--color-surface-2));
+  --diff-remove-wash: color-mix(in srgb, var(--color-danger) 12%, var(--color-surface-2));
+  --diff-add-word: color-mix(in srgb, var(--color-success) 24%, var(--color-surface-2));
+  --diff-remove-word: color-mix(in srgb, var(--color-danger) 24%, var(--color-surface-2));
 
   /* Lucide's line set in one voice (svg.lucide below): one stroke at 14 to 17 px, a heavier one under
      it and a lighter one over it, so every icon draws a line about 1.1 px wide whatever its size. */
@@ -418,7 +420,10 @@
   --color-composer-focus: rgba(255, 255, 255, 0.2);
   --radius-composer: 18px;
   --composer-glaze: none;
-  --shadow-composer: inset 0 1px 0 rgb(255 255 255 / 0.04), 0 10px 30px rgb(0 0 0 / 0.35);
+  /* The one soft elevation (round 21) for the composer card and a sheet: a top light no stronger than the
+     hairline, a contact shadow and a short falloff pulled in under the card, so it lifts without a glow. */
+  --elevation-soft: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 1px 2px rgb(0 0 0 / 0.35), 0 12px 28px -12px rgb(0 0 0 / 0.6);
+  --shadow-composer: var(--elevation-soft);
   /* The send button: the accent with a fine light along its top. */
   --shadow-send: inset 0 1px 0 rgb(255 255 255 / 0.35), 0 1px 2px rgb(0 0 0 / 0.5);
   --control-glaze: var(--composer-glaze);
@@ -615,20 +620,26 @@
 @media (max-width: 380px) {
   :root { --text-lg: 18px; }
 }
+/* The desktop's secondary tier (times, paths, menu descriptions, timers, sublines) half a step up and the
+   instrument meta in the secondary ink, so it reads like the phone's beside 14 px rows (round 21). 14 px
+   would equal the body and flatten title, row and meta into one size; Inter ships no 450 or 500 weight. */
+@media (min-width: 721px) {
+  :root { --text-meta: 13.5px; --instrument-meta: var(--color-muted-foreground); }
+}
 
 /* Theme families own their surface hierarchy, selection, code and status colours.
  * Community palettes are adapted for Boite's panels and readable UI text.
  * Sources and redistribution notices: public/theme-licenses.txt.
  */
 :root {
-  --palette-dark-default-background: #151517;
-  --palette-dark-default-frame: #0b0b0c;
+  --palette-dark-default-background: #111114;
+  --palette-dark-default-frame: #030306;
   --palette-dark-default-surface: #212124;
   --palette-dark-default-foreground: #ffffff;
   --palette-light-default-background: #f3f3f6;
-  --palette-light-default-frame: #e3e3e9;
+  --palette-light-default-frame: #dfdfe5;
   --palette-light-default-surface: #ffffff;
-  --palette-light-default-foreground: #141418;
+  --palette-light-default-foreground: #0b0b0e;
   --palette-grain-theme-color: #1a1a1e;
   /* The Default tile's status dots (ThemeColors.svelte): the app's own, kept apart from the palette roles so
      Default gains no details of its own. */
@@ -639,11 +650,11 @@
   /* dark-oled */
   --palette-dark-oled-background: #000000;
   --palette-dark-oled-frame: #000000;
-  --palette-dark-oled-surface: #0b0b0f;
+  --palette-dark-oled-surface: #151518;
   --palette-dark-oled-foreground: #e6e7eb;
   --palette-dark-oled-accent: #8cbcff;
-  --palette-dark-oled-surface-low: #000000;
-  --palette-dark-oled-surface-high: #15151a;
+  --palette-dark-oled-surface-low: #0d0d0d;
+  --palette-dark-oled-surface-high: #1c1c21;
   --palette-dark-oled-muted-foreground: #b6b9c4;
   --palette-dark-oled-subtle: #a7aab5;
   --palette-dark-oled-border: #232329;
@@ -661,12 +672,12 @@
 
   /* dark-catppuccin */
   --palette-dark-catppuccin-background: #1e1e2e;
-  --palette-dark-catppuccin-frame: #11111b;
-  --palette-dark-catppuccin-surface: #181825;
+  --palette-dark-catppuccin-frame: #15161f;
+  --palette-dark-catppuccin-surface: #2e2e3c;
   --palette-dark-catppuccin-foreground: #d0d9f6;
   --palette-dark-catppuccin-accent: #cba6f7;
-  --palette-dark-catppuccin-surface-low: #181825;
-  --palette-dark-catppuccin-surface-high: #313244;
+  --palette-dark-catppuccin-surface-low: #262533;
+  --palette-dark-catppuccin-surface-high: #343548;
   --palette-dark-catppuccin-muted-foreground: #c4cce8;
   --palette-dark-catppuccin-subtle: #b4bdd8;
   --palette-dark-catppuccin-border: #313244;
@@ -684,12 +695,12 @@
 
   /* light-catppuccin */
   --palette-light-catppuccin-background: #eff1f5;
-  --palette-light-catppuccin-frame: #dce0e8;
+  --palette-light-catppuccin-frame: #d9dde5;
   --palette-light-catppuccin-surface: #ffffff;
   --palette-light-catppuccin-foreground: #2d2f46;
   --palette-light-catppuccin-accent: #8839ef;
-  --palette-light-catppuccin-surface-low: #e6e9ef;
-  --palette-light-catppuccin-surface-high: #ccd0da;
+  --palette-light-catppuccin-surface-low: #f6f8fd;
+  --palette-light-catppuccin-surface-high: #e1e6f0;
   --palette-light-catppuccin-muted-foreground: #37394c;
   --palette-light-catppuccin-subtle: #424453;
   --palette-light-catppuccin-border: #ccd0da;
@@ -707,20 +718,20 @@
 
   /* dark-tokyo-night */
   --palette-dark-tokyo-night-background: #1a1b26;
-  --palette-dark-tokyo-night-frame: #16161e;
-  --palette-dark-tokyo-night-surface: #1f2335;
-  --palette-dark-tokyo-night-foreground: #c0caf5;
+  --palette-dark-tokyo-night-frame: #12121a;
+  --palette-dark-tokyo-night-surface: #272a3d;
+  --palette-dark-tokyo-night-foreground: #c6d0fb;
   --palette-dark-tokyo-night-accent: #7aa2f7;
-  --palette-dark-tokyo-night-surface-low: #16161e;
-  --palette-dark-tokyo-night-surface-high: #24283b;
-  --palette-dark-tokyo-night-muted-foreground: #b2bae0;
-  --palette-dark-tokyo-night-subtle: #a3abd2;
+  --palette-dark-tokyo-night-surface-low: #22222b;
+  --palette-dark-tokyo-night-surface-high: #2e3245;
+  --palette-dark-tokyo-night-muted-foreground: #bcc4ea;
+  --palette-dark-tokyo-night-subtle: #aeb6dd;
   --palette-dark-tokyo-night-border: #292e42;
   --palette-dark-tokyo-night-edge: #3b4261;
   --palette-dark-tokyo-night-frame-edge: #292e42;
   --palette-dark-tokyo-night-hover: #1f2335;
   --palette-dark-tokyo-night-active: #292e42;
-  --palette-dark-tokyo-night-selection: #283457;
+  --palette-dark-tokyo-night-selection: #343f63;
   --palette-dark-tokyo-night-accent-soft: #223251;
   --palette-dark-tokyo-night-code-background: #0c0e14;
   --palette-dark-tokyo-night-code-foreground: #c0caf5;
@@ -730,12 +741,12 @@
 
   /* light-tokyo-night */
   --palette-light-tokyo-night-background: #e1e2e7;
-  --palette-light-tokyo-night-frame: #d0d5e3;
-  --palette-light-tokyo-night-surface: #e9eaf0;
+  --palette-light-tokyo-night-frame: #c9cedc;
+  --palette-light-tokyo-night-surface: #eeeff5;
   --palette-light-tokyo-night-foreground: #0e2b59;
   --palette-light-tokyo-night-accent: #2e7de9;
-  --palette-light-tokyo-night-surface-low: #d0d5e3;
-  --palette-light-tokyo-night-surface-high: #c4c8da;
+  --palette-light-tokyo-night-surface-low: #e4e9f7;
+  --palette-light-tokyo-night-surface-high: #d2d6e9;
   --palette-light-tokyo-night-muted-foreground: #2a345a;
   --palette-light-tokyo-night-subtle: #393f5a;
   --palette-light-tokyo-night-border: #b4b5b9;
@@ -753,20 +764,20 @@
 
   /* dark-nord */
   --palette-dark-nord-background: #2e3440;
-  --palette-dark-nord-frame: #242933;
-  --palette-dark-nord-surface: #3b4252;
-  --palette-dark-nord-foreground: #f5f8fb;
+  --palette-dark-nord-frame: #252a34;
+  --palette-dark-nord-surface: #3e4555;
+  --palette-dark-nord-foreground: #f9fbfc;
   --palette-dark-nord-accent: #88c0d0;
-  --palette-dark-nord-surface-low: #2e3440;
-  --palette-dark-nord-surface-high: #434c5e;
-  --palette-dark-nord-muted-foreground: #e6ebf4;
-  --palette-dark-nord-subtle: #d4dbe8;
+  --palette-dark-nord-surface-low: #363c48;
+  --palette-dark-nord-surface-high: #444d5f;
+  --palette-dark-nord-muted-foreground: #eaeff8;
+  --palette-dark-nord-subtle: #d8dfec;
   --palette-dark-nord-border: #434c5e;
   --palette-dark-nord-edge: #4c566a;
   --palette-dark-nord-frame-edge: #3b4252;
   --palette-dark-nord-hover: #3b4252;
   --palette-dark-nord-active: #434c5e;
-  --palette-dark-nord-selection: #50596d;
+  --palette-dark-nord-selection: #525b6f;
   --palette-dark-nord-accent-soft: #354b58;
   --palette-dark-nord-code-background: #242933;
   --palette-dark-nord-code-foreground: #eceff4;
@@ -776,14 +787,14 @@
 
   /* light-nord */
   --palette-light-nord-background: #eceff4;
-  --palette-light-nord-frame: #d8dee9;
+  --palette-light-nord-frame: #d5dbe6;
   --palette-light-nord-surface: #ffffff;
   --palette-light-nord-foreground: #2e3440;
   --palette-light-nord-accent: #5e81ac;
-  --palette-light-nord-surface-low: #e5e9f0;
-  --palette-light-nord-surface-high: #d8dee9;
-  --palette-light-nord-muted-foreground: #3a4254;
-  --palette-light-nord-subtle: #434d60;
+  --palette-light-nord-surface-low: #f2f6fd;
+  --palette-light-nord-surface-high: #dee4ef;
+  --palette-light-nord-muted-foreground: #394153;
+  --palette-light-nord-subtle: #414b5e;
   --palette-light-nord-border: #d8dee9;
   --palette-light-nord-edge: #b5bfce;
   --palette-light-nord-frame-edge: #c4cdd9;
@@ -799,14 +810,14 @@
 
   /* dark-gruvbox */
   --palette-dark-gruvbox-background: #282828;
-  --palette-dark-gruvbox-frame: #1d2021;
-  --palette-dark-gruvbox-surface: #32302f;
-  --palette-dark-gruvbox-foreground: #ebdbb2;
+  --palette-dark-gruvbox-frame: #1c1f20;
+  --palette-dark-gruvbox-surface: #3a3837;
+  --palette-dark-gruvbox-foreground: #f4e3ba;
   --palette-dark-gruvbox-accent: #fe8019;
-  --palette-dark-gruvbox-surface-low: #282828;
-  --palette-dark-gruvbox-surface-high: #3c3836;
-  --palette-dark-gruvbox-muted-foreground: #dfceaa;
-  --palette-dark-gruvbox-subtle: #cebfa0;
+  --palette-dark-gruvbox-surface-low: #2f2f2f;
+  --palette-dark-gruvbox-surface-high: #433f3d;
+  --palette-dark-gruvbox-muted-foreground: #e8d7b3;
+  --palette-dark-gruvbox-subtle: #d7c8a9;
   --palette-dark-gruvbox-border: #3c3836;
   --palette-dark-gruvbox-edge: #504945;
   --palette-dark-gruvbox-frame-edge: #3c3836;
@@ -822,14 +833,14 @@
 
   /* light-gruvbox */
   --palette-light-gruvbox-background: #fbf1c7;
-  --palette-light-gruvbox-frame: #ebdbb2;
-  --palette-light-gruvbox-surface: #f9f5d7;
+  --palette-light-gruvbox-frame: #ecdcb3;
+  --palette-light-gruvbox-surface: #fffef8;
   --palette-light-gruvbox-foreground: #3a3735;
   --palette-light-gruvbox-accent: #af3a03;
-  --palette-light-gruvbox-surface-low: #f2e5bc;
-  --palette-light-gruvbox-surface-high: #ebdbb2;
+  --palette-light-gruvbox-surface-low: #fff7d4;
+  --palette-light-gruvbox-surface-high: #f4e4bb;
   --palette-light-gruvbox-muted-foreground: #47403c;
-  --palette-light-gruvbox-subtle: #534b45;
+  --palette-light-gruvbox-subtle: #524a44;
   --palette-light-gruvbox-border: #d5c4a1;
   --palette-light-gruvbox-edge: #bdae93;
   --palette-light-gruvbox-frame-edge: #d5c4a1;
@@ -845,12 +856,12 @@
 
   /* dark-amethyst */
   --palette-dark-amethyst-background: #181223;
-  --palette-dark-amethyst-frame: #100d19;
-  --palette-dark-amethyst-surface: #261d37;
+  --palette-dark-amethyst-frame: #090713;
+  --palette-dark-amethyst-surface: #29203a;
   --palette-dark-amethyst-foreground: #eee5ff;
   --palette-dark-amethyst-accent: #bfa1ff;
-  --palette-dark-amethyst-surface-low: #1d162b;
-  --palette-dark-amethyst-surface-high: #302442;
+  --palette-dark-amethyst-surface-low: #1f182e;
+  --palette-dark-amethyst-surface-high: #322644;
   --palette-dark-amethyst-muted-foreground: #d2c0ea;
   --palette-dark-amethyst-subtle: #c3b0db;
   --palette-dark-amethyst-border: #3b2a54;
@@ -867,15 +878,15 @@
   --palette-dark-amethyst-live: #e1c18b;
 
   /* light-amethyst */
-  --palette-light-amethyst-background: #fbf8ff;
-  --palette-light-amethyst-frame: #e8dff5;
+  --palette-light-amethyst-background: #f5f2f9;
+  --palette-light-amethyst-frame: #e5dcf2;
   --palette-light-amethyst-surface: #ffffff;
   --palette-light-amethyst-foreground: #3d2c56;
   --palette-light-amethyst-accent: #7048ad;
-  --palette-light-amethyst-surface-low: #f3edf9;
-  --palette-light-amethyst-surface-high: #ece3f5;
-  --palette-light-amethyst-muted-foreground: #4f3f5f;
-  --palette-light-amethyst-subtle: #5c496d;
+  --palette-light-amethyst-surface-low: #fdfaff;
+  --palette-light-amethyst-surface-high: #eee5f7;
+  --palette-light-amethyst-muted-foreground: #4d3d5d;
+  --palette-light-amethyst-subtle: #59466a;
   --palette-light-amethyst-border: #ded1ec;
   --palette-light-amethyst-edge: #c9b5dd;
   --palette-light-amethyst-frame-edge: #d9c9e9;
@@ -953,23 +964,26 @@ html[data-chat-width='full'] {
 /* Light, stamped by `lib/theme.ts` and by the boot script of `index.html`; dark stamps nothing. */
 [data-theme='light'] {
   --color-background: #f3f3f6;
-  --color-frame: #e3e3e9;
+  /* Round 21: the frame one step deeper (6.9 L* under the page); white is the ceiling above. */
+  --color-frame: #dfdfe5;
   --color-frame-edge: rgba(0, 0, 0, 0.14);
   --color-surface: #fafafb;
   --color-surface-2: #ffffff;
-  --color-surface-3: #ebebef;
+  --color-surface-3: #e9e9ee;
+  /* White has no step above it: a light sheet is the raised white, set apart by its elevation. */
+  --color-sheet: var(--color-surface-2);
   /* In light the raise is the white card over the grey frame. */
   --segment-on: var(--color-surface-2);
   --color-border: rgba(0, 0, 0, 0.095);
   --color-edge: rgba(0, 0, 0, 0.19);
   --color-hover: rgba(0, 0, 0, 0.04);
   --color-active: rgba(0, 0, 0, 0.07);
-  --color-foreground: #141418;
+  --color-foreground: #0b0b0e;
   /* Round 18: one step darker, so both tiers keep their floors on the deeper frame; round 19 one more,
-     secondary to 12.7:1, subtle to 11.2:1; round 20 one more, secondary to 13.2:1, subtle to 11.7:1,
-     each still 4 L* from the tier above. */
-  --color-muted-foreground: #1c1c21;
-  --color-subtle: #26262c;
+     secondary to 12.7:1, subtle to 11.2:1; round 20 one more, secondary to 13.2:1, subtle to 11.7:1;
+     round 21 one more for the deeper frame, each still 4 L* from the tier above. */
+  --color-muted-foreground: #17171c;
+  --color-subtle: #202026;
   --color-faint: #b4b4bb;
   --color-selection: rgba(28, 28, 33, 0.14);
   --color-terminal-background: var(--color-surface-2);
@@ -1018,7 +1032,7 @@ html[data-chat-width='full'] {
   --shadow-frame: inset 0 1px 0 rgb(255 255 255 / 0.9), 0 1px 2px rgb(0 0 0 / 0.09);
   --shadow-screen: -8px 0 24px -6px rgb(0 0 0 / 0.14);
   --color-composer-focus: rgba(0, 0, 0, 0.24);
-  --shadow-composer: inset 0 1px 0 rgb(255 255 255 / 0.8), 0 10px 30px rgb(0 0 0 / 0.07);
+  --elevation-soft: inset 0 1px 0 rgb(255 255 255 / 0.8), 0 1px 2px rgb(0 0 0 / 0.06), 0 12px 28px -12px rgb(0 0 0 / 0.16);
   --shadow-send: inset 0 1px 0 rgb(255 255 255 / 0.35), 0 1px 2px rgb(0 0 0 / 0.18);
   --shadow-control: inset 0 1px 0 rgb(255 255 255 / 0.7);
   color-scheme: light;
@@ -1345,6 +1359,16 @@ button.primary.send {
   button.primary.send:hover:not(:disabled) {
     background: var(--control-glaze) var(--color-control-primary-hover);
   }
+}
+
+/* A send that cannot send yet (an empty box, a thread still loading, a
+   machine away) is a quiet disc of the same size and place: the accent
+   lights only once a press would send. */
+button.primary.send:disabled {
+  background: color-mix(in oklab, var(--color-foreground) 8%, transparent);
+  border-color: transparent;
+  color: var(--color-subtle);
+  box-shadow: var(--shadow-control);
 }
 
 button.quiet,
@@ -1912,13 +1936,13 @@ tr:last-child td {
 .card-scope > .ui-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card-scope + .save-status { margin-left: 0; }
 
-/* Where a page's settings apply, under its title: this device, a machine, the account. */
+/* Where a page's settings apply, under every title: this device, every machine, a machine (its picker). */
 .settings .scope {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   margin-top: var(--space-1);
-  color: var(--color-subtle);
+  color: var(--color-muted-foreground);
   font-size: var(--text-meta);
 }
 
@@ -2625,6 +2649,8 @@ input[type=checkbox][role=switch]:disabled { opacity: .45; cursor: not-allowed; 
      over real top air, and the home indicator's room under its last row. The grabber sits out of the
      flow, so a grid or flex sheet keeps its own layout. */
   [data-mobile-sheet='true'] { position: fixed !important; max-width: none !important; box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain; border-width: 1px 0 0 !important; border-radius: var(--radius-xl) var(--radius-xl) 0 0 !important; padding-top: var(--space-6) !important; padding-bottom: max(var(--space-3), env(safe-area-inset-bottom)) !important; }
+  /* A sheet is the top of the ladder: the sheet fill and the one soft elevation (round 21). */
+  [data-mobile-sheet='true'] { background: var(--color-sheet) !important; box-shadow: var(--elevation-soft) !important; }
   [data-mobile-sheet='true']::before { content: ''; position: absolute; top: var(--space-2); left: calc(50% - 18px); width: 36px; height: 5px; border-radius: var(--radius-full); background: var(--color-edge); pointer-events: none; }
   /* A sheet rises from the bottom edge and goes back down, where its popover pops in place (lib/floating.ts). */
   [data-mobile-sheet='true'] { animation-name: sheet-up !important; animation-duration: var(--motion-duration) !important; animation-timing-function: var(--motion-curve) !important; }

@@ -284,7 +284,7 @@
           </Menu>
         </span>
       {/if}
-      <!-- The door to the side panel, on a phone too; the panel's own selector lists every panel and tool once it is open. -->
+      <!-- The door to the side panel, on a phone too; with a panel open it names it and switches it. -->
       {#if thread}<PanelDoor {store} count={panelCount} ontoggle={() => store.togglePanel()} testid="panel-toggle" />{/if}
 </div>
 

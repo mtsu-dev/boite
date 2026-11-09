@@ -210,8 +210,10 @@
         {/each}
       </div>
     </div>
-    <!-- A small window under the row: a paragraph set at the width in use, or at the one pointed at. -->
-    <div class="width-sample" data-testid="chat-width-sample" data-width={sampleWidth} aria-hidden="true"><p>{strings.settings.chatWidthSample}</p></div>
+    <!-- A small window under the row: a question and its reply set at the width in use, or at the one pointed at. -->
+    <div class="width-sample" data-testid="chat-width-sample" data-width={sampleWidth} aria-hidden="true">
+      <div class="sample-chat"><p class="sample-ask">{strings.settings.chatWidthAsk}</p><p class="sample-reply">{strings.settings.chatWidthSample}</p></div>
+    </div>
     {/if}
     {#if hasMaterial}
       <div class="switch-row">
@@ -329,16 +331,27 @@
   .sample.prose { font-size: var(--text-reading); line-height: var(--leading-reading); }
   .sample.code { font-size: var(--text-body); line-height: 1.5; }
   /* The chat width's sample: the window as a well, the paragraph at the column's share of a 1440 px window. */
+  /* The conversation in small: the card stands for the window, so each width keeps its proportion to it. */
   .width-sample { margin: 0 0 var(--space-2); padding: var(--space-3); border-radius: var(--radius-md); background: var(--color-background); box-shadow: inset 0 0 0 1px var(--color-border); }
-  .width-sample p { margin: 0 auto; max-width: 50%; color: var(--color-muted-foreground); font-size: var(--text-meta); line-height: 1.5; transition: max-width var(--dur-3) var(--ease-out-quint); }
-  .width-sample[data-width='wide'] p { max-width: 72%; }
-  .width-sample[data-width='full'] p { max-width: 100%; }
+  .sample-chat { display: flex; flex-direction: column; gap: var(--space-2); margin: 0 auto; max-width: 50%; transition: max-width var(--dur-3) var(--ease-out-quint); }
+  .width-sample[data-width='wide'] .sample-chat { max-width: 72%; }
+  .width-sample[data-width='full'] .sample-chat { max-width: 100%; }
+  .sample-chat p { margin: 0; font-size: var(--text-meta); line-height: 1.5; }
+  .sample-ask { align-self: flex-end; max-width: 85%; padding: 3px 10px; border-radius: var(--radius-md); background: var(--color-surface-3); color: var(--color-foreground); }
+  .sample-reply { color: var(--color-muted-foreground); }
   .glyph.buttons i { width: 2.5px; height: 2.5px; border-radius: 50%; background: currentColor; }
   .zoom button { display: inline-flex; align-items: center; justify-content: center; padding: 0 8px; }
   .zoom-error { margin: 0; color: var(--color-danger); font-size: var(--text-xs); overflow-wrap: anywhere; }
   .zoom .zoom-value { min-width: 56px; font-variant-numeric: tabular-nums; color: var(--color-foreground); }
   .control-group .switch-row :global(svg) { flex: none; color: var(--color-muted-foreground); }
   .control-group .switch-row .ui-label-box { gap: var(--space-3); }
+  /* Where the column is wide, the button groups pair up: a few short switch rows each, one under the other
+     they left the column's right half empty (round 21). The presets keep the whole width above them. */
+  @media (min-width: 1100px) {
+    .page .settings-stack { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: var(--space-4); align-items: start; max-width: var(--settings-width); }
+    .page .settings-stack > .card { margin-bottom: 0; }
+    .page .settings-stack > .card:first-child { grid-column: 1 / -1; }
+  }
   /* Scoped under the page so it outranks the shared row, which centres its children.
      On a phone a label sits above its choices: side by side, a French label was
      squeezed to one word a line and ran under the three-option control. */

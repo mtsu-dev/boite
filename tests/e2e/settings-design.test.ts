@@ -132,11 +132,11 @@ test("settings home keeps every tile's words inside it and centres its column", 
     await page.click("[data-testid=settings-tab-machines]");
     await page.waitFor('document.querySelector("[data-testid=machines-page] > section")');
     await centred("[data-testid=machines-page] > section");
-    // A page under the machine bar centres too, and the bar starts where the page does.
+    // A page of one machine centres too, its picker in the title's scope line, and the title starts where the page does.
     await page.click("[data-testid=settings-tab-resources]");
-    await page.waitFor('document.querySelector("[data-testid=settings-machine-bar] [data-testid=settings-machine]") && document.querySelector("[data-testid=resources-page] > *")');
+    await page.waitFor('document.querySelector("[data-testid=settings-scope] [data-testid=settings-machine]") && document.querySelector("[data-testid=resources-page] > *")');
     await centred("[data-testid=resources-page] > *");
-    const edges = JSON.parse(String(await page.evaluate(`JSON.stringify([document.querySelector('[data-testid=settings-machine]').getBoundingClientRect().left, document.querySelector('[data-testid=resources-page] > *').getBoundingClientRect().left])`)));
+    const edges = JSON.parse(String(await page.evaluate(`JSON.stringify([document.querySelector('[data-testid=settings-crumb] h1').getBoundingClientRect().left, document.querySelector('[data-testid=resources-page] > *').getBoundingClientRect().left])`)));
     expect(Math.abs(edges[0] - edges[1])).toBeLessThanOrEqual(2);
   } finally {
     await page.close();

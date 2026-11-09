@@ -13,12 +13,15 @@ export function composerPlaceholder(input: {
   replying: boolean;
   bot: string | null;
   offline: boolean;
+  /** The open thread's first page is still on its way: nothing can be sent to it yet. */
+  loading?: boolean;
   onThread: boolean;
   machine: string;
   provider: string | null;
 }): string {
   const t = strings.composer;
   if (input.target) return input.target.placeholder;
+  if (input.loading) return t.placeholderLoading;
   if (input.offline) return fill(input.onThread ? t.placeholderOffline : t.placeholderOfflineDraft, { machine: input.machine });
   const name = input.bot ?? input.provider ?? t.placeholderAgent;
   return fill(input.replying ? t.replyPlaceholder : t.placeholder, { name });

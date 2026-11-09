@@ -8,7 +8,8 @@
   import { threadTone } from '../../lib/thread-state';
   import { avatarLit, moodFacts } from '../../lib/avatar-lit';
   import StatusMark from '../StatusMark.svelte';
-  import Deferred, { parts } from '../Deferred.svelte';
+  import Deferred from '../Deferred.svelte';
+  import { parts } from '../../lib/deferred-parts';
   import type { RobotState } from './RobotFace.svelte';
 
   /**

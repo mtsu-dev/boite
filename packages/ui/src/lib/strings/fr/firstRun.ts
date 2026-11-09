@@ -14,6 +14,10 @@ export const fr: Translation = {
     installed: 'Installé',
     others: 'Autres agents',
     otherMachine: 'Connecter un autre ordinateur ou un téléphone',
-    marks: 'Dans vos listes, chaque fil porte son état :',
+    marks: 'Dans vos listes, chaque fil porte son état',
+    /** What each mark of the legend asks of you, beside its word. */
+    marksWaiting: 'Une réponse ou une permission vous attend',
+    marksWorking: 'L\'agent y travaille',
+    marksFailed: 'Il s\'est arrêté : ouvrez-le pour voir pourquoi',
   }
 };

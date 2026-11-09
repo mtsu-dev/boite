@@ -148,7 +148,7 @@
     >
       <!-- Every list row ends its title's line the same way: the mark when there is one, then the time of the
            last message. Activity keeps its own since when at the line's end (feed-side). -->
-      <ThreadHeadline {owner} {thread} {now} {open} tile={compact && !where ? project : undefined} {pullRequest} mark {ask}
+      <ThreadHeadline {owner} {thread} {now} {open} tile={compact && !where ? project : undefined} {pullRequest} mark {ask} offline={owner.connection !== 'ready'}
         at={detail ? undefined : thread.lastUserMessageAt ?? thread.createdAt} />
       {#if detail}
         <!-- Activity: who asks (the tile and the title, two lines of it) and what, on one line when it fits; the
@@ -208,11 +208,6 @@
     cursor: grabbing !important;
     user-select: none;
   }
-  /* Its machine dropped: the row reads dimmed, title and mark alike (its card header says "offline"), and still
-     opens, to read what is held and queue a prompt. */
-  .thread.offline .row {
-    opacity: 0.6;
-  }
   /* One line of 34 px: the title's 20 px line in 7 px of padding, the chat's looser rhythm rather than a packed
      table. A title too long for its line takes a second one. */
   .row {
@@ -252,6 +247,20 @@
   .feed .actions { top: calc(var(--feed-pad) + 10px - var(--act) / 2); }
   /* The pair answers what is asked, right under it: right-aligned on the row's edge, clear of the next row. */
   .feed-actions { padding: 0 var(--pad-x) var(--feed-pad); margin-top: -2px; }
+  /* Where Activity has room (ActivityList.svelte's three columns), the pair stands beside the text instead, centred
+     on the title's first line: the row takes the page's columns, its text, time and menu the first, the pair the
+     other two, the outline action in one and the solid one in the next, so every pair lines up. */
+  @container activity (min-width: 640px) {
+    .thread.feed { display: grid; grid-template-columns: subgrid; align-items: start; }
+    .thread.feed > .row, .feed-side, .feed .actions { grid-column: 1; grid-row: 1; }
+    /* In the flow of the text's cell, at its end: an absolute box would take the whole row as its edge. */
+    .feed-side { position: static; justify-self: end; }
+    .feed .actions { position: relative; top: auto; right: auto; justify-self: end; align-self: start; margin: calc(var(--feed-pad) + 10px - var(--act) / 2) 3px 0 0; }
+    .feed-actions { grid-column: 2 / -1; grid-row: 1; display: grid; grid-template-columns: subgrid; margin: 0; padding: calc(var(--feed-pad) + 10px - var(--control) / 2) var(--pad-x) 0 0; }
+    .feed-actions > :global(.decision-actions) { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; gap: 0; }
+    .feed-actions :global(.decision-actions > button) { grid-column: 2; }
+    .feed-actions :global(.decision-actions > button:not(:last-child)) { grid-column: 1; margin: 0 8px 0 var(--space-4); }
+  }
   /* Recent's second line, on the title's edge: where the row lives, in words, so no tile repeats it. */
   /* One fixed line, whatever it holds (a name, a machine with its icon, an Offline chip): every Recent row the same height,
      and room for the descenders the overflow would cut. */
@@ -271,7 +280,7 @@
      opens 5 px down and their middle sits 0.36 em under that. */
   .thread:not(.feed) .row :global(.headline) { align-items: flex-start; padding-top: 5px; }
   .thread:not(.feed) .row :global(.headline .title) { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; padding-bottom: 0.25em; margin-bottom: -0.25em; }
-  .thread:not(.feed) .row :global(.headline > :is(.when, .at, .bot, .draft, .pin, .pr)) { height: 20px; margin-top: calc(0.36 * var(--text-body) - 10px); }
+  .thread:not(.feed) .row :global(.headline > :is(.when, .at, .bot, .draft, .pin, .pr, .offline-chip)) { height: 20px; margin-top: calc(0.36 * var(--text-body) - 10px); }
   .thread:not(.feed) .row :global(.headline > .at) { line-height: 20px; }
   .thread:not(.feed) .row :global(.headline > .tile) { margin-top: calc(0.36 * var(--text-body) - 8px); }
   /* The Recent list keeps the cards' insets and gaps, so its titles get the same room (about 30 characters). */

@@ -24,7 +24,8 @@
   import MachineStatus from './MachineStatus.svelte';
   import WhipButton from './WhipButton.svelte';
   import FailMark from './FailMark.svelte';
-  import Deferred, { parts } from './Deferred.svelte';
+  import Deferred from './Deferred.svelte';
+  import { parts } from '../lib/deferred-parts';
 
   /**
    * The column down the window's left edge, on a desktop, the same in every

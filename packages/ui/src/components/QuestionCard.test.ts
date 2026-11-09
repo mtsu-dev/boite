@@ -140,10 +140,10 @@ test('a docked question with options keeps its own Answer while the composer is 
   expect(document.querySelector('[data-testid=question-how]')?.textContent).toBe('Pick one, then press Answer');
   options()[1]?.click();
   flushSync();
-  // One choice too: its row fills and its keycap turns to a check.
+  // One choice too: its row fills and its ring turns to a solid check.
   expect(options()[1]?.classList.contains('picked')).toBe(true);
-  expect(options()[1]?.querySelector('kbd svg')).not.toBeNull();
-  expect(options()[0]?.querySelector('kbd svg')).toBeNull();
+  expect(options()[1]?.querySelector('.box.round svg')).not.toBeNull();
+  expect(options()[0]?.querySelector('.box.round svg')).toBeNull();
   submit().click();
   flushSync();
   expect(sent).toEqual([['long']]);
@@ -224,18 +224,21 @@ test('several options are kept at once when the question takes several', () => {
   expect(options().every(option => option.getAttribute('role') === 'checkbox')).toBe(true);
   // The card says what a pick does: it marks rows, the card's Answer sends them.
   expect(document.querySelector('[data-testid=question-how]')?.textContent).toBe('Pick any, then press Answer');
-  // Docked, each row shows its key until it is picked, then a check.
-  expect(document.querySelector('kbd svg')).toBeNull();
-  expect(options().map(option => option.querySelector('kbd')?.textContent)).toEqual(['1', '2']);
+  // Docked, each row leads with an empty square, a choice before any pick, and a check once picked;
+  // its key stays a quiet hint at the row's end, never the mark of the choice.
+  expect(options().every(option => option.firstElementChild?.classList.contains('box') && !option.querySelector('.box')?.classList.contains('round'))).toBe(true);
+  expect(document.querySelector('.box svg')).toBeNull();
+  expect(options().map(option => option.lastElementChild?.tagName === 'KBD' ? option.lastElementChild.textContent : null)).toEqual(['1', '2']);
   options()[0]?.click();
   options()[1]?.click();
   flushSync();
-  expect(document.querySelectorAll('[aria-checked=true] kbd svg')).toHaveLength(2);
+  expect(document.querySelectorAll('[aria-checked=true] .box svg')).toHaveLength(2);
+  expect(document.querySelector('kbd svg')).toBeNull();
   options()[0]?.click();
   flushSync();
   expect(options()[0]?.getAttribute('aria-checked')).toBe('false');
-  expect(options()[0]?.querySelector('kbd svg')).toBeNull();
-  expect(options()[1]?.querySelector('kbd svg')).not.toBeNull();
+  expect(options()[0]?.querySelector('.box svg')).toBeNull();
+  expect(options()[1]?.querySelector('.box svg')).not.toBeNull();
   options()[0]?.click();
   flushSync();
   submit().click();

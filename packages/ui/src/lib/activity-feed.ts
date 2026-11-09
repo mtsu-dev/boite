@@ -50,7 +50,7 @@ type Answering = Requests & {
 };
 
 /**
- * The outline action beside a row's primary (Allow, Answer), as the composer pairs Deny with Allow once: it settles
+ * The outline action beside a row's primary (Allow once, Answer), as the composer pairs Deny with Allow once: it settles
  * the thread's own request where it is listed. Null when the request is not held here (a sub-agent's only) or the
  * primary is not a decision (Review).
  */
@@ -64,6 +64,11 @@ export function feedSecondary(owner: Answering, threadId: ThreadSummary['id'], v
     return question ? { kind: 'skip', run: () => owner.skipQuestion(threadId, question.id) } : null;
   }
   return null;
+}
+
+/** A verb's words on its button: an approval reads "Allow once", the thread's own decision word, so the scope is the same everywhere. */
+export function feedVerbLabel(verb: FeedVerb | FeedSecondary): string {
+  return verb === 'allow' ? strings.chat.allowOnce : strings.mobile.feed.verb[verb];
 }
 
 /** Why the thread waits on the user, in a few words, and since when; null when its request is not known here. */

@@ -244,4 +244,8 @@ test('on a phone too, a page of one machine is picked above it without moving th
   await waitFor(() => remote.store.settings?.muteAgents === false);
   expect(store.settings?.muteAgents).toBe(true);
   expect(workspace.active).toBe(store);
+  // Round 21: on a page that changes one machine whole, the header's scope word is the picker, and there is one.
+  store.showSettings('voice');
+  await waitFor(() => document.querySelector('[data-testid=mobile-settings-page-scope] [data-testid=settings-machine]') !== null);
+  expect(document.querySelectorAll('[data-testid=settings-machine]')).toHaveLength(1);
 });

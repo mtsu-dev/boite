@@ -1,7 +1,7 @@
 import { expect, vi } from 'vitest';
 import { flushSync } from 'svelte';
 import { store } from '../lib/store.svelte';
-import { strings } from '../lib/strings';
+import { fill, strings } from '../lib/strings';
 import { effortDots, effortPicked, groupLabels, press, query, seats, shownModels, test, tiles, type, waitFor } from '../test/app';
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
@@ -50,16 +50,25 @@ test('the picker rails the providers as logos and gives the shown one its accoun
   // On the provider's own login the chip names the model alone.
   expect(document.querySelector('[data-testid=composer-picker-account]')).toBeNull();
   expect(shownModels()).toEqual(['claude-fable-5-1', 'claude-opus-5-5', 'claude-sonnet-5-5']);
+  // The sheet's head says what runs now in words: the model, then its provider and the login.
+  const head = query('[data-testid=picker-current]');
+  expect(head.querySelector('.name')?.textContent).toBe(query('[data-testid=composer-picker] .label').textContent?.trim());
+  expect(head.querySelector('.sub')?.textContent).toMatch(/^Claude · \S/);
+  expect(document.querySelector('[data-testid=picker-back]')).toBeNull();
 
-  // One account: nothing beside the name.
+  // One account: nothing beside the name. Another provider opened in place offers one row back.
   query<HTMLButtonElement>('[data-testid=composer-picker-menu] [data-provider=echo]').click();
   await waitFor(() => shownModels().length === 1);
   expect(seats()).toEqual([]);
+  expect(query('[data-testid=picker-back]').textContent).toBe(fill(strings.composer.backTo, { provider: 'Claude' }));
 
   query<HTMLButtonElement>('[data-testid=composer-picker-menu] [data-provider=claude]').click();
   await waitFor(() => shownModels().length === 3);
+  // Older models in plain words, with one line saying what they are.
+  expect(query('[data-testid=picker-legacy]').textContent?.trim()).toBe(strings.composer.olderModels);
   query<HTMLButtonElement>('[data-testid=picker-legacy]').click();
   await waitFor(() => document.querySelectorAll('[data-model]').length === 7);
+  expect(query('[data-testid=picker-legacy-help]').textContent).toBe(strings.composer.olderModelsHelp);
 
   // The second account of the same provider, then a model: one thread with both.
   query<HTMLButtonElement>('[data-instance="claude::a-claude-side"]').click();
@@ -140,7 +149,7 @@ test('past twelve models the column gets a search field, prefix groups and keybo
   // Search is available even on the shorter Claude list.
   expect(document.querySelector('[data-testid=picker-search]')).not.toBeNull();
   await type(query<HTMLInputElement>('[data-testid=picker-search]'), 'opus 4.8');
-  // A query searches every provider's list, each under one line naming it, the shown one first.
+  // A query searches every provider's list, each under one line naming it, the one in use first.
   await waitFor(() => foundIn('claude').length === 1);
   expect(foundIn('claude')).toEqual(['claude-opus-4-8']);
   expect(query('[data-testid=picker-found] [data-source]').getAttribute('data-source')).toBe('claude');
@@ -165,8 +174,9 @@ test('past twelve models the column gets a search field, prefix groups and keybo
 
   await type(search, 'sonnet');
   await waitFor(() => foundIn('opencode').length === 3);
-  // The shown list answers first, the agent's own default pinned first whatever the query.
-  expect(query('[data-testid=picker-found] [data-source]').getAttribute('data-source')).toBe('opencode');
+  // The provider in use answers first whichever list is open, so the groups keep their places;
+  // in its own group the agent's default is pinned first whatever the query.
+  expect(query('[data-testid=picker-found] [data-source]').getAttribute('data-source')).toBe('claude');
   expect(foundIn('opencode')).toEqual([
     'anthropic/claude-sonnet-5',
     'opencode/claude-sonnet-5',
@@ -176,8 +186,8 @@ test('past twelve models the column gets a search field, prefix groups and keybo
   // Another provider's matches follow under their own line.
   expect(foundIn('claude')).toContain('claude-sonnet-5-5');
 
-  // Down onto the first named match, Enter to take it.
-  press('ArrowDown');
+  // Down past the provider in use onto the open list's first match, Enter to take it.
+  for (let step = 0; step <= foundIn('claude').length; step++) press('ArrowDown');
   expect((document.activeElement as HTMLElement).getAttribute('data-model')).toBe('anthropic/claude-sonnet-5');
   press('Enter');
   await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') === null);

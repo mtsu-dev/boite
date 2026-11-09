@@ -7,6 +7,7 @@
   import { diffCounts, diffRows, diffRowsOf, splitRows, type DiffRow, type DiffSource } from '../lib/diff';
   import { diffPrefs } from '../lib/diff-prefs.svelte';
   import { markHtml, markText, wordMarks } from '../lib/diff-words';
+  import { breakAfterOperators, escapeCode } from '../lib/diff-breaks';
   import DiffOptions from './DiffOptions.svelte';
   import ChangeCount from './ChangeCount.svelte';
   import { fill, strings } from '../lib/strings';
@@ -75,6 +76,19 @@
     return row.kind === 'remove' ? oldCode?.[row.oldLine - 1] : newCode?.[row.newLine - 1];
   }
 
+  /**
+   * A line's markup: the grammar's spans, or the escaped text before it has run, the changed words marked
+   * (lib/diff-words) and a break opportunity after each operator (lib/diff-breaks), so a wrapped line
+   * breaks at a space or an operator, never inside a name. The marks and breaks add only their own tags.
+   */
+  function lineHtml(row: Exclude<DiffRow, { kind: 'gap' }>): string {
+    const html = codeOf(row);
+    const marks = words.get(row);
+    if (html !== undefined) return breakAfterOperators(marks ? markHtml(html, marks) : html);
+    if (!marks) return breakAfterOperators(escapeCode(row.text));
+    return breakAfterOperators(markText(row.text, marks).map((part) => (part.marked ? `<mark class="word">${escapeCode(part.text)}</mark>` : escapeCode(part.text))).join(''));
+  }
+
   /** The gutter of a row: what a patch puts in its first column. */
   function sign(kind: string): string {
     if (kind === 'add') return '+';
@@ -93,7 +107,7 @@
       <DiffOptions split={splittable} />
     </div>
   {/if}
-  <div class="rows mono">
+  <div class="well"><div class="rows mono">
     {#if rows.length === 0 && diffPrefs.ignoreWhitespace && oldText !== newText}
       <p class="same" data-testid="diff-whitespace-only">{strings.chat.diffWhitespaceOnly}</p>
     {:else if split}
@@ -125,7 +139,7 @@
         <span class="ui-label">{fill(strings.chat.diffShowAll, { count: String(rows.length) })}</span>
       </button>
     {/if}
-  </div>
+  </div></div>
 </div>
 
 {#snippet gap(hidden: number)}
@@ -137,10 +151,8 @@
 {/snippet}
 
 {#snippet code(row: Exclude<DiffRow, { kind: 'gap' }>)}
-  {@const html = codeOf(row)}
-  {@const marks = words.get(row)}
-  <!-- highlightCode escapes source text before adding its token spans; the marks add only their own tags. -->
-  {#if html !== undefined}{@html marks ? markHtml(html, marks) : html}{:else if marks}{#each markText(row.text, marks) as part, index (index)}{#if part.marked}<mark class="word">{part.text}</mark>{:else}{part.text}{/if}{/each}{:else}{row.text}{/if}
+  <!-- highlightCode escapes source text before adding its token spans, and lineHtml escapes a plain line. -->
+  {@html lineHtml(row)}
 {/snippet}
 
 {#snippet side(row: Exclude<DiffRow, { kind: 'gap' }> | null, which: 'old' | 'new')}
@@ -244,12 +256,13 @@
     font-size: var(--text-sm);
   }
 
+  /* The line number in the secondary ink (round 21): read beside the code, not hunted for. */
   .num {
     flex: none;
     width: var(--num-w);
     padding-right: 8px;
     text-align: right;
-    color: var(--color-subtle);
+    color: var(--color-muted-foreground);
     font-variant-numeric: tabular-nums;
     user-select: none;
     background: var(--row-bg);
@@ -264,8 +277,8 @@
     background: var(--row-bg);
   }
 
-  /* Split halves and the wrapped layout: a line breaks between words first,
-     inside one only when it alone is wider than the column. A wrapped line
+  /* Split halves and the wrapped layout: a line breaks at a space or after an operator first (the <wbr>
+     of lib/diff-breaks), inside a name only when it alone is wider than the column. A wrapped line
      hangs 2ch in under its first, and only the first carries a number, so a
      continuation never reads as a line of its own. */
   .text {
@@ -289,8 +302,8 @@
   }
 
   /* The bar rides on the number, which stays put while the code scrolls sideways. */
-  .row.add .num { box-shadow: inset 2px 0 0 var(--color-success); }
-  .row.remove .num { box-shadow: inset 2px 0 0 var(--color-danger); }
+  .row.add .num { box-shadow: inset 3px 0 0 var(--color-success); }
+  .row.remove .num { box-shadow: inset 3px 0 0 var(--color-danger); }
 
   /* The words that changed inside a changed line: a deeper wash of the line's own status colour. */
   .text :global(mark.word) {
@@ -324,7 +337,31 @@
      every row's fill reaches the end. "Wrap lines" and side by side wrap. */
   [data-layout='unified'] .rows { display: grid; grid-template-columns: minmax(100%, max-content); align-content: start; overflow-x: auto; }
   [data-layout='unified'] .text { padding-left: 0; text-indent: 0; white-space: pre; overflow-wrap: normal; }
+  /* Chrome breaks at a <wbr> even under white-space: pre; one row a line means none of them. */
+  [data-layout='unified'] .text :global(wbr) { display: none; }
   [data-layout='unified'] .num { position: sticky; left: 0; z-index: 1; }
   [data-layout='unified'] .gutter { position: sticky; left: var(--num-w); z-index: 1; }
   [data-layout='unified'] .more { justify-self: start; }
+
+  /* One line a row runs past the right edge: a fade there says the line goes on, gone once scrolled to its
+     end. It follows the rows' own sideways scroll, and a diff with nothing past the edge never draws it. */
+  .well { position: relative; }
+  @supports (animation-timeline: scroll()) {
+    .well { timeline-scope: --diff-x; }
+    [data-layout='unified'] .rows { scroll-timeline: --diff-x x; }
+    [data-layout='unified'] .well::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: 28px;
+      background: linear-gradient(to left, var(--color-surface-2), transparent);
+      pointer-events: none;
+      opacity: 0;
+      animation: scroll-edge-out linear both;
+      animation-timeline: --diff-x;
+      animation-range: calc(100% - 28px) 100%;
+    }
+  }
 </style>

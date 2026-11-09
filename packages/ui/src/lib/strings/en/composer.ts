@@ -27,11 +27,13 @@ export const strings = {
     /** A bot's model, effort and permission chips: read at rest, changed in its settings. */
     botSettings: "Set in {name}'s settings",
     /** The same chips while the bot's account is gone: the banner above holds the remedy. */
-    botAccountGone: "{name}'s account is gone: pick another account",
+    botAccountGone: "{name}'s account was removed. Pick another account to continue.",
     /** The box at rest, on a new conversation or one under way: who reads the message. */
     placeholder: 'Message {name}',
     /** `{name}` in the two placeholders when the provider is unknown. */
     placeholderAgent: 'the agent',
+    /** The field while the open thread's first page is on its way; Send waits for it. */
+    placeholderLoading: 'Loading the conversation',
     placeholderOffline: '{machine} is offline: messages wait here and go out when it reconnects',
     placeholderOfflineDraft: '{machine} is offline: the conversation starts when it reconnects',
     send: 'Send',
@@ -67,7 +69,13 @@ export const strings = {
     noModels: 'No model matches',
     noModelsAvailable: 'The agent has not listed any models. Refresh to retry.',
     showAllModels: 'Show all {count} models',
-    legacyModels: 'Legacy models',
+    olderModels: 'Older models',
+    /** The older models' one line of help, under their title. */
+    olderModelsHelp: 'Still offered by the provider, no longer its latest.',
+    /** The model sheet's head: what runs now. */
+    inUse: 'In use',
+    /** The row back to the provider in use, from another one opened in place. */
+    backTo: 'Back to {provider}',
     refreshModels: 'Refresh models',
     probing: "Reading the agent's models",
     notInstalled: 'Not installed on this machine',

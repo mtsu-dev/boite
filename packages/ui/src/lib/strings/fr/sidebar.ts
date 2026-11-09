@@ -18,6 +18,8 @@ export const fr: Translation = {
     laterProjectsHint: 'Les conversations archivées pour plus tard, dans les projets où rien d’autre n’est ouvert.',
     idleProjectsHint: 'Rien à faire ici : aucune conversation ouverte ou mise de côté. Choisissez-en un pour lancer une conversation.',
     filter: 'Filtrer',
+    filterOn: 'Filtre : {name}',
+    filterWorking: 'En cours',
     groupingOptions: "Options d'affichage",
     threads: 'Conversations',
     surfaceWorking: '{count} au travail',

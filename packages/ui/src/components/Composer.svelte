@@ -7,7 +7,6 @@
   import { AgentsView, agentOfThread } from '../lib/agents.svelte';
   import { routeGone } from '../lib/agent-route';
   import { composerPlaceholder } from '../lib/composer-placeholder';
-  import { collapsesOnLeave } from '../lib/arrival';
   import { readyToSend, receiveDroppedFiles, takeFiles } from '../lib/composer-attachments';
   import { rewindComposerEdit } from '../lib/composer-edit';
   import { editWhole } from '../lib/reading-window';
@@ -20,30 +19,26 @@
   import { focusInitial, focusWithin } from '../lib/focus';
   import { touchScreen } from '../lib/device';
   import { noteTyping, repliesOf, replyTarget, sendAnswer } from '../lib/question-reply.svelte';
-  import { Check } from '@lucide/svelte';
   import { emptyBox, returnPrompt, sendNowAction, sentPrompts, type ComposerState, type SentPrompt } from '../lib/composer-queue';
   import { rankItems, type PaletteItem } from '../lib/palette';
   import { clearStash, DRAFT_STASH_KEY, readStash, writeStash } from '../lib/prefs';
   import { claudeKeywords, promptSegments } from '../lib/message-display';
-  import { fill, strings } from '../lib/strings';
+  import { strings } from '../lib/strings';
   import type { Choice, Store } from '../lib/store.svelte';
   import { machineName, workspace } from '../lib/workspace.svelte';
   import ComposerAttachments from './ComposerAttachments.svelte';
-  import ComposerImageReferences from './ComposerImageReferences.svelte';
   import ComposerBar from './ComposerBar.svelte';
   import ComposerIntent from './ComposerIntent.svelte';
   import ComposerQueueRegion from './ComposerQueueRegion.svelte';
   import ComposerStrip from './ComposerStrip.svelte';
-  import AgentDock from './AgentDock.svelte';
+  import ComposerDeck from './ComposerDeck.svelte';
+  import ComposerField from './ComposerField.svelte';
   import ComposerSpeechPreview from './ComposerSpeechPreview.svelte';
   import MentionMenu from './MentionMenu.svelte';
   import SlashMenu from './SlashMenu.svelte';
-  import ThreadActivity from './ThreadActivity.svelte';
-  import Deferred from './Deferred.svelte';
-  import { permissionCard, pickOption, prefetchPermissionCard } from '../lib/composer-dock';
+  import { pickOption } from '../lib/composer-dock';
   import SideAnswer from './SideAnswer.svelte';
   import { ComposerSide } from '../lib/composer-side.svelte';
-  import PreviewReferences from './PreviewReferences.svelte';
   import { chipChoice, queuedChoice, sendToTarget, type ComposerTarget } from '../lib/composer-target';
 
   /**
@@ -156,6 +151,8 @@
    * (`lib/question-reply.svelte.ts`). Editing a sent message takes precedence.
    */
   let reply = $derived(target ? null : replyTarget(store));
+  /** The open thread's first page is still on its way: the field says so and Send waits (ChatView draws the shapes meanwhile). */
+  let loadingThread = $derived(!!thread && store.loadingThreadId === thread.id && thread.messages.length === 0);
   // An answer counts the card's picks, needs no model and cannot wait in the outbox.
   let sendable = $derived(
     (text.trim().length > 0 || attachments.length > 0 || (reply ? !!repliesOf(store).picks[reply.id]?.length : previewReferences.length > 0)) &&
@@ -163,8 +160,7 @@
       !attachments.some(unresolvedAssetId) &&
       (reply !== null || choice !== null || target !== null) &&
       (store.connection === 'ready' || (offline && !reply)) &&
-      !picking &&
-      !dictating &&
+      !picking && !dictating && !loadingThread &&
       // A prompt on its way holds back an edit, an answer and a draft's second prompt; on a thread the next one queues.
       !(composer?.sending && (composer.editing || reply !== null || !thread))
   );
@@ -187,18 +183,6 @@
   let permission = $derived(permissions[0] ?? null);
   /** The question on screen at the top of the box, whose options 1 to 9 pick while the field is empty. */
   let docked = $derived(target ? undefined : store.pendingQuestions.find((question) => question.id === repliesOf(store).docked && question.threadId === thread?.id));
-  /**
-   * The answer just sent while the agent works, by any of its controls
-   * (`sendAnswer`): one quiet line where the question stood, so the user sees
-   * it went, while the working line goes on. It leaves when the turn ends,
-   * another decision docks or the thread changes.
-   */
-  // Two steps: state a derived creates is not a dependency of that same derived, and the first read may create the replies.
-  let replies = $derived(repliesOf(store));
-  let receipt = $derived(replies.receipt);
-  let receiptShown = $derived(receipt !== null && receipt.threadId === thread?.id && store.busy && !docked && !permission);
-  $effect(() => { if (receipt && (receipt.threadId !== thread?.id || !store.busy)) replies.receipt = null; });
-  $effect(prefetchPermissionCard);
 
   /**
    * The core runs nothing here: the thread's folder or worktree is gone, or
@@ -209,7 +193,7 @@
   let stopped = $derived(!target && (!!thread?.worktreeRemoved || (store.openProject?.missing === true && !thread?.agentSessionId)
     || (!!thread?.contactHold && !thread.archived)));
 
-  let placeholder = $derived(composerPlaceholder({ target, replying: !!reply || !!permission || (!!thread && store.busy), bot, offline, onThread: !!thread,
+  let placeholder = $derived(composerPlaceholder({ target, replying: !!reply || !!permission || (!!thread && store.busy), bot, offline, loading: loadingThread, onThread: !!thread,
     machine: machineLabel, provider: provider?.name ?? null }));
 
   // -- the slash menu -----------------------------------------------------------
@@ -788,15 +772,7 @@
     onkeydown(event);
     event.stopPropagation();
   }}>
-    <!-- The card's head, under one height budget: the subagents' quiet rows, then the decision, the one raised card. -->
-    <div class="deck" {@attach collapsesOnLeave(() => permissions.length + store.pendingQuestions.filter((question) => question.threadId === thread?.id).length, () => thread?.id)}>
-    {#if thread}<AgentDock {store} threadId={thread.id} bind:height={deckRoom} />{/if}
-    {#if permission}{#key permission.id}<Deferred part={permissionCard}>{#snippet children(PermissionCard)}<PermissionCard docked toolName={permission.toolName} decision={null} request={permission} answer={(decision) => store.answer(permission.id, decision)} index={1} total={permissions.length} />{/snippet}</Deferred>{/key}{/if}
-    {#if !target}<ThreadActivity {store} />{/if}
-    {#if receiptShown && receipt}
-      <p class="receipt ui-label" data-testid="answer-receipt" role="status"><Check size={14} strokeWidth={2} aria-hidden="true" /><span>{fill(strings.chat.questionAnswered, { answer: receipt.said })}</span></p>
-    {/if}
-    </div>
+    <ComposerDeck {store} {thread} agentBox={!!target} {permissions} {docked} bind:room={deckRoom} />
     <ComposerQueueRegion {store} {key} {thread} {composer} machine={machineLabel} {sendNow}
       blocked={text.length > 0 || attachments.length > 0 || previewReferences.length > 0} onrestore={restoreQueued} onsendnow={sendQueuedNow} />
     <ComposerIntent editing={!!composer?.editing} oncancel={cancelEdit} />
@@ -806,61 +782,20 @@
       {#key composer}<ComposerAttachments bind:this={attachmentStrip} {attachments} highlighted={highlightedImage} onremove={removeAttachment} onfocus={() => focusInitial(box, box?.closest<HTMLElement>('[data-testid=composer]'))} />{/key}
     {/if}
 
-    <div class="input-wrap">
-    {#if highlighted}
-      <div class="input-highlight" aria-hidden={previewReferences.length || attachments.length ? undefined : true} data-testid="composer-highlight" style:right={`${inputGutter}px`}>
-        <div class="input-paint input-mirror" style:transform={`translateY(${-inputScroll}px)`}><PreviewReferences {text} references={previewReferences} {store} threadId={key} editing {keywords} command={commandToken || undefined} onreference={(reference) => {
-          if (box && reference.mention) { box.focus({ preventScroll: true }); box.setSelectionRange(reference.mention.end, reference.mention.end); track(); }
-        }}>{#snippet paint(parts)}<ComposerImageReferences segments={parts} {attachments} onopen={(attachment) => attachmentStrip?.open(attachment)} onhover={(attachment) => highlightedImage = attachment} />{/snippet}</PreviewReferences>{'\n'}</div>
-      </div>
-    {/if}
-    <textarea
-      class:highlighted
-      bind:this={box}
-      value={text}
+    <ComposerField bind:box {store} {key} {text} {highlighted} {keywords} command={commandToken} references={previewReferences} {attachments}
+      gutter={inputGutter} scroll={inputScroll} {placeholder} disabled={stopped}
+      onreference={(reference) => { if (box && reference.mention) { box.focus({ preventScroll: true }); box.setSelectionRange(reference.mention.end, reference.mention.end); track(); } }}
+      onopenimage={(attachment) => attachmentStrip?.open(attachment)} onhoverimage={(attachment) => highlightedImage = attachment}
       onbeforeinput={(event) => {
         if (event.inputType === 'historyUndo' || event.inputType === 'historyRedo') { event.preventDefault(); travel(editing(), event.inputType === 'historyUndo'); return; }
         pendingEdit = boxSelection(box);
       }}
-      oncopy={(event) => copySelection(editing(), event, false)}
-      oncut={(event) => copySelection(editing(), event, true)}
-      {oninput}
-      {onkeydown}
-      {onpaste}
-      onkeyup={track}
-      onscroll={syncInput}
-      onclick={track}
-      onselect={track}
-      onfocus={() => {
-        focused = true;
-        track();
-      }}
-      onblur={() => { track(); focused = false; }}
-      rows="1"
-      disabled={stopped}
-      {placeholder}
-      aria-label={placeholder}
-      data-testid="composer-input"
-      spellcheck={!commandToken}
-    ></textarea>
-    </div>
+      oncopy={(event) => copySelection(editing(), event, false)} oncut={(event) => copySelection(editing(), event, true)}
+      {oninput} {onkeydown} {onpaste} ontrack={track} onscroll={syncInput}
+      onfocus={() => { focused = true; track(); }} onblur={() => { track(); focused = false; }} />
 
-    <SlashMenu
-      open={slashOpen}
-      items={slashItems}
-      selected={slashAt}
-      onpick={pickSlash}
-      onhover={(index) => (slashAt = index)}
-    />
-
-    <MentionMenu
-      open={mentionOpen}
-      items={mentions.items}
-      selected={mentions.at}
-      more={mentions.more}
-      onpick={pickMention}
-      onhover={(index) => (mentions.at = index)}
-    />
+    <SlashMenu open={slashOpen} items={slashItems} selected={slashAt} onpick={pickSlash} onhover={(index) => (slashAt = index)} />
+    <MentionMenu open={mentionOpen} items={mentions.items} selected={mentions.at} more={mentions.more} onpick={pickMention} onhover={(index) => (mentions.at = index)} />
 
     <ComposerSpeechPreview status={speechStatus} preview={speechPreview} error={speechError} />
 
@@ -919,116 +854,25 @@
   /* A card the script focused for a touch screen shows no ring: only a key lights it. */
   .composer:not(.keys):focus-visible { outline: none; }
 
-  /* The card's head under one budget: on a desktop the whole dock keeps to
-     about half of the conversation (`--dock-budget`), room enough for a
-     question's four choices; the subagents' rows keep their size and the
-     rest scrolls inside it. Empty, it takes no room. */
-  .deck { display: flex; flex-direction: column; --dock-inset: 14px; --decision-fill: color-mix(in srgb, var(--color-composer-surface), var(--color-foreground) 9%); }
-  .deck > :global(*) { flex: none; }
-  .deck > :global(:is(.activity, .decision-card)) { flex: 0 1 auto; min-height: 0; }
-  @media (min-width: 721px) {
-    .deck { --dock-budget: 55dvh; max-height: max(160px, calc(var(--dock-budget) - 126px)); }
-  }
-  /* The decision is the strongest surface of the card: a raised tile with a
-     faint light on its top edge, inset from the card's sides. The subagents'
-     chips above it and the queued line under it sit flat on the card's own
-     surface in a quieter ink, so the eye goes decision, then field. */
-  .deck :global(.decision-card) {
-    border: none;
-    border-radius: var(--radius-lg);
-    background: var(--decision-fill);
-    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-foreground) 9%, transparent);
-    --dock-inset: 8px;
-  }
-  /* Three sections, not nested boxes: the entries, the decision, then one
-     inset hairline before the queued line and the field, so drafting reads
-     apart from what waits on the owner. */
-  .deck:has(> :global(:is(.dock, .decision-card, .activity:not(.hidden), .receipt))) {
-    padding-bottom: 8px;
-    background: linear-gradient(var(--color-border), var(--color-border)) no-repeat center bottom / calc(100% - 2 * var(--dock-inset)) 1px;
-  }
-  /* The answer as sent: one quiet line in the dock's own ink, cut to one line, its check where the question's dot stood. */
-  .receipt { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0; padding: var(--deck-gap) var(--dock-inset) 0; color: var(--color-subtle); font-size: var(--text-meta); }
-  .receipt span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .receipt :global(svg) { flex: none; color: var(--color-success); }
-  /* A long ask scrolls inside itself, its head and its choices in sight (its own file). */
-  /* One gap scale in every combination: each block of the card (the
-     subagents' entries, the decision, the receipt, the queued line) stands
-     `--deck-gap` under the one above it and adds nothing under itself, so the
-     field's own top inset is the one space before its text. A permission sits
-     in the deck itself, a question's tile in ThreadActivity's section: both
-     take the same inset here. */
+  /* Each block of the card stands this far under the one above it (ComposerDeck, the queued line). */
   .composer { --deck-gap: 6px; }
-  .deck > :global(.decision-card) { margin: var(--deck-gap) 6px 0; overflow-y: auto; overscroll-behavior: contain; }
-  .composer .deck > :global(.activity) { padding: 0 6px; }
-  .composer .deck > :global(.activity > *:first-child) { margin-top: var(--deck-gap); }
-  .composer .deck > :global(.activity > .decision-card) { margin: var(--deck-gap) 0 0; }
-  .composer .deck > :global(.activity > .decision-card:last-child) { margin-bottom: 0; }
-  .composer .deck > :global(.activity > .decision-card + *) { margin-top: var(--deck-gap); }
-  /* The bottom gap sits under the box: a textarea scrolls its text through its own padding, up to the bar. */
-  .input-wrap { position: relative; margin-bottom: var(--composer-input-gap, 6px); }
-  .input-highlight {
-    position: absolute;
-    inset: 0; /* Stretched by CSS: clientWidth is rounded, and 0.4 px off broke lines a word apart, the caret trailing the paint. */
-    overflow: hidden;
-    pointer-events: none;
-    z-index: 1;
-  }
-
-  .input-paint {
-    white-space: pre-wrap;
-    overflow-wrap: break-word;
-    color: var(--color-foreground);
-    /* Follows the textarea's scroll: reduced motion's blanket transition would paint each step a frame late. */
-    transition-property: none;
-  }
-
-  textarea.highlighted { color: transparent; caret-color: var(--color-accent); }
-  textarea.highlighted::selection { background: var(--color-accent-soft); }
-
-  textarea, .input-paint {
-    /* A textarea's own text-rendering: auto drops kerning on Android, and the caret drifted from the painted letters. */
-    text-rendering: optimizeLegibility; font-kerning: normal; font-variant-ligatures: normal; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; width: 100%;
-    min-height: calc(var(--composer-input-height, 44px) - var(--composer-input-gap, 6px));
-    max-height: 200px;
-    padding: var(--composer-input-padding, 12px 14px 0);
-    border: none;
-    background: transparent;
-    font-size: var(--text-reading);
-    line-height: var(--leading-reading);
-  }
-
-  textarea { display: block; }
-  /* The hint is one line at any width: a box sized to its content would grow a second line for it. */
-  textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .input-paint { max-height: none; }
-  @supports (field-sizing: content) { textarea { field-sizing: content; max-height: min(200px, calc(8lh + 16px)); } }
-
-  textarea:focus {
-    outline: none;
-    border: none;
-  }
-
   @media (max-width: 720px) {
     /* A phone keeps the conversation: the whole card, rows, decision, queued
        chips and field, stays under 45% of the screen. The deck gives way
        first; a question's choices scroll in the room left once the rows,
        the head and the field are counted (`--dock-cap`). */
-    .composer { --composer-rest: var(--shadow-e1); --composer-cap: 45dvh; border-radius: var(--radius-xl); max-height: var(--composer-cap); }
-    /* A docked question with its choices may take a little more, so four of them and its Answer show whole at 390. */
-    .composer:has(:global(.question.docked)) { --composer-cap: 57dvh; }
-    /* So does a permission: at 360 its choices wrap under the ask, and the command they approve must stay in sight. */
+    .composer { --composer-cap: 45dvh; border-radius: var(--radius-xl); max-height: var(--composer-cap); }
+    /* A docked question with its choices may take a little more, so four of them and its Answer show whole at 390
+       over the bar's two chip lines. */
+    .composer:has(:global(.question.docked)) { --composer-cap: 64dvh; }
+    /* So does a permission: its choices wrap under the ask, the command right under the ask's line and the rest scrolling in its body (PermissionCard). */
     .composer:has(:global(.permission.docked)) { --composer-cap: 52dvh; }
     .composer > :global(*) { flex: none; }
-    .composer > .deck { flex: 0 1 auto; min-height: 0; --dock-cap: calc(var(--composer-cap) - 120px - var(--deck-room, 0px)); }
-    textarea, .input-mirror { font-size: var(--text-md); }
-    /* The gap under the field becomes its own padding: the same height on screen, the whole of it a finger's target. */
-    .input-wrap { margin-bottom: 0; }
-    textarea, .input-paint { min-height: var(--composer-input-height, 44px); padding-bottom: var(--composer-input-gap, 6px); }
+    /* What the card holds under the deck: the field (44 px), the bar's two chip lines (102 px) and the card's border. */
+    .composer > :global(.deck) { flex: 0 1 auto; min-height: 0; --dock-cap: calc(var(--composer-cap) - 148px - var(--deck-room, 0px)); }
     /* The microphone and send stand at the field's end (ComposerBar): its text, mirror and dictation preview stop short of them. */
     .composer { --composer-tools: var(--touch-target); }
     .composer:has(:global(.bar .tools[data-count='2'])) { --composer-tools: calc(var(--touch-target) * 2); }
-    textarea, .input-paint { padding-right: calc(var(--composer-tools) + 8px); }
     .composer :global(.speech-preview) { padding-right: calc(var(--composer-tools) + 8px); }
     .composer-wrap, .composer-wrap.centered {
       padding: 8px 12px max(10px, env(safe-area-inset-bottom));
@@ -1039,7 +883,6 @@
   }
   /* A 390 or 360 px phone gives the card's side margins to the chips' words. */
   @media (max-width: 400px) { .composer-wrap, .composer-wrap.centered { padding-inline: 8px; } }
-  /* At 360 the chips take a second row (ComposerBar): a permission gets that
-     row back, so its ask and the command it approves stay whole over the pair. */
-  @media (max-width: 380px) { .composer:has(:global(.permission.docked)) { --composer-cap: 58dvh; } }
+  /* At 360 the chips hold two lines (ComposerBar): a permission gets a little more room for its ask and command. */
+  @media (max-width: 380px) { .composer:has(:global(.permission.docked)) { --composer-cap: 54dvh; } }
 </style>

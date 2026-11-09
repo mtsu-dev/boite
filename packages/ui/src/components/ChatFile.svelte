@@ -13,7 +13,8 @@
   import { galleryFrom, media, viewerHost, type Gallery, type MediaItem } from '../lib/media-gallery';
   import { videoPlayable } from '../lib/video-support';
   import { mediaKey, rememberedSize, rememberSize, type MediaSize } from '../lib/media-size';
-  import Deferred, { parts } from './Deferred.svelte';
+  import Deferred from './Deferred.svelte';
+  import { parts } from '../lib/deferred-parts';
 
   let { file, store, threadId, messageId, partIndex, path, line, onclose }: {
     file?: Extract<MessagePart, { type: 'file' | 'artifact' }>; store?: Store; threadId?: string; messageId?: string;

@@ -32,7 +32,13 @@ test('a first run lists the agents as rows that each connect in one click, then 
   // The lists' marks met once, each beside its word: the amber dot, the working ring, the red "!".
   const keys = [...document.querySelectorAll<HTMLElement>('[data-testid="first-run-marks"] .key')];
   expect(keys.map((key) => key.textContent!.trim())).toEqual([strings.sidebar.state.waiting, strings.sidebar.state.working, strings.sidebar.state.error]);
-  expect(keys.map((key) => key.firstElementChild!.getAttribute('data-tone') ?? key.firstElementChild!.className.split(' ')[0])).toEqual(['waiting', 'running', 'fail']);
+  const marks = keys.map((key) => key.querySelector('.slot')!.firstElementChild!);
+  expect(marks.map((mark) => mark.getAttribute('data-tone') ?? mark.className.split(' ')[0])).toEqual(['waiting', 'running', 'fail']);
+  // Round 21: the legend is a titled card of its own after the steps, each mark saying what it asks of you.
+  const legend = query<HTMLElement>('[data-testid="first-run-marks"]');
+  expect(legend.closest('[data-testid="first-run-steps"]')).toBeNull();
+  expect(legend.querySelector('h2')!.textContent).toBe(strings.firstRun.marks);
+  expect([...legend.querySelectorAll('.means')].map((line) => line.textContent)).toEqual([strings.firstRun.marksWaiting, strings.firstRun.marksWorking, strings.firstRun.marksFailed]);
 
   // The two services most people pay for first, each row its own button: no choice to make, then a second action.
   expect(rows().map((row) => row.dataset.provider)).toEqual(['claude', 'codex']);

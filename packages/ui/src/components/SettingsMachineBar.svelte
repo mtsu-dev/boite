@@ -10,7 +10,13 @@
    * to one machine. One that follows its group's default machine says so, and
    * each setting changed on it anyway carries a star (`SyncMark.svelte`).
    */
-  let { machine, machines, onpick }: { machine: Machine; machines: Machine[]; onpick: (id: string) => void } = $props();
+  let { machine, machines, onpick, picker = true }: {
+    machine: Machine;
+    machines: Machine[];
+    onpick: (id: string) => void;
+    /** False on a desktop page whose header scope is the picker (SettingsScope.svelte): the bar keeps its notes. */
+    picker?: boolean;
+  } = $props();
   let items = $derived(machines.map((entry) => ({ id: entry.id, label: listedName(entry), active: entry === machine })));
   let home = $derived(workspace.settingsSync.sourceName(machine));
   let connected = $derived(workspace.settingsSync.source(machine) !== undefined);
@@ -20,7 +26,7 @@
 </script>
 
 <div class="machine-bar" data-testid="settings-machine-bar">
-  {#if machines.length > 1}
+  {#if picker && machines.length > 1}
     <Menu {items} label={strings.machines.pick} placement="bottom" testid="settings-machine" onpick={onpick}>
       <MachineIcon icon={machine.icon} os={machine.store.core?.os} size={15} /><span class="name ui-label">{listedName(machine)}</span><ChevronDown size={13} />
     </Menu>

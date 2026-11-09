@@ -10,7 +10,8 @@
   import { describeTool, fileName } from '../lib/tool-summary';
   import { toolErrorPreview } from '../lib/tool-error';
   import { diffCountsOf } from '../lib/diff';
-  import Deferred, { parts } from './Deferred.svelte';
+  import Deferred from './Deferred.svelte';
+  import { parts } from '../lib/deferred-parts';
   import DocumentView from './DocumentView.svelte';
   import ChangeCount from './ChangeCount.svelte';
   import Spinner from './Spinner.svelte';

@@ -20,6 +20,10 @@ export const strings = {
     laterProjectsHint: 'Conversations you archived to pick up later, in projects with nothing else open.',
     idleProjectsHint: 'Nothing to do here: no open or set-aside conversation. Choose one to start a thread.',
     filter: 'Filter',
+    /** The Filter button with a filter on: the first that hides threads; "+N" counts the others. */
+    filterOn: 'Filter: {name}',
+    /** Recent's filter on the rows still at work, named on the button. */
+    filterWorking: 'Working',
     groupingOptions: 'Display options',
     /** The thread list's name, in the rail and over the list. */
     threads: 'Threads',

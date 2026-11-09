@@ -75,7 +75,7 @@ test('Activity gives each row its reason and its time, a sub-agent under its par
   if (updates) expect(updates.compareDocumentPosition(asking) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
   // The asking row says what to do there; its verb opens the thread like the row does.
   const verb = asking.querySelector<HTMLButtonElement>('[data-testid=thread-verb]')!;
-  expect(['Answer', 'Allow']).toContain(verb.textContent);
+  expect(['Answer', 'Allow once']).toContain(verb.textContent);
   if (updates) for (const row of rows.filter(row => updates.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING)) expect(row.querySelector('[data-testid=thread-verb]')).toBeNull();
   const pressed = [...document.querySelectorAll('[data-testid=mobile-list] [data-testid=thread-verb]')].indexOf(verb);
   verb.click(); await settle();
@@ -177,17 +177,15 @@ test('the header holds the search, opened in place, and the new thread; the bar 
   const threadId = row.dataset['threadId'];
   row.querySelector('[data-testid^=mobile-thread-]')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })); await settle();
   expect(id(`mobile-thread-menu-${threadId}-menu`)?.querySelector('[data-value=rename]')).not.toBeNull();
-  // A short first level, then one named group that opens in the same sheet and comes back: a new title is in it, the path is not.
+  // A short first level, a new title beside Rename; with no bot to give it to, the move is a row of its own and the path stays on the desktop.
   const menuValues = () => Array.from(id(`mobile-thread-menu-${threadId}-menu`)?.querySelectorAll<HTMLElement>('[data-value]') ?? []).map(item => item.dataset['value']);
   const first = menuValues();
-  expect(first.length).toBeLessThanOrEqual(7);
-  expect(first).not.toContain('retitle');
-  id(`mobile-thread-menu-${threadId}-menu`)!.querySelector<HTMLButtonElement>('[data-value=more]')!.click(); await settle();
-  expect(menuValues()).toContain('retitle');
-  expect(menuValues()).not.toContain('copy');
-  id(`mobile-thread-menu-${threadId}-menu`)!.querySelector<HTMLButtonElement>('[data-value=back]')!.click(); await settle();
-  expect(menuValues()).toEqual(first);
-  // No panel in a row's menu: the panels have their own selector, in the panel.
+  expect(first.length).toBeLessThanOrEqual(8);
+  expect(first.indexOf('retitle')).toBe(first.indexOf('rename') + 1);
+  expect(first).toContain('move');
+  expect(first).not.toContain('more');
+  expect(first).not.toContain('copy');
+  // No panel in a row's menu: the panels have their own door, beside the title.
   expect(menuValues().filter(value => value?.startsWith('kind:') || value === 'board-toggle')).toEqual([]);
 
   // The new thread is the header's neutral "+", out of the bottom bar.
@@ -235,9 +233,9 @@ test('a parent on another machine shows its working sub-agents, counted, and Rec
     const rows = () => [...document.querySelectorAll<HTMLElement>('.mobile-list .row')].map(row => row.dataset['threadId']);
     const everything = rows().length;
     expect(everything).toBeGreaterThan(1);
-    // The filter lives in the display menu, its count on the menu's button: the list keeps no row of chips.
+    // The filter lives in the display menu, named on the menu's button once on: the list keeps no row of chips.
     expect(document.querySelector('.mobile-list [data-testid=mobile-at-work]')).toBeNull();
-    const count = () => document.querySelector('[data-testid=mobile-filter-count]')?.textContent ?? null;
+    const count = () => document.querySelector('[data-testid=mobile-filter-name]')?.textContent ?? null;
     expect(count()).toBeNull();
     document.querySelector<HTMLButtonElement>('[data-testid=mobile-grouping-options]')!.click();
     await vi.waitFor(() => expect(document.querySelector('[data-testid=mobile-at-work]')).not.toBeNull());
@@ -246,14 +244,14 @@ test('a parent on another machine shows its working sub-agents, counted, and Rec
     expect(chip()?.getAttribute('aria-checked')).toBe('false');
     chip()!.click(); await settle();
     expect(chip()?.getAttribute('aria-checked')).toBe('true');
-    expect(count()).toBe('1');
+    expect(count()).toBe('Working');
     expect(rows()).toEqual([parent.id]);
 
     // Opening the parent and coming Back finds the list still filtered.
     document.querySelector<HTMLButtonElement>(`[data-testid="mobile-thread-${parent.id}"]`)!.click(); await settle();
     expect(document.querySelector('.mobile-list')).toBeNull();
     document.querySelector<HTMLButtonElement>('[data-testid=mobile-back]')!.click(); await settle();
-    expect(count()).toBe('1');
+    expect(count()).toBe('Working');
     expect(rows()).toEqual([parent.id]);
 
     // The Projects list reads the same store: the same radar there. Back in Recent, the filter holds.
@@ -263,7 +261,7 @@ test('a parent on another machine shows its working sub-agents, counted, and Rec
     expect(state()?.querySelector('[data-testid=thread-state-text]')).toBeNull();
     expect(state()?.getAttribute('title')).toMatch(/sub-agents\n1m/);
     workspace.view = 'recent'; await settle();
-    expect(count()).toBe('1');
+    expect(count()).toBe('Working');
     expect(rows()).toEqual([parent.id]);
 
     // The last sub-agent ends: the radar, the chip and its filter go. The parent was read when opened, so nothing replaces the radar.
@@ -356,6 +354,15 @@ test("a project header names another machine as a place once two are connected, 
     expect(host()?.textContent).toBe('on Builder');
     expect(host()?.querySelector('[data-testid=machine-away]')).toBeNull();
     expect(host()?.classList.contains('offline')).toBe(false);
+    const reconnect = () => document.querySelector<HTMLButtonElement>(`[data-testid=mobile-project-group][data-machine-id="${remote.machineId}"] [data-testid=project-reconnect]`);
+    expect(reconnect()).toBeNull();
+    remote.connection = 'closed'; await settle();
+    // The offline card ends on its next step, never on the Offline label alone (round 21).
+    expect(reconnect()?.textContent).toBe('Reconnect');
+    reconnect()!.click();
+    await vi.waitFor(() => expect(remote.connection).toBe('ready'));
+    await settle();
+    expect(reconnect()).toBeNull();
     remote.connection = 'closed'; await settle();
     // Out of reach: the state as a word of its own beside the name, never run into it, no dot to decode.
     expect(host()?.classList.contains('offline')).toBe(true);

@@ -1,50 +1,63 @@
 <script lang="ts">
   import { MediaQuery } from 'svelte/reactivity';
-  import { PanelRight, PanelRightClose } from '@lucide/svelte';
+  import { PanelRight } from '@lucide/svelte';
   import { strings } from '../lib/strings';
+  import { panelSwitch } from '../lib/panel-switch.svelte';
   import type { Store } from '../lib/store.svelte';
 
   /**
    * The door to the side panel, the same on a thread's header and a bot's,
-   * outlined so its words read as a button. The open panel is named once, by
-   * its own selector in the panel's head: while the panel shows, the door is a
-   * pressed square with the close glyph, no name; closed, "Panels" and how
-   * many it holds, so the way back says what it opens.
-   * `ontoggle` is what the view opens it on (a bot's opens on its desk).
+   * outlined so its words read as a button. Closed, it reads "Panels" and how
+   * many it holds, and opens them. Open, it is the one place that names the
+   * panel, its icon and name with a chevron, and the panel switcher: its list
+   * holds every panel, the showing one checked, and the way to close
+   * (`PanelSwitcher.svelte`, handed over by `RightPanel.svelte` through
+   * `lib/panel-switch.svelte.ts`, so it loads with the panel).
+   * A phone's panel covers the header: its own head carries the door
+   * (`inPanel`). `ontoggle` is what the closed door opens (a bot's opens on its desk).
    */
-  let { store, count, ontoggle, testid }: { store: Store; count: number; ontoggle: () => void; testid: string } = $props();
+  let { store, count = 0, ontoggle, testid, inPanel = false }: { store: Store; count?: number; ontoggle?: () => void; testid: string; inPanel?: boolean } = $props();
   const mobile = new MediaQuery('(max-width: 720px)');
+  const named = $derived(store.panelOpen && panelSwitch.store === store && (inPanel || !mobile.current));
 </script>
 
-<span class="panel-door" class:on={store.panelOpen}>
-  <button type="button" class="ghost door" title={`${strings.thread.panelHint}${store.keyHint('panel')}`} aria-label={store.panelOpen ? strings.thread.panelMenu : undefined} aria-pressed={store.panelOpen} data-testid={testid} onclick={ontoggle}>
-    <span class="door-face">
-      {#if store.panelOpen}
-        <PanelRightClose size={16} aria-hidden="true" />
-      {:else}
+<span class="panel-door" class:on={named} class:in-panel={inPanel}>
+  {#if named && panelSwitch.door}
+    <panelSwitch.door {inPanel} />
+  {:else}
+    <!-- Open with its panel still loading, the door stays pressed; its name comes with the panel. -->
+    <button type="button" class="ghost door" title={`${strings.thread.panelHint}${store.keyHint('panel')}`} aria-pressed={store.panelOpen} data-testid={testid} onclick={() => ontoggle?.()}>
+      <span class="door-face">
         {#if !mobile.current}<PanelRight size={16} strokeWidth={1.75} aria-hidden="true" />{/if}
         <span class="ui-label">{strings.thread.panelMenu}</span>
         {#if count > 0}<span class="door-count" data-testid="panel-toggle-count">{count}</span>{/if}
-      {/if}
-    </span>
-  </button>
+      </span>
+    </button>
+  {/if}
 </span>
 
 <style>
   /* Off the window's edge by the gap the crumb keeps on the left. */
   .panel-door { display: inline-flex; flex: none; min-width: 0; align-items: center; margin-right: 4px; }
   /* 32 px high as the title's menu and the sidebar fold; on a phone the button around the face keeps the touch height. */
-  .door { display: inline-flex; align-items: center; min-width: 0; height: var(--control-head); padding: 0; background: none; border: none; }
-  .door-face { display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: var(--control-head); padding: 0 10px; box-sizing: border-box; border: 1px solid var(--color-edge); border-radius: var(--radius-md); font-size: var(--text-meta); white-space: nowrap; }
-  .door-face > :global(svg) { flex: none; }
+  .door, .panel-door :global(.menu .trigger.ghost) { display: inline-flex; align-items: center; width: auto; min-width: 0; height: var(--control-head); padding: 0; background: none; border: none; color: inherit; }
+  .panel-door :global(.menu) { min-width: 0; }
+  .panel-door :global(.door-face) { display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: var(--control-head); padding: 0 10px; box-sizing: border-box; border: 1px solid var(--color-edge); border-radius: var(--radius-md); font-size: var(--text-meta); white-space: nowrap; }
+  .panel-door :global(.door-face > svg) { flex: none; }
+  .panel-door :global(.name) { min-width: 0; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
   @media (hover: hover) {
-    .door:hover:not(:disabled) { background: none; }
-    .door:hover .door-face { background: var(--color-surface-3); color: var(--color-foreground); }
+    .door:hover:not(:disabled), .panel-door :global(.trigger.ghost:hover) { background: none; }
+    .door:hover :global(.door-face), .panel-door :global(.trigger:hover .door-face) { background: var(--color-surface-3); color: var(--color-foreground); }
   }
-  /* Pressed: a square as tall as the header's other controls, filled. */
-  .on .door-face { width: var(--control-head); padding: 0; justify-content: center; background: var(--color-active); color: var(--color-foreground); }
+  /* Open: the face filled as the pressed thing it is, the panel's name in full ink. */
+  .on :global(.door-face), .door[aria-pressed='true'] :global(.door-face), .panel-door :global(.trigger[aria-expanded='true'] .door-face) { background: var(--color-active); color: var(--color-foreground); }
+  .on :global(.door-face) { padding: 0 8px 0 10px; gap: 6px; }
   .door-count { flex: none; min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box; display: grid; place-items: center; border-radius: var(--radius-full); background: var(--color-surface-3); color: var(--color-foreground); font-variant-numeric: tabular-nums; }
   @media (max-width: 720px) {
-    .door { height: var(--touch-target); }
+    .door, .panel-door :global(.menu .trigger.ghost) { height: var(--touch-target); }
+    /* In the phone panel's head: the panel's name at the head's reading size, beside the thread's title. */
+    .in-panel { margin-right: 0; }
+    .in-panel :global(.door-face) { height: 36px; font-size: var(--text-sm); }
+    .in-panel :global(.name) { max-width: 150px; }
   }
 </style>

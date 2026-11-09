@@ -11,7 +11,8 @@
   import ErrorToast from './components/ErrorToast.svelte';
   import ChatView from './components/ChatView.svelte';
   import Deferred from './components/Deferred.svelte';
-  import { activityPage, inbox } from './lib/inbox.svelte';
+  import { inbox } from './lib/inbox.svelte';
+  import { activityPage } from './lib/activity-page';
   import ConfirmDialog from './components/ConfirmDialog.svelte';
   import ContextMenu from './components/ContextMenu.svelte';
   import DragGhost from './components/DragGhost.svelte';

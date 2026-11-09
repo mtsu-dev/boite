@@ -96,7 +96,8 @@
 .agent-head-menu { display: flex; flex: none; }
 .agent-head-menu .trigger { min-width: 32px; min-height: 32px; justify-content: center; }
 .agent-head-actions { display: flex; align-items: center; gap: 2px; flex: none; }
-.agent-head-actions .menu .trigger.ghost { width: var(--control); height: var(--control); padding: 0; }
+/* A header's targets are 32 px, the glyph unchanged. */
+.agent-head-actions .menu .trigger.ghost { width: var(--control-head); height: var(--control-head); padding: 0; }
 .agent-problem { flex: none; display: flex; align-items: center; gap: 10px; margin: 0; padding: 8px clamp(12px, 3vw, 24px); border-bottom: 1px solid var(--color-border); background: color-mix(in srgb, var(--color-live) 10%, transparent); color: var(--color-foreground); font-size: var(--text-sm); }
 .agent-problem > svg { flex: none; color: var(--color-live); }
 .agent-problem > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
@@ -286,7 +287,8 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 .desk-ident { display: flex; flex-direction: column; gap: 10px; padding: 18px 20px 8px; }
 .desk-ident-domain { margin: 0; font-size: var(--text-sm); line-height: 1.45; color: var(--color-muted-foreground); }
 .desk-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.desk-meta { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border-radius: var(--radius-md); background: var(--color-surface-2); box-shadow: inset 0 0 0 1px var(--color-border); font-size: var(--text-xs); font-weight: 500; color: var(--color-muted-foreground); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+/* A value is never cut: a long model or machine name wraps inside its chip, the chip grows a line. */
+.desk-meta { display: inline-flex; align-items: center; gap: 6px; min-height: 24px; padding: 3px 8px; box-sizing: border-box; border-radius: var(--radius-md); background: var(--color-surface-2); box-shadow: inset 0 0 0 1px var(--color-border); font-size: var(--text-xs); font-weight: 500; line-height: 18px; color: var(--color-muted-foreground); max-width: 100%; overflow-wrap: anywhere; }
 .desk-meta > svg { flex: none; }
 .desk-body { display: flex; flex-direction: column; padding: 4px 20px 24px; }
 .desk-card { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 14px 0; }
@@ -320,13 +322,15 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 .desk-step-mark { flex: none; z-index: 1; width: 15px; height: 15px; display: grid; place-items: center; border-radius: 50%; background: var(--color-surface); color: var(--color-success); }
 .desk-steps li[data-status='running'] .desk-step-mark { color: var(--color-foreground); }
 .desk-steps li[data-status='error'] .desk-step-mark { color: var(--color-danger); }
-.desk-step-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.desk-step-text { min-width: 0; overflow-wrap: anywhere; }
 .desk-step-text.mono { font-family: var(--font-mono); font-size: var(--text-xs); }
 .agent-desk .desk-error { margin: 0; }
 .desk-empty { margin: 0; padding: 6px 2px; font-size: var(--text-sm); color: var(--color-muted-foreground); line-height: 1.5; }
-.desk-empty-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-block: 2px; }
+/* The line and its one action, a real button at the row's end beside it; under it only when both do not fit.
+   One width for the three (routine, note, task), so their edges stand in one column down the desk. */
+.desk-empty-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding-block: 2px; }
 .desk-empty-row > span { min-width: 0; }
-.desk-empty-row > button { flex: none; gap: 6px; margin-right: -8px; color: var(--color-muted-foreground); }
+.desk-empty-row > button { flex: none; gap: 6px; min-width: 8.5rem; }
 .desk-rows { display: flex; flex-direction: column; }
 /*
  * A thread on its desk, one row: its project's mark, the title, a spinner or
@@ -343,14 +347,16 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 .desk-row-tile { flex: none; display: inline-flex; margin-top: 2px; }
 .desk-row-blank { width: 16px; height: 16px; display: grid; place-items: center; border-radius: 5px; background: var(--color-surface-3); color: var(--color-subtle); }
 .desk-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.desk-row-head { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 20px; }
-.desk-card-title { flex: 1; min-width: 0; font-size: var(--text-sm); font-weight: 500; line-height: 1.45; color: var(--color-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A title wraps whole, so the marks and the time keep to its first line. */
+.desk-row-head { display: flex; align-items: flex-start; gap: 6px; min-width: 0; min-height: 20px; }
+.desk-row-head > :is(.desk-row-mark, .desk-row-work) { margin-top: 6px; }
+.desk-card-title { flex: 1; min-width: 0; font-size: var(--text-sm); font-weight: 500; line-height: 1.45; color: var(--color-foreground); overflow-wrap: anywhere; }
 .desk-row.done .desk-card-title { color: var(--color-muted-foreground); font-weight: 400; }
 .desk-row-mark { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--color-live); }
 /* At work: the lists' still accent arc (ThreadState.svelte), a spinner at rest. */
 .desk-row-work { flex: none; box-sizing: border-box; width: 9px; height: 9px; border: 1.5px solid var(--color-accent); border-top-color: transparent; border-radius: 50%; transform: rotate(45deg); }
 .desk-row-mark[data-tone='danger'] { background: var(--color-danger); }
-.desk-card-when { flex: none; font-size: var(--text-xs); color: var(--color-subtle); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.desk-card-when { flex: none; line-height: 20px; font-size: var(--text-xs); color: var(--color-subtle); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .desk-card-drop { position: absolute; top: 0; right: -4px; width: 20px; height: 20px; color: var(--color-subtle); opacity: 0; transition: opacity var(--dur-2) var(--ease-out-quint); }
 .desk-row:hover .desk-card-drop, .desk-row:focus-within .desk-card-drop { opacity: 1; }
 .desk-row:is(:hover, :focus-within) .desk-card-when:has(+ .desk-card-drop) { visibility: hidden; }
@@ -374,7 +380,7 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 .desk-rows > .desk-routine + .desk-routine { border-top: 1px solid var(--color-border); }
 .desk-routine { position: relative; display: flex; align-items: center; gap: 10px; min-width: 0; padding: 7px 0; }
 .desk-routine-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.desk-routine-text strong { font-size: var(--text-sm); font-weight: 500; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.desk-routine-text strong { font-size: var(--text-sm); font-weight: 500; line-height: 1.4; overflow-wrap: anywhere; }
 .desk-routine-when { flex: none; font-size: var(--text-xs); color: var(--color-subtle); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .desk-routine-when[data-state='paused'] { color: var(--color-muted-foreground); }
 .desk-routine-last { font-size: var(--text-xs); font-weight: 400; white-space: normal; }

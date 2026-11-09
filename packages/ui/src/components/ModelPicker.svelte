@@ -3,7 +3,8 @@
   import { ChevronDown, Plug, Sparkles } from '@lucide/svelte';
   import { isNamedModel } from '../lib/model-order';
   import ProviderLogo from './ProviderLogo.svelte';
-  import Deferred, { parts } from './Deferred.svelte';
+  import Deferred from './Deferred.svelte';
+  import { parts } from '../lib/nested-parts';
   import type ModelPickerMenu from './ModelPickerMenu.svelte';
   import { Closing } from '../lib/closing.svelte';
   import { strings } from '../lib/strings';

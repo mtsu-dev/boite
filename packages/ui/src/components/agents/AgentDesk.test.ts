@@ -99,7 +99,7 @@ test('Nova\'s threads: what it handles, needs-you first, then what it is done wi
     await vi.waitFor(() => expect(document.querySelectorAll('[data-testid=desk-card]').length).toBeGreaterThan(5));
     flushSync();
 
-    // Handling: what needs the user first, the silent turn, the work, the open pull request, the other machine's quiet thread; Done: the merged one.
+    // Working on: what needs the user first, the silent turn, the work, the open pull request, the other machine's quiet thread; Done: the merged one.
     expect(titles('handling')[0]).toBe('Pick the release icon set');
     expect(titles('handling')).toEqual(expect.arrayContaining(['Migrate the settings store', 'Fix login redirect loop', 'Fix the save migration']));
     expect(titles('done')).toEqual(['Release notes 2.0.4']);

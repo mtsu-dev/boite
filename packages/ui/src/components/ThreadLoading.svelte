@@ -1,7 +1,8 @@
 <script lang="ts">
   import { fill, strings } from '../lib/strings';
   import { transferBytes } from '../lib/format';
-  import Deferred, { parts } from './Deferred.svelte';
+  import Deferred from './Deferred.svelte';
+  import { parts } from '../lib/deferred-parts';
   import { HOUSE_BOT } from '../lib/robots';
 
   /**

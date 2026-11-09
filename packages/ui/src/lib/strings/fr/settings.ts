@@ -78,6 +78,8 @@ export const fr: Translation = {
     theme: 'Thème',
     /** Under a page's title where its settings stay on the device in hand (Appearance). */
     scopeDevice: 'Sur cet appareil',
+    /** Under the title of a page that spans the group: Machines, Usage, the task manager. */
+    scopeEvery: 'Sur toutes les machines',
     /** On a setting kept for one provider account (its default model). */
     scopeAccount: 'Pour {account} sur cet appareil',
     /** General's card of how agents answer, saved on the machine, apart from this device's conversation switches. */
@@ -162,7 +164,9 @@ export const fr: Translation = {
     chatWidthComfortable: 'Confortable',
     chatWidthWide: 'Large',
     chatWidthFull: 'Pleine',
-    chatWidthSample: 'Une réponse pose ses lignes à la largeur choisie : la conversation, le composeur et les cartes autour s\'élargissent ensemble.',
+    /** The width preview's small conversation: a question, then a reply set at the width picked. */
+    chatWidthAsk: 'Pourquoi le build échoue sur Windows ?',
+    chatWidthSample: 'L\'éditeur de liens ne trouve pas le SDK Windows, alors la dernière étape s\'arrête. Ouvrez une invite développeur, ou ajoutez le dossier lib du SDK à LIB, puis relancez : le code lui-même compile.',
     chatWidthResult: { comfortable: 'Les lignes s\'arrêtent à une largeur de lecture confortable.', wide: 'Les lignes vont plus loin, pour le code et les tableaux.', full: 'Les lignes occupent toute la fenêtre.' },
     terminalCursor: 'Curseur du terminal',
     terminalCursorBar: 'Barre',

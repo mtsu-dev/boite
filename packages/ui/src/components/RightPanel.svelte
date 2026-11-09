@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { onMount, untrack } from 'svelte';
-  import { ArrowLeft, ArrowRightToLine, ChevronDown, ChevronLeft, ChevronRight, ListX, Maximize2, Minimize2, SquareX, X, GripHorizontal, PanelsTopLeft } from '@lucide/svelte';
+  import { onMount, tick, untrack } from 'svelte';
+  import { ArrowLeft, ArrowRightToLine, ChevronLeft, ChevronRight, ListX, Maximize2, Minimize2, PanelRightClose, SquareX, X, GripHorizontal, PanelsTopLeft } from '@lucide/svelte';
   import { floatingPanel, RESIZE_DIRECTIONS } from '../lib/floating-panel';
   import { browserBridge } from '../lib/browser-bridge';
   import { stripOverflows } from '../lib/strip-overflow';
@@ -17,6 +17,8 @@
   import type { Store } from '../lib/store.svelte';
   import { offeredCards, available as availableTo, label, tooltip } from '../lib/surface-labels';
   import { CUSTOMIZE, notePanelUse, panelChoices } from '../lib/panel-choices';
+  import { panelSwitch } from '../lib/panel-switch.svelte';
+  import { surfaceGlyph } from '../lib/surface-glyphs';
   import { openCoordination } from '../lib/coordination-request.svelte';
   import { arriveSurface } from '../lib/surface-swap';
   import { providePanelTools } from '../lib/panel-tools.svelte';
@@ -29,7 +31,8 @@
   import WindowSurface from './WindowSurface.svelte';
   import FileSurface from './FileSurface.svelte';
   import FilesSurface from './FilesSurface.svelte';
-  import Menu from './Menu.svelte';
+  import PanelDoor from './PanelDoor.svelte';
+  import PanelSwitcher from './PanelSwitcher.svelte';
   import PanelResizeHandle from './PanelResizeHandle.svelte';
   import SurfaceIcon from './SurfaceIcon.svelte';
   import SurfaceLauncher from './SurfaceLauncher.svelte';
@@ -106,7 +109,7 @@
     if (untrack(() => entered)) arriveSurface(node);
   }
 
-  /** What a phone's head keeps over the panel's name: the thread, or the bot whose desk this is. */
+  /** What a phone's head keeps beside the panel's door: the thread, or the bot whose desk this is. */
   let threadTitle = $derived(store.openThread?.title ?? null);
   let surfaces = $derived(panel.surfaces);
   let active = $derived(panel.active);
@@ -177,12 +180,13 @@
     tab?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
   });
 
-  /** The X shuts the panel and hands the keys to the title bar's toggle that opens it again; clicked, it left them on the page. */
+  /** The X shuts the panel and hands the keys to the header's door that opens it again; clicked, it left them on the page. */
   function shut(): void {
     // A phone's one back arrow steps back inside the surface first (a file to its list), then leaves the panel.
     if (phone && tools.back) { tools.back.run(); return; }
     panel.hide();
-    if (!phone) document.querySelector<HTMLElement>('[data-testid="panel-toggle"]')?.focus({ preventScroll: true });
+    // The door turns back from the switcher into the "Panels" button once the panel is gone.
+    if (!phone) void tick().then(() => document.querySelector<HTMLElement>('[data-testid="panel-toggle"]')?.focus({ preventScroll: true }));
   }
 
   function scrollBy(direction: -1 | 1): void {
@@ -200,7 +204,6 @@
   }
 
   function openTabMenu(event: MouseEvent, surface: Surface): void {
-    if (fromSelector(event)) return;
     const index = surfaces.findIndex((one) => one.id === surface.id);
     contextMenu.open(
       event,
@@ -225,23 +228,14 @@
   }
 
   function onTabPointerDown(event: MouseEvent, surface: Surface): void {
-    if (event.button !== 1 || fromSelector(event)) return;
+    if (event.button !== 1) return;
     // The middle button scrolls by default; the tab closes instead.
     event.preventDefault();
     void closeTabs(panel, 'close', surface.id);
   }
 
-  /**
-   * The selector's trigger and its list live in the active tab: their clicks,
-   * keys and presses are theirs, not the tab's. A pick bubbling up as a tab
-   * click would bring the old panel back.
-   */
-  function fromSelector(event: Event): boolean {
-    return event.target instanceof Element && event.target.closest('.selector') !== null;
-  }
-
   function onTabKey(event: KeyboardEvent, surface: Surface): void {
-    // The tab's own key only: Enter on its close button or the selector does what that control says.
+    // The tab's own key only: Enter on its close button does what that control says.
     if (event.target !== event.currentTarget) return;
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
@@ -288,41 +282,63 @@
   }
 
 
-  /** Every panel at once, a Recent group on top: about 17 rows of 33 px and 4 headings; a shorter window scrolls the rest. */
-  const SELECTOR_CAP = 640;
-  /** The panel selector's list: the recent panels, then every panel by group (`lib/panel-choices.ts`). */
-  let choices = $derived(panelChoices(store, store.openThread, { phone, available, showing: active?.kind }));
-  /** The selector's row that closes the showing panel: a phone's tab has no glyph to close it by. */
+  /** The recent panels live in storage: a use noted makes the list again, so the door, mounted before the panel, lists it first. */
+  let noted = $state(0);
+  /** The switcher's list, every panel at once: a Recent group on top, then every panel by group (`lib/panel-choices.ts`). */
+  let choices = $derived.by(() => {
+    void noted;
+    return panelChoices(store, store.openThread, { phone, available, showing: active?.kind });
+  });
+  function note(kind: string): void {
+    notePanelUse(kind);
+    noted++;
+  }
+  /** The switcher's closing rows: a desktop's door no longer shuts the panel on a click, a phone's tab has no glyph to close it by. */
+  const HIDE = 'panel-hide';
   const CLOSE_TAB = 'close-tab';
-  /** The panel's own window rows, in its selector since the head holds the selector and the close only. They keep the buttons' test ids. */
+  /** The panel's own window rows, in its switcher since the head holds the tabs and the close only. They keep the buttons' test ids. */
   const MAXIMIZE = 'panel-maximize';
   const DOCK = 'panel-dock';
   /**
-   * The selector's list: which panel, then what the panel's window does
-   * (a desktop's expand, a floating panel's dock), then a phone's way to close
-   * the showing one, last as every menu's closing action is.
+   * The door's list: which panel, then what the panel's window does (a
+   * desktop's expand, a floating panel's dock), then the way out, last as
+   * every menu's closing action is.
    */
   let headChoices = $derived<MenuItem[]>([
     ...choices,
     ...(phone ? [] : [
       separator('sep-window'),
       { id: MAXIMIZE, label: rightPanel.maximized ? strings.rightPanel.restore : strings.rightPanel.maximize, glyph: rightPanel.maximized ? Minimize2 : Maximize2, testid: MAXIMIZE },
-      ...(rightPanel.floating ? [{ id: DOCK, label: strings.browser.dock, glyph: PanelsTopLeft, testid: DOCK }] : [])
+      ...(rightPanel.floating ? [{ id: DOCK, label: strings.browser.dock, glyph: PanelsTopLeft, testid: DOCK }] : []),
+      { id: HIDE, label: strings.rightPanel.closePanel, glyph: PanelRightClose, testid: HIDE, hint: store.keyLabel('panel') || undefined }
     ]),
     ...(phone && active ? [separator('sep-close'), { id: CLOSE_TAB, label: fill(strings.rightPanel.closeTab, { title: label(active) }), glyph: X }] : [])
   ]);
 
-  // The panel showing is the one used last: the selector lists it first next time, on any thread.
+  // The door names the showing panel and switches it: the panel tells it what to say while it is here.
+  $effect(() => {
+    panelSwitch.store = store;
+    panelSwitch.name = active ? label(active) : strings.thread.panelMenu;
+    panelSwitch.title = active ? tooltip(active) : '';
+    panelSwitch.glyph = active ? surfaceGlyph(active.kind) : null;
+    panelSwitch.items = () => headChoices;
+    panelSwitch.pick = pickPanel;
+    panelSwitch.door = PanelSwitcher;
+    return () => { if (panelSwitch.store === store) panelSwitch.store = null; };
+  });
+
+  // The panel showing is the one used last: the switcher lists it first next time, on any thread.
   $effect(() => {
     const kind = active?.kind;
-    if (kind) untrack(() => notePanelUse(kind));
+    if (kind) untrack(() => note(kind));
   });
 
   function pickPanel(id: string): void {
     const thread = store.openThread;
-    if (id === 'terminal-toggle' || id === 'board-toggle' || id === 'coordination') notePanelUse(id);
+    if (id === 'terminal-toggle' || id === 'board-toggle' || id === 'coordination') note(id);
     if (id === MAXIMIZE) rightPanel.maximized = !rightPanel.maximized;
     else if (id === DOCK) { rightPanel.floating = false; rightPanel.maximized = false; }
+    else if (id === HIDE) shut();
     else if (id === CLOSE_TAB) { if (active) void closeTabs(panel, 'close', active.id); }
     else if (id === CUSTOMIZE) store.showSettings('appearance', CONTROLS_SECTION);
     else if (id === 'terminal-toggle') store.toggleTerminal();
@@ -415,65 +431,29 @@
           data-surface-id={surface.id}
           data-kind={surface.kind}
           data-testid="panel-tab"
-          title={surface.id === panel.activeSurfaceId ? undefined : tooltip(surface)}
-          onclick={(event) => { if (!fromSelector(event)) panel.activate(surface.id); }}
+          title={tooltip(surface)}
+          onclick={() => panel.activate(surface.id)}
           onkeydown={(event) => onTabKey(event, surface)}
           onmousedown={(event) => onTabPointerDown(event, surface)}
           oncontextmenu={(event) => openTabMenu(event, surface)}
-          use:longPress={(target) => !target.closest('.selector')}
+          use:longPress
         >
-          {#if surface.id === panel.activeSurfaceId}
-            <button
-              type="button"
-              class="closer"
-              aria-label={fill(strings.rightPanel.closeTab, { title: label(surface) })}
-              data-testid="panel-tab-close"
-              onclick={(event) => {
-                event.stopPropagation();
-                void closeTabs(panel, 'close', surface.id);
-              }}
-            >
-              <span class="glyph">
-                <SurfaceIcon kind={surface.kind} size={14} />
-              </span>
-              <span class="cross"><X size={14} strokeWidth={2} /></span>
-            </button>
-            <!-- The panel selector: the showing panel's name opens the list of every panel and tool. -->
-            <!-- The tooltip on the trigger, not the tab: the list lives inside the tab and a native tooltip would cover its rows. -->
-            <span class="selector" class:with-thread={phone && !!threadTitle}>
-              <Menu items={headChoices} onpick={pickPanel} cap={SELECTOR_CAP} placement="bottom" variant="ghost" label={tooltip(surface)} heading={strings.thread.panelMenu} testid="panel-add">
-                <!-- A phone's title is the panel's name alone: the file it reads has its own picker in the body. -->
-                <!-- A phone's panel covers the thread: its title stays on top, one line, the panel named under it. -->
-                {#if phone && threadTitle}<span class="thread-line ui-label" data-testid="panel-thread-title">{threadTitle}</span>{/if}
-                <span class="name-row"><span class="name ui-label" data-testid={phone ? 'panel-title' : undefined}>{label(surface)}</span><ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" /></span>
-              </Menu>
-            </span>
-          {:else}
-            <!-- A panel behind is its glyph alone, named in its tooltip: one title in the strip at any moment,
-                 the showing panel's, so a switch never draws two names. Its close is a corner cross under the pointer. -->
-            <span class="glyph solo" aria-hidden="true"><SurfaceIcon kind={surface.kind} size={14} /></span>
-            <span class="name ui-label sr-only">{label(surface)}</span>
-            <button
-              type="button"
-              class="corner"
-              aria-label={fill(strings.rightPanel.closeTab, { title: label(surface) })}
-              data-testid="panel-tab-close"
-              onclick={(event) => {
-                event.stopPropagation();
-                void closeTabs(panel, 'close', surface.id);
-              }}
-            ><X size={10} strokeWidth={2.5} /></button>
-          {/if}
+          <!-- Every open panel is its glyph alone, named in its tooltip and on the header's door: one title in any frame.
+               The showing one is filled. Its close is a corner cross under the pointer. -->
+          <span class="glyph solo" aria-hidden="true"><SurfaceIcon kind={surface.kind} size={14} /></span>
+          <span class="name ui-label sr-only">{label(surface)}</span>
+          <button
+            type="button"
+            class="corner"
+            aria-label={fill(strings.rightPanel.closeTab, { title: label(surface) })}
+            data-testid="panel-tab-close"
+            onclick={(event) => {
+              event.stopPropagation();
+              void closeTabs(panel, 'close', surface.id);
+            }}
+          ><X size={10} strokeWidth={2.5} /></button>
         </div>
       {/each}
-      {#if empty}
-        <!-- No panel yet: the selector stands alone, the launcher's title. -->
-        <span class="selector alone">
-          <Menu items={headChoices} onpick={pickPanel} cap={SELECTOR_CAP} placement="bottom" variant="ghost" label={strings.thread.panelMenu} heading={strings.thread.panelMenu} titled={false} testid="panel-add">
-            <span class="name ui-label">{strings.thread.panelMenu}</span><ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
-          </Menu>
-        </span>
-      {/if}
     </div>
 
     {#if overflowing}
@@ -490,6 +470,12 @@
     {/if}
 
     <span class="spacer"></span>
+
+    {#if phone}
+      <!-- A phone's panel covers the thread: its title stays on top, and the door beside it names the panel and switches it. -->
+      {#if threadTitle}<span class="thread-line ui-label" data-testid="panel-thread-title">{threadTitle}</span>{/if}
+      <PanelDoor {store} testid="panel-toggle" inPanel />
+    {/if}
 
     <button
       type="button"
@@ -511,7 +497,7 @@
     <!-- Keyed on the tab: the old surface leaves at once and the new one is
          there in the same frame, settling in. -->
     {#key active?.id}
-    <div class="surface" class:native={active?.kind === 'browser' || active?.kind === 'agent-browser'} use:arriveAfter>
+    <div class="surface" use:arriveAfter>
     {#if active?.kind === 'desk'}
       {#if store.openThread?.agentSessionId}
         {#key store.threadKey(store.openThread.id)}<AgentDesk {store} />{/key}
@@ -618,8 +604,7 @@
   }
 
   /* The strip's controls are as tall as its tabs: a target of 28 px at least. */
-  .strip button.small.icon,
-  .strip :global(.trigger.ghost) {
+  .strip button.small.icon {
     height: var(--control);
     width: var(--control);
   }
@@ -627,27 +612,11 @@
   .strip button.small.icon.panel-close { width: var(--control-head); height: var(--control-head); }
   /* The tabs scroll, so they clip: a keyboard ring drawn outside a tab or its close would be cut, it goes inside. */
   .tabs :global(:focus-visible) { outline-offset: -2px; }
-  /* The selector is the active tab's name: the tab's type and fill, a chevron after the words. */
-  .strip .selector :global(.trigger.ghost) {
-    width: auto;
-    min-width: 0;
-    max-width: 100%;
-    height: var(--control);
-    padding: 0 2px 0 0;
-    gap: 3px;
-    background: transparent;
-    color: inherit;
-    font: inherit;
-  }
-  .selector { display: flex; min-width: 0; }
-  .name-row { display: inline-flex; align-items: center; gap: 3px; min-width: 0; max-width: 100%; }
-  .selector :global(.menu) { display: flex; min-width: 0; }
-  .selector.alone { padding-left: 6px; color: var(--color-foreground); font-size: var(--text-xs); }
 
   /* Only the tabs give way. A control that shrank too took part of the room the
      chevrons cost, so the tabs lost less than `measure` counted and the
      chevrons went and came back on every frame at the panel's narrowest. */
-  .strip > :not(.tabs, .spacer) {
+  .strip > :not(.tabs, .spacer, .thread-line) {
     flex: none;
   }
 
@@ -672,20 +641,21 @@
   .tabs.hidden-end { mask-image: linear-gradient(to left, transparent, black 24px); }
   .tabs.hidden-start.hidden-end { mask-image: linear-gradient(to right, transparent, black 24px, black calc(100% - 24px), transparent); }
 
+  /* An open panel: a square as tall as the strip's targets, its glyph centred. */
   .tab {
+    position: relative;
     display: flex;
     align-items: center;
-    gap: 2px;
+    justify-content: center;
+    width: var(--control);
     height: var(--control);
-    max-width: 160px;
     flex: none;
-    padding: 0 8px 0 1px;
+    padding: 0;
     border-radius: var(--radius-md);
     color: var(--color-muted-foreground);
-    font-size: var(--text-xs);
     cursor: pointer;
     user-select: none;
-    /* No transition: the strip stays still while the body crossfades under it, the picked tab lit in the same frame. */
+    /* No transition: the strip stays still while the body changes under it, the picked tab lit in the same frame. */
   }
 
   .tab:hover {
@@ -696,24 +666,8 @@
   .tab.active {
     background: var(--color-active);
     color: var(--color-foreground);
-    /* The selector holds the tab's whole name and its chevron. */
-    max-width: 192px;
-    padding-right: 4px;
   }
 
-  .name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  /* A panel behind: a square as tall as the strip's targets, its glyph centred. */
-  .tab:not(.active) {
-    position: relative;
-    justify-content: center;
-    width: var(--control);
-    padding: 0;
-  }
   .solo { display: inline-flex; }
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   /* Its close, a small cross on its corner, there under the pointer or the keyboard only. */
@@ -736,57 +690,6 @@
   }
   .tab:hover .corner, .tab:focus-visible .corner, .corner:focus-visible { opacity: 1; }
   .corner:hover:not(:disabled) { background: var(--color-surface-2); }
-
-  /* The tab's icon is its close target: 28 px, as every target in the strip. */
-  .closer {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    padding: 0;
-    flex: none;
-    border: none;
-    border-radius: var(--radius-sm);
-    background: transparent;
-    color: inherit;
-  }
-
-  .closer:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--color-foreground) 12%, transparent);
-  }
-
-  .closer:active:not(:disabled) {
-    transform: none;
-    background: color-mix(in srgb, var(--color-foreground) 22%, transparent);
-  }
-
-  .cross {
-    display: none;
-  }
-
-  /* Flex, not inline: an inline span set the icon on the text's baseline, 2.5 px above the label's centre. */
-  .glyph {
-    display: inline-flex;
-  }
-
-  .glyph,
-  .cross {
-    align-items: center;
-    justify-content: center;
-  }
-
-  /* The showing panel's icon is its close target: the name opens the selector,
-     so the icon turns into an X only under the pointer or the keyboard on itself. */
-  .closer:hover .glyph,
-  .closer:focus-visible .glyph {
-    display: none;
-  }
-
-  .closer:hover .cross,
-  .closer:focus-visible .cross {
-    display: inline-flex;
-  }
 
   .chev {
     flex: none;
@@ -814,16 +717,13 @@
     flex-direction: column;
   }
 
-  /* A panel switch moves the body only: it slides in a few pixels from the
-     right while the head and the strip stay still, so the eye keeps its place
-     and reads the change where it happened. The old body has left in the same
-     frame (keyed), so no frame holds two. A browser's native view does not
-     follow a transform: it only fades. */
+  /* A panel switch changes the body only: it fades in while the head and the
+     strip stay still, so the eye keeps its place. The old body has left in the
+     same frame (keyed), so no frame holds two. No transform: a browser's native
+     view would not follow one. */
   .surface:global([data-arriving]) {
-    animation: surface-in var(--motion-duration) var(--motion-curve) both;
+    animation: surface-fade var(--motion-duration) var(--motion-curve) both;
   }
-  .surface.native:global([data-arriving]) { animation-name: surface-fade; }
-  @keyframes surface-in { from { opacity: 0.4; transform: translateX(8px); } }
   @keyframes surface-fade { from { opacity: 0.4; } }
   /* A cut under reduced motion, whatever the duration tokens say. */
   @media (prefers-reduced-motion: reduce) { .surface:global([data-arriving]) { animation: none; } }
@@ -883,19 +783,13 @@
   }
 
   @media (max-width: 720px) {
-    /* One back arrow, then the title: the showing panel's name in text, the one way to the others. */
+    /* One back arrow, the thread's title, then the door that names the panel and switches it. */
     .strip button.small.icon.panel-close { order: -1; width: var(--touch-target); height: var(--touch-target); margin-left: -6px; }
-    .tab:not(.active), .tab .closer { display: none; }
-    .tab.active { max-width: none; flex: 0 1 auto; min-width: 0; height: auto; padding: 0; background: transparent; }
-    .tabs { flex: 0 1 auto; }
-    .strip .selector :global(.trigger.ghost) { height: var(--touch-target); padding: 0 6px 0 2px; gap: 4px; }
-    .tab.active .name { font-size: var(--text-base); font-weight: 600; color: var(--color-foreground); }
-    /* With the thread's title over it: the title on one line, the panel's name under it, smaller, both inside
-       the selector's touch-tall button, still the way to the other panels. */
-    .selector.with-thread :global(.trigger.ghost) { flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; }
-    .thread-line { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-base); font-weight: 600; line-height: 1.2; color: var(--color-foreground); margin-block: 0; padding-block: 0; text-box: normal; }
-    .with-thread .name-row { gap: 4px; }
-    .tab.active .with-thread .name { font-size: var(--text-sm); font-weight: 500; line-height: 1.2; color: var(--color-muted-foreground); margin-block: 0; padding-block: 0; text-box: normal; }
+    .tabs, .chev, .spacer { display: none; }
+    .strip { gap: 6px; }
+    .strip :global(.panel-door) { margin-left: auto; }
+    /* Two lines at most, as every phone title. */
+    .thread-line { flex: 1; min-width: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; font-size: var(--text-base); font-weight: 600; line-height: 1.2; color: var(--color-foreground); margin-block: 0; padding-block: 0; text-box: normal; }
 
     .panel,
     .panel.maximized {

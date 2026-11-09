@@ -37,6 +37,7 @@
   import GroupLabel from './GroupLabel.svelte';
   import ProjectTile from './ProjectTile.svelte';
   import MachinePlace from './MachinePlace.svelte';
+  import MachineReconnect from './MachineReconnect.svelte';
   import RailFrame from './RailFrame.svelte';
   import { minuteClock } from '../lib/clock.svelte';
   import { doneFilter } from '../lib/inbox.svelte';
@@ -380,6 +381,8 @@
               </SharedProjectThreads>
             </div>
           </div>
+          <!-- Out of reach, the card ends in its next step, not on the Offline mark; connecting, it is already trying. -->
+          {#if away && owner.connection !== 'connecting'}<MachineReconnect store={owner} />{/if}
         </section>
       {/snippet}
       <!-- Idle projects sit as compact rows in their fold below, so Alt+digit and reordering count only the cards. -->
@@ -478,13 +481,29 @@
     cursor: grabbing !important;
     user-select: none;
   }
+  /* The card's head stays at the list's top while its threads scroll under it, on the card's own ground so no
+     row reads through, and the next card's head pushes it off: the card bounds it (round 21). */
   .head {
-    position: relative;
+    position: sticky;
+    /* At the scroll box's very edge, over its 3 px top inset (RailFrame.svelte), so no row shows above it. */
+    top: calc(-1 * var(--fade-top, 0px));
+    z-index: 2;
     display: flex;
     align-items: center;
     gap: 2px;
     height: 38px;
+    background: var(--color-surface);
   }
+  .project.drop .head { background: transparent; }
+  /* A row passing under it melts into the head instead of being sliced; over the card's own ground it shows nothing. */
+  .head::after { content: ''; position: absolute; inset: 100% 0 auto; height: 6px; background: linear-gradient(var(--color-surface), transparent); pointer-events: none; }
+  /* Stuck over rows (a scroll-state query on the head itself), its ground runs on opaque past its edge, then a short
+     fade, so a row cut mid-line hides under it; at rest the first row keeps its whole text (as the phone's heading). */
+  .head { container-type: scroll-state; }
+  @container scroll-state(stuck: top) {
+    .head::after { height: 24px; background: linear-gradient(var(--color-surface) 12px, transparent); }
+  }
+  .project.drop .head::after { display: none; }
   .toggle {
     flex: 1;
     min-width: 0;

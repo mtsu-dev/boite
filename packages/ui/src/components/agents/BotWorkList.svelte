@@ -13,7 +13,7 @@
   import { avatarLit } from '../../lib/avatar-lit';
 
   /**
-   * The threads a bot started, was handed or follows, from its desk: Handling,
+   * The threads a bot started, was handed or follows, from its desk: Working on,
    * the ones still open with what needs the user first, then Done, the ones
    * finished, merged or archived, dimmer. A row opens its thread on the
    * machine that holds it, answers its question in place, and its cross takes
@@ -91,7 +91,7 @@
   {:else if !onstart}
     <!-- On the Desk panel the empty line sits under the heading it describes, its action beside it (round 20). -->
     <h3 class="bot-section">{t.handling}</h3>
-    <p class="desk-empty desk-empty-row"><span>{t.workEmpty}</span>{#if ontask && store.owner}<button type="button" class="ghost small" data-testid="desk-work-start" onclick={ontask}><span class="ui-label">{t.workStart}</span></button>{/if}</p>
+    <p class="desk-empty desk-empty-row"><span>{t.workEmpty}</span>{#if ontask && store.owner}<button type="button" class="small" data-testid="desk-work-start" onclick={ontask}><span class="ui-label">{t.workStart}</span></button>{/if}</p>
   {:else if !first}
     <!-- An empty desk is one prompt in the column's middle; with no conversation either it moves over the chat (AgentsPage). -->
     <!-- Its face over the line, the open bot's so in its colours: an empty desk reads as this bot's, not a blank. -->

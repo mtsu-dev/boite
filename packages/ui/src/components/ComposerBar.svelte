@@ -11,7 +11,8 @@
   import type { Choice, PickPatch, Store } from '../lib/store.svelte';
   import ModelPicker from './ModelPicker.svelte';
   import EffortSlider from './EffortSlider.svelte';
-  import Deferred, { parts } from './Deferred.svelte';
+  import Deferred from './Deferred.svelte';
+  import { parts } from '../lib/deferred-parts';
   import ComposerOptions from './ComposerOptions.svelte';
   import PermissionChip, { type ModeChoice } from './PermissionChip.svelte';
   import ContextControl from './ContextControl.svelte';
@@ -298,7 +299,9 @@
   <div class="chips">{#if target.chips}{@render target.chips()}{/if}</div>
   {:else}
   <!-- The model chip stays named while the box answers a question: the next turn runs on it. -->
+  <!-- Two lines on a phone, each control in its own place: what runs the turn (model, effort), then how it runs (permission) with the context at the end. A desktop reads them as one row. -->
   <div class="chips">
+    <div class="line runs">
     {#if accountGone}
       <!-- The state and its remedy in one chip, first in the row: the chips after it name a route that no longer runs. -->
       <button type="button" class="ui-chip trigger gone" data-testid={botGone ? 'composer-bot-gone' : 'composer-account-removed'} title={botGone ? botHint : strings.accounts.removedHint} onclick={pickAccount}>
@@ -311,6 +314,8 @@
       <!-- The effort is a slider of its own, read at rest: its level, the bolt while fast is on. -->
       <EffortSlider bind:this={slider} levels={effortLevels} active={activeEffort} onpick={pickEffort} ondefault={agentDefault ? () => pickEffort(null) : undefined} {speeds} speed={speedOptions.speed} onspeed={(id) => void pick(speedOptions.pick(id))} readonly={bot !== null} readonlyHint={botHint} />
     {/if}
+    </div>
+    <div class="line how">
     {#if choice && modes.length > 0}
       <PermissionChip items={modeChoices} active={displayedMode} onpick={pickMode} readonly={bot !== null} readonlyHint={botHint} />
     {/if}
@@ -330,6 +335,7 @@
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div class="context-control" oncontextmenu={(event) => controlMenu(event, store, 'header.context')}><ContextControl {store} /></div>
     {/if}
+    </div>
   </div>
   {/if}
   {#if canAttach}
@@ -422,6 +428,8 @@
     flex-wrap: wrap;
     min-width: 0;
   }
+  /* A desktop row reads the two lines as one. */
+  .line { display: contents; }
   /* A desktop chip is a 32 px target, the head's control height. */
   .chips :global(.trigger) {
     height: var(--control-head);
@@ -528,9 +536,16 @@
        under it, each row a 44 px target (36 px chips, 8 px between rows). The
        "+" stays on the first row, the field above never changes its place in
        the card. */
-    .chips { flex: 1; flex-wrap: wrap; align-content: center; gap: 8px 6px; min-height: var(--touch-target); padding-block: 4px; }
+    .chips { flex: 1; flex-direction: column; align-items: stretch; gap: 8px; min-height: var(--touch-target); padding-block: 4px; }
     .bar > :global(.options) { align-self: flex-start; }
-    .chips > :global(*) { flex: none; max-width: 100%; }
+    /* A designed grid, not a wrap: the first line holds the model and the
+       effort beside the "+", the second the permission, the context reading
+       at its end when it shows. Each control keeps its place whether or not
+       the context is there; a line too short for its values wraps itself. */
+    .line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 6px; min-width: 0; }
+    .line.how:not(:has(*)) { display: none; }
+    .line > :global(*) { flex: none; max-width: 100%; }
+    .line.how > .context-control { margin-inline-start: auto; }
     /* Each setting reads as a control at rest: a quiet surface and a hairline
        around its icon, its value and its chevron, 36 px drawn in a 44 px target. */
     .bar .chips :global(:is(.picker, .effort, .permission) > .trigger), .bar .chips .gone {
@@ -555,6 +570,6 @@
     .bar :global(.opener) { position: relative; width: 32px; }
     .bar :global(.opener)::after { content: ''; position: absolute; inset: 0 -4px 0 -8px; }
     .bar .chips :global(:is(.picker, .effort, .permission) > .trigger) { padding: 0 7px; gap: 4px; }
-    .chips { column-gap: 4px; }
+    .line { column-gap: 4px; }
   }
 </style>

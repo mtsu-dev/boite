@@ -3,7 +3,8 @@
   import { MediaQuery } from 'svelte/reactivity';
   import { experimentOn } from '../lib/experiments.svelte';
   import { pinnedQuotas, PINNED_QUOTA_WIDTH } from '../lib/pinned-quotas.svelte';
-  import Deferred, { parts } from './Deferred.svelte';
+  import Deferred from './Deferred.svelte';
+  import { parts } from '../lib/deferred-parts';
   import { ChevronDown, FolderOpen, VenetianMask } from '@lucide/svelte';
   import { fill, strings } from '../lib/strings';
   import { modePhrase } from '../lib/permission-modes';
@@ -185,9 +186,9 @@
               <span class="machine" data-testid="draft-machine"><span class="ui-label">{machine.label}</span></span>
             {/if}
           </h1>
-          <!-- What this pane is for, said once: the task goes in the box, the agent works there, the thread lands in the list. -->
-          <!-- Over the composer, the folder and the machine in full: where the task will run, before it is sent. -->
-          <p class="start-hint" data-testid="draft-hint">{project ? fill(machine ? strings.thread.startWhere : strings.thread.startWhereHere, { path: project.path, machine: machine?.label ?? '' }) : strings.thread.startHint}</p>
+          <!-- What this pane is for, one line over the composer: the task goes in the box, the agent works in this folder,
+               in full; the heading above names the machine (round 21: two lines read as a paragraph). -->
+          <p class="start-hint" data-testid="draft-hint">{project ? fill(strings.thread.startWhere, { path: project.path }) : strings.thread.startHint}</p>
         </div>
     {/if}
 
@@ -338,7 +339,8 @@
     text-align: center;
   }
 
-  .start-mark { display: block; width: 56px; height: 56px; margin-bottom: -4px; }
+  /* Small: a greeting over the headline, not a hero; the group reads as headline, place and composer. */
+  .start-mark { display: block; width: 40px; height: 40px; margin-bottom: -2px; }
   .start-mark :global(svg.robot) { display: block; width: 100%; height: 100%; border-radius: 50%; }
 
   .start {
@@ -357,7 +359,7 @@
   }
 
   .start-hint {
-    max-width: 52ch;
+    max-width: 64ch;
     overflow-wrap: anywhere;
     margin: 0;
     color: var(--color-muted-foreground);

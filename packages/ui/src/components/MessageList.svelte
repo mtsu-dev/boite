@@ -1,12 +1,13 @@
 <script lang="ts">
   import { onDestroy, onMount, tick, untrack } from 'svelte';
-  import { MESSAGE_PAGE, type Message, type Turn } from '@boite/contracts';
+  import { MESSAGE_PAGE, type Message } from '@boite/contracts';
   import { strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import MessageTurnSummary from './MessageTurnSummary.svelte';
   import TurnFiles from './TurnFilesLoader.svelte';
-  import { TurnFileCache, answersByTurn, changeHost, showsTurnFiles, type TurnFilesData } from '../lib/turn-files';
-  import { chatPrefs } from '../lib/chat-prefs.svelte';
+  import { TurnChanges } from '../lib/turn-changes.svelte';
+  import { TailHeight } from '../lib/tail-height.svelte';
+  import ThreadClosing from './ThreadClosing.svelte';
   import MessageOutline from './MessageOutline.svelte';
   import AgentMessageGroup from './AgentMessageGroup.svelte';
   import TimelineCard from './TimelineCard.svelte';
@@ -20,8 +21,9 @@
   import { timelineCards } from '../lib/timeline-cards';
   import { asksDocked, failureCarded, settledCards } from '../lib/one-status';
   import UserMessage from './UserMessage.svelte';
-  import Deferred, { parts } from './Deferred.svelte';
-  import { provideViewerHost, type Gallery } from '../lib/media-gallery';
+  import Deferred from './Deferred.svelte';
+  import { parts } from '../lib/deferred-parts';
+  import { ListViewer } from '../lib/list-viewer.svelte';
   import AssistantMessage from './AssistantMessage.svelte';
   import FailedAttempts from './FailedAttempts.svelte';
   import MoveMarker from './MoveMarker.svelte';
@@ -53,18 +55,7 @@
 
   /** `closing`: a finished thread's last word (`lib/closing-line.ts`), drawn under the last message and scrolling with it. */
   let { store, threadId, messages, closing = null }: { store: Store; threadId: string; messages: Message[]; closing?: string | null } = $props();
-  /**
-   * The open viewer belongs to the list, not to the row it was opened from: a
-   * running turn moves the window of rows, and the row leaving it must not
-   * close the viewer. Object URLs of rows gone meanwhile wait for it to close.
-   */
-  let viewing = $state<Gallery | null>(null);
-  const held = new Set<string>();
-  function releaseHeld(): void {
-    for (const url of held) if (!viewing?.items.some(item => item.src === url)) { URL.revokeObjectURL(url); held.delete(url); }
-  }
-  provideViewerHost({ open: (gallery) => { viewing = gallery; releaseHeld(); }, release: (url) => { held.add(url); releaseHeld(); } });
-  onDestroy(() => { viewing = null; releaseHeld(); });
+  const viewer = new ListViewer();
   /** The find bar is its own chunk, fetched the first time it opens. A failed fetch tries again on the next open. */
   let FindBar = $state.raw<typeof import('./FindBar.svelte').default>();
   $effect(() => {
@@ -401,7 +392,7 @@
       // Everything from here down is worth a different number now.
       if (at < slots.dirty) slots.dirty = at;
       if (at < view.first) shift += next - previous;
-      if (id === lastId) noteTail(next);
+      if (id === lastId) tail.note(next);
     }
     if (!moved) return;
     measured += 1;
@@ -415,27 +406,8 @@
   }
 
   /** The bottom message's height, at most ten times a second: what the pin follows. */
-  let tail = $state(0);
-  let tailAt = 0;
-  let tailTimer = 0;
-
-  function noteTail(height: number): void {
-    if (tailTimer) return;
-    const wait = TAIL_GAP_MS - (performance.now() - tailAt);
-    if (wait <= 0) {
-      tailAt = performance.now();
-      tail = height;
-      return;
-    }
-    tailTimer = window.setTimeout(() => {
-      tailTimer = 0;
-      tailAt = performance.now();
-      const last = rows.at(-1);
-      tail = last ? (heights.get(last.id) ?? slots.estimateOf(last)) : 0;
-    }, wait);
-  }
-
-  $effect(() => () => { if (tailTimer) clearTimeout(tailTimer); });
+  const tail = new TailHeight(TAIL_GAP_MS, () => { const last = rows.at(-1); return last ? (heights.get(last.id) ?? slots.estimateOf(last)) : 0; });
+  $effect(() => () => tail.stop());
 
   /**
    * Every rendered message reports its height here and says which id it is. The
@@ -653,7 +625,7 @@
     void timeline.length;
     // A long answer being written gains rows as it is cut: the bottom is still its last one.
     void rows.length;
-    void tail;
+    void tail.value;
     const box = viewport;
     if (!box) return;
     const opened = shown !== threadId;
@@ -701,24 +673,9 @@
   /** The last row of each turn: a later message of the same turn replaces an earlier one. */
   const lastInTurn = $derived(new Map(timeline.map((message): [string, string] => [message.turnId, message.id])));
   const firstInTurn = $derived(firstByTurn(messages));
-  /** Each turn's answers, rebuilt when a message comes or goes, never on a part or a delta. */
-  const answers = $derived(answersByTurn(messages));
-  const fileCache = new TurnFileCache();
-  /** A turn end's file summary, derived per closing row: a part on the running turn rereads no finished turn. */
-  function filesOf(turn: Turn): TurnFilesData | null {
-    const thread = store.openThread;
-    if (!thread || thread.id !== threadId || !showsTurnFiles(turn, chatPrefs.groupChanges)) return null;
-    windowStats.turnFiles += 1;
-    const data = fileCache.read(turn.id, answers.get(turn.id) ?? [], thread.cwd, turn.status === 'running');
-    return data.files.length ? data : null;
-  }
-  /** Each turn's answers as drawn (a bot's fold took its calls out), rebuilt when the timeline is. */
-  const drawnAnswers = $derived(answersByTurn(timeline.filter(message => !cards.has(message.id) && !grouped.groups.has(message.id) && !shaped.folds.has(message.id) && !movedBy(message) && !startedFrom(message))));
-  /** The tool line a turn's change count joins, or null when it stands at the turn's end. */
-  function changeHostOf(turnId: string): { messageId: string; index: number } | null {
-    const own = drawnAnswers.get(turnId);
-    return own ? changeHost(own) : null;
-  }
+  /** Each turn end's files and the tool line its count joins (`lib/turn-changes.svelte.ts`). */
+  const turnChanges = new TurnChanges(() => store, () => threadId, () => messages,
+    () => timeline.filter(message => !cards.has(message.id) && !grouped.groups.has(message.id) && !shaped.folds.has(message.id) && !movedBy(message) && !startedFrom(message)));
 
   /**
    * Edit and retry go through the core's rewind, fork through its fork, and
@@ -756,9 +713,7 @@
     <div class="column" bind:this={column}>
       <!-- paging: the one line the top of the list shows while a page is in flight. -->
       {#if store.loadingOlder}<p class="loading-older" data-testid="loading-older">{strings.chat.loadingOlder}</p>{/if}
-      {#if view.above > 0}
-        <div class="spacer" data-testid="timeline-above" style="height: {view.above}px"></div>
-      {/if}
+      {#if view.above > 0}<div class="spacer" data-testid="timeline-above" style="height: {view.above}px"></div>{/if}
       {#each rendered as row, index (row.id)}
         {#if row.gap}<TimelineGap {...row.gap} />{:else}
         {@const message = row.message}
@@ -768,10 +723,10 @@
         {@const quietFold = shaped.folds.get(message.id)}
         {@const closes = row.last && !quietFold && turn !== undefined && turn.execution?.operation !== 'keepalive' && lastInTurn.get(turn.id) === message.id}
         {@const joined = seam(rows[view.start + index - 1], row)}
-        {@const host = turn ? changeHostOf(turn.id) : null}
+        {@const host = turn ? turnChanges.hostOf(turn.id) : null}
         <!-- The turn's change count, on the tool line of its last change (`inline`) or at its end. -->
         {#snippet changes(inline: boolean)}
-          {@const files = turn ? filesOf(turn) : null}
+          {@const files = turn ? turnChanges.filesOf(turn) : null}
           {#if files}<TurnFiles {store} {...files} {inline} loadDiffs={() => Promise.all(files.deferred.map(source => store.loadToolOutput(threadId, source.messageId, source.toolId))).then(() => {})} />{/if}
         {/snippet}
         <article
@@ -824,20 +779,16 @@
         </article>
         {/if}
       {/each}
-      {#if view.below > 0}
-        <div class="spacer" data-testid="timeline-below" style="height: {view.below}px"></div>
-      {/if}
+      {#if view.below > 0}<div class="spacer" data-testid="timeline-below" style="height: {view.below}px"></div>{/if}
       {#if store.loadingNewer}<p class="loading-older" data-testid="loading-newer">{strings.chat.loadingNewer}</p>{/if}
       {#if pendingMove}<MoveMarker notice={pendingMove} pending />{/if}
-      {#if closingShown}<p class="closing" data-testid="thread-closing"><span class="ui-label">{closing}</span></p>{/if}
+      {#if closingShown && closing}<ThreadClosing text={closing} />{/if}
     </div>
-    {#if promptRoom > 0}
-      <div class="spacer" data-testid="prompt-room" style:height="{promptRoom}px" aria-hidden="true"></div>
-    {/if}
+    {#if promptRoom > 0}<div class="spacer" data-testid="prompt-room" style:height="{promptRoom}px" aria-hidden="true"></div>{/if}
   </div>
 
 </div>
-{#if viewing}{@const view = viewing}<Deferred part={parts.ImageViewer} floating>{#snippet children(ImageViewer)}<ImageViewer items={view.items} index={view.index} onclose={() => { viewing = null; releaseHeld(); }} />{/snippet}</Deferred>{/if}
+{#if viewer.viewing}{@const view = viewer.viewing}<Deferred part={parts.ImageViewer} floating>{#snippet children(ImageViewer)}<ImageViewer items={view.items} index={view.index} onclose={() => viewer.close()} />{/snippet}</Deferred>{/if}
 
 <style>
   /* Chrome on demand: under a pointer, the fold chevrons of the tool rows and
@@ -917,21 +868,6 @@
     /* One reading column: bubbles, prose and cards take the dock's width. */
     --prose: var(--content);
   }
-
-  /* The thread's last word: one muted line between two hairlines under the last message, no card. */
-  .closing {
-    flex: none;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin: 4px 0 0;
-    color: var(--color-subtle);
-    font-size: var(--text-xs);
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-  }
-  .closing::before, .closing::after { content: ''; flex: 1; height: 1px; background: var(--color-border); }
-  .closing .ui-label { flex: none; max-width: 80%; overflow-wrap: anywhere; white-space: normal; text-align: center; }
 
   /* What a long thread's unrendered messages weigh, above and below the window. */
   .spacer { flex: 0 0 auto; }

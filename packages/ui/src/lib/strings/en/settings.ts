@@ -77,6 +77,8 @@ export const strings = {
     theme: 'Theme',
     /** Under a page's title where its settings stay on the device in hand (Appearance). */
     scopeDevice: 'On this device',
+    /** Under the title of a page that spans the group: Machines, Usage, the task manager. */
+    scopeEvery: 'On every machine',
     /** On a setting kept for one provider account (its default model). */
     scopeAccount: 'For {account} on this device',
     /** General's card of how agents answer, saved on the machine, apart from this device's conversation switches. */
@@ -170,7 +172,9 @@ export const strings = {
     chatWidthFull: 'Full',
     /** One plain line under the chat width row: what the chosen width does. */
     /** A paragraph in a small window under the chat width row, set at the width picked or pointed at. */
-    chatWidthSample: 'A reply sets its lines at the width you pick: the conversation, the composer and the cards beside them widen together.',
+    /** The width preview's small conversation: a question, then a reply set at the width picked. */
+    chatWidthAsk: 'Why does the build fail on Windows?',
+    chatWidthSample: 'The linker cannot find the Windows SDK, so the last step stops. Open a developer prompt, or add the SDK lib folder to LIB, then build again: the code itself compiles.',
     chatWidthResult: { comfortable: 'Lines stop at an easy reading width.', wide: 'Lines run wider, for code and tables.', full: 'Lines fill the whole window.' },
     terminalCursor: 'Terminal cursor',
     terminalCursorBar: 'Bar',

@@ -10,7 +10,8 @@
   import { isNamedModel } from '../lib/model-order';
   import { planOf } from '../lib/plan';
   import PlanCard from './PlanCard.svelte';
-  import Deferred, { parts } from './Deferred.svelte';
+  import Deferred from './Deferred.svelte';
+  import { parts } from '../lib/deferred-parts';
   import { openQuestionPage } from '../lib/question-page';
   import SettingRequestCard from './SettingRequestCardLoader.svelte';
   import AgentSettingCard from './AgentSettingCardLoader.svelte';

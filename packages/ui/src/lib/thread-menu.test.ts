@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { ArrowRightLeft } from '@lucide/svelte';
 import type { AgentsSnapshot, ThreadSummary } from '@boite/contracts';
 import { setExperiment } from './experiments';
 import { agentDirectory } from './agent-directory.svelte';
@@ -51,65 +52,70 @@ test('a pick from any thread menu, the phone list included, reaches the entrust 
 
 test('a phone menu has the short first level, find first, and the same named group without path or pull request', () => {
   const store = stub();
+  agentDirectory(store).snapshot = { profiles: [{ id: 'mira', name: 'Mira', status: 'active', domain: '', avatar: '' }], entrusted: [] } as unknown as AgentsSnapshot;
   const t = thread({ branch: 'boite/port' });
   const options = { phone: true, showDone: true, prLoading: false, tools: [{ id: 'find', label: 'Find' }] };
   const ids = (items: MenuItem[]) => items.filter(item => !item.separator).map(item => item.id);
   const main = threadMenuItems(store, t, options);
-  expect(ids(main)).toEqual(['find', 'rename', 'pin', 'done', 'archive', 'more', 'delete']);
+  expect(ids(main)).toEqual(['find', 'rename', 'retitle', 'pin', 'done', 'archive', 'more', 'delete']);
   // The group carries its own rows: the phone's sheet opens it in place, no caller state.
   const group = main.find(item => item.id === 'more')?.items ?? [];
-  expect(ids(group)).toEqual(['back', 'retitle', 'move']);
+  expect(ids(group)).toEqual(['back', 'entrust', 'move']);
   expect(ids(threadToolItems(store, t, options))).toEqual(ids(group));
 });
 
 test('the row, header and phone menus share one order and grouping for what they all have', () => {
   const store = stub();
-  const shared = new Set(['rename', 'pin', 'done', 'archive', 'more', 'delete']);
+  agentDirectory(store).snapshot = { profiles: [{ id: 'mira', name: 'Mira', status: 'active', domain: '', avatar: '' }], entrusted: [] } as unknown as AgentsSnapshot;
+  const shared = new Set(['rename', 'retitle', 'pin', 'done', 'archive', 'more', 'delete']);
   const order = (items: MenuItem[]) => items.filter(item => item.separator || shared.has(item.id))
     .map(item => item.separator ? '|' : item.id).join(' ').replace(/(\| )+/g, '| ').replace(/^\| |( \|)+$/g, '');
   const row = order(threadMenuItems(store, thread(), { open: false, showDone: true, prLoading: false }));
   const header = order(threadMenuItems(store, thread(), { showDone: true }));
   const phone = order(threadMenuItems(store, thread(), { phone: true, showDone: true }));
-  expect(row).toBe('rename pin | done archive | more | delete');
+  // A new title sits with Rename, both name the thread; the group holds where it goes.
+  expect(row).toBe('rename retitle pin | done archive | more | delete');
   expect(header).toBe(row);
   expect(phone).toBe(row);
 });
 
-test('a desktop menu keeps seven rows at most on its first level and names its one group, find first, no panel', () => {
+test('a desktop menu keeps eight rows at most on its first level and names its one group, find first, no panel', () => {
   const store = stub();
   agentDirectory(store).snapshot = { profiles: [{ id: 'mira', name: 'Mira', status: 'active', domain: '', avatar: '' }], entrusted: [] } as unknown as AgentsSnapshot;
   const options = { open: false, showDone: true, prLoading: false, tools: [{ id: 'find', label: 'Find' }] };
   const t = thread({ branch: 'boite/port' });
   const ids = (items: MenuItem[]) => items.filter(item => !item.separator).map(item => item.id);
   const main = threadMenuItems(store, t, options);
-  // A row's menu adds Open: the header's has find in its place, so both stay at seven.
-  expect(ids(main)).toEqual(['open', 'find', 'rename', 'pin', 'done', 'archive', 'more', 'delete']);
-  expect(ids(threadMenuItems(store, t, { ...options, open: undefined }))).toHaveLength(7);
-  expect(ids(threadMenuItems(store, t, { ...options, tools: [] }))).toHaveLength(7);
+  // A row's menu adds Open: the header's has find in its place, so both stay at eight.
+  expect(ids(main)).toEqual(['open', 'find', 'rename', 'retitle', 'pin', 'done', 'archive', 'more', 'delete']);
+  expect(ids(threadMenuItems(store, t, { ...options, open: undefined }))).toHaveLength(8);
+  expect(ids(threadMenuItems(store, t, { ...options, tools: [] }))).toHaveLength(8);
+  // A transfer sign on the group: it moves the thread or hands it over, it sets nothing.
+  expect(main.find(item => item.id === 'more')?.glyph).toBe(ArrowRightLeft);
   // The door says what a user does there, in words to act on: move it, give it to a bot.
   expect(main.find(item => item.id === 'more')).toMatchObject({ submenu: true, label: 'Move to a project or a bot' });
   expect(main.some(item => item.label === 'More')).toBe(false);
   const tools = threadToolItems(store, t, options);
   // The way back names the level it stands on, as the model picker's levels do.
   expect(tools[0]).toMatchObject({ back: true, label: 'Move to a project or a bot' });
-  // What is done less often, in the door's order: the hand-off, a new title, then where the thread lives. The panels have their own selector.
-  expect(ids(tools)).toEqual(['back', 'entrust', 'retitle', 'move', 'copy', 'pr']);
+  // Where the thread goes, in the door's order: the hand-off, then where the thread lives. The panels have their own door.
+  expect(ids(tools)).toEqual(['back', 'entrust', 'move', 'copy', 'pr']);
   // What the header says of the thread leads each part: its bot the bot rows, its branch the folder rows.
   expect(ids(threadToolItems(store, t, { ...options, lead: [{ id: 'thread-entrusted-chip', label: 'Open Mira' }], place: [{ id: 'thread-branch', label: 'boite/port' }] })))
-    .toEqual(['back', 'thread-entrusted-chip', 'entrust', 'retitle', 'thread-branch', 'move', 'copy', 'pr']);
+    .toEqual(['back', 'thread-entrusted-chip', 'entrust', 'thread-branch', 'move', 'copy', 'pr']);
   // No bot to give it to: the name drops the word, never promising a row that is not there.
   agentDirectory(store).snapshot = { profiles: [], entrusted: [] } as unknown as AgentsSnapshot;
-  expect(threadToolItems(store, t, options)[0]).toMatchObject({ back: true, label: 'Move or retitle' });
+  expect(threadToolItems(store, t, options)[0]).toMatchObject({ back: true, label: 'Move to a project' });
   // A sub-thread cannot move: the name drops the move too, and keeps what is there.
-  expect(threadToolItems(store, thread({ branch: 'boite/port', parentThreadId: 't0' }), options)[0]).toMatchObject({ back: true, label: 'Retitle or copy the path' });
+  expect(threadToolItems(store, thread({ branch: 'boite/port', parentThreadId: 't0' }), options)[0]).toMatchObject({ back: true, label: 'Folder and branch' });
 });
 
 test('a group of one is a row on the first level, not a submenu', () => {
   const store = stub();
-  // A sub-thread on a phone cannot move and has no path row: a new title is the group's only row.
-  const t = thread({ parentThreadId: 't0' });
+  // A phone with no bot to give it to has no path row: the move is the group's only row.
+  const t = thread();
   const ids = (items: MenuItem[]) => items.filter(item => !item.separator).map(item => item.id);
-  expect(ids(threadMenuItems(store, t, { showDone: true, phone: true }))).toEqual(['rename', 'pin', 'done', 'archive', 'retitle']);
+  expect(ids(threadMenuItems(store, t, { showDone: true, phone: true }))).toEqual(['rename', 'retitle', 'pin', 'done', 'archive', 'move', 'delete']);
   expect(threadToolItems(store, t, { phone: true })).toEqual([]);
 });
 

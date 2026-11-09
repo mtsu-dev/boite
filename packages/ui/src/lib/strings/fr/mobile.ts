@@ -34,7 +34,7 @@ export const fr: Translation = {
     settingsPhone: 'Notifications',
     settingsBack: 'Retour aux réglages',
     /** Activity's second line: why the thread is listed. */
-    feed: { run: 'Veut lancer :', helperAsks: '{title} vous attend', updates: 'Nouvelles', verb: { answer: 'Répondre', allow: 'Autoriser', review: 'Examiner', deny: 'Refuser', skip: 'Passer' } },
+    feed: { run: 'Veut lancer :', helperAsks: '{title} vous attend', updates: 'Nouvelles', verb: { answer: 'Répondre', review: 'Examiner', deny: 'Refuser', skip: 'Passer' } },
     navigation: 'Navigation', activity: 'Activité',
     waitingElsewhere: '{count} en attente de vous',
     search: 'Trouver une conversation', noThreads: 'Aucune conversation ne correspond.'

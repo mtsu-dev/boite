@@ -9,7 +9,7 @@ import { mountOnFake, query, test, type, waitFor } from '../test/app';
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
 
 test('a floating panel can dock after leaving or closing its browser tab and changing threads', async ({ app: _app }) => {
-  // Dock is a row of the panel's selector: the head holds the selector and the close only.
+  // Dock is a row of the panel switcher on the header's door: the head holds the tabs and the close only.
   const dockRow = () => {
     if (!document.querySelector('[data-testid=panel-add-menu]')) { document.querySelector<HTMLButtonElement>('[data-testid=panel-add]')?.click(); flushSync(); }
     return document.querySelector<HTMLButtonElement>('[data-testid=panel-add-menu] [data-testid=panel-dock]');
@@ -56,7 +56,8 @@ test("the panel selector lists the terminal, and a control's right click leads t
   // A hidden terminal is listed by name with every other panel, behind no door.
   await waitFor(() => document.querySelector('[data-testid=panel-add-menu] [data-value=terminal-toggle]') !== null);
   query<HTMLButtonElement>('[data-testid=panel-add]').click();
-  if (!wasOpen) query<HTMLButtonElement>('[data-testid=panel-toggle]').click();
+  // Open, the door is the switcher: the head's close shuts the panel.
+  if (!wasOpen) query<HTMLButtonElement>('[data-testid=panel-close]').click();
 
   // The context's number sits beside the model chip once the context matters (ComposerBar's CONTEXT_SHOWN_FROM).
   store.openThread!.context = { tokens: 150_000, window: 200_000, at: Date.now() };
@@ -91,7 +92,10 @@ test('the header button opens the panel on its launcher, which opens the changes
   query<HTMLButtonElement>('[data-testid=panel-toggle]').click();
   // An empty panel opens on its cards rather than forcing one surface.
   await waitFor(() => document.querySelector('[data-testid=panel-launcher]') !== null);
-  expect(query('[data-testid=panel-toggle]').getAttribute('aria-pressed')).toBe('true');
+  // Open, the door turns into the switcher, named Panels while no panel shows.
+  await waitFor(() => document.querySelector('[data-testid=panel-add]') !== null);
+  expect(query('[data-testid=panel-add]').textContent?.trim()).toBe('Panels');
+  expect(document.querySelector('[data-testid=panel-toggle]')).toBeNull();
   expect(document.querySelector('[data-testid=trace-panel]')).toBeNull();
   for (const kind of ['agent-browser', 'changes', 'files', 'tasks', 'trace']) {
     expect(document.querySelector(`[data-testid=launch-${kind}]`)).not.toBeNull();
@@ -126,7 +130,7 @@ test('the header button opens the panel on its launcher, which opens the changes
   await waitFor(() => document.querySelectorAll('[data-testid=panel-tab]').length === 1);
   expect(store.panel.active?.kind).toBe('changes');
 
-  query<HTMLButtonElement>('[data-testid=panel-toggle]').click();
+  query<HTMLButtonElement>('[data-testid=panel-close]').click();
   await waitFor(() => !store.panelOpen);
   // The panel plays its exit before it unmounts, so the button is what answers here.
   expect(query('[data-testid=panel-toggle]').getAttribute('aria-pressed')).toBe('false');
@@ -204,7 +208,8 @@ test('what the agent asks for through panel.open opens on the thread it named', 
   });
   await waitFor(() => document.querySelector('[data-testid=file-panel]') !== null);
   expect(store.panel.active?.line).toBe(42);
-  // Showing, its name is the panel selector, which carries the path.
-  expect(query('[data-testid=panel-tab][data-kind=file] [data-testid=panel-add]').getAttribute('title')).toBe('src/lib/store.svelte.ts');
-  expect(query('[data-testid=panel-tab][data-kind=file] .name').textContent).toBe('store.svelte.ts');
+  // Showing, its name is on the header's door, the switcher, which carries the path.
+  expect(query('[data-testid=panel-add]').getAttribute('title')).toContain('src/lib/store.svelte.ts');
+  expect(query('[data-testid=panel-door-name]').textContent).toBe('store.svelte.ts');
+  expect(query('[data-testid=panel-tab][data-kind=file]').getAttribute('title')).toBe('src/lib/store.svelte.ts');
 });

@@ -52,16 +52,19 @@ export const strings = {
     trace: 'Trace',
     /** The header's button: it shows or hides the panel, whatever surface is in it. */
     panel: 'Panel',
-    panelHint: 'Show or hide the side panel',
+    /** The closed door's tooltip: what a panel is, before its key. */
+    panelHint: "Panels: this thread's changes, files, browser and tools, beside the chat",
     panelMenu: 'Panels',
-    /** A thread menu's second level, named by what a user does there: the bot rows, a new title, the folder (branch, move, path, pull request). */
+    /** The open door, which names the panel and switches it. */
+    panelSwitch: '{name}: switch or close the panel',
+    /** A thread menu's second level, named by what a user does there: the bot rows, then the folder (branch, move, path, pull request). The new title sits by Rename. */
     manage: 'Move to a project or a bot',
     /** The same with no bot row (bots off, none to give it to). */
-    manageNoBot: 'Move or retitle',
+    manageNoBot: 'Move to a project',
     /** The same with no move row (a phone that cannot move it, a thread that cannot move). */
-    manageNoFolder: 'Give to a bot or retitle',
-    /** The same with neither: a new title and the folder's path. */
-    manageTitle: 'Retitle or copy the path',
+    manageNoFolder: 'Give to a bot',
+    /** The same with neither: the folder's branch, path and pull request. */
+    manageTitle: 'Folder and branch',
     /** A desktop header's project crumb: back to the thread list, at this thread. */
     backToList: 'Back to the {project} threads',
     terminalHint: "Terminal in this thread's folder",
@@ -76,10 +79,9 @@ export const strings = {
     /** Before the machine the draft's project is on, which ends the heading. */
     onMachine: 'on',
     /** Under a desktop draft's heading: what starting here does. The mode, model and effort are the chips' to say. */
-    startHint: 'Describe a task below: the agent works in this folder, and the thread joins your list.',
-    /** The same with the folder's whole path and the machine, so where it runs reads in full. */
-    startWhere: 'Describe a task below: the agent works in {path} on {machine}, and the thread joins your list.',
-    startWhereHere: 'Describe a task below: the agent works in {path}, and the thread joins your list.',
+    startHint: 'Describe a task below: the agent works in this folder.',
+    /** The same with the folder's whole path, so where it runs reads in full; the heading already names the machine. */
+    startWhere: 'Describe a task below: the agent works in {path}.',
     draftMode: {
       default: 'with approval requests',
       acceptEdits: 'with edits allowed',

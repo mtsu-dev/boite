@@ -4,7 +4,7 @@
   import MobileSettings from './MobileSettings.svelte';
   import BrainPage from './BrainPage.svelte';
   import InfoTip from './InfoTip.svelte';
-  import { ChevronLeft, ChevronRight, MonitorSmartphone, Search, Monitor } from '@lucide/svelte';
+  import { ChevronDown, ChevronLeft, ChevronRight, MonitorSmartphone, Network, Search, Monitor } from '@lucide/svelte';
   import { SETTINGS_ICONS, SETTINGS_ICON_SIZE, SETTINGS_ICON_STROKE } from '../lib/settings-icons';
   import KeyboardPage from './KeyboardPage.svelte';
   import LimitsPage from './LimitsPage.svelte';
@@ -28,8 +28,10 @@
   import UsagePage from './UsagePage.svelte';
   import VoiceSettings from './VoiceSettings.svelte';
   import { providerGroups } from '../lib/provider-family';
-  import { isThisPC, machineName, workspace } from '../lib/workspace.svelte';
+  import { isThisPC, listedName, machineName, workspace } from '../lib/workspace.svelte';
   import SettingsMachineBar from './SettingsMachineBar.svelte';
+  import Menu from './Menu.svelte';
+  import MachineIcon from './MachineIcon.svelte';
   import { untrack } from 'svelte';
   import { holdSettingsCard, revealSettingsCard } from '../lib/settings-flash';
   import { desktopPage, desktopSettings, familyOf, machinePage, movedTo, navOf, ownerOnly, sectionsOf, SETTINGS_FAMILIES } from '../lib/settings-tabs';
@@ -201,15 +203,20 @@
   let title = $derived(tabs.find((entry) => entry.id === tab)?.label ?? '');
   let info = $derived(infoOf(tab));
   /**
-   * Where the page's settings apply, under its title where it is not obvious (round 18): this device for
-   * Appearance, the machine for a machine's page. The bar names it instead once there is one to pick.
+   * Where the page's settings apply, under every title (round 21): this device, every machine, or the one
+   * machine a page changes. Where there is a machine to pick, its name in that line is the picker, the
+   * way the panel door names the open panel and switches it.
    */
-  let scope = $derived.by(() => {
-    if (tab === 'appearance') return { device: true, text: strings.settings.scopeDevice };
-    if (!machinePage(tab) || bar) return null;
+  let scope = $derived.by((): { kind: 'device' | 'all' | 'machine'; text: string } | null => {
+    if (tab === 'appearance' || tab === 'browser') return { kind: 'device', text: strings.settings.scopeDevice };
+    if (tab === 'machines' || tab === 'usage' || tab === 'task-manager') return { kind: 'all', text: strings.settings.scopeEvery };
+    if (!machinePage(tab)) return null;
     const machine = workspace.machines.find((m) => m.store === target);
-    return machine ? { device: false, text: fill(strings.machines.scopeOn, { machine: machineName(machine) }) } : null;
+    return machine ? { kind: 'machine', text: fill(strings.machines.scopeOn, { machine: machineName(machine) }) } : null;
   });
+  /** The words around the machine's name, so the name alone is the picker ("On" before it in English). */
+  let scopeWords = $derived(strings.machines.scopeOn.split('{machine}'));
+  let scopePicks = $derived(bar && tab !== 'experiments' && choices.length > 1 && chosen !== undefined);
 
   /**
    * On a desktop the card carries the screen's one title, a step over the
@@ -389,9 +396,23 @@
 {#snippet machineBar()}
   {#if chosen}<SettingsMachineBar machine={chosen} machines={choices} onpick={(id) => { picked = id; }} />{/if}
 {/snippet}
+<!-- The scope line's machine as its picker, "On [studio v]": the title says where its settings apply and switches it. -->
+{#snippet scopePicker()}
+  {#if chosen}
+    {#if scopeWords[0]?.trim()}<span class="ui-label">{scopeWords[0].trim()}</span>{/if}
+    <Menu items={choices.map((entry) => ({ id: entry.id, label: listedName(entry), active: entry === chosen }))} label={strings.machines.pick} placement="bottom" variant="text" testid="settings-machine" onpick={(id) => { picked = id; }}>
+      <MachineIcon icon={chosen.icon} os={chosen.store.core?.os} size={14} /><span class="pick-name ui-label">{listedName(chosen)}</span><ChevronDown size={13} aria-hidden="true" />
+    </Menu>
+    {#if scopeWords[1]?.trim()}<span class="ui-label">{scopeWords[1].trim()}</span>{/if}
+  {/if}
+{/snippet}
+<!-- Under a title whose scope line is the picker: only the bar's notes (follows, default machine). -->
+{#snippet machineNotes()}
+  {#if chosen}<SettingsMachineBar machine={chosen} machines={choices} picker={false} onpick={(id) => { picked = id; }} />{/if}
+{/snippet}
 
 {#if !desktopSettings(narrow.current)}
-  <MobileSettings {store} {target} bar={bar ? machineBar : undefined} {onopenthread} />
+  <MobileSettings {store} {target} bar={bar ? machineBar : undefined} pick={bar && choices.length > 1 ? scopePicker : undefined} notes={machineNotes} {onopenthread} />
 {:else}
 <div class="settings" data-testid="settings">
   <nav aria-label={strings.settings.heading} style:--list-width={`${store.sidebarWidth}px`}>
@@ -450,9 +471,14 @@
       {:else}
         <header class="screen" data-testid="settings-crumb">
           <h1 class="ui-label-box"><span class="ui-label">{title}</span>{#if info}<InfoTip topic={title} text={info} testid="settings-info" />{/if}</h1>
-          {#if scope}<p class="scope" data-testid="settings-scope">{#if scope.device}<MonitorSmartphone size={14} strokeWidth={1.75} aria-hidden="true" />{:else}<Monitor size={14} strokeWidth={1.75} aria-hidden="true" />{/if}<span class="ui-label">{scope.text}</span></p>{/if}
+          {#if scope}
+            <p class="scope" data-testid="settings-scope" data-scope={scope.kind}>
+              {#if scope.kind === 'device'}<MonitorSmartphone size={14} strokeWidth={1.75} aria-hidden="true" />{:else if scope.kind === 'all'}<Network size={14} strokeWidth={1.75} aria-hidden="true" />{:else if !scopePicks}<Monitor size={14} strokeWidth={1.75} aria-hidden="true" />{/if}
+              {#if scopePicks}{@render scopePicker()}{:else}<span class="ui-label">{scope.text}</span>{/if}
+            </p>
+          {/if}
         </header>
-        {#if bar && tab !== 'experiments'}{@render machineBar()}{/if}
+        {#if bar && tab !== 'experiments'}{@render machineNotes()}{/if}
         {#key target}
         <PolicyBanner store={target} />
         {@render view(tab)}
@@ -621,6 +647,9 @@
   .screen { padding: var(--space-8) max(var(--settings-gutter), calc((100% - var(--settings-width)) / 2)) 0; }
   .screen h1 { min-width: 0; margin: 0; color: var(--color-foreground); font-size: var(--text-lg); font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; }
   .screen + :global(.page) { padding-top: var(--space-5); }
+  /* The machine's name in the scope line is the picker: a word with an edge and a chevron, so it reads as one at rest. */
+  :global(.settings .scope .trigger.text) { margin: -2px 0; color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-edge); }
+  :global(.settings .scope .pick-name) { overflow: hidden; max-width: 28ch; text-overflow: ellipsis; white-space: nowrap; }
 
   .tab {
     justify-content: flex-start;

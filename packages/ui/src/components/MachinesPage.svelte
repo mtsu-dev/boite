@@ -5,7 +5,7 @@
   import { GroupLinks } from '../lib/group-links.svelte';
   import InfoTip from './InfoTip.svelte';
   import PolicyLock from './PolicyLock.svelte';
-  import { ArrowUpRight, Check, Ellipsis, RefreshCw, Trash2, ScanLine } from '@lucide/svelte';
+  import { ArrowUpRight, Check, Ellipsis, Trash2, ScanLine } from '@lucide/svelte';
   import Menu from './Menu.svelte';
   import { separator, type MenuItem } from '../lib/menu';
   import { listedName, machineHealth, machineName, workspace, machineIcons, type Machine } from '../lib/workspace.svelte';
@@ -19,10 +19,9 @@
   import { appUpdater, showAppUpdateUi } from '../lib/app-update.svelte';
   import { machineUpdateState, type MachineUpdateState } from '../lib/machine-updates';
   import PairMachine from './PairMachine.svelte';
-  import Spinner from './Spinner.svelte';
+  import MachineReconnect from './MachineReconnect.svelte';
   import WindowAllowlistCard from './WindowAllowlistCard.svelte';
   import WindowExclusionsCard from './WindowExclusionsCard.svelte';
-  import { WsClient } from '../lib/ws-client';
   import type { Store } from '../lib/store.svelte';
   /** `store`: the machine whose windows the page's last cards change, this window's own. */
   let { mobile = false, onopenthread, store: here }: { mobile?: boolean; onopenthread?: () => void; store?: Store } = $props();
@@ -91,21 +90,7 @@
     return health === 'offline' || health === 'lost' ? health : null;
   };
 
-  /**
-   * The remedy beside an offline state (round 18): a closed client opens again, one waiting out its
-   * backoff tries now instead of at its next deadline. The row comes back by itself once it answers.
-   */
-  let reconnecting = $state<string | null>(null);
   const thisName = $derived.by(() => { const machine = workspace.machines.find((m) => m.store === here); return machine ? machineName(machine) : strings.connection.current; });
-  async function reconnect(machine: Machine) {
-    reconnecting = machine.id;
-    try {
-      const client = machine.store.client;
-      if (machine.store.connection === 'closed' || !(client instanceof WsClient)) await machine.store.connect();
-      else await client.wake();
-    } catch { /* The row keeps its state; the client retries on its own. */ }
-    finally { if (reconnecting === machine.id) reconnecting = null; }
-  }
 
   /** Boite on that machine and its agents, as the one word its row shows. */
   function updates(machine: Machine): MachineUpdateState | null {
@@ -249,7 +234,8 @@
               {#if machine.store.pairingRequired}
                 <button class="ghost small" data-testid="machine-repair" onclick={() => void repair()}><ScanLine size={15} /><span class="ui-label">{strings.mobile.pairAgain}</span></button>
               {:else if machine.store.connection === 'closed' || gone}
-                <button class="small reconnect" data-testid="machine-reconnect" disabled={reconnecting === machine.id} onclick={() => void reconnect(machine)}>{#if reconnecting === machine.id}<Spinner size={13} />{:else}<RefreshCw size={14} />{/if}<span class="ui-label">{strings.connection.reconnect}</span></button>
+                <!-- The remedy beside an offline state: a closed client opens again, one waiting out its backoff tries now; the row comes back by itself. -->
+                <MachineReconnect store={machine.store} testid="machine-reconnect" inline />
               {/if}
               <!-- The machine already open has nowhere to go, and one out of reach has nothing to open. -->
               {#if machine.store !== workspace.active && !gone}
@@ -312,7 +298,6 @@
   .machines-page > :global(*) { max-width: var(--settings-width); }
   /* The windows cards' machine, over their first title's room. */
   .cards-scope { display: flex; margin: var(--space-8) 0 0; }
-  .reconnect { display: inline-flex; align-items: center; gap: 6px; }
   .connections-section { scroll-margin-top: 24px; }
   .connections-section > :global(.card) { margin-bottom: 20px; }
   .head {
@@ -446,13 +431,13 @@
   }
   .version::before,
   .updates::before { content: '·'; margin-right: 6px; color: var(--color-subtle); font-family: var(--font-sans); }
-  /* Out of reach: grey, still named and still removable. */
+  /* Out of reach: still named and still removable, its state an Offline chip like the one a thread's
+     machine wears (MachinePlace), so the row never reads as off by its dimmed logo alone (round 21). */
   .away .logo { opacity: 0.5; }
   .away .machine-name { color: var(--color-muted-foreground); }
-  .away .dot { background: var(--color-subtle); }
-  .away .status { color: var(--color-subtle); }
-  .lost .dot { background: var(--color-danger); }
-  .lost .status { color: var(--color-danger); }
+  .away .dot { display: none; }
+  .away .status { padding: 0 6px; border: 1px solid var(--color-edge); border-radius: var(--radius-sm); color: var(--color-muted-foreground); line-height: 1.4; }
+  .lost .status { border-color: color-mix(in srgb, var(--color-danger) 55%, transparent); color: var(--color-danger); }
   /* What the machine has to say about its updates, after its connection. */
   .updates { color: var(--color-muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: none; }
   .updates[data-state='current'] { display: inline-flex; align-items: center; overflow: visible; }

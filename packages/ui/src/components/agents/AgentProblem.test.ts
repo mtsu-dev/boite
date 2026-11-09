@@ -20,6 +20,10 @@ test('a bot whose account is gone offers its other accounts in place, and one pi
     flushSync();
     const banner = () => document.querySelector<HTMLElement>('[data-testid="agent-problem"]');
     await vi.waitFor(() => expect(banner()).not.toBeNull());
+    // The banner names the cause in the composer chip's words, the bot's sentence and the core's own kept in its title.
+    const cause = banner()!.querySelector<HTMLElement>('[data-testid="agent-problem-cause"]')!;
+    expect(cause.textContent).toBe(strings.accounts.removed);
+    expect(cause.title).toContain(fill(strings.composer.botAccountGone, { name: 'Bolt' }));
     // The bot's read-only chips point at the same remedy, not at the settings.
     const effort = () => document.querySelector<HTMLElement>('[data-testid="composer-effort"]');
     await vi.waitFor(() => expect(effort()?.title).toBe(fill(strings.composer.botAccountGone, { name: 'Bolt' })));

@@ -25,9 +25,11 @@ export const fr: Translation = {
     mentionFile: 'Mentionner un fichier',
     commands: 'Commandes',
     botSettings: 'Réglé dans les paramètres de {name}',
-    botAccountGone: 'Le compte de {name} n’existe plus : choisissez un autre compte',
+    botAccountGone: 'Le compte de {name} a été supprimé. Choisissez un autre compte pour continuer.',
     placeholder: 'Message à {name}',
     placeholderAgent: "l'agent",
+    /** The field while the open thread's first page is on its way; Send waits for it. */
+    placeholderLoading: 'Chargement de la conversation',
     placeholderOffline: '{machine} est hors ligne : les messages attendent ici et partent à sa reconnexion',
     placeholderOfflineDraft: '{machine} est hors ligne : la conversation démarre à sa reconnexion',
     send: 'Envoyer',
@@ -60,7 +62,13 @@ export const fr: Translation = {
     noModels: 'Aucun modèle ne correspond',
     noModelsAvailable: "L'agent n'a renvoyé aucun modèle. Actualisez pour réessayer.",
     showAllModels: 'Afficher les {count} modèles',
-    legacyModels: 'Anciens modèles',
+    olderModels: 'Modèles plus anciens',
+    /** The older models' one line of help, under their title. */
+    olderModelsHelp: 'Toujours proposés par le fournisseur, mais plus les derniers.',
+    /** The model sheet's head: what runs now. */
+    inUse: 'Utilisé',
+    /** The row back to the provider in use, from another one opened in place. */
+    backTo: 'Retour à {provider}',
     refreshModels: 'Actualiser les modèles',
     probing: "Lecture des modèles de l'agent",
     notInstalled: 'Pas installé sur cette machine',

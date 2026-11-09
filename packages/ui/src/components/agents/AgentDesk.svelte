@@ -150,7 +150,7 @@
           {#if !brain.memory.trim()}
             <p class="desk-empty desk-empty-row">
               <span>{t.memoryEmpty}</span>
-              {#if store.owner}<button type="button" class="ghost small" onclick={() => { editing = true; }} data-testid="desk-memory-edit"><Pencil size={13} strokeWidth={1.75} /><span class="ui-label">{t.memoryAdd}</span></button>{/if}
+              {#if store.owner}<button type="button" class="small" onclick={() => { editing = true; }} data-testid="desk-memory-edit"><Pencil size={13} strokeWidth={1.75} /><span class="ui-label">{t.memoryAdd}</span></button>{/if}
             </p>
           {:else}
             <ul class="desk-notes" data-testid="desk-memory-text">

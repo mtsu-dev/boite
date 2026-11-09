@@ -12,9 +12,10 @@
    * the list column (QuotaLine.svelte). One
    * machine that is connected says nothing, so nothing is drawn; a second
    * machine, a filter or a connection in trouble brings back one icon, the
-   * chosen machine's name beside it only while it filters the list. A remote
-   * machine that is merely switched off is grey in the menu and raises no
-   * warning (`machineHealth`).
+   * chosen machine's name beside it only while it filters the list. Its card
+   * and its name say which machine it is and how it is: "Studio: Connected".
+   * A remote machine that is merely switched off is grey in the menu and
+   * raises no warning (`machineHealth`).
    */
   let { store, filter = null, onfilter, testid = 'machine-status', card }: {
     store: Store; filter?: string | null; onfilter?: (id: string | null) => void; testid?: string;
@@ -34,11 +35,15 @@
   const away = $derived(machines.filter(m => health.get(m) === 'offline'));
   const trouble = $derived(issues > 0 ? `${issues} ${strings.connection.issues}`
     : away.length > 0 ? away.map(m => fill(strings.connection.nameOffline, { name: machineName(m) })).join(', ') : null);
-  const label = $derived(trouble ? `${name} · ${trouble}` : name);
+  const stateOf = (m: (typeof machines)[number]) => health.get(m) === 'offline' ? strings.connection.offline : strings.connection[m.store.connection];
+  /** Each machine and its state, the chosen one alone while it filters: what the glyph means, in words. */
+  const states = $derived((chosen ? [chosen] : machines).map(m => fill(strings.machines.state, { name: machineName(m), state: stateOf(m) })).join(', '));
+  const note = $derived(issues > 0 ? `${trouble}. ${states}` : states);
+  const label = $derived(`${name} · ${note}`);
   const items = $derived<MenuItem[]>([
     ...(machines.length > 1 ? [
       { id: 'all', label: strings.machines.all, checked: filter === null, radio: true },
-      ...machines.map(m => ({ id: m.id, label: health.get(m) === 'offline' ? fill(strings.connection.nameOffline, { name: listedName(m) }) : listedName(m), status: { tone: tones[health.get(m)!], label: health.get(m) === 'offline' ? strings.connection.offline : strings.connection[m.store.connection] }, checked: m.id === filter, radio: true })),
+      ...machines.map(m => ({ id: m.id, label: health.get(m) === 'offline' ? fill(strings.connection.nameOffline, { name: listedName(m) }) : listedName(m), status: { tone: tones[health.get(m)!], label: stateOf(m) }, checked: m.id === filter, radio: true })),
       separator('manage-separator')
     ] : []),
     { id: 'manage', label: strings.connection.manage, icon: 'settings' }
@@ -57,7 +62,7 @@
       {#if issues}<TriangleAlert size={19} />{:else}<Monitor size={19} />{#if away.length > 0}<span class="dot off" data-testid="machine-offline" aria-hidden="true"></span>{:else if store.connection === 'ready'}<span class="dot on" data-testid="machine-online" aria-hidden="true"></span>{/if}{/if}
       {#if chosen}<span class="name ui-label">{machineName(chosen)}</span>{/if}
     </Menu>
-    {@render card?.(name, trouble ?? (chosen ? machineName(chosen) : null))}
+    {@render card?.(name, note)}
   {/if}
 </div>
 

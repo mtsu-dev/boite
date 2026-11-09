@@ -34,7 +34,7 @@ export const strings = {
     settingsPhone: 'Notifications',
     settingsBack: 'Back to settings',
     /** Activity's second line: why the thread is listed. `updates` heads what the user reads, under what needs them. */
-    feed: { run: 'Wants to run:', helperAsks: '{title} needs you', updates: 'Updates', verb: { answer: 'Answer', allow: 'Allow', review: 'Review', deny: 'Deny', skip: 'Skip' } },
+    feed: { run: 'Wants to run:', helperAsks: '{title} needs you', updates: 'Updates', verb: { answer: 'Answer', review: 'Review', deny: 'Deny', skip: 'Skip' } },
     navigation: 'Navigation', activity: 'Activity',
     waitingElsewhere: '{count} waiting for you',
     search: 'Find a conversation', noThreads: 'No matching conversations.'

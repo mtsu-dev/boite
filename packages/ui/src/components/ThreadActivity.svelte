@@ -9,7 +9,8 @@
   import { permissionSentence } from '../lib/tool-summary';
   import { questionDock } from '../lib/question-dock.svelte';
   import { ignoreQuestions, releaseWaiting, replyOf, repliesOf, sendAnswer, writeAnswer } from '../lib/question-reply.svelte';
-  import Deferred, { parts } from './Deferred.svelte';
+  import Deferred from './Deferred.svelte';
+  import { parts } from '../lib/deferred-parts';
   import { growsOnArrival } from '../lib/arrival';
   import InfoTip from './InfoTip.svelte';
   import { openQuestionPage } from '../lib/question-page';
@@ -454,16 +455,20 @@
      inline padding, so a hover fill sits inset by the same four pixels on
      every side. The decisions are the card's one raised tile, inset by the
      card's six pixels (Composer's `.decision-card`); the
-     goal, the loop and the tasks are plain lines under it. Nothing inside
-     shrinks: the question sizes its choices to the budget in whole rows, and
-     this section is the one fallback scroller, so an arriving card is laid
-     out once, before it grows in. */
+     goal, the loop and the tasks are plain lines under it. The question sizes
+     its choices to the budget in whole rows, laid out once before the card
+     grows in; only its choices give way under a tighter cap. */
   .activity { display: flex; flex-direction: column; overflow-y: auto; padding: 4px; font-size: var(--text-sm); }
   .activity > * { flex: none; }
   .activity > .decision-card { margin: 2px 2px 4px; display: flex; flex-direction: column; }
   .activity > .decision-card:last-child { margin-bottom: -2px; }
   .decision-card > *, .questions > *, .asked > :global(*) { flex: none; }
   .questions > .disclosure-fold { display: grid; }
+  /* Pressed under the card's cap, the decision gives way down to a
+     question's choices, which scroll in place (QuestionCard): its head and
+     its pair stay in sight. This section scrolls only what is left over. */
+  .activity > .decision-card, .decision-card > .questions, .questions > .disclosure-fold, .asked:not([hidden]), .asked > :global(.question.docked) { flex: 0 1 auto; min-height: 0; }
+  .decision-card > .questions, .questions > .disclosure-fold > div, .asked:not([hidden]) { display: flex; flex-direction: column; }
   .activity.hidden { display: none; }
   /* A decision arrives by growing the dock from its last height, content and
      box together (`lib/arrival.ts`); reduced motion shows it at once. */

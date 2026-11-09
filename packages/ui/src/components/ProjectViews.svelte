@@ -61,16 +61,19 @@
 
 <style>
   /* No rule under it: the rows fade out beneath it instead (RailFrame.svelte). The switch starts on the cards' edge. */
-  .list-head { display: flex; align-items: center; gap: 6px; min-width: 0; height: 36px; margin-top: 10px; padding: 0; }
-  .title { display: flex; flex: 1; min-width: 0; margin: 0; font-size: var(--text-sm); font-weight: 500; color: var(--color-foreground); }
+  /* The switch keeps its width and 4 px clear of Filter: shrunk, its segment ran under Filter's focus ring. */
+  .list-head { display: flex; align-items: center; gap: 4px; min-width: 0; height: 36px; margin-top: 10px; padding: 0; }
+  .title { display: flex; flex: 1 0 auto; min-width: 0; margin: 0; font-size: var(--text-sm); font-weight: 500; color: var(--color-foreground); }
   .actions { display: flex; align-items: center; gap: 2px; flex: none; }
   /* A pointer's full 32 px target each. */
   .actions :global(button.icon) { flex: none; width: 32px; height: 32px; border-radius: var(--radius-md); color: var(--color-muted-foreground); }
   .actions :global(button.icon:hover) { color: var(--color-foreground); }
   /* Filter: its glyph and its word, 32 px high as the glyphs beside it. */
-  .actions :global(button.worded) { flex: none; display: inline-flex; align-items: center; gap: 5px; height: 32px; padding: 0 9px 0 7px; border-radius: var(--radius-md);
+  .actions :global(button.worded) { flex: none; display: inline-flex; align-items: center; gap: 5px; height: 32px; padding: 0 8px 0 6px; border-radius: var(--radius-md);
     font-size: var(--text-sm); font-weight: 500; color: var(--color-muted-foreground); white-space: nowrap; }
   .actions :global(button.worded:hover) { color: var(--color-foreground); }
+  /* Its ring inside its own edge, as a row's: the 4 px beside the switch stay clear. */
+  .actions :global(button.worded:focus-visible) { outline-offset: -2px; }
   /* Too narrow for the word: the glyph alone, the word kept for screen readers. */
   @container sidebar (max-width: 279px) {
     .actions :global(button.worded) { width: 32px; padding: 0; justify-content: center; }

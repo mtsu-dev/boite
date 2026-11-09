@@ -8,7 +8,8 @@
   import { lowestLimit } from '../lib/limits-meter';
   import { work } from '../lib/work-prefs.svelte';
   import { controlMenu } from '../lib/controls';
-  import Deferred, { parts } from './Deferred.svelte';
+  import Deferred from './Deferred.svelte';
+  import { parts } from '../lib/deferred-parts';
   import type LimitsGlance from './LimitsGlance.svelte';
 
   /**

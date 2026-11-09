@@ -1,8 +1,7 @@
 <script lang="ts">
   import type { Machine } from '../lib/workspace.svelte';
   import { workspace } from '../lib/workspace.svelte';
-  import { feedOperation, feedSecondary, type FeedRow, type FeedVerb } from '../lib/activity-feed';
-  import { strings } from '../lib/strings';
+  import { feedOperation, feedSecondary, feedVerbLabel, type FeedRow, type FeedVerb } from '../lib/activity-feed';
   import { leaveForAct } from '../lib/activity-return.svelte';
   import ThreadCard from './ThreadCard.svelte';
   import CommandWords from './CommandWords.svelte';
@@ -44,8 +43,8 @@
   {#snippet action()}
     {#if target && verb}
       <DecisionActions>
-        {#if secondary}<button type="button" class="secondary" data-testid="thread-verb-secondary" data-verb={secondary.kind} disabled={settling} onclick={() => void settle()}>{strings.mobile.feed.verb[secondary.kind]}</button>{/if}
-        <button type="button" class={verb === 'review' ? 'secondary' : 'primary'} data-testid="thread-verb" data-verb={verb} onclick={(event) => { leaveForAct(target.machine.store, target.thread.id, event.currentTarget); void workspace.select(target.machine.store, target.thread.id); }}>{strings.mobile.feed.verb[verb]}</button>
+        {#if secondary}<button type="button" class="secondary" data-testid="thread-verb-secondary" data-verb={secondary.kind} disabled={settling} onclick={() => void settle()}>{feedVerbLabel(secondary.kind)}</button>{/if}
+        <button type="button" class={verb === 'review' ? 'secondary' : 'primary'} data-testid="thread-verb" data-verb={verb} onclick={(event) => { leaveForAct(target.machine.store, target.thread.id, event.currentTarget); void workspace.select(target.machine.store, target.thread.id); }}>{feedVerbLabel(verb)}</button>
       </DecisionActions>
     {/if}
   {/snippet}
@@ -53,13 +52,14 @@
 
 <style>
   /* Under the title's edge: what is asked, one secondary line; its tooltip and the thread hold the whole. */
-  .ask { display: block; min-width: 0; font-size: var(--text-sm); line-height: 1.45; color: var(--color-subtle); text-align: start; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* It never widens the page's column (ActivityList.svelte sizes it to the titles): it takes the width it is given. */
+  .ask { display: block; min-width: 0; contain: inline-size; font-size: var(--text-sm); line-height: 1.45; color: var(--color-subtle); text-align: start; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* A sub-agent's line, under the title's text edge (the 16 px tile and its 10 px gap). */
   .helper { display: block; flex: none; padding-left: 26px; }
   .who { color: var(--color-foreground); font-weight: 500; }
   .sep { color: var(--color-subtle); }
   /* The command as it will run: mono, wrapped at spaces only, so a path or a branch name stays whole. */
-  .operation { display: block; margin-left: 26px; padding: 6px 8px; border-radius: var(--radius-sm); background: var(--color-code-background); color: var(--color-code-foreground); font-family: var(--font-mono); font-size: var(--text-xs); line-height: 1.5; text-align: start; white-space: pre-wrap; overflow-x: auto; scrollbar-width: none; }
+  .operation { display: block; contain: inline-size; margin-left: 26px; padding: 6px 8px; border-radius: var(--radius-sm); background: var(--color-code-background); color: var(--color-code-foreground); font-family: var(--font-mono); font-size: var(--text-xs); line-height: 1.5; text-align: start; white-space: pre-wrap; overflow-x: auto; scrollbar-width: none; }
   /* Too long to read here: its first lines, and Review opens the whole before Allow. */
   .operation.long { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; line-clamp: 6; overflow: hidden; }
 </style>

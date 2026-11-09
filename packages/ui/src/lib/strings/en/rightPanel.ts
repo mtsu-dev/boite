@@ -17,19 +17,25 @@ export const strings = {
     changes: 'Changes',
     files: 'Files',
     file: 'File',
-    tasks: 'Task manager',
+    tasks: 'Goal and todos',
     device: 'Device',
     window: 'Window',
     ownerOnly: "Only in the owner's app",
     launcher: 'Open a surface in this panel',
     untitled: 'Browser',
-    /** A line under the two lists of work to do, so they read apart. */
-    roles: { board: "The project's todos in columns", tasks: "This thread's goal, checklist and watches" },
+    /** The open door's last row on a desktop, beside the head's own close. */
+    closePanel: 'Close the panel',
+    /** A line under the panels whose name alone does not say what they hold; the board and the goal read apart by whose work it is. */
+    roles: {
+      board: "The whole project's todos, in columns", tasks: "This thread's goal, loop, todos and watches",
+      trace: 'The programs this thread runs', messages: 'What this agent and other agents wrote each other',
+      coordination: 'Let other agents find and message this thread'
+    },
     /** The selector's groups: the panels picked last, then every panel by family. */
     groups: { recent: 'Recent', work: 'Work', agents: 'Agents', tools: 'Tools' },
     /** A renamed row's tooltip: the name it had before. */
     formerly: {
-      trace: 'Formerly Trace', tasks: 'Formerly Tasks', messages: 'Formerly Discussions',
+      trace: 'Formerly Trace', tasks: 'Formerly Task manager', messages: 'Formerly Discussions',
       coordination: 'Formerly Thread links', customize: 'Formerly Choose the buttons'
     }
   }

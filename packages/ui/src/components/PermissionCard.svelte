@@ -6,7 +6,8 @@
   import { describeTool, permissionSentence } from '../lib/tool-summary';
   import CodeText from './CodeText.svelte';
   import CommandWords from './CommandWords.svelte';
-  import Deferred, { parts } from './Deferred.svelte';
+  import Deferred from './Deferred.svelte';
+  import { parts } from '../lib/deferred-parts';
   import InfoTip from './InfoTip.svelte';
   import DecisionHead from './DecisionHead.svelte';
   import DecisionActions from './DecisionActions.svelte';
@@ -29,7 +30,7 @@
     /**
      * Drawn at the top of the composer, where the field below stays free,
      * in reading order: the ask with its raw input behind an "i", the
-     * agent's own reason when it gave one, the thing itself in mono, then
+     * thing itself in mono, the agent's own reason when it gave one, then
      * Deny (Esc) and Allow once (Enter), the keys in their titles. The ask
      * scrolls inside the dock's budget; the choices stay in sight.
      */
@@ -85,15 +86,16 @@
 {#if docked}
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div class="permission docked decision-card" data-testid="permission-card" data-decision="pending" data-family={described.family} role="group" aria-label={sentence} tabindex="-1" {@attach keys} {@attach arrive}>
-  <div class="ask">
+  <!-- The body scrolls inside the dock's budget, its cut edge fading; the pair under it is always whole. -->
+  <div class="ask scroll-edges">
     <DecisionHead>
       <span class="sentence ui-label" data-testid="permission-sentence" title={described.subject || toolName}>{sentence}</span>
       {#if request}<InfoTip text={`${toolName}\n${json(request.input)}`} topic={sentence} testid="permission-input" />{/if}
     </DecisionHead>
-    {#if why}<p class="why" data-testid="permission-why"><CodeText text={why} /></p>{/if}
     {#if subjectBlock}
       <pre class="mono subject scroll-edges" data-testid="permission-subject">{subjectBlock}</pre>
     {/if}
+    {#if why}<p class="why" data-testid="permission-why"><CodeText text={why} /></p>{/if}
     {#if described.change}
       {@const change = described.change}
       <Deferred part={parts.DiffView}>{#snippet children(DiffView)}<DiffView path={change.path} oldText={change.oldText} newText={change.newText} doc={change} />{/snippet}</Deferred>
@@ -268,10 +270,14 @@
     overflow: hidden;
     outline: none;
   }
-  .ask { display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 0; max-height: 100%; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+  /* A short fade: in the least room the body has, the command over it stays readable. */
+  .ask { --scroll-edge: 10px; --scroll-edge-ground: var(--decision-fill, var(--color-composer-surface)); display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 0; max-height: 100%; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
   .ask > :global(*) { flex: none; }
-  /* The agent's own words for the call, under the ask and over the command, past the dot like it. */
-  .why { margin: -4px 0 0; padding-left: 14px; color: var(--color-muted-foreground); font-size: var(--text-sm); line-height: 20px; overflow-wrap: anywhere; }
+  /* The fades take no room: they cancel the column's gap as well as their own height. */
+  .docked .ask::before { margin-bottom: calc(-1 * var(--scroll-edge) - 6px); }
+  .docked .ask::after { margin-top: calc(-1 * var(--scroll-edge) - 6px); }
+  /* The agent's own words for the call, under the command, past the dot like it. */
+  .why { margin: -2px 0 0; padding-left: 14px; color: var(--color-muted-foreground); font-size: var(--text-sm); line-height: 20px; overflow-wrap: anywhere; }
   .docked:focus-visible { box-shadow: inset 0 0 0 2px var(--color-accent); }
   .docked .sentence { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .docked :global(.info-tip) { flex: none; }
@@ -288,8 +294,6 @@
      where the title's words do (past the dot), with no fill and no edge of
      its own. A long one scrolls sideways, its whole text behind the "i". */
   .docked pre { --scroll-edge-ground: var(--decision-fill, var(--color-composer-surface)); max-height: 120px; margin-top: -4px; padding: 0 0 0 14px; border: none; border-radius: 0; background: none; font-size: var(--text-meta); line-height: 20px; white-space: pre; word-break: normal; overflow: auto; scrollbar-width: none; }
-  /* A why under the ask takes the space the command's pull-up gave back. */
-  .why + pre { margin-top: 0; }
   @media (max-width: 720px) {
     /* The sentence asks for its whole width: when it and the two choices do not fit one
        line, the choices wrap under it rather than cutting the ask. */

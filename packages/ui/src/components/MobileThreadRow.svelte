@@ -13,7 +13,7 @@
   import type { RowPlace } from '../lib/row-place';
   import ThreadHeadline from './ThreadHeadline.svelte';
   import { threadState } from '../lib/thread-state';
-  import { feedOperation, feedSecondary, type FeedVerb } from '../lib/activity-feed';
+  import { feedOperation, feedSecondary, feedVerbLabel, type FeedVerb } from '../lib/activity-feed';
   import DecisionActions from './DecisionActions.svelte';
   import { collapseRow } from '../lib/row-collapse';
 
@@ -88,7 +88,7 @@
       <!-- One line for every list (ThreadHeadline.svelte): the title, then the mark in the row's one slot and the time
            after it; in Activity what is asked is one line under the title. The project's header says how many need
            the user, so no row repeats the word. -->
-      <ThreadHeadline {owner} {thread} {now} tile={compact && where === undefined ? project : undefined} mark ask={reason === undefined ? undefined : why}
+      <ThreadHeadline {owner} {thread} {now} tile={compact && where === undefined ? project : undefined} mark offline={away} ask={reason === undefined ? undefined : why}
         at={reason !== undefined ? at : form !== null ? thread.lastUserMessageAt ?? thread.createdAt : undefined} />
       {#if reason !== undefined}
         {#if operation}<code class="operation" class:long data-testid="thread-operation"><CommandWords text={operation} /></code>{/if}
@@ -102,8 +102,8 @@
     {#if action}
       <div class="verbs">
         <DecisionActions>
-          {#if secondary}<button type="button" class="secondary" data-testid="thread-verb-secondary" data-verb={secondary.kind} disabled={settling} onclick={() => void settle()}>{strings.mobile.feed.verb[secondary.kind]}</button>{/if}
-          <button type="button" class={action === 'review' ? 'secondary' : 'primary'} data-testid="thread-verb" data-verb={action} onclick={onverb}>{strings.mobile.feed.verb[action]}</button>
+          {#if secondary}<button type="button" class="secondary" data-testid="thread-verb-secondary" data-verb={secondary.kind} disabled={settling} onclick={() => void settle()}>{feedVerbLabel(secondary.kind)}</button>{/if}
+          <button type="button" class={action === 'review' ? 'secondary' : 'primary'} data-testid="thread-verb" data-verb={action} onclick={onverb}>{feedVerbLabel(action)}</button>
         </DecisionActions>
       </div>
     {/if}
@@ -138,6 +138,7 @@
      to them, .ui-label), whose middle sits 0.36 em down at the title's size. */
   .thread :global(.headline > :is(.when, .at)) { height: 22px; margin-top: calc(0.36 * var(--text-reading) - 11px); }
   .thread :global(.headline > .when) { font-size: var(--text-sm); }
+  .thread :global(.headline > .offline-chip) { margin-top: calc(0.36 * var(--text-reading) - 10px); }
   .thread :global(.headline > .when:not(.state)) { font-weight: 400; }
   .thread :global(.headline > .at) { line-height: 22px; font-size: var(--text-sm); }
   /* Activity: what is asked, one line under the title; the row's tooltip and the thread hold the whole. */
@@ -155,14 +156,14 @@
   /* A phone reads every title at full ink: the mark says which rows need the user. Two lines of it before the
      ellipsis in the lists; Activity's are whole, since the row is about them. */
   .thread :global(.headline .title) { color: var(--color-foreground); font-weight: 400; }
+  /* Its machine out of reach: the muted title and the Offline chip (ThreadHeadline.svelte), no fading of the row. */
+  .thread :global(.headline.offline .title) { color: var(--color-muted-foreground); }
   /* A clamped title's second line keeps its untrimmed box: .ui-label's half-em under it showed the top of the third
      line, so only a descender's room is kept. */
   .thread :global(.headline .title) { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; padding-bottom: 0.25em; margin-bottom: -0.25em; }
   .reason .thread :global(.headline .title) { display: block; -webkit-line-clamp: none; line-clamp: none; overflow: visible; }
   /* What is asked, under the title, clears its descenders. */
   .reason .thread :global(.lead) { row-gap: 6px; }
-  /* Its machine dropped: dimmed, title and mark alike; its card header says "offline". */
-  .thread.offline { opacity: 0.6; }
   .thread :global(.headline .pin) { display: none; }
   /* One status per row: a state outranks the unsent draft's mark, which the thread shows once open. */
   .thread.stated :global(.headline > .draft) { display: none; }

@@ -49,9 +49,13 @@ test('one list holds every panel once in named groups, the showing panel checked
   expect(named['trace']).toMatchObject({ label: 'Processes', title: 'Formerly Trace' });
   expect(named['messages']).toMatchObject({ label: 'Messages', title: 'Formerly Discussions' });
   expect(named['coordination']).toMatchObject({ label: 'Linked threads', title: 'Formerly Thread links' });
-  // The two lists of work to do say whose work each holds.
-  expect(named['board-toggle']).toMatchObject({ label: 'Project board', hint: strings.rightPanel.roles.board });
-  expect(named['tasks']).toMatchObject({ label: 'Task manager', hint: strings.rightPanel.roles.tasks });
+  // The two lists of work to do say whose work each holds, by name and by line: the project's or the thread's.
+  expect(named['board-toggle']).toMatchObject({ label: 'Project board', hint: "The whole project's todos, in columns" });
+  expect(named['tasks']).toMatchObject({ label: 'Goal and todos', hint: "This thread's goal, loop, todos and watches", title: 'Formerly Task manager' });
+  // A name that does not say what it holds gets one plain line.
+  expect(named['trace']?.hint).toBe(strings.rightPanel.roles.trace);
+  expect(named['messages']?.hint).toBe(strings.rightPanel.roles.messages);
+  expect(named['coordination']?.hint).toBe(strings.rightPanel.roles.coordination);
   expect(named['customize']).toMatchObject({ label: 'Customize', title: 'Formerly Choose the buttons' });
 });
 

@@ -6,7 +6,8 @@
   import { strings } from '../lib/strings';
   import { experimentOn } from '../lib/experiments.svelte';
   import { pinnedQuotas } from '../lib/pinned-quotas.svelte';
-  import Deferred, { parts } from './Deferred.svelte';
+  import Deferred from './Deferred.svelte';
+  import { parts } from '../lib/deferred-parts';
   import ResizeHandle from './ResizeHandle.svelte';
   import QuotaLine from './QuotaLine.svelte';
 

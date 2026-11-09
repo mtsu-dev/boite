@@ -56,7 +56,7 @@
           <!-- One line and its one action; how routines run sits behind the line's tooltip. -->
           <p class="desk-empty desk-empty-row" title={labels.routineHint}>
             <span>{labels.deskPanel.routinesEmpty}</span>
-            {#if view.store.owner}<button type="button" class="ghost small" onclick={() => { adding = true; }} data-testid="routine-add"><Plus size={13} strokeWidth={1.75} /><span class="ui-label">{labels.when.newRoutine}</span></button>{/if}
+            {#if view.store.owner}<button type="button" class="small" onclick={() => { adding = true; }} data-testid="routine-add"><Plus size={13} strokeWidth={1.75} /><span class="ui-label">{labels.when.newRoutine}</span></button>{/if}
           </p>
         {/if}
       {/each}

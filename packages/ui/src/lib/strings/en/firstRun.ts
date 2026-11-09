@@ -17,6 +17,10 @@ export const strings = {
     others: 'Other agents',
     otherMachine: 'Connect another computer or a phone',
     /** Over the marks the lists use, each shown beside its word. */
-    marks: 'In your lists, each thread wears its state:',
+    marks: 'In your lists, each thread wears its state',
+    /** What each mark of the legend asks of you, beside its word. */
+    marksWaiting: 'An answer or a permission waits for you',
+    marksWorking: 'The agent is on it',
+    marksFailed: 'It stopped: open it to see why',
   }
 } as const;

@@ -34,6 +34,7 @@
   import GroupLabel from './GroupLabel.svelte';
   import ProjectTile from './ProjectTile.svelte';
   import MachinePlace from './MachinePlace.svelte';
+  import MachineReconnect from './MachineReconnect.svelte';
   import { projectKey, projectView, type ProjectEntry } from '../lib/project-view.svelte';
   import { activeProject, archiveCount, projectSections, projectThreadView } from '../lib/project-threads.svelte';
   import { workingThread } from '../lib/recent.svelte';
@@ -375,6 +376,7 @@
             <RecentDone kind="archived" entries={[group]} {scrollRoot} {now} {query} open={archivedOpen && (!later || projectThreadView.laterOpen)} header={false} onopen={() => show('chat')} />
           </div>
           {#if groupRows.length === 0 && !group.project.archivedThreads && drafts.length === 0}<p class="empty">{strings.sidebar.noThreads}</p>{/if}
+          {#if group.machine.store.connection !== 'ready' && group.machine.store.connection !== 'connecting'}<MachineReconnect store={group.machine.store} />{/if}
         </section>
         {/if}
       {/each}
@@ -403,10 +405,9 @@
       <!-- The amber dot beside "Needs you", as on the desktop page; only updates left, the house bot says nothing waits. -->
       {#if needsCount > 0}<h2 class="section-label feed-section" data-testid="activity-needs" data-count={needsCount}><span class="feed-dot" aria-hidden="true"></span>{strings.sidebar.state.waiting}<span class="feed-count">{count(needsCount)}</span></h2>
       {:else if rows.length > 0}<p class="all-done" data-testid="activity-all-done"><span class="face" aria-hidden="true"><RobotFace robot={HOUSE_BOT} /></span>{strings.mobile.nothingNeedsYou}</p>{/if}
-      {#if asked && ContactInboxRows}<ContactInboxRows {store} />{/if}
-      <WindowList items={needs} keyOf={group => JSON.stringify([group.row.machine.id, group.row.thread.id])} {scrollRoot} estimate={66} measurements={measurements('activity')}>
+      <div class="needs-tiles">{#if asked && ContactInboxRows}<ContactInboxRows {store} />{/if}<WindowList items={needs} keyOf={group => JSON.stringify([group.row.machine.id, group.row.thread.id])} {scrollRoot} estimate={66} measurements={measurements('activity')}>
         {#snippet row(group)}{@render threadRow(group.row, false, group.helpers)}{/snippet}
-      </WindowList>
+      </WindowList></div>
       {#if updates.length > 0}<h2 class="section-label feed-section" data-testid="activity-updates">{strings.mobile.feed.updates}</h2>{/if}
       <WindowList items={updates} keyOf={group => JSON.stringify([group.row.machine.id, group.row.thread.id])} {scrollRoot} estimate={66} measurements={measurements('activity-updates')}>
         {#snippet row(group)}{@render threadRow(group.row, false, group.helpers)}{/snippet}
@@ -485,6 +486,8 @@
     .mobile-header > :global(.menu) { flex: none; }
     .header-display { display: flex; flex: none; }
     .header-display :global(.trigger) { width: var(--touch-target); height: var(--touch-target); color: var(--color-muted-foreground); }
+    /* A filter on names itself ("Working"): the glyph and its word, the touch height kept. */
+    .header-display :global(.trigger.worded) { width: auto; display: inline-flex; align-items: center; gap: 5px; padding: 0 10px; font-size: var(--text-sm); font-weight: 500; color: var(--color-foreground); white-space: nowrap; }
     .mobile-list { display: block; position: absolute; inset: 0; overflow-y: auto; overscroll-behavior: contain; background: var(--color-background); padding: 8px max(16px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
     /* The bottom bar owns the home indicator's inset. */
     .mobile-list.tabbed { padding-bottom: 24px; }
@@ -494,8 +497,20 @@
     .mobile-list { --scroll-edge: 12px; --scroll-edge-top: 8px; --scroll-edge-bottom: 24px; scroll-padding-block: calc(var(--scroll-edge) + 8px); }
     p { font-size: var(--text-sm); }
     /* One frame: a quiet surface, no border and no banded header inside it. */
-    .project-group { --row-background: var(--color-surface); border-radius: var(--radius-lg); background: var(--color-surface); margin-bottom: 12px; overflow: hidden; }
-    .project-heading { display: flex; align-items: center; padding: 8px 12px; gap: 8px; color: var(--color-muted-foreground); }
+    /* Clipped to its corners without being a scroll box, so its heading can stick to the list's scroll. */
+    .project-group { --row-background: var(--color-surface); border-radius: var(--radius-lg); background: var(--color-surface); margin-bottom: 12px; overflow: clip; }
+    /* The heading stays at the list's top edge while its threads scroll under it, over the edge fade, on the card's
+       ground; the next card's heading pushes it off (round 21). */
+    .project-heading { position: sticky; top: calc(-1 * var(--scroll-edge-top, 0px)); z-index: 4; display: flex; align-items: center; padding: 8px 12px; gap: 8px; color: var(--color-muted-foreground); background: var(--color-surface); }
+    /* A row passing under it melts into the heading instead of being sliced; over the card's ground it shows nothing. */
+    .project-heading::after { content: ''; position: absolute; inset: 100% 0 auto; height: 8px; background: linear-gradient(var(--color-surface), transparent); pointer-events: none; }
+    /* Stuck over rows (a scroll-state query on the heading itself), its ground runs on opaque past its edge, then a
+       short fade, so a row cut mid-line hides under it instead of showing its lower half; at rest the first row
+       keeps its whole text. */
+    .project-heading { container-type: scroll-state; }
+    @container scroll-state(stuck: top) {
+      .project-heading::after { height: 22px; background: linear-gradient(var(--color-surface) 14px, transparent); }
+    }
     /* The name, then its machine in quiet ink, on one line: the machine gives way first. */
     .project-heading h2 { display: flex; align-items: center; gap: 8px; margin: 0; flex: 1; min-width: 0; font-size: var(--text-sm); }
     /* The card's title at the title weight and ink, as the desktop card's name (Sidebar.svelte .name). */
@@ -535,6 +550,19 @@
     .feed-count { margin-left: 6px; color: var(--color-live); font-variant-numeric: tabular-nums; }
     .feed-section[data-testid=activity-needs] { display: flex; align-items: center; }
     .feed-dot { width: 8px; height: 8px; margin-right: 8px; flex: none; border-radius: var(--radius-full); background: var(--color-live); }
+    /* What needs the user stands on tiles, 4 px apart, the ground a step up under a finger; the updates stay flat
+       rows. The gap is the slot's padding, so the window list measures it with the row. */
+    .needs-tiles { --row-background: var(--color-surface); }
+    .needs-tiles :global([data-window-key]) { padding-bottom: 4px; }
+    .needs-tiles :global(.row) { border-radius: var(--radius-lg); }
+    .needs-tiles :global(.row:has(.thread:active)) { --row-background: var(--color-surface-2); }
+    /* A contact's request (ContactInboxRows.svelte) is one of them, on the same tile. */
+    .needs-tiles :global(.contact-row) { margin: 0 0 4px; border-radius: var(--radius-lg); background: var(--color-surface); }
+    .needs-tiles :global(.contact-row:active) { background: var(--color-surface-2); }
+    @media (hover: hover) {
+      .needs-tiles :global(.row:hover), .needs-tiles :global(.contact-row:hover) { --row-background: var(--color-surface-2); background: var(--color-surface-2); }
+      .needs-tiles :global(.thread:hover:not(:disabled)) { background: transparent; }
+    }
     .all-done { display: flex; align-items: center; gap: 10px; margin: 8px 12px 4px; font-size: var(--text-sm); font-weight: 500; color: var(--color-muted-foreground); }
     .face { display: block; width: 24px; height: 24px; flex: none; }
     .face :global(svg.robot) { display: block; width: 100%; height: 100%; border-radius: 50%; }

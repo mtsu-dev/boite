@@ -53,7 +53,19 @@ const FORMERLY: Record<string, () => string> = {
 };
 
 /**
- * The panel selector's list (`RightPanel.svelte`), the same on a desktop and
+ * A plain line under a name that does not say what it holds. The board and
+ * the goal both hold work to do: theirs say whose, the project's or the thread's.
+ */
+const ROLES: Record<string, () => string> = {
+  'board-toggle': () => strings.rightPanel.roles.board,
+  tasks: () => strings.rightPanel.roles.tasks,
+  trace: () => strings.rightPanel.roles.trace,
+  messages: () => strings.rightPanel.roles.messages,
+  coordination: () => strings.rightPanel.roles.coordination
+};
+
+/**
+ * The panel switcher's list (`RightPanel.svelte`, shown by the door) (`RightPanel.svelte`), the same on a desktop and
  * a phone: every panel by name in one scroll, nothing behind a door. The ones
  * picked last lead as a short Recent group; the rest follow in their named
  * groups (Work, Agents, Tools), then the Appearance page that hides some.
@@ -84,12 +96,12 @@ export function panelChoices(store: Store, thread: ThreadSummary | null, options
       title: terminalKey ? `${strings.thread.terminalHint} (${terminalKey})` : strings.thread.terminalHint
     });
   }
-  // The board and the task manager both hold work to do: a line under each says whose.
-  if (store.boardAvailable()) rows.set('board-toggle', { id: 'board-toggle', label: strings.board.open, hint: strings.rightPanel.roles.board, glyph: SquareKanban, active: store.boardShown });
-  const tasks = rows.get('tasks');
-  if (tasks && !tasks.hint) tasks.hint = strings.rightPanel.roles.tasks;
+  if (store.boardAvailable()) rows.set('board-toggle', { id: 'board-toggle', label: strings.board.open, glyph: SquareKanban, active: store.boardShown });
   if (plain && !thread.agentSessionId) rows.set('coordination', { id: 'coordination', label: strings.coordination.heading, glyph: Network });
-  for (const [id, row] of rows) if (FORMERLY[id] && !row.title) row.title = FORMERLY[id]();
+  for (const [id, row] of rows) {
+    if (FORMERLY[id] && !row.title) row.title = FORMERLY[id]();
+    if (ROLES[id] && !row.hint) row.hint = ROLES[id]();
+  }
 
   // Each row once: a recent panel leads in its own group and leaves its usual one.
   const recent = recentPanels().filter((id) => rows.has(id));

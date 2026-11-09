@@ -107,18 +107,41 @@ describe.each([
 /**
  * Round 18: the frame, the page, a card and a raised fill each sit one visible
  * tonal step apart, so a card reads as a card without glass or a gradient.
- * Round 17's dark frame sat 2.9 L* under the page and its cards 1.9 L* over
- * it, its light frame 4.2 L* under the page: each floor below fails on them.
+ * Round 21 widens the dark ladder to about 4 L* a step (round 20: frame to
+ * page 3.8, page to card 3.5, card to raised 2.5) and the light frame to 6.9
+ * L* under the page (round 20: 5.5); each new floor fails on round 20's values.
  */
 test.each([
-  ['dark', ':root', { framePage: 3.5, pageCard: 3, pageRaised: 5.5 }],
-  ['light', "[data-theme='light']", { framePage: 5, pageCard: 2, pageRaised: 4 }]
+  ['dark', ':root', { framePage: 4, pageCard: 3.5, cardRaised: 3.5, pageRaised: 7.5 }],
+  ['light', "[data-theme='light']", { framePage: 6.5, pageCard: 2, cardRaised: 1.5, pageRaised: 4 }]
 ] as const)('%s: frame, page, card and raised fill are one tonal step apart', (_theme, selector, floors) => {
   const scope = block(selector);
   const [frame, page, card, raised] = ['--color-frame', '--color-background', '--color-surface', '--color-surface-2'].map((name) => lightness(token(scope, name)));
   expect(Math.abs(page! - frame!), 'frame to page').toBeGreaterThanOrEqual(floors.framePage);
   expect(Math.abs(card! - page!), 'page to card').toBeGreaterThanOrEqual(floors.pageCard);
+  expect(Math.abs(raised! - card!), 'card to raised fill').toBeGreaterThanOrEqual(floors.cardRaised);
   expect(Math.abs(raised! - page!), 'page to raised fill').toBeGreaterThanOrEqual(floors.pageRaised);
+});
+
+/**
+ * Round 21: one soft elevation for the composer card and a sheet, its top light
+ * no stronger than the hairline and its falloff short, so it lifts without a
+ * glow; a phone sheet wears it on the sheet fill, the top of the ladder.
+ */
+test.each([
+  ['dark', ':root'],
+  ['light', "[data-theme='light']"]
+] as const)('%s: one soft elevation, a hairline top light and no glow', (theme, selector) => {
+  const scope = block(selector);
+  const rule = /--elevation-soft:\s*inset 0 1px 0 rgb\(255 255 255 \/ ([\d.]+)\)([^;]*);/.exec(scope);
+  expect(rule, '--elevation-soft').not.toBeNull();
+  if (theme === 'dark') expect(Number(rule![1]), 'top light under the hairline').toBeLessThanOrEqual(alpha(scope, '--color-border'));
+  const shadows = [...rule![2]!.matchAll(/0 (\d+)px (\d+)px(?: (-?\d+)px)? rgb\(0 0 0 \/ ([\d.]+)\)/g)];
+  expect(shadows.length, 'a contact shadow and a falloff').toBe(2);
+  // A falloff pulled in under the card by its spread: no halo past its edges.
+  for (const [, , blur, spread] of shadows) expect(Number(blur) + 2 * Number(spread ?? 0)).toBeLessThanOrEqual(8);
+  expect(block(':root')).toMatch(/--shadow-composer:\s*var\(--elevation-soft\);/);
+  expect(css).toMatch(/\[data-mobile-sheet='true'\] \{ background: var\(--color-sheet\) !important; box-shadow: var\(--elevation-soft\) !important; \}/);
 });
 
 /**
@@ -180,19 +203,40 @@ describe('curated palettes', () => {
     expect(ids.length).toBeGreaterThanOrEqual(11);
   });
 
-  test.each(ids)('%s: muted clears 7:1 and subtle 6:1 on every ground, subtle within 7 L* of muted, the foreground 4 L* past muted', (id) => {
+  // Round 21: each palette with margin over the floor (round 20 sat on it: dark Nord's subtle at 6.20, light Tokyo Night's muted at 7.26 before the deeper frame).
+  test.each(ids)('%s: muted clears 7.25:1 and subtle 6.25:1 on every ground, subtle within 7 L* of muted, the foreground 4 L* past muted', (id) => {
     const value = (name: string) => new RegExp(`--palette-${id}-${name}:\\s*(#[0-9a-f]{6})\\s*;`, 'i').exec(css)?.[1];
     const grounds = PALETTE_GROUNDS.map(value).filter((hex): hex is string => !!hex);
     const [foreground, muted, subtle] = [value('foreground'), value('muted-foreground'), value('subtle')];
     expect(grounds.length, 'grounds').toBeGreaterThanOrEqual(4);
     expect(muted && subtle, 'muted and subtle').toBeTruthy();
     for (const ground of grounds) {
-      expect(ratio(subtle!, ground), `subtle on ${ground}`).toBeGreaterThanOrEqual(6);
-      expect(ratio(muted!, ground), `muted on ${ground}`).toBeGreaterThanOrEqual(7);
-      expect(ratio(foreground!, ground), `foreground on ${ground}`).toBeGreaterThanOrEqual(7);
+      expect(ratio(subtle!, ground), `subtle on ${ground}`).toBeGreaterThanOrEqual(6.25);
+      expect(ratio(muted!, ground), `muted on ${ground}`).toBeGreaterThanOrEqual(7.25);
+      expect(ratio(foreground!, ground), `foreground on ${ground}`).toBeGreaterThanOrEqual(7.25);
     }
     expect(Math.abs(lightness(muted!) - lightness(subtle!)), 'muted to subtle').toBeLessThanOrEqual(7);
     expect(Math.abs(lightness(foreground!) - lightness(muted!)), 'foreground to muted').toBeGreaterThanOrEqual(4);
+  });
+
+  /**
+   * Round 21: every palette's ladder a clear step a layer. Dark: frame, page, card, raised and pressed climb
+   * (round 20: Catppuccin's raised fill sat 3 L* under its page, Tokyo Night's frame 2.5 under it); OLED keeps
+   * its black frame and page. Light: the frame well under the page, the raised fill over it, the pressed fill under.
+   */
+  test.each(ids)('%s: frame, page, card, raised and pressed fills are a clear step apart', (id) => {
+    const value = (name: string) => lightness(new RegExp(`--palette-${id}-${name}:\\s*(#[0-9a-f]{6})\\s*;`, 'i').exec(css)![1]!);
+    const [frame, page, card, raised, pressed] = ['frame', 'background', 'surface-low', 'surface', 'surface-high'].map(value);
+    if (id.startsWith('dark')) {
+      if (id !== 'dark-oled') expect(page! - frame!, 'frame to page').toBeGreaterThanOrEqual(4);
+      expect(card! - page!, 'page to card').toBeGreaterThanOrEqual(3);
+      expect(raised! - card!, 'card to raised').toBeGreaterThanOrEqual(3);
+      expect(pressed! - raised!, 'raised to pressed').toBeGreaterThanOrEqual(3);
+    } else {
+      expect(page! - frame!, 'frame to page').toBeGreaterThanOrEqual(6.5);
+      expect(raised! - page!, 'page to raised').toBeGreaterThanOrEqual(4);
+      expect(page! - pressed!, 'pressed under the page').toBeGreaterThanOrEqual(3.5);
+    }
   });
 
   test.each(ids)('%s: the selection stands 5 L* off the surface and the raised fill', (id) => {
@@ -350,11 +394,10 @@ function over(scope: string, name: string, ground: string): string {
 }
 
 /**
- * Round 20: a diff's washes softened toward the thread's greys (round 19 drew
- * 7 and 26 percent of the status colour, which the seats read as the loudest
- * green in the app). The line wash stays within 4 L* of the raised fill it is
- * mixed into, the word wash a clear step deeper, add and remove still apart,
- * and the code and its line numbers keep reading contrast on each.
+ * Round 21: a diff reads again. Round 20's 5 and 16 percent washes read as no
+ * change at all: a changed line now carries a wash the eye finds at a glance,
+ * the changed words a clear step deeper, add and remove well apart, and code
+ * keeps 12:1 on a line, 9:1 on a word, its line number (the secondary ink) 11:1.
  */
 describe.each([
   ['dark', ':root'],
@@ -371,19 +414,18 @@ describe.each([
   const [addWash, removeWash, addWord, removeWord] = ['--diff-add-wash', '--diff-remove-wash', '--diff-add-word', '--diff-remove-word'].map(share);
   const distance = (a: string, b: string) => Math.hypot(...[1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16) - parseInt(b.slice(i, i + 2), 16)));
 
-  test('a changed line is the grey with a cast, the changed words a step deeper', () => {
-    for (const wash of [addWash!, removeWash!]) {
-      expect(Math.abs(lightness(wash) - lightness(raised)), `${wash} toward the grey`).toBeLessThanOrEqual(4);
-      expect(distance(wash, raised), `${wash} still tinted`).toBeGreaterThanOrEqual(6);
-    }
-    expect(distance(addWash!, removeWash!), 'add and remove apart').toBeGreaterThanOrEqual(8);
+  test('a changed line carries a visible wash, the changed words a step deeper', () => {
+    // Round 20's washes sat 10 and 12 apart from the raised fill in sRGB: under this floor.
+    for (const wash of [addWash!, removeWash!]) expect(distance(wash, raised), `${wash} reads as tinted`).toBeGreaterThanOrEqual(18);
+    expect(distance(addWash!, removeWash!), 'add and remove apart').toBeGreaterThanOrEqual(20);
     expect(Math.abs(lightness(addWord!) - lightness(addWash!)), 'added words').toBeGreaterThanOrEqual(4);
     expect(Math.abs(lightness(removeWord!) - lightness(removeWash!)), 'removed words').toBeGreaterThanOrEqual(4);
   });
 
-  test('code reads at 11:1 on every wash, its line number at the subtle floor on the line', () => {
-    for (const wash of [addWash!, removeWash!, addWord!, removeWord!]) expect(ratio(token(scope, '--color-foreground'), wash), `code on ${wash}`).toBeGreaterThanOrEqual(11);
-    for (const wash of [addWash!, removeWash!]) expect(ratio(token(scope, '--color-subtle'), wash), `line number on ${wash}`).toBeGreaterThanOrEqual(11);
+  test('code reads at 12:1 on a changed line and 9:1 on a changed word, its line number at 11:1', () => {
+    for (const wash of [addWash!, removeWash!]) expect(ratio(token(scope, '--color-foreground'), wash), `code on ${wash}`).toBeGreaterThanOrEqual(12);
+    for (const wash of [addWord!, removeWord!]) expect(ratio(token(scope, '--color-foreground'), wash), `code on ${wash}`).toBeGreaterThanOrEqual(9);
+    for (const wash of [addWash!, removeWash!]) expect(ratio(token(scope, '--color-muted-foreground'), wash), `line number on ${wash}`).toBeGreaterThanOrEqual(11);
   });
 
   test('the selection stands a clear step off the surface and the raised fill', () => {
@@ -411,6 +453,15 @@ describe('round 20 roles', () => {
     expect(root).toMatch(/--instrument-size:\s*var\(--text-body\);/);
     expect(parseInt(/--text-body:\s*(\d+)px/.exec(root)![1]!)).toBeLessThan(parseInt(/--text-title:\s*(\d+)px/.exec(root)![1]!));
     expect(root).toMatch(/--text-min:\s*var\(--text-meta\);/);
+  });
+
+  // Round 21: the desktop's secondary tier half a step up and the instrument meta in the secondary ink; the phone keeps 13 px.
+  test('the desktop meta reads half a step larger and brighter, still under the body', () => {
+    const desktop = /@media \(min-width: 721px\) \{\s*:root \{ --text-meta: ([\d.]+)px; --instrument-meta: var\(--color-muted-foreground\); \}/.exec(css);
+    expect(desktop, 'desktop meta rule').not.toBeNull();
+    const [meta, body] = [Number(desktop![1]), parseInt(/--text-body:\s*(\d+)px/.exec(root)![1]!)];
+    expect(meta).toBeGreaterThan(parseInt(/--text-meta:\s*(\d+)px/.exec(root)![1]!));
+    expect(meta).toBeLessThan(body);
   });
 
   test('every line-set Lucide icon takes the stroke token by optical size; heavier marks keep theirs', () => {

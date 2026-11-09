@@ -82,13 +82,28 @@
 
 <style>
   /* The chat's own column (MessageList.svelte): the same side room and gutters, then --content, so a thread and
-     Activity read at one width, centred in the card. */
-  .activity-page { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable both-edges; padding: 0 var(--outline-room); outline: none; }
+     Activity read at one width, centred in the card. The page is the container its rows ask whether their
+     decision pair fits beside their text. */
+  .activity-page { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable both-edges; padding: 0 var(--outline-room); outline: none; container: activity / inline-size; }
   /* Centred across like Settings and sized to what it holds, between a reading measure and the column; anchored at
      the card's top as a thread starts at its top (round 20: centred, a short list began 230 px down over a void).
      Only the empty state sits in the middle. */
   .column { display: flex; flex-direction: column; gap: 2px; width: fit-content; min-width: min(100%, var(--prose)); max-width: var(--content); min-height: 100%; margin: 0 auto; padding: var(--space-6) 0 max(var(--space-6), 10vh); }
   .column:has(:global([data-testid=activity-empty])) { justify-content: center; }
+  /* What asks stands on the card's ground, one step over the page (app.css ladder), so each decision reads as an
+     item; updates stay flat rows under their label. */
+  .column > :global(:is(.thread.feed, .contact-row):not([data-testid=activity-updates] ~ *)) { background: var(--color-surface); border-radius: var(--radius-lg); }
+  .column > :global(:is(.thread.feed, .contact-row):not([data-testid=activity-updates] ~ *):hover) { background: var(--color-surface-2); }
+  .column > :global(:is(.thread.feed, .contact-row) + :is(.thread.feed, .contact-row):not([data-testid=activity-updates] ~ *)) { margin-top: 4px; }
+  /* Room for the pair beside the text (round 21: it stood under it, stranded at the far edge): the rows share
+     three columns, the text, then one for every Deny, Skip and Refuse and one for every Allow once, Answer and
+     Accept, each as wide as its widest word, so the pairs stand in one aligned column right after the text. The
+     column keeps its reading measure, so a title reads on one line and the pair stays near what it decides. */
+  @container activity (min-width: 640px) {
+    .column { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-content: start; row-gap: 2px; }
+    .column:has(:global([data-testid=activity-empty])) { align-content: center; }
+    .column > :global(*) { grid-column: 1 / -1; }
+  }
   /* A section's name over its rows, from the rows' text edge; the next section stands off the last row. */
   /* From the rows' tile edge (ThreadCard's compact 10 px). */
   h2 { margin: 0 0 var(--space-2) 10px; }

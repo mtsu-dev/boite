@@ -4,7 +4,8 @@
   import { clockTime, fullTime } from '../lib/format';
   import { galleryFrom, media, viewerHost, type Gallery, type MediaItem } from '../lib/media-gallery';
   import { fill, strings } from '../lib/strings';
-  import Deferred, { parts } from './Deferred.svelte';
+  import Deferred from './Deferred.svelte';
+  import { parts } from '../lib/deferred-parts';
 
   /**
    * A window an agent captured with `boite window`, or whose live view a viewer

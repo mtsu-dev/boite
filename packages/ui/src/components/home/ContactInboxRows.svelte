@@ -85,48 +85,50 @@
        page; since when and the one answer end the title's line, the answer after the content on a phone. Refusing
        and another project wait in the row's menu. -->
   <article class="contact-row" data-testid="activity-contact" data-kind={row.letter ? 'mail' : 'request'} data-count={same.length}>
-    <span class="mark" aria-hidden="true">{#if row.letter}<Mail size={14} />{:else}<UserRound size={14} />{/if}</span>
-    <div class="lines">
-      <p class="head">
-        <!-- The title opens the contact's page, with the whole of it. -->
-        <button type="button" class="ghost title ui-label" title={labels.review} onclick={() => void openContact(row.machine.store, (row.request ?? row.letter!).coreId)} data-testid="activity-contact-open"><span class="clamp">{row.letter ? fill(strings.contacts.mail.writes, { contact: row.letter.contact, thread: row.letter.thread }) : fill(same.length > 1 ? labels.sentMany : labels.asks, { contact: row.request.contact, count: String(same.length) })}</span></button>
-        <!-- Merged letters say how many in words beside who writes; merged requests say it in the title. -->
-        {#if same.length > 1}<span class="times" data-testid="activity-contact-count" data-count={same.length}>{#if row.letter}{fill(labels.same, { count: String(same.length) })}{/if}</span>{/if}
-      </p>
-      <p class="text" title={text}>{text}</p>
-      {#if row.request && refusing === row.key}
-        {@const request = row.request}
-        <form class="refusal" onsubmit={event => { event.preventDefault(); void refuse({ ...row, request }, same); }}>
-          <input aria-label={labels.reason} bind:this={reasonField} bind:value={reason} placeholder={labels.reasonPlaceholder} maxlength="500" data-testid="activity-refuse-reason"
-            onkeydown={event => { if (event.key === 'Escape') { event.preventDefault(); refusing = null; } }} />
-          <span class="actions">
-            <button type="button" class="ghost small" onclick={() => { refusing = null; }}><span class="ui-label">{labels.cancel}</span></button>
-            <button type="submit" class="danger small" disabled={busy || !reason.trim()} data-testid="activity-refuse-send"><span class="ui-label">{labels.send}</span></button>
-          </span>
-        </form>
-      {/if}
-      {#if acted === row.key && !busy && row.view.error}<p class="failed" role="alert">{row.view.error}</p>{/if}
-      {#if refusing !== row.key}
-        <!-- The decision pair, right under what it decides: Refuse outlined, then the answer, solid. -->
-        <div class="pair">
-          <DecisionActions>
-            {#if row.request}
-              {@const request = row.request}
-              {@const chosen = acceptProject(row.view.store, request)}
-              {@const tip = chosen ? fill(labels.acceptInto, { project: projectName(chosen) }) : labels.accept}
-              <button type="button" class="secondary" disabled={busy} onclick={() => void openRefusal(row)} data-testid="activity-refuse-{request.id}"><span class="ui-label">{labels.refuse}</span></button>
-              <button type="button" class="primary answer" disabled={busy || !chosen} title={tip} aria-label={tip}
-                onclick={() => chosen && void accept({ ...row, request }, same, chosen.id)} data-testid="activity-accept-{request.id}"><span class="ui-label">{labels.accept}</span></button>
-            {:else}
-              {@const letter = row.letter!}
-              <button type="button" class="secondary" disabled={busy} title={strings.contacts.mail.refuseTip} onclick={() => answerMail(row, same, false)} data-testid="activity-mail-refuse-{letter.id}"><span class="ui-label">{strings.contacts.mail.refuse}</span></button>
-              <button type="button" class="primary answer" disabled={busy} title={fill(strings.contacts.mail.deliverTip, { thread: letter.thread })}
-                onclick={() => answerMail(row, same, true)} data-testid="activity-mail-deliver-{letter.id}"><span class="ui-label">{strings.contacts.mail.deliver}</span></button>
-            {/if}
-          </DecisionActions>
-        </div>
-      {/if}
+    <div class="main">
+      <span class="mark" aria-hidden="true">{#if row.letter}<Mail size={14} />{:else}<UserRound size={14} />{/if}</span>
+      <div class="lines">
+        <p class="head">
+          <!-- The title opens the contact's page, with the whole of it. -->
+          <button type="button" class="ghost title ui-label" title={labels.review} onclick={() => void openContact(row.machine.store, (row.request ?? row.letter!).coreId)} data-testid="activity-contact-open"><span class="clamp">{row.letter ? fill(strings.contacts.mail.writes, { contact: row.letter.contact, thread: row.letter.thread }) : fill(same.length > 1 ? labels.sentMany : labels.asks, { contact: row.request.contact, count: String(same.length) })}</span></button>
+          <!-- Merged letters say how many in words beside who writes; merged requests say it in the title. -->
+          {#if same.length > 1}<span class="times" data-testid="activity-contact-count" data-count={same.length}>{#if row.letter}{fill(labels.same, { count: String(same.length) })}{/if}</span>{/if}
+        </p>
+        <p class="text" title={text}>{text}</p>
+        {#if row.request && refusing === row.key}
+          {@const request = row.request}
+          <form class="refusal" onsubmit={event => { event.preventDefault(); void refuse({ ...row, request }, same); }}>
+            <input aria-label={labels.reason} bind:this={reasonField} bind:value={reason} placeholder={labels.reasonPlaceholder} maxlength="500" data-testid="activity-refuse-reason"
+              onkeydown={event => { if (event.key === 'Escape') { event.preventDefault(); refusing = null; } }} />
+            <span class="actions">
+              <button type="button" class="ghost small" onclick={() => { refusing = null; }}><span class="ui-label">{labels.cancel}</span></button>
+              <button type="submit" class="danger small" disabled={busy || !reason.trim()} data-testid="activity-refuse-send"><span class="ui-label">{labels.send}</span></button>
+            </span>
+          </form>
+        {/if}
+        {#if acted === row.key && !busy && row.view.error}<p class="failed" role="alert">{row.view.error}</p>{/if}
+      </div>
     </div>
+    {#if refusing !== row.key}
+      <!-- The decision pair, right under what it decides: Refuse outlined, then the answer, solid. -->
+      <div class="pair">
+        <DecisionActions>
+          {#if row.request}
+            {@const request = row.request}
+            {@const chosen = acceptProject(row.view.store, request)}
+            {@const tip = chosen ? fill(labels.acceptInto, { project: projectName(chosen) }) : labels.accept}
+            <button type="button" class="secondary" disabled={busy} onclick={() => void openRefusal(row)} data-testid="activity-refuse-{request.id}"><span class="ui-label">{labels.refuse}</span></button>
+            <button type="button" class="primary answer" disabled={busy || !chosen} title={tip} aria-label={tip}
+              onclick={() => chosen && void accept({ ...row, request }, same, chosen.id)} data-testid="activity-accept-{request.id}"><span class="ui-label">{labels.accept}</span></button>
+          {:else}
+            {@const letter = row.letter!}
+            <button type="button" class="secondary" disabled={busy} title={strings.contacts.mail.refuseTip} onclick={() => answerMail(row, same, false)} data-testid="activity-mail-refuse-{letter.id}"><span class="ui-label">{strings.contacts.mail.refuse}</span></button>
+            <button type="button" class="primary answer" disabled={busy} title={fill(strings.contacts.mail.deliverTip, { thread: letter.thread })}
+              onclick={() => answerMail(row, same, true)} data-testid="activity-mail-deliver-{letter.id}"><span class="ui-label">{strings.contacts.mail.deliver}</span></button>
+          {/if}
+        </DecisionActions>
+      </div>
+    {/if}
     <!-- The title's line ends in since when, the menu in its place under the pointer: another project to accept into. -->
     <div class="side">
       <span class="top">
@@ -149,7 +151,8 @@
   /* Built as Activity's thread rows (ThreadCard.svelte's `.feed`): 10 px in, a 16 px mark, 10 px to the words; the
      title's line keeps its end for the time, the text runs under it to the row's end, the pair under that. */
   .contact-row { --feed-pad: 8px; --feed-time: 44px; --pad-x: 10px; --side-room: calc(var(--feed-time) + 8px + var(--pad-x));
-    position: relative; display: flex; gap: 10px; padding: var(--feed-pad) var(--pad-x); border-radius: var(--radius-md); }
+    position: relative; display: flex; flex-direction: column; padding: var(--feed-pad) var(--pad-x); border-radius: var(--radius-md); }
+  .main { display: flex; gap: 10px; min-width: 0; }
   .contact-row + .contact-row { margin-top: 2px; }
   .contact-row:hover { background: var(--color-hover); }
   /* Grey: the section above already says the user's turn. */
@@ -167,7 +170,7 @@
   .times { flex: none; line-height: 20px; font-size: var(--text-xs); color: var(--color-muted-foreground); }
   .times:empty { display: none; }
   /* What is asked, one secondary line: the title opens the contact's page with the whole, its tooltip holds it too. */
-  .text { margin: 0; font-size: var(--text-sm); color: var(--color-muted-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .text { contain: inline-size; margin: 0; font-size: var(--text-sm); color: var(--color-muted-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* Its end on the thread rows' (ThreadCard's 8 px), so the time stands in one column down both sections. */
   .side { position: absolute; top: 0; right: 0; display: flex; align-items: center; height: calc(20px + 2 * var(--feed-pad)); padding-right: 8px; }
   /* One 20 px track: the menu's taller trigger overflows it instead of growing the row and pushing the time down. */
@@ -179,7 +182,19 @@
   .contact-row:is(:hover, :focus-within) .top :global(.trigger) { opacity: 1; }
   .contact-row:is(:hover, :focus-within) .top:has(:global(.trigger)) time { visibility: hidden; }
   /* The pair under what it decides, at the row's right edge as on a thread row (ThreadCard's `.feed-actions`). */
-  .pair { margin-top: 4px; }
+  .pair { margin-top: 8px; }
+  /* Beside the text where Activity has room, as a thread row's pair (ThreadCard.svelte): Refuse in the outline
+     column, the answer in the solid one, centred on the time's line, the pair's end on the thread rows' 8 px. */
+  @container activity (min-width: 640px) {
+    .contact-row { display: grid; grid-template-columns: subgrid; align-items: start; padding-right: 0; }
+    .main, .side { grid-column: 1; grid-row: 1; }
+    /* In the flow of the text's cell, at its end, as a thread row's time; the row's top padding is its own. */
+    .side { position: static; justify-self: end; margin-top: calc(-1 * var(--feed-pad)); }
+    .pair { grid-column: 2 / -1; grid-row: 1; display: grid; grid-template-columns: subgrid; margin: calc(10px - var(--control) / 2) 0 0; padding-right: 8px; }
+    .pair > :global(.decision-actions) { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; gap: 0; }
+    .pair :global(.decision-actions > button) { grid-column: 2; }
+    .pair :global(.decision-actions > button:not(:last-child)) { grid-column: 1; margin: 0 8px 0 var(--space-4); }
+  }
   .actions { display: flex; flex: none; align-items: center; gap: 6px; }
   .actions :global(button) { gap: 5px; }
   .refusal { display: flex; flex-direction: column; gap: 6px; margin-top: 2px; }
@@ -189,7 +204,7 @@
   /* On the desktop the title and the time stand on the thread rows' columns (ThreadCard.svelte's `.feed`): their
      tile leaves 6 px to the title and their headline rides 5 px over the padding; measured in Activity, round 20. */
   @media (min-width: 721px) {
-    .contact-row { gap: 4px; }
+    .main { gap: 4px; }
     .lines { margin-top: -5px; }
     time { line-height: 20px; }
   }

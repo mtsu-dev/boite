@@ -38,7 +38,16 @@
    * `target` is the machine the settings bar picked, `store` this window's:
    * the pages of one machine show the target, under the bar.
    */
-  let { store, target = store, bar, onopenthread }: { store: Store; target?: Store; bar?: Snippet; onopenthread?: () => void } = $props();
+  let { store, target = store, bar, pick, notes, onopenthread }: {
+    store: Store;
+    target?: Store;
+    bar?: Snippet;
+    /** The machine picker as the header's scope word ("On [studio v]"), where several machines can be picked. */
+    pick?: Snippet;
+    /** The bar without its picker, under a header that holds it. */
+    notes?: Snippet;
+    onopenthread?: () => void;
+  } = $props();
   /**
    * Home lists the desktop's families (`SETTINGS_FAMILIES`) in the desktop's order
    * under the desktop's names, each page a phone has. General opens an index of its cards: the cards a phone
@@ -76,11 +85,16 @@
     : page === 'worktrees' ? strings.settings.worktrees.intro
     : page === 'experiments' ? strings.settings.experiments.intro : '';
   let detail = $derived(page !== 'home');
-  /** Where a page's settings apply, under its header (round 18): this device, or the machine when no bar names it. */
+  /** The pages that change one machine whole, its bar under their header. */
+  const MACHINE_PAGES = ['accounts', 'brain', 'voice', 'limits', 'diagnostics', 'worktrees', 'archived'];
+  /**
+   * Where a page's settings apply, under its header (round 18): this device, every machine, or the machine,
+   * its name the picker where there are several (round 21). Limits names its machine in its title already.
+   */
   const scopeOf = (page: string): { device: boolean; text: string } | null => {
     if (page === 'appearance' || page === 'phone') return { device: true, text: strings.settings.scopeDevice };
-    // Limits names its machine in its title already (QuotaMachineScope).
-    if (bar || !['accounts', 'brain', 'voice', 'diagnostics', 'worktrees', 'archived'].includes(page)) return null;
+    if (page === 'machines') return { device: false, text: strings.settings.scopeEvery };
+    if (page === 'limits' || !MACHINE_PAGES.includes(page) || (bar && !pick)) return null;
     const shown = workspace.machines.find((m) => m.store === target);
     return shown ? { device: false, text: fill(strings.machines.scopeOn, { machine: machineName(shown) }) } : null;
   };
@@ -215,11 +229,14 @@
       <!-- The thread header's grammar: back, the title, one context line under it (where these settings apply). -->
       <div class="heading">
         <h1>{#if shown === 'limits'}<QuotaMachineScope store={target} fallback={title} />{:else}{title}{/if}{#if info}<InfoTip topic={title} text={info} testid="mobile-settings-info" />{/if}</h1>
-        {#if scope}<p class="scope page-scope" data-testid="mobile-settings-page-scope">{#if scope.device}<MonitorSmartphone size={14} strokeWidth={1.75} aria-hidden="true" />{:else}<Monitor size={14} strokeWidth={1.75} aria-hidden="true" />{/if}<span class="ui-label">{scope.text}</span></p>{/if}
+        {#if scope}
+          {@const picks = pick && bar && MACHINE_PAGES.includes(shown)}
+          <p class="scope page-scope" class:picks data-testid="mobile-settings-page-scope">{#if scope.device}<MonitorSmartphone size={14} strokeWidth={1.75} aria-hidden="true" />{:else if !picks}<Monitor size={14} strokeWidth={1.75} aria-hidden="true" />{/if}{#if picks && pick}{@render pick()}{:else}<span class="ui-label">{scope.text}</span>{/if}</p>
+        {/if}
       </div>
     </header>
     <div class="detail" data-testid="mobile-settings-detail">
-      {#if bar && ['accounts', 'brain', 'voice', 'limits', 'diagnostics', 'worktrees', 'archived'].includes(shown)}<div class="bar">{@render bar()}</div>{/if}
+      {#if bar && MACHINE_PAGES.includes(shown)}<div class="bar">{@render (pick && shown !== 'limits' && notes ? notes : bar)()}</div>{/if}
       {#key target}
       {#if quota}
         <div class="tabs" role="tablist" aria-label={strings.usage.heading} data-testid="mobile-usage-tabs">

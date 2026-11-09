@@ -222,7 +222,7 @@
   {/if}
 
     {#if options.length > 0}
-      <div class="options" class:clipped={below > 0} role={multiple ? 'group' : 'radiogroup'} bind:this={list} onscroll={measure}>
+      <div class="options" class:scroll-edges={docked} class:clipped={below > 0} role={multiple ? 'group' : 'radiogroup'} bind:this={list} onscroll={measure}>
         {#each options as option, index (option.id)}
           <button
             type="button"
@@ -236,21 +236,20 @@
             onmousedown={keepFocus}
             onclick={() => toggle(option.id)}
           >
-            {#if docked && index < 9}
-              <kbd class="kbd" aria-hidden="true">{#if picked.includes(option.id)}<Check size={11} strokeWidth={2.5} />{:else}{index + 1}{/if}</kbd>
-            {:else}
+            <!-- A ring for one choice, a square for several: a choice before any pick, a solid check once picked. -->
             <span class="box" class:round={!multiple} aria-hidden="true">
-              {#if multiple && picked.includes(option.id)}
-                <Check size={10} strokeWidth={3} />
+              {#if picked.includes(option.id) && (multiple || docked)}
+                <Check size={docked ? 12 : 10} strokeWidth={3} />
               {/if}
             </span>
-            {/if}
             <span class="labels">
               <span class="label"><CodeText text={option.label} /></span>
               {#if option.description}
                 <span class="muted description"><CodeText text={option.description} /></span>
               {/if}
             </span>
+            <!-- The composer's 1 to 9, a quiet hint at the row's end for a keyboard. -->
+            {#if docked && index < 9}<kbd class="kbd" aria-hidden="true">{index + 1}</kbd>{/if}
           </button>
         {/each}
       </div>
@@ -325,12 +324,18 @@
     padding: 10px var(--dock-inset, 10px);
     gap: 8px;
   }
-  /* Nothing in the card shrinks: the choices take the room the dock's budget
-     gives them (`fit`), in whole rows, and the rest scroll in place. A cut
-     row fades and a line counts the rest. */
+  /* The choices take the room the dock's budget gives them (`fit`), in whole
+     rows, and the rest scroll in place. The edge fades and a line counts the rest. */
   .question.docked > :global(*) { flex: none; }
-  .question.docked > .options { overflow-y: auto; overscroll-behavior: contain; max-height: max(120px, calc(var(--dock-budget, 55dvh) - 230px - var(--deck-room, 0px))); }
-  .docked .options.clipped { mask-image: linear-gradient(to bottom, var(--color-foreground) calc(100% - 24px), transparent); }
+  /* Pressed under its budget (the composer's cap, a queued line, a second
+     line of chips), the choices alone give way, down to one row, and scroll:
+     the question over them and the pair under them stay whole. */
+  .question.docked { min-height: 0; }
+  .question.docked > .options { flex: 0 1 auto; min-height: calc(var(--touch-target) + 4px); overflow-y: auto; overscroll-behavior: contain; max-height: max(120px, calc(var(--dock-budget, 55dvh) - 230px - var(--deck-room, 0px))); }
+  /* A list that runs past its edge fades it, whether the budget or a tighter cap cut it (app.css `.scroll-edges`). */
+  .docked .options { --scroll-edge-ground: var(--decision-fill, var(--color-composer-surface)); }
+  .docked .options.scroll-edges::before { margin-bottom: calc(-1 * var(--scroll-edge) - 2px); }
+  .docked .options.scroll-edges::after { margin-top: calc(-1 * var(--scroll-edge) - 2px); }
 
   /* The question's own column beside the compact controls; folded, it holds one line. */
   .docked .prompt { display: block; min-width: 0; padding-block: calc((var(--control) - 22px) / 2); font-weight: inherit; }
@@ -339,9 +344,9 @@
     /* A phone gives the choices what the card's budget leaves once the
        head, the field and the bar are counted (`--dock-cap`). */
     .question.docked { padding: 8px var(--dock-inset, 8px); gap: 4px; }
-    /* What the card holds besides the choices (its padding, the head, the
-       Answer row and the field's share the cap does not count) stays in view. */
-    .question.docked > .options { max-height: max(96px, calc(var(--dock-cap, 30dvh) - 120px)); }
+    /* What the card holds besides the choices stays in view: its padding,
+       the head, the count line, the Answer row and the deck's inset. */
+    .question.docked > .options { max-height: max(96px, calc(var(--dock-cap, 30dvh) - 146px)); }
   }
   .more { align-self: flex-start; height: 24px; padding: 0 8px; color: var(--color-muted-foreground); font-size: var(--text-sm); }
 
@@ -357,18 +362,23 @@
     .docked .option:hover:not(:disabled) { transform: none; background: var(--color-hover); border-color: transparent; }
   }
   .docked .option:focus-visible { background: var(--color-hover); border-color: transparent; }
-  /* Picked, as a chosen swatch: filled, ringed in the ink, its keycap a solid
-     check, from the tap on. The pick holds under the pointer that made it. */
+  /* Each row leads with what it is, a ring for one choice or a square for
+     several, in the edge's ink at rest. Picked, as a chosen swatch: filled,
+     ringed in the ink, its mark a solid check, from the tap on. The pick holds
+     under the pointer that made it. */
+  .docked .box { width: 18px; height: 18px; margin: 0; border: 1.5px solid var(--color-muted-foreground); border-radius: calc(var(--radius-sm) / 1.5); color: var(--color-background); transition: background var(--dur-2) var(--ease-out-quint), border-color var(--dur-2) var(--ease-out-quint); }
+  .docked .box.round { border-radius: var(--radius-full); }
   .docked .option.picked, .docked .option.picked:is(:hover, :focus-visible):not(:disabled) { background: color-mix(in oklab, var(--color-foreground) 10%, transparent); border-color: var(--color-foreground); }
-  .docked .option.picked .kbd { border-color: var(--color-foreground); background: var(--color-foreground); color: var(--color-background); }
+  .docked .option.picked .box { border-color: var(--color-foreground); background: var(--color-foreground); }
   .docked .option:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -1px; }
+  .docked .labels { flex: 1 1 auto; }
   .docked .label { font-weight: 550; }
-  /* The shared keycap, one square per option; muted until its option is picked. */
-  .kbd { flex: none; width: 20px; height: 20px; padding: 0; color: var(--color-muted-foreground); }
-  .option.picked .kbd { color: var(--color-foreground); }
-  /* After the rows' own padding, so the phone's tighter one wins. */
+  /* The shared keycap at the row's end, quiet: a hint for the keyboard, not the choice itself. */
+  .kbd { flex: none; width: 20px; height: 20px; padding: 0; color: var(--color-subtle); }
+  /* After the rows' own padding, so the phone's tighter one wins; a phone has no 1 to 9 to hint. */
   @media (max-width: 720px) {
     .docked .option { min-height: var(--touch-target); padding: 3px 8px; }
+    .kbd { display: none; }
   }
 
   .waiting-row:disabled { opacity: 1; cursor: default; }

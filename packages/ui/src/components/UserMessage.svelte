@@ -13,7 +13,8 @@
   import { THUMB_HEIGHT } from '../lib/message-window';
   import MessageReceipts from './MessageReceipts.svelte';
   import MoveMarker from './MoveMarker.svelte';
-  import Deferred, { parts } from './Deferred.svelte';
+  import Deferred from './Deferred.svelte';
+  import { parts } from '../lib/deferred-parts';
 
   /**
    * A prompt in the timeline: its bubble, the pictures and files it was sent

@@ -1,4 +1,5 @@
 import { afterEach, expect, test } from 'vitest';
+import { strings } from '../lib/strings';
 import { flushSync, mount, unmount } from 'svelte';
 import AppearancePage from './AppearancePage.svelte';
 import { FONT_KEY, MONO_KEY } from '../lib/fonts';
@@ -198,6 +199,9 @@ test('round 20: each face shows a sample line in itself, and the chat width a pa
 
   const width = () => document.querySelector('[data-testid=chat-width-sample]')!.getAttribute('data-width');
   expect(width()).toBe('comfortable');
+  // Round 21: a question and its reply, not an empty box, so the width reads as lines of a conversation.
+  expect(document.querySelector('[data-testid=chat-width-sample] .sample-ask')!.textContent).toBe(strings.settings.chatWidthAsk);
+  expect(document.querySelector('[data-testid=chat-width-sample] .sample-reply')!.textContent).toBe(strings.settings.chatWidthSample);
   const wide = document.querySelector<HTMLButtonElement>('[data-testid=chat-width-wide]')!;
   wide.dispatchEvent(new PointerEvent('pointerenter'));
   flushSync();

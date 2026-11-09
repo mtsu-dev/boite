@@ -108,7 +108,7 @@ export const strings = {
     pickAccount: 'Pick another account', addAccount: 'Add an account',
     deskPanel: {
       now: 'Now', memory: 'Memory', memoryProblem: 'Memory update failed',
-      conversation: 'Conversation', handling: 'Handling', done: 'Done',
+      conversation: 'Conversation', handling: 'Working on', done: 'Done',
       since: 'Since {date}', noteOne: '1 note', noteMany: '{count} notes',
       stepOne: '1 step so far', stepMany: '{count} steps so far',
       waitingHint: 'Answer in the conversation and it carries on.',

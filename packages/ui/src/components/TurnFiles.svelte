@@ -9,7 +9,8 @@
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import { countsOf, turnFileTree, turnLineCounts, type TurnDiff, type TurnFile, type TurnFileNode } from '../lib/turn-files';
-  import Deferred, { parts } from './Deferred.svelte';
+  import Deferred from './Deferred.svelte';
+  import { parts } from '../lib/deferred-parts';
   import ChangeCount from './ChangeCount.svelte';
   import { changeCount, changeText } from '../lib/change-count';
   import { chatPrefs } from '../lib/chat-prefs.svelte';

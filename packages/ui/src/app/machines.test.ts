@@ -133,6 +133,10 @@ test('a machine filter whose machine goes away lists the remaining machine again
   await waitFor(() => document.querySelector(`[data-testid=machine-filter] [data-value="machine:${remote.id}"]`) !== null);
   query<HTMLButtonElement>(`[data-testid=machine-filter] [data-value="machine:${remote.id}"]`).click();
   await waitFor(() => threads() < everything);
+  // The button says which filter hides threads, not a bare count: "Filter: <machine>".
+  expect(query('[data-testid=filter-name]').textContent).toBe(`Filter: ${remote.label}`);
+  // One filter on: its name says it all, no "+N" beside it.
+  expect(document.querySelector('[data-testid=filter-count]')).toBeNull();
   workspace.machines = workspace.machines.filter((machine) => machine !== remote);
   flushSync();
   // One machine draws no machine choice, so a filter left on the gone one could never be cleared.
@@ -199,4 +203,11 @@ test('a project card names its machine only when it is not this app\'s own', asy
   // Everything runs here by default: the own machine goes unsaid, the other is named on its cards.
   expect(card(own.id)!.querySelector('[data-testid=project-host]')).toBeNull();
   expect(card(remote.id)!.querySelector('[data-testid=project-host]')?.textContent).toBe(`on ${remote.label}`);
+  // Out of reach, the card ends on Reconnect rather than on its Offline label (round 21), and the button goes once it answers.
+  const reconnect = () => card(remote.id)?.querySelector<HTMLButtonElement>('[data-testid=project-reconnect]') ?? null;
+  expect(reconnect()).toBeNull();
+  remote.store.connection = 'closed';
+  await waitFor(() => reconnect()?.textContent === 'Reconnect');
+  reconnect()!.click();
+  await waitFor(() => remote.store.connection === 'ready' && reconnect() === null);
 });

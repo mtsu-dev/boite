@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { TriangleAlert } from '@lucide/svelte';
+  import { TriangleAlert, UserX } from '@lucide/svelte';
   import type { AgentProfile } from '@boite/contracts';
   import type { AgentsView } from '../../lib/agents.svelte';
   import { routeCatalog, routeGone, withDefaultRoute } from '../../lib/agent-route';
   import { errorText } from '../../lib/errors';
   import { accountName } from '../../lib/account-name';
-  import { strings } from '../../lib/strings';
+  import { fill, strings } from '../../lib/strings';
   import Menu from '../Menu.svelte';
 
   /**
@@ -44,8 +44,12 @@
 </script>
 
 <div class="agent-problem" role="alert" data-testid="agent-problem">
-  <TriangleAlert size={15} strokeWidth={1.75} />
-  <span>{problem}</span>
+  <!-- A removed account reads as the composer's chip says it: the same glyph, the same cause, the same one remedy;
+       the sentence that names the bot and the core's own words stay in the title. -->
+  {#if gone}
+    <UserX size={15} strokeWidth={1.75} />
+    <span data-testid="agent-problem-cause" title={`${fill(strings.composer.botAccountGone, { name: agent.name })}\n${problem}`}>{strings.accounts.removed}</span>
+  {:else}<TriangleAlert size={15} strokeWidth={1.75} /><span>{problem}</span>{/if}
   {#if store.owner}
     {#if gone && others.length > 0}
       <Menu items={others.map(account => ({ id: account.id, label: store.providerOf(account.providerId)?.name ?? accountName(account), hint: accountName(account) }))} onpick={id => void pick(id)} label={labels.pickAccount} placement="bottom" align="end" disabled={busy} testid="agent-problem-account">

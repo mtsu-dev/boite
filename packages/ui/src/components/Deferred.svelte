@@ -1,7 +1,3 @@
-<script lang="ts" module>
-  export { parts } from '../lib/deferred-parts';
-</script>
-
 <script lang="ts" generics="T">
   import type { Snippet } from 'svelte';
   import type { LazyComponent } from '../lib/lazy-component.svelte';

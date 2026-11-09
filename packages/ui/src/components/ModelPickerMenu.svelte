@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
-  import { Check, ChevronRight, Star, RefreshCw } from '@lucide/svelte';
+  import { ArrowLeft, Check, ChevronRight, Star, RefreshCw } from '@lucide/svelte';
   import { isNamedModel, orderedModels } from '../lib/model-order';
   import { shortlist, type ShortModel } from '../lib/model-shortlist';
   import type { Account, ModelInfo, ProviderSummary } from '@boite/contracts';
@@ -189,6 +189,13 @@
   let listed = $derived(single ? [] : listedProviders(store, choice));
   let top = $derived(provider && listed.some((entry) => entry.id === provider?.id) ? provider.id : null);
   let others = $derived(listed.filter((entry) => entry.id !== top));
+  /** The sheet's head in words: the model in use, then its provider and the login that runs it. */
+  let inUse = $derived.by(() => {
+    if (!choice || !provider) return null;
+    const model = store.modelOf(choice);
+    const account = store.accountOf(choice.accountId);
+    return { name: model && isNamedModel(model) ? model.name : provider.name, source: [provider.name, account ? accountName(account) : ''].filter(Boolean).join(' · ') };
+  });
   /** A provider turned off has no tile: the row's first one shows instead. */
   const offered = (id: string | null | undefined) => (id && store.providerOn(id) ? store.providerOf(id) : null);
   let shown = $derived(offered(shownProviderId) ?? offered(provider?.id) ?? (single ? store.offeredProviders[0] : listed[0]) ?? null);
@@ -280,9 +287,9 @@
   let found = $derived.by(() => {
     if (!global || words.length === 0) return [];
     const listed = listedProviders(store, choice);
-    // The shown provider answers first: a query reads as a search of the list on screen, then of the rest.
+    // The provider in use answers first, the rest in the sheet's own order: the groups keep their places whichever list is open.
     const providers = locked ? listed.filter((entry) => entry.id === choice?.providerId)
-      : [...listed.filter((entry) => entry.id === shown?.id), ...listed.filter((entry) => entry.id !== shown?.id)];
+      : [...listed.filter((entry) => entry.id === choice?.providerId), ...listed.filter((entry) => entry.id !== choice?.providerId)];
     return providers.flatMap((entry) => {
       const accountId = accountFor(entry.id);
       if (installPending(entry) || !store.providerOn(entry.id)) return [];
@@ -294,7 +301,7 @@
       // As in a catalogue, a long list's own default leads whatever the query.
       const pinned = grouped ? models.find((model) => model.id === store.defaultModelOf(entry)) ?? null : null;
       const rest = pinned ? models.filter((model) => model !== pinned) : models;
-      return [{ provider: entry, accountId, label: account ? `${entry.name} · ${account}` : entry.name, pinned, groups: grouped ? groupModels(rest) : [{ key: '', models }] }];
+      return [{ provider: entry, accountId, account, pinned, groups: grouped ? groupModels(rest) : [{ key: '', models }] }];
     });
   });
 
@@ -419,6 +426,14 @@
 
   <!-- A phone sheet's one title, as on its other sheets; the chip names the model on desktop. -->
   <SheetHead title={strings.composer.model} />
+  {#if !single && inUse}
+    <!-- What runs now, in words: the model, then its provider and the login. -->
+    <div class="in-use" data-testid="picker-current">
+      {#if choice}<ProviderLogo providerId={choice.providerId} size={16} />{/if}
+      <span class="text"><span class="name ui-label">{inUse.name}</span><span class="sub">{inUse.source}</span></span>
+      <span class="in-use-tag">{strings.composer.inUse}</span>
+    </div>
+  {/if}
   <!-- One row on top: the search across providers and the open list's refresh. -->
   <div class="find">
     {#if !(single && needsInstall)}<ModelSearch bind:value={modelQuery} bind:input={searchBox} />{/if}
@@ -426,6 +441,10 @@
   </div>
 
   {#snippet catalogue()}
+    {#if !single && top && provider && shown && shown.id !== top}
+      <!-- Another provider opened in place: one row back to the models in use, where a phone's thumb already is. -->
+      <button type="button" class="row back" data-row data-testid="picker-back" onclick={() => pickTile(top!)}><ArrowLeft size={14} /><span class="ui-label">{fill(strings.composer.backTo, { provider: provider.name })}</span></button>
+    {/if}
     <!-- A provider with two logins names which one; its row above already names the provider, so only a lone provider names itself here. -->
     {#if single || seats.length > 1}
     <div class="head">
@@ -493,11 +512,12 @@
           class="row fold small"
           data-row
           data-testid="picker-legacy"
+          title={strings.composer.olderModelsHelp}
           aria-expanded={legacyOpen}
           onclick={() => legacy.toggle()}
         >
           <span class="mark" aria-hidden="true"></span>
-          <span class="name muted ui-label">{strings.composer.legacyModels}</span>
+          <span class="name muted ui-label">{strings.composer.olderModels}</span>
           <ChevronRight size={14} strokeWidth={2} />
         </button>
       {/if}
@@ -515,7 +535,8 @@
       <div class="model-list found" data-testid="picker-found">
         {#each found as column (column.provider.id)}
           <div class="found-source" data-source={column.provider.id}>
-            <span class="section-label source-line">{column.label}</span>
+            <!-- Always the same order: the provider's mark and name, then the login when it has several. -->
+            <span class="section-label source-line"><ProviderLogo providerId={column.provider.id} size={12} /><span class="source-name">{column.provider.name}</span>{#if column.account}<span class="source-seat">{' · '}{column.account}</span>{/if}</span>
             {#if column.pinned}{@render modelRow(column.pinned, column.provider.id, column.accountId)}{/if}
             {#each column.groups as group (group.key)}
               {#if group.key}<span class="section-label group" data-group={group.key}>{group.key}</span>{/if}
@@ -556,9 +577,10 @@
   </div>
 </div>
 {#if popover.shown && legacy.shown && !pending && filteredLegacy.length > 0}
-<div class="popover legacy-menu" class:closing={legacy.closing} role="menu" tabindex="-1" data-testid="picker-legacy-menu" aria-label={strings.composer.legacyModels} use:legacy.attach onanimationend={legacy.end} use:floating={{ anchor: () => menu ?? null, side: 'right' }} onkeydown={keydown}>
+<div class="popover legacy-menu" class:closing={legacy.closing} role="menu" tabindex="-1" data-testid="picker-legacy-menu" aria-label={strings.composer.olderModels} use:legacy.attach onanimationend={legacy.end} use:floating={{ anchor: () => menu ?? null, side: 'right' }} onkeydown={keydown}>
   <div class="column models">
-    <div class="head"><button type="button" class="icon small legacy-back" aria-label={strings.settings.back} onclick={() => legacy.hide()}><ChevronRight size={14} style="transform: rotate(180deg)" /></button><span class="provider-name ui-label">{strings.composer.legacyModels}</span></div>
+    <div class="head"><button type="button" class="icon small legacy-back" aria-label={strings.settings.back} onclick={() => legacy.hide()}><ChevronRight size={14} style="transform: rotate(180deg)" /></button><span class="provider-name ui-label">{strings.composer.olderModels}</span></div>
+    <p class="older-help" data-testid="picker-legacy-help">{strings.composer.olderModelsHelp}</p>
             {#each filteredLegacy as model (model.id)}
               <div class="model-entry">
               <button
@@ -653,7 +675,18 @@
   .short-list, .model-list { display: flex; flex-direction: column; gap: 1px; }
   /* One provider alone scrolls its own list; the full sheet scrolls as one column, no list nested in it. */
   .popover.single .model-list { max-height: 300px; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; }
-  .source-line { padding: 8px var(--overlay-row-pad) 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .source-line { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 8px var(--overlay-row-pad) 2px; white-space: nowrap; }
+  .source-line :global(.logo) { flex: none; filter: grayscale(1); }
+  .source-name { flex: none; }
+  .source-seat { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 400; }
+  /* The head: the model in use as the first line of the sheet, its provider and login under it. */
+  .in-use { display: flex; align-items: center; gap: 10px; flex: none; min-width: 0; padding: var(--space-2) calc(var(--overlay-pad) + var(--overlay-row-pad)) 0; }
+  .in-use :global(.logo) { flex: none; }
+  .in-use .text { display: flex; flex: 1; flex-direction: column; gap: 1px; min-width: 0; }
+  .in-use .name { font-weight: 600; line-height: 20px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .in-use-tag { flex: none; color: var(--color-subtle); font-size: var(--text-xs); }
+  .back { gap: 8px; color: var(--color-muted-foreground); }
+  .older-help { margin: 0; padding: 0 var(--overlay-row-pad) var(--space-1); color: var(--color-subtle); font-size: var(--text-xs); line-height: 16px; }
   .found-source { display: flex; flex-direction: column; gap: 1px; }
   .found-source:first-child .source-line { padding-top: 2px; }
   /* One provider: its model list is the whole popover. */

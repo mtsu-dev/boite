@@ -20,7 +20,8 @@
   import InlineView from './InlineView.svelte';
   import { richMarkdown, type RichMarkdownOptions } from '../lib/rich-markdown';
   import { viewerHost, type Gallery, type MediaItem } from '../lib/media-gallery';
-  import Deferred, { parts } from './Deferred.svelte';
+  import Deferred from './Deferred.svelte';
+  import { parts } from '../lib/deferred-parts';
 
   /**
    * `views` are the pages the answer's turn published (`turnViews`): a line

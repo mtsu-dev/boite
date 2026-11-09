@@ -55,7 +55,7 @@ test('a permission reads whole under its row, its sub-agent\'s question is a row
   expect([...document.querySelectorAll('[data-testid=thread-operation] .word')].map(word => word.textContent)).toContain('feature/a-branch-name-long-enough-to-wrap-in-the-row');
   expect(document.querySelector('[data-testid=thread-helper]')).toBeNull();
   const verbs = document.querySelectorAll<HTMLButtonElement>('[data-testid=thread-verb]');
-  expect([...verbs].map(verb => [verb.textContent?.trim(), verb.dataset.verb])).toEqual([['Allow', 'allow']]);
+  expect([...verbs].map(verb => [verb.textContent?.trim(), verb.dataset.verb])).toEqual([['Allow once', 'allow']]);
   // The row's action ranks: Allow is the solid neutral fill (button.primary), never the accent's send.
   expect(verbs[0]!.classList.contains('primary')).toBe(true);
   expect(verbs[0]!.classList.contains('send')).toBe(false);

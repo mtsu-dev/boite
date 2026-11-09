@@ -18,16 +18,21 @@ export const fr: Translation = {
     changes: 'Modifications',
     files: 'Fichiers',
     file: 'Fichier',
-    tasks: 'Gestionnaire de tâches',
+    tasks: 'Objectif et tâches',
     device: 'Appareil',
     window: 'Fenêtre',
     ownerOnly: "Seulement dans l'application du propriétaire",
     launcher: 'Ouvrir une surface dans ce panneau',
     untitled: 'Navigateur',
-    roles: { board: 'Les tâches du projet en colonnes', tasks: 'Objectif, liste et suivis de cette conversation' },
+    closePanel: 'Fermer le panneau',
+    roles: {
+      board: 'Les tâches de tout le projet, en colonnes', tasks: 'Objectif, boucle, tâches et suivis de cette conversation',
+      trace: 'Les programmes que lance cette conversation', messages: 'Ce que cet agent et les autres agents se sont écrit',
+      coordination: "Laisser d'autres agents trouver cette conversation et lui écrire"
+    },
     groups: { recent: 'Récents', work: 'Travail', agents: 'Agents', tools: 'Outils' },
     formerly: {
-      trace: 'Anciennement Trace', tasks: 'Anciennement Tâches', messages: 'Anciennement Discussions',
+      trace: 'Anciennement Trace', tasks: 'Anciennement Gestionnaire de tâches', messages: 'Anciennement Discussions',
       coordination: 'Anciennement Liens entre conversations', customize: 'Anciennement Choisir les boutons'
     }
   }

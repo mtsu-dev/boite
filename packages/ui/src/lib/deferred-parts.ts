@@ -1,4 +1,5 @@
 import { LazyComponent } from './lazy-component.svelte';
+import { parts as nested } from './nested-parts';
 
 /**
  * Components that rows and bars of the first screen hold but do not draw on
@@ -17,13 +18,13 @@ export const parts = {
   SecretCard: new LazyComponent(() => import('../components/SecretCard.svelte')),
   TeamCard: new LazyComponent(() => import('../components/TeamCard.svelte')),
   CouncilCard: new LazyComponent(() => import('../components/council/CouncilCard.svelte')),
-  QuotaOverview: new LazyComponent(() => import('../components/QuotaOverview.svelte')),
+  QuotaOverview: nested.QuotaOverview,
   LimitsGlance: new LazyComponent(() => import('../components/LimitsGlance.svelte')),
   PinnedQuota: new LazyComponent(() => import('../components/PinnedQuota.svelte')),
   CoordinationPanel: new LazyComponent(() => import('../components/CoordinationPanel.svelte')),
   UpdatesNotice: new LazyComponent(() => import('../components/UpdatesNotice.svelte')),
   RobotFace: new LazyComponent(() => import('../components/agents/RobotFace.svelte')),
-  ModelPickerMenu: new LazyComponent(() => import('../components/ModelPickerMenu.svelte'))
+  ModelPickerMenu: nested.ModelPickerMenu
 };
 
 /** The idle prefetch of every part (App.svelte). A failure is quiet: the part asks again when drawn. */

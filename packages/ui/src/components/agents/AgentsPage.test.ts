@@ -188,9 +188,10 @@ test("a desktop's column is the open bot's: who it is, its conversation, its thr
     const botHead = document.querySelector('[data-testid=agent-header]')!;
     expect(botHead.querySelector('.agent-head-name')?.textContent).toBe(nova.name);
     expect(botHead.querySelector('[data-testid=agent-menu]')).not.toBeNull();
-    // One door, which never names the desk: the panel's selector does. Open it is pressed and wordless, closed it reads "Panels".
+    // One door: it reads "Panels" until the panel is in and names itself on it (`RightPanel.strip.test.ts`); here the panel is not loaded.
     const door = botHead.querySelector<HTMLElement>('[data-testid=agent-desk-toggle]')!;
-    expect(door.textContent?.trim()).toBe(store.panelOpen ? '' : strings.thread.panelMenu);
+    expect(door.textContent).toContain(strings.thread.panelMenu);
+    expect(door.getAttribute('aria-pressed')).toBe(String(store.panelOpen));
     expect(door.textContent).not.toContain(strings.agents.desk);
     expect(botHead.querySelectorAll('[data-testid=agent-desk-toggle]')).toHaveLength(1);
     expect(document.querySelector('[data-testid=agent-live]')).toBeNull();

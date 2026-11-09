@@ -5,7 +5,8 @@
   import { mobileOverlay } from '../lib/mobile-history';
   import { strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
-  import Deferred, { parts } from './Deferred.svelte';
+  import Deferred from './Deferred.svelte';
+  import { parts } from '../lib/deferred-parts';
 
   let { store, threadId, onclose }: { store: Store; threadId: string; onclose: () => void } = $props();
   let dialog: HTMLDialogElement;
