@@ -1,6 +1,7 @@
 import { beforeEach, expect, test } from 'vitest';
 import type { ThreadSummary } from '@boite/contracts';
 import type { Store } from './store.svelte';
+import { strings } from './strings';
 import { ALL_PANELS, IN_USE, panelChoices, usedPanels } from './panel-choices';
 import { offeredCards } from './surface-labels';
 import { work } from './work-prefs.svelte';
@@ -58,6 +59,11 @@ test('the short list holds the panels in use, then one row to all of them; the f
   // Nothing in use: Changes and Files still lead, a click from the header, then the way to the rest.
   const fresh = panelChoices(stub({ panel: { active: null } }), thread(), { available: () => true, showing: undefined });
   expect(ids(fresh)).toEqual(['changes', 'files', ALL_PANELS]);
+  // The way to the rest names what it holds, the best known first, so it is no door to guess at.
+  const more = fresh.at(-1)!;
+  expect(more.label).toMatch(/^Terminal, Browser and \d+ more$/);
+  expect(more.title).toBe(strings.rightPanel.allPanels);
+  expect(short.at(-1)!.label).not.toContain('Terminal');
   // A short list that would hold every row is the full list at once, with no way back to itself.
   const all = panelChoices(stub({ panel: { active: null } }), thread(), { available: () => true, showing: undefined, used: new Set(ids(panelChoices(stub(), thread(), { available: () => true, full: true }))) });
   expect(ids(all)).not.toContain(ALL_PANELS);

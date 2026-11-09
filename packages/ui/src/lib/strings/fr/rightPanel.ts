@@ -23,6 +23,8 @@ export const fr: Translation = {
     window: 'Fenêtre',
     ownerOnly: "Seulement dans l'application du propriétaire",
     launcher: 'Ouvrir une surface dans ce panneau',
+    /** The short list's way to every panel, named by the first panels it holds that the short list does not show. */
+    morePanels: { one: '{first}', two: '{first} et {second}', many: '{first}, {second} et {count} autres' },
     untitled: 'Navigateur',
     allPanels: 'Tous les panneaux', inUse: 'Panneaux ouverts',
     groups: { work: 'Travail', agents: 'Agents', tools: 'Outils' },

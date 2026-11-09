@@ -15,9 +15,9 @@ export const strings = {
     retryContinueTitle: 'Stopped before its answer',
     retryContinueBody: 'Resumes by itself in {time}, resume {attempt} of {attempts}.',
     contextDetails: 'Context',
-    contextPercentUsed: (percent: string) => `Context ${percent}% used`,
-    /** After the composer meter's percent, which it names; a phone shows the meter's glyph instead. */
-    contextWord: 'context',
+    /** The composer's context reading at rest, beside its ring. */
+    contextLeft: (percent: string) => `${percent}% left`,
+    contextLeftNamed: (percent: string) => `Context: ${percent}% left`,
     contextInput: 'Input',
     contextCache: 'Cached input',
     contextOutput: 'Output',
@@ -54,8 +54,12 @@ export const strings = {
     panel: 'Panel',
     panelHint: 'Show or hide the side panel',
     panelMenu: 'Panels',
-    /** A thread menu's named group: what is done to it less often (its title made again, hand-off, move, path, pull request). */
-    manage: 'Manage thread',
+    /** A thread menu's named group, named by what it holds in that order: the bot rows, the title made again, the folder (branch, move, path, pull request). */
+    manage: 'Bot, title and folder',
+    /** The same group with no bot row (bots off, none to give it to). */
+    manageNoBot: 'Title and folder',
+    /** The same group with no folder row (a phone that cannot move it). */
+    manageNoFolder: 'Bot and title',
     /** A desktop header's project crumb: back to the thread list, at this thread. */
     backToList: 'Back to the {project} threads',
     terminalHint: "Terminal in this thread's folder",

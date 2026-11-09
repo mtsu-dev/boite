@@ -101,6 +101,31 @@ describe.each([
   });
 });
 
+/**
+ * Round 18: the frame, the page, a card and a raised fill each sit one visible
+ * tonal step apart, so a card reads as a card without glass or a gradient.
+ * Round 17's dark frame sat 2.9 L* under the page and its cards 1.9 L* over
+ * it, its light frame 4.2 L* under the page: each floor below fails on them.
+ */
+test.each([
+  ['dark', ':root', { framePage: 3.5, pageCard: 3, pageRaised: 5.5 }],
+  ['light', "[data-theme='light']", { framePage: 5, pageCard: 2, pageRaised: 4 }]
+] as const)('%s: frame, page, card and raised fill are one tonal step apart', (_theme, selector, floors) => {
+  const scope = block(selector);
+  const [frame, page, card, raised] = ['--color-frame', '--color-background', '--color-surface', '--color-surface-2'].map((name) => lightness(token(scope, name)));
+  expect(Math.abs(page! - frame!), 'frame to page').toBeGreaterThanOrEqual(floors.framePage);
+  expect(Math.abs(card! - page!), 'page to card').toBeGreaterThanOrEqual(floors.pageCard);
+  expect(Math.abs(raised! - page!), 'page to raised fill').toBeGreaterThanOrEqual(floors.pageRaised);
+});
+
+/** A switch that is on reads as on at a glance, without the accent: the filled foreground track, a primary's ink as the knob. */
+test('a switch on wears the foreground track and its ink knob; off, a quiet track', () => {
+  const root = block(':root');
+  expect(root).toMatch(/--switch-on:\s*var\(--color-foreground\);/);
+  expect(root).toMatch(/--switch-knob-on:\s*var\(--color-on-foreground\);/);
+  expect(root).toMatch(/--switch-off:\s*var\(--color-surface-3\);/);
+});
+
 test('a menu or popover edge sits one step over the edge, toward the text, in every theme and palette', () => {
   expect(block(':root')).toMatch(/--overlay-edge:\s*color-mix\(in srgb, var\(--color-edge\), var\(--color-foreground\) \d+%\);/);
 });
@@ -150,7 +175,9 @@ describe('text in the components stays at or above the subtle tier', () => {
     // Code's inks and the warning that asks nothing, each set in app.css at reading contrast.
     '--syntax-keyword', '--syntax-string', '--syntax-comment', '--color-caution',
     // Set by a component to one of the above.
-    '--tone', '--verdict', '--mark', '--tint'
+    '--tone', '--verdict', '--mark', '--tint',
+    // A palette tile's sample: that palette's own foreground on its own ground (ThemeColors.svelte).
+    '--tile-ink'
   ]);
   const KEYWORDS = new Set(['inherit', 'currentColor', 'transparent']);
   /** Where a fade is no text: an idle overlay kept above the floor (0.9 of foreground), icons and bars drawn in a colour. */

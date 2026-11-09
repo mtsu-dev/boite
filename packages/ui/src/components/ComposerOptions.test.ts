@@ -38,17 +38,13 @@ test('a box with nothing to add and no worktree draws no "+"', () => {
   expect(document.querySelector('[data-testid=composer-options]')).toBeNull();
 });
 
-test('a bot\'s thread reaches its context details from the "+" while the row draws no number', () => {
-  const oncontext = vi.fn();
-  mounted = mount(ComposerOptions, { target: document.body, props: { worktree: null, canAttach: false, onattach() {}, onworktree() {}, context: 'Context 42% used', oncontext } });
+test('the "+" holds actions only: no context row, whatever the thread', () => {
+  mounted = mount(ComposerOptions, { target: document.body, props: { worktree: null, canAttach: true, onattach() {}, onworktree() {} } });
   flushSync();
   document.querySelector<HTMLButtonElement>('[data-testid=composer-options]')!.click();
   flushSync();
-  expect(items()).toEqual(['composer-context']);
-  expect(document.querySelector('[data-testid=composer-context]')!.textContent).toContain('Context 42% used');
-  document.querySelector<HTMLButtonElement>('[data-testid=composer-context]')!.click();
-  flushSync();
-  expect(oncontext).toHaveBeenCalledOnce();
+  expect(items()).toEqual(['composer-attach']);
+  expect(document.querySelector('[data-testid=composer-context]')).toBeNull();
 });
 
 test('a "+" closed before its rows drew leaves the focus on the "+", not on a row of the closing sheet', async () => {
@@ -62,19 +58,17 @@ test('a "+" closed before its rows drew leaves the focus on the "+", not on a ro
   expect(document.activeElement).toBe(plus);
 });
 
-test('a phone opens the "+" as a bottom sheet with its title, even while a docked ask anchors it to the whole composer', () => {
+test('a phone opens the "+" as a bottom sheet with its title', () => {
   const restore = phoneWidth();
   try {
-    const composer = document.createElement('div');
-    document.body.append(composer);
-    mounted = mount(ComposerOptions, { target: document.body, props: { worktree: null, canAttach: true, anchor: () => composer, onattach() {}, onworktree() {} } });
+    mounted = mount(ComposerOptions, { target: document.body, props: { worktree: null, canAttach: true, onattach() {}, onworktree() {} } });
     flushSync();
     document.querySelector<HTMLButtonElement>('[data-testid=composer-options]')!.click();
     flushSync();
     // A floating popover under the other sheets read as a second kind of menu.
     expect(document.querySelector<HTMLElement>('[data-testid=composer-options-sheet]')!.dataset.mobileSheet).toBe('true');
     expect(document.querySelector('[data-testid=composer-options-sheet] .sheet-head')?.textContent).toBe('Add to the message');
-    // The permission is a chip of its own: the "+" holds no mode.
+    // The permission and the context are items of the row: the "+" holds actions only.
     expect(items()).toEqual(['composer-attach']);
   } finally { restore(); }
 });

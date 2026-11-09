@@ -202,6 +202,11 @@ test('a machine that does not answer is grey and offers only its name, its icon 
   // Away, the menu keeps only the removal: the switches need the machine.
   expect([has('machine-open'), has('machine-rename'), has('machine-customize'), has('machine-remove'), has('machine-group-threads-switch')]).toEqual([false, true, true, true, false]);
   expect(card().querySelector('.error')).toBeNull();
+  // The remedy sits beside the state, in words (round 18): one press tries now instead of at the next deadline.
+  expect([has('machine-reconnect'), query('[data-machine-id="target"] [data-testid="machine-reconnect"]').textContent]).toEqual([true, strings.connection.reconnect]);
+  const retry = vi.spyOn(target.store, 'connect').mockResolvedValue();
+  query<HTMLButtonElement>('[data-machine-id="target"] [data-testid="machine-reconnect"]').click();
+  await vi.waitFor(() => expect(retry).toHaveBeenCalled());
   option('target', 'machine-remove').click();
   await vi.waitFor(() => expect(confirm.current?.title).toContain(target.label));
   confirm.answer(false);
@@ -217,7 +222,7 @@ test('a machine that does not answer is grey and offers only its name, its icon 
   // Back online, the card is whole again without a click.
   target.store.connection = 'ready';
   flushSync();
-  expect([has('machine-open'), has('machine-menu'), card().dataset.away]).toEqual([true, true, undefined]);
+  expect([has('machine-open'), has('machine-menu'), card().dataset.away, has('machine-reconnect')]).toEqual([true, true, undefined, false]);
 });
 
 test('a thread that failed on a machine reads as that thread, and its button opens it', async () => {

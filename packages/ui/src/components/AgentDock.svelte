@@ -99,8 +99,9 @@
      rest. Their marks line up with the field's text (8 px of chip padding). */
   .dock { flex: none; padding: 6px 6px 0; }
   .entries { display: flex; flex-wrap: wrap; align-items: center; gap: 0 4px; }
-  /* Muted ink, no pill; a hover brings the ink and the fill. */
-  .entry { flex: 0 1 auto; min-width: 0; max-width: 100%; height: var(--control-sm); gap: 6px; padding: 0 8px; border: none; border-radius: var(--radius-md); background: transparent; box-shadow: none; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 400; overflow: hidden; }
+  /* One step under the decision: the smallest type and the tertiary ink, no
+     pill; a hover brings the ink and the fill. */
+  .entry { flex: 0 1 auto; min-width: 0; max-width: 100%; height: var(--control-sm); gap: 6px; padding: 0 8px; border: none; border-radius: var(--radius-md); background: transparent; box-shadow: none; color: var(--color-subtle); font-size: var(--text-meta); font-weight: 400; overflow: hidden; }
   .entry:hover { background: var(--color-hover); color: var(--color-foreground); }
   /* The mark sits in the box the tool rows give theirs, so a check takes the spinner's place. */
   .mark { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 12px; }

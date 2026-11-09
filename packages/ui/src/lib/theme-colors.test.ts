@@ -92,7 +92,7 @@ test('another window can apply and reset colours without retaining stale tokens 
     localStorage.removeItem(COLORS_KEY);
     window.dispatchEvent(new StorageEvent('storage', { key: COLORS_KEY }));
     expect(document.documentElement.style.getPropertyValue('--color-background')).toBe('');
-    expect(meta.content).toBe('#131314');
+    expect(meta.content).toBe('#151517');
   } finally { stop(); meta.remove(); }
 });
 

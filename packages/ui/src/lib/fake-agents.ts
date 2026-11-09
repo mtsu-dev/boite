@@ -599,6 +599,8 @@ export class FakeAgents {
     if (p.config.eventWakes !== undefined && typeof p.config.eventWakes !== 'boolean') invalid('eventWakes: expected true or false');
     const budget = p.config.dailyBudgetUsd;
     if (budget !== undefined && budget !== null && (typeof budget !== 'number' || !Number.isFinite(budget) || budget <= 0)) invalid('dailyBudgetUsd: expected a positive number of dollars, or null for no cap');
+    // The core reads a bot's problem from its route: a new account or provider is a new start.
+    if (p.config.defaultRoute.accountId !== agent.selection.accountId || p.config.defaultRoute.providerId !== agent.selection.providerId) this.problems.delete(agent.id);
     const saved = this.saveProfile({ id: agent.id, expectedRevision: p.expectedRevision, value: { ...agent, selection: p.config.defaultRoute } }, false);
     this.configs.set(agent.id, structuredClone({ ...p.config, eventWakes: p.config.eventWakes ?? previous.eventWakes ?? false, allowedRoutes: p.config.allowedRoutes.map(route => ({ ...route, name: route.name.trim() })) }));
     return saved;

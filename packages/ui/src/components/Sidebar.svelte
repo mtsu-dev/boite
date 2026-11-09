@@ -52,7 +52,21 @@
     if (!measuredRows.has(key)) measuredRows.set(key, new Map());
     return measuredRows.get(key)!;
   }
-  const showRows = $derived(mobile.current ? store.sidebarOpen : !store.sidebarCollapsed);
+  const rowsWanted = $derived(mobile.current ? store.sidebarOpen : !store.sidebarCollapsed);
+  /**
+   * The rows stay drawn while the column folds away (RailFrame.svelte's one
+   * motion), so the list leaves whole beside the panel coming in rather than
+   * emptying on the first frame; they go once the motion is over.
+   */
+  let showRows = $state(untrack(() => rowsWanted));
+  $effect(() => {
+    if (rowsWanted) { showRows = true; return; }
+    const token = scrollRoot ? getComputedStyle(scrollRoot).getPropertyValue('--motion-duration').trim() : '';
+    const duration = parseFloat(token) * (token.endsWith('ms') ? 1 : 1000) || 0;
+    if (duration <= 1) { showRows = false; return; }
+    const timer = setTimeout(() => { showRows = false; }, duration);
+    return () => clearTimeout(timer);
+  });
   /**
    * On a desktop the Contacts page turns the list to its Contacts side, the
    * Bots column's other side (agents/SideHead.svelte), whose head folds the
@@ -172,7 +186,7 @@
       const { lists } = projectLists.get(projectKey(entry))!;
       const { shown } = cardRows(entry, lists.attention);
       for (const thread of open ? [...shown, ...lists.working] : shown) rows.push({ store: entry.machine.store, threadId: thread.id });
-      for (const kind of ['done', 'archived'] as const) if (kind === 'done' ? doneFilter.shown : later || projectThreadView.isOpen(entry, kind)) rows.push(...projectDoneRows[JSON.stringify([kind, projectKey(entry)])] ?? []);
+      for (const kind of ['done', 'archived'] as const) if (kind === 'done' ? doneFilter.shown : later) rows.push(...projectDoneRows[JSON.stringify([kind, projectKey(entry)])] ?? []);
     }
     return rows;
   }
@@ -199,18 +213,11 @@
   function openProjectMenu(event: MouseEvent, machine: Machine, project: Project, list: ProjectEntry[], section: ProjectSection) {
     const entry = { machine, project };
     const key = projectKey(entry);
-    const collapsed = machine.store.isCollapsed(project.id);
     projectMenu(event, machine.store, project, projectView.order === 'manual' ? {
       up: list[0] !== undefined && projectKey(list[0]) !== key,
       down: list.at(-1) !== undefined && projectKey(list.at(-1)!) !== key,
       move: direction => projectView.step(list, key, direction)
-    } : undefined, undefined, section === 'later' ? {
-      count: archiveCount(project, 'archived'), open: !collapsed, toggle: () => machine.store.toggleProject(project.id)
-    } : {
-      count: archiveCount(project, 'archived'),
-      open: !collapsed && projectThreadView.isOpen(entry, 'archived'),
-      toggle: () => projectThreadView.toggle(entry, 'archived', collapsed)
-    });
+    } : undefined, undefined, { count: archiveCount(project, 'archived') });
   }
   /** A project header dragged to a new place among the cards of its section, in the manual order; idle projects sit in their fold as rows. */
   function dragProject(event: PointerEvent, entry: ProjectEntry, list: ProjectEntry[]) {
@@ -295,7 +302,7 @@
         {@const workingOpen = projectThreadView.isOpen(entry, 'working')}
         {@const later = section === 'later'}
         {@const doneOpen = archiveCount(project, 'done') > 0 && doneFilter.shown}
-        {@const archivedOpen = archiveCount(project, 'archived') > 0 && (later || projectThreadView.isOpen(entry, 'archived'))}
+        {@const archivedOpen = later && archiveCount(project, 'archived') > 0}
         {@const { lists } = projectLists.get(projectKey(entry))!}
         {@const fold = cardRows(entry, lists.attention)}
         {@const controls = `sidebar-project-${encodeURIComponent(projectKey(entry))}`}
@@ -377,7 +384,6 @@
                   onrows={doneObserver(entry, 'done')} />
               </div>
               <div id="{controls}-archived" hidden={!archivedOpen} data-testid="project-archived">
-                {#if archivedOpen && !later}<GroupLabel kind="archived" count={archiveCount(project, 'archived')} />{/if}
                 <RecentDone kind="archived" entries={[entry]} {scrollRoot} {now} open={archivedOpen && !collapsed && (!later || projectThreadView.laterOpen)} header={false}
                   onrows={doneObserver(entry, 'archived')} />
               </div>

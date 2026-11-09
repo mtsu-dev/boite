@@ -263,11 +263,10 @@ async function mountOnFake(search = '/?fake=1'): Promise<void> {
 
 test('Escape on an open context popover closes it and leaves a busy turn running', async () => {
   await mountOnFake();
-  // Under the threshold, the context is a row of the composer's "+".
-  await waitFor(() => document.querySelector('[data-testid=composer-options]') !== null);
-  query<HTMLButtonElement>('[data-testid=composer-options]').click();
-  await waitFor(() => document.querySelector('[data-testid=composer-context]') !== null);
-  query<HTMLButtonElement>('[data-testid=composer-context]').click();
+  // From its threshold the context is an item of the composer's row.
+  store.openThread!.context = { tokens: 150_000, window: 200_000, at: Date.now() };
+  await waitFor(() => document.querySelector('[data-testid=context-trigger]') !== null);
+  query<HTMLButtonElement>('[data-testid=context-trigger]').click();
   await waitFor(() => document.querySelector('[data-testid=context-popup]') !== null);
   vi.spyOn(store, 'busy', 'get').mockReturnValue(true);
   const stop = vi.spyOn(store, 'stop').mockResolvedValue(undefined as never);
@@ -346,7 +345,10 @@ test('the palette and the project menu reach the archive, its list already read'
   query<HTMLButtonElement>('[data-testid=project-menu]').click();
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=archived]') !== null);
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=archived]').click();
-  await waitFor(() => store.page === 'settings' && document.querySelector('[data-testid=archived-list]') !== null);
+  // A card's menu opens the archive on its project; All projects widens it back to every one.
+  await waitFor(() => store.page === 'settings' && document.querySelector('[data-testid=archived-focus]') !== null);
+  query<HTMLButtonElement>('[data-testid=archived-all]').click();
+  await waitFor(() => document.querySelector('[data-testid=archived-list]')?.textContent?.includes('Finish the trace tab') === true);
 });
 
 test('Ctrl+Shift+T brings back the thread archived last on the machine, from this window or another, and opens it', async () => {

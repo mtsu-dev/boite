@@ -18,6 +18,8 @@ export const strings = {
     ready: 'Connected',
     closed: 'Disconnected',
     offline: 'Offline',
+    /** The remedy beside an offline machine (MachinesPage.svelte): it tries now. */
+    reconnect: 'Reconnect',
     nameOffline: '{name} offline',
     label: 'Connection'
   }

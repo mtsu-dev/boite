@@ -86,15 +86,20 @@ test('a desktop menu keeps seven rows at most on its first level and names its o
   expect(ids(main)).toEqual(['open', 'find', 'rename', 'pin', 'done', 'archive', 'more', 'delete']);
   expect(ids(threadMenuItems(store, t, { ...options, open: undefined }))).toHaveLength(7);
   expect(ids(threadMenuItems(store, t, { ...options, tools: [] }))).toHaveLength(7);
-  expect(main.find(item => item.id === 'more')).toMatchObject({ submenu: true, label: 'Manage thread' });
+  // The door says what it holds, in the order it holds it: the bot rows, the title, the folder.
+  expect(main.find(item => item.id === 'more')).toMatchObject({ submenu: true, label: 'Bot, title and folder' });
   expect(main.some(item => item.label === 'More')).toBe(false);
   const tools = threadToolItems(store, t, options);
   // The way back names the level it stands on, as the model picker's levels do.
-  expect(tools[0]).toMatchObject({ back: true, label: 'Manage thread' });
-  // What is done less often: a new title, the hand-off, then where the thread lives. The panels have their own selector.
-  expect(ids(tools)).toEqual(['back', 'retitle', 'entrust', 'move', 'copy', 'pr']);
-  // What the header says the thread is leads the group.
-  expect(ids(threadToolItems(store, t, { ...options, lead: [{ id: 'thread-branch', label: 'boite/port' }] }))[1]).toBe('thread-branch');
+  expect(tools[0]).toMatchObject({ back: true, label: 'Bot, title and folder' });
+  // What is done less often, in the door's order: the hand-off, a new title, then where the thread lives. The panels have their own selector.
+  expect(ids(tools)).toEqual(['back', 'entrust', 'retitle', 'move', 'copy', 'pr']);
+  // What the header says of the thread leads each part: its bot the bot rows, its branch the folder rows.
+  expect(ids(threadToolItems(store, t, { ...options, lead: [{ id: 'thread-entrusted-chip', label: 'Open Mira' }], place: [{ id: 'thread-branch', label: 'boite/port' }] })))
+    .toEqual(['back', 'thread-entrusted-chip', 'entrust', 'retitle', 'thread-branch', 'move', 'copy', 'pr']);
+  // No bot to give it to: the name drops the word, never promising a row that is not there.
+  agentDirectory(store).snapshot = { profiles: [], entrusted: [] } as unknown as AgentsSnapshot;
+  expect(threadToolItems(store, t, options)[0]).toMatchObject({ back: true, label: 'Title and folder' });
 });
 
 test('a group of one is a row on the first level, not a submenu', () => {
@@ -115,4 +120,14 @@ test('no thread menu opens a panel or a drawer: the panel selector is their one 
   expect(pickThreadAction(store, thread(), 'kind:changes', { rename: vi.fn() })).toBe(false);
   await Promise.resolve();
   expect(open).not.toHaveBeenCalled();
+});
+
+test('a Mark done that cannot run says why on its row', () => {
+  const store = stub();
+  const done = (t: ThreadSummary) => threadMenuItems(store, t, { showDone: true }).find(item => item.id === 'done')!;
+  expect(done(thread())).toMatchObject({ disabled: false });
+  expect(done(thread()).hint).toBeUndefined();
+  expect(done(thread({ status: 'running' }))).toMatchObject({ disabled: true, hint: 'Still working', title: 'Still working' });
+  (store as { connection: string }).connection = 'connecting';
+  expect(done(thread())).toMatchObject({ disabled: true, hint: 'Not connected' });
 });

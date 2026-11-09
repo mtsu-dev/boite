@@ -73,6 +73,8 @@ export const fr: Translation = {
     languageSystem: 'Système',
     languageNames: { en: 'English', fr: 'Français' },
     theme: 'Thème',
+    /** Under a page's title where its settings stay on the device in hand (Appearance). */
+    scopeDevice: 'Sur cet appareil',
     display: 'Affichage',
     accent: "Couleur d'accent",
     accentNames: ['Bleu', 'Violet', 'Rose', 'Orange', 'Ambre', 'Vert', 'Turquoise'],
@@ -80,6 +82,8 @@ export const fr: Translation = {
       title: 'Couleurs',
       hint: 'Les modes clair et sombre gardent leurs propres couleurs. Enregistré sur cet appareil.',
       palette: 'Palette de couleurs',
+      /** The sample a palette's tile writes in its ink. */
+      sample: 'Aa',
       allThemes: 'Tous les thèmes',
       palettes: { default: 'Origine', oled: 'OLED', catppuccin: 'Catppuccin', 'tokyo-night': 'Tokyo Night', nord: 'Nord', gruvbox: 'Gruvbox', amethyst: 'Amethyst' },
       customize: 'Personnaliser les couleurs',
@@ -219,6 +223,9 @@ export const fr: Translation = {
     endpoint: 'Point de connexion',
     noCore: 'Pas connecté à un cœur.',
     archived: {
+      inProject: 'Dans {project}',
+      allProjects: 'Tous les projets',
+      emptyProject: 'Aucune conversation archivée dans {project}.',
       doneRetentionLabel: 'Supprimer les conversations terminées après',
       doneRetentionHint: 'À compter du passage en terminé ou de l\'archivage automatique après une fusion de PR. 3 jours par défaut ; 0 désactive la suppression. Les archives manuelles sont conservées. Les conversations supprimées restent récupérables pendant le délai configuré.',
       deletesAt: 'Suppression : {date}',

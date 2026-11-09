@@ -7,6 +7,7 @@ import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
 import { projectMenu } from '../lib/project-menu';
 import { contextMenu } from '../lib/context-menu.svelte';
+import { archivedFocus } from '../lib/archived-focus.svelte';
 
 let running: Record<string, unknown> | null = null;
 const cleanups: (() => void)[] = [];
@@ -229,4 +230,21 @@ test('an archived row restores as its one action and keeps Delete behind its men
   expect(remove.closest('li')?.dataset['threadId']).toBe('t-trace');
   remove.click();
   await vi.waitFor(() => expect(row()).toBeNull());
+});
+
+test('opened from a project card, the archive shows that project alone until All projects', async () => {
+  const { store } = await ready();
+  await store.archive('t-descriptors');
+  const focus = 'p-notes';
+  archivedFocus.store = store;
+  archivedFocus.projectId = focus;
+  running = mount(ArchivedThreads, { target: document.body, props: { store, eager: true } });
+  await settle();
+  const rows = () => [...document.querySelectorAll('[data-testid=archived-list] li')].map(row => row.getAttribute('data-thread-id'));
+  expect(rows()).toEqual(['t-descriptors']);
+  expect(document.querySelector('[data-testid=archived-focus]')?.textContent).toContain(store.projects.find(p => p.id === focus)!.name);
+  document.querySelector<HTMLButtonElement>('[data-testid=archived-all]')!.click();
+  await settle();
+  expect(rows()).toEqual(['t-descriptors', 't-parser']);
+  expect(document.querySelector('[data-testid=archived-focus]')).toBeNull();
 });

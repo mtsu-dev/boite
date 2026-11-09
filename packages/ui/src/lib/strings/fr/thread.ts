@@ -17,8 +17,8 @@ export const fr: Translation = {
     retryContinueTitle: 'Arrêté avant sa réponse',
     retryContinueBody: 'Reprise automatique dans {time}, reprise {attempt} sur {attempts}.',
     contextDetails: 'Contexte',
-    contextPercentUsed: (percent: string) => `Contexte utilisé à ${percent} %`,
-    contextWord: 'contexte',
+    contextLeft: (percent: string) => `${percent} % restant`,
+    contextLeftNamed: (percent: string) => `Contexte : ${percent} % restant`,
     contextInput: 'Entrée',
     contextCache: 'Entrée en cache',
     contextOutput: 'Sortie',
@@ -54,8 +54,12 @@ export const fr: Translation = {
     panel: 'Panneau',
     panelHint: 'Afficher ou masquer le panneau',
     panelMenu: 'Panneaux',
-    /** A thread menu's named group: what is done to it less often (its title made again, hand-off, move, path, pull request). */
-    manage: 'Gérer la conversation',
+    /** A thread menu's named group, named by what it holds in that order: the bot rows, the title made again, the folder (branch, move, path, pull request). */
+    manage: 'Bot, titre et dossier',
+    /** The same group with no bot row (bots off, none to give it to). */
+    manageNoBot: 'Titre et dossier',
+    /** The same group with no folder row (a phone that cannot move it). */
+    manageNoFolder: 'Bot et titre',
     /** A desktop header's project crumb: back to the thread list, at this thread. */
     backToList: 'Revenir aux conversations de {project}',
     terminalHint: 'Terminal dans le dossier de cette conversation',

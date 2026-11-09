@@ -14,8 +14,7 @@
 
   /**
    * The composer's permission chip: the mode's icon and word at rest, the same
-   * on desktop and phone (the icon alone on a phone under 380 px, the word
-   * still its name). It opens one list: each mode a full row with its icon,
+   * word on every agent, desktop and phone, at 360 px too. It opens one list: each mode a full row with its icon,
    * its word, one plain line saying what the agent then does, and a check on
    * the live one. A popover on desktop, the shared bottom sheet on a phone.
    * `readonly` names a bot's mode, set in its settings: it opens nothing.
@@ -156,10 +155,5 @@
     .row { min-height: 56px; gap: var(--space-4); padding-inline: var(--space-3); font-size: var(--text-base); }
     .hint { font-size: var(--text-sm); }
     .mark { flex-basis: 16px; }
-  }
-  /* A 360 px row keeps the model's whole name and its effort: the mode is its icon, its word stays its name. */
-  @media (max-width: 379px) {
-    .trigger { width: var(--touch-target); justify-content: center; padding: 0; }
-    .word { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   }
 </style>

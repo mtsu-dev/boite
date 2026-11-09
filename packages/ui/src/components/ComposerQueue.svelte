@@ -125,8 +125,9 @@
     gap: 6px;
     min-width: 0;
     max-width: 100%;
-    color: var(--color-muted-foreground);
-    font-size: var(--text-sm);
+    /* One step under the decision, like the subagents' entries: the tertiary ink. */
+    color: var(--color-subtle);
+    font-size: var(--text-meta);
     animation: rise var(--motion-duration) var(--motion-curve);
   }
 

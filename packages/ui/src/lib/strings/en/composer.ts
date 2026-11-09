@@ -26,6 +26,8 @@ export const strings = {
     commands: 'Commands',
     /** A bot's model, effort and permission chips: read at rest, changed in its settings. */
     botSettings: "Set in {name}'s settings",
+    /** The same chips while the bot's account is gone: the banner above holds the remedy. */
+    botAccountGone: "{name}'s account is gone: use Pick another account above",
     /** The box at rest, on a new conversation or one under way: who reads the message. */
     placeholder: 'Message {name}',
     /** `{name}` in the two placeholders when the provider is unknown. */
@@ -73,7 +75,8 @@ export const strings = {
     /** The effort chip and its slider: one short word, the levels say the rest. */
     effortTitle: 'Effort',
     /** The slider's line under the level: what the level gives and what it costs, from the lowest to the highest. */
-    effortCost: { low: 'Quick answers, light on your limits', middle: 'Balanced depth and speed', high: 'Thinks longer, uses more of your limits', top: 'Deepest thinking, slowest and costliest' },
+    /** The trade-off of one level, by its id (EffortSlider); a level of another name reads its place on the scale. */
+    effortCost: { off: 'Answers at once, no extra thinking', low: 'Quick answers, light on your limits', middle: 'Balanced depth and speed', deeper: 'Thinks it through, a little slower', high: 'Thinks longer, uses more of your limits', top: 'Deepest thinking, slowest and costliest', extended: 'Extended thinking for the hardest problems' },
     speed: 'Response speed',
     /** The reasoning chip of a model whose agent keeps its own level until one is picked. */
     effortDefault: 'Default',

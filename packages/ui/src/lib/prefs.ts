@@ -20,7 +20,10 @@ export interface LayoutPrefs {
 export const PREFS_STORAGE_KEY = 'boite.composer';
 export const LAYOUT_STORAGE_KEY = 'boite.layout';
 
-export const SIDEBAR_DEFAULT = 280;
+/** Wide enough for about 30 characters of a thread title before its cut at the default size. */
+export const SIDEBAR_DEFAULT = 300;
+/** The default before: a width saved at it was never chosen, so it reads as today's default. */
+const SIDEBAR_OLD_DEFAULT = 280;
 export const SIDEBAR_MIN = 208;
 export const SIDEBAR_MAX = 440;
 
@@ -77,7 +80,7 @@ export function writePrefs(prefs: ComposerPrefs): void {
 export function readLayout(): LayoutPrefs {
   return read(LAYOUT_STORAGE_KEY, defaultLayout, (parsed) => ({
     sidebarWidth:
-      typeof parsed.sidebarWidth === 'number' && Number.isFinite(parsed.sidebarWidth)
+      typeof parsed.sidebarWidth === 'number' && Number.isFinite(parsed.sidebarWidth) && parsed.sidebarWidth !== SIDEBAR_OLD_DEFAULT
         ? clampSidebar(parsed.sidebarWidth)
         : SIDEBAR_DEFAULT,
     sidebarCollapsed: parsed.sidebarCollapsed === true

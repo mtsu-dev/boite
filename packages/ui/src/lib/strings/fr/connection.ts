@@ -20,6 +20,8 @@ export const fr: Translation = {
     ready: 'Connecté',
     closed: 'Déconnecté',
     offline: 'Hors ligne',
+    /** The remedy beside an offline machine (MachinesPage.svelte): it tries now. */
+    reconnect: 'Reconnecter',
     nameOffline: '{name} hors ligne',
     label: 'Connexion'
   }

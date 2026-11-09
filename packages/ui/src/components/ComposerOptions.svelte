@@ -1,32 +1,27 @@
 <script lang="ts">
-  // The composer's one "+": every way to add to the message (files, a file
-  // mention, a command), the context's details and the draft's worktree
-  // switch, on both widths. The permission is a chip of its own on every width.
-  import { AtSign, ChartPie, GitBranch, Paperclip, Plus, SquareSlash } from '@lucide/svelte';
+  // The composer's one "+": actions only, every way to add to the message
+  // (files, a file mention, a command) and the draft's worktree switch, on
+  // both widths. The permission and the context are items of the row.
+  import { AtSign, GitBranch, Paperclip, Plus, SquareSlash } from '@lucide/svelte';
   import { tick } from 'svelte';
   import { Closing } from '../lib/closing.svelte';
   import { floating } from '../lib/floating';
   import { strings } from '../lib/strings';
   import SheetHead from './SheetHead.svelte';
 
-  let { worktree, canAttach, anchor, onattach, onworktree, onmention, oncommand, context = null, oncontext }: {
+  let { worktree, canAttach, onattach, onworktree, onmention, oncommand }: {
     /** The draft's worktree switch, or null where a thread keeps its folder. */
     worktree: boolean | null;
     canAttach: boolean;
-    /** What the menu opens above: the "+", or the whole composer while an ask is docked in it. */
-    anchor?: () => HTMLElement | null;
     onattach: () => void;
     onworktree: () => void;
     onmention?: () => void;
     oncommand?: () => void;
-    /** The context row's words ("Context 59% used"), or null where no thread holds one. */
-    context?: string | null;
-    oncontext?: () => void;
   } = $props();
   const panel = new Closing();
   let trigger = $state<HTMLButtonElement>();
   let content = $state<HTMLDivElement>();
-  let empty = $derived(!canAttach && !onmention && !oncommand && worktree === null && context === null);
+  let empty = $derived(!canAttach && !onmention && !oncommand && worktree === null);
   function close() { panel.hide(); trigger?.focus({ preventScroll: true }); }
   async function open() {
     panel.show();
@@ -63,7 +58,7 @@
   <button class="icon ghost opener" bind:this={trigger} data-testid="composer-options" aria-label={strings.composer.options} title={strings.composer.options} aria-haspopup="menu" aria-expanded={panel.open} onclick={() => panel.open ? close() : void open()}><Plus size={18} strokeWidth={1.75} /></button>
   {#if panel.shown}
     <div class="options-menu" class:closing={panel.closing} bind:this={content} role="menu" tabindex="-1" aria-label={strings.composer.options} data-testid="composer-options-sheet" onkeydown={keydown}
-      use:panel.attach onanimationend={panel.end} use:floating={{ anchor: () => anchor?.() ?? trigger ?? null, placement: 'top', dismiss: close }}>
+      use:panel.attach onanimationend={panel.end} use:floating={{ anchor: () => trigger ?? null, placement: 'top', dismiss: close }}>
       <SheetHead title={strings.composer.options} />
       {#if canAttach}
         <button class="row" role="menuitem" data-testid="composer-attach" onclick={() => run(onattach)}><Paperclip size={16} strokeWidth={1.75} /><span class="ui-label">{strings.composer.attach}</span></button>
@@ -73,9 +68,6 @@
       {/if}
       {#if oncommand}
         <button class="row" role="menuitem" data-testid="composer-commands" onclick={() => run(oncommand)}><SquareSlash size={16} strokeWidth={1.75} /><span class="ui-label">{strings.composer.commands}</span></button>
-      {/if}
-      {#if context !== null && oncontext}
-        <button class="row" role="menuitem" data-testid="composer-context" onclick={() => run(oncontext)}><ChartPie size={16} strokeWidth={1.75} /><span class="ui-label">{context}</span></button>
       {/if}
       {#if worktree !== null}
         <button class="row worktree" role="menuitemcheckbox" aria-checked={worktree} data-testid="composer-worktree" title={worktree ? strings.composer.worktreeOn : strings.composer.worktreeOff} onclick={onworktree}><GitBranch size={16} strokeWidth={1.75} /><span class="ui-label">{strings.composer.worktree}</span><span class="switch" class:on={worktree}></span></button>

@@ -6,10 +6,6 @@
   import TelemetrySettings from './TelemetrySettings.svelte';
   import ArchivedThreads from './ArchivedThreads.svelte';
   import WorktreesCard from './WorktreesCard.svelte';
-  import WindowAllowlistCard from './WindowAllowlistCard.svelte';
-  import WindowExclusionsCard from './WindowExclusionsCard.svelte';
-  import SecretsCard from './SecretsCard.svelte';
-  import BrowserProfilesCard from './BrowserProfilesCard.svelte';
   import { strings } from '../lib/strings';
   import { openTour } from '../lib/onboarding.svelte';
   import type { Store } from '../lib/store.svelte';
@@ -87,11 +83,7 @@
   <WorkspaceCard />
   <ArchivedThreads {store} />
   <WorktreesCard {store} />
-  <WindowAllowlistCard {store} />
-  <WindowExclusionsCard {store} />
-  <SecretsCard />
-  <!-- Profiles also configure the core's agent browser from a plain web client. -->
-  {#if here.owner}<BrowserProfilesCard />{/if}
+  <!-- The keys agents ask for and the browser logins live under Providers, the windows agents may see under Machines (round 18). -->
 
   <section class="card" id="settings-app">
     <h2>{strings.settings.app}</h2>

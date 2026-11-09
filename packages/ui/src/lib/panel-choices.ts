@@ -7,7 +7,7 @@ import { available as availableTo, kindName, offeredCards, unavailable } from '.
 import { surfaceGlyph } from './surface-glyphs';
 import { agentMailFor } from './agent-mail';
 import { work } from './work-prefs.svelte';
-import { strings } from './strings';
+import { fill, strings } from './strings';
 
 /** The selector's last row, which no surface kind can be called. */
 export const CUSTOMIZE = 'customize';
@@ -24,6 +24,21 @@ const GROUPS: { name: () => string; ids: string[] }[] = [
 
 /** Always on the short list, ahead of the panels in use. */
 const FIRST = ['changes', 'files'];
+/** The panels a newcomer knows by name, in the order the way to every panel names them. */
+const KNOWN = ['terminal-toggle', 'agent-browser', 'board-toggle', 'messages', 'agents', 'tasks', 'device', 'trace', 'coordination', 'desk'];
+
+/**
+ * The way to every panel, named by what it holds past the short list: "Terminal,
+ * Browser and 6 more", so a user can tell what is behind it before opening it.
+ */
+export function morePanelsLabel(names: string[]): string {
+  const words = strings.rightPanel.morePanels;
+  if (names.length === 0) return strings.rightPanel.allPanels;
+  const [first, second] = names as [string, string?];
+  if (!second) return fill(words.one, { first });
+  if (names.length === 2) return fill(words.two, { first, second });
+  return fill(words.many, { first, second, count: String(names.length - 2) });
+}
 
 /** A renamed row says its old name on hover, for the hands that knew it. */
 const FORMERLY: Record<string, () => string> = {
@@ -33,6 +48,12 @@ const FORMERLY: Record<string, () => string> = {
   coordination: () => strings.rightPanel.formerly.coordination,
   [CUSTOMIZE]: () => strings.rightPanel.formerly.customize
 };
+
+/** Known names first, in their order; the others after, as the groups list them. */
+function rank(id: string): number {
+  const at = KNOWN.indexOf(id);
+  return at === -1 ? KNOWN.length : at;
+}
 
 /**
  * The panels this thread has used or has something for: its open tabs, the
@@ -96,7 +117,8 @@ export function panelChoices(store: Store, thread: ThreadSummary | null, options
   // Changes and Files are what a first look at a thread wants: they stay on the first level, used or not.
   const short = grouped.flatMap((group) => group.ids).filter((id) => FIRST.includes(id) || used.has(id) || rows.get(id)?.active);
   if (!options.full && short.length > 0 && short.length < rows.size) {
-    return [...short.map((id) => rows.get(id)!), separator('sep-all'), { id: ALL_PANELS, label: strings.rightPanel.allPanels, glyph: LayoutGrid, submenu: true }];
+    const rest = [...rows.keys()].filter((id) => !short.includes(id)).sort((a, b) => rank(a) - rank(b)).map((id) => rows.get(id)!.label);
+    return [...short.map((id) => rows.get(id)!), separator('sep-all'), { id: ALL_PANELS, label: morePanelsLabel(rest), title: strings.rightPanel.allPanels, glyph: LayoutGrid, submenu: true }];
   }
   const back: MenuItem[] = options.full && short.length > 0 && short.length < rows.size ? [{ id: IN_USE, label: strings.rightPanel.allPanels, title: strings.rightPanel.inUse, back: true }] : [];
   return [

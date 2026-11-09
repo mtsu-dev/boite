@@ -1,6 +1,8 @@
 <script lang="ts">
   import { fill, strings } from '../lib/strings';
   import { transferBytes } from '../lib/format';
+  import Deferred, { parts } from './Deferred.svelte';
+  import { HOUSE_BOT } from '../lib/robots';
 
   /**
    * What the chat shows between the click on a thread and its first page: the
@@ -30,8 +32,9 @@
         <div class="bar" data-testid="thread-loading-bar" style:transform="scaleX({fraction})"></div>
       </div>
     {/if}
-    <p class="caption">
-      <span class:visually-hidden={!label}>{strings.chat.opening}</span>
+    <!-- Said in words beside the house bot, so the shapes read as a page on its way, not an empty thread. -->
+    <p class="caption" class:alone={!label}>
+      <span class="what"><span class="mark" aria-hidden="true"><Deferred part={parts.RobotFace} quiet>{#snippet children(RobotFace)}<RobotFace robot={HOUSE_BOT} />{/snippet}</Deferred></span>{strings.chat.opening}</span>
       {#if label}<span class="numbers" data-testid="thread-loading-progress">{label}</span>{/if}
     </p>
   </div>
@@ -98,6 +101,11 @@
     color: var(--color-muted-foreground);
     font-size: var(--text-sm);
   }
+
+  .caption.alone { justify-content: center; }
+  .what { display: inline-flex; align-items: center; gap: 8px; }
+  .mark { display: block; flex: none; width: 22px; height: 22px; }
+  .mark :global(svg.robot) { display: block; width: 100%; height: 100%; border-radius: 50%; }
 
   .numbers {
     font-variant-numeric: tabular-nums;

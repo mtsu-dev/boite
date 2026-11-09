@@ -262,7 +262,7 @@ test('the reasoning row names each level, sets the effort of the picked model, a
   expect(store.openThread?.effort).toBe('xhigh');
 });
 
-test('the picker opens on the models in use, one row each, with every provider behind All models', async ({ app: _app }) => {
+test('the picker opens on the models in use, one row each, then every provider under them', async ({ app: _app }) => {
   vi.spyOn(store, 'favorites', 'get').mockReturnValue([
     { providerId: 'claude', accountId: 'a-claude-main', model: { id: 'claude-sonnet-5-5', name: 'Sonnet 5.5' }, items: [] }
   ]);
@@ -282,6 +282,12 @@ test('the picker opens on the models in use, one row each, with every provider b
   // The current row carries the check.
   expect(query('[data-testid=picker-shortlist] .row.current .mark svg')).not.toBeNull();
   expect(document.querySelector('[data-testid=composer-picker-menu] .rail')).toBeNull();
+  // The rest under your models, as on a phone's sheet: All models, then one tile per provider, no home tile.
+  const rest = () => query('[data-testid=composer-picker-menu] .sources');
+  expect(rest().hasAttribute('hidden')).toBe(false);
+  expect(rest().querySelector('.rest-label')?.textContent).toBe(strings.composer.allModels);
+  expect(tiles()).not.toContain('home');
+  expect(tiles()).toContain('claude');
   // The menu picks a model and nothing else: the effort and the permission are chips beside it.
   expect(document.querySelector('[data-testid=composer-picker-menu] [data-testid=composer-effort], [data-testid=composer-picker-menu] [data-testid=composer-mode], [data-testid=composer-picker-more]')).toBeNull();
   // The keys start in the search field, and the arrows go down into the rows under it.
@@ -292,13 +298,14 @@ test('the picker opens on the models in use, one row each, with every provider b
   // The source button names the list and unfolds the providers in place, the models in use first and checked.
   expect(query('[data-testid=picker-all-models]').textContent?.trim()).toBe('Your models');
   query<HTMLButtonElement>('[data-testid=picker-all-models]').click();
-  await waitFor(() => !query('[data-testid=picker-back]').closest('.sources')!.hasAttribute('hidden'));
+  await waitFor(() => document.querySelector('[data-testid=picker-back]')?.closest('.sources')?.hasAttribute('hidden') === false);
   expect(tiles()[0]).toBe('home');
   expect(query('[data-testid=picker-back] .mark svg')).not.toBeNull();
   expect(document.querySelector('[data-testid=composer-picker-menu] .back-row')).toBeNull();
   query<HTMLButtonElement>('[data-testid=picker-back]').click();
   await waitFor(() => short().length === 3);
-  expect(query('[data-testid=picker-back]').closest('.sources')!.hasAttribute('hidden')).toBe(true);
+  expect(document.querySelector('[data-testid=picker-back]')).toBeNull();
+  expect(rest().hasAttribute('hidden')).toBe(false);
 
   // One click on a row picks it and closes.
   query<HTMLButtonElement>('[data-testid=favorite-model]').click();

@@ -12,8 +12,8 @@ export const fr: Translation = {
     declined: '{name} refusé',
     cancelled: "{name} n'est plus demandé",
     timedOut: 'La demande de {name} a expiré',
-    heading: 'Secret Drop',
+    heading: 'Clés pour les agents',
     transit: "En mémoire uniquement. Usage unique. Expire après 10 minutes, à la fin du tour ou à l'arrêt de Boite.",
-    info: "Chaque demande ouvre une nouvelle carte. Boite efface sa copie temporaire au premier usage, après 10 minutes, à la fin du tour ou à son arrêt. Rien ne reste pour le projet. Un agent peut toujours relire un fichier dans lequel il écrit le secret ; cette valeur peut alors parvenir à son fournisseur. Le masquage fonctionne uniquement dans Boite."
+    info: "Secret Drop : quand un agent a besoin d'une clé, une carte vous la demande dans sa conversation. Chaque demande ouvre une nouvelle carte. Boite efface sa copie temporaire au premier usage, après 10 minutes, à la fin du tour ou à son arrêt. Rien ne reste pour le projet. Un agent peut toujours relire un fichier dans lequel il écrit le secret ; cette valeur peut alors parvenir à son fournisseur. Le masquage fonctionne uniquement dans Boite."
   }
 };

@@ -195,7 +195,8 @@
     .views.scrolled { border-bottom-color: var(--color-border); }
     .rail {
       --slide-room: calc(var(--sidebar-width) + var(--frame-gap));
-      transition: margin-left var(--motion-duration) var(--motion-curve), opacity var(--dur-3) var(--ease-out-quint), display var(--motion-duration) allow-discrete;
+      /* One motion with the panel that comes in on the other side: the same duration and curve for the slide and the fade. */
+      transition: margin-left var(--motion-duration) var(--motion-curve), opacity var(--motion-duration) var(--motion-curve), display var(--motion-duration) allow-discrete;
     }
     /* No room taken, no head, no foot: the main card keeps the one frame gap of the row; a body that folds the column
        itself (App.svelte's `sidebar-folded`) gives that gap as its padding, so then the column leaves the flow. */
@@ -206,7 +207,7 @@
       pointer-events: none;
       opacity: 0;
       margin-left: calc(-1 * var(--slide-room));
-      transition: margin-left var(--motion-duration) var(--motion-curve), opacity var(--dur-2) var(--ease-out-quint), display var(--motion-duration) allow-discrete;
+      transition: margin-left var(--motion-duration) var(--motion-curve), opacity var(--motion-duration) var(--motion-curve), display var(--motion-duration) allow-discrete;
     }
     /* Unfolding only (`wasFolded`): a list drawn open stands where it is. */
     @starting-style { .rail.was-folded:not(.collapsed) { opacity: 0; margin-left: calc(-1 * var(--slide-room)); } }

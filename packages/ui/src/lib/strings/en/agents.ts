@@ -104,6 +104,8 @@ export const strings = {
     brainChange: 'Change', brainUseDefault: 'Use default', brainMove: 'Move brains here', brainPath: 'Folder on this machine', brainBrowse: 'Browse', brainParent: 'Parent folder', brainUseFolder: 'Use this folder',
     settingsOf: '{name}’s settings', brainOf: '{name}’s brain',
     desk: 'Desk', fix: 'Fix it',
+    /** The banner's remedy when a bot's account is gone: its other accounts picked in place, or Providers when it has none. */
+    pickAccount: 'Pick another account', addAccount: 'Add an account',
     deskPanel: {
       now: 'Now', memory: 'Memory', memoryProblem: 'Memory update failed',
       conversation: 'Conversation', handling: 'Handling', done: 'Done',

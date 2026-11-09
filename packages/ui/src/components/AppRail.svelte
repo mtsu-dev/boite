@@ -237,8 +237,9 @@
       <span class="pip" aria-hidden="true"></span>
       <MachineStatus {store} filter={machineFilter.shown(machines)} onfilter={pickMachine} card={statusName} />
     </div>
-    <Deferred part={parts.UpdatesNotice} quiet>{#snippet children(UpdatesNotice)}<UpdatesNotice />{/snippet}</Deferred>
-    {#if experimentOn('whip')}<WhipButton />{/if}
+    <!-- Each with the same name card as every rail button; a slot with no button (nothing to update) takes no room. -->
+    <div class="slot extra"><Deferred part={parts.UpdatesNotice} quiet>{#snippet children(UpdatesNotice)}<UpdatesNotice name={statusName} />{/snippet}</Deferred></div>
+    {#if experimentOn('whip')}<div class="slot extra"><WhipButton name={statusName} /></div>{/if}
     <div class="slot" class:selected={store.page === 'settings'}>
       <span class="pip" aria-hidden="true"></span>
       <button type="button" class="ghost icon" class:on={store.page === 'settings'} aria-current={store.page === 'settings' ? 'page' : undefined}
@@ -394,6 +395,7 @@
   /* One machine says nothing: the wrapper stays, empty, for its connection state. */
   .foot :global(.machines:not(:has(.trigger))) { display: none; }
   .foot .status:not(:has(:global(.trigger))) { display: none; }
+  .foot .extra:not(:has(:global(button))) { display: none; }
   .foot .status:has(:global(.trigger[aria-expanded='true'])) .pip { height: 36px; }
   .foot :global(.machines.filtered .trigger), .foot :global(.machines .trigger[aria-expanded='true']) { background: var(--color-surface-3); color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-edge); border-radius: var(--radius-rail); }
   /* A filter names its machine beside the button: the rail has no room, so the button alone says it, lit. */

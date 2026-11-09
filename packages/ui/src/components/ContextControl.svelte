@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
-  import { ChartPie, Clock } from '@lucide/svelte';
+  import { Clock } from '@lucide/svelte';
   import type { Store } from '../lib/store.svelte';
   import { effectiveCompaction, threadActive } from '@boite/contracts';
   import { strings } from '../lib/strings';
@@ -9,13 +9,12 @@
   import { contextPopup } from '../lib/composer-dock';
   import { experimentOn } from '../lib/experiments.svelte';
   import { cacheSpan, promptCacheState, PROMPT_CACHE_TICK_MS } from '../lib/prompt-cache';
-  let { store, anchor, quiet = false }: {
-    store: Store;
-    /** What the popup opens above: the meter, or the composer while an ask is docked in it. */
-    anchor?: () => HTMLElement | null;
-    /** Under the threshold the row shows nothing: no trigger is drawn, the popup still opens through `open()`. */
-    quiet?: boolean;
-  } = $props();
+  /**
+   * The context's one form, desktop and phone: a small ring filled by what is
+   * used and the words "28% left", a quiet item of the composer's row (drawn
+   * from its threshold, `ComposerBar`). A hover or a click opens the details.
+   */
+  let { store }: { store: Store } = $props();
   let root = $state<HTMLDivElement>();
   const popup = new Closing();
   let readingExpanded = $state(false);
@@ -54,10 +53,9 @@
     : strings.thread.cacheChipWarm(remaining(cacheNow.secondsLeft)));
   // The details are their own chunk (`ContextPopup`): a hover or a focus fetches them if the idle prefetch did not.
   function show() { clearTimeout(leave); void contextPopup.load().catch((error: unknown) => store.reportError(error, 'minor')); popup.show(); }
-  /** Opens the details from elsewhere (the "+" menu), the meter drawn or not. */
-  export function open() { show(); }
+  const left = $derived(percent === null ? null : 100 - Math.round(percent));
   /** The meter's name with its number, said on hover and to screen readers: a bare percent names nothing. */
-  const named = $derived(percent === null ? strings.thread.contextDetails : strings.thread.contextPercentUsed(String(Math.round(percent))));
+  const named = $derived(left === null ? strings.thread.contextDetails : strings.thread.contextLeftNamed(String(left)));
   function hideLater() { clearTimeout(leave); leave = setTimeout(() => { if (!root?.contains(document.activeElement)) popup.hide(); }, 180); }
   onDestroy(() => clearTimeout(leave));
   /**
@@ -76,20 +74,19 @@
 
 <svelte:window onpointerdown={event => { if (event.target instanceof Node && !root?.contains(event.target)) popup.hide(); }} onkeydowncapture={closeOnEscape} />
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="context" class:quiet bind:this={root} data-testid={quiet ? 'context-details' : 'context-meter'} data-percent={percent ?? ''} data-level={contextLevel(percent)} onmouseenter={quiet ? undefined : show} onmouseleave={hideLater} onfocusin={show} onfocusout={hideLater}>
-  {#if !quiet}
+<div class="context" bind:this={root} data-testid="context-meter" data-percent={percent ?? ''} data-level={contextLevel(percent)} onmouseenter={show} onmouseleave={hideLater} onfocusin={show} onfocusout={hideLater}>
   <button type="button" class="trigger ghost" data-testid="context-trigger" title={named} aria-label={[named, cacheLabel].filter(Boolean).join(', ')} aria-expanded={popup.open} aria-haspopup="dialog" onclick={show}>
-    <!-- A number, not an arc that reads as a spinner; before the first reading the meter's glyph stands alone, never a dash. -->
-    {#if percent !== null}<ChartPie class="measure" size={13} strokeWidth={1.75} aria-hidden="true" /><span class="percent ui-label" aria-hidden="true">{Math.round(percent)}%<span class="word">{` ${strings.thread.contextWord}`}</span></span>{:else}<ChartPie size={14} strokeWidth={1.75} aria-hidden="true" />{/if}
+    <!-- A still ring filled by the share used, grey like the words, never the accent of a spinner. -->
+    <svg class="ring" width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle class="track" cx="7" cy="7" r="5.25" /><circle class="used" cx="7" cy="7" r="5.25" pathLength="100" stroke-dasharray="{percent ?? 0} 100" /></svg>
+    {#if left !== null}<span class="percent ui-label" aria-hidden="true">{strings.thread.contextLeft(String(left))}</span>{/if}
     {#if cacheNow}
       <span class="cache-chip num" data-testid="prompt-cache" data-state={cacheNow.kind} class:low={cacheNow.kind !== 'cold' && cacheNow.secondsLeft <= 300} aria-hidden="true">
         <Clock size={13} strokeWidth={1.75} /><span class="ui-label">{cacheNow.kind === 'cold' ? strings.thread.cacheCold : remaining(cacheNow.secondsLeft)}</span>
       </span>
     {/if}
   </button>
-  {/if}
   {#if popup.shown && contextPopup.current}
-    <contextPopup.current {store} {popup} target={() => anchor?.() ?? root ?? null} sheet={anchor?.() && !quiet ? false : undefined} {percent} {autoCompact} {cache} {cacheNow} {remaining} bind:readingExpanded onshape={showShape} />
+    <contextPopup.current {store} {popup} target={() => root ?? null} {percent} {autoCompact} {cache} {cacheNow} {remaining} bind:readingExpanded onshape={showShape} />
   {/if}
 </div>
 {#if shapeOf && ShapeDialog}<ShapeDialog {store} threadId={shapeOf} onclose={() => { shapeOf = null; }} />{/if}
@@ -98,16 +95,16 @@
   /* Figures in the sans, on even columns: mono is for code only. */
   .num { font-variant-numeric: tabular-nums; }
   .context { position: relative; flex: none; color: var(--color-muted-foreground); }
-  .trigger { display: flex; align-items: center; gap: 5px; padding: 4px; }
-  @media (max-width: 720px) { .trigger { min-width: var(--touch-target); min-height: var(--touch-target); justify-content: center; } }
-  /* The number alone in neutral ink, grey however full until the window is
-     nearly spent (90%), then amber: never the accent, never a warning early. */
-  .quiet { display: contents; }
+  .trigger { display: flex; align-items: center; gap: 5px; height: var(--control-sm); padding: 0 8px; border-radius: var(--radius-md); color: inherit; }
+  @media (max-width: 720px) { .trigger { min-height: var(--touch-target); padding: 0 6px; } }
+  /* The ring and the words in neutral ink, grey however full until the window
+     is nearly spent (90%), then the caution ink: never the accent, never a warning early. */
+  .ring { flex: none; transform: rotate(-90deg); }
+  .ring circle { fill: none; stroke: currentColor; stroke-width: 2; }
+  .ring .track { opacity: .28; }
+  .ring .used { stroke-linecap: round; }
   .percent { font-size: var(--text-xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
-  /* The percent names its measure: the word on a desktop; on a phone, where the model's name needs the row, the meter's glyph. */
-  .trigger :global(.measure) { display: none; }
-  @media (max-width: 720px) { .trigger :global(.measure) { display: block; } .word { display: none; } }
-  [data-level='full'] :is(.percent, .trigger :global(.measure)) { color: var(--color-caution); }
+  [data-level='full'] .trigger { color: var(--color-caution); }
   .cache-chip { display: flex; align-items: center; gap: 3px; margin-left: 4px; font-size: var(--text-xs); }
   .cache-chip[data-state='warm'] :global(svg) { color: var(--color-success); }
   .cache-chip[data-state='maybe'] :global(svg), .cache-chip.low :global(svg) { color: var(--color-caution); }

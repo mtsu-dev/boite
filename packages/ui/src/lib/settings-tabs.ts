@@ -43,18 +43,14 @@ const PAGES: Record<SettingsTab, SettingsPage> = {
 const SECTION_PAGES: Partial<Record<SettingsTab, Record<string, { page: PhoneSectionPage; owner?: true }>>> = {
   general: {
     conversations: { page: 'conversations' },
-    // Quiet is a card of the conversations page, Browser profiles one of Secrets.
+    // Quiet is a card of the conversations page.
     quiet: { page: 'conversations', owner: true },
     archived: { page: 'archived' },
-    worktrees: { page: 'worktrees', owner: true },
-    windows: { page: 'windows', owner: true },
-    'window-exclusions': { page: 'windows', owner: true },
-    secrets: { page: 'secrets' },
-    'browser-profiles': { page: 'secrets', owner: true }
+    worktrees: { page: 'worktrees', owner: true }
   }
 };
 
-export type PhoneSectionPage = 'conversations' | 'archived' | 'worktrees' | 'windows' | 'secrets';
+export type PhoneSectionPage = 'conversations' | 'archived' | 'worktrees';
 
 /**
  * The seven entries Settings lists, desktop and phone alike, each led by the
@@ -92,10 +88,14 @@ const MERGED: Partial<Record<SettingsTab, SettingsTab>> = {
 /**
  * Cards that moved to another page, by their old page: a link to the old place
  * (a setting an agent asks for, a route kept from before) opens the new one.
+ * Round 18 takes General's odd cards to the task they serve: the keys agents
+ * ask for and the browser logins to Providers, the windows agents may see to
+ * Machines.
  */
 const MOVED: Partial<Record<SettingsTab, Record<string, SettingsTab>>> = {
   appearance: { workspace: 'general' },
-  resources: { quiet: 'general' }
+  resources: { quiet: 'general' },
+  general: { secrets: 'accounts', 'browser-profiles': 'accounts', windows: 'machines', 'window-exclusions': 'machines' }
 };
 
 /** The page a card lives on now, when a route still names its old one. */
@@ -165,7 +165,8 @@ export function desktopPage(tab: SettingsTab, owner: boolean): SettingsTab {
 
 /** The page a phone shows for a route: a whole page, one card's page, or Home. */
 export function phonePage(route: SettingsTab, section: string | null | undefined, owner: boolean): SettingsTab | PhoneSectionPage {
-  const tab = PAGES[route].phoneOwn ? route : viewOf(route, owner);
+  const moved = movedTo(route, section) ?? route;
+  const tab = PAGES[moved].phoneOwn ? moved : viewOf(moved, owner);
   const page = PAGES[tab];
   if (page.owner && !owner) return 'home';
   if (page.phone === 'page') return tab;

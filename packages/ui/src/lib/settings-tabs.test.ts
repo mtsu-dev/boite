@@ -51,14 +51,23 @@ describe('the merged settings', () => {
     expect(pagesOf('advanced', false)).not.toContain('diagnostics');
   });
 
-  test('a card that moved opens on its new page from a link to the old one; on a phone, quiet sits on the conversations page and browser profiles beside the keys', () => {
+  test('a card that moved opens on its new page from a link to the old one; on a phone, quiet sits on the conversations page and the keys and windows on the page of their task', () => {
     expect(movedTo('appearance', 'workspace')).toBe('general');
     expect(movedTo('resources', 'quiet')).toBe('general');
     expect(movedTo('resources', 'limits')).toBeUndefined();
     expect(movedTo('resources', null)).toBeUndefined();
     expect(phonePage('general', 'quiet', true)).toBe('conversations');
     expect(phonePage('general', 'quiet', false)).toBe('home');
-    expect(phonePage('general', 'browser-profiles', true)).toBe('secrets');
+    // Round 18: General's odd cards live with their task, a project menu's old link included.
+    expect(movedTo('general', 'secrets')).toBe('accounts');
+    expect(movedTo('general', 'browser-profiles')).toBe('accounts');
+    expect(movedTo('general', 'windows')).toBe('machines');
+    expect(movedTo('general', 'window-exclusions')).toBe('machines');
+    expect(phonePage('general', 'secrets', true)).toBe('accounts');
+    expect(phonePage('general', 'browser-profiles', true)).toBe('accounts');
+    expect(phonePage('general', 'windows', true)).toBe('machines');
+    // Providers is the owner's: a paired phone's old link lands on Home.
+    expect(phonePage('general', 'secrets', false)).toBe('home');
     expect(phonePage('advanced', 'auto-compact', true)).toBe('advanced');
   });
 

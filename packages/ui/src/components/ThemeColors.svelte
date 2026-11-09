@@ -85,14 +85,17 @@
   function pickAccent(hue: number) { editingRole = undefined; undo = { ...palette }; setAccent(hue); follow(); }
 </script>
 
-<!-- A palette as a tiny thread in its own five colours: the chrome, your message as a bubble on its
-     surface, the agent's answer as lines of its text, and the composer with its accent's send button.
-     Edited colours draw what is in use. -->
+<!-- A palette in its own colours, so two dark palettes differ at a glance (round 18): the chrome with its accent
+     mark, a large sample in the palette's ink on its ground, its status colours, and the composer on its surface
+     with the accent's send button. Default has no status colours of its own: the tile shows the app's. -->
 {#snippet tile(id: PaletteId)}
   {@const colors = presets.find((preset) => preset.id === id)?.palette ?? palette}
-  <span class="tile" style:--tile-frame={colors.frame} style:--tile-page={colors.background} style:--tile-surface={colors.surface} style:--tile-ink={colors.foreground} style:--tile-accent={colors.accent}>
-    <span class="chrome"></span>
-    <span class="body"><span class="bubble"><i></i></span><span class="lines"><i></i><i></i></span><span class="composer"><i></i><span class="accent"></span></span></span>
+  <span class="tile" aria-hidden="true" style:--tile-frame={colors.frame} style:--tile-page={colors.background} style:--tile-surface={colors.surface} style:--tile-ink={colors.foreground} style:--tile-accent={colors.accent} style:--tile-success={colors.details?.success} style:--tile-live={colors.details?.live} style:--tile-danger={colors.details?.danger}>
+    <span class="chrome"><i></i></span>
+    <span class="body">
+      <span class="head"><span class="sample">{strings.settings.colors.sample}</span><span class="dots"><i class="ok"></i><i class="live"></i><i class="bad"></i></span></span>
+      <span class="composer"><i></i><span class="accent"></span></span>
+    </span>
   </span>
 {/snippet}
 
@@ -176,21 +179,24 @@
   .heading { display: flex; justify-content: space-between; align-items: center; gap: var(--space-5); min-height: 44px; }
   .actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: var(--space-1); min-width: 0; }
   .actions > button { display: inline-flex; align-items: center; gap: 6px; }
-  .tile { position: relative; display: flex; overflow: hidden; border-radius: var(--radius-sm); background: var(--tile-page); box-shadow: inset 0 0 0 1px var(--color-edge); }
-  .chrome { width: 22%; background: var(--tile-frame); }
-  /* Sized off the tile's width, so the composer still fits a 84 px tile at 360 px. */
-  .body { flex: 1; display: flex; flex-direction: column; justify-content: space-between; gap: 3px; min-width: 0; padding: 7% 8% 7%; }
-  /* Your message: a bubble on the palette's surface, right-aligned as in a thread, its words in the ink. */
-  .bubble { align-self: flex-end; display: flex; align-items: center; width: 48%; height: 9px; padding: 0 3px; border-radius: var(--radius-full); background: var(--tile-surface); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--tile-ink) 18%, transparent); }
-  .bubble i { display: block; width: 80%; height: 2px; border-radius: var(--radius-full); background: color-mix(in oklab, var(--tile-ink) 70%, transparent); }
-  .lines { display: flex; flex-direction: column; gap: 2px; }
-  /* The answer in its own ink, read strong enough to tell a warm palette from a cold one. */
-  .lines i { display: block; height: 3px; border-radius: var(--radius-full); background: color-mix(in oklab, var(--tile-ink) 75%, transparent); }
-  .lines i:nth-child(2) { width: 64%; background: color-mix(in oklab, var(--tile-ink) 45%, transparent); }
+  .tile { position: relative; display: flex; overflow: hidden; container-type: inline-size; border-radius: var(--radius-sm); background: var(--tile-page); box-shadow: inset 0 0 0 1px var(--color-edge); }
+  /* The chrome with the accent's mark where a chosen rail entry stands. */
+  .chrome { display: flex; justify-content: center; width: 20%; padding-top: 12cqw; background: var(--tile-frame); }
+  .chrome i { width: 7cqw; height: 7cqw; border-radius: var(--radius-full); background: var(--tile-accent); }
+  /* Sized off the tile's width, so the sample and the composer still fit a 84 px tile at 360 px. */
+  .body { flex: 1; display: flex; flex-direction: column; justify-content: space-between; min-width: 0; padding: 8cqw 8cqw 7cqw; }
+  .head { display: flex; align-items: flex-start; justify-content: space-between; gap: 4px; }
+  /* The palette's ink on its ground, large enough to judge both. */
+  .sample { color: var(--tile-ink); font-size: 21cqw; font-weight: var(--weight-title); line-height: 1; letter-spacing: -.02em; }
+  .dots { display: flex; flex-direction: column; gap: 2.5cqw; padding-top: 1cqw; }
+  .dots i { width: 5.5cqw; height: 5.5cqw; border-radius: var(--radius-full); }
+  .dots .ok { background: var(--tile-success, var(--tile-default-success)); }
+  .dots .live { background: var(--tile-live, var(--tile-default-live)); }
+  .dots .bad { background: var(--tile-danger, var(--tile-default-danger)); }
   /* The composer on the palette's surface, its send button in the palette's accent. */
-  .composer { display: flex; justify-content: space-between; align-items: center; gap: 3px; height: 10px; padding: 0 2px 0 4px; border-radius: var(--radius-full); background: var(--tile-surface); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--tile-ink) 14%, transparent); }
-  .composer i { display: block; width: 40%; height: 2px; border-radius: var(--radius-full); background: color-mix(in oklab, var(--tile-ink) 30%, transparent); }
-  .tile .accent { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--tile-accent); }
+  .composer { display: flex; justify-content: space-between; align-items: center; gap: 3px; height: 14cqw; padding: 0 2cqw 0 5cqw; border-radius: var(--radius-full); background: var(--tile-surface); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--tile-ink) 16%, transparent); }
+  .composer i { display: block; width: 45%; height: 2px; border-radius: var(--radius-full); background: color-mix(in oklab, var(--tile-ink) 40%, transparent); }
+  .tile .accent { flex: none; width: 10cqw; height: 10cqw; border-radius: 50%; background: var(--tile-accent); }
   .customize { flex: none; }
   .editor { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; }
   .editor.customizing { grid-template-columns: minmax(150px, .8fr) minmax(0, 1.6fr); margin-top: 16px; }

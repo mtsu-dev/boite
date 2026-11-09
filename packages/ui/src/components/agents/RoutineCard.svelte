@@ -46,7 +46,8 @@
   <article class="desk-routine" data-state={standing.kind} data-testid="routine-{routine.id}">
     <div class="desk-routine-text" title={showPrompt ? routine.prompt : undefined}>
       <strong>{routine.name}</strong>
-      {#if outcome === 'error' && routine.lastScheduledAt}<span class="desk-routine-last agent-state" data-status={outcome}>{fill(t.lastRun, { state: labels.outcome[outcome], when: dateTime(routine.lastScheduledAt) })}</span>{/if}
+      <!-- What it did last time, whatever came of it: the desk reads as the bot's recent work, not only its plans. -->
+      {#if outcome && routine.lastScheduledAt}<span class="desk-routine-last agent-state" data-status={outcome}>{fill(t.lastRun, { state: labels.outcome[outcome], when: dateTime(routine.lastScheduledAt) })}</span>{/if}
     </div>
     <span class="desk-routine-when routine-state" data-state={standing.kind} title={describeSchedule(routine.schedule)}>{standing.kind === 'next' ? dateTime(routine.nextAt!) : standing.text}</span>
     {#if view.store.owner}

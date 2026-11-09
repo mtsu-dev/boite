@@ -85,10 +85,11 @@
 .agent-head.compact { flex: 1; min-width: 0; min-height: 0; height: 100%; padding: 0 6px 0 0; border-bottom: none; }
 .agent-head.compact .agent-head-identity { flex: 0 1 auto; height: var(--control); margin-left: 0; padding: 0 8px; border-radius: var(--radius-md); }
 .agent-head.compact .agent-head-actions { margin-left: auto; }
-.agent-head.compact .agent-head-text strong { font-size: var(--text-sm); }
-.agent-head-crumb { flex: none; font-size: var(--text-sm); font-weight: 400; color: var(--color-subtle); }
+.agent-head.compact .agent-head-text strong { font-size: inherit; font-weight: 550; }
+/* The view menu's chevron beside the name, as a thread title's (ThreadHeader.svelte). */
+.agent-head-menu { display: flex; flex: none; margin-left: -6px; }
+.agent-head-menu .trigger { min-width: 32px; min-height: 32px; justify-content: center; }
 .agent-head-actions { display: flex; align-items: center; gap: 2px; flex: none; }
-.agent-head-actions > button.active { background: var(--color-active); color: var(--color-foreground); }
 .agent-head-actions .menu .trigger.ghost { width: var(--control); height: var(--control); padding: 0; }
 .agent-problem { flex: none; display: flex; align-items: center; gap: 10px; margin: 0; padding: 8px clamp(12px, 3vw, 24px); border-bottom: 1px solid var(--color-border); background: color-mix(in srgb, var(--color-live) 10%, transparent); color: var(--color-foreground); font-size: var(--text-sm); }
 .agent-problem > svg { flex: none; color: var(--color-live); }
@@ -233,9 +234,6 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 .routine-card .agent-actions button, .routine-last button { gap: 6px; }
 
 /* No agent yet: one icon, one line, one button. */
-.agent-welcome { margin: auto; padding: 40px 24px; display: flex; flex-direction: column; align-items: center; gap: 16px; text-align: center; color: var(--color-muted-foreground); animation: fade var(--dur-2) var(--ease-out-quint); }
-.agent-welcome > svg { box-sizing: content-box; padding: 16px; border-radius: 50%; background: var(--color-surface-2); color: var(--color-foreground); }
-.agent-welcome > p { font-size: var(--text-base); }
 
 /* A phone: the list is the screen, the conversation opens over it with a back arrow. */
 @media (max-width: 720px) {

@@ -248,9 +248,12 @@
   .feed .actions { top: calc(var(--feed-pad) + 10px - var(--act) / 2); right: calc(var(--pad-x) + var(--feed-verb) + 8px); }
   /* Recent's second line, on the title's edge: where the row lives, in words, so no tile repeats it. */
   .where { margin-top: -3px; overflow: hidden; font-size: var(--text-xs); color: var(--color-subtle); text-align: start; text-overflow: ellipsis; white-space: nowrap; }
-  /* The Recent list: a step wider inside, the project's tile first. */
-  .compact { --pad-x: 10px; }
-  .compact :global(.headline) { gap: 10px; }
+  /* The title's room first: its mark and time sit a step closer than the headline's own gap. */
+  .row :global(.headline) { gap: 6px; }
+  /* The keyboard reads the whole title: the focused row's title wraps, and word-fit (lib/word-fit.ts) shows it uncut
+     once its line is no longer one. The pointer gets it in the tooltip, so the list never moves under it. */
+  .thread:not(.feed) .row:focus-visible :global(.headline .title) { white-space: normal; overflow-wrap: anywhere; }
+  /* The Recent list keeps the cards' insets and gaps, so its titles get the same room (about 30 characters). */
   .row:hover:not(:disabled) {
     background: transparent;
   }

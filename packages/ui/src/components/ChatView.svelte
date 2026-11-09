@@ -27,6 +27,8 @@
   import WorktreeGoneNotice from './WorktreeGoneNotice.svelte';
   import ContactHoldNotice from './ContactHoldNotice.svelte';
   import { firstRunScreen, needsAnAI } from '../lib/first-run';
+  import { closingLine } from '../lib/closing-line';
+  import { HOUSE_BOT } from '../lib/robots';
 
   /** `locked`: the conversation reads but takes nothing more, said in place of the composer (an archived agent's). */
   let { store, locked = null }: { store: Store; locked?: string | null } = $props();
@@ -72,6 +74,9 @@
     return at < 0 ? held : held.slice(0, at);
   });
   let messages = $derived(sending ? [...kept, sending] : kept);
+  /** A finished thread's quiet last word: done, how long it worked, what its last turn changed. */
+  let closing = $derived(thread && !thread.archived && !locked && !sending && thread.status !== 'running' && thread.status !== 'waiting' && store.loadingThreadId !== thread.id
+    ? closingLine(thread.turns, kept, thread.cwd) : null);
   // The timeline still needs agent messages after reload, even with settings hidden.
   let threadId = $derived(thread?.id);
   let agentSession = $derived(!!thread?.agentSessionId);
@@ -145,7 +150,7 @@
         {#if store.loadingThreadId === thread.id && messages.length === 0}
           <ThreadLoading progress={store.loadingBytes?.threadId === thread.id ? store.loadingBytes : null} />
         {:else}
-          <MessageList {store} threadId={thread.id} {messages} />
+          <MessageList {store} threadId={thread.id} {messages} {closing} />
         {/if}
       {/key}
     {:else if sending}
@@ -163,6 +168,8 @@
           {#if store.draft?.worktree}<small>{strings.thread.inWorktree}</small>{/if}
         </div>
         <div class="draft-heading" data-testid="draft-sentence">
+          <!-- The house bot greets the most seen empty screen, as first run does: the cluster's one focal point. -->
+          <span class="start-mark" aria-hidden="true"><Deferred part={parts.RobotFace} quiet>{#snippet children(RobotFace)}<RobotFace robot={HOUSE_BOT} />{/snippet}</Deferred></span>
           <h1 class="start">
             <span class="ui-label">{strings.thread.start}</span>
             <span class="ui-label">{strings.thread.inProject}</span>
@@ -252,6 +259,7 @@
     text-align: center;
   }
 
+
   .none {
     margin: auto;
     padding: 40px;
@@ -292,7 +300,7 @@
     flex-direction: row;
     align-items: flex-end;
     justify-content: center;
-    padding: 24px 20px 32px;
+    padding: 24px 20px 20px;
     animation: rise var(--dur-3) var(--ease-out-quint);
   }
 
@@ -329,6 +337,9 @@
     max-width: var(--content);
     text-align: center;
   }
+
+  .start-mark { display: block; width: 56px; height: 56px; margin-bottom: -4px; }
+  .start-mark :global(svg.robot) { display: block; width: 100%; height: 100%; border-radius: 50%; }
 
   .start {
     display: flex;

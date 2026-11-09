@@ -1,5 +1,7 @@
 export const strings = {
   machines: {
+    /** Where a page's settings apply: a machine page under its title, the windows cards at the foot of Machines. */
+    scopeOn: 'On {machine}',
     heading: 'Machines', local: 'This computer', projects: 'Projects', recent: 'Recent',
     intro: 'Each machine runs its own agents on its own files.',
     details: 'Details', address: 'Address', updateFailed: 'Update failed',

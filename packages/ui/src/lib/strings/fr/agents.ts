@@ -94,6 +94,8 @@ export const fr: Translation = {
     brainChange: 'Changer', brainUseDefault: 'Utiliser le dossier par défaut', brainMove: 'Déplacer les cerveaux ici', brainPath: 'Dossier sur cette machine', brainBrowse: 'Parcourir', brainParent: 'Dossier parent', brainUseFolder: 'Utiliser ce dossier',
     settingsOf: 'Réglages de {name}', brainOf: 'Cerveau de {name}',
     desk: 'Bureau', fix: 'Corriger',
+    /** The banner's remedy when a bot's account is gone: its other accounts picked in place, or Providers when it has none. */
+    pickAccount: 'Choisir un autre compte', addAccount: 'Ajouter un compte',
     deskPanel: {
       now: 'Maintenant', memory: 'Mémoire', memoryProblem: 'Échec de la mise à jour de la mémoire',
       conversation: 'Conversation', handling: 'En cours', done: 'Terminés',

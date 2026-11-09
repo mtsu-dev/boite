@@ -51,7 +51,8 @@
   const narrow = new MediaQuery('(max-width: 720px)');
   const reveal = new MessageReveal(() => messages, () => narrow.current);
 
-  let { store, threadId, messages }: { store: Store; threadId: string; messages: Message[] } = $props();
+  /** `closing`: a finished thread's last word (`lib/closing-line.ts`), drawn under the last message and scrolling with it. */
+  let { store, threadId, messages, closing = null }: { store: Store; threadId: string; messages: Message[]; closing?: string | null } = $props();
   /**
    * The open viewer belongs to the list, not to the row it was opened from: a
    * running turn moves the window of rows, and the row leaving it must not
@@ -674,6 +675,16 @@
     }
   });
 
+  /** Only once the loaded window reaches the thread's end: newer history still unread is not its last word. */
+  let closingShown = $derived(closing !== null && store.messagesAfter === null && !store.loadingNewer);
+  /** The closing line lands under a pinned list: the bottom takes it in, like a new message. */
+  $effect(() => {
+    if (!closingShown) return;
+    const box = viewport;
+    if (!box || !untrack(following)) return;
+    void tick().then(() => { if (untrack(following)) edge.follow(box); });
+  });
+
   /** The window moving under a pinned viewport changes the spacers: take the bottom again. */
   $effect(() => {
     void view;
@@ -818,6 +829,7 @@
       {/if}
       {#if store.loadingNewer}<p class="loading-older" data-testid="loading-newer">{strings.chat.loadingNewer}</p>{/if}
       {#if pendingMove}<MoveMarker notice={pendingMove} pending />{/if}
+      {#if closingShown}<p class="closing" data-testid="thread-closing"><span class="ui-label">{closing}</span></p>{/if}
     </div>
     {#if promptRoom > 0}
       <div class="spacer" data-testid="prompt-room" style:height="{promptRoom}px" aria-hidden="true"></div>
@@ -897,6 +909,21 @@
     /* One reading column: bubbles, prose and cards take the dock's width. */
     --prose: var(--content);
   }
+
+  /* The thread's last word: one muted line between two hairlines under the last message, no card. */
+  .closing {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 4px 0 0;
+    color: var(--color-subtle);
+    font-size: var(--text-xs);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .closing::before, .closing::after { content: ''; flex: 1; height: 1px; background: var(--color-border); }
+  .closing .ui-label { flex: none; max-width: 80%; overflow-wrap: anywhere; white-space: normal; text-align: center; }
 
   /* What a long thread's unrendered messages weigh, above and below the window. */
   .spacer { flex: 0 0 auto; }

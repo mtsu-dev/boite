@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick, type Snippet } from 'svelte';
+  import { tick } from 'svelte';
   import { ChevronDown, Plug, Sparkles } from '@lucide/svelte';
   import { isNamedModel } from '../lib/model-order';
   import ProviderLogo from './ProviderLogo.svelte';
@@ -12,9 +12,9 @@
   /**
    * The model chip. Its popover (`ModelPickerMenu.svelte`) is a chunk of its
    * own that only a click draws: the models in use first, every provider's
-   * list behind "All models". It picks a model: the effort and the
-   * permission are the composer's chips beside it, its context ring sits
-   * beside the name (`trailing`). Desktop opens it from the chip; a phone as a bottom sheet.
+   * list under them. It picks a model: the effort, the permission and the
+   * context are the composer's items beside it. Desktop opens it from the
+   * chip; a phone as a bottom sheet.
    */
   let {
     store,
@@ -24,8 +24,6 @@
     disabled = false,
     readonly = false,
     readonlyHint = '',
-    anchor,
-    trailing,
     onpick
   }: {
     store: Store;
@@ -38,9 +36,6 @@
     /** The model is set elsewhere (a bot's settings): the chip names it and opens nothing. */
     readonly?: boolean;
     readonlyHint?: string;
-    /** What the desktop popover opens above: the chip, or the whole composer while an ask is docked in it, on the chip's side, so it never covers the ask. */
-    anchor?: () => HTMLElement | null;
-    trailing?: Snippet;
     onpick: (patch: PickPatch) => void;
   } = $props();
 
@@ -92,7 +87,7 @@
 
 <svelte:window onpointerdown={onWindowPointerdown} />
 
-<div class="picker" class:pill={!!trailing} bind:this={root}>
+<div class="picker" bind:this={root}>
   {#if !choice && store.owner}
     <!-- Nothing to pick from yet: the chip is the way to get something. -->
     <button type="button" class="ui-chip trigger connect" data-testid="composer-connect" onclick={() => store.openConnect()}>
@@ -127,12 +122,11 @@
     <ChevronDown size={12} strokeWidth={2} />
   </button>
   {/if}
-  {@render trailing?.()}
 
   {#if popover.shown}
     <Deferred part={parts.ModelPickerMenu} floating>
       {#snippet pending()}{/snippet}
-      {#snippet children(Menu)}<Menu bind:this={body} {store} {choice} {popover} root={() => root} {locked} {single} {disabled} {anchor} {onpick} />{/snippet}
+      {#snippet children(Menu)}<Menu bind:this={body} {store} {choice} {popover} root={() => root} {locked} {single} {disabled} {onpick} />{/snippet}
     </Deferred>
   {/if}
 </div>
@@ -179,6 +173,4 @@
   @media (max-width: 720px) { .trigger .account { display: none; } }
   .trigger.readonly { cursor: default; }
   @media (hover: hover) { .trigger.readonly:hover { background: transparent; color: inherit; } }
-  /* The composer's chip: the name and the context ring read as one control. */
-  .picker.pill { align-items: center; border-radius: var(--radius-md); }
 </style>

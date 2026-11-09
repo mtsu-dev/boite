@@ -136,6 +136,8 @@
       </div>
     {/if}
   </div>
+  <!-- A channel that cannot be picked says why in the card, not only on hover a phone has not (round 18). -->
+  {#if supported && !RELEASE_PUBLISHED}<p class="why" data-testid="app-update-no-release">{strings.appUpdate.noRelease}</p>{/if}
   <div class="line">
     <p class="status" class:offer={app?.phase === 'available' || app?.phase === 'ready' || othersStartable} class:error={app?.phase === 'error'} role="status" aria-live="polite" data-testid="app-update-status">
       <span>{status()}</span>
@@ -213,6 +215,7 @@
   .status { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; color: var(--color-muted-foreground); font-size: var(--text-sm); overflow-wrap: anywhere; }
   .status.offer > span:first-child { color: var(--color-foreground); }
   .status.error { color: var(--color-danger); }
+  .why { margin: 0; color: var(--color-subtle); font-size: var(--text-meta); text-align: right; }
   .subtle { color: var(--color-subtle); font-size: var(--text-xs); }
   .changelog { display: inline-flex; align-items: center; gap: 5px; color: var(--color-muted-foreground); text-decoration: none; }
   .changelog:hover { color: var(--color-foreground); text-decoration: underline; }

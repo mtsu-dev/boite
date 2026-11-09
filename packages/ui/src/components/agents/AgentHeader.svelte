@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ArrowLeft, Brain, Ellipsis, Archive, Pause, Play, PanelRight, RotateCcw, Settings2 } from '@lucide/svelte';
+  import { ArrowLeft, Brain, ChevronDown, Ellipsis, Archive, Pause, Play, RotateCcw, Search, Settings2 } from '@lucide/svelte';
   import type { AgentProfile, AgentStatus, ThreadSummary } from '@boite/contracts';
   import { moodOf, liveState, liveStep, resetBuiltin, waitingOn, type AgentsView } from '../../lib/agents.svelte';
   import { confirmArchive } from '../../lib/agent-menu';
@@ -14,12 +14,15 @@
   import { avatarLit } from '../../lib/avatar-lit';
   import StatusMark from '../StatusMark.svelte';
   import BuiltinBadge from './BuiltinBadge.svelte';
+  import PanelDoor from '../PanelDoor.svelte';
+  import { separator, type MenuItem } from '../../lib/menu';
 
   /**
-   * The top of an agent's conversation. On a desktop the column beside says
-   * who the bot is and what it does, so this is one short line: its name and
-   * "Conversation", the panel toggle (opening on the desk) and a menu with its settings, its brain,
-   * pause and archive. On a phone (`onback`) it is the screen's only head: its
+   * The top of an agent's conversation, in a thread header's pattern: on a
+   * desktop its name, the chevron that opens its view menu (find in the
+   * conversation, then its settings, its brain, pause and archive), and the
+   * same "Panels" door (`PanelDoor.svelte`), which opens on the desk. On a
+   * phone (`onback`) it is the screen's only head: its
    * robot in its ring (breathing while it works), its name and one live line
    * that says what it does this second (the step its turn is on, with the time
    * it has run), what it waits on, or when it next wakes. A problem that keeps
@@ -51,7 +54,12 @@
     else store.panel.toggleKind('desk');
   }
 
-  const menuItems = $derived([
+  /** How many panels the door holds, as a thread's header counts them. */
+  const panelCount = $derived(store.panel.surfaces.length);
+
+  /** The thread menu's order: the view's own Find first, then what is done to the bot, its danger last. */
+  const menuItems = $derived<MenuItem[]>([
+    ...(thread ? [{ id: 'find', label: strings.palette.find, glyph: Search }, separator('sep-find')] : []),
     { id: 'settings', label: labels.settings, glyph: Settings2 },
     { id: 'brain', label: labels.brain, glyph: Brain },
     ...(store.owner && agent.status !== 'archived' ? [
@@ -67,7 +75,10 @@
     await view.call('agents.profile.save', { id, expectedRevision: revision, value: { ...value, status: next } });
   }
   async function pick(id: string) {
-    if (id === 'settings' || id === 'brain') onpane(id);
+    if (id === 'find') {
+      store.findOpen = true;
+      store.findRequest += 1;
+    } else if (id === 'settings' || id === 'brain') onpane(id);
     else if (id === 'pause') await setStatus('paused');
     else if (id === 'resume') await setStatus('active');
     else if (id === 'reset') await resetBuiltin(view, agent);
@@ -82,7 +93,7 @@
   <button type="button" class="ghost agent-head-identity" onclick={() => onpane('settings')} aria-label={fill(labels.settingsOf, { name: agent.name })}>
     {#if onback}<span class="agent-head-robot"><AgentAvatar kind="profile" id={agent.id} name={agent.name} avatar={agent.avatar} mood={moodOf(state)} size={32} lit={avatarLit({ open: true })} /></span>{/if}
     <span class="agent-head-text">
-      <span class="agent-head-name"><strong>{agent.name}</strong>{#if agent.builtin}<BuiltinBadge word />{/if}{#if !onback}<span class="agent-head-crumb">{labels.deskPanel.conversation}</span>{/if}</span>
+      <span class="agent-head-name"><strong>{agent.name}</strong>{#if agent.builtin}<BuiltinBadge word />{/if}</span>
       {#if onback}
         <span class="agent-live" data-state={state} aria-live="polite" data-testid="agent-live">
           <!-- One signal per state: the mark carries the hue, the words stay neutral (AgentRow.svelte). -->
@@ -107,10 +118,20 @@
       {/if}
     </span>
   </button>
+  {#if !onback}
+    <!-- The view menu right after the name, as a thread's chevron after its title. -->
+    <span class="agent-head-menu">
+      <Menu placement="bottom" variant="text" label={labels.more} heading={agent.name} testid="agent-menu" items={menuItems} onpick={id => void pick(id)}>
+        <ChevronDown size={16} />
+      </Menu>
+    </span>
+  {/if}
   <nav class="agent-head-actions" aria-label={agent.name}>
-    <button type="button" class="ghost icon" class:active={store.panelOpen} aria-pressed={store.panelOpen} title={`${strings.thread.panelHint}${store.keyHint('panel')}`} aria-label={strings.thread.panelHint} onclick={togglePanel} data-testid="agent-desk-toggle"><PanelRight size={17} strokeWidth={1.75} /></button>
-    <Menu placement="bottom" align="end" variant="ghost" label={labels.more} testid="agent-menu" items={menuItems} onpick={id => void pick(id)}>
-      <Ellipsis size={18} strokeWidth={1.75} />
-    </Menu>
+    <PanelDoor {store} count={panelCount} ontoggle={togglePanel} testid="agent-desk-toggle" />
+    {#if onback}
+      <Menu placement="bottom" align="end" variant="ghost" label={labels.more} heading={agent.name} testid="agent-menu" items={menuItems} onpick={id => void pick(id)}>
+        <Ellipsis size={18} strokeWidth={1.75} />
+      </Menu>
+    {/if}
   </nav>
 </header>

@@ -38,9 +38,12 @@ export function modeLabel(mode: PermissionMode, provider: ProviderSummary | null
   return strings.permissionModeLine[mode];
 }
 
-/** The chip's one word for the mode at rest ("Ask"), as this agent actually applies it. */
-export function modeWord(mode: PermissionMode, provider: ProviderSummary | null | undefined): string {
-  if (mode === 'default' && provider?.protocol === 'codex-appserver') return strings.permissionModeShort.codexDefault;
+/**
+ * The chip's one word for the mode at rest ("Ask"): the same word on every
+ * agent, so a chip reads as a permission everywhere. What an agent's mode
+ * actually allows (Codex's folder) is the line under it, `modeLabel`.
+ */
+export function modeWord(mode: PermissionMode, _provider?: ProviderSummary | null): string {
   return strings.permissionModeShort[mode];
 }
 

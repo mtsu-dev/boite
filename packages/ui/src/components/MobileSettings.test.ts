@@ -133,8 +133,7 @@ test('the phone settings list the desktop\'s groups, General and Advanced hold t
   expect(query('[data-testid=settings]').dataset.detail).toBeUndefined();
   await open('settings-tab-general', general);
   expect(rows('mobile-settings-general')).toEqual([
-    'mobile-settings-conversations', 'mobile-settings-phone', 'settings-tab-voice', 'mobile-settings-archived', 'mobile-settings-secrets',
-    'mobile-settings-windows', 'mobile-settings-worktrees'
+    'mobile-settings-conversations', 'mobile-settings-phone', 'settings-tab-voice', 'mobile-settings-archived', 'mobile-settings-worktrees'
   ]);
   // Privacy is two switches: a card at the index's foot, out of the notifications.
   await waitFor(() => document.querySelector('[data-testid=mobile-settings-general] [data-testid=telemetry-settings]') !== null);
@@ -165,12 +164,12 @@ test('the phone settings list the desktop\'s groups, General and Advanced hold t
   expect(query<HTMLInputElement>('[data-testid=compaction-customize]').checked).toBe(false);
   await back();
 
-  // Browser profiles sit beside the keys, on one page.
-  await open('settings-tab-general', general);
-  query<HTMLButtonElement>('[data-testid=mobile-settings-secrets]').click();
-  await waitFor(() => document.querySelector('[data-testid=browser-profiles-card]') !== null);
-  await back(general);
+  // Browser profiles sit beside the keys, at the foot of Providers (round 18).
+  await open('settings-tab-accounts', () => document.querySelector('[data-testid=browser-profiles-card]') !== null);
+  expect(document.querySelector('[data-testid=secrets-card]')).not.toBeNull();
+  await back();
 
+  await open('settings-tab-general', general);
   query<HTMLButtonElement>('[data-testid=mobile-settings-phone]').click();
   await waitFor(() => document.querySelector('[data-testid=phone-settings]') !== null);
   expect(document.querySelector('[data-testid=telemetry-settings]')).toBeNull();

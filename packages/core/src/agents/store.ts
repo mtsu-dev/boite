@@ -466,7 +466,7 @@ export class AgentStore {
     let provider;
     try { provider = agentProvider(this.core, agent); } catch (error) { return messageOf(error); }
     const account = this.core.journal.getAccount(agent.selection.accountId);
-    if (account === null || account.providerId !== provider.id) return `Its account is gone; choose another one for ${agent.name} in its settings.`;
+    if (account === null || account.providerId !== provider.id) return `Its account is gone; choose another account for ${agent.name}.`;
     const listed = agent.selection.model === null || provider.models.length === 0 ? null : this.#listedModels(provider, account.id);
     if (listed !== null && !listsModel(provider, listed, agent.selection.model!)) {
       return `${provider.name} no longer lists ${agent.selection.model}; choose another model for ${agent.name} in its settings.`;

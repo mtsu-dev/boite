@@ -23,16 +23,15 @@
   import { speedControl } from '../lib/model-speeds';
   import type { ComposerTarget } from '../lib/composer-target';
   import { desktopSettings } from '../lib/settings-tabs';
-  /** The context's number shows beside the model chip from this percent used. */
+  /** The context's reading shows in the row from this percent used. */
   const CONTEXT_SHOWN_FROM = 70;
 
   /**
    * The row under the composer's box, the same in every state: one "+" for
-   * what adds to the message (and the context's details), then a chip per
-   * setting reading its value at rest: the model (the context's number beside
-   * it once it matters), the effort (a slider, the bolt while fast is on) and
-   * the permission (an icon and a word, its icon alone on a phone under
-   * 380 px), the same three on a thread, a bot and a phone, then dictation and one round
+   * what adds to the message, then a chip per setting reading its word at
+   * rest: the model, the effort (a slider, the bolt while fast is on) and the
+   * permission (an icon and a word), the same three on a thread, a bot and a
+   * phone, the context's ring and "x% left" once it matters, then dictation and one round
    * button that is Send, or Stop while a turn runs and nothing waits to go
    * (not while it stands on a decision of the owner's).
    * Nothing comes or goes with a decision docked above: the row keeps its
@@ -47,11 +46,11 @@
     key,
     target = null,
     bot = null,
+    botGone = false,
     provider,
     canSend,
     waiting = false,
     answering = false,
-    composer = null,
     sendLabel = strings.composer.send,
     choice = $bindable(),
     picking = $bindable(),
@@ -69,13 +68,13 @@
     target?: ComposerTarget | null;
     /** The persistent agent this box writes to, by name: its model, effort and mode are its settings, so its chip only names the model. */
     bot?: string | null;
+    /** The bot's account is gone: the chips name the banner's remedy instead of its settings. */
+    botGone?: boolean;
     provider: ProviderSummary | null | undefined;
     canSend: boolean;
     /** Send was pressed while files were still being read: it goes once they are ready. */
     waiting?: boolean;
     answering?: boolean;
-    /** The composer while an ask is docked in it: menus open above it, so the ask stays readable. */
-    composer?: HTMLElement | null;
     /** What Send does, when it answers a question rather than sending a message. */
     sendLabel?: string;
     choice: Choice | null;
@@ -91,9 +90,7 @@
   } = $props();
   let chip = $state<ModelPicker | undefined>(undefined);
   let options = $state<ComposerOptions | undefined>(undefined);
-  let meter = $state<ContextControl | undefined>(undefined);
   let slider = $state<EffortSlider | undefined>(undefined);
-  const askAnchor = () => composer;
   let stopping = $derived(!!(target ? target.busy && target.stop : store.busy));
   /** The turn stands still on the owner's answer (a permission, a question it stopped for): Deny or Skip is the way out, Escape still stops. */
   let held = $derived(!target && store.openThread?.status === 'waiting');
@@ -106,14 +103,10 @@
   let bound = $derived(!target && store.openThread !== null);
   let contextUsed = $derived(store.openThread?.context ? contextPercent(store.openThread.context, store.settings ? effectiveCompaction(store.settings, store.openThread).autoCompact : null) : null);
   /**
-   * The number beside the chip only once the context matters (a nearly full
-   * one whatever the preference); below that the row shows nothing there and
-   * the details stay one row away, in the "+".
+   * The reading only once the context matters (a nearly full one whatever the
+   * preference); below that the row shows nothing there and `/compact` stays.
    */
   let showContext = $derived(contextUsed !== null && (contextLevel(contextUsed) === 'full' || work.shows('header.context') && contextUsed >= CONTEXT_SHOWN_FROM));
-  /** Where the details open while no number is drawn: over the row, or over the composer while an ask is docked. */
-  const meterAnchor = () => composer ?? bar ?? null;
-  let contextWords = $derived(contextUsed === null ? strings.thread.contextDetails : strings.thread.contextPercentUsed(String(Math.round(contextUsed))));
   /** Every agent can read uploaded files through its local tools. */
   let canAttach = $derived(!!target || (provider !== null && provider !== undefined));
 
@@ -152,7 +145,7 @@
   let modeChoices = $derived<ModeChoice[]>([...modes, ...modes.includes(displayedMode) ? [] : [displayedMode]]
     .map((mode) => ({ id: mode, label: modeWord(mode, provider), hint: modeLabel(mode, provider), title: modeHint(mode, provider), icon: modeIcon(mode) })));
   /** A bot keeps its model, effort and mode in its settings: its chips read them and open nothing. */
-  let botHint = $derived(bot ? fill(strings.composer.botSettings, { name: bot }) : '');
+  let botHint = $derived(bot ? fill(botGone ? strings.composer.botAccountGone : strings.composer.botSettings, { name: bot }) : '');
   // The worktree switch exists where the core can honour it: a draft on a
   // folder the core found a `.git` in. No answer yet, or an older core that
   // never gives one, is no repository: a switch the core would refuse is noise.
@@ -284,22 +277,15 @@
 <div class="bar" bind:this={bar}>
   <!-- One "+" at the start: files, a file mention, a command and the draft's worktree. -->
   {#key `${key}:${store.draft?.projectId ?? ''}`}
-  <ComposerOptions bind:this={options} worktree={!answering && store.draft && draftRepository ? store.draft.worktree : null} {canAttach} anchor={askAnchor} onattach={() => picker?.click()} onworktree={() => store.setDraftWorktree(!store.draft?.worktree)} {onmention} {oncommand}
-    context={bound ? contextWords : null} oncontext={() => meter?.open()} />
+  <ComposerOptions bind:this={options} worktree={!answering && store.draft && draftRepository ? store.draft.worktree : null} {canAttach} onattach={() => picker?.click()} onworktree={() => store.setDraftWorktree(!store.draft?.worktree)} {onmention} {oncommand} />
   {/key}
   {#if target && !target.selection}
   <div class="chips">{#if target.chips}{@render target.chips()}{/if}</div>
   {:else}
   <!-- The model chip stays named while the box answers a question: the next turn runs on it. -->
   <div class="chips">
-    {#snippet ring()}
-      {#if bound && showContext}
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div class="context-control" oncontextmenu={(event) => controlMenu(event, store, 'header.context')}><ContextControl bind:this={meter} {store} anchor={askAnchor} /></div>
-      {/if}
-    {/snippet}
     <!-- A bot's model is its own setting: its chip names it and changes nothing here. -->
-    <ModelPicker bind:this={chip} {store} {choice} disabled={picking} readonly={bot !== null} readonlyHint={botHint} anchor={askAnchor} trailing={ring} onpick={pick} />
+    <ModelPicker bind:this={chip} {store} {choice} disabled={picking} readonly={bot !== null} readonlyHint={botHint} onpick={pick} />
     {#if choice && (effortLevels.length > 0 || speeds.length > 0)}
       <!-- The effort is a slider of its own, read at rest: its level, the bolt while fast is on. -->
       <EffortSlider bind:this={slider} levels={effortLevels} active={activeEffort} onpick={pickEffort} ondefault={agentDefault ? () => pickEffort(null) : undefined} {speeds} speed={speedOptions.speed} onspeed={(id) => void pick(speedOptions.pick(id))} readonly={bot !== null} readonlyHint={botHint} />
@@ -318,9 +304,10 @@
         <span class="ui-chip signed-out" data-testid="composer-provider-off" title={sentence} aria-label={sentence}><span class="ui-label">{strings.providerSettings.off}</span></span>
       {/if}
     {/if}
-    {#if bound && !showContext}
-      <!-- No number drawn: the details open from the "+" over the row; the host takes no room. -->
-      <ContextControl bind:this={meter} {store} anchor={meterAnchor} quiet />
+    {#if bound && showContext}
+      <!-- The context is its own quiet item of the row, after the chips that set something. -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div class="context-control" oncontextmenu={(event) => controlMenu(event, store, 'header.context')}><ContextControl {store} /></div>
     {/if}
     {#if accountRemoved}
       <button type="button" class="ui-chip signed-out" data-testid="composer-account-removed" title={strings.accounts.removedHint} onclick={() => void openChip('composer-picker')}><span class="ui-label">{strings.accounts.removed}</span></button>
@@ -340,6 +327,8 @@
     />
   {/if}
 
+  <!-- Dictation and the round button: at the row's end on a desktop, at the field's end on a phone (where the row gives its width to the chips' words). -->
+  <div class="tools" data-count={voice.current.enabled ? 2 : 1}>
   {#if voice.current.enabled}
   {#key store}
     {#key `${key}:${store.draft?.projectId ?? ''}`}
@@ -373,6 +362,7 @@
   >
     {#if waiting}<LoaderCircle size={16} strokeWidth={2.25} class="spinner" />{:else}<ArrowUp size={16} strokeWidth={2.25} />{/if}
   </button>
+  </div>
 </div>
 
 <style>
@@ -385,7 +375,6 @@
   }
 
   .context-control { display: flex; flex: none; }
-  .bar .chips .context-control :global(.trigger) { padding: 0 8px 0 4px; gap: 5px; }
 
   .chips .ui-chip.signed-out { color: var(--color-live); }
 
@@ -397,6 +386,8 @@
     gap: 8px;
     padding: var(--composer-bar-padding, 4px 8px 8px 10px);
   }
+
+  .tools { display: flex; align-items: center; flex: none; gap: 8px; }
 
   .chips {
     flex: 1;
@@ -476,45 +467,49 @@
     .chips :global(.picker) { min-width: 0; }
   }
   @container composer (max-width: 480px) {
-    .bar { gap: 6px; }
+    .bar, .tools { gap: 6px; }
   }
 
   @media (max-width: 720px) {
-    .bar { gap: 2px; padding: var(--composer-bar-padding, 0 8px 6px); }
-    .chips { flex: 1; flex-wrap: nowrap; }
-    .chips :global(.picker) { min-width: 0; max-width: 100%; }
-    .chips :global(.picker > .trigger) { max-width: 100%; height: var(--touch-target); padding: 0 6px; }
-    .chips :global(:is(.effort, .permission) > .trigger) { flex: none; height: var(--touch-target); padding: 0 6px; gap: 5px; }
-    /* The model's name alone, and whole words of it: one line high, a name too long for the row
-       wraps its last words onto a second line nobody sees, never half of one. */
-    .chips :global(.picker > .trigger > .label) { min-width: 0; max-width: none; height: 1lh; padding-block: 0; margin-block: 0; text-box: normal; overflow: hidden; white-space: normal; overflow-wrap: normal; }
+    .bar { position: relative; gap: 2px; padding: var(--composer-bar-padding, 0 8px 6px); }
+    /* The microphone and send stand at the field's end, on its last line, so
+       the row's whole width reads the chips' words: nothing ever slides under
+       them. The field keeps its place; Composer pads its text clear of them. */
+    .tools { position: absolute; right: 8px; bottom: 100%; gap: 0; }
+    /* One row that never wraps: a value too long for it scrolls sideways
+       under the finger, and ends before the microphone, never under it. */
+    .chips { flex: 1; flex-wrap: nowrap; gap: 0; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+    .chips::-webkit-scrollbar { display: none; }
+    /* That scroller clips anything drawn outside it: the focus ring sits inside the chip. */
+    .chips :global(.trigger:focus-visible) { outline-offset: -2px; }
+    .chips > :global(*) { flex: none; }
+    .chips :global(.picker > .trigger) { max-width: none; height: var(--touch-target); padding: 0 6px; }
+    .chips :global(:is(.effort, .permission) > .trigger) { height: var(--touch-target); padding: 0 6px; gap: 5px; }
+    .chips :global(.picker > .trigger > .label) { max-width: none; overflow: visible; }
     .bar .chips :global(.picker > .trigger.connect) { padding: 0 12px; border-radius: var(--radius-md); background: var(--color-active); color: var(--color-foreground); }
   }
-  /* A 360 px phone gives the model's whole name the room of the chevron, of the gaps
-     and of the context ring's side margin; every control keeps its full height. */
+  /* A 390 or 360 px phone gives the words the room of the marks around them:
+     the model's name stands without its logo and chevron, the effort and the
+     permission keep their word, never a glyph alone. Only the leading glyph
+     goes: the fast bolt after the effort's word is a span and stays at every
+     width while fast mode is on. */
   @media (max-width: 400px) {
     .bar { gap: 0; }
-    .chips { gap: 0; }
-    .chips :global(.picker > .trigger) { padding: 0 2px; }
     .chips :global(.picker > .trigger > .lucide-chevron-down) { display: none; }
-    /* The name says whose model it is: its logo gives the room to a whole name ("GPT 6.1 Sol"). */
     .chips :global(.picker > .trigger:not(.connect) > :is([data-logo], [data-initial], .lucide-sparkles)) { display: none; }
-    .chips :global(.effort > .trigger) { padding: 0 4px; }
-    .chips :global(.permission > .trigger) { width: 36px; padding: 0; }
-    /* At 360 the model's whole name and its effort keep the row: the meter
-       is its glyph alone, at full ink once nearly spent, its number in its label and its details. */
-    .context-control :global(.trigger) { min-width: 34px; }
-    .context-control :global(.percent) { display: none; }
+    .chips :global(:is(.effort, .permission) > .trigger > svg:first-child) { display: none; }
+    .chips :global(:is(.picker, .effort, .permission) > .trigger) { padding: 0 5px; }
+    .context-control :global(.trigger) { padding: 0 5px; }
   }
-  /* Under 380 the permission chip joins the row: the side controls narrow (never shorter)
-     so a name like "GPT 6.1 Sol" stays whole beside the context ring. */
+  /* At 360 the "+" narrows to 32 px, its 44 px target kept by a hit zone over
+     the bar's padding, and the chips' sides close in: the widest case (GPT 6.1
+     Sol, Extra high, No limits, the context) still reads whole. */
   @media (max-width: 379px) {
-    .bar :global(.opener) { position: relative; width: 34px; }
-    /* A 44 px touch target without widening the row: the hit zone takes the bar's
-       8 px left padding and the model chip's 2 px inner padding. */
-    .bar :global(.opener)::after { content: ''; position: absolute; inset: 0 -2px 0 -8px; }
-    .chips :global(.permission > .trigger) { width: 30px; }
-    .chips :global(.effort > .trigger) { padding: 0 2px; }
-    .context-control :global(.trigger) { min-width: 26px; padding: 0; }
+    .bar { padding-inline: 4px; }
+    .bar :global(.opener) { position: relative; width: 32px; }
+    .bar :global(.opener)::after { content: ''; position: absolute; inset: 0 -4px 0 -8px; }
+    .chips :global(:is(.picker, .effort, .permission) > .trigger), .context-control :global(.trigger) { padding: 0 4px; gap: 4px; }
+    /* The row's last item: the card's edge gives it its air. */
+    .context-control :global(.trigger) { padding-right: 2px; }
   }
 </style>

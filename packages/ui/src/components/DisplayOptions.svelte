@@ -15,12 +15,13 @@
    * still opens it at once. It stays open while the user adjusts it; a press
    * outside or Escape puts it away. `filters` counts the filters that hide
    * threads, on the button, since the menu that says so is closed: the list's
-   * head keeps one row, no chip of its own per filter. A glyph alone: the
-   * view on is named beside it (ViewSwitch.svelte).
+   * head keeps one row, no chip of its own per filter. `word` names it beside
+   * its glyph ("Filter") where the head has the room; the glyph alone keeps
+   * the name in its tooltip.
    */
   /** `compact`: the phone's choices only, the project Recent lists and the groups; the order and a project's own switches stay on the desktop. */
-  let { entries, target, owner, prefix = '', compact = false, filters = 0, atWork, onaddproject }: {
-    entries: ProjectEntry[]; target: Project | undefined; owner: Store; prefix?: string; compact?: boolean; filters?: number;
+  let { entries, target, owner, prefix = '', compact = false, filters = 0, word = false, atWork, onaddproject }: {
+    entries: ProjectEntry[]; target: Project | undefined; owner: Store; prefix?: string; compact?: boolean; filters?: number; word?: boolean;
     /** A phone's Recent: the rows at work alone, a filter of the menu's (DisplayOptionsPanel.svelte). */
     atWork?: AtWork;
     onaddproject?: () => void;
@@ -60,9 +61,10 @@
 <svelte:window onpointerdown={onWindowPointerdown} />
 
 <div class="display-options" bind:this={root}>
-  <button type="button" class="ghost trigger icon small" class:filtered={filters > 0} bind:this={trigger} aria-haspopup="dialog" aria-expanded={popover.open}
-    aria-label={strings.sidebar.groupingOptions} title={strings.sidebar.groupingOptions} data-testid={`${prefix}grouping-options`} data-view={workspace.view} onclick={toggle}>
-    <ListFilter size={16} />{#if filters > 0}<span class="count ui-label" data-testid={`${prefix}filter-count`}>{filters}</span>{/if}
+  <!-- With its word the visible "Filter" is its name; the tooltip says what it opens. -->
+  <button type="button" class="ghost trigger small" class:icon={!word} class:worded={word} class:filtered={filters > 0} bind:this={trigger} aria-haspopup="dialog" aria-expanded={popover.open}
+    aria-label={word ? undefined : strings.sidebar.groupingOptions} title={strings.sidebar.groupingOptions} data-testid={`${prefix}grouping-options`} data-view={workspace.view} onclick={toggle}>
+    <ListFilter size={16} />{#if word}<span class="word ui-label">{strings.sidebar.filter}</span>{/if}{#if filters > 0}<span class="count ui-label" data-testid={`${prefix}filter-count`}>{filters}</span>{/if}
   </button>
   {#if popover.shown && Panel}
     <Panel {popover} anchor={() => trigger ?? null} onclose={close} {entries} {target} {owner} {prefix} {compact} {atWork} {onaddproject} />

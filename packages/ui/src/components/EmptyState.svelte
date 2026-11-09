@@ -1,7 +1,7 @@
 <script lang="ts" module>
-  import type { Robot } from '../lib/robots';
-  /** The house creature: a plain jelly with round eyes and a smile, no hat or gear, in its own teal. */
-  export const HOUSE_BOT: Robot = { family: 'jelly', shape: 0, color: 6, eyes: 0, mouth: 1, top: 0, cheeks: 1, gear: 0 };
+  import { HOUSE_BOT as HOUSE, type Robot } from '../lib/robots';
+  /** The house creature (`lib/robots.ts`), kept here for the views that drew it from this module. */
+  export const HOUSE_BOT: Robot = HOUSE;
 </script>
 
 <script lang="ts">

@@ -72,6 +72,8 @@ export const strings = {
     languageSystem: 'System',
     languageNames: { en: 'English', fr: 'Français' },
     theme: 'Theme',
+    /** Under a page's title where its settings stay on the device in hand (Appearance). */
+    scopeDevice: 'On this device',
     display: 'Display',
     accent: 'Accent color',
     accentNames: ['Blue', 'Violet', 'Rose', 'Orange', 'Amber', 'Green', 'Teal'],
@@ -79,6 +81,8 @@ export const strings = {
       title: 'Colors',
       hint: 'Light and dark keep separate colors. Saved on this device.',
       palette: 'Color palette',
+      /** The sample a palette's tile writes in its ink. */
+      sample: 'Aa',
       allThemes: 'All themes',
       palettes: { default: 'Original', oled: 'OLED', catppuccin: 'Catppuccin', 'tokyo-night': 'Tokyo Night', nord: 'Nord', gruvbox: 'Gruvbox', amethyst: 'Amethyst' },
       customize: 'Customize colors',
@@ -225,6 +229,9 @@ export const strings = {
     endpoint: 'Endpoint',
     noCore: 'Not connected to a core.',
     archived: {
+      inProject: 'In {project}',
+      allProjects: 'All projects',
+      emptyProject: 'No archived thread in {project}.',
       doneRetentionLabel: 'Delete done threads after',
       doneRetentionHint: 'Counted from Mark done or an automatic archive after a PR merge. 3 days by default; 0 disables deletion. Manual archives are kept. Deleted conversations remain recoverable for the configured deletion retention.',
       deletesAt: 'Deletion: {date}',

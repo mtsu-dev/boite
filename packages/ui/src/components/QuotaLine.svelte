@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { untrack } from 'svelte';
+  import { tick, untrack } from 'svelte';
   import { Gauge } from '@lucide/svelte';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
@@ -8,7 +8,8 @@
   import { lowestLimit } from '../lib/limits-meter';
   import { work } from '../lib/work-prefs.svelte';
   import { controlMenu } from '../lib/controls';
-  import LimitsGlance from './LimitsGlance.svelte';
+  import Deferred, { parts } from './Deferred.svelte';
+  import type LimitsGlance from './LimitsGlance.svelte';
 
   /**
    * The limits at the foot of every list column: one line in words, what the
@@ -34,17 +35,26 @@
   const text = $derived(meter ? fill(strings.sidebar.quotaLeft, { percent: String(meter.left), window: quotaLimitName(meter.window) }) : strings.quotas.glance);
   const tip = $derived(meter ? fill(strings.app.rail.limitsLeft, { percent: String(meter.left), window: quotaWindowName(meter.window), account: meter.account }) : strings.quotas.glance);
   let button = $state<HTMLButtonElement>();
-  let glance = $state<ReturnType<typeof LimitsGlance>>();
+  let glance = $state<LimitsGlance>();
+
+  /** The glance is a click-only body in its own chunk: a press before it lands waits for it. */
+  async function openGlance() {
+    if (!glance) {
+      await parts.LimitsGlance.load().catch(() => undefined);
+      await tick();
+    }
+    void glance?.open();
+  }
 </script>
 
 {#if shown}
   <div class="quota-line">
     <button type="button" class="ghost line" class:low={meter?.tone === 'low'} bind:this={button} data-testid="nav-limits" title={tip} aria-label={tip} aria-haspopup="dialog"
-      onclick={() => void glance?.open()} oncontextmenu={(event) => controlMenu(event, store, 'sidebar.limits')}>
+      onclick={() => void openGlance()} oncontextmenu={(event) => controlMenu(event, store, 'sidebar.limits')}>
       <Gauge size={14} class={meter ? meter.tone : undefined} aria-hidden="true" />
       <span class="ui-label" data-testid={meter ? 'limits-gauge' : undefined} data-left={meter?.left}>{text}</span>
     </button>
-    <LimitsGlance bind:this={glance} {store} anchor={() => button ?? null} />
+    <Deferred part={parts.LimitsGlance} quiet>{#snippet children(Glance)}<Glance bind:this={glance} {store} anchor={() => button ?? null} />{/snippet}</Deferred>
   </div>
 {/if}
 

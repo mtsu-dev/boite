@@ -24,10 +24,10 @@ export const fr: Translation = {
       refused: 'Refusé : {process}', expired: 'Délai de réponse dépassé : {process}'
     },
     settings: {
-      allowedHeading: 'Fenêtres autorisées', allowedIntro: "Les agents d'un projet peuvent capturer les fenêtres de ces applications sans demander votre accord. Une application est ajoutée quand vous choisissez Toujours pour ce projet dans une demande de capture.",
+      allowedHeading: 'Fenêtres visibles par les agents', allowedIntro: "Les agents d'un projet peuvent capturer les fenêtres de ces applications sans demander votre accord. Une application est ajoutée quand vous choisissez Toujours pour ce projet dans une demande de capture.",
       allowedEmpty: "Aucune application n'est encore autorisée. Les applications sont ajoutées depuis une demande de capture dans la conversation.",
       remove: 'Retirer', removeTitle: 'Ne plus autoriser {process} ?', removeBody: 'Les agents du projet {project} demanderont de nouveau votre accord avant de capturer {process}.',
-      exclusionsHeading: 'Ne jamais capturer', exclusionsIntro: 'Aucun agent ne peut capturer les fenêtres de ces exécutables, même avec votre accord. Indiquez leur nom ou leur chemin.',
+      exclusionsHeading: 'Fenêtres jamais montrées aux agents', exclusionsIntro: 'Aucun agent ne peut capturer les fenêtres de ces exécutables, même avec votre accord. Indiquez leur nom ou leur chemin.',
       always: "Les gestionnaires de mots de passe et l'écran de connexion sont toujours exclus : {list}.",
       add: 'Ajouter', addLabel: "Nom ou chemin de l'exécutable", placeholder: 'game.exe ou C:\\Games\\game.exe',
       none: 'Aucune application ajoutée.', removeExclusion: 'Ne plus exclure {name}'

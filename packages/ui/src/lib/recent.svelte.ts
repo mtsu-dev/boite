@@ -4,6 +4,7 @@ import { hasUnsentDraft } from './composer-queue';
 import { archiveThread } from './archive';
 import { threadState } from './thread-state';
 import { rowAsks } from './status-order';
+import { strings } from './strings';
 
 export const RECENT_STORAGE_KEY = 'boite.recent.v1';
 
@@ -55,6 +56,14 @@ export function workingThread(store: Pick<Store, 'subagents'>, thread: ThreadSum
 export function canMarkDone(store: Store, thread: ThreadSummary): boolean {
   return !thread.archived && store.connection === 'ready' && !threadActive(thread.status)
     && !thread.backgroundWork?.kinds.length && !thread.pendingMove && !store.moveBlocked(thread.id);
+}
+
+/** Why Mark done is off for a kept thread, in a few words for its disabled row; null when it can be done. */
+export function markDoneBlocker(store: Store, thread: ThreadSummary): string | null {
+  if (canMarkDone(store, thread) || thread.archived) return null;
+  if (store.connection !== 'ready') return strings.sidebar.doneWhyOffline;
+  if (thread.pendingMove) return strings.sidebar.doneWhyMoving;
+  return strings.sidebar.doneWhyWorking;
 }
 
 export async function markDone(store: Store, thread: ThreadSummary): Promise<boolean> {

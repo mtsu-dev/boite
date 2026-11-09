@@ -21,6 +21,7 @@ export const strings = {
     laterProjects: 'Set aside',
     laterProjectsHint: 'Conversations you archived to pick up later, in projects with nothing else open.',
     idleProjectsHint: 'Nothing to do here: no open or set-aside conversation. Choose one to start a thread.',
+    filter: 'Filter',
     groupingOptions: 'Display options',
     /** The thread list's name, in the rail and over the list. */
     threads: 'Threads',
@@ -43,6 +44,10 @@ export const strings = {
     autoRemoveWorktreesHint: 'An hour after every conversation in a worktree is done or archived, Boite deletes the worktree if nothing would be lost: its last commit is on another branch, or a merged pull request has that exact commit. A merged branch goes too. Uncommitted changes always stay. Applies to this project.',
     noActiveProjects: 'No conversations need attention.',
     markDone: 'Mark done',
+    /** Why Mark done is off, beside its disabled row. */
+    doneWhyWorking: 'Still working',
+    doneWhyOffline: 'Not connected',
+    doneWhyMoving: 'Moving',
     doneToast: 'Marked "{title}" done',
     doneLoadFailed: 'Some completed threads could not be loaded.',
     /** The pull request under a done or archived conversation, which opens it on the forge. */
@@ -97,7 +102,6 @@ export const strings = {
     autoRemoveWorktrees: 'Remove settled worktrees',
     backToProjectMenu: 'Back',
     backToThreadMenu: 'Back',
-    viewArchivedThreads: 'View archived threads',
     importSession: 'Import a Claude Code session',
     /** Out of the list, not out of Boite: its threads keep running and a new one brings it back. */
     archiveProject: 'Archive project',

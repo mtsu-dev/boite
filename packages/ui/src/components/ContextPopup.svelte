@@ -16,12 +16,11 @@
    * never draws it. `ContextControl` keeps the meter, the open state and
    * Escape.
    */
-  let { store, popup, target, sheet, percent, autoCompact, cache, cacheNow, remaining, readingExpanded = $bindable(false), onshape }: {
+  let { store, popup, target, percent, autoCompact, cache, cacheNow, remaining, readingExpanded = $bindable(false), onshape }: {
     store: Store;
     popup: Closing;
     /** What the popup opens above. */
     target: () => HTMLElement | null;
-    sheet: boolean | undefined;
     percent: number | null;
     autoCompact: AutoCompact | null;
     cache: NonNullable<Store['openThread']>['promptCache'] | null;
@@ -92,7 +91,7 @@
 </script>
 
 <div class="popup" class:closing={popup.closing} role="dialog" aria-label={strings.thread.contextDetails} tabindex="-1" data-testid="context-popup" use:popup.attach onanimationend={popup.end}
-  use:floating={{ anchor: target, placement: 'top', sheet, align: 'end', cap: Infinity, dismiss: () => popup.hide() }}>
+  use:floating={{ anchor: target, placement: 'top', align: 'end', cap: Infinity, dismiss: () => popup.hide() }}>
   <div class="heading"><span class="title">{strings.thread.contextDetails}
     {#if context}<button type="button" class="reading-info ghost icon" data-testid="context-info" aria-label={fill(strings.common.moreInfo, { topic: strings.thread.contextDetails })} aria-expanded={readingExpanded} aria-controls={readingId} onclick={() => { readingExpanded = !readingExpanded; }}><Info size={14} /></button>{/if}
   </span>{#if percent !== null}<span class="num">{percent}%</span>{/if}</div>

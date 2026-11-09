@@ -43,9 +43,10 @@ describe('permission modes', () => {
     expect(modeHint('yolo', null)).toContain('skips Claude and Codex hooks');
   });
 
-  it('reads each mode at rest in one short word, Codex\'s default as the folder it keeps to', () => {
+  it('reads each mode at rest in the same word on every agent, Codex\'s folder in the line under it', () => {
     expect(modesFor(provider('claude-sdk')).map((mode) => modeWord(mode, provider('claude-sdk')))).toEqual(['No limits', 'Auto', 'Edit freely', 'Ask']);
-    expect(modeWord('default', provider('codex-appserver'))).toBe('This folder');
+    expect(modesFor(provider('codex-appserver')).map((mode) => modeWord(mode, provider('codex-appserver')))).toEqual(['No limits', 'Auto', 'Ask']);
+    expect(modeLabel('default', provider('codex-appserver'))).toBe('Works in this folder, asks to go beyond it');
     expect(modeWord('plan', null)).toBe('Plan');
     expect(modeWord('dontAsk', null)).toBe('Auto-deny');
   });

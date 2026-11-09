@@ -2,6 +2,8 @@ import type { Translation } from '../../i18n.svelte';
 
 export const fr: Translation = {
   machines: {
+    /** Where a page's settings apply: a machine page under its title, the windows cards at the foot of Machines. */
+    scopeOn: 'Sur {machine}',
     heading: 'Machines', local: 'Cet ordinateur', projects: 'Projets', recent: 'Récent',
     intro: 'Chaque machine exécute ses propres agents sur ses propres fichiers.',
     details: 'Détails', address: 'Adresse', updateFailed: 'Mise à jour échouée',

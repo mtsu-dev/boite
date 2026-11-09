@@ -183,9 +183,12 @@ test("a desktop's column is the open bot's: who it is, its conversation, its thr
     expect(document.querySelector('[data-testid^="agent-entry-"]')).toBeNull();
     expect(document.querySelector('[data-testid=agents-search-toggle]')).toBeNull();
     expect(document.querySelectorAll('.agents-rail .section-label')).toHaveLength(0);
-    // The window's top bar carries the chat's header, one line: its name and Conversation, nothing it repeats from the column.
+    // The window's top bar carries the chat's header in a thread header's pattern: its name, its view menu, the Panels door.
     expect(document.querySelector('[data-testid=titlebar] [data-testid=agent-header]')).not.toBeNull();
-    expect(document.querySelector('[data-testid=agent-header]')?.textContent).toContain(`${nova.name}${strings.agents.deskPanel.conversation}`);
+    const botHead = document.querySelector('[data-testid=agent-header]')!;
+    expect(botHead.querySelector('.agent-head-name')?.textContent).toBe(nova.name);
+    expect(botHead.querySelector('[data-testid=agent-menu]')).not.toBeNull();
+    expect(botHead.querySelector('[data-testid=agent-desk-toggle]')?.textContent).toContain(strings.thread.panelMenu);
     expect(document.querySelector('[data-testid=agent-live]')).toBeNull();
     const conversation = document.querySelector<HTMLButtonElement>('[data-testid=bot-conversation]')!;
     expect(conversation.getAttribute('aria-current')).toBe('page');

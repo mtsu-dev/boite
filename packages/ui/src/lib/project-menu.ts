@@ -2,6 +2,7 @@ import { AppWindow, Archive, ArrowDown, ArrowUp, Copy, FolderMinus, GitBranch, H
 import type { Project } from '@boite/contracts';
 import type { Store } from './store.svelte';
 import { workspace } from './workspace.svelte';
+import { archivedFocus } from './archived-focus.svelte';
 import { confirm } from './confirm.svelte';
 import { contextMenu } from './context-menu.svelte';
 import { experimentOn } from './experiments.svelte';
@@ -30,8 +31,8 @@ export async function archiveProjectWithUndo(owner: Store, project: Project): Pr
   });
 }
 
-/** A card's archived threads, shown under its rows or not: the switch and its count live in the card's menu. */
-export type ArchivedInCard = { count: number; open: boolean; toggle: () => void };
+/** A card's archived threads: their count names the menu's way to their one home, Settings' archive opened on this project. */
+export type ArchivedInCard = { count: number };
 
 export function projectMenu(event: MouseEvent, owner: Store, project: Project, reorder?: {
   up: boolean;
@@ -77,12 +78,13 @@ export function projectMenu(event: MouseEvent, owner: Store, project: Project, r
     { id: 'new', label: strings.sidebar.newThread, glyph: Plus, disabled: project.missing === true, ...(project.missing === true ? { title: strings.sidebar.projectMissing } : {}) },
     { id: 'copy', label: strings.sidebar.copyPath, title: project.path, glyph: Copy },
     ...(project.kind !== 'drafts' ? [{ id: 'rename', label: strings.common.rename, glyph: PencilLine }] : []),
-    // The card's header keeps one count: its archived threads show under its rows from here, their count beside.
-    ...(archived && archived.count > 0 ? [{
-      id: 'archived-rows', label: strings.sidebar.archivedGroup, hint: count(archived.count), checked: archived.open, testid: 'project-archived-toggle',
-      title: fill(strings.sidebar.projectArchivedThreads, { count: String(archived.count), project: projectName(project) })
-    }] : []),
-    { id: 'archived', label: strings.sidebar.viewArchivedThreads, glyph: History },
+    // Archived threads have one home, Settings' archive: from a card it opens on this project, its count beside.
+    {
+      id: 'archived', label: strings.settings.archived.heading, glyph: History, testid: 'project-archived-toggle',
+      ...(archived && archived.count > 0 ? {
+        hint: count(archived.count), title: fill(strings.sidebar.projectArchivedThreads, { count: String(archived.count), project: projectName(project) })
+      } : {})
+    },
     ...(owner.owner || project.kind !== 'drafts' || reorder
       ? [separator(), { id: 'manage', label: strings.sidebar.manageProject, glyph: Settings, hint: '›', submenu: true }]
       : [])
@@ -111,9 +113,10 @@ export function projectMenu(event: MouseEvent, owner: Store, project: Project, r
         });
         if (name !== null && owner.client === client && owner.clientGeneration === clientGeneration) await owner.renameProject(project.id, name);
       }
-      if (action === 'archived-rows') archived?.toggle();
       if (action === 'archived') {
         if (workspace.active !== owner) await workspace.select(owner);
+        archivedFocus.store = owner;
+        archivedFocus.projectId = project.id;
         owner.showSettings('general', 'archived');
       }
       if (action === 'archive-project') await archiveProjectWithUndo(owner, project);

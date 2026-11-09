@@ -1,5 +1,9 @@
 <script lang="ts">
   import { Brain, Zap } from '@lucide/svelte';
+  /** The agents' level ids and the cost line each one reads. */
+  const LEVEL_COST: Record<string, 'off' | 'low' | 'middle' | 'deeper' | 'high' | 'top' | 'extended'> = {
+    off: 'off', none: 'off', minimal: 'off', low: 'low', medium: 'middle', high: 'deeper', xhigh: 'high', max: 'top', ultra: 'extended', ultrathink: 'extended'
+  };
   import type { EffortLevel } from '@boite/contracts';
   import { onDestroy } from 'svelte';
   import { Closing } from '../lib/closing.svelte';
@@ -88,12 +92,18 @@
   let last = $derived(Math.max(0, levels.length - 1));
   /** 0 at the lowest level, 1 at the highest: how much the filled part glows. */
   let glow = $derived(last === 0 ? 1 : position / last);
-  /** The level's place on its scale in plain words: the scales differ, so a share of it, not an id. */
+  /**
+   * The trade-off of the hovered or picked level in plain words, by its id:
+   * "High" is the third of six on one scale and the last of three on another,
+   * and reads the same on both. A level of another name reads its place on the scale.
+   */
   let cost = $derived.by(() => {
     if (levels.length === 0) return null;
     if (shown < 0) return strings.composer.effortDefaultHint;
-    const ratio = last === 0 ? 0.5 : shown / last;
     const words = strings.composer.effortCost;
+    const named = LEVEL_COST[levels[shown]?.id ?? ''];
+    if (named) return words[named];
+    const ratio = last === 0 ? 0.5 : shown / last;
     return ratio <= 0 ? words.low : ratio >= 1 ? words.top : ratio > 0.5 ? words.high : words.middle;
   });
 

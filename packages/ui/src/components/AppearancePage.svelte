@@ -203,7 +203,7 @@
       <span class="text"><span class="ui-label">{strings.settings.chatWidth}</span><span class="hint">{strings.settings.chatWidthResult[chatWidth]}</span></span>
       <div class="segmented" role="group" aria-label={strings.settings.chatWidth}>
         {#each widths as option (option.id)}
-          <button type="button" class:on={chatWidth === option.id} aria-pressed={chatWidth === option.id} data-testid="chat-width-{option.id}" onclick={() => pickChatWidth(option.id)}><span class="ui-label">{option.label}</span></button>
+          <button type="button" class:on={chatWidth === option.id} aria-pressed={chatWidth === option.id} data-testid="chat-width-{option.id}" onclick={() => pickChatWidth(option.id)}><span class="glyph width {option.id}" aria-hidden="true"><i></i></span><span class="ui-label">{option.label}</span></button>
         {/each}
       </div>
     </div>
@@ -264,7 +264,7 @@
         <span class="text"><span class="ui-label">{strings.controls.preset}</span>{#if preset}<span class="hint">{strings.controls.presetResult[preset]}</span>{/if}</span>
         <div class="segmented" role="group" aria-label={strings.controls.preset}>
           {#each presets as option (option.id)}
-            <button type="button" class:on={preset === option.id} aria-pressed={preset === option.id} data-testid="controls-preset-{option.id}" onclick={() => work.showPreset(option.id)}><span class="ui-label">{option.label}</span></button>
+            <button type="button" class:on={preset === option.id} aria-pressed={preset === option.id} data-testid="controls-preset-{option.id}" onclick={() => work.showPreset(option.id)}><span class="glyph buttons" aria-hidden="true">{#each { length: option.id === 'developer' ? 5 : 2 } as _, index (index)}<i></i>{/each}</span><span class="ui-label">{option.label}</span></button>
           {/each}
         </div>
       </div>
@@ -300,7 +300,17 @@
   .swatch.light { background: var(--palette-light-default-background); }
   .swatch.system { background: linear-gradient(135deg, var(--palette-light-default-background) 50%, var(--palette-dark-default-background) 50%); }
   .swatch.grain { background: linear-gradient(135deg, var(--palette-light-default-frame), var(--palette-dark-default-frame)); }
-  .segmented button:has(.swatch) { gap: 6px; }
+  .segmented button:has(.swatch, .glyph) { gap: 6px; }
+  /* A choice's picture beside its word (round 18): the column inside the window for a width,
+     the bar's buttons for a preset, drawn in the button's own ink so the lit one reads as lit. */
+  .glyph { flex: none; display: inline-flex; align-items: center; width: 20px; height: 13px; padding: 2px; border-radius: calc(var(--radius-sm) / 2); box-shadow: inset 0 0 0 1px currentColor; opacity: 0.85; }
+  .glyph.width { justify-content: center; }
+  .glyph.width i { height: 100%; border-radius: 1px; background: currentColor; opacity: 0.55; }
+  .glyph.width.comfortable i { width: 45%; }
+  .glyph.width.wide i { width: 70%; }
+  .glyph.width.full i { width: 100%; }
+  .glyph.buttons { gap: 1.5px; justify-content: flex-end; }
+  .glyph.buttons i { width: 2.5px; height: 2.5px; border-radius: 50%; background: currentColor; }
   .zoom button { display: inline-flex; align-items: center; justify-content: center; padding: 0 8px; }
   .zoom-error { margin: 0; color: var(--color-danger); font-size: var(--text-xs); overflow-wrap: anywhere; }
   .zoom .zoom-value { min-width: 56px; font-variant-numeric: tabular-nums; color: var(--color-foreground); }

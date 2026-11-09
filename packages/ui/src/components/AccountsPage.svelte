@@ -4,6 +4,8 @@
   import HarnessUpdatesCard from './HarnessUpdatesCard.svelte';
   import SubscriptionProxySettings from './SubscriptionProxySettings.svelte';
   import LocalAcpCard from './LocalAcpCard.svelte';
+  import SecretsCard from './SecretsCard.svelte';
+  import BrowserProfilesCard from './BrowserProfilesCard.svelte';
   import { onMount } from 'svelte';
   import { slide } from 'svelte/transition';
   import { ChevronRight, Plus, RefreshCw, Terminal } from '@lucide/svelte';
@@ -712,6 +714,10 @@
   {#if store.owner}<LocalAcpCard {store} />{/if}
   {#if store.owner}<HarnessUpdatesCard {store} />{/if}
   {#if store.owner}<SubscriptionProxySettings {store} />{/if}
+  <!-- What agents sign in with beyond a provider: the keys they ask for in a card, and the browser's logins
+       (round 18, once under General). Profiles also configure the core's agent browser from a plain web client. -->
+  <SecretsCard />
+  {#if store.owner}<BrowserProfilesCard />{/if}
 </div>
 
 <style>

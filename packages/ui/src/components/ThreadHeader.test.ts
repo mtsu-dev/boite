@@ -124,10 +124,12 @@ test("a desktop header's menu has find first, seven rows at most and names its g
   expect(actions.length).toBeLessThanOrEqual(7);
   for (const id of ['find', 'rename', 'pin', 'done', 'archive']) expect(menu.querySelector(`[data-value="${id}"]`)).not.toBeNull();
   const group = menu.querySelector<HTMLButtonElement>('[data-value="more"]');
-  expect(group?.textContent).toContain(strings.thread.manage);
+  // Named for what it holds: no bot here, so its title and its folder.
+  expect(group?.textContent?.trim()).toBe(strings.thread.manageNoBot);
   group!.click(); await settle();
-  // The group swaps in place: what the thread is first (its branch), then the rest.
+  // The group swaps in place under a back row that keeps its name: the title, then the folder.
   const list = document.querySelector<HTMLElement>('[data-testid=thread-menu-trigger-menu]')!;
+  expect(list.querySelector('[data-value="back"]')?.textContent).toContain(strings.thread.manageNoBot);
   for (const id of ['back', 'retitle', 'move', 'copy']) expect(list.querySelector(`[data-value="${id}"]`)).not.toBeNull();
   expect(list.querySelector('[data-value="rename"]')).toBeNull();
   for (const id of ['kind:changes', 'agents', 'terminal-toggle', 'coordination']) expect(list.querySelector(`[data-value="${id}"]`)).toBeNull();

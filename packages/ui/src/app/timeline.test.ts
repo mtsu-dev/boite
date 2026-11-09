@@ -245,3 +245,18 @@ test('a tool card shows the diff, the markdown and the image it produced', async
   expect(image.getAttribute('src')?.startsWith('data:image/png;base64,iVBORw0KGgo')).toBe(true);
   expect(image.alt).toBe('one pixel');
 });
+
+test('a finished thread ends on its closing line under the last message, inside the timeline', async ({ app: _app }) => {
+  await waitFor(() => document.querySelector('[data-thread-id="t-trace"]') !== null);
+  query<HTMLButtonElement>('[data-thread-id="t-trace"]').click();
+  await waitFor(() => store.openThread?.id === 't-trace');
+  await sendPrompt('one more look');
+  await waitFor(() => store.openThread?.turns.at(-1)?.status === 'done');
+  await waitFor(() => document.querySelector('[data-testid=thread-closing]') !== null);
+  const closing = query('[data-testid=thread-closing]');
+  expect(closing.textContent).toMatch(/^Done · Worked for /);
+  // It scrolls with the conversation, never stands above the composer.
+  expect(closing.closest('[data-testid=timeline]')).not.toBeNull();
+  const last = Array.from(document.querySelectorAll('[data-testid=timeline] article')).at(-1)!;
+  expect(last.compareDocumentPosition(closing) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});

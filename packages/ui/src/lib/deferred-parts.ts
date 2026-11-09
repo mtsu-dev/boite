@@ -3,7 +3,7 @@ import { LazyComponent } from './lazy-component.svelte';
 /**
  * Components that rows and bars of the first screen hold but do not draw on
  * it: the image viewer, the dictation panel's microphone, a diff, the quota
- * popup's table, question, secret, team and council cards, the coordination
+ * popup's table and the limits glance, question, secret, team and council cards, the coordination
  * settings, the updates card, a robot's face and the model picker's popover.
  * Each is its own chunk; the place asks when it mounts
  * (`components/Deferred.svelte`), and App fetches them all once the app is
@@ -18,6 +18,7 @@ export const parts = {
   TeamCard: new LazyComponent(() => import('../components/TeamCard.svelte')),
   CouncilCard: new LazyComponent(() => import('../components/council/CouncilCard.svelte')),
   QuotaOverview: new LazyComponent(() => import('../components/QuotaOverview.svelte')),
+  LimitsGlance: new LazyComponent(() => import('../components/LimitsGlance.svelte')),
   PinnedQuota: new LazyComponent(() => import('../components/PinnedQuota.svelte')),
   CoordinationPanel: new LazyComponent(() => import('../components/CoordinationPanel.svelte')),
   UpdatesNotice: new LazyComponent(() => import('../components/UpdatesNotice.svelte')),

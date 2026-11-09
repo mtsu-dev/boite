@@ -5,6 +5,7 @@
   import { runCommand } from '../lib/commands.svelte';
   import { agentSlashItems, boiteSlashItems, skillSlashItems, slashCompletion, listKey, mentionQueryOf, slashQueryOf, type ChipCommand } from '../lib/composer-menus';
   import { AgentsView, agentOfThread } from '../lib/agents.svelte';
+  import { routeGone } from '../lib/agent-route';
   import { composerPlaceholder } from '../lib/composer-placeholder';
   import { collapsesOnLeave } from '../lib/arrival';
   import { readyToSend, receiveDroppedFiles, takeFiles } from '../lib/composer-attachments';
@@ -19,11 +20,12 @@
   import { focusInitial, focusWithin } from '../lib/focus';
   import { touchScreen } from '../lib/device';
   import { noteTyping, repliesOf, replyTarget, sendAnswer } from '../lib/question-reply.svelte';
+  import { Check } from '@lucide/svelte';
   import { emptyBox, returnPrompt, sendNowAction, sentPrompts, type ComposerState, type SentPrompt } from '../lib/composer-queue';
   import { rankItems, type PaletteItem } from '../lib/palette';
   import { clearStash, DRAFT_STASH_KEY, readStash, writeStash } from '../lib/prefs';
   import { claudeKeywords, promptSegments } from '../lib/message-display';
-  import { strings } from '../lib/strings';
+  import { fill, strings } from '../lib/strings';
   import type { Choice, Store } from '../lib/store.svelte';
   import { machineName, workspace } from '../lib/workspace.svelte';
   import ComposerAttachments from './ComposerAttachments.svelte';
@@ -175,13 +177,27 @@
   $effect(() => { void key; void store; untrack(() => { sendWhenLoaded = null; }); });
 
   /** A persistent agent's own thread: the box is addressed to it by name, and its model, effort and mode live in its settings, not on chips. */
-  const bot = $derived(thread?.agentSessionId ? agentOfThread(AgentsView.of(store).snapshot, thread.id)?.name ?? null : null);
+  const botProfile = $derived(thread?.agentSessionId ? agentOfThread(AgentsView.of(store).snapshot, thread.id) : null);
+  const bot = $derived(botProfile?.name ?? null);
+  /** The bot's account is gone: its chips point at the banner's remedy (`agents/AgentProblem.svelte`). */
+  const botGone = $derived(!!botProfile && routeGone(store, botProfile.selection));
 
   /** The thread's asks to run a tool dock at the top of the box, the oldest first; a message sent meanwhile is queued. */
   let permissions = $derived(target || !thread ? [] : store.pendingPermissions.filter((request) => request.threadId === thread.id));
   let permission = $derived(permissions[0] ?? null);
   /** The question on screen at the top of the box, whose options 1 to 9 pick while the field is empty. */
   let docked = $derived(target ? undefined : store.pendingQuestions.find((question) => question.id === repliesOf(store).docked && question.threadId === thread?.id));
+  /**
+   * The answer just sent while the agent works, by any of its controls
+   * (`sendAnswer`): one quiet line where the question stood, so the user sees
+   * it went, while the working line goes on. It leaves when the turn ends,
+   * another decision docks or the thread changes.
+   */
+  // Two steps: state a derived creates is not a dependency of that same derived, and the first read may create the replies.
+  let replies = $derived(repliesOf(store));
+  let receipt = $derived(replies.receipt);
+  let receiptShown = $derived(receipt !== null && receipt.threadId === thread?.id && store.busy && !docked && !permission);
+  $effect(() => { if (receipt && (receipt.threadId !== thread?.id || !store.busy)) replies.receipt = null; });
   $effect(prefetchPermissionCard);
 
   /**
@@ -777,6 +793,9 @@
     {#if thread}<AgentDock {store} threadId={thread.id} bind:height={deckRoom} />{/if}
     {#if permission}{#key permission.id}<Deferred part={permissionCard}>{#snippet children(PermissionCard)}<PermissionCard docked toolName={permission.toolName} decision={null} request={permission} answer={(decision) => store.answer(permission.id, decision)} index={1} total={permissions.length} />{/snippet}</Deferred>{/key}{/if}
     {#if !target}<ThreadActivity {store} />{/if}
+    {#if receiptShown && receipt}
+      <p class="receipt ui-label" data-testid="answer-receipt" role="status"><Check size={14} strokeWidth={2} aria-hidden="true" /><span>{fill(strings.chat.questionAnswered, { answer: receipt.said })}</span></p>
+    {/if}
     </div>
     <ComposerQueueRegion {store} {key} {thread} {composer} machine={machineLabel} {sendNow}
       blocked={text.length > 0 || attachments.length > 0 || previewReferences.length > 0} onrestore={restoreQueued} onsendnow={sendQueuedNow} />
@@ -845,7 +864,7 @@
 
     <ComposerSpeechPreview status={speechStatus} preview={speechPreview} error={speechError} />
 
-    <ComposerBar bind:this={toolbar} {store} {key} {target} {bot} {provider} canSend={sendable && !stopped} waiting={sendWhenLoaded !== null} answering={!!reply} composer={permission || docked ? shell ?? null : null}
+    <ComposerBar bind:this={toolbar} {store} {key} {target} {bot} {botGone} {provider} canSend={sendable && !stopped} waiting={sendWhenLoaded !== null} answering={!!reply}
       onmention={!target && !reply && mentionProject !== null ? startMention : undefined} oncommand={!target && !reply && text.trim() === '' ? startCommand : undefined} sendLabel={reply ? strings.composer.replySend : undefined} bind:choice bind:picking bind:dictating
       onsubmit={() => void submit()}
       onfiles={(files) => void take(files)}
@@ -904,23 +923,27 @@
      about half of the conversation (`--dock-budget`), room enough for a
      question's four choices; the subagents' rows keep their size and the
      rest scrolls inside it. Empty, it takes no room. */
-  .deck { display: flex; flex-direction: column; --dock-inset: 14px; --decision-fill: color-mix(in srgb, var(--color-composer-surface), var(--color-foreground) 6%); }
+  .deck { display: flex; flex-direction: column; --dock-inset: 14px; --decision-fill: color-mix(in srgb, var(--color-composer-surface), var(--color-foreground) 9%); }
   .deck > :global(*) { flex: none; }
   .deck > :global(:is(.activity, .decision-card)) { flex: 0 1 auto; min-height: 0; }
   @media (min-width: 721px) {
     .deck { --dock-budget: 55dvh; max-height: max(160px, calc(var(--dock-budget) - 126px)); }
   }
-  /* The decision is the one raised thing in the card: a soft tile with no
-     edge, inset from the card's sides. The subagents' chips above it, the
-     tasks and the queued line under it sit flat on the card's own surface,
-     with no rule between them and the field. */
+  /* The decision is the strongest surface of the card: a raised tile with a
+     faint light on its top edge, inset from the card's sides. The subagents'
+     chips above it and the queued line under it sit flat on the card's own
+     surface in a quieter ink, so the eye goes decision, then field. */
   .deck :global(.decision-card) {
     border: none;
     border-radius: var(--radius-lg);
     background: var(--decision-fill);
-    box-shadow: none;
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-foreground) 9%, transparent);
     --dock-inset: 8px;
   }
+  /* The answer as sent: one quiet line in the dock's own ink, cut to one line, its check where the question's dot stood. */
+  .receipt { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0; padding: 4px var(--dock-inset) 0; color: var(--color-subtle); font-size: var(--text-meta); }
+  .receipt span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .receipt :global(svg) { flex: none; color: var(--color-success); }
   /* A long ask scrolls inside itself, its head and its choices in sight (its own file). */
   /* A permission sits in the deck itself; a question's tile takes its inset from ThreadActivity's padding. */
   .deck > :global(.decision-card) { margin: 6px 6px 2px; overflow-y: auto; overscroll-behavior: contain; }
@@ -984,6 +1007,11 @@
     /* The gap under the field becomes its own padding: the same height on screen, the whole of it a finger's target. */
     .input-wrap { margin-bottom: 0; }
     textarea, .input-paint { min-height: var(--composer-input-height, 44px); padding-bottom: var(--composer-input-gap, 6px); }
+    /* The microphone and send stand at the field's end (ComposerBar): its text, mirror and dictation preview stop short of them. */
+    .composer { --composer-tools: var(--touch-target); }
+    .composer:has(:global(.bar .tools[data-count='2'])) { --composer-tools: calc(var(--touch-target) * 2); }
+    textarea, .input-paint { padding-right: calc(var(--composer-tools) + 8px); }
+    .composer :global(.speech-preview) { padding-right: calc(var(--composer-tools) + 8px); }
     .composer-wrap, .composer-wrap.centered {
       padding: 8px 12px max(10px, env(safe-area-inset-bottom));
     }
@@ -991,4 +1019,6 @@
 
     :global(html[data-keyboard='open']) .composer-wrap { padding-bottom: 8px; }
   }
+  /* A 390 or 360 px phone gives the card's side margins to the chips' words. */
+  @media (max-width: 400px) { .composer-wrap, .composer-wrap.centered { padding-inline: 8px; } }
 </style>

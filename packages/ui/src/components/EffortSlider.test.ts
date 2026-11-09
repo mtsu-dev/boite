@@ -74,11 +74,11 @@ test('the heading keeps the picked level while a hovered dot gets a ring, its ow
   const cost = () => query('[data-testid=effort-cost]');
   const preview = () => document.querySelector('[data-testid=effort-preview]');
   const ends = () => [...document.querySelectorAll('[data-testid=effort-ends] .end')].map((end) => end.textContent);
-  // At rest: the live level, the scale's two ends by name, and the balanced line for the middle of the scale.
+  // At rest: the live level, the scale's two ends by name, and the line of that level.
   expect(level().textContent).toBe('Low');
   expect(ends()).toEqual(['Off', 'High']);
   expect(preview()).toBeNull();
-  expect(cost().textContent).toBe('Balanced depth and speed');
+  expect(cost().textContent).toBe('Quick answers, light on your limits');
   expect(cost().classList.contains('previewing')).toBe(false);
   // jsdom lays nothing out: give the line a width so the pointer lands on the last dot.
   const line = query('[data-testid=effort-track] .line');
@@ -92,7 +92,7 @@ test('the heading keeps the picked level while a hovered dot gets a ring, its ow
   expect(query('[data-dot=high]').classList.contains('hovered')).toBe(true);
   expect(query('[data-testid=effort-ends]').classList.contains('previewing')).toBe(true);
   expect(Array.from(document.querySelectorAll('.dot.on')).map((dot) => dot.getAttribute('data-dot'))).toEqual(['off', 'low']);
-  expect(cost().textContent).toBe('Deepest thinking, slowest and costliest');
+  expect(cost().textContent).toBe('Thinks it through, a little slower');
   expect(cost().classList.contains('previewing')).toBe(true);
   // A finger has no hover: it previews nothing.
   track.dispatchEvent(new MouseEvent('pointerleave'));
@@ -100,8 +100,17 @@ test('the heading keeps the picked level while a hovered dot gets a ring, its ow
   track.dispatchEvent(Object.assign(new MouseEvent('pointermove', { bubbles: true, clientX: 199 }), { pointerType: 'touch' }));
   flushSync();
   expect(preview()).toBeNull();
-  expect(cost().textContent).toBe('Balanced depth and speed');
+  expect(cost().textContent).toBe('Quick answers, light on your limits');
   expect(onpick).not.toHaveBeenCalled();
+});
+
+test('the cost line follows the level by its name, not its place: High on a six-level scale is never the balanced middle', () => {
+  const scale: EffortLevel[] = ['low', 'medium', 'high', 'xhigh', 'max', 'ultrathink'].map((id) => ({ id, label: id }));
+  mounted = mount(EffortSlider, { target: document.body, props: { levels: scale, active: 'high', onpick() {} } });
+  flushSync();
+  query<HTMLButtonElement>('[data-testid=composer-effort]').click();
+  flushSync();
+  expect(query('[data-testid=effort-cost]').textContent).toBe('Thinks it through, a little slower');
 });
 
 test('the fast switch reads its name beside the bolt whether it is on or off', async () => {

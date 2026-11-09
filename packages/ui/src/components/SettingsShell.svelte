@@ -4,14 +4,15 @@
   import MobileSettings from './MobileSettings.svelte';
   import BrainPage from './BrainPage.svelte';
   import InfoTip from './InfoTip.svelte';
-  import { ChevronLeft, ChevronRight, Search } from '@lucide/svelte';
+  import { ChevronLeft, ChevronRight, MonitorSmartphone, Search, Monitor } from '@lucide/svelte';
+  import { SETTINGS_ICONS, SETTINGS_ICON_SIZE, SETTINGS_ICON_STROKE } from '../lib/settings-icons';
   import KeyboardPage from './KeyboardPage.svelte';
   import LimitsPage from './LimitsPage.svelte';
   import PluginsPage from './PluginsPage.svelte';
   import { COMMAND_GROUPS } from '../lib/keybindings';
   import { EXPERIMENT_IDS } from '../lib/experiments';
   import { experimentCopy } from '../lib/experiment-copy';
-  import { strings } from '../lib/strings';
+  import { fill, strings } from '../lib/strings';
   import type { SettingsTab, Store } from '../lib/store.svelte';
   import AccountsPage from './AccountsPage.svelte';
   import AdvancedSettings from './AdvancedSettings.svelte';
@@ -26,7 +27,7 @@
   import UsagePage from './UsagePage.svelte';
   import VoiceSettings from './VoiceSettings.svelte';
   import { providerGroups } from '../lib/provider-family';
-  import { isThisPC, workspace } from '../lib/workspace.svelte';
+  import { isThisPC, machineName, workspace } from '../lib/workspace.svelte';
   import SettingsMachineBar from './SettingsMachineBar.svelte';
   import { untrack } from 'svelte';
   import { holdSettingsCard, revealSettingsCard } from '../lib/settings-flash';
@@ -87,8 +88,8 @@
   type SettingsEntry = { tab: SettingsTab; section: string | null; label: string; trail: string };
 
   // Derived, not built once: the nav is written in the language the app is
-  // speaking, and the language changes without a reload. Words only: an icon
-  // a row said nothing the name did not.
+  // speaking, and the language changes without a reload. Each entry wears its
+  // icon (`SETTINGS_ICONS`), so the list scans by shape as well as by word.
   let all = $derived<Tab[]>([
     { id: 'general', label: strings.settings.tabs.general },
     { id: 'appearance', label: strings.settings.tabs.appearance },
@@ -116,9 +117,6 @@
       { id: 'workspace', label: strings.settings.workspace },
       { id: 'archived', label: strings.settings.archived.heading },
       ...(store.owner ? [{ id: 'worktrees', label: strings.settings.worktrees.heading }] : []),
-      ...(store.owner ? [{ id: 'windows', label: strings.windows.settings.allowedHeading }, { id: 'window-exclusions', label: strings.windows.settings.exclusionsHeading }] : []),
-      { id: 'secrets', label: strings.secrets.heading },
-      ...(store.owner ? [{ id: 'browser-profiles', label: strings.browserProfiles.card }] : []),
       { id: 'app', label: strings.settings.app },
       ...(store.owner ? [{ id: 'privacy', label: strings.telemetry.heading }] : []),
       ...(target.policy?.present ? [{ id: 'policy', label: strings.policy.heading }] : [])
@@ -132,7 +130,9 @@
     // The page's order: connected providers first, then the ones still to add.
     accounts: [
       ...[...providerList.connected, ...providerList.rest, ...providerList.off].map((row) => ({ id: `provider-${row.id}`, label: row.name })),
-      { id: 'agent-updates', label: strings.harnessUpdates.heading }
+      { id: 'agent-updates', label: strings.harnessUpdates.heading },
+      { id: 'secrets', label: strings.secrets.heading },
+      { id: 'browser-profiles', label: strings.browserProfiles.card }
     ],
     usage: [
       { id: 'usage-overview', label: strings.usage.overview },
@@ -146,7 +146,8 @@
     ],
     machines: [
       { id: 'updates', label: strings.appUpdate.updates },
-      { id: 'machines', label: strings.machines.heading }
+      { id: 'machines', label: strings.machines.heading },
+      ...(store.owner ? [{ id: 'windows', label: strings.windows.settings.allowedHeading }, { id: 'window-exclusions', label: strings.windows.settings.exclusionsHeading }] : [])
     ],
     advanced: [
       ...(store.owner ? [{ id: 'execution', label: strings.settings.execution }, { id: 'phone', label: strings.phone.heading }, { id: 'origins', label: strings.machines.browserOrigins }] : []),
@@ -200,6 +201,16 @@
   /** One title per screen, at the top of its card: the page's own name, as the nav lists it. */
   let title = $derived(tabs.find((entry) => entry.id === tab)?.label ?? '');
   let info = $derived(infoOf(tab));
+  /**
+   * Where the page's settings apply, under its title where it is not obvious (round 18): this device for
+   * Appearance, the machine for a machine's page. The bar names it instead once there is one to pick.
+   */
+  let scope = $derived.by(() => {
+    if (tab === 'appearance') return { device: true, text: strings.settings.scopeDevice };
+    if (!machinePage(tab) || bar) return null;
+    const machine = workspace.machines.find((m) => m.store === target);
+    return machine ? { device: false, text: fill(strings.machines.scopeOn, { machine: machineName(machine) }) } : null;
+  });
 
   /**
    * On a desktop the card carries the screen's one title, a step over the
@@ -230,8 +241,8 @@
     ['general', 'conversations', strings.features.chatArtifacts.title],
     ...(inShell ? [['general', 'conversations', strings.features.openChatLinks.title] as [SettingsTab, string, string]] : []),
     ['general', 'conversations', strings.features.previewComments.title],
-    ...(store.owner ? [['general', 'browser-profiles', strings.browserProfiles.heading]] as [SettingsTab, string, string][] : []),
-    ...(store.owner ? [['general', 'window-exclusions', strings.windows.settings.addLabel]] as [SettingsTab, string, string][] : []),
+    ...(store.owner ? [['accounts', 'browser-profiles', strings.browserProfiles.heading]] as [SettingsTab, string, string][] : []),
+    ...(store.owner ? [['machines', 'window-exclusions', strings.windows.settings.addLabel]] as [SettingsTab, string, string][] : []),
     ['general', 'archived', strings.settings.archived.doneRetentionLabel],
     // The switch lives in the shell's own card: a browser has no tray.
     ...(inShell ? [['general', 'app', strings.settings.closeToTray] as [SettingsTab, string, string]] : []),
@@ -394,6 +405,7 @@
     {#each groups as entry (entry.id)}
       {#each [entry, ...entry.members] as page, index (page.id)}
         {@const here = !searching && current === page.id}
+        {@const Icon = SETTINGS_ICONS[page.id as keyof typeof SETTINGS_ICONS]}
         <button
           type="button"
           class="ghost tab"
@@ -403,6 +415,7 @@
           aria-current={here ? 'page' : undefined}
           onclick={() => go(page.id)}
         >
+          {#if Icon}<Icon size={SETTINGS_ICON_SIZE} strokeWidth={SETTINGS_ICON_STROKE} aria-hidden="true" />{/if}
           <span class="ui-label">{page.label}</span>
         </button>
       {/each}
@@ -432,6 +445,7 @@
       {:else}
         <header class="screen" data-testid="settings-crumb">
           <h1 class="ui-label-box"><span class="ui-label">{title}</span>{#if info}<InfoTip topic={title} text={info} testid="settings-info" />{/if}</h1>
+          {#if scope}<p class="scope" data-testid="settings-scope">{#if scope.device}<MonitorSmartphone size={14} strokeWidth={1.75} aria-hidden="true" />{:else}<Monitor size={14} strokeWidth={1.75} aria-hidden="true" />{/if}<span class="ui-label">{scope.text}</span></p>{/if}
         </header>
         {#if bar && tab !== 'experiments'}{@render machineBar()}{/if}
         {#key target}
@@ -456,7 +470,7 @@
       {:else if page === 'general'}
         <GeneralSettings store={target} here={store} />
       {:else if page === 'machines'}
-        <MachinesPage {onopenthread} />
+        <MachinesPage {onopenthread} {store} />
       {:else if page === 'advanced'}
         <AdvancedSettings store={target} />
       {:else if page === 'appearance'}
@@ -499,8 +513,11 @@
     .framed > :global(.policy-banner) { margin: 16px 16px 0; }
   }
   .tab span { flex: 1; text-align: left; }
-  /* A group's other pages, under its entry: the same row, set in by the room an icon once took. */
-  .tab.sub { padding-left: 22px; }
+  .tab { gap: 10px; }
+  .tab :global(svg) { flex: none; color: var(--color-subtle); }
+  .tab.active :global(svg) { color: var(--color-foreground); }
+  /* A group's other pages, under its entry: the same row with its icon, set in one step. */
+  .tab.sub { padding-left: 30px; }
 
   /* The search heads the nav, on the chrome like the rows under it. */
   .search {

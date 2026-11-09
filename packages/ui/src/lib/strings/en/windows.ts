@@ -23,10 +23,10 @@ export const strings = {
       refused: 'Refused: {process}', expired: 'Not answered in time: {process}'
     },
     settings: {
-      allowedHeading: 'Allowed windows', allowedIntro: 'Apps whose windows agents of a project may capture without asking. A project adds one when you answer Always for this project on a capture request.',
+      allowedHeading: 'Windows agents may see', allowedIntro: 'Apps whose windows agents of a project may capture without asking. A project adds one when you answer Always for this project on a capture request.',
       allowedEmpty: 'No app is allowed yet. Apps get added from a capture request in the thread.',
       remove: 'Remove', removeTitle: 'Stop allowing {process}?', removeBody: 'Agents in {project} will ask again before capturing {process}.',
-      exclusionsHeading: 'Never capture', exclusionsIntro: 'Executable names or paths no agent may capture, even with your permission.',
+      exclusionsHeading: 'Windows agents never see', exclusionsIntro: 'Executable names or paths no agent may capture, even with your permission.',
       always: 'Password managers and the sign-in screen are always excluded: {list}.',
       add: 'Add', addLabel: 'Executable name or path', placeholder: 'game.exe or C:\\Games\\game.exe',
       none: 'No app added.', removeExclusion: 'Stop excluding {name}'

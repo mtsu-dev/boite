@@ -50,8 +50,8 @@
   const model = $derived(agent ? (agent.selection.model
     ? store.modelsOf(agent.selection.providerId, agent.selection.accountId).find(entry => entry.id === agent.selection.model)?.name ?? agent.selection.model
     : store.providers.find(entry => entry.id === agent.selection.providerId)?.name ?? agent.selection.providerId) : '');
-  /** The work list goes where no column holds it. */
-  const listsWork = $derived(phone.current || store.page !== 'agents');
+  /** The work list goes where no column holds it: a phone, another page, or the Bots page with its column folded away. */
+  const listsWork = $derived(phone.current || store.page !== 'agents' || store.sidebarCollapsed);
   /** Now is drawn while the bot has something in hand (a turn, a queue, a question, a failure, a pause) and no conversation beside the desk says it. */
   const busy = $derived(listsWork && standing !== 'idle' && standing !== 'archived');
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte';
   import { errorText } from '../lib/errors';
   import { Ellipsis, RotateCcw, Trash2 } from '@lucide/svelte';
   import { DEFAULT_THREAD_DONE_RETENTION_DAYS, type ThreadId, type ThreadSummary } from '@boite/contracts';
@@ -14,6 +15,7 @@
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import { workspace } from '../lib/workspace.svelte';
+  import { archivedFocus, clearArchivedFocus } from '../lib/archived-focus.svelte';
 
   /** `eager` reads the list at once: the phone's page of its own, where the archive is all there is to see. */
   let { store, eager = false }: { store: Store; eager?: boolean } = $props();
@@ -127,6 +129,15 @@
     return project ? projectName(project) : '';
   }
 
+  /** Opened from a project card's menu: that project's threads, until All projects or the archive closes. */
+  const focusId = $derived(archivedFocus.store === store ? archivedFocus.projectId : null);
+  const focusName = $derived.by(() => {
+    const project = focusId ? store.projects.find(p => p.id === focusId) : undefined;
+    return project ? projectName(project) : '';
+  });
+  const shown = $derived(threads && focusId ? threads.filter(t => t.projectId === focusId) : threads);
+  onDestroy(clearArchivedFocus);
+
   async function remove(thread: ThreadSummary) {
     if (await lock.remove(store, thread)) threads = threads?.filter(t => t.id !== thread.id) ?? null;
   }
@@ -134,18 +145,24 @@
 
 <section class="card" id="settings-archived" data-testid="archived-threads">
   <h2 class="ui-label-box"><span class="ui-label">{strings.settings.archived.heading}</span><InfoTip topic={strings.settings.archived.heading} text={strings.settings.archived.intro} /></h2>
-  {#if threads === null}
+  {#if focusId && focusName}
+    <p class="focus" data-testid="archived-focus">
+      <span class="ui-label">{fill(strings.settings.archived.inProject, { project: focusName })}</span>
+      <button type="button" class="ghost small" data-testid="archived-all" onclick={clearArchivedFocus}><span class="ui-label">{strings.settings.archived.allProjects}</span></button>
+    </p>
+  {/if}
+  {#if shown === null}
     <button type="button" data-testid="archived-show" disabled={loading || store.connection !== 'ready'} onclick={() => void load()}>
       <span class="ui-label">{strings.settings.archived.show}</span>
     </button>
-  {:else if threads.length === 0}
-    <p class="muted" data-testid="archived-empty">{strings.settings.archived.empty}</p>
+  {:else if shown.length === 0}
+    <p class="muted" data-testid="archived-empty">{focusName ? fill(strings.settings.archived.emptyProject, { project: focusName }) : strings.settings.archived.empty}</p>
   {:else}
     <!-- One group of rows in the live rows' places: the title with since when at its line's end (a merge's own time
          when one put it away), then where it was and why it left. The row itself restores (its one action, named in
          the time's place under the pointer or the keyboard), then opens; Delete waits in its menu. -->
     <ul class="archived" data-testid="archived-list">
-      {#each threads as thread (thread.id)}
+      {#each shown as thread (thread.id)}
         {@const retention = store.settings?.threadDoneRetentionDays ?? DEFAULT_THREAD_DONE_RETENTION_DAYS}
         {@const at = thread.archiveReason?.type === 'pr-merged' ? thread.archiveReason.archivedAt : archivedTime(thread)}
         {@const back = restored.includes(thread.id)}
@@ -158,7 +175,8 @@
           <span class="title" title={thread.title}>{thread.title}</span>
           <time class="at" datetime={new Date(at).toISOString()} title={exactTime(at)}>{ago(at)}</time>
           <span class="context">
-            {#if projectOf(thread)}<span class="part">{projectOf(thread)}</span>{/if}
+            <!-- Opened on one project, the line above names it once. -->
+            {#if !focusId && projectOf(thread)}<span class="part">{projectOf(thread)}</span>{/if}
             {#if thread.archiveReason?.type === 'pr-merged'}
               <span class="part archive-reason" data-testid="archive-merged-reason"><a href={thread.archiveReason.url} target="_blank" rel="noopener noreferrer">{fill(strings.settings.archived.mergedReason, { number: String(thread.archiveReason.number) })}</a></span>
             {/if}
@@ -193,6 +211,16 @@
 <style>
   /* One group, rows parted by hairlines, as Recent's and Activity's rows are one list. The settings card around it
      is its frame, so the list draws no second border inside it. */
+  /* Which project the list is opened on, and the way to every project, on one quiet line above it. */
+  .focus {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 0 0 6px;
+    color: var(--color-muted-foreground);
+    font-size: var(--text-sm);
+  }
   .archived {
     list-style: none;
     margin: 0;

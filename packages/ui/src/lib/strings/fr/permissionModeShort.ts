@@ -8,7 +8,6 @@ export const fr: Translation = {
     bypassPermissions: 'Auto',
     yolo: 'Sans limite',
     plan: 'Plan',
-    dontAsk: 'Tout refuser',
-    codexDefault: 'Ce dossier'
+    dontAsk: 'Tout refuser'
   }
 };

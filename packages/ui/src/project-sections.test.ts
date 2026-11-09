@@ -9,6 +9,7 @@ import { closeTour } from './lib/onboarding.svelte';
 import { work } from './lib/work-prefs.svelte';
 import { projectThreadView, projectSections } from './lib/project-threads.svelte';
 import { recentPreferences } from './lib/recent.svelte';
+import { archivedFocus, clearArchivedFocus } from './lib/archived-focus.svelte';
 import type { ProjectEntry } from './lib/project-view.svelte';
 
 /*
@@ -127,25 +128,20 @@ test('a project whose only conversations were archived by hand shows them under 
   const row = `[data-testid=later-projects] section[data-project-id="${paused.id}"] [data-testid=done-thread][data-thread-id="${later.id}"]`;
   await waitFor(() => document.querySelector(row) !== null);
   expect(document.querySelector(row)!.classList.contains('pending')).toBe(false);
-  // The header keeps one count: the archived ones are no pill on the card, their switch and count are in its menu.
+  // The header keeps one count: the archived ones are no pill on the card, their count is in its menu, on the way to
+  // their one home, Settings' archive, opened on this project.
   const laterCard = `[data-testid=later-projects] section[data-project-id="${paused.id}"]`;
   expect(document.querySelector(`${laterCard} [data-testid=project-archived-toggle]`)).toBeNull();
-  const item = '[data-testid=context-menu] [data-value=archived-rows]';
-  const openMenu = async () => {
-    document.querySelector<HTMLButtonElement>(`${laterCard} [data-testid=project-menu]`)!.click();
-    await waitFor(() => document.querySelector(item) !== null);
-    return document.querySelector<HTMLButtonElement>(item)!;
-  };
-  // Open, the rows are on show: the switch is checked and says their count.
-  let toggle = await openMenu();
-  expect([toggle.getAttribute('aria-checked'), toggle.querySelector('.hint')?.textContent]).toEqual(['true', '1']);
-  toggle.click();
-  // Off, the card folds; on again, it opens with them.
-  await waitFor(() => document.querySelector(row) === null);
-  toggle = await openMenu();
-  expect(toggle.getAttribute('aria-checked')).toBe('false');
-  toggle.click();
-  await waitFor(() => document.querySelector(row) !== null);
+  const item = '[data-testid=context-menu] [data-testid=project-archived-toggle]';
+  document.querySelector<HTMLButtonElement>(`${laterCard} [data-testid=project-menu]`)!.click();
+  await waitFor(() => document.querySelector(item) !== null);
+  const home = document.querySelector<HTMLButtonElement>(item)!;
+  expect([home.dataset.value, home.querySelector('.hint')?.textContent]).toEqual(['archived', '1']);
+  home.click();
+  await waitFor(() => store.settingsSection?.id === 'archived');
+  expect([archivedFocus.store === store, archivedFocus.projectId]).toEqual([true, paused.id]);
+  clearArchivedFocus();
+  store.showChat();
 
   // Nothing left to do there: the idle fold, never a card.
   expect(card('[data-testid=sidebar]', finished.id)).toBeNull();

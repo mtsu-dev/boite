@@ -5,6 +5,7 @@
   import { keepFocus } from '../lib/focus';
   import { glides } from '../lib/motion';
   import { fill, strings } from '../lib/strings';
+  import { answerSummary } from '../lib/answer-receipt';
   import CodeText from './CodeText.svelte';
   import DecisionHead from './DecisionHead.svelte';
 
@@ -140,14 +141,9 @@
     sent = true;
     if ((await skip()) === false) sent = false;
   }
-  /** What the folded card says: the labels picked, then whatever was typed, else how many files went. */
+  /** What the folded card says (`lib/answer-receipt.ts`). */
   function summary(given: QuestionAnswer): string {
-    const labels = given.optionIds.map((id) => options.find((one) => one.id === id)?.label ?? id);
-    const written = given.text ?? '';
-    if (labels.length > 0 && written.length > 0) return `${labels.join(', ')}: ${written}`;
-    const said = labels.length > 0 ? labels.join(', ') : written;
-    const count = given.attachments?.length ?? 0;
-    return said.length > 0 || count === 0 ? said : fill(strings.media.answerFileCount, { count: String(count) });
+    return answerSummary(options, given.optionIds, given.text ?? '', given.attachments?.length ?? 0);
   }
 
   function fileNames(given: QuestionAnswer): string {

@@ -430,22 +430,22 @@
           oncontextmenu={(event) => openTabMenu(event, surface)}
           use:longPress={(target) => !target.closest('.selector')}
         >
-          <button
-            type="button"
-            class="closer"
-            aria-label={fill(strings.rightPanel.closeTab, { title: label(surface) })}
-            data-testid="panel-tab-close"
-            onclick={(event) => {
-              event.stopPropagation();
-              void closeTabs(panel, 'close', surface.id);
-            }}
-          >
-            <span class="glyph">
-              <SurfaceIcon kind={surface.kind} size={14} />
-            </span>
-            <span class="cross"><X size={14} strokeWidth={2} /></span>
-          </button>
           {#if surface.id === panel.activeSurfaceId}
+            <button
+              type="button"
+              class="closer"
+              aria-label={fill(strings.rightPanel.closeTab, { title: label(surface) })}
+              data-testid="panel-tab-close"
+              onclick={(event) => {
+                event.stopPropagation();
+                void closeTabs(panel, 'close', surface.id);
+              }}
+            >
+              <span class="glyph">
+                <SurfaceIcon kind={surface.kind} size={14} />
+              </span>
+              <span class="cross"><X size={14} strokeWidth={2} /></span>
+            </button>
             <!-- The panel selector: the showing panel's name opens the list of every panel and tool. -->
             <!-- The tooltip on the trigger, not the tab: the list lives inside the tab and a native tooltip would cover its rows. -->
             <span class="selector">
@@ -455,7 +455,20 @@
               </Menu>
             </span>
           {:else}
-            <span class="name ui-label">{label(surface)}</span>
+            <!-- A panel behind is its glyph alone, named in its tooltip: one title in the strip at any moment,
+                 the showing panel's, so a switch never draws two names. Its close is a corner cross under the pointer. -->
+            <span class="glyph solo" aria-hidden="true"><SurfaceIcon kind={surface.kind} size={14} /></span>
+            <span class="name ui-label sr-only">{label(surface)}</span>
+            <button
+              type="button"
+              class="corner"
+              aria-label={fill(strings.rightPanel.closeTab, { title: label(surface) })}
+              data-testid="panel-tab-close"
+              onclick={(event) => {
+                event.stopPropagation();
+                void closeTabs(panel, 'close', surface.id);
+              }}
+            ><X size={10} strokeWidth={2.5} /></button>
           {/if}
         </div>
       {/each}
@@ -695,6 +708,36 @@
     white-space: nowrap;
   }
 
+  /* A panel behind: a square as tall as the strip's targets, its glyph centred. */
+  .tab:not(.active) {
+    position: relative;
+    justify-content: center;
+    width: var(--control);
+    padding: 0;
+  }
+  .solo { display: inline-flex; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  /* Its close, a small cross on its corner, there under the pointer or the keyboard only. */
+  .corner {
+    position: absolute;
+    /* Inside the square: the strip clips what leaves it. */
+    top: 0;
+    right: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    padding: 0;
+    border: 1px solid var(--color-edge);
+    border-radius: var(--radius-full);
+    background: var(--color-surface-3);
+    color: var(--color-foreground);
+    opacity: 0;
+  }
+  .tab:hover .corner, .tab:focus-visible .corner, .corner:focus-visible { opacity: 1; }
+  .corner:hover:not(:disabled) { background: var(--color-surface-2); }
+
   /* The tab's icon is its close target: 28 px, as every target in the strip. */
   .closer {
     display: inline-flex;
@@ -734,18 +777,13 @@
     justify-content: center;
   }
 
-  /* The surface's own icon is the close target: it turns into an X under the
-     pointer, and under the keyboard too as soon as the tab holds the focus. */
-  /* The active tab's name opens the selector: its icon turns only under the pointer on the icon itself. */
-  .tab:not(.active):hover .glyph,
-  .tab:not(.active):focus .glyph,
+  /* The showing panel's icon is its close target: the name opens the selector,
+     so the icon turns into an X only under the pointer or the keyboard on itself. */
   .closer:hover .glyph,
   .closer:focus-visible .glyph {
     display: none;
   }
 
-  .tab:not(.active):hover .cross,
-  .tab:not(.active):focus .cross,
   .closer:hover .cross,
   .closer:focus-visible .cross {
     display: inline-flex;

@@ -3,7 +3,7 @@
   import { agentDirectory } from '../lib/agent-directory.svelte';
   import { tick } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
-  import { Bot, ChevronDown, Ellipsis, FolderInput, GitBranch, GitPullRequest, MessagesSquare, PanelRight, Search, UsersRound, VenetianMask } from '@lucide/svelte';
+  import { Bot, ChevronDown, Ellipsis, FolderInput, GitBranch, GitPullRequest, MessagesSquare, Search, UsersRound, VenetianMask } from '@lucide/svelte';
   import { focusOnMount } from '../lib/actions';
   import { needsAnAI } from '../lib/first-run';
   import { contextMenu } from '../lib/context-menu.svelte';
@@ -20,6 +20,7 @@
   import { ThreadRename, commitOnUnmount } from '../lib/thread-rename.svelte';
   import { watchStatus } from '../lib/pull-request-watch';
   import ContextModeBadge from './ContextModeBadge.svelte';
+  import PanelDoor from './PanelDoor.svelte';
   import CoordinationDialog from './CoordinationDialog.svelte';
   let { store }: { store: Store } = $props();
   let thread = $derived(store.openThread);
@@ -114,16 +115,22 @@
   let resident = $derived(thread ? residentOfThread(store, thread) : null);
 
   /**
-   * What the thread is, first in its menu: the bot that holds or looks after
-   * it, its pull request watches and its branch. Each keeps the id of the
-   * header chip it replaces.
+   * Who holds the thread, first in its menu's named group: the bot it was
+   * given to or the one that looks after its project. Each keeps the id of
+   * the header chip it replaces.
    */
   let identity = $derived.by((): MenuItem[] => {
     if (!thread) return [];
-    const watches = thread.pullRequestWatches ?? [];
     return [
       ...(carrier ? [{ id: 'thread-entrusted-chip', label: fill(strings.agents.openAgent, { name: carrier.agent.name }), title: fill(strings.agents.entrustedTo, { name: carrier.agent.name }), glyph: Bot }] : []),
-      ...(resident ? [{ id: 'thread-resident-chip', label: fill(strings.agents.openAgent, { name: resident.name }), title: fill(strings.resident.lookedAfterBy, { name: resident.name }), glyph: Bot }] : []),
+      ...(resident ? [{ id: 'thread-resident-chip', label: fill(strings.agents.openAgent, { name: resident.name }), title: fill(strings.resident.lookedAfterBy, { name: resident.name }), glyph: Bot }] : [])
+    ];
+  });
+  /** Where it lives, first in the group's folder rows: its pull request watches on a phone, its branch on a desktop. */
+  let where = $derived.by((): MenuItem[] => {
+    if (!thread) return [];
+    const watches = thread.pullRequestWatches ?? [];
+    return [
       ...(mobile.current ? watches.map((watch): MenuItem => ({ id: `watch:${watch.url}`, label: fill(strings.tasks.stopWatchOf, { number: String(watch.number) }), hint: watchStatus(watch), title: watch.url, glyph: GitPullRequest })) : []),
       ...(thread.branch && work.shows('header.branch') && !mobile.current ? [{ id: 'thread-branch', label: thread.branch, title: `${thread.branch}: ${strings.thread.branchHint}: ${thread.cwd}`, glyph: GitBranch }] : [])
     ];
@@ -133,13 +140,13 @@
   let tools = $derived.by((): MenuItem[] => thread ? [{ id: 'find', label: strings.palette.find, glyph: Search }] : []);
   /**
    * One menu on a desktop and a phone: find, then the frequent actions, then
-   * the named group, which opens in place (`Menu.svelte`) and starts with
-   * what the thread is. A phone's has no path or pull request.
+   * the named group, which opens in place (`Menu.svelte`): its bot, its title,
+   * its folder. A phone's has no path or pull request.
    */
-  let menuShown = $derived(thread ? threadMenuItems(store, thread, { tools, lead: identity, showDone: true, phone: mobile.current }) : []);
+  let menuShown = $derived(thread ? threadMenuItems(store, thread, { tools, lead: identity, place: where, showDone: true, phone: mobile.current }) : []);
   /** The right-click's two levels, which the shared context menu swaps through the picks. */
-  let toolItems = $derived(thread ? threadToolItems(store, thread, { lead: identity }) : []);
-  let desktopItems = $derived(thread ? threadMenuItems(store, thread, { tools, lead: identity, showDone: true }) : []);
+  let toolItems = $derived(thread ? threadToolItems(store, thread, { lead: identity, place: where }) : []);
+  let desktopItems = $derived(thread ? threadMenuItems(store, thread, { tools, lead: identity, place: where, showDone: true }) : []);
   /** Every row in view on a desktop: the first level and its group stay short, but a long bot name still wants the room. */
   const MENU_CAP = 560;
   function titleAction(action: string) {
@@ -275,26 +282,8 @@
           </Menu>
         </span>
       {/if}
-      <!-- The door to the side panel, named in words with how many it holds, on a phone too;
-           the panel's own selector lists every panel and tool once it is open. -->
-      {#if thread}
-        <span class="panel-switch" class:on={store.panelOpen}>
-          <button
-            type="button"
-            class="ghost door"
-            title={`${strings.thread.panelHint}${store.keyHint('panel')}`}
-            aria-pressed={store.panelOpen}
-            data-testid="panel-toggle"
-            onclick={() => store.togglePanel()}
-          >
-            <span class="door-face">
-              {#if !mobile.current}<PanelRight size={16} strokeWidth={1.75} aria-hidden="true" />{/if}
-              <span class="ui-label">{strings.thread.panelMenu}</span>
-              {#if panelCount > 0}<span class="door-count" data-testid="panel-toggle-count">{panelCount}</span>{/if}
-            </span>
-          </button>
-        </span>
-      {/if}
+      <!-- The door to the side panel, on a phone too; the panel's own selector lists every panel and tool once it is open. -->
+      {#if thread}<PanelDoor {store} count={panelCount} ontoggle={() => store.togglePanel()} testid="panel-toggle" />{/if}
 </div>
 
 {#if coordinationRequest.threadId && coordinationRequest.store === store && thread?.id === coordinationRequest.threadId}
@@ -334,18 +323,6 @@
   }
 
 
-  /* Off the window's edge by the gap the crumb keeps on the left. */
-  .panel-switch { display: inline-flex; flex: none; align-items: center; margin-right: 4px; }
-  /* The door's face is outlined so its word reads as a button, 32 px high as the title's menu and the
-     sidebar fold; on a phone the button around it keeps the touch height. One fill when the panel is open. */
-  .panel-switch > .door { display: inline-flex; align-items: center; height: 32px; padding: 0; background: none; border: none; }
-  .door-face { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; box-sizing: border-box; border: 1px solid var(--color-edge); border-radius: var(--radius-md); font-size: var(--text-meta); white-space: nowrap; }
-  @media (hover: hover) {
-    .panel-switch > .door:hover:not(:disabled) { background: none; }
-    .door:hover .door-face { background: var(--color-surface-3); color: var(--color-foreground); }
-  }
-  .panel-switch.on .door-face { background: var(--color-active); color: var(--color-foreground); }
-  .door-count { min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box; display: grid; place-items: center; border-radius: var(--radius-full); background: var(--color-surface-3); color: var(--color-foreground); font-variant-numeric: tabular-nums; }
   .watch-chip { flex: none; display: inline-flex; color: var(--color-muted-foreground); }
   .watch-chip :global(svg) { flex: none; }
 
@@ -403,7 +380,6 @@
     .context-chip :global(.ui-chip) { min-width: var(--touch-target); justify-content: center; }
     /* The header's one menu holds these on a phone. */
     .watch-chip { display: none; }
-    .panel-switch > .door { height: var(--touch-target); }
     .rename { width: 100%; }
     /* The thread's title button gives way to its menu; a team's name has no menu and stays. */
     .title:not(.team) { display: none; }

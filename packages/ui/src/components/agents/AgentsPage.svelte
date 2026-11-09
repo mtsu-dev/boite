@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
-  import { ArrowLeft, Bot, TriangleAlert } from '@lucide/svelte';
+  import { ArrowLeft } from '@lucide/svelte';
+  import EmptyState from '../EmptyState.svelte';
   import type { Team } from '@boite/contracts';
   import { AgentsView, agentOfThread, agentRows, firstDeskVisit, lastOpenedAgent, openAgent, rememberAgent, statusOf, type AgentFocus } from '../../lib/agents.svelte';
   import { agentDirectory } from '../../lib/agent-directory.svelte';
@@ -23,6 +24,7 @@
   import AgentsRail from './AgentsRail.svelte';
   import AgentHeader from './AgentHeader.svelte';
   import AgentSheet from './AgentSheet.svelte';
+  import AgentProblem from './AgentProblem.svelte';
   import AgentEditor from './AgentEditor.svelte';
   import AgentEngineSettings from './AgentEngineSettings.svelte';
   import TeamDialog from '../teams/TeamDialog.svelte';
@@ -247,11 +249,7 @@
     {:else if thread && agent}
       {#if narrow.current}<AgentHeader {store} {view} {agent} {status} {thread} onpane={next => { pane = pane === next ? null : next; }} onback={back} />{/if}
       {#if status?.problem && agent.status !== 'archived'}
-        <div class="agent-problem" role="alert" data-testid="agent-problem">
-          <TriangleAlert size={15} strokeWidth={1.75} />
-          <span>{status.problem}</span>
-          {#if store.owner}<button type="button" class="small" onclick={() => { pane = 'settings'; }}>{labels.fix}</button>{/if}
-        </div>
+        <AgentProblem {view} {agent} problem={status.problem} onfix={() => { pane = 'settings'; }} />
       {/if}
       <div class="agents-chat">
         <ChatView {store} {locked} />
@@ -273,12 +271,13 @@
     {:else if !snapshot}
       <p class="agent-empty">{view.loadError ? labels.offline : strings.app.loading}</p>
     {:else if !rows.length}
-      <div class="agent-welcome" data-testid="agents-empty">
-        <Bot size={32} strokeWidth={1.5} />
-        <p>{elsewhere && here ? fill(labels.noAgentsOn, { machine: here.label }) : labels.noAgents}</p>
-        <p class="hint">{labels.welcomeHint}</p>
-        {#if store.owner}<button type="button" class="primary" onclick={() => { focus = { kind: 'new' }; }} data-testid="agents-first">{labels.createAgent}</button>{/if}
-      </div>
+      <!-- The app's one empty view: the house bot, the line, then what a bot is for and the way to make one. -->
+      <EmptyState line={elsewhere && here ? fill(labels.noAgentsOn, { machine: here.label }) : labels.noAgents} testid="agents-empty">
+        {#snippet action()}
+          <p>{labels.welcomeHint}</p>
+          {#if store.owner}<button type="button" class="primary" onclick={() => { focus = { kind: 'new' }; }} data-testid="agents-first"><span class="ui-label">{labels.createAgent}</span></button>{/if}
+        {/snippet}
+      </EmptyState>
     {:else if openFailed}
       <div class="agent-error" role="alert">{labels.openFailed}<button type="button" class="ghost small" onclick={openDefault} data-testid="agents-open-retry">{labels.retry}</button></div>
     {:else}

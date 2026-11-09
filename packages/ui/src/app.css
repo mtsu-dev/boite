@@ -240,15 +240,17 @@
   --ansi-bright-cyan: #29b8db;
   --ansi-bright-white: #ffffff;
   /* The inset panel the work sits in. */
-  --color-background: #131314;
+  /* Round 18 widens the steps: frame, page, card and raised fills each sit one clear tone apart,
+     surface-3 kept where muted text still clears its round 16 floor on it. */
+  --color-background: #151517;
   /* The window's chrome: the app rail, the sidebar and the top bars on one
      near black, the work inset in panels of the page colour with a hairline. */
   --color-frame: #0b0b0c;
   --color-frame-edge: rgba(255, 255, 255, 0.09);
-  --color-surface: #171719;
+  --color-surface: #1c1c1f;
   /* The two raised fills: a chip, a card, the composer; then a pressed or selected raise.
      The first sits a clear step over the page, so a card and the composer read off the timeline. */
-  --color-surface-2: #1d1d20;
+  --color-surface-2: #212124;
   --color-surface-3: #252528;
   /* The two hairlines: a quiet separator, and an edge that must read. Round 15 lifts both one step. */
   --color-border: rgba(255, 255, 255, 0.09);
@@ -265,10 +267,11 @@
   --color-subtle: #dedee2;
   /* Below reading contrast: a disabled mark, a placeholder glyph, never words that must be read. */
   --color-faint: #4a4a50;
-  /* A switch: a dark track off, the light track of the foreground on, its knob the ink a primary wears. Neutral: the
-     accent stays for focus, checks and send, and on and off still differ by more than grey (track and knob swap). */
+  /* A switch: off is a dark track with a dim knob at the left, on the filled track of the foreground ink with the
+     ink a primary wears as the knob at the right. Neutral: the accent stays for send, focus, checks and the effort
+     control; track fill, side and knob brightness all say on (lib/contrast.test.ts). */
   --switch-off: var(--color-surface-3);
-  --switch-knob: var(--color-subtle);
+  --switch-knob: color-mix(in oklab, var(--color-subtle) 55%, var(--switch-off));
   --switch-on: var(--color-foreground);
   --switch-knob-on: var(--color-on-foreground);
   /* A chosen segment: one raise over the frame its track is drawn on, lighter than surface-3 so it
@@ -340,7 +343,9 @@
   /* How far a scroll area fades its edge while content runs past it (`.scroll-edges`). */
   --scroll-edge: 16px;
 
-  --shadow-e1: 0 1px 2px rgb(0 0 0 / 0.35), inset 0 1px 0 rgb(255 255 255 / 0.05);
+  /* A soft lift for raised things (cards, decisions, a chosen segment): a contact shadow and a short
+     falloff under it, a fine top light; no glass and no wide glow. */
+  --shadow-e1: inset 0 1px 0 rgb(255 255 255 / 0.05), 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 14px -6px rgb(0 0 0 / 0.55);
   --shadow-e2: 0 8px 24px rgb(0 0 0 / 0.45), 0 0 0 1px rgb(255 255 255 / 0.05);
   --shadow-e3: 0 20px 60px rgb(0 0 0 / 0.55), 0 0 0 1px rgb(255 255 255 / 0.06);
   /* One overlay card for every menu, sheet, popover, palette and dialog: the
@@ -571,15 +576,20 @@
  * Sources and redistribution notices: public/theme-licenses.txt.
  */
 :root {
-  --palette-dark-default-background: #131314;
+  --palette-dark-default-background: #151517;
   --palette-dark-default-frame: #0b0b0c;
-  --palette-dark-default-surface: #1a1a1c;
+  --palette-dark-default-surface: #212124;
   --palette-dark-default-foreground: #f8f8f9;
   --palette-light-default-background: #f3f3f6;
-  --palette-light-default-frame: #e7e7ec;
+  --palette-light-default-frame: #e3e3e9;
   --palette-light-default-surface: #ffffff;
   --palette-light-default-foreground: #141418;
   --palette-grain-theme-color: #1a1a1e;
+  /* The Default tile's status dots (ThemeColors.svelte): the app's own, kept apart from the palette roles so
+     Default gains no details of its own. */
+  --tile-default-success: #4cc38a;
+  --tile-default-live: #f5b84a;
+  --tile-default-danger: #f2555a;
 
   /* dark-oled */
   --palette-dark-oled-background: #000000;
@@ -898,7 +908,7 @@ html[data-chat-width='full'] {
 /* Light, stamped by `lib/theme.ts` and by the boot script of `index.html`; dark stamps nothing. */
 [data-theme='light'] {
   --color-background: #f3f3f6;
-  --color-frame: #e7e7ec;
+  --color-frame: #e3e3e9;
   --color-frame-edge: rgba(0, 0, 0, 0.14);
   --color-surface: #fafafb;
   --color-surface-2: #ffffff;
@@ -910,8 +920,9 @@ html[data-chat-width='full'] {
   --color-hover: rgba(0, 0, 0, 0.04);
   --color-active: rgba(0, 0, 0, 0.07);
   --color-foreground: #141418;
-  --color-muted-foreground: #2a2a31;
-  --color-subtle: #33333a;
+  /* Round 18: one step darker, so both tiers keep their floors on the deeper frame. */
+  --color-muted-foreground: #26262c;
+  --color-subtle: #303036;
   --color-faint: #b4b4bb;
   --color-selection: rgba(28, 28, 33, 0.14);
   --color-terminal-background: var(--color-surface-2);
@@ -933,6 +944,9 @@ html[data-chat-width='full'] {
   --ansi-bright-white: #a5a5a5;
   --color-live: #b97806;
   --color-live-soft: rgba(185, 120, 6, 0.12);
+  --tile-default-success: #16a34a;
+  --tile-default-live: #b97806;
+  --tile-default-danger: #dc2626;
   --syntax-keyword: color-mix(in oklch, var(--color-accent) 55%, var(--color-foreground));
   --syntax-string: oklch(50% 0.13 240);
   --color-success: #16a34a;
@@ -949,7 +963,7 @@ html[data-chat-width='full'] {
   --series-6: #e26092;
   --series-7: #008300;
   --series-8: #e34948;
-  --shadow-e1: 0 1px 2px rgb(0 0 0 / 0.08), inset 0 1px 0 rgb(255 255 255 / 0.6);
+  --shadow-e1: inset 0 1px 0 rgb(255 255 255 / 0.6), 0 1px 2px rgb(0 0 0 / 0.07), 0 6px 14px -8px rgb(0 0 0 / 0.14);
   --shadow-e2: 0 8px 24px rgb(0 0 0 / 0.12), 0 0 0 1px rgb(0 0 0 / 0.06);
   --shadow-e3: 0 20px 60px rgb(0 0 0 / 0.18), 0 0 0 1px rgb(0 0 0 / 0.08);
   --shadow-overlay: 0 12px 36px rgb(0 0 0 / 0.14), 0 1px 2px rgb(0 0 0 / 0.08);
@@ -1820,14 +1834,24 @@ tr:last-child td {
    its rows' own step aside; that one says what they said. */
 .card:has(.info-tip[data-gather]) .info-tip[data-tip-text] { display: none; }
 
-/* The one heading under a screen's title: small, muted, over its card. */
+/* The one heading under a screen's title, over its card: a size and the ink over the rows it leads (round 18). */
 .settings .page .card h2,
 .settings .page > .group-heading h2 {
   margin-bottom: var(--space-3);
-  color: var(--color-muted-foreground);
-  font-size: var(--text-sm);
-  font-weight: 600;
+  color: var(--color-foreground);
+  font-size: var(--text-head);
+  font-weight: var(--weight-title);
   line-height: 1.4;
+}
+
+/* Where a page's settings apply, under its title: this device, a machine, the account. */
+.settings .scope {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: var(--space-1);
+  color: var(--color-subtle);
+  font-size: var(--text-meta);
 }
 
 /*
@@ -2516,7 +2540,7 @@ html[data-glass] #app {
 [data-accent-swatch] { --color-accent: oklch(75.5% 0.141 var(--accent-hue)); }
 /* One switch: the native checkbox with role=switch, or the `.switch` span a menu row or a button draws (`.on` when set).
    `--switch-width` and `--switch-height` size it; the knob keeps 3px of air inside the 1px rim. Off is a dark
-   track with a grey knob, on the accent track with a dark knob, so the state reads without comparing greys. */
+   track with a dim knob, on the filled foreground track with a dark knob, so the state reads without comparing greys. */
 input[type=checkbox][role=switch], .switch { appearance: none; position: relative; flex: 0 0 var(--switch-width, 40px); width: var(--switch-width, 40px); height: var(--switch-height, 24px); min-height: var(--switch-height, 24px); padding: 0; margin: 0; border: 1px solid var(--color-edge); border-radius: 999px; background: var(--switch-off); transition: background var(--dur-2), border-color var(--dur-2); }
 input[type=checkbox][role=switch] { cursor: pointer; }
 input[type=checkbox][role=switch]::after, .switch::after { content: ''; position: absolute; width: calc(var(--switch-height, 24px) - 8px); height: calc(var(--switch-height, 24px) - 8px); top: 3px; left: 3px; border-radius: 50%; background: var(--switch-knob); transition: transform var(--dur-2) var(--ease-out-quint), background var(--dur-2); }

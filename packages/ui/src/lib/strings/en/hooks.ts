@@ -1,8 +1,8 @@
 export const strings = {
   /** The Hooks card under the brain (`HooksCard.svelte`): each agent's own hooks and the runs that did not pass. */
   hooks: {
-    heading: 'Hooks',
-    description: 'The scripts your agents run on their own events. The counts and the recent list start when Boite starts on this machine.',
+    heading: 'Scripts your agents run',
+    description: 'Hooks: the scripts your agents run on their own events. The counts and the recent list start when Boite starts on this machine.',
     refresh: 'Refresh hooks',
     missing: 'Update Boite on this machine to see your hooks.',
     hookOne: '{count} hook', hookMany: '{count} hooks',

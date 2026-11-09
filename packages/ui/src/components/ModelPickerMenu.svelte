@@ -40,7 +40,6 @@
     locked = false,
     single = false,
     disabled = false,
-    anchor,
     onpick
   }: {
     store: Store;
@@ -52,7 +51,6 @@
     locked?: boolean;
     single?: boolean;
     disabled?: boolean;
-    anchor?: () => HTMLElement | null;
     onpick: (patch: PickPatch) => void;
   } = $props();
 
@@ -378,26 +376,8 @@
     return seat ? { providerId, accountId: seat.id } : null;
   }
 
-  /**
-   * What the desktop popover opens above: the whole composer around the chip,
-   * so it covers neither a docked ask nor the text being written; a chip
-   * outside a composer (an agent's settings) is its own anchor.
-   */
-  function anchorBox(): HTMLElement | null {
-    return anchor?.() ?? root()?.closest<HTMLElement>('[data-testid="composer"]') ?? root() ?? null;
-  }
-
-  /**
-   * Which edge the popover shares with its anchor: the chip's side, so it
-   * opens over its chip (at the composer's end while an ask is docked).
-   * Read at each placement (a getter): the ask can leave while the picker is open.
-   */
-  function chipSide(): 'start' | 'end' {
-    const chip = root()?.getBoundingClientRect();
-    const box = anchorBox()?.getBoundingClientRect();
-    if (!chip || !box) return 'start';
-    return chip.left + chip.width / 2 > box.left + box.width / 2 ? 'end' : 'start';
-  }
+  /** The desktop popover opens from its chip, its start edge on the chip's: never from the composer, over the conversation. */
+  const anchorBox = (): HTMLElement | null => root() ?? null;
 
   /** The keys of the whole picker; the chip hands its own to it. Escape folds the providers first. */
   const pickerKeys = pickerKeydown({
@@ -431,7 +411,7 @@
   aria-label={strings.composer.picker}
   data-testid="composer-picker-menu"
   bind:this={menu}
-  use:floating={{ anchor: anchorBox, placement: 'top', get align() { return chipSide(); }, cap: 560, dismiss: () => popover.hide() }}
+  use:floating={{ anchor: anchorBox, placement: 'top', align: 'start', cap: 560, dismiss: () => popover.hide() }}
   use:popover.attach
   onanimationend={popover.end}
   onkeydown={keydown}
@@ -482,21 +462,6 @@
   </div>
 
   <div class="column models main-models">
-    {#if !single}
-      <!-- The sources, unfolded in the list's place: the models in use, then each provider. Folded, the same rows stay off the arrows' path. -->
-      <div class="sources" hidden={!choosing || words.length > 0}>
-        {#if hasHome}
-          <button type="button" class="tile home-source" role="menuitem" data-row={(choosing && words.length === 0) || undefined} data-provider="home" data-testid="picker-back" onclick={backHome}>
-            <span class="mark" aria-hidden="true">{#if level === 'home'}<Check size={14} />{/if}</span>
-            <!-- In the logo column, so the name lines up with the providers' names. -->
-            <Star size={14} strokeWidth={2} class="home-mark" />
-            <span class="name ui-label">{strings.composer.yourModels}</span>
-          </button>
-        {/if}
-        <ProviderTiles {store} {choice} {locked} open={choosing && words.length === 0} current={level === 'all' ? shown?.id ?? null : null} onpick={pickTile} onmore={providersReachable ? openInstall : undefined} />
-      </div>
-    {/if}
-
     {#if words.length > 0 && global}
       <!-- A query's answer from every provider, one compact line naming each. -->
       <div class="model-list found" data-testid="picker-found">
@@ -611,6 +576,22 @@
     </div>
     {/key}
     {/if}
+    {#if !single}
+      <!-- The rest under your models: each provider, a tap opening its catalogue. The source button shows them alone; a query hides them. -->
+      {@const rest = (choosing || level === 'home') && words.length === 0}
+      <div class="sources" class:below={!choosing} hidden={!rest}>
+        {#if !choosing}<span class="section-label rest-label">{strings.composer.allModels}</span>{/if}
+        {#if hasHome && (choosing || level === 'all')}
+          <button type="button" class="tile home-source" role="menuitem" data-row={rest || undefined} data-provider="home" data-testid="picker-back" onclick={backHome}>
+            <span class="mark" aria-hidden="true">{#if level === 'home'}<Check size={14} />{/if}</span>
+            <!-- In the logo column, so the name lines up with the providers' names. -->
+            <Star size={14} strokeWidth={2} class="home-mark" />
+            <span class="name ui-label">{strings.composer.yourModels}</span>
+          </button>
+        {/if}
+        <ProviderTiles {store} {choice} {locked} open={rest} current={level === 'all' ? shown?.id ?? null : null} onpick={pickTile} onmore={providersReachable ? openInstall : undefined} />
+      </div>
+    {/if}
   </div>
 </div>
 {#if popover.shown && legacy.shown && level === 'all' && !pending && filteredLegacy.length > 0}
@@ -720,6 +701,8 @@
   .main-models .head .provider-name { flex: 1; min-width: 0; color: var(--color-muted-foreground); font-size: var(--text-sm); }
   .sources { display: flex; flex-direction: column; gap: 1px; }
   .sources[hidden] { display: none; }
+  /* Under your models, the rest starts after a step of air. */
+  .sources.below { margin-top: var(--space-2); }
   .tile.home-source { display: flex; align-items: center; justify-content: flex-start; gap: 8px; width: 100%; min-height: var(--overlay-row); padding: var(--space-1) var(--overlay-row-pad); border: none; border-radius: var(--radius-overlay-row); background: transparent; color: var(--color-foreground); text-align: left; }
   .tile.home-source :global(.home-mark) { flex: none; color: var(--color-muted-foreground); }
   .tile.home-source .name { flex: 1; min-width: 0; font-size: var(--text-base); }

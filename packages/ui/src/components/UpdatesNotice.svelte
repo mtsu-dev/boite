@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick, untrack } from 'svelte';
+  import { tick, untrack, type Snippet } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import { slide } from 'svelte/transition';
   import { ArrowRight, Check, CircleArrowDown, X } from '@lucide/svelte';
@@ -23,6 +23,8 @@
    * its check and goes, and the card ends on "Everything is up to date" or on
    * Restart once the app's release is downloaded: nothing restarts by itself.
    */
+  /** The rail's name card, drawn beside the button in place of the native tooltip, as every rail button's. */
+  let { name }: { name?: Snippet<[string, string | null]> } = $props();
   const card = new Closing();
   const narrow = new MediaQuery('(max-width: 720px)');
   /** How long "Everything is up to date" stays before the card puts itself away. */
@@ -173,10 +175,11 @@
 
 {#if shown}
   <button type="button" class="ghost icon update-trigger" class:busy={underWay} class:lit={fresh.length > 0 || finished} bind:this={trigger}
-    title={label} aria-label={label} aria-haspopup="dialog" aria-expanded={card.open} onclick={() => void toggle()} data-testid="nav-updates">
+    title={name ? undefined : label} aria-label={label} aria-haspopup="dialog" aria-expanded={card.open} onclick={() => void toggle()} data-testid="nav-updates">
     <CircleArrowDown size={16} strokeWidth={1.75} />
     {#if fresh.length > 0 || underWay || appReady}<span class="dot" data-testid="nav-updates-dot"></span>{/if}
   </button>
+  {@render name?.(label, underWay ? null : subtitle)}
 {/if}
 
 {#if card.shown && shown}
