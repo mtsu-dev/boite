@@ -1,8 +1,8 @@
-import type { Query, SpawnOptions as SdkSpawnOptions } from '@anthropic-ai/claude-agent-sdk';
+import type { Query } from '@anthropic-ai/claude-agent-sdk';
 import { unavailable } from '../../errors.ts';
-import type { SpawnedChild } from '../../procs.ts';
 import { profileFor, resolveExecutable } from '../../providers/resolve.ts';
 import type { ProbeContext } from '../types.ts';
+import { ProbeProcess } from './probe-process.ts';
 import { childEnv, PromptQueue } from './query.ts';
 import type { ClaudeDeps } from './query.ts';
 
@@ -22,6 +22,7 @@ export async function readClaudeQuota(ctx: ProbeContext, deps: ClaudeDeps = {
   const executable = profile ? resolveExecutable(profile) : null;
   if (!executable) throw unavailable('no Claude executable for the quota');
   const prompts = new PromptQueue();
+  const cli = new ProbeProcess(ctx);
   const abortController = new AbortController();
   let query: Query | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -33,10 +34,7 @@ export async function readClaudeQuota(ctx: ProbeContext, deps: ClaudeDeps = {
       settings: { disableAllHooks: true },
       // Without the strict flag an empty `mcpServers` adds no `--mcp-config`, and the CLI starts the user's servers.
       tools: [], mcpServers: {}, strictMcpConfig: true,
-      spawnClaudeCodeProcess: (options: SdkSpawnOptions): SpawnedChild => {
-        const child = ctx.spawnChild(options.command, options.args, { cwd: options.cwd, env: options.env });
-        child.stderr.resume(); return child;
-      },
+      spawnClaudeCodeProcess: cli.spawn,
     } });
     const usage = await Promise.race([
       query.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }),
@@ -46,5 +44,5 @@ export async function readClaudeQuota(ctx: ProbeContext, deps: ClaudeDeps = {
     ]);
     if (!usage.rate_limits_available) throw new Error('This Claude account has no subscription login. Connect it in Providers.');
     return usage;
-  } finally { if (timer) clearTimeout(timer); prompts.end(); query?.close(); abortController.abort(); ctx.killTree(); }
+  } finally { if (timer) clearTimeout(timer); cli.end(prompts, query, abortController); }
 }

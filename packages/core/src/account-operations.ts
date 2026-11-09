@@ -20,7 +20,13 @@ export interface AccountOperation {
   spawnChild: ProbeContext['spawnChild'];
   killTree(): void;
   /**
-   * Stops what still runs under `owner`, waits for it, then for its pipes
+   * Leaves the processes started so far up to `graceMs` to exit on their own
+   * before `close` stops them. For a read whose agent may still be writing its
+   * login when the answer arrives: see `ProbeContext.letExit`.
+   */
+  letExit(graceMs: number): void;
+  /**
+   * Waits out a grace `letExit` gave, then stops what still runs under `owner`, waits for it, then for its pipes
    * (bounded) and removes `scratch`. Idempotent and never rejects, so the
    * read it served can answer; a stop that failed keeps the operation open
    * for the account, whose removal then refuses.
@@ -57,6 +63,9 @@ export class AccountOperations {
     const { core } = this;
     let scratch: string | null = null;
     const exits: Promise<void>[] = [];
+    /** The direct children's own exits: a descendant holding their pipes does not stretch a grace. */
+    const ends: Promise<void>[] = [];
+    let graceMs = 0;
     let resolveClosed!: () => void;
     const entry: Open = { owner, closed: new Promise<void>((resolve) => { resolveClosed = resolve; }), failure: null };
     const set = this.#open.get(accountId) ?? new Set<Open>();
@@ -65,6 +74,7 @@ export class AccountOperations {
     let closing: Promise<void> | null = null;
     const close = async (): Promise<void> => {
       try {
+        if (graceMs > 0) await bounded(Promise.all(ends), () => log(`processes still ran ${graceMs} ms after their input ended; stopping them`), graceMs);
         await core.procs.stopAndWait(owner).catch((error: unknown) => {
           entry.failure = error;
           log(messageOf(error));
@@ -88,6 +98,10 @@ export class AccountOperations {
           child.once('close', () => resolve());
           child.once('error', () => resolve());
         }));
+        ends.push(new Promise<void>((resolve) => {
+          child.once('exit', () => resolve());
+          child.once('error', () => resolve());
+        }));
         // The child runs the executable a turn would: a managed install under it stays.
         const installs = core.providers.installs;
         installs.acquire(providerId);
@@ -102,6 +116,7 @@ export class AccountOperations {
         return child;
       },
       killTree: () => { core.procs.killTree(owner); },
+      letExit: (ms) => { graceMs = Math.max(graceMs, ms); },
       close: () => (closing ??= close()),
     };
   }
@@ -138,10 +153,10 @@ export class AccountOperations {
   }
 }
 
-async function bounded(work: Promise<unknown>, late: () => void): Promise<void> {
+async function bounded(work: Promise<unknown>, late: () => void, ms = CLOSE_GRACE_MS): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    await Promise.race([work, new Promise<void>((resolve) => { timer = setTimeout(() => { late(); resolve(); }, CLOSE_GRACE_MS); })]);
+    await Promise.race([work, new Promise<void>((resolve) => { timer = setTimeout(() => { late(); resolve(); }, ms); })]);
   } finally {
     clearTimeout(timer);
   }

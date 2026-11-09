@@ -103,6 +103,7 @@ async function probeNative(
       ...(model === undefined ? {} : { model }),
       spawnChild: operation.spawnChild,
       killTree: operation.killTree,
+      letExit: operation.letExit,
       log: (level, message, context) => {
         core.log(level, message, { ...context, source: provider.id, event: 'provider.probe', threadId });
       },
