@@ -354,10 +354,15 @@ test('Stop on a bot holds the facts that would wake it until the user writes aga
   expect(turnsOf(h, threadId).at(-1)!.status).toBe('stopped');
   expect(events()).toHaveLength(before);
   expect(h.core.agentRuntime.facts(agent.id).map(f => f.key)).toEqual(['turn:one']);
-  // The user's next message ends the hold: the fact wakes the bot after it.
+  // New instructions wake the bot at once, unless Stop holds it: then the wake waits with the facts.
+  const saved = h.core.workforce.records.get('profile', agent.id);
+  await client.call('agents.profile.save', { id: agent.id, expectedRevision: saved.revision, value: { ...saved, instructions: `${saved.instructions} Mind the deploys.` } });
+  await Bun.sleep(600);
+  expect(events()).toHaveLength(before);
+  // The user's next message ends the hold: the instructions, then the fact, wake the bot after it.
   await client.call('turns.start', { threadId, prompt: 'Go on' });
-  await waitFor(() => events().length === before + 1 && settled(h, threadId));
-  expect(turnsOf(h, threadId).map(t => t.execution?.operation ?? t.status).slice(-3)).toEqual(['stopped', 'done', 'event']);
+  await waitFor(() => events().length === before + 2 && settled(h, threadId));
+  expect(turnsOf(h, threadId).map(t => t.execution?.operation ?? t.status).slice(-4)).toEqual(['stopped', 'done', 'event', 'event']);
   expect(h.core.agentRuntime.facts(agent.id)).toEqual([]);
 });
 

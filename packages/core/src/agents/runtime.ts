@@ -196,6 +196,11 @@ export class AgentRuntime {
     try { thread = this.#core.threads.require(this.#store.open(agent.id).threadId); }
     catch (error) { this.#core.log('warn', `agent ${agent.id}: no thread to wake: ${messageOf(error)}`); return { held: 'failed' }; }
     if (this.#atWork(thread)) return { held: 'busy' };
+    // Stopped by the user, or its letters paused by the owner: an event wake, direct or queued, waits for the
+    // user's next message, as its letters and scheduled wakes do. Without this, Stop ends the turn and a fact
+    // older than the batch delay starts the next one half a second later, so Stop seems to do nothing.
+    // A routine is the owner's schedule and still runs at its time.
+    if (wake.kind === 'event' && this.#core.coordination.heldByUser(thread.id)) return { held: 'paused' };
     if (this.#overBudget(agent, thread, wake.label)) return { held: 'budget' };
     try { return { turn: this.#begin(thread, wake) }; }
     catch (error) {
@@ -466,11 +471,6 @@ export class AgentRuntime {
       const agent = this.#store.records.find('profile', agentId);
       if (!agent || agent.status === 'archived') { this.forget(agentId); continue; }
       if (agent.status !== 'active') continue;
-      // Stopped by the user, or its letters paused by the owner: what it gathered waits for the user's next
-      // message, as its letters and scheduled wakes do. Without this, Stop ends the turn and a fact older
-      // than the batch delay starts the next one half a second later, so Stop seems to do nothing.
-      const threadId = this.#store.sessionOf(agentId)?.threadId;
-      if (threadId && this.#core.coordination.heldByUser(threadId)) continue;
       const event = pending.events[0];
       if (event) {
         const attempt = this.attempt(agent, { kind: 'event', label: event.label, prompt: event.prompt, requestId: `event-${agentId.slice(-40)}-${event.at}` });
