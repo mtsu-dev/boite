@@ -260,7 +260,10 @@ A wake never starts while the bot's thread has a turn queued, running or
 waiting, while the bot is archived, while the bot or every bot on the core is
 paused, or once its daily budget is spent. A held creation or instructions wake
 starts once the thread is free or the pause ends; archiving the bot drops its
-waiting wakes and facts instead.
+waiting wakes and facts instead. Stop on the bot's thread, or the owner pausing
+its letters, holds its waiting wakes and facts too, as it holds its letters and
+scheduled wakes: they start after the user's next message, not half a second
+after Stop.
 
 Every other turn the core starts by itself on the bot's thread meets the
 same policy in `threads.startTurn` (`AgentRuntime.admit`): the output of a

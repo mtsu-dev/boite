@@ -466,6 +466,11 @@ export class AgentRuntime {
       const agent = this.#store.records.find('profile', agentId);
       if (!agent || agent.status === 'archived') { this.forget(agentId); continue; }
       if (agent.status !== 'active') continue;
+      // Stopped by the user, or its letters paused by the owner: what it gathered waits for the user's next
+      // message, as its letters and scheduled wakes do. Without this, Stop ends the turn and a fact older
+      // than the batch delay starts the next one half a second later, so Stop seems to do nothing.
+      const threadId = this.#store.sessionOf(agentId)?.threadId;
+      if (threadId && this.#core.coordination.heldByUser(threadId)) continue;
       const event = pending.events[0];
       if (event) {
         const attempt = this.attempt(agent, { kind: 'event', label: event.label, prompt: event.prompt, requestId: `event-${agentId.slice(-40)}-${event.at}` });

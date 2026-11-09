@@ -337,6 +337,30 @@ test('facts gather into one event turn once the thread is free and the first is 
   expect(h.core.agentRuntime.facts(agent.id)).toEqual([]);
 });
 
+test('Stop on a bot holds the facts that would wake it until the user writes again', async () => {
+  // Only the user's first turn runs until stopped; the next prompt quotes it, so the text cannot tell them apart.
+  let holds = 0;
+  const driver = scripted(ctx => ({ text: 'Seen.', hold: ctx.prompt.includes('Hold on') && holds++ === 0 })); restore = driver.restore;
+  const { agent, threadId } = await makeAgent(h, client);
+  const events = () => turnsOf(h, threadId).filter(t => t.execution?.operation === 'event');
+  const before = events().length;
+  await client.call('turns.start', { threadId, prompt: 'Hold on' });
+  await waitFor(() => h.core.threads.require(threadId).status === 'running');
+  h.core.agentRuntime.fact(agent.id, { urgent: true, key: 'turn:one', text: 'Thread one finished.', delay: 0 });
+  expect(await client.call('turns.stop', { threadId })).toEqual({ stopped: true });
+  await waitFor(() => settled(h, threadId));
+  // Several ticks of the runtime: the fact would have started a turn in the first.
+  await Bun.sleep(1_200);
+  expect(turnsOf(h, threadId).at(-1)!.status).toBe('stopped');
+  expect(events()).toHaveLength(before);
+  expect(h.core.agentRuntime.facts(agent.id).map(f => f.key)).toEqual(['turn:one']);
+  // The user's next message ends the hold: the fact wakes the bot after it.
+  await client.call('turns.start', { threadId, prompt: 'Go on' });
+  await waitFor(() => events().length === before + 1 && settled(h, threadId));
+  expect(turnsOf(h, threadId).map(t => t.execution?.operation ?? t.status).slice(-3)).toEqual(['stopped', 'done', 'event']);
+  expect(h.core.agentRuntime.facts(agent.id)).toEqual([]);
+});
+
 test('a paired device lands an outside event on a bot: it wakes it with default settings, the same key replaces a pending one, an agent token is refused', async () => {
   const driver = scripted(() => ({ text: '[quiet] read it' })); restore = driver.restore;
   const { agent, threadId } = await makeAgent(h, client);
