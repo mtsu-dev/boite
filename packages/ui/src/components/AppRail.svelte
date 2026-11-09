@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Activity, Contact, MessageSquare, Plus, Settings } from '@lucide/svelte';
+  import { Contact, Inbox, MessageSquare, Plus, Settings } from '@lucide/svelte';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
   import { count } from '../lib/format';
@@ -166,7 +166,7 @@
     <button type="button" class="rail-button" class:on={onActivity} aria-current={onActivity ? 'page' : undefined}
       aria-label={waiting ? `${strings.mobile.activity}, ${waitingLabel}` : strings.mobile.activity}
       data-testid="nav-activity" onclick={showActivity}>
-      <Activity size={19} strokeWidth={1.75} />
+      <Inbox size={19} strokeWidth={1.75} />
       {#if waiting}<span class="count" data-testid="rail-activity-waiting">{waiting > 99 ? '99+' : count(waiting)}</span>{/if}
     </button>
     {@render railName(strings.mobile.activity, null, waiting ? waitingLabel : null)}
@@ -272,13 +272,14 @@
 
   /* One place per button: its pip stands in the rail's left edge. */
   .slot { position: relative; display: grid; place-items: center; width: 100%; }
+  /* Inset from the chrome's edge and clear of a 44 px picture's left side (14 px in), so it never cuts one. */
   .pip {
     position: absolute;
-    left: 0;
+    left: 3px;
     top: 50%;
     width: 4px;
     height: 0;
-    border-radius: 0 var(--radius-full) var(--radius-full) 0;
+    border-radius: var(--radius-full);
     background: var(--color-foreground);
     transform: translateY(-50%);
     transition: height var(--dur-2) var(--ease-out-quint);
@@ -298,9 +299,11 @@
     color: var(--color-muted-foreground);
     box-shadow: none;
   }
-  .rail-button { background: var(--color-surface-2); }
-  .rail-button:hover:not(:disabled) { background: var(--color-surface-3); color: var(--color-foreground); }
-  .rail-button.on { background: var(--color-surface-3); color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-edge); }
+  /* Where you are is the one filled tile: the others stand bare on the chrome, and the pointer lights one a step
+     under the open place's fill, so hover never reads as a second selection. */
+  .rail-button { background: transparent; }
+  .rail-button:hover:not(:disabled) { background: var(--color-surface-2); color: var(--color-foreground); }
+  .rail-button.on, .rail-button.on:hover:not(:disabled) { background: var(--color-surface-3); color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-edge); }
   .rail-button.add { background: transparent; box-shadow: inset 0 0 0 1px var(--color-edge); border-radius: var(--radius-full); }
   .rail-button.add:hover:not(:disabled) { background: var(--color-hover); }
 
@@ -345,7 +348,8 @@
   .separator { flex: none; width: 28px; height: 1px; background: var(--color-edge); }
   .bots { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; min-height: 0; }
 
-  /* Activity's count, bottom right, ringed in the chrome so it reads cut out; two digits fit inside the button's corner. */
+  /* Activity's count, bottom right, a bare amber number cut out of the chrome (amber is a dot or a count, never a
+     filled badge); two digits fit inside the button's corner. */
   .count {
     position: absolute;
     right: -5px;
@@ -357,9 +361,8 @@
     display: grid;
     place-items: center;
     border-radius: var(--radius-full);
-    background: var(--color-live);
-    color: var(--color-accent-ink);
-    box-shadow: 0 0 0 2px var(--color-frame);
+    background: var(--color-frame);
+    color: var(--color-live);
     font-size: 11px;
     font-weight: 700;
     line-height: 1;

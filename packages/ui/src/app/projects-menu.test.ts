@@ -44,14 +44,14 @@ test('project menus keep Mark done separate from Archive, which can stop pending
   const labels = Array.from(document.querySelectorAll('[data-testid=context-menu] [data-row]')).map((el) => el.textContent?.trim());
   // The row's menu, seven rows: Open, then what it is called and pinned, where it stands, the rest behind a door named
   // after what it holds, Delete apart. t-bench still works, so Mark done is off and says why on its row.
-  expect(labels).toEqual(['Open', 'Rename', 'Pin', 'Mark done Still working', 'Archive', 'Title and folder ›', 'Delete']);
+  expect(labels).toEqual(['Open', 'Rename', 'Pin', 'Mark done Still working', 'Archive', 'Move or retitle ›', 'Delete']);
   const groups = () => Array.from(query('[data-testid=context-menu]').querySelectorAll('[data-row], [role=separator]'))
     .map(el => el.getAttribute('role') === 'separator' ? '|' : el.textContent?.trim()).join(',');
-  expect(groups()).toBe('Open,|,Rename,Pin,|,Mark done Still working,Archive,|,Title and folder ›,|,Delete');
+  expect(groups()).toBe('Open,|,Rename,Pin,|,Mark done Still working,Archive,|,Move or retitle ›,|,Delete');
   // The group opens its list in place, no panel in it (the panel selector has them), and Back returns.
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=more]').click();
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=copy]') !== null);
-  expect(groups()).toMatch(/^Title and folder,\|,Regenerate title,\|,Move to project,Copy path$/);
+  expect(groups()).toMatch(/^Move or retitle,\|,Regenerate title,\|,Move to project,Copy path$/);
   expect(query('[data-testid=context-menu] [data-value=copy]').getAttribute('title')).toBe('C:\\src\\boite');
   // t-bench waits on a permission: its turn still runs, and a move would wait for it to end.
   expect(query<HTMLButtonElement>('[data-testid=context-menu] [data-value=move]').disabled).toBe(false);

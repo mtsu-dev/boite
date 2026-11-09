@@ -10,6 +10,8 @@
   import { focusOnMount } from '../lib/actions';
   import { collapseRow } from '../lib/row-collapse';
   import { strings } from '../lib/strings';
+  import MachinePlace from './MachinePlace.svelte';
+  import type { RowPlace } from '../lib/row-place';
   import ThreadHeadline, { pullRequestLabel } from './ThreadHeadline.svelte';
   import { ago, exactTime } from '../lib/format';
   import { trackThreadPullRequest } from '../lib/thread-pull-request.svelte';
@@ -48,7 +50,7 @@
     /** Activity: the row's one action, at the end of the title's line, outside the row's own button; it wraps itself in `.feed-action`. */
     action?: Snippet;
     /** Recent: where the row lives (its project, its machine among several), when the tile alone may not tell rows apart (lib/row-place.ts). */
-    where?: string;
+    where?: RowPlace;
   } = $props();
   let owner = $derived(machine.store);
   let open = $derived(workspace.active === owner && owner.openThread?.id === thread.id);
@@ -153,7 +155,7 @@
              mark, the time and the one action end that line; a command runs whole under it. -->
         {@render detail()}
       {:else}
-        {#if where}<span class="where ui-label" data-testid="thread-where">{where}</span>{/if}
+        {#if where}<span class="where" data-testid="thread-where" title={where.text}>{#if where.project}<span class="ui-label">{where.project}</span>{/if}{#if where.host}<MachinePlace host={where.host} />{/if}</span>{/if}
       {/if}
       {#if pending}
         <span class="pending" data-testid="thread-pending" title={pending}><FolderInput size={12} /><span class="ui-label">{pending}</span></span>
@@ -210,15 +212,16 @@
   .thread.offline .row {
     opacity: 0.6;
   }
-  /* One line of 32 px: the title's 20 px line in 6 px of padding. */
+  /* One line of 34 px: the title's 20 px line in 7 px of padding, the chat's looser rhythm rather than a packed
+     table. A title too long for its line takes a second one. */
   .row {
     display: flex;
     flex-direction: column;
     align-items: stretch;
     width: 100%;
     height: auto;
-    min-height: 32px;
-    padding: 6px var(--pad-x);
+    min-height: 34px;
+    padding: 7px var(--pad-x);
     gap: 4px;
     border-radius: inherit;
     background: transparent;
@@ -239,7 +242,7 @@
   /* A clamped title's second line keeps its untrimmed box: .ui-label's half-em under it showed the top of the third
      line, so only a descender's room is kept. */
   .feed .row :global(.headline .title) { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; padding-bottom: 0.25em; margin-bottom: -0.25em; }
-  .feed .row :global(.headline > .tile) { margin-top: 2px; }
+  .feed .row :global(.headline > :is(.tile, .bot)) { margin-top: 2px; }
   /* The mark centred on the title's first 20 px line, like the time and the action beside it. */
   .feed .row :global(.headline > .when) { height: 20px; }
   .feed-side { position: absolute; top: 0; right: 0; display: flex; align-items: center; gap: 8px; height: calc(20px + 2 * var(--feed-pad)); padding-right: var(--pad-x); }
@@ -247,12 +250,21 @@
   /* The menu takes the time's place, never the action's. */
   .feed .actions { top: calc(var(--feed-pad) + 10px - var(--act) / 2); right: calc(var(--pad-x) + var(--feed-verb) + 8px); }
   /* Recent's second line, on the title's edge: where the row lives, in words, so no tile repeats it. */
-  .where { margin-top: -3px; overflow: hidden; font-size: var(--text-xs); color: var(--color-subtle); text-align: start; text-overflow: ellipsis; white-space: nowrap; }
+  .where { display: flex; align-items: center; gap: 8px; min-width: 0; margin-top: -2px; overflow: hidden; font-size: var(--text-xs); color: var(--color-subtle); text-align: start; white-space: nowrap; }
+  .where > .ui-label { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   /* The title's room first: its mark and time sit a step closer than the headline's own gap. */
   .row :global(.headline) { gap: 6px; }
   /* The keyboard reads the whole title: the focused row's title wraps, and word-fit (lib/word-fit.ts) shows it uncut
      once its line is no longer one. The pointer gets it in the tooltip, so the list never moves under it. */
-  .thread:not(.feed) .row:focus-visible :global(.headline .title) { white-space: normal; overflow-wrap: anywhere; }
+  .thread:not(.feed) .row:focus-visible :global(.headline .title) { display: block; -webkit-line-clamp: none; line-clamp: none; }
+  /* A list row's title wraps to a second line rather than dying mid-word (word-fit honours the clamp); its marks and
+     time stay on the first line, centred on its capitals: .ui-label trims the title's box to them, so the line
+     opens 5 px down and their middle sits 0.36 em under that. */
+  .thread:not(.feed) .row :global(.headline) { align-items: flex-start; padding-top: 5px; }
+  .thread:not(.feed) .row :global(.headline .title) { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; padding-bottom: 0.25em; margin-bottom: -0.25em; }
+  .thread:not(.feed) .row :global(.headline > :is(.when, .at, .bot, .draft, .pin, .pr)) { height: 20px; margin-top: calc(0.36 * var(--text-body) - 10px); }
+  .thread:not(.feed) .row :global(.headline > .at) { line-height: 20px; }
+  .thread:not(.feed) .row :global(.headline > .tile) { margin-top: calc(0.36 * var(--text-body) - 8px); }
   /* The Recent list keeps the cards' insets and gaps, so its titles get the same room (about 30 characters). */
   .row:hover:not(:disabled) {
     background: transparent;
@@ -277,11 +289,11 @@
   .pending :global(svg) {
     flex: none;
   }
-  /* Centred on the title's line, 16 px down the row (6 px of padding, half its 20 px line). Nothing sits
+  /* Centred on the title's first line, 17 px down the row (7 px of padding, half its 20 px line). Nothing sits
      under them (the line below makes room), so they need no backing of their own. */
   .actions, .done {
     position: absolute;
-    top: calc(16px - var(--act) / 2);
+    top: calc(17px - var(--act) / 2);
     opacity: 0;
   }
   .actions { right: 3px; }

@@ -354,3 +354,25 @@ test('a list row ends its title line with its mark, then its one time, the way a
   expect(state.nextElementSibling?.matches('time.at')).toBe(true);
   expect(headline().querySelectorAll('time')).toHaveLength(1);
 });
+
+test('a thread a bot started shows that bot\'s face before its title, grey at rest; one it only follows shows none', async () => {
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  const [started, followed] = store.threads.filter(row => !row.parentThreadId && row.projectId);
+  const project = store.projects.find(row => row.id === started!.projectId)!;
+  const { agentDirectory } = await import('../lib/agent-directory.svelte');
+  const watch = (thread: ThreadSummary, origin: 'started' | 'followed') => ({ agentId: 'a-nova', threadId: thread.id, title: thread.title, projectId: thread.projectId, origin, since: 0, state: 'idle' as const, stalledSince: null, pullRequest: null });
+  agentDirectory(store).snapshot = {
+    profiles: [{ id: 'a-nova', name: 'Nova', avatar: '', status: 'active' }], sessions: [], watches: [watch(started!, 'started'), watch(followed!, 'followed')]
+  } as never;
+  mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'local', label: 'Local', store }, project, thread: started!, now: Date.now() } });
+  await settle();
+  const face = document.querySelector('[data-testid=thread-bot]');
+  expect(face?.getAttribute('title')).toBe('Nova');
+  expect(face?.nextElementSibling?.classList.contains('title')).toBe(true);
+  await unmount(mounted);
+  mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'local', label: 'Local', store }, project, thread: followed!, now: Date.now() } });
+  await settle();
+  expect(document.querySelector('[data-testid=thread-bot]')).toBeNull();
+  agentDirectory(store).snapshot = null;
+});

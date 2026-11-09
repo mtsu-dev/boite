@@ -275,19 +275,21 @@ test('the picker opens on the models in use, one row each, then every provider u
   await waitFor(() => short().length === 3);
   // The current choice first, then the star, then the latest threads' model; no provider rail on this level.
   expect(short()).toEqual([['recent-model', 'claude-opus-5-5'], ['favorite-model', 'claude-sonnet-5-5'], ['recent-model', 'echo-1']]);
-  // A name alone tells these rows apart: no provider under it, and the provider's own login is not printed, even beside another seat of it.
+  // Each row names its provider under the model (round 19), but not the provider's own login, even beside another seat of it.
   expect(store.accountsOf('claude').length).toBeGreaterThan(1);
   expect(store.accountOf('a-claude-main')!.isolationDir).toBeNull();
-  expect(document.querySelector('[data-testid=picker-shortlist] .row.current .source')).toBeNull();
+  expect(query('[data-testid=picker-shortlist] .row.current .sub').textContent).toBe('Claude');
   // The current row carries the check.
   expect(query('[data-testid=picker-shortlist] .row.current .mark svg')).not.toBeNull();
   expect(document.querySelector('[data-testid=composer-picker-menu] .rail')).toBeNull();
-  // The rest under your models, as on a phone's sheet: All models, then one tile per provider, no home tile.
+  // The rest under your models, as on a phone's sheet: Providers, then one tile per provider, no home tile.
   const rest = () => query('[data-testid=composer-picker-menu] .sources');
   expect(rest().hasAttribute('hidden')).toBe(false);
-  expect(rest().querySelector('.rest-label')?.textContent).toBe(strings.composer.allModels);
+  expect(rest().querySelector('.rest-label')?.textContent).toBe(strings.composer.providers);
   expect(tiles()).not.toContain('home');
   expect(tiles()).toContain('claude');
+  // Each provider row ends in the chevron that says it opens its models (Set up: ProviderTiles.test.ts).
+  expect(query('[data-testid=composer-picker-menu] .tile[data-provider="claude"] .chevron')).not.toBeNull();
   // The menu picks a model and nothing else: the effort and the permission are chips beside it.
   expect(document.querySelector('[data-testid=composer-picker-menu] [data-testid=composer-effort], [data-testid=composer-picker-menu] [data-testid=composer-mode], [data-testid=composer-picker-more]')).toBeNull();
   // The keys start in the search field, and the arrows go down into the rows under it.

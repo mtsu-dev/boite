@@ -198,5 +198,5 @@ test('a project card names its machine only when it is not this app\'s own', asy
   await waitFor(() => card(own.id) !== null && card(remote.id) !== null);
   // Everything runs here by default: the own machine goes unsaid, the other is named on its cards.
   expect(card(own.id)!.querySelector('[data-testid=project-host]')).toBeNull();
-  expect(card(remote.id)!.querySelector('[data-testid=project-host]')?.textContent).toBe(remote.label);
+  expect(card(remote.id)!.querySelector('[data-testid=project-host]')?.textContent).toBe(`on ${remote.label}`);
 });

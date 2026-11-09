@@ -6,6 +6,7 @@
   import { setFeature } from '../lib/features';
   import { checkSettingsPatch } from '@boite/contracts';
   import InfoTip from './InfoTip.svelte';
+  import CardScope from './CardScope.svelte';
   import SaveStatus from './SaveStatus.svelte';
   import { Autosave, typed } from '../lib/autosave.svelte';
   import CompactionSettings from './CompactionSettings.svelte';
@@ -65,7 +66,7 @@
 
   {#if store.owner}
     <section class="card" id="settings-origins" data-testid="browser-origins">
-      <h2 class="ui-label-box"><span class="ui-label">{strings.machines.browserOrigins}</span><InfoTip topic={strings.machines.browserOrigins} text={strings.machines.browserOriginsHint} /><SaveStatus {save} /></h2>
+      <h2 class="ui-label-box"><span class="ui-label">{strings.machines.browserOrigins}</span><InfoTip topic={strings.machines.browserOrigins} text={strings.machines.browserOriginsHint} /><CardScope {store} /><SaveStatus {save} /></h2>
       <textarea bind:value={origins} oninput={() => { dirty = true; typed(save).oninput(); }} onchange={() => void save.flush()} disabled={!store.settings} aria-label={strings.machines.browserOrigins} rows="3" spellcheck="false" placeholder="https://boite.example.com"></textarea>
     </section>
   {/if}
@@ -73,7 +74,7 @@
   {#if !narrow.current}
     <!-- Desktop details few people change, once under Appearance. -->
     <section class="card" id="settings-details">
-      <h2>{strings.settings.terminalAndScrollbars}</h2>
+      <h2><span class="ui-label">{strings.settings.terminalAndScrollbars}</span><CardScope /></h2>
       <div class="switch-row">
         <span class="text ui-label">{strings.settings.terminalCursor}</span>
         <div class="segmented" role="group" aria-label={strings.settings.terminalCursor}>

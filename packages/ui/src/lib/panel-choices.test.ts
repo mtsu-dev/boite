@@ -2,7 +2,7 @@ import { beforeEach, expect, test } from 'vitest';
 import type { ThreadSummary } from '@boite/contracts';
 import type { Store } from './store.svelte';
 import { strings } from './strings';
-import { ALL_PANELS, IN_USE, panelChoices, usedPanels } from './panel-choices';
+import { ALL_PANELS, IN_USE, notePanelUse, panelChoices, usedPanels } from './panel-choices';
 import { offeredCards } from './surface-labels';
 import { work } from './work-prefs.svelte';
 
@@ -44,7 +44,10 @@ test('the full list holds every panel once in named groups, the showing panel ma
   const named = Object.fromEntries(items.map((item) => [item.id, item]));
   expect(named['trace']).toMatchObject({ label: 'Processes', title: 'Formerly Trace' });
   expect(named['messages']).toMatchObject({ label: 'Messages', title: 'Formerly Discussions' });
-  expect(named['coordination']).toMatchObject({ label: 'Thread links', title: 'Formerly Communication between conversations' });
+  expect(named['coordination']).toMatchObject({ label: 'Linked threads', title: 'Formerly Thread links' });
+  // The two lists of work to do say whose work each holds.
+  expect(named['board-toggle']).toMatchObject({ label: 'Project board', hint: strings.rightPanel.roles.board });
+  expect(named['tasks']).toMatchObject({ label: 'Task manager', hint: strings.rightPanel.roles.tasks });
   expect(named['customize']).toMatchObject({ label: 'Customize', title: 'Formerly Choose the buttons' });
 });
 
@@ -89,4 +92,15 @@ test('a phone, a bot or a team thread lists what it can open, and an unreachable
   const shut = panelChoices(stub(), thread(), { available: (kind) => kind !== 'changes', full: true }).find((item) => item.id === 'changes');
   expect(shut).toMatchObject({ disabled: true });
   expect(shut?.hint).toBeTruthy();
+});
+
+test('the panels picked last lead the short list, newest first, a click from the header', () => {
+  const store = stub({ panel: { active: null } });
+  notePanelUse('trace');
+  notePanelUse('board-toggle');
+  notePanelUse('file');
+  // A file tab counts as Files; Processes and the board, never used by this thread, stay one click away.
+  expect(ids(panelChoices(store, thread(), { available: () => true, showing: undefined }))).toEqual(['files', 'board-toggle', 'trace', 'changes', ALL_PANELS]);
+  notePanelUse('trace');
+  expect(ids(panelChoices(store, thread(), { available: () => true, showing: undefined })).slice(0, 3)).toEqual(['trace', 'files', 'board-toggle']);
 });

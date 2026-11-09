@@ -21,3 +21,15 @@ test('prefs saved before the wrap choice existed still wrap; a saved No wrap sta
   window.localStorage.setItem('boite.diffView', JSON.stringify({ split: false, wrap: false, ignoreWhitespace: false }));
   expect((await prefs()).wrap).toBe(false);
 });
+
+test('a phone scrolls a diff sideways by default, its tokens whole; a saved Wrap lines stays', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(max-width: 720px)' }));
+  try {
+    expect((await prefs()).wrap).toBe(false);
+    vi.resetModules();
+    window.localStorage.setItem('boite.diffView', JSON.stringify({ split: false, wrap: true, ignoreWhitespace: false }));
+    expect((await prefs()).wrap).toBe(true);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});

@@ -5,7 +5,7 @@
   import SubscriptionProxySettings from './SubscriptionProxySettings.svelte';
   import LocalAcpCard from './LocalAcpCard.svelte';
   import SecretsCard from './SecretsCard.svelte';
-  import BrowserProfilesCard from './BrowserProfilesCard.svelte';
+  import CardScope from './CardScope.svelte';
   import { onMount } from 'svelte';
   import { slide } from 'svelte/transition';
   import { ChevronRight, Plus, RefreshCw, Terminal } from '@lucide/svelte';
@@ -526,6 +526,8 @@
     {@const effort = store.defaultEffortOf(provider.id, account.id, model)}
     <div class="section-head">
       <span class="section-label"><span class="ui-label">{strings.providerSettings.defaultModel}</span><InfoTip topic={strings.providerSettings.defaultModel} text={strings.settings.modelDefaultsHint} /></span>
+      <!-- A default is the account's: the row says whose, where it is changed. -->
+      <CardScope account={account.label} />
     </div>
     <div class="default-model" data-testid="model-default" data-default-provider={provider.id}>
       <ModelPicker
@@ -714,10 +716,9 @@
   {#if store.owner}<LocalAcpCard {store} />{/if}
   {#if store.owner}<HarnessUpdatesCard {store} />{/if}
   {#if store.owner}<SubscriptionProxySettings {store} />{/if}
-  <!-- What agents sign in with beyond a provider: the keys they ask for in a card, and the browser's logins
-       (round 18, once under General). Profiles also configure the core's agent browser from a plain web client. -->
+  <!-- What agents sign in with beyond a provider: the keys they ask for in a card (round 18, once under General).
+       The browser's logins have their own entry since round 19 (BrowserPage.svelte). -->
   <SecretsCard />
-  {#if store.owner}<BrowserProfilesCard />{/if}
 </div>
 
 <style>

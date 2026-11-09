@@ -33,7 +33,7 @@ test('the meter follows the automatic compaction threshold and keeps a smaller m
   expect(meter().dataset.percent).toBe('85');
   expect(meter().dataset.level).toBe('high');
   // What is left, in words beside the ring: the one form on every width.
-  expect(meter().querySelector('.percent')!.textContent).toBe('15% left');
+  expect(meter().querySelector('.percent')!.textContent).toBe('15% context left');
   expect(meter().querySelector('[data-testid=context-trigger]')!.getAttribute('title')).toBe('Context: 15% left');
   expect(popup().querySelector('.total .num')!.textContent).toBe(`${exact(212_569)} / ${exact(250_000)}`);
   expect(popup().querySelector('[data-testid="context-remaining"]')!.textContent).toBe(`${exact(37_431)} tokens before auto-compaction`);

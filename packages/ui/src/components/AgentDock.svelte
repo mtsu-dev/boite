@@ -97,7 +97,7 @@
      name, mark and time, side by side while they fit and wrapping when they
      do not (never folded into a count); past the limit a "+N" entry opens the
      rest. Their marks line up with the field's text (8 px of chip padding). */
-  .dock { flex: none; padding: 6px 6px 0; }
+  .dock { flex: none; padding: var(--deck-gap, 6px) 6px 0; }
   .entries { display: flex; flex-wrap: wrap; align-items: center; gap: 0 4px; }
   /* One step under the decision: the smallest type and the tertiary ink, no
      pill; a hover brings the ink and the fill. */

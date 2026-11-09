@@ -39,7 +39,9 @@
     /**
      * Drawn at the top of the composer: the question once, in bold on a line
      * of its own, Skip and the fold a compact group at its end, the options as rows numbered for the keyboard
-     * (the composer's 1 to 9), and no second send while the box answers it.
+     * (the composer's 1 to 9), then the hint and the card's own Answer: the
+     * composer's round button stays Stop while the turn runs (round 19).
+     * A question with no options is answered from the box's Send alone.
      */
     docked?: boolean;
     /** Docked and folded: the head alone, the question on one line. */
@@ -75,6 +77,8 @@
   $effect(() => { if (open) built = true; });
 
   const ready = $derived(picked.length > 0 || drafted);
+  /** Docked with options, the card keeps its own Answer. */
+  const answers = $derived(docked && options.length > 0);
 
   /**
    * The docked choices get a room from the dock's budget (a CSS max-height,
@@ -223,10 +227,6 @@
   {/if}
 
     {#if options.length > 0}
-      {#if docked && pending && !sent}
-        <!-- A pick only marks the row: the composer's Send answers, with whatever is typed. -->
-        <p class="how" data-testid="question-how">{multiple ? strings.chat.questionPickMany : strings.chat.questionPickOne}</p>
-      {/if}
       <div class="options" class:clipped={below > 0} role={multiple ? 'group' : 'radiogroup'} bind:this={list} onscroll={measure}>
         {#each options as option, index (option.id)}
           <button
@@ -242,7 +242,7 @@
             onclick={() => toggle(option.id)}
           >
             {#if docked && index < 9}
-              <kbd class="kbd" aria-hidden="true">{#if multiple && picked.includes(option.id)}<Check size={11} strokeWidth={2.5} />{:else}{index + 1}{/if}</kbd>
+              <kbd class="kbd" aria-hidden="true">{#if picked.includes(option.id)}<Check size={11} strokeWidth={2.5} />{:else}{index + 1}{/if}</kbd>
             {:else}
             <span class="box" class:round={!multiple} aria-hidden="true">
               {#if multiple && picked.includes(option.id)}
@@ -265,8 +265,12 @@
     {/if}
     {@render foot?.()}
 
-    {#if pending && !(docked && replying && !page)}
+    <!-- Docked with options, the card keeps its Answer: the hint names it, and it takes what the box holds too (sendAnswer). -->
+    {#if pending && (answers || !(docked && replying && !page))}
       <div class="actions">
+        {#if answers && !sent}
+          <p class="how" data-testid="question-how">{multiple ? strings.chat.questionPickMany : strings.chat.questionPickOne}</p>
+        {/if}
         {#if page && onopen}
           <button type="button" class="ghost" data-testid="question-open" title={page} onmousedown={keepFocus} onclick={onopen}><span class="ui-label">{strings.chat.questionOpenPage}</span></button>
         {/if}
@@ -276,10 +280,10 @@
         {#if allowText && !replying && onwrite}
           <button type="button" class="ghost" data-testid="question-write" disabled={sent} onclick={onwrite}><span class="ui-label">{strings.chat.questionWrite}</span></button>
         {/if}
-        {#if !docked || !replying}
+        {#if !docked || !replying || answers}
         <button
           type="button"
-          class="primary"
+          class={docked ? 'answer' : 'primary'}
           data-testid="question-submit"
           disabled={!ready || sent}
           onmousedown={keepFocus}
@@ -336,20 +340,26 @@
     /* A phone gives the choices what the card's budget leaves once the
        head, the field and the bar are counted (`--dock-cap`). */
     .question.docked { padding: 8px var(--dock-inset, 8px); gap: 4px; }
-    .question.docked > .options { max-height: max(96px, calc(var(--dock-cap, 30dvh) - 96px)); }
+    /* What the card holds besides the choices (its padding, the head, the
+       Answer row and the field's share the cap does not count) stays in view. */
+    .question.docked > .options { max-height: max(96px, calc(var(--dock-cap, 30dvh) - 120px)); }
   }
   .more { align-self: flex-start; height: 24px; padding: 0 8px; color: var(--color-muted-foreground); font-size: var(--text-sm); }
   .skip { height: var(--control); padding: 0 8px; border-radius: var(--radius-sm); color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 550; }
 
   .how { margin: 0; color: var(--color-muted-foreground); font-size: var(--text-xs); line-height: 16px; }
   /* Each choice a tappable row: its own fill and edge at rest, a lift under a mouse, the picked one ringed. */
+  /* A row keeps its two lines when the list is shorter than its rows: the list scrolls, no row squeezes. */
   .docked .options { gap: 4px; }
+  .docked .options > .option { flex-shrink: 0; }
   .docked .option { align-items: center; gap: 12px; padding: 7px 10px; border-color: var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface-2); box-shadow: var(--shadow-e1); }
   @media (hover: hover) {
     .docked .option:hover:not(:disabled) { transform: translateY(-1px); background: var(--color-surface-3); border-color: var(--color-edge); }
   }
   .docked .option:focus-visible { transform: none; background: var(--color-surface-3); border-color: var(--color-edge); }
-  .docked .option.picked { background: var(--color-surface-3); border-color: var(--color-foreground); }
+  /* Picked: a fill a step toward the ink, its edge in the ink and a check in its keycap, from the tap on. */
+  /* The pick holds under the pointer that made it: hover and focus do not wash it out. */
+  .docked .option.picked, .docked .option.picked:is(:hover, :focus-visible):not(:disabled) { background: color-mix(in oklab, var(--color-foreground) 12%, var(--color-surface-2)); border-color: var(--color-foreground); }
   .docked .option.picked .kbd { border-color: transparent; background: var(--color-foreground); color: var(--color-background); }
   .docked .option:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -1px; }
   .docked .label { font-weight: 550; }
@@ -357,9 +367,21 @@
   .kbd { flex: none; width: 20px; height: 20px; padding: 0; color: var(--color-muted-foreground); }
   .option.picked .kbd { color: var(--color-foreground); }
   /* A card taller than its room scrolls; the answer stays at its foot, in sight. */
-  .docked .actions { justify-content: flex-end; }
+  .docked .actions { align-items: center; justify-content: flex-end; }
+  .docked .actions .how { flex: 1; min-width: 0; }
+  /* The card's send in the decision's strong neutral, as Allow once: the accent stays the composer's. */
+  .answer { flex: none; height: var(--control); padding: 0 14px; border: none; border-radius: var(--radius-md); background: var(--color-foreground); color: var(--color-background); font-size: var(--text-sm); font-weight: 600; }
+  .answer:hover:not(:disabled) { background: var(--color-foreground); opacity: .9; }
+  /* A phone draws it 36 px tall and keeps the 44 px touch target in a hit zone around it: the choices keep the room. */
+  @media (max-width: 720px) {
+    .answer { position: relative; height: 36px; }
+    .answer::after { content: ''; position: absolute; inset: -4px 0; }
+  }
   /* After the rows' own padding, so the phone's tighter one wins. */
-  @media (max-width: 720px) { .docked .option { min-height: var(--touch-target); padding: 4px 8px; } }
+  @media (max-width: 720px) {
+    .docked .option { min-height: var(--touch-target); padding: 3px 8px; }
+    .docked .options { gap: 2px; }
+  }
 
   .waiting-row:disabled { opacity: 1; cursor: default; }
   /* Waiting on the owner: a small live dot, where to answer is in its tooltip. */

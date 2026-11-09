@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Check, Plus } from '@lucide/svelte';
+  import { ArrowRight, Check, ChevronRight, Plus } from '@lucide/svelte';
   import type { ProviderSummary } from '@boite/contracts';
   import ProviderLogo from './ProviderLogo.svelte';
   import { strings } from '../lib/strings';
@@ -9,7 +9,9 @@
   /**
    * The model picker's sources, unfolded in place under its search row: one
    * row per provider in the order the core listed them, its mark in monochrome
-   * beside its name, the shown one checked. A row only moves the list under it.
+   * beside its name, the shown one checked. A row only moves the list under it;
+   * its end says where it leads: a chevron to its models, "Set up" with the
+   * reason under the name when it cannot run yet, an arrow out to Settings.
    * Folded, the rows stay in the page (the same nodes when they unfold) but
    * leave the arrows' path.
    */
@@ -81,12 +83,13 @@
   >
     <span class="mark" aria-hidden="true">{#if current === tile.provider.id}<Check size={14} />{/if}</span>
     <ProviderLogo providerId={tile.provider.id} size={14} />
-    <span class="tile-name ui-label">{tile.provider.name}</span>
-    {#if tile.reason}<span class="reason ui-label">{tile.reason}</span>{/if}
+    <span class="text"><span class="tile-name ui-label">{tile.provider.name}</span>{#if tile.reason}<span class="reason">{tile.reason}</span>{/if}</span>
+    {#if tile.reason}<span class="lead ui-label">{strings.composer.setUp}</span>{/if}
+    <ChevronRight size={14} strokeWidth={2} class="chevron" />
   </button>
 {/each}
 {#if onmore && listed.length < store.providers.length}
-  <button type="button" class="tile more" role="menuitem" data-row={open || undefined} data-provider="more" data-testid="picker-more-providers" onclick={onmore}><span class="mark" aria-hidden="true"></span><Plus size={14} /><span class="tile-name ui-label">{strings.settings.connectProvider}</span></button>
+  <button type="button" class="tile more" role="menuitem" data-row={open || undefined} data-provider="more" data-testid="picker-more-providers" onclick={onmore}><span class="mark" aria-hidden="true"></span><Plus size={14} /><span class="text"><span class="tile-name ui-label">{strings.settings.connectProvider}</span></span><ArrowRight size={14} strokeWidth={2} class="chevron" /></button>
 {/if}
 
 <style>
@@ -110,9 +113,12 @@
 
   /* Every mark in one ink: the names tell the providers apart. */
   .tile :global(.logo) { flex: none; filter: grayscale(1); }
-  .tile-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .text { display: flex; flex: 1; flex-direction: column; gap: 1px; min-width: 0; }
+  .tile-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mark { display: inline-flex; flex: none; width: 14px; color: var(--color-accent); }
-  .reason { flex: none; font-size: var(--text-sm); color: var(--color-subtle); }
+  .reason { color: var(--color-subtle); font-size: var(--text-xs); line-height: 16px; }
+  .lead { flex: none; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 500; }
+  .tile :global(.chevron) { flex: none; color: var(--color-subtle); }
 
   .tile:focus-visible { background: var(--color-hover); }
   @media (hover: hover) { .tile:hover:not(:disabled) { background: var(--color-hover); } }

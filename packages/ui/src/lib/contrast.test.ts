@@ -59,9 +59,10 @@ function alpha(scope: string, name: string): number {
  * floors below fail on round 15's values (secondary 12.27:1 and 10.61:1 at
  * worst, subtle 10.75:1 and 9.14:1).
  */
+// Round 19 raises the small tier a last step: round 18's 12.84:1 and 11.39:1 (dark), 11.77:1 and 10.26:1 (light) fail.
 const FLOORS = {
-  dark: { muted: 12.8, subtle: 11.3, border: 0.09, edge: 0.13 },
-  light: { muted: 11.5, subtle: 10.1, border: 0.095, edge: 0.19 }
+  dark: { muted: 13.1, subtle: 11.8, border: 0.09, edge: 0.13 },
+  light: { muted: 12.6, subtle: 11.1, border: 0.095, edge: 0.19 }
 };
 
 describe.each([
@@ -70,7 +71,7 @@ describe.each([
 ] as const)('%s theme', (theme, selector) => {
   const scope = block(selector);
 
-  test('secondary and tertiary text sit one step brighter than round 15', () => {
+  test('secondary and tertiary text sit one step brighter than round 18', () => {
     for (const ground of GROUNDS) {
       expect(ratio(token(scope, '--color-muted-foreground'), token(scope, ground)), `muted on ${ground}`).toBeGreaterThanOrEqual(FLOORS[theme].muted);
       expect(ratio(token(scope, '--color-subtle'), token(scope, ground)), `subtle on ${ground}`).toBeGreaterThanOrEqual(FLOORS[theme].subtle);
@@ -118,6 +119,31 @@ test.each([
   expect(Math.abs(raised! - page!), 'page to raised fill').toBeGreaterThanOrEqual(floors.pageRaised);
 });
 
+/**
+ * Round 19: a phone's sheet dims the screen behind it less than a dialog does,
+ * so the screen it rose from stays in view (round 18 drew the dialog's 0.55 and
+ * 0.35). The inset card's top light reads as a layer over the frame without a
+ * wide blur, glass or a gradient (round 18: 0.035 in dark).
+ */
+test.each([
+  ['dark', ':root', { sheet: 0.35, light: 0.06 }],
+  ['light', "[data-theme='light']", { sheet: 0.22, light: 0.85 }]
+] as const)('%s: a sheet dims less than a dialog, the inset card carries a top light', (_theme, selector, most) => {
+  const scope = block(selector);
+  const [sheet, dialog] = [alpha(scope, '--sheet-scrim'), alpha(scope, '--color-scrim')];
+  expect(sheet).toBeLessThanOrEqual(most.sheet);
+  expect(sheet).toBeLessThan(dialog);
+  expect(sheet, 'still a dim').toBeGreaterThanOrEqual(0.15);
+  const frame = /--shadow-frame:\s*inset 0 1px 0 rgb\(255 255 255 \/ ([\d.]+)\)([^;]*);/.exec(scope);
+  expect(Number(frame?.[1]), 'top light').toBeGreaterThanOrEqual(most.light);
+  // A contact shadow only: no wide blur beside the card.
+  for (const blur of [...(frame?.[2] ?? '').matchAll(/0 \d+px (\d+)px/g)].map((match) => Number(match[1]))) expect(blur).toBeLessThanOrEqual(4);
+});
+
+test('a phone sheet draws the sheet scrim behind it', () => {
+  expect(css).toMatch(/\.mobile-sheet-backdrop \{[^}]*background: var\(--sheet-scrim\)/);
+});
+
 /** A switch that is on reads as on at a glance, without the accent: the filled foreground track, a primary's ink as the knob. */
 test('a switch on wears the foreground track and its ink knob; off, a quiet track', () => {
   const root = block(':root');
@@ -132,10 +158,12 @@ test('a menu or popover edge sits one step over the edge, toward the text, in ev
 
 /**
  * The curated palettes carry their own text tiers. Their subtle gets the same
- * lift as the default: 4.5:1 on every ground the palette draws, and within
- * 7 L* of its muted tier, so tertiary text does not read dim on any theme.
- * Where a palette's own foreground sits near 4.5:1 on its raised ground
- * (light Catppuccin, light Tokyo Night), the tiers keep their hues apart.
+ * lift as the default: within 7 L* of its muted tier, so tertiary text does
+ * not read dim on any theme. Round 19 raises the small tier one step, with
+ * margin over AA: muted 6.5:1 and subtle 5.5:1 on every ground the palette
+ * draws (round 18 sat at 4.5:1: light Catppuccin's muted at 4.65, light Tokyo
+ * Night's subtle at 4.51, light Amethyst's at 4.50), and the foreground stays
+ * 4 L* clear of the lifted muted so the hierarchy still reads.
  */
 describe('curated palettes', () => {
   const ids = [...css.matchAll(/--palette-((?:dark|light)-[\w-]+?)-subtle:/g)].map((match) => match[1]!);
@@ -145,17 +173,19 @@ describe('curated palettes', () => {
     expect(ids.length).toBeGreaterThanOrEqual(11);
   });
 
-  test.each(ids)('%s: muted and subtle clear 4.5:1 on every ground, subtle within 7 L* of muted', (id) => {
+  test.each(ids)('%s: muted clears 6.5:1 and subtle 5.5:1 on every ground, subtle within 7 L* of muted, the foreground 4 L* past muted', (id) => {
     const value = (name: string) => new RegExp(`--palette-${id}-${name}:\\s*(#[0-9a-f]{6})\\s*;`, 'i').exec(css)?.[1];
     const grounds = PALETTE_GROUNDS.map(value).filter((hex): hex is string => !!hex);
-    const [muted, subtle] = [value('muted-foreground'), value('subtle')];
+    const [foreground, muted, subtle] = [value('foreground'), value('muted-foreground'), value('subtle')];
     expect(grounds.length, 'grounds').toBeGreaterThanOrEqual(4);
     expect(muted && subtle, 'muted and subtle').toBeTruthy();
     for (const ground of grounds) {
-      expect(ratio(subtle!, ground), `subtle on ${ground}`).toBeGreaterThanOrEqual(4.5);
-      expect(ratio(muted!, ground), `muted on ${ground}`).toBeGreaterThanOrEqual(4.5);
+      expect(ratio(subtle!, ground), `subtle on ${ground}`).toBeGreaterThanOrEqual(5.5);
+      expect(ratio(muted!, ground), `muted on ${ground}`).toBeGreaterThanOrEqual(6.5);
+      expect(ratio(foreground!, ground), `foreground on ${ground}`).toBeGreaterThanOrEqual(7);
     }
     expect(Math.abs(lightness(muted!) - lightness(subtle!)), 'muted to subtle').toBeLessThanOrEqual(7);
+    expect(Math.abs(lightness(foreground!) - lightness(muted!)), 'foreground to muted').toBeGreaterThanOrEqual(4);
   });
 });
 

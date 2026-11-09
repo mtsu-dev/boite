@@ -1,7 +1,7 @@
 <script lang="ts">
   import InfoTip from './InfoTip.svelte';
-  import TitleModelSetting from './TitleModelSetting.svelte';
-  import GoalTrackerSetting from './GoalTrackerSetting.svelte';
+  import AgentRepliesSettings from './AgentRepliesSettings.svelte';
+  import CardScope from './CardScope.svelte';
   import ShellSettings from './ShellSettings.svelte';
   import TelemetrySettings from './TelemetrySettings.svelte';
   import ArchivedThreads from './ArchivedThreads.svelte';
@@ -11,7 +11,6 @@
   import type { Store } from '../lib/store.svelte';
   import ConversationSwitches from './ConversationSwitches.svelte';
   import NotificationKinds from './NotificationKinds.svelte';
-  import SyncMark from './SyncMark.svelte';
   import PolicySettings from './PolicySettings.svelte';
   import WorkspaceCard from './WorkspaceCard.svelte';
   import QuietCard from './QuietCard.svelte';
@@ -28,12 +27,6 @@
   const uid = $props.id();
   const inShell = window.__TAURI_INTERNALS__ !== undefined;
   let terminalGpu = $state(untrack(() => readTerminalGpu()));
-
-  /** A switch saves when it flips, as every other switch in Settings does; a refusal puts it back. */
-  async function toggle(key: 'asyncQuestions' | 'shortAnswers' | 'toolSummaries', input: HTMLInputElement) {
-    const ok = await store.saveSettings({ [key]: input.checked });
-    if (!ok) input.checked = store.settings?.[key] ?? (key === 'toolSummaries' ? false : true);
-  }
 </script>
 
 <div class="page" data-testid="settings-page">
@@ -41,8 +34,9 @@
     <h1>{strings.settings.tabs.general}</h1>
   </header>
 
+  <!-- This device's switches, then the machine's: two cards, each saying where it applies (round 19). -->
   <section class="card" id="settings-conversations">
-    <h2 class="ui-label-box"><span class="ui-label">{strings.settings.conversations}</span><InfoTip gather topic={strings.settings.conversations} text="" testid="section-info" /></h2>
+    <h2 class="ui-label-box"><span class="ui-label">{strings.settings.conversations}</span><InfoTip gather topic={strings.settings.conversations} text="" testid="section-info" /><CardScope /></h2>
     <ConversationSwitches />
     <label for="{uid}-notifications" class="switch-row">
       <span class="text ui-label-box">
@@ -52,41 +46,19 @@
         checked={here.notifications} onchange={(event) => void here.setNotifications(event.currentTarget.checked)} />
     </label>
     <NotificationKinds store={here} />
-    {#if store.owner}
-      <label for="{uid}-async" class="switch-row">
-        <span class="text ui-label-box">
-          <span class="ui-label" id="{uid}-async-name">{strings.settings.asyncQuestions}</span><InfoTip topic={strings.settings.asyncQuestions} text={strings.settings.asyncQuestionsHint} /><SyncMark {store} key="asyncQuestions" />
-        </span>
-        <input id="{uid}-async" aria-labelledby="{uid}-async-name" type="checkbox" role="switch" data-testid="setting-async-questions"
-          checked={store.settings?.asyncQuestions ?? true} disabled={!store.settings} onchange={(event) => void toggle('asyncQuestions', event.currentTarget)} />
-      </label>
-      <label for="{uid}-short" class="switch-row">
-        <span class="text ui-label-box">
-          <span class="ui-label" id="{uid}-short-name">{strings.settings.shortAnswers}</span><InfoTip topic={strings.settings.shortAnswers} text={strings.settings.shortAnswersHint} /><SyncMark {store} key="shortAnswers" />
-        </span>
-        <input id="{uid}-short" aria-labelledby="{uid}-short-name" type="checkbox" role="switch" data-testid="setting-short-answers"
-          checked={store.settings?.shortAnswers ?? true} disabled={!store.settings} onchange={(event) => void toggle('shortAnswers', event.currentTarget)} />
-      </label>
-      <label for="{uid}-tool-summaries" class="switch-row">
-        <span class="text ui-label-box">
-          <span class="ui-label" id="{uid}-tool-summaries-name">{strings.settings.toolSummaries}</span><InfoTip topic={strings.settings.toolSummaries} text={strings.settings.toolSummariesHint} /><SyncMark {store} key="toolSummaries" />
-        </span>
-        <input id="{uid}-tool-summaries" aria-labelledby="{uid}-tool-summaries-name" type="checkbox" role="switch" data-testid="setting-tool-summaries"
-          checked={store.settings?.toolSummaries ?? false} disabled={!store.settings} onchange={(event) => void toggle('toolSummaries', event.currentTarget)} />
-      </label>
-      {#if store.settings}<TitleModelSetting {store} /><GoalTrackerSetting {store} />{/if}
-    {/if}
   </section>
+
+  {#if store.owner}<AgentRepliesSettings {store} />{/if}
 
   <!-- Notifications above, the sound and the windows of the machine here: what reaches the person at it. -->
   {#if store.owner}<QuietCard {store} />{/if}
   <WorkspaceCard />
   <ArchivedThreads {store} />
   <WorktreesCard {store} />
-  <!-- The keys agents ask for and the browser logins live under Providers, the windows agents may see under Machines (round 18). -->
+  <!-- The keys agents ask for live under Providers, the windows agents may see under Machines (round 18), the browser logins under Browser (round 19). -->
 
   <section class="card" id="settings-app">
-    <h2>{strings.settings.app}</h2>
+    <h2><span class="ui-label">{strings.settings.app}</span><CardScope /></h2>
     {#if inShell}<ShellSettings />{/if}
     <!-- How this device draws a terminal: a renderer choice, once under Appearance. -->
     <label for="{uid}-terminal-gpu" class="switch-row">

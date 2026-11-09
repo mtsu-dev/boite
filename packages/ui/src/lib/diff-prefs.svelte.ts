@@ -14,8 +14,14 @@ export interface DiffPrefs {
 
 export const DIFF_PREFS_STORAGE_KEY = 'boite.diffView';
 
-/* Long lines wrap by default (round 17): code cut at the panel's edge read as broken. No wrap stays a choice. */
-const DEFAULTS: DiffPrefs = { split: false, wrap: true, ignoreWhitespace: false };
+/*
+ * Long lines wrap by default on a desktop (round 17): code cut at the panel's
+ * edge read as broken. A phone's column is too narrow for that: wrapped, a
+ * line broke inside its tokens ("i +=" over "500"), so there it scrolls
+ * sideways under line numbers that stay put. Either stays a choice.
+ */
+const phone = typeof matchMedia === 'function' && matchMedia('(max-width: 720px)').matches;
+const DEFAULTS: DiffPrefs = { split: false, wrap: !phone, ignoreWhitespace: false };
 
 function read(): DiffPrefs {
   try {

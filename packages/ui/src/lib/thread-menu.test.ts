@@ -86,12 +86,12 @@ test('a desktop menu keeps seven rows at most on its first level and names its o
   expect(ids(main)).toEqual(['open', 'find', 'rename', 'pin', 'done', 'archive', 'more', 'delete']);
   expect(ids(threadMenuItems(store, t, { ...options, open: undefined }))).toHaveLength(7);
   expect(ids(threadMenuItems(store, t, { ...options, tools: [] }))).toHaveLength(7);
-  // The door says what it holds, in the order it holds it: the bot rows, the title, the folder.
-  expect(main.find(item => item.id === 'more')).toMatchObject({ submenu: true, label: 'Bot, title and folder' });
+  // The door says what a user does there, in words to act on: move it, give it to a bot.
+  expect(main.find(item => item.id === 'more')).toMatchObject({ submenu: true, label: 'Move or give to a bot' });
   expect(main.some(item => item.label === 'More')).toBe(false);
   const tools = threadToolItems(store, t, options);
   // The way back names the level it stands on, as the model picker's levels do.
-  expect(tools[0]).toMatchObject({ back: true, label: 'Bot, title and folder' });
+  expect(tools[0]).toMatchObject({ back: true, label: 'Move or give to a bot' });
   // What is done less often, in the door's order: the hand-off, a new title, then where the thread lives. The panels have their own selector.
   expect(ids(tools)).toEqual(['back', 'entrust', 'retitle', 'move', 'copy', 'pr']);
   // What the header says of the thread leads each part: its bot the bot rows, its branch the folder rows.
@@ -99,7 +99,9 @@ test('a desktop menu keeps seven rows at most on its first level and names its o
     .toEqual(['back', 'thread-entrusted-chip', 'entrust', 'retitle', 'thread-branch', 'move', 'copy', 'pr']);
   // No bot to give it to: the name drops the word, never promising a row that is not there.
   agentDirectory(store).snapshot = { profiles: [], entrusted: [] } as unknown as AgentsSnapshot;
-  expect(threadToolItems(store, t, options)[0]).toMatchObject({ back: true, label: 'Title and folder' });
+  expect(threadToolItems(store, t, options)[0]).toMatchObject({ back: true, label: 'Move or retitle' });
+  // A sub-thread cannot move: the name drops the move too, and keeps what is there.
+  expect(threadToolItems(store, thread({ branch: 'boite/port', parentThreadId: 't0' }), options)[0]).toMatchObject({ back: true, label: 'Retitle or copy the path' });
 });
 
 test('a group of one is a row on the first level, not a submenu', () => {

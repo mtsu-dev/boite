@@ -25,8 +25,11 @@ export const strings = {
       usage: 'Usage',
       resources: 'Memory and processes',
       experiments: 'Experiments',
-      diagnostics: 'Diagnostics'
+      diagnostics: 'Diagnostics',
+      browser: 'Browser'
     },
+    /** The heads the Settings entries stand under (lib/settings-tabs.ts `SETTINGS_FAMILIES`). */
+    families: { app: 'App', agents: 'Agents', connections: 'Connections' },
     back: 'Back to threads',
     search: 'Search settings',
     searchEmpty: 'No setting matches',
@@ -74,6 +77,10 @@ export const strings = {
     theme: 'Theme',
     /** Under a page's title where its settings stay on the device in hand (Appearance). */
     scopeDevice: 'On this device',
+    /** On a setting kept for one provider account (its default model). */
+    scopeAccount: 'For {account} on this device',
+    /** General's card of how agents answer, saved on the machine, apart from this device's conversation switches. */
+    agentReplies: 'Agent replies',
     display: 'Display',
     accent: 'Accent color',
     accentNames: ['Blue', 'Violet', 'Rose', 'Orange', 'Amber', 'Green', 'Teal'],

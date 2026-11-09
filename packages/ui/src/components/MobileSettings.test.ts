@@ -126,7 +126,11 @@ test('the phone settings list the desktop\'s groups, General and Advanced hold t
   store.showSettings();
   await waitFor(home);
   expect(rows('mobile-settings-home')).toEqual([
-    'settings-tab-general', 'settings-tab-appearance', 'settings-tab-accounts', 'settings-tab-brain', 'settings-tab-limits', 'mobile-settings-connection', 'settings-tab-advanced'
+    'settings-tab-general', 'settings-tab-appearance', 'settings-tab-accounts', 'settings-tab-brain', 'settings-tab-limits', 'settings-tab-browser', 'mobile-settings-connection', 'settings-tab-advanced'
+  ]);
+  // The rows stand under the desktop's family heads, Advanced last without one.
+  expect([...document.querySelectorAll<HTMLElement>('[data-testid=mobile-settings-home] [data-testid=settings-family]')].map(family => [family.dataset.family, family.querySelector('h2')?.textContent ?? null])).toEqual([
+    ['app', 'App'], ['agents', 'Agents'], ['connections', 'Connections'], ['more', null]
   ]);
   // The header already says Settings, and the list's display options group the threads.
   expect(document.querySelector('[data-testid=mobile-settings-home] h1')).toBeNull();
@@ -164,9 +168,14 @@ test('the phone settings list the desktop\'s groups, General and Advanced hold t
   expect(query<HTMLInputElement>('[data-testid=compaction-customize]').checked).toBe(false);
   await back();
 
-  // Browser profiles sit beside the keys, at the foot of Providers (round 18).
-  await open('settings-tab-accounts', () => document.querySelector('[data-testid=browser-profiles-card]') !== null);
-  expect(document.querySelector('[data-testid=secrets-card]')).not.toBeNull();
+  // The keys sit at the foot of Providers (round 18); the browser profiles have their own page under Connections (round 19).
+  await open('settings-tab-accounts', () => document.querySelector('[data-testid=secrets-card]') !== null);
+  expect(document.querySelector('[data-testid=browser-profiles-card]')).toBeNull();
+  await back();
+  await open('settings-tab-browser', () => document.querySelector('[data-testid=browser-page] [data-testid=browser-profiles-card]') !== null);
+  // Its one card says where it applies; the page repeats no scope over it.
+  expect(query('[data-testid=browser-profiles-card] [data-testid=card-scope]').textContent).toBe('On this device');
+  expect(document.querySelector('[data-testid=mobile-settings-page-scope]')).toBeNull();
   await back();
 
   await open('settings-tab-general', general);
@@ -194,6 +203,9 @@ test('the phone settings list the desktop\'s groups, General and Advanced hold t
   query<HTMLButtonElement>('[data-testid=mobile-settings-conversations]').click();
   await waitFor(() => document.querySelector('[data-testid=setting-chat-artifacts]') !== null);
   for (const id of ['setting-preview-comments', 'chat-group-changes', 'chat-expand-diffs']) expect(document.querySelector(`[data-testid=${id}]`), id).not.toBeNull();
+  // How agents answer is the machine's, a phone reaches it here too, under the machine's name (round 19).
+  for (const id of ['setting-async-questions', 'setting-short-answers', 'setting-tool-summaries']) expect(document.querySelector(`[data-testid=agent-replies] [data-testid=${id}]`), id).not.toBeNull();
+  expect(query('[data-testid=agent-replies] [data-testid=card-scope]').dataset.kind).toBe('machine');
   expect(document.querySelector('[data-testid=setting-group-working-threads]')).toBeNull();
   await back(general);
   await back();

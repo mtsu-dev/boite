@@ -1,7 +1,7 @@
 export const strings = {
   coordination: {
     options: 'Advanced settings',
-    heading: 'Thread links', off: 'Off', on: 'On',
+    heading: 'Linked threads', off: 'Off', on: 'On',
     summaryOff: 'Other agents cannot find, read or contact this thread.',
     summaryOn: 'Other agents here and on linked machines can find this thread, read it and message it.',
     ownerOnly: 'Only the owner can change coordination. This device can inspect the directory and exchanges.',

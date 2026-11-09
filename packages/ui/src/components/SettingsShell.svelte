@@ -15,6 +15,7 @@
   import { fill, strings } from '../lib/strings';
   import type { SettingsTab, Store } from '../lib/store.svelte';
   import AccountsPage from './AccountsPage.svelte';
+  import BrowserPage from './BrowserPage.svelte';
   import AdvancedSettings from './AdvancedSettings.svelte';
   import AppearancePage from './AppearancePage.svelte';
   import ExperimentsPage from './ExperimentsPage.svelte';
@@ -31,7 +32,7 @@
   import SettingsMachineBar from './SettingsMachineBar.svelte';
   import { untrack } from 'svelte';
   import { holdSettingsCard, revealSettingsCard } from '../lib/settings-flash';
-  import { desktopPage, desktopSettings, groupOf, machinePage, movedTo, navOf, ownerOnly, sectionsOf, SETTINGS_GROUPS } from '../lib/settings-tabs';
+  import { desktopPage, desktopSettings, familyOf, groupOf, machinePage, movedTo, navOf, ownerOnly, sectionsOf, SETTINGS_FAMILIES, SETTINGS_GROUPS } from '../lib/settings-tabs';
   import { titleSlot } from '../lib/title-slot.svelte';
 
   let { store, onopenthread }: { store: Store; onopenthread?: () => void } = $props();
@@ -85,7 +86,7 @@
   /** A page as the nav names it. */
   type Tab = { id: SettingsTab; label: string };
   /** One place the search can land: a page, or a card on it. */
-  type SettingsEntry = { tab: SettingsTab; section: string | null; label: string; trail: string };
+  type SettingsEntry = { tab: SettingsTab; section: string | null; label: string; trail: string; family: string };
 
   // Derived, not built once: the nav is written in the language the app is
   // speaking, and the language changes without a reload. Each entry wears its
@@ -97,6 +98,7 @@
     { id: 'voice', label: strings.speech.heading },
     { id: 'accounts', label: strings.settings.tabs.accounts },
     { id: 'plugins', label: strings.settings.tabs.plugins },
+    { id: 'browser', label: strings.settings.tabs.browser },
     { id: 'brain', label: strings.brain.heading },
     { id: 'usage', label: strings.settings.tabs.usage },
     { id: 'limits', label: strings.usage.limits },
@@ -113,6 +115,7 @@
   let children: Partial<Record<SettingsTab, { id: string; label: string }[]>> = $derived({
     general: [
       { id: 'conversations', label: strings.settings.conversations },
+      ...(store.owner ? [{ id: 'agent-replies', label: strings.settings.agentReplies }] : []),
       ...(store.owner ? [{ id: 'quiet', label: strings.protection.quiet }] : []),
       { id: 'workspace', label: strings.settings.workspace },
       { id: 'archived', label: strings.settings.archived.heading },
@@ -131,9 +134,9 @@
     accounts: [
       ...[...providerList.connected, ...providerList.rest, ...providerList.off].map((row) => ({ id: `provider-${row.id}`, label: row.name })),
       { id: 'agent-updates', label: strings.harnessUpdates.heading },
-      { id: 'secrets', label: strings.secrets.heading },
-      { id: 'browser-profiles', label: strings.browserProfiles.card }
+      { id: 'secrets', label: strings.secrets.heading }
     ],
+    browser: [{ id: 'browser-profiles', label: strings.browserProfiles.card }],
     usage: [
       { id: 'usage-overview', label: strings.usage.overview },
       { id: 'usage-chart', label: strings.usage.chart },
@@ -174,6 +177,10 @@
     .map((ids) => navOf(ids[0], store.owner).flatMap((id) => tabs.filter((entry) => entry.id === id)))
     .filter((members) => members.length > 0)
     .map(([lead, ...rest]) => ({ ...lead!, members: rest })));
+  /** The entries under their family heads (`SETTINGS_FAMILIES`), a family this window has no entry of left out. */
+  let families = $derived(SETTINGS_FAMILIES
+    .map((family) => ({ id: family.id, label: family.id ? strings.settings.families[family.id] : '', groups: groups.filter((group) => (family.leads as readonly SettingsTab[]).includes(group.id)) }))
+    .filter((family) => family.groups.length > 0));
   /** The pages merged into the shown one as its last sections (`lib/settings-tabs.ts`). */
   let merged = $derived(sectionsOf(tab, store.owner));
   /** The nav entry lit: a merged section's own once its route asked for it, else the page's. */
@@ -233,15 +240,15 @@
     ['general', 'conversations', strings.settings.groupWorkingThreads],
     ['general', 'conversations', strings.settings.groupOtherProjects],
     ['general', 'conversations', strings.settings.notifications],
-    ['general', 'conversations', strings.settings.asyncQuestions],
-    ['general', 'conversations', strings.settings.shortAnswers],
-    ['general', 'conversations', strings.settings.toolSummaries],
-    ['general', 'conversations', strings.settings.titleModel],
-    ['general', 'conversations', strings.settings.goalTrackerModel],
+    ['general', 'agent-replies', strings.settings.asyncQuestions],
+    ['general', 'agent-replies', strings.settings.shortAnswers],
+    ['general', 'agent-replies', strings.settings.toolSummaries],
+    ['general', 'agent-replies', strings.settings.titleModel],
+    ['general', 'agent-replies', strings.settings.goalTrackerModel],
     ['general', 'conversations', strings.features.chatArtifacts.title],
     ...(inShell ? [['general', 'conversations', strings.features.openChatLinks.title] as [SettingsTab, string, string]] : []),
     ['general', 'conversations', strings.features.previewComments.title],
-    ...(store.owner ? [['accounts', 'browser-profiles', strings.browserProfiles.heading]] as [SettingsTab, string, string][] : []),
+    ['browser', 'browser-profiles', strings.browserProfiles.heading],
     ...(store.owner ? [['machines', 'window-exclusions', strings.windows.settings.addLabel]] as [SettingsTab, string, string][] : []),
     ['general', 'archived', strings.settings.archived.doneRetentionLabel],
     // The switch lives in the shell's own card: a browser has no tray.
@@ -291,17 +298,22 @@
     const sections = children[entry.id] ?? [];
     const words = settingsWords.filter(([tab, section]) => tab === entry.id && (section === null || sections.some((child) => child.id === section)));
     const lead = groupOf(entry.id);
+    // "agents" finds Providers and Limits: a family's name is searched, never shown in a result.
+    const home = familyOf(entry.id);
+    const family = home ? strings.settings.families[home] : '';
     return [
-      { tab: entry.id, section: null, label: entry.label, trail: lead === entry.id ? '' : tabs.find((other) => other.id === lead)?.label ?? '' },
-      ...sections.map((child) => ({ tab: entry.id, section: child.id, label: child.label, trail: entry.label })),
+      { tab: entry.id, section: null, label: entry.label, trail: lead === entry.id ? '' : tabs.find((other) => other.id === lead)?.label ?? '', family },
+      ...sections.map((child) => ({ tab: entry.id, section: child.id, label: child.label, trail: entry.label, family })),
       ...words.map(([, section, label]) => ({
         tab: entry.id,
         section,
         label,
-        trail: [entry.label, sections.find((child) => child.id === section)?.label].filter(Boolean).join(' · ')
+        trail: [entry.label, sections.find((child) => child.id === section)?.label].filter(Boolean).join(' · '),
+        family
       }))
     ];
-  }));
+  // A word that repeats its section's own name ("Updates" under Updates) is one result, not two: two of one key broke the list.
+  }).filter((entry, index, all) => all.findIndex((other) => other.tab === entry.tab && other.section === entry.section && other.label === entry.label) === index));
 
   const motion = (): ScrollBehavior => (window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth');
 
@@ -320,7 +332,7 @@
     const words = fold(query).split(/\s+/).filter(Boolean);
     if (words.length === 0) return [];
     return entries.filter((entry) => {
-      const text = fold(`${entry.label} ${entry.trail}`);
+      const text = fold(`${entry.label} ${entry.trail} ${entry.family}`);
       return words.every((word) => text.includes(word));
     }).slice(0, 12);
   });
@@ -401,8 +413,11 @@
       <Search size={14} strokeWidth={1.75} aria-hidden="true" />
       <input type="search" bind:this={field} bind:value={query} oninput={() => (active = 0)} placeholder={strings.settings.search} aria-label={strings.settings.search} data-testid="settings-search" onkeydown={onkey} spellcheck="false" autocomplete="off" />
     </label>
-    <!-- One entry a group, as on a phone, its other pages listed under it. -->
-    {#each groups as entry (entry.id)}
+    <!-- The groups under their family heads, as on a phone; each group's other pages listed under its entry. -->
+    {#each families as family (family.id ?? 'more')}
+      <div class="family" role="group" aria-label={family.label || undefined} data-testid="settings-family" data-family={family.id ?? 'more'}>
+      {#if family.label}<p class="family-head ui-label" aria-hidden="true">{family.label}</p>{/if}
+    {#each family.groups as entry (entry.id)}
       {#each [entry, ...entry.members] as page, index (page.id)}
         {@const here = !searching && current === page.id}
         {@const Icon = SETTINGS_ICONS[page.id as keyof typeof SETTINGS_ICONS]}
@@ -419,6 +434,8 @@
           <span class="ui-label">{page.label}</span>
         </button>
       {/each}
+    {/each}
+      </div>
     {/each}
   </nav>
 
@@ -479,6 +496,8 @@
         <KeyboardPage store={target} />
       {:else if page === 'accounts'}
         <AccountsPage store={target} />
+      {:else if page === 'browser'}
+        <BrowserPage />
       {:else if page === 'usage'}
         <UsagePage {store} />
       {:else if page === 'limits'}
@@ -518,6 +537,11 @@
   .tab.active :global(svg) { color: var(--color-foreground); }
   /* A group's other pages, under its entry: the same row with its icon, set in one step. */
   .tab.sub { padding-left: 30px; }
+  /* A family: its head in the meta size over its entries, and air between two families. */
+  .family { display: flex; flex-direction: column; gap: 2px; }
+  .family + .family { margin-top: var(--space-4); }
+  .search + .family { margin-top: var(--space-2); }
+  .family-head { margin: 0; padding: 0 10px var(--space-1); color: var(--color-subtle); font-size: var(--text-meta); font-weight: var(--weight-title); }
 
   /* The search heads the nav, on the chrome like the rows under it. */
   .search {
@@ -669,5 +693,8 @@
     .title { height: var(--control); margin: 0; font-size: var(--text-sm); white-space: nowrap; }
     .search { width: 180px; margin: 0; }
     .tab, .tab.sub { width: auto; white-space: nowrap; padding-left: 10px; }
+    .family { flex-direction: row; }
+    .family + .family, .search + .family { margin-top: 0; }
+    .family-head { display: none; }
   }
 </style>

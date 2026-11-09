@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Brain, Zap } from '@lucide/svelte';
+  import { Brain, ChevronDown, Zap } from '@lucide/svelte';
   /** The agents' level ids and the cost line each one reads. */
   const LEVEL_COST: Record<string, 'off' | 'low' | 'middle' | 'deeper' | 'high' | 'top' | 'extended'> = {
     off: 'off', none: 'off', minimal: 'off', low: 'low', medium: 'middle', high: 'deeper', xhigh: 'high', max: 'top', ultra: 'extended', ultrathink: 'extended'
@@ -251,6 +251,7 @@
     <span class="ui-label" class:accented-cap={accentedCap}>{label}</span>
     <!-- A fast mode switched on stays in sight with the popover closed. -->
     {#if levels.length > 0 && selectedSpeed}<span class="fast-mark" data-testid="effort-fast-mark" title={levelName(selectedSpeed)}><Zap size={12} fill="currentColor" /></span>{/if}
+    <ChevronDown size={12} strokeWidth={2} class="chevron" />
   </button>
   {/if}
 

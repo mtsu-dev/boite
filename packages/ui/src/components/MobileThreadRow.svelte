@@ -9,6 +9,8 @@
   import { longPress } from '../lib/long-press';
   import Menu from './Menu.svelte';
   import CommandWords from './CommandWords.svelte';
+  import MachinePlace from './MachinePlace.svelte';
+  import type { RowPlace } from '../lib/row-place';
   import ThreadHeadline from './ThreadHeadline.svelte';
   import { threadState } from '../lib/thread-state';
   import { feedOperation, type FeedVerb } from '../lib/activity-feed';
@@ -35,7 +37,7 @@
     /** Activity: the sub-agents of this thread that ask, each with what it asks. */
     helpers?: { thread: ThreadSummary; reason?: string }[];
     /** Recent: where the row lives, first on its line under the title (lib/row-place.ts). */
-    where?: string;
+    where?: RowPlace;
     onopen: () => void; onverb?: (event?: MouseEvent) => void; onaction: (action: string) => void;
   } = $props();
   const owner = $derived(machine.store);
@@ -84,10 +86,10 @@
           <span class="why helper" data-testid="thread-helper" data-thread-id={helper.thread.id}><span class="text"><span class="who">{helper.thread.title}</span> <span class="sep" aria-hidden="true">·</span> {helper.reason}</span></span>
         {/each}
       {:else if where}
-        <span class="meta" data-testid="mobile-row-meta"><span class="where" data-testid="mobile-row-where">{where}</span></span>
+        <span class="meta" data-testid="mobile-row-meta"><span class="where" data-testid="mobile-row-where" title={where.text}>{#if where.project}<span class="ui-label">{where.project}</span>{/if}{#if where.host}<MachinePlace host={where.host} />{/if}</span></span>
       {/if}
     </button>
-    {#if action}<button type="button" class="small verb" data-testid="thread-verb" data-verb={action} onclick={onverb}>{strings.mobile.feed.verb[action]}</button>{/if}
+    {#if action}<button type="button" class={['small', 'verb', action === 'review' ? 'ghost' : 'primary']} data-testid="thread-verb" data-verb={action} onclick={onverb}>{strings.mobile.feed.verb[action]}</button>{/if}
     <span class="row-menu" bind:this={menu}><Menu {items} onpick={onaction} label={strings.sidebar.threadMenu} heading={thread.title} placement="bottom" variant="ghost" testid="mobile-thread-menu-{thread.id}"><Ellipsis size={18} /></Menu></span>
   </div>
 </div>
@@ -111,7 +113,8 @@
   .tiled :is(.meta, .helper, .operation) { margin-left: 26px; }
   .helper .who { color: var(--color-foreground); font-weight: 500; }
   .sep { flex: none; color: var(--color-subtle); }
-  .meta .where { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .meta .where { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; }
+  .meta .where > .ui-label { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   /* The title line's end: the mark, then the time, centred on the first line's capitals (the title's box is trimmed
      to them, .ui-label), whose middle sits 0.36 em down at the title's size. */
   .thread :global(.headline > :is(.when, .at)) { height: 22px; margin-top: calc(0.36 * var(--text-reading) - 11px); }
@@ -131,7 +134,7 @@
   /* The ring every row draws, inside the box: the list's edge would clip one outside it. */
   .thread:focus-visible { outline-offset: -2px; }
   .thread :global(.headline) { gap: 10px; align-items: flex-start; }
-  .thread :global(.headline > .tile) { margin-top: calc(0.36 * var(--text-reading) - 8px); }
+  .thread :global(.headline > :is(.tile, .bot)) { margin-top: calc(0.36 * var(--text-reading) - 8px); }
   /* A phone reads every title at full ink: the mark says which rows need the user. Two lines of it before the
      ellipsis in the lists; Activity's are whole, since the row is about them. */
   .thread :global(.headline .title) { color: var(--color-foreground); font-weight: 400; }

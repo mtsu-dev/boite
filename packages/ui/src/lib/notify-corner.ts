@@ -108,7 +108,22 @@ function placeCards(slotted: HTMLElement[]): void {
   }
 }
 
+/**
+ * While a thread's page is on its way (ThreadLoading.svelte) there is no timeline to keep room in, and a card in the
+ * corner would sit over the composer the skeleton leads to: every card and toast waits, hidden, until the page has
+ * landed, then takes its reserved slot. On a phone the list screen over a loading thread is its own page.
+ */
+function holding(): boolean {
+  return !!shown('[data-testid=thread-loading]') && !(innerWidth <= 720 && shown('[data-testid=mobile-list]'));
+}
+
 function place(): void {
+  const held = holding();
+  for (const node of [...cards, ...toasts]) {
+    if (held) node.dataset.held = '';
+    else delete node.dataset.held;
+  }
+  if (held) { reserve(null, 0); return; }
   placeCards(placeToasts());
 }
 

@@ -131,11 +131,13 @@
   }
 
   /* A finger takes the full target, as every other phone control does. The
-     row draws 32 px tall and the target reaches the rest over the gaps around
-     it, so the buttons sit tight under their message with no band below. */
+     row draws 24 px tall, its glyph about 10 px under the bubble, and the
+     target reaches the rest over the gaps around it (the bubble's own bottom
+     padding included), so the buttons read as the message's, not a band of
+     their own. */
   @media (pointer: coarse), (max-width: 720px) {
     .message-actions { gap: 4px; }
-    .act { position: relative; width: 36px; height: 32px; }
-    .act::after { content: ''; position: absolute; inset: calc((32px - var(--touch-target)) / 2) -2px; }
+    .act { position: relative; width: 36px; height: 24px; }
+    .act::after { content: ''; position: absolute; inset: calc((24px - var(--touch-target)) / 2) -2px; }
   }
 </style>

@@ -1,17 +1,20 @@
 import type { Project, ThreadSummary } from '@boite/contracts';
 import { projectName } from './format';
-import { hostName, type Host } from './machine-host';
+import { hostName, type Host, type HostMark } from './machine-host';
 
 type Placed = { machine: Host; project: Project | undefined; thread: Pick<ThreadSummary, 'id' | 'title'> };
+
+/** A row's place: its project's name, the machine as a place (`MachinePlace.svelte`), and both in words. */
+export type RowPlace = { project?: string; host?: HostMark; text: string };
 
 /**
  * Where a flat list's row lives, for its secondary line, once the tile alone may not tell two rows apart: the list
  * spans several projects or machines, or two rows share a title. The project's name, then the machine's under
  * `hostName`'s rule (lib/machine-host.ts): named once two are connected and it is not `home`, this app's own, and
- * always with "offline" while it is out of reach; nothing when every row shares one project and one machine and no
+ * always with its state while it is out of reach; nothing when every row shares one project and one machine and no
  * title repeats.
  */
-export function rowPlaces<T extends Placed>(rows: readonly T[], home?: string): (row: T) => string | undefined {
+export function rowPlaces<T extends Placed>(rows: readonly T[], home?: string): (row: T) => RowPlace | undefined {
   const machines = [...new Map(rows.map(row => [row.machine.id, row.machine])).values()];
   const projects = new Set(rows.map(row => `${row.machine.id}\n${row.project?.id ?? ''}`));
   const titles = new Map<string, number>();
@@ -19,8 +22,9 @@ export function rowPlaces<T extends Placed>(rows: readonly T[], home?: string): 
   const mixed = machines.length > 1 || projects.size > 1;
   return row => {
     if (!mixed && (titles.get(row.thread.title) ?? 0) < 2) return undefined;
-    const place = row.project ? projectName(row.project) : undefined;
-    const parts = [place, hostName(row.machine, machines, home)?.text].filter((part): part is string => !!part);
-    return parts.length ? parts.join(' · ') : undefined;
+    const project = row.project ? projectName(row.project) : undefined;
+    const host = hostName(row.machine, machines, home) ?? undefined;
+    const text = [project, host?.text].filter((part): part is string => !!part).join(' ');
+    return text ? { project, host, text } : undefined;
   };
 }

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Activity, Bot, Contact, MessageSquare, Settings } from '@lucide/svelte';
+  import { Bot, Contact, Inbox, MessageSquare, Settings } from '@lucide/svelte';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
   import { experimentOn } from '../lib/experiments.svelte';
@@ -40,7 +40,7 @@
     <span class="glyph"><MessageSquare size={20} /></span><span class="name ui-label">{strings.sidebar.threads}</span>
   </button>
   <button type="button" class="tab" data-testid="mobile-activity" aria-current={page('activity')} aria-label={waiting ? `${strings.mobile.activity}, ${fill(strings.mobile.waitingElsewhere, { count: String(waiting) })}` : undefined} onclick={() => navigate('activity')}>
-    <span class="glyph"><Activity size={20} />{#if waiting}<span class="badge" data-testid="mobile-activity-waiting">{waiting > 99 ? '99+' : waiting}</span>{/if}</span><span class="name ui-label">{strings.mobile.activity}</span>
+    <span class="glyph"><Inbox size={20} />{#if waiting}<span class="badge" data-testid="mobile-activity-waiting">{waiting > 99 ? '99+' : waiting}</span>{/if}</span><span class="name ui-label">{strings.mobile.activity}</span>
   </button>
   {#if bots}
     <button type="button" class="tab" data-testid="mobile-agents" data-preload-view="agents" aria-current={page('agents')} aria-label={atWork.count ? `${strings.agents.heading}, ${fill(atWork.waiting ? strings.sidebar.surfaceWaiting : strings.sidebar.surfaceWorking, { count: String(atWork.count) })}` : undefined} onclick={() => store.showAgents()}>

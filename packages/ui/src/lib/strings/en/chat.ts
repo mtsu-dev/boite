@@ -207,8 +207,8 @@ export const strings = {
     questionMore: '{count} more',
     questionSkip: 'Skip',
     /** Over a docked question's choices: a pick marks the row, the composer's Send answers. */
-    questionPickOne: 'Pick one, then send it',
-    questionPickMany: 'Pick any, then send them',
+    questionPickOne: 'Pick one, then press Answer',
+    questionPickMany: 'Pick any, then press Answer',
     questionOpenPage: 'Open',
     questionWrite: 'Answer in writing',
     /** The timeline's line for a question waiting in the dock at the top of the composer, where it is answered. */

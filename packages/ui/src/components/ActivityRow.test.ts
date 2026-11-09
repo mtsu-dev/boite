@@ -56,6 +56,9 @@ test('a permission reads whole under its row, its sub-agent\'s question is a row
   expect(document.querySelector('[data-testid=thread-helper]')).toBeNull();
   const verbs = document.querySelectorAll<HTMLButtonElement>('[data-testid=thread-verb]');
   expect([...verbs].map(verb => [verb.textContent?.trim(), verb.dataset.verb])).toEqual([['Allow', 'allow']]);
+  // The row's action ranks: Allow is the solid neutral fill (button.primary), never the accent's send.
+  expect(verbs[0]!.classList.contains('primary')).toBe(true);
+  expect(verbs[0]!.classList.contains('send')).toBe(false);
   verbs[0]!.click(); await settle();
   await vi.waitFor(() => expect(store.openThread?.id).toBe(parent.id));
   await unmount(mounted); document.body.innerHTML = '';
@@ -72,6 +75,9 @@ test('a command too long to read in the row asks for Review before any Allow', a
   expect(document.querySelector('[data-testid=thread-operation]')?.classList.contains('long')).toBe(true);
   const verb = document.querySelector<HTMLButtonElement>('[data-testid=thread-verb]')!;
   expect([verb.textContent?.trim(), verb.dataset.verb]).toEqual(['Review', 'review']);
+  // Reading first is the secondary kind: a text action, in the same width.
+  expect(verb.classList.contains('ghost')).toBe(true);
+  expect(verb.classList.contains('primary')).toBe(false);
 });
 
 test('an Updates row keeps the action\'s place empty, so its time and mark stand in the Needs you rows\' columns', async () => {

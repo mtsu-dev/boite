@@ -27,7 +27,7 @@ export const strings = {
     /** A bot's model, effort and permission chips: read at rest, changed in its settings. */
     botSettings: "Set in {name}'s settings",
     /** The same chips while the bot's account is gone: the banner above holds the remedy. */
-    botAccountGone: "{name}'s account is gone: use Pick another account above",
+    botAccountGone: "{name}'s account is gone: pick another account",
     /** The box at rest, on a new conversation or one under way: who reads the message. */
     placeholder: 'Message {name}',
     /** `{name}` in the two placeholders when the provider is unknown. */
@@ -59,8 +59,8 @@ export const strings = {
     removeQueued: 'Remove this pending message',
     picker: 'Provider and model',
     models: 'Models',
-    /** The title of the picker's source button, which unfolds every provider beside the models in use. */
-    allModels: 'All models',
+    /** What the picker's rows under the models in use are, and the title of the button that unfolds them. */
+    providers: 'Providers',
     /** The picker's source that lists the models in use. */
     yourModels: 'Your models',
     searchModels: 'Search models',
@@ -96,6 +96,8 @@ export const strings = {
     model: 'Model',
     unavailable: 'not installed',
     noAccount: 'no account',
+    /** Where a provider row that cannot run yet leads. */
+    setUp: 'Set up',
     noProvider: 'No AI connected',
     /** The draft's worktree switch, off and on. */
     worktree: 'Worktree',

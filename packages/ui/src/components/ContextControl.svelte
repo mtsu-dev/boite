@@ -11,7 +11,7 @@
   import { cacheSpan, promptCacheState, PROMPT_CACHE_TICK_MS } from '../lib/prompt-cache';
   /**
    * The context's one form, desktop and phone: a small ring filled by what is
-   * used and the words "28% left", a quiet item of the composer's row (drawn
+   * used and the words "28% context left", a quiet item of the composer's row (drawn
    * from its threshold, `ComposerBar`). A hover or a click opens the details.
    */
   let { store }: { store: Store } = $props();

@@ -20,6 +20,9 @@
   import { ago, exactTime } from '../lib/format';
   import { wordFit } from '../lib/word-fit';
   import ProjectTile from './ProjectTile.svelte';
+  import AgentAvatar from './agents/AgentAvatar.svelte';
+  import { agentDirectory } from '../lib/agent-directory.svelte';
+  import { avatarLit } from '../lib/avatar-lit';
   import ThreadState from './ThreadState.svelte';
 
   /**
@@ -62,6 +65,16 @@
   const kind = $derived(threadState(thread, rowAsks(owner, thread.id)));
   let draft = $derived(!open && hasUnsentDraft(owner.composerStates[thread.id]));
   const prLabel = $derived(pullRequest && pullRequestLabel(pullRequest));
+  /** The bot whose work the thread is (its session, its parent's, an entrustment, or a thread on its desk it started
+     or was handed): its face leads the title, grey at rest by the owner's rule (lib/avatar-lit.ts), lit while it
+     waits on the user or the row is open. A thread it only follows stays the owner's. */
+  const bot = $derived.by(() => {
+    const directory = agentDirectory(owner);
+    const snapshot = directory.snapshot;
+    if (!snapshot) return null;
+    const desk = snapshot.watches.find(watch => watch.threadId === thread.id && watch.coreId === undefined && (watch.origin === 'started' || watch.origin === 'entrusted'));
+    return directory.ownerOf(thread) ?? directory.entrustmentOf(thread.id)?.agent ?? (desk && snapshot.profiles.find(agent => agent.id === desk.agentId)) ?? null;
+  });
   function openPullRequest(event: MouseEvent) {
     if (!pullRequest) return;
     event.stopPropagation();
@@ -72,6 +85,7 @@
 
 <span class="headline" class:unread={thread.unread} class:hot={open || kind !== null}>
   {#if tile}<ProjectTile project={tile} store={owner} size={16} />{/if}
+  {#if bot}<span class="bot" title={bot.name} data-testid="thread-bot"><AgentAvatar kind="profile" id={bot.id} name={bot.name} avatar={bot.avatar} size={16} lit={avatarLit({ open, attention: kind === 'waiting' })} /></span>{/if}
   {#if ask}<span class="lead"><span class="title ui-label" use:wordFit={thread.title}></span>{@render ask()}</span>{:else}<span class="title ui-label" use:wordFit={thread.title}></span>{/if}
   {#if draft}<span class="draft" data-testid="thread-draft" title={strings.sidebar.unsentDraft} aria-label={strings.sidebar.unsentDraft}><PencilLine size={12} /></span>{/if}
   {#if thread.pinned}<span class="pin"><Pin size={12} /></span>{/if}
@@ -102,9 +116,9 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    /* In the list, a row at rest reads a step back; one with a state to show reads at full strength. The body's
-       weight: bold is for the card's title above it (round 17's four steps). */
-    color: var(--color-muted-foreground);
+    /* The row's primary line at full ink on every row; time and place are its secondary, a size down in the subtle
+       ink. The body's weight: bold is for the card's title above it. */
+    color: var(--color-foreground);
     font-weight: 400;
   }
   /* Activity: the title first, on the row's width, and what is asked as one line under its edge. */
@@ -135,6 +149,7 @@
   .headline.hot .title {
     color: var(--color-foreground);
   }
+  .bot,
   .draft,
   .pin,
   .pr {

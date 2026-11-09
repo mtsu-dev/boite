@@ -1,5 +1,6 @@
 <script lang="ts">
   import { strings } from '../lib/strings';
+  import CardScope from './CardScope.svelte';
   import { work, type PanelStart, type StartIn } from '../lib/work-prefs.svelte';
 
   /**
@@ -19,7 +20,7 @@
 </script>
 
 <section class="card" id="settings-workspace">
-  <h2>{strings.settings.workspace}</h2>
+  <h2><span class="ui-label">{strings.settings.workspace}</span><CardScope /></h2>
   <div class="switch-row">
     <span class="text ui-label">{strings.settings.startIn}</span>
     <div class="segmented" role="group" aria-label={strings.settings.startIn}>

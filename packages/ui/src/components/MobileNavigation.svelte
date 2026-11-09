@@ -33,6 +33,7 @@
   import DraftRow from './DraftRow.svelte';
   import GroupLabel from './GroupLabel.svelte';
   import ProjectTile from './ProjectTile.svelte';
+  import MachinePlace from './MachinePlace.svelte';
   import { projectKey, projectView, type ProjectEntry } from '../lib/project-view.svelte';
   import { activeProject, archiveCount, projectSections, projectThreadView } from '../lib/project-threads.svelte';
   import { workingThread } from '../lib/recent.svelte';
@@ -333,7 +334,7 @@
         {#if !query || groupRows.length > 0 || doneOpen || archivedOpen}
         <section class="project-group" class:inactive={!activeProject(group)} data-testid="mobile-project-group" data-project-id={group.project.id} data-machine-id={group.machine.id}>
           <div class="project-heading">
-            <ProjectTile project={group.project} store={group.machine.store} /><h2><span class="name">{projectName(group.project)}</span>{#if hostName(group.machine, machines, home?.id)}{@const name = hostName(group.machine, machines, home?.id)!}<span class="host" class:offline={name.away} data-testid="mobile-project-host" title={name.text}>{name.text}</span>{/if}</h2>
+            <ProjectTile project={group.project} store={group.machine.store} /><h2><span class="name">{projectName(group.project)}</span>{#if hostName(group.machine, machines, home?.id)}<MachinePlace host={hostName(group.machine, machines, home?.id)!} testid="mobile-project-host" />{/if}</h2>
             <ProjectThreadCounters entry={group} working={group.machine.store.threadsOf(group.project.id).filter(thread => workingThread(group.machine.store, thread)).length} waiting={waitingHere} {controls} searching={!!query} away={group.machine.store.connection !== 'ready'} />
             {#if projectView.order === 'manual'}
               <Menu items={[
@@ -492,11 +493,10 @@
     .project-group { --row-background: var(--color-surface); border-radius: var(--radius-lg); background: var(--color-surface); margin-bottom: 12px; overflow: hidden; }
     .project-heading { display: flex; align-items: center; padding: 8px 12px; gap: 8px; color: var(--color-muted-foreground); }
     /* The name, then its machine in quiet ink, on one line: the machine gives way first. */
-    .project-heading h2 { display: flex; align-items: baseline; gap: 6px; margin: 0; flex: 1; min-width: 0; font-size: var(--text-sm); }
+    .project-heading h2 { display: flex; align-items: center; gap: 8px; margin: 0; flex: 1; min-width: 0; font-size: var(--text-sm); }
     .project-heading .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .project-heading .host { flex: 0 1000 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); font-weight: 400; color: var(--color-subtle); }
-    /* An unreachable machine as on the desktop header (Sidebar.svelte): the word in its name, a step brighter. */
-    .project-heading .host.offline { flex: none; color: var(--color-muted-foreground); }
+    /* The machine as a place (MachinePlace.svelte): its name gives way before the project's, its state never. */
+    .project-heading h2 :global(.machine-place) { flex: 0 1000 auto; }
     /* A whole touch target that eats the heading's padding rather than making it taller. */
     /* The folded quiet threads' line: a finger's height, subtle ink, on the rows' text edge. */
     .more-threads { display: flex; width: 100%; height: auto; min-height: var(--touch-target); padding: 0 12px; justify-content: flex-start; border-radius: 0; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 400; }

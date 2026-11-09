@@ -27,10 +27,11 @@ export const fr: Translation = {
     morePanels: { one: '{first}', two: '{first} et {second}', many: '{first}, {second} et {count} autres' },
     untitled: 'Navigateur',
     allPanels: 'Tous les panneaux', inUse: 'Panneaux ouverts',
+    roles: { board: 'Les tâches du projet en colonnes', tasks: 'Objectif, liste et suivis de cette conversation' },
     groups: { work: 'Travail', agents: 'Agents', tools: 'Outils' },
     formerly: {
       trace: 'Anciennement Trace', tasks: 'Anciennement Tâches', messages: 'Anciennement Discussions',
-      coordination: 'Anciennement Communication entre conversations', customize: 'Anciennement Choisir les boutons'
+      coordination: 'Anciennement Liens entre conversations', customize: 'Anciennement Choisir les boutons'
     }
   }
 };

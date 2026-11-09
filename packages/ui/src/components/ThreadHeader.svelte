@@ -21,6 +21,8 @@
   import { watchStatus } from '../lib/pull-request-watch';
   import ContextModeBadge from './ContextModeBadge.svelte';
   import PanelDoor from './PanelDoor.svelte';
+  import MachinePlace from './MachinePlace.svelte';
+  import { hostMark } from '../lib/machine-host';
   import CoordinationDialog from './CoordinationDialog.svelte';
   let { store }: { store: Store } = $props();
   let thread = $derived(store.openThread);
@@ -32,7 +34,7 @@
     const machines = workspace.machinesOr(store);
     // The machine's own name: "This computer" says nothing on a phone that reaches a remote one.
     const found = machines.length > 1 ? machines.find(m => m.store === store) : undefined;
-    const where = { project: project ? projectName(project) : '', machine: found ? machineName(found) : '' };
+    const where = { project: project ? projectName(project) : '', machine: found ? hostMark(machineName(found), found.store.connection) : null };
     return where.project || where.machine ? where : null;
   });
   /** How many panels the door holds, read beside its name. */
@@ -219,7 +221,7 @@
             <span class="ui-label">{thread.title}</span>
           </button>
           <!-- On a phone the title reads as text over its place, and the one menu closes the header's row. -->
-          {#if mobile.current}<span class="title-lines"><span class="title-text ui-label">{thread.title}</span>{#if place}<span class="title-place ui-label" data-testid="thread-place">{#if place.project}<span class="place-project">{place.project}</span>{/if}{#if place.project && place.machine}<span aria-hidden="true">·</span>{/if}{#if place.machine}<span class="place-machine">{place.machine}</span>{/if}</span>{/if}</span>{/if}
+          {#if mobile.current}<span class="title-lines"><span class="title-text ui-label">{thread.title}</span>{#if place}<span class="title-place ui-label" data-testid="thread-place">{#if place.project}<span class="place-project">{place.project}</span>{/if}{#if place.machine}<MachinePlace host={place.machine} />{/if}</span>{/if}</span>{/if}
           <!-- A small chevron exposes thread actions on the desktop. -->
           <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
           <span class="title-menu">
@@ -393,7 +395,7 @@
     .title-lines > .ui-label { margin-block: 0; padding-block: 0; text-box: normal; }
     /* A long title takes a second line rather than losing its end. */
     .title-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; max-width: 100%; min-width: 0; overflow: hidden; white-space: normal; overflow-wrap: anywhere; line-height: 1.2; }
-    .title-place { display: flex; gap: 4px; max-width: 100%; min-width: 0; white-space: nowrap; font-size: var(--text-xs); font-weight: 400; color: var(--color-muted-foreground); }
+    .title-place { display: flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; white-space: nowrap; font-size: var(--text-xs); font-weight: 400; color: var(--color-muted-foreground); }
     /* The machine label stays whole; the project name gives way. */
     .place-project { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
     .title-place > :not(.place-project) { flex: none; }

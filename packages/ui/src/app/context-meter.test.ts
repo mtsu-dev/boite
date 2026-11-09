@@ -30,7 +30,7 @@ test('the composer wears the context meter from its threshold, a compaction is a
   store.openThread!.context = { ...store.openThread!.context!, tokens: 140_000, window: 200_000 };
   await waitFor(() => bar() !== null);
   expect(bar()!.dataset.percent).toBe('70');
-  expect(bar()!.textContent?.trim()).toBe('30% left');
+  expect(bar()!.textContent?.trim()).toBe('30% context left');
   expect(bar()!.querySelector('[data-testid=context-trigger] svg.ring')).not.toBeNull();
   expect(bar()!.querySelector('[data-testid=context-trigger]')!.getAttribute('aria-label')).toContain('Context: 30% left');
   // Its own item, not a part of the model's chip.

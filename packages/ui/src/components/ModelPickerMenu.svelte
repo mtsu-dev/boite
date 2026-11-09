@@ -167,17 +167,14 @@
     return choice?.providerId === row.providerId && choice.accountId === row.accountId && choiceModel === row.model.id;
   }
 
-  /** Several providers among the rows: two rows of one name then say whose each is. */
-  let mixed = $derived(new Set(home.map((row) => row.providerId)).size > 1);
   /**
-   * The row's quiet text, only where a name alone is not enough: the login
-   * when its provider has two, and the provider or gateway route when another
-   * row bears the same name. A row of its own needs none.
+   * The row's quiet line under the name: always its provider, so one list
+   * reads across providers; the gateway route when another row bears the
+   * same name, and the login when its provider has two.
    */
   function sourceOf(row: ShortModel): string {
-    const parts: string[] = [];
+    const parts: string[] = [store.providerOf(row.providerId)?.name ?? row.providerId];
     if (home.some((other) => other !== row && other.model.name === row.model.name)) {
-      if (mixed) parts.push(store.providerOf(row.providerId)?.name ?? row.providerId);
       const route = modelSource(row.model);
       if (route) parts.push(route);
     }
@@ -449,7 +446,7 @@
   <div class="find">
     {#if !(single && needsInstall)}<ModelSearch bind:value={modelQuery} bind:input={searchBox} />{/if}
     {#if !single}
-      <button type="button" class="source" data-testid="picker-all-models" aria-expanded={choosing} title={strings.composer.allModels}
+      <button type="button" class="source" data-testid="picker-all-models" aria-expanded={choosing} title={strings.composer.providers}
         onclick={toggleSources} onkeydown={(event) => { if (event.key === 'ArrowRight' && !choosing) { event.preventDefault(); toggleSources(); } }}>
         {#if level === 'all' && shown}<ProviderLogo providerId={shown.id} size={14} />{/if}
         <span class="ui-label">{level === 'all' && shown ? shown.name : strings.composer.yourModels}</span>
@@ -483,13 +480,13 @@
       <!-- The sources stand in for the list until one is picked: one list at a time. -->
     {:else if level === 'home'}
     <div class="short-list" data-testid="picker-shortlist">
-      <!-- Name, and its provider and login only where the name alone is not enough: stars are set on a catalogue. -->
+      <!-- The provider's mark, the name, and the provider under it: stars are set on a catalogue. -->
       {#each home as row (`${row.providerId}:${row.accountId}:${row.model.id}`)}
         <button type="button" class="row model" class:current={isChoice(row)} role="menuitem" data-row data-testid={row.favorite ? 'favorite-model' : 'recent-model'}
           title={row.model.id} disabled={disabled || pickPending || !store.providerOf(row.providerId)?.available} onclick={() => void applyPick(row, row.model.id)}>
           <span class="mark" aria-hidden="true">{#if isChoice(row)}<Check size={14} />{/if}</span>
-          <span class="name ui-label">{row.model.name}</span>
-          {#if sourceOf(row)}<span class="source ui-label">{sourceOf(row)}</span>{/if}
+          <ProviderLogo providerId={row.providerId} size={14} />
+          <span class="text"><span class="name ui-label">{row.model.name}</span><span class="sub">{sourceOf(row)}</span></span>
         </button>
       {/each}
     </div>
@@ -580,7 +577,7 @@
       <!-- The rest under your models: each provider, a tap opening its catalogue. The source button shows them alone; a query hides them. -->
       {@const rest = (choosing || level === 'home') && words.length === 0}
       <div class="sources" class:below={!choosing} hidden={!rest}>
-        {#if !choosing}<span class="section-label rest-label">{strings.composer.allModels}</span>{/if}
+        {#if !choosing}<span class="section-label rest-label">{strings.composer.providers}</span>{/if}
         {#if hasHome && (choosing || level === 'all')}
           <button type="button" class="tile home-source" role="menuitem" data-row={rest || undefined} data-provider="home" data-testid="picker-back" onclick={backHome}>
             <span class="mark" aria-hidden="true">{#if level === 'home'}<Check size={14} />{/if}</span>
@@ -632,7 +629,14 @@
   .favorite-button[aria-pressed='true'] { color: var(--color-foreground); }
   /** A paired device reads the owner's stars without changing them. */
   .favorite-mark { display: inline-flex; align-items: center; justify-content: center; color: var(--color-foreground); }
-  .source { flex: 0 1 auto; min-width: 0; text-align: right; font-size: var(--text-sm); color: var(--color-subtle); }
+  /* A shortlist row: the provider's mark in one ink, the name, its provider in a quiet line under it. */
+  .short-list .row :global(.logo) { flex: none; filter: grayscale(1); }
+  .short-list .text { display: flex; flex: 1; flex-direction: column; gap: 1px; min-width: 0; }
+  /* Two lines per model, the name then its provider: the row grows to hold both with air around them. */
+  .short-list { margin-top: var(--space-1); }
+  .short-list .row { height: auto; padding-block: 5px; }
+  .short-list .text .name { flex: none; line-height: 20px; }
+  .sub { min-width: 0; overflow: hidden; color: var(--color-subtle); font-size: var(--text-xs); line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
   .popover.legacy-menu { width: min(320px, calc(100vw - 24px)); height: auto; z-index: 41; }
   /* One column on every width, read top to bottom: the title (a phone's),
      the search row, the list, then the effort, the permission and the one

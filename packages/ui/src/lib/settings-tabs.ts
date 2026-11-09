@@ -1,5 +1,5 @@
 /** Every Settings page, so a value read from a link can be checked before it opens one. */
-export const SETTINGS_TABS = ['home', 'advanced', 'brain', 'voice', 'general', 'machines', 'appearance', 'keyboard', 'accounts', 'plugins', 'usage', 'limits', 'resources', 'task-manager', 'experiments', 'diagnostics'] as const;
+export const SETTINGS_TABS = ['home', 'advanced', 'brain', 'voice', 'general', 'machines', 'appearance', 'keyboard', 'accounts', 'plugins', 'browser', 'usage', 'limits', 'resources', 'task-manager', 'experiments', 'diagnostics'] as const;
 export type SettingsTab = typeof SETTINGS_TABS[number];
 
 interface SettingsPage {
@@ -28,6 +28,8 @@ const PAGES: Record<SettingsTab, SettingsPage> = {
   // desktop: a phone shows Home, and the window widened again shows the page.
   accounts: { owner: true, machine: true, phone: 'page' },
   plugins: { owner: true, machine: true, phone: 'home', phoneOwn: true },
+  // The built-in browser of this device: its profiles and the sign-ins it hands to a machine's agent browser.
+  browser: { owner: true, phone: 'page' },
   brain: { owner: true, machine: true, phone: 'page' },
   usage: { phone: 'page', phoneOwn: true },
   limits: { machine: true, phone: 'page' },
@@ -45,6 +47,8 @@ const SECTION_PAGES: Partial<Record<SettingsTab, Record<string, { page: PhoneSec
     conversations: { page: 'conversations' },
     // Quiet is a card of the conversations page.
     quiet: { page: 'conversations', owner: true },
+    // How agents answer is the machine's card under the same page, under its bar (round 19).
+    'agent-replies': { page: 'conversations', owner: true },
     archived: { page: 'archived' },
     worktrees: { page: 'worktrees', owner: true }
   }
@@ -53,7 +57,7 @@ const SECTION_PAGES: Partial<Record<SettingsTab, Record<string, { page: PhoneSec
 export type PhoneSectionPage = 'conversations' | 'archived' | 'worktrees';
 
 /**
- * The seven entries Settings lists, desktop and phone alike, each led by the
+ * The eight entries Settings lists, desktop and phone alike, each led by the
  * page its entry opens. The other pages of a group are tabs at the top of its
  * card (desktop) or rows of its index (phone): a page keeps its id, its route
  * and its test ids, so an old link lands on the same page, inside its group.
@@ -64,9 +68,32 @@ export const SETTINGS_GROUPS = [
   ['accounts', 'plugins'],
   ['brain'],
   ['limits', 'usage'],
+  ['browser'],
   ['machines'],
   ['advanced', 'experiments', 'diagnostics', 'resources', 'task-manager']
 ] as const satisfies readonly (readonly SettingsTab[])[];
+
+/**
+ * The few families the entries stand under, desktop nav and phone list alike,
+ * each named for what a person comes to change (round 19: eight entries in one
+ * column read as a heap): the app in front of them, the agents and what they
+ * may spend, what connects outward. Advanced closes the list without a head,
+ * as the last thing anyone looks for.
+ */
+export const SETTINGS_FAMILIES = [
+  { id: 'app', leads: ['general', 'appearance'] },
+  { id: 'agents', leads: ['accounts', 'brain', 'limits'] },
+  { id: 'connections', leads: ['browser', 'machines'] },
+  { id: null, leads: ['advanced'] }
+] as const satisfies readonly { id: string | null; leads: readonly SettingsTab[] }[];
+
+export type SettingsFamily = NonNullable<typeof SETTINGS_FAMILIES[number]['id']>;
+
+/** The family a page stands under, by its group's lead. */
+export function familyOf(tab: SettingsTab): SettingsFamily | null {
+  const lead = groupOf(tab);
+  return SETTINGS_FAMILIES.find((family) => (family.leads as readonly SettingsTab[]).includes(lead))?.id ?? null;
+}
 
 /**
  * A page shown as a last section of another, once that one may open here, in
@@ -89,13 +116,15 @@ const MERGED: Partial<Record<SettingsTab, SettingsTab>> = {
  * Cards that moved to another page, by their old page: a link to the old place
  * (a setting an agent asks for, a route kept from before) opens the new one.
  * Round 18 takes General's odd cards to the task they serve: the keys agents
- * ask for and the browser logins to Providers, the windows agents may see to
- * Machines.
+ * ask for to Providers, the windows agents may see to Machines; round 19 the
+ * browser logins to Browser.
  */
 const MOVED: Partial<Record<SettingsTab, Record<string, SettingsTab>>> = {
   appearance: { workspace: 'general' },
   resources: { quiet: 'general' },
-  general: { secrets: 'accounts', 'browser-profiles': 'accounts', windows: 'machines', 'window-exclusions': 'machines' }
+  // Round 19 gives the browser its own entry, out of Providers: its profiles are not a provider's.
+  accounts: { 'browser-profiles': 'browser' },
+  general: { secrets: 'accounts', 'browser-profiles': 'browser', windows: 'machines', 'window-exclusions': 'machines' }
 };
 
 /** The page a card lives on now, when a route still names its old one. */

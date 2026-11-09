@@ -13,9 +13,12 @@ test('a question answered while the agent works leaves a receipt in the dock unt
   // The agent keeps working while the question waits (`boite ask`).
   store.openThread!.status = 'running';
   query<HTMLButtonElement>('[data-testid=question-option]').click();
-  await waitFor(() => !query<HTMLButtonElement>('[data-testid=composer-send]').disabled);
+  // A pick alone leaves Stop as Stop (round 18 turned it into Send): the card's own Answer sends.
+  await waitFor(() => document.querySelector<HTMLButtonElement>('[data-testid=question-submit]')?.disabled === false);
+  expect(document.querySelector('[data-testid=composer-stop]')).not.toBeNull();
+  expect(query('[data-testid=composer-send]').classList.contains('resting')).toBe(true);
   const field = query('[data-testid=composer-input]');
-  query<HTMLButtonElement>('[data-testid=composer-send]').click();
+  query<HTMLButtonElement>('[data-testid=question-submit]').click();
   await waitFor(() => !store.pendingQuestions.some((pending) => pending.id === question.questionId));
   await waitFor(() => document.querySelector('[data-testid=answer-receipt]') !== null);
   expect(query('[data-testid=answer-receipt]').textContent?.trim()).toBe('You answered: Unit');

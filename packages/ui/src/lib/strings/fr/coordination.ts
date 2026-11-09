@@ -3,7 +3,7 @@ import type { Translation } from '../../i18n.svelte';
 export const fr: Translation = {
   coordination: {
     options: 'Réglages avancés',
-    heading: 'Liens entre conversations', off: 'Désactivée', on: 'Activée',
+    heading: 'Conversations liées', off: 'Désactivée', on: 'Activée',
     summaryOff: 'Les autres agents ne peuvent ni trouver, ni lire, ni contacter cette conversation.',
     summaryOn: 'Les agents de cette machine et des machines liées peuvent trouver cette conversation, la lire et lui écrire.',
     ownerOnly: 'Seul le propriétaire peut modifier la coordination. Cet appareil peut consulter les contacts et les échanges.',

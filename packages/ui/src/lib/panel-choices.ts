@@ -40,6 +40,31 @@ export function morePanelsLabel(names: string[]): string {
   return fill(words.many, { first, second, count: String(names.length - 2) });
 }
 
+/** The panels picked last, newest first: they lead the short list, a click from the header. */
+const RECENT_KEY = 'boite.panels.recent';
+const RECENT_MAX = 3;
+
+function recentPanels(): string[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]') as unknown;
+    return Array.isArray(raw) ? raw.filter((id): id is string => typeof id === 'string').slice(0, RECENT_MAX) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** A panel or tool was picked or shown: it moves to the front of the recent ones. A file tab counts as Files. */
+export function notePanelUse(id: string): void {
+  const kind = id === 'file' ? 'files' : id;
+  const list = recentPanels();
+  if (list[0] === kind) return;
+  try {
+    localStorage.setItem(RECENT_KEY, JSON.stringify([kind, ...list.filter((one) => one !== kind)].slice(0, RECENT_MAX)));
+  } catch {
+    /* a browser that refuses storage keeps the plain order */
+  }
+}
+
 /** A renamed row says its old name on hover, for the hands that knew it. */
 const FORMERLY: Record<string, () => string> = {
   trace: () => strings.rightPanel.formerly.trace,
@@ -75,7 +100,7 @@ export function usedPanels(store: Store, thread: ThreadSummary | null, open: Sur
 
 /**
  * The panel selector's list (`RightPanel.svelte`), the same on a desktop and
- * a phone. Short: Changes, Files and the panels in `used`, then one row to
+ * a phone. Short: the panels picked last, Changes, Files and the panels in `used`, then one row to
  * every panel. Full (`full`, or when the short one would hold nothing or everything): every
  * panel and tool in named groups, then the Appearance page that hides some.
  * Ids are the kinds, plus the drawers (`terminal-toggle`, `board-toggle`) and
@@ -105,7 +130,10 @@ export function panelChoices(store: Store, thread: ThreadSummary | null, options
       title: terminalKey ? `${strings.thread.terminalHint} (${terminalKey})` : strings.thread.terminalHint
     });
   }
-  if (store.boardAvailable()) rows.set('board-toggle', { id: 'board-toggle', label: strings.board.open, glyph: SquareKanban, active: store.boardShown });
+  // The board and the task manager both hold work to do: a line under each says whose.
+  if (store.boardAvailable()) rows.set('board-toggle', { id: 'board-toggle', label: strings.board.open, hint: strings.rightPanel.roles.board, glyph: SquareKanban, active: store.boardShown });
+  const tasks = rows.get('tasks');
+  if (tasks && !tasks.hint) tasks.hint = strings.rightPanel.roles.tasks;
   if (plain && !thread.agentSessionId) rows.set('coordination', { id: 'coordination', label: strings.coordination.heading, glyph: Network });
   for (const [id, row] of rows) if (FORMERLY[id] && !row.title) row.title = FORMERLY[id]();
 
@@ -114,8 +142,9 @@ export function panelChoices(store: Store, thread: ThreadSummary | null, options
     ids: [...group.ids, ...(index === GROUPS.length - 1 ? [...rows.keys()].filter((id) => !GROUPS.some((one) => one.ids.includes(id))) : [])].filter((id) => rows.has(id))
   }));
   const used = options.used ?? new Set<string>();
-  // Changes and Files are what a first look at a thread wants: they stay on the first level, used or not.
-  const short = grouped.flatMap((group) => group.ids).filter((id) => FIRST.includes(id) || used.has(id) || rows.get(id)?.active);
+  // The panels picked last lead, then Changes and Files, what a first look at a thread wants, used or not.
+  const recent = recentPanels().filter((id) => rows.has(id));
+  const short = [...recent, ...grouped.flatMap((group) => group.ids).filter((id) => !recent.includes(id) && (FIRST.includes(id) || used.has(id) || rows.get(id)?.active))];
   if (!options.full && short.length > 0 && short.length < rows.size) {
     const rest = [...rows.keys()].filter((id) => !short.includes(id)).sort((a, b) => rank(a) - rank(b)).map((id) => rows.get(id)!.label);
     return [...short.map((id) => rows.get(id)!), separator('sep-all'), { id: ALL_PANELS, label: morePanelsLabel(rest), title: strings.rightPanel.allPanels, glyph: LayoutGrid, submenu: true }];

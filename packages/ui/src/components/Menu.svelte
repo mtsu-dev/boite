@@ -202,6 +202,7 @@
           class:inline-hint={!switches && !!item.status && !!item.hint}
           class:radio={item.radio}
           class:submenu={item.submenu}
+          class:glyphed={!switches && !!item.glyph}
           role={item.checked === undefined ? 'menuitem' : item.radio ? 'menuitemradio' : 'menuitemcheckbox'}
           aria-checked={item.checked}
           disabled={item.disabled}
@@ -253,6 +254,8 @@
   .label { display: flex; align-items: center; gap: var(--space-2); }
   .glyph { display: inline-flex; flex: 0 0 16px; color: var(--color-muted-foreground); margin-right: 2px; }
   .glyph.live { color: var(--color-live); }
+  /* A hint under a row with a glyph starts under its words, not under the glyph: the line reads as the label's. */
+  .item.glyphed:not(.inline-hint) > .hint { padding-left: calc(18px + var(--space-2)); }
   .item.danger .glyph { color: inherit; }
   /* The rows pack in the middle of a tall phone row: stretched, they left the label high and the check low. */
   .item.checkable { display: grid; grid-template-columns: minmax(0, 1fr) 14px; column-gap: 8px; align-content: center; }

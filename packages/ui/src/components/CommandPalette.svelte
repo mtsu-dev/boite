@@ -14,13 +14,13 @@
   import { MediaQuery } from 'svelte/reactivity';
   import { desktopSettings } from '../lib/settings-tabs';
   import { workspace, type Machine } from '../lib/workspace.svelte';
-  import MachineIcon from './MachineIcon.svelte';
+  import MachinePlace from './MachinePlace.svelte';
   import ProjectTile from './ProjectTile.svelte';
   import ThreadState from './ThreadState.svelte';
   import AgentAvatar from './agents/AgentAvatar.svelte';
   import { agentDirectory } from '../lib/agent-directory.svelte';
   import { inbox } from '../lib/inbox.svelte';
-  import { hostName } from '../lib/machine-host';
+  import { hostMark, hostName } from '../lib/machine-host';
 
   let { store }: { store: Store } = $props();
 
@@ -265,7 +265,7 @@
               <div class="section-label project-label" data-testid="palette-project">
                 {#if heading.project}<ProjectTile project={heading.project} store={heading.machine.store} size={16} />{/if}
                 <span class="name ui-label">{heading.project ? projectName(heading.project) : strings.drafts.name}</span>
-                {#if hostName(heading.machine, machines, home)}<span class="machine ui-label"><MachineIcon icon={heading.machine.icon} os={heading.machine.store.core?.os} size={12} />{hostName(heading.machine, machines, home)!.text}</span>{/if}
+                {#if hostName(heading.machine, machines, home)}<MachinePlace host={hostName(heading.machine, machines, home)!} />{/if}
               </div>
             {:else}
               <div class="section-label">{section.id === BOTS ? strings.agents.heading : section.kind === 'project' ? strings.palette.projects : strings.palette.commands}</div>
@@ -296,7 +296,7 @@
                 {#if place?.thread}
                   <span class="state"><ThreadState thread={place.thread} {now} subagents={rowAsks(place.machine.store, place.thread.id)} away={place.machine.store.connection !== 'ready'} mark /></span>
                 {:else if item.kind === 'project' && place}
-                  <span class="meta ui-label">{#if several}<MachineIcon icon={place.machine.icon} os={place.machine.store.core?.os} size={12} />{place.machine.label}{' · '}{/if}{strings.palette.newThread}</span>
+                  <span class="meta">{#if several}<MachinePlace host={hostMark(place.machine.label, place.machine.store.connection)} />{/if}<span class="ui-label">{strings.palette.newThread}</span></span>
                 {:else if item.hint}
                   <span class="kbd ui-label-box"><span class="ui-label">{item.hint}</span></span>
                 {/if}
@@ -424,14 +424,8 @@
     white-space: nowrap;
   }
 
-  .machine {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    flex: none;
-    font-weight: 400;
-    color: var(--color-muted-foreground);
-  }
+  /* The heading's machine stays whole after the name, as on the list's cards. */
+  .project-label :global(.machine-place) { flex: none; }
 
   .row {
     width: 100%;
@@ -485,7 +479,7 @@
     flex: none;
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: 8px;
     font-size: var(--text-sm);
     color: var(--color-muted-foreground);
   }

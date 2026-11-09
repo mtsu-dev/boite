@@ -36,6 +36,7 @@
   import DraftRow from './DraftRow.svelte';
   import GroupLabel from './GroupLabel.svelte';
   import ProjectTile from './ProjectTile.svelte';
+  import MachinePlace from './MachinePlace.svelte';
   import RailFrame from './RailFrame.svelte';
   import { minuteClock } from '../lib/clock.svelte';
   import { doneFilter } from '../lib/inbox.svelte';
@@ -264,11 +265,11 @@
           <DraftRow owner={machine.store} {entry} />
         {/each}
       {/each}
-      <WindowList items={split.active} keyOf={entry => JSON.stringify([entry.machine.id, entry.thread.id])} {scrollRoot} estimate={32} measurements={measurements('recent')}>
+      <WindowList items={split.active} keyOf={entry => JSON.stringify([entry.machine.id, entry.thread.id])} {scrollRoot} estimate={34} measurements={measurements('recent')}>
         {#snippet row(entry)}<ThreadCard {...entry} {now} compact showDone where={places(entry)} />{/snippet}
       </WindowList>
       {#if split.active.length > 0 && split.older.length > 0}<p class="rest-line" data-testid="recent-earlier"><span class="ui-label">{strings.sidebar.earlierThreads}</span></p>{/if}
-      <WindowList items={split.older} keyOf={entry => JSON.stringify([entry.machine.id, entry.thread.id])} {scrollRoot} estimate={32} measurements={measurements('recent-rest')}>
+      <WindowList items={split.older} keyOf={entry => JSON.stringify([entry.machine.id, entry.thread.id])} {scrollRoot} estimate={34} measurements={measurements('recent-rest')}>
         {#snippet row(entry)}<ThreadCard {...entry} {now} compact showDone where={places(entry)} />{/snippet}
       </WindowList>
       <!-- Done is the display menu's filter: on, the finished threads follow the live ones. -->
@@ -283,7 +284,7 @@
       <div class="recent-folds">
         {#if working.length > 0}
           <RecentGroup kind="working" count={working.length} bind:open={workingOpen}>
-            <WindowList items={working} keyOf={entry => JSON.stringify([entry.machine.id, entry.thread.id])} {scrollRoot} estimate={32} measurements={measurements('recent-working')}>
+            <WindowList items={working} keyOf={entry => JSON.stringify([entry.machine.id, entry.thread.id])} {scrollRoot} estimate={34} measurements={measurements('recent-working')}>
               {#snippet row(entry)}<ThreadCard {...entry} {now} compact showDone where={places(entry)} />{/snippet}
             </WindowList>
           </RecentGroup>
@@ -343,7 +344,7 @@
             >
               {#if projectView.order === 'manual'}<GripVertical size={12} />{/if}<span class="mark"><ProjectTile {project} store={owner} size={18} /><span class="fold-caret" class:open={!collapsed} aria-hidden="true"><ChevronRight size={16} /></span></span
               ><span class="name project-title ui-label" class:gone={project.missing === true}>{projectName(project)}</span
-              >{#if host(machine)}{@const name = host(machine)!}<span class="host" data-testid="project-host" class:offline={name.away} title={name.text}>{name.text}</span>{/if}{#if project.missing === true}<span class="missing" data-testid="project-missing" title={strings.sidebar.projectMissing} aria-label={strings.sidebar.projectMissing}><FolderX size={13} aria-hidden="true" /></span>{/if}{#if rollup && !needsYou(rollup.kind) && rollup.kind !== 'done' && lists.working.length === 0}{@const label = fill(rollup.count === 1 ? strings.sidebar.rollupOne : strings.sidebar.rollupMany, { count: String(rollup.count), state: strings.sidebar.state[rollup.kind] })}<span
+              >{#if host(machine)}<MachinePlace host={host(machine)!} testid="project-host" />{/if}{#if project.missing === true}<span class="missing" data-testid="project-missing" title={strings.sidebar.projectMissing} aria-label={strings.sidebar.projectMissing}><FolderX size={13} aria-hidden="true" /></span>{/if}{#if rollup && !needsYou(rollup.kind) && rollup.kind !== 'done' && lists.working.length === 0}{@const label = fill(rollup.count === 1 ? strings.sidebar.rollupOne : strings.sidebar.rollupMany, { count: String(rollup.count), state: strings.sidebar.state[rollup.kind] })}<span
                   class="rollup {rollup.kind}" data-testid="project-rollup" data-state={rollup.kind} title={label} aria-label={label}
                   >{#if rollup.kind === 'interrupted'}<FailMark size={10} />{:else}<span class="work-ring" aria-hidden="true"></span>{/if}{#if rollup.count > 1}<span class="ui-label">{rollup.count}</span>{/if}</span
                 >{/if}
@@ -361,7 +362,7 @@
             <div>
               <SharedProjectThreads store={owner} projectId={project.id} active={!collapsed && !away}>
               {#each draftsHere as draft (draft.id)}<DraftRow {owner} entry={draft} />{/each}
-              <WindowList items={fold.shown} keyOf={thread => JSON.stringify([machine.id, thread.id])} {scrollRoot} active={!collapsed} estimate={34} measurements={measurements(JSON.stringify([machine.id, project.id]))}>
+              <WindowList items={fold.shown} keyOf={thread => JSON.stringify([machine.id, thread.id])} {scrollRoot} active={!collapsed} estimate={36} measurements={measurements(JSON.stringify([machine.id, project.id]))}>
                 {#snippet row(thread)}<ThreadCard {machine} {project} {thread} {now} showDone />{/snippet}
               </WindowList>
               {#if fold.folded.length}
@@ -373,7 +374,7 @@
               <ProjectThreadCounters {entry} working={lists.working.length} waiting={away ? 0 : waitingCount(entry)} {controls} {collapsed} {away} place="fold" />
               <div id="{controls}-working" hidden={!workingOpen || lists.working.length === 0} data-testid="project-working">
                 {#if workingOpen && lists.working.length > 0}
-                  <WindowList items={lists.working} keyOf={thread => JSON.stringify([machine.id, thread.id])} {scrollRoot} active={!collapsed} estimate={34} measurements={measurements(JSON.stringify([machine.id, project.id, 'working']))}>
+                  <WindowList items={lists.working} keyOf={thread => JSON.stringify([machine.id, thread.id])} {scrollRoot} active={!collapsed} estimate={36} measurements={measurements(JSON.stringify([machine.id, project.id, 'working']))}>
                     {#snippet row(thread)}<ThreadCard {machine} {project} {thread} {now} showDone />{/snippet}
                   </WindowList>
                 {/if}
@@ -496,12 +497,12 @@
     display: flex;
     align-items: center;
     gap: 2px;
-    height: 34px;
+    height: 38px;
   }
   .toggle {
     flex: 1;
     min-width: 0;
-    height: 34px;
+    height: 38px;
     padding: 0 4px;
     justify-content: flex-start;
     gap: 8px;
@@ -519,7 +520,8 @@
     text-overflow: ellipsis;
     text-align: left;
     white-space: nowrap;
-    font-size: var(--text-head);
+    /* A full size step over the rows' 14 px (round 19): the card reads as a place, its rows as what is in it. */
+    font-size: var(--text-title);
     font-weight: var(--weight-title);
     letter-spacing: -0.01em;
     color: var(--color-foreground);
@@ -567,24 +569,15 @@
   @media (prefers-reduced-motion: reduce) {
     .mark > :global(*) { transition: none; }
   }
-  /* The machine, after the name in quiet ink. A machine label is short and
-     says where the work runs, so it stays whole: the project name gives way. */
-  .host {
-    flex: none;
-    white-space: nowrap;
-    font-size: var(--text-xs);
-    font-weight: 400;
-    color: var(--color-subtle);
-  }
-  /* The rows under it carry no machine icon, so the header says the machine is unreachable in words ("Builder
-     offline"), a step brighter than a plain machine name; its rows read dimmed (ThreadCard.svelte). */
-  .host.offline { color: var(--color-foreground); }
+  /* The machine, after the name, as a place (MachinePlace.svelte). A machine label is short and says where the work
+     runs, so it stays whole: the project name gives way. */
+  .toggle :global(.machine-place) { flex: none; }
   .head :global(.counters) { margin-right: 2px; transition: margin-right var(--dur-2) var(--ease-out-quint); }
   /* The menu appears at the right end on hover and the counters step left of it, as a row's state does. */
   .project-actions {
     position: absolute;
     right: 2px;
-    top: 4px;
+    top: 6px;
     opacity: 0;
   }
   .head:hover .project-actions,

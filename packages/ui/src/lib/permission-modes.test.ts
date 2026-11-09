@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Protocol, ProviderSummary } from '@boite/contracts';
-import { modeHint, modeLabel, modesFor, modeWord, shownMode } from './permission-modes';
+import { modeHint, modeIcon, modeLabel, modesFor, modeWord, shownMode } from './permission-modes';
 import { defaultPrefs, PREFS_STORAGE_KEY, readPrefs, writePrefs } from './prefs';
 
 const provider = (protocol: Protocol, approvals = true) => ({
@@ -44,11 +44,17 @@ describe('permission modes', () => {
   });
 
   it('reads each mode at rest in the same word on every agent, Codex\'s folder in the line under it', () => {
-    expect(modesFor(provider('claude-sdk')).map((mode) => modeWord(mode, provider('claude-sdk')))).toEqual(['No limits', 'Auto', 'Edit freely', 'Ask']);
-    expect(modesFor(provider('codex-appserver')).map((mode) => modeWord(mode, provider('codex-appserver')))).toEqual(['No limits', 'Auto', 'Ask']);
+    expect(modesFor(provider('claude-sdk')).map((mode) => modeWord(mode, provider('claude-sdk')))).toEqual(['No limits', 'Auto', 'Edit freely', 'Ask first']);
+    expect(modesFor(provider('codex-appserver')).map((mode) => modeWord(mode, provider('codex-appserver')))).toEqual(['No limits', 'Auto', 'Ask first']);
     expect(modeLabel('default', provider('codex-appserver'))).toBe('Works in this folder, asks to go beyond it');
     expect(modeWord('plan', null)).toBe('Plan');
     expect(modeWord('dontAsk', null)).toBe('Auto-deny');
+  });
+
+  it('gives each offered level its own glyph, so the chip reads without its word', () => {
+    // Round 18 drew Auto and No limits with the same robot.
+    const glyphs = modesFor(provider('claude-sdk')).map(modeIcon);
+    expect(new Set(glyphs).size).toBe(4);
   });
 
   it('remembers YOLO across reloads', () => {

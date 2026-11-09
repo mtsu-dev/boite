@@ -20,7 +20,7 @@ const ROUTES: { owner: boolean; tab: SettingsTab; section?: string; shows: strin
   // Providers has its page as on the desktop; plugins and the keyboard stay on the desktop.
   { owner: true, tab: 'accounts', shows: 'accounts-page' },
   { owner: true, tab: 'plugins', shows: 'mobile-settings-home' },
-  // The keys agents ask for and the browser's logins moved under Providers, the windows under Machines (round 18).
+  // The keys agents ask for moved under Providers, the windows under Machines (round 18).
   { owner: true, tab: 'general', section: 'secrets', shows: 'secrets-card' },
   { owner: true, tab: 'general', section: 'windows', shows: 'window-allowlist' },
   { owner: true, tab: 'keyboard', shows: 'mobile-settings-home' },
@@ -32,10 +32,13 @@ const ROUTES: { owner: boolean; tab: SettingsTab; section?: string; shows: strin
   { owner: false, tab: 'accounts', shows: 'mobile-settings-home' },
   { owner: false, tab: 'general', section: 'worktrees', shows: 'mobile-settings-home' },
   { owner: false, tab: 'general', section: 'secrets', shows: 'mobile-settings-home' },
-  // The small pages are sections of their family: quiet under the conversations, browser profiles beside the keys,
+  // The small pages are sections of their family: quiet under the conversations,
   // compaction on Advanced's index, Resources inside Diagnostics.
   { owner: true, tab: 'general', section: 'quiet', shows: 'setting-mute-agents' },
-  { owner: true, tab: 'general', section: 'browser-profiles', shows: 'browser-profiles-card' },
+  // Round 19: the browser has its own page, which an old link under General or Providers opens.
+  { owner: true, tab: 'general', section: 'browser-profiles', shows: 'browser-page' },
+  { owner: true, tab: 'accounts', section: 'browser-profiles', shows: 'browser-profiles-card' },
+  { owner: false, tab: 'browser', shows: 'mobile-settings-home' },
   { owner: true, tab: 'advanced', section: 'auto-compact', shows: 'compaction-settings' },
   { owner: true, tab: 'resources', shows: 'resources-page' },
   { owner: false, tab: 'resources', shows: 'mobile-settings-home' }

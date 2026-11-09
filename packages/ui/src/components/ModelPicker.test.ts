@@ -143,12 +143,12 @@ test('a short gateway catalog identifies each upstream provider, including after
   await waitFor(() => !back.closest('.sources')!.hasAttribute('hidden'));
   expect(back.textContent?.trim()).toBe('Your models');
   expect(document.querySelector('[data-testid=composer-picker-menu] .back-row')).toBeNull();
-  // That source lists the two starred models, each with its route beside the provider.
+  // That source lists the two starred models, each with its route beside the provider in the line under its name.
   back.click();
   await waitFor(() => document.querySelectorAll('[data-testid=favorite-model]').length >= 2);
   for (const [index, source] of ['douane/opencode', 'douane/openrouter'].entries()) {
     const favorite = document.querySelector<HTMLButtonElement>(`[data-testid=favorite-model][title="${models[index]!.id}"]`)!;
-    expect(favorite.querySelector('.source')?.textContent).toContain(source);
+    expect(favorite.querySelector('.sub')?.textContent).toContain(source);
   }
 });
 

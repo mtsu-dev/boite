@@ -20,6 +20,8 @@ export const strings = {
     offline: 'Offline',
     /** The remedy beside an offline machine (MachinesPage.svelte): it tries now. */
     reconnect: 'Reconnect',
+    /** A machine named as a place, after a project or a thread (MachinePlace.svelte). */
+    onMachine: 'on {name}',
     nameOffline: '{name} offline',
     label: 'Connection'
   }

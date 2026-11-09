@@ -105,6 +105,31 @@ test('Skip sends no answer, prevents duplicate presses and allows retry after fa
   settle(true);
 });
 
+test('a docked question with options keeps its own Answer while the composer is its field, and a pick shows at once', () => {
+  // Round 18: while the agent worked, the card said "then send it" and the only round button was Stop.
+  const sent: string[][] = [];
+  running = mount(QuestionCard, {
+    target: document.body,
+    props: {
+      text: 'Which shape?', options: OPTIONS, allowText: true, multiple: false,
+      answer: null, pending: true, docked: true, replying: true, drafted: false, submit: (ids: string[]) => sent.push(ids)
+    }
+  });
+  flushSync();
+  expect(submit().textContent?.trim()).toBe('Answer');
+  expect(submit().disabled).toBe(true);
+  expect(document.querySelector('[data-testid=question-how]')?.textContent).toBe('Pick one, then press Answer');
+  options()[1]?.click();
+  flushSync();
+  // One choice too: its row fills and its keycap turns to a check.
+  expect(options()[1]?.classList.contains('picked')).toBe(true);
+  expect(options()[1]?.querySelector('kbd svg')).not.toBeNull();
+  expect(options()[0]?.querySelector('kbd svg')).toBeNull();
+  submit().click();
+  flushSync();
+  expect(sent).toEqual([['long']]);
+});
+
 test('the docked card offers the composer, whose send arrow is then the only submit', () => {
   const onwrite = vi.fn();
   const card = (replying: boolean) => {
@@ -178,8 +203,8 @@ test('several options are kept at once when the question takes several', () => {
   flushSync();
 
   expect(options().every(option => option.getAttribute('role') === 'checkbox')).toBe(true);
-  // The card says what a pick does: it marks rows, the send answers.
-  expect(document.querySelector('[data-testid=question-how]')?.textContent).toBe('Pick any, then send them');
+  // The card says what a pick does: it marks rows, the card's Answer sends them.
+  expect(document.querySelector('[data-testid=question-how]')?.textContent).toBe('Pick any, then press Answer');
   // Docked, each row shows its key until it is picked, then a check.
   expect(document.querySelector('kbd svg')).toBeNull();
   expect(options().map(option => option.querySelector('kbd')?.textContent)).toEqual(['1', '2']);

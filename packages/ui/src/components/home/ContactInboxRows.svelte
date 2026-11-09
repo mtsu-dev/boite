@@ -129,11 +129,11 @@
           {@const request = row.request}
           {@const chosen = acceptProject(row.view.store, request)}
           {@const tip = chosen ? fill(labels.acceptInto, { project: projectName(chosen) }) : labels.accept}
-          <button type="button" class="small answer" disabled={busy || !chosen} title={tip} aria-label={tip}
+          <button type="button" class="small primary answer" disabled={busy || !chosen} title={tip} aria-label={tip}
             onclick={() => chosen && void accept({ ...row, request }, same, chosen.id)} data-testid="activity-accept-{request.id}"><span class="ui-label">{labels.accept}</span></button>
         {:else if row.letter}
           {@const letter = row.letter}
-          <button type="button" class="small answer" disabled={busy} title={fill(strings.contacts.mail.deliverTip, { thread: letter.thread })}
+          <button type="button" class="small primary answer" disabled={busy} title={fill(strings.contacts.mail.deliverTip, { thread: letter.thread })}
             onclick={() => answerMail(row, same, true)} data-testid="activity-mail-deliver-{letter.id}"><span class="ui-label">{strings.contacts.mail.deliver}</span></button>
         {/if}
       </span>
@@ -161,7 +161,8 @@
   .times { flex: none; line-height: 20px; font-size: var(--text-xs); font-weight: 600; color: var(--color-muted-foreground); font-variant-numeric: tabular-nums; }
   /* What is asked, one secondary line: the title opens the contact's page with the whole, its tooltip holds it too. */
   .text { margin: 0; font-size: var(--text-sm); color: var(--color-muted-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .side { position: absolute; top: 0; right: 0; display: flex; align-items: center; gap: 8px; height: calc(20px + 2 * var(--feed-pad)); padding-right: var(--pad-x); }
+  /* Its end on the thread rows' (ThreadCard's 8 px), so time and action stand in one column down both sections. */
+  .side { position: absolute; top: 0; right: 0; display: flex; align-items: center; gap: 8px; height: calc(20px + 2 * var(--feed-pad)); padding-right: 8px; }
   .top { display: grid; justify-items: end; align-items: center; width: var(--feed-time); height: 20px; }
   .top > :global(*) { grid-area: 1 / 1; }
   time { font-size: var(--text-xs); color: var(--color-subtle); text-align: end; font-variant-numeric: tabular-nums; }

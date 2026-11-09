@@ -26,10 +26,11 @@
     /** False, or a promise of false, gives the buttons back: the answer did not reach the core. */
     answer: (decision: 'allow' | 'deny') => unknown;
     /**
-     * Drawn at the top of the composer, where the field below stays free:
-     * the ask on one line with its raw input behind an "i", the thing itself
-     * in mono, the reason, then Deny (Esc) and Allow once (Enter), the keys
-     * in their titles.
+     * Drawn at the top of the composer, where the field below stays free,
+     * in reading order: the ask with its raw input behind an "i", the
+     * agent's own reason when it gave one, the thing itself in mono, then
+     * Deny (Esc) and Allow once (Enter), the keys in their titles. The ask
+     * scrolls inside the dock's budget; the choices stay in sight.
      */
     docked?: boolean;
     /** Its place among the thread's pending asks, said only when there are several. */
@@ -83,29 +84,30 @@
 {#if docked}
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div class="permission docked decision-card" data-testid="permission-card" data-decision="pending" data-family={described.family} role="group" aria-label={sentence} tabindex="-1" {@attach keys} {@attach arrive}>
-  <DecisionHead>
-    <span class="sentence ui-label" data-testid="permission-sentence" title={described.subject || toolName}>{sentence}</span>
-    {#if request}<InfoTip text={`${why ? `${why}\n\n` : ''}${toolName}\n${json(request.input)}`} topic={sentence} testid="permission-input" />{/if}
-    {#snippet end()}
-      <span class="choices" aria-busy={sending !== null}>
-        {#if total > 1}<span class="count ui-label" data-testid="permission-count">{fill(strings.chat.permissionOf, { index: String(index), total: String(total) })}</span>{/if}
-        <button type="button" class="ghost choice" data-testid="permission-deny" title={strings.chat.denyKey} disabled={sending !== null} onclick={() => void choose('deny')}>
-          <span class="ui-label">{strings.chat.deny}</span>
-        </button>
-        <!-- An answer covers this one call: the button says so, the agent asks again next time. -->
-        <button type="button" class="choice allow" data-testid="permission-allow" title={strings.chat.allowOnceKey} disabled={sending !== null || previewMissing} onclick={() => void choose('allow')}>
-          <span class="ui-label">{strings.chat.allowOnce}</span>
-        </button>
-      </span>
-    {/snippet}
-  </DecisionHead>
-  {#if subjectBlock}
-    <pre class="mono subject scroll-edges" data-testid="permission-subject">{subjectBlock}</pre>
-  {/if}
-  {#if described.change}
-    {@const change = described.change}
-    <Deferred part={parts.DiffView}>{#snippet children(DiffView)}<DiffView path={change.path} oldText={change.oldText} newText={change.newText} doc={change} />{/snippet}</Deferred>
-  {/if}
+  <div class="ask">
+    <DecisionHead>
+      <span class="sentence ui-label" data-testid="permission-sentence" title={described.subject || toolName}>{sentence}</span>
+      {#if request}<InfoTip text={`${toolName}\n${json(request.input)}`} topic={sentence} testid="permission-input" />{/if}
+    </DecisionHead>
+    {#if why}<p class="why" data-testid="permission-why"><CodeText text={why} /></p>{/if}
+    {#if subjectBlock}
+      <pre class="mono subject scroll-edges" data-testid="permission-subject">{subjectBlock}</pre>
+    {/if}
+    {#if described.change}
+      {@const change = described.change}
+      <Deferred part={parts.DiffView}>{#snippet children(DiffView)}<DiffView path={change.path} oldText={change.oldText} newText={change.newText} doc={change} />{/snippet}</Deferred>
+    {/if}
+  </div>
+  <div class="choices" aria-busy={sending !== null}>
+    {#if total > 1}<span class="count ui-label" data-testid="permission-count">{fill(strings.chat.permissionOf, { index: String(index), total: String(total) })}</span>{/if}
+    <button type="button" class="ghost choice" data-testid="permission-deny" title={strings.chat.denyKey} disabled={sending !== null} onclick={() => void choose('deny')}>
+      <span class="ui-label">{strings.chat.deny}</span>
+    </button>
+    <!-- An answer covers this one call: the button says so, the agent asks again next time. -->
+    <button type="button" class="choice allow" data-testid="permission-allow" title={strings.chat.allowOnceKey} disabled={sending !== null || previewMissing} onclick={() => void choose('allow')}>
+      <span class="ui-label">{strings.chat.allowOnce}</span>
+    </button>
+  </div>
 </div>
 {:else}
 <div
@@ -248,17 +250,25 @@
   }
 
   /* At the top of the composer, the one raised tile in it: its fill, corners
-     and height budget are the dock's (Composer's `.decision-card`). Its head
-     stays put and the subject under it scrolls, so Deny and Allow are always
-     in sight however long the command. */
-  .permission.docked {
+     and height budget are the dock's (Composer's `.decision-card`). In reading
+     order, the ask then the choices: on a desktop the choices close its last
+     line at the end, on a phone they take a row under the command. The ask
+     scrolls inside the budget, so Deny and Allow are always in sight. */
+  .permission.docked.decision-card {
     /* The question's inset: the card's on the sides, so the ask starts where the field's text does. */
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: minmax(0, 1fr);
+    align-items: end;
+    gap: 8px 12px;
     padding: 10px var(--dock-inset, 10px);
-    gap: 8px;
+    overflow: hidden;
     outline: none;
   }
-  .permission.docked > :global(*) { flex: none; }
-  .permission.docked > :global(:not(.decision-head)) { flex: 0 1 auto; min-height: 0; overflow: auto; }
+  .ask { display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 0; max-height: 100%; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+  .ask > :global(*) { flex: none; }
+  /* The agent's own words for the call, under the ask and over the command, past the dot like it. */
+  .why { margin: -4px 0 0; padding-left: 14px; color: var(--color-muted-foreground); font-size: var(--text-sm); line-height: 20px; overflow-wrap: anywhere; }
   .docked:focus-visible { box-shadow: inset 0 0 0 2px var(--color-accent); }
   .docked .sentence { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .docked :global(.info-tip) { flex: none; }
@@ -274,11 +284,9 @@
   /* The command belongs to the ask's line: right under its title, starting
      where the title's words do (past the dot), with no fill and no edge of
      its own. A long one scrolls sideways, its whole text behind the "i". */
-  .docked pre { --scroll-edge-ground: var(--decision-fill, var(--color-composer-surface)); max-height: 120px; margin-top: -6px; padding: 0 0 0 14px; border: none; border-radius: 0; background: none; font-size: var(--text-meta); line-height: 20px; white-space: pre; word-break: normal; overflow: auto; scrollbar-width: none; }
-  /* The dock's budget may squeeze the card, never below the command's first
-     line: what Allow approves stays in sight (at 360 the choices wrap and the
-     budget runs out before the subject). */
-  .permission.docked > pre.subject { min-height: 20px; flex-shrink: 0; }
+  .docked pre { --scroll-edge-ground: var(--decision-fill, var(--color-composer-surface)); max-height: 120px; margin-top: -4px; padding: 0 0 0 14px; border: none; border-radius: 0; background: none; font-size: var(--text-meta); line-height: 20px; white-space: pre; word-break: normal; overflow: auto; scrollbar-width: none; }
+  /* A why under the ask takes the space the command's pull-up gave back. */
+  .why + pre { margin-top: 0; }
   .choice { flex: none; height: 30px; gap: 8px; padding: 0 12px; border-radius: var(--radius-md); font-size: var(--text-sm); font-weight: 600; }
   /* Neutral ink, never the accent: the accent stays for send. */
   .choice.allow { background: var(--color-foreground); color: var(--color-background); }
@@ -286,7 +294,8 @@
   @media (max-width: 720px) {
     /* The sentence asks for its whole width: when it and the two choices do not fit one
        line, the choices wrap under it rather than cutting the ask. */
-    .permission.docked { --decision-title: auto; padding: 8px var(--dock-inset, 8px); }
-    .choice { height: var(--touch-target); padding: 0 10px; }
+    .permission.docked.decision-card { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; padding: 8px var(--dock-inset, 8px); }
+    .choices { justify-content: flex-end; }
+    .choice { height: var(--touch-target); padding: 0 12px; }
   }
 </style>

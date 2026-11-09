@@ -36,7 +36,7 @@
          column each down the whole page. -->
     <span class="feed-action">
       {#if target && verb}
-        <button type="button" class="small verb" data-testid="thread-verb" data-verb={verb} onclick={(event) => { leaveForAct(target.machine.store, target.thread.id, event.currentTarget); void workspace.select(target.machine.store, target.thread.id); }}>{strings.mobile.feed.verb[verb]}</button>
+        <button type="button" class={['small', 'verb', verb === 'review' ? 'ghost' : 'primary']} data-testid="thread-verb" data-verb={verb} onclick={(event) => { leaveForAct(target.machine.store, target.thread.id, event.currentTarget); void workspace.select(target.machine.store, target.thread.id); }}>{strings.mobile.feed.verb[verb]}</button>
       {/if}
     </span>
   {/snippet}
@@ -53,7 +53,9 @@
   .operation { display: block; margin-left: 26px; padding: 6px 8px; border-radius: var(--radius-sm); background: var(--color-code-background); color: var(--color-code-foreground); font-family: var(--font-mono); font-size: var(--text-xs); line-height: 1.5; text-align: start; white-space: pre-wrap; overflow-x: auto; scrollbar-width: none; }
   /* Too long to read here: its first lines, and Review opens the whole before Allow. */
   .operation.long { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; line-clamp: 6; overflow: hidden; }
-  /* One width for every action (ThreadCard's `--feed-verb`), so each starts at the same offset. */
+  /* One width for every action (ThreadCard's `--feed-verb`), so each starts at the same offset. The row's one
+     action ranks by what it does: answering and allowing are the solid neutral fill of the composer's Allow (never
+     the accent), reading a long command first is a text action. */
   .feed-action { display: flex; flex: none; width: var(--feed-verb); }
   .verb { justify-content: center; width: 100%; height: var(--control-sm); font-size: var(--text-xs); font-weight: 600; }
 </style>

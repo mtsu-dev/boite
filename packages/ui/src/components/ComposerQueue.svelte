@@ -177,7 +177,8 @@
   /* Its menu or its "i", round controls closing the line. */
   .pill :global(.info-tip) { flex: none; }
   .tool { display: flex; flex: none; }
-  .tool :global(.trigger) { position: relative; width: 22px; height: 22px; padding: 0; justify-content: center; border-radius: var(--radius-full); color: inherit; }
+  /* A 32 px target around a small glyph: the line grows to it, the ink stays quiet. */
+  .tool :global(.trigger) { position: relative; width: 32px; height: 32px; padding: 0; justify-content: center; border-radius: var(--radius-full); color: inherit; }
   .tool :global(.trigger:hover), .tool :global(.trigger[aria-expanded='true']) { color: var(--color-foreground); }
   .line .ghost.small { flex: none; height: 22px; padding: 0 6px; font-size: var(--text-xs); }
   /* Send now is the line's one word in ink: it acts on the whole queue. */

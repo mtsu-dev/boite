@@ -9,6 +9,8 @@
   import { workspace } from '../../lib/workspace.svelte';
   import { awaitsFirstTask } from '../../lib/bot-first-task';
   import DeskCard from './DeskCard.svelte';
+  import AgentAvatar from './AgentAvatar.svelte';
+  import { avatarLit } from '../../lib/avatar-lit';
 
   /**
    * The threads a bot started, was handed or follows, from its desk: Handling,
@@ -25,6 +27,7 @@
   const sections = $derived(splitDesk(view.snapshot?.watches.filter(w => w.agentId === agentId) ?? []));
   /** The column beside the chat (`onstart`) leaves a bot with nothing yet to the prompt over the chat; the desk sheet keeps its line. */
   const first = $derived(!!onstart && awaitsFirstTask(store, view, agentId));
+  const profile = $derived(view.snapshot?.profiles.find(agent => agent.id === agentId));
 
   /** A thread of another machine of the group opens there, when this client reaches that machine. */
   function remoteOf(watch: AgentWatch) {
@@ -84,6 +87,8 @@
     {/if}
   {:else if !first}
     <!-- An empty desk is one prompt in the column's middle; with no conversation either it moves over the chat (AgentsPage). -->
+    <!-- Its face over the line, the open bot's so in its colours: an empty desk reads as this bot's, not a blank. -->
+    {#if profile}<span class="bot-work-face" aria-hidden="true"><AgentAvatar kind="profile" id={profile.id} name={profile.name} avatar={profile.avatar} size={40} lit={avatarLit({ open: true })} /></span>{/if}
     <p class="bot-work-empty">{t.workEmpty}</p>
     {#if onstart && store.owner}<button type="button" class="small bot-work-start" data-testid="desk-work-start" onclick={onstart}><span class="ui-label">{t.workStart}</span></button>{/if}
   {/if}

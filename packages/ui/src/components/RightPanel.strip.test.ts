@@ -39,8 +39,8 @@ test('the active tab is the panel selector: the panels in use, every panel behin
   expect(selector().textContent?.trim()).toBe('Files');
   selector().click(); await settle();
   const listed = () => Array.from(document.querySelectorAll<HTMLElement>('[data-testid=panel-add-menu] [data-value]')).map((row) => row.dataset['value']);
-  // Short: the open Files and the thread's changes, one row to every panel, then the window's switch that left the head.
-  expect(listed()).toEqual(['changes', 'files', 'all-panels', 'panel-maximize']);
+  // Short: the open Files first, the panel used last, then the thread's changes, one row to every panel, then the window's switch that left the head.
+  expect(listed()).toEqual(['files', 'changes', 'all-panels', 'panel-maximize']);
   expect(query('[data-testid=panel-add-menu] [data-value=files]')?.classList.contains('active')).toBe(true);
   // "All panels" swaps the rows in place: every kind, open or not, once; the coordination and the way to hide some.
   query<HTMLButtonElement>('[data-testid=panel-add-menu] [data-value=all-panels]')!.click(); await settle();

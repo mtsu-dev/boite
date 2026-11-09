@@ -22,6 +22,8 @@ export const fr: Translation = {
     offline: 'Hors ligne',
     /** The remedy beside an offline machine (MachinesPage.svelte): it tries now. */
     reconnect: 'Reconnecter',
+    /** A machine named as a place, after a project or a thread (MachinePlace.svelte). */
+    onMachine: 'sur {name}',
     nameOffline: '{name} hors ligne',
     label: 'Connexion'
   }

@@ -640,7 +640,7 @@ test('a first run shows the model, reasoning and permission chips at their defau
   // Three chips in a row, each reading its value at rest.
   const chips = Array.from(query('[data-testid=composer-picker]').closest('.chips')!.querySelectorAll('[data-testid=composer-picker], [data-testid=composer-effort], [data-testid=composer-mode]')).map((el) => el.getAttribute('data-testid'));
   expect(chips).toEqual(['composer-picker', 'composer-effort', 'composer-mode']);
-  expect(chipText('composer-mode')).toBe('Ask');
+  expect(chipText('composer-mode')).toBe('Ask first');
   expect(plusItem('composer-worktree')?.getAttribute('aria-checked')).toBe('false');
   await waitFor(() => document.activeElement?.closest('[data-testid=composer-options-sheet]') != null);
   press('Escape');
@@ -1989,9 +1989,9 @@ test('the permission chip reads its mode in a word, offers No limits beside Auto
   query<HTMLButtonElement>('[data-testid=composer-mode]').click();
   await waitFor(() => document.querySelector('[data-testid=composer-mode-menu]') !== null);
   // Each mode is a word and one plain line; the live legacy mode keeps a row of its own at the end until another is picked.
-  expect(modeRows()).toEqual([['No limits', 'Runs everything and skips your hooks'], ['Auto', 'Runs everything without asking'], ['Edit freely', 'Edits files on its own, asks before commands'], ['Ask', 'Asks before it edits a file or runs a command'], ['Auto-deny', 'Refuses anything that needs asking']]);
+  expect(modeRows()).toEqual([['No limits', 'Runs everything and skips your hooks'], ['Auto', 'Runs everything without asking'], ['Edit freely', 'Edits files on its own, asks before commands'], ['Ask first', 'Asks before it edits a file or runs a command'], ['Auto-deny', 'Refuses anything that needs asking']]);
   expect(query('[data-testid=composer-mode-menu] [aria-checked=true]').getAttribute('data-value')).toBe('dontAsk');
-  for (const [mode, word] of [['yolo', 'No limits'], ['bypassPermissions', 'Auto'], ['acceptEdits', 'Edit freely'], ['default', 'Ask']]) {
+  for (const [mode, word] of [['yolo', 'No limits'], ['bypassPermissions', 'Auto'], ['acceptEdits', 'Edit freely'], ['default', 'Ask first']]) {
     if (!document.querySelector('[data-testid=composer-mode-menu]')) query<HTMLButtonElement>('[data-testid=composer-mode]').click();
     await waitFor(() => document.querySelector('[data-testid=composer-mode-menu]') !== null);
     query(`[data-testid=composer-mode-menu] [data-value="${mode}"]`).click();
@@ -2001,7 +2001,7 @@ test('the permission chip reads its mode in a word, offers No limits beside Auto
   }
   query<HTMLButtonElement>('[data-testid=composer-mode]').click();
   await waitFor(() => document.querySelector('[data-testid=composer-mode-menu]') !== null);
-  expect(modeRows().map(([word]) => word)).toEqual(['No limits', 'Auto', 'Edit freely', 'Ask']);
+  expect(modeRows().map(([word]) => word)).toEqual(['No limits', 'Auto', 'Edit freely', 'Ask first']);
 });
 
 test('a phone shows the model, effort and permission chips in one row, the permission opening its own sheet, and the "+" holds no mode', async () => {
@@ -2012,7 +2012,7 @@ test('a phone shows the model, effort and permission chips in one row, the permi
     // The same three chips as a desktop, in the same order: the "+" no longer hides the permission.
     const chips = Array.from(query('.chips').querySelectorAll('[data-testid=composer-picker], [data-testid=composer-effort], [data-testid=composer-mode]')).map((el) => el.getAttribute('data-testid'));
     expect(chips).toEqual(['composer-picker', 'composer-effort', 'composer-mode']);
-    expect(chipText('composer-mode')).toBe('Ask');
+    expect(chipText('composer-mode')).toBe('Ask first');
     expect(plusItem('composer-attach')).not.toBeNull();
     expect(query('[data-testid=composer-options-sheet]').querySelector('[data-testid=composer-mode]')).toBeNull();
     await waitFor(() => document.activeElement?.closest('[data-testid=composer-options-sheet]') != null);
@@ -2021,7 +2021,7 @@ test('a phone shows the model, effort and permission chips in one row, the permi
     query<HTMLButtonElement>('.chips [data-testid=composer-mode]').click(); flushSync();
     await waitFor(() => document.querySelector('[data-testid=composer-mode-menu]') !== null);
     expect(query<HTMLElement>('[data-testid=composer-mode-menu]').dataset.mobileSheet).toBe('true');
-    expect(modeRows().map(([word]) => word)).toEqual(['No limits', 'Auto', 'Edit freely', 'Ask']);
+    expect(modeRows().map(([word]) => word)).toEqual(['No limits', 'Auto', 'Edit freely', 'Ask first']);
     await waitFor(() => document.activeElement?.getAttribute('data-value') === 'default');
     query('[data-testid=composer-mode-menu] [data-value=acceptEdits]').click();
     await waitFor(() => store.openThread?.permissionMode === 'acceptEdits');

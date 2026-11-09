@@ -108,3 +108,29 @@ test('a desktop page with no thread keeps the arriving card in the bottom-right 
   expect(card.style.getPropertyValue('--corner-lift')).toBe('0px');
   corner.destroy();
 });
+
+test('while a thread loads, a card and a toast wait out of sight with no room kept, then take their slot once the timeline is there', () => {
+  window.innerWidth = 1440;
+  window.innerHeight = 768;
+  const loading = box('thread-loading', { top: 48, bottom: 700, left: 300, right: 1300, height: 652, width: 1000 });
+  box('composer', { top: 700, bottom: 768, left: 400, right: 1200, height: 68, width: 800 });
+  const card = document.createElement('div');
+  Object.defineProperty(card, 'offsetHeight', { value: 80 });
+  document.body.append(card);
+  const corner = notifyCorner(card);
+  const toast = document.createElement('div');
+  Object.defineProperty(toast, 'offsetHeight', { value: 40 });
+  document.body.append(toast);
+  const slot = toastSlot(toast);
+  // Not in the corner over the composer the skeleton leads to: held, unplaced.
+  expect(card.dataset.held).toBe('');
+  expect(toast.dataset.held).toBe('');
+  expect(card.style.getPropertyValue('--corner-lift')).toBe('');
+  loading.remove();
+  const timeline = box('timeline', { top: 48, bottom: 700, left: 300, right: 1300, height: 652, width: 1000 });
+  slot.destroy();
+  expect(card.dataset.held).toBeUndefined();
+  expect(card.dataset.slot).toBe('bottom');
+  expect(timeline.style.getPropertyValue('--corner-room')).toBe('96px');
+  corner.destroy();
+});

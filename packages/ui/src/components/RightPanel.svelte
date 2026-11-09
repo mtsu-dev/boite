@@ -16,7 +16,7 @@
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import { offeredCards, available as availableTo, label, tooltip } from '../lib/surface-labels';
-  import { ALL_PANELS, CUSTOMIZE, IN_USE, panelChoices, usedPanels } from '../lib/panel-choices';
+  import { ALL_PANELS, CUSTOMIZE, IN_USE, notePanelUse, panelChoices, usedPanels } from '../lib/panel-choices';
   import { openCoordination } from '../lib/coordination-request.svelte';
   import { arriveSurface } from '../lib/surface-swap';
   import { providePanelTools } from '../lib/panel-tools.svelte';
@@ -106,6 +106,8 @@
     if (untrack(() => entered)) arriveSurface(node);
   }
 
+  /** What a phone's head keeps over the panel's name: the thread, or the bot whose desk this is. */
+  let threadTitle = $derived(store.openThread?.title ?? null);
   let surfaces = $derived(panel.surfaces);
   let active = $derived(panel.active);
   let empty = $derived(surfaces.length === 0);
@@ -326,8 +328,15 @@
     ...(phone && active ? [separator('sep-close'), { id: CLOSE_TAB, label: fill(strings.rightPanel.closeTab, { title: label(active) }), glyph: X }] : [])
   ]);
 
+  // The panel showing is the one used last: the selector lists it first next time, on any thread.
+  $effect(() => {
+    const kind = active?.kind;
+    if (kind) untrack(() => notePanelUse(kind));
+  });
+
   function pickPanel(id: string): void {
     const thread = store.openThread;
+    if (id === 'terminal-toggle' || id === 'board-toggle' || id === 'coordination') notePanelUse(id);
     if (id === MAXIMIZE) rightPanel.maximized = !rightPanel.maximized;
     else if (id === DOCK) { rightPanel.floating = false; rightPanel.maximized = false; }
     else if (id === CLOSE_TAB) { if (active) void closeTabs(panel, 'close', active.id); }
@@ -448,10 +457,12 @@
             </button>
             <!-- The panel selector: the showing panel's name opens the list of every panel and tool. -->
             <!-- The tooltip on the trigger, not the tab: the list lives inside the tab and a native tooltip would cover its rows. -->
-            <span class="selector">
+            <span class="selector" class:with-thread={phone && !!threadTitle} use:arriveAfter>
               <Menu items={headChoices} onpick={pickPanel} cap={SELECTOR_CAP} placement="bottom" variant="ghost" label={tooltip(surface)} heading={strings.thread.panelMenu} testid="panel-add" onclose={() => (full = false)}>
                 <!-- A phone's title is the panel's name alone: the file it reads has its own picker in the body. -->
-                <span class="name ui-label" data-testid={phone ? 'panel-title' : undefined}>{label(surface)}</span><ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
+                <!-- A phone's panel covers the thread: its title stays on top, one line, the panel named under it. -->
+                {#if phone && threadTitle}<span class="thread-line ui-label" data-testid="panel-thread-title">{threadTitle}</span>{/if}
+                <span class="name-row"><span class="name ui-label" data-testid={phone ? 'panel-title' : undefined}>{label(surface)}</span><ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" /></span>
               </Menu>
             </span>
           {:else}
@@ -517,7 +528,7 @@
     <!-- Keyed on the tab: the old surface leaves at once and the new one is
          there in the same frame, settling in. -->
     {#key active?.id}
-    <div class="surface" use:arriveAfter>
+    <div class="surface" class:native={active?.kind === 'browser' || active?.kind === 'agent-browser'} use:arriveAfter>
     {#if active?.kind === 'desk'}
       {#if store.openThread?.agentSessionId}
         {#key store.threadKey(store.openThread.id)}<AgentDesk {store} />{/key}
@@ -629,6 +640,10 @@
     height: var(--control);
     width: var(--control);
   }
+  /* The close, the head's one exit, takes a full 32 px square (as the header's buttons do). */
+  .strip button.small.icon.panel-close { width: var(--control-head); height: var(--control-head); }
+  /* The tabs scroll, so they clip: a keyboard ring drawn outside a tab or its close would be cut, it goes inside. */
+  .tabs :global(:focus-visible) { outline-offset: -2px; }
   /* The selector is the active tab's name: the tab's type and fill, a chevron after the words. */
   .strip .selector :global(.trigger.ghost) {
     width: auto;
@@ -642,6 +657,7 @@
     font: inherit;
   }
   .selector { display: flex; min-width: 0; }
+  .name-row { display: inline-flex; align-items: center; gap: 3px; min-width: 0; max-width: 100%; }
   .selector :global(.menu) { display: flex; min-width: 0; }
   .selector.alone { padding-left: 6px; color: var(--color-foreground); font-size: var(--text-xs); }
 
@@ -815,16 +831,22 @@
     flex-direction: column;
   }
 
-  /* One fade of the incoming body, from a high opacity, never from nothing:
-     the first frame already reads. No rise: a moving box drew the old place
-     under the new one for a frame, and dragged a browser's native view along. */
+  /* A panel switch reads as one: the incoming body fades up from a low
+     opacity while it slides in a few pixels from the right, and the head's name
+     arrives with it, so the change shows even between two lists that look
+     alike. The old body has left in the same frame (keyed), so no frame holds
+     two. A browser's native view does not follow a transform: it only fades. */
   .surface:global([data-arriving]) {
-    animation: surface-fade var(--motion-duration) var(--motion-curve) both;
+    animation: surface-in var(--motion-duration) var(--motion-curve) both;
   }
-  @keyframes surface-fade { from { opacity: 0.85; } }
+  .surface.native:global([data-arriving]) { animation-name: surface-fade; }
+  .selector:global([data-arriving]) { animation: title-in var(--motion-duration) var(--motion-curve) both; }
+  @keyframes surface-in { from { opacity: 0.25; transform: translateX(12px); } }
+  @keyframes surface-fade { from { opacity: 0.25; } }
+  @keyframes title-in { from { opacity: 0.2; transform: translateX(6px); } }
   /* A cut under reduced motion, whatever the duration tokens say. */
-  @media (prefers-reduced-motion: reduce) { .surface:global([data-arriving]) { animation: none; } }
-  :global(html[data-motion='reduced']) .surface:global([data-arriving]) { animation: none; }
+  @media (prefers-reduced-motion: reduce) { .surface:global([data-arriving]), .selector:global([data-arriving]) { animation: none; } }
+  :global(html[data-motion='reduced']) .surface:global([data-arriving]), :global(html[data-motion='reduced']) .selector:global([data-arriving]) { animation: none; }
 
   @media (min-width: 721px) {
     .body {
@@ -887,6 +909,12 @@
     .tabs { flex: 0 1 auto; }
     .strip .selector :global(.trigger.ghost) { height: var(--touch-target); padding: 0 6px 0 2px; gap: 4px; }
     .tab.active .name { font-size: var(--text-base); font-weight: 600; color: var(--color-foreground); }
+    /* With the thread's title over it: the title on one line, the panel's name under it, smaller, both inside
+       the selector's touch-tall button, still the way to the other panels. */
+    .selector.with-thread :global(.trigger.ghost) { flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; }
+    .thread-line { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-base); font-weight: 600; line-height: 1.2; color: var(--color-foreground); margin-block: 0; padding-block: 0; text-box: normal; }
+    .with-thread .name-row { gap: 4px; }
+    .tab.active .with-thread .name { font-size: var(--text-sm); font-weight: 500; line-height: 1.2; color: var(--color-muted-foreground); margin-block: 0; padding-block: 0; text-box: normal; }
 
     .panel,
     .panel.maximized {
@@ -960,7 +988,7 @@
   .float-resize[data-panel-resize='sw'] { left: -6px; bottom: -6px; cursor: nesw-resize; }
   .float-resize[data-panel-resize='se'] { right: -6px; bottom: -6px; cursor: nwse-resize; }
   .float-resize:focus-visible {
-    outline: 2px solid var(--color-foreground); outline-offset: 0;
+    outline: var(--focus-ring); outline-offset: 0;
   }
   .float-resize:active { transform: none; }
   .float-resize:hover:not(:disabled), .float-resize:active { background: transparent; box-shadow: none; }

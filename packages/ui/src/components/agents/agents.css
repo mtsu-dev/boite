@@ -44,6 +44,7 @@
 .bot-section-count { margin-left: 4px; font-weight: 500; color: var(--color-subtle); font-variant-numeric: tabular-nums; }
 /* An empty desk: its one prompt at the column's optical middle, not a line tucked under Conversation. */
 .bot-work.idle { flex: 1; justify-content: center; align-items: center; gap: 10px; padding: 0 12px 15%; text-align: center; }
+.bot-work-face { display: block; }
 .bot-work-empty { margin: 0; font-size: var(--text-sm); line-height: 1.5; color: var(--color-muted-foreground); }
 .agent-desk .bot-section { padding: 6px 8px 4px; }
 .agent-desk .bot-work > .bot-section:first-child { padding-top: 2px; }
@@ -301,6 +302,10 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 .desk-progress > span { position: absolute; inset: 0 auto 0 0; width: 40%; border-radius: inherit; background: var(--color-accent); animation: desk-sweep 1.8s var(--loop-ease-in-out-48) infinite var(--loops); }
 @keyframes desk-sweep { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
 .desk-work-card { padding: 8px 0; }
+/* An empty desk is a prompt in the room left under memory, around its optical centre, not a line over a void. */
+.agent-desk > .desk-body { flex: 1 0 auto; }
+.desk-work-card:has(.bot-work-empty) { flex: 1; }
+.agent-desk .bot-work:has(> .bot-work-empty) { flex: 1; justify-content: center; align-items: center; gap: 10px; padding: 0 12px 15%; text-align: center; }
 .desk-activity { border-top: 1px solid var(--color-border); padding-top: 4px; }
 .desk-activity > summary { display: flex; align-items: center; gap: 6px; min-height: var(--control-sm); color: var(--color-muted-foreground); font-size: var(--text-xs); cursor: pointer; list-style: none; }
 .desk-activity > summary:hover { color: var(--color-foreground); }

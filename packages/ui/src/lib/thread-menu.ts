@@ -52,12 +52,14 @@ function manageParts(store: Store, thread: ThreadSummary, options: ThreadMenuOpt
   const bot = [...(options.lead ?? []), ...entrustItems(store, thread)];
   const folder = placeItems(store, thread, options);
   const title: MenuItem[] = [{ id: 'retitle', label: retitling ? strings.sidebar.retitling : strings.sidebar.retitle, glyph: Sparkles, disabled: retitling }];
-  const name = !bot.length ? strings.thread.manageNoBot : !folder.length ? strings.thread.manageNoFolder : strings.thread.manage;
+  // Named by what a user does there: the move only when a move row is in it, so the name never promises one.
+  const moves = folder.some(item => item.id.startsWith('move'));
+  const name = bot.length ? (moves ? strings.thread.manage : strings.thread.manageNoFolder) : moves ? strings.thread.manageNoBot : strings.thread.manageTitle;
   return { name, rows: [...bot, ...(bot.length ? [separator('sep-bot')] : []), ...title, ...(folder.length ? [separator('sep-folder')] : []), ...folder] };
 }
 
 /**
- * The named group ("Bot, title and folder", `more`, kept for the rows that
+ * The named group ("Move or give to a bot", `more`, kept for the rows that
  * open it), under a way back to the thread's menu. Empty for a group of one,
  * which is a row on the first level instead. A phone folds it too, in its sheet.
  */

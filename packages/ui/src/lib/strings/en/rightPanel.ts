@@ -27,12 +27,14 @@ export const strings = {
     morePanels: { one: '{first}', two: '{first} and {second}', many: '{first}, {second} and {count} more' },
     /** The selector's way from the panels in use to every panel, and back. */
     allPanels: 'All panels', inUse: 'Open panels',
+    /** A line under the two lists of work to do, so they read apart. */
+    roles: { board: "The project's todos in columns", tasks: "This thread's goal, checklist and watches" },
     /** The full list's groups. */
     groups: { work: 'Work', agents: 'Agents', tools: 'Tools' },
     /** A renamed row's tooltip: the name it had before. */
     formerly: {
       trace: 'Formerly Trace', tasks: 'Formerly Tasks', messages: 'Formerly Discussions',
-      coordination: 'Formerly Communication between conversations', customize: 'Formerly Choose the buttons'
+      coordination: 'Formerly Thread links', customize: 'Formerly Choose the buttons'
     }
   }
 } as const;

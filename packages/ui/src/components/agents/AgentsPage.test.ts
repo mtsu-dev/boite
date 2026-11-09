@@ -188,7 +188,9 @@ test("a desktop's column is the open bot's: who it is, its conversation, its thr
     const botHead = document.querySelector('[data-testid=agent-header]')!;
     expect(botHead.querySelector('.agent-head-name')?.textContent).toBe(nova.name);
     expect(botHead.querySelector('[data-testid=agent-menu]')).not.toBeNull();
-    expect(botHead.querySelector('[data-testid=agent-desk-toggle]')?.textContent).toContain(strings.thread.panelMenu);
+    // The door says what shows: the desk while it is open, "Panels" once it is closed.
+    const door = botHead.querySelector('[data-testid=agent-desk-toggle]')?.textContent;
+    expect(door).toContain(store.panelOpen ? strings.agents.desk : strings.thread.panelMenu);
     expect(document.querySelector('[data-testid=agent-live]')).toBeNull();
     const conversation = document.querySelector<HTMLButtonElement>('[data-testid=bot-conversation]')!;
     expect(conversation.getAttribute('aria-current')).toBe('page');

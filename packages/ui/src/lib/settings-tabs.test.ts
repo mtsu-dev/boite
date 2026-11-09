@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'vitest';
-import { SETTINGS_GROUPS, SETTINGS_TABS, desktopPage, groupOf, movedTo, navOf, pagesOf, phonePage, sectionsOf, viewOf } from './settings-tabs';
+import { SETTINGS_FAMILIES, SETTINGS_GROUPS, SETTINGS_TABS, desktopPage, familyOf, groupOf, movedTo, navOf, pagesOf, phonePage, sectionsOf, viewOf } from './settings-tabs';
 
 describe('the merged settings', () => {
-  test('seven entries hold every page once, the same list on desktop and phone', () => {
-    expect(SETTINGS_GROUPS).toHaveLength(7);
+  test('eight entries hold every page once, the same list on desktop and phone', () => {
+    expect(SETTINGS_GROUPS).toHaveLength(8);
     const listed = SETTINGS_GROUPS.flat();
     expect(new Set(listed).size).toBe(listed.length);
     expect([...listed].sort()).toEqual(SETTINGS_TABS.filter((tab) => tab !== 'home').sort());
@@ -17,7 +17,7 @@ describe('the merged settings', () => {
 
   test('the owner\'s desktop shows nine pages, the small ones as sections of their family; a phone keeps Voice, Usage and Experiments as pages', () => {
     const pages = SETTINGS_GROUPS.flatMap((group) => pagesOf(group[0], true));
-    expect(pages).toEqual(['general', 'keyboard', 'appearance', 'accounts', 'brain', 'limits', 'machines', 'advanced', 'diagnostics']);
+    expect(pages).toEqual(['general', 'keyboard', 'appearance', 'accounts', 'brain', 'limits', 'browser', 'machines', 'advanced', 'diagnostics']);
     // Round 16: Voice alone on a page was three cards on an empty screen; it closes General.
     expect(sectionsOf('general', true)).toEqual(['voice']);
     expect(desktopPage('voice', true)).toBe('general');
@@ -60,15 +60,33 @@ describe('the merged settings', () => {
     expect(phonePage('general', 'quiet', false)).toBe('home');
     // Round 18: General's odd cards live with their task, a project menu's old link included.
     expect(movedTo('general', 'secrets')).toBe('accounts');
-    expect(movedTo('general', 'browser-profiles')).toBe('accounts');
     expect(movedTo('general', 'windows')).toBe('machines');
     expect(movedTo('general', 'window-exclusions')).toBe('machines');
     expect(phonePage('general', 'secrets', true)).toBe('accounts');
-    expect(phonePage('general', 'browser-profiles', true)).toBe('accounts');
     expect(phonePage('general', 'windows', true)).toBe('machines');
     // Providers is the owner's: a paired phone's old link lands on Home.
     expect(phonePage('general', 'secrets', false)).toBe('home');
     expect(phonePage('advanced', 'auto-compact', true)).toBe('advanced');
+  });
+
+  test('the browser has its own entry: a link to its card under General or Providers opens it, a paired device lands on Home', () => {
+    expect(movedTo('general', 'browser-profiles')).toBe('browser');
+    expect(movedTo('accounts', 'browser-profiles')).toBe('browser');
+    expect(desktopPage('browser', true)).toBe('browser');
+    expect(desktopPage('browser', false)).toBe('general');
+    expect(phonePage('general', 'browser-profiles', true)).toBe('browser');
+    expect(phonePage('accounts', 'browser-profiles', true)).toBe('browser');
+    expect(phonePage('browser', null, false)).toBe('home');
+  });
+
+  test('every entry stands under one family, each family named but the closing Advanced', () => {
+    const leads = SETTINGS_FAMILIES.flatMap((family) => [...family.leads]);
+    expect(leads).toEqual(SETTINGS_GROUPS.map((group) => group[0]));
+    expect(SETTINGS_FAMILIES.map((family) => family.id)).toEqual(['app', 'agents', 'connections', null]);
+    expect(familyOf('voice')).toBe('app');
+    expect(familyOf('usage')).toBe('agents');
+    expect(familyOf('browser')).toBe('connections');
+    expect(familyOf('diagnostics')).toBeNull();
   });
 
   test('a page that is not merged opens itself', () => {

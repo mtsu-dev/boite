@@ -335,7 +335,7 @@ test('with two machines the machine line shows on the threads list only: Activit
   expect(document.querySelector('[data-testid=mobile-connection]')).toBeNull();
 });
 
-test("a project header names another machine once two are connected, and an unreachable one with the word: Builder offline", async () => {
+test("a project header names another machine as a place once two are connected, and an unreachable one's state as its own mark", async () => {
   vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
     media, matches: true, onchange: null, addListener() {}, removeListener() {}
   }));
@@ -351,12 +351,14 @@ test("a project header names another machine once two are connected, and an unre
     mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'threads' } });
     await settle();
     const host = () => document.querySelector<HTMLElement>(`[data-testid=mobile-project-group][data-machine-id="${remote.machineId}"] [data-testid=mobile-project-host]`);
-    expect(host()?.textContent).toBe('Builder');
+    expect(host()?.textContent).toBe('on Builder');
+    expect(host()?.querySelector('[data-testid=machine-away]')).toBeNull();
     expect(host()?.classList.contains('offline')).toBe(false);
     remote.connection = 'closed'; await settle();
-    // Out of reach: the word after its name, no dot to decode, and its rows dimmed.
+    // Out of reach: the state as a word of its own beside the name, never run into it, no dot to decode.
     expect(host()?.classList.contains('offline')).toBe(true);
-    expect(host()?.textContent).toBe('Builder offline');
+    expect(host()?.querySelector('.on')?.textContent).toBe('on Builder');
+    expect(host()?.querySelector('[data-testid=machine-away]')?.textContent).toBe('Offline');
     expect(host()?.querySelector('.off-dot')).toBeNull();
   } finally {
     remote.detach(); remoteClient.close();

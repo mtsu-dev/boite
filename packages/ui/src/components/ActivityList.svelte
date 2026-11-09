@@ -81,7 +81,10 @@
   /* The chat's own column (MessageList.svelte): the same side room and gutters, then --content, so a thread and
      Activity read at one width, centred in the card. */
   .activity-page { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable both-edges; padding: 0 var(--outline-room); outline: none; }
-  .column { display: flex; flex-direction: column; gap: 2px; width: 100%; max-width: var(--content); min-height: 100%; margin: 0 auto; padding: var(--space-8) 0 var(--space-6); }
+  /* Centred like Settings and sized to what it holds, between a reading measure and the column; a short list sits
+     around the card's optical centre (a little above the middle) instead of in its top third over a void, and a long
+     one starts at the top and scrolls (safe). */
+  .column { display: flex; flex-direction: column; justify-content: safe center; gap: 2px; width: fit-content; min-width: min(100%, var(--prose)); max-width: var(--content); min-height: 100%; margin: 0 auto; padding: var(--space-8) 0 max(var(--space-6), 10vh); }
   /* A section's name over its rows, from the rows' text edge; the next section stands off the last row. */
   /* From the rows' tile edge (ThreadCard's compact 10 px). */
   h2 { margin: 0 0 var(--space-2) 10px; }

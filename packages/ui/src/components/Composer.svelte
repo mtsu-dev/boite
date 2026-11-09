@@ -864,7 +864,7 @@
 
     <ComposerSpeechPreview status={speechStatus} preview={speechPreview} error={speechError} />
 
-    <ComposerBar bind:this={toolbar} {store} {key} {target} {bot} {botGone} {provider} canSend={sendable && !stopped} waiting={sendWhenLoaded !== null} answering={!!reply}
+    <ComposerBar bind:this={toolbar} {store} {key} {target} {bot} {botGone} {provider} canSend={sendable && !stopped} typed={!reply || text.trim().length > 0 || attachments.length > 0} waiting={sendWhenLoaded !== null} answering={!!reply}
       onmention={!target && !reply && mentionProject !== null ? startMention : undefined} oncommand={!target && !reply && text.trim() === '' ? startCommand : undefined} sendLabel={reply ? strings.composer.replySend : undefined} bind:choice bind:picking bind:dictating
       onsubmit={() => void submit()}
       onfiles={(files) => void take(files)}
@@ -941,12 +941,23 @@
     --dock-inset: 8px;
   }
   /* The answer as sent: one quiet line in the dock's own ink, cut to one line, its check where the question's dot stood. */
-  .receipt { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0; padding: 4px var(--dock-inset) 0; color: var(--color-subtle); font-size: var(--text-meta); }
+  .receipt { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0; padding: var(--deck-gap) var(--dock-inset) 0; color: var(--color-subtle); font-size: var(--text-meta); }
   .receipt span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .receipt :global(svg) { flex: none; color: var(--color-success); }
   /* A long ask scrolls inside itself, its head and its choices in sight (its own file). */
-  /* A permission sits in the deck itself; a question's tile takes its inset from ThreadActivity's padding. */
-  .deck > :global(.decision-card) { margin: 6px 6px 2px; overflow-y: auto; overscroll-behavior: contain; }
+  /* One gap scale in every combination: each block of the card (the
+     subagents' entries, the decision, the receipt, the queued line) stands
+     `--deck-gap` under the one above it and adds nothing under itself, so the
+     field's own top inset is the one space before its text. A permission sits
+     in the deck itself, a question's tile in ThreadActivity's section: both
+     take the same inset here. */
+  .composer { --deck-gap: 6px; }
+  .deck > :global(.decision-card) { margin: var(--deck-gap) 6px 0; overflow-y: auto; overscroll-behavior: contain; }
+  .composer .deck > :global(.activity) { padding: 0 6px; }
+  .composer .deck > :global(.activity > *:first-child) { margin-top: var(--deck-gap); }
+  .composer .deck > :global(.activity > .decision-card) { margin: var(--deck-gap) 0 0; }
+  .composer .deck > :global(.activity > .decision-card:last-child) { margin-bottom: 0; }
+  .composer .deck > :global(.activity > .decision-card + *) { margin-top: var(--deck-gap); }
   /* The bottom gap sits under the box: a textarea scrolls its text through its own padding, up to the bar. */
   .input-wrap { position: relative; margin-bottom: var(--composer-input-gap, 6px); }
   .input-highlight {
@@ -997,8 +1008,8 @@
        first; a question's choices scroll in the room left once the rows,
        the head and the field are counted (`--dock-cap`). */
     .composer { --composer-rest: var(--shadow-e1); --composer-cap: 45dvh; border-radius: var(--radius-xl); max-height: var(--composer-cap); }
-    /* A docked question with its choices may take a little more, so four of them show whole at 390. */
-    .composer:has(:global(.question.docked)) { --composer-cap: 55dvh; }
+    /* A docked question with its choices may take a little more, so four of them and its Answer show whole at 390. */
+    .composer:has(:global(.question.docked)) { --composer-cap: 57dvh; }
     /* So does a permission: at 360 its choices wrap under the ask, and the command they approve must stay in sight. */
     .composer:has(:global(.permission.docked)) { --composer-cap: 52dvh; }
     .composer > :global(*) { flex: none; }

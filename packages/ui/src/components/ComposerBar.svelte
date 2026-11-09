@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ArrowUp, LoaderCircle, Mic, MicOff, Square } from '@lucide/svelte';
+  import { ArrowUp, LoaderCircle, Mic, MicOff, Square, UserX } from '@lucide/svelte';
   import { tick } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import { effectiveCompaction, type PermissionMode, type ProviderSummary } from '@boite/contracts';
@@ -31,9 +31,10 @@
    * what adds to the message, then a chip per setting reading its word at
    * rest: the model, the effort (a slider, the bolt while fast is on) and the
    * permission (an icon and a word), the same three on a thread, a bot and a
-   * phone, the context's ring and "x% left" once it matters, then dictation and one round
-   * button that is Send, or Stop while a turn runs and nothing waits to go
-   * (not while it stands on a decision of the owner's).
+   * phone, the context's ring and "x% context left" once it matters, then dictation and one round
+   * button that is Send, or Stop while a turn runs and nothing typed waits to go
+   * (not while it stands on a decision of the owner's). A question's picks
+   * alone leave Stop in place: the card carries its own send.
    * Nothing comes or goes with a decision docked above: the row keeps its
    * place and its controls. A pick on a thread is saved at once, after the
    * switch warnings; on a draft the whole choice is remembered. `choice`,
@@ -51,6 +52,7 @@
     canSend,
     waiting = false,
     answering = false,
+    typed = true,
     sendLabel = strings.composer.send,
     choice = $bindable(),
     picking = $bindable(),
@@ -75,6 +77,8 @@
     /** Send was pressed while files were still being read: it goes once they are ready. */
     waiting?: boolean;
     answering?: boolean;
+    /** Text or files are in the box. False while only a question's picks make it sendable: Stop stays Stop and the card sends them. */
+    typed?: boolean;
     /** What Send does, when it answers a question rather than sending a message. */
     sendLabel?: string;
     choice: Choice | null;
@@ -94,8 +98,8 @@
   let stopping = $derived(!!(target ? target.busy && target.stop : store.busy));
   /** The turn stands still on the owner's answer (a permission, a question it stopped for): Deny or Skip is the way out, Escape still stops. */
   let held = $derived(!target && store.openThread?.status === 'waiting');
-  /** One round button at the row's end: Stop while a turn runs and nothing waits to go, Send otherwise. */
-  let stopShown = $derived(stopping && !held && !canSend && !waiting);
+  /** One round button at the row's end: Stop while a turn runs and nothing typed waits to go, Send otherwise. */
+  let stopShown = $derived(stopping && !held && !waiting && !(canSend && typed));
 
   let picker = $state<HTMLInputElement | undefined>(undefined);
   let bar = $state<HTMLDivElement | undefined>(undefined);
@@ -144,6 +148,17 @@
   // A legacy mode still live (`plan`) keeps its own choice until another is picked.
   let modeChoices = $derived<ModeChoice[]>([...modes, ...modes.includes(displayedMode) ? [] : [displayedMode]]
     .map((mode) => ({ id: mode, label: modeWord(mode, provider), hint: modeLabel(mode, provider), title: modeHint(mode, provider), icon: modeIcon(mode) })));
+  /** The account behind this box is gone: the row says so first, with its remedy. */
+  let accountGone = $derived(botGone || accountRemoved);
+  /**
+   * The remedy: a bot's other accounts are the banner's menu (AgentProblem),
+   * opened from here; a thread picks a model on another account.
+   */
+  function pickAccount() {
+    const menu = botGone ? bar?.ownerDocument.querySelector<HTMLElement>('[data-testid="agent-problem-account"]') : null;
+    if (menu) { menu.scrollIntoView?.({ block: 'nearest' }); menu.click(); return; }
+    void openChip('composer-picker');
+  }
   /** A bot keeps its model, effort and mode in its settings: its chips read them and open nothing. */
   let botHint = $derived(bot ? fill(botGone ? strings.composer.botAccountGone : strings.composer.botSettings, { name: bot }) : '');
   // The worktree switch exists where the core can honour it: a draft on a
@@ -284,6 +299,12 @@
   {:else}
   <!-- The model chip stays named while the box answers a question: the next turn runs on it. -->
   <div class="chips">
+    {#if accountGone}
+      <!-- The state and its remedy in one chip, first in the row: the chips after it name a route that no longer runs. -->
+      <button type="button" class="ui-chip trigger gone" data-testid={botGone ? 'composer-bot-gone' : 'composer-account-removed'} title={botGone ? botHint : strings.accounts.removedHint} onclick={pickAccount}>
+        <UserX size={14} strokeWidth={1.75} /><span class="ui-label state">{strings.accounts.removed}</span><span class="ui-label">{strings.agents.pickAccount}</span>
+      </button>
+    {/if}
     <!-- A bot's model is its own setting: its chip names it and changes nothing here. -->
     <ModelPicker bind:this={chip} {store} {choice} disabled={picking} readonly={bot !== null} readonlyHint={botHint} onpick={pick} />
     {#if choice && (effortLevels.length > 0 || speeds.length > 0)}
@@ -308,9 +329,6 @@
       <!-- The context is its own quiet item of the row, after the chips that set something. -->
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div class="context-control" oncontextmenu={(event) => controlMenu(event, store, 'header.context')}><ContextControl {store} /></div>
-    {/if}
-    {#if accountRemoved}
-      <button type="button" class="ui-chip signed-out" data-testid="composer-account-removed" title={strings.accounts.removedHint} onclick={() => void openChip('composer-picker')}><span class="ui-label">{strings.accounts.removed}</span></button>
     {/if}
   </div>
   {/if}
@@ -377,6 +395,13 @@
   .context-control { display: flex; flex: none; }
 
   .chips .ui-chip.signed-out { color: var(--color-live); }
+  /* The gone account: the glyph in the live ink, the state at full ink, the
+     remedy one step quieter; no tinted pill. */
+  .bar .chips .gone { color: var(--color-muted-foreground); }
+  .gone .state { color: var(--color-foreground); font-weight: 500; }
+  /* Every chip's chevron is the same quiet mark: the value stays what the eye reads. */
+  .chips :global(.trigger > .lucide-chevron-down) { flex: none; opacity: .6; }
+  .gone :global(svg) { color: var(--color-live); }
 
   /* Every child is one control high, so the end is the centre on one row; on a
      composer too narrow for one, the tools sit on the chips' last row. */
@@ -470,46 +495,91 @@
     .bar, .tools { gap: 6px; }
   }
 
+  /* A desktop's small round targets reach 32 px: the "+", the microphone, send and stop. */
+  @media (min-width: 721px) {
+    .bar :global(:is(.opener, .microphone)), .dictation-stand-in button, .send, .stop { width: 32px; height: 32px; }
+  }
+
   @media (max-width: 720px) {
     .bar { position: relative; gap: 2px; padding: var(--composer-bar-padding, 0 8px 6px); }
     /* The microphone and send stand at the field's end, on its last line, so
        the row's whole width reads the chips' words: nothing ever slides under
-       them. The field keeps its place; Composer pads its text clear of them. */
-    .tools { position: absolute; right: 8px; bottom: 100%; gap: 0; }
+       them. The field keeps its place; Composer pads its text clear of them.
+       The disc is drawn 36 px inside its 44 px target, 8 px from the card's
+       right edge and, on a one line field, 8 px from its top: an even margin. */
+    .tools { position: absolute; right: 4px; bottom: calc(100% - 4px); gap: 0; }
+    /* 36 px drawn, not --control-lg or the touch screen's 44 px icon minimum:
+       those pushed the disc onto the card's edge on a one line field. The
+       ::after below keeps the 44 px target. */
+    .tools :global(:is(.send, .stop, .microphone, .dictation-stand-in button)) { position: relative; width: 36px; height: 36px; min-width: 0; min-height: 0; margin: 4px; }
+    .tools :global(:is(.send, .stop, .microphone, .dictation-stand-in button))::after { content: ''; position: absolute; inset: -5px; border-radius: inherit; }
     /* One row that never wraps: a value too long for it scrolls sideways
        under the finger, and ends before the microphone, never under it. */
-    .chips { flex: 1; flex-wrap: nowrap; gap: 0; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+    .chips { --chips-gap: 6px; flex: 1; flex-wrap: nowrap; gap: var(--chips-gap); min-height: var(--touch-target); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
     .chips::-webkit-scrollbar { display: none; }
     /* That scroller clips anything drawn outside it: the focus ring sits inside the chip. */
     .chips :global(.trigger:focus-visible) { outline-offset: -2px; }
     .chips > :global(*) { flex: none; }
-    .chips :global(.picker > .trigger) { max-width: none; height: var(--touch-target); padding: 0 6px; }
-    .chips :global(:is(.effort, .permission) > .trigger) { height: var(--touch-target); padding: 0 6px; gap: 5px; }
+    /* Each setting reads as a control at rest: a quiet surface and a hairline
+       around its icon, its value and its chevron, 36 px drawn in a 44 px target. */
+    .bar .chips :global(:is(.picker, .effort, .permission) > .trigger), .bar .chips .gone {
+      position: relative;
+      height: 36px;
+      padding: 0 8px;
+      gap: 5px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-full);
+      background: color-mix(in oklab, var(--color-foreground) 4%, transparent);
+    }
+    .bar .chips :global(:is(.picker, .effort, .permission) > .trigger)::after, .bar .chips .gone::after { content: ''; position: absolute; inset: -5px 0; }
+    .chips :global(.picker > .trigger) { max-width: none; }
     .chips :global(.picker > .trigger > .label) { max-width: none; overflow: visible; }
-    .bar .chips :global(.picker > .trigger.connect) { padding: 0 12px; border-radius: var(--radius-md); background: var(--color-active); color: var(--color-foreground); }
+    .bar .chips :global(.picker > .trigger.connect) { padding: 0 12px; background: var(--color-active); color: var(--color-foreground); }
   }
-  /* A 390 or 360 px phone gives the words the room of the marks around them:
-     the model's name stands without its logo and chevron, the effort and the
-     permission keep their word, never a glyph alone. Only the leading glyph
-     goes: the fast bolt after the effort's word is a span and stays at every
-     width while fast mode is on. */
-  @media (max-width: 400px) {
-    .bar { gap: 0; }
-    .chips :global(.picker > .trigger > .lucide-chevron-down) { display: none; }
-    .chips :global(.picker > .trigger:not(.connect) > :is([data-logo], [data-initial], .lucide-sparkles)) { display: none; }
-    .chips :global(:is(.effort, .permission) > .trigger > svg:first-child) { display: none; }
-    .chips :global(:is(.picker, .effort, .permission) > .trigger) { padding: 0 5px; }
-    .context-control :global(.trigger) { padding: 0 5px; }
-  }
-  /* At 360 the "+" narrows to 32 px, its 44 px target kept by a hit zone over
-     the bar's padding, and the chips' sides close in: the widest case (GPT 6.1
-     Sol, Extra high, No limits, the context) still reads whole. */
+  /* A 360 px phone: the "+" narrows to 32 px, its 44 px target kept by a hit
+     zone over the bar's padding, and the chips' sides close in. A value never
+     shrinks: past the row's end the chips scroll sideways. */
   @media (max-width: 379px) {
-    .bar { padding-inline: 4px; }
+    .bar { gap: 0; padding-inline: 4px; }
     .bar :global(.opener) { position: relative; width: 32px; }
     .bar :global(.opener)::after { content: ''; position: absolute; inset: 0 -4px 0 -8px; }
-    .chips :global(:is(.picker, .effort, .permission) > .trigger), .context-control :global(.trigger) { padding: 0 4px; gap: 4px; }
-    /* The row's last item: the card's edge gives it its air. */
-    .context-control :global(.trigger) { padding-right: 2px; }
+    .bar .chips :global(:is(.picker, .effort, .permission) > .trigger) { padding: 0 7px; gap: 4px; }
+    .chips { --chips-gap: 4px; }
+  }
+  /* A phone row that runs past its end fades there, the lists' scroll-driven
+     edge turned sideways: the end with more chips beyond it fades, the start
+     once scrolled, and a row that fits has no scroll range, so no fade. Each
+     edge takes no room: its negative margin cancels its width and the gap. */
+  @supports (animation-timeline: scroll()) {
+    @media (max-width: 720px) {
+      .chips::before, .chips::after {
+        content: '';
+        position: sticky;
+        z-index: 1;
+        flex: none;
+        align-self: stretch;
+        width: var(--scroll-edge);
+        pointer-events: none;
+        opacity: 0;
+        animation-duration: auto;
+        animation-timing-function: linear;
+        animation-fill-mode: both;
+        animation-timeline: scroll(nearest inline);
+      }
+      .chips::before {
+        left: 0;
+        margin-right: calc(-1 * (var(--scroll-edge) + var(--chips-gap)));
+        background: linear-gradient(to right, var(--color-composer-surface), transparent);
+        animation-name: scroll-edge-in;
+        animation-range: 0px var(--scroll-edge);
+      }
+      .chips::after {
+        right: 0;
+        margin-left: calc(-1 * (var(--scroll-edge) + var(--chips-gap)));
+        background: linear-gradient(to left, var(--color-composer-surface), transparent);
+        animation-name: scroll-edge-out;
+        animation-range: calc(100% - var(--scroll-edge)) 100%;
+      }
+    }
   }
 </style>

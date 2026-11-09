@@ -8,6 +8,9 @@
   transition: bottom var(--motion-duration) var(--motion-curve);
 }
 
+/* Held while a thread loads (notify-corner.ts): out of sight until the page lands and its slot exists. */
+.notify-corner[data-held], .toast-slot[data-held] { visibility: hidden; }
+
 /* In the toasts' room (notify-corner.ts): centred on what gave way, its shadow the toasts' own. */
 .notify-corner[data-slot='bottom'] { right: auto; left: var(--toast-left, 50%); translate: -50% 0; }
 .notify-corner[data-slot='bottom'] .notify-card { box-shadow: var(--shadow-e1); }

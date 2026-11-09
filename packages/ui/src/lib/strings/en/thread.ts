@@ -16,7 +16,7 @@ export const strings = {
     retryContinueBody: 'Resumes by itself in {time}, resume {attempt} of {attempts}.',
     contextDetails: 'Context',
     /** The composer's context reading at rest, beside its ring. */
-    contextLeft: (percent: string) => `${percent}% left`,
+    contextLeft: (percent: string) => `${percent}% context left`,
     contextLeftNamed: (percent: string) => `Context: ${percent}% left`,
     contextInput: 'Input',
     contextCache: 'Cached input',
@@ -54,12 +54,14 @@ export const strings = {
     panel: 'Panel',
     panelHint: 'Show or hide the side panel',
     panelMenu: 'Panels',
-    /** A thread menu's named group, named by what it holds in that order: the bot rows, the title made again, the folder (branch, move, path, pull request). */
-    manage: 'Bot, title and folder',
-    /** The same group with no bot row (bots off, none to give it to). */
-    manageNoBot: 'Title and folder',
-    /** The same group with no folder row (a phone that cannot move it). */
-    manageNoFolder: 'Bot and title',
+    /** A thread menu's second level, named by what a user does there: the bot rows, a new title, the folder (branch, move, path, pull request). */
+    manage: 'Move or give to a bot',
+    /** The same with no bot row (bots off, none to give it to). */
+    manageNoBot: 'Move or retitle',
+    /** The same with no move row (a phone that cannot move it, a thread that cannot move). */
+    manageNoFolder: 'Give to a bot or retitle',
+    /** The same with neither: a new title and the folder's path. */
+    manageTitle: 'Retitle or copy the path',
     /** A desktop header's project crumb: back to the thread list, at this thread. */
     backToList: 'Back to the {project} threads',
     terminalHint: "Terminal in this thread's folder",

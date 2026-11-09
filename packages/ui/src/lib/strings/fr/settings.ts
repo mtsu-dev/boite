@@ -27,8 +27,11 @@ export const fr: Translation = {
       usage: 'Consommation',
       resources: 'Mémoire et processus',
       experiments: 'Expérimentations',
-      diagnostics: 'Diagnostic'
+      diagnostics: 'Diagnostic',
+      browser: 'Navigateur'
     },
+    /** The heads the Settings entries stand under (lib/settings-tabs.ts `SETTINGS_FAMILIES`). */
+    families: { app: 'Application', agents: 'Agents', connections: 'Connexions' },
     back: 'Retour aux conversations',
     search: 'Rechercher un réglage',
     searchEmpty: 'Aucun réglage ne correspond',
@@ -75,6 +78,10 @@ export const fr: Translation = {
     theme: 'Thème',
     /** Under a page's title where its settings stay on the device in hand (Appearance). */
     scopeDevice: 'Sur cet appareil',
+    /** On a setting kept for one provider account (its default model). */
+    scopeAccount: 'Pour {account} sur cet appareil',
+    /** General's card of how agents answer, saved on the machine, apart from this device's conversation switches. */
+    agentReplies: 'Réponses des agents',
     display: 'Affichage',
     accent: "Couleur d'accent",
     accentNames: ['Bleu', 'Violet', 'Rose', 'Orange', 'Ambre', 'Vert', 'Turquoise'],

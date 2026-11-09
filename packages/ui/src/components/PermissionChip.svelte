@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Check } from '@lucide/svelte';
+  import { Check, ChevronDown } from '@lucide/svelte';
   import { tick } from 'svelte';
   import { Closing } from '../lib/closing.svelte';
   import { floating } from '../lib/floating';
@@ -109,6 +109,8 @@
     <button type="button" class="ui-chip trigger" aria-haspopup="menu" aria-expanded={popover.open} aria-label={name} title={current?.title ?? strings.composer.mode} data-testid="composer-mode" {disabled} bind:this={trigger} onclick={toggle} {onkeydown}>
       {#if Glyph}<Glyph size={14} strokeWidth={1.75} />{/if}
       <span class="ui-label word" data-testid="composer-mode-value">{current?.label ?? ''}</span>
+      <!-- The chevron the model chip has: all three read as controls that open. -->
+      <ChevronDown size={12} strokeWidth={2} class="chevron" />
     </button>
   {/if}
 

@@ -7,8 +7,9 @@
   /**
    * What the chat shows between the click on a thread and its first page: the
    * outline of a conversation in the transcript's own column, a prompt and two
-   * replies in quiet shapes, where the first message will land. Once the core
-   * says what the page weighs, a neutral bar and the numbers count it in;
+   * replies in quiet shapes, repeated down to the composer so the page reads
+   * whole rather than stopping mid-screen. Once the core
+   * says what the page weighs, a bar in the house bot's teal and the numbers count it in;
    * before that (a page short enough to come whole, or a core that sends
    * answers whole) the shapes say it alone.
    */
@@ -20,10 +21,12 @@
 
 <div class="loading" data-testid="thread-loading" role="status" aria-live="polite">
   <!-- Without a total the shapes alone say it is coming: the old sweep's id stays with them. -->
-  <div class="column" aria-hidden="true" data-testid={fraction === null ? 'thread-loading-sweep' : undefined}>
-    <div class="shape prompt"></div>
-    <div class="reply"><div class="shape line"></div><div class="shape line"></div><div class="shape line short"></div></div>
-    <div class="reply"><div class="shape line"></div><div class="shape line half"></div></div>
+  <div class="column shapes" aria-hidden="true" data-testid={fraction === null ? 'thread-loading-sweep' : undefined}>
+    {#each [0, 1, 2, 3] as group (group)}
+      <div class="shape prompt"></div>
+      <div class="reply"><div class="shape line"></div><div class="shape line"></div><div class="shape line short"></div></div>
+      <div class="reply"><div class="shape line"></div><div class="shape line half"></div></div>
+    {/each}
   </div>
   <div class="column count">
     {#if fraction !== null}
@@ -76,7 +79,11 @@
   .line.short { width: 58%; }
   .line.half { width: 40%; }
 
-  .count { gap: 8px; }
+  /* The shapes take the room down to the caption over the composer and fade out there, whatever the window's height. */
+  .shapes { flex: 1; min-height: 0; overflow: hidden; mask-image: linear-gradient(to bottom, var(--color-foreground) calc(100% - 96px), transparent); }
+  .shapes > * { flex: none; }
+
+  .count { flex: none; gap: 8px; }
 
   .track {
     height: 3px;
@@ -88,7 +95,8 @@
   .bar {
     height: 100%;
     width: 100%;
-    background: var(--color-subtle);
+    /* The house bot's teal (lib/robots.ts' jelly 7): the mascot's colour marks the app waiting, not the accent. */
+    background: var(--jelly-7);
     transform-origin: left;
     transition: transform var(--dur-2) var(--ease-out-quint);
   }

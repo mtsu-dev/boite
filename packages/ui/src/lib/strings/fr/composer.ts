@@ -25,7 +25,7 @@ export const fr: Translation = {
     mentionFile: 'Mentionner un fichier',
     commands: 'Commandes',
     botSettings: 'Réglé dans les paramètres de {name}',
-    botAccountGone: 'Le compte de {name} n’existe plus : utilisez Choisir un autre compte au-dessus',
+    botAccountGone: 'Le compte de {name} n’existe plus : choisissez un autre compte',
     placeholder: 'Message à {name}',
     placeholderAgent: "l'agent",
     placeholderOffline: '{machine} est hors ligne : les messages attendent ici et partent à sa reconnexion',
@@ -53,8 +53,7 @@ export const fr: Translation = {
     removeQueued: 'Retirer ce message en attente',
     picker: 'Fournisseur et modèle',
     models: 'Modèles',
-    /** The picker's first level lists the models in use; this row opens every provider, its logins and models. */
-    allModels: 'Tous les modèles',
+    providers: 'Fournisseurs',
     /** The way back from All models to the first level. */
     yourModels: 'Vos modèles',
     searchModels: 'Rechercher un modèle',
@@ -85,6 +84,7 @@ export const fr: Translation = {
     model: 'Modèle',
     unavailable: 'pas installé',
     noAccount: 'aucun compte',
+    setUp: 'Configurer',
     noProvider: 'Aucune IA connectée',
     worktree: 'Worktree',
     worktreeOff: 'Démarrer dans un worktree git sur sa propre branche',

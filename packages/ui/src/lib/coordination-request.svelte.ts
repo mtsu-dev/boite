@@ -1,7 +1,7 @@
 import type { Store } from './store.svelte';
 
 /**
- * The thread whose "Thread links" dialog is open. The
+ * The thread whose "Linked threads" dialog is open. The
  * panel selector asks for it; the thread header, which knows the thread on
  * screen, draws it. The store goes with the id: ids can collide between machines.
  */

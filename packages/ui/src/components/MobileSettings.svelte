@@ -9,6 +9,8 @@
   import { ScreenSlide } from '../lib/screen-slide.svelte';
   import AppearancePage from './AppearancePage.svelte';
   import AccountsPage from './AccountsPage.svelte';
+  import BrowserPage from './BrowserPage.svelte';
+  import AgentRepliesSettings from './AgentRepliesSettings.svelte';
   import ConversationSwitches from './ConversationSwitches.svelte';
   import ExperimentsPage from './ExperimentsPage.svelte';
   import DiagnosticsPage from './DiagnosticsPage.svelte';
@@ -62,6 +64,7 @@
     : page === 'advanced' ? strings.settings.tabs.advanced
     : page === 'conversations' ? strings.settings.conversations
     : page === 'accounts' ? strings.settings.tabs.accounts
+    : page === 'browser' ? strings.settings.tabs.browser
     : page === 'archived' ? strings.settings.archived.heading
     : page === 'worktrees' ? strings.settings.worktrees.heading
     : page === 'voice' ? strings.speech.heading : page === 'appearance' ? strings.settings.tabs.appearance
@@ -159,17 +162,35 @@
     <!-- The header already says Settings: the screen opens on the groups, as the desktop's nav lists them. -->
     <div class="home" data-testid="mobile-settings-home">
       <PolicyBanner store={target} />
-      <div class="rows">
-        {@render row('settings-tab-general', strings.settings.tabs.general, () => store.showSettings('general'), 'general')}
-        {@render row('settings-tab-appearance', strings.settings.tabs.appearance, () => store.showSettings('appearance'), 'appearance')}
-        {#if store.owner}{@render row('settings-tab-accounts', strings.settings.tabs.accounts, () => store.showSettings('accounts'), 'accounts')}{/if}
-        {#if store.owner}{@render row('settings-tab-brain', strings.brain.heading, () => store.showSettings('brain'), 'brain')}{/if}
-        <!-- Usage is a page of Limits, as on the desktop: the entry wears the rail's gauge and opens on the limits. -->
-        {@render row('settings-tab-limits', strings.usage.limits, () => store.showSettings('limits'), 'limits')}
-        <!-- Machines carries the machine this phone reaches and how. -->
-        <button class="ghost row machine-link" data-testid="mobile-settings-connection" onclick={() => store.showSettings('machines')}>
-          <Monitor class="lead" size={SETTINGS_ICON_SIZE} strokeWidth={SETTINGS_ICON_STROKE} aria-hidden="true" /><span><strong class="ui-label">{strings.settings.tabs.machines}</strong><small>{#if machine}{`${machineName(machine)} · `}{/if}<span class:ready={store.connection === 'ready'}>{store.pairingRequired ? strings.mobile.pairingRequired : strings.connection[store.connection]}</span></small></span><ChevronRight size={18} />
-        </button>
+      <!-- The desktop's family heads (lib/settings-tabs.ts `SETTINGS_FAMILIES`), each over its own card of rows. -->
+      <section class="family" aria-labelledby="mobile-family-app" data-testid="settings-family" data-family="app">
+        <h2 class="family-head ui-label" id="mobile-family-app">{strings.settings.families.app}</h2>
+        <div class="rows">
+          {@render row('settings-tab-general', strings.settings.tabs.general, () => store.showSettings('general'), 'general')}
+          {@render row('settings-tab-appearance', strings.settings.tabs.appearance, () => store.showSettings('appearance'), 'appearance')}
+        </div>
+      </section>
+      <section class="family" aria-labelledby="mobile-family-agents" data-testid="settings-family" data-family="agents">
+        <h2 class="family-head ui-label" id="mobile-family-agents">{strings.settings.families.agents}</h2>
+        <div class="rows">
+          {#if store.owner}{@render row('settings-tab-accounts', strings.settings.tabs.accounts, () => store.showSettings('accounts'), 'accounts')}{/if}
+          {#if store.owner}{@render row('settings-tab-brain', strings.brain.heading, () => store.showSettings('brain'), 'brain')}{/if}
+          <!-- Usage is a page of Limits, as on the desktop: the entry wears the rail's gauge and opens on the limits. -->
+          {@render row('settings-tab-limits', strings.usage.limits, () => store.showSettings('limits'), 'limits')}
+        </div>
+      </section>
+      <section class="family" aria-labelledby="mobile-family-connections" data-testid="settings-family" data-family="connections">
+        <h2 class="family-head ui-label" id="mobile-family-connections">{strings.settings.families.connections}</h2>
+        <div class="rows">
+          {#if store.owner}{@render row('settings-tab-browser', strings.settings.tabs.browser, () => store.showSettings('browser'), 'browser')}{/if}
+          <!-- Machines carries the machine this phone reaches and how. -->
+          <button class="ghost row machine-link" data-testid="mobile-settings-connection" onclick={() => store.showSettings('machines')}>
+            <Monitor class="lead" size={SETTINGS_ICON_SIZE} strokeWidth={SETTINGS_ICON_STROKE} aria-hidden="true" /><span><strong class="ui-label">{strings.settings.tabs.machines}</strong><small>{#if machine}{`${machineName(machine)} · `}{/if}<span class:ready={store.connection === 'ready'}>{store.pairingRequired ? strings.mobile.pairingRequired : strings.connection[store.connection]}</span></small></span><ChevronRight size={18} />
+          </button>
+        </div>
+      </section>
+      <!-- Advanced closes the list without a head, as on the desktop. -->
+      <div class="family rows" data-testid="settings-family" data-family="more">
         {@render row('settings-tab-advanced', strings.settings.tabs.advanced, () => store.showSettings('advanced'), 'advanced')}
       </div>
       <PolicySettings store={target} />
@@ -226,11 +247,13 @@
         </div>
       {:else if shown === 'accounts' && target.owner}
         <AccountsPage store={target} />
+      {:else if shown === 'browser' && store.owner}
+        <BrowserPage />
       {:else if shown === 'conversations'}
         <!-- General's Conversations card, the switches this phone keeps; the list groups from its own display options. -->
         <div class="page"><section class="card" id="settings-conversations"><ConversationSwitches phone /></section>
-          <!-- Quiet changes one machine: its bar sits above it, not above this phone's switches. -->
-          {#if target.owner}{#if bar}<div class="bar inline">{@render bar()}</div>{/if}<QuietCard store={target} />{/if}
+          <!-- How agents answer and Quiet change one machine: its bar sits above them, under this phone's switches. -->
+          {#if target.owner}{#if bar}<div class="bar inline">{@render bar()}</div>{/if}<AgentRepliesSettings store={target} /><QuietCard store={target} />{/if}
         </div>
       {:else if shown === 'brain' && target.owner}
         <BrainPage store={target} />
@@ -298,6 +321,9 @@
   .machine-link small { display: block; margin-top: var(--space-1); font-size: var(--text-xs); font-weight: 400; color: var(--color-muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .machine-link small .ready { color: var(--color-success); }
   p { font-size: var(--text-sm); color: var(--color-muted-foreground); line-height: 1.5; margin: var(--space-2) 0 var(--space-3); }
+  /* A family: its head in the meta size over its card of rows, air between two. */
+  .family + .family { margin-top: var(--space-5); }
+  .family-head { margin: 0 0 var(--space-2) var(--space-1); color: var(--color-subtle); font-size: var(--text-meta); font-weight: var(--weight-title); }
   .rows { border: 1px solid var(--color-border); border-radius: var(--radius-lg); overflow: hidden; background: var(--color-surface); }
   /* A ghost button is muted; a row title reads like any other settings label. */
   .row { display: flex; align-items: center; width: 100%; height: auto; min-height: 48px; gap: var(--space-3); padding: var(--space-3) var(--space-4); font-size: var(--text-base); font-weight: 400; text-align: left; border-radius: 0; white-space: normal; color: var(--color-foreground); }

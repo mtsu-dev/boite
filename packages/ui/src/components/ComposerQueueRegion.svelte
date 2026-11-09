@@ -47,6 +47,6 @@
 
 <style>
   /* Lines on the box's own surface, at the top of the field, starting where its text does: no band of their own. */
-  .held { display: flex; flex-direction: column; gap: 0; min-width: 0; padding: 6px 14px 0; }
+  .held { display: flex; flex-direction: column; gap: 0; min-width: 0; padding: var(--deck-gap, 6px) 14px 0; }
   .answers { display: flex; min-width: 0; }
 </style>

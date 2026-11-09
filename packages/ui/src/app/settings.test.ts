@@ -118,14 +118,18 @@ test('a shortcut is recorded from the keys pressed, a taken one asks first, and 
   expect(store.bindings.pin.text).toBe(null);
 });
 
-test('the checklist model sits with the conversation settings on General, with no experiment on', async ({ app: _app }) => {
+test('the checklist model sits with how agents answer on General, with no experiment on', async ({ app: _app }) => {
   expect(window.localStorage.getItem('boite.experiments')).toBeNull();
   query<HTMLButtonElement>('[data-testid=nav-settings]').click();
   await waitFor(() => document.querySelector('[data-testid=settings-tab-general]') !== null);
   query<HTMLButtonElement>('[data-testid=settings-tab-general]').click();
   await waitFor(() => document.querySelector('[data-testid=goal-tracker]') !== null);
   const tracker = query('[data-testid=goal-tracker]');
-  expect(tracker.closest('#settings-conversations')?.querySelector('[data-testid=setting-title-model]')).not.toBeNull();
+  expect(tracker.closest('#settings-agent-replies')?.querySelector('[data-testid=setting-title-model]')).not.toBeNull();
+  // Each card says where it applies at its head: this device's switches apart from the machine's (round 19).
+  expect(query('#settings-conversations > h2 [data-testid=card-scope]').dataset.kind).toBe('device');
+  expect(query('#settings-agent-replies > h2 [data-testid=card-scope]').dataset.kind).toBe('machine');
+  expect(document.querySelector('#settings-conversations [data-testid=setting-async-questions]')).toBeNull();
   expect(query('[data-testid=goal-tracker-model]').textContent).toContain('Automatic');
   query<HTMLButtonElement>('[data-testid=view-threads]').click();
   await waitFor(() => document.querySelector('[data-testid=settings]') === null);
@@ -139,11 +143,26 @@ test('a desktop has two levels: the gear opens the nav, its search and the first
   expect(document.querySelector('[data-testid^=settings-home-]')).toBeNull();
   await waitFor(() => document.querySelector('[data-testid=settings-tab-general]')?.getAttribute('aria-current') === 'page');
   expect(query('[data-testid=settings-crumb] h1').textContent?.trim()).toBe('General');
+  // The entries stand under a few family heads, Advanced last without one (round 19).
+  expect([...document.querySelectorAll<HTMLElement>('nav [data-testid=settings-family]')].map((family) => [family.dataset.family, family.querySelector('.family-head')?.textContent ?? null])).toEqual([
+    ['app', 'App'], ['agents', 'Agents'], ['connections', 'Connections'], ['more', null]
+  ]);
+  expect(query('[data-family=connections] [data-testid=settings-tab-browser]')).toBeTruthy();
   // A group's other pages are nav entries under it: Keyboard is one click from anywhere.
   expect(query('[data-testid=settings-tab-keyboard]').classList.contains('sub')).toBe(true);
   expect(document.querySelector('[data-testid=settings-pages]')).toBeNull();
 
   const field = query<HTMLInputElement>('[data-testid=settings-search]');
+  // A word that is also its section's name lists once: "updates" broke the list with two results of one key.
+  field.value = 'updates';
+  field.dispatchEvent(new Event('input', { bubbles: true }));
+  await waitFor(() => document.querySelector('[data-testid=settings-search-results]') !== null);
+  const updates = [...document.querySelectorAll('[data-testid=settings-search-result] .label')].map((label) => label.textContent).filter((label) => label === 'Updates');
+  expect(updates).toHaveLength(1);
+  // A family's name finds its entries: "connections" lists the browser's page.
+  field.value = 'connections';
+  field.dispatchEvent(new Event('input', { bubbles: true }));
+  await waitFor(() => [...document.querySelectorAll('[data-testid=settings-search-result]')].some((result) => result.textContent?.includes('Browser profiles')));
   field.value = 'font';
   field.dispatchEvent(new Event('input', { bubbles: true }));
   await waitFor(() => document.querySelector('[data-testid=settings-search-results]') !== null);
