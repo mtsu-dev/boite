@@ -49,13 +49,16 @@ test('a running workflow keeps its own entry by name, with a timer, and opens it
   expect(done?.querySelector('.spinner')).toBeNull();
   await vi.waitFor(() => expect(document.querySelector('[data-testid=agent-dock]')).toBeNull(), { timeout: 3000 });
 
-  // A failed run leaves at once: no check for what did not finish well.
+  // A failed run shows the red mark a moment, never the check, then leaves.
   store.workflows = [{ ...run!, id: 'wf-failing', rootThreadId: 't-native', status: 'running', createdAt: Date.now(), nodes: [] }];
   await tick();
   expect(document.querySelector('[data-testid=active-subagent]')).not.toBeNull();
   store.workflows[0]!.status = 'failed';
   await tick();
-  expect(document.querySelector('[data-testid=agent-dock]')).toBeNull();
+  const failed = document.querySelector<HTMLElement>('[data-testid=active-subagent][data-state=failed]');
+  expect(failed?.querySelector('.fail')).not.toBeNull();
+  expect(failed?.textContent).toContain('Failed');
+  await vi.waitFor(() => expect(document.querySelector('[data-testid=agent-dock]')).toBeNull(), { timeout: 3000 });
 });
 
 test('a memory pass another machine names leaves this machine\'s subagent of the same id in the dock', async () => {
@@ -81,40 +84,87 @@ test('a memory pass another machine names leaves this machine\'s subagent of the
   } finally { view.close(); }
 });
 
-test('more entries than a phone dock shows fold behind a "+N" entry that opens them, never a silent clip', async () => {
-  const before = globalThis.matchMedia;
-  vi.stubGlobal('matchMedia', (media: string) => ({ media, matches: media === '(max-width: 720px)', onchange: null, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent() { return true; } }));
-  try {
-    client = new FakeClient({ delayMs: 0, delegationDemo: true });
-    store = new Store();
-    store.attach(client);
-    await store.connect();
-    await store.open('t-native');
-    const [run] = await client.call('workflows.list', { threadId: 't-trace' });
-    component = mount(AgentDock, { target: document.body, props: { store, threadId: 't-native' } });
-    await vi.waitFor(() => expect(store.workflowsThreadId).toBe('t-native'));
-    const running = (count: number) => Array.from({ length: count }, (_, at) => ({ ...run!, id: `wf-${at}`, name: `Run ${at + 1}`, rootThreadId: 't-native', status: 'running' as const, createdAt: Date.now(), nodes: [] }));
-    const names = () => [...document.querySelectorAll('[data-testid=active-subagent]')].map((entry) => entry.textContent?.trim().split(/\s+/).slice(0, 2).join(' '));
-    const more = () => document.querySelector<HTMLButtonElement>('[data-testid=agent-dock-more]');
+/** The demo's parent with its children and a provider's own agent at work, its dock mounted. */
+async function twoAtWork() {
+  client = new FakeClient({ delayMs: 0, delegationDemo: true });
+  store = new Store();
+  store.attach(client);
+  await store.connect();
+  const parent = store.threads.find(thread => thread.id === 't-team-running')!.parentThreadId!;
+  await store.open(parent);
+  const props = $state({ store, threadId: parent });
+  component = mount(AgentDock, { target: document.body, props });
+  await vi.waitFor(() => expect(document.querySelectorAll('[data-testid=active-subagent][data-kind=agent]')).toHaveLength(2));
+  const toggle = () => document.querySelector<HTMLButtonElement>('[data-testid=agent-dock-toggle]')!;
+  return { parent, props, toggle, count: document.querySelectorAll('[data-testid=active-subagent]').length };
+}
 
-    // Four fit: a "+1" would hide a name for the room of one.
-    store.workflows = running(4);
-    await tick();
-    expect(names()).toEqual(['Run 1', 'Run 2', 'Run 3', 'Run 4']);
-    expect(more()).toBeNull();
+test('several at work fold into one row that counts them, folded by default', async () => {
+  const { toggle, count } = await twoAtWork();
+  expect(count).toBeGreaterThan(1);
+  expect(toggle().textContent).toContain(`${count} active`);
+  expect(toggle().getAttribute('aria-expanded')).toBe('false');
+  // The rows wait in the closed fold, out of reach until it opens.
+  expect(document.querySelector('[data-testid=agent-dock-list]')?.closest('.disclosure-fold:not(.open)')).not.toBeNull();
+  expect(document.querySelector('[data-testid=agent-dock-asking]')).toBeNull();
+});
 
-    // Five: three by name, then the count of the rest, which opens them all in place.
-    store.workflows = running(5);
+test('the fold opens on a click and from the keyboard, and another thread starts folded', async () => {
+  const { parent, props, toggle } = await twoAtWork();
+  const opened = () => toggle().getAttribute('aria-expanded') === 'true' && !!document.querySelector('[data-testid=agent-dock-list]')?.closest('.disclosure-fold.open');
+  toggle().click();
+  await tick();
+  expect(opened()).toBe(true);
+  toggle().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await tick();
+  expect(opened()).toBe(false);
+  for (const key of ['Enter', ' ']) {
+    const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+    toggle().dispatchEvent(event);
     await tick();
-    expect(names()).toEqual(['Run 1', 'Run 2', 'Run 3']);
-    expect(more()?.textContent?.trim()).toBe('Show 2 more');
-    expect(more()?.getAttribute('aria-expanded')).toBe('false');
-    more()!.click();
+    expect(opened()).toBe(true);
+    // Handled once: the browser's own click on that key cannot fold it again.
+    expect(event.defaultPrevented).toBe(true);
+    toggle().click();
     await tick();
-    expect(names()).toEqual(['Run 1', 'Run 2', 'Run 3', 'Run 4', 'Run 5']);
-    expect(more()?.getAttribute('aria-expanded')).toBe('true');
-    more()!.click();
-    await tick();
-    expect(names()).toHaveLength(3);
-  } finally { vi.stubGlobal('matchMedia', before); }
+    expect(opened()).toBe(false);
+  }
+  toggle().click();
+  await tick();
+  props.threadId = 't-native';
+  await tick();
+  props.threadId = parent;
+  await vi.waitFor(() => expect(toggle()).not.toBeNull());
+  expect(opened()).toBe(false);
+});
+
+test('an entry opens that subagent\'s own conversation', async () => {
+  const { parent, props, toggle } = await twoAtWork();
+  toggle().click();
+  await tick();
+  const entry = document.querySelector<HTMLButtonElement>('[data-testid=active-subagent][data-kind=agent]')!;
+  const childId = store.delegation!.agents.find(agent => agent.thread.title === entry.title)!.thread.id;
+  entry.click();
+  await vi.waitFor(() => expect(store.openThread?.id).toBe(childId));
+  // Its transcript, not a status: the task it was given reads as its first message.
+  await vi.waitFor(() => expect(store.openThread?.messages.length).toBeGreaterThan(0));
+  // The child's own dock lists what it sent, never itself or its siblings.
+  props.threadId = childId;
+  await vi.waitFor(() => expect(store.delegation?.rootThreadId).toBe(parent));
+  await tick();
+  expect(document.querySelector('[data-testid=active-subagent]:is([data-kind=agent], [data-kind=workflow])')).toBeNull();
+});
+
+test('a subagent that asks the user puts the amber dot and its count on the folded row', async () => {
+  const { parent, toggle } = await twoAtWork();
+  const child = store.delegation!.agents.find(agent => agent.thread.id === 't-team-running')!;
+  store.threads.find(thread => thread.id === parent)!.subagentQuestions = [{ threadId: child.thread.id, title: child.thread.title }];
+  await tick();
+  const flag = toggle().querySelector<HTMLElement>('[data-testid=agent-dock-asking]');
+  expect(flag?.querySelector('.dot')).not.toBeNull();
+  expect(flag?.textContent?.trim()).toBe('1');
+  expect(flag?.getAttribute('aria-label')).toBe('1 needs you');
+  const asking = document.querySelector<HTMLElement>('[data-testid=active-subagent][data-state=asking]');
+  expect(asking?.title).toBe(child.thread.title);
+  expect(asking?.textContent).toContain('Needs you');
 });

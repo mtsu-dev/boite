@@ -31,7 +31,7 @@ afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);
 
 test('the task band stacks above the subagent bar, folded and open, on desktop and phone', async () => {
   await page.evaluate(`import('/src/lib/store.svelte.ts').then(({store}) => store.open('t-trace'))`);
-  await page.waitFor(`document.querySelector('${id('active-subagents')}')?.textContent.includes('1 workflow')`);
+  await page.waitFor(`document.querySelector('${id('active-subagents')}')?.dataset.runs === '1'`);
   // Enough to scroll, so the last message has to clear the band at the bottom.
   await page.evaluate(`globalThis.__boiteTest.workspace.active.openThread.messages.at(-1).parts.push({ type: 'text', text: 'Earlier conversation context.\\n'.repeat(80) })`);
   await page.evaluate(`import('/src/lib/store.svelte.ts').then(({store}) => { store.openThread.activity = {goal:null,loop:null,tasks:[

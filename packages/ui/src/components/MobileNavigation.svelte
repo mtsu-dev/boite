@@ -287,7 +287,13 @@
 <header class="mobile-header" class:chatting={chatting && !firstRun} class:settings={store.page !== 'chat'} data-testid="mobile-header" data-slide={slide.direction} bind:this={header}>
   {#if chatting && !firstRun}
     <!-- The only way out of a conversation on a phone. A thread that waits elsewhere is in its name and the tab bar's count, not a dot on the arrow. -->
-    <button class="ghost icon back" data-testid="mobile-back" aria-label={elsewhere ? `${strings.sidebar.threads}, ${fill(strings.mobile.waitingElsewhere, { count: String(elsewhere) })}` : strings.sidebar.threads} onclick={() => show('threads')}><ArrowLeft size={20} /></button>
+    {#if store.openThread?.parentThreadId}
+      <!-- A subagent's conversation goes back to the thread that started it, where its row was. -->
+      {@const parentId = store.openThread.parentThreadId}
+      <button class="ghost icon back" data-testid="delegation-back-parent" data-preload-thread={parentId} aria-label={strings.delegation.parent} title={strings.delegation.parent} onclick={() => void store.open(parentId)}><ArrowLeft size={20} /></button>
+    {:else}
+      <button class="ghost icon back" data-testid="mobile-back" aria-label={elsewhere ? `${strings.sidebar.threads}, ${fill(strings.mobile.waitingElsewhere, { count: String(elsewhere) })}` : strings.sidebar.threads} onclick={() => show('threads')}><ArrowLeft size={20} /></button>
+    {/if}
   {:else if store.page === 'settings' && !recover}
     <button class="ghost icon back" data-testid="mobile-settings-leave" aria-label={strings.mobile.settingsLeave} title={strings.mobile.settingsLeave} onclick={leaveSettings}><ArrowLeft size={20} /></button>
   {:else if recover}

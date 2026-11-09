@@ -5,10 +5,10 @@
   import ThreadActivity from './ThreadActivity.svelte';
 
   /**
-   * The composer card's head: the subagents' quiet rows, then the goal, the
-   * loop and the tasks. What waits on the user stands at the end of the
-   * timeline (`ThreadDecision`), never here, so the field keeps its place.
-   * `room` is how tall the subagents' rows stand.
+   * The composer card's head: the subagents' one row (their count, folded),
+   * then the goal, the loop and the tasks. What waits on the user stands at the
+   * end of the timeline (`ThreadDecision`), never here, so the field keeps its
+   * place. `room` is how tall the subagents' row stands.
    */
   let { store, thread, agentBox, room = $bindable(0) }: {
     store: Store;
@@ -29,8 +29,8 @@
 
 <style>
   /* The card's head, flat on the card's own surface in a quieter ink. On a
-     desktop it keeps to a share of the conversation; the subagents' rows keep
-     their size and the rest scrolls inside it. Empty, it takes no room. */
+     desktop it keeps to a share of the conversation; the subagents' row keeps
+     its size and the rest scrolls inside it. Empty, it takes no room. */
   .deck { display: flex; flex-direction: column; --dock-inset: 14px; }
   .deck > :global(*) { flex: none; }
   .deck > :global(.activity) { flex: 0 1 auto; min-height: 0; }

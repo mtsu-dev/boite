@@ -179,8 +179,9 @@
 
 <div class="thread-header" data-testid="thread-header" data-status={thread?.status}>
       {#if thread}
-        {#if thread.parentThreadId}
+        {#if thread.parentThreadId && !mobile.current}
           {@const parentId = thread.parentThreadId}
+          <!-- A phone goes back to the parent with its one back arrow (MobileNavigation), so the crumb is the desktop's. -->
           <button type="button" class="ghost crumb" data-testid="delegation-back-parent" data-preload-thread={parentId} title={strings.delegation.parent} onclick={() => void store.open(parentId)}>
             <span class="ui-label">{parentTitle}</span>
           </button>

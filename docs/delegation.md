@@ -121,12 +121,23 @@ agents, failed or stopped tasks, and elapsed time, in hours past an hour. Click
 it to open every agent's model, task, status and result in the right panel. The timer runs locally while work is active and freezes when
 all agents settle. Sending a follow-up to a child resumes its status and timer.
 
-One button above the composer shows the number of active subagents and running
-workflows, with elapsed time since the oldest active start. It appears for a
-running workflow even before a child starts. Click it to open the team overview,
-then select an agent or workflow to inspect its progress. The panel keeps
-completed results after the button disappears. The button sits right on the
-composer, below any notice; the task overlay floats above it, never over it.
+One row at the top of the composer card stands for the subagents at work and
+the running workflows. One alone shows its name and elapsed time; several fold
+into "3 active" with a working spinner and a chevron, and a click, Enter or
+Space opens the list above that row: one line each with its name, its state
+(working, needs you, done, failed with the red mark) and its time, cut at a
+word, about five lines on a desktop and four on a phone before the list
+scrolls. The fold starts folded and stays open for its thread while it is
+shown; Escape folds it. While a child waits on the user the row carries the
+amber dot and how many wait; the question itself is the decision card at the
+end of the parent's timeline. A row appears for a running workflow even before
+a child starts. Clicking a subagent opens its own conversation (on its machine,
+under "parent / subagent" in the header, a back arrow to the parent on a
+phone); a workflow opens its graph and a
+provider's own agent the team overview. A finished entry keeps its check or its
+red mark for a moment, then leaves; the panel keeps completed results. A
+subagent's own conversation counts only the children it started, never itself
+or its siblings. The component is `AgentDock.svelte`.
 
 A parent's row in the sidebar, the Recent list and the phone's list carries a
 chip with the number of its subagents at work, in every state of the parent.
@@ -183,7 +194,9 @@ delivery path and stay available. They wake an idle parent or join its next
 prompt when live steering is unavailable.
 The panel lists children by their summaries and streams none of them. Clicking
 a child opens its conversation in the chat like any thread; its header reads
-"parent title / child title" and the parent's title goes back to it. After a
+"parent title / child title" and the parent's title goes back to it. On a
+phone the parent's title gives its room to the child's: a back arrow to the
+parent in a touch-sized square stands in its place, named by that title. After a
 reconnect, the panel reads the team and coordination views again, since events
 sent while the socket was down reach no client.
 

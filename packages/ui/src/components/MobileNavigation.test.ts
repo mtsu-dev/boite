@@ -403,3 +403,27 @@ test("a project header names another machine as a place once two are connected, 
     remote.detach(); remoteClient.close();
   }
 });
+
+test("a subagent's conversation on a phone has one back arrow, and it returns to the thread that started it", async () => {
+  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
+    media, matches: true, onchange: null, addListener() {}, removeListener() {}
+  }));
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  const parent = store.threads.find(t => !t.parentThreadId && !t.archived && t.projectId !== null && t.status === 'idle')!;
+  const child = (await client.call('delegation.spawn', { threadId: parent.id, task: 'Audit the edge cases', requestId: 'phone-back' })).thread;
+  await vi.waitFor(() => expect(store.threads.some(t => t.id === child.id)).toBe(true));
+  workspace.machines = [{ id: 'local', label: 'Local', store }];
+  workspace.active = store;
+  mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'chat' } });
+  await store.open(child.id); await settle();
+  expect(store.openThread?.id).toBe(child.id);
+  const backs = [...document.querySelectorAll<HTMLButtonElement>('[data-testid=mobile-header] button.back, [data-testid=delegation-back-parent]')];
+  expect(backs.length).toBe(1);
+  expect(backs[0]!.dataset['testid']).toBe('delegation-back-parent');
+  expect(document.querySelector('[data-testid=mobile-back]')).toBeNull();
+  backs[0]!.click(); await settle();
+  expect(store.openThread?.id).toBe(parent.id);
+  expect(document.querySelector('[data-testid=delegation-back-parent]')).toBeNull();
+  expect(document.querySelector('[data-testid=mobile-back]')).not.toBeNull();
+});

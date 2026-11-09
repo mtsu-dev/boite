@@ -52,13 +52,14 @@ test('native agents remain visible beside Boite subagents on desktop and phone',
 
 test('running native agents contribute to one count without becoming Boite subagents', async () => {
   await onStore('store.delegation.nativeAgents[1].status = "running";');
-  await page.waitFor('!!document.querySelector("[data-testid=active-subagents]")');
-  expect(await page.text('[data-testid="active-subagents"]')).toContain('1 active subagent');
+  await page.waitFor('document.querySelector("[data-testid=active-subagents]")?.dataset.count === "1"');
   await onStore('store.delegation.nativeAgents[0].status = "running";');
-  await page.waitFor('document.querySelector("[data-testid=active-subagents]")?.textContent.includes("2 active subagents")');
-  expect(await page.evaluate('document.querySelectorAll("[data-testid=agent-dock] button").length')).toBe(1);
+  // Two fold into one row that counts them; it opens on their list, and each opens the team.
+  await page.waitFor('document.querySelector("[data-testid=agent-dock-toggle]")?.textContent.includes("2 active")');
   await page.click('[data-testid="panel-close"]');
-  await page.click('[data-testid="active-subagents"]');
+  await page.click('[data-testid="agent-dock-toggle"]');
+  await page.waitFor('document.querySelector("[data-testid=agent-dock-toggle]")?.getAttribute("aria-expanded") === "true"');
+  await page.click('[data-testid="active-subagent"][data-kind="native"]');
   await page.waitFor('!!document.querySelector("[data-testid=native-agents]")');
   expect(await page.evaluate('document.querySelectorAll("[data-testid=delegation-member]").length')).toBe(0);
 }, 15_000);
@@ -68,13 +69,12 @@ test('a detached CLI agent keeps the count and timer visible until its own exit 
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1310, height: 820, deviceScaleFactor: 1, mobile: false });
   await page.click('[data-testid="panel-close"]');
   await onStore('await store.open("t-cli");');
-  await page.waitFor('!!document.querySelector("[data-testid=active-subagents]")');
-  expect(await page.text('[data-testid="active-subagents"]')).toContain('1 active subagent');
+  await page.waitFor('document.querySelector("[data-testid=active-subagents]")?.dataset.count === "1"');
   expect(await page.text('[data-testid="active-subagents"]')).not.toContain('claude-opus-5-5');
   const elapsed = await page.text('[data-testid="active-subagents"] [data-testid="agent-elapsed"]');
   await page.waitFor(`document.querySelector('[data-testid=active-subagents] [data-testid=agent-elapsed]')?.textContent !== ${JSON.stringify(elapsed)}`);
   await capture('cli-agent-dock-desktop.png');
-  await page.click('[data-testid="active-subagents"]');
+  await page.click('[data-testid="active-subagent"]');
   await page.waitFor('!!document.querySelector("[data-testid=process-agents]")');
   await page.click('[data-testid="process-agent"] > summary');
   expect(await page.text('[data-testid="process-agents"]')).toContain('Started from a command');

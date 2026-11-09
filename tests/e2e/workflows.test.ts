@@ -27,9 +27,10 @@ test('the chat card opens the run top to bottom, an arrow per dependency, in the
   await page.click(`${id('thread-row')}[data-thread-id="t-trace"]`);
   await page.waitFor(`document.querySelector('${id('workflow-activity')}')`);
   expect(await page.text(id('workflow-activity'))).toContain('1/5 steps');
-  await page.waitFor(`document.querySelector('${id('active-subagents')}')?.textContent.includes('1 workflow')`);
-  // The running subagent, and the one at rest on its own background work.
-  expect(await page.text(id('active-subagents'))).toContain('2 active subagents');
+  await page.waitFor(`document.querySelector('${id('active-subagents')}')?.dataset.runs === '1'`);
+  // The running subagent, the one at rest on its own background work and the run, folded into one row.
+  expect(await page.evaluate(`document.querySelector('${id('active-subagents')}').dataset.count`)).toBe('2');
+  expect(await page.text(id('agent-dock-toggle'))).toContain('3 active');
   await capture('workflow-card.png');
   await page.click(id('workflow-activity'));
   await page.waitFor(`document.querySelector('${id('workflow-graph')}')?.dataset.layout === 'rows'`);

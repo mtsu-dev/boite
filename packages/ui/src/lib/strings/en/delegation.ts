@@ -37,10 +37,14 @@ export const strings = {
     failed: '{count} failed',
     stopped: '{count} stopped',
     elapsed: 'Elapsed time',
-    /** The dock's last entry when more run than it shows, and its hint. */
-    dockMore: 'Show {count} more',
-    dockMoreHint: '{count} more at work: show them',
-    dockLess: 'Show less',
+    /** The fold above the composer while several run, its flags, and each entry's state in its row. */
+    dockActiveOne: '1 active',
+    dockActive: '{count} active',
+    dockDoneOne: '1 done',
+    dockDone: '{count} done',
+    dockAskingOne: '1 needs you',
+    dockAsking: '{count} need you',
+    dockState: { asking: 'Needs you', done: 'Done', failed: 'Failed' },
     showTeam: 'View subagents',
     stoppedStatus: 'Stopped',
     failedStatus: 'Failed',

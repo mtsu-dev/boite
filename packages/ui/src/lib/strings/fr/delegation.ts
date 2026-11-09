@@ -39,10 +39,14 @@ export const fr: Translation = {
     failed: '{count} en erreur',
     stopped: '{count} arrêtés',
     elapsed: 'Temps écoulé',
-    /** The dock's last entry when more run than it shows, and its hint. */
-    dockMore: 'Voir {count} de plus',
-    dockMoreHint: '{count} de plus au travail : les afficher',
-    dockLess: 'Voir moins',
+    /** The fold above the composer while several run, its flags, and each entry's state in its row. */
+    dockActiveOne: '1 actif',
+    dockActive: '{count} actifs',
+    dockDoneOne: '1 terminé',
+    dockDone: '{count} terminés',
+    dockAskingOne: '1 vous attend',
+    dockAsking: '{count} vous attendent',
+    dockState: { asking: 'Vous attend', done: 'Terminé', failed: 'Échec' },
     showTeam: 'Voir les sous-agents',
     stoppedStatus: 'Arrêté',
     failedStatus: 'Échec',
