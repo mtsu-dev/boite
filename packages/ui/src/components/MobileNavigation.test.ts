@@ -141,7 +141,7 @@ test('selecting a conversation beyond the first mobile window finishes loading i
   expect(store.loadingThreadId).toBeNull();
 });
 
-test('the header holds the search, opened in place, and the new thread; the bar goes back to the threads', async () => {
+test('the header holds the search, opened in place, the new thread and the Settings gear; the bar goes back to the threads', async () => {
   vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
     media, matches: true, onchange: null, addListener() {}, removeListener() {}
   }));
@@ -166,10 +166,17 @@ test('the header holds the search, opened in place, and the new thread; the bar 
   workspace.setView('projects'); await settle();
   expect(id('mobile-title')?.querySelector('[data-testid=mobile-grouping-options]')).toBeNull();
   expect(id('mobile-grouping-options')).not.toBeNull();
-  store.showSettings('machines'); await settle();
+  // Settings is the header's gear, a 44 px target named for a screen reader; it opens a page with no bar and an arrow back.
+  const gear = id('mobile-settings')!;
+  expect([gear.getAttribute('aria-label'), gear.title]).toEqual(['Settings', 'Settings']);
+  expect(gear.closest('[data-testid=mobile-tabs]')).toBeNull();
+  gear.click(); await settle();
+  expect(store.page).toBe('settings');
   expect(list()).toBeUndefined();
   expect(id('mobile-search-open')).toBeNull();
-  id('mobile-conversations')!.click(); await settle();
+  expect(id('mobile-settings')).toBeNull();
+  expect(id('mobile-conversations')).toBeNull();
+  id('mobile-settings-leave')!.click(); await settle();
   expect(store.page).toBe('chat');
   expect(list()).toBe('Threads');
 
@@ -336,7 +343,7 @@ test("a project header's menu starts a thread there and leaves the list for its 
   expect(document.querySelector('.mobile-list')).toBeNull();
 });
 
-test('with two machines the machine line shows on the threads list only: Activity gathers every machine', async () => {
+test("with two machines the gear names the machine on the threads list only: Activity gathers every machine", async () => {
   vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
     media, matches: true, onchange: null, addListener() {}, removeListener() {}
   }));
@@ -345,13 +352,17 @@ test('with two machines the machine line shows on the threads list only: Activit
   workspace.machines = [{ id: 'local', label: 'Local', store }, { id: 'pc', label: 'PC', store: new Store() }]; workspace.active = store;
   mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'threads' } });
   await settle();
-  expect(document.querySelector('[data-testid=mobile-connection]')?.textContent).toContain('Local');
-  // One row: the machine sits beside the view switch and the display menu, not on a line of its own over them.
-  expect(document.querySelector('[data-testid=mobile-connection]')?.parentElement?.dataset['testid']).toBe('mobile-header');
+  // One row: the gear wears the machine's dot and name, so the views keep four squares beside them, none on a line of its own.
+  const gear = document.querySelector<HTMLElement>('[data-testid=mobile-settings]')!;
+  expect(gear.getAttribute('aria-label')).toBe('Settings, Local');
+  expect(gear.querySelector('.dot.ready')).not.toBeNull();
+  expect(gear.parentElement?.dataset['testid']).toBe('mobile-header');
+  expect(document.querySelector('[data-testid=mobile-connection]')).toBeNull();
   await unmount(mounted);
   mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'activity' } });
   await settle();
-  expect(document.querySelector('[data-testid=mobile-connection]')).toBeNull();
+  expect(document.querySelector('[data-testid=mobile-settings]')?.getAttribute('aria-label')).toBe('Settings');
+  expect(document.querySelector('[data-testid=mobile-settings] .dot')).toBeNull();
 });
 
 test("a project header names another machine as a place once two are connected, and an unreachable one's state as its own mark", async () => {

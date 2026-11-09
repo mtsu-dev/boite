@@ -3,7 +3,7 @@ import type { Store } from './store.svelte';
 import { isLoading, unresolvedAssetId } from './draft-attachments';
 import { readyToSend } from './composer-attachments';
 import { focusComposer } from './focus';
-import { strings } from './strings';
+import { fill, strings } from './strings';
 import { answerSummary } from './answer-receipt';
 
 /*
@@ -32,11 +32,12 @@ class QuestionReplies {
   typing = $state<Record<string, true>>({});
   pauses = new Map<string, ReturnType<typeof setTimeout>>();
   /**
-   * The answer just sent while the agent works, whichever control sent it (the
-   * composer, the docked card, a card in the timeline): the composer shows it
-   * as one quiet line until the turn ends or the thread changes.
+   * The answer just given while the agent works, whichever control gave it:
+   * the decision card at the timeline's end folds to this one line
+   * ("You answered: X", "Allowed: git push") until the turn ends or the
+   * thread changes (`ThreadDecision`).
    */
-  receipt = $state<{ threadId: string; said: string } | null>(null);
+  receipt = $state<{ threadId: string; text: string } | null>(null);
 }
 
 /** How long a composer sits untouched before a question that arrived during typing may take it. */
@@ -153,7 +154,7 @@ export async function sendAnswer(store: Store, question: QuestionRequest): Promi
   if (state?.attachments === attachments) state.attachments = [];
   if ((held.picks[question.id] ?? []) === optionIds) delete held.picks[question.id];
   if (held.chosen === question.id) held.chosen = null;
-  if (working && said) held.receipt = { threadId: question.threadId, said };
+  if (working && said) held.receipt = { threadId: question.threadId, text: fill(strings.chat.questionAnswered, { answer: said }) };
   return true;
 }
 
@@ -173,4 +174,17 @@ export function ignoreQuestions(store: Store): void {
     if (question.threadId === store.openThread?.id) held.ignored[question.id] = true;
   }
   held.chosen = null;
+}
+
+/**
+ * Key 1 to 9 picks that option of the question on screen, or drops it when it
+ * was picked; a question with several answers keeps the others. False for a
+ * key that names no option.
+ */
+export function pickOption(store: Store, question: QuestionRequest, key: string): boolean {
+  if (!/^[1-9]$/.test(key) || Number(key) > question.options.length) return false;
+  const id = question.options[Number(key) - 1]!.id;
+  const held = repliesOf(store).picks[question.id] ?? [];
+  repliesOf(store).picks[question.id] = question.multiple ? (held.includes(id) ? held.filter((one) => one !== id) : [...held, id]) : held[0] === id ? [] : [id];
+  return true;
 }

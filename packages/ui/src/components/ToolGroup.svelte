@@ -7,7 +7,7 @@
   import { elapsed } from '../lib/format';
   import { agentSummary, compactionMark, compactionText, familyOf, liveLabel, pairPermissions, runSpan, runSummary, thinkingShown, ThoughtTitleScan, type ActivityPart, type CompactionPart, type PermissionStep, type ThinkingStep, type ToolPart } from '../lib/tool-groups';
   import Deferred from './Deferred.svelte';
-  import { permissionCard } from '../lib/composer-dock';
+  import { permissionCard } from '../lib/idle-parts';
   import { describeTool, permissionSentence } from '../lib/tool-summary';
   import ThinkingPart from './ThinkingPart.svelte';
   import ToolCard from './ToolCard.svelte';

@@ -32,6 +32,8 @@ export const strings = {
     computer: 'Connected computer',
     pairAgain: 'Add again',
     settingsPhone: 'Notifications',
+    /** Settings' arrow on a phone: back to the place it was opened from. */
+    settingsLeave: 'Back',
     settingsBack: 'Back to settings',
     /** Activity's second line: why the thread is listed. `updates` heads what the user reads, under what needs them. */
     feed: { run: 'Wants to run:', helperAsks: '{title} needs you', updates: 'Updates', verb: { answer: 'Answer', review: 'Review', deny: 'Deny', skip: 'Skip' } },

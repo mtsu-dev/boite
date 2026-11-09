@@ -177,7 +177,7 @@ test('the docked card offers the composer, whose send arrow is then the only sub
   expect(document.querySelectorAll('[data-testid=question-text]')).toHaveLength(1);
 });
 
-test('in the timeline a waiting question is one line that points down to the dock', () => {
+test('in its message a waiting question is one line that points down to the decision card', () => {
   const onwrite = vi.fn();
   running = mount(QuestionCard, {
     target: document.body,
@@ -187,7 +187,7 @@ test('in the timeline a waiting question is one line that points down to the doc
   expect(options()).toHaveLength(0);
   expect(document.querySelector('[data-testid=question-submit]')).toBeNull();
   const row = query<HTMLButtonElement>('[data-testid=question-waiting]');
-  // The question is written once, in the dock: the line only says one asks.
+  // The question is written once, in the decision card: the line only says one asks.
   expect(row.textContent).not.toContain('Which shape?');
   expect(row.title).toBe('Answer below');
   row.click();
@@ -445,7 +445,7 @@ test('a docked list taller than its room stops under its last whole row, counts 
 });
 
 test('a question whose choices fit its room shows them all while its arrival still squeezes the list: no count line to reflow', () => {
-  // Mid-arrival the dock is 30 px tall; the three rows fit the 300 px room, so the card is laid out once, whole.
+  // Mid-arrival the card is 30 px tall; the three rows fit the 300 px room, so the card is laid out once, whole.
   const restore = layout('300px', 30);
   try {
     running = mount(QuestionCard, {

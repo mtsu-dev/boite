@@ -25,6 +25,8 @@ export const fr: Translation = {
     noActivity: 'Aucune nouvelle activité depuis {time}',
     newMessage: '1 nouveau message',
     newMessages: '{count} nouveaux messages',
+    decisionWaiting: '1 décision en attente',
+    decisionsWaiting: '{count} décisions en attente',
     findPlaceholder: 'Chercher dans la conversation',
     findNone: 'Aucun résultat',
     findCount: '{at} sur {total}',

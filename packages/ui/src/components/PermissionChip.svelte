@@ -9,7 +9,6 @@
   import { tick } from 'svelte';
   import { Closing } from '../lib/closing.svelte';
   import { floating } from '../lib/floating';
-  import { clearOfDecision } from '../lib/clear-of-decision';
   import { strings } from '../lib/strings';
   import SheetHead from './SheetHead.svelte';
 
@@ -117,7 +116,7 @@
 
   {#if popover.shown}
     <div class="popover" class:closing={popover.closing} role="menu" tabindex="-1" aria-label={strings.composer.mode} data-testid="composer-mode-menu" bind:this={list} {onkeydown}
-      use:popover.attach use:floating={{ anchor: () => clearOfDecision(trigger, list), placement: 'top', dismiss: () => popover.hide() }} onanimationend={popover.end}>
+      use:popover.attach use:floating={{ anchor: () => trigger ?? null, placement: 'top', dismiss: () => popover.hide() }} onanimationend={popover.end}>
       <SheetHead title={strings.composer.mode} />
       {#each items as item (item.id)}
         <button type="button" class="row" role="menuitemradio" aria-checked={item.id === active} data-row data-value={item.id} title={item.title} onclick={() => pick(item.id)}>

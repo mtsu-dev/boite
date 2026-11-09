@@ -91,7 +91,7 @@ test('Secret Drop takes a masked one-use key, opens a fresh card each time and e
   await page.waitFor(`document.querySelector('${PENDING} [data-testid="secret-field"]') != null`);
   expect(await page.evaluate(`document.querySelector('[data-testid="secret-keep"]') === null`)).toBe(true);
   expect(await page.text(`${PENDING} [data-testid="secret-transit"]`)).toContain('10 minutes');
-  expect(await page.evaluate(`document.querySelector('${PENDING}')?.closest('[data-testid="thread-activity"]') != null`)).toBe(true);
+  expect(await page.evaluate(`document.querySelector('${PENDING}')?.closest('[data-testid="thread-decision"]') != null`)).toBe(true);
   expect((await page.text('[data-testid="activity-question-toggle"]')).trim()).toBe('OPENAI_API_KEY');
   await bothWidths(PENDING, 'open');
   await staysDocked();

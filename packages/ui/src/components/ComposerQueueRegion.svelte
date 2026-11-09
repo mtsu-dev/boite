@@ -4,10 +4,9 @@
   import ComposerQueue from './ComposerQueue.svelte';
 
   /**
-   * The head of the field when something waits to go: the answers held for
-   * the turn and the queued prompts, each a quiet chip with its edit and
-   * remove. Inside the box, on its surface, not a band over it; the strip
-   * above keeps the subagents and the way back.
+   * What waits to go, right above the composer card: the answers held for
+   * the turn and the queued prompts, one row each with its actions. The box
+   * itself keeps only its subagents' entries, its field and its chips.
    */
   let { store, key, thread, composer, blocked, machine, sendNow, onrestore, onsendnow }: {
     store: Store;
@@ -46,7 +45,7 @@
 {/if}
 
 <style>
-  /* Lines on the box's own surface, at the top of the field, starting where its text does: no band of their own. */
-  .held { display: flex; flex-direction: column; gap: 0; min-width: 0; padding: var(--deck-gap, 6px) 14px 0; }
+  /* In the reading column, over the card, six pixels above it. */
+  .held { display: flex; flex-direction: column; gap: 4px; width: 100%; min-width: 0; max-width: var(--content); margin: 0 auto 6px; }
   .answers { display: flex; min-width: 0; }
 </style>

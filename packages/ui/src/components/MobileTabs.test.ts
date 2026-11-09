@@ -13,7 +13,7 @@ beforeEach(async () => {
 afterEach(async () => { setExperiment('contacts', false); if (app) await unmount(app); app = undefined; store.detach(); client.close(); vi.restoreAllMocks(); document.body.innerHTML = ''; localStorage.clear(); });
 const tab = (id: string) => document.querySelector<HTMLButtonElement>(`[data-testid="${id}"]`);
 
-test('the bar reaches every place and marks the current one; a new conversation is the header\'s, not a place', async () => {
+test('the bar holds only places and marks the current one; a new conversation and Settings are the header\'s', async () => {
   const navigate = vi.fn();
   app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 0, navigate } }); await settle();
   expect(tab('mobile-conversations')!.textContent).toBe('Threads');
@@ -23,10 +23,9 @@ test('the bar reaches every place and marks the current one; a new conversation 
     tab(id!)!.click(); await settle();
     expect(navigate).toHaveBeenLastCalledWith(destination);
   }
-  tab('mobile-settings')!.click(); await settle();
-  expect(store.page).toBe('settings');
-  expect(tab('mobile-settings')!.getAttribute('aria-current')).toBe('page');
-  expect(tab('mobile-conversations')!.hasAttribute('aria-current')).toBe(false);
+  // Settings is the header's gear, not a tab: with the bots off, two places.
+  expect(document.querySelectorAll('.mobile-tabs .tab')).toHaveLength(2);
+  expect(tab('mobile-settings')).toBeNull();
 });
 
 test('Activity carries the count of conversations waiting on the user, capped so the badge stays round', async () => {
@@ -70,13 +69,13 @@ test('a paired device, which may call no contacts method, is offered no way into
   expect(store.page).toBe('home');
 });
 
-test('with the bots on, the bar keeps four places: Contacts is the Bots tab\'s other side, which stays marked on it', async () => {
+test('with the bots on, the bar keeps three places: Contacts is the Bots tab\'s other side, which stays marked on it', async () => {
   setExperiment('contacts', true); setExperiment('resident-agents', true);
   onTestFinished(() => setExperiment('resident-agents', false));
   client.close(); store.detach();
   client = new FakeClient({ delayMs: 0 }); store = new Store(); store.attach(client); await store.connect();
   app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 0, navigate: () => {} } }); await settle();
-  expect(document.querySelectorAll('.mobile-tabs .tab')).toHaveLength(4);
+  expect(document.querySelectorAll('.mobile-tabs .tab')).toHaveLength(3);
   expect(tab('mobile-contacts')).toBeNull();
   store.showHome(); await settle();
   expect(tab('mobile-agents')!.getAttribute('aria-current')).toBe('page');

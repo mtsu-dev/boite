@@ -12,10 +12,10 @@
 
   /**
    * The model chip. Its popover (`ModelPickerMenu.svelte`) is a chunk of its
-   * own that only a click draws: the models in use first, every provider's
-   * list under them. It picks a model: the effort, the permission and the
-   * context are the composer's items beside it. Desktop opens it from the
-   * chip; a phone as a bottom sheet.
+   * own that only a click draws: a rail of provider tiles beside the shown
+   * provider's accounts and models. It picks a model: the effort, the
+   * permission and the context are the composer's items beside it. Desktop
+   * opens it over the composer; a phone as a bottom sheet.
    */
   let {
     store,
@@ -161,8 +161,8 @@
     }
   }
 
-  /* Provider marks in one ink, here and in the popover: the names carry them. */
-  .picker :global(.logo) { filter: grayscale(1); }
+  /* The chip's mark in one ink, like the chips beside it; the popover's tiles keep each provider's colours. */
+  .trigger :global(.logo) { filter: grayscale(1); }
 
   .trigger .label {
     overflow: hidden;

@@ -6,6 +6,7 @@ import { closeTour } from '../lib/onboarding.svelte';
 import { archiveThread } from '../lib/archive';
 import type { FakeClient } from '../lib/fake-client';
 import { workspace } from '../lib/workspace.svelte';
+import { experimentOn } from '../lib/experiments.svelte';
 
 /** The phone has no General page: the archive it can fill must be reachable from its own settings list. */
 
@@ -158,7 +159,9 @@ test('the phone settings list the desktop\'s families, each page a peer row, Gen
   query<HTMLButtonElement>('[data-testid=settings-tab-experiments]').click();
   await waitFor(() => document.querySelector('[data-testid=experiment-resident-agents]') !== null);
   query<HTMLInputElement>('[data-testid=experiment-resident-agents]').click();
-  await waitFor(() => document.querySelector('[data-testid=mobile-tabs] [data-testid=mobile-agents]') !== null);
+  // The bar waits under the page, which is Settings' own; the switch is what took.
+  await waitFor(() => experimentOn('resident-agents'));
+  expect(document.querySelector('[data-testid=mobile-tabs]')).toBeNull();
   await back();
   await open('settings-tab-advanced', advanced);
 

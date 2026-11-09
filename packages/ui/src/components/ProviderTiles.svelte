@@ -1,42 +1,32 @@
 <script lang="ts">
-  import { ArrowRight, ChevronRight, Plus } from '@lucide/svelte';
-  import type { Snippet } from 'svelte';
+  import { Plus, Star } from '@lucide/svelte';
   import type { ProviderSummary } from '@boite/contracts';
   import ProviderLogo from './ProviderLogo.svelte';
   import { strings } from '../lib/strings';
-  import { listedProviders } from '../lib/picker-providers';
+  import { connected } from '../lib/provider-setup';
   import type { Choice, Store } from '../lib/store.svelte';
 
   /**
-   * The model picker's providers: one row per provider in the order the core
-   * listed them, its mark in monochrome beside its name. A row opens its models
-   * in place under itself (`body`), its chevron turning down; its end says where
-   * it leads: a chevron to its models, "Set up" with the reason under the name
-   * when it cannot run yet, an arrow out to Settings. Folded, the rows stay in
-   * the page but leave the arrows' path.
+   * The model picker's rail: the favorites tile, then one tile per provider in
+   * the order the core listed them. A tile only moves the column beside it.
    */
   let {
     store,
     choice,
     locked,
     current,
-    open = true,
-    filter,
-    body,
+    favoritesOpen,
+    onfavorites,
     onpick,
     onmore
   }: {
     store: Store;
     choice: Choice | null;
     locked: boolean;
-    /** The provider whose models are open. */
+    /** The provider whose column is shown. */
     current: string | null;
-    /** The providers this group draws, out of the listed ones. */
-    filter?: (providerId: string) => boolean;
-    /** The open provider's models, drawn under its row. */
-    body?: Snippet;
-    /** Folded: no row is on the arrows' path. */
-    open?: boolean;
+    favoritesOpen: boolean;
+    onfavorites: () => void;
     onpick: (providerId: string) => void;
     /** The last tile, while some providers are left out: Settings, where they are connected. */
     onmore?: () => void;
@@ -50,10 +40,20 @@
     held: boolean;
   }
 
-  let listed = $derived(listedProviders(store, choice));
-  let drawn = $derived(filter ? listed.filter((entry) => filter(entry.id)) : listed);
+  /**
+   * One tile per provider the user can run, in the order the core listed them:
+   * a provider with no signed-in account is Settings' business, not the
+   * picker's. The one the choice is on stays, and with nothing connected at all
+   * every provider shows, so the rail is never empty.
+   */
+  let listed = $derived.by((): ProviderSummary[] => {
+    // A provider turned off is offered nowhere, the one an open thread sits on included.
+    const offered = store.offeredProviders;
+    const usable = offered.filter((entry) => connected(entry, store.accountsOf(entry.id)) || entry.id === choice?.providerId);
+    return usable.some((entry) => connected(entry, store.accountsOf(entry.id))) ? usable : offered;
+  });
   let tiles = $derived.by((): Tile[] => {
-    return drawn.map((entry) => {
+    return listed.map((entry) => {
       const reason = !entry.available
         ? strings.composer.unavailable
         : store.accountsOf(entry.id).length === 0
@@ -75,69 +75,74 @@
   }
 </script>
 
+<button type="button" class="tile" class:current={favoritesOpen} role="menuitem" data-row data-provider="favorites" title={strings.composer.favorites} aria-label={strings.composer.favorites} onclick={onfavorites}><Star size={24} /></button>
 {#each tiles as tile (tile.provider.id)}
   <button
     type="button"
     class="tile"
-    class:current={current === tile.provider.id}
-    aria-expanded={current === tile.provider.id}
+    class:current={!favoritesOpen && current === tile.provider.id}
     class:dim={tile.reason !== null}
     disabled={tile.held}
     role="menuitem"
-    data-row={open || undefined}
+    data-row
     data-provider={tile.provider.id}
     title={tileTitle(tile)}
+    aria-label={tile.provider.name}
     onclick={() => pickTile(tile)}
   >
-    <span class="mark" aria-hidden="true"></span>
-    <ProviderLogo providerId={tile.provider.id} size={14} />
-    <span class="text"><span class="tile-name ui-label">{tile.provider.name}</span>{#if tile.reason}<span class="reason">{tile.reason}</span>{/if}</span>
-    {#if tile.reason}<span class="lead ui-label">{strings.composer.setUp}</span>{/if}
-    <ChevronRight size={14} strokeWidth={2} class="chevron" />
+    <ProviderLogo providerId={tile.provider.id} size={28} />
   </button>
-  {#if body && current === tile.provider.id}<div class="tile-body" data-models-of={tile.provider.id}>{@render body()}</div>{/if}
 {/each}
 {#if onmore && listed.length < store.providers.length}
-  <button type="button" class="tile more" role="menuitem" data-row={open || undefined} data-provider="more" data-testid="picker-more-providers" onclick={onmore}><span class="mark" aria-hidden="true"></span><Plus size={14} /><span class="text"><span class="tile-name ui-label">{strings.settings.connectProvider}</span></span><ArrowRight size={14} strokeWidth={2} class="chevron" /></button>
+  <button type="button" class="tile more" role="menuitem" data-row data-provider="more" data-testid="picker-more-providers" title={strings.settings.connectProvider} aria-label={strings.settings.connectProvider} onclick={onmore}><Plus size={20} /></button>
 {/if}
 
 <style>
-  /* Every menu's row: one height, inset and radius per device (`--overlay-row`). */
   .tile {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    justify-content: flex-start;
-    gap: 8px;
-    width: 100%;
-    min-height: var(--overlay-row);
-    padding: var(--space-1) var(--overlay-row-pad);
+    justify-content: center;
+    flex: none;
+    width: var(--control-lg);
+    height: var(--control-lg);
+    padding: 0;
     border: none;
-    border-radius: var(--radius-overlay-row);
+    border-radius: var(--radius-md);
     background: transparent;
-    color: var(--color-foreground);
-    font-size: var(--text-base);
-    font-weight: 400;
-    text-align: left;
+    color: var(--color-muted-foreground);
+    transition:
+      background var(--dur-2) var(--ease-out-quint),
+      color var(--dur-2) var(--ease-out-quint);
   }
 
-  /* Every mark in one ink: the names tell the providers apart. */
-  .tile :global(.logo) { flex: none; filter: grayscale(1); }
-  .text { display: flex; flex: 1; flex-direction: column; gap: 1px; min-width: 0; }
-  .tile-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .mark { display: inline-flex; flex: none; width: 14px; color: var(--color-accent); }
-  .reason { color: var(--color-subtle); font-size: var(--text-xs); line-height: 16px; }
-  .lead { flex: none; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 500; }
-  .tile :global(.chevron) { flex: none; color: var(--color-subtle); transition: transform var(--motion-duration) var(--motion-curve); }
-  /* Open: the chevron points at the models under the row, which start under the provider's mark. */
-  .tile.current :global(.chevron) { transform: rotate(90deg); }
-  .tile-body { display: flex; flex-direction: column; gap: 1px; padding-left: 22px; }
+  /* The accent ring of every focusable thing marks the keyboard's tile; a finger's tap leaves no fill behind. */
+  .tile:focus-visible {
+    background: var(--color-hover);
+    color: var(--color-foreground);
+  }
+  @media (hover: hover) {
+    .tile:hover:not(:disabled) { background: var(--color-hover); color: var(--color-foreground); }
+  }
 
-  .tile:focus-visible { background: var(--color-hover); }
-  @media (hover: hover) { .tile:hover:not(:disabled) { background: var(--color-hover); } }
+  .tile.current {
+    background: var(--color-active);
+    color: var(--color-foreground);
+  }
 
-  .tile.more { color: var(--color-muted-foreground); }
-  .tile.more :global(svg) { flex: none; }
+  .tile.more { color: var(--color-subtle); }
 
-  /* Nothing runs on it: still pickable, so its list can say why. */
-  .tile.dim .tile-name, .tile.dim :global(.logo) { opacity: 0.55; }
+  /* Nothing runs on it: still pickable, so its column can say why. */
+  .tile.dim {
+    opacity: 0.45;
+  }
+
+  @media (max-width: 720px) {
+    /* The rail is the finger's first stop on a phone, so its tiles take a
+       full touch target like every other control. */
+    .tile { justify-content: center; padding: 0; }
+    .tile {
+      width: var(--touch-target);
+      height: var(--touch-target);
+    }
+  }
 </style>

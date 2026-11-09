@@ -186,7 +186,13 @@ const store = {
   loadingOlder: false,
   loadOlder: async () => 0,
   releaseOlder: () => 0,
-  workflowsOf: () => []
+  workflowsOf: () => [],
+  // What the timeline's decision card counts: nothing waits here.
+  threads: [],
+  pendingQuestions: [],
+  pendingPermissions: [],
+  pendingSecrets: [],
+  subagentQuestions: () => []
 } as unknown as Store;
 
 test('a workflow the thread started is left to the strip while it runs, then is one card that opens its graph, and a step shows none', async ({ createStore }) => {
@@ -667,6 +673,7 @@ function pagedStore(overrides: Partial<Record<string, unknown>> = {}): {
   // The real store flips `loadingOlder` for the length of the call and never
   // starts a second one; a page that never resolves is what holds it open here.
   const paged: Record<string, unknown> = {
+    threads: [], pendingQuestions: [], pendingPermissions: [], pendingSecrets: [], subagentQuestions: () => [],
     permissionRequests: {},
     answer: async () => {},
     messagesBefore: 'm-before',

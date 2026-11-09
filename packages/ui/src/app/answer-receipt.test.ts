@@ -5,7 +5,7 @@ import { mountOnFake, query, test, waitFor } from '../test/app';
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
 
-test('a question answered while the agent works leaves a receipt in the dock until the turn ends, the field in place', async () => {
+test('a question answered while the agent works leaves a receipt in the decision card until the turn ends, the field in place', async () => {
   await mountOnFake();
   const threadId = store.openThread!.id;
   const question = await store.client!.call('questions.ask', { threadId, text: 'Which checks?', options: ['Unit', 'Browser'] });
@@ -22,7 +22,7 @@ test('a question answered while the agent works leaves a receipt in the dock unt
   await waitFor(() => !store.pendingQuestions.some((pending) => pending.id === question.questionId));
   await waitFor(() => document.querySelector('[data-testid=answer-receipt]') !== null);
   expect(query('[data-testid=answer-receipt]').textContent?.trim()).toBe('You answered: Unit');
-  // The same field, never remounted by the dock's change.
+  // The same field, never remounted by the card's change.
   expect(query('[data-testid=composer-input]')).toBe(field);
   // The turn ends: the receipt goes with it.
   store.openThread!.status = 'idle';

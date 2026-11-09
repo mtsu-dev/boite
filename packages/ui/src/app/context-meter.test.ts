@@ -49,6 +49,6 @@ test('the composer wears the context meter from its threshold, a compaction is a
   // A thread with a pending permission keeps the chip named: the row is the same in every state.
   query<HTMLButtonElement>('[data-thread-id="t-bench"]').click();
   await waitFor(() => store.openThread?.id === 't-bench');
-  await waitFor(() => document.querySelector('[data-testid=composer] [data-testid=permission-card]') !== null);
+  await waitFor(() => document.querySelector('[data-testid=timeline] [data-testid=permission-card]') !== null);
   expect(query('[data-testid=composer-picker]').querySelector('.label')).not.toBeNull();
 });

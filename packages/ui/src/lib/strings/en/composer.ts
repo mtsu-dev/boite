@@ -57,27 +57,16 @@ export const strings = {
     outboxFailed: 'Not sent: {reason}',
     outboxRetry: 'Send again',
     outboxSettings: 'The model and effort it was written with could not be set again.',
-    queuedActions: 'Queued message',
     queuedEdit: 'Edit',
-    queuedRemove: 'Remove',
-    removeQueued: 'Remove this pending message',
+    queuedRemove: 'Delete',
+    removeQueued: 'Delete this pending message',
     picker: 'Provider and model',
     models: 'Models',
-    /** What the picker's rows under the models in use are, and the title of the button that unfolds them. */
-    otherProviders: 'Other providers',
-    /** The picker's source that lists the models in use. */
-    recentModels: 'Recent',
     searchModels: 'Search models',
     noModels: 'No model matches',
     noModelsAvailable: 'The agent has not listed any models. Refresh to retry.',
     showAllModels: 'Show all {count} models',
-    olderModels: 'Older models',
-    /** The older models' one line of help, under their title. */
-    olderModelsHelp: 'Still offered by the provider, no longer its latest.',
-    /** The model sheet's head: what runs now. */
-    inUse: 'In use',
-    /** The row back to the provider in use, from another one opened in place. */
-    backTo: 'Back to {provider}',
+    legacyModels: 'Legacy models',
     refreshModels: 'Refresh models',
     probing: "Reading the agent's models",
     notInstalled: 'Not installed on this machine',
@@ -95,8 +84,10 @@ export const strings = {
     effortDefault: 'Default',
     effortDefaultHint: 'Let the agent pick its own level for this model',
     standardSpeed: 'Standard speed',
+    favorites: 'Favorites',
     favorite: 'Add to favorites',
     unfavorite: 'Remove from favorites',
+    favoritesEmpty: 'Star a model to find it here.',
     favoriteUnavailable: 'This favorite is no longer offered by the account. Choose another model.',
     compact: 'Compact context',
     compactBusy: 'Wait for the current turn to finish',
@@ -109,8 +100,6 @@ export const strings = {
     model: 'Model',
     unavailable: 'not installed',
     noAccount: 'no account',
-    /** Where a provider row that cannot run yet leads. */
-    setUp: 'Set up',
     noProvider: 'No AI connected',
     /** The draft's worktree switch, off and on. */
     worktree: 'Worktree',

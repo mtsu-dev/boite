@@ -5,10 +5,10 @@ import type { TimelineCard } from './timeline-cards';
 import { pairPermissions, thinkingShown, type ActivityPart } from './tool-groups';
 
 /*
- * One status per fact. What the box above the composer already says (an ask
- * docked in it, a subagent or a workflow at work in the strip) is not said a
- * second time by the stream while it lasts; the stream keeps the outcome once
- * it ends.
+ * One status per fact. What is already said elsewhere (an ask in the card at
+ * the timeline's end, a subagent or a workflow at work in the composer's
+ * strip) is not said a second time by the stream while it lasts; the stream
+ * keeps the outcome once it ends.
  */
 
 /** A subagent the strip lists: at work, or waiting on its own background work, and not an agent's upkeep. */
@@ -16,14 +16,14 @@ export function inStrip(store: Store, agent: DelegatedAgent): boolean {
   return threadBusy(agent.thread) && !upkeepOf(store).has(agent.thread.id);
 }
 
-/** The thread on screen has a permission or a question docked in its composer. */
+/** The thread on screen has a permission or a question in the card at its timeline's end (`ThreadDecision`). */
 export function asksDocked(store: Store, threadId: string): boolean {
   const here = (ask: { threadId: string }) => ask.threadId === threadId;
   return store.openThread?.id === threadId && !!(store.pendingPermissions?.some(here) || store.pendingQuestions?.some(here));
 }
 
 /**
- * A question of the thread on screen that waits in the composer's dock: the
+ * A question of the thread on screen that waits in the card at the timeline's end: the
  * stream draws no line for it while it waits (`asksDocked`). A settings, agent
  * setting or team card the agent stopped for keeps its own card.
  */
@@ -33,9 +33,10 @@ export function questionDocked(store: Store, part: Extract<MessagePart, { type: 
 }
 
 /**
- * A run of steps that holds nothing but permissions waiting in the composer's
- * dock, and the calls they stand for: the stream draws nothing for it while
- * the ask is docked. `asked` tells a permission whose record the dock holds.
+ * A run of steps that holds nothing but permissions waiting in the card at the
+ * timeline's end, and the calls they stand for: the stream draws nothing for
+ * it while the card asks, so the card stands on that row. `asked` tells a
+ * permission whose record the card holds.
  */
 export function dockedRun(parts: readonly ActivityPart[], thinkingLive: boolean, asked: (requestId: RequestId) => boolean): boolean {
   const pairs = pairPermissions(parts);

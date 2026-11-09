@@ -4,7 +4,7 @@ import type { Message, QuestionRequest } from '@boite/contracts';
 import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
 import AssistantMessage from './AssistantMessage.svelte';
-import ThreadActivity from './ThreadActivity.svelte';
+import ThreadDecision from './ThreadDecision.svelte';
 
 let mounted: ReturnType<typeof mount>[] = [];
 const closers: (() => void)[] = [];
@@ -28,7 +28,7 @@ function query<T extends Element>(selector: string): T {
 
 /**
  * Two bots named as an owner names them, with a parenthesis and a space, and
- * the first one's proposal drawn in the dock above its composer.
+ * the first one's proposal drawn in the decision card at the end of its timeline.
  */
 async function proposed() {
   const client = new FakeClient({ delayMs: 0 });
@@ -51,7 +51,7 @@ async function proposed() {
     await vi.waitFor(() => expect(store.pendingQuestions.some((entry) => entry.id === id)).toBe(true));
     return store.pendingQuestions.find((entry) => entry.id === id)!;
   };
-  mounted.push(mount(ThreadActivity, { target: document.body, props: { store } }));
+  mounted.push(mount(ThreadDecision, { target: document.body, props: { store, threadId } }));
   return { client, store, threadId, huginn, jeux, ask, question };
 }
 
@@ -69,7 +69,7 @@ test('a bot\'s team proposal offers Create the team, which creates it with the p
   expect(asked.team).toMatchObject({ kind: 'create', name: 'Skollheim', members: [huginn.id, jeux.id] });
   await vi.waitFor(() => expect(document.querySelector('[data-testid=team-card][data-state=pending]')).not.toBeNull());
 
-  // The dock draws the team card, not the plain question with the core's lone Refuse option.
+  // The decision card draws the team card, not the plain question with the core's lone Refuse option.
   expect(document.querySelector('[data-testid=question-card]')).toBeNull();
   expect(query('[data-testid=team-card-text]').textContent).toBe('Huginn (Réseaux) proposes the team "Skollheim": Huginn (Réseaux), Jeux (Producteur). Ship the site.');
   expect(query('[data-testid=team-card-refuse]').textContent).toBe('Refuse');

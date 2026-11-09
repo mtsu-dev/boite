@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Activity, Bot, FishingHook, MessageCircleQuestionMark, Settings2, Users } from '@lucide/svelte';
-  import { showDockedQuestion } from '../lib/question-dock.svelte';
+  import { showDecision } from '../lib/decision-tail.svelte';
   import { replyOf, repliesOf, sendAnswer, writeAnswer } from '../lib/question-reply.svelte';
   import { COUNCIL_EXPERIMENT, type Account, type Message } from '@boite/contracts';
   import { fill, strings } from '../lib/strings';
@@ -188,8 +188,8 @@
       {:else if part.type === 'tool' && planOf(part.name, part.input) !== null}
         <PlanCard {store} {threadId} plan={planOf(part.name, part.input) ?? ''} />
       {:else if part.type === 'question' && part.async === true && (part.answer ?? null) === null && store.pendingQuestions.some((q) => q.id === part.questionId)}
-        <!-- Waiting in the dock above the composer: here only a line that brings it up. -->
-        <button type="button" class="ghost docked-question" data-testid="question-docked" title={strings.chat.questionOpen} onclick={() => showDockedQuestion(part.questionId)}>
+        <!-- Waiting in the card at the timeline's end: here only a line that brings it up. -->
+        <button type="button" class="ghost docked-question" data-testid="question-docked" title={strings.chat.questionOpen} onclick={() => showDecision(part.questionId)}>
           {#if part.setting}<Settings2 size={15} strokeWidth={1.75} />{:else if part.agentSetting}<Bot size={15} strokeWidth={1.75} />{:else if part.team}<Users size={15} strokeWidth={1.75} />{:else}<MessageCircleQuestionMark size={15} strokeWidth={1.75} />{/if}
           <span class="docked-text ui-label">{strings.chat.questionHeading}</span>
           <span class="waiting-mark" role="img" aria-label={strings.chat.questionDocked}></span>

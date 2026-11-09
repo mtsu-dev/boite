@@ -32,6 +32,7 @@ export const fr: Translation = {
     computer: 'Ordinateur connecté',
     pairAgain: 'Rajouter',
     settingsPhone: 'Notifications',
+    settingsLeave: 'Retour',
     settingsBack: 'Retour aux réglages',
     /** Activity's second line: why the thread is listed. */
     feed: { run: 'Veut lancer :', helperAsks: '{title} vous attend', updates: 'Nouvelles', verb: { answer: 'Répondre', review: 'Examiner', deny: 'Refuser', skip: 'Passer' } },

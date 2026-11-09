@@ -12,7 +12,7 @@
   /**
    * The context meter's details: the reading, its parts, the thread's counts,
    * Compact and the prompt cache. Its own chunk, fetched at idle
-   * (`lib/composer-dock.ts`): a hover or a click opens it, the first screen
+   * (`lib/idle-parts.ts`): a hover or a click opens it, the first screen
    * never draws it. `ContextControl` keeps the meter, the open state and
    * Escape.
    */

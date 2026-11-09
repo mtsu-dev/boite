@@ -437,9 +437,9 @@ above the message input, shows "A subagent has a question" with the child's
 title on desktop and phone. Clicking it opens the child on the machine that
 owns it, where choices and written answers use that child's composer. This
 includes workflow steps and children on other machines. The parent's own
-questions keep their answer controls in the chatbar; child questions only
-provide a link. Child permissions and secret requests still link to the
-child's conversation from the dock.
+questions keep their answer controls in the decision card at the end of the
+timeline; child questions only provide a link. Child permissions and secret
+requests still link to the child's conversation from that card.
 `tests/e2e/subagent-questions.test.ts` checks blocking and asynchronous written
 answers against a temporary core on desktop and a paired phone.
 

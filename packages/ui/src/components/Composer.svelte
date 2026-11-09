@@ -18,7 +18,7 @@
   import { isLoading, unresolvedAssetId } from '../lib/draft-attachments';
   import { focusInitial, focusWithin } from '../lib/focus';
   import { touchScreen } from '../lib/device';
-  import { noteTyping, repliesOf, replyTarget, sendAnswer } from '../lib/question-reply.svelte';
+  import { noteTyping, pickOption, repliesOf, replyTarget, sendAnswer } from '../lib/question-reply.svelte';
   import { emptyBox, returnPrompt, sendNowAction, sentPrompts, type ComposerState, type SentPrompt } from '../lib/composer-queue';
   import { rankItems, type PaletteItem } from '../lib/palette';
   import { clearStash, DRAFT_STASH_KEY, readStash, writeStash } from '../lib/prefs';
@@ -37,7 +37,7 @@
   import ComposerSpeechPreview from './ComposerSpeechPreview.svelte';
   import MentionMenu from './MentionMenu.svelte';
   import SlashMenu from './SlashMenu.svelte';
-  import { pickOption } from '../lib/composer-dock';
+  import { answerPermission } from '../lib/decision-tail.svelte';
   import SideAnswer from './SideAnswer.svelte';
   import { ComposerSide } from '../lib/composer-side.svelte';
   import { chipChoice, queuedChoice, sendToTarget, type ComposerTarget } from '../lib/composer-target';
@@ -73,8 +73,6 @@
   let inputScroll = $state(0);
   let toolbar = $state<ReturnType<typeof ComposerBar> | undefined>(undefined);
   let shell = $state<HTMLDivElement | undefined>(undefined);
-  // The subagents' rows on the card's top edge: the decision gives up as much room so the conversation keeps its share.
-  let deckRoom = $state(0);
   let attachmentStrip = $state<ReturnType<typeof ComposerAttachments> | undefined>();
   let highlightedImage = $state<Attachment | null>(null);
   /** Where ArrowUp stands in this thread's sent prompts, or null outside recall. */
@@ -182,10 +180,9 @@
   let accountGone = $derived(!target && (botGone || (!!thread && store.accounts.length > 0 && store.accountOf(thread.accountId) === null
     && store.usableAccountOf(thread.providerId, thread.accountId) === null)));
 
-  /** The thread's asks to run a tool dock at the top of the box, the oldest first; a message sent meanwhile is queued. */
-  let permissions = $derived(target || !thread ? [] : store.pendingPermissions.filter((request) => request.threadId === thread.id));
-  let permission = $derived(permissions[0] ?? null);
-  /** The question on screen at the top of the box, whose options 1 to 9 pick while the field is empty. */
+  /** The thread's oldest ask to run a tool, at the timeline's end; a message sent meanwhile is queued. */
+  let permission = $derived(target || !thread ? null : store.pendingPermissions.find((request) => request.threadId === thread.id) ?? null);
+  /** The question on screen at the timeline's end, whose options 1 to 9 pick while the field is empty. */
   let docked = $derived(target ? undefined : store.pendingQuestions.find((question) => question.id === repliesOf(store).docked && question.threadId === thread?.id));
 
   /**
@@ -731,10 +728,10 @@
       event.preventDefault();
       return;
     }
-    // An empty field lends the keyboard to what docks above it; typing is never taken.
+    // An empty field lends the keyboard to the decision at the timeline's end; typing is never taken.
     if (boxEmpty && permission && !composer?.editing && (event.key === 'Enter' && !event.shiftKey && !touchScreen() || event.key === 'Escape')) {
       event.preventDefault();
-      void store.answer(permission.id, event.key === 'Enter' ? 'allow' : 'deny');
+      void answerPermission(store, permission, event.key === 'Enter' ? 'allow' : 'deny');
       return;
     }
     if (boxEmpty && docked && !event.shiftKey && pickOption(store, docked, event.key)) { event.preventDefault(); return; }
@@ -763,12 +760,14 @@
 
 <svelte:window onkeydowncapture={() => { viaKeys = true; }} onpointerdowncapture={() => { viaKeys = false; }} />
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="composer-wrap" class:centered class:stopped style:--deck-room="{deckRoom}px" onkeydowncapture={(event) => {
+<div class="composer-wrap" class:centered class:stopped onkeydowncapture={(event) => {
   if (!event.isComposing && event.key === 'Escape' && !mentionOpen && !slashOpen && attachmentStrip?.closePreview()) {
     event.preventDefault(); event.stopPropagation();
   }
 }}>
   {#if !target}<ComposerStrip />{/if}
+  <ComposerQueueRegion {store} {key} {thread} {composer} machine={machineLabel} {sendNow}
+    blocked={text.length > 0 || attachments.length > 0 || previewReferences.length > 0} onrestore={restoreQueued} onsendnow={sendQueuedNow} />
   {#if accountGone && !botGone}<AccountGoneNotice onpick={() => void toolbar?.openChip('composer-picker')} />{/if}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="composer" class:dictating class:keys={viaKeys} class:loading={loadingThread} data-testid="composer" tabindex="-1" bind:this={shell} hidden={stopped} {ondragover} {ondrop} onkeydown={(event) => {
@@ -777,9 +776,7 @@
     onkeydown(event);
     event.stopPropagation();
   }}>
-    <ComposerDeck {store} {thread} agentBox={!!target} {permissions} {docked} bind:room={deckRoom} />
-    <ComposerQueueRegion {store} {key} {thread} {composer} machine={machineLabel} {sendNow}
-      blocked={text.length > 0 || attachments.length > 0 || previewReferences.length > 0} onrestore={restoreQueued} onsendnow={sendQueuedNow} />
+    <ComposerDeck {store} {thread} agentBox={!!target} />
     <ComposerIntent editing={!!composer?.editing} oncancel={cancelEdit} />
 
     {#if side.current && side.current.threadId === thread?.id}<SideAnswer {...side.current} {store} onclose={() => { side.clear(); focusInitial(box, box?.closest<HTMLElement>('[data-testid=composer]')); }} />{/if}
@@ -863,23 +860,15 @@
   /* A card the script focused for a touch screen shows no ring: only a key lights it. */
   .composer:not(.keys):focus-visible { outline: none; }
 
-  /* Each block of the card stands this far under the one above it (ComposerDeck, the queued line). */
-  /* One row form for the deck's lines (AgentDock, DecisionHead, the queued line): its height, its icon box and its type. */
+  /* Each block of the card stands this far under the one above it (ComposerDeck). */
+  /* One row form for the deck's lines (AgentDock, the activity): its height, its icon box and its type. */
   .composer { --deck-gap: 6px; --dock-row: 28px; --dock-icon: 16px; --dock-type: var(--text-meta); }
   @media (max-width: 720px) {
-    /* A phone keeps the conversation: the whole card, rows, decision, queued
-       chips and field, stays under 45% of the screen. The deck gives way
-       first; a question's choices scroll in the room left once the rows,
-       the head and the field are counted (`--dock-cap`). */
+    /* A phone keeps the conversation: the whole card, rows, chips and
+       field, stays under 45% of the screen. The deck gives way first. */
     .composer { --dock-row: 30px; --composer-cap: 45dvh; border-radius: var(--radius-xl); max-height: var(--composer-cap); }
-    /* A docked question with its choices may take a little more, so four of them and its Answer show whole at 390
-       over the bar's two chip lines. */
-    .composer:has(:global(.question.docked)) { --composer-cap: 64dvh; }
-    /* So does a permission: its choices wrap under the ask, the command right under the ask's line and the rest scrolling in its body (PermissionCard). */
-    .composer:has(:global(.permission.docked)) { --composer-cap: 52dvh; }
     .composer > :global(*) { flex: none; }
-    /* What the card holds under the deck: the field (44 px), the bar's two chip lines (102 px) and the card's border. */
-    .composer > :global(.deck) { flex: 0 1 auto; min-height: 0; --dock-cap: calc(var(--composer-cap) - 148px - var(--deck-room, 0px)); }
+    .composer > :global(.deck) { flex: 0 1 auto; min-height: 0; }
     /* The microphone and send stand at the field's end (ComposerBar): its text, mirror and dictation preview stop short of them. */
     .composer { --composer-tools: var(--touch-target); }
     .composer:has(:global(.bar .tools[data-count='2'])) { --composer-tools: calc(var(--touch-target) * 2); }
@@ -893,6 +882,4 @@
   }
   /* A 390 or 360 px phone gives the card's side margins to the chips' words. */
   @media (max-width: 400px) { .composer-wrap, .composer-wrap.centered { padding-inline: 8px; } }
-  /* At 360 the chips hold two lines (ComposerBar): a permission gets a little more room for its ask and command. */
-  @media (max-width: 380px) { .composer:has(:global(.permission.docked)) { --composer-cap: 54dvh; } }
 </style>

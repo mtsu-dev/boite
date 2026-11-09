@@ -2,7 +2,7 @@ import { afterEach, beforeAll, expect } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import { test } from '../test/fake-client';
 import ContextControl from './ContextControl.svelte';
-import { contextPopup } from '../lib/composer-dock';
+import { contextPopup } from '../lib/idle-parts';
 import { fill, strings } from '../lib/strings';
 
 let view: ReturnType<typeof mount> | undefined;

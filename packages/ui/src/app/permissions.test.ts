@@ -11,8 +11,8 @@ test('a permission left pending is read back on connect and answered from its ca
 
   query<HTMLButtonElement>('[data-thread-id="t-bench"]').click();
   await waitFor(() => store.openThread?.id === 't-bench');
-  // It docks in the composer, the only card that decides it.
-  await waitFor(() => document.querySelector('[data-testid=composer] [data-testid=permission-card]') !== null);
+  // It is a card at the end of the timeline, the only card that decides it.
+  await waitFor(() => document.querySelector('[data-testid=timeline] [data-testid=permission-card]') !== null);
   expect(query('[data-testid=permission-card]').getAttribute('data-decision')).toBe('pending');
   expect(document.querySelectorAll('[data-testid=permission-card]')).toHaveLength(1);
   // The technical details sit behind the "i".

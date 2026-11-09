@@ -1,6 +1,5 @@
 <script lang="ts">
   import { ChevronDown, Zap } from '@lucide/svelte';
-  import { clearOfDecision } from '../lib/clear-of-decision';
   /** The agents' level ids and the cost line each one reads. */
   const LEVEL_COST: Record<string, 'off' | 'low' | 'middle' | 'deeper' | 'high' | 'top' | 'extended'> = {
     off: 'off', none: 'off', minimal: 'off', low: 'low', medium: 'middle', high: 'deeper', xhigh: 'high', max: 'top', ultra: 'extended', ultrathink: 'extended'
@@ -277,7 +276,7 @@
       data-testid="composer-effort-menu"
       use:popover.attach
       bind:this={panel}
-      use:floating={{ anchor: () => clearOfDecision(trigger, panel), placement: 'top', dismiss: () => popover.hide() }}
+      use:floating={{ anchor: () => trigger ?? null, placement: 'top', dismiss: () => popover.hide() }}
       onanimationend={popover.end}
       {onkeydown}
     >

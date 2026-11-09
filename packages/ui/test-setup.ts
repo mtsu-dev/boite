@@ -71,7 +71,8 @@ beforeAll(async () => {
   await Promise.all(Object.values(parts).map((part) => part.load()));
   // So is the phone's navigation, which App fetches with the app outside the shell.
   await mobileNavigation.load();
-  // And the permission card, which the composer fetches at idle (`lib/composer-dock.ts`).
-  await (await import('./src/lib/composer-dock')).permissionCard.load();
+  // And the decision card and the permission card, which the composer fetches at idle (`lib/idle-parts.ts`).
+  const idle = await import('./src/lib/idle-parts');
+  await Promise.all([idle.threadDecision.load(), idle.permissionCard.load()]);
   // A cold worker transforms these modules first: several seconds on a busy machine.
 }, 120_000);

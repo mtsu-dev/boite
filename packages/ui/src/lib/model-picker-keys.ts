@@ -71,8 +71,7 @@ export function pickerKeydown(picker: PickerKeyState): (event: KeyboardEvent) =>
     if (event.key === 'Enter') {
       // A focused row is activated by the browser too; taking the default keeps it to one pick.
       event.preventDefault();
-      // From the field, the first model: a provider row above it only opens a list.
-      const row = active === searchBox ? modelRows().find((entry) => entry.classList.contains('model')) : active;
+      const row = active === searchBox ? modelRows()[0] : active;
       row?.click();
       return true;
     }
@@ -87,14 +86,14 @@ export function pickerKeydown(picker: PickerKeyState): (event: KeyboardEvent) =>
   }
 
   function handleAccountNavigation(event: KeyboardEvent, active: HTMLElement | null): boolean {
-    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return false;
-    // The accounts are a small dropdown list: the arrows walk it, apart from the rows.
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return false;
+    // The account chips are a segmented control: the arrows walk them.
     const root = picker.root();
     const chips = root ? Array.from(root.querySelectorAll<HTMLElement>('.popover [data-seat]:not(:disabled)')) : [];
     const here = active ? chips.indexOf(active) : -1;
     if (here === -1) return false;
     event.preventDefault();
-    const step = event.key === 'ArrowDown' ? 1 : -1;
+    const step = event.key === 'ArrowRight' ? 1 : -1;
     chips[(here + step + chips.length) % chips.length]?.focus();
     return true;
   }
@@ -109,10 +108,23 @@ export function pickerKeydown(picker: PickerKeyState): (event: KeyboardEvent) =>
     list[next]?.focus();
   }
 
+  /**
+   * A letter typed on a tile, a chip or a row goes to the search field: the
+   * focus moves before the browser inserts it, so the field receives it. Space
+   * stays a button's own key.
+   */
+  function handleTyping(event: KeyboardEvent, active: HTMLElement | null) {
+    if (event.key.length !== 1 || event.key === ' ' || event.ctrlKey || event.metaKey || event.altKey) return;
+    const searchBox = picker.searchBox();
+    if (!searchBox || !picker.searchable() || picker.legacyOpen() || active === searchBox || active instanceof HTMLInputElement) return;
+    searchBox.focus();
+  }
+
   return function onkeydown(event: KeyboardEvent) {
     if (!picker.popover.open) return;
     const active = document.activeElement as HTMLElement | null;
     if (event.key === 'Escape') return handleEscape(event);
+    handleTyping(event, active);
     if (handleLegacyNavigation(event, active)) return;
     if (handleModelSearch(event, active)) return;
     if (handleAccountNavigation(event, active)) return;

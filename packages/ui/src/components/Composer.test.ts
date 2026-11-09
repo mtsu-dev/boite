@@ -716,28 +716,20 @@ test('the picker keeps row, account and legacy keyboard navigation separate', as
   store.accounts.find((account) => account.id === 'a-claude-side')!.status = 'ok';
   await openDraft();
   query<HTMLButtonElement>('[data-testid=composer-picker]').click();
-  await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null);
-  await waitFor(() => document.querySelector('[data-models-of=claude] [data-model]') !== null);
+  await waitFor(() => document.querySelector('[data-testid=composer-picker-menu] [data-provider=claude]') !== null);
 
-  // The arrows go from a provider row down into the models open under it.
+  // The rail's arrows walk the tiles; the account chips are a segmented control the side arrows walk.
   const claudeTile = query<HTMLButtonElement>('[data-provider=claude]');
   claudeTile.focus();
   expect(press('ArrowDown')).toBe(false);
-  expect(document.activeElement).toBe(query('[data-models-of=claude] [data-row]'));
-  // A provider row shows its list, its accounts beside its name.
-  claudeTile.click();
-  flushSync();
-  await waitFor(() => document.querySelector('[data-testid=picker-account]') !== null);
+  expect(document.activeElement).toBe(query('[data-provider=echo]'));
 
-  // The accounts are a small dropdown beside the provider's name: its arrows walk the accounts alone.
-  query<HTMLButtonElement>('[data-testid=picker-account]').click();
-  flushSync();
   const firstSeat = query<HTMLButtonElement>('[data-instance="claude::a-claude-main"]');
   const secondSeat = query<HTMLButtonElement>('[data-instance="claude::a-claude-side"]');
   firstSeat.focus();
-  expect(press('ArrowDown')).toBe(false);
+  expect(press('ArrowRight')).toBe(false);
   expect(document.activeElement).toBe(secondSeat);
-  expect(press('ArrowUp')).toBe(false);
+  expect(press('ArrowLeft')).toBe(false);
   expect(document.activeElement).toBe(firstSeat);
 
   await waitFor(() => document.querySelector('[data-testid=picker-legacy]') !== null);
@@ -791,15 +783,13 @@ test('reconnecting queues a send instead of sending it, and a new thread queues 
   expect(store.draftEntries.find(entry => entry.active)).toMatchObject({ text: 'a new thread', queued: 'waiting' });
 });
 
-/** Opens the menu at the end of a queued line and picks one of its rows by test id. */
+/** Presses one of the icon actions on a queued row. */
 async function queuedAction(line: Element, testid: 'composer-queued-edit' | 'composer-queued-remove'): Promise<void> {
-  line.querySelector<HTMLButtonElement>('[data-testid=composer-queued-menu]')!.click();
+  line.querySelector<HTMLButtonElement>(`[data-testid=${testid}]`)!.click();
   flushSync();
-  await waitFor(() => document.querySelector(`[data-testid=composer-queued-menu-menu] [data-testid=${testid}]`) !== null);
-  query<HTMLButtonElement>(`[data-testid=composer-queued-menu-menu] [data-testid=${testid}]`).click();
 }
 
-test('a queued prompt is a small chip in the box with its one menu for edit and remove on it', async ({ queueApp: _app }) => {
+test('each queued prompt is a row of its own above the composer card, its Send now, Edit and Delete named icons', async ({ queueApp: _app }) => {
   await store.open('t-trace');
   await store.client!.call('turns.start', { threadId: 't-trace', prompt: 'Wait [permission]' });
   await waitFor(() => store.openThread?.status === 'waiting');
@@ -809,13 +799,28 @@ test('a queued prompt is a small chip in the box with its one menu for edit and 
   press('Enter');
   await waitFor(() => input().value === '' && store.composerStates['t-trace']?.queued.length === 2);
   const lines = Array.from(document.querySelectorAll<HTMLElement>('[data-testid=composer-queued-item]'));
-  expect(lines.map((line) => line.classList.contains('line'))).toEqual([true, true]);
-  // One menu button per chip, on the chip, in place of three small icons; edit and remove wait inside it.
-  expect(lines.every((line) => line.querySelector('.pill [data-testid=composer-queued-menu]') && !line.querySelector('[data-testid=composer-queued-edit], [data-testid=composer-queued-remove]'))).toBe(true);
-  // Edit takes that prompt, and only it, back into the box.
-  await queuedAction(lines[0]!, 'composer-queued-edit');
+  expect(lines).toHaveLength(2);
+  // Outside the card: the field stays where it is however many wait.
+  expect(lines.every((line) => line.closest('[data-testid=composer]') === null)).toBe(true);
+  expect(lines.map((line) => line.querySelector('.queued-title')?.textContent)).toEqual(['first pending', 'second pending']);
+  // Icons a finger reaches without hovering, each with a tooltip and a name; no menu to open.
+  for (const line of lines) {
+    for (const [testid, name] of [['composer-queued-edit', 'Edit'], ['composer-queued-remove', 'Delete']] as const) {
+      const button = line.querySelector<HTMLButtonElement>(`[data-testid=${testid}]`)!;
+      expect([button.getAttribute('aria-label'), !!button.title]).toEqual([name, true]);
+    }
+  }
+  expect(document.querySelector('[data-testid=composer-queued-menu]')).toBeNull();
+  const sendNow = document.querySelectorAll('[data-testid=composer-send-now]');
+  expect(sendNow.length).toBeLessThanOrEqual(1);
+  if (sendNow.length) expect(sendNow[0]!.closest('[data-testid=composer-queued-item]')).toBe(lines[1]);
+  // Delete takes that prompt out; Edit takes the other, and only it, back into the box.
+  await queuedAction(lines[1]!, 'composer-queued-remove');
+  await waitFor(() => store.composerStates['t-trace']!.queued.length === 1);
+  expect(store.composerStates['t-trace']!.queued.map((entry) => entry.text)).toEqual(['first pending']);
+  await queuedAction(document.querySelector('[data-testid=composer-queued-item]')!, 'composer-queued-edit');
   await waitFor(() => input().value === 'first pending');
-  expect(store.composerStates['t-trace']!.queued.map((entry) => entry.text)).toEqual(['second pending']);
+  expect(store.composerStates['t-trace']!.queued).toEqual([]);
 });
 
 test('ArrowUp removes the latest queued prompt and restores its images for editing', async ({ queueApp: _app }) => {
@@ -983,18 +988,19 @@ function asks(): typeof store.pendingPermissions {
   return store.pendingPermissions.filter((request) => request.threadId === 't-trace');
 }
 
-test('Enter in the emptied composer allows the docked permission, then the input queued behind it goes', async ({ app: _app }) => {
+test('the permission is a card at the end of the timeline, not in the composer, and Enter in the emptied field allows it', async ({ app: _app }) => {
   await store.open('t-trace');
   await type('Hold on [permission]');
   press('Enter');
-  await waitFor(() => store.openThread?.status === 'waiting' && document.querySelector('[data-testid=composer] [data-testid=permission-card]') !== null);
+  await waitFor(() => store.openThread?.status === 'waiting' && document.querySelector('[data-testid=timeline] [data-testid=thread-decision] [data-testid=permission-card]') !== null);
   expect(input().placeholder).toBe(fill(strings.composer.replyPlaceholder, { name: 'Echo' }));
-  // The decision lives in the composer alone: while the ask is docked the timeline draws no line for it, no second copy.
+  // The decision lives in the transcript, once: the composer card holds the field and its chips only.
   expect(document.querySelectorAll('[data-testid=permission-card]')).toHaveLength(1);
+  expect(document.querySelector('[data-testid=composer] [data-testid=permission-card]')).toBeNull();
   expect(document.querySelector('[data-testid=timeline] [data-testid=permission-waiting]')).toBeNull();
   // A run that held only that ask leaves no empty row behind it.
   expect(Array.from(document.querySelectorAll('[data-testid=timeline] .part')).filter((part) => part.children.length === 0)).toHaveLength(0);
-  // The decision takes the box's head and the row under the field stays whole:
+  // The row under the field stays whole:
   // the "+", the named model chip, then one round button, Stop or Send, never both.
   // A turn standing on the owner's answer is not working: no Stop beside the ask, Deny is the way out.
   const row = () => Array.from(query('[data-testid=composer] .bar').querySelectorAll<HTMLElement>('[data-testid=composer-options], [data-testid=composer-picker], [data-testid=composer-stop], [data-testid=composer-send]:not(.resting)')).map((node) => node.dataset.testid);
@@ -1009,8 +1015,8 @@ test('Enter in the emptied composer allows the docked permission, then the input
   press('Enter');
   await waitFor(() => input().value === '' && store.composerStates['t-trace']?.queued.length === 2);
   expect(query('[data-testid=composer-queued]').textContent).toContain('Now please');
-  // The queue is one quiet line per prompt inside the box, under the ask, not a row of pills above it.
-  expect(query('[data-testid=composer-queued]').closest('[data-testid=composer]')).not.toBeNull();
+  // The queue is one row per prompt just above the box, out of it and out of the strip.
+  expect(query('[data-testid=composer-queued]').closest('[data-testid=composer]')).toBeNull();
   expect(query('[data-testid=composer-strip]').querySelector('[data-testid=composer-queued]')).toBeNull();
   expect(document.querySelectorAll('[data-testid=composer-queued-item]')).toHaveLength(2);
   // Shift+Enter starts a line, never a decision.
@@ -1446,9 +1452,9 @@ test('a picture tile draws a small thumbnail, the preview the bytes by URL, both
 const REPLY_PLACEHOLDER = fill(strings.composer.replyPlaceholder, { name: 'Echo' });
 const ANSWER_LABEL = 'Send the answer';
 
-/** The question docked in the composer; the timeline keeps only its one-line row. */
+/** The question's card at the end of the timeline. */
 function pendingCard(): HTMLElement {
-  return query('[data-testid=thread-activity] [data-testid=question-card][data-state=pending]');
+  return query('[data-testid=thread-decision] [data-testid=question-card][data-state=pending]');
 }
 
 test('a waiting question takes the composer as its free answer, with the card pick and a photo', async ({ app: _app }) => {
@@ -1461,8 +1467,9 @@ test('a waiting question takes the composer as its free answer, with the card pi
   await waitFor(() => document.querySelector('[data-testid=composer-reply]') !== null, TYPING_PAUSE_MS);
   expect(input().placeholder).toBe(REPLY_PLACEHOLDER);
   expect(query('[data-testid=composer-send]').getAttribute('aria-label')).toBe(ANSWER_LABEL);
-  // The question is written once, in the dock: the timeline draws no line for it while it waits there.
-  expect(document.querySelectorAll('[data-testid=thread-activity] [data-testid=question-text]')).toHaveLength(1);
+  // The question is written once, on its card at the timeline's end: its own row draws no second copy.
+  expect(document.querySelectorAll('[data-testid=question-text]')).toHaveLength(1);
+  expect(document.querySelector('[data-testid=composer] [data-testid=question-text]')).toBeNull();
   expect(document.querySelector('[data-testid=timeline] [data-testid=question-waiting]')).toBeNull();
   expect(document.querySelector('[data-testid=question-reply-hint]')).toBeNull();
 

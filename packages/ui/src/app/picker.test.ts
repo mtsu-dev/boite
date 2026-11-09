@@ -1,21 +1,14 @@
 import { expect, vi } from 'vitest';
 import { flushSync } from 'svelte';
 import { store } from '../lib/store.svelte';
-import { fill, strings } from '../lib/strings';
+import { strings } from '../lib/strings';
 import { effortDots, effortPicked, groupLabels, press, query, seats, shownModels, test, tiles, type, waitFor } from '../test/app';
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
 
-/** The picker opens on the chip's own provider with its models open under its row. */
-async function allModels(): Promise<void> {
-  await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null);
-  const providerId = store.openThread?.providerId ?? store.draftChoice?.providerId ?? store.defaultChoice()?.providerId;
-  await waitFor(() => document.querySelector(`[data-testid=composer-picker-menu] [data-models-of="${providerId}"]`) !== null);
-}
-
-/** The rows a query found in one provider's list, under its own line. */
-function foundIn(providerId: string): (string | null)[] {
-  return [...document.querySelectorAll(`[data-testid=picker-found] [data-source="${providerId}"] [data-model]`)].map((el) => el.getAttribute('data-model'));
+/** The popover is a chunk of its own: wait for it, then for the shown provider's rail tile. */
+async function menuLoaded(): Promise<void> {
+  await waitFor(() => document.querySelector('[data-testid=composer-picker-menu] .rail .tile[data-provider]') !== null);
 }
 
 /** The effort chip beside the model chip: open its slider, then hand the chip back. */
@@ -40,35 +33,30 @@ test('the picker rails the providers as logos and gives the shown one its accoun
 
   query<HTMLButtonElement>('[data-testid=composer-picker]').click();
   await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null);
-  await allModels();
+  await menuLoaded();
   await waitFor(() => shownModels().length === 3);
   // One tile per provider an account answers for, in the core's order: the
   // one still to download or sign into is Settings' business, one tile away.
-  expect(tiles()).toEqual(['claude', 'echo', 'opencode', 'codex', 'pi', 'grok', 'muse', 'more']);
+  expect(tiles()).toEqual(['favorites', 'claude', 'echo', 'opencode', 'codex', 'pi', 'grok', 'muse', 'more']);
   // Claude is the shown one and has two logins, so they sit beside its name.
   expect(seats()).toEqual(['claude::a-claude-main', 'claude::a-claude-side']);
   // On the provider's own login the chip names the model alone.
   expect(document.querySelector('[data-testid=composer-picker-account]')).toBeNull();
   expect(shownModels()).toEqual(['claude-fable-5-1', 'claude-opus-5-5', 'claude-sonnet-5-5']);
-  // The sheet's head says what runs now in words: the model, then its provider and the login.
-  const head = query('[data-testid=picker-current]');
-  expect(head.querySelector('.name')?.textContent).toBe(query('[data-testid=composer-picker] .label').textContent?.trim());
-  expect(head.querySelector('.sub')?.textContent).toMatch(/^Claude · \S/);
-  expect(document.querySelector('[data-testid=picker-back]')).toBeNull();
+  // The shown provider's name heads its column; its logo tile is the current one.
+  expect(query('[data-testid=composer-picker-menu] .provider-name').textContent).toBe('Claude');
+  expect(query('[data-testid=composer-picker-menu] .tile.current').dataset.provider).toBe('claude');
 
-  // One account: nothing beside the name. Another provider opened in place offers one row back.
+  // One account: nothing beside the name.
   query<HTMLButtonElement>('[data-testid=composer-picker-menu] [data-provider=echo]').click();
   await waitFor(() => shownModels().length === 1);
   expect(seats()).toEqual([]);
-  expect(query('[data-testid=picker-back]').textContent).toBe(fill(strings.composer.backTo, { provider: 'Claude' }));
 
   query<HTMLButtonElement>('[data-testid=composer-picker-menu] [data-provider=claude]').click();
   await waitFor(() => shownModels().length === 3);
-  // Older models in plain words, with one line saying what they are.
-  expect(query('[data-testid=picker-legacy]').textContent?.trim()).toBe(strings.composer.olderModels);
+  expect(query('[data-testid=picker-legacy]').textContent?.trim()).toBe(strings.composer.legacyModels);
   query<HTMLButtonElement>('[data-testid=picker-legacy]').click();
   await waitFor(() => document.querySelectorAll('[data-model]').length === 7);
-  expect(query('[data-testid=picker-legacy-help]').textContent).toBe(strings.composer.olderModelsHelp);
 
   // The second account of the same provider, then a model: one thread with both.
   query<HTMLButtonElement>('[data-instance="claude::a-claude-side"]').click();
@@ -80,7 +68,7 @@ test('the picker rails the providers as logos and gives the shown one its accoun
   expect(query('[data-testid=composer-picker] .label').textContent?.trim()).toBe('Opus 5.5');
   expect(query('[data-testid=composer-picker-account]').textContent?.trim()).toBe(store.accountOf('a-claude-side')!.label);
   query<HTMLButtonElement>('[data-testid=composer-picker]').click();
-  await allModels();
+  await menuLoaded();
   await waitFor(() => document.querySelector('[data-instance="claude::a-claude-side"]')?.getAttribute('aria-pressed') === 'true');
   query<HTMLButtonElement>('[data-testid=composer-picker]').click();
   await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') === null);
@@ -102,7 +90,7 @@ test('the picker reads an ACP agent models, showing the descriptor and a probing
 
   query<HTMLButtonElement>('[data-testid=composer-picker]').click();
   await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null);
-  await allModels();
+  await menuLoaded();
   query<HTMLButtonElement>('[data-testid=composer-picker-menu] [data-provider=opencode]').click();
 
   // While the agent is being asked, its descriptor's one model stands.
@@ -143,24 +131,14 @@ test('past twelve models the column gets a search field, prefix groups and keybo
   await waitFor(() => query('[data-testid=composer-picker]').textContent?.includes('Opus 5.5') === true);
 
   query<HTMLButtonElement>('[data-testid=composer-picker]').click();
-  await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null);
-  await allModels();
+  await menuLoaded();
   await waitFor(() => document.querySelector('[data-testid=picker-search]') !== null);
   // Search is available even on the shorter Claude list.
   expect(document.querySelector('[data-testid=picker-search]')).not.toBeNull();
   await type(query<HTMLInputElement>('[data-testid=picker-search]'), 'opus 4.8');
-  // A query searches every provider's list, each under one line naming it, the one in use first.
-  await waitFor(() => foundIn('claude').length === 1);
-  expect(foundIn('claude')).toEqual(['claude-opus-4-8']);
-  expect(query('[data-testid=picker-found] [data-source]').getAttribute('data-source')).toBe('claude');
-  // The adopted login reads as the address behind it, not as "Default".
-  expect(query('[data-source=claude] .source-line').textContent).toBe('Claude · you@example.com');
+  await waitFor(() => shownModels().length === 1);
+  expect(shownModels()).toEqual(['claude-opus-4-8']);
   expect(document.querySelector('[data-testid=picker-legacy]')).toBeNull();
-  // Escape clears the query and the providers are back in sight, the shown one open.
-  press('Escape');
-  await waitFor(() => document.querySelector('[data-testid=picker-found]') === null);
-  expect(query('[data-provider=claude]').getAttribute('aria-expanded')).toBe('true');
-  expect(document.querySelector('[data-testid=composer-picker-menu]')).not.toBeNull();
 
   query<HTMLButtonElement>('[data-testid=composer-picker-menu] [data-provider=opencode]').click();
   await waitFor(() => document.querySelector('[data-testid=picker-probing]') === null);
@@ -173,21 +151,17 @@ test('past twelve models the column gets a search field, prefix groups and keybo
   expect(document.activeElement).toBe(search);
 
   await type(search, 'sonnet');
-  await waitFor(() => foundIn('opencode').length === 3);
-  // The provider in use answers first whichever list is open, so the groups keep their places;
-  // in its own group the agent's default is pinned first whatever the query.
-  expect(query('[data-testid=picker-found] [data-source]').getAttribute('data-source')).toBe('claude');
-  expect(foundIn('opencode')).toEqual([
+  await waitFor(() => shownModels().length === 3);
+  // The agent's own default is pinned first whatever the query.
+  expect(shownModels()).toEqual([
     'anthropic/claude-sonnet-5',
     'opencode/claude-sonnet-5',
     'openrouter/anthropic/claude-sonnet-4-5'
   ]);
-  expect([...document.querySelectorAll<HTMLElement>('[data-source=opencode] [data-group]')].map((el) => el.dataset.group)).toEqual(['anthropic', 'opencode', 'openrouter']);
-  // Another provider's matches follow under their own line.
-  expect(foundIn('claude')).toContain('claude-sonnet-5-5');
+  expect(groupLabels()).toEqual(['anthropic', 'opencode', 'openrouter']);
 
-  // Down past the provider in use onto the open list's first match, Enter to take it.
-  for (let step = 0; step <= foundIn('claude').length; step++) press('ArrowDown');
+  // Down onto the first named match, Enter to take it.
+  press('ArrowDown');
   expect((document.activeElement as HTMLElement).getAttribute('data-model')).toBe('anthropic/claude-sonnet-5');
   press('Enter');
   await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') === null);
@@ -195,7 +169,7 @@ test('past twelve models the column gets a search field, prefix groups and keybo
 
   // A query nothing answers says so, and Escape clears it before it closes anything.
   query<HTMLButtonElement>('[data-testid=composer-picker]').click();
-  await allModels();
+  await menuLoaded();
   await waitFor(() => document.querySelector('[data-testid=picker-search]') !== null);
   await type(query<HTMLInputElement>('[data-testid=picker-search]'), 'nothing here');
   await waitFor(() => document.querySelector('[data-testid=picker-no-models]') !== null);
@@ -261,7 +235,7 @@ test('the reasoning row names each level, sets the effort of the picked model, a
   expect(store.openThread?.effort).toBe('xhigh');
 });
 
-test('the picker opens on choices: the current provider\'s models checked, the other models in use, then every other provider', async ({ app: _app }) => {
+test('with a starred model the picker opens on its favorites; the arrows walk the tiles and rows, a letter goes to the search', async ({ app: _app }) => {
   vi.spyOn(store, 'favorites', 'get').mockReturnValue([
     { providerId: 'claude', accountId: 'a-claude-main', model: { id: 'claude-sonnet-5-5', name: 'Sonnet 5.5' }, items: [] }
   ]);
@@ -269,44 +243,41 @@ test('the picker opens on choices: the current provider\'s models checked, the o
   await waitFor(() => store.draft !== null);
   await waitFor(() => query('[data-testid=composer-picker]').textContent?.includes('Opus 5.5') === true);
 
-  query<HTMLButtonElement>('[data-testid=composer-picker]').click();
-  const short = () => [...document.querySelectorAll<HTMLElement>('[data-testid=picker-shortlist] .row.model')].map((row) => [row.dataset.testid, row.title]);
   const menu = '[data-testid=composer-picker-menu]';
-  // The current provider heads the sheet, open, its models all there and the current one checked.
-  await waitFor(() => document.querySelector(`${menu} [data-models-of=claude] [data-model=claude-opus-5-5]`) !== null);
-  expect(tiles()[0]).toBe('claude');
-  expect(query(`${menu} .tile[data-provider=claude]`).getAttribute('aria-expanded')).toBe('true');
-  expect(query(`${menu} [data-models-of=claude] .row.current`).dataset.model).toBe('claude-opus-5-5');
-  expect(query(`${menu} [data-models-of=claude] .row.current .mark svg`)).not.toBeNull();
-  expect(query(`${menu} [data-favorite-model=claude-sonnet-5-5]`).getAttribute('aria-pressed')).toBe('true');
-  // Then the other models in use, not those the open list shows, each naming its provider.
-  await waitFor(() => short().length === 1);
-  expect(short()).toEqual([['recent-model', 'echo-1']]);
-  expect(query('[data-testid=picker-shortlist] .row .sub').textContent).toBe(store.providerOf('echo')!.name);
-  // Then every other provider as a row with its chevron, no door before them.
-  expect([...document.querySelectorAll(`${menu} .rest-label`)].map((label) => label.textContent)).toEqual([strings.composer.recentModels, strings.composer.otherProviders]);
-  expect(tiles()).toContain('echo');
-  expect(tiles()).not.toContain('home');
-  expect(document.querySelector('[data-testid=picker-all-models], [data-testid=picker-back]')).toBeNull();
-  expect(query(`${menu} .tile[data-provider=echo] .chevron`)).not.toBeNull();
-  // The menu picks a model and nothing else: the effort and the permission are chips beside it.
-  expect(document.querySelector(`${menu} [data-testid=composer-effort], ${menu} [data-testid=composer-mode], [data-testid=composer-picker-more]`)).toBeNull();
-  // The keys start in the search field, and the arrows go down into the rows under it.
-  expect(document.activeElement).toBe(query('[data-testid=picker-search]'));
+  query<HTMLButtonElement>('[data-testid=composer-picker]').click();
+  await menuLoaded();
+  // The favorites tile is first in the rail and the one shown: its column lists the stars.
+  expect(tiles()[0]).toBe('favorites');
+  expect(query(`${menu} .tile.current`).dataset.provider).toBe('favorites');
+  expect(query(`${menu} .provider-name`).textContent).toBe(strings.composer.favorites);
+  await waitFor(() => document.querySelectorAll('[data-testid=favorite-model]').length === 1);
+  expect(query('[data-testid=favorite-model]').title).toBe('claude-sonnet-5-5');
+
+  // The arrows walk the tiles first, then the rows beside them.
+  query<HTMLElement>(menu).focus();
+  press('ArrowDown');
+  expect(document.activeElement).toBe(query(`${menu} .tile[data-provider=favorites]`));
   press('ArrowDown');
   expect(document.activeElement).toBe(query(`${menu} .tile[data-provider=claude]`));
 
-  // Another provider opens in place and the first folds: its models in use come back to the list, the current one checked.
-  query<HTMLButtonElement>(`${menu} .tile[data-provider=echo]`).click();
-  await waitFor(() => document.querySelector(`${menu} [data-models-of=echo]`) !== null);
-  expect(query(`${menu} .tile[data-provider=claude]`).getAttribute('aria-expanded')).toBe('false');
-  await waitFor(() => short().length === 2);
-  expect(short()).toEqual([['recent-model', 'claude-opus-5-5'], ['favorite-model', 'claude-sonnet-5-5']]);
-  expect(query('[data-testid=picker-shortlist] .row.current .mark svg')).not.toBeNull();
-  expect(query('[data-testid=picker-shortlist] .row.current .sub').textContent).toBe('Claude');
+  // A provider tile shows its column; the search field takes the caret, the arrows go down into the models.
+  query<HTMLButtonElement>(`${menu} .tile[data-provider=claude]`).click();
+  await waitFor(() => shownModels().length === 3);
+  await waitFor(() => document.activeElement === document.querySelector('[data-testid=picker-search]'));
+  press('ArrowDown');
+  expect((document.activeElement as HTMLElement).getAttribute('data-model')).toBe('claude-fable-5-1');
+  expect(query(`${menu} .row.current`).dataset.model).toBe('claude-opus-5-5');
+  // A letter typed on a row goes to the search field.
+  press('s');
+  expect(document.activeElement).toBe(query('[data-testid=picker-search]'));
+  press('Escape');
+  await waitFor(() => document.querySelector(menu) === null);
 
-  // One click on a row picks it and closes.
+  // One click on a favorite picks it and closes.
+  query<HTMLButtonElement>('[data-testid=composer-picker]').click();
+  await menuLoaded();
+  await waitFor(() => document.querySelector('[data-testid=favorite-model]') !== null);
   query<HTMLButtonElement>('[data-testid=favorite-model]').click();
-  await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') === null);
+  await waitFor(() => document.querySelector(menu) === null);
   expect(query('[data-testid=composer-picker]').textContent).toContain('Sonnet 5.5');
 });

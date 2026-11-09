@@ -9,14 +9,15 @@ export const screensSettled = `!document.getAnimations().some(animation => /^(sc
 /** From a conversation, which hides the bottom bar, Back leads to the list that shows it. */
 export async function toMobileList(page: BrowserPage): Promise<void> {
   if (await page.evaluate(`!!document.querySelector('[data-testid=mobile-tabs]')`)) return;
-  await page.click('[data-testid=mobile-back]');
+  // Settings is a page over a list: its arrow leads back there.
+  await page.click(await page.evaluate(`!!document.querySelector('[data-testid=mobile-settings-leave]')`) ? '[data-testid=mobile-settings-leave]' : '[data-testid=mobile-back]');
   await page.waitFor(`document.querySelector('[data-testid=mobile-tabs]')`);
 }
 
-/** Navigate through the phone's bottom bar, from a conversation too. */
+/** Navigate through the phone's bottom bar, from a conversation too; Settings is the list header's gear. */
 export async function mobileAction(page: BrowserPage, destination: string): Promise<void> {
   await toMobileList(page);
-  await page.click(`[data-testid=mobile-tabs] [data-testid=${destination}]`);
+  await page.click(destination === 'mobile-settings' ? '[data-testid=mobile-settings]' : `[data-testid=mobile-tabs] [data-testid=${destination}]`);
 }
 
 /** A new draft from the bottom bar's +. */

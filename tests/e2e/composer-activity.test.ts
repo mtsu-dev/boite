@@ -226,7 +226,7 @@ test('new questions keep the oldest open and the last answer readable on desktop
     await store.client.call('questions.ask', { threadId: store.openThread.id, text: 'Which checks should run afterwards?', options: ['Unit tests', 'Browser tests'] });
   })()`);
   await page.waitFor(`document.querySelector('${id('activity-questions')}').dataset.count === '3'`);
-  const lastAboveDock = `(() => { const messages = document.querySelectorAll('[data-mid]'); const last = messages[messages.length-1].getBoundingClientRect(); const activity = document.querySelector('${id('thread-activity')}').getBoundingClientRect(); return last.bottom <= activity.top; })()`;
+  const lastAboveDock = `(() => { const messages = document.querySelectorAll('[data-mid]'); const last = messages[messages.length-1].getBoundingClientRect(); const activity = document.querySelector('${id('thread-decision')}').getBoundingClientRect(); return last.bottom <= activity.top; })()`;
   for (const phone of [false, true]) {
     await size(phone);
     expect(await page.evaluate(`document.querySelector('${visibleQuestion}').dataset.question`)).toBe(oldest);

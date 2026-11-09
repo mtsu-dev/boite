@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Bot, Contact, Inbox, MessageSquare, Settings } from '@lucide/svelte';
+  import { Bot, Contact, Inbox, MessageSquare } from '@lucide/svelte';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
   import { experimentOn } from '../lib/experiments.svelte';
@@ -12,9 +12,11 @@
    * The phone's places, along the bottom edge where a thumb rests, the
    * desktop rail's in the same order. A new conversation is the list header's
    * "+". A conversation, a draft and an open keyboard hide the bar; the list's
-   * header names the machine. Four places: with the bots on, Contacts lives
-   * in the Bots tab, behind the two-way switch at the top of its page
-   * (MobileNavigation.svelte), so the tab stands for both.
+   * header names the machine. Three places, spread evenly: Threads, Activity
+   * and Bots. With the bots on, Contacts lives in the Bots tab, behind the
+   * two-way switch at the top of its page (MobileNavigation.svelte), so the
+   * tab stands for both. Settings is the header's gear, a page with its way
+   * back, not a place.
    */
   let { store, screen, waiting, navigate, inert = false }: {
     store: Store;
@@ -26,7 +28,7 @@
     inert?: boolean;
   } = $props();
   const bots = $derived(experimentOn('resident-agents'));
-  const current = $derived(store.page === 'settings' ? 'settings' : store.page === 'agents' || (bots && store.page === 'home') ? 'agents' : store.page === 'home' ? 'contacts' : screen === 'activity' ? 'activity' : 'threads');
+  const current = $derived(store.page === 'agents' || (bots && store.page === 'home') ? 'agents' : store.page === 'home' ? 'contacts' : screen === 'activity' ? 'activity' : 'threads');
   const page = (place: string) => current === place ? 'page' as const : undefined;
 
   /** The bots at work on every machine, as the desktop's switch counts them: the waiting colour once one needs the user. */
@@ -52,9 +54,6 @@
       <span class="glyph"><Contact size={20} /></span><span class="name ui-label">{strings.contacts.heading}</span>
     </button>
   {/if}
-  <button type="button" class="tab" data-testid="mobile-settings" data-preload-view="settings" aria-current={page('settings')} onclick={() => store.showSettings()}>
-    <span class="glyph"><Settings size={20} /></span><span class="name ui-label">{strings.settings.heading}</span>
-  </button>
 </nav>
 
 <style>

@@ -82,8 +82,9 @@
   const answers = $derived(docked && options.length > 0);
 
   /**
-   * The docked choices get a room from the dock's budget (a CSS max-height,
-   * from the viewport, never from the card's animated height). Whole rows
+   * The docked choices get a room: in the timeline, its height less what the
+   * decision holds besides them, so the whole card stands above the composer;
+   * elsewhere a CSS max-height, never the card's animated height. Whole rows
    * only: when they do not all fit, the list stops under the last row that
    * does and a line counts the rest. Settled before the card arrives, so its
    * growth never reflows the count, and the end frame is the reduced-motion one.
@@ -96,10 +97,22 @@
     const top = list.getBoundingClientRect().top - list.scrollTop;
     return Array.from(list.children).map((row) => row.getBoundingClientRect().bottom - top);
   }
+  /** The count line and its gap, kept free in case the rows do not all fit. */
+  const MORE_LINE = 36;
+  function roomOf(node: HTMLElement): number {
+    const cap = parseFloat(getComputedStyle(node).maxHeight);
+    const root = node.closest<HTMLElement>('[data-scroll-root]');
+    const card = node.closest<HTMLElement>('[data-testid=thread-decision]');
+    if (!root?.clientHeight || !card) return cap;
+    // scrollHeight counts the card whole while its arrival still squeezes it.
+    const around = card.scrollHeight - node.clientHeight + MORE_LINE + 24;
+    const room = Math.max(96, root.clientHeight - around);
+    return Number.isFinite(cap) ? Math.min(cap, room) : room;
+  }
   function fit(): void {
     if (!list || !docked) return;
     list.style.maxHeight = '';
-    const room = parseFloat(getComputedStyle(list).maxHeight);
+    const room = roomOf(list);
     const rows = ends();
     if (!Number.isFinite(room) || (rows.at(-1) ?? 0) <= room + 1) { below = 0; return; }
     const whole = rows.filter((end) => end <= room + 1);
@@ -115,10 +128,17 @@
   $effect(() => {
     void options.length;
     if (!list || !docked || typeof ResizeObserver !== 'function') return;
-    // A new width rewraps the rows; a new height changes the room.
-    let width = list.clientWidth;
-    const watch = new ResizeObserver(() => { if (list && list.clientWidth !== width) { width = list.clientWidth; fit(); } });
+    // A new width rewraps the rows; a new timeline height changes the room.
+    const root = list.closest<HTMLElement>('[data-scroll-root]');
+    let width = list.clientWidth, height = root?.clientHeight ?? 0;
+    const watch = new ResizeObserver(() => {
+      if (!list) return;
+      const now = root?.clientHeight ?? 0;
+      if (list.clientWidth === width && now === height) return;
+      width = list.clientWidth; height = now; fit();
+    });
     watch.observe(list);
+    if (root) watch.observe(root);
     fit();
     return () => watch.disconnect();
   });
@@ -324,14 +344,13 @@
     padding: 10px var(--dock-inset, 10px);
     gap: 8px;
   }
-  /* The choices take the room the dock's budget gives them (`fit`), in whole
+  /* The choices take the room the timeline leaves them (`fit`), in whole
      rows, and the rest scroll in place. The edge fades and a line counts the rest. */
   .question.docked > :global(*) { flex: none; }
-  /* Pressed under its budget (the composer's cap, a queued line, a second
-     line of chips), the choices alone give way, down to one row, and scroll:
-     the question over them and the pair under them stay whole. */
+  /* Pressed under its room, the choices alone give way and scroll: the
+     question over them and the pair under them stay whole. */
   .question.docked { min-height: 0; }
-  .question.docked > .options { flex: 0 1 auto; min-height: calc(var(--touch-target) + 4px); overflow-y: auto; overscroll-behavior: contain; max-height: max(120px, calc(var(--dock-budget, 55dvh) - 230px - var(--deck-room, 0px))); }
+  .question.docked > .options { flex: 0 1 auto; min-height: calc(var(--touch-target) + 4px); overflow-y: auto; overscroll-behavior: contain; }
   /* A list that runs past its edge fades it, whether the budget or a tighter cap cut it (app.css `.scroll-edges`). */
   .docked .options { --scroll-edge-ground: var(--decision-fill, var(--color-composer-surface)); }
   .docked .options.scroll-edges::before { margin-bottom: calc(-1 * var(--scroll-edge) - 2px); }
@@ -341,12 +360,7 @@
   .docked .prompt { display: block; min-width: 0; padding-block: calc((var(--dock-row, var(--control)) - 20px) / 2); font-weight: inherit; }
   .docked .prompt.folded { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   @media (max-width: 720px) {
-    /* A phone gives the choices what the card's budget leaves once the
-       head, the field and the bar are counted (`--dock-cap`). */
     .question.docked { padding: 8px var(--dock-inset, 8px); gap: 4px; }
-    /* What the card holds besides the choices stays in view: its padding,
-       the head, the count line, the Answer row and the deck's inset. */
-    .question.docked > .options { max-height: max(96px, calc(var(--dock-cap, 30dvh) - 146px)); }
   }
   /* An action, not a caption: the words in ink, underlined like a link, the chevron saying the list goes on below. */
   .more { align-self: flex-start; gap: 4px; height: 28px; padding: 0 8px; color: var(--color-foreground); font-size: var(--text-sm); font-weight: 550; }

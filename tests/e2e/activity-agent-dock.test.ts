@@ -69,14 +69,14 @@ test('the task band stacks above the subagent bar, folded and open, on desktop a
   expect(withNotice.gap).toBeGreaterThanOrEqual(0);
   expect(withNotice.barOnTop).toBe(true);
   await page.evaluate(`import('/src/lib/store.svelte.ts').then(({store}) => { store.openThread.retry = null; })`);
-  // Queued prompts make room for the band inside the composer: it stays under them, the bar above them all.
+  // Queued prompts are rows above the composer card; the bar and the band stay inside it, in that order.
   await page.evaluate(`globalThis.__boiteTest.workspace.active.composerStates['t-trace'] = { text: '', attachments: [], queued: [{ text: 'Check the review once the subagent is back', attachments: [] }], paused: true, sending: false }`);
-  await page.waitFor(`(() => { const band = document.querySelector('${id('thread-activity')}'); return band.offsetHeight > 0 && parseFloat(document.querySelector('.queue-region').style.paddingBottom) === band.offsetHeight; })()`);
+  await page.waitFor(`document.querySelector('${id('composer-queued')}') && document.querySelector('${id('thread-activity')}').offsetHeight > 0`);
   await settle();
   const stack = await page.evaluate<{ order: boolean; barOnTop: boolean }>(`(() => {
     const [bar, queue, band, composer] = ['${id('active-subagents')}', '${id('composer-queued')}', '${id('thread-activity')}', '${id('composer')}'].map(selector => document.querySelector(selector).getBoundingClientRect());
     const covering = document.elementFromPoint(bar.left + bar.width / 2, bar.top + bar.height / 2);
-    return { order: bar.bottom <= queue.top && queue.bottom <= band.top && band.bottom <= composer.top, barOnTop: !!covering?.closest('${id('agent-dock')}') };
+    return { order: queue.bottom <= composer.top && bar.bottom <= band.top && band.bottom <= composer.bottom, barOnTop: !!covering?.closest('${id('agent-dock')}') };
   })()`);
   await page.screenshot(join(import.meta.dir, '.artifacts', 'activity-agent-dock-queued-desktop.png'));
   expect(stack).toEqual({ order: true, barOnTop: true });

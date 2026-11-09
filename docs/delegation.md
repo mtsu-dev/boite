@@ -132,14 +132,14 @@ A parent's row in the sidebar, the Recent list and the phone's list carries a
 chip with the number of its subagents at work, in every state of the parent.
 When a child asks the user something or waits on a permission, the chip takes
 the waiting colour and the parent reads Needs you, unless the parent itself
-failed. The parent's question dock shows each such child's question, "Asked by"
+failed. The parent's decision card, at the end of its timeline, shows each such child's question, "Asked by"
 its title, with its options and an Open button that goes to the child's
 conversation; a permission gets a row with the tool it asks for and Open, since
 it is approved in the child's conversation only. Text typed in the parent's
 composer never answers a child's question: it stays a message to the parent,
 and a written answer goes through Open. The core sends a child's `question.*`
 and `permission.*` events to the windows that have its parent open, and the
-dock reads the children's open cards when the parent opens.
+card reads the children's open questions when the parent opens.
 
 Messages carry the authenticated sender and appear as forwarded messages.
 Claude receives them at a tool boundary; Codex, Muse, pi and Grok can accept

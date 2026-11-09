@@ -82,7 +82,7 @@ test('desktop and paired phone replace an edited message and silently skip a que
       expect(await page.evaluate('document.querySelector("[data-testid=activity-question] [data-testid=question-reply-hint], [data-testid=activity-question] [data-testid=question-submit]")')).toBeNull();
       expect(await page.evaluate('document.querySelector("[data-testid=composer-picker]")')).toBeNull();
       expect((await page.text(send)).trim()).toBe('Envoyer la réponse');
-      expect(await page.evaluate('(() => { const dock = document.querySelector("[data-testid=thread-activity]").getBoundingClientRect(); const field = document.querySelector("[data-testid=composer]").getBoundingClientRect(); return dock.top >= field.top && dock.bottom <= field.bottom && document.documentElement.scrollWidth <= innerWidth; })()')).toBe(true);
+      expect(await page.evaluate('(() => { const card = document.querySelector("[data-testid=thread-decision]").getBoundingClientRect(); const field = document.querySelector("[data-testid=composer]").getBoundingClientRect(); return card.bottom <= field.top && document.documentElement.scrollWidth <= innerWidth; })()')).toBe(true);
       await capture(page, `question-answer-${mobile ? 'phone' : 'desktop'}.png`);
       const clip = await page.evaluate<{ x: number; y: number; width: number; height: number; scale: number }>('(() => { const r = document.querySelector("[data-testid=composer]").getBoundingClientRect(); return {x:r.x, y:r.y, width:r.width, height:r.height, scale:1}; })()');
       const detail = await page.send('Page.captureScreenshot', { format: 'png', clip }) as { data: string };

@@ -6,7 +6,7 @@
   import { strings } from '../lib/strings';
   import { contextPercent, contextLevel } from '../lib/tokens';
   import { Closing } from '../lib/closing.svelte';
-  import { contextPopup } from '../lib/composer-dock';
+  import { contextPopup } from '../lib/idle-parts';
   import { experimentOn } from '../lib/experiments.svelte';
   import { cacheSpan, promptCacheState, PROMPT_CACHE_TICK_MS } from '../lib/prompt-cache';
   /**

@@ -1,14 +1,12 @@
 <script lang="ts">
-  import { Check, ChevronDown, UserRound } from '@lucide/svelte';
   import type { Account, ProviderSummary } from '@boite/contracts';
   import { strings } from '../lib/strings';
   import { accountName } from '../lib/account-name';
   import type { Choice } from '../lib/store.svelte';
 
   /**
-   * The accounts of the provider the model picker shows, as a small dropdown
-   * beside its name: the account shown, and under it the others when opened.
-   * Only drawn when there is more than one to pick from.
+   * The accounts of the provider the model picker shows, as a segmented control
+   * under its name. Only drawn when there is more than one to pick from.
    */
   let {
     shown,
@@ -17,7 +15,6 @@
     choice,
     locked,
     busy = false,
-    start = false,
     onpick
   }: {
     shown: ProviderSummary | null;
@@ -26,8 +23,6 @@
     choice: Choice | null;
     locked: boolean;
     busy?: boolean;
-    /** Alone on its line, under the source button that names the provider: a person mark says it is the login, and the list opens from the left. */
-    start?: boolean;
     /** A seat that can be taken and is not the choice already. */
     onpick: (seat: Account) => void;
   } = $props();
@@ -58,118 +53,81 @@
 
   function pickSeat(seat: Account) {
     if (!shown || seatOff(seat)) return;
-    open = false;
     if (choice?.providerId === shown.id && choice.accountId === seat.id) return;
     onpick(seat);
   }
-
-  let open = $state(false);
-  let root = $state<HTMLDivElement>();
-  let current = $derived(seats.find((seat) => seat.id === shownAccountId) ?? seats[0]);
-  function outside(event: PointerEvent) {
-    if (open && root && !root.contains(event.target as Node)) open = false;
-  }
 </script>
 
-<svelte:window onpointerdown={outside} />
-
 {#if seats.length > 1}
-  <div class="seats" class:start bind:this={root} aria-busy={busy}>
-    <button type="button" class="current" data-testid="picker-account" aria-haspopup="true" aria-expanded={open} title={strings.accounts.heading} onclick={() => (open = !open)}>
-      {#if start}<UserRound size={14} strokeWidth={2} />{/if}<span class="ui-label">{current ? accountName(current) : ''}</span><ChevronDown size={12} strokeWidth={2} />
-    </button>
-    <!-- Kept in the page while closed, so the list is the same nodes when it opens. -->
-    <div class="list" role="group" aria-label={strings.accounts.heading} hidden={!open}>
-      {#each seats as seat (seat.id)}
-        <button
-          type="button"
-          class="seat"
-          disabled={busy || seatOff(seat)}
-          data-seat
-          data-instance="{shown?.id}::{seat.id}"
-          aria-pressed={seat.id === shownAccountId}
-          title={seatTitle(seat)}
-          onclick={() => pickSeat(seat)}
-        >
-          <span class="mark" aria-hidden="true">{#if seat.id === shownAccountId}<Check size={14} />{/if}</span>
-          <span class="ui-label">{accountName(seat)}</span>
-        </button>
-      {/each}
-    </div>
+  <div class="seats" role="group" aria-label={strings.accounts.heading} aria-busy={busy}>
+    {#each seats as seat (seat.id)}
+      <button
+        type="button"
+        class="seat"
+        disabled={busy || seatOff(seat)}
+        data-seat
+        data-instance="{shown?.id}::{seat.id}"
+        aria-pressed={seat.id === shownAccountId}
+        title={seatTitle(seat)}
+        onclick={() => pickSeat(seat)}
+      >
+        <span class="ui-label">{accountName(seat)}</span>
+      </button>
+    {/each}
   </div>
 {/if}
 
 <style>
-  .seats { position: relative; flex: none; min-width: 0; max-width: 50%; }
-  /* Alone on its line, the login reads whole: an address is longer than a label. */
-  .seats.start { max-width: 100%; }
-
-  .current {
+  .seats {
     display: flex;
-    align-items: center;
-    gap: 4px;
+    gap: 2px;
+    align-self: flex-start;
+    flex-shrink: 0;
     max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 2px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+    min-width: 0;
+  }
+
+  .seat {
     height: var(--control-sm);
-    padding: 0 6px 0 8px;
+    min-height: var(--control-sm);
+    flex-shrink: 0;
+    max-width: 150px;
+    padding: 0 7px;
     border: none;
     border-radius: var(--radius-sm);
     background: transparent;
     color: var(--color-muted-foreground);
     font-size: var(--text-sm);
     font-weight: 500;
-  }
-  .current :global(svg) { flex: none; }
-  .start .current { padding-left: var(--overlay-row-pad); gap: 8px; }
-  .start .list:not([hidden]) { right: auto; left: 0; }
-  .current > .ui-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .current:hover, .current[aria-expanded='true'] { background: var(--color-hover); color: var(--color-foreground); }
-
-  .list:not([hidden]) {
-    position: absolute;
-    top: calc(100% + 4px);
-    right: 0;
-    z-index: 4;
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-    min-width: 140px;
-    max-width: 280px;
-    padding: var(--overlay-pad);
-    /* Every menu's one edge, radius and shadow. */
-    border: 1px solid var(--overlay-edge);
-    border-radius: var(--radius-overlay);
-    background: var(--overlay-surface);
-    box-shadow: var(--shadow-overlay);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
+    transition:
+      background var(--dur-2) var(--ease-out-quint),
+      color var(--dur-2) var(--ease-out-quint);
   }
 
-  .seat {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
-    height: var(--overlay-row);
-    padding: 0 var(--overlay-row-pad);
-    border: none;
-    border-radius: var(--radius-overlay-row);
-    background: transparent;
-    color: var(--color-muted-foreground);
-    font-size: var(--text-sm);
-    font-weight: 500;
-    text-align: left;
-  }
-
-  .seat:hover:not(:disabled),
   .seat:focus-visible {
-    background: var(--color-hover);
+    background: var(--color-surface-3);
     color: var(--color-foreground);
   }
+  @media (hover: hover) {
+    .seat:hover:not(:disabled) { background: var(--color-surface-3); color: var(--color-foreground); }
+  }
 
-  .seat[aria-pressed='true'] { color: var(--color-foreground); }
-  .seat > .ui-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  /* The current login's check, every menu's one mark. */
-  .mark { display: inline-flex; flex: none; width: 14px; color: var(--color-accent); }
+  .seat[aria-pressed='true'] {
+    background: var(--color-surface-3);
+    color: var(--color-foreground);
+    box-shadow: var(--shadow-e1);
+  }
 
   @media (max-width: 720px) {
-    .current, .seat { height: var(--touch-target); }
+    .seat { height: var(--touch-target); min-height: var(--touch-target); }
   }
 </style>

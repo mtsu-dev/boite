@@ -29,13 +29,6 @@ async function waitFor(check: () => boolean): Promise<void> {
   throw new Error(`gave up waiting, body was:\n${document.body.textContent ?? ''}`);
 }
 
-/** The picker opens on the chip's own provider with its models open under its row. */
-async function allModels(): Promise<void> {
-  await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null);
-  const providerId = store.openThread?.providerId ?? store.draftChoice?.providerId ?? store.defaultChoice()?.providerId;
-  await waitFor(() => document.querySelector(`[data-testid=composer-picker-menu] [data-models-of="${providerId}"]`) !== null);
-}
-
 function deferred(): { promise: Promise<void>; resolve: () => void } {
   let resolve!: () => void;
   const promise = new Promise<void>((done) => { resolve = done; });
@@ -82,7 +75,6 @@ test('a column of hundreds of models draws its first rows until asked for all', 
   await waitFor(() => store.draft !== null);
   document.querySelector<HTMLButtonElement>('[data-testid=composer-picker]')!.click();
   await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null);
-  await allModels();
   document.querySelector<HTMLButtonElement>('[data-testid=composer-picker-menu] [data-provider=opencode]')!.click();
   await waitFor(() => document.querySelector('[data-testid=picker-search]') !== null && showAll() !== null && rows() > 0);
 
@@ -119,7 +111,6 @@ test('a short gateway catalog identifies each upstream provider, including after
   vi.spyOn(store, 'modelsOf').mockImplementation((providerId, accountId) => providerId === 'opencode' ? models : real(providerId, accountId));
   document.querySelector<HTMLButtonElement>('[data-testid=composer-picker]')!.click();
   await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null);
-  await allModels();
   document.querySelector<HTMLButtonElement>('[data-testid=composer-picker-menu] [data-provider=opencode]')!.click();
   await waitFor(() => rows() === 3);
   const sources = () => [...document.querySelectorAll<HTMLElement>('[data-group]')].map(el => el.dataset.group);
@@ -130,17 +121,11 @@ test('a short gateway catalog identifies each upstream provider, including after
   await waitFor(() => rows() === 2);
   expect(sources()).toEqual(['douane/opencode', 'douane/openrouter']);
   expect(document.querySelector<HTMLButtonElement>(`[data-model="${models[1]!.id}"]`)!.title).toBe(models[1]!.id);
-  // Back on another provider, the two starred models read under Recent, no back row over the list,
-  // each with its route beside the provider in the line under its name.
-  search.value = '';
-  search.dispatchEvent(new Event('input', { bubbles: true }));
-  await waitFor(() => document.querySelector('[data-testid=composer-picker-menu] .tile[data-provider=claude]') !== null);
-  document.querySelector<HTMLButtonElement>('[data-testid=composer-picker-menu] .tile[data-provider=claude]')!.click();
-  expect(document.querySelector('[data-testid=composer-picker-menu] .back-row')).toBeNull();
+  document.querySelector<HTMLButtonElement>('[data-provider=favorites]')!.click();
   await waitFor(() => document.querySelectorAll('[data-testid=favorite-model]').length >= 2);
   for (const [index, source] of ['douane/opencode', 'douane/openrouter'].entries()) {
     const favorite = document.querySelector<HTMLButtonElement>(`[data-testid=favorite-model][title="${models[index]!.id}"]`)!;
-    expect(favorite.querySelector('.sub')?.textContent).toContain(source);
+    expect(favorite.querySelector('.account-label')?.textContent).toBe(source);
   }
 });
 
@@ -164,7 +149,7 @@ test('a first probe shows a reading column, never the descriptor list it is abou
   const legacyFold = () => document.querySelector('[data-testid=picker-legacy]');
   const openClaude = async () => {
     document.querySelector<HTMLButtonElement>('[data-testid=composer-picker]')!.click();
-    await allModels();
+    await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null);
     document.querySelector<HTMLButtonElement>('[data-testid=composer-picker-menu] [data-provider=claude]')!.click();
   };
 
@@ -243,7 +228,6 @@ test('a model probe that resolves after navigation cannot update the next thread
   try {
     const update = vi.spyOn(store, 'update');
     document.querySelector<HTMLButtonElement>('[data-testid=composer-picker]')!.click();
-    await allModels();
     await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null && document.querySelector('[data-model="claude-opus-5-5"]') !== null);
     // Opening the picker started the held read; the click waits on it.
     now += 5 * 60_000 + 1;
@@ -293,7 +277,6 @@ test('a signed-in Claude seat is probed before its model and account are applied
 
   try {
     document.querySelector<HTMLButtonElement>('[data-testid=composer-picker]')!.click();
-    await allModels();
     await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null && document.querySelector('[data-instance="claude::a-claude-side"]') !== null);
     const seat = document.querySelector<HTMLButtonElement>('[data-instance="claude::a-claude-side"]')!;
     expect(seat.disabled).toBe(false);
@@ -323,10 +306,9 @@ test('a provider turned off leaves the picker, its favorites and the draft that 
   await mountAt('landing');
   const tiles = () => [...document.querySelectorAll('[data-testid=composer-picker-menu] .tile[data-provider]')]
     .map((tile) => tile.getAttribute('data-provider'))
-    .filter((id) => id !== 'home' && id !== 'more');
+    .filter((id) => id !== 'favorites' && id !== 'more');
   const trigger = () => document.querySelector<HTMLButtonElement>('[data-testid=composer-picker]')!;
   trigger().click();
-  await allModels();
   await waitFor(() => tiles().length > 1);
   const chosen = store.defaultChoice()!.providerId;
   const other = tiles().find((id) => id !== chosen)!;
@@ -370,7 +352,6 @@ test('a phone, which leaves provider administration to the desktop, offers no wa
   try {
     await mountAt('landing');
     document.querySelector<HTMLButtonElement>('[data-testid=composer-picker]')!.click();
-    await allModels();
     await waitFor(() => document.querySelectorAll('[data-testid=composer-picker-menu] .tile[data-provider]').length > 1);
     expect(document.querySelector('[data-testid=picker-more-providers]')).toBeNull();
   } finally {
@@ -401,7 +382,7 @@ test('a model the core already listed is picked at once, even while its list is 
 
   const probing = () => document.querySelector('[data-testid=composer-picker-menu] [data-testid=picker-probing]');
   document.querySelector<HTMLButtonElement>('[data-testid=composer-picker]')!.click();
-  await allModels();
+  await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null);
   document.querySelector<HTMLButtonElement>('[data-testid=composer-picker-menu] [data-provider=claude]')!.click();
   await waitFor(() => rows() > 0 && probing() === null);
 

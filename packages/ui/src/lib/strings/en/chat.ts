@@ -25,6 +25,9 @@ export const strings = {
     /** The jump button once something arrived below the reader. */
     newMessage: '1 new message',
     newMessages: '{count} new messages',
+    /** The strip's way back to a decision out of view at the timeline's end; several show the bare count. */
+    decisionWaiting: '1 decision waiting',
+    decisionsWaiting: '{count} decisions waiting',
     findPlaceholder: 'Find in thread',
     findNone: 'No match',
     findCount: '{at} of {total}',

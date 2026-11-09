@@ -6,7 +6,6 @@
   import { tick } from 'svelte';
   import { Closing } from '../lib/closing.svelte';
   import { floating } from '../lib/floating';
-  import { clearOfDecision } from '../lib/clear-of-decision';
   import { strings } from '../lib/strings';
   import SheetHead from './SheetHead.svelte';
 
@@ -59,7 +58,7 @@
   <button type="button" class="icon-button opener" bind:this={trigger} data-testid="composer-options" aria-label={strings.composer.options} title={strings.composer.options} aria-haspopup="menu" aria-expanded={panel.open} onclick={() => panel.open ? close() : void open()}><Plus size={16} strokeWidth={1.75} /></button>
   {#if panel.shown}
     <div class="options-menu" class:closing={panel.closing} bind:this={content} role="menu" tabindex="-1" aria-label={strings.composer.options} data-testid="composer-options-sheet" onkeydown={keydown}
-      use:panel.attach onanimationend={panel.end} use:floating={{ anchor: () => clearOfDecision(trigger, content), placement: 'top', dismiss: close }}>
+      use:panel.attach onanimationend={panel.end} use:floating={{ anchor: () => trigger ?? null, placement: 'top', dismiss: close }}>
       <SheetHead title={strings.composer.options} />
       {#if canAttach}
         <button class="row" role="menuitem" data-testid="composer-attach" onclick={() => run(onattach)}><Paperclip size={16} strokeWidth={1.75} /><span class="ui-label">{strings.composer.attach}</span></button>

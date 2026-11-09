@@ -148,7 +148,7 @@ test('archive and turn cancellation remove secret cards and their metadata', asy
   }
 });
 
-test('expired cards leave the dock even while disconnected', async ({ ready }) => {
+test('expired cards leave the decision card even while disconnected', async ({ ready }) => {
   const { store, client } = await ready({ delayMs: 0 });
   const asked = client.call('secrets.ask', { threadId: 't-trace', name: 'API_KEY', reason: 'fixture', requestId: 'secret-expiry' });
   asked.catch(() => undefined);

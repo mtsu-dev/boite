@@ -10,9 +10,12 @@ the phone itself in Termux.
 
 ## Settings on a phone
 
-The bottom bar opens Conversations, Activity and Settings, with a central
-`+` for a new thread. The Bots and Contacts experiments add their own tabs.
-The list's header opens the machine's connection settings and the project
+The bottom bar opens Threads and Activity; the Bots experiment adds Bots.
+Settings is a page, not a tab: the gear at the end of every list's header
+opens it, and its header's Back (or the system's back gesture) returns to the
+list it came from. With several machines, or while the link is down, the gear
+also wears the machine's dot and its name, and opens the machine settings.
+The thread list's header holds its `+` for a new thread and the project
 picker, whose last row adds a project for owner connections. A conversation
 hides the bottom bar; its header holds Back, which carries a mark while
 another thread waits on the user, the title menu and a Browser button. The thread

@@ -23,6 +23,9 @@
   import UserMessage from './UserMessage.svelte';
   import Deferred from './Deferred.svelte';
   import { parts } from '../lib/deferred-parts';
+  import { threadDecision } from '../lib/idle-parts';
+  import { decisionsWaiting } from '../lib/decision-tail.svelte';
+  import { repliesOf } from '../lib/question-reply.svelte';
   import { ListViewer } from '../lib/list-viewer.svelte';
   import AssistantMessage from './AssistantMessage.svelte';
   import FailedAttempts from './FailedAttempts.svelte';
@@ -73,6 +76,10 @@
   const cards = $derived(settledCards(store, threadId, timelineCards(store, threadId, messages)));
   /** An ask docked in the composer is the turn's status: the stream drops the running summary meanwhile, and its rows drop their own line for it. */
   const asking = $derived(asksDocked(store, threadId));
+  /** What the thread waits on, or the line of what was just given, closes its timeline (`ThreadDecision`). */
+  // Its own derived: state made while a derived runs is not tracked by that same derived.
+  const replies = $derived(repliesOf(store));
+  const tailed = $derived(store.openThread?.id === threadId && (decisionsWaiting(store, threadId) > 0 || (replies.receipt?.threadId === threadId && store.busy)));
   /** The turns of the thread this list shows, open or delegated. */
   const shownTurns = $derived(store.openThread?.id === threadId ? store.openThread.turns : store.delegationThread?.id === threadId ? store.delegationThread.turns : []);
   const grouped = $derived.by(() => groupTimeline(messages, threadId, shownTurns, mail, cards));
@@ -781,6 +788,7 @@
       {/each}
       {#if view.below > 0}<div class="spacer" data-testid="timeline-below" style="height: {view.below}px"></div>{/if}
       {#if store.loadingNewer}<p class="loading-older" data-testid="loading-newer">{strings.chat.loadingNewer}</p>{/if}
+      {#if tailed}<Deferred part={threadDecision}>{#snippet children(ThreadDecision)}<ThreadDecision {store} {threadId} />{/snippet}</Deferred>{/if}
       {#if pendingMove}<MoveMarker notice={pendingMove} pending />{/if}
       {#if closingShown && closing}<ThreadClosing text={closing} />{/if}
     </div>

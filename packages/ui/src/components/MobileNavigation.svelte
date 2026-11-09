@@ -4,7 +4,7 @@
   import WindowList from './WindowList.svelte';
   import MobileTabs from './MobileTabs.svelte';
   import ThreadHeader from './ThreadHeader.svelte';
-  import { ArrowLeft, ArrowUpDown, ChevronDown, Ellipsis, MessageSquare, Monitor, Plus, Search, X } from '@lucide/svelte';
+  import { ArrowLeft, ArrowUpDown, ChevronDown, Ellipsis, MessageSquare, Monitor, Plus, Search, Settings, X } from '@lucide/svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import MobileConnect from './MobileConnect.svelte';
   import type { Store } from '../lib/store.svelte';
@@ -91,7 +91,7 @@
   /** No AI yet and no thread open: the screen is the first run's, with nothing to go back to and no thread to name. */
   const firstRun = $derived(chatting && !store.openThread && needsAnAI(store));
   /** The bottom bar: on every list and page, the recovery screen too, not in a conversation nor in one a page opened. Only a phone's width draws it. */
-  $effect.pre(() => { tabbed = !chatting && !(store.page === 'agents' && mobileChrome.detail); });
+  $effect.pre(() => { tabbed = !chatting && store.page !== 'settings' && !(store.page === 'agents' && mobileChrome.detail); });
   /** What the header names: the page, or the list on screen; the thread list by its view, so Projects and Recent tell apart. */
   const title = $derived(store.page === 'settings' ? strings.settings.heading : store.page === 'agents' ? strings.agents.heading : store.page === 'home' ? strings.contacts.heading
     : recover ? 'Boite' : screen === 'activity' ? strings.mobile.activity : workspace.view === 'recent' ? strings.sidebar.recentView : strings.sidebar.projectsView);
@@ -192,6 +192,19 @@
     screen = 'chat';
   });
 
+  /*
+   * Settings is a page over the place it was opened from, not a place of its
+   * own: the header's arrow, and the phone's Back, return there.
+   */
+  let before: 'chat' | 'agents' | 'home' = 'chat';
+  $effect(() => { const page = store.page; if (page !== 'settings') before = page; });
+  function leaveSettings() {
+    if (before === 'agents') store.showAgents();
+    else if (before === 'home') store.showHome();
+    else store.showChat();
+  }
+  $effect(() => { if (narrow.current && store.page === 'settings' && !recover) return mobileOverlay(leaveSettings); });
+
   function show(next: typeof screen) {
     store.showChat();
     store.sidebarOpen = false;
@@ -275,6 +288,8 @@
   {#if chatting && !firstRun}
     <!-- The only way out of a conversation on a phone. A thread that waits elsewhere is in its name and the tab bar's count, not a dot on the arrow. -->
     <button class="ghost icon back" data-testid="mobile-back" aria-label={elsewhere ? `${strings.sidebar.threads}, ${fill(strings.mobile.waitingElsewhere, { count: String(elsewhere) })}` : strings.sidebar.threads} onclick={() => show('threads')}><ArrowLeft size={20} /></button>
+  {:else if store.page === 'settings' && !recover}
+    <button class="ghost icon back" data-testid="mobile-settings-leave" aria-label={strings.mobile.settingsLeave} title={strings.mobile.settingsLeave} onclick={leaveSettings}><ArrowLeft size={20} /></button>
   {:else if recover}
     <img class="brand-icon" src="./icons/icon.svg" alt="" width="30" height="30" />
   {/if}
@@ -297,7 +312,7 @@
       options={[{ id: 'projects', label: strings.sidebar.projectsView }, { id: 'recent', label: strings.sidebar.recentView }]} testid="mobile-view-switch" />{:else if botsAndContacts}<ViewSwitch size="title" label={strings.agents.heading} current={store.page === 'home' ? 'home' : 'agents'}
       onpick={id => id === 'home' ? store.showHome() : store.showAgents()} options={[{ id: 'agents', label: strings.agents.heading, testid: 'mobile-bots-view', preload: 'agents' }, { id: 'home', label: strings.contacts.heading, testid: 'mobile-contacts', preload: 'home' }]} />{:else}{title}{/if}</strong>{/if}
   </div>
-  {#if placeShown && !firstRun}{@render connection()}{/if}
+  {#if placeShown && !firstRun && !(tabbed && !recover)}{@render connection()}{/if}
   {#if threadViews}<span class="header-display"><DisplayOptions entries={groups} target={undefined} owner={store} prefix="mobile-" compact filters={filters} {atWork} onaddproject={store.owner ? addProject : undefined} /></span>{/if}
   {#if searchable}<button class="ghost icon" data-testid={lent?.searchTestid ?? 'mobile-search-open'} aria-label={lent?.searchLabel ?? strings.mobile.search} title={lent?.searchLabel ?? strings.mobile.search} onclick={() => searching = true}><Search size={20} /></button>{/if}
   {/if}
@@ -312,6 +327,13 @@
     {@const create = lent.create}
     {#if create.items}<Menu items={create.items} onpick={id => create.onpick(id)} label={create.label} placement="bottom" align="end" variant="ghost" testid={create.testid}><Plus size={20} /></Menu>
     {:else}<button class="ghost icon new" data-testid={create.testid} aria-label={create.label} title={create.label} onclick={() => create.onpick()}><Plus size={20} /></button>{/if}
+  {/if}
+  {#if tabbed && !recover && !(searching && searchable)}
+    <!-- Settings, a page with its way back: the gear closes every list's header. When the machine needs naming it wears
+         the machine's dot, so the views keep four finger squares beside them at 360 px, never a fifth on its own line. -->
+    {@const gear = placeShown ? `${strings.settings.heading}, ${place}` : strings.settings.heading}
+    <button class="ghost icon gear" data-testid="mobile-settings" data-preload-view="settings" aria-label={gear} title={gear}
+      onclick={() => store.showSettings(store.connection === 'ready' && !store.pairingRequired ? 'home' : 'machines')}><Settings size={20} />{#if placeShown}<span class="dot" class:ready={store.connection === 'ready'}></span>{/if}</button>
   {/if}
   <!-- The filters on, in words on a line of their own: the row above keeps the views, the machine and three squares. -->
   {#if threadViews && !chatting}<FilterChips entries={groups} owner={store} prefix="mobile-" compact {atWork} />{/if}
@@ -500,7 +522,8 @@
     .dot.ready { background: var(--color-success); }
     /* On the list's row: a finger's square, the monitor with its dot on the corner, like the desktop rail's machines. */
     .connection.icon { flex: none; justify-content: center; width: var(--touch-target); height: var(--touch-target); margin: 0; color: var(--color-muted-foreground); }
-    .connection.icon .dot { position: absolute; top: 9px; right: 8px; width: 7px; height: 7px; box-shadow: 0 0 0 2px var(--color-background); }
+    .gear { position: relative; }
+    :is(.connection.icon, .gear) .dot { position: absolute; top: 9px; right: 8px; width: 7px; height: 7px; box-shadow: 0 0 0 2px var(--color-background); }
     .identity { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; flex: 1; }
     /* The views never shrink under the squares beside them: the squares sit after the switch, never on it. */
     .identity:has(:global(.view-switch)) { flex: 1 0 auto; }
