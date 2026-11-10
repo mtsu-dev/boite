@@ -19,7 +19,7 @@
 import { appendFileSync } from 'node:fs';
 import { instructionsOf } from './history.ts';
 
-const DIRECTIVE = /\[(agents|tool|thought|usage|slow|crash|ask|select|input|editor|retry|giveup|deaf|noclear|notify|timeout|compacted|swapped|taken)\]/g;
+const DIRECTIVE = /\[(agents|tool|thought|usage|slow|crash|splitcrash|ask|select|input|editor|retry|giveup|deaf|noclear|notify|timeout|compacted|swapped|taken)\]/g;
 const CHUNKS = 3;
 
 /**
@@ -39,6 +39,7 @@ type Directive =
   | 'usage'
   | 'slow'
   | 'crash'
+  | 'splitcrash'
   | 'ask'
   | 'select'
   | 'input'
@@ -365,6 +366,16 @@ async function runPrompt(text: string): Promise<void> {
           process.exit(3);
         }, 20);
         // The exit is what the client sees; this promise never settles.
+        await new Promise<void>(() => undefined);
+        break;
+      case 'splitcrash':
+        // One stderr line written in two chunks, as a pipe may hand it over.
+        process.stderr.write('half of a ');
+        setTimeout(() => {
+          process.stderr.write('line
+');
+          setTimeout(() => process.exit(3), 20);
+        }, 30);
         await new Promise<void>(() => undefined);
         break;
       case 'deaf':
