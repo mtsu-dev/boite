@@ -238,6 +238,8 @@ export const DEVICE_METHODS: ReadonlySet<RpcMethodName> = new Set<RpcMethodName>
   'subscriptionProxy.setEnabled',
   'settings.get',
   'keybindings.get',
+  // A phone draws the plugin interfaces the owner installed and granted `ui`, as the desktop does: their code, no path or token.
+  'plugins.ui',
 ]);
 
 /** Push events must not bypass the read permissions enforced on RPC calls. */
@@ -275,6 +277,7 @@ export const DEVICE_EVENTS: ReadonlySet<RpcEventName> = new Set<RpcEventName>([
   'teams.changed', // A team's id and version only; the device reads it again with teams.list.
   'council.changed', // A council's ids and version only; the device reads it again with council.get.
   'providers.updated', 'providers.installProgress', 'providers.probed',
+  'plugins.uiUpdated', // A digest only; the device reads the interfaces again with plugins.ui.
 ]);
 
 /** The server also checks the thread or project scope of these agent events. */

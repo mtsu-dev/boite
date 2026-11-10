@@ -65,6 +65,7 @@ export const fr: Translation = {
       'threads.write': 'Lance et arrête des tours',
       todos: 'Tableaux de projet',
       'ui.reveal': 'Affiche un fil',
+      ui: "Modifie l'interface de Boite",
     },
     appRunning: 'En marche',
     appStarting: 'Redémarrage',

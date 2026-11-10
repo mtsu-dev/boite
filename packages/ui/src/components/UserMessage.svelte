@@ -14,6 +14,7 @@
   import MessageReceipts from './MessageReceipts.svelte';
   import MoveMarker from './MoveMarker.svelte';
   import Deferred, { parts } from './Deferred.svelte';
+  import { workspace } from '../lib/workspace.svelte';
 
   /**
    * A prompt in the timeline: its bubble, the pictures and files it was sent
@@ -212,7 +213,8 @@
   {/if}
 </div>
 {#if viewing}{@const view = viewing}<Deferred part={parts.ImageViewer} floating>{#snippet children(ImageViewer)}<ImageViewer items={view.items} index={view.index} onclose={() => viewing = null} />{/snippet}</Deferred>{/if}
-<MessageReceipts text={copyText} at={message.createdAt} {edit} {accepted} {responded} agent={!!startedBy} />
+<MessageReceipts text={copyText} at={message.createdAt} {edit} {accepted} {responded} agent={!!startedBy}
+  plugin={store === workspace.primary ? { threadId: message.threadId, messageId: message.id, role: 'user' } : undefined} />
 
 <style>
   .text-omitted { margin: 4px 0 0; font-size: var(--text-xs); color: var(--color-muted-foreground); }

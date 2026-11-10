@@ -22,7 +22,7 @@
  */
 
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
-import { chmod, rename, rm, writeFile } from 'node:fs/promises';
+import { chmod, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { PLUGIN_MANIFEST_FILE, sameRepository } from '@boite/contracts';
 import type { PluginArtifact, PluginCommandResult, PluginManifest, PluginPool, PluginPreview, PluginRejected, PluginSource, PluginState, RpcParams } from '@boite/contracts';
@@ -52,13 +52,14 @@ import {
 import { PluginApps, appEnv, type AppProgram } from './plugins/apps.ts';
 import { PluginRuns, commandOwner, commandRequest, nameClash } from './plugins/runs.ts';
 import { PluginAccounts } from './plugins/accounts.ts';
-import { INSTALLED_FILE, devManifest, readDevFolder, readRecord, recommendedPlugins, recommendedUpdates, removeTree, verifyPluginDownload, type Installed, type Origin } from './plugins/record.ts';
+import { INSTALLED_FILE, devManifest, readDevFolder, readRecord, recommendedPlugins, recommendedUpdates, recordText, removeTree, writeRecord, verifyPluginDownload, type Installed, type Origin } from './plugins/record.ts';
 import { PluginTokens } from './plugins/tokens.ts';
 import { DOUANE_PLUGIN, PluginGateways } from './plugins/gateway.ts';
 import { prepareLocalProxyKey } from './subscription-proxy-auth.ts';
 import { recoverActivation, switchRelease, type Activation } from './plugins/activation.ts';
 import { PluginLanes } from './plugins/lanes.ts';
-import { fetchManifest, readSource } from './plugins/source.ts';
+import { fetchManifest, prunePreviews, readSource } from './plugins/source.ts';
+import { PluginInterfaces, checkDevUi, commitWithUi, previewUi, uiAtCommit, type UiTexts } from './plugins/ui.ts';
 import { PluginUpdateChecks, compareVersions, type UpdateSource } from './plugins/updates.ts';
 
 const DOWNLOAD_MAX_BYTES = 64 * 1024 * 1024;
@@ -95,6 +96,8 @@ interface Job {
 interface Pending {
   manifest: PluginManifest;
   source: PluginSource;
+  /** The `provides.ui` files read at the previewed commit, or null. */
+  ui: UiTexts | null;
 }
 
 export { parsePluginPool, recommendedPlugins, recommendedUpdates, verifyPluginDownload } from './plugins/record.ts';
@@ -133,6 +136,8 @@ export class PluginStore {
 
   /** The desktop apps plugins provide: started, stopped and relaunched here. */
   readonly apps: PluginApps;
+  /** The interfaces clients load (`plugins.ui`), announced when they move. */
+  readonly interfaces: PluginInterfaces;
   /** The gateways plugins provide: run in the background on a loopback port. */
   readonly gateways: PluginGateways;
   /** Newer releases of recommended plugins, read from the update sources the list names. */
@@ -146,6 +151,7 @@ export class PluginStore {
   constructor(core: Core) {
     this.#core = core;
     this.#runs = new PluginRuns(core);
+    this.interfaces = new PluginInterfaces(core, () => this.#ids(), (id) => this.#onDisk(id), (id) => this.#directory(id));
     this.accountPools = new PluginAccounts({
       core, lanes: this.#lanes,
       known: (id) => this.#known(id),
@@ -390,7 +396,7 @@ export class PluginStore {
       return this.#start(id, target(), null, 'recommended', latest);
     }
     const pending = this.#pending.get(id);
-    if (pending !== undefined) return this.#start(id, pending.manifest, pending.source, 'url');
+    if (pending !== undefined) return this.#start(id, pending.manifest, pending.source, 'url', undefined, pending.ui);
     const disk = this.#onDisk(id);
     if (disk.kind === 'installed' && disk.installed.source !== null) return this.#start(id, disk.installed.manifest, disk.installed.source, 'url');
     if (disk.kind === 'rejected') throw refused(`${id} was refused (${disk.rejected.message}). Remove it, then add it again from its URL.`, disk.rejected);
@@ -398,7 +404,7 @@ export class PluginStore {
   }
 
   /** `latest`, when given, may swap `manifest` for a newer one before the download starts. */
-  #start(id: string, manifest: PluginManifest, source: PluginSource | null, origin: Origin, latest?: (signal: AbortSignal) => Promise<PluginManifest>): PluginState {
+  #start(id: string, manifest: PluginManifest, source: PluginSource | null, origin: Origin, latest?: (signal: AbortSignal) => Promise<PluginManifest>, ui: UiTexts | null = null): PluginState {
     if (this.#closing) throw refused('Boite is shutting down.');
     if (this.#lanes.busy(id)) throw refused('Wait for the current plugin operation before installing.');
     const artifact = artifactFor(manifest);
@@ -410,10 +416,11 @@ export class PluginStore {
     const job: Job = { controller, progress: 0, promise: Promise.resolve(), relaunch: false };
     this.#jobs.set(id, job);
     job.promise = this.#lanes.alone(id, 'install', () => (latest === undefined ? Promise.resolve(manifest) : latest(controller.signal))
-      .then((target) => {
+      .then(async (target) => {
         const found = target === manifest ? artifact : artifactFor(target);
         if (found === null && runsExecutable(target)) throw new Error(`${id} ${target.version} has no binary for ${platformKey()}`);
-        return found === null ? this.#installText(id, target, source, origin, job) : this.#download(id, target, source, origin, found, job);
+        const texts = await uiAtCommit(this.#core, id, target, source, target === manifest ? ui : null, { allowLocal: this.allowLocalSources, signal: AbortSignal.any([controller.signal, this.#shutdown.signal]) });
+        return found === null ? this.#installText(id, target, source, origin, texts, job) : this.#download(id, target, source, origin, found, texts, job);
       })
       .then(() => { this.#pending.delete(id); job.relaunch = true; })
       .catch(async (error: unknown) => {
@@ -433,7 +440,7 @@ export class PluginStore {
   }
 
   /** A plugin that runs nothing: its record is the whole install. One that ran before stops and its binary goes. */
-  async #installText(id: string, manifest: PluginManifest, source: PluginSource | null, origin: Origin, job: Job): Promise<void> {
+  async #installText(id: string, manifest: PluginManifest, source: PluginSource | null, origin: Origin, ui: UiTexts | null, job: Job): Promise<void> {
     const dir = this.#directory(id);
     mkdirSync(dir, { recursive: true });
     const previous = this.#onDisk(id);
@@ -441,14 +448,12 @@ export class PluginStore {
     if (installed !== null && (providesApp(installed.manifest) || providesService(installed.manifest))) await this.apps.forget(id);
     if (installed !== null && providesGateway(installed.manifest)) await this.gateways.forget(id);
     job.controller.signal.throwIfAborted();
-    const staged = join(dir, `${INSTALLED_FILE}.part`);
-    await writeFile(staged, JSON.stringify({ schema: 1, origin, source, installedAt: Date.now(), manifest }, null, 2), { mode: 0o600 });
-    await rename(staged, join(dir, INSTALLED_FILE));
+    await commitWithUi(dir, ui, installed?.ui ?? null, (written) => writeRecord(dir, recordText(origin, source, manifest, written)));
     if (installed?.binary) await rm(installed.binary, { force: true }).catch(() => undefined);
     job.progress = 100;
   }
 
-  async #download(id: string, manifest: PluginManifest, source: PluginSource | null, origin: Origin, artifact: PluginArtifact, job: Job): Promise<void> {
+  async #download(id: string, manifest: PluginManifest, source: PluginSource | null, origin: Origin, artifact: PluginArtifact, ui: UiTexts | null, job: Job): Promise<void> {
     const signal = job.controller.signal;
     const dir = this.#directory(id);
     mkdirSync(dir, { recursive: true });
@@ -506,7 +511,7 @@ export class PluginStore {
       }
       // A gateway still serving would be cut off: it waits for its requests like an update, then stops.
       const ran = installed !== null && providesGateway(installed.manifest) && await this.gateways.drainForUpdate(id, manifest.version);
-      await this.#activate(id, dir, installed, manifest, temporary, ran, JSON.stringify({ schema: 1, origin, source, installedAt: Date.now(), manifest }, null, 2));
+      await commitWithUi(dir, ui, installed?.ui ?? null, (written) => this.#activate(id, dir, installed, manifest, temporary, ran, recordText(origin, source, manifest, written)));
       job.progress = 100;
     } finally {
       clearTimeout(timer);
@@ -575,15 +580,17 @@ export class PluginStore {
       throw error;
     }
     const read: PluginPreview = { ...preview, manifest, artifact: artifactFor(manifest), commands: commandsOf(manifest) };
+    const { ui, rejected } = previewUi(manifest, fetched.files);
+    if (rejected !== null) return { ...read, rejected };
     const conflict = this.#conflict(manifest, url);
     if (conflict !== null) return { ...read, rejected: conflict };
     if (read.artifact === null && runsExecutable(manifest)) {
       const published = Object.keys(manifest.artifacts ?? {}).join(', ');
       return { ...read, rejected: refusal(PLUGIN_MANIFEST_FILE, 'artifacts', `an artifact for ${platformKey()}, this machine`, published).rejected };
     }
-    this.#prunePreviews();
+    prunePreviews(this.#previews, PREVIEW_MAX);
     const previewId = newToken();
-    this.#previews.set(previewId, { manifest, source, expiresAt: preview.expiresAt });
+    this.#previews.set(previewId, { manifest, source, ui, expiresAt: preview.expiresAt });
     const disk = this.#onDisk(manifest.id);
     return { ...read, previewId, replaces: disk.kind === 'installed' ? disk.installed.version : null };
   }
@@ -619,16 +626,6 @@ export class PluginStore {
     return nameClash(manifest, [...this.installedPlugins(), ...coming.map((other) => ({ id: other.id, manifest: other }))]);
   }
 
-  #prunePreviews(): void {
-    const now = Date.now();
-    for (const [key, preview] of this.#previews) if (preview.expiresAt <= now) this.#previews.delete(key);
-    while (this.#previews.size >= PREVIEW_MAX) {
-      const oldest = this.#previews.keys().next().value;
-      if (oldest === undefined) break;
-      this.#previews.delete(oldest);
-    }
-  }
-
   /** Installs what one preview showed, at the commit it showed. A preview is used once. */
   add(previewId: unknown): PluginState {
     const expected = 'a previewId plugins.inspect returned in the last 10 minutes';
@@ -639,14 +636,14 @@ export class PluginStore {
       throw invalidParams(`plugin preview is unknown or expired; inspect the URL again`, { field: 'previewId', expected });
     }
     this.#previews.delete(previewId);
-    const { manifest, source } = preview;
+    const { manifest, source, ui } = preview;
     const conflict = this.#conflict(manifest, source.url);
     if (conflict !== null) throw refused(conflict.message, conflict);
     if (this.#lanes.busy(manifest.id)) throw refused('Wait for the current plugin operation before installing.');
     const before = this.#pending.get(manifest.id);
-    this.#pending.set(manifest.id, { manifest, source });
+    this.#pending.set(manifest.id, { manifest, source, ui });
     try {
-      return this.#start(manifest.id, manifest, source, 'url');
+      return this.#start(manifest.id, manifest, source, 'url', undefined, ui);
     } catch (error) {
       if (before === undefined) this.#pending.delete(manifest.id);
       else this.#pending.set(manifest.id, before);
@@ -838,6 +835,7 @@ export class PluginStore {
     if (binary !== null && !existsSync(binary)) {
       throw refused(`${binary} is missing: ${manifest.runtime === 'bun' ? 'build the plugin to that file' : 'build the executable'} first.`);
     }
+    checkDevUi(path, manifest);
     const before = this.#onDisk(id);
     if (before.kind === 'installed' && before.installed.devPath === null) throw refused(`${id} is installed${before.installed.source ? ` from ${before.installed.source.url}` : ''}; remove it before running it from a folder.`);
     const clash = this.#nameClash(manifest);
@@ -848,9 +846,7 @@ export class PluginStore {
     await (async () => this.#lanes.alone(id, 'install', async () => {
       const dir = this.#directory(id);
       mkdirSync(dir, { recursive: true });
-      const staged = join(dir, `${INSTALLED_FILE}.part`);
-      await writeFile(staged, JSON.stringify({ schema: 1, origin: 'dev', source: null, devPath: path, installedAt: Date.now(), manifest }, null, 2), { mode: 0o600 });
-      await rename(staged, join(dir, INSTALLED_FILE));
+      await writeRecord(dir, JSON.stringify({ schema: 1, origin: 'dev', source: null, devPath: path, installedAt: Date.now(), manifest }, null, 2));
       this.#failures.delete(id);
       this.accountPools.forget(id);
       this.#regrant(id);

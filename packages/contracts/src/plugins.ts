@@ -34,7 +34,7 @@ export type PluginRuntime = 'native' | 'bun';
 // A schema 1 desktop app keeps the owner token it always had.
 // ---------------------------------------------------------------------------
 
-export const PLUGIN_PERMISSION_NAMES = ['threads.read', 'threads.write', 'todos', 'ui.reveal'] as const;
+export const PLUGIN_PERMISSION_NAMES = ['threads.read', 'threads.write', 'todos', 'ui.reveal', 'ui'] as const;
 export type PluginPermission = (typeof PLUGIN_PERMISSION_NAMES)[number];
 
 /** What one permission opens: the methods a plugin token may call and the events it hears. */
@@ -59,7 +59,13 @@ export const PLUGIN_PERMISSIONS: Readonly<Record<PluginPermission, PluginPermiss
   todos: { methods: ['todos.list', 'todos.add', 'todos.update'], events: ['todos.updated'] },
   // Brings a conversation, a bot or the app updates to the front of the owner's desktop window.
   'ui.reveal': { methods: ['ui.reveal'], events: [] },
+  // Its `provides.ui` script and style run inside Boite's window, on every client of this core.
+  // The token gains nothing: the code runs in the app and reaches what the app reaches. Danger.
+  ui: { methods: [], events: [] },
 };
+
+/** The permissions a client shows in red: granting one hands the plugin more than a scoped token. */
+export const PLUGIN_DANGER_PERMISSIONS: readonly PluginPermission[] = ['ui'];
 
 // ---------------------------------------------------------------------------
 // What a schema 2 plugin adds to agents and to the composer. Each is plain
@@ -149,6 +155,54 @@ export interface PluginProvides {
   prompt?: string;
   /** Schema 2. Entries of the composer's `/` menu. */
   slashCommands?: PluginSlashCommand[];
+  /**
+   * Schema 2. A script and a stylesheet Boite's window loads: files of the
+   * plugin's repository, read at the commit the owner installed, or of its
+   * dev folder. Needs the `ui` permission. docs/plugins.md, Interface.
+   */
+  ui?: PluginUiFiles;
+}
+
+/** `provides.ui`: paths in the repository, relative to its root. At least one. */
+export interface PluginUiFiles {
+  /** An ES module whose default export Boite calls with the plugin API: `ui/index.js`. */
+  script?: string;
+  /** A stylesheet added to the page while the plugin is loaded: `ui/style.css`. */
+  style?: string;
+}
+
+/**
+ * What `provides.ui` may name: a path inside the repository, of letters,
+ * digits, `.`, `_`, `-` and `/`, with no `..`, a script ending in `.js` or
+ * `.mjs`, a style in `.css`.
+ */
+export const PLUGIN_UI_PATH_PATTERN = /^(?!.*(?:^|\/)\.\.?(?:\/|$))[A-Za-z0-9_][A-Za-z0-9._/-]{0,199}$/;
+/** Bytes each file may take: the window loads them at every start, a phone's included. */
+export const PLUGIN_UI_LIMITS = { script: 512 * 1024, style: 128 * 1024 } as const;
+
+/**
+ * One plugin's interface as `plugins.ui` hands it to a client: the files'
+ * text and what its script may call. Only plugins installed, enabled and
+ * granted `ui` are listed.
+ */
+export interface PluginUiBundle {
+  id: string;
+  name: string;
+  version: string;
+  /** Changes whenever the version or a file's bytes do: what a client compares to reload it. */
+  digest: string;
+  script: string | null;
+  style: string | null;
+  /** The permissions the owner granted: the script's RPC client reaches these and no more. */
+  permissions: PluginPermission[];
+  /**
+   * The values of the plugin's settings, as the owner set them. A change of
+   * these alone reaches the running script through `onSettingsChanged`, with
+   * no reload: `digest` does not cover them.
+   */
+  settings: Record<string, boolean | number | string>;
+  /** Why the files could not be read, a dev folder's missing file say. The bundle carries no code then. */
+  error: string | null;
 }
 
 /** Where a gateway plugin stands. Null on a plugin that provides no gateway. */
@@ -329,6 +383,8 @@ export interface PluginAdds {
   skills: string[];
   slashCommands: string[];
   prompt: boolean;
+  /** Whether it loads a script or a style into Boite's window. Absent from older cores. */
+  ui?: boolean;
 }
 
 /** What `plugins.command` hands back: the command's exit code and its output. */
@@ -434,9 +490,17 @@ export interface PluginsRpcMethods {
    * the plugin's app or service.
    */
   'plugins.dev': { params: { path: string }; result: PluginState };
+  /**
+   * The interface of every installed plugin that provides one and holds the
+   * `ui` permission: what a client's window loads after it starts. Owner and
+   * paired devices alike, since a phone draws the same window.
+   */
+  'plugins.ui': { params: Record<string, never>; result: PluginUiBundle[] };
 }
 
 export interface PluginsRpcEvents {
   /** One plugin after any change. A `url` plugin that comes back `not-installed` is gone from the list. */
   'plugins.updated': PluginState;
+  /** The set of plugin interfaces changed: `digest` sums every bundle's, so a client reads `plugins.ui` again only when it differs. */
+  'plugins.uiUpdated': { digest: string };
 }

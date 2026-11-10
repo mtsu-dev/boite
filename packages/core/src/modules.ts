@@ -102,6 +102,7 @@ export function registerModules(core: Core): void {
   core.router.register('plugins.gateway', (params) => core.plugins.gateway(params));
   core.router.register('plugins.command', (params, ctx) => core.plugins.command(params, ctx.connection.identity));
   core.router.register('plugins.dev', (params) => core.plugins.dev(params));
+  core.router.register('plugins.ui', () => core.plugins.interfaces.bundles());
   core.router.register('plugins.checkUpdates', (params) => core.plugins.checkUpdates(params));
   core.router.register('ui.reveal', (params) => reveal(core, params));
   registerProjectMethods(core);

@@ -70,6 +70,7 @@ export const strings = {
       'threads.write': 'Starts and stops turns',
       todos: 'Project boards',
       'ui.reveal': 'Shows a thread',
+      ui: 'Modifies Boite\'s interface',
     },
     appRunning: 'Running',
     appStarting: 'Starting again',
