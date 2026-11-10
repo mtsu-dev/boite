@@ -80,13 +80,55 @@ invites. A Headscale inviter can only invite someone on its own tailnet.
 4. Both apps show the same eight words, derived from both public keys. Two
    owners who read the same eight words know nobody sat between them.
 5. The invitee's core keeps a WebSocket open to the inviter at
-   `/coordination/contact/link` and redials with backoff, from two seconds to
-   a minute. It dials with a hello in its headers: from, to, the time and a
-   nonce, signed. Before the upgrade, the inviter refuses a hello more than a
-   minute off, a nonce it has seen or a signature by another key. That link
-   is a [coordination bridge](coordination.md#contacts) route for the
-   invitee: the inviter's signed requests go down it and the answers come
-   back on it. The invitee's requests to the inviter are plain POSTs.
+   `/coordination/contact/link`. It dials with a hello in its headers: from,
+   to, the time and a nonce, signed. Before the upgrade, the inviter refuses a
+   hello more than a minute off, a nonce it has seen or a signature by another
+   key. That link is a [coordination bridge](coordination.md#contacts) route
+   both ways: the inviter's signed requests go down it, the invitee's go up
+   it, and each answer comes back on it. See [the link](#the-link).
+
+### The link
+
+One connection carries everything between two contacts. The inviter's first
+frame is `{ t: 'caps', duplex: 1 }`: it answers the invitee's requests on the
+link, so the invitee sends them there (`{ t: 'req' }`, answered by `{ t:
+'res' }`) through the same desk that takes a POST to `/agent-messages`, with
+the same signature, seal, date and nonce checks. Before that, each request of
+the invitee opened a connection of its own, which through Funnel is a DNS
+lookup, a TCP and a TLS handshake through Tailscale's relay every time. An
+inviter from before this says no `caps` and is asked by POST as before, and an
+older invitee ignores the frame. A request the link does not carry (no answer
+in 5 seconds, or the link closed) is asked once more at the inviter's address.
+
+The invitee keeps the link alive. Every 10 seconds it sends a WebSocket ping,
+and it hangs up a link that gave no sign of life, a pong included, for 25
+seconds: a path that went silent without closing (a laptop asleep, a NAT that
+forgot the flow, a relay that moved) is found within half a minute, where
+nothing told the invitee before and its contact stayed "connected" on a dead
+link until a restart. The inviter drops, after 50 seconds of silence, a guest
+that sends those pings; an older guest that sends none is left alone.
+
+A link that was carrying and is lost is dialed again at once, once in 5
+seconds; a dial that fails waits 2 seconds, then twice as long each time up to
+a minute.
+
+### Clocks
+
+A join, a hello and every request carry the sender's time, taken within a
+minute of the receiver's, so that one recorded and sent again goes nowhere.
+Two machines whose clocks differ by more than that (automatic time off, a dual
+boot, a dead clock battery) refused everything from each other, in words that
+named no clock. The receiver still refuses: a date it took from the past
+would be a replay it takes. It now answers a request the sender signed with
+its own time, under its key and bound to that request: `now` in the sealed
+answer to a join and to a request (`error: 'clock'`, status 409, nothing done
+and no nonce kept), `x-boite-clock` and its signature `x-boite-clock-proof`
+on the 403 of a hello. The sender keeps the difference in memory
+(`peer-clock.ts`), dates what it sends to that core by it, and asks again
+once, at once. A join refused for its date spent no invitation: the date is
+checked before the token. A receiver from before this answers its plain
+refusal and the two stay apart until their clocks agree. The log names the
+gap ("clock and this machine's are 5 minutes apart").
 
 Requests between contacts are signed with each core's Ed25519 key and sealed
 to the recipient, as between members of a group, then carried by WireGuard. A
@@ -139,8 +181,10 @@ only when `contacts.get` answers `internet: true`: an older core reads only
 While the mounts are up, the core checks them from the internet
 (`contacts/funnel-check.ts`), after each invitation for another network and
 at start. This machine cannot see its own Funnel name as the internet does:
-MagicDNS answers it with the tailnet address. So the core resolves the name
-over DNS-over-HTTPS (`dns.google`, then `cloudflare-dns.com`), then posts to
+MagicDNS answers it with the tailnet address. So the core asks the name of
+the servers that hold the `ts.net` zone (`contacts/public-dns.ts`), or over
+DNS-over-HTTPS (`dns.google`, then `cloudflare-dns.com`) on a network that
+lets no DNS out, then posts to
 `/contacts/join` at one of the public addresses, TLS still named after the
 Funnel name. The join route's own refusal of a request naming no peer proves
 the request went through Funnel to this core; any other answer is
@@ -148,16 +192,29 @@ the request went through Funnel to this core; any other answer is
 Funnel on, and sometimes not until it is turned off and on again: still
 unpublished after 10 minutes, the core removes its mounts and puts them back
 once, then checks again; a repair that could not put them back is not counted
-and is tried again 10 minutes later. Checks run every 30 seconds until one goes through,
-for an hour at most. `contacts.get` gives the result as `funnel` (`checking`,
+and is tried again 10 minutes later. Checks run every 5 seconds for the first
+5 minutes after the mounts came up, then every 30 seconds, until one goes
+through, for an hour at most. `contacts.get` gives the result as `funnel` (`checking`,
 `ready`, `unpublished`, `unreachable` or `unknown`, and `repaired`), null once
 the mounts are down. Under an Elsewhere link, the page says when the link is
 ready to send, or to wait and what to do.
 
-The guest's side of an https link tells a name DNS does not know from a host
-that does not answer. For the first, `contacts.join` is refused with
-`data.retryAfterMs` (30 seconds): the token was never spent, and the client
-joins again by itself for up to 15 minutes, with **Stop** to end it.
+A resolver asked for a Funnel name before Tailscale published it keeps "no
+such name" for the zone's negative TTL, 300 seconds (the SOA of `ts.net`, read
+2026-11-10): the name then exists and the guest's machine still cannot find
+it. So when the system's resolver says a `ts.net` name does not exist, the
+join, the link's dial and a request ask the zone's own servers, which keep
+nothing, and connect to the address they give with the TLS name and the
+certificate check unchanged.
+
+The guest's side of an https link says which of four things stopped a join: a
+name the zone does not know yet, a host that did not answer in 10 seconds (off,
+asleep, or its first certificate still being issued), a refused connection
+(Funnel off on the inviter's machine) or a certificate that does not prove the
+name (something between the two machines, or a wrong date). For the first two,
+`contacts.join` is refused with `data.retryAfterMs` (5 seconds): the token was
+never spent, and the client joins again by itself for up to 15 minutes, with
+**Stop** to end it.
 
 ## Projects and requests
 
@@ -213,8 +270,10 @@ The member keeps a copy of each contact it was opened to: its name, the
 owner's model tier on the linked machine, what the contact opened in return
 and the grants on the member's own projects. The linked machine pushes it
 (`relay.mirror`) on every grant, revoke, rename, tier, offer or link change,
-and retries every 30 seconds until the member heard it, even once the last
-contact is gone. A member whose copy missed a revoke reaches nothing through
+and offers it again until the member heard it, even once the last contact is
+gone: 30 seconds after a first silence, then twice as long each time up to 15
+minutes, at once when the copy changes or the member sends this core
+anything, with one warning in the log per silence. A member whose copy missed a revoke reaches nothing through
 the linked machine, which answers from its own grants and pushes the copy
 again. With that copy the
 member's agents list the contact (`boite threads contacts`), reach the
@@ -680,7 +739,8 @@ gets on Tailscale later listens there after a restart.
 the RPC methods), `members.ts` (projects of the other machines of the group),
 `invitations.ts` (making an invitation and the origin it
 names), `funnel.ts` (the routes on Tailscale Funnel), `funnel-check.ts`
-(whether the internet reaches them), `join.ts` (both sides
+(whether the internet reaches them), `public-dns.ts` (a Funnel name asked of
+its zone), `join.ts` (both sides
 of a join), `invite.ts` (the link format), `words.ts`
 (fingerprint words), `tier.ts`, `git-remote.ts` (read from the git config
 files, no process), `bot.ts` (the Contacts bot's methods and relations),
@@ -710,7 +770,13 @@ contact was linked again keeps the first one's cancel, that a bare 403 only dela
 key ends it, and that a server that takes the upgrade without the Bots host's
 key loses the move to the Bots host. `contacts-funnel.test.ts` drives the Funnel mounts through
 the fake CLI (`test/fixtures/fake-tailscale.ts`) and checks their reachability
-through stubbed DNS and requests, never the internet. `magic-dns.test.ts` covers
+through stubbed DNS and requests, never the internet. `contacts-link.test.ts`
+puts a TCP proxy (`test/bad-network.ts`: latency, a path gone silent, a cut, a
+host that is down) between a guest and its host: requests both ways on one
+connection, the POST when the host says no `caps` or the link does not carry,
+the silent link hung up and dialed again, the cut dialed again at once, a clock
+five minutes away at the join, at a request and at the hello, and a Funnel
+name asked at the address its zone gives. `magic-dns.test.ts` covers
 the tailnet name lookup against a resolver on loopback.
 
 This machine's tailnet name is the PTR record of its tailnet address at

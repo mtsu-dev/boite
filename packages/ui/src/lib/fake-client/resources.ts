@@ -29,7 +29,7 @@ export function resourceMethods(ctx: FakeContext) {
     coverage: 'unavailable', source: 'unavailable', note: 'No supported per-agent counter' });
   return {
     'resources.usage': async (params): Promise<AgentResourceSnapshot> => {
-      if (ctx.bus.principal === 'agent') throw new RpcFailure({ code: RpcErrorCode.Refused, message: "resources.usage is not one of the agent's methods" });
+      if (ctx.bus.principal === 'agent') throw new RpcFailure({ code: RpcErrorCode.Refused, message: "resources.usage is not one of the agent's methods: the owner and paired devices call it" });
       if (params === null || typeof params !== 'object' || Array.isArray(params)) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'resources.usage: expected an object' });
       if (params.watch !== undefined && typeof params.watch !== 'boolean') throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'watch: expected a boolean' });
       return { sampledAt: ctx.now(), agents: resources(ctx).map(resource => {
@@ -40,7 +40,7 @@ export function resourceMethods(ctx: FakeContext) {
       }) };
     },
     'resources.machine': async (params): Promise<MachineResourceSnapshot> => {
-      if (ctx.bus.principal === 'agent') throw new RpcFailure({ code: RpcErrorCode.Refused, message: "resources.machine is not one of the agent's methods" });
+      if (ctx.bus.principal === 'agent') throw new RpcFailure({ code: RpcErrorCode.Refused, message: "resources.machine is not one of the agent's methods: the owner and paired devices call it" });
       if (params === null || typeof params !== 'object' || Array.isArray(params)) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'resources.machine: expected an object' });
       const live = resources(ctx);
       // A slow wave, so a demo's curves move without a random number in a test.

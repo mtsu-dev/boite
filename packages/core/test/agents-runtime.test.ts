@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test';
 import type { AgentRoutine, Turn } from '@boite/contracts';
 import { mkdtempSync, realpathSync } from 'node:fs';
+import { removeDir } from '../src/fs-retry.ts';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { connect, type CoreClient } from '../src/client.ts';
@@ -382,7 +383,7 @@ test('a paired device lands an outside event on a bot: it wakes it with default 
     expect(await runCli(['bot', 'event', 'Ada', '--key', 'ci', 'SECOND build failed on main', '--core', h.url], { out: () => undefined, err: s => { err += s; }, env: { BOITE_TOKEN: session.token }, cwd: h.dataDir })).toBe(0);
     expect(err).toBe('');
     expect(h.core.agentRuntime.facts(agent.id).map(f => f.key)).toEqual(['external:ci']);
-    expect(await bot.call('agents.event', { agent: agent.id, text: 'from inside' }).catch(error => error)).toMatchObject({ rpc: { message: 'agents.event is not one of the agent\'s methods' } });
+    expect(await bot.call('agents.event', { agent: agent.id, text: 'from inside' }).catch(error => error)).toMatchObject({ rpc: { message: 'agents.event is not one of the agent\'s methods: the owner and paired devices call it' } });
     expect(await device.call('agents.event', { agent: 'Ada', key: 'bad key!', text: 'x' }).catch(error => error)).toMatchObject({ rpc: { data: { field: 'key' } } });
   } finally { device.close(); bot.close(); }
   const pending = (h.core.agentRuntime as unknown as { pending: Map<string, { facts: { notBefore: number }[] }> }).pending.get(agent.id)!;
@@ -607,6 +608,72 @@ test('urgent facts still spend facts skipped for budget or failed admission, wit
   } finally { h.core.threads.startTurn = begin; }
   tick();
   expect(turnsOf(h, threadId)).toHaveLength(before);
+});
+
+test('a bot whose provider is turned off keeps its facts and letters, names the fix in its status, and runs them once the provider is back', async () => {
+  const driver = scripted(() => ({ text: 'Seen.' })); restore = driver.restore;
+  const { agent, threadId } = await makeAgent(h, client);
+  const tick = () => (h.core.agentRuntime as unknown as { tick(): void }).tick();
+  const events = () => turnsOf(h, threadId).filter(t => t.execution?.operation === 'event');
+  const status = () => h.core.workforce.status(h.core.workforce.records.get('profile', agent.id));
+  const name = h.core.providers.get('echo')!.name;
+  const before = events().length;
+  let changes = 0;
+  const off = h.core.bus.onAny(event => { if (event === 'agents.changed') changes++; });
+  try {
+    await client.call('providers.setEnabled', { providerId: 'echo', enabled: false });
+    // Clients hear of it: the bot's row turns to its problem without another change.
+    await waitFor(() => changes > 0);
+  } finally { off(); }
+  expect(status()).toMatchObject({ state: 'error', problem: `${name} is turned off on this machine; turn it on in Settings > Providers, or choose another model for ${agent.name} in its settings.` });
+  h.core.agentRuntime.fact(agent.id, { urgent: true, key: 'turn:one', text: 'Thread one finished.', delay: 0, threadIds: [] });
+  tick(); tick();
+  // Held, not spent: on main the first tick dropped it with a warning (issue #992).
+  expect(h.core.agentRuntime.facts(agent.id).map(f => f.key)).toEqual(['turn:one']);
+  expect(events()).toHaveLength(before);
+  // A turn the core starts by itself waits too, with one line saying why and how to let it run.
+  let held: unknown = null;
+  try { h.core.threads.startTurn(threadId, 'From a subagent', { kind: 'delegation' }); } catch (error) { held = error; }
+  expect(isAgentHeld(held)).toBe(true);
+  await waitFor(() => lines(threadId).some(line => line.startsWith(`Held the results of its subagents or a workflow: ${name} is turned off on this machine.`)));
+  expect((await h.core.logs.select(record => record.message.includes('could not start'), 10)).map(record => record.message)).toEqual([]);
+
+  await client.call('providers.setEnabled', { providerId: 'echo', enabled: true });
+  await waitFor(() => events().length === before + 1 && settled(h, threadId));
+  expect(h.core.agentRuntime.facts(agent.id)).toEqual([]);
+  expect(status().problem).toBeNull();
+  // Wakes start on the thread's provider, which a move in the composer can set apart from the profile's: the status reads it too.
+  await client.call('providers.setEnabled', { providerId: 'codex', enabled: false });
+  h.core.journal.putThread({ ...h.core.journal.getThread(threadId)!, providerId: 'codex' });
+  expect(status().problem).toStartWith(`${h.core.providers.get('codex')!.name} is turned off on this machine;`);
+  expect(h.core.agentRuntime.attempt(h.core.workforce.records.get('profile', agent.id), { kind: 'event', label: '1 project event', prompt: 'Anything?' }).held).toBe('off');
+});
+
+test('a bot with no thread yet still hears of its provider turned off', async () => {
+  // A core whose bots have no session record, as after a migration that lost one: the switch still redraws their rows.
+  const dataDir = mkdtempSync(join(tmpdir(), 'boite-core-'));
+  try {
+    const first = await startTestCore({ dataDir });
+    try {
+      const { agent } = await makeAgent(first, await first.connect());
+      const session = first.core.workforce.sessionOf(agent.id)!;
+      first.core.workforce.records.remove('session', session.id);
+    } finally { await first.stop(); }
+    const second = await startTestCore({ dataDir });
+    try {
+      const status = () => second.core.workforce.snapshot().status[0]!;
+      expect(status()).toMatchObject({ threadId: null, problem: null });
+      let changes = 0;
+      const off = second.core.bus.onAny(event => { if (event === 'agents.changed') changes++; });
+      try {
+        await (await second.connect()).call('providers.setEnabled', { providerId: 'echo', enabled: false });
+        await waitFor(() => changes > 0, 1_500).catch(() => undefined);
+        // On #995's first head the store only listened while it held a bot thread: no change reached the clients.
+        expect(changes).toBeGreaterThan(0);
+      } finally { off(); }
+      expect(status().problem).toStartWith(`${second.core.providers.get('echo')!.name} is turned off on this machine;`);
+    } finally { await second.stop(); }
+  } finally { await removeDir(dataDir); }
 });
 
 test('changed instructions wake the agent once to review its routines', async () => {

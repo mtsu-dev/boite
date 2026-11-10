@@ -454,6 +454,15 @@ export class FakeContext {
         return { coreId: core.coreId, name: core.name, botMove: member?.core.features?.botMove === true, agents: member?.agents };
       },
       selfName: () => this.identity.name,
+      // As the core's status: a bot on a provider turned off says how to let its wakes run.
+      // The thread's own provider first: a move in the composer can set it apart from the profile's.
+      problem: (agent, thread) => {
+        const provider = this.providers.find(p => p.id === (thread?.providerId ?? agent.selection.providerId));
+        if (!provider || provider.enabled !== false) return null;
+        return provider.policy
+          ? `${provider.name} is blocked by your organization's policy; choose another model for ${agent.name} in its settings.`
+          : `${provider.name} is turned off on this machine; turn it on in Settings > Providers, or choose another model for ${agent.name} in its settings.`;
+      },
       // A project's folder holds files: a brain root refuses it.
       occupied: path => this.projects.some(p => p.path.replace(/[\\/]+$/, '') === path),
       checkRoute: (value, previous) => {

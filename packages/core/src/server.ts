@@ -14,7 +14,7 @@ import { CONTACT_JOIN_ROUTE, CONTACT_LINK_ROUTE } from './contacts/store.ts';
 import type { ContactSocketData } from './contacts/link-hello.ts';
 import { LAZY_MCP_ROUTE } from './mcp/lazy.ts';
 import { tailnetAddress } from './group/addresses.ts';
-import { encryptedLink, isLoopbackAddress, isLoopbackHost, RELAYED_LINK_HEADER } from './server/peer.ts';
+import { encryptedLink, hostName, isLoopbackAddress, isLoopbackHost, RELAYED_LINK_HEADER } from './server/peer.ts';
 import { parseRelayPath, RelayHub, type RelaySocketData } from './group/relay.ts';
 import type { Connection } from './router.ts';
 import type { EventFrames, SocketData } from './server/connection.ts';
@@ -146,6 +146,25 @@ function servedOrigin(core: Core, origin: string | null, host: string | null): v
   } catch {
     // Not an origin: nothing learned.
   }
+}
+
+/**
+ * The names a client dials this machine by whose hop nobody reads, when a
+ * forwarder hands its socket over from loopback (`encryptedLink`): the tailnet
+ * address, and the public address once it is HTTPS.
+ */
+function encryptedHosts(core: Core): string[] {
+  const hosts: string[] = [];
+  const tailnet = tailnetAddress();
+  if (tailnet !== null) hosts.push(tailnet);
+  const published = core.settings.get().publicUrl;
+  if (published) {
+    try {
+      const url = new URL(published);
+      if (url.protocol === 'https:') hosts.push(hostName(url.host));
+    } catch { /* Not an address: nothing to trust. */ }
+  }
+  return hosts;
 }
 
 /**
@@ -563,7 +582,7 @@ export function startServer(options: ServerOptions): RunningServer {
             core.log('warn', `refused a relayed websocket: ${refusal}`, { source: 'connections', event: 'connection.preauth-refused' });
             return new Response('too many connections waiting for hello', { status: 503 });
           }
-          const encrypted = encryptedLink(self.requestIP(request)?.address ?? null, request.headers.get('host'), origin, request.headers.get(RELAYED_LINK_HEADER), tailnetAddress() !== null);
+          const encrypted = encryptedLink(self.requestIP(request)?.address ?? null, request.headers.get('host'), origin, request.headers.get(RELAYED_LINK_HEADER), tailnetAddress() !== null, encryptedHosts(core));
           const pipe = relays.pipe(relayed.coreId, peer, !isLoopbackHost(request.headers.get('host')), encrypted);
           if (self.upgrade(request, { data: { relay: pipe } })) return undefined;
           pipe.close(1000);
@@ -587,7 +606,7 @@ export function startServer(options: ServerOptions): RunningServer {
         // this machine is served there, and the others of its group accept that origin from now on. Learned
         // before any hello, so a phone's first page, which holds no key yet, already opens the way to the others.
         const connection = new ServerConnection(core, !isLoopbackHost(request.headers.get('host')));
-        connection.encrypted = encryptedLink(self.requestIP(request)?.address ?? null, request.headers.get('host'), origin, request.headers.get(RELAYED_LINK_HEADER), tailnetAddress() !== null);
+        connection.encrypted = encryptedLink(self.requestIP(request)?.address ?? null, request.headers.get('host'), origin, request.headers.get(RELAYED_LINK_HEADER), tailnetAddress() !== null, encryptedHosts(core));
         if (self.upgrade(request, { data: { connection, peer } })) {
           // A page of this machine, at an origin it trusts itself and that names the host the socket asked for:
           // this machine is served there, and the others of its group accept that origin from now on. Learned at
@@ -666,6 +685,11 @@ export function startServer(options: ServerOptions): RunningServer {
         const frame = connection.authenticated ? incoming.enqueue(connection, text) : handleFrame(core, connection, text);
         frames.add(frame);
         void frame.catch((error: unknown) => core.log('error', messageOf(error))).finally(() => frames.delete(frame));
+      },
+
+      // Bun answers the pong itself. A guest's ping is its sign of life on a link with nothing to say.
+      ping(socket) {
+        if ('contact' in socket.data) core.contacts.heard(socket.data.contact, true);
       },
 
       drain(socket) {

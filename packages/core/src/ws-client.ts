@@ -197,6 +197,8 @@ export class UpgradeError extends Error {
 export interface ConnectOptions {
   /** Upgrade request headers; a `Host` here replaces the URL's. */
   headers?: Record<string, string>;
+  /** The address to connect to in place of the URL's name, which stays the TLS name and the `Host`. */
+  address?: string;
   /** Offer permessage-deflate without context takeover, for a server that compresses what it sends. */
   deflate?: boolean;
 }
@@ -233,8 +235,22 @@ export class TextSocket {
   #onClose: Array<(event: CloseEvent) => void> = [];
   #closeEvent: CloseEvent | null = null;
   #graceTimer: ReturnType<typeof setTimeout> | undefined;
+  #heardAt = Date.now();
+  /** The status line and headers the server answered the upgrade with. */
+  readonly head: string;
 
-  private constructor(socket: Bun.Socket) { this.#socket = socket; }
+  private constructor(socket: Bun.Socket, head: string) { this.#socket = socket; this.head = head; }
+
+  /** When the server last sent anything, a pong included: a path that went silent without closing stops moving this. */
+  get heardAt(): number { return this.#heardAt; }
+
+  /** Asks the server for a pong: any RFC 6455 server answers it, whatever it speaks above. */
+  ping(): void {
+    if (this.#open) this.#write(encodeFrame(0x9, new Uint8Array(0)));
+  }
+
+  /** Hangs up at once, with no close handshake: for a path that no longer carries one. */
+  drop(reason: string): void { this.#ended({ code: 1006, reason }); }
 
   /** Whether `send` still reaches the server. */
   get open(): boolean { return this.#open; }
@@ -347,6 +363,7 @@ export class TextSocket {
         reject(new UpgradeError(message, timedOut, head));
       };
       const receive = (bytes: Uint8Array) => {
+        client!.#heardAt = Date.now();
         let delivered = false;
         for (const frame of reader.push(bytes)) {
           if (client!.#closed) return;
@@ -372,7 +389,7 @@ export class TextSocket {
       };
       const timer = setTimeout(() => fail(`no WebSocket upgrade from ${target.host} within ${timeoutMs} ms`, true), timeoutMs);
       Bun.connect({
-        hostname,
+        hostname: options.address ?? hostname,
         port: Number(target.port || (secure ? 443 : 80)),
         // Checked against the system's authorities, for the name the URL gives.
         ...(secure ? { tls: { serverName: hostname } } : {}),
@@ -406,7 +423,7 @@ export class TextSocket {
             }
             settled = true;
             clearTimeout(timer);
-            client = new TextSocket(socket);
+            client = new TextSocket(socket, head);
             resolve(client);
             if (end < handshake.length) receive(handshake.subarray(end));
           },

@@ -220,7 +220,7 @@ export interface AgentStatus {
   state: 'working' | 'queued' | 'waiting' | 'idle' | 'paused' | 'archived' | 'error';
   /** The step it is on while working, in a few words (the running tool's title), else null. */
   activity: string | null;
-  /** Why it cannot run (its provider or account is gone, its model left the catalog), else null. */
+  /** Why it cannot run (its provider or account is gone or its provider turned off, its model left the catalog), else null. While its provider is off its wakes wait: they run once it is back or the bot moves to another model. */
   problem: string | null;
   /** The next routine occurrence, when one is scheduled. */
   nextWake: { at: number; routineId: string; label: string } | null;

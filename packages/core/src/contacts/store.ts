@@ -17,14 +17,12 @@
  * settings, and a thread that wrote to it in the last 7 days.
  */
 import { randomUUID } from 'node:crypto';
-import type { AgentContact, AgentLetter, Contact, ContactInvite, ContactRequest, ContactSettings, ContactsState, ContactTailscale, CoordinationBridgeResponse, CoordinationPeer, ModelTier, RpcEvents, RpcParams, RpcResult } from '@boite/contracts';
+import type { AgentContact, AgentLetter, Contact, ContactInvite, ContactRequest, ContactSettings, ContactsState, ContactTailscale, CoordinationPeer, ModelTier, RpcParams, RpcResult } from '@boite/contracts';
 import { text } from '../coordination-letter.ts';
-import type { BridgeRoute } from '../coordination-bridge.ts';
 import { PeerRefusal, ROUTE } from '../coordination-wire.ts';
 import type { Core } from '../core.ts';
 import { invalidParams, messageOf, refused, RpcFailure, unavailable } from '../errors.ts';
 import { tailnetAddress } from '../group/addresses.ts';
-import { SyncBackoff } from '../group/backoff.ts';
 import { seal, type Sealing } from '../group/seal.ts';
 import { contactsBot } from './bot.ts';
 import { ContactFlags } from './flags.ts';
@@ -39,8 +37,8 @@ import { TailscaleClient } from './tailscale.ts';
 import { ContactReach } from './reach.ts';
 import { checkTier } from './tier.ts';
 import { fingerprintWords } from './words.ts';
-import type { TextSocket } from '../ws-client.ts';
-import { contactHello, CONTACT_LINK_ROUTE, dialContact, HELLO_INPUT, type ContactSocketData } from './link-hello.ts';
+import { contactHello, CONTACT_LINK_ROUTE, HELLO_INPUT, type ContactSocketData } from './link-hello.ts';
+import { ContactLinks, type LinkSocket } from './link.ts';
 import { checkedContactOffers, contactOffers } from './offers.ts';
 import { contactFace, groupFace } from './face.ts';
 import { ContactGroupLink, GROUP_LETTER_TTL_MS } from './group-link.ts';
@@ -65,10 +63,6 @@ export interface StoredContact extends Omit<Contact, 'link'> {
   /** Bumped by every grant change; cleared once the contact heard this one. */
   syncPending?: number;
 }
-type Frame = { t: 'req'; id: string; body: string; signature: string } | { t: 'res'; id: string; status: number; body: string; signature: string };
-
-interface LinkSocket { send(data: string): unknown; close(code?: number, reason?: string): void }
-
 export class ContactStore implements LinkedContacts {
   readonly tailscale: TailscaleClient;
   /** Requests between this owner's agents and contacts' (`requests.ts`). */
@@ -78,6 +72,8 @@ export class ContactStore implements LinkedContacts {
   /** Contact letters and actions held for the Contacts bot (`flags.ts`). */
   readonly flags: ContactFlags;
   readonly funnel: ContactFunnel;
+  /** The link to each contact, both sides (`link.ts`). */
+  readonly links: ContactLinks;
   /** Projects of the other machines of the group, opened through this core, and the contacts other members hold (`members.ts`). */
   readonly members: ContactMembers;
   /** What a contact reaches on this core, and the tiers its traffic takes (`reach.ts`). */
@@ -95,13 +91,8 @@ export class ContactStore implements LinkedContacts {
   internetUrl: () => Promise<string> = () => this.funnel.open();
   /** This core's Funnel origin while its mounts are up already, else null: nothing is mounted to answer. */
   publicUrl: () => string | null = () => this.funnel.state()?.url ?? null;
-  /** Guest side: the link this core keeps to each host. */
-  readonly #dialed = new Map<string, { socket: TextSocket | null; state: 'connecting' | 'connected' }>();
-  /** Host side: the link each guest keeps to this core, by the guest's id. */
-  readonly #hosted = new Map<string, { routeId: string; socket: LinkSocket }>();
   /** Join and hello nonces already used, until they would be stale anyway. */
   private readonly nonces = new Map<string, number>();
-  readonly #backoff = new SyncBackoff(TICK_MS, 60_000);
   /** Contacts with a flush in flight; true once a change during it asked for another, run when it ends. */
   readonly #flushing = new Map<string, boolean>();
   readonly #pending = new Set<Promise<unknown>>();
@@ -129,6 +120,7 @@ export class ContactStore implements LinkedContacts {
     this.relations = new ContactRelations(core);
     this.flags = new ContactFlags(core);
     this.funnel = new ContactFunnel(core, [CONTACT_JOIN_ROUTE, CONTACT_LINK_ROUTE, ROUTE]);
+    this.links = new ContactLinks(core, this);
     this.funnel.changed = () => this.changed();
     this.members = new ContactMembers(core, this);
     this.reach = new ContactReach(core, this);
@@ -278,7 +270,7 @@ export class ContactStore implements LinkedContacts {
   /** The host side keeps no URL: it reaches a guest only while the guest's link is open. */
   linked(coreId: string): boolean {
     const contact = this.find(coreId);
-    return contact?.role === 'guest' || this.#hosted.has(coreId);
+    return contact?.role === 'guest' || this.links.hosts(coreId);
   }
 
   /** Listens on the tailnet while a contact may dial in: one is linked as guest, or an invitation is out. */
@@ -297,8 +289,8 @@ export class ContactStore implements LinkedContacts {
     return contact ? this.#linkState(contact) : this.members.relayedOf(coreId).some(entry => entry.link === 'connected') ? 'connected' : 'offline';
   }
   #linkState(contact: StoredContact): Contact['link'] {
-    if (contact.role === 'host') return this.#hosted.has(contact.coreId) ? 'connected' : 'offline';
-    return this.#dialed.get(contact.coreId)?.state ?? (this.#started && !this.#closed ? 'connecting' : 'offline');
+    if (contact.role === 'host') return this.links.hosts(contact.coreId) ? 'connected' : 'offline';
+    return this.links.dialing(contact.coreId) ?? (this.#started && !this.#closed ? 'connecting' : 'offline');
   }
 
   view(contact: StoredContact): Contact {
@@ -665,7 +657,9 @@ export class ContactStore implements LinkedContacts {
   fresh(coreId: string, nonce: string, at: unknown): void {
     const now = Date.now();
     if (!nonce) throw invalidParams('nonce: expected 1 to 100 characters');
-    if (!Number.isSafeInteger(at) || Math.abs(now - (at as number)) > SKEW_MS) throw refused('at: expected the current time, within a minute');
+    if (!Number.isSafeInteger(at)) throw refused('at: expected the current time, within a minute');
+    // `clock`: the caller signed this, so it is told this core's time (`peer-clock.ts`).
+    if (Math.abs(now - (at as number)) > SKEW_MS) throw refused('at: expected the current time, within a minute', { clock: now });
     for (const [key, seen] of this.nonces) if (now - seen > 2 * SKEW_MS) this.nonces.delete(key);
     const key = `${coreId}:${nonce}`;
     if (this.nonces.has(key)) throw refused('nonce: already used; this request was replayed');
@@ -676,81 +670,10 @@ export class ContactStore implements LinkedContacts {
 
   hello(request: Request): ContactSocketData['contact'] | Response { return contactHello(this.#core, this, request); }
 
-  /** The guest's socket is open: it becomes the bridge route for that contact, replacing an older one. */
-  attach(data: ContactSocketData['contact'], socket: LinkSocket): void {
-    const contact = this.find(data.coreId);
-    if (this.#closed || this.#core.policy.networkOff('contacts') || !contact || contact.role !== 'host') { socket.close(1008, 'not a contact'); return; }
-    // A probe's first frame proves this core's key (`dialProven`); an older guest ignores it.
-    if (data.proof) socket.send(JSON.stringify({ t: 'proof', signature: data.proof }));
-    const previous = this.#hosted.get(data.coreId);
-    if (previous) {
-      this.#core.coordination.bridge.disconnect(previous.routeId);
-      previous.socket.close(1000, 'replaced by a newer link');
-    }
-    this.#hosted.set(data.coreId, { routeId: data.routeId, socket });
-    const route: BridgeRoute = {
-      id: data.routeId,
-      sendEvent: (_name, payload: RpcEvents['collaboration.bridge.request']) => {
-        this.#core.policy.assert(this.#core.policy.networkOff('contacts'), 'network.contacts');
-        socket.send(JSON.stringify({ t: 'req', id: payload.requestId, body: payload.body, signature: payload.signature } satisfies Frame));
-      },
-    };
-    this.#core.coordination.bridge.register(data.coreId, true, route);
-    this.#mutate(data.coreId, entry => { entry.lastSeenAt = Date.now(); entry.syncPending = (entry.syncPending ?? 0) + 1; });
-    this.members.mark(this.members.holdersOf(data.coreId));
-    this.flush(data.coreId);
-  }
-
-  /** A frame from a guest: only the answers to this core's requests. */
-  frame(data: ContactSocketData['contact'], raw: string | Buffer): void {
-    let frame: Partial<Extract<Frame, { t: 'res' }>>;
-    try { frame = JSON.parse(typeof raw === 'string' ? raw : raw.toString('utf8')) as typeof frame; } catch { return; }
-    if (this.#core.policy.networkOff('contacts') || frame?.t !== 'res' || typeof frame.id !== 'string' || typeof frame.status !== 'number' || typeof frame.body !== 'string' || typeof frame.signature !== 'string') return;
-    try { this.#core.coordination.bridge.reply(frame.id, { status: frame.status, body: frame.body, signature: frame.signature }, { id: data.routeId }); } catch { /* A late or unknown answer. */ }
-  }
-
-  detach(data: ContactSocketData['contact']): void {
-    this.#core.coordination.bridge.disconnect(data.routeId);
-    if (this.#hosted.get(data.coreId)?.routeId !== data.routeId) return;
-    this.#hosted.delete(data.coreId);
-    if (!this.#closed) { this.changed(); this.members.mark(this.members.holdersOf(data.coreId)); }
-  }
-
-  // -- The link: the guest's side.
-
-  dial(contact: StoredContact): void {
-    if (this.#closed || !this.#started || contact.role !== 'guest' || contact.url === undefined || this.#dialed.has(contact.coreId) || this.#core.policy.networkOff('contacts')) return;
-    const headers = this.helloHeaders(contact.coreId);
-    const coreId = contact.coreId;
-    const link: { socket: TextSocket | null; state: 'connecting' | 'connected' } = { socket: null, state: 'connecting' };
-    this.#dialed.set(coreId, link);
-    // A link that fails counts whatever was heard before: the mark is now.
-    const lost = () => {
-      if (this.#dialed.get(coreId) !== link) return;
-      this.#dialed.delete(coreId);
-      this.#backoff.failed(coreId, 'link', this.#backoff.mark());
-      if (!this.#closed) { this.changed(); if (link.state === 'connected') this.members.mark(this.members.holdersOf(coreId)); }
-    };
-    // The hello rides in the upgrade's headers. The name is checked again at each dial (its DNS answer may have left
-    // the tailnet since the join), and the policy once the link opens: contacts turned off drop it, to be dialed later.
-    const url = contact.url;
-    dialContact(this.#core, url, headers).then(socket => {
-      if (this.#closed || this.#dialed.get(coreId) !== link || (this.#core.policy.networkOff('contacts') && this.#dialed.delete(coreId))) { socket.close(1000); return; }
-      link.socket = socket;
-      link.state = 'connected';
-      this.#backoff.heard(coreId);
-      if (this.has(coreId)) this.#mutate(coreId, entry => { entry.lastSeenAt = Date.now(); entry.syncPending = (entry.syncPending ?? 0) + 1; });
-      this.members.mark(this.members.holdersOf(coreId));
-      this.flush(coreId);
-      socket.onMessage(text => { this.#background(this.#serve(coreId, socket, text)); });
-      socket.onClose(lost);
-    }, lost);
-  }
-
   /** The signed hello a dial to `to` carries in its upgrade's headers. */
   helloHeaders(to: string): Record<string, string> {
     const self = this.#core.coordination.card();
-    const hello = JSON.stringify({ v: 1, from: self.coreId, to, at: Date.now(), nonce: randomUUID() });
+    const hello = JSON.stringify({ v: 1, from: self.coreId, to, at: this.#core.coordination.clocks.now(to), nonce: randomUUID() });
     return {
       'x-boite-peer': self.coreId,
       'x-boite-hello': Buffer.from(hello).toString('base64url'),
@@ -758,29 +681,17 @@ export class ContactStore implements LinkedContacts {
     };
   }
 
-  /** A request of the host, carried down the link: answered by the same handler as one posted to this core. */
-  async #serve(hostId: string, socket: TextSocket, data: string): Promise<void> {
-    let frame: Partial<Extract<Frame, { t: 'req' }>>;
-    try { frame = JSON.parse(data) as typeof frame; } catch { return; }
-    if (frame?.t !== 'req' || typeof frame.id !== 'string' || typeof frame.body !== 'string' || typeof frame.signature !== 'string') return;
-    let response: CoordinationBridgeResponse;
-    try { response = await this.#core.coordination.forward({ coreId: hostId, body: frame.body, signature: frame.signature }); }
-    catch { response = { status: 400, body: '', signature: '' }; }
-    if (socket.open) socket.send(JSON.stringify({ t: 'res', id: frame.id, ...response } satisfies Frame));
-  }
+  // -- The link (`link.ts`): the server's handlers and the join reach it through these.
 
-  /** Closes this core's side of a contact's link. */
-  unlink(coreId: string): void {
-    const dialed = this.#dialed.get(coreId);
-    if (dialed) { this.#dialed.delete(coreId); dialed.socket?.close(1000, 'contact removed'); }
-    const hosted = this.#hosted.get(coreId);
-    if (hosted) {
-      this.#hosted.delete(coreId);
-      this.#core.coordination.bridge.disconnect(hosted.routeId);
-      hosted.socket.close(1000, 'contact removed');
-    }
-    this.#backoff.heard(coreId);
-  }
+  attach(data: ContactSocketData['contact'], socket: LinkSocket): void { this.links.attach(data, socket); }
+  frame(data: ContactSocketData['contact'], raw: string | Buffer): void { this.links.frame(data, raw); }
+  heard(data: ContactSocketData['contact'], ping = false): void { this.links.heard(data, ping); }
+  detach(data: ContactSocketData['contact']): void { this.links.detach(data); }
+  dial(contact: StoredContact): void { this.links.dial(contact); }
+  unlink(coreId: string): void { this.links.unlink(coreId); }
+  get started(): boolean { return this.#started; }
+  seen(coreId: string): void { this.#mutate(coreId, entry => { entry.lastSeenAt = Date.now(); entry.syncPending = (entry.syncPending ?? 0) + 1; }); }
+  background(job: Promise<unknown>): void { this.#background(job); }
 
   // -- Lifecycle.
 
@@ -820,7 +731,8 @@ export class ContactStore implements LinkedContacts {
       return;
     }
     this.#ticks += 1;
-    for (const contact of contacts) if (contact.role === 'guest' && !this.#dialed.has(contact.coreId) && !this.#backoff.waiting(contact.coreId, 'link')) this.dial(contact);
+    this.links.beat();
+    for (const contact of contacts) if (contact.role === 'guest' && this.links.due(contact.coreId)) this.dial(contact);
     if (this.#ticks % FLUSH_TICKS === 0) {
       this.requests.expire();
       for (const contact of contacts) this.flush(contact.coreId);
@@ -845,10 +757,7 @@ export class ContactStore implements LinkedContacts {
     this.funnel.stop();
     if (this.timer !== null) clearInterval(this.timer);
     this.timer = null;
-    for (const { socket } of this.#dialed.values()) socket?.close(1001, 'core stopping');
-    this.#dialed.clear();
-    for (const { socket } of this.#hosted.values()) socket.close(1001, 'core stopping');
-    this.#hosted.clear();
+    this.links.close();
     this.members.beginClose();
     void this.groupLink.close();
     void this.hostAsks.close();

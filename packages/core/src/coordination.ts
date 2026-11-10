@@ -6,7 +6,7 @@ import type { AgentAddress, AgentContact, AgentLetter, AgentMatch, AgentTranscri
 import { checkRemoteContact } from './coordination-lookup.ts';
 import { CoordinationLookups } from './coordination-directory.ts';
 import { PeerDesk } from './coordination-peer.ts';
-import { CoordinationBridge } from './coordination-bridge.ts';
+import { askContact, CoordinationBridge } from './coordination-bridge.ts';
 import { dropGroupRead, policedRoutes, policyAllowsLetter } from './coordination-group.ts';
 import { address, coordinationGuide, coordinationUrl, LETTER_TTL_MS, letterPrompt, RESIDENT_LETTER_TTL_MS, same, text } from './coordination-letter.ts';
 import { senderContext, withProjects, withRelations } from './coordination-relation.ts';
@@ -23,6 +23,7 @@ import { ContactMailboxes } from './contacts/mailboxes.ts';
 import { GROUP_LETTER_TTL_MS } from './contacts/group-link.ts';
 import { contactsBot } from './contacts/bot.ts';
 import { forwardCoordination } from './coordination-rpc.ts';
+import { datedByPeer, PeerClocks } from './peer-clock.ts';
 import { trustCoordination, trustedCoordinationPeers } from './coordination-trust.ts';
 import { TeamLetters } from './coordination-team.ts';
 
@@ -46,6 +47,7 @@ type Row = { data: string; fingerprint: string | null };
 
 export class Coordination {
   readonly bridge = new CoordinationBridge();
+  readonly clocks = new PeerClocks(); // what each peer said of its own clock, for the date signed on requests to it
   readonly mailboxes: ContactMailboxes;
   readonly teamLetters: TeamLetters;
   readonly #lookups: CoordinationLookups;
@@ -836,10 +838,10 @@ export class Coordination {
     // A contact this core hosts is reached only down the link its core keeps open.
     const contact = routes === null && this.#core.contacts.has(peer.coreId);
     if (contact && !this.#core.contacts.linked(peer.coreId)) throw unavailable(`${peer.name} is not linked right now; its core dials this one again by itself`);
-    const attempt = async (url: string | null): Promise<Answer> => {
+    const once = async (url: string | null): Promise<Answer> => {
       policedRoutes(this.#core, peer, operation);
       const nonce = randomUUID();
-      const body = JSON.stringify({ from: this.#coreId, to: peer.coreId, at: Date.now(), nonce, operation, payload } satisfies Envelope);
+      const body = JSON.stringify({ from: this.#coreId, to: peer.coreId, at: this.clocks.now(peer.coreId), nonce, operation, payload } satisfies Envelope);
       const signed = sign(null, Buffer.from(body), this.#key!).toString('base64');
       const packed = pack(body, signed);
       const sealing = this.#core.group.sealFor(peer.coreId, packed) ?? (contact ? this.#core.contacts.sealFor(peer.coreId, packed) : null);
@@ -852,13 +854,14 @@ export class Coordination {
         // A contact's name is checked again at each request: its DNS answer may have left the tailnet since the join.
         if (contact) await checkTailnetName(url, 'contact.url');
         policedRoutes(this.#core, peer, operation);
-        return post(url, this.#coreId, peer.publicKey, wire, signature, nonce, sealing);
+        return post(url, this.#coreId, peer.publicKey, wire, signature, nonce, sealing, contact);
       }
       const response = await this.bridge.request(peer.coreId, { fromCoreId: this.#coreId, toCoreId: peer.coreId, body: wire, signature });
       return settle(null, peer.publicKey, nonce, response.status, response.body, response.signature, sealing);
     };
+    const attempt = (url: string | null): Promise<Answer> => datedByPeer(this.clocks, peer, message => this.#core.log('warn', `coordination: ${message}`, { source: 'coordination' }), () => once(url));
     let answer: Answer;
-    if (routes === null) answer = await attempt(this.bridge.available(peer.coreId) || peer.viaClient ? null : peer.url);
+    if (routes === null) answer = await askContact(peer, contact, this.bridge.available(peer.coreId), attempt);
     else {
       try { answer = await firstAnswer(routes, attempt); }
       catch (error) {

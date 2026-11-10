@@ -111,7 +111,10 @@ export class AgentStore {
     this.projects = new AgentProjects(core, this); this.group = new GroupBots(core, this); this.groupHost = new GroupBotHost(core); this.memory = new MemoryKeeper(core, this); this.settingCards = new AgentSettingCards(core, this);
     // The status of an agent follows its thread: a step, a card, a title, an answer.
     this.#off = core.bus.onAny((name, payload) => {
-      if (core.journal.isClosed() || this.#threads.size === 0) return;
+      if (core.journal.isClosed()) return;
+      // A provider turned off or on changes the problem of the bots that run on it, threadless ones included.
+      if (name === 'providers.updated') { if (this.records.list('profile').length > 0) this.changed(); return; }
+      if (this.#threads.size === 0) return;
       const threadId = (payload as { threadId?: unknown; id?: unknown } | null)?.threadId ?? (name === 'thread.updated' ? (payload as { id?: unknown }).id : undefined);
       if (typeof threadId !== 'string') return;
       if (!this.#threads.has(threadId)) {
@@ -462,9 +465,17 @@ export class AgentStore {
   // -- status -----------------------------------------------------------------
 
   /** Why an agent cannot run, in a sentence that names the fix, or null. */
-  #problem(agent: AgentProfile): string | null {
+  #problem(agent: AgentProfile, thread: ThreadSummary | null): string | null {
     let provider;
     try { provider = agentProvider(this.core, agent); } catch (error) { return messageOf(error); }
+    // Its wakes wait meanwhile (`WakeHeld` 'off'), so the fix says how to let them run. They read the
+    // provider of its thread, which a move in the composer can set apart from the profile's.
+    const runs = (thread ? this.core.providers.get(thread.providerId) : undefined) ?? provider;
+    if (!this.core.providers.enabled(runs.id)) {
+      return this.core.providers.policyBlock(runs.id)
+        ? `${runs.name} is blocked by your organization's policy; choose another model for ${agent.name} in its settings.`
+        : `${runs.name} is turned off on this machine; turn it on in Settings > Providers, or choose another model for ${agent.name} in its settings.`;
+    }
     const account = this.core.journal.getAccount(agent.selection.accountId);
     if (account === null || account.providerId !== provider.id) return `Its account is gone; choose another one for ${agent.name} in its settings.`;
     const listed = agent.selection.model === null || provider.models.length === 0 ? null : this.#listedModels(provider, account.id);
@@ -517,7 +528,7 @@ export class AgentStore {
   status(agent: AgentProfile, sessions: readonly AgentSession[] = this.records.list('session'), routines: readonly AgentRoutine[] = this.records.list('routine')): AgentStatus {
     const threadId = sessions.find(session => session.agentId === agent.id)?.threadId ?? null;
     const thread = threadId ? this.core.journal.getThread(threadId) : null;
-    const problem = this.#problem(agent);
+    const problem = this.#problem(agent, thread);
     const asks = thread ? this.core.threads.listQuestions(thread.id).length + this.core.threads.listPermissions(thread.id).length : 0;
     // A blocking card holds its turn; one asked without stopping waits for the user once the turn is over.
     const state: AgentStatus['state'] = agent.status === 'archived' ? 'archived'
