@@ -344,9 +344,13 @@ pub async fn app_update_check(webview: Webview, app: AppHandle, state: State<'_,
     if state.throttle.lock().unwrap().admit(channel, holds, force.unwrap_or(false), Instant::now()) != Admit::Run { return Ok(current); }
     let _operation = match state.begin() {
         Ok(operation) => operation,
-        // A check of this channel already on its way answers this one too, through its event.
-        Err(_) if current.phase == "checking" && current.channel == channel => return Ok(current),
-        Err(e) => return Err(e),
+        Err(e) => {
+            // A check of this channel already on its way answers this one too, through its event.
+            // Read again: the snapshot above may predate that check's start.
+            let now = state.snapshot.lock().unwrap().clone();
+            if now.phase == "checking" && now.channel == channel { return Ok(now); }
+            return Err(e);
+        }
     };
     state.pending.lock().unwrap().take();
     state.change(&app, |s| { s.phase = "checking".into(); s.channel = channel; s.error = None;
