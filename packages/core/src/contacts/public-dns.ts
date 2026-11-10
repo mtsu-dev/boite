@@ -38,8 +38,10 @@ async function zoneServers(): Promise<string[]> {
  */
 export async function funnelAddresses(host: string): Promise<string[] | null> {
   if (!isFunnelName(host)) return null;
+  let asked: string[];
+  // The zone's servers not found is the system's resolver failing, never the name missing.
+  try { asked = await zoneServers(); } catch { return null; }
   try {
-    const asked = await zoneServers();
     const { Resolver } = await import('node:dns/promises');
     const resolver = new Resolver({ timeout: QUERY_TIMEOUT_MS, tries: 2 });
     resolver.setServers(asked);

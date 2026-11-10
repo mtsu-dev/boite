@@ -76,9 +76,9 @@ export class ContactLinks {
   attach(data: ContactSocketData['contact'], socket: LinkSocket): void {
     const contact = this.#store.find(data.coreId);
     if (this.#store.isClosed || this.#core.policy.networkOff('contacts') || !contact || contact.role !== 'host') { socket.close(1008, 'not a contact'); return; }
-    // A probe's first frame proves this core's key (`dialProven`); an older guest ignores it.
+    // A probe's only frame proves this core's key (`dialProven`), which hangs up on any other; a link is told it carries both ways.
     if (data.proof) socket.send(JSON.stringify({ t: 'proof', signature: data.proof }));
-    socket.send(JSON.stringify({ t: 'caps', duplex: 1 } satisfies Frame));
+    else socket.send(JSON.stringify({ t: 'caps', duplex: 1 } satisfies Frame));
     const previous = this.#hosted.get(data.coreId);
     if (previous) {
       this.#core.coordination.bridge.disconnect(previous.routeId);

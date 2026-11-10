@@ -392,7 +392,7 @@ export class ContactMembers {
   }
 
   /** A member sent this core a signed request: it is up, and is offered its copy at the next round whatever its wait. */
-  heard(memberId: string): void { this.#backoff.heard(memberId); }
+  heard(memberId: string): void { this.#backoff.heard(memberId); this.#unheard.delete(memberId); }
 
   /** Every member's copy that is behind, once each. */
   push(): void {
