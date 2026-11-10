@@ -3,7 +3,7 @@ import { BUILT_IN_MODELS, DEFAULT_MODEL_NAMES, INITIAL_MODEL_DEFAULTS, writeMode
 import { isNamedModel } from '../model-order';
 import { modelFavorites, resolveFavorites, type FavoritesTarget, type ResolvedFavorite } from '../model-favorites.svelte';
 import { defaultPrefs, writePrefs, type ComposerPrefs } from '../prefs';
-import { strings } from '../strings';
+import { fill, strings } from '../strings';
 import { work, type Profile } from '../work-prefs.svelte';
 import type { Choice } from '../store.svelte';
 import type { StoreContext } from './context';
@@ -517,7 +517,7 @@ export class Models {
       // the user configured, or a model he picked, is refused instead.
       const moved = this.#offered(choice, offered);
       if (moved !== choice) return moved;
-      if (!options.background) s.error = strings.settings.modelDefaultUnavailable.replace('{model}', choice.model).replace('{provider}', provider.name);
+      if (!options.background) s.error = fill(strings.settings.modelDefaultUnavailable, { model: choice.model, provider: provider.name });
       return null;
     }
     return choice;
