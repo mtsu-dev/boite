@@ -183,4 +183,9 @@ test('fake bots on a provider turned off name the fix in their status and hear o
   expect(await status()).toMatchObject({ state: 'error', problem: expect.stringMatching(/ is turned off on this machine; turn it on in Settings > Providers, or choose another model for Mira in its settings\.$/) });
   await client.call('providers.setEnabled', { providerId: 'echo', enabled: true });
   expect((await status()).problem).toBeNull();
+  // The thread's provider is the one its wakes start on: moved in the composer to one turned off, it says so.
+  const { threadId } = (await client.call('agents.snapshot', {})).sessions.find(s => s.agentId === mira.id)!;
+  await client.call('threads.update', { threadId, accountId: 'a-codex' });
+  await client.call('providers.setEnabled', { providerId: 'codex', enabled: false });
+  expect((await status()).problem).toMatch(/^Codex is turned off on this machine;/);
 });

@@ -453,8 +453,9 @@ export class FakeContext {
       },
       selfName: () => this.identity.name,
       // As the core's status: a bot on a provider turned off says how to let its wakes run.
-      problem: agent => {
-        const provider = this.providers.find(p => p.id === agent.selection.providerId);
+      // The thread's own provider first: a move in the composer can set it apart from the profile's.
+      problem: (agent, thread) => {
+        const provider = this.providers.find(p => p.id === (thread?.providerId ?? agent.selection.providerId));
         if (!provider || provider.enabled !== false) return null;
         return provider.policy
           ? `${provider.name} is blocked by your organization's policy; choose another model for ${agent.name} in its settings.`

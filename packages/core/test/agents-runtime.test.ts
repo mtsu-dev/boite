@@ -641,6 +641,11 @@ test('a bot whose provider is turned off keeps its facts and letters, names the 
   await waitFor(() => events().length === before + 1 && settled(h, threadId));
   expect(h.core.agentRuntime.facts(agent.id)).toEqual([]);
   expect(status().problem).toBeNull();
+  // Wakes start on the thread's provider, which a move in the composer can set apart from the profile's: the status reads it too.
+  await client.call('providers.setEnabled', { providerId: 'codex', enabled: false });
+  h.core.journal.putThread({ ...h.core.journal.getThread(threadId)!, providerId: 'codex' });
+  expect(status().problem).toStartWith(`${h.core.providers.get('codex')!.name} is turned off on this machine;`);
+  expect(h.core.agentRuntime.attempt(h.core.workforce.records.get('profile', agent.id), { kind: 'event', label: '1 project event', prompt: 'Anything?' }).held).toBe('off');
 });
 
 test('changed instructions wake the agent once to review its routines', async () => {

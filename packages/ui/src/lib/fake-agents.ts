@@ -54,7 +54,7 @@ export interface AgentRunner {
   /** This core's name in its group, as a moved bot's note says where it came from. */
   selfName?: () => string;
   /** Why the agent's route cannot run on this core (its provider is turned off), as the core's status says it; null when it can. */
-  problem?: (agent: AgentProfile) => string | null;
+  problem?: (agent: AgentProfile, thread: Thread | undefined) => string | null;
 }
 
 /** A member of the group as a move sees it: its name, whether it takes bots, and its agents. */
@@ -275,7 +275,7 @@ export class FakeAgents {
     const threadId = this.threadOf(agent.id);
     const thread = threadId ? this.runner?.thread?.(threadId) : undefined;
     const turns = thread?.turns ?? [];
-    const problem = this.problems.get(agent.id) ?? this.runner?.problem?.(agent) ?? null;
+    const problem = this.problems.get(agent.id) ?? this.runner?.problem?.(agent, thread) ?? null;
     const running = thread?.status === 'running';
     const waiting = thread?.status === 'waiting' || (threadId ? this.runner?.waiting?.(threadId) ?? false : false);
     const state: AgentStatus['state'] = agent.status === 'archived' ? 'archived'
