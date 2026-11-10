@@ -112,6 +112,8 @@ export class AgentStore {
     // The status of an agent follows its thread: a step, a card, a title, an answer.
     this.#off = core.bus.onAny((name, payload) => {
       if (core.journal.isClosed() || this.#threads.size === 0) return;
+      // A provider turned off or on changes the problem of the bots that run on it.
+      if (name === 'providers.updated') { this.changed(); return; }
       const threadId = (payload as { threadId?: unknown; id?: unknown } | null)?.threadId ?? (name === 'thread.updated' ? (payload as { id?: unknown }).id : undefined);
       if (typeof threadId !== 'string') return;
       if (!this.#threads.has(threadId)) {
@@ -465,6 +467,12 @@ export class AgentStore {
   #problem(agent: AgentProfile): string | null {
     let provider;
     try { provider = agentProvider(this.core, agent); } catch (error) { return messageOf(error); }
+    // Its wakes wait meanwhile (`WakeHeld` 'off'), so the fix says how to let them run.
+    if (!this.core.providers.enabled(provider.id)) {
+      return this.core.providers.policyBlock(provider.id)
+        ? `${provider.name} is blocked by your organization's policy; choose another model for ${agent.name} in its settings.`
+        : `${provider.name} is turned off on this machine; turn it on in Settings > Providers, or choose another model for ${agent.name} in its settings.`;
+    }
     const account = this.core.journal.getAccount(agent.selection.accountId);
     if (account === null || account.providerId !== provider.id) return `Its account is gone; choose another one for ${agent.name} in its settings.`;
     const listed = agent.selection.model === null || provider.models.length === 0 ? null : this.#listedModels(provider, account.id);

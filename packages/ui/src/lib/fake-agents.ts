@@ -53,6 +53,8 @@ export interface AgentRunner {
   member?: (machine: string) => FakeMember | { refused: string };
   /** This core's name in its group, as a moved bot's note says where it came from. */
   selfName?: () => string;
+  /** Why the agent's route cannot run on this core (its provider is turned off), as the core's status says it; null when it can. */
+  problem?: (agent: AgentProfile) => string | null;
 }
 
 /** A member of the group as a move sees it: its name, whether it takes bots, and its agents. */
@@ -246,6 +248,8 @@ export class FakeAgents {
   seedQuiet(turnId: string): void { this.quiet.add(turnId); }
   seedMemory(agentId: string, memory: string): void { this.brains.set(agentId, { path: '', instructions: this.profile(agentId).instructions, memory, revision: '1' }); }
   seedProblem(agentId: string, problem: string): void { this.problems.set(agentId, problem); }
+  /** A provider was turned off or on: as on the core, clients read the bots' problems again. */
+  providersChanged(): void { if (this.profiles.size > 0) this.bump(); }
   /** How many answers the list counts missed while the thread is unread; one by default. */
   seedUnread(agentId: string, count: number): void { this.unread.set(agentId, count); }
   seedSpend(agentId: string, usd: number): void { this.spend.set(agentId, usd); }
@@ -271,7 +275,7 @@ export class FakeAgents {
     const threadId = this.threadOf(agent.id);
     const thread = threadId ? this.runner?.thread?.(threadId) : undefined;
     const turns = thread?.turns ?? [];
-    const problem = this.problems.get(agent.id) ?? null;
+    const problem = this.problems.get(agent.id) ?? this.runner?.problem?.(agent) ?? null;
     const running = thread?.status === 'running';
     const waiting = thread?.status === 'waiting' || (threadId ? this.runner?.waiting?.(threadId) ?? false : false);
     const state: AgentStatus['state'] = agent.status === 'archived' ? 'archived'

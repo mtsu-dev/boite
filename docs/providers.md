@@ -957,7 +957,10 @@ without starting the agent. The update check skips it, its program is not
 even asked its version, its usage is not read, no title is written on it, a
 delegated agent cannot be routed to it and no default account is adopted for
 it. Its warm processes
-are released at once; a turn already queued or running ends by itself.
+are released at once; a turn already queued or running ends by itself. A bot
+on it keeps its event wakes, facts and letters waiting, its status says to turn
+the provider back on or pick another model, and they run once one is done
+([bots](bots.md)).
 
 Nothing is removed. Accounts, threads, the managed install and the user's own
 install stay as they are, and turning the provider back on adopts an existing

@@ -609,6 +609,40 @@ test('urgent facts still spend facts skipped for budget or failed admission, wit
   expect(turnsOf(h, threadId)).toHaveLength(before);
 });
 
+test('a bot whose provider is turned off keeps its facts and letters, names the fix in its status, and runs them once the provider is back', async () => {
+  const driver = scripted(() => ({ text: 'Seen.' })); restore = driver.restore;
+  const { agent, threadId } = await makeAgent(h, client);
+  const tick = () => (h.core.agentRuntime as unknown as { tick(): void }).tick();
+  const events = () => turnsOf(h, threadId).filter(t => t.execution?.operation === 'event');
+  const status = () => h.core.workforce.status(h.core.workforce.records.get('profile', agent.id));
+  const name = h.core.providers.get('echo')!.name;
+  const before = events().length;
+  let changes = 0;
+  const off = h.core.bus.onAny(event => { if (event === 'agents.changed') changes++; });
+  try {
+    await client.call('providers.setEnabled', { providerId: 'echo', enabled: false });
+    // Clients hear of it: the bot's row turns to its problem without another change.
+    await waitFor(() => changes > 0);
+  } finally { off(); }
+  expect(status()).toMatchObject({ state: 'error', problem: `${name} is turned off on this machine; turn it on in Settings > Providers, or choose another model for ${agent.name} in its settings.` });
+  h.core.agentRuntime.fact(agent.id, { urgent: true, key: 'turn:one', text: 'Thread one finished.', delay: 0, threadIds: [] });
+  tick(); tick();
+  // Held, not spent: on main the first tick dropped it with a warning (issue #992).
+  expect(h.core.agentRuntime.facts(agent.id).map(f => f.key)).toEqual(['turn:one']);
+  expect(events()).toHaveLength(before);
+  // A turn the core starts by itself waits too, with one line saying why and how to let it run.
+  let held: unknown = null;
+  try { h.core.threads.startTurn(threadId, 'From a subagent', { kind: 'delegation' }); } catch (error) { held = error; }
+  expect(isAgentHeld(held)).toBe(true);
+  await waitFor(() => lines(threadId).some(line => line.startsWith(`Held the results of its subagents or a workflow: ${name} is turned off on this machine.`)));
+  expect((await h.core.logs.select(record => record.message.includes('could not start'), 10)).map(record => record.message)).toEqual([]);
+
+  await client.call('providers.setEnabled', { providerId: 'echo', enabled: true });
+  await waitFor(() => events().length === before + 1 && settled(h, threadId));
+  expect(h.core.agentRuntime.facts(agent.id)).toEqual([]);
+  expect(status().problem).toBeNull();
+});
+
 test('changed instructions wake the agent once to review its routines', async () => {
   const { agent, threadId } = await makeAgent(h, client);
   const current = h.core.workforce.records.get('profile', agent.id);

@@ -46,6 +46,8 @@ export const MEMORY_TARGET = Math.floor(AGENT_MEMORY_MAX * 0.75);
 /** A rewrite that keeps less than this share of a file past `SHRINK_FLOOR` characters is refused as a loss, not a summary. */
 const SHRINK_KEEP = 0.3;
 const SHRINK_FLOOR = 1_500;
+/** Ended passes `owns` still answers for: one per agent at a time, so this covers every bot of a core. */
+const ENDED_KEPT = 256;
 
 /** `retried`: the pass already answered past the cap once and was asked to shorten it. */
 interface Keeper { agentId: string; turnId: string; memory: string; startedAt: number; retried?: true }
@@ -112,6 +114,12 @@ export class MemoryKeeper {
   readonly #keepers = new Map<string, Keeper>();
   /** The last exchange of an agent whose pass was still running when its turn ended. */
   readonly #waiting = new Map<string, Exchange>();
+  /**
+   * Passes that ended, newest last. Their turn's end reaches this keeper
+   * before delegation, which reads `owns` to keep the answer from the agent's
+   * mail: forgetting them at once made it mail the archived pass (issue #992).
+   */
+  readonly #ended = new Set<string>();
   readonly #off: () => void;
   #closed = false;
 
@@ -139,7 +147,7 @@ export class MemoryKeeper {
   close(): void { this.#closed = true; this.#off(); }
 
   /** A memory pass child: delegation delivers its answer nowhere and lets it run while the team rests. */
-  owns(threadId: string): boolean { return this.#keepers.has(threadId); }
+  owns(threadId: string): boolean { return this.#keepers.has(threadId) || this.#ended.has(threadId); }
   busy(): boolean { return this.#keepers.size > 0; }
   /** The agent's last pass: running, or how it ended. Null before the first. */
   lastPass(agentId: string): Pass | null {
@@ -269,6 +277,8 @@ export class MemoryKeeper {
 
   #end(threadId: string, keeper: Keeper, status: 'done' | 'unchanged' | 'error', summary: string | null): void {
     this.#keepers.delete(threadId);
+    this.#ended.add(threadId);
+    if (this.#ended.size > ENDED_KEPT) this.#ended.delete(this.#ended.values().next().value!);
     this.#core.journal.deleteSetting(`${KEEPER}${threadId}`);
     const thread = this.#core.journal.getThread(threadId);
     if (thread && !thread.archived) {
