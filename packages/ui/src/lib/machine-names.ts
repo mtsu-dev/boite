@@ -33,15 +33,12 @@ export function namedByUser(saved: StoredEnvironment | undefined): boolean {
   return Object.entries(profiles()).some(([key, profile]) => {
     // A profile that says whether it was typed is no older version's.
     if (profile?.named !== undefined || profile?.label?.trim() !== label) return false;
+    // One keyed by the address was written before the machine said its name: a rename and an icon pick look
+    // alike there, and reading it as a rename would freeze a stale name, so it names nothing.
     let host: unknown;
-    try { const parts: unknown = JSON.parse(key); host = Array.isArray(parts) ? parts[0] : undefined; } catch { host = hostOf(key); }
-    return host !== label;
+    try { const parts: unknown = JSON.parse(key); host = Array.isArray(parts) ? parts[0] : undefined; } catch { return false; }
+    return typeof host === 'string' && host !== label;
   });
-}
-
-/** A profile written before a machine reported its name is keyed by its address. */
-function hostOf(url: string): string | undefined {
-  try { return new URL(url).host; } catch { return undefined; }
 }
 
 /** A profile's name, unless an icon pick wrote it or the owner typed a newer one for that machine (`typed`). */

@@ -830,7 +830,9 @@ test('a remembered machine goes by the name it reports now unless the owner type
   // A profile an icon pick wrote holds that host name itself, and names nothing.
   localStorage.setItem('boite.machine-profiles', JSON.stringify({
     [JSON.stringify(['atelier-old', '/srv/boite', 'stable'])]: { label: 'Atelier' },
-    [JSON.stringify(['nas', '/srv/boite', 'stable'])]: { label: 'nas', icon: 'nas' }
+    [JSON.stringify(['nas', '/srv/boite', 'stable'])]: { label: 'nas', icon: 'nas' },
+    // An older icon pick before the machine said its name is keyed by its address.
+    'http://10.0.0.5:1': { label: 'nas', icon: 'nas' }
   }));
   upsertEnvironment({ url: 'http://10.0.0.6:1', token: 'k', paired: true, label: 'Atelier' });
   upsertEnvironment({ url: 'http://10.0.0.5:1', token: 'k', paired: true, label: 'nas' });
