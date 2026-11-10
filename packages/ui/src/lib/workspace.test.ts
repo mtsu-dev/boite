@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { machineHealth, PRIMARY_PATIENCE_MS, SETTLE_WAIT_MS, Workspace } from './workspace.svelte';
 import { reveal } from './reveal';
+import { primaryMachine } from './workspace-boot';
 import { Store, store as primary } from './store.svelte';
 import { FakeClient } from './fake-client';
 import { WsClient, type SocketLike } from './client';
@@ -796,6 +797,105 @@ test('machine names and icons persist independently and survive an endpoint chan
   expect(w.machines[0]?.label).toBe('Studio');
 });
 
+test('a remembered machine goes by the name it reports now unless the owner typed one', async () => {
+  const { w, a } = await setup();
+  const hosts: Record<string, string> = { 'http://10.0.0.9:1': 'boite-m1', 'http://10.0.0.8:1': 'old-host', 'http://10.0.0.6:1': 'atelier-pc', 'http://10.0.0.5:1': 'nas-2', 'http://10.0.0.4:1': 'boite', 'http://10.0.0.3:1': 'host-a', 'http://10.0.0.2:1': 'atelier-x', 'http://10.0.0.1:1': 'atelier-x' };
+  vi.spyOn(Store.prototype, 'connectEndpoint').mockImplementation(async function (this: Store) {
+    this.core = { ...a.core!, hostname: hosts[this.machineId]!, dataDir: '/srv/boite', channel: 'stable' };
+    this.connection = 'ready';
+  });
+  const saved = (url: string) => endpoints.readEnvironments().find((env) => env.url === url);
+  const reconnect = async (url: string) => {
+    w.machines = w.machines.filter((machine) => machine.id !== url);
+    expect(await w.add(saved(url)!, saved(url)!.label, true)).toBe(true);
+    return w.machines.find((machine) => machine.id === url)!.label;
+  };
+  // An older version saved the host name the machine had when it first connected; it moved hosts since.
+  upsertEnvironment({ url: 'http://10.0.0.9:1', token: 'k', paired: true, label: 'boite' });
+  expect(await reconnect('http://10.0.0.9:1')).toBe('boite-m1');
+  expect(saved('http://10.0.0.9:1')).toMatchObject({ label: 'boite-m1' });
+  expect(saved('http://10.0.0.9:1')?.named).toBeUndefined();
+  // The owner's rename survives the next host name.
+  expect(await w.add({ url: 'http://10.0.0.8:1', token: 'k', paired: true })).toBe(true);
+  expect(w.machines.find((machine) => machine.id === 'http://10.0.0.8:1')?.label).toBe('old-host');
+  w.customize('http://10.0.0.8:1', 'Serveur');
+  hosts['http://10.0.0.8:1'] = 'new-host';
+  expect(await reconnect('http://10.0.0.8:1')).toBe('Serveur');
+  expect(saved('http://10.0.0.8:1')).toMatchObject({ label: 'Serveur', named: true });
+  // Picking an icon names nothing.
+  w.customize('http://10.0.0.9:1', 'boite-m1', 'server');
+  hosts['http://10.0.0.9:1'] = 'boite-m2';
+  expect(await reconnect('http://10.0.0.9:1')).toBe('boite-m2');
+  // A rename by an older version: its profile holds the name under the host name of then.
+  // A profile an icon pick wrote holds that host name itself, and names nothing.
+  localStorage.setItem('boite.machine-profiles', JSON.stringify({
+    [JSON.stringify(['atelier-old', '/srv/boite', 'stable'])]: { label: 'Atelier' },
+    [JSON.stringify(['nas', '/srv/boite', 'stable'])]: { label: 'nas', icon: 'nas' },
+    // An older icon pick before the machine said its name is keyed by its address.
+    'http://10.0.0.5:1': { label: 'nas', icon: 'nas' }
+  }));
+  upsertEnvironment({ url: 'http://10.0.0.6:1', token: 'k', paired: true, label: 'Atelier' });
+  upsertEnvironment({ url: 'http://10.0.0.5:1', token: 'k', paired: true, label: 'nas' });
+  expect([await reconnect('http://10.0.0.6:1'), await reconnect('http://10.0.0.5:1')]).toEqual(['Atelier', 'nas-2']);
+  expect(saved('http://10.0.0.6:1')?.named).toBe(true);
+  // An icon picked while the machine is away is saved under its address and still names nothing.
+  expect(await w.add({ url: 'http://10.0.0.4:1', token: 'k', paired: true })).toBe(true);
+  w.machines.find((machine) => machine.id === 'http://10.0.0.4:1')!.store.core = null;
+  w.customize('http://10.0.0.4:1', 'boite', 'server');
+  hosts['http://10.0.0.4:1'] = 'boite-m1';
+  expect(await reconnect('http://10.0.0.4:1')).toBe('boite-m1');
+  // The name typed last wins over the profile of a host name the machine goes back to.
+  expect(await w.add({ url: 'http://10.0.0.3:1', token: 'k', paired: true })).toBe(true);
+  w.customize('http://10.0.0.3:1', 'Premier');
+  hosts['http://10.0.0.3:1'] = 'host-b';
+  expect(await reconnect('http://10.0.0.3:1')).toBe('Premier');
+  w.customize('http://10.0.0.3:1', 'Actuel');
+  hosts['http://10.0.0.3:1'] = 'host-a';
+  expect(await reconnect('http://10.0.0.3:1')).toBe('Actuel');
+  // A typed name the profile brings to a new address stays typed there through the next host name.
+  expect(await w.add({ url: 'http://10.0.0.2:1', token: 'k', paired: true })).toBe(true);
+  w.customize('http://10.0.0.2:1', 'Atelier X');
+  w.machines = w.machines.filter((machine) => machine.id !== 'http://10.0.0.2:1');
+  expect(await w.add({ url: 'http://10.0.0.1:1', token: 'k', paired: true })).toBe(true);
+  hosts['http://10.0.0.1:1'] = 'host-c';
+  expect(await reconnect('http://10.0.0.1:1')).toBe('Atelier X');
+  // A name handed in with a new machine is listed, not the host name.
+  hosts['http://10.0.0.7:1'] = 'srv-07';
+  expect(await w.add({ url: 'http://10.0.0.7:1', token: 'k', paired: true }, 'Server')).toBe(true);
+  expect(w.machines.find((machine) => machine.id === 'http://10.0.0.7:1')?.label).toBe('Server');
+  // The machine the window opens on follows the same rule.
+  a.localCore = false;
+  a.endpointUrl = 'http://10.0.0.9:1';
+  a.core = { ...a.core!, hostname: 'boite-m1' };
+  const opened = (label: string, named?: true) => primaryMachine(w, { url: a.endpointUrl!, token: 'k' }, [{ url: a.endpointUrl!, token: 'k', paired: true, label, ...(named ? { named } : {}) }]).label;
+  expect([opened('boite'), opened('Serveur', true)]).toEqual(['boite-m1', 'Serveur']);
+});
+
+
+test('the machine the window opens on carries a typed profile name to a new address', async () => {
+  const { w, a } = await setup();
+  const first = 'http://10.0.0.9:1';
+  const next = 'http://10.0.0.8:1';
+  const core = (hostname: string) => ({ ...a.core!, hostname, dataDir: '/srv/boite', channel: 'stable' as const });
+  vi.spyOn(Store.prototype, 'connectEndpoint').mockImplementation(async function (this: Store) {
+    this.core = core('host-a');
+    this.connection = 'ready';
+  });
+  expect(await w.add({ url: first, token: 'k', paired: true })).toBe(true);
+  w.customize(first, 'Atelier');
+  endpoints.removeEnvironment(first);
+  a.localCore = false;
+  a.endpointUrl = next;
+  a.core = core('host-a');
+  endpoints.storeEndpoint({ url: next, token: 'k', paired: true });
+  vi.spyOn(a, 'boot').mockResolvedValue();
+  await w.boot();
+  expect(w.machines[0]!.label).toBe('Atelier');
+  expect(endpoints.readEnvironments().find((e) => e.url === next)?.named).toBe(true);
+  a.core = core('host-b');
+  await w.boot();
+  expect(w.machines[0]!.label).toBe('Atelier');
+});
 
 test('agent links resolve core identity despite identical thread ids and open both directions', async () => {
   const { w, a, b } = await setup();
