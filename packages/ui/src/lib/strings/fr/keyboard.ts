@@ -35,7 +35,7 @@ export const fr: Translation = {
       tasks: 'Ouvrir la surface des tâches',
       closeSurface: 'Fermer la surface active',
       stash: 'Mettre le message de côté, ou le reprendre',
-      sendAndDraft: 'Envoyer et ouvrir une nouvelle conversation',
+      sendAndDraft: 'Envoyer le message',
       pin: 'Épingler ou désépingler cette conversation',
       reopenThread: 'Rouvrir la dernière conversation archivée',
       copyAnswer: 'Copier la dernière réponse',

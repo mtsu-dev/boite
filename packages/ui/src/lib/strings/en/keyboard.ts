@@ -34,7 +34,7 @@ export const strings = {
       tasks: 'Open the tasks surface',
       closeSurface: 'Close the active surface',
       stash: 'Stash the composer text, or take it back',
-      sendAndDraft: 'Send and open a new draft',
+      sendAndDraft: 'Send the message',
       pin: 'Pin or unpin this thread',
       reopenThread: 'Reopen the thread archived last',
       copyAnswer: 'Copy the last answer',

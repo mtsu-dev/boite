@@ -408,10 +408,6 @@
       : nextDraft
         ? inputStore.submitAndDraft(prompt, sendChoice, images, references)
         : inputStore.submit(prompt, sendChoice, images, references));
-    if (accepted && editedThread && nextDraft && inputStore.openThread?.id === inputKey) {
-      inputStore.startDraft(editedThread.projectId, { fresh: true });
-      inputStore.draftChoice = { ...sendChoice };
-    }
     finishImageSend(accepted);
     // A command clears only what it went out with. A refused or lost prompt leaves the timeline for the box, or the head of the queue.
     if (accepted && !local) {
@@ -476,12 +472,11 @@
   }
 
   /**
-   * Ctrl+Enter: the same send, then a fresh draft on the same choice. A turn
-   * that is still running only queues the text, and the queue goes out from
-   * this thread, so that case stays what Enter does.
+   * Ctrl+Enter sends in place in an existing thread. From a draft, it sends
+   * and opens the next draft on the same choice.
    */
   function submitAndDraft() {
-    void submit(true);
+    void submit(store.draft !== null);
   }
 
   /** Nothing in the box and nothing on its way into it: what a second Enter needs. */
