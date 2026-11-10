@@ -46,6 +46,8 @@ export interface CoreInfo {
     desktopUpdates?: boolean;
     /** `subscriptionProxy.movePlan` and `subscriptionProxy.move`: this machine's logins move into Douane. */
     gatewayMove?: boolean;
+    /** `plugins.add` and `plugins.install` take `grants`, `plugins.setGrants` exists: the app asks the owner what a plugin may reach. */
+    pluginGrants?: boolean;
     /** `todos.update` takes `goalThreadId`, a card carries its goal, and a paired device reads and moves cards: the project board. */
     projectBoard?: boolean;
     /** `projects.browse` and `projects.add` answer a paired device: the Add a project form works from a phone. */

@@ -615,7 +615,7 @@ export class ThreadStore {
     const clientRequestId = origin.requestId;
     const activity = origin.kind === 'goal' ? origin.activity : undefined;
     const startedBy = origin.kind === 'spawned' ? origin.startedBy : undefined;
-    const sentFrom = origin.kind === 'user' ? origin.sentFrom ?? null : null;
+    const { sentFrom = null, plugin: byPlugin = undefined } = origin.kind === 'user' ? origin : {};
     if (this.#core.stopping) throw refused('the core is stopping; reconnect before sending another prompt');
     let thread = requireAgent(this, threadId);
     this.codeCheckpoints.assertAvailable(thread.cwd);
@@ -704,7 +704,7 @@ export class ThreadStore {
       turnId: turn.id,
       role: systemOperation(operation) || automatic ? 'system' : 'user',
       parts: [
-        { type: 'text', text: previewPrompt(prompt, previewReferences), ...(previewReferences.length ? { displayText: prompt, previewReferences } : {}), ...(systemOperation(operation) ? { displayText: displayText ?? SYSTEM_LABEL[operation] } : {}), ...(automatic ? { displayText } : {}), ...(activity ? { activity } : {}), ...(moved ? { moved } : {}), ...(startedBy ? { displayText: displayText ?? prompt, startedBy } : {}), ...(sentFrom && !operation ? { sentFrom } : {}) },
+        { type: 'text', text: previewPrompt(prompt, previewReferences), ...(previewReferences.length ? { displayText: prompt, previewReferences } : {}), ...(systemOperation(operation) ? { displayText: displayText ?? SYSTEM_LABEL[operation] } : {}), ...(automatic ? { displayText } : {}), ...(activity ? { activity } : {}), ...(moved ? { moved } : {}), ...(startedBy ? { displayText: displayText ?? prompt, startedBy } : {}), ...(sentFrom && !operation ? { sentFrom } : {}), ...(byPlugin && !operation ? { byPlugin } : {}) },
         ...attachments.map((attachment): MessagePart => attachment.kind === 'file' ? { type: 'file', mimeType: attachment.mimeType, data: attachment.data, name: attachment.name } : ({
           type: 'image',
           mimeType: attachment.mimeType,

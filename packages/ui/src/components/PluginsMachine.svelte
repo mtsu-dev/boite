@@ -4,12 +4,14 @@
   import { errorText } from '../lib/errors';
   import InfoTip from './InfoTip.svelte';
   import PolicyLock from './PolicyLock.svelte';
-  import { Download, ExternalLink, Play, Puzzle, RefreshCw, RotateCw, ShieldAlert, Square, TriangleAlert } from '@lucide/svelte';
+  import { Download, ExternalLink, Play, Puzzle, RefreshCw, RotateCw, ShieldAlert, ShieldCheck, Square, TriangleAlert } from '@lucide/svelte';
   import type { PluginAdds, PluginAppState, PluginGatewayState, PluginManifest, PluginPermission, PluginPool, PluginPreview, PluginRejected, PluginState, PluginUpdates, RpcParams } from '@boite/contracts';
   import { PLUGIN_ADD_SECTION, gatewayDashboardReachable } from '@boite/contracts';
   import { besideCore } from '../lib/gateway-dashboard';
   import { openExternal } from '../lib/links';
   import GatewayMoveDialog from './GatewayMoveDialog.svelte';
+  import PluginConsent, { type ConsentRequest } from './PluginConsent.svelte';
+  import { asGrants, consentForEdit, consentForInstall, consentForPreview, grantsEditable } from '../lib/plugin-consent';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
   import { relativeTime } from '../lib/format';
@@ -34,6 +36,10 @@
   let error = $state('');
   /** The gateway plugin whose connections dialog is open. */
   let moving = $state(false);
+  /** The consent dialog's question, and who waits for its answer. A core without grants installs everything, as it always did. */
+  let consent = $state<ConsentRequest | null>(null);
+  let answerConsent: ((grants: string[] | null) => void) | null = null;
+  const asksGrants = $derived(store.core?.features?.pluginGrants === true);
 
   let url = $state('');
   let ref = $state('');
@@ -84,7 +90,43 @@
     }
   }
 
-  async function change(plugin: PluginState, method: 'plugins.install' | 'plugins.cancel' | 'plugins.uninstall') {
+  /** Opens the consent dialog; null when the owner cancels it. */
+  function ask(request: ConsentRequest): Promise<string[] | null> {
+    answerConsent?.(null);
+    return new Promise((resolve) => { answerConsent = resolve; consent = request; });
+  }
+  function answered(grants: string[] | null) {
+    const waiting = answerConsent;
+    answerConsent = null;
+    consent = null;
+    waiting?.(grants);
+  }
+
+  /** Install, update or retry once the owner ticked what the version may reach; a schema 1 plugin sends no grants. */
+  async function install(plugin: PluginState) {
+    if (!asksGrants) return change(plugin, 'plugins.install');
+    const request = consentForInstall(plugin);
+    const grants = await ask(request);
+    if (grants !== null) await change(plugin, 'plugins.install', request.requested === null ? undefined : asGrants(grants));
+  }
+
+  /** What an installed plugin's token reaches, from its row: the core reissues the token. */
+  async function editGrants(plugin: PluginState) {
+    const client = store.client;
+    const grants = await ask(consentForEdit(plugin));
+    if (!client || grants === null) return;
+    busy[plugin.id] = true;
+    try {
+      put(await client.call('plugins.setGrants', { id: plugin.id, grants: asGrants(grants) }));
+      delete errors[plugin.id];
+    } catch (cause) {
+      errors[plugin.id] = messageOf(cause);
+    } finally {
+      busy[plugin.id] = false;
+    }
+  }
+
+  async function change(plugin: PluginState, method: 'plugins.install' | 'plugins.cancel' | 'plugins.uninstall', grants?: PluginPermission[]) {
     const client = store.client;
     if (!client) return;
     if (method === 'plugins.uninstall' && !await confirm.ask({
@@ -93,7 +135,7 @@
     })) return;
     busy[plugin.id] = true;
     try {
-      put(await client.call(method, { id: plugin.id }));
+      put(await client.call(method, { id: plugin.id, ...(grants ? { grants } : {}) }));
       delete errors[plugin.id];
     } catch (cause) {
       errors[plugin.id] = messageOf(cause);
@@ -161,9 +203,12 @@
     const client = store.client;
     const previewId = preview?.previewId;
     if (!client || !previewId || adding) return;
+    const request = asksGrants && preview ? consentForPreview(preview) : null;
+    const grants = request ? await ask(request) : [];
+    if (grants === null || preview?.previewId !== previewId) return;
     adding = true;
     try {
-      put(await client.call('plugins.add', { previewId }));
+      put(await client.call('plugins.add', { previewId, ...(request?.requested ? { grants: asGrants(grants) } : {}) }));
       preview = null;
       url = '';
       ref = '';
@@ -368,7 +413,7 @@
     <dt class="with-tip"><span class="ui-label">{t.reaches}</span><InfoTip topic={t.reaches} text={t.reachesHint} /></dt>
     <dd>
       {#if permissions.length > 0}
-        <ul class="chips">{#each permissions as permission (permission)}<li class="chip" title={permission} data-testid="plugin-permission">{t.permission[permission]}</li>{/each}</ul>
+        <ul class="chips">{#each permissions as permission (permission)}<li class="chip" title={permission} data-testid="plugin-permission" data-permission={permission}>{t.permission[permission].title}</li>{/each}</ul>
       {:else}<span class="subtle">{t.reachesNothing}</span>{/if}
     </dd>
   {/if}
@@ -401,19 +446,22 @@
         {#if plugin.status === 'installing'}
           <button class="quiet small" data-testid="plugin-cancel" data-plugin={plugin.id} disabled={working} onclick={() => void change(plugin, 'plugins.cancel')}><span class="ui-label">{strings.common.cancel}</span></button>
         {:else if plugin.status === 'not-installed'}
-          <button class="primary small" data-testid="plugin-install" data-plugin={plugin.id} disabled={working || plugin.artifact === null || installLocked} onclick={() => void change(plugin, 'plugins.install')}><Download size={14} /><span class="ui-label">{t.install}</span></button>
+          <button class="primary small" data-testid="plugin-install" data-plugin={plugin.id} disabled={working || plugin.artifact === null || installLocked} onclick={() => void install(plugin)}><Download size={14} /><span class="ui-label">{t.install}</span></button>
         {:else}
           {#if plugin.status === 'installed' && plugin.availableVersion && plugin.availableVersion !== plugin.version}
-            <button class="primary small" data-testid="plugin-update" data-plugin={plugin.id} disabled={working || installLocked} onclick={() => void change(plugin, 'plugins.install')}><span class="ui-label">{fill(t.update, { version: `v${plugin.availableVersion}` })}</span></button>
+            <button class="primary small" data-testid="plugin-update" data-plugin={plugin.id} disabled={working || installLocked} onclick={() => void install(plugin)}><span class="ui-label">{fill(t.update, { version: `v${plugin.availableVersion}` })}</span></button>
           {/if}
           {#if plugin.status === 'error' || (plugin.status === 'rejected' && plugin.origin === 'recommended')}
-            <button class="small" data-testid="plugin-retry" data-plugin={plugin.id} disabled={working || installLocked} onclick={() => void change(plugin, 'plugins.install')}><RefreshCw size={14} /><span class="ui-label">{plugin.status === 'error' ? strings.common.retry : t.reinstall}</span></button>
+            <button class="small" data-testid="plugin-retry" data-plugin={plugin.id} disabled={working || installLocked} onclick={() => void install(plugin)}><RefreshCw size={14} /><span class="ui-label">{plugin.status === 'error' ? strings.common.retry : t.reinstall}</span></button>
           {/if}
         {/if}
         {#if plugin.updates && plugin.status !== 'installing'}
           {@const looking = plugin.updates.checking || checking[plugin.id] === true}
           <button class="ghost small icon" class:spinning={looking} data-testid="plugin-check-updates" data-plugin={plugin.id} title={t.checkUpdates} aria-label={t.checkUpdates}
             disabled={working || looking} onclick={() => void checkUpdates(plugin)}><RefreshCw size={14} /></button>
+        {/if}
+        {#if asksGrants && grantsEditable(plugin)}
+          <button class="ghost small" data-testid="plugin-grants" data-plugin={plugin.id} disabled={working} onclick={() => void editGrants(plugin)}><ShieldCheck size={14} /><span class="ui-label">{t.consent.edit}</span></button>
         {/if}
         {#if plugin.status !== 'installing' && plugin.status !== 'not-installed'}
           <button class="ghost small" data-testid="plugin-uninstall" data-plugin={plugin.id} disabled={working} onclick={() => void change(plugin, 'plugins.uninstall')}><span class="ui-label">{t.remove}</span></button>
@@ -435,7 +483,7 @@
       <p class="meta" data-testid="plugin-dev-path"><span class="mono">{plugin.devPath}</span><InfoTip topic={t.dev} text={fill(t.devHint, { id: plugin.id })} /></p>
     {/if}
     {#if plugin.status === 'installed' && (addsItems(plugin.adds).length > 0 || (plugin.permissions?.length ?? 0) > 0)}
-      <dl class="facts extras" data-testid="plugin-extras">{@render extras(plugin.adds, plugin.permissions ?? [], false)}</dl>
+      <dl class="facts extras" data-testid="plugin-extras">{@render extras(plugin.adds, plugin.granted ?? plugin.permissions ?? [], false)}</dl>
     {/if}
     {#if plugin.updates}
       {@const line = updatesLine(plugin.updates)}
@@ -629,6 +677,7 @@
 </div>
 
 <GatewayMoveDialog {store} open={moving} target="plugin" onclose={() => { moving = false; }} />
+<PluginConsent request={consent} onanswer={answered} />
 
 <style>
   .page { container-type: inline-size; }

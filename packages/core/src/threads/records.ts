@@ -1,7 +1,7 @@
 import { archiveState } from '../merged-pr-archive-state.ts';
 import { worktreeRemovalOf } from '../worktree-cleanup-state.ts';
 import { backgroundWait, pullRequestWatchWaits, threadActive } from '@boite/contracts';
-import type { BackgroundTask, BackgroundWait, MessageId, MessagePart, MoveNotice, RpcParams, ThreadId, ThreadSummary } from '@boite/contracts';
+import type { BackgroundTask, BackgroundWait, MessageId, MessagePart, MoveNotice, PluginActor, RpcParams, ThreadId, ThreadSummary } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { notFound } from '../errors.ts';
 
@@ -38,6 +38,9 @@ export function saveThread(core: Core, thread: ThreadSummary, eventType: string)
   return summary;
 }
 
+/** The journal setting naming the plugin that created a thread (`plugins/actor.ts`). */
+export const CREATED_BY_PREFIX = 'created-by:';
+
 /** The journal setting holding the note a thread's next message carries to its agent (`threads/move.ts`). */
 export const MOVE_NOTE_PREFIX = 'move-note:';
 
@@ -61,6 +64,7 @@ export function withLoad(core: Core, thread: ThreadSummary): ThreadSummary {
   return {
     ...thread,
     archiveReason,
+    createdBy: (core.journal.getSetting(`${CREATED_BY_PREFIX}${thread.id}`) as PluginActor | undefined) ?? undefined,
     worktreeRemoved: thread.branch === null ? undefined : worktreeRemovalOf(core.journal, thread) ?? undefined,
     load: core.procs.loadOf(thread.id),
     runningSince: busy ? core.journal.runningSince(thread.id) : null,

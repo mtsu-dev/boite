@@ -139,7 +139,7 @@ and the slash command `/recap`. Start from a copy of it.
 | `runtime` | `"native"` or `"bun"` ([Runtime](#runtime)). Absent means `"native"`. |
 | `executable` | As in schema 1. Absent exactly when the plugin provides only `skills`, `prompt` and `slashCommands`: a plugin of text that downloads nothing. |
 | `artifacts` | `native`: keyed by platform as in schema 1. `bun`: exactly one key, `any`, `{ "url", "sha256" }`. Absent exactly when `executable` is. |
-| `permissions` | A list of distinct names among `threads.read`, `threads.write`, `threads.archive`, `todos` and `ui.reveal` ([Permissions](#permissions)). Absent means none. |
+| `permissions` | A list of distinct permission names ([Permissions](#permissions)), `todos` standing for `todos.read` and `todos.write`. Absent means none. |
 | `provides` | At least one of `accountPools`, `desktopApp`, `gateway` (as in schema 1), `service`, `commands`, `skills`, `prompt` and `slashCommands`. |
 
 Unknown fields at any depth are refused, as in schema 1, and the manifest file
@@ -164,30 +164,85 @@ may be 256 KB. Every limit is under [Limits](#limits).
 ### Permissions
 
 A schema 2 plugin's processes do not get the owner token. The core mints a
-token for the plugin that reaches only what its `permissions` declare; its
-connections speak as the principal `plugin`. The install preview lists the
-permissions before anything is downloaded. The token lasts while the plugin
-declares the same permissions: an uninstall, or an install or a dev reload
-that changes them, revokes it and closes every socket it opened, and the
-plugin's processes restart with a new one.
+token for the plugin that reaches only the permissions the owner granted of
+those its `permissions` ask for; its connections speak as the principal
+`plugin`.
 
-| Permission | Methods | Events | What it means |
-| --- | --- | --- | --- |
-| `threads.read` | `threads.list`, `threads.get`, `projects.list` | `thread.created`, `thread.updated`, `thread.removed`, `turn.started`, `turn.finished` | Every conversation of every project, read only: rows, transcripts, the project list. |
-| `threads.write` | `threads.create`, `turns.start`, `turns.stop` | none | Starts conversations and turns, and stops them: it spends the owner's agent quota. |
-| `threads.archive` | `threads.archive` | none | Archives an idle, unpinned conversation, marked done in the plugin's name. Never restores one ([Archiving](#archiving-threads)). |
-| `todos` | `todos.list`, `todos.add`, `todos.update` | `todos.updated` | The project boards: read, add and update cards. |
-| `ui.reveal` | `ui.reveal` | none | Brings a conversation, a bot or the app updates to the front of the owner's desktop window ([Showing Boite](#showing-boite)). |
+Each permission is a domain, read or write. Every method and event a paired
+device may use is filed into exactly one, or in the closed list below; a
+method added to Boite later joins its domain in the same table, and the
+plugins granted that domain reach it with no change of their own.
 
-A method or an event in none of these rows is refused to every plugin,
-whatever it declares. A refused call answers with the method, the permission
-it needs and what the plugin declared:
+| Permission | What it opens |
+| --- | --- |
+| `threads.read` | Every conversation of every project, read only: rows, transcripts, pull request links, cards waiting on the owner, the composer's drafts, the project list, and their events. |
+| `threads.write` | Creates, starts, steers, stops, renames, moves, forks, archives and deletes conversations, and queues prompts: it spends the owner's agent quota. Archiving keeps its guards ([Archiving](#archiving-threads)). |
+| `projects.read` | The projects' icons, file lists and changes, and the composer's skill menu. |
+| `projects.write` | Adds a folder as a project, renames or archives one. |
+| `todos.read` | The project boards, read only. |
+| `todos.write` | Adds, updates and removes cards. |
+| `agents.read` | Agents, delegations, workflows, teams and councils, read only. |
+| `agents.write` | Opens agents, posts to teams and councils, sends and stops delegations, controls workflows. |
+| `files.read` | Git status and diffs, the files of a project and their content. |
+| `questions.write` | Answers the cards agents wait on, permission requests included: shown in red at install, since it answers in the owner's name. |
+| `screens.read` | The devices, windows and remote browser Boite shows, their frames included. |
+| `screens.write` | Types and clicks in them, opens and closes them. |
+| `status.read` | Machine usage, quotas, providers, settings, the scheduler, key bindings and the admin policy, read only. |
+| `ui.reveal` | Brings a conversation, a bot or the app updates to the front of the owner's desktop window ([Showing Boite](#showing-boite)). |
+
+The table is `PLUGIN_PERMISSIONS` in `packages/contracts/src/plugins.ts`, with
+each domain's methods and events; `packages/core/test/plugin-permissions.test.ts`
+fails when a device method is in no domain and not closed. A manifest may
+still ask for `todos`, which reads as `todos.read` and `todos.write`.
+
+Never open to a plugin, whatever it asks for (`PLUGIN_CLOSED`, each with its
+reason): accounts and provider sign-ins, secrets, plugins and their grants,
+updating, restarting or stopping Boite, the admin policy, paired sessions and
+pairing, the machine group, push subscriptions, the client's own settings,
+which conversation the owner is looking at, dictation, diagnostics reports,
+window capture consent, contacts and shared projects. A method in no domain
+and not closed (settings changes, hooks, the brain) is the owner's.
+
+A refused call names the method and the permission it needs:
 
 ```
-turns.start needs the plugin permission threads.write; the plugin declared threads.read
+turns.start needs the plugin permission threads.write, which the owner did not grant (granted: threads.read)
+secrets.list is never open to plugins: secrets reach only the agent that asked for one
 ```
 
-The table is `PLUGIN_PERMISSIONS` in `packages/contracts/src/plugins.ts`.
+#### Consent and grants
+
+On install, and on an update that asks for more, the app shows "<name> wants
+to access your Boite": one line per permission asked for, ticked by default.
+The owner unticks what the plugin should not get; `plugins.add` and
+`plugins.install` carry the ticked list as `grants`, which must be among the
+permissions the manifest asks for (else refused naming `grants[<index>]`).
+Lines in red: `ui` (its code runs inside the app and can do anything the
+owner can) and `questions.write`. A plugin with an executable adds a line
+with no box: it runs a program on this machine with Boite's rights.
+
+The grant is stored per installed plugin, apart from the manifest. An install
+with no `grants` (`boite plugin install`, an older app) grants everything on a
+first install; an update keeps what was granted and grants nothing it asks
+for anew. A dev load (`boite plugin dev`) grants what the folder asks for. The
+owner changes a grant later with `plugins.setGrants`: the old token and every
+socket it opened close, and a running app or service restarts with the new
+one. An uninstall forgets the grant.
+
+#### In the plugin's name
+
+Every change a plugin's token makes is in the core's log as
+`<method> by plugin <name>`. The records that name who acted name the plugin,
+by id and by its name at that time, so they still read after an uninstall:
+
+- a conversation it creates carries `createdBy`;
+- a prompt it sends carries `byPlugin` on the message, shown above it;
+- a card it adds or moves carries `plugin`, until another hand moves it;
+- a conversation it archives carries `archiveReason` of type `plugin`.
+
+A plugin passes the same checks as the app: the working tree's diff against
+HEAD only, the last quota reading only, no shared board card, archive only
+when idle.
 
 #### Archiving threads
 
@@ -370,7 +425,7 @@ A schema 1 manifest loads unchanged. Its desktop app keeps the owner token in
 `BOITE_TOKEN` and reaches everything the owner can ([Desktop apps](#desktop-apps),
 [Security model](#security-model)); it gets neither `BOITE_PLUGIN_DATA` nor a
 permission check. A desktop app moved to schema 2 gets the plugin's token
-instead, held to the permissions its manifest declares.
+instead, held to the permissions the owner granted.
 
 ## SDK
 
@@ -952,8 +1007,9 @@ program's output. An agent command's output goes to the agent that ran it,
 and to nobody else.
 
 A schema 2 plugin's processes hold the plugin's own token, which reaches only
-the methods and events of the permissions its manifest declares
-([Permissions](#permissions)); the owner reads that list before installing.
+the methods and events of the permissions the owner granted of those its
+manifest asks for ([Permissions](#permissions)); the owner ticks that list
+before installing.
 The token limits what the plugin does through the core, not what its
 executable does on the machine: it still runs as the core's user, like any
 program you install, and can read that user's files, Boite's data directory

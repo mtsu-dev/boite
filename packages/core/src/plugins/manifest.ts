@@ -6,7 +6,7 @@
  * what was expected, never skipped. docs/plugins.md is the authoring guide.
  */
 
-import { PLUGIN_ANY_PLATFORM, PLUGIN_EXECUTABLE_PATTERN, PLUGIN_MANIFEST_SCHEMAS, PLUGIN_NAME_PATTERN, PLUGIN_PERMISSION_NAMES, PLUGIN_PLATFORMS } from '@boite/contracts';
+import { PLUGIN_ANY_PLATFORM, PLUGIN_EXECUTABLE_PATTERN, PLUGIN_MANIFEST_SCHEMAS, PLUGIN_NAME_PATTERN, PLUGIN_PERMISSION_ALIASES, PLUGIN_PERMISSION_NAMES, PLUGIN_PLATFORMS } from '@boite/contracts';
 import type {
   PluginAdds, PluginArtifact, PluginCommand, PluginManifest, PluginPermission, PluginPlatform, PluginRejected, PluginSkill, PluginSlashCommand, ProviderId,
 } from '@boite/contracts';
@@ -175,15 +175,17 @@ class Reader {
     return out;
   }
 
+  /** The permissions asked for; an older name (`todos`) reads as those it stands for. */
   permissions(value: unknown): PluginPermission[] {
-    const expected = `an array of distinct permissions among ${PLUGIN_PERMISSION_NAMES.join(', ')}`;
+    const expected = `an array of distinct permissions among ${PLUGIN_PERMISSION_NAMES.join(', ')} (or ${Object.keys(PLUGIN_PERMISSION_ALIASES).join(', ')}, their older names)`;
     if (!Array.isArray(value)) this.refuse('permissions', expected, value);
+    const out = new Set<PluginPermission>();
     value.forEach((permission: unknown, index) => {
-      if (typeof permission !== 'string' || !(PLUGIN_PERMISSION_NAMES as readonly string[]).includes(permission) || value.indexOf(permission) !== index) {
-        this.refuse(`permissions[${index}]`, expected, permission);
-      }
+      const known = typeof permission === 'string' && ((PLUGIN_PERMISSION_NAMES as readonly string[]).includes(permission) || Object.hasOwn(PLUGIN_PERMISSION_ALIASES, permission));
+      if (!known || value.indexOf(permission) !== index) this.refuse(`permissions[${index}]`, expected, permission);
+      for (const name of PLUGIN_PERMISSION_ALIASES[permission as string] ?? [permission as PluginPermission]) out.add(name);
     });
-    return [...value] as PluginPermission[];
+    return [...out];
   }
 
   /** A list of named entries: an array of 1 to `max` objects with distinct names. */

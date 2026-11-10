@@ -681,7 +681,7 @@ test('a parent idle here whose child works on another machine is not put away by
   const child = await spawn('Read HOLD-ON', '--project', 'notes', '--title', 'Read', '--request-id', 'idle-parent');
   await waitFor(() => held.has(child.thread.id) && desk.core.delegation.remote.busy(threadId));
   await waitFor(() => desk.core.threads.require(threadId).status === 'idle');
-  const plugin = await connect(desk.url, desk.core.plugins.tokens.tokenFor('archiver', ['threads.archive']), { client: { name: 'plugin', version: '0' } });
+  const plugin = await connect(desk.url, desk.core.plugins.tokens.tokenFor('archiver', ['threads.write']), { client: { name: 'plugin', version: '0' } });
   // Before, the family check looked only at this machine's threads: the plugin archived the parent and, with it, the running child there.
   expect(await thrown(plugin.call('threads.archive', { threadId })))
     .toThrow('threadId: a subagent on another machine is still running; expected an idle conversation family');

@@ -59,6 +59,8 @@ export class Router {
   guard?: (method: RpcMethodName, params: unknown, ctx: RpcContext) => void;
   /** The admin policy's refusals (`policy-gate.ts`), for every caller the owner included. */
   policy?: (method: RpcMethodName, params: unknown) => void;
+  /** Hears every call a plugin's token made that succeeded (`plugins/actor.ts` logs the changes). */
+  pluginCall?: (method: RpcMethodName, params: unknown, ctx: RpcContext) => void;
   private readonly handlers = new Map<RpcMethodName, ErasedHandler>();
   private accepting = true;
   private active = 0;
@@ -102,6 +104,8 @@ export class Router {
     if (!checked.ok) throw invalidParams(checked.message, { field: checked.field });
     this.policy?.(method as RpcMethodName, checked.params);
     this.guard?.(method as RpcMethodName, checked.params, ctx);
-    return await this.trackRequest(() => handler(checked.params as never, ctx));
+    const result = await this.trackRequest(() => handler(checked.params as never, ctx));
+    if (ctx.connection.identity.principal === 'plugin') this.pluginCall?.(method as RpcMethodName, checked.params, ctx);
+    return result;
   }
 }

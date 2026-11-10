@@ -78,7 +78,7 @@ export interface Identity {
   threadId: ThreadId | null;
   /** Set on a plugin connection: the plugin the token was minted for. */
   pluginId?: string;
-  /** Set on a plugin connection: what its manifest declared, the whole of what it reaches. */
+  /** Set on a plugin connection: what the owner granted of what its manifest asks for, the whole of what it reaches. */
   permissions?: readonly PluginPermission[];
 }
 
