@@ -687,6 +687,11 @@ export function startServer(options: ServerOptions): RunningServer {
         void frame.catch((error: unknown) => core.log('error', messageOf(error))).finally(() => frames.delete(frame));
       },
 
+      // Bun answers the pong itself. A guest's ping is its sign of life on a link with nothing to say.
+      ping(socket) {
+        if ('contact' in socket.data) core.contacts.heard(socket.data.contact, true);
+      },
+
       drain(socket) {
         if ('contact' in socket.data) return;
         if ('relay' in socket.data) socket.data.relay.drained();

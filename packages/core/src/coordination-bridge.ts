@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type { CoordinationBridgeResponse, RpcEvents } from '@boite/contracts';
 import type { Connection } from './router.ts';
-import { invalidParams, refused, unavailable } from './errors.ts';
+import { invalidParams, refused, RpcFailure, unavailable } from './errors.ts';
+import { RpcErrorCode } from '@boite/contracts';
 import { MAX_ANSWER } from './coordination-wire.ts';
 
 /**
@@ -85,5 +86,23 @@ export class CoordinationBridge {
   close(): void {
     this.routes.clear();
     for (const request of this.pending.values()) request.finish(unavailable('the core is stopping'));
+  }
+}
+
+/**
+ * One request to a peer outside any group: an owner's machine or a contact.
+ * `attempt(null)` asks on the bridge, `attempt(url)` at an address. A contact
+ * this core dials is asked on the link it holds open (`link`) and, when the
+ * link does not carry the request (gone silent, or cut since), at its
+ * address. A contact this core hosts has no address to ask.
+ */
+export async function askContact<T>(peer: { name: string; url: string; viaClient?: boolean }, contact: boolean, link: boolean, attempt: (url: string | null) => Promise<T>): Promise<T> {
+  if (!link && !peer.viaClient) return attempt(peer.url);
+  try { return await attempt(null); }
+  catch (error) {
+    // The bridge words its failures for an owner's app; a hosted contact's route is its own link.
+    if (contact && peer.viaClient && error instanceof RpcFailure && error.code === RpcErrorCode.Unavailable) throw unavailable(`${peer.name} did not answer on its link to this machine; its core dials again by itself`);
+    if (!contact || peer.viaClient || !link) throw error;
+    return attempt(peer.url);
   }
 }

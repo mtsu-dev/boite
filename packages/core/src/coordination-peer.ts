@@ -4,6 +4,7 @@
  * core may reach. A machine of the group, a hand-made link and a contact each
  * reach their own part; `coordination.ts` asks, this file answers.
  */
+import { CLOCK_ERROR } from './peer-clock.ts';
 import { verify } from 'node:crypto';
 import type { AgentContact, AgentLetter, CoordinationPeer } from '@boite/contracts';
 import { text } from './coordination-letter.ts';
@@ -76,8 +77,11 @@ export class PeerDesk {
       }
       if (!verify(null, Buffer.from(raw), peer.publicKey, Buffer.from(signature, 'base64'))) throw new Error('invalid signature');
       envelope = JSON.parse(raw) as Envelope;
-      if (envelope.from !== peer.coreId || envelope.to !== this.#side.selfId() || !Number.isSafeInteger(envelope.at) || Math.abs(now - envelope.at) > 60_000) throw new Error('invalid envelope');
+      if (envelope.from !== peer.coreId || envelope.to !== this.#side.selfId() || !Number.isSafeInteger(envelope.at)) throw new Error('invalid envelope');
       text(envelope.nonce, 'nonce', 100);
+      // Signed by the peer but dated by another clock: it hears this core's, to date its next request by (`peer-clock.ts`).
+      // Nothing is done and no nonce is kept; 409 is a failure an older sender asks again later, as it did the bare 403.
+      if (Math.abs(now - envelope.at) > 60_000) return this.#signed({ nonce: envelope.nonce, error: CLOCK_ERROR, now }, 409, sealing);
       text(envelope.operation, 'operation', 64);
       for (const [id, at] of this.nonces) if (now - at > 120_000) this.nonces.delete(id);
       const key = `${peer.coreId}:${envelope.nonce}`;
@@ -96,6 +100,8 @@ export class PeerDesk {
       this.#core.delegation.remote.heard(peer.coreId);
       // And the team posts, letters' reports and answers waiting for it.
       this.#core.teams.peers.heard(peer.coreId);
+      // And its copy of the contacts, when it is behind.
+      this.#core.contacts.members.heard(peer.coreId);
       if (rate.count > 120) return this.#signed({nonce: envelope.nonce, error: 'peer rate limit'}, 429, sealing);
     } catch { return new Response('invalid signed message', { status: 403 }); }
     const groupOnly = envelope.operation === 'group.sync' || envelope.operation === 'group.push' || envelope.operation === 'contact.route' || envelope.operation === 'contact.hand'
@@ -259,7 +265,7 @@ export class PeerDesk {
     throw invalidParams(relayed ? 'operation: expected directory, deliver, receipt, search or read' : 'operation: expected directory, deliver, receipt, search, read, contact.sync, contact.ask, contact.answer, contact.relation or contact.move');
   }
   /** The answer, signed, and sealed back to the asker when its request came sealed. */
-  #signed(reply: { nonce: string; result?: unknown; error?: string | undefined; gone?: true }, status: number, sealing: Sealing | null = null): Response {
+  #signed(reply: { nonce: string; result?: unknown; error?: string | undefined; gone?: true; now?: number }, status: number, sealing: Sealing | null = null): Response {
     const raw = JSON.stringify(reply);
     const signature = this.#side.signature(Buffer.from(raw)).toString('base64');
     const body = sealing === null ? raw : sealResponse(pack(raw, signature), sealing.responseKey, sealing.context);
