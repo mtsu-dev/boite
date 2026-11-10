@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test';
 import type { AgentRoutine, Turn } from '@boite/contracts';
 import { mkdtempSync, realpathSync } from 'node:fs';
+import { removeDir } from '../src/fs-retry.ts';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { connect, type CoreClient } from '../src/client.ts';
@@ -646,6 +647,33 @@ test('a bot whose provider is turned off keeps its facts and letters, names the 
   h.core.journal.putThread({ ...h.core.journal.getThread(threadId)!, providerId: 'codex' });
   expect(status().problem).toStartWith(`${h.core.providers.get('codex')!.name} is turned off on this machine;`);
   expect(h.core.agentRuntime.attempt(h.core.workforce.records.get('profile', agent.id), { kind: 'event', label: '1 project event', prompt: 'Anything?' }).held).toBe('off');
+});
+
+test('a bot with no thread yet still hears of its provider turned off', async () => {
+  // A core whose bots have no session record, as after a migration that lost one: the switch still redraws their rows.
+  const dataDir = mkdtempSync(join(tmpdir(), 'boite-core-'));
+  try {
+    const first = await startTestCore({ dataDir });
+    try {
+      const { agent } = await makeAgent(first, await first.connect());
+      const session = first.core.workforce.sessionOf(agent.id)!;
+      first.core.workforce.records.remove('session', session.id);
+    } finally { await first.stop(); }
+    const second = await startTestCore({ dataDir });
+    try {
+      const status = () => second.core.workforce.snapshot().status[0]!;
+      expect(status()).toMatchObject({ threadId: null, problem: null });
+      let changes = 0;
+      const off = second.core.bus.onAny(event => { if (event === 'agents.changed') changes++; });
+      try {
+        await (await second.connect()).call('providers.setEnabled', { providerId: 'echo', enabled: false });
+        await waitFor(() => changes > 0, 1_500).catch(() => undefined);
+        // On #995's first head the store only listened while it held a bot thread: no change reached the clients.
+        expect(changes).toBeGreaterThan(0);
+      } finally { off(); }
+      expect(status().problem).toStartWith(`${second.core.providers.get('echo')!.name} is turned off on this machine;`);
+    } finally { await second.stop(); }
+  } finally { await removeDir(dataDir); }
 });
 
 test('changed instructions wake the agent once to review its routines', async () => {

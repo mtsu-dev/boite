@@ -111,9 +111,10 @@ export class AgentStore {
     this.projects = new AgentProjects(core, this); this.group = new GroupBots(core, this); this.groupHost = new GroupBotHost(core); this.memory = new MemoryKeeper(core, this); this.settingCards = new AgentSettingCards(core, this);
     // The status of an agent follows its thread: a step, a card, a title, an answer.
     this.#off = core.bus.onAny((name, payload) => {
-      if (core.journal.isClosed() || this.#threads.size === 0) return;
-      // A provider turned off or on changes the problem of the bots that run on it.
-      if (name === 'providers.updated') { this.changed(); return; }
+      if (core.journal.isClosed()) return;
+      // A provider turned off or on changes the problem of the bots that run on it, threadless ones included.
+      if (name === 'providers.updated') { if (this.records.list('profile').length > 0) this.changed(); return; }
+      if (this.#threads.size === 0) return;
       const threadId = (payload as { threadId?: unknown; id?: unknown } | null)?.threadId ?? (name === 'thread.updated' ? (payload as { id?: unknown }).id : undefined);
       if (typeof threadId !== 'string') return;
       if (!this.#threads.has(threadId)) {
