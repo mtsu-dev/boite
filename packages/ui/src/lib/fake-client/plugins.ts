@@ -201,7 +201,7 @@ export class FakePlugins {
 
   #requirePlugin(id: string): PluginState {
     const plugin = this.#plugins.find((entry) => entry.id === id);
-    if (plugin === undefined) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `unknown plugin ${id}; expected a plugin id from plugins.list` });
+    if (plugin === undefined) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `unknown plugin ${id}; expected a plugin id from plugins.list`, data: { field: 'id', expected: 'a plugin id from plugins.list' } });
     return plugin;
   }
 

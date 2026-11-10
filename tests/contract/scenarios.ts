@@ -678,6 +678,10 @@ export const SCENARIOS: Record<string, Scenario> = {
     const command = await refusedWith(env.call('plugins.command', { name: 'no-such-command', args: [], cwd: await env.newFolder() }), RpcErrorCode.InvalidParams, ['field', 'expected']);
     same(command.field, 'name', 'the refused command field');
   },
+  'plugins.setGrants refuses a plugin no list has, by field': async (env) => {
+    const unknown = await refusedWith(env.call('plugins.setGrants', { id: 'no-such-plugin', grants: [] }), RpcErrorCode.InvalidParams, ['field', 'expected']);
+    same(unknown.field, 'id', 'the refused grants field');
+  },
   'a plugin card reads a shared repository page as the Plugins page does, once per thread': async (env) => {
     const setup = await echo(env);
     const { id: threadId } = await thread(env, setup);
