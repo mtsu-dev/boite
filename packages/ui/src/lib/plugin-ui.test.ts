@@ -241,6 +241,42 @@ test('safe mode: the flag, or a start that died loading scripts, keeps them off 
   expect(run).toHaveBeenCalledTimes(1);
 });
 
+test('a refresh asked while a failing one runs still reads the core', async () => {
+  const { ui } = loader({ a: () => undefined });
+  live.push(ui);
+  let fail!: (error: Error) => void;
+  let reads = 0;
+  const client: PluginUiClient = {
+    call: (async (method: string) => {
+      if (method !== 'plugins.ui') return [];
+      reads += 1;
+      if (reads === 1) return new Promise((_, reject) => { fail = reject; });
+      return [bundle('a', 'a')];
+    }) as PluginUiClient['call'],
+    on: (() => () => undefined) as PluginUiClient['on'],
+  };
+  ui.attach(client);
+  const queued = ui.refresh();
+  fail(new Error('connection dropped'));
+  await queued;
+  expect(reads).toBe(2);
+  expect(ui.status.a?.state).toBe('running');
+});
+
+test('a window closed right after its scripts load leaves no crash marker for the next start', async () => {
+  vi.useFakeTimers();
+  const storage = new Map<string, string>();
+  const first = loader({ a: () => undefined }, storage);
+  first.ui.attach(core([bundle('a', 'a')]).client);
+  await first.ui.refresh();
+  expect(storage.has(LOADING_KEY)).toBe(true);
+  first.ui.stop();
+  expect(storage.has(LOADING_KEY)).toBe(false);
+  const next = loader({ a: () => undefined }, storage);
+  live.push(next.ui);
+  expect(next.ui.safe).toEqual({ active: false, reason: null });
+});
+
 test('the example plugin, added on the fake client, draws its recent conversations in its panel tab', async () => {
   const client = new FakeClient({ delayMs: 0 });
   try {

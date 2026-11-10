@@ -169,7 +169,8 @@ export class PluginUi {
         const client = this.#client;
         if (!client) return;
         let bundles: PluginUiBundle[];
-        try { bundles = await client.call('plugins.ui', {}); } catch { return; }
+        // A failed read still honours a refresh asked meanwhile: that one may succeed.
+        try { bundles = await client.call('plugins.ui', {}); } catch { if (this.#again) continue; return; }
         await this.#apply(bundles);
       } while (this.#again);
     })().finally(() => { this.#refreshing = null; });
@@ -217,6 +218,8 @@ export class PluginUi {
     this.#windowOff?.();
     this.#windowOff = null;
     clearTimeout(this.#settle);
+    // A window that closes is not a start that died: the next start loads the scripts.
+    this.#forgetCrash();
     this.#bundles = [];
     this.#failed.clear();
     this.#listeners.clear();
