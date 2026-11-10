@@ -75,8 +75,8 @@ export function nameClash<T extends { id: string; manifest: PluginManifest }>(ma
 
 export class PluginRuns {
   #core: Core;
-  #running = new Map<string, string>();
-  #exits = new Set<Promise<number>>();
+  /** Each run still going, by trace id: its plugin and its exit. */
+  #running = new Map<string, { id: string; exited: Promise<number> }>();
   #sequence = 0;
 
   constructor(core: Core) {
@@ -88,15 +88,13 @@ export class PluginRuns {
     const threadId = `plugin:${id}:${kind}${++this.#sequence}`;
     const launch = pluginLaunch(binary, args, opts.env, this.#core.dataDir);
     const spawned = this.#core.procs.spawn(threadId, launch.cmd, launch.args, { ...opts, env: launch.env });
-    this.#running.set(threadId, id);
-    this.#exits.add(spawned.exited);
+    this.#running.set(threadId, { id, exited: spawned.exited });
     try {
       return await collect(spawned, () => this.#core.procs.killTree(threadId));
     } finally {
       this.#core.procs.killTree(threadId);
       await spawned.exited;
       this.#running.delete(threadId);
-      this.#exits.delete(spawned.exited);
     }
   }
 
@@ -168,9 +166,13 @@ export class PluginRuns {
     });
   }
 
-  /** At core shutdown: kills every run still going and waits for them to exit. */
-  async close(): Promise<void> {
-    for (const threadId of this.#running.keys()) this.#core.procs.killTree(threadId);
-    await Promise.all(this.#exits);
+  /**
+   * Kills the runs still going, those of plugin `id` when given (it was
+   * turned off) or all of them (core shutdown), and waits for them to exit.
+   */
+  async stop(id?: string): Promise<void> {
+    const runs = [...this.#running].filter(([, run]) => id === undefined || run.id === id);
+    for (const [threadId] of runs) this.#core.procs.killTree(threadId);
+    await Promise.all(runs.map(([, run]) => run.exited));
   }
 }

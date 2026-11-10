@@ -645,7 +645,7 @@ export class PluginStore {
   }
 
   #run(id: string, installed: Installed, args: string[]): Promise<string> {
-    if (this.#closing) throw refused('Boite is shutting down.');
+    if (this.#closing || this.preferences.isOff(id)) throw refused(this.#closing ? 'Boite is shutting down.' : `${id} is turned off.`);
     if (installed.binary === null) throw refused(`${id} runs nothing.`);
     return this.#runs.pool(id, installed.binary, installed.manifest.executable ?? id, args, this.#directory(id), this.#env(id, installed.manifest));
   }
@@ -746,7 +746,7 @@ export class PluginStore {
    * `name` runs with argv `<name> args...` in the caller's directory, with
    * its token, its data folder and the calling thread in its environment,
    * stdin empty, for at most ten minutes. Its exit code and output come back,
-   * each stream cut at 1 MB.
+   * each stream cut at 1 MB. A plugin turned off while it queued runs nothing.
    */
   async command(params: RpcParams<'plugins.command'>, caller: Identity): Promise<PluginCommandResult> {
     if (this.#closing) throw refused('Boite is shutting down.');
@@ -756,7 +756,7 @@ export class PluginStore {
     const installed = this.#usable(id);
     const binary = installed.binary;
     if (binary === null) throw refused(`${id} provides ${name} but ships no executable.`);
-    return this.#lanes.shared(id, () => this.#runs.command(id, binary, [name, ...args], cwd, this.#env(id, installed.manifest, threadId) ?? {}));
+    return this.#lanes.shared(id, () => { this.#usable(id); return this.#runs.command(id, binary, [name, ...args], cwd, this.#env(id, installed.manifest, threadId) ?? {}); });
   }
 
   /** A schema 2 plugin's environment (docs/plugins.md, "Environment"); a schema 1 pool inherits the core's. */
@@ -831,7 +831,7 @@ export class PluginStore {
       // Off first: nothing that starts meanwhile gets a token or a launch.
       this.preferences.setOff(id, true);
       this.tokens.revoke(id);
-      await Promise.all([this.apps.kill(id), this.gateways.kill(id)]);
+      await Promise.all([this.apps.kill(id), this.gateways.kill(id), this.#runs.stop(id)]);
       this.accountPools.forget(id);
     });
     this.#emit(id);
@@ -891,7 +891,7 @@ export class PluginStore {
     const jobs = [...this.#jobs.values()];
     for (const job of jobs) job.controller.abort();
     await Promise.all([...jobs.map((job) => job.promise), ...this.#lanes.rewrites()]);
-    await this.#runs.close();
+    await this.#runs.stop();
     await Promise.all([...this.accountPools.pending(), ...this.#inspecting].map((pending) => pending.catch(() => undefined)));
     await apps;
     await gateways;

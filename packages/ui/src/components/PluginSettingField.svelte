@@ -66,7 +66,7 @@
       <input id={uid} type="checkbox" role="switch" checked={value === true} {disabled} aria-describedby={setting.description ? `${uid}-hint` : undefined}
         data-testid="plugin-setting-input" onchange={(event) => { event.currentTarget.checked = value === true; void save(value !== true); }} />
     {:else if setting.type === 'slider'}
-      <input id={uid} type="range" min={setting.min} max={setting.max} step={setting.step ?? 1} value={shown} {disabled} style:--fill="{fillShare}%"
+      <input id={uid} type="range" min={setting.min} max={setting.max} step={setting.step ?? 'any'} value={shown} {disabled} style:--fill="{fillShare}%"
         aria-describedby={setting.description ? `${uid}-hint` : undefined} data-testid="plugin-setting-input"
         oninput={(event) => { draft = event.currentTarget.value; }} onchange={(event) => void save(Number(event.currentTarget.value))} />
       <output for={uid} class="readout" data-testid="plugin-setting-readout">{shown}</output>

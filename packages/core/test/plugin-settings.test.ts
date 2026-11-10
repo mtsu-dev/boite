@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { accessRefusal, mayHearEvent, type RpcEvents } from '@boite/contracts';
@@ -168,6 +168,30 @@ describe('plugin settings and turning a plugin off, end to end', () => {
       expect(on.enabled).toBe(true);
       expect(plugins.installedPlugins().map((plugin) => plugin.id)).toEqual(['hello']);
       expect(expandSlashPrompt(harness.core, '/hello-review the diff')).toBe('Say hello, then review the diff');
+    } finally {
+      await harness?.stop();
+      await removeDir(root);
+    }
+  }, 30_000);
+
+  test('off kills a plugin command still running and waits for it to exit', async () => {
+    harness = await startTestCore();
+    const root = mkdtempSync(join(tmpdir(), 'boite-plugin-settings-'));
+    try {
+      const owner = await harness.connect();
+      const dir = devPlugin(root);
+      // Says it started, then runs until killed.
+      writeFileSync(join(dir, 'hello.js'), 'require("node:fs").writeFileSync("started", ""); setInterval(() => {}, 1000);\n');
+      await owner.call('plugins.dev', { path: dir });
+      const run = owner.call('plugins.command', { name: 'hello-threads', args: [], cwd: root }).catch((error: Error) => error);
+      await waitFor(() => existsSync(join(root, 'started')), 15_000);
+      expect(harness.core.procs.liveCount('plugin:hello:cmd:1')).toBe(1);
+
+      await owner.call('plugins.setEnabled', { id: 'hello', enabled: false });
+      expect(harness.core.procs.liveCount('plugin:hello:cmd:1')).toBe(0);
+      const result = await Promise.race([run, Bun.sleep(2_000).then(() => 'still running' as const)]);
+      expect(result).not.toBe('still running');
+      expect((result as { exitCode: number }).exitCode).not.toBe(0);
     } finally {
       await harness?.stop();
       await removeDir(root);
