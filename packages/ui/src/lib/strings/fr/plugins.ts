@@ -120,6 +120,7 @@ export const fr: Translation = {
     settingsHeading: 'Réglages',
     settingsHint: "L'extension déclare ces réglages dans son manifeste. Boite les dessine de la même façon pour toutes et garde les valeurs sur cette machine.",
     settingInvalid: 'Doit être {expected}.',
+    settingOffline: "Pas enregistré : cette machine n'est pas connectée.",
     authorizations: 'Autorisations',
     authorizationsHint: "Ce que le jeton de l'extension peut appeler dans Boite. Les modifier arrive avec une prochaine version de Boite.",
     authorizationsOwner: 'Le jeton propriétaire : tout ce que cette app peut faire',

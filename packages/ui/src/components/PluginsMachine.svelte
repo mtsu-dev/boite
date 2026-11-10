@@ -221,7 +221,7 @@
   /** One declared setting from the gear dialog; the answer is the core's refusal, or null once it kept the value. */
   async function saveSetting(plugin: PluginState, key: string, value: PluginSettingValue): Promise<string | null> {
     const client = store.client;
-    if (!client) return null;
+    if (!client) return strings.plugins.settingOffline;
     try {
       put(await client.call('plugins.settings.set', { id: plugin.id, values: { [key]: value } }));
       return null;

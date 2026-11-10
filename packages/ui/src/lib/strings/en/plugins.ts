@@ -133,6 +133,7 @@ export const strings = {
     settingsHeading: 'Settings',
     settingsHint: 'The plugin declares these settings in its manifest. Boite draws them the same way for every plugin and keeps the values on this machine.',
     settingInvalid: 'Must be {expected}.',
+    settingOffline: 'Not saved: this machine is not connected.',
     authorizations: 'Authorizations',
     authorizationsHint: 'What the plugin\'s own token can call in Boite. Changing them comes with a later version of Boite.',
     authorizationsOwner: 'The owner token: everything this app can do',

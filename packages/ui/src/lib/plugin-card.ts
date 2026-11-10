@@ -59,7 +59,7 @@ export function pluginChips(plugin: PluginState): PluginChip[] {
 export function pluginMatches(plugin: PluginState, query: string, filter: PluginFilter): boolean {
   // On is what runs or will: a refused install is neither on nor off, and shows under All only.
   if (filter === 'enabled' && !(hasFiles(plugin) && isOn(plugin) && plugin.status !== 'rejected')) return false;
-  if (filter === 'disabled' && !(hasFiles(plugin) && !isOn(plugin))) return false;
+  if (filter === 'disabled' && !(hasFiles(plugin) && !isOn(plugin) && plugin.status !== 'rejected')) return false;
   const words = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
   if (words.length === 0) return true;
   const haystack = [plugin.name, plugin.id, plugin.description, pluginAuthor(plugin) ?? ''].join(' ').toLocaleLowerCase();

@@ -22,3 +22,11 @@ test('a slider whose manifest gives no step keeps any value of its range, never 
   input.dispatchEvent(new Event('change', { bubbles: true }));
   await vi.waitFor(() => expect(onsave).toHaveBeenCalledWith(0.25));
 });
+
+test('a menu of choices takes its name from its own button, with no label pointing at a wrapper', () => {
+  const setting: PluginSetting = { key: 'tone', type: 'select', label: 'Tone', default: 'warm', options: [{ value: 'warm', label: 'Warm' }, { value: 'dry', label: 'Dry' }] };
+  mounted = mount(PluginSettingField, { target: document.body, props: { setting, value: 'warm', disabled: false, onsave: async () => null } });
+  flushSync();
+  expect(document.querySelector('label')!.hasAttribute('for')).toBe(false);
+  expect(document.querySelector('[data-testid="plugin-setting-menu"]')!.getAttribute('aria-label')).toBe('Tone');
+});

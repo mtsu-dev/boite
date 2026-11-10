@@ -58,7 +58,7 @@
 
 <div class="setting" class:wide={setting.type === 'text'} data-testid="plugin-setting" data-key={setting.key} data-type={setting.type}>
   <div class="text">
-    <label class="label" for={uid}>{setting.label}</label>
+    <label class="label" for={setting.type === 'select' ? undefined : uid}>{setting.label}</label>
     {#if setting.description}<p class="hint" id="{uid}-hint">{setting.description}</p>{/if}
   </div>
   <div class="control">

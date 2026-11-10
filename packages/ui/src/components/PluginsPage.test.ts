@@ -7,6 +7,7 @@ import { FakeClient } from '../lib/fake-client';
 
 let mounted: ReturnType<typeof mount> | undefined;
 let client: FakeClient | undefined;
+let store: Store | undefined;
 afterEach(() => {
   if (mounted) unmount(mounted);
   mounted = undefined;
@@ -32,7 +33,7 @@ async function open(edit?: (rows: PluginState[]) => void): Promise<void> {
       return result;
     }) as never);
   }
-  const store = { client, providers: [] } as unknown as Store;
+  store = { client, providers: [] } as unknown as Store;
   mounted = mount(PluginsPage, { target: document.body, props: { store } });
   await vi.waitFor(() => expect(row('bots')).not.toBeNull());
 }
@@ -110,7 +111,8 @@ test('one grid holds every plugin as a card: name, author, chips, switch and gea
 });
 
 test('search narrows by name, id, description or author, and the filter keeps what is on or off', async () => {
-  await open();
+  // A refused install shows under All only, even turned off before it was refused.
+  await open((rows) => { rows.find((plugin) => plugin.id === 'pool-legacy')!.enabled = false; });
   type('[data-testid="plugins-search"]', 'pool');
   expect(shownIds()).toEqual(['pool-legacy', 'seat-pool']);
   type('[data-testid="plugins-search"]', 'skollheim');
@@ -195,6 +197,22 @@ test('the gear draws each declared setting and saves a change as soon as it is m
   input('signature').dispatchEvent(new Event('change', { bubbles: true }));
   await vi.waitFor(() => expect(calls).toHaveBeenCalledWith('plugins.settings.set', { id: 'standup', values: { signature: '— sent by standup' } }));
   expect((await client!.call('plugins.settings.get', { id: 'standup' }))).toMatchObject({ includeTodos: false, tone: 'detailed', signature: '— sent by standup', maxThreads: 8 });
+});
+
+test('a setting changed while the machine is not connected says it was not saved', async () => {
+  await open();
+  const box = await gear('standup');
+  const setting = box.querySelector<HTMLElement>('[data-testid="plugin-setting"][data-key="includeTodos"]')!;
+  (store as { client: unknown }).client = null;
+  setting.querySelector<HTMLInputElement>('[data-testid="plugin-setting-input"]')!.click();
+  await vi.waitFor(() => expect(setting.textContent).toContain('Not saved: this machine is not connected.'));
+  expect(setting.querySelector<HTMLInputElement>('[data-testid="plugin-setting-input"]')!.checked).toBe(true);
+});
+
+test('a recommended plugin that runs nothing installs with no download for this machine', async () => {
+  await open((rows) => { Object.assign(rows.find((plugin) => plugin.id === 'bots')!, { status: 'not-installed', artifact: null }); });
+  await vi.waitFor(() => expect(row('bots')?.querySelector<HTMLButtonElement>('[data-testid="plugin-install"]')).not.toBeNull());
+  expect(row('bots')!.querySelector<HTMLButtonElement>('[data-testid="plugin-install"]')!.disabled).toBe(false);
 });
 
 test('a value outside the manifest\'s rule is refused on the spot and never sent', async () => {

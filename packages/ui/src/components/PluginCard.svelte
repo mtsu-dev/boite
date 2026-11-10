@@ -96,7 +96,7 @@
       {#if plugin.status === 'installing'}
         <button class="quiet small" data-testid="plugin-cancel" data-plugin={plugin.id} disabled={working} onclick={oncancel}><span class="ui-label">{strings.common.cancel}</span></button>
       {:else if plugin.status === 'not-installed'}
-        <button class="primary small" data-testid="plugin-install" data-plugin={plugin.id} disabled={working || plugin.artifact === null || installLocked} onclick={oninstall}><Download size={14} /><span class="ui-label">{t.install}</span></button>
+        <button class="primary small" data-testid="plugin-install" data-plugin={plugin.id} disabled={working || installLocked} onclick={oninstall}><Download size={14} /><span class="ui-label">{t.install}</span></button>
       {:else if update}
         <button class="primary small" data-testid="plugin-update" data-plugin={plugin.id} disabled={working || installLocked} onclick={oninstall}><span class="ui-label">{fill(t.update, { version: `v${update}` })}</span></button>
       {:else}

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { untrack, type Snippet } from 'svelte';
+  import { tick, untrack, type Snippet } from 'svelte';
   import { Puzzle, X } from '@lucide/svelte';
   import type { PluginSettingValue, PluginState } from '@boite/contracts';
   import { pluginSettingValues } from '@boite/contracts';
@@ -40,7 +40,7 @@
     untrack(() => {
       if (overlay.open) return;
       overlay.show();
-      void Promise.resolve().then(() => card?.focus({ preventScroll: true }));
+      void tick().then(() => card?.focus({ preventScroll: true }));
     });
   });
   $effect(() => { if (overlay.open) return mobileOverlay(onclose); });

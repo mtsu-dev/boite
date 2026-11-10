@@ -645,7 +645,8 @@ export class PluginStore {
   }
 
   #run(id: string, installed: Installed, args: string[]): Promise<string> {
-    if (this.#closing || this.preferences.isOff(id)) throw refused(this.#closing ? 'Boite is shutting down.' : `${id} is turned off.`);
+    if (this.#closing) throw refused('Boite is shutting down.');
+    if (this.preferences.isOff(id)) this.#usable(id);
     if (installed.binary === null) throw refused(`${id} runs nothing.`);
     return this.#runs.pool(id, installed.binary, installed.manifest.executable ?? id, args, this.#directory(id), this.#env(id, installed.manifest));
   }
@@ -853,14 +854,13 @@ export class PluginStore {
 
   /**
    * `plugins.settings.set`: each key must be one the manifest declares and
-   * each value valid for it, or nothing is stored. The plugin hears every
-   * value at once in `plugin.settings.changed`.
+   * each value valid for it, or nothing is stored; refused while an uninstall
+   * holds the plugin. The plugin hears every value in `plugin.settings.changed`.
    */
-  setSettings(params: RpcParams<'plugins.settings.set'>): PluginState {
+  async setSettings(params: RpcParams<'plugins.settings.set'>): Promise<PluginState> {
     const id = this.#known(params?.id);
-    this.#core.bus.emit('plugin.settings.changed', { id, values: this.preferences.set(id, this.#declared(id), params.values) });
-    this.#emit(id);
-    return this.state(id);
+    await this.#lanes.shared(id, async () => this.#core.bus.emit('plugin.settings.changed', { id, values: this.preferences.set(id, this.#declared(id), params.values) }));
+    this.#emit(id); return this.state(id);
   }
 
   /** At core start: the update checks of the recommended plugins that name a source. */
