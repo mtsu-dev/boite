@@ -372,8 +372,7 @@ async function runPrompt(text: string): Promise<void> {
         // One stderr line written in two chunks, as a pipe may hand it over.
         process.stderr.write('half of a ');
         setTimeout(() => {
-          process.stderr.write('line
-');
+          process.stderr.write('line\n');
           setTimeout(() => process.exit(3), 20);
         }, 30);
         await new Promise<void>(() => undefined);
