@@ -62,7 +62,8 @@ export function pairingMethods(ctx: FakeContext) {
       return structuredClone(ctx.firewall);
     },
     'sessions.list': async (params) => {
-      return structuredClone(ctx.sessions);
+      // A paired device sees its own row only, as on the real core.
+      return structuredClone(ctx.bus.principal === 'owner' ? ctx.sessions : ctx.sessions.filter(session => session.current));
     },
     'push.status': async (params) => {
       return { publicKey: '', subscribed: false };
