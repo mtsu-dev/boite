@@ -264,6 +264,11 @@ waiting wakes and facts instead. Stop on the bot's thread, or the owner pausing
 its letters, holds its event wakes and facts too, as it holds its letters and
 scheduled wakes: they start after the user's next message, not half a second
 after Stop. Its routines are the owner's schedule and still run at their time.
+While the provider its thread runs on is turned off (`WakeHeld` `off`), its
+event wakes and facts wait instead of being spent, and its status names the
+fix (`problem`); they start once the provider is back on or the bot moves to
+another model. The facts that wait are bounded as always: 60 waking facts an
+hour and one wake's prompt of 16,000 characters, older ones dropped with a line.
 
 Every other turn the core starts by itself on the bot's thread meets the
 same policy in `threads.startTurn` (`AgentRuntime.admit`): the output of a
@@ -271,7 +276,7 @@ background shell, an automatic resume, a letter from another thread, the
 results of its subagents or a workflow's summary, pull request news and the
 next turn of a goal. The turn's origin decides which ones count
 (`autonomousSource` in `threads/turn-origin.ts`); a request id never does. While the bot or the engine is paused, the bot is
-archived or its budget is spent, the turn does not start: one line in the
+archived, its provider is turned off or its budget is spent, the turn does not start: one line in the
 bot's thread says what was held and why, and it starts once the bot may
 run again (`whenAdmitted`), except an automatic resume, which is dropped.
 The user's own messages, the owner's Run now, a compaction, a cache ping and a
@@ -816,8 +821,9 @@ thread:
   description, else its name and what it acts on (`Bash: bun test`), else
   Thinking, Compacting its context or Retrying;
 - `problem`: why it cannot run, naming the fix: its provider is gone (a bot
-  on a removed provider loads with it), its account is gone or its model left
-  the catalog;
+  on a removed provider loads with it) or turned off (by its switch or the
+  admin policy; clients hear of it with `providers.updated`), its account is
+  gone or its model left the catalog;
 - `nextWake`: the next enabled routine occurrence;
 - `unread`: answers the user has not read on its thread, counted since it was
   last read. Only an answer or a failure counts: a compaction (the hourly one

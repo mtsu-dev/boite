@@ -71,6 +71,8 @@ test('after an answer a memory pass rewrites MEMORY.md without holding the next 
   expect(passes(h, threadId).every(t => t.archived)).toBe(true);
   // Nothing of the pass came back to the agent's thread as a turn.
   expect(turnsOf(h, threadId)).toHaveLength(before + 1);
+  // Nor did delegation try to mail it there: the archived pass is still the memory's (issue #992).
+  expect((await h.core.logs.select(record => record.message.startsWith('delegation result'), 10)).map(record => record.message)).toEqual([]);
 });
 
 test('a quiet wake starts no pass; a pass that runs past the cap or drops most of the memory changes nothing; the owner can turn it off', async () => {

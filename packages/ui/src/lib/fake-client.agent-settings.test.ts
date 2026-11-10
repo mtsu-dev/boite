@@ -170,3 +170,22 @@ test('fake model cards name the provider and move an agent to another one, allow
   expect(config.defaultRoute).toMatchObject({ providerId: 'codex', model: 'default' });
   expect(config.allowedRoutes.map(route => `${route.id}: ${route.providerId}/${route.model}`)).toEqual(['codex/default: echo/echo-1', 'codex/default-3: echo/echo-1', 'codex/default-2: codex/default']);
 });
+
+test('fake bots on a provider turned off name the fix in their status and hear of the switch, as on the core', async ({ createClient }) => {
+  const client = await createClient({ delayMs: 0 });
+  const mira = await agent(client);
+  const status = async () => (await client.call('agents.snapshot', {})).status.find(s => s.agentId === mira.id)!;
+  let changes = 0;
+  const off = client.on('agents.changed', () => { changes++; });
+  await client.call('providers.setEnabled', { providerId: 'echo', enabled: false });
+  off();
+  expect(changes).toBeGreaterThan(0);
+  expect(await status()).toMatchObject({ state: 'error', problem: expect.stringMatching(/ is turned off on this machine; turn it on in Settings > Providers, or choose another model for Mira in its settings\.$/) });
+  await client.call('providers.setEnabled', { providerId: 'echo', enabled: true });
+  expect((await status()).problem).toBeNull();
+  // The thread's provider is the one its wakes start on: moved in the composer to one turned off, it says so.
+  const { threadId } = (await client.call('agents.snapshot', {})).sessions.find(s => s.agentId === mira.id)!;
+  await client.call('threads.update', { threadId, accountId: 'a-codex' });
+  await client.call('providers.setEnabled', { providerId: 'codex', enabled: false });
+  expect((await status()).problem).toMatch(/^Codex is turned off on this machine;/);
+});

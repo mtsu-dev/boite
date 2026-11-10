@@ -111,6 +111,7 @@ export function providerCatalogMethods(ctx: FakeContext) {
       if (params.enabled) ensureDefaults(ctx);
       const result = { loaded: structuredClone(ctx.providers), rejected: [] };
       ctx.emit('providers.updated', structuredClone(result));
+      ctx.agents.providersChanged();
       return result;
     },
     'providers.list': async (params) => {
