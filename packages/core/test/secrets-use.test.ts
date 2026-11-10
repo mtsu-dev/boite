@@ -186,7 +186,7 @@ test('boite secret: an agent asks, lists and runs by ref from the command line, 
   expect(await leaks(h, value)).toEqual([]);
 });
 
-test('a socket counts as encrypted on loopback both ways, from the tailnet or behind an HTTPS page, never over plain HTTP', () => {
+test('a socket counts as encrypted on loopback both ways, from the tailnet, behind an HTTPS page or through a forwarder of an encrypted name, never over plain HTTP', () => {
   expect(encryptedLink('127.0.0.1', '127.0.0.1:7000', null)).toBe(true);
   expect(encryptedLink('::1', 'localhost:7000', 'http://localhost:7000')).toBe(true);
   // A tunnel on this machine: loopback socket, someone else's Host.
@@ -203,6 +203,14 @@ test('a socket counts as encrypted on loopback both ways, from the tailnet or be
   expect(encryptedLink('192.168.1.20', '192.168.1.5:7000', null, 'encrypted')).toBe(false);
   // Off a tailnet, 100.64.0.0/10 is a carrier's range.
   expect(encryptedLink('100.101.102.103', '100.64.0.1:7000', null, null, false)).toBe(false);
+  // A forwarder on this machine (systemd-socket-proxyd, an HTTPS proxy whose upstream is this tailnet address) hands
+  // over a socket from loopback; the name the client dialled says its hop: this tailnet address or the HTTPS public name.
+  const routes = ['100.64.0.15', 'boite.example.net'];
+  expect(encryptedLink('127.0.0.1', '100.64.0.15:3773', 'http://tauri.localhost', null, true, routes)).toBe(true);
+  expect(encryptedLink('127.0.0.1', 'boite.example.net', 'http://tauri.localhost', null, true, routes)).toBe(true);
+  expect(encryptedLink('127.0.0.1', 'BOITE.example.net:443', null, 'encrypted', true, routes)).toBe(true);
+  expect(encryptedLink('127.0.0.1', '192.168.1.60:3773', 'http://tauri.localhost', null, true, routes)).toBe(false);
+  expect(encryptedLink('127.0.0.1', 'boite.example.net', null, 'plain', true, routes)).toBe(false);
 
   expect(parse(['secret', 'list', '--json']).json).toBe(true);
   const run = parse(['secret', 'run', 'secret:project/K', '--as', 'K', '--', 'tool', '--json', '--thread', 'x']);
