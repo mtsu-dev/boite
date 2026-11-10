@@ -42,6 +42,11 @@ test('CRLF files keep one displayed line per editor line and diff row', async ()
   const text = 'const a = 1;\rconst b = 2;\nconst c = 3;';
   const stray = await highlightCode(text, 'typescript');
   expect(stray).toHaveLength(text.split('\n').length);
+  for (const html of stray!) {
+    const row = document.createElement('span');
+    row.innerHTML = html;
+    expect(row.textContent).not.toMatch(/[\r\n]/);
+  }
   const last = document.createElement('span');
   last.innerHTML = stray!.at(-1)!;
   expect(last.textContent).toBe('const c = 3;');
