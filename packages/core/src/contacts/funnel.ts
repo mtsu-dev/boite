@@ -17,8 +17,9 @@
  * reaches a client.
  *
  * While the mounts are up they are checked from the internet
- * (`funnel-check.ts`) until a request goes through, every 30 seconds for an
- * hour at most. Tailscale may leave the name out of public DNS: still
+ * (`funnel-check.ts`) until a request goes through, every 5 seconds for the
+ * first 5 minutes, when Tailscale usually publishes the name, then every 30
+ * seconds, for an hour at most. Tailscale may leave the name out of public DNS: still
  * unpublished 10 minutes after it was turned on, Funnel goes off and on again
  * once, which makes Tailscale publish it.
  */
@@ -41,8 +42,8 @@ const FUNNEL_TIMEOUT_MS = 15_000;
 export const FUNNEL_PORTS = [8443, 10000] as const;
 
 /** How often the mounts are checked from the internet, when they are turned off and on, and when checks stop. */
-export interface FunnelTiming { checkMs: number; repairAfterMs: number; giveUpMs: number }
-const TIMING: FunnelTiming = { checkMs: 30_000, repairAfterMs: 10 * 60_000, giveUpMs: 60 * 60_000 };
+export interface FunnelTiming { checkMs: number; repairAfterMs: number; giveUpMs: number; /** The shorter wait between checks at first, and for how long. */ soonMs?: number; soonForMs?: number }
+const TIMING: FunnelTiming = { checkMs: 30_000, repairAfterMs: 10 * 60_000, giveUpMs: 60 * 60_000, soonMs: 5_000, soonForMs: 5 * 60_000 };
 
 type ServeConfig = {
   TCP?: Record<string, unknown>;
@@ -245,7 +246,9 @@ export class ContactFunnel {
     this.#health = { ...this.#health, status, checkedAt: Date.now() };
     if (moved) this.changed();
     if (status === 'ready' || Date.now() - watched.started >= this.#timing.giveUpMs) { this.watched = null; return; }
-    this.#schedule(this.#timing.checkMs);
+    // Soon after the mounts came up, or came back, the owner is waiting on this answer to send the link.
+    const soon = Date.now() - watched.since < (this.#timing.soonForMs ?? 0);
+    this.#schedule(soon ? Math.min(this.#timing.soonMs ?? this.#timing.checkMs, this.#timing.checkMs) : this.#timing.checkMs);
   }
 
   /** Turns the mounts off and on again, which makes Tailscale publish the name; their origin after, or null when it failed. */

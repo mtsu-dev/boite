@@ -30,6 +30,7 @@ import { PeerRefusal, type Operation } from '../coordination-wire.ts';
 import type { Core } from '../core.ts';
 import { invalidParams, messageOf, refused, RpcFailure, unavailable } from '../errors.ts';
 import { checkTier } from './tier.ts';
+import { SyncBackoff } from '../group/backoff.ts';
 import { projectRoute } from './project-relay.ts';
 import { projectRef } from './project-policy.ts';
 import { memberThreadId } from './member-address.ts';
@@ -89,6 +90,14 @@ function within<T>(job: Promise<T>, ms: number, what: string): Promise<T> {
 
 export class ContactMembers {
   readonly #pushing = new Set<string>();
+  /**
+   * A member that did not take its copy is offered it again later and later, 30 seconds to 15 minutes: a PC that is
+   * off was asked every 30 seconds, each time a request held for its whole wait and a warning in the log. A newer
+   * copy goes at once, and so does this one when the member is heard from.
+   */
+  readonly #backoff = new SyncBackoff(15_000, 15 * 60_000);
+  /** The members whose silence is in the log already. */
+  readonly #unheard = new Set<string>();
   readonly #pending = new Set<Promise<unknown>>();
   #closed = false;
 
@@ -382,6 +391,9 @@ export class ContactMembers {
     return [...new Set(this.#contacts.find(contactId)?.grants.flatMap(grant => grant.machine ? [grant.machine] : []) ?? [])];
   }
 
+  /** A member sent this core a signed request: it is up, and is offered its copy at the next round whatever its wait. */
+  heard(memberId: string): void { this.#backoff.heard(memberId); }
+
   /** Every member's copy that is behind, once each. */
   push(): void {
     if (this.#closed) return;
@@ -391,9 +403,10 @@ export class ContactMembers {
       const member = members.find(entry => entry.coreId === memberId);
       // A machine that left the group has nothing to keep.
       if (!member) { this.#settle(memberId, pending[memberId]!); continue; }
-      if (this.#pushing.has(memberId)) continue;
-      this.#pushing.add(memberId);
       const version = pending[memberId]!;
+      if (this.#pushing.has(memberId) || this.#backoff.waiting(memberId, String(version))) continue;
+      this.#pushing.add(memberId);
+      const mark = this.#backoff.mark();
       const job = this.#tell(member, version).finally(() => {
         this.#pushing.delete(memberId);
         // A change marked while this copy was on its way goes now, not at the next flush.
@@ -401,8 +414,13 @@ export class ContactMembers {
         if (next !== undefined && next !== version) this.push();
       });
       this.#pending.add(job);
-      void job.catch(error => { if (!this.#closed) this.#core.log('warn', `contacts: ${member.name} did not take its copy of the contacts (${messageOf(error)})`, { source: 'contacts' }); })
-        .finally(() => this.#pending.delete(job));
+      void job.then(() => { this.#backoff.heard(memberId); this.#unheard.delete(memberId); }, error => {
+        this.#backoff.failed(memberId, String(version), mark);
+        // Once per silence: the retries that follow say nothing new.
+        if (this.#closed || this.#unheard.has(memberId)) return;
+        this.#unheard.add(memberId);
+        this.#core.log('warn', `contacts: ${member.name} did not take its copy of the contacts (${messageOf(error)}); offered again until it does`, { source: 'contacts' });
+      }).finally(() => this.#pending.delete(job));
     }
   }
 

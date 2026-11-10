@@ -41,7 +41,7 @@ import { tellBot } from './bot.ts';
 import { ContactBotHome } from './bot-home.ts';
 import { contactFace } from './face.ts';
 import { checkCard, checkSigningKey, contactUrl } from './invite.ts';
-import { ContactRefused, dialContact, dialProven } from './link-hello.ts';
+import { ContactRefused, dialContact, dialDated, dialProven } from './link-hello.ts';
 import { memberThreadId } from './member-address.ts';
 import { MAX_RELATIONS } from './relations.ts';
 import type { StoredRequest } from './requests.ts';
@@ -476,11 +476,11 @@ export class ContactGroupLink {
     if (running) return running;
     const entry = this.#incoming().find(item => item.contact.coreId === coreId && item.url === url);
     if (!entry) return Promise.reject(new Error('no guest seat for that contact'));
-    let headers: Record<string, string>;
+    const hello = () => ({ ...this.#store.helloHeaders(coreId), ...(resume ? { 'x-boite-resume': '1' } : {}) });
     // A resume only finds a contact that already follows this host (`x-boite-resume`): it never takes a seat the contact still holds.
-    try { headers = { ...this.#store.helloHeaders(coreId), ...(resume ? { 'x-boite-resume': '1' } : {}) }; } catch (error) { return Promise.reject(error); }
+    try { hello(); } catch (error) { return Promise.reject(error); }
     // The contact signs this hello back: an origin that only takes the upgrade does not make this host keep it.
-    const opened = dialProven(this.#core, url, headers, entry.contact.publicKey, PROBE_MS).then(socket => {
+    const opened = dialDated(this.#core, entry.contact, hello, headers => dialProven(this.#core, url, headers, entry.contact.publicKey, PROBE_MS)).then(socket => {
       socket.close(1000, 'moved');
       if (!this.#closed) this.commit(coreId, entry);
     }).finally(() => this.#dialing.delete(coreId));
@@ -735,8 +735,7 @@ export class ContactGroupLink {
       const origins = internet === undefined || internet === url ? [url] : [url, internet];
       try {
         reached = await within(Promise.any(origins.map(async origin => {
-          const headers = this.#store.helloHeaders(card.coreId);
-          const socket = proven ? await dialProven(this.#core, origin, headers, card.publicKey, PROBE_MS) : await dialContact(this.#core, origin, headers);
+          const socket = await dialDated(this.#core, card, () => this.#store.helloHeaders(card.coreId), headers => proven ? dialProven(this.#core, origin, headers, card.publicKey, PROBE_MS) : dialContact(this.#core, origin, headers));
           socket.close(1000, 'moved');
           return origin;
         })), PROBE_MS, card.machine);
