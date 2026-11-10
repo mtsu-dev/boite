@@ -186,7 +186,7 @@ plugins granted that domain reach it with no change of their own.
 | `files.read` | Git status and diffs, the files of a project and their content. |
 | `questions.write` | Answers the cards agents wait on, permission requests included: shown in red at install, since it answers in the owner's name. |
 | `screens.read` | The devices, windows and remote browser Boite shows, their frames included. |
-| `screens.write` | Types and clicks in them, opens and closes them. |
+| `screens.write` | Types and clicks in them, opens and closes them, reads the emulator's clipboard. |
 | `status.read` | Machine usage, quotas, providers, settings, the scheduler and key bindings, read only. |
 | `ui.reveal` | Brings a conversation, a bot or the app updates to the front of the owner's desktop window ([Showing Boite](#showing-boite)). |
 
@@ -214,12 +214,12 @@ secrets.list is never open to plugins: secrets reach only the agent that asked f
 #### Consent and grants
 
 On install, and on an update that asks for more, the app shows "<name> wants
-to access your Boite": one line per permission asked for, ticked by default.
+to access your Boite": one line per permission asked for, ticked unless the owner refused it
+before.
 The owner unticks what the plugin should not get; `plugins.add` and
 `plugins.install` carry the ticked list as `grants`, which must be among the
 permissions the manifest asks for (else refused naming `grants[<index>]`).
-Lines in red: `ui` (its code runs inside the app and can do anything the
-owner can) and `questions.write`. A plugin with an executable adds a line
+The line for `questions.write` is red. A plugin with an executable adds a line
 with no box: it runs a program on this machine with Boite's rights.
 
 The grant is stored per installed plugin, apart from the manifest. An install
@@ -239,7 +239,7 @@ by id and by its name at that time, so they still read after an uninstall:
 - a conversation it creates carries `createdBy`;
 - a prompt it sends or steers into a running turn carries `byPlugin` on the
   message, shown above it;
-- a card it adds or moves carries `plugin`, until another hand moves it;
+- a card it adds or changes carries `plugin`, until another hand changes it;
 - a conversation it archives carries `archiveReason` of type `plugin`.
 
 A plugin passes the same checks as a paired device (`deviceBound` in

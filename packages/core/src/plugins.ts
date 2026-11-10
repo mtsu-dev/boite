@@ -657,10 +657,11 @@ export class PluginStore {
     return this.#lanes.alone(id, 'uninstall', async () => {
       await this.apps.forget(id);
       this.tokens.revoke(id);
-      this.grants.clear(id);
       // Its data directory stays: a gateway's sign-ins outlive its program.
       await this.gateways.forget(id);
       await removeTree(this.#directory(id));
+      // Last: an uninstall that fails above leaves the plugin with its narrowed grant, not all it asks for.
+      this.grants.clear(id);
       this.#pending.delete(id);
       this.#failures.delete(id);
       this.accountPools.forget(id);

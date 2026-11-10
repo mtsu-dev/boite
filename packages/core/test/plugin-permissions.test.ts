@@ -138,6 +138,13 @@ describe('what the owner grants a plugin', () => {
     await waitFor(() => harness!.core.plugins.state('board-bot').status !== 'installing');
     expect(harness.core.plugins.state('board-bot')).toMatchObject({ version: '1.1.0', granted: ['threads.read'], requested: ['threads.read', 'todos.read', 'todos.write', 'agents.read'] });
 
+    // An uninstall that fails keeps the plugin and its narrowed grant, never widening it to all it asks for.
+    const forget = harness.core.plugins.gateways.forget.bind(harness.core.plugins.gateways);
+    harness.core.plugins.gateways.forget = async () => { throw new Error('disk busy'); };
+    expect(await thrown(owner.call('plugins.uninstall', { id: 'board-bot' }))).toThrow();
+    harness.core.plugins.gateways.forget = forget;
+    expect(harness.core.plugins.grants.stored('board-bot')).toEqual(['threads.read']);
+
     // Uninstalling forgets the grant; installing again asks from scratch.
     await owner.call('plugins.uninstall', { id: 'board-bot' });
     expect(harness.core.plugins.grants.stored('board-bot')).toBeNull();
@@ -176,6 +183,8 @@ describe('a plugin\'s changes in its name', () => {
     expect(card.plugin).toEqual({ pluginId: 'maker', pluginName: 'maker' });
     const moved = await owner.call('todos.update', { threadId, todoId: card.id, status: 'claimed' });
     expect(moved.plugin).toBeUndefined();
+    // A read changes nothing, so it is not logged.
+    await plugin.call('threads.list', {});
 
     await harness.core.logs.flush();
     const logged = (await harness.core.logs.query({ source: 'plugins', limit: 50 })).map((entry) => entry.message);
