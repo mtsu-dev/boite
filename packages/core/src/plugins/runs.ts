@@ -168,11 +168,17 @@ export class PluginRuns {
 
   /**
    * Kills the runs still going, those of plugin `id` when given (it was
-   * turned off) or all of them (core shutdown), and waits for them to exit.
+   * turned off) or all of them (core shutdown), and waits for them to exit:
+   * the process, then the registry's record of it, which on Windows follows
+   * the job's exit event and can come up to a second after the process.
    */
   async stop(id?: string): Promise<void> {
     const runs = [...this.#running].filter(([, run]) => id === undefined || run.id === id);
     for (const [threadId] of runs) this.#core.procs.killTree(threadId);
-    await Promise.all(runs.map(([, run]) => run.exited));
+    await Promise.all(runs.map(async ([threadId, run]) => {
+      await run.exited;
+      // Bounded at five seconds; past that the process is gone and only its record lags.
+      await this.#core.procs.waitForExit(threadId).catch(() => undefined);
+    }));
   }
 }
