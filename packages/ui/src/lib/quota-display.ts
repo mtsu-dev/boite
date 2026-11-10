@@ -27,3 +27,8 @@ export function shownWindows(row: AccountQuota): ShownWindows {
     ?? row.windows.find(weekly) ?? row.windows[0] ?? null;
   return { primary, others: row.windows.filter((window) => window !== primary) };
 }
+
+/** When the account's week ends: the whole-account weekly window's reset, else the primary window's. */
+export function weekReset(row: AccountQuota): number | null {
+  return (row.windows.find(weekly) ?? shownWindows(row).primary)?.resetsAt ?? null;
+}

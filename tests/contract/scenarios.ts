@@ -13,6 +13,7 @@ import { CONTACTS_BOT_SCENARIOS } from './contacts-bot.ts';
 import { SHARED_SCENARIOS } from './shared-projects.ts';
 import { TEAM_SCENARIOS } from './teams.ts';
 import { COUNCIL_SCENARIOS } from './council.ts';
+import { GATEWAY_ORDER_SCENARIOS } from './gateway-order.ts';
 import {
   GROUP_INVITE_PREFIX,
   PROJECT_NAME_MAX,
@@ -165,6 +166,7 @@ export const SCENARIOS: Record<string, Scenario> = {
   ...CONTACTS_BOT_SCENARIOS,
   ...TEAM_SCENARIOS,
   ...COUNCIL_SCENARIOS,
+  ...GATEWAY_ORDER_SCENARIOS,
   'artifacts.viewBlock reuses HTML and refuses empty or oversized UTF-8 input': async (env) => {
     const html = '<p>Shared view</p>';
     const { url } = await env.call('artifacts.viewBlock', { html });

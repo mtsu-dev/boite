@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { Account, Settings } from '@boite/contracts';
+  import type { Account, GatewayOrderChange, Settings } from '@boite/contracts';
   import { WsClient, type Client } from './lib/client';
   import { resolveEndpoint } from './lib/endpoint';
   import { startTheme } from './lib/theme';
@@ -14,6 +14,13 @@
   let error = $state('');
   let settings = $state<Settings | null>(null);
   let client: Client | null = null;
+  /** The core offers Douane's account order (`subscriptionProxy.order`). */
+  let ordersAccounts = $state(false);
+  let usageOrder = $derived.by(() => {
+    const proxy = settings?.subscriptionProxy;
+    if (!ordersAccounts || !proxy?.enabled || proxy.kind !== 'douane') return undefined;
+    return { read: () => client!.call('subscriptionProxy.order', {}), write: (change: GatewayOrderChange) => client!.call('subscriptionProxy.setOrder', change) };
+  });
   // Windows 11 rounds the popup and draws its border: the shell says so in the URL.
   const frame = new URLSearchParams(location.search).get('frame') === 'native' ? 'native' : undefined;
   let visible = true;
@@ -87,6 +94,7 @@
       const core = await client.connect();
       if (disposed) { client.close(); return; }
       reader = quotaReader(endpointUrl, core);
+      ordersAccounts = core.features?.gatewayOrder === true;
       off.push(client.on('settings.updated', (value) => { settingsRevision++; settings = value; }));
       off.push(client.on('quotas.updated', (value) => reader.accept(value)));
       off.push(client.on('accounts.updated', (account) => {
@@ -117,7 +125,7 @@
 <main data-testid="quota-popup" data-frame={frame}>
   <QuotaPopup rows={reader.rows === null ? null : rows} loading={reader.busy} completed={reader.landed} {error}
     order={settings?.quotaOrder ?? []} {reorder} refresh={() => void refresh(true)}
-    connect={() => void action('providers')} settings={() => void action('limits')} close={() => void action('hide')} />
+    connect={() => void action('providers')} settings={() => void action('limits')} close={() => void action('hide')} {usageOrder} />
 </main>
 <style>
   /* Windows 11 draws the native frame; other hosts use the same edge as the in-app popup. */

@@ -331,6 +331,8 @@ test('gateway: false refuses the gateway and turns a saved one off without forge
   await refusedBy(client.call('subscriptionProxy.setEnabled', { enabled: true }), 'gateway');
   await refusedBy(client.call('subscriptionProxy.configure', { subscriptionProxy: PROXY }), 'gateway');
   await refusedBy(client.call('subscriptionProxy.movePlan', {}), 'gateway');
+  await refusedBy(client.call('subscriptionProxy.order', {}), 'gateway');
+  await refusedBy(client.call('subscriptionProxy.setOrder', { providerId: 'claude', strategy: 'fill-first' }), 'gateway');
   policy.remove();
   await client.call('policy.get', {});
   expect((await client.call('settings.get', {})).subscriptionProxy?.enabled).toBe(true);

@@ -45,7 +45,7 @@ Windows registry policies are not read yet; the file is the only source.
 | `updates.agents` | `"off"`, `"check"`, `"auto"` | Agent CLI updates. `off` stops version checks and updates. `check` turns automatic updates off; `auto` turns them on. |
 | `providers.allow` | array of provider ids | Only these providers may run. Every other one is off and cannot be turned on, installed, probed or signed in. |
 | `providers.deny` | array of provider ids | These providers are off, as above. |
-| `gateway` | `false`, or `{ "allowedBaseUrls": [...] }` | `false` turns any subscription gateway off and refuses configuring one, its key, its quotas and credential moves. With `allowedBaseUrls`, only a gateway whose address starts with one of these URLs (on a path boundary) may be used. |
+| `gateway` | `false`, or `{ "allowedBaseUrls": [...] }` | `false` turns any subscription gateway off and refuses configuring one, its key, its quotas, credential moves and its account order. With `allowedBaseUrls`, only a gateway whose address starts with one of these URLs (on a path boundary) may be used. |
 | `quotaReads` | `false` | No quota read sends an account's token to its provider. Limits rows read "disabled" with the reason; quota resets are refused. |
 | `plugins.install` | `false` | No plugin install, reinstall or update, from the catalog or from a Git URL. Installed plugins keep running. |
 | `plugins.recommended` | `false` | The recommended plugins' Git sources are never fetched for update checks. |

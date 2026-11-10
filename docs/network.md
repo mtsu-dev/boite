@@ -58,6 +58,7 @@ the OpenCode server, protected bridges, health checks).
 | 43 | Agent sign-in | The agent vendor's login, run by the CLI | Connect click on Providers | The vendor's OAuth, handled by the CLI | No | Do not click | `providers.allow` / `providers.deny` for a blocked provider; user-initiated for an allowed one |
 | 44 | External links | Docs, Tailscale admin, release notes, runtime downloads, in the system browser | A click | A normal browser request | No | Do not click | None: opened by the user in the system browser, outside Boite |
 | 45 | agent-desktop download | `registry.npmjs.org`, the pinned `agent-desktop` release | A conversation's first virtual desktop or `boite desktop` command on a core without it | GET, IP | On; on Linux, with the desktop tools | None | `agentDesktop: false` |
+| 46 | Account order of a Douane gateway | The saved gateway, `GET /admin/api/settings` and `/admin/api/accounts`, `PATCH /admin/api/settings`, `PUT /admin/api/accounts/order` | The owner opens the Limits panel (read) or changes the order in it (write) | The management token if one is saved, a strategy, account ids, model family keys | On while a Douane gateway is on | Gateway switch off | `gateway: false`, or `gateway.allowedBaseUrls` |
 
 ## Flows with no user switch
 

@@ -71,6 +71,25 @@ export const strings = {
     glance: 'Account limits',
     /** The popover's way to the Limits page in Settings. */
     allLimits: 'Limits page',
+    /** The footer button that shows, in the same panel, the order Douane uses the accounts in. */
+    usageOrder: 'Usage order',
+    orderLoading: 'Reading the order from Douane…',
+    /** The two ways a provider's accounts are picked; {provider} is Claude or Codex. */
+    orderStrategy: 'How {provider} accounts are used',
+    orderMine: 'My order',
+    orderReset: 'Soonest reset',
+    /** {strategy} is Douane's own name for it, such as smart or round-robin. */
+    orderOther: 'Douane uses its {strategy} strategy for {provider}. Choose one above to change it.',
+    spareFable: 'Keep Fable',
+    spareFableHint: 'Opus and the other models go first to the accounts where Fable is used up.',
+    orderUp: 'Move {name} up',
+    orderDown: 'Move {name} down',
+    orderDisabled: 'Off in Douane',
+    orderFailed: 'Douane did not take the change: {error}',
+    orderReadFailed: "Couldn't read the order from Douane: {error}",
+    orderNeedsToken: 'Douane asks for its management token before it shows or changes the order. Enter it once on the Limits page, under Subscription proxy, in Move my connections to Douane. It stays on this machine.',
+    orderRemote: 'The usage order is set from the Boite of the machine that runs these accounts, or from a computer connected to it as its owner. A paired device only reads the limits.',
+    orderNone: 'Douane has no provider with accounts to order.',
     /** A read of the limits failed; the core's reason follows. */
     readFailed: "Couldn't read the limits: {error}",
     quit: 'Quit Boite',

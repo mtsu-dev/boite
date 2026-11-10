@@ -167,6 +167,8 @@ describe('the access gate', () => {
     // Guard against a gate that refuses nothing because the router was empty.
     expect(refusedNames.length).toBeGreaterThan(20);
     // The Add a project form works from a phone; what it browses and adds is checked in projects.ts.
+    // Douane's account order is gateway configuration: a phone reads the limits and never reorders the accounts behind them.
+    expect(refusedNames).toEqual(expect.arrayContaining(['subscriptionProxy.order', 'subscriptionProxy.setOrder']));
     expect(refusedNames).not.toContain('projects.add');
     expect(refusedNames).toContain('accounts.add');
     expect(refusedNames).toContain('settings.set');

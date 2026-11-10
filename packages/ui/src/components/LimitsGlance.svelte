@@ -2,6 +2,7 @@
   import { errorText } from '../lib/errors';
   import { untrack } from 'svelte';
   import { Gauge } from '@lucide/svelte';
+  import type { GatewayOrderChange } from '@boite/contracts';
   import { Closing } from '../lib/closing.svelte';
   import { floating } from '../lib/floating';
   import { gatewayReader, quotaReader, shownQuotas } from '../lib/quota-reader.svelte';
@@ -34,6 +35,13 @@
   let rows = $derived(reader.rows === null ? null : shownQuotas(reader.rows, store.accounts, store.providers));
   /** The last read's failure, cleared by the next read that lands. */
   let failed = $state('');
+
+  /** Douane's account order, on a core that has it and with a Douane behind the limits. */
+  let usageOrder = $derived.by(() => {
+    const client = store.client;
+    if (!client || douane === null || store.core?.features?.gatewayOrder !== true) return undefined;
+    return { read: () => client.call('subscriptionProxy.order', {}), write: (change: GatewayOrderChange) => client.call('subscriptionProxy.setOrder', change) };
+  });
 
   /** A paired device reads what the core holds: forcing the providers is the owner's. */
   function read(refresh = false) {
@@ -134,7 +142,7 @@
     use:popover.attach onanimationend={popover.end} use:floating={{ anchor: () => trigger ?? null, dismiss: close, cap: 460 }}>
     <QuotaPopup {rows} loading={reader.busy} completed={reader.landed} error={failed} outdated={reader.outdated} owner={store.owner}
       order={store.settings?.quotaOrder ?? []} reorder={store.owner ? (quotaOrder) => store.saveSettings({ quotaOrder }) : undefined}
-      refresh={() => read(true)} connect={providersReachable ? () => page('accounts') : undefined} settings={() => page('limits')} {close} testPrefix="limits-glance">
+      refresh={() => read(true)} connect={providersReachable ? () => page('accounts') : undefined} settings={() => page('limits')} {close} {usageOrder} testPrefix="limits-glance">
       {#snippet title()}<QuotaMachineScope {store} />{/snippet}
       {#snippet actions()}<QuotaPin />{/snippet}
     </QuotaPopup>

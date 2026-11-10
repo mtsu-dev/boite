@@ -17,6 +17,7 @@ export const parts = {
   TeamCard: new LazyComponent(() => import('../components/TeamCard.svelte')),
   CouncilCard: new LazyComponent(() => import('../components/council/CouncilCard.svelte')),
   QuotaOverview: new LazyComponent(() => import('../components/QuotaOverview.svelte')),
+  QuotaOrder: new LazyComponent(() => import('../components/QuotaOrder.svelte')),
   PinnedQuota: new LazyComponent(() => import('../components/PinnedQuota.svelte')),
   CoordinationPanel: new LazyComponent(() => import('../components/CoordinationPanel.svelte')),
   UpdatesNotice: new LazyComponent(() => import('../components/UpdatesNotice.svelte')),

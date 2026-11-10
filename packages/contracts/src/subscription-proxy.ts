@@ -147,6 +147,63 @@ export interface GatewayMoveOutcome {
   message: string | null;
 }
 
+/**
+ * How Douane picks the account of a new conversation of one provider.
+ * `fill-first` follows the order the owner gave its accounts; `reset-first`
+ * takes the account whose week ends soonest.
+ */
+export type GatewayOrderStrategy = 'fill-first' | 'reset-first' | 'round-robin' | 'smart';
+
+/** The strategies the usage order writes; the two others are Douane's own to set. */
+export const GATEWAY_ORDER_STRATEGIES: readonly GatewayOrderStrategy[] = ['fill-first', 'reset-first'];
+
+export interface GatewayOrderAccount {
+  /** Douane's account id: the `gateway.entryId` of that account's limit row. */
+  id: string;
+  name: string;
+  /** Its place in the owner's order, 0 first; null while it was never ordered. */
+  position: number | null;
+  enabled: boolean;
+}
+
+export interface GatewayOrderProvider {
+  /** Douane's provider id, the `providerId` of its limit rows. */
+  providerId: string;
+  name: string;
+  strategy: GatewayOrderStrategy;
+  /** Model families kept for their own conversations, such as `fable`: the others go first to the accounts where that family is exhausted. */
+  spareFamilies: string[];
+  /** Every account of the provider, in the owner's order: by position, the unordered ones last by id. */
+  accounts: GatewayOrderAccount[];
+}
+
+/**
+ * `ready`: Douane answered with the order. `noProxy`: no Douane is configured.
+ * `needsToken`: its management API refused the request, for a missing or a
+ * wrong management token. `unsupported`: a Douane that predates the account
+ * order (no `spare_families` setting, or accounts without `position`).
+ */
+export type GatewayOrderStatus = 'ready' | 'noProxy' | 'needsToken' | 'unsupported';
+
+/** `subscriptionProxy.order`: the usage order of Douane's accounts. No credential value. */
+export interface GatewayOrder {
+  status: GatewayOrderStatus;
+  /** The configured Douane's address as a person reads it, null when no Douane is configured. */
+  origin: string | null;
+  /** A management token for the gateway's `/admin/api` is saved on the core. */
+  managementToken: boolean;
+  providers: GatewayOrderProvider[];
+}
+
+/** One provider's change: every field given is written whole, the others stay. */
+export interface GatewayOrderChange {
+  providerId: string;
+  strategy?: GatewayOrderStrategy;
+  /** Every account id of the provider, once each, first to last. */
+  ids?: string[];
+  spareFamilies?: string[];
+}
+
 export interface SubscriptionProxyRpcMethods {
   'subscriptionProxy.key': { params: { key: string | null }; result: { configured: boolean } };
   /** Owner-only, atomic configuration and optional private-key update; an omitted key keeps it. */
@@ -166,6 +223,16 @@ export interface SubscriptionProxyRpcMethods {
    * (or with null removes) the token sent to that API; omitted keeps it.
    */
   'subscriptionProxy.move': { params: { ids: string[]; managementToken?: string | null; target?: GatewayMoveTarget }; result: { outcomes: GatewayMoveOutcome[] } };
+  /**
+   * Owner-only. The core asks the configured Douane's `/admin/api` for each
+   * provider's strategy, spared families and accounts in order.
+   */
+  'subscriptionProxy.order': { params: Record<string, never>; result: GatewayOrder };
+  /**
+   * Owner-only. Writes one provider's strategy, account order or spared
+   * families to the configured Douane, and answers what Douane holds after.
+   */
+  'subscriptionProxy.setOrder': { params: GatewayOrderChange; result: GatewayOrder };
 }
 
 export interface SubscriptionProxyRpcEvents {

@@ -1,13 +1,11 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { subscriptionProxyOrigin, type Account, type GatewayMoveItem, type GatewayMoveOutcome, type GatewayMovePlan, type GatewayMoveReason, type ProviderDescriptor, type SubscriptionProxy } from '@boite/contracts';
+import { subscriptionProxyOrigin, type Account, type GatewayMoveItem, type GatewayMoveOutcome, type GatewayMovePlan, type GatewayMoveReason, type ProviderDescriptor } from '@boite/contracts';
 import type { Core } from './core.ts';
+import { assertGateway, douaneOf, gatewayCall, MANAGEMENT_TOKEN_SETTING, managementToken, record, scrub } from './douane-admin.ts';
 import { invalidParams, refused, unavailable, RpcFailure } from './errors.ts';
 import { homePath } from './paths.ts';
 import { hostAgentsEnabled, profileFor } from './providers/resolve.ts';
-import { DOUANE_PLUGIN } from './plugins/gateway.ts';
-import { localProxy } from './settings.ts';
-import { proxyApiUrl } from './subscription-proxy.ts';
 
 /**
  * Moving this machine's logins into Douane. The core reads each login file
@@ -17,7 +15,6 @@ import { proxyApiUrl } from './subscription-proxy.ts';
  * refreshes it, Boite's own copy stops working: this is a move, not a copy.
  */
 
-const TOKEN_SETTING = 'subscription-proxy-management-token';
 /** The agents whose own sign-in file Douane imports as it is. */
 const LOGIN_FILES: Readonly<Record<string, string>> = { claude: 'claude', codex: 'codex', grok: 'xai' };
 const OPENCODE = 'opencode';
@@ -29,7 +26,6 @@ const CHAT_PACKAGES = new Set(['@ai-sdk/openai-compatible', '@openrouter/ai-sdk-
 /** Names Douane keeps for its own providers: a custom endpoint's route cannot be one. */
 const DOUANE_PROVIDERS = new Set(['codex', 'chatgpt', 'claude', 'anthropic', 'gemini', 'gemini-cli', 'antigravity', 'qwen', 'kimi', 'kimi-ai',
   'xai', 'grok', 'opencode_go', 'opencode-go', 'opencode', 'copilot', 'github-copilot', 'github_copilot', 'openai', 'openai_compatible', 'openai-compatible']);
-const REQUEST_TIMEOUT_MS = 15_000;
 
 interface CatalogEntry { name?: unknown; api?: unknown; npm?: unknown }
 
@@ -41,10 +37,6 @@ interface Prepared {
 }
 
 interface GatewayAccount { id?: unknown; provider?: unknown; email?: unknown; route?: unknown; base_url?: unknown }
-
-function record(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
-}
 
 function readJson(path: string): Record<string, unknown> | 'missing' | 'unreadable' {
   if (!existsSync(path)) return 'missing';
@@ -144,31 +136,6 @@ function prepare(core: Core): Prepared[] {
   return prepared;
 }
 
-/** The Douane a move talks to: the proxy's, or with `plugin` the Douane plugin running on this core. */
-function douaneOf(core: Core, target: unknown = 'proxy'): SubscriptionProxy | null {
-  if (target !== 'proxy' && target !== 'plugin') throw invalidParams('target must be proxy, plugin or absent', { field: 'target', expected: 'proxy or plugin' });
-  let proxy: SubscriptionProxy | null;
-  if (target === 'plugin') {
-    proxy = core.plugins.gateways.running(DOUANE_PLUGIN) ? localProxy({ enabled: false, kind: 'douane', baseUrl: '', dashboardUrl: '' }, core.plugins.gateways.port(DOUANE_PLUGIN)) : null;
-  } else {
-    const saved = core.settings.get().subscriptionProxy;
-    proxy = saved && saved.kind === 'douane' && saved.baseUrl ? saved : null;
-  }
-  assertGateway(core, proxy);
-  return proxy;
-}
-
-/** Check the resolved address, including disabled saved proxies and the plugin's local port. */
-function assertGateway(core: Core, proxy: SubscriptionProxy | null): void {
-  const key = core.policy.gatewayBlock(proxy?.baseUrl);
-  if (key !== null) throw core.policy.refusal(key, proxy?.baseUrl);
-}
-
-function managementToken(core: Core): string | null {
-  const token = core.journal.getSetting(TOKEN_SETTING);
-  return typeof token === 'string' && token ? token : null;
-}
-
 export function movePlan(core: Core, target?: unknown): GatewayMovePlan {
   const proxy = douaneOf(core, target);
   return { origin: proxy ? subscriptionProxyOrigin(proxy) : null, managementToken: managementToken(core) !== null, items: prepare(core).map(entry => entry.item) };
@@ -180,50 +147,6 @@ function secretsOf(value: unknown, into: string[] = []): string[] {
   else if (Array.isArray(value)) for (const entry of value) secretsOf(entry, into);
   else if (value !== null && typeof value === 'object') for (const entry of Object.values(value)) secretsOf(entry, into);
   return into;
-}
-
-function scrub(message: string, secrets: readonly string[]): string {
-  let text = message.slice(0, 300);
-  for (const secret of secrets) text = text.split(secret).join('[hidden]');
-  return text;
-}
-
-/** One management call. A login page, a refusal or a silence becomes a sentence naming what to do. */
-async function gatewayCall(core: Core, proxy: SubscriptionProxy, token: string | null, path: string, body?: unknown): Promise<{ status: number; json: Record<string, unknown> }> {
-  assertGateway(core, proxy);
-  const origin = subscriptionProxyOrigin(proxy);
-  const url = `${proxyApiUrl(proxy).replace(/\/v1$/, '')}/admin/api${path}`;
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      method: body === undefined ? 'GET' : 'POST',
-      headers: { accept: 'application/json', ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...(token ? { 'x-management-key': token } : {}) },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      redirect: 'manual', signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
-  } catch {
-    throw unavailable(`Douane at ${origin} could not be reached`);
-  }
-  try { assertGateway(core, proxy); }
-  catch (error) { await response.body?.cancel().catch(() => {}); throw error; }
-  const type = response.headers.get('content-type') ?? '';
-  if ((response.status >= 300 && response.status < 400) || /text\/html/i.test(type)) {
-    await response.body?.cancel().catch(() => {});
-    throw refused(`Douane at ${origin} answered with a sign-in page: its management API is behind a login. Enter its management token, or reach it at an address without that login`, { field: 'managementToken' });
-  }
-  if (response.status === 401 || response.status === 403) {
-    await response.body?.cancel().catch(() => {});
-    throw refused(`Douane at ${origin} refused the management request (HTTP ${response.status}): ${token ? 'the management token is not the one it expects' : 'enter its management token'}`, { field: 'managementToken' });
-  }
-  if (response.status === 404 || response.status === 405) {
-    await response.body?.cancel().catch(() => {});
-    throw refused(`${origin} has no Douane account import at /admin/api: check the API URL, or update Douane`, { field: 'subscriptionProxy.baseUrl' });
-  }
-  let json: Record<string, unknown> | null = null;
-  try { json = record(await response.json()); } catch { /* answered below */ }
-  assertGateway(core, proxy);
-  if (json === null) throw unavailable(`Douane at ${origin} answered HTTP ${response.status} without JSON`);
-  return { status: response.status, json };
 }
 
 function validateToken(token: unknown): asserts token is string | null {
@@ -251,7 +174,7 @@ export async function moveToGateway(core: Core, ids: unknown, token: unknown, ta
   moving.add(core);
   try {
     if (token !== undefined) {
-      try { if (token === null) core.journal.deleteSetting(TOKEN_SETTING); else core.journal.setSetting(TOKEN_SETTING, token); }
+      try { if (token === null) core.journal.deleteSetting(MANAGEMENT_TOKEN_SETTING); else core.journal.setSetting(MANAGEMENT_TOKEN_SETTING, token); }
       catch { throw unavailable('The management token could not be saved'); }
     }
     const secret = managementToken(core);

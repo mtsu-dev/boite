@@ -165,6 +165,24 @@ an HTML page says the API is behind a login, both with `field:
 managementToken`. A local Douane answers on loopback without one. What moving
 a sign-in means for Boite's own copy: [accounts](accounts.md#moving-a-login-to-douane).
 
+The Limits panel also sets the order Douane uses its accounts in, when the
+core advertises `features.gatewayOrder` and the saved gateway is a Douane that
+has the account order (`spare_families` in `GET /admin/api/settings` and a
+`position` on each account of `GET /admin/api/accounts`); an older Douane
+answers `unsupported` and the panel shows no Usage order button.
+`subscriptionProxy.order` returns, per provider, the strategy, the spared
+model families and the accounts with their id, name and place.
+`subscriptionProxy.setOrder` writes one provider's strategy (`fill-first`, the
+owner's order, or `reset-first`, the week that ends soonest) through
+`PATCH /admin/api/settings`, its order through `PUT /admin/api/accounts/order`
+and its spared families (Keep Fable: the other models go first to the accounts
+whose Fable week is spent) through the same settings write. Douane replaces a
+settings map whole, so the core reads it and sends the other providers'
+entries back. Both methods are owner-only: a paired device reads the limits
+and is told the order is set from the owner's Boite. They use the management
+token above and never return it; a refusal by Douane reaches the client as a
+sentence with the token replaced by `[hidden]`.
+
 Which agents the proxy serves is decided per provider, not per protocol
 (`subscriptionProxyServes` in the contract): the Claude and Codex protocols
 whole, and both OpenCode versions by their ids, because ACP is also what

@@ -46,6 +46,8 @@ export interface CoreInfo {
     desktopUpdates?: boolean;
     /** `subscriptionProxy.movePlan` and `subscriptionProxy.move`: this machine's logins move into Douane. */
     gatewayMove?: boolean;
+    /** `subscriptionProxy.order` and `subscriptionProxy.setOrder`: the usage order of Douane's accounts. */
+    gatewayOrder?: boolean;
     /** `todos.update` takes `goalThreadId`, a card carries its goal, and a paired device reads and moves cards: the project board. */
     projectBoard?: boolean;
     /** `projects.browse` and `projects.add` answer a paired device: the Add a project form works from a phone. */

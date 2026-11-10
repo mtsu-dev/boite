@@ -1,11 +1,12 @@
 <script lang="ts">
-  import { Gauge, RefreshCw, Settings2, X } from '@lucide/svelte';
-  import type { AccountQuota } from '@boite/contracts';
+  import { Gauge, ListOrdered, RefreshCw, Settings2, X } from '@lucide/svelte';
+  import type { AccountQuota, GatewayOrder, GatewayOrderChange } from '@boite/contracts';
   import type { Snippet } from 'svelte';
+  import { errorText } from '../lib/errors';
   import { fill, strings } from '../lib/strings';
   import Deferred, { parts } from './Deferred.svelte';
 
-  let { rows, loading, completed, error = '', outdated = false, owner = true, order = [], reorder, refresh, connect, settings, close, title, actions, testPrefix = 'quota' }: {
+  let { rows, loading, completed, error = '', outdated = false, owner = true, order = [], reorder, refresh, connect, settings, close, title, actions, usageOrder, testPrefix = 'quota' }: {
     rows: AccountQuota[] | null;
     loading: boolean;
     completed: string[];
@@ -23,8 +24,41 @@
     close: () => void;
     title?: Snippet;
     actions?: Snippet;
+    /**
+     * Douane's account order on a core that offers it; absent, the footer has
+     * no Usage order button. Only the owner reads and writes it: a paired
+     * device is told where the order is set.
+     */
+    usageOrder?: { read: () => Promise<GatewayOrder>; write: (change: GatewayOrderChange) => Promise<GatewayOrder> };
     testPrefix?: string;
   } = $props();
+
+  /** Order mode: the same panel, with each account's place and the way Douane picks one. */
+  let ordering = $state(false);
+  let usage = $state<GatewayOrder | null>(null);
+  let usageError = $state('');
+  let reads = 0;
+  async function readUsage() {
+    if (!usageOrder || !owner) return;
+    const read = ++reads;
+    try {
+      const answer = await usageOrder.read();
+      if (read === reads) { usage = answer; usageError = ''; }
+    } catch (failure) {
+      if (read === reads) { usage = null; usageError = errorText(failure); }
+    }
+  }
+  // Read when the panel opens: a Douane without the account order shows no button at all.
+  $effect(() => { if (usageOrder && owner) void readUsage(); });
+  /** A paired device cannot ask Douane: its button follows the Douane accounts among its rows. */
+  let offered = $derived(usageOrder !== undefined && (owner
+    ? usage !== null && (usage.status === 'needsToken' || (usage.status === 'ready' && usage.providers.some((provider) => provider.accounts.length > (provider.providerId === 'claude' ? 0 : 1))))
+    : (rows ?? []).some((row) => row.gateway?.kind === 'douane')));
+  $effect(() => { if (!offered && !usageError) ordering = false; });
+  function toggleOrder() {
+    ordering = !ordering;
+    if (ordering) void readUsage();
+  }
 </script>
 
 <div class="quota-popup" data-testid="quota-panel">
@@ -45,7 +79,10 @@
         <button type="button" class="ghost small" disabled={loading} data-testid={`${testPrefix}-retry`} onclick={refresh}><span class="ui-label">{strings.common.retry}</span></button>
       </div>
     {/if}
-    {#if outdated}
+    {#if ordering && usageOrder}
+      {@const order = usageOrder}
+      <Deferred part={parts.QuotaOrder}>{#snippet children(QuotaOrder)}<QuotaOrder bind:usage rows={rows ?? []} {loading} {completed} {owner} failure={usageError} write={order.write} {settings} {testPrefix} />{/snippet}</Deferred>
+    {:else if outdated}
       <p class="muted" data-testid={`${testPrefix}-outdated`}>{strings.quotas.outdated}</p>
     {:else if rows === null}
       <p class="muted" role="status">{strings.quotas.loading}</p>
@@ -56,6 +93,9 @@
   </section>
   <footer>
     <button type="button" class="ghost" data-testid={`${testPrefix}-page`} onclick={settings}><Settings2 size={15} /><span class="ui-label">{strings.quotas.allLimits}</span></button>
+    {#if offered}
+      <button type="button" class="ghost" class:on={ordering} aria-pressed={ordering} data-testid={`${testPrefix}-order`} onclick={toggleOrder}><ListOrdered size={15} /><span class="ui-label">{strings.quotas.usageOrder}</span></button>
+    {/if}
   </footer>
 </div>
 
@@ -69,6 +109,7 @@
   .actions { flex: none; display: flex; gap: 2px; }
   .body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 2px 8px; }
   footer button { font-size: var(--text-sm); }
+  footer button.on { color: var(--color-accent); }
   .failed { display: grid; justify-items: start; gap: 8px; padding: 12px 4px; color: var(--color-danger); font-size: var(--text-sm); }
   .failed p { margin: 0; overflow-wrap: anywhere; }
   .muted { margin: 0; padding: 14px 4px; color: var(--color-muted-foreground); font-size: var(--text-sm); }

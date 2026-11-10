@@ -21,6 +21,7 @@ import { registerSettingsMethods } from './settings.ts';
 import { registerPolicy } from './policy-gate.ts';
 import { registerSubscriptionProxy } from './subscription-proxy.ts';
 import { registerGatewayMove } from './gateway-move.ts';
+import { registerGatewayOrder } from './gateway-order.ts';
 import { registerThreadMethods } from './threads/rpc.ts';
 import { registerTraceMethods } from './trace.ts';
 import { registerUsageMethods } from './usage.ts';
@@ -145,6 +146,7 @@ export function registerModules(core: Core): void {
   registerSettingsMethods(core);
   registerSubscriptionProxy(core);
   registerGatewayMove(core);
+  registerGatewayOrder(core);
   registerKeybindingMethods(core);
   registerSessionMethods(core);
   registerTailscaleMethods(core);

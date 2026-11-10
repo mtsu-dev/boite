@@ -71,6 +71,8 @@ const RULES: Partial<Record<RpcMethodName, Rule>> = {
   'subscriptionProxy.quotas': when('gateway', gatewayOff),
   'subscriptionProxy.move': when('gateway', gatewayOff),
   'subscriptionProxy.movePlan': when('gateway', gatewayOff),
+  'subscriptionProxy.order': when('gateway', gatewayOff),
+  'subscriptionProxy.setOrder': when('gateway', gatewayOff),
 
   'quotas.reset': when('quotaReads', core => core.policy.quotaReadsOff()),
 

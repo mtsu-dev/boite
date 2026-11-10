@@ -15,7 +15,12 @@ function stateOf(ctx: FakeContext): MoveState {
   return state;
 }
 
-function douane(ctx: FakeContext, target?: string) {
+/** A management token was entered with a move: the order reads it too. */
+export function hasManagementToken(ctx: FakeContext): boolean {
+  return stateOf(ctx).token;
+}
+
+export function douane(ctx: FakeContext, target?: string) {
   let proxy: SubscriptionProxy | null;
   if (target === 'plugin') {
     const port = ctx.plugins.gatewayPort('douane');
