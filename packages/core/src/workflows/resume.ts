@@ -1,4 +1,4 @@
-import type { Principal, WorkflowRun } from '@boite/contracts';
+import { deviceBound, type Principal, type WorkflowRun } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { refused } from '../errors.ts';
 import { pauseHold } from '../delegation/pauses.ts';
@@ -9,10 +9,10 @@ export function running(run: WorkflowRun): WorkflowRun {
   return { ...rest, status: 'running', error: null };
 }
 
-/** The owner resumes any run; a session none; an agent the pauses `pauseHold` lets it lift. */
+/** The owner resumes any run; a session or a plugin none; an agent the pauses `pauseHold` lets it lift. */
 export function mayResume(core: Core, run: WorkflowRun, principal: Principal): void {
   if (principal === 'owner') return;
-  if (principal === 'session') throw refused('resuming a workflow is an owner action');
+  if (deviceBound(principal)) throw refused('resuming a workflow is an owner action');
   const hold = pauseHold(core, run.rootThreadId, { by: run.pausedBy, at: run.pausedAt }, 'run');
   if (hold) throw refused(hold);
 }

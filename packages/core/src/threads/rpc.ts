@@ -264,7 +264,7 @@ export function registerThreadMethods(core: Core, probe: ProviderProbe): void {
     return core.threads.recoverTurn(params);
   });
   core.router.register('turns.cancelRetry', (params) => ({ cancelled: core.threads.cancelRetry(params.threadId) }));
-  core.router.register('turns.steer', (params, ctx) => steerUser(core, core.threads, params, promptOrigin(ctx.connection, core.clients.use(ctx.connection))));
+  core.router.register('turns.steer', (params, ctx) => steerUser(core, core.threads, params, promptOrigin(ctx.connection, core.clients.use(ctx.connection)), pluginActor(core, ctx.connection.identity)));
   core.router.register('permissions.list', (params) => core.threads.listPermissions(params.threadId));
   core.router.register('permissions.answer', (params) => {
     core.threads.answerPermission({ requestId: params.requestId, decision: params.decision });

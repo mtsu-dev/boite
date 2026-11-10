@@ -176,7 +176,7 @@ plugins granted that domain reach it with no change of their own.
 | Permission | What it opens |
 | --- | --- |
 | `threads.read` | Every conversation of every project, read only: rows, transcripts, pull request links, cards waiting on the owner, the composer's drafts, the project list, and their events. |
-| `threads.write` | Creates, starts, steers, stops, renames, moves, forks, archives and deletes conversations, and queues prompts: it spends the owner's agent quota. Archiving keeps its guards ([Archiving](#archiving-threads)). |
+| `threads.write` | Creates, starts, steers, stops, renames, moves, forks, archives and deletes conversations: it spends the owner's agent quota. Archiving keeps its guards ([Archiving](#archiving-threads)). |
 | `projects.read` | The projects' icons, file lists and changes, and the composer's skill menu. |
 | `projects.write` | Adds a folder as a project, renames or archives one. |
 | `todos.read` | The project boards, read only. |
@@ -187,7 +187,7 @@ plugins granted that domain reach it with no change of their own.
 | `questions.write` | Answers the cards agents wait on, permission requests included: shown in red at install, since it answers in the owner's name. |
 | `screens.read` | The devices, windows and remote browser Boite shows, their frames included. |
 | `screens.write` | Types and clicks in them, opens and closes them. |
-| `status.read` | Machine usage, quotas, providers, settings, the scheduler, key bindings and the admin policy, read only. |
+| `status.read` | Machine usage, quotas, providers, settings, the scheduler and key bindings, read only. |
 | `ui.reveal` | Brings a conversation, a bot or the app updates to the front of the owner's desktop window ([Showing Boite](#showing-boite)). |
 
 The table is `PLUGIN_PERMISSIONS` in `packages/contracts/src/plugins.ts`, with
@@ -197,7 +197,8 @@ still ask for `todos`, which reads as `todos.read` and `todos.write`.
 
 Never open to a plugin, whatever it asks for (`PLUGIN_CLOSED`, each with its
 reason): accounts and provider sign-ins, secrets, plugins and their grants,
-updating, restarting or stopping Boite, the admin policy, paired sessions and
+updating, restarting or stopping Boite, the admin policy (read or changed),
+the composer's queue (a queued line goes out as the owner's), paired sessions and
 pairing, the machine group, push subscriptions, the client's own settings,
 which conversation the owner is looking at, dictation, diagnostics reports,
 window capture consent, contacts and shared projects. A method in no domain
@@ -236,13 +237,18 @@ Every change a plugin's token makes is in the core's log as
 by id and by its name at that time, so they still read after an uninstall:
 
 - a conversation it creates carries `createdBy`;
-- a prompt it sends carries `byPlugin` on the message, shown above it;
+- a prompt it sends or steers into a running turn carries `byPlugin` on the
+  message, shown above it;
 - a card it adds or moves carries `plugin`, until another hand moves it;
 - a conversation it archives carries `archiveReason` of type `plugin`.
 
-A plugin passes the same checks as the app: the working tree's diff against
-HEAD only, the last quota reading only, no shared board card, archive only
-when idle.
+A plugin passes the same checks as a paired device (`deviceBound` in
+`packages/contracts/src/access.ts`, which every core guard asks): reads held
+to the projects and never credential files or Boite's data folder, a project
+folder it adds held to the same rules, the working tree's diff against HEAD
+only, the last quota reading only, a desktop, device or window only of a
+conversation it subscribed to, no workflow retry or resume. It neither reads
+nor changes a shared board's cards, and archives only when idle.
 
 #### Archiving threads
 

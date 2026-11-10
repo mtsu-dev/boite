@@ -2,10 +2,12 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  DEVICE_EVENTS, DEVICE_METHODS, PLUGIN_CLOSED, PLUGIN_MANIFEST_FILE, PLUGIN_PERMISSIONS, PLUGIN_PERMISSION_NAMES,
-  accessRefusal, mayHearEvent, pluginClosedReason, type MessagePart,
+  DEFAULT_DELEGATION_CONFIG, DEVICE_EVENTS, DEVICE_METHODS, PLUGIN_CLOSED, PLUGIN_MANIFEST_FILE, PLUGIN_PERMISSIONS, PLUGIN_PERMISSION_NAMES,
+  accessRefusal, mayHearEvent, pluginClosedReason, type MessagePart, type Todo, type WorkflowRun,
 } from '@boite/contracts';
 import { connect } from '../src/client.ts';
+import type { Connection } from '../src/router.ts';
+import { mayResume } from '../src/workflows/resume.ts';
 import { carriedGrant } from '../src/plugins/grants.ts';
 import { parseManifest } from '../src/plugins/manifest.ts';
 import { echoThread, startTestCore, waitFor, type TestCore } from './harness.ts';
@@ -70,6 +72,12 @@ describe('the plugin permission table', () => {
     // A granted permission's events reach the plugin; another's do not.
     expect(mayHearEvent('todos.updated', 'plugin', ['todos.read'])).toBe(true);
     expect(mayHearEvent('todos.updated', 'plugin', ['todos.write'])).toBe(false);
+    // The admin policy is no domain's: status.read reads usage, not the rules an administrator set.
+    const status = { ...caller, permissions: ['status.read'] as const };
+    expect(accessRefusal('policy.get', status)?.message).toStartWith('policy.get is never open to plugins: policies hold');
+    expect(mayHearEvent('policy.changed', 'plugin', ['status.read'])).toBe(false);
+    // A queued composer line goes out as the owner's own, so a plugin sends with turns.start or turns.steer.
+    expect(accessRefusal('composer.put', writer)?.message).toStartWith('composer.put is never open to plugins: a queued line goes out as the owner');
   });
 
   test('an older name in a manifest reads as the permissions it stands for', () => {
@@ -151,11 +159,18 @@ describe('a plugin\'s changes in its name', () => {
     expect((await owner.call('threads.get', { threadId: made.id })).createdBy).toEqual({ pluginId: 'maker', pluginName: 'maker' });
     expect(harness.core.threads.require(threadId).createdBy).toBeUndefined();
 
-    await plugin.call('turns.start', { threadId: made.id, prompt: 'hello from the plugin' });
+    const turn = await plugin.call('turns.start', { threadId: made.id, prompt: 'hello from the plugin [sleep:60000]' });
+    await waitFor(() => harness!.core.threads.require(made.id).status === 'running');
+    // A line steered into the running turn names the plugin as the prompt that opened it does.
+    expect((await plugin.call('turns.steer', { threadId: made.id, turnId: turn.id, prompt: 'and this', clientRequestId: 'steer-plugin-001' })).accepted).toBe(true);
+    await owner.call('turns.stop', { threadId: made.id });
     await waitFor(() => harness!.core.threads.require(made.id).status === 'idle');
     const page = await owner.call('threads.get', { threadId: made.id });
-    const text = page.messages.find((message) => message.role === 'user')?.parts[0] as Extract<MessagePart, { type: 'text' }>;
-    expect(text.byPlugin).toEqual({ pluginId: 'maker', pluginName: 'maker' });
+    const said = page.messages.filter((message) => message.role === 'user').map((message) => message.parts[0] as Extract<MessagePart, { type: 'text' }>);
+    expect(said.map((part) => [part.text, part.byPlugin])).toEqual([
+      ['hello from the plugin [sleep:60000]', { pluginId: 'maker', pluginName: 'maker' }],
+      ['and this', { pluginId: 'maker', pluginName: 'maker' }],
+    ]);
 
     const card = await plugin.call('todos.add', { threadId, text: 'tidy the board' });
     expect(card.plugin).toEqual({ pluginId: 'maker', pluginName: 'maker' });
@@ -164,7 +179,68 @@ describe('a plugin\'s changes in its name', () => {
 
     await harness.core.logs.flush();
     const logged = (await harness.core.logs.query({ source: 'plugins', limit: 50 })).map((entry) => entry.message);
-    expect(logged).toEqual(expect.arrayContaining(['threads.create by plugin maker', 'turns.start by plugin maker', 'todos.add by plugin maker']));
+    expect(logged).toEqual(expect.arrayContaining(['threads.create by plugin maker', 'turns.start by plugin maker', 'turns.steer by plugin maker', 'todos.add by plugin maker']));
     expect(logged).not.toContain('threads.list by plugin maker');
+  }, 30_000);
+});
+
+describe('a plugin passes a paired device\'s checks', () => {
+  /** A git project inside the test's data folder, the way access.test.ts builds one for a device. */
+  async function repoThread(owner: Awaited<ReturnType<TestCore['connect']>>): Promise<string> {
+    const root = join(harness!.dataDir, 'repo');
+    mkdirSync(join(root, '.ssh'), { recursive: true });
+    git(root, 'init', '-q');
+    writeFileSync(join(root, 'a.txt'), 'one\n');
+    git(root, 'add', '.');
+    git(root, 'commit', '-qm', 'first');
+    for (const name of ['.env', 'id_ed25519', '.ssh/config']) writeFileSync(join(root, name), 'token\n');
+    const project = await owner.call('projects.add', { path: root, name: 'repo' });
+    const account = (await owner.call('accounts.list', {})).find((entry) => entry.providerId === 'echo');
+    return (await owner.call('threads.create', { projectId: project.id, providerId: 'echo', accountId: account?.id ?? '', title: 'repo' })).id;
+  }
+
+  test('files.read leaves credential files and boite\'s data folder to the owner, and projects.add does not open them', async () => {
+    harness = await startTestCore();
+    const owner = await harness.connect();
+    const threadId = await repoThread(owner);
+    const plugin = await connect(harness.url, harness.core.plugins.tokens.tokenFor('reader', ['files.read', 'projects.write']), asPlugin);
+    expect(await plugin.call('files.read', { threadId, path: 'a.txt' })).toMatchObject({ kind: 'text', text: 'one\n' });
+    for (const path of ['.env', 'id_ed25519', '.ssh/config', '.git/config']) {
+      expect(await thrown(plugin.call('files.read', { threadId, path }))).toThrow('credential files');
+    }
+    expect(await thrown(plugin.call('git.diff', { threadId, path: '.env' }))).toThrow('credential files');
+    const { threadId: inData } = await echoThread(harness, owner);
+    expect(await thrown(plugin.call('files.read', { threadId: inData, path: 'journal.db' }))).toThrow('data folder');
+    expect(await thrown(plugin.call('projects.add', { path: harness.dataDir }))).toThrow('does not add boite\'s data folder');
+    expect(await owner.call('files.read', { threadId, path: '.env' })).toMatchObject({ kind: 'text', text: 'token\n' });
+  }, 30_000);
+
+  test('a plugin neither retries nor resumes a workflow, which are the owner\'s', async () => {
+    harness = await startTestCore();
+    const owner = await harness.connect();
+    const { threadId } = await echoThread(harness, owner);
+    const thread = harness.core.threads.require(threadId);
+    await owner.call('delegation.configure', { threadId, config: { ...DEFAULT_DELEGATION_CONFIG, enabled: true, profiles: [
+      { id: 'fast', name: 'Fast', providerId: 'echo', accountId: thread.accountId, model: thread.model!, effort: null },
+    ] } });
+    const run = await owner.call('workflows.start', { threadId, plan: { name: 'One step', steps: [{ id: 'only', profile: 'fast', task: 'Say ok.' }] }, requestId: 'plugin-retry' });
+    await waitFor(() => ['done', 'failed', 'stopped'].includes(harness!.core.workflows.get(threadId, run.id).status), 10_000);
+    const plugin = await connect(harness.url, harness.core.plugins.tokens.tokenFor('runner', ['agents.read', 'agents.write']), asPlugin);
+    expect(await thrown(plugin.call('workflows.control', { threadId, runId: run.id, action: 'retry', stepId: 'only' }))).toThrow('retrying a workflow step is an owner action');
+    const paused = { ...harness.core.workflows.get(threadId, run.id), status: 'paused', pausedBy: 'owner', pausedAt: Date.now() } as WorkflowRun;
+    expect(() => mayResume(harness!.core, paused, 'plugin')).toThrow('resuming a workflow is an owner action');
+  }, 30_000);
+
+  test('a shared board\'s cards never reach a plugin, by todos.list or todos.updated', async () => {
+    harness = await startTestCore();
+    const local = { id: 'local', projectId: 'p', text: 'mine', status: 'open', threadId: null, goalThreadId: null, createdAt: 1, updatedAt: 1 } as Todo;
+    const shared = { ...local, id: 'shared', shared: { sharedProjectId: 'sp', card: {} } } as unknown as Todo;
+    const as = (principal: 'plugin' | 'session'): Connection => ({
+      id: 'con_test', subscriptions: new Set(), identity: { principal, sessionId: null, threadId: null, ...(principal === 'plugin' ? { pluginId: 'reader' } : {}) },
+      sendEvent: () => undefined, close: () => undefined,
+    } as unknown as Connection);
+    // Both answers go through visibleTodos: the method's and the event's fan-out in server.ts.
+    expect(harness.core.sharedBoard.visibleTodos('', [local, shared], as('plugin')).map((todo) => todo.id)).toEqual(['local']);
+    expect(harness.core.sharedBoard.visibleTodos('', [local, shared], as('session')).map((todo) => todo.id)).toEqual(['local', 'shared']);
   }, 30_000);
 });

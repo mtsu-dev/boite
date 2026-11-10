@@ -14,7 +14,7 @@ test('a prompt a plugin sent in the owner\'s name says which plugin, and the own
   try {
     await store.connect(); await store.open('t-trace');
     const message: Message = {
-      id: 'm-plugin', threadId: 't-trace', turnId: null, role: 'user', state: 'complete', createdAt: Date.now(),
+      id: 'm-plugin', threadId: 't-trace', turnId: 'turn-plugin', role: 'user', state: 'complete', createdAt: Date.now(),
       parts: [{ type: 'text', text: 'Write the standup', byPlugin: { pluginId: 'standup', pluginName: 'Standup' } }],
     };
     mounted = mount(UserMessage, { target: document.body, props: { store, message, turn: undefined, accepted: true, responded: true } });

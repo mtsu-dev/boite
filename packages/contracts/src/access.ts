@@ -457,6 +457,16 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
 ]);
 
 /**
+ * A caller held to what a paired device reaches: the device, and a plugin,
+ * which gets no more than a device does on top of its permissions. A core
+ * guard that narrows a device's reads or actions asks this, never
+ * `principal === 'session'`, so no plugin slips past it.
+ */
+export function deviceBound(principal: Principal): boolean {
+  return principal === 'session' || principal === 'plugin';
+}
+
+/**
  * The one diff a paired device asks for is the Changes panel's: the working
  * tree against HEAD. Any other revision would let it walk the repository's
  * history, which is the owner's to browse.

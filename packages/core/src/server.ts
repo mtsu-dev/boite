@@ -347,7 +347,7 @@ export function staticResponse(file: string, pathname: string, acceptEncoding: s
  */
 function mayReadTodos(core: Core, connection: Connection, projectId: string): boolean {
   const identity = connection.identity;
-  // A paired device reads every board as the owner does; a plugin hears todos.updated only with its `todos` permission.
+  // A paired device reads every board as the owner does; a plugin hears todos.updated only with `todos.read`, its shared cards left out below.
   if (identity.principal === 'owner' || identity.principal === 'session' || identity.principal === 'plugin') return true;
   if (identity.principal !== 'agent' || identity.threadId === null) return false;
   try {
@@ -833,11 +833,11 @@ export function startServer(options: ServerOptions): RunningServer {
       // that thread open; an agent socket still gets its own thread's.
       if (name === 'thread.activity' && connection.identity.principal !== 'agent' && (threadId === null || !connection.subscriptions.has(threadId))) continue;
       if (name === 'todos.updated' && !mayReadTodos(core, connection, (payload as RpcEvents['todos.updated']).projectId)) continue;
-      if (name === 'todos.updated' && connection.identity.principal === 'agent') {
+      if (name === 'todos.updated' && (connection.identity.principal === 'agent' || connection.identity.principal === 'plugin')) {
         const event = payload as RpcEvents['todos.updated'];
-        if (connection.identity.threadId === null) continue;
-        // Local cards stay readable when remote coordination/model policy closes the shared projection.
-        connection.sendEvent(name, {...event, todos: core.sharedBoard.visibleTodos(connection.identity.threadId, event.todos, connection)});
+        if (connection.identity.principal === 'agent' && connection.identity.threadId === null) continue;
+        // Local cards stay readable when remote coordination/model policy closes the shared projection; a plugin gets none of it.
+        connection.sendEvent(name, {...event, todos: core.sharedBoard.visibleTodos(connection.identity.threadId ?? '', event.todos, connection)});
         continue;
       }
       // A shell's bytes go to the windows that attached it. Its exit still goes to every owner window: one

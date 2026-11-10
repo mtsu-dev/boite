@@ -14,7 +14,7 @@ import type { BigIntStats, Stats } from 'node:fs';
 import type { FileHandle } from 'node:fs/promises';
 import { open, readdir, stat } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { FILES_LIST_MAX, FILE_MAX_BYTES, FILE_ROUTE, FILE_TICKET_TTL_MS } from '@boite/contracts';
+import { FILES_LIST_MAX, FILE_MAX_BYTES, FILE_ROUTE, FILE_TICKET_TTL_MS, deviceBound } from '@boite/contracts';
 import type { FileContent, FileEntry, ThreadId, Timestamp } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { locateFile } from './files.ts';
@@ -699,10 +699,10 @@ export class FileTickets {
   }
 }
 
-/** The working directory a read is resolved against, held to the project for a paired device. */
+/** The working directory a read is resolved against, held to the project for a paired device or a plugin. */
 export function readCwd(core: Core, threadId: ThreadId, ctx: RpcContext, path?: string): string {
   const cwd = threadCwd(core, threadId);
-  if (ctx.connection.identity.principal === 'session') {
+  if (deviceBound(ctx.connection.identity.principal)) {
     assertDeviceReadable(core, threadId);
     assertDeviceFile(core, threadId, cwd, path);
   }

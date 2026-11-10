@@ -12,6 +12,7 @@
  */
 import {
   WINDOW_CAPTURE_EXCLUDED,
+  deviceBound,
   WINDOW_CLIP_LIMITS,
   WINDOW_CONSENT_ANSWERS,
   WINDOW_CONSENT_TIMEOUT_MS,
@@ -289,7 +290,7 @@ export class DesktopWindows {
   #thread(threadId: string, connection?: Connection, allowArchived = false): ThreadSummary {
     const thread = this.#core.threads.require(threadId);
     if (thread.archived && !allowArchived) throw refused('window capture needs an active conversation', { threadId });
-    if (connection?.identity.principal === 'session' && !connection.subscriptions.has(threadId)) {
+    if (connection && deviceBound(connection.identity.principal) && !connection.subscriptions.has(threadId)) {
       throw refused('subscribe to the conversation before using its Window panel', { threadId });
     }
     return thread;

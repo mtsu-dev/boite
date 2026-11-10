@@ -96,7 +96,7 @@ export const PLUGIN_PERMISSIONS: Readonly<Record<PluginPermission, PluginPermiss
       'threads.move', 'threads.moveCancel', 'threads.fork', 'threads.rewind', 'threads.mergeBack', 'threads.compact',
       'threads.btw', 'threads.btw.cancel', 'threads.btw.fork', 'threads.activity.set', 'threads.activity.control', 'threads.unwatchPullRequest',
       'turns.start', 'turns.steer', 'turns.stop', 'turns.recover', 'turns.cancelRetry',
-      'composer.put', 'composer.asset.put', 'drafts.prepare', 'drafts.release', 'attachments.upload', 'attachments.release',
+      'composer.asset.put', 'drafts.prepare', 'drafts.release', 'attachments.upload', 'attachments.release',
     ],
     events: [],
   },
@@ -137,10 +137,10 @@ export const PLUGIN_PERMISSIONS: Readonly<Record<PluginPermission, PluginPermiss
   'screens.write': { methods: ['browser.remoteInput', 'devices.input', 'devices.open', 'devices.close', 'devices.clipboard', 'windows.close'], events: [] },
   // This machine's load and usage, the quota readings, the agents installed, settings and shortcuts, read only.
   'status.read': {
-    methods: ['resources.usage', 'resources.machine', 'scheduler.get', 'usage.get', 'usage.history', 'quotas.list', 'subscriptionProxy.quotas', 'providers.list', 'settings.get', 'keybindings.get', 'policy.get'],
+    methods: ['resources.usage', 'resources.machine', 'scheduler.get', 'usage.get', 'usage.history', 'quotas.list', 'subscriptionProxy.quotas', 'providers.list', 'settings.get', 'keybindings.get'],
     events: [
       'scheduler.updated', 'quotas.updated', 'quotas.progress', 'quotas.alerted', 'subscriptionProxy.quotasUpdated',
-      'settings.updated', 'keybindings.updated', 'policy.changed', 'providers.updated', 'providers.installProgress', 'providers.probed',
+      'settings.updated', 'keybindings.updated', 'providers.updated', 'providers.installProgress', 'providers.probed',
     ],
   },
   // Brings a conversation, a bot or the app updates to the front of the owner's desktop window.
@@ -165,7 +165,7 @@ export const PLUGIN_CLOSED: readonly { name: string; reason: string }[] = [
   { name: 'secret.', reason: 'secrets reach only the agent that asked for one' },
   { name: 'plugins.', reason: 'installing, removing and granting plugins is the owner\'s' },
   { name: 'core.', reason: 'updating, restarting and stopping Boite and the app is the owner\'s' },
-  { name: 'policy.set', reason: 'policies hold the owner\'s machines to an administrator\'s rules' },
+  { name: 'policy.', reason: 'policies hold the owner\'s machines to an administrator\'s rules, which a plugin neither reads nor changes' },
   { name: 'sessions.', reason: 'pairing a device is the owner\'s' },
   { name: 'pairing.', reason: 'pairing a device is the owner\'s' },
   { name: 'group.', reason: 'the machines of the group and their pairing are the owner\'s' },
@@ -173,6 +173,7 @@ export const PLUGIN_CLOSED: readonly { name: string; reason: string }[] = [
   { name: 'client.', reason: 'each app\'s language and experiments are its own' },
   { name: 'threads.focus', reason: 'which conversation the person is looking at decides their notifications' },
   { name: 'speech.', reason: 'the microphone belongs to the person speaking to the app' },
+  { name: 'composer.put', reason: 'a queued line goes out as the owner\'s own; a plugin sends with turns.start or turns.steer, which name it' },
   { name: 'diagnostics.report', reason: 'the app reports its own errors' },
   { name: 'windows.consent', reason: 'only the owner lets an agent see a window' },
   { name: 'contacts.', reason: 'a contact letter speaks as the owner to another person' },
