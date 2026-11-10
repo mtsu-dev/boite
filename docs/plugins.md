@@ -308,7 +308,7 @@ text only: it runs nothing until the agent acts on the prompt.
 executable in the background with no argument and no window, on any machine,
 a headless server included. It is started, stopped, kept running and
 relaunched after a crash exactly like a [desktop app](#desktop-apps): the same
-Start, Stop and Restart and Start with Boite switch on its row
+Start, Stop and Restart and Start with Boite switch behind its gear
 (`plugins.app`), the same 2, 10 and 30 second retries and the same `crashed`
 state after a fourth exit within five minutes. Its state is
 `PluginState.app` with `kind: "service"`.
@@ -329,7 +329,7 @@ present they are ignored.
   each use, so an edit applies at once.
 - The schema, the permissions and what Boite starts for it (a desktop app, a
   service, a gateway, account pools) stay those of the last
-  `boite plugin dev`. An edit that changes one turns the row to an error
+  `boite plugin dev`. An edit that changes one turns the card to an error
   and closes the plugin's token, its sockets with it, until you run
   `boite plugin dev <folder>` again: anything that can write the folder, an
   agent working in it say, cannot give the plugin more than you loaded.
@@ -647,7 +647,7 @@ Exits and stops:
   start while Start with Boite is on, or when the owner starts it.
 - Any other exit, or a signal, starts it again after 2 seconds, then 10, then
   30. A fourth crash within five minutes leaves it crashed, with the exit code
-  and a message on its row, until the owner starts it.
+  and a message on its card, until the owner starts it.
 - Stop kills the app's process tree and turns it off until the next core
   start, or for good while Start with Boite is off. Start and Restart turn it
   back on.
@@ -655,7 +655,7 @@ Exits and stops:
   replaces the old one, and starts the new one after.
 - Core shutdown kills it.
 
-Start with Boite is the switch under the app's state on its row
+Start with Boite is the switch under the app's state behind its gear
 (`plugins.autostart {id, autostart}`). It decides only what the next core
 start does: nothing running starts or stops when it changes.
 
@@ -665,9 +665,9 @@ first install turns both on. A file written before `autostart` existed starts
 with the core when it was left on, as that core did.
 
 A Linux core with neither `DISPLAY` nor `WAYLAND_DISPLAY` set has no desktop to
-show a window on: it does not start the app, and the row says so.
+show a window on: it does not start the app, and its card says so.
 
-The plugin's row shows the app's state (running, starting again, stopped,
+The plugin's card shows the app's state (running, starting again, stopped,
 crashed with its exit code, or unavailable with the reason) with Start, Stop
 and Restart. `plugins.app` answers with the plugin's state, and every change is
 announced by `plugins.updated`. The state is `PluginState.app`:
@@ -677,7 +677,7 @@ announced by `plugins.updated`. The state is `PluginState.app`:
   pid: number | null; exitCode: number | null; error: string | null; startedAt: number | null }
 ```
 
-A core older than `plugins.autostart` sends no `autostart`, and the row shows
+A core older than `plugins.autostart` sends no `autostart`, and the gear shows
 no switch.
 
 ### Showing Boite
@@ -769,7 +769,7 @@ treated as a crash. Crashes, Stop, uninstall and core shutdown follow the
 [desktop apps](#desktop-apps)' rules: 2, 10 and 30 seconds, then `crashed`
 after a fourth exit within five minutes; whether it is on and whether it
 starts with Boite are kept in `<dataDir>/plugins/<id>/gateway.json`, and the
-same switch sits on its row.
+same switch sits behind its gear.
 
 An update waits until `in_flight` reads 0 (five minutes at most, then it goes
 ahead), stops the gateway, keeps the old executable as `<executable>.previous`
@@ -801,7 +801,7 @@ tests' fake Douane starts.
 
 ## Install and run
 
-A recommended plugin installs from its row. A plugin from a URL takes two
+A recommended plugin installs from its card. A plugin from a URL takes two
 steps:
 
 1. The owner pastes the repository and, optionally, a branch, tag or commit
@@ -870,7 +870,7 @@ Updating:
   available: either Boite ships a newer entry, or the plugin's update source
   publishes a newer release (see [Updates from the source](#updates-from-the-source)).
   The newest of the two wins, and the version installed is never replaced by
-  an older one. The row shows the download's progress, Cancel and any error.
+  an older one. The card shows the download's progress, Cancel and any error.
 - A URL plugin updates when the owner reads the same URL again at a newer ref;
   the preview names the version it replaces.
 - An id already installed from another URL is refused, so one repository cannot
@@ -895,19 +895,19 @@ When the core checks:
 
 - a minute after it starts, then every six hours, for the recommended plugins
   that are installed. A core whose owner never installed one sends nothing.
-- when the owner clicks Check for updates on the plugin's row
+- when the owner clicks Check for updates behind the plugin's gear
   (`plugins.checkUpdates {id?}`), whether it is installed or not. A check
   finished less than ten seconds before answers instead of a new read.
 - when the owner opens Settings > Plugins, for recommendations not installed
   yet. The list appears immediately and the available versions refresh as
-  their sources answer. Their rows also offer Check for updates and show
+  their sources answer. Their gears also offer Check for updates and their cards show
   checking or failure notes before installation.
 - when the owner installs or updates the plugin, before the download: a first
   install brings the release the source names, not a pinned entry several
   releases behind. A source that fails or takes more than 15 seconds leaves
   the newest version already known.
 - A read that fails waits 15 minutes, then twice as long each time, up to six
-  hours. The row shows the failure as a quiet note, never as an install error.
+  hours. The card shows the failure as a quiet note, never as an install error.
 
 The core reads `boite-plugin.json` at the ref through the same git path,
 limits and rules as `plugins.inspect`. It offers the manifest found only when:
@@ -919,7 +919,7 @@ limits and rules as `plugins.inspect`. It offers the manifest found only when:
   version installed;
 - it has an artifact for the core's platform.
 
-Otherwise it is not offered, and the row says why under the plugin. A release
+Otherwise it is not offered, and the gear says why. A release
 taken back at the source stops being offered at the next check. Installing
 what was found is the owner's click. It takes the usual path: download, SHA-256
 check, and a desktop app stopped before the binary is replaced and started
@@ -944,8 +944,8 @@ Uninstall deletes `<dataDir>/plugins/<id>/`, which is everything an install
 wrote. Whatever the program itself saved elsewhere, such as the logins in its
 pools, stays where it put it. Say in your README where that is.
 
-When `installed.json` cannot be read, the row reports the file and offers a
-reinstall. When it reads but breaks a rule above, the row says the plugin was
+When `installed.json` cannot be read, the card reports the file and offers a
+reinstall. When it reads but breaks a rule above, the card says the plugin was
 refused, with the file, the field and the expected value, and offers only
 Uninstall.
 

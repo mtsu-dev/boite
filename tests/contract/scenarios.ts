@@ -680,11 +680,11 @@ export const SCENARIOS: Record<string, Scenario> = {
   },
   'plugins.setEnabled and plugins.settings refuse a plugin no one has, by field': async (env) => {
     for (const call of [
-      env.call('plugins.setEnabled', { id: 'no-such-plugin', enabled: false }),
-      env.call('plugins.settings.get', { id: 'no-such-plugin' }),
-      env.call('plugins.settings.set', { id: 'no-such-plugin', values: { on: true } }),
+      () => env.call('plugins.setEnabled', { id: 'no-such-plugin', enabled: false }),
+      () => env.call('plugins.settings.get', { id: 'no-such-plugin' }),
+      () => env.call('plugins.settings.set', { id: 'no-such-plugin', values: { on: true } }),
     ]) {
-      const refused = await refusedWith(call, RpcErrorCode.InvalidParams, ['field', 'expected']);
+      const refused = await refusedWith(call(), RpcErrorCode.InvalidParams, ['field', 'expected']);
       same(refused.field, 'id', 'the refused plugin field');
     }
   },

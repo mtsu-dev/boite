@@ -236,10 +236,10 @@ describe('plugin settings and turning a plugin off, end to end', () => {
       await owner.call('plugins.dev', { path: dir });
       await owner.call('plugins.setEnabled', { id: 'pool', enabled: false });
       for (const call of [
-        owner.call('plugins.accounts', { id: 'pool' }),
-        owner.call('plugins.accountAction', { id: 'pool', provider: 'codex', action: 'add' }),
+        () => owner.call('plugins.accounts', { id: 'pool' }),
+        () => owner.call('plugins.accountAction', { id: 'pool', provider: 'codex', action: 'add' }),
       ]) {
-        const { reason } = await rejection(call);
+        const { reason } = await rejection(call());
         expect((reason as Error).message).toBe('pool is turned off. Turn it on in Settings > Plugins first.');
         expect((reason as { rpc: { data: unknown } }).rpc.data).toMatchObject({ id: 'pool', enabled: false });
       }

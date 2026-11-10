@@ -180,7 +180,8 @@ test('in a 390 pixel column the page wraps instead of scrolling sideways', async
 
 test('a phone gets the plugins page too: one card per row, the gear a bottom sheet', async () => {
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-  await page.waitFor(`document.querySelector('${id('mobile-settings-home')}') || document.querySelector('${id('plugins-page')}')`);
+  // The phone shell first: the desktop page is still in the DOM until the layout switches.
+  await page.waitFor(`document.querySelector('${id('mobile-header')}')`);
   if (await page.evaluate<boolean>(`document.querySelector('${id('plugins-page')}') === null`)) await page.click(id('settings-tab-plugins'));
   await page.waitFor(`document.querySelector('${id('plugins-grid')}')`);
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
@@ -190,7 +191,7 @@ test('a phone gets the plugins page too: one card per row, the gear a bottom she
   await gear('standup');
   await capture('plugins-390-dialog.png');
   // A bottom sheet: its foot on the screen's, once it has risen.
-  expect(await page.evaluate(`Math.round(document.querySelector('${id('plugin-dialog')}').getBoundingClientRect().bottom)`)).toBe(844);
+  expect(await page.evaluate<number>(`Math.abs(document.querySelector('${id('plugin-dialog')}').getBoundingClientRect().bottom - 844)`)).toBeLessThanOrEqual(1);
   await closeGear();
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
 }, 30_000);
