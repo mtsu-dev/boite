@@ -429,6 +429,8 @@ owner turned its `addProjects` setting on ([CLI](cli.md#commands)), deleting
 a thread and allowing a tool permission (the owner's), and the threads of a
 project not entrusted to it that it did not start.
 
+Captures: [the Add projects switch on desktop](images/bot-add-projects-desktop.png) · [the same on a phone](images/bot-add-projects-phone.png)
+
 A bot starts a thread in any project (`boite thread new`), with or without
 projects of its own. Full control follows the threads it started: they land
 on its desk (`started`) and it reads, steers, renames, stops, archives, marks
