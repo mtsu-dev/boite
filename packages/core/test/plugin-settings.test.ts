@@ -6,7 +6,7 @@ import { accessRefusal, mayHearEvent, type RpcEvents } from '@boite/contracts';
 import { ManifestRefused, parseManifest } from '../src/plugins/manifest.ts';
 import { connect } from '../src/client.ts';
 import { removeDir, startTestCore, waitFor, type TestCore } from './harness.ts';
-import { thrown } from './settle.ts';
+import { rejection, thrown } from './settle.ts';
 import { expandSlashPrompt } from '../src/plugins/extensions.ts';
 
 const SETTINGS = [
@@ -195,6 +195,57 @@ describe('plugin settings and turning a plugin off, end to end', () => {
     } finally {
       await harness?.stop();
       await removeDir(root);
+    }
+  }, 30_000);
+
+  test('a setting saved while an uninstall runs is refused, and a reinstall starts from the defaults', async () => {
+    harness = await startTestCore();
+    const root = mkdtempSync(join(tmpdir(), 'boite-plugin-settings-'));
+    try {
+      const owner = await harness.connect();
+      const dir = devPlugin(root);
+      await owner.call('plugins.dev', { path: dir });
+      // The uninstall holds the plugin until released.
+      let entered = false;
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => { release = resolve; });
+      harness.core.plugins.apps.forget = async () => { entered = true; await held; };
+      const uninstall = owner.call('plugins.uninstall', { id: 'hello' });
+      await waitFor(() => entered);
+      expect(await thrown(owner.call('plugins.settings.set', { id: 'hello', values: { loud: true } }))).toThrow('Wait for hello to be');
+      release();
+      await uninstall;
+      await owner.call('plugins.dev', { path: dir });
+      expect(await owner.call('plugins.settings.get', { id: 'hello' })).toMatchObject({ loud: false });
+    } finally {
+      await harness?.stop();
+      await removeDir(root);
+    }
+  }, 30_000);
+
+  test('an account pool of a turned-off plugin is refused as off, the way to turn it on with it', async () => {
+    harness = await startTestCore();
+    const dir = mkdtempSync(join(tmpdir(), 'boite-plugin-settings-'));
+    try {
+      writeFileSync(join(dir, 'boite-plugin.json'), JSON.stringify({
+        schema: 2, id: 'pool', name: 'Pool', version: '0.1.0', description: 'd', homepage: 'https://example.com/pool',
+        runtime: 'bun', executable: 'pool', provides: { accountPools: { providers: ['codex'] } },
+      }));
+      writeFileSync(join(dir, 'pool.js'), 'console.log(JSON.stringify({ accounts: [] }));\n');
+      const owner = await harness.connect();
+      await owner.call('plugins.dev', { path: dir });
+      await owner.call('plugins.setEnabled', { id: 'pool', enabled: false });
+      for (const call of [
+        owner.call('plugins.accounts', { id: 'pool' }),
+        owner.call('plugins.accountAction', { id: 'pool', provider: 'codex', action: 'add' }),
+      ]) {
+        const { reason } = await rejection(call);
+        expect((reason as Error).message).toBe('pool is turned off. Turn it on in Settings > Plugins first.');
+        expect((reason as { rpc: { data: unknown } }).rpc.data).toMatchObject({ id: 'pool', enabled: false });
+      }
+    } finally {
+      await harness?.stop();
+      await removeDir(dir);
     }
   }, 30_000);
 
