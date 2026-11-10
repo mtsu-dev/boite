@@ -59,7 +59,7 @@ test('write puts the value in an ignored env file, keeps its other lines, and re
   // A file others could read before is narrowed to its owner once it holds the value.
   if (process.platform !== 'win32') expect(statSync(join(root, '.env')).mode & 0o777).toBe(0o600);
   // The value holds `$`, so it is quoted the way dotenv parsers read it back.
-  expect(readFileSync(join(root, '.env'), 'utf8')).toBe(`FIRST=1\r\nAPI_KEY="${value.replaceAll('$', '\\$')}"\r\n# kept comment\r\n`);
+  expect(readFileSync(join(root, '.env'), 'utf8')).toBe(`FIRST=1\r\nexport API_KEY="${value.replaceAll('$', '\\$')}"\r\n# kept comment\r\n`);
 
   const outside = await rejection(write(join(h.dataDir, 'outside.env')));
   expect(outside.reason).toMatchObject({ message: expect.stringContaining('outside the conversation\'s folder'), rpc: { data: { field: 'path', expected: expect.stringContaining('a file inside') } } });

@@ -95,7 +95,9 @@ export async function writeSecret(core: Core, threadId: ThreadId, cwd: string, u
     // dotenv and shell loaders take the last line for a key: a later one would keep the old value, so it goes.
     const tail = at < 0 ? '' : lines.slice(at + 1).filter(text => !line.test(text)).map(text => eol + text).join('') + (trailing ? eol : '');
     quoted = envValue(value);
-    const prefix = encoder.encode(`${head}${at >= 0 && lines[at]!.trimStart().startsWith('export') ? 'export ' : ''}${use.key}=`);
+    // `export` sticks in a shell: the line left keeps it when any line it replaces had it.
+    const exported = lines.some(text => line.exec(text)?.[1] !== undefined);
+    const prefix = encoder.encode(`${head}${exported ? 'export ' : ''}${use.key}=`);
     const suffix = encoder.encode(at < 0 ? eol : tail);
     // The mode applies only to a new file: an existing one readable by others is narrowed too.
     if (process.platform !== 'win32') fchmodSync(fd, 0o600);
