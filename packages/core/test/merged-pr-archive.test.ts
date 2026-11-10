@@ -732,11 +732,12 @@ test('merged archive retains checkout and reason, and restored exact PR stays di
   const archived = await f.client.call('threads.get', { threadId: f.threadId });
   expect(archived.doneAt).toBeTypeOf('number');
   expect(archived.archiveReason).toMatchObject({ type: 'pr-merged', number: 7, url: 'https://github.com/example/repo/pull/7' });
+  const mergedUrl = archived.archiveReason?.type === 'pr-merged' ? archived.archiveReason.url : '';
   expect(existsSync(join(f.checkout, '.git'))).toBe(true);
   expect(git(f.repo, 'show-ref', '--verify', 'refs/heads/topic')).toContain(f.sha);
   await f.client.call('threads.archive', { threadId: f.threadId, archived: false });
   expect(await service.sweep()).toBe(0);
-  expect(archiveState(harness.core.journal, f.threadId).dismissed).toEqual([archived.archiveReason!.url]);
+  expect(archiveState(harness.core.journal, f.threadId).dismissed).toEqual([mergedUrl]);
   const restartDir = join(harness.dataDir, 'restart');
   mkdirSync(restartDir);
   harness.core.journal.db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
@@ -744,7 +745,7 @@ test('merged archive retains checkout and reason, and restored exact PR stays di
   const restarted = new Core({ dataDir: restartDir, token: harness.token });
   try {
     expect(restarted.threads.require(f.threadId).archived).toBe(false);
-    expect(archiveState(restarted.journal, f.threadId).dismissed).toEqual([archived.archiveReason!.url]);
+    expect(archiveState(restarted.journal, f.threadId).dismissed).toEqual([mergedUrl]);
     await restarted.mergedPrArchive.close();
     const resumed = new MergedPrArchive(restarted, restarted.pullRequests, 0, 0);
     Object.defineProperty(restarted, 'mergedPrArchive', { value: resumed });

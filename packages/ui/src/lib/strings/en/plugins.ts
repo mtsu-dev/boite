@@ -68,6 +68,7 @@ export const strings = {
     permission: {
       'threads.read': 'Reads threads',
       'threads.write': 'Starts and stops turns',
+      'threads.archive': 'Archives idle threads',
       todos: 'Project boards',
       'ui.reveal': 'Shows a thread',
     },

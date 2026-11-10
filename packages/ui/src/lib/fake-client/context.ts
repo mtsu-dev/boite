@@ -151,6 +151,8 @@ export interface FakeClientOptions {
   windowsDemo?: boolean;
   /** A thread that started a finished council, one under way and an older debate, with their salons, on `?fake=1&council=1`. */
   councilDemo?: boolean;
+  /** The trace thread marked done an hour ago by a plugin holding `threads.archive`, on `?fake=1&pluginArchive=1`. */
+  pluginArchiveDemo?: boolean;
   /** Who this client is. `'session'` makes it a paired phone, refused like one. */
   principal?: Principal;
   /** The thread an agent's token names; with none, every agent call fails closed, as on the core. */

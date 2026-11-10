@@ -500,6 +500,12 @@ export interface AccessRefusal {
 export function accessRefusal(method: RpcMethodName, caller: Caller, params?: unknown): AccessRefusal | null {
   if (caller.principal === 'owner') return null;
   if (caller.principal === 'plugin') {
+    if (method === 'threads.archive' && (params as { archived?: unknown } | null | undefined)?.archived === false && pluginMayCall(method, caller.permissions)) {
+      return {
+        message: 'threads.archive: a plugin only archives; archived must be true or absent, restoring is for the owner only',
+        data: { method, principal: 'plugin', permissions: caller.permissions ?? [] },
+      };
+    }
     if (pluginMayCall(method, caller.permissions)) return null;
     const needed = (Object.keys(PLUGIN_PERMISSIONS) as PluginPermission[]).filter(permission => PLUGIN_PERMISSIONS[permission].methods.includes(method));
     const declared = caller.permissions?.length ? caller.permissions.join(', ') : 'none';

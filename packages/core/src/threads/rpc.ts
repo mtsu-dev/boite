@@ -15,6 +15,7 @@ import { startsAutoGoal } from '../composer-activity.ts';
 import { readToolOutput, readToolPart } from './records.ts';
 import { readMessageAttachment } from './attachment-read.ts';
 import { CreationRequests } from './creation-requests.ts';
+import { archiveForPlugin } from './plugin-archive.ts';
 import { trustLetters } from '../contacts/letter-scopes.ts';
 
 /**
@@ -195,9 +196,14 @@ export function registerThreadMethods(core: Core, probe: ProviderProbe): void {
     return core.threads.update({ ...params, expectedSelectionVersion: params.expectedSelectionVersion ?? version });
   });
   core.router.register('threads.retitle', (params) => core.threads.retitle(params.threadId));
-  core.router.register('threads.archive', (params) =>
-    core.threads.archive(params.threadId, params.archived !== false, params.onlyIfIdle === true),
-  );
+  core.router.register('threads.archive', (params, { connection }) => {
+    const { principal, pluginId } = connection.identity;
+    // A plugin's call is always idle-only and named; `archived: false` was refused before this (contracts/access.ts).
+    if (principal === 'plugin' && pluginId !== undefined) {
+      return archiveForPlugin(core, params.threadId, pluginId);
+    }
+    return core.threads.archive(params.threadId, params.archived !== false, params.onlyIfIdle === true);
+  });
   core.router.register('threads.remove', async (params) => {
     await core.threads.remove(params.threadId);
     return { ok: true } as const;

@@ -55,7 +55,7 @@ export function withLoad(core: Core, thread: ThreadSummary): ThreadSummary {
   // commit (`putAway`: background work, held answers, open cards) stays in memory
   // until then so a rollback keeps it, but a row put away has none. A merged PR's
   // Done only hides the row: its prompt still finishes and shows what it runs.
-  const putAway = thread.archived && archiveReason === undefined;
+  const putAway = thread.archived && archiveReason?.type !== 'pr-merged';
   const tasks = putAway ? [] : core.threads?.agentState.background.get(thread.id) ?? [];
   const watches = core.pullRequestWatches?.of(thread.id) ?? [];
   return {

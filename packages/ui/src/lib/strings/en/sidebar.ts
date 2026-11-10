@@ -47,6 +47,8 @@ export const strings = {
     prMerged: '#{number} merged',
     prClosed: '#{number} closed',
     prOpen: '#{number} open',
+    /** Under a conversation a plugin with the `threads.archive` permission marked done. */
+    archivedByPlugin: 'Archived by plugin {name}',
     reopenThread: 'Move to Recent',
     reopenNamedThread: 'Move "{title}" to Recent',
     doneNotice: 'This thread is done. Move it to Recent to continue.',

@@ -139,7 +139,7 @@ and the slash command `/recap`. Start from a copy of it.
 | `runtime` | `"native"` or `"bun"` ([Runtime](#runtime)). Absent means `"native"`. |
 | `executable` | As in schema 1. Absent exactly when the plugin provides only `skills`, `prompt` and `slashCommands`: a plugin of text that downloads nothing. |
 | `artifacts` | `native`: keyed by platform as in schema 1. `bun`: exactly one key, `any`, `{ "url", "sha256" }`. Absent exactly when `executable` is. |
-| `permissions` | A list of distinct names among `threads.read`, `threads.write`, `todos` and `ui.reveal` ([Permissions](#permissions)). Absent means none. |
+| `permissions` | A list of distinct names among `threads.read`, `threads.write`, `threads.archive`, `todos` and `ui.reveal` ([Permissions](#permissions)). Absent means none. |
 | `provides` | At least one of `accountPools`, `desktopApp`, `gateway` (as in schema 1), `service`, `commands`, `skills`, `prompt` and `slashCommands`. |
 
 Unknown fields at any depth are refused, as in schema 1, and the manifest file
@@ -175,6 +175,7 @@ plugin's processes restart with a new one.
 | --- | --- | --- | --- |
 | `threads.read` | `threads.list`, `threads.get`, `projects.list` | `thread.created`, `thread.updated`, `thread.removed`, `turn.started`, `turn.finished` | Every conversation of every project, read only: rows, transcripts, the project list. |
 | `threads.write` | `threads.create`, `turns.start`, `turns.stop` | none | Starts conversations and turns, and stops them: it spends the owner's agent quota. |
+| `threads.archive` | `threads.archive` | none | Archives an idle, unpinned conversation, marked done in the plugin's name. Never restores one ([Archiving](#archiving-threads)). |
 | `todos` | `todos.list`, `todos.add`, `todos.update` | `todos.updated` | The project boards: read, add and update cards. |
 | `ui.reveal` | `ui.reveal` | none | Brings a conversation, a bot or the app updates to the front of the owner's desktop window ([Showing Boite](#showing-boite)). |
 
@@ -187,6 +188,30 @@ turns.start needs the plugin permission threads.write; the plugin declared threa
 ```
 
 The table is `PLUGIN_PERMISSIONS` in `packages/contracts/src/plugins.ts`.
+
+#### Archiving threads
+
+A plugin's `threads.archive` is always a Mark done, whatever it passes:
+
+- The core forces `onlyIfIdle: true` and checks the family as an automatic
+  pass does: a turn running or queued, background work, a move, a message
+  waiting to be delivered, a workflow (a paused one included), unsent input
+  on a device, a side question or a card waiting for an answer refuses it,
+  naming `threadId`.
+- A pinned thread is refused naming `pinned`. `pinned` is already in the
+  `ThreadSummary` rows `threads.list` answers, so a plugin can skip them
+  first.
+- `archived: false` is refused: restoring is the owner's.
+- An already archived thread is answered unchanged.
+- The row's `archiveReason` becomes `{ type: 'plugin', pluginId, pluginName,
+  archivedAt }`. The app shows "Archived by plugin <name>" under the done row
+  and in Settings, Archived threads, and the core's log records the archive.
+  An owner's restore drops it.
+- Being done, the thread counts toward Delete done threads after, as after
+  the owner's Mark done.
+
+A thread in error is idle: a plugin that must leave those alone reads
+`status` in `threads.list` (permission `threads.read`) first.
 
 ### Environment
 

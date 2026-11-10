@@ -63,6 +63,7 @@ export const fr: Translation = {
     permission: {
       'threads.read': 'Lit les fils',
       'threads.write': 'Lance et arrête des tours',
+      'threads.archive': 'Archive les fils inactifs',
       todos: 'Tableaux de projet',
       'ui.reveal': 'Affiche un fil',
     },

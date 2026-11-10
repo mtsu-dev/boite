@@ -34,7 +34,7 @@ export type PluginRuntime = 'native' | 'bun';
 // A schema 1 desktop app keeps the owner token it always had.
 // ---------------------------------------------------------------------------
 
-export const PLUGIN_PERMISSION_NAMES = ['threads.read', 'threads.write', 'todos', 'ui.reveal'] as const;
+export const PLUGIN_PERMISSION_NAMES = ['threads.read', 'threads.write', 'threads.archive', 'todos', 'ui.reveal'] as const;
 export type PluginPermission = (typeof PLUGIN_PERMISSION_NAMES)[number];
 
 /** What one permission opens: the methods a plugin token may call and the events it hears. */
@@ -55,6 +55,8 @@ export const PLUGIN_PERMISSIONS: Readonly<Record<PluginPermission, PluginPermiss
   },
   // Starts conversations and turns, and stops them: it spends the owner's agent quota.
   'threads.write': { methods: ['threads.create', 'turns.start', 'turns.stop'], events: [] },
+  // Archives a conversation once it is idle and unpinned, marked done in the plugin's name; never restores one.
+  'threads.archive': { methods: ['threads.archive'], events: [] },
   // The project boards: read, add and update cards.
   todos: { methods: ['todos.list', 'todos.add', 'todos.update'], events: ['todos.updated'] },
   // Brings a conversation, a bot or the app updates to the front of the owner's desktop window.
