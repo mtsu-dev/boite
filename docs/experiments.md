@@ -65,7 +65,9 @@ A crack plays one of six recorded cracks from Boite Legacy's sprite, with a
 synthesized burst as the fallback, and shakes the native Boite window before
 returning it to its original position. Throwing the rope does neither. Maximized and fullscreen windows, browsers, phones and window managers
 that ignore positioning shake the interface instead. Hits do not overlap.
-Reduced motion disables new throws and stops any visible rope.
+Reduced motion stops any visible rope and keeps only the crack: a click plays it
+and lights the control for one crack, with no rope and no shake, and the
+control's tooltip says the system asks for reduced motion.
 
 
 ## Bots

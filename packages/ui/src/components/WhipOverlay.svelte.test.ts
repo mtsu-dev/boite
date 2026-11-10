@@ -1,5 +1,6 @@
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, expect, test, vi } from 'vitest';
+import { strings } from '../lib/strings';
 import { whip } from '../lib/whip.svelte';
 import { playCrack } from '../lib/whip/crack';
 import WhipButton from './WhipButton.svelte';
@@ -84,5 +85,23 @@ test('a throw during a fall replaces the rope and stays held after the old fall 
   for (let frame = 1; frame <= 180; frame++) tick(start + frame * 1000 / 60);
   expect(whip.held).toBe(true);
   expect(document.querySelector('[data-testid=whip-canvas]')).not.toBeNull();
+  expect(onerror).not.toHaveBeenCalled();
+});
+
+test('reduced motion keeps the crack: the click sounds it in place, with no rope and no shake', async () => {
+  const original = window.matchMedia;
+  window.matchMedia = ((media: string) => Object.assign(new EventTarget(), {
+    media, matches: media.includes('prefers-reduced-motion: reduce'), onchange: null, addListener() {}, removeListener() {}
+  })) as unknown as typeof window.matchMedia;
+  cleanups.push(async () => { window.matchMedia = original; });
+  const { button, click, animate, onerror } = toy();
+  click();
+  expect(playCrack).toHaveBeenCalledOnce();
+  expect(button.title).toBe(strings.experiments.whip.still);
+  expect(button.classList.contains('cracked')).toBe(true);
+  expect(whip.held).toBe(false);
+  expect(document.querySelector('[data-testid=whip-canvas]')).toBeNull();
+  await Promise.resolve();
+  expect(animate).not.toHaveBeenCalled();
   expect(onerror).not.toHaveBeenCalled();
 });

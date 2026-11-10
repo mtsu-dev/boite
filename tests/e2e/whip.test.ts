@@ -211,6 +211,15 @@ test('Whip desktop controls animate, release and respect reduced motion', async 
   await page.waitFor(`document.querySelector('[data-testid=whip-canvas]')`);
   await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
   await page.waitFor(`document.querySelector('[data-testid=whip-canvas]') === null`);
+  // Reduced motion keeps the crack: the control lights in place, with no rope and no shake.
+  expect(await page.evaluate<boolean>(`(async () => {
+    const control = document.querySelector('${button}');
+    control.click();
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return control.classList.contains('cracked') && control.getAttribute('aria-pressed') === 'false' && !document.querySelector('[data-testid=whip-canvas]')
+      && !document.getElementById('app').getAnimations().length;
+  })()`)).toBe(true);
+  await page.waitFor(`!document.querySelector('${button}').classList.contains('cracked')`);
   await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
   await page.evaluate(`globalThis.__boiteTest.setTheme('light')`);
   expect(await page.evaluate(`getComputedStyle(document.getElementById('app')).transform`)).toBe('none');

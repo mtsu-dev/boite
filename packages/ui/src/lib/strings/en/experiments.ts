@@ -7,7 +7,8 @@ export const strings = {
       title: 'Whip',
       hint: 'An animated whip follows your pointer or finger. Flick to crack it, click or tap to drop it',
       action: 'Throw the whip',
-      drop: 'Drop the whip'
+      drop: 'Drop the whip',
+      still: 'Crack the whip. No animation: your system asks for reduced motion'
     },
     themeGrain: {
       title: 'Grain theme',

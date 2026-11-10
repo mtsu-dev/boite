@@ -9,7 +9,8 @@ export const fr: Translation = {
       title: 'Fouet',
       hint: 'Un fouet animé suit le pointeur ou le doigt. Un geste vif le fait claquer, un clic ou un appui le lâche',
       action: 'Sortir le fouet',
-      drop: 'Lâcher le fouet'
+      drop: 'Lâcher le fouet',
+      still: 'Faire claquer le fouet. Sans animation : le système demande de réduire les animations'
     },
     themeGrain: {
       title: 'Thème Grain',
