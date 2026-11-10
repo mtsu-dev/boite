@@ -92,7 +92,8 @@ export async function writeSecret(core: Core, threadId: ThreadId, cwd: string, u
     const line = new RegExp(`^\\s*(export\\s+)?${use.key}\\s*=`);
     const at = lines.findIndex(text => line.test(text));
     const head = (at < 0 ? lines : lines.slice(0, at)).map(text => text + eol).join('');
-    const tail = at < 0 ? '' : lines.slice(at + 1).map(text => eol + text).join('') + (trailing ? eol : '');
+    // dotenv and shell loaders take the last line for a key: a later one would keep the old value, so it goes.
+    const tail = at < 0 ? '' : lines.slice(at + 1).filter(text => !line.test(text)).map(text => eol + text).join('') + (trailing ? eol : '');
     quoted = envValue(value);
     const prefix = encoder.encode(`${head}${at >= 0 && lines[at]!.trimStart().startsWith('export') ? 'export ' : ''}${use.key}=`);
     const suffix = encoder.encode(at < 0 ? eol : tail);

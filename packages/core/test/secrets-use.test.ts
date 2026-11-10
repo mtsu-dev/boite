@@ -46,7 +46,8 @@ test('write puts the value in an ignored env file, keeps its other lines, and re
   h = await startTestCore();
   const { owner, root, threadId } = await repoThread();
   const value = secretValue();
-  writeFileSync(join(root, '.env'), 'FIRST=1\r\nAPI_KEY=old\r\n# kept comment\r\n');
+  // The key is set twice: loaders read the last line, so the later one must not keep the old value.
+  writeFileSync(join(root, '.env'), 'FIRST=1\r\nAPI_KEY=old\r\n# kept comment\r\nexport API_KEY=older\r\n');
   if (process.platform !== 'win32') chmodSync(join(root, '.env'), 0o644);
   const write = async (path: string, extra: { allowUnignored?: boolean } = {}) => {
     const fresh = await saveSecret(h, owner, threadId, 'API_KEY', value);
