@@ -511,7 +511,11 @@ export function accessRefusal(method: RpcMethodName, caller: Caller, params?: un
     };
   }
   if (caller.principal === 'agent') {
-    if (!AGENT_METHODS.has(method)) return { message: `${method} is not one of the agent's methods`, data: { method, principal: 'agent' } };
+    if (!AGENT_METHODS.has(method)) {
+      // Say who may call it: `boite server check` from a thread only said what it was not (#991).
+      const who = DEVICE_METHODS.has(method) ? 'the owner and paired devices call it' : 'it is for the owner only';
+      return { message: `${method} is not one of the agent's methods: ${who}`, data: { method, principal: 'agent' } };
+    }
     const named = (params as { threadId?: unknown } | null | undefined)?.threadId;
     if (caller.threadId === null || named !== caller.threadId) {
       return { message: `${method} is for thread ${caller.threadId ?? 'none'}, not thread ${String(named)}`, data: { method, threadId: named } };

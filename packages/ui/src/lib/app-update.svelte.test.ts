@@ -156,7 +156,7 @@ test('allows restoring an older stable release from installed nightly', async ()
   updater.download();
   await updater.settled();
 
-  expect(native.check).toHaveBeenCalledWith('stable');
+  expect(native.check).toHaveBeenCalledWith('stable', false);
   expect(native.download).toHaveBeenCalledOnce();
   expect(updater.snapshot).toMatchObject({
     phase: 'ready',
@@ -245,6 +245,29 @@ test('shows an invocation rejection as a supported updater error', async () => {
   await updater.settled();
 
   expect(updater.snapshot).toMatchObject({ phase: 'error', error: 'request already running', supported: true });
+  stop();
+});
+
+test('only the owner\'s check asks the shell to skip its recent answer and GitHub\'s rate limit', async () => {
+  const clock = new FakeClock();
+  const native = backend();
+  const updater = new AppUpdater(native, clock, () => true);
+  const stop = updater.start();
+  await updater.settled();
+
+  clock.runTimeouts();
+  await updater.settled();
+  updater.checkIfStale(Date.now() + 24 * 60 * 60 * 1_000);
+  await updater.settled();
+  // Queued behind a running check, the owner's request keeps its force.
+  updater.check('stable');
+  updater.checkNow('stable');
+  updater.check('stable');
+  await updater.settled();
+  updater.check('stable');
+  await updater.settled();
+
+  expect(vi.mocked(native.check).mock.calls).toEqual([['stable', false], ['stable', false], ['stable', false], ['stable', true], ['stable', false]]);
   stop();
 });
 

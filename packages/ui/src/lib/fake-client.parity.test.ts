@@ -131,7 +131,7 @@ test('an agent reaches only its own methods on its own thread and hears only its
   client.becomes('agent', 't-trace');
   const log = heard(client, ['thread.load']);
   // The owner's methods, which the fake once let an agent call.
-  await expect(client.call('settings.set', { muteAgents: !before.muteAgents })).rejects.toMatchObject({ code: RpcErrorCode.Refused, message: "settings.set is not one of the agent's methods" });
+  await expect(client.call('settings.set', { muteAgents: !before.muteAgents })).rejects.toMatchObject({ code: RpcErrorCode.Refused, message: "settings.set is not one of the agent's methods: it is for the owner only" });
   await expect(client.call('projects.list', {})).rejects.toMatchObject({ code: RpcErrorCode.Refused });
   // An agent method on another thread, or with no thread at all.
   await expect(client.call('todos.list', { threadId: 't-other' })).rejects.toMatchObject({ code: RpcErrorCode.Refused, message: 'todos.list is for thread t-trace, not thread t-other' });

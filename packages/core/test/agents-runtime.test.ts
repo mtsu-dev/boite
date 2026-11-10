@@ -382,7 +382,7 @@ test('a paired device lands an outside event on a bot: it wakes it with default 
     expect(await runCli(['bot', 'event', 'Ada', '--key', 'ci', 'SECOND build failed on main', '--core', h.url], { out: () => undefined, err: s => { err += s; }, env: { BOITE_TOKEN: session.token }, cwd: h.dataDir })).toBe(0);
     expect(err).toBe('');
     expect(h.core.agentRuntime.facts(agent.id).map(f => f.key)).toEqual(['external:ci']);
-    expect(await bot.call('agents.event', { agent: agent.id, text: 'from inside' }).catch(error => error)).toMatchObject({ rpc: { message: 'agents.event is not one of the agent\'s methods' } });
+    expect(await bot.call('agents.event', { agent: agent.id, text: 'from inside' }).catch(error => error)).toMatchObject({ rpc: { message: 'agents.event is not one of the agent\'s methods: the owner and paired devices call it' } });
     expect(await device.call('agents.event', { agent: 'Ada', key: 'bad key!', text: 'x' }).catch(error => error)).toMatchObject({ rpc: { data: { field: 'key' } } });
   } finally { device.close(); bot.close(); }
   const pending = (h.core.agentRuntime as unknown as { pending: Map<string, { facts: { notBefore: number }[] }> }).pending.get(agent.id)!;

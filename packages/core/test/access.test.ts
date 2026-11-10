@@ -235,6 +235,8 @@ describe('the access gate', () => {
       const attempts: (() => Promise<unknown>)[] = [
         () => agent.call('files.write', { threadId, path: 'from-the-agent.txt', text: 'no' }),
         () => agent.call('trace.get', { threadId }),
+        // What `boite server check` asks from a thread (#991).
+        () => agent.call('core.updateStatus', {}),
         () => agent.call('agent.where', { threadId: other.id }),
         () => agent.call('todos.list', { threadId: other.id }),
       ];
@@ -247,8 +249,9 @@ describe('the access gate', () => {
         }
       }
       expect(failures).toEqual([
-        "files.write is not one of the agent's methods",
-        "trace.get is not one of the agent's methods",
+        "files.write is not one of the agent's methods: it is for the owner only",
+        "trace.get is not one of the agent's methods: it is for the owner only",
+        "core.updateStatus is not one of the agent's methods: it is for the owner only",
         `agent.where is for thread ${threadId}, not thread ${other.id}`,
         `todos.list is for thread ${threadId}, not thread ${other.id}`,
       ]);
