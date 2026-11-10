@@ -319,6 +319,28 @@ export class PluginUi {
     for (const listener of loaded.settingsListeners) this.#guard(loaded, listener)(structuredClone(values));
   }
 
+  /**
+   * A tab's cleanup, run exactly once: when the tab closes, or when its plugin
+   * unloads with the tab still open, so the timers and listeners its mount
+   * started never outlive it. A throw while the plugin runs stops it; one
+   * during unloading is only logged.
+   */
+  #tabCleanup(loaded: Loaded, cleanup: () => void): () => void {
+    let ran = false;
+    const once = () => {
+      if (ran) return;
+      ran = true;
+      loaded.cleanups = loaded.cleanups.filter((other) => other !== once);
+      try { cleanup(); } catch (error) {
+        if (loaded.alive) this.#fail(loaded.bundle.id, messageOf(error));
+        else console.warn(`plugin ${loaded.bundle.id} cleanup: ${messageOf(error)}`);
+      }
+    };
+    if (loaded.alive) loaded.cleanups.push(once);
+    else once();
+    return once;
+  }
+
   /** A function a script handed Boite: run only while its plugin is loaded, its throw stopping that plugin alone. */
   #guard<A extends unknown[], R>(loaded: Loaded, fn: (...args: A) => R): (...args: A) => R | undefined {
     return (...args: A) => {
@@ -399,7 +421,7 @@ export class PluginUi {
         const mount = this.#guard(loaded, fnOf<PluginTabEntry['mount']>('addPanelTab', spec, 'mount'));
         return add<PluginTabEntry>('tabs', { key: `${plugin}/${id}`, plugin, id, title: textOf('addPanelTab', spec, 'title'), icon: iconOf(spec), mount: (element, ctx) => {
           const cleanup = mount(element, ctx);
-          return typeof cleanup === 'function' ? this.#guard(loaded, cleanup as () => void) as () => void : undefined;
+          return typeof cleanup === 'function' ? this.#tabCleanup(loaded, cleanup as () => void) : undefined;
         } });
       },
       addCommand: (raw: unknown) => {

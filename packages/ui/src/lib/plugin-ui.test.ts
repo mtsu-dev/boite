@@ -82,6 +82,38 @@ test('a script fills every slot, its RPC reaches only what it was granted, and u
   expect(cleanup).toHaveBeenCalledTimes(1);
 });
 
+test('a panel tab\'s cleanup runs exactly once, whether the tab closes or its plugin unloads first', async () => {
+  const closed = vi.fn();
+  const unloaded = vi.fn(() => { throw new Error('cleanup threw'); });
+  const { ui } = loader({
+    a: (boite) => {
+      boite.ui.addPanelTab({ id: 'closed', title: 'Closed', mount: () => closed });
+      boite.ui.addPanelTab({ id: 'open', title: 'Open', mount: () => unloaded });
+    },
+  });
+  live.push(ui);
+  const fake = core([bundle('a', 'a')]);
+  ui.attach(fake.client);
+  await ui.refresh();
+  const closeTab = ui.tab('a/closed')!.mount(document.createElement('div'), { threadId: null })!;
+  const stillOpen = ui.tab('a/open')!.mount(document.createElement('div'), { threadId: null })!;
+  closeTab();
+  closeTab();
+  expect(closed).toHaveBeenCalledTimes(1);
+  expect(ui.status.a?.state).toBe('running');
+
+  // Uninstalled with a tab open: its cleanup runs then, its throw logged, and not again when the tab goes.
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  fake.set([]);
+  await ui.refresh();
+  expect(unloaded).toHaveBeenCalledTimes(1);
+  expect(warn).toHaveBeenCalledWith('plugin a cleanup: cleanup threw');
+  warn.mockRestore();
+  stillOpen();
+  expect(unloaded).toHaveBeenCalledTimes(1);
+  expect(closed).toHaveBeenCalledTimes(1);
+});
+
 test('the RPC client refuses a method or event the plugin was not granted, and calls the granted ones', async () => {
   let api: any;
   const { ui } = loader({ a: (boite) => { api = boite; } });
