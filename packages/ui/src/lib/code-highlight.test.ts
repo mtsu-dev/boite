@@ -38,6 +38,13 @@ test('CRLF files keep one displayed line per editor line and diff row', async ()
     row.innerHTML = html;
     expect(row.textContent).not.toMatch(/[\r\n]/);
   }
+  // A lone CR ends no row (rows split on LF): the lines after it keep their own colors.
+  const text = 'const a = 1;\rconst b = 2;\nconst c = 3;';
+  const stray = await highlightCode(text, 'typescript');
+  expect(stray).toHaveLength(text.split('\n').length);
+  const last = document.createElement('span');
+  last.innerHTML = stray!.at(-1)!;
+  expect(last.textContent).toBe('const c = 3;');
 });
 
 afterEach(() => {

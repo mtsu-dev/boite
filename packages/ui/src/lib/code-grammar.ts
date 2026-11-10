@@ -78,6 +78,7 @@ export async function highlightText(text: string, language: Language): Promise<s
   // HTML-like templates can contain both script and style blocks.
   if (language === 'xml') await Promise.all([load('javascript'), load('typescript'), load('css')]);
   const { default: highlighter } = await import('highlight.js/lib/core');
-  // Textareas normalize CRLF. A stray CR inside a token span would add a second visual line.
-  return linesOf(highlighter.highlight(text.replace(/\r\n?/g, '\n'), { language, ignoreIllegals: true }).value);
+  // Rows split on LF alone, so a CRLF ends one line and a lone CR ends none. The lone CR goes:
+  // inside a token span it would add a second visual line, and as a break it shifted every later row.
+  return linesOf(highlighter.highlight(text.replace(/\r\n?/g, crlf => (crlf.length === 2 ? '\n' : '')), { language, ignoreIllegals: true }).value);
 }
