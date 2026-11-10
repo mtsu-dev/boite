@@ -194,7 +194,8 @@ The table is `PLUGIN_PERMISSIONS` in `packages/contracts/src/plugins.ts`.
 A plugin's `threads.archive` is always a Mark done, whatever it passes:
 
 - The core forces `onlyIfIdle: true` and checks the family as an automatic
-  pass does: a turn running or queued, background work, a move, a message
+  pass does: a turn running or queued, background work, a subagent at work
+  on another machine, a move, a message
   waiting to be delivered, a workflow (a paused one included), unsent input
   on a device, a side question or a card waiting for an answer refuses it,
   naming `threadId`.
