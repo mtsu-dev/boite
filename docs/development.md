@@ -1237,6 +1237,10 @@ there; pasted where every number still names the same picture, only the text goe
 belongs to the next draft. Refused sends retain input, attachments and edits made
 while sending.
 
+Ctrl+Enter sends without leaving an existing thread, including when replacing
+an edited message. From a new thread's draft, it sends and opens the next draft
+in the same project with the same provider, account, model, effort and mode.
+
 Undo in the composer is the app's, never the textarea's (`lib/composer-history.ts`):
 Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z and the context menu walk one history per draft or
 thread, up to 200 steps, holding the text, its pictures, its page references and
