@@ -426,10 +426,10 @@ export class Workspace {
 
   /** Keep a connected machine's display name and resumable session credentials. */
   #rememberConnected(machine: Machine, endpoint: Endpoint, label: string | undefined, host: string): void {
-    // A name saved without the owner typing it is only what the machine was called before: the one it reports now wins.
+    // A name saved without the owner typing it is only what the machine was called before: the one it reports now wins, a new one handed in wins over that.
     const before = readEnvironments().find((e) => e.url === machine.id);
-    const named = !isThisPC(machine) && typedName(machine, before);
-    machine.label = this.ownName(machine, before) || label?.trim() || machine.store.core?.hostname || host;
+    const named = !isThisPC(machine) && typedName(machine, before), given = label?.trim() !== before?.label.trim() ? label?.trim() : undefined;
+    machine.label = (namedByUser(before) ? this.ownName(machine, before) : undefined) || given || this.ownName(machine, before) || label?.trim() || machine.store.core?.hostname || host;
     this.restoreProfile(machine);
     this.#distinct(machine);
     // Grant and ticket credentials are persisted by WsClient's onSession, never the grant itself.

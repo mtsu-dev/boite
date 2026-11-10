@@ -859,6 +859,10 @@ test('a remembered machine goes by the name it reports now unless the owner type
   expect(await w.add({ url: 'http://10.0.0.1:1', token: 'k', paired: true })).toBe(true);
   hosts['http://10.0.0.1:1'] = 'host-c';
   expect(await reconnect('http://10.0.0.1:1')).toBe('Atelier X');
+  // A name handed in with a new machine is listed, not the host name.
+  hosts['http://10.0.0.7:1'] = 'srv-07';
+  expect(await w.add({ url: 'http://10.0.0.7:1', token: 'k', paired: true }, 'Server')).toBe(true);
+  expect(w.machines.find((machine) => machine.id === 'http://10.0.0.7:1')?.label).toBe('Server');
   // The machine the window opens on follows the same rule.
   a.localCore = false;
   a.endpointUrl = 'http://10.0.0.9:1';
