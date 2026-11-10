@@ -10,7 +10,7 @@
  * contracts/agent-setting-requests.ts, where the in-memory client reads them.
  */
 import {
-  agentModelRoute, agentSettingAnswerText, agentSettingProposal, agentSettingValue, AGENT_SETTING_KEYS, AGENT_STATUSES, builtinSettingRefusal, checkAgentSettingRequest, normalizeAgentSetting, settledAgentSetting,
+  agentModelRoute, agentSettingAnswerText, agentSettingProposal, agentSettingValue, AGENT_PROJECTS_MAX, AGENT_SETTING_KEYS, AGENT_STATUSES, builtinSettingRefusal, checkAgentSettingRequest, normalizeAgentSetting, settledAgentSetting,
   type AgentProfile, type AgentSettingApplyParams, type AgentSettingAsk, type AgentSettingContext, type AgentSettingReading,
   type AccountId, type AgentSettingChoice, type AgentSettingRequestParams, type AgentSettingsReading, type AgentSettingsReadParams,
   type ProviderId, type QuestionAnswer, type RequestId,
@@ -225,6 +225,28 @@ export class AgentSettingCards {
     return saved;
   }
 
+  /** Why the bot can hold no project more, or null: asked before a folder is added for it (`agent.addProject`). */
+  entrustRefusal(agent: AgentProfile): string | null {
+    return new Set(agent.projectIds ?? []).size >= AGENT_PROJECTS_MAX
+      ? `projects: ${agent.name} holds ${AGENT_PROJECTS_MAX} projects already, the most an agent holds; ask for one to be taken away with boite settings bot request projects -<name> --why <reason>` : null;
+  }
+
+  /**
+   * A project the bot just added while its `addProjects` setting was on
+   * (`agent.addProject`) joins those entrusted to it, the way an applied
+   * `projects` card does: the same checks, the same write, and the cards it
+   * answers settle.
+   */
+  entrust(agentId: string, projectId: string): AgentProfile {
+    const agent = this.#store.records.get('profile', agentId);
+    const ctx = this.#context(agent);
+    const normalized = normalizeAgentSetting('projects', { add: [projectId] }, ctx);
+    if (!normalized.ok) throw refused(normalized.message, { field: 'projects' });
+    const saved = this.#write(agent, ctx, 'projects', normalized.value);
+    this.settle(agent.id);
+    return saved;
+  }
+
   #write(agent: AgentProfile, ctx: AgentSettingContext, key: AgentSettingAsk['key'], value: unknown): AgentProfile {
     const save = (next: AgentProfile) => this.#store.saveProfile({ id: agent.id, expectedRevision: agent.revision, value: next });
     const configure = (config: AgentSettingContext['config']) => this.#store.resident.configure({ agentId: agent.id, expectedRevision: agent.revision, config });
@@ -258,6 +280,7 @@ export class AgentSettingCards {
       case 'effort': return save({ ...agent, selection: { ...agent.selection, effort: value as string | null } });
       case 'autoMemory': return configure({ ...ctx.config, autoMemory: value as boolean });
       case 'eventWakes': return configure({ ...ctx.config, eventWakes: value as boolean });
+      case 'addProjects': return configure({ ...ctx.config, addProjects: value as boolean });
       case 'subagents': return configure({ ...ctx.config, subagents: { ...ctx.config.subagents, enabled: value as boolean } });
       case 'dailyBudget': return configure({ ...ctx.config, dailyBudgetUsd: value as number | null });
     }

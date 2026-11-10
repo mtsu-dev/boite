@@ -37,6 +37,7 @@ export const fr: Translation = {
       model: 'Modèle',
       effort: 'Niveau de raisonnement',
       eventWakes: 'Réveils automatiques pour les événements des projets et du bureau',
+      addProjects: 'Ajouter des projets',
       autoMemory: 'Mettre à jour la mémoire après chaque tâche',
       subagents: 'Sous-agents',
       dailyBudget: 'Budget quotidien de ses réveils',

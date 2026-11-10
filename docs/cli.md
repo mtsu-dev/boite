@@ -695,8 +695,22 @@ Registering a folder gives the agent no file access its process lacked. It
 reaches outside the thread's project, so the Communication settings decide as
 they do for `thread new` elsewhere: Off, Pause and a thread restricted to its
 own project refuse it. There is no hourly limit. A thread an agent started
-adds none until the user has written in it, and delegated children, workflow steps and bots'
-threads are refused.
+adds none until the user has written in it, and delegated children and
+workflow steps are refused.
+
+A bot adds a project from its own conversation only while its `addProjects`
+setting is on (`AgentSettingCards.entrust` in `agents/setting-cards.ts`). It
+is off by default: the refusal tells the bot to ask with
+`boite settings bot request addProjects true --why <reason>`, a card only the
+owner applies. With it on, the same checks and Communication settings apply,
+the folder is one of the bot's own machine (`--machine` is refused for a
+bot), and the new project joins those entrusted to it at once, through the
+code that writes its `projects` setting: the line reads "Added and entrusted
+to you." and `--json` carries `entrusted: true`. A folder that was already a
+project is answered with `added: false` and is not entrusted: the bot would
+otherwise gain any project by naming its folder. The line then says to ask
+with `boite settings bot request projects +<name> --why <reason>`. A bot that
+already holds 50 projects is refused before the folder is added.
 
 With `--machine <name>`, the folder is one of another machine of the group,
 given by its absolute path there (`/home/me/site` from a Windows machine): it
@@ -882,7 +896,8 @@ thread. The MCP tool takes it as `boite_settings_request` with `page:
 `domain` (its role), `instructions`, `avatar`, `status` (`active`, `paused`,
 `archived`), `projects` (those entrusted to it), `model`, `effort`,
 `autoMemory` (the memory pass), `eventWakes` (automatic project and desk wakes),
-`subagents` and `dailyBudget` (dollars a day,
+`addProjects` (the bot may add a folder of its machine as a project, off by
+default), `subagents` and `dailyBudget` (dollars a day,
 or `null` for none). It prints the bot's name, each value and, for status,
 projects, models and efforts, the choices; a model reads `<provider>/<model>`,
 and its choices span every provider signed in on the machine. The listing cuts

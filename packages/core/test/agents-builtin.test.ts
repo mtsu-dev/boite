@@ -154,7 +154,7 @@ test('reset gives the bot a new thread, an empty memory, no routines and its def
 
   const reset = await client.call('agents.builtin.reset', { agentId: bot.id, name: 'Standardiste' });
   // Reset is a new conversation, a cleared memory and the default settings.
-  expect(await client.call('agents.runtime.get', { agentId: bot.id })).toMatchObject({ dailyBudgetUsd: null, autoMemory: true, eventWakes: false, subagents: { enabled: true, paused: false, anyModel: true, profiles: [] } });
+  expect(await client.call('agents.runtime.get', { agentId: bot.id })).toMatchObject({ dailyBudgetUsd: null, autoMemory: true, eventWakes: false, addProjects: false, subagents: { enabled: true, paused: false, anyModel: true, profiles: [] } });
   expect(reset).toMatchObject({ id: bot.id, builtin: 'contacts', name: 'Standardiste', avatar: shipped.avatar, domain: shipped.domain, instructions: shipped.instructions, status: 'active' });
   // The default route again, unless the reset names one.
   expect(reset.selection).toEqual(shippedRoute);

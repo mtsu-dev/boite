@@ -404,7 +404,9 @@ Communication settings decide whether the agent may start one. With
 `--machine <name>` it starts it on another machine of the group, when that
 machine's owner allowed it there.
 `boite projects add <folder>` registers a folder as a project first, under the
-same settings, and `--machine <name>` one of another machine of the group.
+same settings, and `--machine <name>` one of another machine of the group. A
+bot does so only with its `addProjects` setting on, on its own machine
+([CLI](cli.md#commands)).
 
 The CLI uses the authenticated current conversation as sender. Agents cannot
 impersonate a different local conversation, link machines or change

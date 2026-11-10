@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from 'bun:test';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { AGENT_PICTURE_MAX_BYTES, type AgentProfile, type MessagePart, type ModelInfo } from '@boite/contracts';
+import { AGENT_PICTURE_MAX_BYTES, type AgentProfile, type AgentProjectAdded, type MessagePart, type ModelInfo } from '@boite/contracts';
 import { runCli } from '../src/cli.ts';
 import { connect } from '../src/client.ts';
 import { setDriver } from '../src/drivers/index.ts';
@@ -28,6 +28,79 @@ test('the native bot eventWakes boolean card reads, validates, applies and rever
     expect(h.core.workforce.resident.config(agent.id).eventWakes).toBe(enabled);
     expect(profile().status).toBe('active');
   }
+});
+
+test('a bot adds a project only while the owner keeps addProjects on, holds what it adds, and gains no project that already existed', async () => {
+  const { h, owner, agent, self, other, run, profile, cards } = await setup();
+  await owner.call('turns.start', { threadId: self, prompt: 'Set the site up.' });
+  await waitFor(() => settled(h, self));
+  const site = join(h.dataDir, 'site');
+  mkdirSync(site, { recursive: true });
+  const lines = () => h.core.journal.listMessages(self).filter(m => m.role === 'system' && m.parts.some(p => p.type === 'text' && p.text.startsWith('The agent added the project')));
+
+  // Off, as every bot starts: refused with how to ask, nothing added.
+  expect((await run(['settings', 'bot', 'addProjects'], self)).out).toContain('addProjects false');
+  const off = await run(['projects', 'add', site, '--name', 'Website'], self);
+  expect(off.code).toBe(1);
+  expect(off.err).toContain('the owner has not let Ada add projects; ask with boite settings bot request addProjects true --why <reason>');
+  expect(h.core.projects.registered(site)).toBeNull();
+
+  // The bot cannot turn it on: its token writes no runtime setting and applies no card, its own included.
+  const bot = await connect(h.url, h.core.agents.tokenFor(self));
+  const config = h.core.workforce.resident.config(agent.id);
+  expect(await thrown(bot.call('agents.runtime.configure', { agentId: agent.id, expectedRevision: profile().revision, config: { ...config, addProjects: true } }))).toThrow();
+  expect((await run(['settings', 'bot', 'request', 'addProjects', 'true', '--why', 'The user asked for a site.'], self)).code).toBe(0);
+  const card = cards(self).find(q => q.agentSetting?.key === 'addProjects')!;
+  expect(card.agentSetting).toMatchObject({ agentId: agent.id, previous: false, value: true });
+  expect(await thrown(bot.call('agents.settings.apply', { threadId: self, questionId: card.id }))).toThrow();
+  bot.close();
+  expect(h.core.workforce.resident.config(agent.id).addProjects).toBe(false);
+  expect((await run(['projects', 'add', site], self)).code).toBe(1);
+
+  // The owner applies the card: the folder is added, entrusted at once, and the bot's conversation says so.
+  await owner.call('agents.settings.apply', { threadId: self, questionId: card.id });
+  expect(h.core.workforce.resident.config(agent.id).addProjects).toBe(true);
+  const first = await run(['projects', 'add', site, '--name', 'Website', '--json'], self);
+  expect(first.err).toBe('');
+  const added = JSON.parse(first.out) as AgentProjectAdded;
+  expect(added).toMatchObject({ name: 'Website', path: site, added: true, entrusted: true });
+  expect(h.core.projects.registered(site)?.id).toBe(added.id);
+  expect(profile().projectIds).toEqual([added.id]);
+  expect(h.core.workforce.projects.residentOf(self)?.projectIds).toEqual([added.id]);
+  expect(lines().map(m => m.parts[0])).toEqual([expect.objectContaining({ text: `The agent added the project Website (${site}).` })]);
+
+  // A folder that was already a project is answered as it is and not entrusted: the owner's card decides.
+  const known = await run(['projects', 'add', other.path, '--json'], self);
+  expect(JSON.parse(known.out)).toMatchObject({ id: other.id, added: false, entrusted: false });
+  expect((await run(['projects', 'add', other.path], self)).out).toContain('it is not entrusted to you. Ask with boite settings bot request projects +"Other" --why <reason>');
+  expect(JSON.parse((await run(['projects', 'add', site, '--json'], self)).out)).toMatchObject({ id: added.id, added: false, entrusted: true });
+  expect(profile().projectIds).toEqual([added.id]);
+  expect(lines()).toHaveLength(1);
+
+  // Its own machine only, and the Communication settings still decide.
+  const more = join(h.dataDir, 'more');
+  mkdirSync(more, { recursive: true });
+  expect((await run(['projects', 'add', more, '--machine', 'pc'], self)).err).toContain('a bot adds projects on its own machine only');
+  const coordination = h.core.coordination.config(self);
+  await owner.call('collaboration.configure', { threadId: self, config: { ...coordination, paused: true } });
+  expect((await run(['projects', 'add', more], self)).err).toContain('communication is paused');
+  await owner.call('collaboration.configure', { threadId: self, config: { ...coordination, mode: 'off' } });
+  expect((await run(['projects', 'add', more], self)).err).toContain('communication is off');
+  await owner.call('collaboration.configure', { threadId: self, config: coordination });
+
+  // A delegated child of the bot and an archived thread are refused as before, the setting on or not.
+  const thread = h.core.journal.getThread(self)!;
+  h.core.journal.putThread({ ...thread, id: 'bot-child', parentThreadId: self });
+  expect(await thrown(h.core.threads.spawns.addProject({ threadId: 'bot-child', path: more }))).toThrow('a delegated agent or workflow step cannot add projects; ask its parent');
+  h.core.journal.putThread({ ...thread, id: 'bot-archived', archived: true });
+  expect(await thrown(h.core.threads.spawns.addProject({ threadId: 'bot-archived', path: more }))).toThrow('an archived thread cannot add projects');
+  expect(h.core.projects.registered(more)).toBeNull();
+
+  // Turned off again: refused again, and what it holds stays.
+  const current = profile();
+  await owner.call('agents.runtime.configure', { agentId: agent.id, expectedRevision: current.revision, config: { ...h.core.workforce.resident.config(agent.id), addProjects: false } });
+  expect((await run(['projects', 'add', more], self)).err).toContain('boite settings bot request addProjects true');
+  expect(profile().projectIds).toEqual([added.id]);
 });
 
 /** An echo driver that records every prompt per thread and answers in one line. */
