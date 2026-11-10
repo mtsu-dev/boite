@@ -294,7 +294,11 @@ export class PluginUi {
       loaded.alive = false;
       this.#loaded.delete(id);
       for (const cleanup of loaded.cleanups.reverse()) {
-        try { cleanup(); } catch (error) { console.warn(`plugin ${id} cleanup: ${messageOf(error)}`); }
+        const warn = (error: unknown) => console.warn(`plugin ${id} cleanup: ${messageOf(error)}`);
+        try {
+          const result: unknown = cleanup();
+          if (result instanceof Promise) result.catch(warn);
+        } catch (error) { warn(error); }
       }
       loaded.style?.remove();
       if (loaded.url) URL.revokeObjectURL(loaded.url);
@@ -322,8 +326,8 @@ export class PluginUi {
   /**
    * A tab's cleanup, run exactly once: when the tab closes, or when its plugin
    * unloads with the tab still open, so the timers and listeners its mount
-   * started never outlive it. A throw while the plugin runs stops it; one
-   * during unloading is only logged.
+   * started never outlive it. A throw or a rejection while the plugin runs
+   * stops it; one during unloading is only logged.
    */
   #tabCleanup(loaded: Loaded, cleanup: () => void): () => void {
     let ran = false;
@@ -331,10 +335,14 @@ export class PluginUi {
       if (ran) return;
       ran = true;
       loaded.cleanups = loaded.cleanups.filter((other) => other !== once);
-      try { cleanup(); } catch (error) {
+      const failed = (error: unknown) => {
         if (loaded.alive) this.#fail(loaded.bundle.id, messageOf(error));
         else console.warn(`plugin ${loaded.bundle.id} cleanup: ${messageOf(error)}`);
-      }
+      };
+      try {
+        const result: unknown = cleanup();
+        if (result instanceof Promise) result.catch(failed);
+      } catch (error) { failed(error); }
     };
     if (loaded.alive) loaded.cleanups.push(once);
     else once();

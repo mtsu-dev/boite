@@ -114,6 +114,32 @@ test('a panel tab\'s cleanup runs exactly once, whether the tab closes or its pl
   expect(closed).toHaveBeenCalledTimes(1);
 });
 
+test('a panel tab\'s async cleanup that rejects stops its plugin when the tab closes, and is only logged during unload', async () => {
+  const rejecting = vi.fn(async () => { throw new Error('async cleanup threw'); });
+  const { ui } = loader({ a: (boite) => { boite.ui.addPanelTab({ id: 't', title: 'T', mount: () => rejecting }); } });
+  live.push(ui);
+  const fake = core([bundle('a', 'a')]);
+  ui.attach(fake.client);
+  await ui.refresh();
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  const closeTab = ui.tab('a/t')!.mount(document.createElement('div'), { threadId: null })!;
+  closeTab();
+  closeTab();
+  await vi.waitFor(() => expect(ui.status.a).toMatchObject({ state: 'failed', error: 'async cleanup threw' }));
+  expect(rejecting).toHaveBeenCalledTimes(1);
+
+  // Loaded again, then unloaded with the tab open: the rejection is logged, the unload goes on.
+  fake.set([bundle('a', 'a', { digest: 'a-2' })]);
+  await ui.refresh();
+  ui.tab('a/t')!.mount(document.createElement('div'), { threadId: null });
+  fake.set([]);
+  await ui.refresh();
+  await vi.waitFor(() => expect(warn).toHaveBeenCalledWith('plugin a cleanup: async cleanup threw'));
+  expect(rejecting).toHaveBeenCalledTimes(2);
+  expect(ui.status.a).toBeUndefined();
+  warn.mockRestore();
+});
+
 test('the RPC client refuses a method or event the plugin was not granted, and calls the granted ones', async () => {
   let api: any;
   const { ui } = loader({ a: (boite) => { api = boite; } });
