@@ -6,7 +6,7 @@ export const strings = {
     /** A desktop app asked to show a thread or a bot on a machine this window does not have. */
     revealUnknownMachine: 'The thread or bot an app asked to show is on a machine this window is not connected to. Add it in Settings, Machines and updates.',
     revealMachineOffline: 'The thread or bot an app asked to show is on {machine}, which is not connected right now.',
-    intro: 'A plugin is a program that runs on the machine hosting your core, checked against the SHA-256 its manifest publishes.',
+    intro: 'Plugins add agent commands, skills, slash commands, desktop apps and gateways. The switch on a card turns one off without uninstalling it; the gear holds its settings and details. A program a plugin downloads is checked against the SHA-256 its manifest publishes.',
     installedHeading: 'Installed',
     recommendedHeading: 'Recommended',
     install: 'Install',
@@ -112,5 +112,35 @@ export const strings = {
     noticeUpdate: 'Update',
     noticeLater: 'Later',
     noticeLabel: 'Plugin update',
+    /** The page's top row: the search, the filter and the URL form's button. */
+    search: 'Search plugins',
+    filter: 'Show',
+    filterAll: 'All',
+    filterEnabled: 'On',
+    filterDisabled: 'Off',
+    fromUrl: 'From a URL',
+    noMatch: 'No plugin matches.',
+    /** Who publishes it, read from its repository's owner. */
+    byAuthor: 'by {author}',
+    /** The card's switch, said to a screen reader. */
+    turnOn: 'Turn {name} on',
+    turnOff: 'Turn {name} off',
+    /** What a card says when its plugin is off. */
+    stateOff: 'Off',
+    offHint: 'Off: nothing of it runs and agents no longer see what it adds. Its files, data and settings stay.',
+    /** The gear on a card, and the dialog it opens. */
+    openSettings: 'Settings of {name}',
+    settingsHeading: 'Settings',
+    settingsHint: 'The plugin declares these settings in its manifest. Boite draws them the same way for every plugin and keeps the values on this machine.',
+    settingInvalid: 'Must be {expected}.',
+    authorizations: 'Authorizations',
+    authorizationsHint: 'What the plugin\'s own token can call in Boite. Changing them comes with a later version of Boite.',
+    authorizationsOwner: 'The owner token: everything this app can do',
+    details: 'Details',
+    /** Small chips on a card: what the plugin touches. */
+    chipRecommended: 'Recommended',
+    chipAccounts: 'Accounts',
+    chipProgram: 'Program',
+    chipText: 'Text only',
   }
 } as const;

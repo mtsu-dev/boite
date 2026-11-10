@@ -1,4 +1,4 @@
-import { type PluginPool, type PluginState } from '@boite/contracts';
+import { pluginSettingValues, type PluginPool, type PluginSetting, type PluginState } from '@boite/contracts';
 import { DATA_DIR } from './shared.ts';
 
 /** A fake plugin install ticks this many times, INSTALL_STEP_MS apart. */
@@ -38,6 +38,19 @@ export const FAKE_RELEASES: Record<string, { version: string; commit: string; ar
   }
 };
 
+/** What Standup declares: one setting of each type the settings dialog draws. */
+const STANDUP_SETTINGS: PluginSetting[] = [
+  { key: 'includeTodos', type: 'switch', label: 'Include todos', description: 'Lists the todos closed today under each thread.', default: true },
+  { key: 'lookback', type: 'slider', label: 'Look back', description: 'Hours of work the standup covers.', default: 24, min: 4, max: 72, step: 4 },
+  { key: 'tone', type: 'select', label: 'Tone', default: 'plain', options: [{ value: 'plain', label: 'Plain' }, { value: 'short', label: 'Short' }, { value: 'detailed', label: 'Detailed' }] },
+  { key: 'maxThreads', type: 'number', label: 'Threads at most', description: 'The busiest ones first.', default: 8, min: 1, max: 50 },
+  { key: 'signature', type: 'text', label: 'Signature', description: 'A line added at the end.', default: '' },
+];
+const QUIET_SETTINGS: PluginSetting[] = [
+  { key: 'from', type: 'number', label: 'Quiet from', description: 'Hour of the day, 0 to 23.', default: 22, min: 0, max: 23, step: 1 },
+  { key: 'until', type: 'number', label: 'Quiet until', default: 8, min: 0, max: 23, step: 1 },
+];
+
 /**
  * Every state the Plugins page draws, in the order the core lists them: Bots,
  * the one recommended plugin, installed and running as a desktop app, with an
@@ -45,7 +58,7 @@ export const FAKE_RELEASES: Record<string, { version: string; commit: string; ar
  * installed, one stuck mid-download, and one whose installed.json the core refuses.
  */
 export function fakePlugins(): PluginState[] {
-  const base = { platform: 'win32-x64', progress: 0, error: null, rejected: null, app: null, gateway: null };
+  const base = { platform: 'win32-x64', progress: 0, error: null, rejected: null, app: null, gateway: null, enabled: true, settings: [], settingValues: {} };
   const legacy = `${DATA_DIR}\\plugins\\pool-legacy\\installed.json`;
   return [
     {
@@ -97,6 +110,20 @@ export function fakePlugins(): PluginState[] {
       commands: ['bun standup.js standup [--since <time>] (an agent\'s boite standup, in its directory)', 'environment: BOITE_CORE_URL=<this core> BOITE_TOKEN=<standup\'s token: threads.read, todos> BOITE_PLUGIN_ID=standup BOITE_PLUGIN_DATA=<its data directory>'], pools: [],
       devPath: 'C:\\Users\\you\\plugins\\standup', permissions: ['threads.read', 'todos'],
       adds: { commands: ['standup'], skills: ['standup-notes'], slashCommands: ['standup'], prompt: true },
+      settings: STANDUP_SETTINGS,
+      settingValues: pluginSettingValues(STANDUP_SETTINGS, { tone: 'short' }),
+    },
+    {
+      // Turned off by the owner: installed, its files and settings kept, nothing of it running or offered.
+      ...base, id: 'quiet-hours', name: 'Quiet hours', origin: 'url',
+      description: 'Holds agent questions and notifications outside the hours you set, then delivers them in one batch.',
+      homepage: 'https://github.com/example/quiet-hours', version: '0.2.1', availableVersion: '0.2.1', status: 'installed',
+      source: { url: 'https://github.com/example/quiet-hours', ref: 'v0.2.1', commit: '5b7d9f1a3c5e7b9d1f3a5c7e9b1d3f5a7c9e1b3d' },
+      artifact: null, commands: [], pools: [], permissions: ['threads.read'],
+      adds: { commands: [], skills: [], slashCommands: ['quiet'], prompt: false },
+      enabled: false,
+      settings: QUIET_SETTINGS,
+      settingValues: pluginSettingValues(QUIET_SETTINGS, {}),
     },
     {
       ...base, id: 'pool-legacy', name: 'pool-legacy', origin: 'url', description: '', homepage: null,

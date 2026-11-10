@@ -15,27 +15,44 @@ checks against the SHA-256 the manifest publishes. Schema 2 is the format to
 write today ([Schema 2](#schema-2)); schema 1 manifests keep loading as they
 always did ([Schema 1 manifest](#schema-1-manifest)).
 
-Settings > Plugins has three sections. Installed and Recommended are drawn
-only when they hold a plugin:
+Settings > Plugins is one grid of cards, with a search field (name, id,
+description or author) and a filter: All, On or Off.
 
-- Installed: every plugin on this core, with its version, the commit it came
-  from, its pools and its errors.
-- Recommended: the plugins Boite ships a manifest for and that are not
-  installed yet, in the order Boite lists them. Today that is
-  [Bots](https://github.com/Skollheim/bots), the desktop companion, and
-  [Douane](https://github.com/mtsu-dev/douane), the subscription gateway. A row there
-  carries the name, version, a link to the source, the description and
-  Install, with no state line.
-- Add from a git URL: any repository with a `boite-plugin.json` at its root.
+- A card holds the name, version, author, two lines of description, small
+  chips for what the plugin touches (its permissions, account pools, a desktop
+  app or service, a gateway, a program or text only), an on/off switch and a
+  gear. A state worth a look (installing, refused, an error, off, a crashed
+  app, an update) takes one line on the card, its detail behind an "i".
+- The plugins on this core come first, then the recommended ones: those Boite
+  ships a manifest for and that are not installed yet, in the order Boite lists
+  them. Today that is [Bots](https://github.com/Skollheim/bots), the desktop
+  companion, and [Douane](https://github.com/mtsu-dev/douane), the subscription
+  gateway. Their card carries a Recommended chip and Install instead of a switch.
+- From a URL, beside the filter, opens the form that reads any repository with
+  a `boite-plugin.json` at its root and shows it before installing.
+- The gear opens the plugin's dialog: its [settings](#settings), what its
+  token may call (Authorizations), where it comes from, its updates, its pools,
+  its desktop app or gateway with Start, Stop and Restart, and Uninstall. On a
+  phone it is a bottom sheet.
 
 A plugin installed as recommended that a later Boite no longer lists, such as
-kebacc-switcher before 2026-10-16, stays under Installed with its pools until
-the owner uninstalls it; it no longer receives updates.
+kebacc-switcher before 2026-10-16, stays in the grid with its pools until the
+owner uninstalls it; it no longer receives updates.
 
 Plugins are administration of the machine that hosts the core, so every
 `plugins.*` method is owner only, except `plugins.command`, which an agent
-calls to run a plugin's command ([Agent commands](#agent-commands)). The phone
-settings leave the page to the desktop app ([phone](phone.md)).
+calls to run a plugin's command ([Agent commands](#agent-commands)), and
+`plugins.settings.get`, which a plugin calls for its own settings. The owner's
+phone has the same page under Settings > Plugins; a paired device has none.
+
+### Turning a plugin off
+
+The switch on a card turns an installed plugin off without uninstalling it
+(`plugins.setEnabled`). Off stops its desktop app, service and gateway, revokes
+its token (its sockets close), and drops its commands, skills, guide lines and
+slash commands. Its files, data directory and settings stay. On starts again
+what it runs. The core keeps the choice across restarts. `PluginState.enabled` is `false` while
+it is off; an older core leaves the field out, and every installed plugin is on.
 
 Each core has its own plugins. The page opens on this PC when the window has
 one, since a desktop app shows its window there, whichever machine the open
@@ -140,6 +157,7 @@ and the slash command `/recap`. Start from a copy of it.
 | `executable` | As in schema 1. Absent exactly when the plugin provides only `skills`, `prompt` and `slashCommands`: a plugin of text that downloads nothing. |
 | `artifacts` | `native`: keyed by platform as in schema 1. `bun`: exactly one key, `any`, `{ "url", "sha256" }`. Absent exactly when `executable` is. |
 | `permissions` | A list of distinct names among `threads.read`, `threads.write`, `todos` and `ui.reveal` ([Permissions](#permissions)). Absent means none. |
+| `settings` | Up to 30 settings Boite draws for the owner ([Settings](#settings)). Absent means none. |
 | `provides` | At least one of `accountPools`, `desktopApp`, `gateway` (as in schema 1), `service`, `commands`, `skills`, `prompt` and `slashCommands`. |
 
 Unknown fields at any depth are refused, as in schema 1, and the manifest file
@@ -318,10 +336,61 @@ present they are ignored.
 - Run `boite plugin dev <folder>` again to read the manifest again and restart
   the plugin's service or desktop app.
 - `boite plugin dev --remove <id>` removes it.
-- The row in Settings > Plugins shows its origin as `dev` and its folder.
+- Its card in Settings > Plugins wears a Dev chip, and its gear shows the folder.
 
 It is the owner's (`plugins.dev`): run it from your own terminal. The core
 refuses it to an agent or a paired device.
+
+### Settings
+
+A schema 2 manifest declares the settings it wants from the owner. Boite draws
+them in the plugin's gear dialog, in the manifest's order, keeps the values on
+the core and hands them to the plugin; the plugin draws no settings page of
+its own.
+
+```json
+"settings": [
+  { "key": "includeTodos", "type": "switch", "label": "Include todos", "description": "Lists the todos closed today under each thread.", "default": true },
+  { "key": "lookback", "type": "slider", "label": "Look back", "min": 4, "max": 72, "step": 4, "default": 24 },
+  { "key": "tone", "type": "select", "label": "Tone", "default": "plain", "options": [
+    { "value": "plain", "label": "Plain" }, { "value": "short", "label": "Short" }
+  ] },
+  { "key": "maxThreads", "type": "number", "label": "Threads at most", "min": 1, "max": 50, "default": 8 },
+  { "key": "signature", "type": "text", "label": "Signature", "default": "" }
+]
+```
+
+| Field | What Boite accepts |
+| --- | --- |
+| `key` | A letter, then letters, digits and `_`, at most 40 characters, distinct within the plugin. |
+| `type` | `switch`, `number`, `slider`, `text` or `select`. |
+| `label` | At most 60 characters. |
+| `description` | Optional, at most 200 characters: one line under the label. |
+| `default` | Valid for the type: `true` or `false`, a number within the bounds, a line of at most 1,000 characters, or one of the options' values. |
+| `min`, `max`, `step` | `number` and `slider` only. A slider needs `min` and `max`; `max` must be above `min`, `step` above 0. A value must be a multiple of `step` from `min` (from 0 without `min`). |
+| `options` | `select` only: 1 to 30 `{ "value", "label" }`, values distinct, each at most 60 characters. |
+
+Any other field in a setting is refused, as everywhere in the manifest.
+
+- A switch, a slider and a choice save as soon as they change; a number and a
+  line of text save when the field is left or Enter is pressed. A value outside
+  the setting's rule is refused in the dialog with what is expected, and the
+  core checks it again.
+- `plugins.settings.set { id, values }` is the owner's. Every key must be
+  declared and every value valid, or nothing is stored and the refusal names
+  the key. Keys left out keep their value.
+- `plugins.settings.get { id }` answers every declared key with the owner's
+  value or the default. A plugin's token may call it for its own id with no
+  permission; any other id is the owner's.
+- After a change, the core sends `plugin.settings.changed { id, values }`
+  with every value, to the owner and to that plugin's sockets only.
+- A new version that drops a key or makes a stored value invalid falls back
+  to the default; the stored value is not shown.
+- The values stay through turning the plugin off and on, and through updates;
+  uninstalling removes them.
+
+In the SDK, `settings()` reads them and `onSettingsChanged(handler)` hears
+each change ([SDK](#sdk)).
 
 ### Limits
 
@@ -376,6 +445,10 @@ import { connect, definePlugin, runCommands, RpcError } from '@boite/plugin-sdk'
   the method's result, `on` returns the function that stops listening. A call
   the core refuses rejects with an `RpcError` carrying the core's `message`,
   `code` and `data`.
+- On the object `connect` returns, `settings()` answers the values of the
+  plugin's declared [settings](#settings), and `onSettingsChanged(handler)`
+  calls `handler` with every value after each change and returns the function
+  that stops listening. Both use `BOITE_PLUGIN_ID`, or `options.pluginId`.
 - `definePlugin(manifest)`: returns its argument, typed as `PluginManifest`,
   to write a manifest in TypeScript with the editor's checks.
 
@@ -717,7 +790,7 @@ it down with the core.
   error: string | null; startedAt: number | null; dataDir: string }
 ```
 
-Douane's row in Settings > Plugins shows it with Start, Stop and Restart, Open
+Douane's gear in Settings > Plugins shows it with Start, Stop and Restart, Open
 Douane (its dashboard, beside the core only) and Move my connections to Douane,
 which moves this machine's sign-ins into the plugin (`subscriptionProxy.move`
 with `target: "plugin"`, [providers](providers.md#moving-connections-to-douane)).

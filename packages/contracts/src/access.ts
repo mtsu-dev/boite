@@ -474,6 +474,21 @@ export interface Caller {
   threadId: string | null;
   /** Set on a plugin connection: what its manifest declared, nothing else. */
   permissions?: readonly PluginPermission[];
+  /** Set on a plugin connection: the plugin its token was minted for. */
+  pluginId?: string;
+}
+
+/**
+ * What every plugin reaches about itself with no permission: its own
+ * settings, read and heard. The `id` a call names, or the event carries, must
+ * be the plugin's own (`pluginSelfCall`, and the core's event fan-out).
+ */
+export const PLUGIN_SELF_METHODS: ReadonlySet<RpcMethodName> = new Set<RpcMethodName>(['plugins.settings.get']);
+export const PLUGIN_SELF_EVENTS: ReadonlySet<RpcEventName> = new Set<RpcEventName>(['plugin.settings.changed']);
+
+/** Whether a plugin's call is about itself: one of `PLUGIN_SELF_METHODS` naming its own id. */
+export function pluginSelfCall(method: RpcMethodName, caller: Caller, params?: unknown): boolean {
+  return PLUGIN_SELF_METHODS.has(method) && caller.pluginId !== undefined && (params as { id?: unknown } | null | undefined)?.id === caller.pluginId;
 }
 
 /** Whether a plugin holding `permissions` may call `method`. */
@@ -500,7 +515,13 @@ export interface AccessRefusal {
 export function accessRefusal(method: RpcMethodName, caller: Caller, params?: unknown): AccessRefusal | null {
   if (caller.principal === 'owner') return null;
   if (caller.principal === 'plugin') {
-    if (pluginMayCall(method, caller.permissions)) return null;
+    if (pluginMayCall(method, caller.permissions) || pluginSelfCall(method, caller, params)) return null;
+    if (PLUGIN_SELF_METHODS.has(method)) {
+      return {
+        message: `${method} reads only the calling plugin's own settings: id must be ${caller.pluginId ?? 'its own id'}, not ${String((params as { id?: unknown } | null | undefined)?.id)}`,
+        data: { method, principal: 'plugin', permissions: caller.permissions ?? [] },
+      };
+    }
     const needed = (Object.keys(PLUGIN_PERMISSIONS) as PluginPermission[]).filter(permission => PLUGIN_PERMISSIONS[permission].methods.includes(method));
     const declared = caller.permissions?.length ? caller.permissions.join(', ') : 'none';
     return {
@@ -537,7 +558,7 @@ export function accessRefusal(method: RpcMethodName, caller: Caller, params?: un
  * narrows an agent's to its thread. A plugin hears what its permissions grant.
  */
 export function mayHearEvent(name: RpcEventName, principal: Principal, permissions?: readonly PluginPermission[]): boolean {
-  if (principal === 'plugin') return pluginMayHear(name, permissions);
+  if (principal === 'plugin') return pluginMayHear(name, permissions) || PLUGIN_SELF_EVENTS.has(name);
   return principal === 'owner' || (principal === 'agent' ? AGENT_EVENTS : DEVICE_EVENTS).has(name);
 }
 

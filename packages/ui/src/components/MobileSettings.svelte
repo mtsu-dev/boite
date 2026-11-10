@@ -1,6 +1,6 @@
 <script lang="ts">
   import TelemetrySettings from './TelemetrySettings.svelte';
-  import { AppWindow, ArchiveRestore, ArrowLeft, Bell, ChevronRight, Coins, FlaskConical, Gauge, KeyRound, Lock, Monitor, Palette, Mic, Minimize2 } from '@lucide/svelte';
+  import { AppWindow, ArchiveRestore, ArrowLeft, Bell, ChevronRight, Coins, FlaskConical, Gauge, KeyRound, Lock, Monitor, Palette, Mic, Minimize2, Puzzle } from '@lucide/svelte';
   import type { Store } from '../lib/store.svelte';
   import { workspace } from '../lib/workspace.svelte';
   import { strings } from '../lib/strings';
@@ -18,6 +18,7 @@
   import UsagePage from './UsagePage.svelte';
   import VoiceSettings from './VoiceSettings.svelte';
   import BrainPage from './BrainPage.svelte';
+  import PluginsPage from './PluginsPage.svelte';
   import ArchivedThreads from './ArchivedThreads.svelte';
   import WorktreesCard from './WorktreesCard.svelte';
   import WindowAllowlistCard from './WindowAllowlistCard.svelte';
@@ -61,11 +62,13 @@
     : page === 'voice' ? strings.speech.heading : page === 'appearance' ? strings.settings.tabs.appearance
     : page === 'usage' ? strings.usage.heading : page === 'limits' ? strings.usage.limits
     : page === 'resources' ? strings.settings.tabs.resources
+    : page === 'plugins' ? strings.plugins.heading
     : page === 'task-manager' ? strings.taskManager.title
     : page === 'diagnostics' ? strings.diagnostics.heading
     : page === 'experiments' ? strings.settings.tabs.experiments : strings.settings.tabs.machines;
   /** The page's own title and its info mark step aside for the bar, so the bar carries the mark. */
   const infoOf = (page: string): string => page === 'usage' ? `${strings.usage.intro} ${strings.usage.note}`
+    : page === 'plugins' ? strings.plugins.intro
     : page === 'privacy' ? strings.telemetry.description
     : page === 'secrets' ? strings.secrets.info
     : page === 'experiments' ? strings.settings.experiments.intro : '';
@@ -150,6 +153,11 @@
             <Mic size={20} /><span class="ui-label">{strings.speech.heading}</span><ChevronRight size={18} />
           </button>
           {#if store.owner}
+            <button class="ghost row" data-testid="settings-tab-plugins" onclick={() => store.showSettings('plugins')}>
+              <Puzzle size={20} /><span class="ui-label">{strings.plugins.heading}</span><ChevronRight size={18} />
+            </button>
+          {/if}
+          {#if store.owner}
             <button class="ghost row" data-testid="mobile-settings-browser-profiles" onclick={() => store.showSettings('general', 'browser-profiles')}>
               <Monitor size={20} /><span class="ui-label">{strings.browserProfiles.heading}</span><ChevronRight size={18} />
             </button>
@@ -182,7 +190,7 @@
       <h1>{#if shown === 'limits'}<QuotaMachineScope store={target} fallback={title} />{:else}{title}{/if}{#if info}<InfoTip topic={title} text={info} testid="mobile-settings-info" />{/if}</h1>
     </header>
     <div class="detail" data-testid="mobile-settings-detail">
-      {#if bar && ['brain', 'voice', 'limits', 'resources', 'diagnostics', 'worktrees', 'windows', 'secrets', 'auto-compact', 'archived'].includes(shown)}<div class="bar">{@render bar()}</div>{/if}
+      {#if bar && ['brain', 'voice', 'limits', 'resources', 'plugins', 'diagnostics', 'worktrees', 'windows', 'secrets', 'auto-compact', 'archived'].includes(shown)}<div class="bar">{@render bar()}</div>{/if}
       {#key target}
       {#if quota}
         <div class="tabs" role="tablist" aria-label={strings.usage.heading} data-testid="mobile-usage-tabs">
@@ -214,6 +222,8 @@
         <TaskManagerLoader {store} {onopenthread} />
       {:else if shown === 'resources' && target.owner}
         <ResourcesPage store={target} />
+      {:else if shown === 'plugins' && target.owner}
+        <PluginsPage store={target} />
       {:else if shown === 'experiments'}
         <ExperimentsPage {store} {target} {bar} />
       {:else if shown === 'diagnostics' && target.owner}

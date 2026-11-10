@@ -1,12 +1,15 @@
 import {
   PLUGIN_MANIFEST_FILE,
   RpcErrorCode,
+  pluginSettingProblem,
+  pluginSettingValues,
   readPluginSource,
   type PluginAppState,
   type PluginManifest,
   type PluginPool,
   type PluginPreview,
   type PluginState,
+  type RpcEventName,
   type RpcEvents,
   type RpcMethodName,
   type RpcParams,
@@ -20,7 +23,7 @@ type PluginMethod = Extract<RpcMethodName, `plugins.${string}`>;
 type Handlers = { [M in PluginMethod]: (params: RpcParams<M>) => RpcResult<M> | Promise<RpcResult<M>> };
 
 interface PluginHost {
-  emit(event: 'plugins.updated', plugin: RpcEvents['plugins.updated']): void;
+  emit<E extends Extract<RpcEventName, 'plugins.updated' | 'plugin.settings.changed'>>(event: E, payload: RpcEvents[E]): void;
   now(): number;
   nextId(): number;
   delayMs(): number;
@@ -69,13 +72,14 @@ export class FakePlugins {
       const app: PluginAppState | null = plugin.app === null ? null : { enabled: true, autostart: true, status: 'stopped', pid: null, exitCode: null, error: null, startedAt: null };
       // A gateway's data directory stays; its program and `gateway.json` go.
       const gateway = plugin.gateway == null ? null : { ...plugin.gateway, enabled: true, autostart: true, status: 'stopped' as const, pid: null, version: null, startedAt: null, error: null };
-      Object.assign(plugin, { status: 'not-installed', version: null, progress: 0, error: null, rejected: null, app, gateway });
+      Object.assign(plugin, { status: 'not-installed', version: null, progress: 0, error: null, rejected: null, app, gateway, enabled: true, settingValues: pluginSettingValues(plugin.settings ?? [], {}) });
       this.host.emit('plugins.updated', structuredClone(plugin));
       return structuredClone(plugin);
     },
     'plugins.accounts': (params) => {
       const plugin = this.#requirePlugin(params.id);
       if (plugin.status !== 'installed') throw new RpcFailure({ code: RpcErrorCode.Refused, message: `Install ${plugin.id} first.` });
+      if (plugin.enabled === false) throw new RpcFailure({ code: RpcErrorCode.Refused, message: `${plugin.id} is turned off. Turn it on in Settings > Plugins first.`, data: { id: plugin.id, enabled: false } });
       return structuredClone(this.#pluginPools[plugin.id] ?? []);
     },
     'plugins.accountAction': (params) => {
@@ -91,6 +95,7 @@ export class FakePlugins {
         throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'plugin app action must be start, stop or restart' });
       }
       if (plugin.status !== 'installed') throw new RpcFailure({ code: RpcErrorCode.Refused, message: `Install ${plugin.id} first.` });
+      if (plugin.enabled === false) throw new RpcFailure({ code: RpcErrorCode.Refused, message: `${plugin.id} is turned off. Turn it on in Settings > Plugins first.`, data: { id: plugin.id, enabled: false } });
       if (plugin.app === null) throw new RpcFailure({ code: RpcErrorCode.Refused, message: `${plugin.id} provides no desktop app.` });
       plugin.app = params.action === 'stop'
         ? { ...plugin.app, enabled: false, status: 'stopped', pid: null, startedAt: null, error: null }
@@ -104,6 +109,7 @@ export class FakePlugins {
       }
       const plugin = this.#requirePlugin(params.id);
       if (plugin.status !== 'installed') throw new RpcFailure({ code: RpcErrorCode.Refused, message: `Install ${plugin.id} first.` });
+      if (plugin.enabled === false) throw new RpcFailure({ code: RpcErrorCode.Refused, message: `${plugin.id} is turned off. Turn it on in Settings > Plugins first.`, data: { id: plugin.id, enabled: false } });
       if (plugin.gateway == null) throw new RpcFailure({ code: RpcErrorCode.Refused, message: `${plugin.id} provides no gateway.` });
       plugin.gateway = params.action === 'stop'
         ? { ...plugin.gateway, enabled: false, status: 'stopped', pid: null, version: null, startedAt: null, error: null }
@@ -114,6 +120,7 @@ export class FakePlugins {
     'plugins.autostart': (params) => {
       const plugin = this.#requirePlugin(params.id);
       if (plugin.status !== 'installed') throw new RpcFailure({ code: RpcErrorCode.Refused, message: `Install ${plugin.id} first.` });
+      if (plugin.enabled === false) throw new RpcFailure({ code: RpcErrorCode.Refused, message: `${plugin.id} is turned off. Turn it on in Settings > Plugins first.`, data: { id: plugin.id, enabled: false } });
       if (plugin.app === null && plugin.gateway == null) throw new RpcFailure({ code: RpcErrorCode.Refused, message: `${plugin.id} provides no desktop app or gateway to start with Boite.` });
       if (plugin.app !== null) plugin.app = { ...plugin.app, autostart: params.autostart };
       if (plugin.gateway != null) plugin.gateway = { ...plugin.gateway, autostart: params.autostart };
@@ -122,12 +129,51 @@ export class FakePlugins {
     },
     'plugins.checkUpdates': (params) => { return this.#checkUpdates(params?.id); },
     'plugins.command': (params) => {
-      const known = this.#plugins.flatMap((plugin) => plugin.status === 'installed' ? plugin.adds?.commands ?? [] : []);
+      const known = this.#plugins.flatMap((plugin) => plugin.status === 'installed' && plugin.enabled !== false ? plugin.adds?.commands ?? [] : []);
       if (!known.includes(params.name)) {
         const expected = known.length === 0 ? 'no installed plugin provides a command' : `one of ${known.join(', ')}`;
         throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `boite ${params.name} is no boite command and no installed plugin provides it; plugin commands: ${known.join(', ') || 'none'}`, data: { field: 'name', expected } });
       }
       return { exitCode: 0, stdout: `${params.name}: nothing to report in the in-memory client.\n`, stderr: '', truncated: false };
+    },
+    'plugins.setEnabled': (params) => {
+      const plugin = this.#requirePlugin(params.id);
+      if (typeof params.enabled !== 'boolean') throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'enabled must be true or false', data: { field: 'enabled', expected: 'true or false' } });
+      if (plugin.status !== 'installed' && plugin.status !== 'error') throw new RpcFailure({ code: RpcErrorCode.Refused, message: `Install ${plugin.id} first: only an installed plugin turns off and on.` });
+      if (plugin.enabled !== params.enabled) {
+        plugin.enabled = params.enabled;
+        // Off stops what it runs and leaves its choices; on starts again what was left enabled.
+        if (plugin.app) plugin.app = params.enabled ? (plugin.app.enabled ? this.#running(plugin.app) : plugin.app) : { ...plugin.app, status: 'stopped', pid: null, startedAt: null, error: null };
+        if (plugin.gateway) plugin.gateway = params.enabled
+          ? (plugin.gateway.enabled ? { ...runningGateway(plugin.version, 4000 + this.host.nextId(), this.host.now()), autostart: plugin.gateway.autostart } : plugin.gateway)
+          : { ...plugin.gateway, status: 'stopped', pid: null, version: null, startedAt: null, error: null };
+        this.host.emit('plugins.updated', structuredClone(plugin));
+      }
+      return structuredClone(plugin);
+    },
+    'plugins.settings.get': (params) => {
+      const plugin = this.#requireInstalled(params.id, 'its settings come from its manifest');
+      return pluginSettingValues(plugin.settings ?? [], plugin.settingValues ?? {});
+    },
+    'plugins.settings.set': (params) => {
+      const plugin = this.#requireInstalled(params.id, 'its settings come from its manifest');
+      const declared = plugin.settings ?? [];
+      if (params.values === null || typeof params.values !== 'object' || Array.isArray(params.values)) {
+        throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'values must be an object of setting keys and values', data: { field: 'values', expected: 'an object of setting keys and values' } });
+      }
+      for (const [key, value] of Object.entries(params.values)) {
+        const setting = declared.find((entry) => entry.key === key);
+        if (setting === undefined) {
+          const expected = declared.length === 0 ? `none: ${plugin.id} declares no settings` : `one of ${declared.map((entry) => entry.key).join(', ')}`;
+          throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `${plugin.id} declares no setting ${key}; expected ${expected}`, data: { field: `values.${key}`, expected } });
+        }
+        const problem = pluginSettingProblem(setting, value);
+        if (problem !== null) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `${plugin.id} setting ${key} must be ${problem}, got ${JSON.stringify(value)}`, data: { field: `values.${key}`, expected: problem } });
+      }
+      plugin.settingValues = pluginSettingValues(declared, { ...plugin.settingValues, ...params.values });
+      this.host.emit('plugin.settings.changed', { id: plugin.id, values: structuredClone(plugin.settingValues) });
+      this.host.emit('plugins.updated', structuredClone(plugin));
+      return structuredClone(plugin);
     },
     'plugins.dev': (params) => {
       const plugin = this.#plugins.find((entry) => entry.origin === 'dev' && entry.devPath === params.path);
@@ -186,7 +232,13 @@ export class FakePlugins {
 
   #requirePlugin(id: string): PluginState {
     const plugin = this.#plugins.find((entry) => entry.id === id);
-    if (plugin === undefined) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `unknown plugin ${id}; expected a plugin id from plugins.list` });
+    if (plugin === undefined) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `unknown plugin ${id}; expected a plugin id from plugins.list`, data: { field: 'id', expected: 'a plugin id from plugins.list' } });
+    return plugin;
+  }
+
+  #requireInstalled(id: string, why: string): PluginState {
+    const plugin = this.#requirePlugin(id);
+    if (plugin.status !== 'installed') throw new RpcFailure({ code: RpcErrorCode.Refused, message: `Install ${plugin.id} first: ${why}.` });
     return plugin;
   }
 
@@ -299,6 +351,9 @@ export class FakePlugins {
       source: preview.source, artifact: preview.artifact, platform: preview.platform, commands: preview.commands, pools, rejected: null, app,
       // What the core derives from the manifest it installs: the token's permissions and the names the plugin adds.
       ...(manifest.schema === 1 ? {} : { permissions: [...(manifest.permissions ?? [])] }),
+      enabled: existing?.enabled ?? true,
+      settings: structuredClone(manifest.settings ?? []),
+      settingValues: pluginSettingValues(manifest.settings ?? [], existing?.settingValues ?? {}),
       adds: {
         commands: (manifest.provides.commands ?? []).map((command) => command.name), skills: (manifest.provides.skills ?? []).map((skill) => skill.name),
         slashCommands: (manifest.provides.slashCommands ?? []).map((command) => command.name), prompt: manifest.provides.prompt !== undefined,
