@@ -210,7 +210,7 @@ describe('a dev plugin interface', () => {
       const folder = join(root, 'panel');
       mkdirSync(join(folder, 'ui'), { recursive: true });
       writeFileSync(join(folder, PLUGIN_MANIFEST_FILE), JSON.stringify(uiPlugin({}, { script: 'ui/index.js' })));
-      expect(await thrown(client.call('plugins.dev', { path: folder }))).toThrow('ui/index.js is missing');
+      expect(await thrown(client.call('plugins.dev', { path: folder }))).toThrow(/ui[\\/]index\.js is missing/);
 
       writeFileSync(join(folder, 'ui', 'index.js'), 'export default () => 1;\n');
       await client.call('plugins.dev', { path: folder });
