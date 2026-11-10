@@ -12,7 +12,9 @@ export function profileKey(machine: Machine): string {
   const core = machine.store.core;
   return core?.hostname ? JSON.stringify([core.hostname, core.dataDir, core.channel]) : machine.id;
 }
-export function profiles(): Record<string, { label: string; icon?: MachineIconName }> {
+/** `named` is false for a profile an icon pick wrote and true for a typed name; versions before it wrote neither. */
+type Profile = { label: string; icon?: MachineIconName; named?: boolean };
+export function profiles(): Record<string, Profile> {
   try { return JSON.parse(localStorage.getItem(PROFILE_KEY) ?? '{}') ?? {}; } catch { return {}; }
 }
 
@@ -29,7 +31,8 @@ export function namedByUser(saved: StoredEnvironment | undefined): boolean {
   if (saved.named) return true;
   const label = saved.label.trim();
   return Object.entries(profiles()).some(([key, profile]) => {
-    if (profile?.label?.trim() !== label) return false;
+    // A profile that says whether it was typed is no older version's.
+    if (profile?.named !== undefined || profile?.label?.trim() !== label) return false;
     let host: unknown;
     try { const parts: unknown = JSON.parse(key); host = Array.isArray(parts) ? parts[0] : undefined; } catch { host = hostOf(key); }
     return host !== label;
@@ -39,4 +42,14 @@ export function namedByUser(saved: StoredEnvironment | undefined): boolean {
 /** A profile written before a machine reported its name is keyed by its address. */
 function hostOf(url: string): string | undefined {
   try { return new URL(url).host; } catch { return undefined; }
+}
+
+/** A profile's name, unless an icon pick wrote it or the owner typed a newer one for that machine (`typed`). */
+export function profileName(profile: Profile | undefined, typed: boolean): string | undefined {
+  return !typed && profile?.named !== false && typeof profile?.label === 'string' && profile.label.trim() ? profile.label : undefined;
+}
+
+/** Whether a machine's current name is one the owner typed: its saved entry says so, or the profile that named it does. */
+export function typedName(machine: Machine, saved: StoredEnvironment | undefined): boolean {
+  return namedByUser(saved) || profiles()[profileKey(machine)]?.named === true;
 }

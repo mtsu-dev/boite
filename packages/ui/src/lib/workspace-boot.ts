@@ -1,6 +1,6 @@
 // Owns workspace startup, remembered-machine admission and primary-machine entries.
 import type { Machine, Workspace } from './workspace.svelte';
-import { namedByUser } from './machine-names';
+import { typedName } from './machine-names';
 import {
   clearStoredEndpoint, linkedCore, openOnMainMachine, readEnvironments,
   readStoredEndpoint, readMainMachine, servesThisPage, storeEndpoint,
@@ -160,7 +160,7 @@ export async function bootWorkspace(workspace: Workspace, thread: string | null,
     const was = readEnvironments().some((e) => e.url === primaryEndpoint.url) ? undefined : saved.find((e) => e.url === primaryEndpoint.url);
     upsertEnvironment({
       ...primaryEndpoint, paired: primaryEndpoint.paired ?? false, label: workspace.machines[0]!.label,
-      ...(namedByUser(readEnvironments().find((e) => e.url === primaryEndpoint.url) ?? was) ? { named: true as const } : {}),
+      ...(typedName(workspace.machines[0]!, readEnvironments().find((e) => e.url === primaryEndpoint.url) ?? was) ? { named: true as const } : {}),
       ...(was?.coreId === undefined ? {} : { coreId: was.coreId }),
       ...(was?.groupId === undefined ? {} : { groupId: was.groupId })
     });

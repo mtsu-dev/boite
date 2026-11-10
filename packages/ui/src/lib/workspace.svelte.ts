@@ -30,7 +30,7 @@ import { limitsMachine, setNotificationCore, setPushHomeClient } from './notify'
 import { appPage } from './app-origin';
 import { pictureSources } from './agent-pictures.svelte';
 import { bootWorkspace, byHand, hostOf, primaryMachine } from './workspace-boot';
-import { machineIcons, namedByUser, PROFILE_KEY, profileKey, profiles, type MachineIconName } from './machine-names';
+import { machineIcons, namedByUser, PROFILE_KEY, profileKey, profileName, profiles, typedName, type MachineIconName } from './machine-names';
 
 export { machineIcons, type MachineIconName } from './machine-names';
 
@@ -316,7 +316,8 @@ export class Workspace {
 
   restoreProfile(machine: Machine): void {
     const saved = profiles()[profileKey(machine)];
-    if (typeof saved?.label === 'string' && saved.label.trim()) machine.label = saved.label;
+    const name = profileName(saved, !isThisPC(machine) && readEnvironments().find((e) => e.url === machine.id)?.named === true);
+    if (name) machine.label = name;
     if (saved?.icon && machineIcons.includes(saved.icon)) machine.icon = saved.icon;
     if (isThisPC(machine) && ['My computer', 'This computer'].includes(machine.label)) machine.label = strings.machines.local;
   }
@@ -346,14 +347,14 @@ export class Workspace {
   customize(id: string, label: string, icon?: MachineIconName): void {
     const machine = this.machines.find(m => m.id === id);
     if (!machine || !label.trim() || (icon && !machineIcons.includes(icon))) return;
-    // Picking an icon sends the name back unchanged: only a new name is one the owner typed.
-    const renamed = label.trim() !== machine.label;
+    const saved = readEnvironments().find(e => e.url === machine.id);
+    // Picking an icon sends the name back unchanged: only a new name, or one typed before, is the owner's.
+    const named = label.trim() !== machine.label || typedName(machine, saved);
     machine.label = label.trim();
     this.#distinct(machine);
     machine.icon = icon;
-    try { localStorage.setItem(PROFILE_KEY, JSON.stringify({ ...profiles(), [profileKey(machine)]: { label: machine.label, icon } })); } catch { /* session only */ }
-    const saved = readEnvironments().find(e => e.url === machine.id);
-    if (saved) upsertEnvironment({ ...saved, label: machine.label, ...(renamed ? { named: true } : {}) });
+    try { localStorage.setItem(PROFILE_KEY, JSON.stringify({ ...profiles(), [profileKey(machine)]: { label: machine.label, icon, named } })); } catch { /* session only */ }
+    if (saved) upsertEnvironment({ ...saved, label: machine.label, ...(named ? { named: true } : {}) });
     this.machines = [...this.machines];
   }
 
@@ -427,7 +428,7 @@ export class Workspace {
   #rememberConnected(machine: Machine, endpoint: Endpoint, label: string | undefined, host: string): void {
     // A name saved without the owner typing it is only what the machine was called before: the one it reports now wins.
     const before = readEnvironments().find((e) => e.url === machine.id);
-    const named = !isThisPC(machine) && namedByUser(before);
+    const named = !isThisPC(machine) && typedName(machine, before);
     machine.label = this.ownName(machine, before) || label?.trim() || machine.store.core?.hostname || host;
     this.restoreProfile(machine);
     this.#distinct(machine);
