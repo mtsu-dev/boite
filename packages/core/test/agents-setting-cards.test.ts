@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from 'bun:test';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { AGENT_PICTURE_MAX_BYTES, type AgentProfile, type AgentProjectAdded, type MessagePart, type ModelInfo } from '@boite/contracts';
+import { AGENT_PICTURE_MAX_BYTES, AGENT_PROJECTS_MAX, type AgentProfile, type AgentProjectAdded, type MessagePart, type ModelInfo } from '@boite/contracts';
 import { runCli } from '../src/cli.ts';
 import { connect } from '../src/client.ts';
 import { setDriver } from '../src/drivers/index.ts';
@@ -95,6 +95,18 @@ test('a bot adds a project only while the owner keeps addProjects on, holds what
   h.core.journal.putThread({ ...thread, id: 'bot-archived', archived: true });
   expect(await thrown(h.core.threads.spawns.addProject({ threadId: 'bot-archived', path: more }))).toThrow('an archived thread cannot add projects');
   expect(h.core.projects.registered(more)).toBeNull();
+
+  // A bot at the most projects an agent holds is refused before the folder is added: nothing is left added and not entrusted.
+  const full = [added.id];
+  for (let i = 1; i < AGENT_PROJECTS_MAX; i++) {
+    const path = join(h.dataDir, `full-${i}`);
+    mkdirSync(path, { recursive: true });
+    full.push((await owner.call('projects.add', { path, name: `Full ${i}` })).id);
+  }
+  await owner.call('agents.profile.save', { id: agent.id, expectedRevision: profile().revision, value: { ...profile(), projectIds: full } });
+  expect((await run(['projects', 'add', more], self)).err).toContain(`Ada holds ${AGENT_PROJECTS_MAX} projects already`);
+  expect(h.core.projects.registered(more)).toBeNull();
+  await owner.call('agents.profile.save', { id: agent.id, expectedRevision: profile().revision, value: { ...profile(), projectIds: [added.id] } });
 
   // Turned off again: refused again, and what it holds stays.
   const current = profile();

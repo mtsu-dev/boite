@@ -707,9 +707,10 @@ the folder is one of the bot's own machine (`--machine` is refused for a
 bot), and the new project joins those entrusted to it at once, through the
 code that writes its `projects` setting: the line reads "Added and entrusted
 to you." and `--json` carries `entrusted: true`. A folder that was already a
-project is answered with `added: false` and is not entrusted: the bot would
-otherwise gain any project by naming its folder. The line then says to ask
-with `boite settings bot request projects +<name> --why <reason>`. A bot that
+project is answered with `added: false` and changes nothing: `entrusted`
+tells whether the bot already held it, and the bot gains no project by naming
+its folder. Only for one it does not hold, the line says to ask with
+`boite settings bot request projects +<name> --why <reason>`. A bot that
 already holds 50 projects is refused before the folder is added.
 
 With `--machine <name>`, the folder is one of another machine of the group,

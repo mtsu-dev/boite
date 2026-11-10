@@ -69,7 +69,8 @@ export interface AgentProjectAdded extends AgentProject {
   /**
    * Set when a bot asked: whether the project is among those entrusted to it.
    * One this call added is entrusted at once; one that was already a project
-   * is not, and the bot asks for it with a `projects` card.
+   * keeps whether the bot held it, and the bot asks for one it does not hold
+   * with a `projects` card.
    */
   entrusted?: boolean;
 }
@@ -90,7 +91,8 @@ export interface ThreadLink {
   /**
    * Set when a bot asked: whether the project is among those entrusted to it.
    * One this call added is entrusted at once; one that was already a project
-   * is not, and the bot asks for it with a `projects` card.
+   * keeps whether the bot held it, and the bot asks for one it does not hold
+   * with a `projects` card.
    */
   entrusted?: boolean;
 }
@@ -108,7 +110,8 @@ export interface AgentSpawn {
   /**
    * Set when a bot asked: whether the project is among those entrusted to it.
    * One this call added is entrusted at once; one that was already a project
-   * is not, and the bot asks for it with a `projects` card.
+   * keeps whether the bot held it, and the bot asks for one it does not hold
+   * with a `projects` card.
    */
   entrusted?: boolean;
 }
