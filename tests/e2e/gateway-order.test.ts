@@ -46,7 +46,7 @@ async function orderMode(width: number, height: number, name: string) {
     await page.click(`${claude} [data-testid=quota-order-spare]`);
     await page.waitFor(`document.querySelector('${claude} [data-testid=quota-order-spare]').checked`);
     // A finger reaches both arrows, and nothing is wider than the panel.
-    if (tray) expect(await page.evaluate(`[...document.querySelectorAll('${claude} [data-testid=quota-order-up]')].every(button => button.getBoundingClientRect().height >= 32)`)).toBe(true);
+    if (tray) expect(await page.evaluate(`[...document.querySelectorAll('${claude} [data-testid=quota-order-up],${claude} [data-testid=quota-order-down]')].every(button => button.getBoundingClientRect().height >= 32)`)).toBe(true);
     expect(await page.evaluate(`document.querySelector('${mode}').scrollWidth <= document.querySelector('${mode}').clientWidth`)).toBe(true);
     expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
     await capture(`boite-usage-order-mine-${name}.png`);

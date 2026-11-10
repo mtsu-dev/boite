@@ -155,7 +155,8 @@ export interface GatewayMoveOutcome {
 export type GatewayOrderStrategy = 'fill-first' | 'reset-first' | 'round-robin' | 'smart';
 
 /** The strategies the usage order writes; the two others are Douane's own to set. */
-export const GATEWAY_ORDER_STRATEGIES: readonly GatewayOrderStrategy[] = ['fill-first', 'reset-first'];
+export const GATEWAY_ORDER_STRATEGIES = ['fill-first', 'reset-first'] as const satisfies readonly GatewayOrderStrategy[];
+export type GatewayOrderChoice = typeof GATEWAY_ORDER_STRATEGIES[number];
 
 export interface GatewayOrderAccount {
   /** Douane's account id: the `gateway.entryId` of that account's limit row. */
@@ -198,7 +199,7 @@ export interface GatewayOrder {
 /** One provider's change: every field given is written whole, the others stay. */
 export interface GatewayOrderChange {
   providerId: string;
-  strategy?: GatewayOrderStrategy;
+  strategy?: GatewayOrderChoice;
   /** Every account id of the provider, once each, first to last. */
   ids?: string[];
   spareFamilies?: string[];

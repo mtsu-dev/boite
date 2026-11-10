@@ -115,6 +115,24 @@ test('a Douane that predates the account order adds nothing to the panel', async
   expect($('limits-glance-order')).toBeNull();
 });
 
+test('a Douane that did not answer keeps the button: order mode says why, and the next press asks again', async () => {
+  let down = true;
+  await glance('http://127.0.0.1:8787', (client) => {
+    const real = client.call.bind(client);
+    vi.spyOn(client, 'call').mockImplementation(((method: string, params: unknown) => method === 'subscriptionProxy.order' && down ? Promise.reject(new Error('Douane did not answer')) : real(method as never, params as never)) as never);
+  });
+  $<HTMLButtonElement>('limits-glance-order')!.click();
+  await settle();
+  expect($('limits-glance-order-error')!.textContent).toContain('Douane did not answer');
+  expect($('quota-order-provider')).toBeNull();
+  $<HTMLButtonElement>('limits-glance-order')!.click();
+  down = false;
+  $<HTMLButtonElement>('limits-glance-order')!.click();
+  await settle();
+  expect($('limits-glance-order-error')).toBeNull();
+  expect(accounts('claude').length).toBe(2);
+});
+
 test('a Douane that wants its management token says where to enter it', async () => {
   await glance('https://douane.example.test');
   $<HTMLButtonElement>('limits-glance-order')!.click();

@@ -87,6 +87,7 @@
         off.push(ws.onState((state) => {
           if (state !== 'ready') return;
           reader = quotaReader(endpointUrl, ws.core);
+          ordersAccounts = ws.core?.features?.gatewayOrder === true;
           if (visible) void refresh();
         }));
       }

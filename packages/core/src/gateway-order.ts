@@ -1,4 +1,4 @@
-import { GATEWAY_ORDER_STRATEGIES, subscriptionProxyOrigin, type GatewayOrder, type GatewayOrderAccount, type GatewayOrderProvider, type GatewayOrderStrategy, type SubscriptionProxy } from '@boite/contracts';
+import { GATEWAY_ORDER_STRATEGIES, subscriptionProxyOrigin, type GatewayOrder, type GatewayOrderAccount, type GatewayOrderChoice, type GatewayOrderProvider, type GatewayOrderStrategy, type SubscriptionProxy } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { douaneOf, gatewayCall, managementToken, record, scrub } from './douane-admin.ts';
 import { invalidParams, refused, RpcFailure } from './errors.ts';
@@ -95,7 +95,7 @@ function accepted(answer: { status: number; json: Record<string, unknown> }, ori
   throw refused(`Douane at ${origin} refused the change: ${scrub(typeof said === 'string' && said ? said : `HTTP ${answer.status}`, token ? [token] : [])}`);
 }
 
-interface Change { providerId: string; strategy?: GatewayOrderStrategy; ids?: string[]; spareFamilies?: string[] }
+interface Change { providerId: string; strategy?: GatewayOrderChoice; ids?: string[]; spareFamilies?: string[] }
 
 function validate(params: unknown): Change {
   const { providerId, strategy, ids, spareFamilies } = record(params) ?? {};
@@ -110,7 +110,7 @@ function validate(params: unknown): Change {
     throw invalidParams('spareFamilies must be lowercase family keys such as fable', { field: 'spareFamilies' });
   }
   if (strategy === undefined && ids === undefined && spareFamilies === undefined) throw invalidParams('give a strategy, ids or spareFamilies to write', { field: 'strategy' });
-  return { providerId, strategy: strategy as GatewayOrderStrategy | undefined, ids: ids as string[] | undefined, spareFamilies: spareFamilies as string[] | undefined };
+  return { providerId, strategy: strategy as GatewayOrderChoice | undefined, ids: ids as string[] | undefined, spareFamilies: spareFamilies as string[] | undefined };
 }
 
 /** One write at a time per core: a settings map is read, changed and written back whole. */

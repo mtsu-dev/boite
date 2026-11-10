@@ -48,13 +48,14 @@
       if (read === reads) { usage = null; usageError = errorText(failure); }
     }
   }
-  // Read when the panel opens: a Douane without the account order shows no button at all.
+  // Read when the panel opens: a Douane without the account order shows no button at all,
+  // and one that did not answer keeps it, so that order mode says why and a press asks again.
   $effect(() => { if (usageOrder && owner) void readUsage(); });
   /** A paired device cannot ask Douane: its button follows the Douane accounts among its rows. */
   let offered = $derived(usageOrder !== undefined && (owner
-    ? usage !== null && (usage.status === 'needsToken' || (usage.status === 'ready' && usage.providers.some((provider) => provider.accounts.length > (provider.providerId === 'claude' ? 0 : 1))))
+    ? usageError !== '' || usage !== null && (usage.status === 'needsToken' || (usage.status === 'ready' && usage.providers.some((provider) => provider.accounts.length > (provider.providerId === 'claude' ? 0 : 1))))
     : (rows ?? []).some((row) => row.gateway?.kind === 'douane')));
-  $effect(() => { if (!offered && !usageError) ordering = false; });
+  $effect(() => { if (!offered) ordering = false; });
   function toggleOrder() {
     ordering = !ordering;
     if (ordering) void readUsage();
