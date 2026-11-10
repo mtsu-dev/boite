@@ -6,9 +6,14 @@ import { isTailnetAddress, isTailnetV6 } from '../group/addresses.ts';
  * proxy on this machine connects from 127.0.0.1 too, so the peer address says
  * nothing; the name it forwards is the public one.
  */
+/** The name a `Host` header gives, lowercased, without its port or IPv6 brackets. */
+export function hostName(header: string): string {
+  return header.trim().toLowerCase().replace(/:\d+$/, '').replace(/^\[|\]$/g, '');
+}
+
 export function isLoopbackHost(header: string | null): boolean {
   if (header === null) return false;
-  const name = header.trim().toLowerCase().replace(/:\d+$/, '').replace(/^\[|\]$/g, '');
+  const name = hostName(header);
   return name === '127.0.0.1' || name === 'localhost' || name === '::1';
 }
 
@@ -32,12 +37,18 @@ export const RELAYED_LINK_HEADER = 'x-boite-relayed-link';
  * peer comes through WireGuard, counted only while this machine is on a
  * tailnet: 100.64.0.0/10 is also a carrier's range. A loopback peer is this
  * machine: its own app, or a TLS terminator here (tailscale serve, a reverse
- * proxy, a tunnel) whose page was HTTPS. A socket another member relays counts
- * only when its own hop was encrypted too (`relayedLink`).
+ * proxy, a tunnel) whose page was HTTPS, or a forwarder of a name in
+ * `encryptedHosts`: this machine's tailnet address published by
+ * `systemd-socket-proxyd`, or the HTTPS public address a proxy serves, which a
+ * desktop app or another member dials without an HTTPS page of its own. A
+ * socket another member relays counts only when its own hop was encrypted too
+ * (`relayedLink`).
  */
-export function encryptedLink(address: string | null, host: string | null, origin: string | null, relayedLink: string | null = null, onTailnet = true): boolean {
+export function encryptedLink(address: string | null, host: string | null, origin: string | null, relayedLink: string | null = null, onTailnet = true, encryptedHosts: readonly string[] = []): boolean {
   if (address === null || (relayedLink !== null && relayedLink !== 'encrypted')) return false;
-  if (isLoopbackAddress(address)) return isLoopbackHost(host) || (origin?.toLowerCase().startsWith('https://') ?? false);
+  if (isLoopbackAddress(address)) {
+    return isLoopbackHost(host) || (origin?.toLowerCase().startsWith('https://') ?? false) || (host !== null && encryptedHosts.includes(hostName(host)));
+  }
   const bare = address.toLowerCase().replace(/^::ffff:/, '');
   return onTailnet && (isTailnetAddress(bare) || isTailnetV6(bare));
 }

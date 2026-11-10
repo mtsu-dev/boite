@@ -70,7 +70,10 @@ Pending requests stay in the question dock above the composer, independently
 of history paging. The timeline keeps only metadata and a receipt. The field
 never becomes a composer draft. A value can travel only over loopback,
 Tailscale or an HTTPS link; a phone on plain HTTP can decline but cannot send a
-value. A group relay must also attest to its client's encrypted hop.
+value. A forwarder on the core's machine (`systemd-socket-proxyd` on the tailnet
+address, a proxy serving the HTTPS public address) hands over a loopback socket:
+the core counts it when the client dialled its tailnet address or the HTTPS
+public address's name. A group relay must also attest to its client's encrypted hop.
 
 Agents can ask for and use refs only in their own conversation. Owners and
 paired devices can read pending metadata and answer cards, with the encrypted
