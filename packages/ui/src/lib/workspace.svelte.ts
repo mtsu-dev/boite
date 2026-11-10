@@ -316,7 +316,7 @@ export class Workspace {
 
   restoreProfile(machine: Machine): void {
     const saved = profiles()[profileKey(machine)];
-    const name = profileName(saved, !isThisPC(machine) && readEnvironments().find((e) => e.url === machine.id)?.named === true);
+    const name = profileName(saved, !isThisPC(machine) && namedByUser(readEnvironments().find((e) => e.url === machine.id)));
     if (name) machine.label = name;
     if (saved?.icon && machineIcons.includes(saved.icon)) machine.icon = saved.icon;
     if (isThisPC(machine) && ['My computer', 'This computer'].includes(machine.label)) machine.label = strings.machines.local;
