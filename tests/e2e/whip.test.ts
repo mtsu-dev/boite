@@ -211,7 +211,18 @@ test('Whip desktop controls animate, release and respect reduced motion', async 
   await page.waitFor(`document.querySelector('[data-testid=whip-canvas]')`);
   await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
   await page.waitFor(`document.querySelector('[data-testid=whip-canvas]') === null`);
+  // Reduced motion greys the control: a click throws nothing until the setting changes back.
+  await page.waitFor(`document.querySelector('${button}').getAttribute('aria-disabled') === 'true'`);
+  await page.screenshot(join(import.meta.dir, '.artifacts', 'whip-reduced-desktop.png'));
+  expect(await page.evaluate<boolean>(`(async () => {
+    const control = document.querySelector('${button}');
+    control.click();
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return control.getAttribute('aria-pressed') === 'false' && !document.querySelector('[data-testid=whip-canvas]')
+      && !document.getElementById('app').getAnimations().length;
+  })()`)).toBe(true);
   await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
+  await page.waitFor(`document.querySelector('${button}').getAttribute('aria-disabled') === 'false'`);
   await page.evaluate(`globalThis.__boiteTest.setTheme('light')`);
   expect(await page.evaluate(`getComputedStyle(document.getElementById('app')).transform`)).toBe('none');
 }, 45_000);

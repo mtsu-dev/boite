@@ -1,5 +1,6 @@
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, expect, test, vi } from 'vitest';
+import { strings } from '../lib/strings';
 import { whip } from '../lib/whip.svelte';
 import { playCrack } from '../lib/whip/crack';
 import WhipButton from './WhipButton.svelte';
@@ -85,4 +86,35 @@ test('a throw during a fall replaces the rope and stays held after the old fall 
   expect(whip.held).toBe(true);
   expect(document.querySelector('[data-testid=whip-canvas]')).not.toBeNull();
   expect(onerror).not.toHaveBeenCalled();
+});
+
+test('reduced motion greys the control and says why, then gives it back when the setting changes', () => {
+  const original = window.matchMedia;
+  const queries = new Map<string, EventTarget & { matches: boolean }>();
+  let reduce = true;
+  window.matchMedia = ((media: string) => {
+    if (!queries.has(media)) queries.set(media, Object.assign(new EventTarget(), { media, matches: false, onchange: null, addListener() {}, removeListener() {} }));
+    const query = queries.get(media)!;
+    query.matches = reduce && media.includes('prefers-reduced-motion: reduce');
+    return query;
+  }) as unknown as typeof window.matchMedia;
+  cleanups.push(async () => { window.matchMedia = original; });
+  const { button, click } = toy();
+  expect(button.getAttribute('aria-disabled')).toBe('true');
+  expect(button.title).toBe(strings.experiments.whip.off);
+  click();
+  expect(whip.held).toBe(false);
+  expect(playCrack).not.toHaveBeenCalled();
+  expect(document.querySelector('[data-testid=whip-canvas]')).toBeNull();
+  reduce = false;
+  flushSync(() => {
+    for (const query of queries.values()) {
+      query.matches = false;
+      query.dispatchEvent(new Event('change'));
+    }
+  });
+  expect(button.getAttribute('aria-disabled')).toBe('false');
+  expect(button.title).toBe(strings.experiments.whip.action);
+  click();
+  expect(whip.held).toBe(true);
 });
