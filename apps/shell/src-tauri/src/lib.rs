@@ -25,6 +25,7 @@ mod quota_window;
 mod resident;
 mod shell_log;
 mod update_stop;
+mod update_throttle;
 mod tray;
 mod updater;
 mod watchdog;
