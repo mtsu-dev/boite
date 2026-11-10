@@ -8,7 +8,7 @@ export const strings = {
       hint: 'An animated whip follows your pointer or finger. Flick to crack it, click or tap to drop it',
       action: 'Throw the whip',
       drop: 'Drop the whip',
-      still: 'Crack the whip. No animation: your system asks for reduced motion'
+      off: 'The whip needs animations, which are off in your system settings (Windows: Accessibility > Visual effects > Animation effects)'
     },
     themeGrain: {
       title: 'Grain theme',

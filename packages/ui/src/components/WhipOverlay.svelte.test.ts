@@ -88,20 +88,33 @@ test('a throw during a fall replaces the rope and stays held after the old fall 
   expect(onerror).not.toHaveBeenCalled();
 });
 
-test('reduced motion keeps the crack: the click sounds it in place, with no rope and no shake', async () => {
+test('reduced motion greys the control and says why, then gives it back when the setting changes', () => {
   const original = window.matchMedia;
-  window.matchMedia = ((media: string) => Object.assign(new EventTarget(), {
-    media, matches: media.includes('prefers-reduced-motion: reduce'), onchange: null, addListener() {}, removeListener() {}
-  })) as unknown as typeof window.matchMedia;
+  const queries = new Map<string, EventTarget & { matches: boolean }>();
+  let reduce = true;
+  window.matchMedia = ((media: string) => {
+    if (!queries.has(media)) queries.set(media, Object.assign(new EventTarget(), { media, matches: false, onchange: null, addListener() {}, removeListener() {} }));
+    const query = queries.get(media)!;
+    query.matches = reduce && media.includes('prefers-reduced-motion: reduce');
+    return query;
+  }) as unknown as typeof window.matchMedia;
   cleanups.push(async () => { window.matchMedia = original; });
-  const { button, click, animate, onerror } = toy();
+  const { button, click } = toy();
+  expect(button.getAttribute('aria-disabled')).toBe('true');
+  expect(button.title).toBe(strings.experiments.whip.off);
   click();
-  expect(playCrack).toHaveBeenCalledOnce();
-  expect(button.title).toBe(strings.experiments.whip.still);
-  expect(button.classList.contains('cracked')).toBe(true);
   expect(whip.held).toBe(false);
+  expect(playCrack).not.toHaveBeenCalled();
   expect(document.querySelector('[data-testid=whip-canvas]')).toBeNull();
-  await Promise.resolve();
-  expect(animate).not.toHaveBeenCalled();
-  expect(onerror).not.toHaveBeenCalled();
+  reduce = false;
+  flushSync(() => {
+    for (const query of queries.values()) {
+      query.matches = false;
+      query.dispatchEvent(new Event('change'));
+    }
+  });
+  expect(button.getAttribute('aria-disabled')).toBe('false');
+  expect(button.title).toBe(strings.experiments.whip.action);
+  click();
+  expect(whip.held).toBe(true);
 });
