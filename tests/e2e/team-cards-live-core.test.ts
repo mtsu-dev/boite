@@ -40,6 +40,8 @@ test('a bot\'s boite team propose card offers Create the team in French, and acc
     await waitFor(() => harness.core.journal.listTurns(threadId).some(turn => turn.status === 'done'), 10_000);
     page = await BrowserPage.launch({ url: `${harness.url}/?token=${harness.token}`, experiments: ['resident-agents', 'teams'], windowSize: { width: 1440, height: 900 } });
     await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `try { localStorage.setItem('boite.locale', 'fr'); } catch {}` });
+    // The page keeps the link's key only once its core has answered: a reload before that boots with no key, on the pairing screen.
+    await page.waitFor(`JSON.parse(localStorage.getItem('boite.core') ?? 'null')?.token === ${JSON.stringify(harness.token)}`);
     await page.reload();
     await page.waitFor(`document.documentElement.lang === 'fr'`);
     await page.click('[data-testid=view-agents]');
