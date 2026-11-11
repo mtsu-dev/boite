@@ -2065,7 +2065,7 @@ test('the permission chip reads its mode in a word, offers No limits beside Auto
   query<HTMLButtonElement>('[data-testid=composer-mode]').click();
   await waitFor(() => document.querySelector('[data-testid=composer-mode-menu]') !== null);
   // Each mode is a word and one plain line; the live legacy mode keeps a row of its own at the end until another is picked.
-  expect(modeRows()).toEqual([['No limits', 'Runs everything and skips your hooks'], ['Auto', 'Runs everything without asking'], ['Edit freely', 'Edits files on its own, asks before commands'], ['Ask first', 'Asks before it edits a file or runs a command'], ['Auto-deny', 'Refuses anything that needs asking']]);
+  expect(modeRows()).toEqual([['No limits', 'Approves every request, without exception'], ['Auto', 'Runs everything without asking'], ['Edit freely', 'Edits files on its own, asks before commands'], ['Ask first', 'Asks before it edits a file or runs a command'], ['Auto-deny', 'Refuses anything that needs asking']]);
   expect(query('[data-testid=composer-mode-menu] [aria-checked=true]').getAttribute('data-value')).toBe('dontAsk');
   for (const [mode, word] of [['yolo', 'No limits'], ['bypassPermissions', 'Auto'], ['acceptEdits', 'Edit freely'], ['default', 'Ask first']]) {
     if (!document.querySelector('[data-testid=composer-mode-menu]')) query<HTMLButtonElement>('[data-testid=composer-mode]').click();

@@ -159,7 +159,11 @@ for (const phone of [true, false]) {
       await page.waitFor(`${STORE}?.connection === 'ready'`, 30_000);
       const open = async (id: string): Promise<void> => {
         if (phone) await mobileAction(page, 'mobile-conversations');
-        await page.click(phone ? `[data-testid=mobile-thread-${id}]` : `[data-thread-id="${id}"]`);
+        const row = phone ? `[data-testid=mobile-thread-${id}]` : `[data-thread-id="${id}"]`;
+        // A project card folds its quiet threads under "Show N more": the reader unfolds it to reach an older one.
+        await page.waitFor(`!!document.querySelector('${row}') || !!document.querySelector('[data-testid=project-more][aria-expanded=false]')`);
+        await page.evaluate(`document.querySelector('${row}') || document.querySelectorAll('[data-testid=project-more][aria-expanded=false]').forEach((button) => button.click())`);
+        await page.click(row);
         // The short thread holds no message; the long one is open once its rows are drawn.
         await page.waitFor(`${STORE}.openThread?.id === '${id}' && ${STORE}.loadingThreadId === null${id === long ? " && !!document.querySelector('[data-testid=timeline] [data-mid]')" : ''}`, 60_000);
       };

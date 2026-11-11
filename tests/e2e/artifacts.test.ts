@@ -270,7 +270,7 @@ test('agent deliverables and file links open in chat on desktop and paired phone
       // An attached picture opens full size from its name, over the whole window.
       await page.evaluate('Array.from(document.querySelectorAll("[data-testid=artifact-launch]")).find(b => b.textContent.includes("preview.png")).click()');
       await page.waitFor('document.querySelector("[data-testid=image-viewer] img")?.naturalWidth === 192');
-      await page.evaluate('Promise.all(document.getAnimations().map(a => a.finished.catch(() => {})))');
+      await page.evaluate('Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline).map(a => a.finished.catch(() => {})))');
       await page.screenshot(join(import.meta.dir, '.artifacts', `artifacts-viewer-${mobile ? 'phone' : 'desktop'}.png`));
       await page.click('[data-testid=image-viewer-close]');
       await page.waitFor('document.querySelector("[data-testid=image-viewer]") === null');

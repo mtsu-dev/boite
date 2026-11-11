@@ -112,9 +112,15 @@ test('the bot column takes the thread list\'s place without moving it, and folds
   await page.waitFor(`document.querySelector('${id('context-menu')} [data-value="bot"]')`);
   const switching = await framesAfter(`${id('context-menu')} [data-value="bot"]`, '.agents-rail');
   expect(switching.length).toBeGreaterThan(2);
-  expect([...new Set(switching.map(f => `${f.rail} ${f.card}`))]).toEqual([`${threads.rail![0]} ${threads.card![0]}`]);
   await page.settleAnimations();
-  expect(await page.evaluate(layout)).toEqual(threads);
+  // The bot column keeps to 280 px when the thread list is wider, so the conversation keeps its reading width:
+  // it starts where the list starts, the card keeps the same gap after it, and no frame draws them anywhere else.
+  const bots = await page.evaluate<{ rail?: number[]; card?: number[]; fold: boolean }>(layout);
+  expect(bots.rail![0]).toBe(threads.rail![0]!);
+  expect(bots.rail![2]).toBeLessThanOrEqual(Math.min(threads.rail![2]!, 280));
+  expect(bots.card![0]! - bots.rail![0]! - bots.rail![2]!).toBe(threads.card![0]! - threads.rail![0]! - threads.rail![2]!);
+  expect([bots.card![1], bots.card![3], bots.fold]).toEqual([threads.card![1], threads.card![3], threads.fold]);
+  expect([...new Set(switching.map(f => `${f.rail} ${f.card}`))]).toEqual([`${bots.rail![0]} ${bots.card![0]}`]);
   // The title bar's fold hides the bot column as it hides the thread list; unfolding slides it in from the window's edge.
   await page.click(id('sidebar-toggle'));
   await page.waitFor(`getComputedStyle(document.querySelector('.agents-rail')).display === 'none'`);
@@ -122,7 +128,7 @@ test('the bot column takes the thread list\'s place without moving it, and folds
   expect(Math.min(...unfolding.map(f => f.rail))).toBeLessThan(threads.rail![0]!);
   await page.waitFor(`getComputedStyle(document.querySelector('.agents-rail')).display !== 'none'`);
   await page.settleAnimations();
-  expect(await page.evaluate(layout)).toEqual(threads);
+  expect(await page.evaluate(layout)).toEqual(bots);
 }, 60_000);
 
 test('a new agent opens its own thread, where its introduction runs', async () => {
@@ -185,7 +191,9 @@ test('Run now on a routine opens a "Routine · <name>" turn, and the column show
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const routine = await owner.call('agents.routine.save', { value: { agentId: agent.id, name: 'Morning check', prompt: 'Look at the landing page build.',
     schedule: { kind: 'daily', time: '09:00', timezone }, enabled: true, nextAt: null, lastTurnId: null, lastScheduledAt: null } });
-  await page.waitFor(`document.querySelector('${id('bot-column-live')}')?.textContent.includes('Morning check')`);
+  // The column's head keeps one status line; the next wake is the desk's, beside the conversation.
+  if (!(await page.evaluate(`!!document.querySelector('${id('agent-desk')}')`))) await page.click(id('agent-desk-toggle'));
+  await page.waitFor(`document.querySelector('${id('desk-schedule')}')?.textContent.includes('Morning check')`);
   await page.click(id('agent-menu'));
   await page.click('[data-value="settings"]');
   await page.waitFor(`document.querySelector('${id(`routine-${routine.id}`)} ${id('routine-run')}')?.disabled === false`);
@@ -325,6 +333,9 @@ test('a bot\'s menu sits in its column on a desktop and on its row\'s long press
   /** Opens the bot from its picture in the rail, then its column's menu. */
   const columnMenu = async (agentId: string) => {
     await openRailBot(page, agentId);
+    // A docked Desk takes the bot column's place (the column is lent to it); closed, the column comes back with its menu.
+    await page.evaluate(`document.querySelector('${id('right-panel')} ${id('panel-close')}')?.click()`);
+    await page.waitFor(`getComputedStyle(document.querySelector('.agents-rail')).display !== 'none'`);
     await page.click(id('bot-column-menu'));
     await page.waitFor(`document.querySelector('${column} [data-value]')`);
   };
@@ -344,10 +355,10 @@ test('a bot\'s menu sits in its column on a desktop and on its row\'s long press
   await page.evaluate(`document.querySelector('${id('right-panel')} ${id('panel-close')}')?.click()`);
   await page.waitFor(`document.querySelectorAll('${pins}').length >= 3 && document.querySelector('${railBot(orion.id)}') && document.querySelector('${railBot(vega.id)}')`);
 
-  // The thread menu's groups, cut to what a bot has, then its brain and the engine; alone in no group, it has nowhere to move.
+  // The thread menu's groups, cut to what a bot has, then its brain and the engine, Archive last; alone in no group, it has nowhere to move.
   const last = (await page.evaluate<string[]>(order)).filter(agentId => agentId !== orion.id && agentId !== vega.id).at(-1)!;
   await columnMenu(last);
-  expect(await page.evaluate(columnItems)).toEqual(['open', 'pin', 'pause', 'archive', 'rename', 'edit', 'copy', 'brain', 'engine']);
+  expect(await page.evaluate(columnItems)).toEqual(['open', 'rename', 'pin', 'edit', 'pause', 'copy', 'brain', 'engine', 'archive']);
   // Its conversation is the one open.
   expect(await page.evaluate(`document.querySelector('${column} [data-value="open"]').disabled`)).toBe(true);
   await capture('menu-desktop.png');
@@ -434,7 +445,7 @@ test('a bot\'s menu sits in its column on a desktop and on its row\'s long press
     await page.click(id('agent-back'));
     await page.waitFor(`document.querySelector('.agents-rail')?.getBoundingClientRect().width === ${PHONE.width} && document.querySelector('${id(`agent-entry-${last}`)}')?.getBoundingClientRect().width > 0`);
     await hold(last);
-    expect(await page.evaluate(items)).toEqual(['pin', 'rename', 'edit', 'pause', 'archive']);
+    expect(await page.evaluate(items)).toEqual(['rename', 'pin', 'edit', 'pause', 'archive']);
     expect(await page.evaluate(`document.querySelector('.agents-main')?.getBoundingClientRect().width > 0`)).toBe(false);
     expect(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true);
     await capture('menu-phone.png');

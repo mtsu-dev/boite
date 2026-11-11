@@ -1,5 +1,6 @@
 import { openLimitsTab } from './lib/mobile.ts';
 import { afterAll, beforeAll, expect, test } from 'bun:test';
+import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp.ts';
 import { startDevUi } from './lib/ui.ts';
@@ -61,12 +62,18 @@ test('limits identify the owning machine in the desktop glance and desktop and p
       await page.click('[data-testid="limits-glance-page"]');
     }
     await page.waitFor(`document.querySelector('[data-testid="limits-page"]')`);
-    const heading = width === 1280 ? '[data-testid="limits-page"] h1' : '[data-testid="mobile-settings-header"] h1';
-    expect((await page.text(heading)).trim()).toBe('Account limits for Builder');
+    // On the desktop the settings bar carries the page's title and, under it, the
+    // machine its settings apply on; the page's own heading steps aside.
+    const heading = width === 1280 ? '[data-testid="settings-scope"]' : '[data-testid="mobile-settings-header"] h1';
+    if (width === 1280) {
+      expect((await page.text('[data-testid="settings-crumb"] h1')).trim()).toBe('Limits');
+      expect((await page.text(heading)).trim()).toBe('Agent settings apply on Builder');
+    } else expect((await page.text(heading)).trim()).toBe('Account limits for Builder');
     expect(await page.evaluate(`document.querySelector('${heading}')?.getClientRects().length > 0`)).toBe(true);
     // A renamed machine remains identifiable even on a narrow phone.
     await page.evaluate(`globalThis.__boiteTest.workspace.customize('http://builder.test', 'Build server for shared development projects')`);
     await page.waitFor(`document.querySelector('${scope}')?.textContent.includes('Build server for shared development projects')`);
+    await page.waitFor(`document.querySelector('${heading}')?.textContent.includes('Build server for shared development projects')`);
     expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
     await capture(`quota-remote-page-${width}.png`);
     await page.evaluate(`(async () => {
@@ -217,7 +224,8 @@ for (const width of [1280, 390]) {
     await page.click('[data-testid="nav-settings"]');
     await openLimitsTab(page);
     await page.waitFor(`document.querySelector('[data-testid="limits-refresh"]')?.getAttribute('aria-busy') === 'false'`);
-    expect(await page.evaluate(`document.querySelector('[data-testid="usage-limit-provider"][data-account-id="a-codex"] strong').textContent`)).toBe('Default');
+    // The adopted "Default" login reads as the address the provider reported for it.
+    expect(await page.evaluate(`document.querySelector('[data-testid="usage-limit-provider"][data-account-id="a-codex"] strong').textContent`)).toBe('you@example.com');
     const tracked = '[data-testid="tracked-account"][data-account-id="a-codex"]';
     await page.click(`${tracked} [data-testid="account-rename"]`);
     await page.waitFor(`document.activeElement?.getAttribute('data-testid') === 'account-name'`);
@@ -256,8 +264,9 @@ test('the tray follows account renames immediately and keeps subscriptions separ
   await page.send('Emulation.setDeviceMetricsOverride', { width: 380, height: 650, deviceScaleFactor: 1, mobile: false });
   await page.evaluate(`localStorage.removeItem('boite.quotas')`);
   await page.navigate(`${origin}/?fake=1&view=quotas&quotaExtras=1`);
-  await page.waitFor(`document.querySelector('[data-testid="quota-refresh"]')?.getAttribute('aria-busy') === 'false' && document.querySelector('[data-testid="quota-provider"][data-account-id="a-codex"] .name')?.textContent === 'Default'`);
-  expect(await page.evaluate(`document.querySelector('[data-testid="quota-provider"][data-account-id="a-codex"] .name').textContent`)).toBe('Default');
+  await page.waitFor(`document.querySelector('[data-testid="quota-refresh"]')?.getAttribute('aria-busy') === 'false' && document.querySelector('[data-testid="quota-provider"][data-account-id="a-codex"] .name')?.textContent === 'you@example.com'`);
+  // The adopted "Default" login reads as its address until it is renamed.
+  expect(await page.evaluate(`document.querySelector('[data-testid="quota-provider"][data-account-id="a-codex"] .name').textContent`)).toBe('you@example.com');
   await page.evaluate(`(async () => {
     const { FakeClient } = await import('/src/lib/fake-client.ts');
     const call = FakeClient.prototype.call;
@@ -407,6 +416,10 @@ test('the same popup shares priorities across the app, tray and phone through th
       };
       return { at: date.getTime(), label: new Intl.DateTimeFormat('en', options).format(date) };
     })`);
+    // Before its first project the desktop draws no list column, and the limits line sits at that column's foot.
+    const projectDir = join(harness.dataDir, 'project');
+    mkdirSync(projectDir);
+    await client.call('projects.add', { path: projectDir, name: 'Limits' });
     const names = ['Personal', 'Work', 'Research', 'Studio', 'Travel'];
     const accounts = [];
     for (const label of names) accounts.push(await client.call('accounts.add', { providerId: 'echo', label, useDefaultLocation: false }));
@@ -420,6 +433,9 @@ test('the same popup shares priorities across the app, tray and phone through th
     harness.core.quotas.list = async () => structuredClone(rows);
     const endpoint = `core=${encodeURIComponent(harness.url)}&token=${encodeURIComponent(harness.token)}`;
     await page.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+    // The phone's settings screen left by the scenario before is a history entry the desktop
+    // width pops; a navigation started before that pop landed would be aborted by it.
+    await page.waitFor(`!history.state?.boiteOverlay`);
     await page.navigate(`${origin}/?${endpoint}`);
     await page.click('[data-testid="confirm-ok"]');
     await page.click('[data-testid="nav-limits"]');

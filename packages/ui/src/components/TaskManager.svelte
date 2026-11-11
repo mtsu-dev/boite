@@ -14,7 +14,7 @@
   import Menu from './Menu.svelte';
   import ProviderLogo from './ProviderLogo.svelte';
   import StatusMark from './StatusMark.svelte';
-  import { threadTone } from '../lib/thread-state';
+  import { threadTone } from '../lib/status-tone';
 
   let { store, onopenthread }: { store: Store; onopenthread?: () => void } = $props();
   // This computer first. The agents listed are those of the machine picked, at first

@@ -26,10 +26,10 @@ test('desktop and paired phone upload files, preserve bytes and show downloadabl
       if (mobile) {
         await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
         await page.click('[data-testid=composer-options]');
-        await page.waitFor('document.querySelector("[data-testid=composer-options-attach]")');
-        expect(await page.text('[data-testid=composer-options-attach]')).toContain('Attach files');
+        await page.waitFor('document.querySelector("[data-testid=composer-attach]")');
+        expect(await page.text('[data-testid=composer-attach]')).toContain('Attach files');
         await page.send('Page.setInterceptFileChooserDialog', { enabled: true });
-        await page.click('[data-testid=composer-options-attach]');
+        await page.click('[data-testid=composer-attach]');
         await page.waitFor('!document.querySelector("[data-testid=composer-options-sheet]")');
       }
       const name = mobile ? 'project-notes.md' : 'requirements.pdf';

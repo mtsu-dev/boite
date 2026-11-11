@@ -22,7 +22,9 @@ for (const width of [1280, 390]) {
         return thread.id;
       })()`);
       if (width < 720) {
+        // The phone's archive is a row of the General page, under Settings' App group.
         await mobileAction(page, 'mobile-settings');
+        await page.click('[data-testid=mobile-settings-home] [data-testid=settings-tab-general]');
         await page.click('[data-testid=mobile-settings-archived]');
       } else {
         await page.click('[data-testid=nav-settings]');

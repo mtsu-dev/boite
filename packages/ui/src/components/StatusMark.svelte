@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { StatusMarkProps } from '../lib/thread-state';
+  import type { StatusMarkProps } from '../lib/status-tone';
 
   /**
    * The ring every status wears: threads, agents, workflow runs and steps.

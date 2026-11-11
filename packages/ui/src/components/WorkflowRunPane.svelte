@@ -12,7 +12,7 @@
   import WorkflowDetail from './WorkflowDetail.svelte';
   import WorkflowGraph from './WorkflowGraph.svelte';
   import StatusMark from './StatusMark.svelte';
-  import { workflowTone } from '../lib/thread-state';
+  import { workflowTone } from '../lib/status-tone';
 
   /** One run inside the subagents surface: its graph, and one step's detail over it once picked. */
   let { store, run, onback }: { store: Store; run: WorkflowRun; onback: () => void } = $props();

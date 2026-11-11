@@ -5,6 +5,16 @@ import { startUi } from './lib/ui.ts';
 import { mobileAction } from './lib/mobile.ts';
 
 let server: { close(): Promise<void> };
+
+/**
+ * Move to project sits in the menu's named group ("Move to a project or a bot", `more`) when the group holds
+ * more than one row, on the first level otherwise: walk to it, wait for the row and leave it shown.
+ */
+async function openMove(page: BrowserPage, menu: string): Promise<void> {
+  await page.waitFor(`document.querySelector('${menu} [data-value=move], ${menu} [data-value=more]')`);
+  if (!await page.evaluate<boolean>(`!!document.querySelector('${menu} [data-value=move]')`)) await page.click(`${menu} [data-value=more]`);
+  await page.waitFor(`document.querySelector('${menu} [data-value=move]') && !document.querySelector('${menu} [data-value=move]').disabled`);
+}
 let port: number;
 beforeAll(async () => {
   port = await freePort();
@@ -55,10 +65,15 @@ for (const width of [1280, 390]) {
       await page.click('[data-testid=undo-action]');
       await page.waitFor(`globalThis.__boiteTest.workspace.active.threads.some(t => t.id === ${JSON.stringify(idleId)})`);
       if (width < 720) {
-        // A phone's row menu keeps rename, which reaches the title editor; moving a thread is a desktop action.
+        // A phone's row menu keeps rename, which reaches the title editor, and the move; the path stays on the desktop.
         await page.click('[data-testid=mobile-thread-menu-t-bench]');
         await page.waitFor(`document.querySelector('${menu} [data-value=rename]')`);
-        expect(await page.evaluate(`document.querySelector('${menu} [data-value=move]') === null`)).toBe(true);
+        expect(await page.evaluate(`document.querySelector('${menu} [data-value=copy]') === null`)).toBe(true);
+        await openMove(page, menu);
+        expect(await page.evaluate(`document.querySelector('${menu} [data-value=copy]') === null`)).toBe(true);
+        // Back to the first level when the move was in the group's second level.
+        if (await page.evaluate<boolean>(`!!document.querySelector('${menu} [data-value=back]')`)) await page.click(`${menu} [data-value=back]`);
+        await page.waitFor(`document.querySelector('${menu} [data-value=rename]')`);
         await page.click(`${menu} [data-value=rename]`);
         await page.waitFor(`document.querySelector('[data-testid=thread-rename-input]')`);
         await page.type('[data-testid=thread-rename-input]', 'Restored thread from phone');
@@ -129,6 +144,7 @@ test('Move to project opens the project search: each name on one line, inside th
     // The sidebar row's menu, then Move to project.
     await page.evaluate(`(() => { const row = document.querySelector('[data-thread-id="t-descriptors"]'); const r = row.getBoundingClientRect();
       row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.left + 40, clientY: r.top + 10 })); })()`);
+    await openMove(page, '[data-testid=context-menu]');
     await page.click('[data-testid=context-menu] [data-value=move]');
     await page.waitFor(`document.querySelector('${picker}') && !document.querySelector('[data-testid=context-menu]')`);
     await page.settleAnimations();
@@ -158,6 +174,7 @@ test('Move to project opens the project search: each name on one line, inside th
     await page.click('[data-thread-id="t-descriptors"]');
     await page.waitFor(`globalThis.__boiteTest.workspace.active.openThread?.id === 't-descriptors'`);
     await page.click('[data-testid=thread-menu-trigger]');
+    await openMove(page, '[role=menu]:not(.closing)');
     await page.click('[role=menu]:not(.closing) [data-value=move]');
     await page.waitFor(`document.querySelector('${picker}') && document.activeElement?.dataset.testid === 'move-project-search'`);
     await key('ArrowDown', 40);
@@ -173,6 +190,7 @@ test('Move to project opens the project search: each name on one line, inside th
 
     // A phone's width: the same dialog, under the top edge and inside the window.
     await page.click('[data-testid=thread-menu-trigger]');
+    await openMove(page, '[role=menu]:not(.closing)');
     await page.click('[role=menu]:not(.closing) [data-value=move]');
     await page.waitFor(`document.querySelector('${picker}')`);
     await page.send('Emulation.setDeviceMetricsOverride', { width: 360, height: 760, deviceScaleFactor: 1, mobile: true });

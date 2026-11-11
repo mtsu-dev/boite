@@ -5,6 +5,22 @@ import { BrowserPage, freePort } from './lib/cdp.ts';
 import { startUi } from './lib/ui.ts';
 
 let server: { close(): Promise<void> };
+
+/** The phone's archive is a row of the General page, under Settings' App group. */
+async function openPhoneArchive(page: BrowserPage): Promise<void> {
+  await mobileAction(page, 'mobile-settings');
+  await page.waitFor(`document.querySelector('[data-testid=mobile-settings-home] [data-testid=settings-tab-general]')`);
+  await page.click('[data-testid=mobile-settings-home] [data-testid=settings-tab-general]');
+  await page.waitFor(`document.querySelector('[data-testid=mobile-settings-archived]')`);
+  await page.click('[data-testid=mobile-settings-archived]');
+}
+
+/** Delete waits in an archived row's menu, beside the row's one action (Restore). */
+async function deleteArchived(page: BrowserPage, threadId: string): Promise<void> {
+  await page.click(`[data-testid=archived-list] [data-testid="archived-menu-${threadId}"]`);
+  await page.waitFor(`document.querySelector('[data-testid="archived-menu-${threadId}-menu"]:not(.closing) [data-testid=archived-delete]')`);
+  await page.click(`[data-testid="archived-menu-${threadId}-menu"] [data-testid=archived-delete]`);
+}
 let port: number;
 
 beforeAll(async () => {
@@ -29,9 +45,7 @@ for (const width of [1280, 390]) {
         }
       })()`);
       if (width < 720) {
-        await mobileAction(page, 'mobile-settings');
-        await page.waitFor(`document.querySelector('[data-testid=mobile-settings-archived]')`);
-        await page.click('[data-testid=mobile-settings-archived]');
+        await openPhoneArchive(page);
         await page.waitFor(`document.querySelectorAll('[data-testid=archived-list] li').length === 7`);
       } else {
         await page.click('[data-testid=nav-settings]');
@@ -55,7 +69,7 @@ for (const width of [1280, 390]) {
       expect(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true);
       if (width >= 720) {
         const drawer = '[data-testid=archived-list]';
-        await page.click(`${drawer} [data-testid=archived-delete]`);
+        await deleteArchived(page, await page.evaluate<string>(`document.querySelector('${drawer} li').dataset.threadId`));
         await page.waitFor(`document.querySelectorAll('${drawer} li').length === 6`);
         expect(await page.evaluate(`document.querySelector('[data-testid=confirm-dialog]') === null`)).toBe(true);
         await page.click('[data-testid=undo-action]');
@@ -107,9 +121,7 @@ for (const width of [1280, 390]) {
       await page.screenshot(join(import.meta.dir, '.artifacts', `thread-delete-auto-dismiss-${width}.png`));
       expect(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true);
       if (width < 720) {
-        await mobileAction(page, 'mobile-settings');
-        await page.waitFor(`document.querySelector('[data-testid=mobile-settings-archived]')`);
-        await page.click('[data-testid=mobile-settings-archived]');
+        await openPhoneArchive(page);
       } else {
         await page.click('[data-testid=nav-settings]');
         await page.waitFor(`document.querySelector('[data-testid=settings-tab-general]')`);
@@ -117,11 +129,11 @@ for (const width of [1280, 390]) {
         await page.waitFor(`document.querySelector('[data-testid=archived-show]')`);
         await page.click('[data-testid=archived-show]');
       }
-      await page.waitFor(`document.querySelector('[data-testid=archived-delete]')`);
-      const archivedId = await page.evaluate<string>(`document.querySelector('[data-testid=archived-delete]').closest('li').dataset.threadId`);
+      await page.waitFor(`document.querySelector('[data-testid=archived-list] li [data-testid^=archived-menu-]')`);
+      const archivedId = await page.evaluate<string>(`document.querySelector('[data-testid=archived-list] li [data-testid^=archived-menu-]').closest('li').dataset.threadId`);
       await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
       await page.screenshot(join(import.meta.dir, '.artifacts', `thread-delete-archive-${width}.png`));
-      await page.click('[data-testid=archived-delete]');
+      await deleteArchived(page, archivedId);
       expect(await page.evaluate(`document.querySelector('[data-testid=confirm-dialog]') === null`)).toBe(true);
       await page.waitFor(`!document.querySelector('[data-testid=archived-list] [data-thread-id="${archivedId}"]')`);
       expect(await page.evaluate(`globalThis.__boiteTest.workspace.active.client.call('threads.list', { includeArchived: true }).then(rows => rows.some(t => t.id === ${JSON.stringify(archivedId)}))`)).toBe(false);

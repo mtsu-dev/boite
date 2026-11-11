@@ -41,7 +41,7 @@ test('commands are colored with aligned wrapping and four permission choices', a
     await page.type(id('composer-input'), '/goal Verify the composer');
     await page.click(id('composer-mode'));
     await page.waitFor(`document.querySelector('${id('composer-mode-menu')}')`);
-    expect(await page.evaluate(`Array.from(document.querySelectorAll('${id('composer-mode-menu')} .label')).map(el => el.textContent.trim())`)).toEqual(['No limits', 'Auto', 'Edit freely', 'Ask']);
+    expect(await page.evaluate(`Array.from(document.querySelectorAll('${id('composer-mode-menu')} .label')).map(el => el.textContent.trim())`)).toEqual(['No limits', 'Auto', 'Edit freely', 'Ask first']);
     expect(await page.evaluate(`(() => { const r=document.querySelector('${id('composer-mode-menu')}').getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth; })()`)).toBe(true);
     await capture(phone ? 'commands-permissions-phone' : 'commands-permissions-desktop');
     await page.evaluate(`document.querySelector('${id('composer-mode-menu')}').dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}))`);
@@ -55,8 +55,9 @@ test('commands are colored with aligned wrapping and four permission choices', a
     await page.waitFor(`document.querySelector('${id('composer-mode')}').textContent.trim() === '${label}'`);
     await page.click(id('composer-mode'));
     await page.waitFor(`document.querySelector('${id('composer-mode-menu')}')`);
-    expect(await page.evaluate(`document.querySelectorAll('${id('composer-mode-menu')} [data-row]').length`)).toBe(4);
-    expect(await page.evaluate(`document.querySelectorAll('${id('composer-mode-menu')} .active').length`)).toBe(0);
+    // The four choices stay offered; the legacy mode still live keeps its own checked row until another is picked.
+    expect(await page.evaluate(`Array.from(document.querySelectorAll('${id('composer-mode-menu')} [data-row]:not([aria-checked="true"])')).map(el => el.querySelector('.label').textContent.trim())`)).toEqual(['No limits', 'Auto', 'Edit freely', 'Ask first']);
+    expect(await page.evaluate(`Array.from(document.querySelectorAll('${id('composer-mode-menu')} [data-row][aria-checked="true"]')).map(el => el.dataset.value)`)).toEqual([mode]);
     await page.evaluate(`document.querySelector('${id('composer-mode-menu')}').dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}))`);
     await page.waitFor(`!document.querySelector('${id('composer-mode-menu')}')`);
   }
@@ -64,35 +65,57 @@ test('commands are colored with aligned wrapping and four permission choices', a
 }, 30_000);
 afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);
 
-test('the draft sentence follows worktree, permissions, model and effort on desktop and phone', async () => {
-  await page.click(id('new-thread'));
-  await page.waitFor(`document.querySelector('${id('draft-sentence')}')?.textContent.includes('Opus 5.5')`);
+/** The worktree switch is a row of the composer's "+": open it, flip the switch, close it again. */
+async function toggleWorktree() {
+  await page.click(id('composer-options'));
+  await page.waitFor(`document.querySelector('${id('composer-worktree')}')`);
+  const was = await page.evaluate<string>(`document.querySelector('${id('composer-worktree')}').getAttribute('aria-checked')`);
   await page.click(id('composer-worktree'));
+  await page.waitFor(`document.querySelector('${id('composer-worktree')}')?.getAttribute('aria-checked') !== '${was}'`);
+  await page.click(id('composer-options'));
+  await page.waitFor(`!document.querySelector('${id('composer-options-sheet')}')`);
+}
+async function worktreeOn() {
+  await page.click(id('composer-options'));
+  await page.waitFor(`document.querySelector('${id('composer-worktree')}')`);
+  const on = await page.evaluate<string>(`document.querySelector('${id('composer-worktree')}').getAttribute('aria-checked')`);
+  await page.click(id('composer-options'));
+  await page.waitFor(`!document.querySelector('${id('composer-options-sheet')}')`);
+  return on === 'true';
+}
+
+// The draft's heading names the project and its folder; worktree, permissions, model and effort are read on the
+// composer's own controls, which the heading no longer repeats.
+test('the draft composer follows worktree, permissions, model and effort on desktop and phone', async () => {
+  await page.click(id('new-thread'));
+  await page.waitFor(`document.querySelector('${id('draft-sentence')}') && document.querySelector('${id('composer-picker')}')?.textContent.includes('Opus 5.5')`);
+  expect(await page.evaluate<string>(`document.querySelector('${id('draft-sentence')}').textContent`)).not.toContain('Opus 5.5');
+  await toggleWorktree();
   await page.click(id('composer-mode'));
   await page.click(`${id('composer-mode-menu')} [data-value="bypassPermissions"]`);
+  await page.waitFor(`document.querySelector('${id('composer-mode-value')}').textContent.trim() === 'Auto'`);
   await page.click(id('composer-picker'));
   await page.click(`${id('composer-picker-menu')} [data-model="claude-sonnet-5-5"]`);
-  await page.waitFor(`document.querySelector('${id('draft-sentence')}').textContent.includes('Sonnet 5.5')`);
+  await page.waitFor(`document.querySelector('${id('composer-picker')}').textContent.includes('Sonnet 5.5')`);
   await page.waitFor(`!document.querySelector('${id('composer-picker-menu')}')`);
   await page.click(id('composer-picker'));
   await page.click(`${id('composer-picker-menu')} [data-model="claude-opus-5-5"]`);
   await page.waitFor(`!document.querySelector('${id('composer-picker-menu')}')`);
   await page.click(id('composer-effort'));
   await page.click(`${id('composer-effort-menu')} [data-value="medium"]`);
-  await page.waitFor(`document.querySelector('${id('draft-sentence')}').textContent.includes('Medium effort')`);
+  await page.waitFor(`document.querySelector('${id('composer-effort')}').textContent.includes('Effort Medium')`);
   await page.click(`${id('composer-effort-menu')} [data-value="high"]`);
   await page.evaluate(`document.querySelector('${id('composer-effort-menu')}').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))`);
   await page.waitFor(`!document.querySelector('${id('composer-effort-menu')}')`);
-  const sentence = await page.evaluate<string>(`document.querySelector('${id('draft-sentence')}').textContent`);
-  expect(sentence).toContain('in a worktree');
-  expect(sentence).toContain('with all permissions');
-  expect(sentence).toContain('Opus 5.5');
-  expect(sentence).toContain('High effort');
+  expect(await worktreeOn()).toBe(true);
+  expect(await page.evaluate<string>(`document.querySelector('${id('composer-mode-value')}').textContent.trim()`)).toBe('Auto');
+  expect(await page.evaluate<string>(`document.querySelector('${id('composer-picker')}').textContent`)).toContain('Opus 5.5');
+  expect(await page.evaluate<string>(`document.querySelector('${id('composer-effort')}').textContent.replace(/\\s+/g, ' ').trim()`)).toContain('Effort High');
   await capture('composer-draft-desktop');
   await size(true);
   await capture('composer-draft-phone');
-  await page.click(id('composer-worktree'));
-  expect(await page.evaluate(`document.querySelector('${id('draft-sentence')}').textContent`)).not.toContain('in a worktree');
+  await toggleWorktree();
+  expect(await worktreeOn()).toBe(false);
   await size(false);
 }, 30_000);
 
@@ -143,7 +166,7 @@ test('tasks stay folded until requested and never move the reading position', as
   await page.evaluate(`document.querySelector('${id('timeline')}').scrollTop = 0`);
   await page.waitFor(`document.querySelector('[data-testid="jump-to-latest"]')`);
   await page.evaluate(`new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
-  const before = await page.evaluate<{ top: number; height: number; scroll: number }>(`(() => { const el = document.querySelector('${id('timeline')}'); const r = el.getBoundingClientRect(); return {top:r.top,height:r.height,scroll:el.scrollTop}; })()`);
+  const before = await page.evaluate<{ top: number; height: number; scroll: number; first: number }>(`(() => { const el = document.querySelector('${id('timeline')}'); const r = el.getBoundingClientRect(); return {top:r.top,height:r.height,scroll:el.scrollTop,first:document.querySelector('[data-mid]').getBoundingClientRect().top}; })()`);
   expect(before.scroll).toBe(0);
   await page.evaluate(`import('/src/lib/store.svelte.ts').then(({store}) => { store.openThread.activity = {goal:{objective:'Verify queued prompts',status:'paused',iterations:1,error:null},loop:null,tasks:[
     {id:'check-input',text:'Check queued input and attachments',status:'completed'},
@@ -162,7 +185,9 @@ test('tasks stay folded until requested and never move the reading position', as
   await page.click(id('activity-tasks-toggle'));
   await page.waitFor(`document.querySelector('${id('activity-tasks-toggle')}').getAttribute('aria-expanded') === 'true'`);
   await capture('composer-activity-expanded-desktop');
-  expect(await page.evaluate(`(() => { const el = document.querySelector('${id('timeline')}'); const r = el.getBoundingClientRect(); return {top:r.top,height:r.height,scroll:el.scrollTop}; })()`)).toEqual(before);
+  // The tasks are the head of the composer card, in the flow: the timeline gives way at its foot, while its top, its
+  // scroll and the line being read stay where they were.
+  expect(await page.evaluate(`(() => { const el = document.querySelector('${id('timeline')}'); const r = el.getBoundingClientRect(); return {top:r.top,scroll:el.scrollTop,first:document.querySelector('[data-mid]').getBoundingClientRect().top}; })()`)).toEqual({ top: before.top, scroll: before.scroll, first: before.first });
   await size(true);
   await capture('composer-activity-phone');
   await page.click(id('activity-tasks-toggle'));
@@ -240,19 +265,24 @@ test('new questions keep the oldest open and the last answer readable on desktop
   await page.send('Emulation.setDeviceMetricsOverride', { width: 360, height: 740, deviceScaleFactor: 1, mobile: true });
   await page.waitFor('innerWidth === 360');
   await capture('question-dock-360');
+  // Questions that arrived while the box was typed in wait for its pause (`TYPING_PAUSE_MS`) before the box answers them.
+  await page.waitFor(`document.querySelector('${id('composer-send')}[data-answers]')`);
   const whole = await page.evaluate<Record<string, boolean>>(`(() => {
     const card = document.querySelector('${id('thread-decision')}').getBoundingClientRect();
     const inside = (selector) => {
-      const node = document.querySelector('${visibleQuestion} ' + selector);
+      const node = document.querySelector(selector);
       if (!node) return false;
       const box = node.getBoundingClientRect();
       return box.width > 0 && box.height > 0 && box.left >= card.left - 0.5 && box.right <= Math.min(card.right, innerWidth) + 0.5
-        && box.top >= card.top - 0.5 && box.bottom <= Math.min(card.bottom, innerHeight) + 0.5 && node.scrollWidth <= node.clientWidth + 1;
+        && box.top >= card.top - 0.5 && box.bottom <= Math.min(card.bottom, innerHeight) + 0.5
+        // An icon button's pointer target reaches past its drawn box on purpose (\`--icon-button-target\`): only words can be clipped.
+        && (node.matches('.icon-button') || node.scrollWidth <= node.clientWidth + 1);
     };
     const send = document.querySelector('${id('composer-send')}[data-answers]')?.getBoundingClientRect();
     const answer = !!send && send.width > 0 && send.left >= 0 && send.right <= innerWidth + 0.5 && send.bottom <= innerHeight + 0.5
       && !document.querySelector('${visibleQuestion} ${id('question-submit')}');
-    return { pager: inside('${id('activity-question-index')}'), next: inside('${id('activity-question-next')}'), skip: inside('${id('question-skip')}'), answer };
+    // The pager is a row of its own over the question it pages; Skip belongs to the question on screen.
+    return { pager: inside('${id('activity-questions')} ${id('activity-question-index')}'), next: inside('${id('activity-questions')} ${id('activity-question-next')}'), skip: inside('${visibleQuestion} ${id('question-skip')}'), answer };
   })()`);
   expect(whole).toEqual({ pager: true, next: true, skip: true, answer: true });
   await page.click(`${visibleQuestion} ${id('question-skip')}`);

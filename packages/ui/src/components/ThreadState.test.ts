@@ -4,7 +4,8 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import type { ThreadId, ThreadSummary } from '@boite/contracts';
 import ThreadState from './ThreadState.svelte';
-import { projectRollup, threadState, threadTone, workflowTone } from '../lib/thread-state';
+import { projectRollup, threadState } from '../lib/thread-state';
+import { threadTone, workflowTone } from '../lib/status-tone';
 import { workingChildren, type WorkingChildren } from '../lib/thread-rows';
 import { SIDEBAR_DEFAULT } from '../lib/prefs';
 

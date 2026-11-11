@@ -59,7 +59,10 @@ test('the chat card opens the run top to bottom, an arrow per dependency, in the
 }, 40_000);
 
 test('on a phone the same run keeps its rows and arrows without scrolling sideways', async () => {
-  // Opened here too, so the test holds when it runs alone.
+  // Opened here too, so the test holds when it runs alone. An open panel takes the list's column: close it first.
+  if (await page.evaluate(`!document.querySelector('${id('thread-row')}[data-thread-id="t-trace"]') && !!document.querySelector('${id('panel-close')}')`)) {
+    await page.click(id('panel-close'));
+  }
   await page.click(`${id('thread-row')}[data-thread-id="t-trace"]`);
   await page.waitFor(`document.querySelector('${id('workflow-activity')}')`);
   await page.click(id('workflow-activity'));

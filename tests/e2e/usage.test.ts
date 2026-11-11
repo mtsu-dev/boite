@@ -109,14 +109,17 @@ test('the desktop page charts each day by provider, reads a column on hover and 
   // The total says in plain words what the token count misses, never a turns ratio.
   expect(await page.text('[data-testid=usage-coverage]')).toContain('reported no token count');
   expect(await count('[data-testid=usage-threads] li')).toBe(10);
-  const cards = await page.evaluate<{ inset: number; gap: number; width: number }>(`(() => {
+  const cards = await page.evaluate<{ inset: number; pad: number; gap: number; width: number }>(`(() => {
     const overview = document.querySelector('[data-testid=usage-overview]');
     const next = overview.nextElementSibling;
     const box = overview.getBoundingClientRect();
     return { inset: overview.firstElementChild.getBoundingClientRect().left - box.left,
+      pad: parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--space-4')),
       gap: next.getBoundingClientRect().top - box.bottom, width: box.width };
   })()`);
-  expect(cards.inset).toBeGreaterThanOrEqual(18);
+  // The overview's content keeps the one settings card's inset (app.css --space-4), never its edge.
+  expect(cards.pad).toBeGreaterThanOrEqual(16);
+  expect(cards.inset).toBeGreaterThanOrEqual(cards.pad);
   expect(cards.gap).toBeGreaterThanOrEqual(16);
   expect(cards.width).toBeLessThanOrEqual(880);
   await capture('usage-desktop-dark.png');
@@ -270,6 +273,9 @@ test('the limits tab is its own page, one card per account, no scrolling through
 
 test('quotas expose banked resets, a confirmed budget and Codex credit balances on desktop and phone', async () => {
   await viewport(1280, 800);
+  // The phone's settings screen is itself a history entry: the desktop width pops it,
+  // and a navigation started before that pop landed would be aborted by it.
+  await page.waitFor(`!history.state?.boiteOverlay`);
   await page.navigate(`${origin}/?fake=1&quotaExtras=1`);
   await page.waitFor(`document.querySelector('[data-testid=nav-settings]')`);
   await page.click('[data-testid=nav-limits]');

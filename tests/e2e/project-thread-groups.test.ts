@@ -8,6 +8,16 @@ import { startUi } from './lib/ui.ts';
 let server: { close(): Promise<void> };
 let port: number;
 const id = (value: string) => `[data-testid="${value}"]`;
+/** Page-side: the key the project filter gives a project of the second machine, Builder (lib/project-view.svelte.ts projectKey). */
+const builderKey = (projectId: string) => `(() => { const machine = globalThis.__boiteTest.workspace.machines[1], core = machine.store.core;
+  return JSON.stringify([core?.hostname ? [core.hostname, core.dataDir, core.channel] : machine.id, ${JSON.stringify(projectId)}]); })()`;
+/** Page-side helper prepended to a setup script: answers a fixture thread's pending question by skipping it. */
+const skipQuestion = `async function skipQuestion(store, threadId) {
+  const [question] = await store.client.call('questions.list', {threadId});
+  if (question) await store.client.call('questions.skip', {threadId, questionId: question.id});
+  while (store.pendingQuestions.some(q => q.threadId === threadId)) await new Promise(r => setTimeout(r, 20));
+};
+`;
 beforeAll(async () => { port = await freePort(); server = await startUi(port); }, 60_000);
 afterAll(async () => { await server?.close(); }, 30_000);
 
@@ -16,9 +26,11 @@ for (const width of [1280, 390]) {
     const page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1&open=recent&machines=1`, windowSize: { width, height: width < 720 ? 844 : 900 } });
     try {
       await page.waitFor('globalThis.__boiteTest?.workspace.machines.length === 2');
-      const { main, empty, merged } = await page.evaluate<{ main: string; empty: string; merged: string }>(`(async () => {
+      const { main, empty, merged } = await page.evaluate<{ main: string; empty: string; merged: string }>(`${skipQuestion}(async () => {
         const machine = globalThis.__boiteTest.workspace.machines[0], store = machine.store;
         await store.open('t-trace');
+        // The fixture's question would make t-scheduler need the user: a row that asks is never folded as work.
+        await skipQuestion(store, 't-scheduler');
         store.threads = store.threads.map(t => t.id === 't-scheduler' ? {...t, status:'running', pinned:false, unread:false} : t);
         const empty = await store.client.call('projects.add', {path:'/workspace/quiet', name:'quiet'});
         const thread = await store.client.call('threads.create', {projectId:'p-boite', providerId:'echo', accountId:'a-echo', title:'Merged visibility fixture', worktree:{branch:'boite/visibility-options'}});
@@ -78,7 +90,7 @@ for (const width of [1280, 390]) {
         expect(await page.evaluate(`globalThis.__boiteTest.workspace.machines[0].store.client.call('threads.get', {threadId:${JSON.stringify(merged)}}).then(t => ({archived:t.archived, reason:t.archiveReason?.type}))`)).toEqual({archived:true, reason:'pr-merged'});
         await page.waitFor(`!document.querySelector('${row(merged)}')`);
         await openProjectFilter(page, prefix);
-        await page.evaluate(`Array.from(document.querySelectorAll('${id(`${prefix}project-filter-menu`)} [data-value]')).find(e => e.dataset.value === JSON.stringify(['http://builder.test', 'p-boite'])).click()`);
+        await page.evaluate(`Array.from(document.querySelectorAll('${id(`${prefix}project-filter-menu`)} [data-value]')).find(e => e.dataset.value === ${builderKey('p-boite')}).click()`);
         await option('merged');
         expect(await page.evaluate('globalThis.__boiteTest.workspace.machines.map(m => m.store.projects.find(p => p.id === "p-boite").autoArchiveMergedPr)')).toEqual([true, false]);
       }
@@ -103,11 +115,13 @@ for (const width of [1280, 390]) {
     const page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1&open=recent&machines=1`, windowSize: { width, height: width < 720 ? 844 : 900 } });
     try {
       await page.waitFor('globalThis.__boiteTest?.workspace.machines.length === 2');
-      const [main, remote, empty, busy] = await page.evaluate<[string, string, string, string]>(`(async () => {
+      const [main, remote, empty, busy] = await page.evaluate<[string, string, string, string]>(`${skipQuestion}(async () => {
         const [first, second] = globalThis.__boiteTest.workspace.machines;
         // Archive in the background so the finished project has no active draft.
         await first.store.open('t-trace');
         await first.store.archive('t-descriptors', true);
+        // The fixture's question would make t-scheduler need the user: a row that asks is never folded as work.
+        await skipQuestion(first.store, 't-scheduler');
         const empty = await first.store.client.call('projects.add', {path:'/workspace/quiet', name:'quiet'});
         const busy = await first.store.client.call('projects.add', {path:'/workspace/building', name:'building'});
         first.store.threads = first.store.threads.map(t => t.id === 't-scheduler' ? {...t, status:'running', pinned:false, unread:false} : t);
@@ -206,6 +220,8 @@ for (const width of [1280, 390]) {
       await page.waitFor(`!document.querySelector('${row(first, 't-scheduler')}')`);
 
       if (width < 720) {
+        // The magnifier opens the search field in the title's place.
+        await page.click(id('mobile-search-open'));
         await page.type(id('mobile-search'), 'scheduler');
         await page.waitFor(`document.querySelector('${row(first, 't-scheduler')}')`);
         expect(await page.evaluate(`document.querySelector('${row(first, 't-bench')}') === null`)).toBe(true);

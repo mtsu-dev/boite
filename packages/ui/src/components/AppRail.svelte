@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { MediaQuery } from 'svelte/reactivity';
   import { Contact, Inbox, MessageSquare, Plus, Settings } from '@lucide/svelte';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
@@ -38,6 +39,8 @@
    * a phone keeps its own navigation and never draws it.
    */
   let { store }: { store: Store } = $props();
+  /** Below 720 pixels the rail is not drawn: the thread list's drawer holds the update button (RailFrame.svelte), one card for the window. */
+  const narrow = new MediaQuery('(max-width: 720px)');
 
   const machines = $derived(workspace.machinesOr(store));
   const stores = $derived(machines.map(machine => machine.store));
@@ -247,7 +250,7 @@
       <MachineStatus {store} filter={machineFilter.shown(machines)} onfilter={pickMachine} card={machinesName} />
     </div>
     <!-- Each with the same name card as every rail button; a slot with no button (nothing to update) takes no room. -->
-    <div class="slot extra"><Deferred part={parts.UpdatesNotice} quiet>{#snippet children(UpdatesNotice)}<UpdatesNotice name={statusName} />{/snippet}</Deferred></div>
+    {#if !narrow.current}<div class="slot extra"><Deferred part={parts.UpdatesNotice} quiet>{#snippet children(UpdatesNotice)}<UpdatesNotice name={statusName} />{/snippet}</Deferred></div>{/if}
     {#if experimentOn('whip')}<div class="slot extra"><WhipButton name={statusName} /></div>{/if}
     <div class="slot" class:selected={store.page === 'settings'}>
       <span class="pip" aria-hidden="true"></span>

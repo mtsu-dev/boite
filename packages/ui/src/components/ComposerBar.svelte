@@ -501,6 +501,16 @@
   @container composer (max-width: 480px) {
     .bar, .tools { gap: 6px; }
   }
+  /* A desktop composer under 520 px, too narrow for "Effort High" and the mode's
+     words beside the model, keeps the effort and mode chips to their icons and
+     tooltips: the words would wrap the row and drop send half a row below the
+     chips. A phone's chips keep their words on their own two lines. */
+  @media (min-width: 721px) {
+    @container composer (max-width: 520px) {
+      .chips :global(:is(.effort, .permission) > .trigger > .ui-label) { display: none; }
+      .bar .chips :global(:is(.effort, .permission) > .trigger) { padding: 0 9px; }
+    }
+  }
 
   /* A desktop's round targets reach 32 px: send and stop ("+" and the microphone are app.css's icon button). */
   @media (min-width: 721px) {

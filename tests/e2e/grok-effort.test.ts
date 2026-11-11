@@ -48,7 +48,8 @@ test('Grok effort increases from left to right without changing the saved effort
   await page.waitFor(`document.querySelector('[data-testid=effort-track]')?.getAttribute('aria-valuetext') === 'Low'`);
   expect(await page.evaluate(`globalThis.__boiteTest.workspace.active.defaultEffortOf('grok', 'a-grok', 'grok-4.7')`)).toBe('low');
   await page.evaluate(`document.querySelector('[data-testid=effort-track]').dispatchEvent(new KeyboardEvent('keydown', {key:'End', bubbles:true}))`);
-  await page.waitFor(`document.querySelector('[data-testid=effort-track]')?.getAttribute('aria-valuetext') === 'Xhigh'`);
+  // The top level reads its plain name; the agent's own word (xhigh) stays in its tooltip.
+  await page.waitFor(`document.querySelector('[data-testid=effort-track]')?.getAttribute('aria-valuetext') === 'Extra high'`);
 }, 30_000);
 
 test('phone effort options keep the same ascending Grok scale', async () => {
@@ -58,9 +59,11 @@ test('phone effort options keep the same ascending Grok scale', async () => {
     s.draftChoice = {providerId:'grok', accountId:'a-grok', model:'grok-4.7', effort:'xhigh', permissionMode:'default'};
   })()`);
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-  await page.click('[data-testid=composer-options]');
-  await page.waitFor(`document.querySelector('[name=mobile-effort]')`);
-  expect(await page.evaluate(`[...document.querySelectorAll('[name=mobile-effort]')].map(input => input.value)`)).toEqual(['low', 'medium', 'high', 'xhigh']);
-  expect(await page.evaluate(`document.querySelector('[name=mobile-effort]:checked').value`)).toBe('xhigh');
+  // The phone's effort is its own chip on the composer's first line; its sheet holds the same slider.
+  await page.waitFor(`document.querySelector('[data-testid=composer] [data-testid=composer-effort]')`);
+  await page.click('[data-testid=composer] [data-testid=composer-effort]');
+  await page.waitFor(`document.querySelector('[data-testid=composer-effort-menu] [data-testid=effort-track]')`);
+  expect(await page.evaluate(`[...document.querySelectorAll('[data-testid=composer-effort-menu] [data-dot]')].map(dot => dot.dataset.dot)`)).toEqual(['low', 'medium', 'high', 'xhigh']);
+  expect(await page.evaluate(`document.querySelector('[data-testid=composer-effort-menu] [data-testid=effort-track]').getAttribute('aria-valuenow')`)).toBe('3');
   await capture('grok-effort-phone.png');
 }, 30_000);

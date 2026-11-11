@@ -347,12 +347,16 @@
 
   .compaction .rule {
     flex: 1;
+    min-width: 12px;
     height: 1px;
     background: var(--color-border);
   }
 
+  /* On a narrow column the line wraps between its rules rather than push the timeline sideways. */
   .compaction .label {
-    flex: none;
+    flex: 0 1 auto;
+    min-width: 0;
+    text-align: center;
   }
 
   /* A question waiting in the dock: one line like a tool call, the live colour on its mark. */

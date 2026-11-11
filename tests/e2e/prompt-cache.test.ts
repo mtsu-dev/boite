@@ -26,15 +26,18 @@ const CHIP = '[data-testid="prompt-cache"]';
 async function open(size: { width: number; height: number }, cache: { minutesAgo: number; ttlSeconds: number; maxSeconds?: number; source: string }, experiment = true, locale = 'en'): Promise<BrowserPage> {
   const page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1&open=recent`, windowSize: size });
   pages.push(page);
-  await page.waitFor(`document.querySelector('[data-testid="context-trigger"]')`);
+  await page.waitFor(`!!(${STORE})?.openThread && !!document.querySelector('[data-testid="composer"]')`);
   await page.evaluate(`(async () => {
     // A language other than English loads its catalogue first.
     await (await import('/src/lib/i18n.svelte.ts')).setLocaleSetting(${JSON.stringify(locale)});
     (await import('/src/lib/experiments.ts')).setExperiment('prompt-cache', ${experiment});
     const store = ${STORE};
     const thread = store.openThread;
+    // The composer's row draws the meter (and the cache clock in it) once the context matters: 75% used.
+    thread.context = { tokens: 150000, window: 200000, at: Date.now() };
     thread.promptCache = { at: Date.now() - ${cache.minutesAgo} * 60000, ttlSeconds: ${cache.ttlSeconds}, ${cache.maxSeconds === undefined ? '' : `maxSeconds: ${cache.maxSeconds},`} source: '${cache.source}', readTokens: 12400, model: thread.model, accountId: thread.accountId };
   })()`);
+  await page.waitFor(`document.querySelector('[data-testid="context-trigger"]')`);
   return page;
 }
 
@@ -53,7 +56,8 @@ test('a warm Claude cache counts down beside the context meter', async () => {
   await capture(page, 'prompt-cache-desktop');
   expect(await page.evaluate<boolean>(`(() => { const popup = document.querySelector('[data-testid="context-popup"]'); return popup.scrollHeight <= popup.clientHeight; })()`)).toBe(true);
   expect(await page.evaluate<boolean>(`!!document.querySelector('[data-testid="composer"] [data-testid="context-trigger"]')`)).toBe(true);
-  expect(await page.text('[data-testid="context-trigger"]')).not.toContain('%');
+  // The trigger reads the share left in words beside the ring, the clock after it.
+  expect(await page.text('[data-testid="context-trigger"]')).toContain('context left');
   expect(await page.text('[data-testid="prompt-cache-detail"]')).toContain('31 min left');
   expect(await page.text('[data-testid="prompt-cache-detail"]')).toContain('1 h · API');
 }, 90_000);
@@ -70,7 +74,7 @@ test('an active turn hides the old cache clock until its new result arrives', as
     await page.waitFor(`!document.querySelector('${CHIP}')`);
     if (status === 'running') await page.screenshot(join(import.meta.dir, '.artifacts', 'prompt-cache-running-desktop.png'));
     expect(await page.evaluate<boolean>(`!!document.querySelector('${CHIP}')`)).toBe(false);
-    expect(await page.evaluate<string>(`document.querySelector('[data-testid="context-trigger"]').getAttribute('aria-label')`)).toBe('Context');
+    expect(await page.evaluate<string>(`document.querySelector('[data-testid="context-trigger"]').getAttribute('aria-label')`)).toMatch(/^Context: \d+% left$/);
     await page.click('[data-testid="context-trigger"]');
     expect(await page.evaluate<boolean>(`!!document.querySelector('[data-testid="prompt-cache-detail"]')`)).toBe(false);
   }

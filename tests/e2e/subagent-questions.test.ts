@@ -34,11 +34,15 @@ test('chatbar alerts open the child and written answers reach only that child on
         if (async) {
           await client.call('questions.ask', { threadId: child.thread.id, text: 'Which parser should we use?', options: ['Built-in', 'Custom'] });
         }
-        const alert = `[data-testid=thread-decision] [data-testid=subagent-question-alert][data-child-id="${child.thread.id}"]`;
+        // The subagent's question is attached to the top of the parent's composer, titled with the subagent's name,
+        // with the way into its conversation. The parent's box never answers it: it sends the parent a message.
+        const asked = `[data-testid=thread-decision] [data-testid=activity-question][data-thread="${child.thread.id}"]`;
+        const alert = `${asked} [data-testid=activity-subagent-question] [data-testid=activity-open-subagent]`;
         await page.waitFor(`document.querySelector('${alert}')`);
-        expect(await page.evaluate(`!!document.querySelector('[data-testid=activity-question][data-thread="${child.thread.id}"]')`)).toBe(false);
+        expect(await page.evaluate(`document.querySelector('${asked} [data-testid=activity-subagent-question]').textContent`)).toContain('Check parser options');
         expect(await page.evaluate('!!document.querySelector("[data-testid=composer-reply]")')).toBe(false);
-        expect(await page.evaluate('Array.from(document.querySelectorAll("[data-testid=subagent-question-alert]")).every(alert => alert.closest("[data-testid=thread-decision]"))')).toBe(true);
+        expect(await page.evaluate('!!document.querySelector("[data-testid=composer-send][data-answers]")')).toBe(false);
+        expect(await page.evaluate('Array.from(document.querySelectorAll("[data-testid=activity-subagent-question]")).every(row => row.closest("[data-testid=thread-decision]"))')).toBe(true);
         await page.waitFor(`document.querySelector('${alert}').getBoundingClientRect().x >= 0`);
         await page.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
         if (!async) await page.screenshot(join(import.meta.dir, `.artifacts/subagent-alert-${mobile ? 'phone' : 'desktop'}.png`));

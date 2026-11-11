@@ -140,18 +140,32 @@ test('the panel opens on its launcher, and the workbench surfaces fit both width
 
   await page.click(id('launch-changes'));
   await page.waitFor(`document.querySelectorAll('${id('changes-row')}').length === 7`);
-  await page.click(`${id('changes-row')}[data-path="src/components/RightPanel.svelte"]`);
-  await page.waitFor(`document.querySelector('${id('diff-view')}')`);
-  expect(await page.evaluate(`document.querySelector('${id('changes-row')}[data-path="src/components/RightPanel.svelte"]').getAttribute('aria-selected')`)).toBe('true');
+  // The changes are one document: a file is picked from the count's file menu,
+  // which opens its section and makes it the file the tab remembers.
+  const pick = async (path: string) => {
+    await page.click(id('changes-pager'));
+    await page.click(`${id('changes-outline-file')}[data-value="${path}"]`);
+    await page.waitFor(`document.querySelector('${id('changes-row')}[data-path="${path}"]')?.getAttribute('aria-current') === 'true' && document.querySelector('${id('diff-view')}[data-path="${path}"]')`);
+  };
+  await pick('src/components/RightPanel.svelte');
+  expect(await page.evaluate(`document.querySelectorAll('${id('changes-row')}[aria-current=true]').length`)).toBe(1);
   await capture('changes-desktop.png');
-  // Both signs must color the complete line, including highlighted tokens.
-  await page.click(`${id('changes-row')}[data-path="src/lib/store.svelte.ts"]`);
-  await page.waitFor(`document.querySelector('${id('diff-view')}')?.dataset.path === 'src/lib/store.svelte.ts' && document.querySelector('.row.add .hljs-keyword')`);
+  // Both signs mark the complete line: an added and a removed line wear
+  // different washes and sign colours, while highlighted tokens keep their
+  // code's own colour on that wash.
+  await pick('src/lib/store.svelte.ts');
+  const storeDiff = `${id('diff-view')}[data-path="src/lib/store.svelte.ts"]`;
+  await page.waitFor(`document.querySelector('${storeDiff} .row.add .hljs-keyword')`);
   expect(await page.evaluate(`(() => {
-    const add = document.querySelector('.row.add .text');
-    const remove = document.querySelector('.row.remove .text');
-    return !!remove && getComputedStyle(add).color !== getComputedStyle(remove).color
-      && getComputedStyle(add.querySelector('span')).color === getComputedStyle(add).color;
+    const add = document.querySelector('${storeDiff} .row.add');
+    const remove = document.querySelector('${storeDiff} .row.remove');
+    const plain = document.querySelector('${storeDiff} .row.context, ${storeDiff} .row:not(.add):not(.remove):not(.gap):not(.empty)');
+    const fill = (row) => getComputedStyle(row).backgroundColor;
+    const keyword = document.querySelector('${storeDiff} .row.add .hljs-keyword');
+    return !!remove && !!plain
+      && fill(add) !== fill(remove) && fill(add) !== fill(plain) && fill(remove) !== fill(plain)
+      && getComputedStyle(add.querySelector('.gutter')).color !== getComputedStyle(remove.querySelector('.gutter')).color
+      && getComputedStyle(keyword).color !== getComputedStyle(keyword.closest('.text')).color;
   })()`)).toBe(true);
   await capture('changes-colors-desktop.png');
   expect(await page.evaluate(`(() => { const panel = document.querySelector('${id('changes-panel')}'); return panel.scrollWidth <= panel.clientWidth; })()`)).toBe(true);
@@ -216,8 +230,9 @@ test('the panel opens on its launcher, and the workbench surfaces fit both width
   expect(await page.evaluate(`(() => { const rows = Array.from(document.querySelectorAll('${id('changes-row')}')); const list = rows[0].parentElement.getBoundingClientRect(); return rows.every(row => row.getBoundingClientRect().right <= list.right + 1); })()`)).toBe(true);
 
   await phone(false);
-  await page.click(id('panel-toggle'));
-  await page.waitFor(`document.querySelector('${id('panel-toggle')}').getAttribute('aria-pressed') === 'false'`);
+  // Open, the header's door is the panel switcher; the panel's own close hides it.
+  await page.click(id('panel-close'));
+  await page.waitFor(`document.querySelector('${id('panel-toggle')}')?.getAttribute('aria-pressed') === 'false'`);
 }, 60_000);
 
 /** The middle of an element, in the page's own pixels, for a real pointer. */

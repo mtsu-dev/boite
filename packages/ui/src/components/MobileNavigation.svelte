@@ -523,9 +523,10 @@
     /* The new thread's button: filled, shorter than the finger squares beside it, its target the header's height,
        10 px from the glyphs on both sides. At 360 px the row holds the views, three squares and "+ New" once the
        views' sides give 3 px each, the search reaches 6 px into the display menu's square (glyphs still 18 px apart)
-       and the button and the gear 2 px into the square before them; past 480 px it says "New thread". */
+       and the button and the gear 2 px into the square before them; past 480 px it says "New thread". From 381 px
+       the search keeps to its own square, so a finger on the display menu's edge never opens the search. */
     .mobile-header > .primary.new { position: relative; flex: none; gap: 4px; height: 36px; margin-left: -12px; padding: 0 8px 0 6px; }
-    .mobile-header:has(> .primary.new) > [data-testid=mobile-search-open] { margin-left: -16px; }
+    @media (max-width: 380px) { .mobile-header:has(> .primary.new) > [data-testid=mobile-search-open] { margin-left: -16px; } }
     .mobile-header:has(> .primary.new) > .gear { margin-left: -12px; }
     .mobile-header > .primary.new::before { content: ''; position: absolute; inset: -4px 0; }
     .new .long { display: none; }

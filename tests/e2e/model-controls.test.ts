@@ -132,12 +132,15 @@ test.each([1440, 390])('provider switching keeps the picker frame still at %ipx'
     await capture(`picker-stable-${width}-${provider}.png`);
     frames.push(await page.evaluate<{ x: number; y: number; width: number; height: number }>(`document.querySelector('[data-testid=composer-picker-menu]').getBoundingClientRect().toJSON()`));
   }
+  // The frame stays on its anchor: same side, same width, the same edge toward the chip. Its height
+  // follows the shown column (a floor of a few rows, a cap), so the far edge alone moves.
   const firstFrame = frames[0]!;
+  const cap = width < 720 ? 900 : 360;
   for (const frame of frames.slice(1)) {
     expect(frame.x).toBe(firstFrame.x);
-    expect(frame.y).toBe(firstFrame.y);
     expect(frame.width).toBe(firstFrame.width);
-    expect(frame.height).toBe(firstFrame.height);
+    expect(frame.y + frame.height).toBeCloseTo(firstFrame.y + firstFrame.height, 0);
+    expect(frame.height).toBeLessThanOrEqual(cap);
   }
   expect(frames[0]!.x).toBeGreaterThanOrEqual(0);
   expect(frames[0]!.x + frames[0]!.width).toBeLessThanOrEqual(width);
@@ -211,15 +214,23 @@ test('favorites survive reload, reasoning has discrete stops, and the context ri
   await page.click('[data-testid=composer-picker]');
   await page.waitFor(`document.querySelector('[data-testid=favorite-model]')`);
   await capture('favorites-phone.png');
+  // The phone's picker is a sheet with its own history entry: let its close pop it before the next load, or that back() replaces it.
+  await page.click('[data-testid=composer-picker]');
+  await page.waitFor(`!document.querySelector('[data-testid=composer-picker-menu]')`);
+  await page.waitFor(`!history.state?.boiteOverlay`);
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
   await page.navigate(url);
+  await page.waitFor(`document.querySelector('[data-testid=composer-picker]')`);
+  // The row draws the meter once the context matters (from 70% used): this thread's is made 75% used.
+  await page.evaluate(`globalThis.__boiteTest.workspace.active.openThread.context = { tokens: 150000, window: 200000, at: Date.now() }`);
   await page.waitFor(`document.querySelector('[data-testid=context-trigger]')`);
   await page.click('[data-testid=context-trigger]');
   await page.waitFor(`document.querySelector('[data-testid=context-compact]') && !document.querySelector('[data-testid=context-compact]').disabled`);
   await capture('context-compact-before.png');
   await page.click('[data-testid=context-compact]');
   await page.waitFor(`document.querySelector('[data-testid=compaction-part][data-trigger=manual]')`);
-  await page.waitFor(`document.querySelector('[data-testid=context-meter]')?.dataset.percent === '4'`);
+  // The compacted context is a few percent used, under the threshold: the meter leaves the row.
+  await page.waitFor(`(() => { const c = globalThis.__boiteTest.workspace.active.openThread.context; return c && c.tokens / c.window < 0.1 && !document.querySelector('[data-testid=context-meter]'); })()`);
   await capture('context-compact-after.png');
   await page.click('[data-testid=composer-picker]');
   await page.waitFor(`document.querySelector('[data-testid=favorite-model]')`);
@@ -288,7 +299,13 @@ test('the accent persists, the effort track glows brighter as it rises, and a sp
   expect(await page.evaluate(`!!document.querySelector('[data-testid=composer] .hint')`)).toBe(false);
   const speed = await page.evaluate<any>(`(() => { const r=document.querySelector('[data-testid=effort-speed]').getBoundingClientRect(); return {x:r.left+r.width/2,y:r.top+r.height/2}; })()`);
   await page.send('Input.dispatchMouseEvent', { type:'mouseMoved', ...speed });
-  await page.waitFor(`getComputedStyle(document.querySelector('[data-testid=effort-speed] svg')).transform !== 'none'`);
+  // The bolt tilts under a pointer that hovers; the rule sits behind (hover: hover), which a headless browser never matches,
+  // so the test reads the rule itself: a transform on the speed's glyph under :hover.
+  expect(await page.evaluate<boolean>(`(() => {
+    const rules = (list) => [...list].flatMap(rule => rule.cssRules ? [rule, ...rules(rule.cssRules)] : [rule]);
+    const all = [...document.styleSheets].flatMap(sheet => { try { return rules(sheet.cssRules); } catch { return []; } });
+    return all.some(rule => rule.parentRule?.conditionText?.includes('hover: hover') && /\.speed[^ ,]*:hover[^,]* svg/.test(rule.selectorText ?? '') && /rotate|scale/.test(rule.style?.transform ?? ''));
+  })()`)).toBe(true);
   await capture('speed-hover.png');
   // Switching the speed on sends streaks across the popover, then they clear. A runner's own reduced-motion setting must not decide it.
   await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
@@ -365,7 +382,9 @@ test('speed controls follow the selected model and Codex never offers Ultrathink
   await page.waitFor(`document.querySelector('[data-testid=effort-speed-label]')?.textContent === 'Ultrafast'`);
   await capture('reasoning-codex-ultrafast.png');
   await page.click('[data-testid=effort-speed]');
-  await page.waitFor(`!document.querySelector('[data-testid=effort-speed-label]')`);
+  // Off is the switch turned off; the label keeps naming the first speed it would turn on.
+  await page.waitFor(`document.querySelector('[data-testid=effort-speed]')?.getAttribute('aria-pressed') === 'false'`);
+  expect(await page.evaluate(`document.querySelector('[data-testid=effort-speed-label]')?.textContent`)).toBe('Fast');
   await page.evaluate(`document.dispatchEvent(new PointerEvent('pointerdown', { bubbles:true }))`);
   await page.click('[data-testid=composer-picker]');
   await page.click('[data-provider=claude]');
@@ -402,6 +421,7 @@ test('the draft keeps a compact composer separate from the fixed favorites menu'
   const layout = await page.evaluate<any>(`(() => { const c=document.querySelector('[data-testid=composer]').getBoundingClientRect(); const m=document.querySelector('[data-testid=composer-picker-menu]').getBoundingClientRect(); return {composerHeight:c.height,composerTop:c.top,composerBottom:c.bottom,menuTop:m.top,menuHeight:m.height}; })()`);
   expect(layout.composerHeight).toBe(before.height);
   expect(layout.composerTop).toBe(before.top);
-  expect(layout.menuTop + layout.menuHeight).toBeLessThan(layout.composerTop);
-  expect(layout.menuHeight).toBe(360);
+  // The menu opens beside the composer, never over it: wholly above or wholly below, as tall as its column up to its cap.
+  expect(layout.menuTop + layout.menuHeight <= layout.composerTop || layout.menuTop >= layout.composerBottom).toBe(true);
+  expect(layout.menuHeight).toBeLessThanOrEqual(360);
 }, 30_000);

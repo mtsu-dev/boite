@@ -32,21 +32,37 @@ test('an agent entrusted with a project shows on its threads, and opens its conv
     await window.__boiteTest.workspace.select(store, thread.id);
     return { agent: agent.id, name: agent.name, thread: thread.id };
   })()`) as { agent: string; name: string; thread: string };
-  const chip = `[data-testid="thread-resident-chip"][data-agent-id="${ids.agent}"]`;
-  await page.waitFor(`document.querySelector('${chip}')`);
-  expect(await page.evaluate(`document.querySelector('${chip}').getAttribute('aria-label')`)).toBe(`Looked after by ${ids.name}`);
-  // The chip shows the bot's face and name; the sentence stays in its label and tooltip.
-  expect((await page.text(chip)).trim()).toBe(ids.name);
+  // The header no longer carries a chip: the bot heads the title menu's named group, its row keeping the chip's id.
+  const menu = '[data-testid="thread-menu-trigger-menu"]';
+  const chip = `${menu} [data-value="thread-resident-chip"]`;
+  const openGroup = async () => {
+    await page.waitFor(`document.querySelector('[data-testid="thread-menu-trigger"]')?.getBoundingClientRect().width > 0`);
+    await page.click('[data-testid="thread-menu-trigger"]');
+    await page.waitFor(`document.querySelector('${menu} [data-value="more"]')`);
+    await page.click(`${menu} [data-value="more"]`);
+    await page.waitFor(`document.querySelector('${chip}')?.getBoundingClientRect().width > 0`);
+  };
+  const closeMenu = async () => {
+    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await page.waitFor(`!document.querySelector('${menu}')`);
+  };
+  await openGroup();
+  // The row shows what it does, with the bot's name; the sentence stays in its tooltip.
+  expect(await page.evaluate(`document.querySelector('${chip}').title`)).toBe(`Looked after by ${ids.name}`);
+  expect((await page.text(chip)).trim()).toBe(`Open ${ids.name}`);
   await capture('resident-agent-desktop.png');
+  await closeMenu();
 
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-  await page.waitFor(`document.querySelector('${chip}')?.getBoundingClientRect().width > 0`);
+  await openGroup();
   await capture('resident-agent-header-phone.png');
   expect(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true);
+  await closeMenu();
 
-  // The chip opens the agent's conversation on the Agents page.
+  // The row opens the agent's conversation on the Agents page.
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
-  await page.waitFor(`document.querySelector('${chip}')?.getBoundingClientRect().width > 0`);
+  await openGroup();
   await page.click(chip);
   await page.waitFor(`window.__boiteTest.workspace.active.page === 'agents' && document.querySelector('[data-testid="agent-header"]')?.textContent.includes(${JSON.stringify(ids.name)})`);
 }, 60000);

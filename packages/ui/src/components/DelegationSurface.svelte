@@ -14,7 +14,7 @@
   import ModelPicker from './ModelPicker.svelte';
   import ProviderLogo from './ProviderLogo.svelte';
   import StatusMark from './StatusMark.svelte';
-  import { threadTone, workflowTone } from '../lib/thread-state';
+  import { threadTone, workflowTone } from '../lib/status-tone';
   import Elapsed from './Elapsed.svelte';
   import NativeAgents from './NativeAgents.svelte';
   import WorkflowRunPane from './WorkflowRunPane.svelte';

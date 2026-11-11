@@ -9,6 +9,9 @@ let server: { close(): Promise<void> };
 let page: BrowserPage;
 let url: string;
 const id = (name: string) => `[data-testid="${name}"]`;
+/** Page-side: the key the project filter gives a project of the second machine, Builder (lib/project-view.svelte.ts projectKey). */
+const builderKey = (projectId: string) => `(() => { const machine = globalThis.__boiteTest.workspace.machines[1], core = machine.store.core;
+  return JSON.stringify([core?.hostname ? [core.hostname, core.dataDir, core.channel] : machine.id, ${JSON.stringify(projectId)}]); })()`;
 async function capture(name: string) {
   await page.settleAnimations();
   await page.screenshot(join(import.meta.dir, '.artifacts', name));
@@ -29,7 +32,7 @@ test('recent view filters one owning project and creates its draft', async () =>
   await openProjectFilter(page);
   await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowDown', code: 'ArrowDown', windowsVirtualKeyCode: 40 });
   expect(await page.evaluate(`document.activeElement?.getAttribute('role')`)).toBe('menuitem');
-  await page.evaluate(`Array.from(document.querySelectorAll('${id('project-filter-menu')} [data-value]')).find(e => e.dataset.value === JSON.stringify(['http://builder.test', 'p-notes'])).click()`);
+  await page.evaluate(`Array.from(document.querySelectorAll('${id('project-filter-menu')} [data-value]')).find(e => e.dataset.value === ${builderKey('p-notes')}).click()`);
   await page.waitFor(`document.querySelectorAll('${id('thread-row')}').length === 1`);
   await closeDisplayOptions(page);
   expect(await page.evaluate(`document.querySelector('${id('thread-row')}').dataset.machineId`)).toBe('http://builder.test');
@@ -85,6 +88,9 @@ test('copy path stays readable with a long working directory in conversation men
     })()`);
     const menu = id('context-menu');
     const copy = `${menu} [data-value=copy]`;
+    // Copy path sits in the menu's named group of where the thread goes (lib/thread-menu.ts), one step in.
+    await page.waitFor(`document.querySelector('${copy}, ${menu} [data-value=more]')`);
+    if (await page.evaluate(`!document.querySelector('${copy}')`)) await page.click(`${menu} [data-value=more]`);
     await page.waitFor(`document.querySelector('${copy}')`);
     await capture(`copy-path-${opener}.png`);
     expect(await page.evaluate(`(() => { const e = document.querySelector('${copy}'); return e.scrollWidth <= e.clientWidth; })()`)).toBe(true);
@@ -110,6 +116,8 @@ test('copy path stays readable with a long working directory in conversation men
 
 test('projects follow user activity, then keep a dragged custom order after reload', async () => {
   await showThreadView(page, 'projects');
+  // Back from the phone width, the sidebar draws its cards again.
+  await page.waitFor(`document.querySelectorAll('${id('project-menu')}').length > 1`);
   // The menu ends every header at the same place, whatever counters sit before it.
   const menuEdges = await page.evaluate<number[]>(`Array.from(document.querySelectorAll('${id('project-menu')}')).map(e => Math.round(e.getBoundingClientRect().right))`);
   expect(menuEdges.length).toBeGreaterThan(1);
@@ -182,6 +190,8 @@ test('phone folds a project from a tap on its header and finds it folded after a
   await page.waitFor(`document.querySelectorAll('${id('mobile-project-group')}').length === 4`);
   const first = await page.evaluate<{ machineId: string; projectId: string }>(`(({ machineId, projectId }) => ({ machineId, projectId }))(document.querySelector('${id('mobile-project-group')}').dataset)`);
   const toggle = `${id('mobile-project-group')}[data-machine-id="${first.machineId}"][data-project-id="${first.projectId}"] ${id('mobile-project-toggle')}`;
+  const atWork = `(() => { const s = globalThis.__boiteTest.workspace.machines.find(m => m.id === ${JSON.stringify(first.machineId)}).store; const at = s.threads.find(t => t.projectId === ${JSON.stringify(first.projectId)} && !t.archived); s.threads = s.threads.map(t => t === at ? {...t, status: 'running', runningSince: Date.now()} : t); })()`;
+  await page.evaluate(atWork);
   const fold = `document.getElementById(document.querySelector(${JSON.stringify(toggle)}).getAttribute('aria-controls'))`;
   // A finger on the tile, then on the name: both belong to the fold's target.
   const tap = async (part: string) => {
@@ -196,13 +206,17 @@ test('phone folds a project from a tap on its header and finds it folded after a
   await page.settleAnimations();
   expect(await page.evaluate(`${fold}.getBoundingClientRect().height`)).toBe(0);
   expect(await page.evaluate(`${fold}.inert`)).toBe(true);
-  expect(await page.evaluate(`document.querySelector(${JSON.stringify(`${toggle} ${id('project-rollup')}`)})?.getBoundingClientRect().width > 0`)).toBe(true);
+  // Folded, the header still says what its threads do: their rollup, or the counter that stands for them (Needs you, else
+  // working). Finished threads say nothing but their time, so the first project gets one at work.
+  const group = `${id('mobile-project-group')}[data-machine-id="${first.machineId}"][data-project-id="${first.projectId}"]`;
+  expect(await page.evaluate(`document.querySelector(${JSON.stringify(`${toggle} ${id('project-rollup')}, ${group} ${id('project-waiting-count')}, ${group} ${id('project-working-toggle')}`)})?.getBoundingClientRect().width > 0`)).toBe(true);
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
   await capture('project-fold-phone-folded.png');
 
   await page.reload();
   await mobileAction(page, 'mobile-conversations');
   await page.waitFor(`document.querySelector(${JSON.stringify(toggle)})?.getAttribute('aria-expanded') === 'false'`);
+  await page.evaluate(atWork);
   await tap('.name');
   await page.waitFor(`document.querySelector(${JSON.stringify(toggle)}).getAttribute('aria-expanded') === 'true'`);
   await page.settleAnimations();
@@ -212,9 +226,10 @@ test('phone folds a project from a tap on its header and finds it folded after a
 
   // The desktop's sidebar folds the same project into the same state, with the same rollup beside its name.
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1300, height: 850, deviceScaleFactor: 1, mobile: false });
-  const row = `[data-project-key='${JSON.stringify([first.machineId, first.projectId])}'] ${id('project-row')}`;
+  const card = `${id('project')}[data-machine-id="${first.machineId}"][data-project-id="${first.projectId}"]`;
+  const row = `${card} ${id('project-row')}`;
   await page.click(row);
-  await page.waitFor(`document.querySelector(${JSON.stringify(row)}).getAttribute('aria-expanded') === 'false' && document.querySelector(${JSON.stringify(`${row} ${id('project-rollup')}`)})`);
+  await page.waitFor(`document.querySelector(${JSON.stringify(row)}).getAttribute('aria-expanded') === 'false' && document.querySelector(${JSON.stringify(`${row} ${id('project-rollup')}, ${card} ${id('project-waiting-count')}, ${card} ${id('project-working-toggle')}`)})`);
   await capture('project-fold-desktop.png');
   await page.click(row);
   await page.waitFor(`document.querySelector(${JSON.stringify(row)}).getAttribute('aria-expanded') === 'true'`);
@@ -227,7 +242,7 @@ test('phone exposes project filtering and custom-order controls without overflow
   await page.waitFor(`document.querySelector('${id('mobile-list')}')`);
   await showThreadView(page, 'recent', 'mobile-');
   await openProjectFilter(page, 'mobile-');
-  await page.evaluate(`Array.from(document.querySelectorAll('${id('mobile-project-filter-menu')} [data-value]')).find(e => e.dataset.value === JSON.stringify(['http://builder.test', 'p-notes'])).click()`);
+  await page.evaluate(`Array.from(document.querySelectorAll('${id('mobile-project-filter-menu')} [data-value]')).find(e => e.dataset.value === ${builderKey('p-notes')}).click()`);
   await page.waitFor(`document.querySelectorAll('${id('mobile-list')} .thread').length === 1`);
   await closeDisplayOptions(page, 'mobile-');
   await capture('project-filter-phone.png');

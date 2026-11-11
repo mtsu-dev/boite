@@ -141,6 +141,10 @@
   {/if}
   <!-- A phone reaches the limits from its Settings tab. -->
   {#if !phone.current}<QuotaLine {store} />{/if}
+  <!-- No app rail below 720 pixels: the drawer's foot keeps the update button, and its card opens as a sheet. -->
+  {#if drawer && phone.current}
+    <div class="foot"><Deferred part={parts.UpdatesNotice} quiet>{#snippet children(UpdatesNotice)}<UpdatesNotice />{/snippet}</Deferred></div>
+  {/if}
   <div class="resize">
     <ResizeHandle
       orientation="vertical"
@@ -206,6 +210,10 @@
   .scroll[data-project-list] { scroll-snap-type: y proximity; }
   :global(:is(html.thread-dragging, html.project-dragging)) .scroll { scroll-snap-type: none; }
   .scroll > :global(*) { flex-shrink: 0; }
+
+  /* The drawer's foot: the update button bottom left, at the composer's height. Empty with nothing to update. */
+  .foot { display: flex; align-items: flex-end; gap: 4px; margin: 0 10px; padding: 8px 0 10px; }
+  .foot:not(:has(:global(button))) { display: none; }
 
   /* The edge that drags the width, centred in the frame gap (ResizeHandle). */
   .resize { display: contents; }

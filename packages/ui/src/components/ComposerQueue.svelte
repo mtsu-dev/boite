@@ -122,17 +122,19 @@
   .extra { display: inline-flex; align-items: center; gap: 3px; flex: none; font-size: var(--text-xs); }
   .tools { display: flex; align-items: center; gap: 0; flex: none; margin-left: auto; }
   .tools :global(.info-tip) { flex: none; }
-  .tool { --icon-button: 28px; }
+  /* The row is the button's target: one drawn past it (app.css's 32 px) overflows the list into a scrollbar. */
+  .tool { --icon-button: 28px; --icon-button-target: 28px; }
   @media (hover: hover) { .tool.remove:hover:not(:disabled) { color: var(--color-danger); } }
   .retry { flex: none; height: 26px; padding: 0 8px; font-size: var(--text-xs); }
 
   /* A phone: two lines of the prompt, the row as tall as they need, Edit and Delete at the end on 40 px targets. */
   @media (max-width: 720px) {
     .queued { max-height: calc(3 * (var(--foot-row) + 12px)); }
-    :global(.foot-row).line { height: auto; min-height: var(--foot-row); padding-block: 2px; }
+    /* Scoped under the list, so it outweighs ComposerFoot's fixed row height whatever order the styles load in. */
+    .queued :global(.foot-row).line { height: auto; min-height: var(--foot-row); padding-block: 2px; }
     .words { -webkit-line-clamp: 2; line-clamp: 2; }
     .edit-text { height: auto; min-height: calc(var(--foot-row) - 6px); padding-block: 3px; }
-    .tool { --icon-button: 40px; }
+    .tool { --icon-button: 40px; --icon-button-target: var(--touch-target); }
   }
   /* A 360 px phone keeps the row for the prompt: the outbox's word goes, the clock's tooltip still says why. */
   @media (max-width: 400px) { .word { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; } }

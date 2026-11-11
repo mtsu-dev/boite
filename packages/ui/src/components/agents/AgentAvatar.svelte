@@ -5,7 +5,7 @@
   import { isAgentPicture } from '@boite/contracts';
   import { avatarText, robotColor, robotOf, seededRobot, tintOf } from '../../lib/robots';
   import { agentPictures } from '../../lib/agent-pictures.svelte';
-  import { threadTone } from '../../lib/thread-state';
+  import { threadTone } from '../../lib/status-tone';
   import { avatarLit, moodFacts } from '../../lib/avatar-lit';
   import StatusMark from '../StatusMark.svelte';
   import Deferred from '../Deferred.svelte';

@@ -52,7 +52,8 @@ test('project and recent cards show both hosts, PRs and user-message ordering on
   await page.evaluate(`document.querySelector(${JSON.stringify(remoteThread)}).dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`);
   await page.type(id('thread-rename'), 'Changed title, same user message');
   await page.evaluate(`document.querySelector('${id('thread-rename')}').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))`);
-  await page.waitFor(`document.querySelector(${JSON.stringify(remoteThread)})?.title === 'Changed title, same user message'`);
+  // The row's tooltip opens on its title, its branch and time on the lines below.
+  await page.waitFor(`document.querySelector(${JSON.stringify(remoteThread)})?.title.split('\\n')[0] === 'Changed title, same user message'`);
   expect(
     await page.evaluate<string[]>(
       `Array.from(document.querySelectorAll('${id('thread-row')}')).map(e => e.dataset.threadId)`
@@ -80,9 +81,9 @@ test('project and recent cards show both hosts, PRs and user-message ordering on
   await capture('machine-customization.png');
   await page.evaluate('location.reload()');
   await page.waitFor(`document.querySelectorAll('${id('thread-row')}').length === 8`);
-  // Recent's compact rows name no machine: the project card's host icon carries the new name.
+  // Recent's compact rows name no machine: the project card's place line carries the new name.
   await showThreadView(page, 'projects');
-  await page.waitFor(`!!document.querySelector('[data-testid="sidebar"] [data-testid="project-host"][aria-label="Build server"]')`);
+  await page.waitFor(`[...document.querySelectorAll('[data-testid="sidebar"] [data-testid="project-host"]')].some(host => host.textContent.trim() === 'on Build server')`);
   expect(await page.evaluate(`document.querySelector('[data-testid="nav-machines"]') === null`)).toBe(true);
   await page.click(id('nav-settings'));
   await page.click(id('settings-tab-machines'));
@@ -148,7 +149,8 @@ test('two real cores pair, route turns independently, reconnect and survive a re
     await page.waitFor(`document.querySelector('[data-core-id="${home}"] ${id('machine-home')}') !== null && document.querySelectorAll('${id('machine-home')}').length === 1`);
     expect(await b.call('settings.get', {})).toMatchObject({ asyncQuestions: false, warmProcessMinutes: 2, agentCpuCapPercent: 35 });
     // Protection changes the machine its bar picks, here the second one, while the window stays on the first.
-    await page.click(id('settings-tab-resources'));
+    // Resources is a section of Diagnostics.
+    await page.click(id('settings-tab-diagnostics'));
     await page.waitFor(`document.querySelector('${id('resources-page')}') && document.querySelector('${id('settings-machine')}')`);
     await page.click(id('settings-machine'));
     await page.waitFor(`document.querySelector('${id('settings-machine-menu')} [data-value="${second.url}"]')`);
@@ -165,7 +167,12 @@ test('two real cores pair, route turns independently, reconnect and survive a re
     await page.waitFor(`document.querySelector('[data-thread-id="${tb.id}"]')`);
     await page.click(`[data-thread-id="${tb.id}"]`);
     await page.waitFor(`document.querySelector('${id('thread-title')}')?.textContent === 'Remote project'`);
-    await page.click(id('terminal-toggle'));
+    // The terminal is a row of the Panels door's list: the door opens the panel, whose switcher lists it.
+    await page.click(id('panel-toggle'));
+    await page.waitFor(`document.querySelector('${id('panel-add')}')`);
+    await page.click(id('panel-add'));
+    await page.waitFor(`document.querySelector('${id('panel-add-menu')} [data-value="terminal-toggle"]')`);
+    await page.click(`${id('panel-add-menu')} [data-value="terminal-toggle"]`);
     // PowerShell expands Windows short paths such as RUNNER~1 in its prompt.
     try {
       await page.waitFor(`document.querySelector('[data-testid=terminal-drawer] .xterm-rows')?.textContent.includes(${JSON.stringify(basename(second.dataDir))})`);
@@ -202,6 +209,9 @@ test('two real cores pair, route turns independently, reconnect and survive a re
     await page.send('Emulation.clearDeviceMetricsOverride', {});
     await page.click(id('terminal-close'));
     await page.waitFor(`!document.querySelector('${id('terminal-drawer')}')`);
+    // The terminal was reached through the Panels door: the open panel had lent itself the thread list's column, closing it gives the list back.
+    await page.click(id('panel-close'));
+    await page.waitFor(`!!document.querySelector('[data-thread-id="${tb.id}"]')`);
     await a.call('settings.set', { asyncQuestions: true });
     await page.waitFor(`globalThis.__boiteTest.workspace.active.settings?.asyncQuestions === true`);
     expect((await b.call('settings.get', {})).asyncQuestions).toBe(true);
@@ -239,6 +249,9 @@ test('two real cores pair, route turns independently, reconnect and survive a re
       await page.waitFor(`document.querySelector('[data-testid="machine-card"][data-machine-id="${second.url}"] .status')?.textContent === 'Connected'`);
       expect(await page.evaluate(`document.querySelectorAll('${id('machine-card')}').length`)).toBe(2);
     } finally { admin.close(); }
+    // Removal is the last item of the other machine's row menu.
+    await page.click(`[data-testid="machine-card"][data-machine-id="${second.url}"] ${id('machine-menu')}`);
+    await page.waitFor(`document.querySelector('${id('machine-remove')}')`);
     await page.click(id('machine-remove'));
     // Forgetting a machine asks first, in the app's own dialog.
     await page.waitFor(`document.querySelector('${id('confirm-ok')}')`);

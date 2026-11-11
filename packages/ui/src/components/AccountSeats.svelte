@@ -3,7 +3,6 @@
   import { Check, ChevronDown } from '@lucide/svelte';
   import type { Account, ProviderSummary } from '@boite/contracts';
   import { strings } from '../lib/strings';
-  import { accountName } from '../lib/account-name';
   import type { Choice } from '../lib/store.svelte';
 
   /**
@@ -51,7 +50,7 @@
   let several = $derived(seats.length > 1);
   let current = $derived(seats.find((seat) => seat.id === shownAccountId) ?? null);
   /** The provider's own login (no isolation directory) goes unnamed, like on the chip. */
-  let other = $derived(several && current && current.isolationDir !== null ? accountName(current) : null);
+  let other = $derived(several && current && current.isolationDir !== null ? current.label : null);
 
   // Another provider's column, or one account left: nothing stays open.
   let openFor: string | null = null;
@@ -83,7 +82,7 @@
   function seatTitle(seat: Account): string {
     if (seatHeld(seat)) return strings.composer.lockedHint;
     const reason = seatReason(seat);
-    return reason === null ? accountName(seat) : `${accountName(seat)}, ${reason}`;
+    return reason === null ? seat.label : `${seat.label}, ${reason}`;
   }
 
   /** A signed-out login cannot run a turn: it signs in again from Providers, not from here. */
@@ -214,7 +213,8 @@
               onclick={() => pickSeat(seat)}
             >
               <span class="check" aria-hidden="true">{#if seat.id === shownAccountId}<Check size={14} strokeWidth={2} />{/if}</span>
-              <span class="seat-name ui-label">{accountName(seat)}</span>
+              <!-- The label the user chose, never the login's email: a picker is read over a shoulder (docs/accounts.md). -->
+              <span class="seat-name ui-label">{seat.label}</span>
               {#if note}<span class="seat-note ui-label">{note}</span>{/if}
             </button>
             {#if onsignin && seat.status === 'unauthenticated'}

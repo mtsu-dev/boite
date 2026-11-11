@@ -8,7 +8,7 @@
   import Elapsed from './Elapsed.svelte';
   import ProviderLogo from './ProviderLogo.svelte';
   import StatusMark from './StatusMark.svelte';
-  import { workflowTone } from '../lib/thread-state';
+  import { workflowTone } from '../lib/status-tone';
 
   /**
    * The run top to bottom, one row per dependency level, the steps of a row
@@ -240,7 +240,7 @@
   .loop-tip.live { fill: color-mix(in srgb, var(--color-live) 75%, transparent); }
   .loop-tip.failed { fill: color-mix(in srgb, var(--color-danger) 65%, transparent); }
   .loop-tip.over { fill: color-mix(in srgb, var(--color-success) 55%, transparent); }
-  .loop-mark { position: absolute; z-index: 1; width: 16px; height: 16px; display: grid; place-items: center; transform: translate(-50%, -50%); border: 1px solid var(--color-border); border-radius: var(--radius-full); background: var(--color-surface-2); color: var(--color-muted-foreground); pointer-events: none; }
+  .loop-mark { position: absolute; z-index: 1; width: 16px; height: 16px; display: grid; place-items: center; transform: translate(-50%, -50%); border: 1px solid var(--color-border); border-radius: var(--radius-full); background: var(--color-surface-2); color: var(--color-muted-foreground); pointer-events: none; transition-property: none; }
   .loop-mark.live { border-color: color-mix(in srgb, var(--color-live) 55%, var(--color-border)); color: var(--color-live); }
   .loop-mark.failed { border-color: color-mix(in srgb, var(--color-danger) 55%, var(--color-border)); color: var(--color-danger); }
   .loop-mark.over { color: var(--color-success); }

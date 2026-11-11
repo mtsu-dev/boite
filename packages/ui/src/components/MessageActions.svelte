@@ -111,7 +111,9 @@
      message, which keeps the gap's height, and its target reaches the gaps around it. */
   .act { margin-block: calc((var(--chat-message-gap) - var(--icon-button)) / 2); }
 
+  /* A finger's targets (`--icon-button-target`) reach past the drawn boxes: the gap holds them side by side, so a
+     tap beside one button never lands on its neighbour. */
   @media (pointer: coarse), (max-width: 720px) {
-    .message-actions { gap: 4px; }
+    .message-actions { gap: max(4px, calc(var(--icon-button-target) - var(--icon-button))); }
   }
 </style>

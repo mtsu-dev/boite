@@ -86,7 +86,8 @@ test('Windows caption buttons keep their full hit areas beside the resize handle
 
 test('a composer the side panel narrows keeps its send button on the row of the chips', async () => {
   await size(1024, 700);
-  await onStore(`store.panel.closeAll(); store.panel.open('files');`);
+  // The panel drawn wider than its default, as its handle does: the composer beside it falls under 480 px.
+  await onStore(`store.panel.closeAll(); store.panel.open('files'); (await import('/src/lib/right-panel.svelte.ts')).rightPanel.width = 420;`);
   await page.waitFor(`document.querySelector('${id('composer')}').getBoundingClientRect().width < 480`);
   await capture('polish-composer-narrow.png');
   const narrow = await page.evaluate<{ send: number; effort: number; label: string }>(`(() => {
@@ -102,7 +103,7 @@ test('a composer the side panel narrows keeps its send button on the row of the 
   expect(narrow.label).toBe('none');
 
   await size(1440, 900);
-  await onStore(`store.panel.closeAll(); store.panel.hide();`);
+  await onStore(`store.panel.closeAll(); store.panel.hide(); (await import('/src/lib/right-panel.svelte.ts')).rightPanel.width = 360;`);
   await page.waitFor(`document.querySelector('${id('composer')}').getBoundingClientRect().width > 600`);
   const wide = await page.evaluate<{ picker: number; send: number; label: string }>(`(() => {
     const top = (selector) => document.querySelector(selector).getBoundingClientRect().top;
@@ -116,20 +117,22 @@ test('a composer the side panel narrows keeps its send button on the row of the 
   expect(wide.label).not.toBe('none');
 }, 30_000);
 
-test('a panel tab centres its icon on its label, and the strip fades the end that hides a tab', async () => {
+test('a panel tab centres its icon in the tab, and the strip fades the end that hides a tab', async () => {
   await size(1180, 800);
-  await onStore(`store.panel.closeAll(); for (const kind of ['agents', 'messages', 'files', 'changes', 'tasks']) store.panel.open(kind);`);
-  await page.waitFor(`document.querySelectorAll('${id('panel-tab')}').length === 5`);
+  // A tab is its glyph alone, so a strip overflows with more of them: four files join the five places.
+  await onStore(`store.panel.closeAll(); for (const kind of ['agents', 'messages', 'files', 'changes', 'tasks']) store.panel.open(kind); for (const path of ['src/a.ts', 'src/b.ts', 'src/c.ts', 'src/d.ts']) store.panel.openFile(path);`);
+  await page.waitFor(`document.querySelectorAll('${id('panel-tab')}').length === 9`);
   await page.settleAnimations();
   // One more on a strip that already overflows, the way the "+" menu adds them.
+  await page.waitFor(`document.querySelector('${id('panel-tabs')}').scrollWidth > document.querySelector('${id('panel-tabs')}').clientWidth`);
   await onStore(`store.panel.open('trace');`);
-  await page.waitFor(`document.querySelectorAll('${id('panel-tab')}').length === 6`);
-  const offsets = await page.evaluate<number[]>(`[...document.querySelectorAll('${id('panel-tab')}')].map((tab) => {
+  await page.waitFor(`document.querySelectorAll('${id('panel-tab')}').length === 10`);
+  const offsets = await page.evaluate<number[]>(`[...document.querySelectorAll('${id('panel-tab')}')].flatMap((tab) => {
     const icon = tab.querySelector('.glyph svg').getBoundingClientRect();
-    const name = tab.querySelector('.name').getBoundingClientRect();
-    return (icon.top + icon.bottom) / 2 - (name.top + name.bottom) / 2;
+    const box = tab.getBoundingClientRect();
+    return [(icon.top + icon.bottom) / 2 - (box.top + box.bottom) / 2, (icon.left + icon.right) / 2 - (box.left + box.right) / 2];
   })`);
-  // An inline span set the icon on the text's baseline, 2.5 px above the label's centre.
+  // An inline span set the icon on the text's baseline, 2.5 px above the centre.
   for (const offset of offsets) expect(Math.abs(offset)).toBeLessThanOrEqual(1);
   // The tab just opened is the active one, and once the strip's smooth scroll
   // ends no fade lies over it: it stood 6 px short of the end, under the fade.

@@ -9,7 +9,7 @@
   import StatusMark from './StatusMark.svelte';
   import SaveStatus from './SaveStatus.svelte';
   import { Autosave, toggled, typed, whole } from '../lib/autosave.svelte';
-  import { threadTone } from '../lib/thread-state';
+  import { threadTone } from '../lib/status-tone';
 
   let { store }: { store: Store } = $props();
   const uid = $props.id();

@@ -20,15 +20,16 @@ test("settings reveal sections and protection switches persist across navigation
     await page.waitFor('document.querySelector("[data-testid=settings-home]")');
     await settled();
     await page.screenshot("tests/e2e/.artifacts/settings-after.png");
-    await page.click("[data-testid=settings-tab-resources]");
+    // Protection is the Resources section of Diagnostics now; its Quiet switches are a card of General.
+    await page.click("[data-testid=settings-tab-diagnostics]");
     await page.waitFor(
-      'document.querySelector("[data-testid=setting-focus-guard]")',
+      'document.querySelector("[data-testid=resources-page] [data-testid=setting-reap-orphans]")',
     );
     await settled();
-    // Only pages several screens long list their sections: Protection and General fit without them.
+    // The nav is flat: no entry unfolds a list of its page's sections, the search reaches them.
     expect(
       await page.evaluate(
-        'document.querySelector("[data-testid=settings-tab-resources]").getAttribute("aria-expanded")',
+        'document.querySelector("[data-testid=settings-tab-diagnostics]").getAttribute("aria-expanded")',
       ),
     ).toBeNull();
     expect(
@@ -40,23 +41,31 @@ test("settings reveal sections and protection switches persist across navigation
       await page.evaluate(
         'document.querySelector("[data-testid=settings-tab-usage]").getAttribute("aria-expanded")',
       ),
-    ).toBe("false");
+    ).toBeNull();
     await page.screenshot("tests/e2e/.artifacts/protection-desktop.png");
-    await page.click("[data-testid=setting-mute-agents]");
-    await page.waitFor(
-      '!document.querySelector("[data-testid=setting-mute-agents]").checked',
-    );
     await page.click("[data-testid=setting-reap-orphans]");
     await page.waitFor(
       '!document.querySelector("[data-testid=setting-reap-orphans]").checked',
     );
     await page.click("[data-testid=settings-tab-general]");
-    await page.click("[data-testid=settings-tab-resources]");
+    await page.waitFor(
+      'document.querySelector("[data-testid=setting-mute-agents]") && document.querySelector("[data-testid=setting-focus-guard]")',
+    );
+    await page.click("[data-testid=setting-mute-agents]");
     await page.waitFor(
       '!document.querySelector("[data-testid=setting-mute-agents]").checked',
     );
+    await page.click("[data-testid=settings-tab-diagnostics]");
     await page.waitFor(
-      '!document.querySelector("[data-testid=setting-reap-orphans]").checked',
+      '!document.querySelector("[data-testid=setting-reap-orphans]")?.checked && document.querySelector("[data-testid=setting-reap-orphans]")',
+    );
+    await page.click("[data-testid=settings-tab-general]");
+    await page.waitFor(
+      'document.querySelector("[data-testid=setting-mute-agents]") && !document.querySelector("[data-testid=setting-mute-agents]").checked',
+    );
+    await page.click("[data-testid=settings-tab-diagnostics]");
+    await page.waitFor(
+      'document.querySelector("[data-testid=setting-reap-orphans]")',
     );
     expect(await page.evaluate('document.fonts.check("14px Inter")')).toBe(
       true,
@@ -83,9 +92,10 @@ test("settings reveal sections and protection switches persist across navigation
   }
 }, 60_000);
 
-// French names run long ("Machines et mises à jour"): a tile once let its label
-// spill over the next one, and the page hugged the left of a wide window.
-test("settings home keeps every tile's words inside it and centres its column", async () => {
+// French names run long ("Machines et mises à jour"): an entry once let its label
+// spill over the next one, and the page hugged the left of a wide window. The
+// desktop's home is the nav, its search over the first page's cards.
+test("settings nav keeps every entry's words inside it and centres the page's column", async () => {
   const port = await freePort();
   const server = await startUi(port);
   const page = await BrowserPage.launch({
@@ -97,14 +107,14 @@ test("settings home keeps every tile's words inside it and centres its column", 
     await page.evaluate("location.reload()");
     await page.waitFor('document.querySelector("[data-testid=nav-settings]")');
     await page.click("[data-testid=nav-settings]");
-    await page.waitFor('document.querySelector("[data-testid=settings-home-machines]")');
+    await page.waitFor('document.querySelector("[data-testid=settings-tab-machines]") && document.querySelector("[data-testid=settings-page] > section.card")');
     await page.evaluate("document.fonts.ready");
     for (const width of [1920, 1440, 1100, 900]) {
       await page.send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: false });
       const layout = JSON.parse(String(await page.evaluate(`(() => {
         const frame = document.querySelector('.settings section.framed').getBoundingClientRect();
-        const search = document.querySelector('[data-testid=settings-search]').closest('label').getBoundingClientRect();
-        const tiles = [...document.querySelectorAll('[data-testid^=settings-home-]')].filter(tile => tile.tagName === 'BUTTON');
+        const column = document.querySelector('[data-testid=settings-page] > section.card').getBoundingClientRect();
+        const tiles = [...document.querySelectorAll('[data-testid^=settings-tab-]')].filter(tile => tile.tagName === 'BUTTON');
         const spills = tiles.filter(tile => {
           const box = tile.getBoundingClientRect();
           return [...tile.querySelectorAll('span')].some(part => {
@@ -113,8 +123,9 @@ test("settings home keeps every tile's words inside it and centres its column", 
           });
         }).map(tile => tile.dataset.testid);
         const heights = [...new Set(tiles.map(tile => Math.round(tile.getBoundingClientRect().height)))];
-        return JSON.stringify({ left: search.left - frame.left, right: frame.right - search.right, spills, heights });
+        return JSON.stringify({ left: column.left - frame.left, right: frame.right - column.right, spills, heights, count: tiles.length });
       })()`)));
+      expect(layout.count).toBeGreaterThan(8);
       expect({ width, spills: layout.spills }).toEqual({ width, spills: [] });
       expect({ width, heights: layout.heights }).toEqual({ width, heights: [layout.heights[0]] });
       if (width >= 1440) expect(Math.abs(layout.left - layout.right)).toBeLessThanOrEqual(2);
@@ -133,7 +144,7 @@ test("settings home keeps every tile's words inside it and centres its column", 
     await page.waitFor('document.querySelector("[data-testid=machines-page] > section")');
     await centred("[data-testid=machines-page] > section");
     // A page of one machine centres too, its picker in the title's scope line, and the title starts where the page does.
-    await page.click("[data-testid=settings-tab-resources]");
+    await page.click("[data-testid=settings-tab-diagnostics]");
     await page.waitFor('document.querySelector("[data-testid=settings-scope] [data-testid=settings-machine]") && document.querySelector("[data-testid=resources-page] > *")');
     await centred("[data-testid=resources-page] > *");
     const edges = JSON.parse(String(await page.evaluate(`JSON.stringify([document.querySelector('[data-testid=settings-crumb] h1').getBoundingClientRect().left, document.querySelector('[data-testid=resources-page] > *').getBoundingClientRect().left])`)));

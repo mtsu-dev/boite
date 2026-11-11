@@ -5,8 +5,8 @@ import { startDevUi } from './lib/ui.ts';
 
 /*
  * A project whose folder was deleted outside the app, on the fake client: the
- * sidebar marks it, the composer says why nothing can start there and offers
- * the ways out as buttons, at desktop and phone widths.
+ * sidebar marks it, the composer's place says why nothing can start there and
+ * offers to check again, at desktop and phone widths; the project's menu removes it.
  */
 
 let server: { close(): Promise<void> };
@@ -37,7 +37,9 @@ test('a project whose folder is gone is marked, explained above the composer and
   })`);
   await page.waitFor(`document.querySelector('[data-testid=folder-gone]') && document.querySelector('[data-project-id="${projectId}"] [data-testid=project-missing]')`);
   expect(await page.evaluate(`document.querySelectorAll('[data-testid=project-missing]').length`)).toBe(1);
-  expect(await page.evaluate(`document.querySelector('[data-testid=folder-gone]').textContent`)).toContain('does not exist any more');
+  // One line in the composer's place; the why, with the path, sits behind its "i".
+  expect(await page.evaluate(`document.querySelector('[data-testid=folder-gone]').textContent`)).toContain('Folder not found');
+  expect(await page.evaluate(`document.querySelector('[data-testid=folder-gone-info]').dataset.tipText`)).toContain('does not exist any more');
   await capture('folder-gone-desktop.png');
 
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
@@ -53,7 +55,11 @@ test('a project whose folder is gone is marked, explained above the composer and
   await page.waitFor(`document.querySelector('[data-testid=folder-gone-check]')?.disabled === false`);
   expect(await page.evaluate(`document.querySelector('[data-testid=folder-gone]') !== null`)).toBe(true);
 
-  await page.click('[data-testid=folder-gone-remove]');
+  // Removing the project stays in its menu, under Manage project.
+  await page.click(`[data-project-id="${projectId}"] [data-testid=project-menu]`);
+  await page.click('[data-testid=context-menu] [data-value=manage]');
+  await page.waitFor(`document.querySelector('[data-testid=context-menu] [data-value=remove]')`);
+  await page.click('[data-testid=context-menu] [data-value=remove]');
   await page.waitFor(`document.querySelector('[data-testid=confirm-ok]')`);
   await page.click('[data-testid=confirm-ok]');
   await page.waitFor(`!document.querySelector('[data-project-id="${projectId}"]') && !document.querySelector('[data-testid=folder-gone]')`);

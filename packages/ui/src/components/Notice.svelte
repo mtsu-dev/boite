@@ -50,7 +50,7 @@
   <div class="notice-body">
   <div class="text">
     <span class="line">
-      {#if title}<strong class="title" data-testid={ids?.title} title={tip}>{title}</strong>{:else if detail}<span class="detail lead" data-testid={ids?.detail} title={tip}>{detail}</span>{/if}
+      {#if title}<strong class="title ui-label-box" data-testid={ids?.title} title={tip}><span class="ui-label">{title}</span></strong>{:else if detail}<span class="detail lead" data-testid={ids?.detail} title={tip}>{detail}</span>{/if}
       {#if meta}<span class="meta" data-testid={ids?.meta}>{meta}</span>{/if}
       {#if info}<InfoTip topic={title ?? detail ?? ''} text={info} testid={testid ? `${testid}-info` : undefined} />{/if}
     </span>
@@ -102,6 +102,7 @@
   .text { display: flex; flex: 0 1 auto; flex-direction: column; gap: 2px; min-width: 0; margin-block: var(--first-line); overflow-wrap: anywhere; }
   .line { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
   .line :global(.info-tip), .line :global(button) { flex: none; }
+  /* Its cap height centred on the first line, beside the mark, in every font (app.css `.ui-label`). */
   .title { color: var(--color-foreground); font-weight: 600; }
   .lead { color: var(--color-foreground); }
   .meta { flex: none; margin-left: auto; color: var(--color-subtle); }

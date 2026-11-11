@@ -83,7 +83,11 @@ async function capture(page: BrowserPage, name: string): Promise<void> {
 }
 
 async function newDraft(page: BrowserPage, phone: boolean): Promise<void> {
-  if (phone) await newMobileThread(page);
+  if (phone) {
+    // The draft on screen slides in over the list: once at rest, its tab bar is gone and Back leads to the list's "New".
+    await page.settleAnimations();
+    await newMobileThread(page);
+  }
   else await page.click('[data-testid=new-thread]');
   await page.waitFor('document.querySelector("[data-testid=draft-empty]") && document.querySelector("[data-testid=composer-input]")?.value === ""');
 }

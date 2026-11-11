@@ -21,6 +21,8 @@ export interface MenuItem {
   checked?: boolean;
   /** With `checked`: one choice of several, marked with a check instead of a switch. */
   radio?: boolean;
+  /** One line cut with an ellipsis, the whole in `title`: a branch or a path, which would wrap into a column of words. */
+  clip?: boolean;
   /** A row that took over a button keeps that button's test id. */
   testid?: string;
   icon?: 'settings';

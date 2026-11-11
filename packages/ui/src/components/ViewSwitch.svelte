@@ -47,5 +47,7 @@
   /* A phone's large title: the words a step larger, the track a finger's height. 10 px sides leave a 360 px row
      room for the machine and three finger squares after it. */
   .title { padding: 3px; }
-  .title .side { height: 36px; padding: 0 10px; font-size: var(--text-body); }
+  .title .side { position: relative; height: 36px; padding: 0 10px; font-size: var(--text-body); }
+  /* Its target fills the track's padding, so a finger 19 px off a word's centre still picks it. */
+  .title .side::before { content: ''; position: absolute; inset: -4px 0; }
 </style>

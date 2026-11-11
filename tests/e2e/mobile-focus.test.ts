@@ -100,9 +100,12 @@ test('phone choices, folder browsing and overlay dismissal never focus a text fi
   await shiftTab();
   expect(await page.evaluate(`document.activeElement?.matches('[data-testid=diagnostics-report-dialog] .actions .ghost')`)).toBe(true);
   await tap('[data-testid=diagnostics-report-dialog] .actions .ghost');
-  // Settle both phone history entries before the next test changes viewport and navigates.
+  // Settle the phone history entries before the next test changes viewport and navigates: the page's, then
+  // Settings' own, since Settings is a page over the list that Back leaves.
   await page.evaluate('__boiteTest.workspace.active.showSettings()');
-  await page.waitFor(`!document.querySelector('[data-testid=diagnostics-report-dialog]') && !history.state?.boiteOverlay`);
+  await page.waitFor(`!document.querySelector('[data-testid=diagnostics-report-dialog]') && document.querySelector('[data-testid=mobile-settings-home]')`);
+  await tap('[data-testid=mobile-settings-leave]');
+  await page.waitFor(`!document.querySelector('.mobile-settings') && !history.state?.boiteOverlay`);
   expect(page.errors()).toEqual([]);
 }, 30_000);
 

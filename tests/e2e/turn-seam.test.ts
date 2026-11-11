@@ -34,8 +34,10 @@ test('a turn split across assistant messages reads as one run of work on desktop
     await page.evaluate('new Promise(resolve => setTimeout(resolve, 600))');
     await page.screenshot(join(import.meta.dir, '.artifacts', 'turn-seam-desktop.png'));
     const gap = await page.evaluate<number>(`document.querySelector('[data-mid="seam-b"]').getBoundingClientRect().top - document.querySelector('[data-mid="seam-a"] [data-testid=tool-group]').getBoundingClientRect().bottom`);
-    // --chat-part-gap, where two messages would leave --chat-message-gap.
-    expect(Math.round(gap)).toBe(4);
+    // --chat-block-gap, the one gap between a message, a tool run and a result, where two messages would leave --chat-message-gap.
+    const [block, message] = await page.evaluate<number[]>(`['--chat-block-gap', '--chat-message-gap'].map(name => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)))`);
+    expect(block).toBeLessThan(message!);
+    expect(Math.round(gap)).toBe(block!);
   } finally {
     await page.close();
   }

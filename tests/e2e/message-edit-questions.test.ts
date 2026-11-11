@@ -80,9 +80,11 @@ test('desktop and paired phone replace an edited message and silently skip a que
       expect(await page.text('[data-testid=activity-question] [data-testid=question-text]')).toBe(question);
       expect(await page.evaluate('document.querySelectorAll("[data-testid=question-text]").length')).toBe(1);
       expect(await page.evaluate('document.querySelector("[data-testid=activity-question] [data-testid=question-reply-hint], [data-testid=activity-question] [data-testid=question-submit]")')).toBeNull();
-      expect(await page.evaluate('document.querySelector("[data-testid=composer-picker]")')).toBeNull();
+      // The model chip stays named while the box answers: the next turn runs on it. Send names the reply.
+      expect(await page.evaluate('!!document.querySelector("[data-testid=composer-picker]")')).toBe(true);
       expect((await page.text(send)).trim()).toBe('Répondre');
-      expect(await page.evaluate('(() => { const card = document.querySelector("[data-testid=thread-decision]").getBoundingClientRect(); const field = document.querySelector("[data-testid=composer]").getBoundingClientRect(); return card.bottom <= field.top && document.documentElement.scrollWidth <= innerWidth; })()')).toBe(true);
+      // The question is attached to the top of the composer card, over the field it is answered in.
+      expect(await page.evaluate('(() => { const decision = document.querySelector("[data-testid=thread-decision]"); const card = decision.getBoundingClientRect(); const shell = decision.closest("[data-testid=composer]")?.getBoundingClientRect(); const field = document.querySelector("[data-testid=composer-input]").getBoundingClientRect(); return !!shell && card.top >= shell.top - 0.5 && card.left >= shell.left - 0.5 && card.right <= shell.right + 0.5 && card.bottom <= field.top && document.documentElement.scrollWidth <= innerWidth; })()')).toBe(true);
       await capture(page, `question-answer-${mobile ? 'phone' : 'desktop'}.png`);
       const clip = await page.evaluate<{ x: number; y: number; width: number; height: number; scale: number }>('(() => { const r = document.querySelector("[data-testid=composer]").getBoundingClientRect(); return {x:r.x, y:r.y, width:r.width, height:r.height, scale:1}; })()');
       const detail = await page.send('Page.captureScreenshot', { format: 'png', clip }) as { data: string };
@@ -91,6 +93,8 @@ test('desktop and paired phone replace an edited message and silently skip a que
       await page.click('[data-testid=activity-question-toggle]');
       await page.waitFor('!document.querySelector("[data-testid=composer-reply]") && document.querySelector("[data-testid=composer-picker]")');
       expect(await client.call('questions.list', { threadId: thread.id })).toHaveLength(1);
+      // Folded, the question is its head alone; opened again, it offers to answer in writing.
+      await page.click('[data-testid=activity-question-toggle]');
       await page.click('[data-testid=question-write]');
       await page.waitFor('document.querySelector("[data-testid=composer-reply]")');
       await page.type(input, 'Oui, vérifiez les réglages.');

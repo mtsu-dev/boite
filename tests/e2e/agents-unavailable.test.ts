@@ -37,11 +37,16 @@ for (const width of [1440, 390]) test(`a bot on a retired provider opens and its
     await page.waitFor(`document.querySelector('[data-testid=status-connection]')?.dataset.state === 'ready'`, 30_000);
     await openBot(page, agent.id, 30_000);
     await page.waitFor(`document.querySelector('[data-testid=agent-header]')?.textContent.includes('B.O.T.S')`);
-    expect(await page.text('[data-testid=agent-problem]')).toContain('antigravity-cli');
+    // The notice says the account is gone as the composer's chip does; the core's own words, naming the retired provider, are its tooltip.
+    expect(await page.text('[data-testid=agent-problem-cause]')).toBe('Account removed');
+    expect(await page.evaluate(`document.querySelector('[data-testid=agent-problem-cause]')?.title`)).toContain('antigravity-cli');
+    expect(await page.evaluate(`!!document.querySelector('[data-testid=agent-problem] [data-testid=agent-problem-account]')`)).toBe(true);
     expect(harness.core.journal.listTurns(harness.core.workforce.sessionOf(agent.id)!.threadId)).toHaveLength(0);
     await page.settleAnimations();
     await page.screenshot(join(import.meta.dir, '.artifacts', `unavailable-bot-${width}.png`));
-    await page.click('[data-testid=agent-problem] button');
+    // Its default model is repaired in its settings, opened from the bot's menu.
+    await page.click('[data-testid=agent-menu]');
+    await page.click('[data-value="settings"]');
     await page.click('[data-testid=agent-runtime] [data-testid=composer-picker]');
     await page.click('[data-provider="echo"]');
     await page.click('[data-model="echo"]');

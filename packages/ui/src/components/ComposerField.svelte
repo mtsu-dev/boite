@@ -42,9 +42,17 @@
     onfocus: () => void;
     onblur: () => void;
   } = $props();
+
+  /** A press on the gap under the field (the phone's, the wrap's padding) lands in the field. */
+  function reach(event: PointerEvent): void {
+    if (event.target !== event.currentTarget || !box || disabled) return;
+    event.preventDefault();
+    box.focus();
+  }
 </script>
 
-<div class="input-wrap">
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div class="input-wrap" onpointerdown={reach}>
 {#if highlighted}
   <div class="input-highlight" aria-hidden={references.length || attachments.length ? undefined : true} data-testid="composer-highlight" style:right={`${gutter}px`}>
     <div class="input-paint input-mirror" style:transform={`translateY(${-scroll}px)`}><PreviewReferences {text} {references} {store} threadId={key} editing {keywords} command={command || undefined} {onreference}>{#snippet paint(parts)}<ComposerImageReferences segments={parts} {attachments} onopen={onopenimage} onhover={onhoverimage} />{/snippet}</PreviewReferences>{'\n'}</div>
@@ -122,9 +130,9 @@
 
   @media (max-width: 720px) {
     textarea, .input-mirror { font-size: var(--text-md); }
-    /* The gap under the field becomes its own padding: the same height on screen, the whole of it a finger's target. */
-    .input-wrap { margin-bottom: 0; }
-    textarea, .input-paint { min-height: var(--composer-input-height, 44px); padding-bottom: var(--composer-input-gap, 6px); }
+    /* The gap under the field stays outside it, so a scrolled line stops short of the bar, but it is the wrap's
+       padding: a finger landing there still reaches the field (`reach`), the whole height a target. */
+    .input-wrap { margin-bottom: 0; padding-bottom: var(--composer-input-gap, 6px); }
     /* The microphone and send stand at the field's end (ComposerBar, `--composer-tools` in Composer): the text and its mirror stop short of them. */
     textarea, .input-paint { padding-right: calc(var(--composer-tools) + 8px); }
   }

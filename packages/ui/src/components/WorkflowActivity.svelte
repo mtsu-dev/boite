@@ -7,7 +7,7 @@
   import { workflowFailure } from '../lib/failure-cause';
   import ActivityCard from './ActivityCard.svelte';
   import StatusMark from './StatusMark.svelte';
-  import { workflowTone } from '../lib/thread-state';
+  import { workflowTone } from '../lib/status-tone';
 
   /** A run grouped on one row of the chat where it started, like the subagents it runs: its name over its state, steps and one tick per phase, its time, and the way to its graph. A failed run says why under them. */
   let { store, run }: { store: Store; run: WorkflowRun } = $props();

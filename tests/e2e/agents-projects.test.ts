@@ -52,7 +52,11 @@ test('bot settings save local and remote projects separately on desktop and phon
   await page.evaluate(`window.__boiteTest.workspace.machines.find(m => m.store !== window.__boiteTest.workspace.primary).store.saveSettings({ groupBots: true })`);
   await page.waitFor(`!document.querySelector('${remote}').disabled`);
 
-  await page.click(id('agent-desk-toggle'));
+  // The desk open beside the settings closes (its door names it while it shows; the panel's close shuts it),
+  // so the phone shows the settings and not the desk's panel over them.
+  await page.waitFor(`document.querySelector('${id('agent-desk')}')`);
+  await page.click(`${id('right-panel')} ${id('panel-close')}`);
+  await page.waitFor(`!document.querySelector('${id('agent-desk')}')`);
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   await page.click(remote);
   await page.waitFor(`(async () => (await ${saved}).includes(${JSON.stringify(grant)}))()`);

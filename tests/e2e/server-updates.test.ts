@@ -56,7 +56,10 @@ test('a server release shows in the footer and in Machines, and actions target t
   await page.waitFor(`document.querySelector('${row} ${id('machine-updates-state')}')?.dataset.state === 'current'`);
   expect(await page.evaluate(`document.querySelector('${id('nav-updates')}') === null`)).toBe(true);
   expect(await builderPart()).toBe('');
-  expect(await page.text(`${row} ${id('machine-version')}`)).toBe('2.0.0-beta.1');
+  // Builder runs the version the card heads with: its row does not repeat it, the head says it once.
+  expect(await page.evaluate(`window.__boiteTest.workspace.machines.find(machine => machine.id === 'http://builder.test').store.core.version`)).toBe('2.0.0-beta.1');
+  expect(await page.text(id('updates-version'))).toContain('2.0.0-beta.1');
+  expect(await page.evaluate(`document.querySelector('${row} ${id('machine-version')}') === null`)).toBe(true);
   await capture('current-desktop');
   await page.navigate(`${base}/?fake=1&machines=1&open=recent&serverUpdate=available`);
   await page.waitFor(`document.querySelector('${id('nav-settings')}') && window.__boiteTest?.workspace.machines.length === 2`);

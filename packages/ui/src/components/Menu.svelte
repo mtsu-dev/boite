@@ -206,6 +206,7 @@
           class:radio={item.radio}
           class:submenu={item.submenu}
           class:glyphed={!switches && !!item.glyph}
+          class:clip={item.clip}
           role={item.checked === undefined ? 'menuitem' : item.radio ? 'menuitemradio' : 'menuitemcheckbox'}
           aria-checked={item.checked}
           disabled={item.disabled}
@@ -388,6 +389,11 @@
   .label {
     font-weight: 400;
   }
+
+  /* A clipped row keeps one line: the label takes the row's width and ends in an ellipsis (`MenuItem.clip`). */
+  .item.clip { align-items: stretch; }
+  .item.clip .label { min-width: 0; }
+  .item.clip .label .ui-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* A row that opens more rows: its chevron at the far edge. */
   .submenu .label { align-self: stretch; }

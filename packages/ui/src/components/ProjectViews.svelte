@@ -82,6 +82,11 @@
     .actions :global(button.worded) { width: 32px; padding: 0; justify-content: center; }
     .actions :global(button.worded .word) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   }
+  /* The narrowest column: the views' words keep 4 px sides, so French's "Projets" and "Récent" leave Filter and
+     search inside the head at 208 px. */
+  @container sidebar (max-width: 239px) {
+    .list-head .title :global(.side) { padding: 0 4px; }
+  }
   /* A row on the cards' edges, as tall as a thread row: the glyph where a row's text starts, the key at its end. */
   .new { display: flex; align-items: center; gap: 8px; width: 100%; height: 32px; margin: 2px 0 6px; padding: 0 8px 0 7px; border-radius: var(--radius-md);
     background: var(--color-surface-2); color: var(--color-foreground); font-size: var(--text-body); font-weight: 500; }

@@ -29,9 +29,18 @@ export function floating(node: HTMLElement, options: { anchor: () => HTMLElement
       node.hidePopover?.();
       node.showPopover?.();
       focused?.focus({ preventScroll: true });
-      backdropMotion = new MutationObserver(() => backdrop?.classList.toggle('closing', node.classList.contains('closing')));
+      const dismiss = options.dismiss;
+      let held = true;
+      backdropMotion = new MutationObserver(() => {
+        const closing = node.classList.contains('closing');
+        backdrop?.classList.toggle('closing', closing);
+        // A sheet playing its exit gives Back to what lies under it at once: a Back during that exit closes the
+        // panel or screen below, not the sheet already leaving. Reopened inside the exit, it takes an entry again.
+        if (closing && held) { held = false; closeHistory(); closeHistory = () => {}; }
+        else if (!closing && !held) { held = true; closeHistory = mobileOverlay(dismiss); }
+      });
       backdropMotion.observe(node, { attributes: true, attributeFilter: ['class'] });
-      closeHistory = mobileOverlay(options.dismiss);
+      closeHistory = mobileOverlay(dismiss);
     } else {
       closeHistory();
       closeHistory = () => {};

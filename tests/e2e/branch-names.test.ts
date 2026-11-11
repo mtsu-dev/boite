@@ -22,7 +22,8 @@ beforeAll(async () => {
     store.threads = store.threads.map(t => t.id === thread.id ? updated : t);
     store.openThread = { ...store.openThread, branch: updated.branch };
   })()`);
-  await page.waitFor(`document.querySelector('.thread-header [data-testid="thread-branch"]')?.textContent.includes(${JSON.stringify(branch)})`);
+  // A row keeps its branch in its tooltip; the header's menu names it in the folder group (ThreadHeader.svelte).
+  await page.waitFor(`document.querySelector('[data-testid="thread-row"][data-thread-id="t-trace"]')?.title.includes(${JSON.stringify(branch)})`);
 }, 90_000);
 
 afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);
@@ -42,18 +43,32 @@ function fits(selector: string) {
 
 test('existing long branches truncate without pushing header controls or sidebar metadata out of view', async () => {
   expect(await fits('[data-testid="panel-toggle"]')).toBe(true);
+  // The header's branch is a row of its menu's folder group: one line, cut with an ellipsis, inside the window, whole in its tooltip.
+  await page.click('[data-testid="thread-menu-trigger"]');
+  const menu = '[role=menu]:not(.closing)';
+  await page.waitFor(`document.querySelector('${menu} [data-value=thread-branch], ${menu} [data-value=more]')`);
+  if (!await page.evaluate<boolean>(`!!document.querySelector('${menu} [data-value=thread-branch]')`)) await page.click(`${menu} [data-value=more]`);
+  await page.waitFor(`document.querySelector('${menu} [data-value=thread-branch]')`);
+  await page.settleAnimations();
   expect(await page.evaluate(`(() => {
-    const badge = document.querySelector('.thread-header [data-testid="thread-branch"]');
-    const text = badge.querySelector('.branch-name');
-    return !!text && text.scrollWidth > text.clientWidth && getComputedStyle(text).textOverflow === 'ellipsis' && badge.title.includes(${JSON.stringify(branch)});
+    const row = document.querySelector('${menu} [data-value=thread-branch]');
+    const text = row.querySelector('.ui-label');
+    const box = document.querySelector('${menu}').getBoundingClientRect();
+    return text.textContent.includes(${JSON.stringify(branch)}) && text.scrollWidth > text.clientWidth && getComputedStyle(text).textOverflow === 'ellipsis' && row.title.includes(${JSON.stringify(branch)}) &&
+      box.left >= 0 && box.right <= innerWidth && text.getClientRects().length === 1;
   })()`)).toBe(true);
+  await capture('header-menu');
+  await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+  await page.waitFor(`!document.querySelector('${menu}')`);
   await page.evaluate(`${state}.setSidebarWidth(208)`);
   await page.waitFor(`document.querySelector('[data-testid="sidebar"]').getBoundingClientRect().width <= 210`);
+  // The sidebar row is one line at rest; the branch sits in its tooltip and pushes nothing out of the row.
   expect(await page.evaluate(`(() => {
-    const row = document.querySelector('.thread:has([data-thread-id="t-trace"])');
-    const meta = row.querySelector('.metadata');
-    const text = meta.querySelector('.branch span');
-    return meta.scrollWidth <= meta.clientWidth && text.scrollWidth > text.clientWidth && row.querySelector('[data-testid="thread-pr"]').getBoundingClientRect().width > 0;
+    const row = document.querySelector('[data-testid="thread-row"][data-thread-id="t-trace"]');
+    const card = row.closest('.thread');
+    const sidebar = document.querySelector('[data-testid="sidebar"]').getBoundingClientRect();
+    const box = card.getBoundingClientRect();
+    return row.title.includes(${JSON.stringify(branch)}) && row.scrollWidth <= row.clientWidth && box.right <= sidebar.right && card.querySelector('[data-testid="thread-menu"]').getBoundingClientRect().right <= sidebar.right;
   })()`)).toBe(true);
   await capture('desktop');
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
@@ -77,17 +92,21 @@ test('changes panel and phone conversation list stay within the viewport with an
   })()`)).toBe(true);
   await capture('changes');
   await page.click('[data-testid="diff-options"]');
-  await page.click('[data-testid="panel-toggle"]');
+  // The panel's own close: with a panel open, the header's door lives in the panel's strip.
+  await page.click('[data-testid="panel-close"]');
+  await page.waitFor(`!document.querySelector('[data-testid="right-panel"]')`);
   for (const width of [390, 320]) {
     await page.send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 1, mobile: true });
     // A phone's header is Back and the title's menu, which holds the panel.
     expect(await fits('[data-testid="thread-menu-trigger"]')).toBe(true);
     await mobileAction(page, 'mobile-conversations');
     await page.waitFor(`document.querySelector('[data-testid="mobile-list"] .thread')`);
+    // A phone's row is its title first: the branch rides in the row's tooltip, and no row runs past the screen.
     expect(await page.evaluate(`(() => {
       const list = document.querySelector('[data-testid="mobile-list"]');
-      const details = [...list.querySelectorAll('.detail')];
-      return document.documentElement.scrollWidth <= innerWidth && details.some(el => el.textContent.includes(${JSON.stringify(branch)}) && el.scrollWidth > el.clientWidth && getComputedStyle(el).textOverflow === 'ellipsis') && details.every(el => el.getBoundingClientRect().right <= innerWidth);
+      const row = list.querySelector('[data-testid="mobile-thread-t-trace"]');
+      const rows = [...list.querySelectorAll('[data-testid="mobile-row"]')];
+      return document.documentElement.scrollWidth <= innerWidth && list.scrollWidth <= list.clientWidth && !!row && row.title.includes(${JSON.stringify(branch)}) && row.scrollWidth <= row.clientWidth && rows.every(el => el.getBoundingClientRect().right <= innerWidth);
     })()`)).toBe(true);
     await capture(`phone-${width}`);
     await page.click('[data-testid="mobile-list"] .thread');

@@ -161,6 +161,7 @@
           class="row"
           class:danger={item.danger}
           class:active={item.active}
+          class:clip={item.clip}
           role={item.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
           aria-checked={item.checked}
           tabindex="-1"
@@ -285,6 +286,9 @@
     white-space: normal;
     overflow-wrap: anywhere;
   }
+
+  /* One line ending in an ellipsis, as in Menu.svelte (`MenuItem.clip`). */
+  .clip .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* The one selection mark, as in Menu.svelte: 14 px, at the row's far edge. */
   .check {

@@ -4,7 +4,7 @@
   import ProviderLogo from './ProviderLogo.svelte';
   import StatusMark from './StatusMark.svelte';
   import ProfileAvatar from './agents/AgentAvatar.svelte';
-  import { threadTone } from '../lib/thread-state';
+  import { threadTone } from '../lib/status-tone';
   import { avatarLit } from '../lib/avatar-lit';
 
   /**

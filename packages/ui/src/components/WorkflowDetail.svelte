@@ -7,7 +7,7 @@
   import Elapsed from './Elapsed.svelte';
   import ProviderLogo from './ProviderLogo.svelte';
   import StatusMark from './StatusMark.svelte';
-  import { workflowTone } from '../lib/thread-state';
+  import { workflowTone } from '../lib/status-tone';
   import { formatTokens, levelName } from '../lib/format';
   import { totalTokens } from '../lib/usage';
 

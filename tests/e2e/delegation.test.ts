@@ -9,6 +9,13 @@ let core: RunningCore;
 let page: BrowserPage;
 let owner: CoreClient;
 let threadId: string;
+/** Subagents are a panel: the header's Panels door opens the panel, on its launcher or on the surface it last showed. */
+async function openAgents(): Promise<void> {
+  await page.click('[data-testid=panel-toggle]');
+  await page.waitFor('!!document.querySelector("[data-testid=launch-agents], [data-testid=delegation-surface]")');
+  if (!await page.evaluate('!!document.querySelector("[data-testid=delegation-surface]")')) await page.click('[data-testid=launch-agents]');
+  await page.waitFor('!!document.querySelector("[data-testid=delegation-surface]")');
+}
 beforeAll(async () => {
   core = await startCore(); owner = await connect(core.url, core.token);
   const project = await owner.call('projects.add', { path: core.dataDir, name: 'Delegation checks' });
@@ -18,9 +25,7 @@ beforeAll(async () => {
   await owner.call('delegation.configure', { threadId, config: { ...DEFAULT_DELEGATION_CONFIG, enabled: true, profiles: [{ id: 'review', name: 'Reviewer', providerId: 'echo', accountId: account.id, model: 'echo', effort: null }] } });
   page = await BrowserPage.launch({ url: pairingUrlOf(core) });
   await page.click(`[data-testid="thread-row"][data-thread-id="${threadId}"]`);
-  await page.click('[data-testid=thread-menu-trigger]');
-  await page.click('[data-testid=thread-menu-trigger-menu] [data-value=agents]');
-  await page.waitFor('!!document.querySelector("[data-testid=delegation-surface]")');
+  await openAgents();
 }, 60_000);
 afterAll(async () => { await page?.close(); owner?.close(); await core?.stop(); }, 30_000);
 
@@ -46,8 +51,7 @@ test('inspect and stop a real delegated thread from the panel, which launches no
   await page.waitFor('document.querySelector("[data-testid=delegation-activity]")?.getAttribute("aria-expanded") === "true"');
   expect(await page.evaluate('document.querySelectorAll("[data-testid=delegation-agent][data-state=working]").length')).toBe(1);
   await page.click('[data-testid="delegation-activity"]');
-  await page.click('[data-testid=thread-menu-trigger]');
-  await page.click('[data-testid=thread-menu-trigger-menu] [data-value=agents]');
+  await openAgents();
   await page.waitFor('!!document.querySelector("[data-testid=delegation-member]")');
   expect(await page.evaluate('document.querySelector("[data-testid=delegation-member-route]").title')).toContain('Echo · Echo');
   expect(await page.evaluate('!!document.querySelector("[data-testid=delegation-active] [data-testid=delegation-member]")')).toBe(true);

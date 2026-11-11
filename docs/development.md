@@ -1002,7 +1002,9 @@ it only fades out. A panel tab opened or picked after the panel is in fades
 its surface in. Captures and pointer aims wait on `page.settleAnimations()`
 from `tests/e2e/lib/cdp.ts`, which leaves out animations inside a folded
 `content-visibility` section: Chrome never updates those, so their `finished`
-promise stays pending.
+promise stays pending. It also leaves out scroll-linked animations
+(`animation-timeline: scroll()`), which never finish: a test that waits on
+`document.getAnimations()` itself keeps only `a.timeline === document.timeline`.
 
 For text beside icons, put `ui-label` on the text leaf inside the flex or grid
 row. The shared rule in `app.css` centres the font's cap height and alphabetic

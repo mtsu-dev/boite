@@ -38,7 +38,7 @@ async function pick(machineId: string) {
   await page.waitFor(`document.querySelector('${id('settings-machine-menu')} [data-value="${machineId}"]')`);
   await page.click(`${id('settings-machine-menu')} [data-value="${machineId}"]`);
   await page.waitFor(`document.querySelector('${id('settings-machine-menu')}') === null && document.querySelector('${row('claude')}')`);
-  await page.waitFor(`document.querySelector('${id('settings-machine')}').textContent.includes(${JSON.stringify(machineId === LOCAL ? 'This PC' : 'Builder')})`);
+  await page.waitFor(`document.querySelector('${id('settings-machine')}').textContent.includes(${JSON.stringify(machineId === LOCAL ? 'studio' : 'Builder')})`);
 }
 const agentState = (machineId: string, provider: string) => page.evaluate<string>(`JSON.stringify(window.__boiteTest.workspace.machines.find(machine => machine.id === ${JSON.stringify(machineId)}).store.harnessUpdates.find(update => update.providerId === ${JSON.stringify(provider)}))`);
 
@@ -67,8 +67,8 @@ test('agent updates live on Providers and Update and Skip target the machine its
   const active = await page.evaluate('window.__boiteTest.workspace.active.machineId');
   await providers();
   expect(await page.evaluate(`document.querySelector('${card} h2') !== null && document.querySelector('${card} h4') === null`)).toBe(true);
-  // The window's machine is picked first.
-  expect(await page.text(id('settings-machine'))).toContain('This PC');
+  // The window's machine is picked first, by its host name.
+  expect(await page.text(id('settings-machine'))).toContain('studio');
   await capture('harness-updates-desktop');
   await page.click(`${row('claude')} ${id('harness-update-skip')}`);
   await page.waitFor(`document.querySelector('${row('claude')} ${id('harness-update-unskip')}')`);
@@ -93,8 +93,10 @@ test('agent updates live on Providers and Update and Skip target the machine its
   await page.click(`${row('claude')} ${id('harness-update-skip')}`);
   await page.waitFor(`document.querySelector('${row('claude')} ${id('harness-update-unskip')}')`);
 
-  // A phone has no Providers page: Machines lists what each machine still offers, and Update starts it there.
+  // On a phone Machines lists what each machine still offers, and Update starts it there: back from Providers to the Settings list, then Machines.
   await size(390);
+  await page.waitFor(`document.querySelector('${id('mobile-settings-back')}') || document.querySelector('${id('mobile-settings-connection')}') || document.querySelector('${id('machines-page')}')`);
+  if (await page.evaluate<boolean>(`!document.querySelector('${id('machines-page')}') && !document.querySelector('${id('mobile-settings-connection')}')`)) await page.click(id('mobile-settings-back'));
   await page.waitFor(`document.querySelector('${id('mobile-settings-connection')}') || document.querySelector('${id('machines-page')}')`);
   if (!await page.evaluate<boolean>(`document.querySelector('${id('machines-page')}') !== null`)) await page.click(id('mobile-settings-connection'));
   await page.waitFor(`document.querySelector('${id('machines-page')}') && document.querySelector('${id('updates-others')}')`);
@@ -152,11 +154,13 @@ test('an update asked for while a turn of that agent runs says how many threads 
   await page.waitFor(waiting);
   await page.evaluate(`document.querySelector('${claude}').scrollIntoView({ block: 'center' })`);
   await capture('harness-update-waiting-desktop');
-  // A phone has no Providers page: it reads the same wait in the updates button above its thread list.
+  // A phone has no Providers page: back from Settings, it reads the same wait in the updates button of its thread drawer.
   await size(390);
-  await page.waitFor(`document.querySelector('${id('mobile-home')}')`);
-  await page.click(id('mobile-home'));
-  await page.waitFor(`document.querySelector('${id('nav-updates')}')`);
+  await page.waitFor(`document.querySelector('${id('mobile-settings-leave')}')`);
+  await page.click(id('mobile-settings-leave'));
+  await page.waitFor(`window.__boiteTest.workspace.active.page === 'chat'`);
+  await page.evaluate(`window.__boiteTest.workspace.active.sidebarOpen = true`);
+  await page.waitFor(`document.querySelector('${id('nav-updates')}')?.getClientRects().length > 0`);
   await page.click(id('nav-updates'));
   const part = `[role=dialog]${id('updates-card')} ${id('updates-part')}[data-part="claude"]`;
   await page.waitFor(`[...document.querySelectorAll('${part}')].some(item => item.textContent.includes('Waits for a thread to pause'))`);

@@ -69,7 +69,12 @@ test('disabled mode retains the native glance; Douane brings its quota bars and 
   expect(await page.evaluate('document.querySelector("[data-testid=subscription-proxy-url]").value')).toBe('http://127.0.0.1:8787');
   await page.type('[data-testid="subscription-proxy-url"]', dashboard);
   await page.type('[data-testid="subscription-proxy-dashboard"]', `${dashboard}/admin/#quotas`);
-  expect(await page.text('[data-testid=subscription-proxy-enabled-hint]')).toContain('no longer used for Claude and Codex');
+  // The switch's explanation is its "i": a click pins its text open.
+  await page.click('[data-testid=subscription-proxy-enabled-hint]');
+  await page.waitFor('document.querySelector("[data-testid=subscription-proxy-enabled-hint-text]")');
+  expect(await page.text('[data-testid=subscription-proxy-enabled-hint-text]')).toContain('no longer used for Claude and Codex');
+  await page.click('[data-testid=subscription-proxy-enabled-hint]');
+  await page.waitFor('!document.querySelector("[data-testid=subscription-proxy-enabled-hint-text]")');
   await capture('boite-proxy-settings-desktop.png');
   await page.click('[data-testid="subscription-proxy-save"]');
   await page.waitFor(saved);

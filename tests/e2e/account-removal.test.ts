@@ -42,7 +42,8 @@ async function withSpare(size: { width: number; height: number }): Promise<Brows
  */
 async function openOrphan(page: BrowserPage, name: string): Promise<void> {
   await page.evaluate(`${STORE}.open(window.__thread)`);
-  await page.waitFor(`${STORE}.openThread?.id === window.__thread && document.querySelector('[data-testid="composer-attach"]')`);
+  // The composer is drawn: its plus, which holds Attach, is there.
+  await page.waitFor(`${STORE}.openThread?.id === window.__thread && document.querySelector('[data-testid="composer-options"]')`);
   expect(await page.evaluate(`document.querySelector('[data-testid="composer-account-removed"]') === null`)).toBe(true);
   await page.evaluate(`${STORE}.accounts.filter(account => account.providerId === 'echo').forEach(account => { account.status = 'unauthenticated'; })`);
   await page.waitFor(`document.querySelector('[data-testid="composer-account-removed"]')`);

@@ -134,7 +134,7 @@
     const watches = thread.pullRequestWatches ?? [];
     return [
       ...(mobile.current ? watches.map((watch): MenuItem => ({ id: `watch:${watch.url}`, label: fill(strings.tasks.stopWatchOf, { number: String(watch.number) }), hint: watchStatus(watch), title: watch.url, glyph: GitPullRequest })) : []),
-      ...(thread.branch && work.shows('header.branch') && !mobile.current ? [{ id: 'thread-branch', label: thread.branch, title: `${thread.branch}: ${strings.thread.branchHint}: ${thread.cwd}`, glyph: GitBranch }] : [])
+      ...(thread.branch && work.shows('header.branch') && !mobile.current ? [{ id: 'thread-branch', label: thread.branch, title: `${thread.branch}: ${strings.thread.branchHint}: ${thread.cwd}`, glyph: GitBranch, clip: true }] : [])
     ];
   });
 

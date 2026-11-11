@@ -94,21 +94,14 @@ test('native speed switches keep Codex unblocked and warn only when enabling Cla
       await page.click(`[data-model="${model}"]`);
       await page.waitFor(`(async () => (${STORE}).openThread.model === ${JSON.stringify(model)})()`);
       await page.evaluate(`(async () => { (${STORE}).openThread.context = { tokens: 150000, window: 1000000, at: Date.now() }; })()`);
-      if (name === 'phone') {
-        await page.click('[data-testid="composer-options"]');
-        await page.waitFor(`document.querySelector('[data-testid="composer-options-sheet"] input[name="mobile-speed"]')`);
-      }
+      // Desktop and phone share one path: the effort chip of the composer's row opens the slider (a sheet on a phone),
+      // whose bolt cycles the native speeds, off last.
       for (const speed of speeds) {
-        if (name === 'phone') {
-          const position = speed === null ? 1 : speed === 'fast' ? 2 : 3;
-          await page.click(`[data-testid="composer-options-sheet"] label:nth-child(${position}) input[name="mobile-speed"]`);
-        } else {
-          if (!await page.evaluate(`!!document.querySelector('[data-testid="effort-speed"]')`)) {
-            await page.click('[data-testid="composer-effort"]');
-            await page.waitFor(`document.querySelector('[data-testid="effort-speed"]')`);
-          }
-          await page.click('[data-testid="effort-speed"]');
+        if (!await page.evaluate(`!!document.querySelector('[data-testid="effort-speed"]')`)) {
+          await page.click('[data-testid="composer-effort"]');
+          await page.waitFor(`document.querySelector('[data-testid="effort-speed"]')`);
         }
+        await page.click('[data-testid="effort-speed"]');
         if (provider === 'claude' && speed === 'fast') {
           await page.waitFor(`document.querySelector('[data-testid="confirm-dialog"]')`);
           expect(await page.text('[data-testid="confirm-dialog"]')).toContain('enabling Claude Fast mode for the first time');
@@ -117,15 +110,16 @@ test('native speed switches keep Codex unblocked and warn only when enabling Cla
         }
         await page.waitFor(`(async () => (${STORE}).openThread.speed === ${JSON.stringify(speed)})()`);
         expect(await page.evaluate(`!!document.querySelector('[data-testid="confirm-dialog"]')`)).toBe(false);
-        if (name === 'phone') await page.waitFor(`!document.querySelector('[data-testid="composer-options-sheet"] input[name="mobile-speed"]').matches(':disabled')`);
+        // The pick has landed: the row's chips take input again (the model chip is disabled while a pick is saved).
+        await page.waitFor(`!document.querySelector('[data-testid="composer-picker"]').matches(':disabled')`);
         if (speed === 'fast') {
           await page.evaluate(`Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`);
           await page.screenshot(join(import.meta.dir, '.artifacts', `speed-cache-${provider}-${name}.png`));
         }
       }
-      if (name === 'phone') {
-        await page.click('[data-testid="composer-options-sheet"] header button');
-        await page.waitFor(`!document.querySelector('[data-testid="composer-options-sheet"]')`);
+      if (name === 'phone' && await page.evaluate(`!!document.querySelector('[data-testid="composer-effort-menu"]')`)) {
+        await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+        await page.waitFor(`!document.querySelector('[data-testid="composer-effort-menu"]')`);
       }
     }
   }

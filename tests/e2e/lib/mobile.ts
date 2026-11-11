@@ -20,17 +20,15 @@ export async function mobileAction(page: BrowserPage, destination: string): Prom
   await page.click(destination === 'mobile-settings' ? '[data-testid=mobile-settings]' : `[data-testid=mobile-tabs] [data-testid=${destination}]`);
 }
 
-/** A new draft from the bottom bar's +. */
+/** A new draft from the thread list's "New" in its header. */
 export async function newMobileThread(page: BrowserPage): Promise<void> {
   await toMobileList(page);
-  await page.click('[data-testid=mobile-tabs] [data-testid=mobile-new]');
+  await page.click('[data-testid=mobile-new]');
 }
 
-/** The panel from a conversation's title menu, the one menu of its header. */
+/** The panel from the conversation header's Panels door, on a phone too. */
 export async function openMobilePanel(page: BrowserPage): Promise<void> {
-  await page.click('[data-testid=thread-menu-trigger]');
-  await page.waitFor(`document.querySelector('[data-testid=thread-menu-trigger-menu] [data-value=panel]')`);
-  await page.click('[data-testid=thread-menu-trigger-menu] [data-value=panel]');
+  await page.click('[data-testid=panel-toggle]');
   await page.waitFor(`document.querySelector('[data-testid=right-panel]')`);
 }
 

@@ -8,6 +8,8 @@ let server: { close(): Promise<void> };
 let page: BrowserPage;
 const id = (name: string) => `[data-testid="${name}"]`;
 const visible = (name: string) => `document.querySelector('${id(name)}')?.checkVisibility()`;
+/** Shown in one place or another: the work list is drawn in the bot column and, when that column is away, in the desk. */
+const shownAnywhere = (name: string, within = '') => `[...document.querySelectorAll('${within} ${id(name)}')].some(node => node.checkVisibility())`;
 const capture = async (name: string) => {
   await page.settleAnimations();
   await page.screenshot(join(import.meta.dir, '.artifacts', `bot-desk-${name}.png`));
@@ -26,41 +28,49 @@ beforeAll(async () => {
     return nova.id;
   })()`);
   await openRailBot(page, agentId, 30_000);
-  await page.waitFor(visible('desk-work'));
+  await page.waitFor(shownAnywhere('desk-work'));
 }, 120_000);
 afterAll(async () => { await page?.close(); await server?.close(); }, 60_000);
 
 test('the bot desk shows who it is, Now, routines and memory in one column without overflowing on desktop or phone', async () => {
   for (const width of [1440, 390]) {
     await page.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: width === 390 });
-    // A first visit on a wide window opens the desk by itself: read the toggle's state once the
-    // panel has settled, so the click never closes a desk that is still sliding in.
-    await page.waitFor(`document.querySelector('${id('agent-desk-toggle')}')`);
+    // A first visit on a wide window opens the desk by itself: read its state once the panel has settled,
+    // so the click never closes a desk that is still sliding in. Closed, the header's door opens it;
+    // open, the door (or the phone panel's own head) names it.
+    await page.waitFor(`document.querySelector('${id('agent-desk-toggle')}') || document.querySelector('${id('agent-desk')}')`);
     await page.settleAnimations();
-    if (await page.evaluate(`document.querySelector('${id('agent-desk-toggle')}').getAttribute('aria-pressed')`) !== 'true') await page.click(id('agent-desk-toggle'));
-    await page.waitFor(`document.querySelector('${id('agent-desk-toggle')}')?.getAttribute('aria-pressed') === 'true' && ${visible('agent-desk')}`);
+    if (!await page.evaluate(visible('agent-desk'))) await page.click(id('agent-desk-toggle'));
+    await page.waitFor(`${visible('agent-desk')} && [...document.querySelectorAll('${id('panel-door-name')}, ${id('panel-title')}')].some(name => name.checkVisibility() && name.textContent.trim() === 'Desk')`);
     await page.settleAnimations();
     // One column, no tabs: who it is, then its routines and memory.
     for (const part of ['desk-ident', 'desk-schedule', 'desk-memory']) expect(await page.evaluate(visible(part))).toBe(true);
-    // The threads it handles: in the Bots page's column on a desktop, in the desk on a phone.
-    await page.waitFor(visible('desk-work'));
-    expect(await page.evaluate(`!!document.querySelector('${id(width === 390 ? 'agent-desk' : 'bot-column')} ${id('desk-work')}')`)).toBe(true);
-    expect(await page.evaluate(visible('bot-handling'))).toBe(true);
+    // The threads it handles: in the Bots page's column while it shows on a desktop; in the desk on a phone,
+    // or when the docked desk borrows the column's place (the column folds, as the thread list does for a panel).
+    await page.waitFor(shownAnywhere('desk-work'));
+    const columnShown = width !== 390 && await page.evaluate<boolean>(`getComputedStyle(document.querySelector('.agents-rail')).display !== 'none'`);
+    expect(await page.evaluate(shownAnywhere('desk-work', id(columnShown ? 'bot-column' : 'agent-desk')))).toBe(true);
+    expect(await page.evaluate(shownAnywhere('bot-handling'))).toBe(true);
     expect(await page.evaluate(`document.querySelector('${id('agent-desk')} [role=tab]')`)).toBeNull();
     expect(await page.evaluate(visible('desk-steps'))).toBe(false);
     await capture(`desk-${width}`);
-    // The desk and every card stay inside the panel, including their text.
+    // The desk and every card stay inside the panel, including their text. The cards are flat sections now:
+    // a row's hover ground and a head's icon bleed past a card's text edge on purpose (one inset for the desk),
+    // so each card's box is measured against the desk's, and its titles, notes and Now line must not overflow.
     const layout = await page.evaluate<{ inside: boolean; overflow: number; cards: number[] }>(`(() => {
       const desk = document.querySelector('${id('agent-desk')}');
       const box = desk.getBoundingClientRect();
+      const left = box.left + desk.clientLeft, right = left + desk.clientWidth;
+      const past = card => { const r = card.getBoundingClientRect();
+        return Math.max(r.right - right, left - r.left, ...[...card.querySelectorAll('.desk-card-title, .desk-notes li, .desk-now-line')].map(node => node.scrollWidth - node.clientWidth)); };
       return { inside: box.width > 0 && box.left >= 0 && box.right <= innerWidth + 1,
         overflow: desk.scrollWidth - desk.clientWidth,
-        cards: [...desk.querySelectorAll('.desk-card')].map(card => card.scrollWidth - card.clientWidth) };
+        cards: [...desk.querySelectorAll('.desk-card')].map(card => Math.ceil(past(card))) };
     })()`);
     expect(layout.inside).toBe(true);
     expect(layout.overflow).toBeLessThanOrEqual(0);
     expect(layout.cards.length).toBeGreaterThan(1);
-    expect(layout.cards.every(overflow => overflow <= 0)).toBe(true);
+    expect(layout.cards.filter(overflow => overflow > 0)).toEqual([]);
 
     await page.click(`${id('desk-activity')} > summary`);
     await page.waitFor(visible('desk-steps'));

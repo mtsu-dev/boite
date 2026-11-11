@@ -23,8 +23,9 @@ for (const width of [1280, 390]) {
       const toggle = `${root} ${id('project-shelf-toggle')}`;
       await page.waitFor(`document.querySelector('${toggle}')`);
       const scroller = `(() => { let e = document.querySelector('${toggle}'); while (e && !['auto','scroll'].includes(getComputedStyle(e).overflowY)) e = e.parentElement; return e; })()`;
-      // A short list, anchored at its end: the fold opens below the visible edge.
-      await page.evaluate(`(() => { const s = ${scroller}; s.style.maxHeight = '300px'; s.scrollTop = s.scrollHeight; })()`);
+      // A short list, anchored at its end: the fold opens below the visible edge. Big projects fold their threads,
+      // so the desktop list can be under 300 px: the cap stays 100 px short of it.
+      await page.evaluate(`(() => { const s = ${scroller}; s.style.maxHeight = '1px'; s.style.maxHeight = Math.min(300, s.scrollHeight - 100) + 'px'; s.scrollTop = s.scrollHeight; })()`);
       await page.waitFor(`(() => { const s = ${scroller}; return s.scrollHeight > s.clientHeight && s.scrollTop + s.clientHeight >= s.scrollHeight - 1; })()`);
       const before = await page.evaluate<number>(`${scroller}.scrollTop`);
       await page.click(toggle);

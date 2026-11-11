@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp.ts';
 import { mobileAction } from './lib/mobile.ts';
 import { startUi } from './lib/ui.ts';
-import { showThreadView } from './lib/views.ts';
+import { closeDisplayOptions, openDisplayOptions, showThreadView } from './lib/views.ts';
 
 let server: { close(): Promise<void> };
 let port: number;
@@ -18,7 +18,14 @@ for (const width of [1280, 390]) {
       await page.waitFor('globalThis.__boiteTest?.workspace.active?.connection === "ready"');
       expect(await page.evaluate(`matchMedia('(hover: hover) and (pointer: fine)').matches`)).toBe(true);
       if (width < 720) await mobileAction(page, 'mobile-conversations');
-      await showThreadView(page, 'projects', width < 720 ? 'mobile-' : '');
+      const prefix = width < 720 ? 'mobile-' : '';
+      await showThreadView(page, 'projects', prefix);
+      // Done is a filter of the display menu: on, each project card lists its done threads after the others.
+      await openDisplayOptions(page, prefix);
+      const doneSwitch = `[data-testid=${prefix}grouping-options-menu] [role=switch][data-value=done]`;
+      if (await page.evaluate(`document.querySelector('${doneSwitch}').getAttribute('aria-checked') !== 'true'`)) await page.click(doneSwitch);
+      await page.waitFor(`document.querySelector('${doneSwitch}')?.getAttribute('aria-checked') === 'true'`);
+      await closeDisplayOptions(page, prefix);
       const threadId = await page.evaluate<string>(`(async () => {
         const store = globalThis.__boiteTest.workspace.active;
         const thread = await store.client.call('threads.create', {projectId:'p-boite', providerId:'echo', accountId:'a-echo', title:'Finish the merge report', worktree:{branch:'boite/merge-report'}});
@@ -42,17 +49,17 @@ for (const width of [1280, 390]) {
           candidates:[{repository:'github.com/example/repo', branch:thread.branch, sha:'a'.repeat(40), number:407, url:'https://github.com/example/repo/pull/407', mergedAt:'2026-10-23T12:00:00Z'}]});
         await store.client.call('threads.pullRequest', {threadId:thread.id});
       })()`);
-      const toggle = `${project} [data-testid="project-done-toggle"]`;
-      await page.waitFor(`document.querySelector('${toggle}')?.dataset.count === '1'`);
-      await page.click(toggle);
+      // The project's Done group counts the merged thread, still at work.
+      await page.waitFor(`document.querySelector('${project} [data-testid="group-label-done"] .count')?.textContent.trim() === '1'`);
       const done = `${root} [data-testid="done-thread"][data-thread-id="${threadId}"]`;
-      await page.waitFor(`document.querySelector('${done} [data-testid="thread-state"][data-state="working"]')`);
+      // Put away, the row carries no live state, a turn still running included: when it was put away.
+      await page.waitFor(`document.querySelector('${done} time') && !document.querySelector('${done} [data-testid="thread-state"]')`);
       expect(await page.evaluate(`document.querySelector('${done} [data-testid="done-thread-pr"]')?.dataset.state`)).toBe('MERGED');
       await page.settleAnimations();
       await page.screenshot(join(import.meta.dir, '.artifacts', `merged-pr-running-done-${width}.png`));
       await page.evaluate(`document.querySelector('${done} [data-testid="done-thread-open"]').focus()`);
       await page.settleAnimations();
-      expect(await page.evaluate(`getComputedStyle(document.querySelector('${done} [data-testid="thread-state"]')).opacity`)).toBe('0');
+      expect(await page.evaluate(`getComputedStyle(document.querySelector('${done} time')).opacity`)).toBe('0');
       expect(await page.evaluate(`getComputedStyle(document.querySelector('${done} [data-testid="done-thread-restore"]')).opacity`)).toBe('1');
       if (width >= 720) {
         const point = await page.evaluate<{x:number; y:number}>(`(() => {
@@ -61,16 +68,16 @@ for (const width of [1280, 390]) {
           return {x:box.x + box.width / 2, y:box.y + 12};
         })()`);
         await page.send('Input.dispatchMouseEvent', {type:'mouseMoved', ...point});
-        await page.waitFor(`document.querySelector('${done}').matches(':hover') && getComputedStyle(document.querySelector('${done} [data-testid="thread-state"]')).opacity === '0' && getComputedStyle(document.querySelector('${done} [data-testid="done-thread-restore"]')).opacity === '1'`);
+        await page.waitFor(`document.querySelector('${done}').matches(':hover') && getComputedStyle(document.querySelector('${done} time')).opacity === '0' && getComputedStyle(document.querySelector('${done} [data-testid="done-thread-restore"]')).opacity === '1'`);
         expect(await page.evaluate(`document.querySelector('${done}').matches(':hover')`)).toBe(true);
-        expect(await page.evaluate(`getComputedStyle(document.querySelector('${done} [data-testid="thread-state"]')).opacity`)).toBe('0');
+        expect(await page.evaluate(`getComputedStyle(document.querySelector('${done} time')).opacity`)).toBe('0');
         await page.screenshot(join(import.meta.dir, '.artifacts', `merged-pr-restore-hover-${width}.png`));
         await page.send('Input.dispatchMouseEvent', {type:'mouseMoved', x:width - 1, y:1});
       } else {
         await page.send('Emulation.setTouchEmulationEnabled', {enabled:true, maxTouchPoints:1});
-        await page.waitFor(`matchMedia('(hover: none)').matches && matchMedia('(pointer: coarse)').matches && getComputedStyle(document.querySelector('${done} [data-testid="thread-state"]')).opacity === '1' && getComputedStyle(document.querySelector('${done} [data-testid="done-thread-restore"]')).display === 'none'`);
+        await page.waitFor(`matchMedia('(hover: none)').matches && matchMedia('(pointer: coarse)').matches && getComputedStyle(document.querySelector('${done} time')).opacity === '1' && getComputedStyle(document.querySelector('${done} [data-testid="done-thread-restore"]')).display === 'none'`);
         expect(await page.evaluate(`matchMedia('(hover: none)').matches && matchMedia('(pointer: coarse)').matches`)).toBe(true);
-        expect(await page.evaluate(`getComputedStyle(document.querySelector('${done} [data-testid="thread-state"]')).opacity`)).toBe('1');
+        expect(await page.evaluate(`getComputedStyle(document.querySelector('${done} time')).opacity`)).toBe('1');
         expect(await page.evaluate(`getComputedStyle(document.querySelector('${done} [data-testid="done-thread-restore"]')).display`)).toBe('none');
         await page.screenshot(join(import.meta.dir, '.artifacts', `merged-pr-running-touch-${width}.png`));
       }
@@ -78,7 +85,8 @@ for (const width of [1280, 390]) {
       await page.waitFor(`globalThis.__boiteTest.workspace.active.client.call('threads.get', {threadId:${JSON.stringify(threadId)}}).then(t => t.status === 'idle')`, 20_000);
       const saved = await page.evaluate<{ archived: boolean; final: boolean }>(`globalThis.__boiteTest.workspace.active.client.call('threads.get', {threadId:${JSON.stringify(threadId)}}).then(t => ({archived:t.archived, final:t.messages.some(m => m.role === 'assistant' && m.parts.some(p => p.type === 'text' && p.text.endsWith('Final merge report retained.')))}))`);
       expect(saved).toEqual({ archived: true, final: true });
-      await page.waitFor(`!document.querySelector('${done} [data-testid="thread-state"]')`);
+      // Finished, the row stays in Done with its merge.
+      await page.waitFor(`document.querySelector('${done} [data-testid="done-thread-pr"]')?.dataset.state === 'MERGED' && !document.querySelector('${done} [data-testid="thread-state"]')`);
       await page.screenshot(join(import.meta.dir, '.artifacts', `merged-pr-finished-done-${width}.png`));
     } finally { await page.close(); }
   }, 40_000);

@@ -58,7 +58,7 @@ test('the page lists installed plugins, then the recommended ones, then the URL 
   // Every recommended plugin is installed, so the section is not drawn.
   expect(await page.evaluate(`document.querySelector('${id('plugins-recommended')}') === null`)).toBe(true);
   expect(await page.evaluate(`document.querySelector('${row('grok-seats')} ${id('plugin-progress')}').getAttribute('aria-valuenow')`)).toBe('45');
-  expect(await page.evaluate(`document.querySelector('${row('pool-legacy')} ${id('plugin-rejected')}').dataset.field`)).toBe('manifest.schema');
+  expect(await page.evaluate(`document.querySelector('${row('pool-legacy')} ${id('plugin-rejected')}').dataset.kind`)).toBe('manifest.schema');
   await page.waitFor(`document.querySelector('${row('seat-pool')} ${id('plugin-pool')}[data-provider="opencode"]')`);
   await capture('plugins-desktop.png');
   await scrollTo(id('plugins-add'));
@@ -74,7 +74,7 @@ test('a URL shows its manifest before anything installs, and a refused one says 
 
   await inspect('https://github.com/example/broken-pool');
   await page.waitFor(`document.querySelector('${id('plugin-preview')}').dataset.rejected === 'true'`);
-  expect(await page.evaluate(`document.querySelector('${id('plugin-preview')} ${id('plugin-rejected')}').dataset.field`)).toBe('artifacts.win32-x64.sha256');
+  expect(await page.evaluate(`document.querySelector('${id('plugin-preview')} ${id('plugin-rejected')}').dataset.kind`)).toBe('artifacts.win32-x64.sha256');
   expect(await page.evaluate(`document.querySelector('${id('plugin-add')}') === null`)).toBe(true);
   await scrollTo(id('plugins-add'));
   await capture('plugins-refused-desktop.png');
@@ -160,8 +160,10 @@ test('in a 390 pixel column the page wraps instead of scrolling sideways', async
     style.textContent = '.settings > nav { display: none !important; } .settings > section { flex: 0 0 390px !important; max-width: 390px; border: none !important; }';
     document.head.append(style);
   })()`);
-  const fits = `(() => { const el = document.querySelector('${id('plugins-page')}'); return el.getBoundingClientRect().width === 390 && el.scrollWidth <= el.clientWidth; })()`;
-  await page.evaluate(`document.querySelector('${id('plugins-page')}').scrollTop = 0`);
+  // The section is the column that scrolls, its page inside it: neither scrolls sideways.
+  const fits = `(() => { const el = document.querySelector('${id('plugins-page')}'); const column = el.closest('section'); return column.getBoundingClientRect().width === 390 && column.scrollWidth <= column.clientWidth && el.scrollWidth <= el.clientWidth; })()`;
+  await page.evaluate(`document.querySelector('${id('plugins-page')}').closest('section').scrollTop = 0`);
+  await page.waitFor(fits, 3_000);
   expect(await page.evaluate(fits)).toBe(true);
   await captureColumn('plugins-390.png');
   await inspect('https://github.com/example/pi-pool');
