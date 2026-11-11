@@ -22,10 +22,12 @@ const PAGES: Record<SettingsTab, SettingsPage> = {
   appearance: { phone: 'page' },
   keyboard: { machine: true, phone: 'home' },
   voice: { machine: true, phone: 'page' },
-  // Installing, signing in and plugins stay on the desktop: a phone shows Home,
-  // and the window widened again shows the page the route still names.
+  // Installing and signing in stay on the desktop: a phone shows Home, and the
+  // window widened again shows the page the route still names.
   accounts: { owner: true, machine: true, phone: 'home' },
-  plugins: { owner: true, machine: true, phone: 'home' },
+  // Plugins run beside the core, so a phone turns them on and off, sets them
+  // and installs them as well as the desktop; nothing there needs a right-click.
+  plugins: { owner: true, machine: true, phone: 'page' },
   brain: { owner: true, machine: true, phone: 'page' },
   usage: { phone: 'page' },
   limits: { machine: true, phone: 'page' },
