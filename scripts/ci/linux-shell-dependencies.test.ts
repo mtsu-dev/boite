@@ -5,11 +5,19 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const available = process.platform === 'linux' && Bun.which('apt-get') && Bun.which('gpg');
-const packages = ['libwebkit2gtk-4.1-dev', 'libayatana-appindicator3-dev', 'librsvg2-dev', 'patchelf', 'xvfb', 'dbus-x11', 'xdg-utils'];
-const workflow = Bun.YAML.parse(readFileSync(join(import.meta.dir, '../../.github/workflows/desktop.yml'), 'utf8')) as {
-  jobs: Record<string, { steps: { name?: string; run?: string }[] }>;
-};
-const step = workflow.jobs['portable-linux-x64']!.steps.find(s => s.name === 'Install Linux shell dependencies')!.run!;
+type Workflow = { jobs: Record<string, { steps: { name?: string; run?: string }[] }> };
+const workflow = (name: string) => Bun.YAML.parse(readFileSync(join(import.meta.dir, `../../.github/workflows/${name}`), 'utf8')) as Workflow;
+const installer = 'bash scripts/ci/ubuntu-apt.sh ';
+const step = workflow('desktop.yml').jobs['portable-linux-x64']!.steps.find(s => s.name === 'Install Linux shell dependencies')!.run!.trim();
+const packages = step.slice(installer.length).split(' ');
+const script = readFileSync(join(import.meta.dir, 'ubuntu-apt.sh'), 'utf8');
+
+test('both Linux apt steps install through the Ubuntu-only script', () => {
+  expect(step.startsWith(installer)).toBe(true);
+  const x11 = workflow('ci.yml').jobs['core-linux-x64']!.steps.find(s => s.name === 'X11 window capture and virtual desktop under Xvfb')!.run!;
+  expect(x11).toContain(installer);
+  expect(x11).not.toContain('apt-get');
+});
 
 function fixture(format: 'list' | 'sources', failure?: 'unavailable' | 'signature' | 'unresolvable') {
   const root = mkdtempSync(join(tmpdir(), 'boite-linux-apt-'));
@@ -54,10 +62,10 @@ function fixture(format: 'list' | 'sources', failure?: 'unavailable' | 'signatur
     writeFileSync(`${root}/status`, '');
     const config = `${root}/apt.conf`;
     writeFileSync(config, `Dir::Etc::sourcelist "${sources}/sources.list";\nDir::Etc::sourceparts "${sources}/sources.list.d";\nDir::Etc::parts "${root}/config-parts";\nDir::Etc::main "-";\nDir::State::lists "${root}/lists";\nDir::State::status "${root}/status";\nDir::Cache::archives "${root}/archives";\nDir::Cache::pkgcache "${root}/pkgcache.bin";\nDir::Cache::srcpkgcache "${root}/srcpkgcache.bin";\nDir::Log "${root}";\nDir::Etc::trusted "${root}/trusted.gpg";\nDir::Etc::trustedparts "${root}/trusted.gpg.d";\nAPT::Architecture "amd64";\nAcquire::Languages "none";\n`);
-    // Execute the workflow verbatim except its machine paths, Ubuntu's archive hosts and
+    // Execute the desktop step's script and packages verbatim except its machine paths, Ubuntu's archive hosts and
     // components, and its privilege boundary. Only installation and the unresolvable
     // mirror's DNS answer are simulated; index acquisition and signatures use real APT.
-    const script = `sudo() { "$@"; }
+    const run = `sudo() { "$@"; }
 apt-get() {
   local arg list=
   for arg in "$@"; do
@@ -71,10 +79,11 @@ apt-get() {
   fi
   command apt-get "$@"
 }
-${step.replaceAll('/etc/apt', sources).replaceAll('/etc/os-release', `${root}/os-release`)
+set -- ${packages.join(' ')}
+${script.replaceAll('/etc/apt', sources).replaceAll('/etc/os-release', `${root}/os-release`)
     .replace(/http:\/\/(?:archive|security|ports)\.ubuntu\.com\/ubuntu(?:-ports)?/g, `file:${repo}`)
     .replace("components='main restricted universe multiverse'", "components='main'")}`;
-    const result = Bun.spawnSync(['bash', '-e', '-o', 'pipefail', '-c', script], {
+    const result = Bun.spawnSync(['bash', '-c', run], {
       env: { ...process.env, APT_CONFIG: config }, stdout: 'pipe', stderr: 'pipe',
     });
     return { code: result.exitCode, output: result.stdout.toString() + result.stderr.toString() };
