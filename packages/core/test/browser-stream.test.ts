@@ -68,8 +68,12 @@ real('a viewer is pushed the page then its pictures on a socket of its own, at t
   await waitFor(() => viewer.pages.length === 2 && viewer.pictures.at(-1)!.page === viewer.pages[1], 10_000);
   expect(viewer.pages[1]).toMatchObject({ title: 'clicked' });
   expect(viewer.pictures.length).toBeGreaterThan(resting);
-  // Input aimed at the page before is refused once it is five seconds old, the page shown never.
+  // Input aimed at the page before remains valid immediately after it is replaced.
   await owner.call('browser.remoteInput', { threadId, frameId: page.id, input: { kind: 'key', key: 'Tab' } });
+  await Bun.sleep(5100);
+  // The old page expires after five seconds; the page still shown does not.
+  expect(await thrown(owner.call('browser.remoteInput', { threadId, frameId: page.id, input: { kind: 'key', key: 'Tab' } }))).toThrow('refresh');
+  await owner.call('browser.remoteInput', { threadId, frameId: viewer.pages[1]!.id, input: { kind: 'key', key: 'Tab' } });
 
   // The viewer shows the page smaller: the pictures follow.
   viewer.size(400);
@@ -129,6 +133,18 @@ real('a moving page comes at the pace of the acknowledgements, a viewer that hol
   await waitFor(() => last.pictures.length > 0, 20_000);
   client.close();
   await waitFor(() => last.closed !== undefined, 10_000);
+
+  // An archive may precede tab teardown: no more pictures go to that conversation.
+  const archivedClient = await harness.connect(), active = harness.core.threads.require(threadId);
+  try {
+    await archivedClient.call('threads.subscribe', { threadId });
+    const archived = watch(harness.url + ((await archivedClient.call('browser.remoteStream', { threadId, tabId, maxWidth: 800 })) as { path: string }).path);
+    await waitFor(() => archived.pictures.length > 0, 20_000);
+    // Keep the tab alive to exercise delivery while archive cleanup has not run.
+    harness.core.journal.putThread({ ...active, archived: true });
+    await waitFor(() => archived.closed !== undefined, 5000);
+    expect(archived.closed).toBe(BrowserStreamClose.Refused);
+  } finally { harness.core.journal.putThread(active); archivedClient.close(); }
 }, 120_000);
 
 real('a phone paired with another member of the group is pushed the frames through it', async () => {

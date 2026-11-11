@@ -274,9 +274,10 @@ export class RemoteDrive {
    */
   async #deliver(viewer: PushViewer, picture: Picture): Promise<void> {
     if (viewer.closed) return;
-    if (!viewer.connection.subscriptions.has(viewer.threadId)) { this.#endPush(viewer, BrowserStreamClose.Refused, 'not subscribed'); return; }
+    try { this.#viewer(viewer.threadId, viewer.connection); } catch { this.#endPush(viewer, BrowserStreamClose.Refused, 'not subscribed'); return; }
     const page = await this.#context.evaluate(viewer.tab, PAGE_INFO_SCRIPT, 5000).catch(() => null) as PageInfo | null;
     if (viewer.closed) return;
+    try { this.#viewer(viewer.threadId, viewer.connection); } catch { this.#endPush(viewer, BrowserStreamClose.Refused, 'not subscribed'); return; }
     // Between two documents the page answers nothing yet: this picture is dropped, and a still follows.
     if (!page) { viewer.wire.acked(); viewer.stream.refresh(); return; }
     const title = String(page.title ?? '').slice(0, 200), url = String(page.href ?? '').slice(0, REMOTE_URL_MAX);

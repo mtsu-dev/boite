@@ -106,6 +106,12 @@ export function frameStream(options: FrameStreamOptions): FrameStream {
   let retry: ReturnType<typeof setTimeout> | undefined, sizing: ReturnType<typeof setTimeout> | undefined;
   const again = () => { if (!stopped) { clearTimeout(retry); retry = setTimeout(() => void open(), streamBackoff(failures++)); } };
   const reply = (message: RemoteStreamReply) => socket?.send(JSON.stringify(message));
+  const size = () => {
+    const maxWidth = options.maxWidth();
+    if (stopped || !socket || !maxWidth || maxWidth === sentWidth) return;
+    sentWidth = maxWidth;
+    reply({ type: 'size', maxWidth });
+  };
   async function open(): Promise<void> {
     if (stopped) return;
     try {
@@ -134,6 +140,7 @@ export function frameStream(options: FrameStreamOptions): FrameStream {
         options.lost();
         again();
       };
+      size();
     } catch (cause) {
       if (stopped) return;
       options.failed(errorText(cause));
@@ -145,12 +152,7 @@ export function frameStream(options: FrameStreamOptions): FrameStream {
     get live() { return live && socket !== null; },
     resized() {
       clearTimeout(sizing);
-      sizing = setTimeout(() => {
-        const maxWidth = options.maxWidth();
-        if (stopped || !socket || !maxWidth || maxWidth === sentWidth) return;
-        sentWidth = maxWidth;
-        reply({ type: 'size', maxWidth });
-      }, 200);
+      sizing = setTimeout(size, 200);
     },
     stop() {
       stopped = true; live = false;

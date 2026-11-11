@@ -319,14 +319,20 @@ export class WsClient implements ObservableClient {
     const socket = new WebSocket(streamUrl(this.#options.url, path));
     socket.binaryType = 'arraybuffer';
     let closed = false;
+    const pending: string[] = [];
     const frames: FrameSocket = {
       onmessage: null,
       onclose: null,
-      send: (text) => { if (socket.readyState === WebSocket.OPEN) socket.send(text); },
-      close: () => { closed = true; socket.close(); },
+      send: (text) => {
+        if (closed) return;
+        if (socket.readyState === WebSocket.OPEN) socket.send(text);
+        else if (socket.readyState === WebSocket.CONNECTING) pending.push(text);
+      },
+      close: () => { closed = true; pending.length = 0; socket.close(); },
     };
+    socket.onopen = () => { if (!closed) for (const text of pending.splice(0)) socket.send(text); };
     socket.onmessage = (event) => { if (!closed) frames.onmessage?.(event.data as string | ArrayBuffer); };
-    socket.onclose = (event) => { if (!closed) { closed = true; frames.onclose?.(event.code); } };
+    socket.onclose = (event) => { pending.length = 0; if (!closed) { closed = true; frames.onclose?.(event.code); } };
     return frames;
   }
 

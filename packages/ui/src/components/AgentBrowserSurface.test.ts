@@ -31,6 +31,12 @@ test('nothing streams before Show; Show watches the picked tab, Hide covers it a
   const calls = vi.spyOn(client, 'call');
   // The fake core pushes frames: watching a tab is asking for its stream.
   const frames = () => calls.mock.calls.filter(([method]) => method === 'browser.remoteStream');
+  const sockets: ReturnType<FakeClient['frames']>[] = [], connect = client.frames.bind(client);
+  vi.spyOn(client, 'frames').mockImplementation(path => {
+    const socket = connect(path);
+    vi.spyOn(socket, 'close'); sockets.push(socket);
+    return socket;
+  });
   app = mount(AgentBrowserSurface, { target: document.body, props: { store, threadId: thread } }); await settle();
   // The owner starts on a new tab page, as a browser opens on one.
   expect(query('agent-browser-start')!.textContent).toMatch(/Open a page in this conversation’s browser on .+/);
@@ -52,12 +58,15 @@ test('nothing streams before Show; Show watches the picked tab, Hide covers it a
   tabs[0]!.click(); await settle();
   await vi.advanceTimersByTimeAsync(600); await settle();
   expect(frames().at(-1)![1]).toMatchObject({ tabId: docs.tabId });
+  expect(sockets).toHaveLength(2);
+  expect(sockets[0]!.close).toHaveBeenCalledOnce();
 
   query('agent-browser-hide')!.click(); await settle();
   expect(query('agent-browser-cover')).not.toBeNull();
   const before = frames().length;
   await vi.advanceTimersByTimeAsync(3000); await settle();
   expect(frames()).toHaveLength(before);
+  for (const socket of sockets) expect(socket.close).toHaveBeenCalledOnce();
 
   // The agent closing its last tab leaves the new tab page.
   await client.call('browser.command', { threadId: thread, tabId: docs.tabId, action: { kind: 'close' } });

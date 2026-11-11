@@ -645,13 +645,14 @@ does not deflate. The viewer answers `{"type":"ack"}` for each picture and
   the pictures come at half the width and quality 50 at most. Once nothing has
   come for 200 ms the screencast is back at full size and the page is sent
   whole, as a still at the quality of rest. A change of document or size is
-  followed by a still too.
+  followed by a still too. The page shrinks a still wider than the viewer's
+  `maxWidth` in an isolated world; when it cannot, the still goes as captured.
 - A viewer whose socket holds more than 8 MiB unsent is disconnected (close
   code 1013) rather than buffered for; pictures that wait for a socket not yet
   open are kept up to 64, the rest dropped and acknowledged.
 
-The quality of the picture no longer depends on the round trip: no request
-leaves the viewer for a frame. The viewer decodes one picture at a time off
+The viewer sends only `ack` and `size`, never a frame request that chooses
+size or quality. The viewer decodes one picture at a time off
 the main thread (`createImageBitmap`), keeps only the newest one waiting, and
 draws it on a canvas (`lib/remote-browser-stream.ts`).
 

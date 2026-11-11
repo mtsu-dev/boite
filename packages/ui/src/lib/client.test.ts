@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from 'vitest';
 import { PROTOCOL_VERSION, RPC_CHUNK_MARK, RPC_MAX_FRAME_BYTES, RpcCloseCode, RpcErrorCode, type CoreInfo } from '@boite/contracts';
 import { RpcFailure, WsClient, defaultBackoff, openDeadline, readyAgain, rpcUrl, streamUrl, wasDropped, type SocketLike } from './client';
+import { frameStream } from './remote-browser-stream';
 
 const CORE: CoreInfo = {
   version: '2.0.0-beta.1',
@@ -165,6 +166,49 @@ describe('streamUrl', () => {
     expect(streamUrl('http://127.0.0.1:8777', '/browser-stream/abc')).toBe('ws://127.0.0.1:8777/browser-stream/abc');
     expect(streamUrl('https://box.local/group-relay/core-2/', '/browser-stream/abc')).toBe('wss://box.local/group-relay/core-2/browser-stream/abc');
   });
+});
+
+test('a stream keeps the current viewer width through a slow ticket request and socket handshake', async () => {
+  const sockets: FrameTransport[] = [];
+  class FrameTransport extends FakeSocket {
+    static OPEN = 1;
+    static CONNECTING = 0;
+    readyState = 0;
+    binaryType = '';
+    constructor(_url: string) { super(); sockets.push(this); }
+    override open() { this.readyState = 1; super.open(); }
+    override close() { this.readyState = 3; super.close(); }
+  }
+  vi.useFakeTimers(); vi.stubGlobal('WebSocket', FrameTransport);
+  const client = new WsClient({ url: 'https://core.test', token: 'test' });
+  let answer!: (value: { path: string }) => void, width = 1200;
+  const pending = new Promise<{ path: string }>(resolve => { answer = resolve; });
+  const call = vi.spyOn(client, 'call').mockReturnValue(pending);
+  const stream = frameStream({ client, threadId: 'thread', maxWidth: () => width,
+    page() {}, frame() {}, lost() {}, failed() {}, pull() {} });
+  try {
+    expect(call).toHaveBeenCalledWith('browser.remoteStream', { threadId: 'thread', maxWidth: 1200 });
+    width = 400; stream.resized();
+    await vi.advanceTimersByTimeAsync(200);
+    answer({ path: '/browser-stream/ticket' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sockets).toHaveLength(1);
+    expect(sockets[0]!.sent).toEqual([]);
+    width = 600; stream.resized();
+    await vi.advanceTimersByTimeAsync(200);
+    sockets[0]!.open();
+    expect(sockets[0]!.sent.map(text => JSON.parse(text))).toEqual([
+      { type: 'size', maxWidth: 400 }, { type: 'size', maxWidth: 600 },
+    ]);
+    stream.stop();
+    expect(sockets[0]!.closed).toBe(true);
+    const abandoned = client.frames('/browser-stream/abandoned');
+    abandoned.send(JSON.stringify({ type: 'size', maxWidth: 800 }));
+    abandoned.close(); sockets[1]!.open();
+    expect(sockets[1]!.sent).toEqual([]);
+  } finally {
+    stream.stop(); client.close(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals();
+  }
 });
 
 describe('WsClient', () => {

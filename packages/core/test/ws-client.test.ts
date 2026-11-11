@@ -553,6 +553,6 @@ test('a socket opened for binary messages reads and sends them whole; a text soc
     plain.onMessage(text => heard.push(text));
     const ended = await new Promise<CloseEvent>(resolve => plain.onClose(resolve));
     expect(heard).toEqual(['page']);
-    expect(ended.code).not.toBe(4000);
+    expect(ended.code).toBe(1002);
   } finally { await server.stop(true); }
 }, 30_000);
