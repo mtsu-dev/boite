@@ -34,7 +34,9 @@
   let colored = $state.raw<string[] | null>(null);
 
   $effect(() => {
-    const text = content?.kind === 'text' ? draft : null;
+    // The editor's textarea shows a lone CR as a line break (its value turns it into LF), so the colors
+    // painted under it break there too. The read-only list splits rows on LF alone, as `codeRow` reads them.
+    const text = content?.kind === 'text' ? (store.owner ? draft.replace(/\r(?!\n)/g, '\n') : draft) : null;
     const grammar = language;
     colored = null;
     if (text === null || grammar === null) return;

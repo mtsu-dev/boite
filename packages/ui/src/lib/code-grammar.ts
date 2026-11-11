@@ -84,8 +84,8 @@ export async function highlightText(text: string, language: Language): Promise<s
 
 /**
  * One row of a text split on LF, as a plain row shows it before or without its colors: the CR of a
- * CRLF goes and a lone CR is a space. Left in, a CR would wrap the row onto a second visual line;
- * deleted, it would join the tokens on both sides. The highlighted rows read it the same way.
+ * CRLF goes and a lone CR is a space. Left in, a CR is drawn as each engine likes (as nothing at
+ * all in Chromium); deleted, it would join the tokens on both sides. The highlighted rows read it the same way.
  */
 export function codeRow(row: string): string {
   return row.replace(/\r$/, '').replaceAll('\r', ' ');
