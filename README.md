@@ -11,7 +11,7 @@
 <a href="https://mtsu.dev"><img align="right" src="https://mtsu.dev/press/mtsu-icon-1024.png" width="48" alt="MTSU"></a>
 
 boite is a desktop app and self-hosted server for coding agents. Run Claude Code,
-Codex or [another supported agent](docs/providers.md) with your existing accounts.
+Codex or [another supported agent](docs/supported-agents.md) with your existing accounts.
 Keep your projects, conversations and agents together, across your computers and phone.
 
 <picture>

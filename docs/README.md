@@ -4,6 +4,7 @@
 
 - [Install and update the desktop app](updates.md): downloads, stable and nightly channels, and restarting.
 - [The tour](onboarding.md): first launch, language, appearance and workspace choices.
+- [Supported agents](supported-agents.md): the agents Boite runs, how to connect one and what each can do.
 - [Accounts](accounts.md): agent sign-ins and isolated accounts on the machine running them.
 - [Phone access](phone.md): pairing, mobile navigation, permissions and offline behavior.
 - [Android client app](android.md): the APK that opens the phone UI and connects to an existing core.
