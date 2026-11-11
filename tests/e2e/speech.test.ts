@@ -67,6 +67,15 @@ async function leaveSettings(draft?: string) {
   // On a phone the conversation slides in over the list: the bar is measured where it stops.
   await page.waitFor(`document.querySelector('${id('composer-input')}') && ${screensSettled}`);
 }
+/** The draft's worktree switch in the composer's "+" menu: 'true', 'false', or null when the menu has none. Leaves the menu closed. */
+async function worktreeChoice(): Promise<string | null> {
+  if (!await page.evaluate(`!!document.querySelector('${id('composer-options-sheet')}')`)) await page.click(id('composer-options'));
+  await page.waitFor(`document.querySelector('${id('composer-options-sheet')}')`);
+  const value = await page.evaluate<string | null>(`document.querySelector('${id('composer-worktree')}')?.getAttribute('aria-checked') ?? null`);
+  await page.evaluate(`document.querySelector('${id('composer-options-sheet')}').dispatchEvent(new KeyboardEvent('keydown', {key:'Escape',bubbles:true}))`);
+  await page.waitFor(`!document.querySelector('${id('composer-options-sheet')}')`);
+  return value;
+}
 /** Where every button of the composer's bar sits, the dictation's floating menu aside. */
 const barLayout = `[...document.querySelectorAll('${id('composer')} .bar button')].filter(button => button.getClientRects().length && !button.closest('${id('dictation-panel')}')).map(button => { const r = button.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)].join(); })`;
 async function record() {
@@ -132,21 +141,33 @@ test('phone dictation fits, cancels with Escape, and does not change the draft',
 }, 30_000);
 
 test('phone options change effort and permissions without losing the draft', async () => {
-  await page.click(id('composer-options'));
-  await page.waitFor(`document.querySelector('${id('composer-options-sheet')}')`);
+  // Effort and the permission are chips of the phone composer, each with its own popover.
+  const effortMenu = id('composer-effort-menu');
+  const modeMenu = id('composer-mode-menu');
+  await page.click(id('composer-effort'));
+  await page.waitFor(`document.querySelector('${effortMenu} ${id('effort-track')}')`);
   await capture('speech-phone-options.png');
-  await page.click('input[name="mobile-effort"][value="low"]');
-  await page.waitFor(`document.querySelector('input[name="mobile-effort"][value="low"]')?.checked`);
-  await page.click('input[name="mobile-mode"][value="acceptEdits"]');
-  await page.waitFor(`document.querySelector('input[name="mobile-mode"][value="acceptEdits"]')?.checked`);
+  // A pick keeps the popover open; the phone's back closes it.
+  await page.click(`${effortMenu} [data-dot="low"]`);
+  await page.waitFor(`document.querySelector('${effortMenu} ${id('effort-track')}')?.getAttribute('aria-valuetext') === 'Low'`);
   await page.evaluate('history.back()');
-  await page.waitFor(`!document.querySelector('${id('composer-options-sheet')}')`);
+  await page.waitFor(`!document.querySelector('${effortMenu}')`);
+  await page.click(id('composer-mode'));
+  await page.waitFor(`document.querySelector('${modeMenu}')?.matches(':popover-open')`);
+  await page.click(`${modeMenu} [data-value="acceptEdits"]`);
+  await page.waitFor(`!document.querySelector('${modeMenu}')`);
   expect(await page.evaluate(`document.querySelector('${id('composer-input')}').value`)).toBe('Keep this draft.');
-  await page.click(id('composer-options'));
-  await page.waitFor(`document.querySelector('input[name="mobile-effort"][value="low"]')?.checked`);
-  expect(await page.evaluate(`document.querySelector('input[name="mobile-mode"][value="acceptEdits"]').checked`)).toBe(true);
-  await page.evaluate(`document.querySelector('${id('composer-options-sheet')}').dispatchEvent(new KeyboardEvent('keydown', {key:'Escape',bubbles:true}))`);
-  await page.waitFor(`!document.querySelector('${id('composer-options-sheet')}')`);
+  // Reopened, both popovers still hold the picks.
+  await page.click(id('composer-effort'));
+  await page.waitFor(`document.querySelector('${effortMenu} ${id('effort-track')}')?.getAttribute('aria-valuetext') === 'Low'`);
+  await page.evaluate('history.back()');
+  await page.waitFor(`!document.querySelector('${effortMenu}')`);
+  await page.click(id('composer-mode'));
+  await page.waitFor(`document.querySelector('${modeMenu}')?.matches(':popover-open')`);
+  expect(await page.evaluate(`document.querySelector('${modeMenu} [data-value="acceptEdits"]').getAttribute('aria-checked')`)).toBe('true');
+  await page.evaluate(`document.querySelector('${modeMenu}').dispatchEvent(new KeyboardEvent('keydown', {key:'Escape',bubbles:true}))`);
+  await page.waitFor(`!document.querySelector('${modeMenu}')`);
+  expect(await page.evaluate(`document.querySelector('${id('composer-input')}').value`)).toBe('Keep this draft.');
   await page.evaluate(`document.documentElement.dataset.theme = 'light'`);
   await capture('speech-phone-light.png');
   await page.evaluate(`delete document.documentElement.dataset.theme`);
@@ -157,13 +178,14 @@ test('phone draft options preserve worktree choice and close when returning to d
   await type('A new task.');
   await page.send('Emulation.setDeviceMetricsOverride', { width: 320, height: 600, deviceScaleFactor: 1, mobile: true });
   await page.click(id('composer-options'));
-  await page.click(id('composer-options-worktree'));
-  await page.waitFor(`document.querySelector('${id('composer-options-worktree')}')?.getAttribute('aria-pressed') === 'true' && ${screensSettled}`);
+  await page.click(id('composer-worktree'));
+  await page.waitFor(`document.querySelector('${id('composer-worktree')}')?.getAttribute('aria-checked') === 'true' && ${screensSettled}`);
   expect(await page.evaluate(`(() => { const r=document.querySelector('${id('composer-options-sheet')}').getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight; })()`)).toBe(true);
   await capture('speech-phone-draft-options.png');
+  // One menu serves both widths: on the desktop it is no longer a phone sheet, with no backdrop left behind.
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1360, height: 950, deviceScaleFactor: 1, mobile: false });
-  await page.waitFor(`!document.querySelector('${id('composer-options-sheet')}')`);
-  expect(await page.evaluate(`document.querySelector('${id('composer-worktree')}').getAttribute('aria-pressed')`)).toBe('true');
+  await page.waitFor(`!document.querySelector('${id('composer-options-sheet')}')?.dataset.mobileSheet && !document.querySelector('.mobile-sheet-backdrop')`);
+  expect(await worktreeChoice()).toBe('true');
   expect(await page.evaluate(`document.querySelector('${id('composer-input')}').value`)).toBe('A new task.');
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
 }, 15_000);
@@ -260,7 +282,8 @@ test('Appearance hides Worktree on desktop and phone while preserving the draft 
   await newMobileThread(page);
   await type('Preserve this worktree draft.');
   await page.click(id('composer-options'));
-  if (await page.evaluate(`document.querySelector('${id('composer-options-worktree')}').getAttribute('aria-pressed') === 'false'`)) await page.click(id('composer-options-worktree'));
+  if (await page.evaluate(`document.querySelector('${id('composer-worktree')}').getAttribute('aria-checked') === 'false'`)) await page.click(id('composer-worktree'));
+  await page.waitFor(`document.querySelector('${id('composer-worktree')}')?.getAttribute('aria-checked') === 'true'`);
   await page.evaluate('history.back()');
   await page.waitFor(`!document.querySelector('${id('composer-options-sheet')}')`);
   await page.evaluate(`document.querySelector('${id('nav-settings')}').click()`);
@@ -277,10 +300,11 @@ test('Appearance hides Worktree on desktop and phone while preserving the draft 
   await leaveSettings('Preserve this worktree draft.');
   await page.click(id('composer-options'));
   await page.waitFor(`document.querySelector('${id('composer-options-sheet')}')`);
-  expect(await page.evaluate(`!!document.querySelector('${id('composer-options-worktree')}')`)).toBe(false);
-  await page.send('Emulation.setDeviceMetricsOverride', { width: 1360, height: 950, deviceScaleFactor: 1, mobile: false });
-  await page.waitFor(`!document.querySelector('${id('composer-options-sheet')}')`);
   expect(await page.evaluate(`!!document.querySelector('${id('composer-worktree')}')`)).toBe(false);
+  await page.evaluate('history.back()');
+  await page.waitFor(`!document.querySelector('${id('composer-options-sheet')}')`);
+  await page.send('Emulation.setDeviceMetricsOverride', { width: 1360, height: 950, deviceScaleFactor: 1, mobile: false });
+  expect(await worktreeChoice()).toBeNull();
   await capture('speech-desktop-disabled-controls.png');
   await page.evaluate(`document.querySelector('${id('nav-settings')}').click()`);
   await page.click(id('settings-tab-appearance'));
@@ -288,8 +312,7 @@ test('Appearance hides Worktree on desktop and phone while preserving the draft 
   await capture('speech-desktop-appearance-worktree.png');
   await page.click(id('control-composer.worktree'));
   await leaveSettings();
-  await page.waitFor(`document.querySelector('${id('composer-worktree')}')`);
-  expect(await page.evaluate(`document.querySelector('${id('composer-worktree')}').getAttribute('aria-pressed')`)).toBe('true');
+  expect(await worktreeChoice()).toBe('true');
   expect(await page.evaluate(`document.querySelector('${id('composer-input')}').value`)).toBe('Preserve this worktree draft.');
   expect(page.errors()).toEqual([]);
 }, 30_000);

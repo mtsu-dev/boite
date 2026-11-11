@@ -42,7 +42,7 @@
   {/if}
 {:else}<div class="counters">
   {#if waiting > 0}
-    <span class="counter waiting" class:failed={failOnly} data-testid="project-waiting-count" data-count={waiting} data-state={failOnly ? 'error' : 'waiting'} role="img" title={waitingLabel} aria-label={waitingLabel}>{#if failOnly}<FailMark />{:else}<span class="dot" aria-hidden="true"></span>{/if}<span class="ui-label word" class:spare={!collapsed && listed >= waiting}>{failOnly ? strings.sidebar.state.error : strings.sidebar.state.waiting}</span><span class="ui-label number">{formatCount(waiting)}</span></span>
+    <span class="counter waiting" class:failed={failOnly} data-testid="project-waiting-count" data-count={waiting} data-state={failOnly ? 'error' : 'waiting'} role="img" title={waitingLabel} aria-label={waitingLabel}><span class="mark-word">{#if failOnly}<FailMark />{:else}<span class="dot" aria-hidden="true"></span>{/if}<span class="ui-label word" class:spare={!collapsed && listed >= waiting}>{failOnly ? strings.sidebar.state.error : strings.sidebar.state.waiting}</span></span><span class="ui-label number">{formatCount(waiting)}</span></span>
   {/if}
   {#if working > 0 && waiting === 0 && (grouped || collapsed)}
     <button type="button" class="ghost counter working" class:away class:active={open && grouped} data-testid="project-working-toggle" data-count={working}
@@ -68,6 +68,14 @@
   /* Said by every row that needs the user, so not here, unless the rows drop their word: a row's word gives way under
      a 200 px row in English, 220 px in French (ThreadState.svelte), a 236 or 256 px list, its 36 px of edges around
      the row's text. */
+  /* The word gives way whole, never cut, when the head it sits in lets the count shrink (Sidebar.svelte: the project
+     name keeps priority). The mark and the word share one wrapping line, its end against the number: short of room,
+     the word wraps under a zero-width strut, out of sight, and the mark stays beside the number. */
+  .waiting { display: inline-grid; grid-template-columns: auto auto; gap: 0; }
+  .mark-word { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; min-width: 12px; height: 22px; overflow: hidden; }
+  .mark-word::before { content: ''; width: 0; height: 22px; }
+  .waiting .word { margin: 0 2px 0 4px; }
+  .waiting .number { margin-left: 4px; }
   .spare { display: none; }
   @container sidebar (max-width: 235.98px) {
     .counter .spare { display: block; }

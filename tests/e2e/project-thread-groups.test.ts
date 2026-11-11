@@ -138,6 +138,43 @@ for (const width of [1280, 390]) {
       const first = project(main, 'p-boite'), second = project(remote, 'p-boite');
       const row = (project: string, thread: string) => `${project} ${width < 720 ? '.row' : id('thread-row')}[data-thread-id="${thread}"]`;
       const click = async (selector: string) => { await page.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`); await page.click(selector); };
+      const optionsName = width < 720 ? 'mobile-grouping-options' : 'grouping-options';
+      const options = id(optionsName), optionsMenu = id(`${optionsName}-menu`);
+      /** The display menu's Done filter, the one place a card lists its done threads. */
+      const showDone = async (on: boolean) => {
+        await page.click(options);
+        const done = `${optionsMenu} [role=switch][data-value=done]`;
+        await page.waitFor(`document.querySelector('${done}')`);
+        if (await page.evaluate(`document.querySelector('${done}').getAttribute('aria-checked') !== '${on}'`)) await page.click(done);
+        await page.waitFor(`document.querySelector('${done}')?.getAttribute('aria-checked') === '${on}'`);
+        await page.click(options);
+        await page.waitFor(`!document.querySelector('${optionsMenu}')`);
+      };
+      /** The count beside Archived in a card's menu, where a card's archived threads live (lib/project-menu.ts); null without one. */
+      const archivedHint = async (card: string) => {
+        await click(`${card} ${id(width < 720 ? 'mobile-project-menu' : 'project-menu')}`);
+        const entry = `${id('context-menu')} ${id('project-archived-toggle')}`;
+        await page.waitFor(`document.querySelector('${entry}')`);
+        const hint = await page.evaluate<string | null>(`document.querySelector('${entry} .hint')?.textContent ?? null`);
+        await page.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}))`);
+        await page.waitFor(`!document.querySelector('${id('context-menu')}')`);
+        return hint;
+      };
+      /** A card's head, where its counters stand when the card is folded. */
+      const head = (card: string) => `${card} ${width < 720 ? '.project-heading' : '.head'}`;
+      /** Folds the card of a project whose only rows work, unfolds it from its head's working counter onto that list, then closes the list again. */
+      const counterUnfolds = async (card: string, projectId: string) => {
+        const toggle = `${head(card)} ${id('project-working-toggle')}`;
+        const expanded = `document.querySelector('${card} ${id(width < 720 ? 'mobile-project-toggle' : 'project-row')}').getAttribute('aria-expanded')`;
+        await page.evaluate(`globalThis.__boiteTest.workspace.machines[0].store.toggleProject(${JSON.stringify(projectId)})`);
+        await page.waitFor(`${expanded} === 'false' && document.querySelector('${toggle}')?.dataset.count === '1'`);
+        await click(toggle);
+        await page.waitFor(`${expanded} === 'true'`);
+        expect(await page.evaluate(`document.querySelector('${toggle}').getAttribute('aria-expanded')`)).toBe('true');
+        await page.waitFor(`document.querySelector('${card} ${width < 720 ? '.row' : id('thread-row')}[data-thread-id="t-building"]')`);
+        await click(toggle);
+        await page.waitFor(`document.querySelector('${toggle}').getAttribute('aria-expanded') === 'false'`);
+      };
       const shot = async (name: string) => {
         await page.settleAnimations();
         await page.screenshot(join(import.meta.dir, '.artifacts', `project-groups-${name}-${width}.png`));
@@ -148,9 +185,11 @@ for (const width of [1280, 390]) {
       expect(await page.evaluate(`document.querySelector(${JSON.stringify(project(main, 'p-notes'))}) === null && document.querySelector(${JSON.stringify(project(main, empty))}) === null`)).toBe(true);
       expect(await page.evaluate(`document.querySelector('${root} ${id('project-shelf-toggle')}').getAttribute('aria-expanded')`)).toBe('false');
       expect(await page.evaluate(`document.querySelector('${first} ${id('project-working-toggle')}').dataset.count`)).toBe('1');
-      // t-parser was archived by hand: it waits under Archived, not Done, and an empty Done draws no counter.
-      expect(await page.evaluate(`document.querySelector('${first} ${id('project-done-toggle')}') === null`)).toBe(true);
-      expect(await page.evaluate(`document.querySelector('${first} ${id('project-archived-toggle')}').dataset.count`)).toBe('1');
+      // t-parser was archived by hand: it waits under Archived in the card's menu, not Done, and an empty Done draws no list even with the filter on.
+      await showDone(true);
+      expect(await page.evaluate(`document.querySelector('${first} ${id('project-done')}').hidden`)).toBe(true);
+      await showDone(false);
+      expect(await archivedHint(first)).toBe('1');
       expect(await page.evaluate(`!!document.querySelector('${row(first, 't-bench')}') && !document.querySelector('${row(first, 't-scheduler')}')`)).toBe(true);
       await page.evaluate(`document.querySelector(${JSON.stringify(project(main, busy))}).scrollIntoView({block:'center'})`);
       await shot('folded');
@@ -177,24 +216,27 @@ for (const width of [1280, 390]) {
 
       await click(`${first} ${id('project-working-toggle')}`);
       await page.waitFor(`document.querySelector('${row(first, 't-scheduler')}')`);
-      expect(await page.evaluate(`document.querySelector('${first} ${id('project-done-toggle')}') === null`)).toBe(true);
-      await click(`${first} ${id('project-archived-toggle')}`);
-      await page.waitFor(`document.querySelector('${first} ${id('project-archived')} ${id('done-thread')}[data-thread-id="t-parser"]')`);
-      expect(await page.evaluate(`!document.querySelector('${first} ${id('project-done')} ${id('done-thread')}')`)).toBe(true);
-      expect(await page.evaluate(`document.querySelector('${second} ${id('project-archived-toggle')}').getAttribute('aria-expanded')`)).toBe('false');
+      expect(await page.evaluate(`document.querySelector('${first} ${id('project-done')}').hidden`)).toBe(true);
+      // The archived thread stays in the menu, off the card; the other machine's card counts its own archive.
+      expect(await archivedHint(first)).toBe('1');
+      expect(await page.evaluate(`document.querySelector('${first} ${id('project-archived')}').hidden && !document.querySelector('${first} ${id('project-done')} ${id('done-thread')}')`)).toBe(true);
+      expect(await archivedHint(second)).toBe(await page.evaluate<string | null>(`(() => { const p = globalThis.__boiteTest.workspace.machines[1].store.projects.find(p => p.id === 'p-boite'), n = (p?.archivedThreads ?? 0) - (p?.doneThreads ?? 0); return n > 0 ? String(n) : null; })()`));
       expect(await page.evaluate(`!!document.querySelector('${row(first, 't-scheduler')}')`)).toBe(true);
       await shot('expanded');
       if (width < 720) {
-        // The phone shares the desktop's fold: folded there, it is folded here, and a counter unfolds it onto its list as the sidebar's does.
+        // The phone shares the desktop's fold: folded there, it is folded here, and its header unfolds it onto the lists it had open.
         await page.evaluate(`globalThis.__boiteTest.workspace.machines[0].store.toggleProject('p-boite')`);
         await page.waitFor(`document.querySelector('${first} ${id('mobile-project-toggle')}').getAttribute('aria-expanded') === 'false'`);
-        expect(await page.evaluate(`!!document.querySelector('${first} ${id('mobile-project-toggle')} ${id('project-rollup')}')`)).toBe(true);
-        await click(`${first} ${id('project-working-toggle')}`);
+        // Folded, the card says what it holds: a thread needs the user, so its count stands in the head and the working fold's toggle stays in the card.
+        expect(await page.evaluate(`!!document.querySelector('${head(first)} ${id('project-waiting-count')}') && !document.querySelector('${head(first)} ${id('project-working-toggle')}')`)).toBe(true);
+        await click(`${first} ${id('mobile-project-toggle')}`);
         await page.waitFor(`document.querySelector('${first} ${id('mobile-project-toggle')}').getAttribute('aria-expanded') === 'true'`);
         expect(await page.evaluate(`globalThis.__boiteTest.workspace.machines[0].store.isCollapsed('p-boite')`)).toBe(false);
         expect(await page.evaluate(`document.querySelector('${first} ${id('project-working-toggle')}').getAttribute('aria-expanded')`)).toBe('true');
-        expect(await page.evaluate(`document.querySelector('${first} ${id('project-archived-toggle')}').getAttribute('aria-expanded')`)).toBe('true');
+        expect(await page.evaluate(`document.querySelector('${first} ${id('project-archived')}').hidden`)).toBe(true);
         await page.waitFor(`document.querySelector('${row(first, 't-scheduler')}')`);
+        // A folded card whose only rows work counts them in its head, and that counter unfolds it onto its list, as the sidebar's does.
+        await counterUnfolds(project(main, busy), busy);
       }
       const trace = row(first, 't-trace');
       if (width < 720) {
@@ -202,14 +244,18 @@ for (const width of [1280, 390]) {
         await page.click(`${id('mobile-thread-menu-t-trace-menu')} [data-value=archive]`);
       } else await click(`${trace} ~ ${id('thread-done')}`);
       // Mark done lands in Done; a plain archive lands in Archived.
-      const landed = width < 720 ? 'archived' : 'done';
-      await page.waitFor(`document.querySelector('${first} ${id(`project-${landed}-toggle`)}')?.dataset.count === '${width < 720 ? 2 : 1}'`);
-      // Done was empty, so its counter and its list appear only now.
-      if (landed === 'done') await click(`${first} ${id('project-done-toggle')}`);
-      await page.waitFor(`document.querySelector('${first} ${id(`project-${landed}`)} ${id('done-thread')}[data-thread-id="t-trace"]')`);
+      await page.waitFor(`!document.querySelector('${trace}')`);
+      if (width < 720) expect(await archivedHint(first)).toBe('2');
+      else {
+        // Done was empty, so its list appears only now, under the Done filter.
+        await showDone(true);
+        await page.waitFor(`document.querySelector('${first} ${id('project-done')} ${id('done-thread')}[data-thread-id="t-trace"]')`);
+        expect(await archivedHint(first)).toBe('1');
+      }
       expect(await page.evaluate(`!!document.querySelector('${row(project(remote, 'p-boite'), 't-trace')}')`)).toBe(true);
       await click(`${first} ${id('project-working-toggle')}`);
-      expect(await page.evaluate(`!document.querySelector('${row(first, 't-scheduler')}') && !!document.querySelector('${first} ${id('done-thread')}')`)).toBe(true);
+      expect(await page.evaluate(`!document.querySelector('${row(first, 't-scheduler')}') && ${width < 720} === !document.querySelector('${first} ${id('done-thread')}')`)).toBe(true);
+      if (width >= 720) await showDone(false);
       await page.evaluate(`(() => { const store = globalThis.__boiteTest.workspace.machines[0].store; store.threads = store.threads.map(t => t.id === 't-scheduler' ? {...t, pinned:true} : t); })()`);
       await page.waitFor(`document.querySelector('${row(first, 't-scheduler')}')`);
       await click(`${first} ${id('project-working-toggle')}`);
@@ -228,12 +274,8 @@ for (const width of [1280, 390]) {
         await page.type(id('mobile-search'), '');
         await page.waitFor(`document.querySelector('${root} ${id('project-shelf-toggle')}')`);
       } else {
-        // Opening a previously expanded counter also unfolds its collapsed project.
-        await click(`${first} ${id('project-row')}`);
-        expect(await page.evaluate(`document.querySelector('${first} ${id('project-done-toggle')}').getAttribute('aria-expanded')`)).toBe('false');
-        await click(`${first} ${id('project-done-toggle')}`);
-        expect(await page.evaluate(`document.querySelector('${first} ${id('project-row')}').getAttribute('aria-expanded')`)).toBe('true');
-        expect(await page.evaluate(`document.querySelector('${first} ${id('project-done-toggle')}').getAttribute('aria-expanded')`)).toBe('true');
+        // A folded card's counter unfolds it onto its list.
+        await counterUnfolds(project(main, busy), busy);
       }
 
       await click(`${root} ${id('project-shelf-toggle')}`);
@@ -247,7 +289,7 @@ for (const width of [1280, 390]) {
       await click(`${building} ${id('project-working-toggle')}`);
       // The opened fold may still be scrolling to its header: bring the project at work on top back into view.
       await page.waitFor(`(() => { document.querySelector('${building}')?.scrollIntoView({block:'center'}); return !!document.querySelector('${row(building, 't-building')}'); })()`);
-      expect(await page.evaluate(`document.querySelector('${building} ${id('project-done-toggle')}') === null`)).toBe(true);
+      expect(await page.evaluate(`document.querySelector('${building} ${id('project-done')}').hidden`)).toBe(true);
       // Queued and background work also keep the project at work on top, out of the fold of idle projects.
       for (const [index, renderedState] of ['queued', 'monitoring', 'background', 'working'].entries()) {
         await page.evaluate(`(() => {
@@ -297,7 +339,7 @@ for (const width of [1280, 390]) {
       await page.waitFor(`globalThis.__boiteTest.workspace.machines[0].store.draft?.projectId === ${JSON.stringify(empty)}`);
       if (width < 720) await page.click(id('mobile-back'));
       await page.waitFor(`document.querySelector('${project(main, empty)}:not(.inactive)') && !document.querySelector('${idleRow(empty)}')`);
-      expect(await page.evaluate(`document.querySelector('${project(main, empty)} ${id('project-done-toggle')}') === null && document.querySelector('${project(main, empty)} ${id('project-working-toggle')}') === null`)).toBe(true);
+      expect(await page.evaluate(`document.querySelector('${project(main, empty)} ${id('project-done')}').hidden && document.querySelector('${project(main, empty)} ${id('project-working-toggle')}') === null`)).toBe(true);
       if (width < 720) await page.send('Emulation.setDeviceMetricsOverride', { width: 360, height: 800, deviceScaleFactor: 1, mobile: true });
       else await page.evaluate('globalThis.__boiteTest.workspace.active.setSidebarWidth(208)');
       await shot('narrow');

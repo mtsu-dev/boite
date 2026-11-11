@@ -307,21 +307,37 @@ test('PR links appear during work without remounting and disappear after a move 
       await store.client.call('threads.create', { projectId: thread.projectId, providerId: thread.providerId, accountId: thread.accountId, model: thread.model, title });
     }
   `);
+  // Quiet conversations fold under the card's "Show N more": unfolded, the two new ones are rows of their own.
+  await page.click(`${id('sidebar')} section${id('project')}[data-project-id="p-boite"] ${id('project-more')}`);
   await page.waitFor(`Array.from(document.querySelectorAll('${id('thread-row')}')).filter(row => row.textContent.includes('shared-folder conversation')).length === 2`);
   const sharedRowsHaveNoPr = `Array.from(document.querySelectorAll('${id('thread-row')}')).filter(row => row.textContent.includes('shared-folder conversation')).every(row => !row.closest('.thread').querySelector('${id('thread-pr')}'))`;
-  const prBeforeBranch = (scope: string) => page.evaluate(`(() => {
-    const links = Array.from(document.querySelectorAll('${scope} ${id('thread-pr')}'));
-    return links.length > 0 && links.every(pr => {
-      const branch = pr.nextElementSibling;
-      return branch?.matches('${id('thread-branch')}') && pr.getBoundingClientRect().right < branch.getBoundingClientRect().left;
-    });
-  })()`);
+  // The title wins at rest: a row shows its pull request under the pointer, after the title, the thread's live branch under its label.
+  const prNamesBranch = async (scope: string) => {
+    const threads = await page.evaluate<string[]>(`Array.from(document.querySelectorAll('${scope} ${id('thread-pr')}')).map(pr => pr.closest('[data-thread-id]').dataset.threadId)`);
+    if (threads.length === 0) return false;
+    let named = true;
+    for (const threadId of threads) {
+      const row = `${scope} [data-thread-id="${threadId}"]`;
+      const point = await page.evaluate<{ x: number; y: number }>(`(() => { const row = document.querySelector('${row}'); row.scrollIntoView({block:'nearest'}); const r = row.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+      await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point });
+      named &&= await page.evaluate<boolean>(`(() => {
+        const pr = document.querySelector('${row} ${id('thread-pr')}');
+        const branch = globalThis.__boiteTest.workspace.active.threads.find(thread => thread.id === ${JSON.stringify(threadId)})?.branch;
+        const title = pr?.closest('.headline')?.querySelector('.title');
+        const box = pr?.getBoundingClientRect();
+        return !!branch && !!box && box.width > 0 && pr.title.split('\\n').at(-1) === branch && !!title && title.getBoundingClientRect().right <= box.left;
+      })()`);
+    }
+    // The pointer leaves the list, so the rows come back to rest.
+    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 900, y: 600 });
+    return named;
+  };
   expect(await page.evaluate(sharedRowsHaveNoPr)).toBe(true);
-  expect(await prBeforeBranch(id('sidebar'))).toBe(true);
+  expect(await prNamesBranch(id('sidebar'))).toBe(true);
   await capture('pr-links-desktop');
   await showThreadView(page, 'recent');
-  // Recent lists compact rows without the project cards: a tile, the title and one marker, no pull request line.
-  await page.waitFor(`!document.querySelector('${id('sidebar')} section${id('project')}') && document.querySelector('${id('sidebar')} ${id('thread-row')}') && !document.querySelector('${id('sidebar')} ${id('thread-pr')}')`);
+  // Recent lists compact rows without the project cards: a tile, the title and one marker; at rest no pull request shows.
+  await page.waitFor(`!document.querySelector('${id('sidebar')} section${id('project')}') && document.querySelector('${id('sidebar')} ${id('thread-row')}') && !Array.from(document.querySelectorAll('${id('sidebar')} ${id('thread-pr')}')).some(pr => pr.getClientRects().length > 0)`);
   await capture('pr-links-recent');
   // The cards carry the pull request: the live one is followed there.
   await showThreadView(page, 'projects');
@@ -342,16 +358,17 @@ test('PR links appear during work without remounting and disappear after a move 
   await page.waitFor(`document.querySelector('${livePr}')?.textContent.includes('#185')`, 25_000);
   expect(await page.evaluate(`document.querySelector('[data-thread-id="t-trace"]') === window.__prRow`)).toBe(true);
   expect(await page.evaluate(`document.querySelector('[data-thread-id="t-trace"]').dataset.status`)).toBe('running');
-  expect(await prBeforeBranch(id('sidebar'))).toBe(true);
+  expect(await prNamesBranch(id('sidebar'))).toBe(true);
   await capture('pr-live-desktop');
   await showThreadView(page, 'projects');
   await page.send('Emulation.setDeviceMetricsOverride', { width:390, height:844, deviceScaleFactor:1, mobile:true });
   await mobileAction(page, 'mobile-conversations');
+  await page.click(`${id('mobile-list')} ${id('mobile-project-group')}[data-project-id="p-boite"] ${id('project-more')}`);
   await page.waitFor(`Array.from(document.querySelectorAll('${id('mobile-list')} .thread')).filter(row => row.textContent.includes('shared-folder conversation')).length === 2`);
-  const phonePr = `${id('mobile-list')} [data-thread-id="t-trace"] ${id('thread-pr')}`;
-  await page.waitFor(`document.querySelector('${phonePr}')?.textContent.includes('#185')`);
-  expect(await page.evaluate(`document.querySelector('${phonePr}').getAttribute('href')`)).toBe('https://github.com/example/repo/pull/185');
-  expect(await page.evaluate(`Array.from(document.querySelectorAll('${id('mobile-list')} .thread')).filter(row => row.textContent.includes('shared-folder conversation')).every(row => !row.closest('.row').querySelector('${id('thread-pr')}'))`)).toBe(true);
+  // A phone's row leaves the pull request to the thread (MobileThreadRow.svelte): no mark on any row, the live branch in the row's name.
+  const phoneRow = `${id('mobile-list')} ${id('mobile-thread-t-trace')}`;
+  await page.waitFor(`document.querySelector('${phoneRow}')?.title.split('\\n').includes('boite/publish-live-pr')`);
+  expect(await page.evaluate(`!document.querySelector('${id('mobile-list')} ${id('thread-pr')}')`)).toBe(true);
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
   await capture('pr-links-phone');
   await page.send('Emulation.setDeviceMetricsOverride', { width:1300, height:850, deviceScaleFactor:1, mobile:false });

@@ -515,8 +515,9 @@
   .project { scroll-snap-align: start; scroll-margin-top: 4px; }
   .project :global(:is([data-testid=thread-row], [data-testid=draft-row])) { scroll-snap-align: start; scroll-margin-top: calc(38px - 2 * var(--fade-top, 0px) - 4px); }
   .project.drop .head::after { display: none; }
+  /* Sized by its content, so the counters beside it give way first (their spare word, ProjectThreadCounters.svelte). */
   .toggle {
-    flex: 1;
+    flex: 1 1 auto;
     min-width: 0;
     height: 38px;
     padding: 0 4px;
@@ -577,7 +578,7 @@
   @container sidebar (max-width: 255.98px) {
     .head:has(:global(.machine-place)) :global(.counter .spare) { display: none; }
   }
-  .head :global(.counters) { margin-right: 2px; transition: margin-right var(--dur-2) var(--ease-out-quint); }
+  .head :global(.counters) { flex: 0 1000 auto; min-width: min-content; margin-right: 2px; transition: margin-right var(--dur-2) var(--ease-out-quint); }
   /* The menu appears at the right end on hover and the counters step left of it, as a row's state does. */
   .project-actions {
     position: absolute;

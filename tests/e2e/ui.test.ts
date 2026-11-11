@@ -326,8 +326,8 @@ test(
     await page.waitFor(`document.querySelector('${testid('tool-diff-counts')}')`, 30_000);
     await page.waitFor(`document.querySelector('${testid('thread-header')}[data-status]').dataset.status === 'idle'`, 30_000);
 
-    // The edit's line counts what it changed without expanding its preview.
-    expect((await page.text(testid('tool-diff-counts'))).replace(/\s+/g, ' ').trim()).toBe('+2 -1');
+    // The edit's line counts what it changed without expanding its preview; the removed count wears a true minus sign.
+    expect((await page.text(testid('tool-diff-counts'))).replace(/\s+/g, ' ').trim()).toBe('+2 \u22121');
     expect(await page.evaluate(`document.querySelector('${testid('diff-view')}') === null`)).toBe(true);
     await page.click(`${testid('tool-card')}[data-family=edit] ${testid('tool-toggle')}`);
     await page.waitFor(`document.querySelector('${testid('tool-document')}[data-kind=diff]')`);
@@ -522,19 +522,24 @@ test(
 test(
   'the trace panel lists what the turn launched, or says it launched nothing',
   async () => {
-    // The header button opens the panel itself; the trace is one card of its
-    // launcher, or the tab that is already there.
-    await page.click(testid('panel-toggle'));
-    await page.waitFor(
-      `document.querySelector('${testid('launch-trace')}') || document.querySelector('${testid('trace-panel')}')`,
-    );
-    await page.evaluate(`document.querySelector('${testid('launch-trace')}')?.click()`);
+    // The header's Panels door opens the panel; open, the door is the panel
+    // switcher, whose list holds the trace ("Processes") and the way to close.
+    const switcher = `${testid('panel-add-menu')}:not(.closing)`;
+    const pickPanel = async (value: string) => {
+      await page.click(testid('panel-add'));
+      await page.waitFor(`document.querySelector('${switcher} [data-value="${value}"]')`);
+      await page.click(`${switcher} [data-value="${value}"]`);
+    };
+    if (await page.evaluate<boolean>(`!!document.querySelector('${testid('panel-toggle')}')`)) await page.click(testid('panel-toggle'));
+    await page.waitFor(`document.querySelector('${testid('panel-add')}')`);
+    if (!await page.evaluate<boolean>(`!!document.querySelector('${testid('trace-panel')}')`)) await pickPanel('trace');
     await page.waitFor(`document.querySelector('${testid('trace-panel')}')`);
     await page.waitFor(
       `document.querySelector('${testid('trace-row')}') || document.querySelector('${testid('trace-empty')}')`,
     );
-    await page.click(testid('panel-toggle'));
+    await pickPanel('panel-hide');
     await page.waitFor(`!document.querySelector('${testid('trace-panel')}')`);
+    await page.waitFor(`document.querySelector('${testid('panel-toggle')}')`);
   },
   TIMEOUT,
 );
@@ -571,8 +576,27 @@ test(
     await page.type(testid('composer-input'), 'worktree thread');
     await clickWhenEnabled(testid('composer-send'));
 
-    await page.waitFor(`${textOf('thread-branch')} === 'boite/worktree-thread'`, 30_000);
-    await page.waitFor(`${textOf('thread-title')} === 'Echo: worktree thread'`);
+    await page.waitFor(`${textOf('thread-title')} === 'Echo: worktree thread'`, 30_000);
+    // The header's branch is a row of its menu's folder group, its path in the row's title.
+    const menu = '[role=menu]:not(.closing)';
+    const branchRow = `${menu} [data-value=thread-branch]`;
+    const closeMenu = async () => {
+      await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+      await page.waitFor(`!document.querySelector('${menu}')`);
+    };
+    // The row comes with the branch the core reports once git made the worktree: the menu is opened again until it is there.
+    const deadline = Date.now() + 30_000;
+    for (;;) {
+      await page.click(testid('thread-menu-trigger'));
+      await page.waitFor(`document.querySelector('${branchRow}, ${menu} [data-value=more]')`);
+      if (!await page.evaluate<boolean>(`!!document.querySelector('${branchRow}')`)) await page.click(`${menu} [data-value=more]`);
+      await page.settleAnimations();
+      if (await page.evaluate<boolean>(`!!document.querySelector('${branchRow}')`)) break;
+      await closeMenu();
+      if (Date.now() > deadline) throw new Error('the thread menu never named the worktree branch');
+      await Bun.sleep(250);
+    }
+    expect(await page.evaluate<string>(`document.querySelector('${branchRow} .ui-label').textContent.trim()`)).toBe('boite/worktree-thread');
     const client = await connect(core.url, core.token);
     try {
       const threads = await client.call('threads.list', {});
@@ -584,8 +608,9 @@ test(
       expect(worktree).toBe(join(worktreesDir, basename(worktree)));
       expect(existsSync(join(worktree, '.git'))).toBe(true);
       expect(existsSync(join(worktree, 'src', 'lib', 'store.ts'))).toBe(true);
-      expect(await page.evaluate<string>(`document.querySelector('${testid('thread-branch')}').title`)).toContain(worktree);
+      expect(await page.evaluate<string>(`document.querySelector('${branchRow}').title`)).toContain(worktree);
       await page.screenshot(WORKTREE_SCREENSHOT);
+      await closeMenu();
       // The switch is a draft's: the thread's options menu has no such choice left.
       await page.click(testid('composer-options'));
       await page.waitFor(`document.querySelector('${testid('composer-options-sheet')}')`);
@@ -742,6 +767,9 @@ test(
       expect(await phone.evaluate<string>('location.search')).toBe('');
       await phone.waitFor(`document.querySelector('[data-testid=mobile-header]')`);
       await mobileAction(phone, 'mobile-settings');
+      // The phone's own settings are a row of General.
+      await phone.click('[data-testid=settings-tab-general]');
+      await phone.waitFor(`document.querySelector('[data-testid=mobile-settings-phone]')`);
       await phone.click('[data-testid=mobile-settings-phone]');
       await phone.waitFor(`document.querySelector('[data-testid=phone-settings]')`);
       expect(await phone.evaluate(`document.querySelector('[data-testid=phone-public-url]') === null`)).toBe(true);
