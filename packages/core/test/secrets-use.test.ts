@@ -46,8 +46,9 @@ test('write puts the value in an ignored env file, keeps its other lines, and re
   h = await startTestCore();
   const { owner, root, threadId } = await repoThread();
   const value = secretValue();
-  // The key is set twice: loaders read the last line, so the later one must not keep the old value.
-  writeFileSync(join(root, '.env'), 'FIRST=1\r\nAPI_KEY=old\r\n# kept comment\r\nexport API_KEY=older\r\n');
+  // The key is set twice: loaders read the last line, so the later one must not keep the old value,
+  // and the shell block that sets it again keeps its body.
+  writeFileSync(join(root, '.env'), 'FIRST=1\r\nAPI_KEY=old\r\n# kept comment\r\nif true; then\r\n  export API_KEY=older\r\nfi\r\n');
   if (process.platform !== 'win32') chmodSync(join(root, '.env'), 0o644);
   const write = async (path: string, extra: { allowUnignored?: boolean } = {}) => {
     const fresh = await saveSecret(h, owner, threadId, 'API_KEY', value);
@@ -59,7 +60,8 @@ test('write puts the value in an ignored env file, keeps its other lines, and re
   // A file others could read before is narrowed to its owner once it holds the value.
   if (process.platform !== 'win32') expect(statSync(join(root, '.env')).mode & 0o777).toBe(0o600);
   // The value holds `$`, so it is quoted the way dotenv parsers read it back.
-  expect(readFileSync(join(root, '.env'), 'utf8')).toBe(`FIRST=1\r\nexport API_KEY="${value.replaceAll('$', '\\$')}"\r\n# kept comment\r\n`);
+  const quoted = `"${value.replaceAll('$', '\\$')}"`;
+  expect(readFileSync(join(root, '.env'), 'utf8')).toBe(`FIRST=1\r\nAPI_KEY=${quoted}\r\n# kept comment\r\nif true; then\r\n  export API_KEY=${quoted}\r\nfi\r\n`);
 
   const outside = await rejection(write(join(h.dataDir, 'outside.env')));
   expect(outside.reason).toMatchObject({ message: expect.stringContaining('outside the conversation\'s folder'), rpc: { data: { field: 'path', expected: expect.stringContaining('a file inside') } } });

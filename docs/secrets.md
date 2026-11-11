@@ -54,8 +54,8 @@ metadata never enter that index.
 - `run` gives the value to one command as the environment variable `VAR`.
 - `pipe` gives it to one command on standard input.
 - `write` sets `VAR=<value>` in an env file, preserving other lines and line
-  endings. Later lines that set `VAR` again are removed, since loaders read the
-  last one, and the line kept is exported if any of them was. The destination must be inside the conversation's folder, untracked
+  endings. Every line that sets `VAR` gets the value, since loaders read the
+  last one, each keeping its indent and `export`. The destination must be inside the conversation's folder, untracked
   by git and ignored unless `--allow-unignored` is explicit. Special characters
   are quoted for dotenv parsers. The destination file remains after delivery:
   it is a file the operation requested, not a Boite secret store.
