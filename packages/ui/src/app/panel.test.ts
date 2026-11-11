@@ -177,11 +177,11 @@ test('what the agent asks for through panel.open opens on the thread it named', 
 
   const shown = await store.client!.call('panel.open', {
     threadId: 't-trace',
-    surface: { kind: 'diff', path: 'docs/internals/panel.md' }
+    surface: { kind: 'diff', path: 'docs/panel.md' }
   });
   expect(shown).toEqual({ shown: true });
   await waitFor(() => document.querySelector('[data-testid=changes-panel]') !== null);
-  expect(store.panel.active?.path).toBe('docs/internals/panel.md');
+  expect(store.panel.active?.path).toBe('docs/panel.md');
 
   // A file lands on its own tab, named after the file and holding the line.
   await store.client!.call('panel.open', {

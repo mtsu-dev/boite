@@ -126,7 +126,7 @@ describe('renderMarkdown', () => {
 });
 
 test('a kept block is the same markup, kept apart for plain and rich rendering', () => {
-  const block = 'See `packages/ui/src/app.css` and [the notes](docs/internals/performance.md) for **why**.';
+  const block = 'See `packages/ui/src/app.css` and [the notes](docs/performance.md) for **why**.';
   const plain = renderMarkdown(block, false);
   const rich = renderMarkdown(block, true);
   expect(rich).not.toBe(plain);

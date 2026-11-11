@@ -12,8 +12,8 @@ export const FAKE_FILES = [
   'src/lib/client.ts',
   'src/components/Composer.svelte',
   'src/components/Sidebar.svelte',
-  'docs/internals/development.md',
-  'docs/internals/providers.md',
+  'docs/development.md',
+  'docs/providers.md',
   'tests/e2e/ui.test.ts'
 ];
 
@@ -42,7 +42,7 @@ export const FAKE_CHANGES: GitChange[] = [
   { path: 'src/components/RightPanel.svelte', status: 'modified', oldPath: null, staged: false, additions: 84, deletions: 12 },
   { path: 'src/components/ChangesSurface.svelte', status: 'added', oldPath: null, staged: true, additions: 196, deletions: 0 },
   { path: 'src/components/TracePanel.svelte', status: 'deleted', oldPath: null, staged: true, additions: 0, deletions: 141 },
-  { path: 'docs/internals/panel.md', status: 'renamed', oldPath: 'docs/right-panel.md', staged: true, additions: 9, deletions: 2 },
+  { path: 'docs/panel.md', status: 'renamed', oldPath: 'docs/right-panel.md', staged: true, additions: 9, deletions: 2 },
   { path: 'src/lib/panel-layout.ts', status: 'copied', oldPath: 'src/lib/right-panel.svelte.ts', staged: false, additions: 31, deletions: 0 },
   { path: 'docs/panel.svg', status: 'untracked', oldPath: null, staged: false, additions: null, deletions: null },
   { path: 'src/lib/store.svelte.ts', status: 'conflict', oldPath: null, staged: false, additions: 26, deletions: 4 }
@@ -226,7 +226,7 @@ rightPanel.onOpen(() => workbench.attach(client));
 export const FAKE_TREE: Record<string, string> = {
   'README.md': ['# boite', '', 'The workbench sits beside the thread, one tab per surface.', ''].join('\n'),
   'package.json': ['{', '  "name": "boite",', '  "private": true', '}', ''].join('\n'),
-  'docs/internals/panel.md': [
+  'docs/panel.md': [
     '# The panel',
     '',
     'Every thread owns its strip of surfaces: trace, changes, files, tasks.',
