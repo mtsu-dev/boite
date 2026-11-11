@@ -216,9 +216,10 @@ jobs:
           test -s "$ubuntu_sources"
           apt_sources=(-o "Dir::Etc::sourcelist=$ubuntu_sources" -o "Dir::Etc::sourceparts=-")
           update_log=$(mktemp)
-          update_status=0
-          sudo apt-get "${apt_sources[@]}" -o APT::Update::Error-Mode=any update > "$update_log" 2>&1 || update_status=$?
-          cat "$update_log"
+          set +e
+          sudo apt-get "${apt_sources[@]}" -o APT::Update::Error-Mode=any update 2>&1 | tee "$update_log"
+          update_status=${PIPESTATUS[0]}
+          set -e
           if [ "$update_status" -ne 0 ]; then
             # The image's mirror list starts with Azure's mirror, whose name can stop resolving
             # for hours. Only that failure retries, once, on Ubuntu's own archive for this
