@@ -22,8 +22,8 @@
    * (`ModelPicker.svelte`) draws it. A fixed frame: provider logos in a rail
    * beside a scrolling model list on desktop, the same tiles as a top row on a
    * phone. The shown provider's name heads the column; when it has more than
-   * one account the name is a button whose small list switches between them
-   * (`AccountSeats.svelte`), and its models fill the rest. A click on a model closes the picker; nothing else does.
+   * one account the name is a button that unfolds them in place, above the
+   * search (`AccountSeats.svelte`), and its models fill the rest. A click on a model closes the picker; nothing else does.
    */
   let {
     store,
@@ -259,6 +259,12 @@
     return applyPick({ providerId: shown.id, accountId: seat.id }, undefined, false);
   }
 
+  /** A signed-out account signs in again where the composer's reconnect chip sends it. */
+  function signInSeat(seat: Account) {
+    popover.hide();
+    store.openConnect(seat.providerId, seat.id);
+  }
+
   function pickModel(model: ModelInfo) {
     if (!shown) return;
     const instance =
@@ -377,7 +383,7 @@
       </div>
     {:else}
     <div class="head">
-      <AccountSeats name={shown ? shown.name : strings.composer.models} {shown} {seats} {shownAccountId} {choice} {locked} {disabled} busy={disabled || pickPending} onpick={pickSeat} />
+      <AccountSeats name={shown ? shown.name : strings.composer.models} {shown} {seats} {shownAccountId} {choice} {locked} {disabled} busy={disabled || pickPending} onpick={pickSeat} onsignin={store.owner ? signInSeat : undefined} />
     </div>
     {#key `${shown?.id}:${shownAccountId}`}
     <div class="model-list">

@@ -230,7 +230,7 @@ test('new questions keep the oldest open and the last answer readable on desktop
   for (const phone of [false, true]) {
     await size(phone);
     expect(await page.evaluate(`document.querySelector('${visibleQuestion}').dataset.question`)).toBe(oldest);
-    expect(await page.evaluate(`document.querySelector('${id('activity-question-index')}').textContent`)).toBe('1 of 3');
+    expect(await page.evaluate(`document.querySelector('${id('activity-question-index')}').textContent`)).toBe('Question 1 of 3');
     await page.evaluate(`document.querySelector('${id('timeline')}').scrollTop = document.querySelector('${id('timeline')}').scrollHeight`);
     await capture(phone ? 'question-dock-latest-phone' : 'question-dock-latest-desktop');
     expect(await page.evaluate(lastAboveDock)).toBe(true);

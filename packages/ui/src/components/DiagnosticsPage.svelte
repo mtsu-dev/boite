@@ -404,8 +404,8 @@
 
   <section class="card" id="settings-diagnostics-agents">
     <label for="{uid}-agents" class="switch-row">
-      <span class="text ui-label-box"><span class="ui-label" id="{uid}-agents-name">{s.agentAccess}</span><InfoTip topic={s.agentAccess} text={s.agentAccessHint} /></span>
-      <input id="{uid}-agents" aria-labelledby="{uid}-agents-name" type="checkbox" role="switch" data-testid="setting-agent-log-access"
+      <span class="text"><span class="ui-label" id="{uid}-agents-name">{s.agentAccess}</span><span class="hint" id="{uid}-agents-effect">{strings.settings.effects.agentAccess}</span></span>
+      <input id="{uid}-agents" aria-labelledby="{uid}-agents-name" aria-describedby="{uid}-agents-effect" type="checkbox" role="switch" data-testid="setting-agent-log-access"
         checked={store.settings?.agentLogAccess ?? true} disabled={!store.settings} onchange={event => void toggleAgents(event.currentTarget)} />
     </label>
   </section>

@@ -40,7 +40,7 @@
     /**
      * Drawn at the top of the composer: the question once, in bold on a line
      * of its own, Skip and the fold a compact group at its end, the options as rows numbered for the keyboard
-     * (the composer's 1 to 9), then the hint and the card's own Answer: the
+     * (the composer's 1 to 9), then the pager, Skip and the card's own Answer: the
      * composer's round button stays Stop while the turn runs.
      * A question with no options is answered from the box's Send alone.
      */
@@ -49,7 +49,7 @@
     folded?: boolean;
     /** What the dock adds to the head's end, after Skip: its fold. */
     head?: Snippet;
-    /** The dock's secondary line under the choices: its pager. */
+    /** The dock's pager: it leads the line of Skip and Answer, or stands under the head when folded. */
     foot?: Snippet;
     answer: QuestionAnswer | null;
     /** False on a card whose turn ended before anyone answered: nothing to press. */
@@ -273,12 +273,9 @@
         <button type="button" class="ghost more" data-testid="question-more" onmousedown={keepFocus} onclick={more}><span class="ui-label">{below === 1 ? strings.chat.questionMoreOne : fill(strings.chat.questionMore, { count: String(below) })}</span><ChevronDown size={14} strokeWidth={2} aria-hidden="true" /></button>
       {/if}
     {/if}
-    {@render foot?.()}
-
-    <!-- Docked, the decision's pair closes the card: Skip, then Answer, which lights at a pick (the hint names it; it takes what the box holds too, sendAnswer). -->
-    {#if pending && docked && (skip || answers || !replying || page)}
-      <DecisionActions>
-        {#snippet lead()}{#if answers && !sent}<p class="how" data-testid="question-how">{multiple ? strings.chat.questionPickMany : strings.chat.questionPickOne}</p>{/if}{/snippet}
+    <!-- The decision's pair closes the card: Skip, then Answer, filled from the start and lit at a pick (it takes what the box holds too, sendAnswer). Docked, the pager leads the line. -->
+    {#if pending && (!docked || skip || answers || !replying || page)}
+      <DecisionActions lead={foot}>
         {#if page && onopen}
           <button type="button" class="ghost" data-testid="question-open" title={page} onmousedown={keepFocus} onclick={onopen}><span class="ui-label">{strings.chat.questionOpenPage}</span></button>
         {/if}
@@ -288,26 +285,12 @@
         {#if skip}
           <button type="button" class="secondary" data-testid="question-skip" disabled={sent} onmousedown={keepFocus} onclick={pass}><span class="ui-label">{strings.chat.questionSkip}</span></button>
         {/if}
-        {#if !replying || answers}
+        {#if !docked || !replying || answers}
           <button type="button" class="primary" data-testid="question-submit" disabled={!ready || sent} onmousedown={keepFocus} onclick={send}><span class="ui-label">{strings.chat.questionAnswer}</span></button>
         {/if}
       </DecisionActions>
-    {:else if pending && !docked}
-      <div class="actions">
-        {#if answers && !sent}
-          <p class="how" data-testid="question-how">{multiple ? strings.chat.questionPickMany : strings.chat.questionPickOne}</p>
-        {/if}
-        {#if page && onopen}
-          <button type="button" class="ghost" data-testid="question-open" title={page} onmousedown={keepFocus} onclick={onopen}><span class="ui-label">{strings.chat.questionOpenPage}</span></button>
-        {/if}
-        {#if skip}
-          <button type="button" class="ghost" data-testid="question-skip" disabled={sent} onmousedown={keepFocus} onclick={pass}><span class="ui-label">{strings.chat.questionSkip}</span></button>
-        {/if}
-        {#if allowText && !replying && onwrite}
-          <button type="button" class="ghost" data-testid="question-write" disabled={sent} onclick={onwrite}><span class="ui-label">{strings.chat.questionWrite}</span></button>
-        {/if}
-        <button type="button" class="primary" data-testid="question-submit" disabled={!ready || sent} onmousedown={keepFocus} onclick={send}><span class="ui-label">{strings.chat.questionAnswer}</span></button>
-      </div>
+    {:else}
+      {@render foot?.()}
     {/if}
   {/if}
   {/if}
@@ -359,7 +342,6 @@
   .more .ui-label { text-decoration: underline; text-decoration-color: color-mix(in oklab, currentColor 45%, transparent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
   .more:hover .ui-label { text-decoration-color: currentColor; }
 
-  .how { margin: 0; color: var(--color-muted-foreground); font-size: var(--text-xs); line-height: 16px; }
   /* The choices are lines of the decision, not boxes in it: no fill and no
      edge at rest, a fill under the pointer. The numbered keycap says each one
      is a choice. A row keeps its two lines when the list is shorter than its
@@ -545,10 +527,4 @@
   }
 
   .given-files { display: inline-flex; align-items: center; gap: 2px; flex: none; font-size: var(--text-xs); color: var(--color-muted-foreground); }
-
-  .actions {
-    display: flex;
-    gap: 6px;
-    margin-top: 2px;
-  }
 </style>

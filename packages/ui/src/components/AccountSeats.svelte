@@ -11,7 +11,8 @@
    * one account it is the plain name. With several it is a button, "Claude",
    * or "Claude · Second seat" when the column runs on another login than the
    * provider's own (the rule the chip follows, `ModelPicker.svelte`), that
-   * opens a small list of the provider's accounts in place.
+   * unfolds the provider's accounts right under it, in the menu's flow: the
+   * search and the models move down, nothing is covered.
    */
   let {
     name,
@@ -22,7 +23,8 @@
     locked,
     busy = false,
     disabled = false,
-    onpick
+    onpick,
+    onsignin
   }: {
     /** The provider's name, or the column's heading when there is none. */
     name: string;
@@ -36,6 +38,8 @@
     disabled?: boolean;
     /** A seat that can be taken and is not the choice already. */
     onpick: (seat: Account) => void;
+    /** Where a signed-out login signs in again; absent, its row offers no button. */
+    onsignin?: (seat: Account) => void;
   } = $props();
 
   let open = $state(false);
@@ -64,9 +68,9 @@
     return hints.join(', ') || null;
   }
 
-  /** The quiet second line: a login that cannot run a turn as it is. */
+  /** The muted words beside the name: a login that cannot run a turn as it is. */
   function seatNote(seat: Account): string | null {
-    if (seat.status === 'unauthenticated') return strings.accounts.status.unauthenticated;
+    if (seat.status === 'unauthenticated') return strings.providerSettings.step['sign-in'];
     if (seat.status === 'error') return strings.accounts.status.error;
     return null;
   }
@@ -87,7 +91,7 @@
   }
 
   function items(): HTMLElement[] {
-    return Array.from(list?.querySelectorAll<HTMLElement>('[data-seat]:not(:disabled)') ?? []);
+    return Array.from(list?.querySelectorAll<HTMLElement>('[data-seat]:not(:disabled), [data-sign-in]') ?? []);
   }
 
   async function show() {
@@ -195,23 +199,28 @@
       >
         {#each seats as seat (seat.id)}
           {@const note = seatNote(seat)}
-          <button
-            type="button"
-            class="seat"
-            role="menuitemradio"
-            aria-checked={seat.id === shownAccountId}
-            disabled={busy || seatOff(seat)}
-            data-seat
-            data-instance="{shown?.id}::{seat.id}"
-            title={seatTitle(seat)}
-            onclick={() => pickSeat(seat)}
-          >
-            <span class="check" aria-hidden="true">{#if seat.id === shownAccountId}<Check size={14} strokeWidth={2} />{/if}</span>
-            <span class="seat-text">
+          <div class="seat-row">
+            <button
+              type="button"
+              class="seat"
+              role="menuitemradio"
+              aria-checked={seat.id === shownAccountId}
+              disabled={busy || seatOff(seat)}
+              data-seat
+              data-instance="{shown?.id}::{seat.id}"
+              title={seatTitle(seat)}
+              onclick={() => pickSeat(seat)}
+            >
+              <span class="check" aria-hidden="true">{#if seat.id === shownAccountId}<Check size={14} strokeWidth={2} />{/if}</span>
               <span class="seat-name ui-label">{accountName(seat)}</span>
               {#if note}<span class="seat-note ui-label">{note}</span>{/if}
-            </span>
-          </button>
+            </button>
+            {#if onsignin && seat.status === 'unauthenticated'}
+              <button type="button" class="text sign-in" role="menuitem" data-sign-in data-testid="picker-account-sign-in" onclick={() => { open = false; onsignin(seat); }}>
+                <span class="ui-label">{strings.accounts.login}</span>
+              </button>
+            {/if}
+          </div>
         {/each}
       </div>
     {/if}
@@ -221,13 +230,14 @@
 </div>
 
 <style>
-  /* One height whether the name is a button or not: the list below never jumps. */
+  /* The name line keeps one height whether it is a button or not; the accounts unfold under it, in the flow. */
   .account-line {
-    position: relative;
     display: flex;
-    align-items: center;
+    flex-direction: column;
+    align-items: flex-start;
     min-width: 0;
     min-height: var(--control-sm);
+    justify-content: center;
   }
 
   .provider-name {
@@ -283,31 +293,32 @@
   /* The provider's name gives way last: the account's name shrinks first. */
   .name-button .provider-name { flex: none; }
 
+  /* The menu's own rows, hung into the head's padding like the name button, so their checks line up with it. */
   .accounts {
-    position: absolute;
-    top: calc(100% + 6px);
-    left: -6px;
-    z-index: 5;
     display: flex;
     flex-direction: column;
     gap: 1px;
-    width: max-content;
-    min-width: 180px;
-    max-width: min(280px, calc(100vw - 48px));
-    padding: 4px;
-    background: var(--overlay-surface);
-    border: 1px solid var(--overlay-edge);
-    border-radius: var(--radius-overlay);
-    box-shadow: var(--shadow-overlay);
-    animation: pop var(--dur-2) var(--ease-out-quint);
-    transform-origin: top left;
+    align-self: stretch;
+    margin: 4px -6px 0;
+    animation: unfold var(--dur-2) var(--ease-out-quint);
+  }
+  @keyframes unfold { from { opacity: 0; transform: translateY(-4px); } }
+  @media (prefers-reduced-motion: reduce) { .accounts { animation: none; } }
+
+  .seat-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
   }
 
   .seat {
     display: flex;
+    flex: 1;
     align-items: center;
+    justify-content: flex-start;
     gap: 8px;
-    width: 100%;
+    min-width: 0;
     min-height: var(--row);
     padding: 3px 8px 3px 6px;
     border: none;
@@ -320,7 +331,7 @@
   @media (hover: hover) {
     .seat:hover:not(:disabled) { background: var(--color-hover); }
   }
-  .seat:disabled { opacity: 1; color: var(--color-muted-foreground); }
+  .seat:disabled { opacity: 1; }
 
   .check {
     display: inline-flex;
@@ -329,14 +340,9 @@
     justify-content: center;
   }
 
-  /* Two cap-trimmed labels: the gap is all the room between their lines. */
-  .seat-text {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    min-width: 0;
-  }
   .seat-name {
+    flex: 0 1 auto;
+    min-width: 0;
     font-size: var(--text-sm);
     font-weight: 500;
     overflow: hidden;
@@ -344,8 +350,26 @@
     white-space: nowrap;
   }
   .seat-note {
-    font-size: var(--text-xs);
+    flex: none;
+    font-size: var(--text-sm);
     color: var(--color-muted-foreground);
     white-space: nowrap;
+  }
+
+  /* The family's text button, a row tall so a finger takes it; underlined so it reads as the row's action. */
+  .sign-in {
+    flex: none;
+    min-height: var(--row);
+    padding: 0 8px;
+    border-radius: var(--radius-overlay-row);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    text-decoration: underline;
+    text-decoration-color: var(--color-edge);
+    text-underline-offset: 3px;
+  }
+  .sign-in:focus-visible { background: var(--color-hover); }
+  @media (hover: hover) {
+    .sign-in:hover { background: var(--color-hover); text-decoration-color: currentColor; }
   }
 </style>

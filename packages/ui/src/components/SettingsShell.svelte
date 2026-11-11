@@ -4,7 +4,7 @@
   import MobileSettings from './MobileSettings.svelte';
   import BrainPage from './BrainPage.svelte';
   import InfoTip from './InfoTip.svelte';
-  import { ChevronDown, ChevronLeft, ChevronRight, MonitorSmartphone, Network, Search, Monitor } from '@lucide/svelte';
+  import { ChevronDown, ChevronLeft, ChevronRight, Search, Monitor } from '@lucide/svelte';
   import { SETTINGS_ICONS, SETTINGS_ICON_SIZE, SETTINGS_ICON_STROKE } from '../lib/settings-icons';
   import KeyboardPage from './KeyboardPage.svelte';
   import LimitsPage from './LimitsPage.svelte';
@@ -34,7 +34,7 @@
   import MachineIcon from './MachineIcon.svelte';
   import { untrack } from 'svelte';
   import { holdSettingsCard, revealSettingsCard } from '../lib/settings-flash';
-  import { desktopPage, desktopSettings, familyOf, machinePage, movedTo, navOf, ownerOnly, sectionsOf, SETTINGS_FAMILIES } from '../lib/settings-tabs';
+  import { desktopPage, desktopSettings, familyOf, machinePage, movedTo, navOf, ownerOnly, phonePage, sectionsOf, SETTINGS_FAMILIES } from '../lib/settings-tabs';
   import { titleSlot } from '../lib/title-slot.svelte';
 
   let { store, onopenthread }: { store: Store; onopenthread?: () => void } = $props();
@@ -203,19 +203,17 @@
   let title = $derived(tabs.find((entry) => entry.id === tab)?.label ?? '');
   let info = $derived(infoOf(tab));
   /**
-   * Where the page's settings apply, under every title: this device, every machine, or the one
-   * machine a page changes. Where there is a machine to pick, its name in that line is the picker, the
-   * way the panel door names the open panel and switches it.
+   * The header is the page's title alone; a page holding machine settings adds one line under it,
+   * "Agent settings apply on studio". Where there is a machine to pick, its name in that line is
+   * the picker, the way the panel door names the open panel and switches it. Its cards say the rest.
    */
-  let scope = $derived.by((): { kind: 'device' | 'all' | 'machine'; text: string } | null => {
-    if (tab === 'appearance' || tab === 'browser') return { kind: 'device', text: strings.settings.scopeDevice };
-    if (tab === 'machines' || tab === 'usage' || tab === 'task-manager') return { kind: 'all', text: strings.settings.scopeEvery };
+  let scope = $derived.by((): string | null => {
     if (!machinePage(tab)) return null;
     const machine = workspace.machines.find((m) => m.store === target);
-    return machine ? { kind: 'machine', text: fill(strings.machines.scopeOn, { machine: machineName(machine) }) } : null;
+    return machine ? fill(strings.settings.scopeMachine, { machine: machineName(machine) }) : null;
   });
-  /** The words around the machine's name, so the name alone is the picker ("On" before it in English). */
-  let scopeWords = $derived(strings.machines.scopeOn.split('{machine}'));
+  /** The words around the machine's name, so the name alone is the picker. */
+  let scopeWords = $derived(strings.settings.scopeMachine.split('{machine}'));
   let scopePicks = $derived(bar && tab !== 'experiments' && choices.length > 1 && chosen !== undefined);
 
   /**
@@ -326,10 +324,12 @@
   let active = $state(0);
   /** "Clavier" finds "clavier", "Récents" finds "recents": case and accents never decide a match. */
   const fold = (text: string): string => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+  /** A phone finds only what it can open: a desktop page it lacks (Keyboard, Plugins) would land on Home. */
+  let reachable = $derived(desktopSettings(narrow.current) ? entries : entries.filter((entry) => phonePage(entry.tab, entry.section, store.owner) !== 'home'));
   let results = $derived.by(() => {
     const words = fold(query).split(/\s+/).filter(Boolean);
     if (words.length === 0) return [];
-    return entries.filter((entry) => {
+    return reachable.filter((entry) => {
       const text = fold(`${entry.label} ${entry.trail} ${entry.family}`);
       return words.every((word) => text.includes(word));
     }).slice(0, 12);
@@ -396,7 +396,7 @@
 {#snippet machineBar()}
   {#if chosen}<SettingsMachineBar machine={chosen} machines={choices} onpick={(id) => { picked = id; }} />{/if}
 {/snippet}
-<!-- The scope line's machine as its picker, "On [studio v]": the title says where its settings apply and switches it. -->
+<!-- The scope line's machine as its picker, "Agent settings apply on [studio v]": it says where they apply and switches it. -->
 {#snippet scopePicker()}
   {#if chosen}
     {#if scopeWords[0]?.trim()}<span class="ui-label">{scopeWords[0].trim()}</span>{/if}
@@ -406,13 +406,35 @@
     {#if scopeWords[1]?.trim()}<span class="ui-label">{scopeWords[1].trim()}</span>{/if}
   {/if}
 {/snippet}
+<!-- Settings' home is this search: it finds every page, card and single setting. The phone's home opens on the same field. -->
+{#snippet searchField(phone: boolean)}
+  <label class="search" class:phone data-testid="settings-home">
+    <Search size={14} strokeWidth={1.75} aria-hidden="true" />
+    <input type="search" bind:this={field} bind:value={query} oninput={() => (active = 0)} placeholder={strings.settings.search} aria-label={strings.settings.search} data-testid="settings-search" onkeydown={onkey} spellcheck="false" autocomplete="off" />
+  </label>
+{/snippet}
+{#snippet searchResults()}
+  {#if results.length === 0}
+    <p class="hint" data-testid="settings-search-empty">{strings.settings.searchEmpty}</p>
+  {:else}
+    <div class="card flush results" data-testid="settings-search-results">
+      {#each results as entry, index (`${entry.tab}:${entry.section}:${entry.label}`)}
+        <button type="button" class="ghost result" class:active={index === Math.min(active, results.length - 1)} data-testid="settings-search-result" onpointermove={() => (active = index)} onclick={() => open(entry)}>
+          <span class="label ui-label">{entry.label}</span>
+          {#if entry.trail}<span class="trail ui-label">{entry.trail}</span>{/if}
+          <ChevronRight size={15} />
+        </button>
+      {/each}
+    </div>
+  {/if}
+{/snippet}
 <!-- Under a title whose scope line is the picker: only the bar's notes (follows, default machine). -->
 {#snippet machineNotes()}
   {#if chosen}<SettingsMachineBar machine={chosen} machines={choices} picker={false} onpick={(id) => { picked = id; }} />{/if}
 {/snippet}
 
 {#if !desktopSettings(narrow.current)}
-  <MobileSettings {store} {target} bar={bar ? machineBar : undefined} pick={bar && choices.length > 1 ? scopePicker : undefined} notes={machineNotes} {onopenthread} />
+  <MobileSettings {store} {target} bar={bar ? machineBar : undefined} pick={bar && choices.length > 1 ? scopePicker : undefined} notes={machineNotes} search={searchField} found={searching ? searchResults : undefined} {onopenthread} />
 {:else}
 <div class="settings" data-testid="settings">
   <nav aria-label={strings.settings.heading} style:--list-width={`${store.sidebarWidth}px`}>
@@ -420,11 +442,7 @@
     <button type="button" class="ghost title" data-testid="settings-back" title={strings.settings.back} onclick={() => { store.showChat(); store.sidebarCollapsed = false; }}>
       <ChevronLeft size={16} aria-hidden="true" /><span class="ui-label">{strings.settings.heading}</span>
     </button>
-    <!-- Settings' home is this search: it finds every page, card and single setting. -->
-    <label class="search" data-testid="settings-home">
-      <Search size={14} strokeWidth={1.75} aria-hidden="true" />
-      <input type="search" bind:this={field} bind:value={query} oninput={() => (active = 0)} placeholder={strings.settings.search} aria-label={strings.settings.search} data-testid="settings-search" onkeydown={onkey} spellcheck="false" autocomplete="off" />
-    </label>
+    {@render searchField(false)}
     <!-- The pages under their family heads, as on a phone, every page a peer of its family. -->
     {#each families as family (family.id)}
       <div class="family" role="group" aria-label={family.label} data-testid="settings-family" data-family={family.id}>
@@ -453,28 +471,14 @@
   {#key tab}
     <section class="framed">
       {#if searching}
-        <div class="found">
-          {#if results.length === 0}
-            <p class="hint" data-testid="settings-search-empty">{strings.settings.searchEmpty}</p>
-          {:else}
-            <div class="card flush results" data-testid="settings-search-results">
-              {#each results as entry, index (`${entry.tab}:${entry.section}:${entry.label}`)}
-                <button type="button" class="ghost result" class:active={index === Math.min(active, results.length - 1)} data-testid="settings-search-result" onpointermove={() => (active = index)} onclick={() => open(entry)}>
-                  <span class="label ui-label">{entry.label}</span>
-                  {#if entry.trail}<span class="trail ui-label">{entry.trail}</span>{/if}
-                  <ChevronRight size={15} />
-                </button>
-              {/each}
-            </div>
-          {/if}
-        </div>
+        <div class="found">{@render searchResults()}</div>
       {:else}
         <header class="screen" data-testid="settings-crumb">
           <h1 class="ui-label-box"><span class="ui-label">{title}</span>{#if info}<InfoTip topic={title} text={info} testid="settings-info" />{/if}</h1>
           {#if scope}
-            <p class="scope" data-testid="settings-scope" data-scope={scope.kind}>
-              {#if scope.kind === 'device'}<MonitorSmartphone size={14} strokeWidth={1.75} aria-hidden="true" />{:else if scope.kind === 'all'}<Network size={14} strokeWidth={1.75} aria-hidden="true" />{:else if !scopePicks}<Monitor size={14} strokeWidth={1.75} aria-hidden="true" />{/if}
-              {#if scopePicks}{@render scopePicker()}{:else}<span class="ui-label">{scope.text}</span>{/if}
+            <p class="scope" data-testid="settings-scope" data-scope="machine">
+              {#if !scopePicks}<Monitor size={14} strokeWidth={1.75} aria-hidden="true" />{/if}
+              {#if scopePicks}{@render scopePicker()}{:else}<span class="ui-label">{scope}</span>{/if}
             </p>
           {/if}
         </header>
@@ -575,10 +579,13 @@
   .search :global(svg) { flex: none; }
   .search input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; box-shadow: none; outline: none; font-size: var(--text-sm); color: var(--color-foreground); }
   .search input::-webkit-search-cancel-button { display: none; }
+  /* The phone's home: the field spans its column, first under the header, a finger tall. */
+  .search.phone { width: auto; height: var(--touch-target); margin: 0 0 var(--space-5); background: var(--color-surface); }
+  .search.phone input { font-size: var(--text-md); }
 
   /* What the search finds, in the page's column. */
   .found { padding: var(--space-8) max(var(--settings-gutter), calc((100% - var(--settings-width)) / 2)); }
-  .found .hint { margin: 0; color: var(--color-muted-foreground); font-size: var(--text-base); }
+  .hint { margin: 0; color: var(--color-muted-foreground); font-size: var(--text-base); }
   .results { display: grid; }
   .result {
     display: flex;
@@ -644,7 +651,7 @@
 
   .crumb { flex: 1; min-width: 0; }
   /* The screen's one title, at the top of its card in the settings column, one step over a card's. */
-  .screen { padding: var(--space-8) max(var(--settings-gutter), calc((100% - var(--settings-width)) / 2)) 0; }
+  .screen { display: flex; flex-direction: column; align-items: flex-start; padding: var(--space-8) max(var(--settings-gutter), calc((100% - var(--settings-width)) / 2)) 0; }
   .screen h1 { min-width: 0; margin: 0; color: var(--color-foreground); font-size: var(--text-lg); font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; }
   .screen + :global(.page) { padding-top: var(--space-5); }
   /* The machine's name in the scope line is the picker: a word with an edge and a chevron, so it reads as one at rest. */

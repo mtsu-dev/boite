@@ -70,7 +70,7 @@ test('Allow says its scope, one call, and the keys live in the titles, not as ke
   expect(button('permission-allow').classList.contains('primary')).toBe(true);
 });
 
-test('the waiting row is the command itself, its reason and the pair; out of view it leaves the pill, and once allowed one receipt line', async () => {
+test('the waiting row is the command itself, its reason and the pair; out of view the foot row names it, and once allowed one receipt line', async () => {
   let seen: ((entries: Partial<IntersectionObserverEntry>[]) => void) | null = null;
   vi.stubGlobal('IntersectionObserver', class { constructor(callback: typeof seen) { seen = callback; } observe() {} disconnect() {} });
   const scroll = vi.fn();
@@ -83,7 +83,7 @@ test('the waiting row is the command itself, its reason and the pair; out of vie
   const request: PermissionRequest = { id: 'perm', threadId: 'thread', turnId: 'turn', toolName: 'Bash', input: { command: 'git push origin main' }, description: 'Publish the branch', createdAt: 1 };
   const answer = (decision: 'allow' | 'deny') => { sent.push(decision); };
   running = mount(PermissionCard, { target: root, props: { toolName: 'Bash', decision: null, request, answer } });
-  const pill = mount(DecisionPill, { target: strip });
+  const pill = mount(DecisionPill, { target: strip, props: { permission: request } });
   decisionTail.count = 1;
   flushSync();
   const away = (ratio: number) => { flushSync(() => seen!([{ intersectionRatio: ratio, intersectionRect: { height: ratio * 100 } as DOMRectReadOnly }])); };
@@ -94,12 +94,12 @@ test('the waiting row is the command itself, its reason and the pair; out of vie
     expect(row.querySelector('[data-testid=permission-why]')?.textContent).toBe('Publish the branch');
     expect(row.querySelector('[data-testid=permission-status]')?.textContent).toContain('Waiting for approval');
     expect([...row.querySelectorAll('.decision-actions > button')].map((entry) => entry.textContent?.trim())).toEqual(['Deny', 'Allow once']);
-    // In view, no pill; scrolled away, the pill leads back to the row and focuses it.
+    // In view, no foot row; scrolled away, its Show leads back to the row and focuses it.
     away(1);
     expect(strip.querySelector('[data-testid=decision-pill]')).toBeNull();
     away(0);
-    const back = strip.querySelector<HTMLButtonElement>('[data-testid=decision-pill]')!;
-    expect(back.textContent?.trim()).toBe('1 decision waiting');
+    expect(strip.querySelector('[data-testid=decision-pill]')?.textContent).toContain('Waiting for approval:');
+    const back = strip.querySelector<HTMLButtonElement>('[data-testid=decision-pill-show]')!;
     expect(strip.querySelector('[data-testid=permission-allow]')).toBeNull();
     back.click();
     expect(scroll.mock.contexts.at(-1)).toBe(row);

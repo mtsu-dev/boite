@@ -84,8 +84,8 @@
         </div>
       </div>
       <label class="switch-row" for="{uid}-edge-scrollbars">
-        <span class="text ui-label-box"><span class="ui-label" id="{uid}-edge-scrollbars-name">{strings.features.edgeScrollbars.title}</span><InfoTip topic={strings.features.edgeScrollbars.title} text={strings.features.edgeScrollbars.hint} /></span>
-        <input id="{uid}-edge-scrollbars" aria-labelledby="{uid}-edge-scrollbars-name" type="checkbox" role="switch" checked={featureOn('edge-scrollbars')} data-testid="setting-edge-scrollbars"
+        <span class="text"><span class="ui-label" id="{uid}-edge-scrollbars-name">{strings.features.edgeScrollbars.title}</span><span class="hint" id="{uid}-edge-scrollbars-effect">{strings.features.edgeScrollbars.hint}</span></span>
+        <input id="{uid}-edge-scrollbars" aria-labelledby="{uid}-edge-scrollbars-name" aria-describedby="{uid}-edge-scrollbars-effect" type="checkbox" role="switch" checked={featureOn('edge-scrollbars')} data-testid="setting-edge-scrollbars"
           onchange={event => setFeature('edge-scrollbars', event.currentTarget.checked)} />
       </label>
     </section>

@@ -78,10 +78,8 @@ export const strings = {
     inProject: 'in',
     /** Before the machine the draft's project is on, which ends the heading. */
     onMachine: 'on',
-    /** Under a desktop draft's heading: what starting here does. The mode, model and effort are the chips' to say. */
-    startHint: 'Describe a task below: the agent works in this folder.',
-    /** The same with the folder's whole path, so where it runs reads in full; the heading already names the machine. */
-    startWhere: 'Describe a task below: the agent works in {path}.',
+    /** Under a desktop draft's heading, before the folder's whole path: where the agent works. The box says the rest. */
+    startIn: 'in',
     draftMode: {
       default: 'with approval requests',
       acceptEdits: 'with edits allowed',

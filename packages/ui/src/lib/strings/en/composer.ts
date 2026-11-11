@@ -10,9 +10,14 @@ export const strings = {
     filesUnavailable: 'The messages were rewound, but this edit has no complete file backup. The code could not be restored.',
     filesBusy: 'The messages were rewound. Another agent is still working in this folder, so the files were left as they are.',
     editingCancel: 'Stop editing (Esc)',
-    /** The box while the agent works or a question waits at its top: what is written answers. One line on a 360 px phone. */
+    /** The box while the agent works: what is written answers. One line on a 360 px phone. */
     replyPlaceholder: 'Reply to {name}',
-    /** The box while a permission waits on its command row: Send denies it, stops the turn and sends the message as the next one. */
+    /** The box while a question at its top takes a written answer beside its options, or alone: Send answers it. */
+    answerPlaceholder: 'Or type your own answer',
+    answerTextPlaceholder: 'Type your answer',
+    /** The box while a question at its top takes no text: a message is queued until the answer. */
+    afterAnswerPlaceholder: 'A message waits until you answer',
+    /** The box while a permission waits on its command row in view: Send denies it, stops the turn and sends the message as the next one. */
     permissionPlaceholder: 'Send a message to decline and redirect',
     /** The same on a phone, one line on a 360 px screen. */
     permissionPlaceholderShort: 'Reply to decline and redirect',
@@ -40,13 +45,22 @@ export const strings = {
     placeholderPickAccount: 'Pick another account to send',
     placeholderOffline: '{machine} is offline: messages wait here and go out when it reconnects',
     placeholderOfflineDraft: '{machine} is offline: the conversation starts when it reconnects',
+    /** The field under that notice: what Send does, the notice having said offline. */
+    placeholderAway: 'Sends when {machine} is back',
+    /** The notice over the box of a thread whose machine is out of reach, with Reconnect. */
+    machineOffline: '{machine} is offline',
+    machineOfflineHint: 'Messages sent now wait on this device and go out in order once {machine} answers again.',
+    /** The foot's row while a permission waits out of view: what waits, by its title, and the way back to it. */
+    footDecision: 'Waiting for approval:',
+    footDecisions: '{count} decisions waiting:',
+    footShow: 'Show',
+    footShowHint: 'Scroll to the command that asks',
     send: 'Send',
     sendWhenLoaded: 'Sends once the files are ready',
     stop: 'Stop',
     queued: 'Sent after the next tool, or when the turn ends',
-    queuedLabel: 'Queued',
     /** The word before a queued prompt's text: it goes after the running turn. */
-    queuedThen: 'Then:',
+    queuedLabel: 'Queued',
     /** A refused send held the pending messages until the user sends again. */
     queuedPaused: 'Held after a refused send',
     sendNow: 'Send now',

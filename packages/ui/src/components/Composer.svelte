@@ -30,9 +30,9 @@
   import AccountGoneNotice from './AccountGoneNotice.svelte';
   import ComposerBar from './ComposerBar.svelte';
   import ComposerIntent from './ComposerIntent.svelte';
-  import ComposerQueueRegion from './ComposerQueueRegion.svelte';
+  import ComposerFoot from './ComposerFoot.svelte';
   import ComposerStrip from './ComposerStrip.svelte';
-  import AgentDock from './AgentDock.svelte';
+  import ThreadOfflineNotice from './ThreadOfflineNotice.svelte';
   import ComposerDeck from './ComposerDeck.svelte';
   import ComposerField from './ComposerField.svelte';
   import ComposerSpeechPreview from './ComposerSpeechPreview.svelte';
@@ -40,6 +40,7 @@
   import SlashMenu from './SlashMenu.svelte';
   import SideAnswer from './SideAnswer.svelte';
   import { permissionRedirect } from '../lib/permission-redirect.svelte';
+  import { decisionTail } from '../lib/decision-tail.svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import { ComposerSide } from '../lib/composer-side.svelte';
   import { chipChoice, queuedChoice, sendToTarget, type ComposerTarget } from '../lib/composer-target';
@@ -145,6 +146,8 @@
    * incognito draft is never kept on the device, so it waits for the machine.
    */
   let offline = $derived(!target && store.connection !== 'ready' && (thread !== null ? !store.draft : !!store.draft && !store.draft.incognito));
+  /** Out of reach past its first hello: the notice over the box says so once, with Reconnect. */
+  let away = $derived(offline && !!thread && (store.connection === 'closed' || store.booted));
   let machineLabel = $derived.by(() => { const found = workspace.machines.find((machine) => machine.store === store); return found ? machineName(found) : strings.machines.local; });
   /**
    * A question waiting for a written answer makes the box its free field: Send
@@ -197,8 +200,9 @@
     || (!!thread?.contactHold && !thread.archived)));
 
   const narrow = new MediaQuery('(max-width: 720px)');
-  let placeholder = $derived(composerPlaceholder({ target, replying: !!reply || (!!thread && store.busy), permission: !!permission && !reply, narrow: narrow.current, bot, offline, accountGone, onThread: !!thread,
-    machine: machineLabel, provider: provider?.name ?? null }));
+  // What Send does to the question at the top of the box (composerPlaceholder's `answer`); the foot names a permission out of view.
+  let answer = $derived(reply ? (reply.options.length ? 'options' as const : 'text' as const) : docked && docked.threadId === thread?.id && !docked.async && store.busy ? 'after' as const : null);
+  let placeholder = $derived(composerPlaceholder({ target, replying: !!thread && store.busy, answer, permission: !!permission && !reply && !decisionTail.away, narrow: narrow.current, bot, offline, away, accountGone, onThread: !!thread, machine: machineLabel, provider: provider?.name ?? null }));
 
   // -- the slash menu -----------------------------------------------------------
   // `/` on an empty box, then the word being typed: nothing else opens it, and a
@@ -773,10 +777,9 @@
   }
 }}>
   {#if !target}<ComposerStrip />{/if}
-  {#if thread}<AgentDock {store} threadId={thread.id} />{/if}
-  <ComposerQueueRegion {store} {key} {thread} {composer} machine={machineLabel} {sendNow}
-    blocked={text.length > 0 || attachments.length > 0 || previewReferences.length > 0} onrestore={restoreQueued} onsendnow={sendQueuedNow} />
+  {#if away && !stopped}<ThreadOfflineNotice {store} machine={machineLabel} />{/if}
   {#if accountGone && !botGone}<AccountGoneNotice onpick={() => void toolbar?.openChip('composer-picker')} />{/if}
+  <ComposerFoot {store} {key} {thread} {composer} machine={machineLabel} {sendNow} alone={stopped} blocked={text.length > 0 || attachments.length > 0 || previewReferences.length > 0} onrestore={restoreQueued} onsendnow={sendQueuedNow} />
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="composer" class:dictating class:keys={viaKeys} class:loading={loadingThread} data-testid="composer" tabindex="-1" bind:this={shell} hidden={stopped} {ondragover} {ondrop} onkeydown={(event) => {
     if (event.target !== event.currentTarget || event.key !== 'Escape') return;
@@ -840,6 +843,8 @@
   /* The notice in the box's place keeps the bottom gap; only the strip stays here. */
   .composer-wrap.stopped { padding-bottom: 0; }
   .composer[hidden] { display: none; }
+  /* The foot stands on the card's top edge (ComposerFoot): the card squares its top corners under it. */
+  .composer-wrap:has(> :global(.foot .foot-row)) > .composer { border-top-left-radius: 0; border-top-right-radius: 0; }
 
   /* A raised neutral surface with a hairline and a faint top light. Focus brightens the hairline: app.css, beside its themes. */
   .composer {
@@ -868,8 +873,7 @@
   /* A card the script focused for a touch screen shows no ring: only a key lights it. */
   .composer:not(.keys):focus-visible { outline: none; }
 
-  /* Each block of the card stands this far under the one above it (ComposerDeck). */
-  /* One row form for the lines over and in the card (the waiting line, the queue, the activity): their height, their icon box and their type. */
+  /* The gap between the card's blocks (ComposerDeck), and the row form of a question in it (ThreadDecision): height, icon box, type. */
   .composer-wrap { --deck-gap: 6px; --dock-row: 28px; --dock-icon: 16px; --dock-type: var(--text-meta); }
   @media (max-width: 720px) {
     /* A phone keeps the conversation: the whole card, rows, chips and

@@ -1,6 +1,6 @@
 <script lang="ts">
   import TelemetrySettings from './TelemetrySettings.svelte';
-  import { ArrowLeft, ChevronRight, Monitor, MonitorSmartphone } from '@lucide/svelte';
+  import { ArrowLeft, ChevronRight, Monitor } from '@lucide/svelte';
   import { SETTINGS_ICONS, SETTINGS_ICON_SIZE, SETTINGS_ICON_STROKE } from '../lib/settings-icons';
   import type { SettingsTab, Store } from '../lib/store.svelte';
   import { machineName, workspace } from '../lib/workspace.svelte';
@@ -38,7 +38,7 @@
    * `target` is the machine the settings bar picked, `store` this window's:
    * the pages of one machine show the target, under the bar.
    */
-  let { store, target = store, bar, pick, notes, onopenthread }: {
+  let { store, target = store, bar, pick, notes, search, found, onopenthread }: {
     store: Store;
     target?: Store;
     bar?: Snippet;
@@ -46,6 +46,10 @@
     pick?: Snippet;
     /** The bar without its picker, under a header that holds it. */
     notes?: Snippet;
+    /** The desktop's settings search (`SettingsShell.svelte`), the home's first row. */
+    search?: Snippet<[boolean]>;
+    /** Its results while a query is typed: they take the families' place. */
+    found?: Snippet;
     onopenthread?: () => void;
   } = $props();
   /**
@@ -88,15 +92,13 @@
   /** The pages that change one machine whole, its bar under their header. */
   const MACHINE_PAGES = ['accounts', 'brain', 'voice', 'limits', 'diagnostics', 'worktrees', 'archived'];
   /**
-   * Where a page's settings apply, under its header: this device, every machine, or the machine,
-   * its name the picker where there are several. Limits names its machine in its title already.
+   * A page of one machine's agent settings says so under its header, the machine's name the picker
+   * where there are several; other pages show their title alone. Limits names its machine in its title already.
    */
-  const scopeOf = (page: string): { device: boolean; text: string } | null => {
-    if (page === 'appearance' || page === 'phone') return { device: true, text: strings.settings.scopeDevice };
-    if (page === 'machines') return { device: false, text: strings.settings.scopeEvery };
+  const scopeOf = (page: string): string | null => {
     if (page === 'limits' || !MACHINE_PAGES.includes(page) || (bar && !pick)) return null;
     const shown = workspace.machines.find((m) => m.store === target);
-    return shown ? { device: false, text: fill(strings.machines.scopeOn, { machine: machineName(shown) }) } : null;
+    return shown ? fill(strings.settings.scopeMachine, { machine: machineName(shown) }) : null;
   };
 
   /**
@@ -172,8 +174,10 @@
   {#each screens as shown (shown)}
   <div class="settings-screen" class:left={shown !== page} class:arrived={shown === arrived} data-slide={motionOf(shown)} inert={shown !== page || slide.direction === 'pop'}>
   {#if shown === 'home'}
-    <!-- The header already says Settings: the screen opens on the groups, as the desktop's nav lists them. -->
+    <!-- The header already says Settings: the screen opens on the desktop's search, then the groups as its nav lists them. -->
     <div class="home" data-testid="mobile-settings-home">
+      {@render search?.(true)}
+      {#if found}<div class="found">{@render found()}</div>{:else}
       <PolicyBanner store={target} />
       <!-- The desktop's family heads (lib/settings-tabs.ts `SETTINGS_FAMILIES`), each over its own card of rows. -->
       <section class="family" aria-labelledby="mobile-family-app" data-testid="settings-family" data-family="app">
@@ -217,6 +221,7 @@
         </div>
       </section>
       <PolicySettings store={target} />
+      {/if}
     </div>
   {:else}
     {@const title = titleOf(shown)}
@@ -231,7 +236,7 @@
         <h1>{#if shown === 'limits'}<QuotaMachineScope store={target} fallback={title} />{:else}{title}{/if}{#if info}<InfoTip topic={title} text={info} testid="mobile-settings-info" />{/if}</h1>
         {#if scope}
           {@const picks = pick && bar && MACHINE_PAGES.includes(shown)}
-          <p class="scope page-scope" class:picks data-testid="mobile-settings-page-scope">{#if scope.device}<MonitorSmartphone size={14} strokeWidth={1.75} aria-hidden="true" />{:else if !picks}<Monitor size={14} strokeWidth={1.75} aria-hidden="true" />{/if}{#if picks && pick}{@render pick()}{:else}<span class="ui-label">{scope.text}</span>{/if}</p>
+          <p class="scope page-scope" class:picks data-testid="mobile-settings-page-scope">{#if !picks}<Monitor size={14} strokeWidth={1.75} aria-hidden="true" />{/if}{#if picks && pick}{@render pick()}{:else}<span class="ui-label">{scope}</span>{/if}</p>
         {/if}
       </div>
     </header>
@@ -398,7 +403,7 @@
   .heading { display: flex; flex-direction: column; flex: 1; min-width: 0; }
   header.limits .heading h1 { margin-right: 54px; }
   .page-scope { display: flex; align-items: center; gap: 6px; min-width: 0; margin: 2px 0 0; color: var(--color-subtle); font-size: var(--text-meta); line-height: 1.3; }
-  .page-scope > .ui-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .page-scope > .ui-label { min-width: 0; }
   .page-scope > :global(svg) { flex: none; }
   /* A row's icon leads it in the grey of the chrome's icons; the chevron at its end stays the quietest. */
   .row :global(svg.lead) { color: var(--color-muted-foreground); }

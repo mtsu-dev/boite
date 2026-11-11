@@ -6,6 +6,7 @@ export const fr: Translation = {
     status: { running: 'En cours', paused: 'En pause', done: 'Terminé', failed: 'En échec', stopped: 'Arrêté' },
     stepStatus: { waiting: 'En attente', running: 'En cours', done: 'Terminée', failed: 'En échec', skipped: 'Sautée', stopped: 'Arrêtée' },
     steps: '{done} sur {total} faites',
+    stepFailed: '{step} : {error}',
     phase: 'Phase {n}',
     pause: 'Pause',
     resume: 'Reprendre',

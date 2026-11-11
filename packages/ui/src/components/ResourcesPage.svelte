@@ -59,8 +59,8 @@
   <section class="card" id="settings-limits">
     <h2 class="ui-label-box"><span class="ui-label">{strings.protection.limits}</span><InfoTip gather topic={strings.protection.limits} text="" testid="section-info" /><SaveStatus save={limitsSave} /></h2>
     <label for="{uid}-memory-protection" class="switch-row">
-      <span class="text ui-label-box"><span class="ui-label" id="{uid}-memory-protection-name">{strings.settings.memoryProtection}</span><InfoTip topic={strings.settings.memoryProtection} text={strings.settings.memoryProtectionHint} /></span>
-      <input id="{uid}-memory-protection" aria-labelledby="{uid}-memory-protection-name" type="checkbox" role="switch" data-testid="setting-memory-protection" checked={memoryEnabled} onchange={async (event) => {
+      <span class="text"><span class="ui-label-box"><span class="ui-label" id="{uid}-memory-protection-name">{strings.settings.memoryProtection}</span><InfoTip topic={strings.settings.memoryProtection} text={strings.settings.memoryProtectionHint} /></span><span class="hint" id="{uid}-memory-protection-effect">{strings.settings.effects.memoryProtection}</span></span>
+      <input id="{uid}-memory-protection" aria-labelledby="{uid}-memory-protection-name" aria-describedby="{uid}-memory-protection-effect" type="checkbox" role="switch" data-testid="setting-memory-protection" checked={memoryEnabled} onchange={async (event) => {
         const input = event.currentTarget;
         if (!await store.saveSettings({ memoryProtection: input.checked })) input.checked = memoryEnabled;
       }} />
@@ -92,8 +92,8 @@
   <section class="card" id="settings-tasks">
     <h2 class="tasks-heading"><span class="ui-label">{strings.protection.tasks}</span><span class="live-dot" aria-hidden="true"></span></h2>
     <label for="{uid}-reap-orphans" class="switch-row">
-      <span class="text ui-label-box"><span class="ui-label" id="{uid}-reap-orphans-name">{strings.settings.reapOrphans}</span><InfoTip topic={strings.settings.reapOrphans} text={strings.settings.reapOrphansHint} /><SyncMark {store} key="reapOrphans" /></span>
-      <input id="{uid}-reap-orphans" aria-labelledby="{uid}-reap-orphans-name" type="checkbox" role="switch" data-testid="setting-reap-orphans" checked={store.settings?.reapOrphans ?? true} onchange={(event) => void toggled(event.currentTarget, reapOrphans => store.saveSettings({ reapOrphans }))} />
+      <span class="text"><span class="ui-label-box"><span class="ui-label" id="{uid}-reap-orphans-name">{strings.settings.reapOrphans}</span><InfoTip topic={strings.settings.reapOrphans} text={strings.settings.reapOrphansHint} /><SyncMark {store} key="reapOrphans" /></span><span class="hint" id="{uid}-reap-orphans-effect">{strings.settings.effects.reapOrphans}</span></span>
+      <input id="{uid}-reap-orphans" aria-labelledby="{uid}-reap-orphans-name" aria-describedby="{uid}-reap-orphans-effect" type="checkbox" role="switch" data-testid="setting-reap-orphans" checked={store.settings?.reapOrphans ?? true} onchange={(event) => void toggled(event.currentTarget, reapOrphans => store.saveSettings({ reapOrphans }))} />
     </label>
   </section>
 

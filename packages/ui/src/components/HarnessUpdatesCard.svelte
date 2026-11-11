@@ -82,8 +82,8 @@
     {/each}
   </div>
   <label class="auto" for="{uid}-auto-update">
-    <span class="ui-label-box"><span class="ui-label">{strings.providerSettings.autoUpdate}</span><InfoTip topic={strings.providerSettings.autoUpdate} text={strings.harnessUpdates.autoHint} /><PolicyLock {store} keys={['updates.agents']} /></span>
-    <input id="{uid}-auto-update" type="checkbox" role="switch" data-testid="setting-auto-update-harnesses"
+    <span class="words"><span class="ui-label-box"><span class="ui-label">{strings.providerSettings.autoUpdate}</span><InfoTip topic={strings.providerSettings.autoUpdate} text={strings.harnessUpdates.autoHint} /><PolicyLock {store} keys={['updates.agents']} /></span><span class="effect" id="{uid}-auto-update-effect">{strings.settings.effects.harnessAutoUpdate}</span></span>
+    <input id="{uid}-auto-update" aria-describedby="{uid}-auto-update-effect" type="checkbox" role="switch" data-testid="setting-auto-update-harnesses"
       checked={store.settings?.autoUpdateHarnesses ?? false} disabled={!connected || !store.settings || agentsPolicy !== null}
       onchange={(event) => void toggleAuto(event.currentTarget)} />
   </label>
@@ -104,7 +104,9 @@
   .track { height: 3px; margin-top: 8px; background: var(--color-surface-3); border-radius: var(--radius-sm); overflow: hidden; }
   .track span { display: block; height: 100%; background: var(--color-foreground); }
   .auto { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; color: var(--color-muted-foreground); }
-  .auto > span { display: inline-flex; align-items: center; }
+  .auto > .words { display: grid; gap: 2px; min-width: 0; }
+  .auto .ui-label-box { display: inline-flex; align-items: center; }
+  .effect { color: var(--color-muted-foreground); font-size: var(--text-sm); line-height: 1.4; }
   .auto input { flex: 0 0 40px; width: 40px; }
   @media (max-width: 720px) {
     header button { min-height: var(--touch-target); }

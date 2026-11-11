@@ -37,7 +37,7 @@
   import GroupLabel from './GroupLabel.svelte';
   import ProjectTile from './ProjectTile.svelte';
   import MachinePlace from './MachinePlace.svelte';
-  import MachineReconnect from './MachineReconnect.svelte';
+  import MachineOffline from './MachineOffline.svelte';
   import RailFrame from './RailFrame.svelte';
   import FoldMore from './FoldMore.svelte';
   import { minuteClock } from '../lib/clock.svelte';
@@ -341,7 +341,7 @@
             >
               {#if projectView.order === 'manual'}<GripVertical size={12} />{/if}<span class="mark"><ProjectTile {project} store={owner} size={18} /><span class="fold-caret" class:open={!collapsed} aria-hidden="true"><ChevronRight size={16} /></span></span
               ><span class="name project-title ui-label" class:gone={project.missing === true}>{projectName(project)}</span
-              >{#if host(machine)}<MachinePlace host={host(machine)!} testid="project-host" />{/if}{#if project.missing === true}<span class="missing" data-testid="project-missing" title={strings.sidebar.projectMissing} aria-label={strings.sidebar.projectMissing}><FolderX size={13} aria-hidden="true" /></span>{/if}{#if rollup && !needsYou(rollup.kind) && rollup.kind !== 'done' && lists.working.length === 0}{@const label = fill(rollup.count === 1 ? strings.sidebar.rollupOne : strings.sidebar.rollupMany, { count: String(rollup.count), state: strings.sidebar.state[rollup.kind] })}<span
+              >{#if host(machine)}<MachinePlace host={{ ...host(machine)!, away: false }} testid="project-host" />{/if}{#if project.missing === true}<span class="missing" data-testid="project-missing" title={strings.sidebar.projectMissing} aria-label={strings.sidebar.projectMissing}><FolderX size={13} aria-hidden="true" /></span>{/if}{#if rollup && !needsYou(rollup.kind) && rollup.kind !== 'done' && lists.working.length === 0}{@const label = fill(rollup.count === 1 ? strings.sidebar.rollupOne : strings.sidebar.rollupMany, { count: String(rollup.count), state: strings.sidebar.state[rollup.kind] })}<span
                   class="rollup {rollup.kind}" data-testid="project-rollup" data-state={rollup.kind} title={label} aria-label={label}
                   >{#if rollup.kind === 'interrupted'}<FailMark size={10} />{:else}<span class="work-ring" aria-hidden="true"></span>{/if}{#if rollup.count > 1}<span class="ui-label">{rollup.count}</span>{/if}</span
                 >{/if}
@@ -355,6 +355,8 @@
               onclick={(e) => openProjectMenu(e, machine, project, list, section)}><Ellipsis size={15} /></button
             >
           </div>
+          <!-- Out of reach, said once under the name with its next step; the rows below dim as last seen. -->
+          {#if away}<div class="offline"><MachineOffline store={owner} label={machine.label} /></div>{/if}
           <div class="disclosure-fold" class:open={!collapsed} inert={collapsed}>
             <div>
               <SharedProjectThreads store={owner} projectId={project.id} active={!collapsed && !away}>
@@ -384,8 +386,6 @@
               </SharedProjectThreads>
             </div>
           </div>
-          <!-- Out of reach, the card ends in its next step, not on the Offline mark; connecting, it is already trying. -->
-          {#if away && owner.connection !== 'connecting'}<MachineReconnect store={owner} />{/if}
         </section>
       {/snippet}
       <!-- Idle projects sit as compact rows in their fold below, so Alt+digit and reordering count only the cards. -->
@@ -498,6 +498,8 @@
     background: var(--color-surface);
   }
   .project.drop .head { background: transparent; }
+  /* The machine's state under the name, its dot on the name's edge: the toggle's 4 px, the 18 px tile and its 8 px gap. */
+  .offline { padding: 0 8px 6px 30px; }
   /* A row passing under it melts into the head instead of being sliced; over the card's own ground it shows nothing. */
   .head::after { content: ''; position: absolute; inset: 100% 0 auto; height: 6px; background: linear-gradient(var(--color-surface), transparent); pointer-events: none; }
   /* Stuck over rows (a scroll-state query on the head itself), the shared eased edge under it, as the phone's

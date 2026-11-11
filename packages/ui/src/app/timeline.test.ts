@@ -62,7 +62,7 @@ test('an async question waits at the top of the composer card, stacked, and its 
   await waitFor(() => query('[data-testid=activity-question-toggle]').getAttribute('aria-expanded') === 'true');
 
   // New arrivals leave the oldest up; the top of the composer card is their one copy, never the timeline.
-  expect(query('[data-testid=activity-question-index]').textContent).toBe('1 of 2');
+  expect(query('[data-testid=activity-question-index]').textContent).toBe('Question 1 of 2');
   expect(document.querySelectorAll('[data-testid=question-docked]').length).toBe(0);
   const cards = Array.from(document.querySelectorAll('[data-testid=composer] [data-testid=question-card]'));
   expect(cards.length).toBe(2);
@@ -72,10 +72,10 @@ test('an async question waits at the top of the composer card, stacked, and its 
   expect(visible().length).toBe(1);
   const oldest = visible()[0]?.dataset.question;
   query<HTMLButtonElement>('[data-testid=activity-question-next]').click();
-  await waitFor(() => query('[data-testid=activity-question-index]').textContent === '2 of 2');
+  await waitFor(() => query('[data-testid=activity-question-index]').textContent === 'Question 2 of 2');
   expect(visible()[0]?.dataset.question).not.toBe(oldest);
   query<HTMLButtonElement>('[data-testid=activity-question-prev]').click();
-  await waitFor(() => query('[data-testid=activity-question-index]').textContent === '1 of 2');
+  await waitFor(() => query('[data-testid=activity-question-index]').textContent === 'Question 1 of 2');
   expect(visible()[0]?.dataset.question).toBe(oldest);
 
   // Answered from the card, it leaves it and folds to its answer in its turn.

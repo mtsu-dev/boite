@@ -56,13 +56,13 @@
     {#if consent}
       {#if !consent.configured}<p class="hint">{strings.telemetry.unconfigured}</p>{/if}
       <label for="{uid}-basic" class="switch-row">
-        <span class="text ui-label-box"><span class="ui-label" id="{uid}-basic-name">{strings.telemetry.basic}</span><InfoTip topic={strings.telemetry.basic} text={strings.telemetry.basicHint} />{#if ceiling === 'off'}<PolicyLock {store} keys={['analytics']} />{/if}</span>
-        <input id="{uid}-basic" aria-labelledby="{uid}-basic-name" type="checkbox" role="switch" data-testid="telemetry-basic" checked={consent.mode !== 'off'} disabled={busy || ceiling === 'off'}
+        <span class="text"><span class="ui-label-box"><span class="ui-label" id="{uid}-basic-name">{strings.telemetry.basic}</span><InfoTip topic={strings.telemetry.basic} text={strings.telemetry.basicHint} />{#if ceiling === 'off'}<PolicyLock {store} keys={['analytics']} />{/if}</span><span class="hint" id="{uid}-basic-effect">{strings.settings.effects.telemetryBasic}</span></span>
+        <input id="{uid}-basic" aria-labelledby="{uid}-basic-name" aria-describedby="{uid}-basic-effect" type="checkbox" role="switch" data-testid="telemetry-basic" checked={consent.mode !== 'off'} disabled={busy || ceiling === 'off'}
           onchange={event => void change(event.currentTarget.checked ? 'basic' : 'off')} />
       </label>
       <label for="{uid}-enhanced" class="switch-row">
-        <span class="text ui-label-box"><span class="ui-label" id="{uid}-enhanced-name">{strings.telemetry.enhanced}</span><InfoTip topic={strings.telemetry.enhanced} text={strings.telemetry.enhancedHint} /><PolicyLock {store} keys={['analytics']} /></span>
-        <input id="{uid}-enhanced" aria-labelledby="{uid}-enhanced-name" type="checkbox" role="switch" data-testid="telemetry-enhanced" checked={consent.mode === 'enhanced'} disabled={busy || ceiling !== null}
+        <span class="text"><span class="ui-label-box"><span class="ui-label" id="{uid}-enhanced-name">{strings.telemetry.enhanced}</span><InfoTip topic={strings.telemetry.enhanced} text={strings.telemetry.enhancedHint} /><PolicyLock {store} keys={['analytics']} /></span><span class="hint" id="{uid}-enhanced-effect">{strings.settings.effects.telemetryEnhanced}</span></span>
+        <input id="{uid}-enhanced" aria-labelledby="{uid}-enhanced-name" aria-describedby="{uid}-enhanced-effect" type="checkbox" role="switch" data-testid="telemetry-enhanced" checked={consent.mode === 'enhanced'} disabled={busy || ceiling !== null}
           onchange={event => void change(event.currentTarget.checked ? 'enhanced' : 'basic')} />
       </label>
       {#if consent.pendingDeletion}<p class="hint">{strings.telemetry.pending}</p>{/if}

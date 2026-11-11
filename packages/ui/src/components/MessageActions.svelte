@@ -6,7 +6,7 @@
 
   /**
    * The small buttons and send time a message shows under itself while the
-   * pointer is on it, or always under a finger: copy what it says, and for a turn the ways back
+   * pointer is on it, or with its time under a finger: copy what it says, and for a turn the ways back
    * into it. Each action is offered only when its caller hands it over.
    */
   let {
@@ -92,10 +92,10 @@
     opacity: 1;
   }
 
-  /* A finger has no hover: the buttons stay, the clock leaves the default surface. */
+  /* A finger has no hover: the buttons and the clock show together, so a button never stands alone under a
+     message (a phone shows them under the latest messages and the one tapped, app.css). */
   @media (hover: none) {
-    .act { opacity: 1; }
-    .stamp { display: none; }
+    .act, .stamp { opacity: 1; }
   }
 
   .stamp {

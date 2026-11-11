@@ -13,10 +13,12 @@
   import type { RowPlace } from '../lib/row-place';
   import ThreadHeadline from './ThreadHeadline.svelte';
   import { threadState } from '../lib/thread-state';
-  import { feedOperation, feedSecondary, feedVerbLabel, type FeedVerb } from '../lib/activity-feed';
+  import { feedOperation, feedQuestion, feedSecondary, feedVerbLabel, type FeedKind, type FeedVerb } from '../lib/activity-feed';
   import { feedAsk } from '../lib/feed-row';
   import { ago, exactTime } from '../lib/format';
   import DecisionActions from './DecisionActions.svelte';
+  import ActivityKind from './ActivityKind.svelte';
+  import ClampText from './ClampText.svelte';
   import { collapseRow } from '../lib/row-collapse';
 
   /**
@@ -37,9 +39,11 @@
    * left shows pin and archive. Its trigger stays for the keyboard, drawn
    * only while focused.
    */
-  let { machine, thread, project, now, items, compact = false, reason, at, helpers = [], verb = null, where, placed = false, onopen, onverb = onopen, onaction }: {
+  let { machine, thread, project, now, items, compact = false, reason, at, helpers = [], verb = null, kind: feedKind = null, where, placed = false, onopen, onverb = onopen, onaction }: {
     machine: Machine; thread: ThreadSummary; project: Project | undefined; now: number; items: MenuItem[]; compact?: boolean;
     reason?: string; at?: number; verb?: FeedVerb | null;
+    /** Activity's Needs you rows: what the decision is, named on the row's first line (ActivityKind.svelte). */
+    kind?: FeedKind | null;
     /** Activity: the sub-agents of this thread that ask, each with what it asks. */
     helpers?: { thread: ThreadSummary; reason?: string }[];
     /** Recent and Activity: where the row lives, first on its line under the title (lib/row-place.ts, lib/feed-row.ts). */
@@ -57,8 +61,8 @@
   const away = $derived(owner.connection !== 'ready');
   /** "Offline" said once: on the place line, unless the card's head or the place's machine already says it. */
   const chip = $derived(away && !placed && !where?.host?.away);
-  /** Activity: what the thread asks, in words; nothing when its reason only names the place line's project. */
-  const ask = $derived(reason === undefined ? null : feedAsk(owner, thread.id, { reason, place: where?.project }));
+  /** Activity: what the thread asks, in words, a question whole; nothing when its reason only names the place line's project. */
+  const ask = $derived(reason === undefined ? null : feedQuestion(owner, thread.id) ?? feedAsk(owner, thread.id, { reason, place: where?.project }));
   /** Activity: the whole command the thread asks to run, read before Allow. */
   const operation = $derived(reason === undefined ? null : feedOperation(owner, thread.id));
   const long = $derived(!!operation && (operation.split('\n').length > 6 || operation.length > 480));
@@ -84,10 +88,7 @@
 {#snippet placeLine(since?: number)}
   <span class="meta" data-testid="mobile-row-meta"><span class="where" data-testid="mobile-row-where" title={where?.text}>{#if where?.project}<span class="ui-label">{where.project}</span>{/if}{#if where?.host}<MachinePlace host={where.host} />{/if}{#if chip}<span class="away" data-testid="thread-offline">{strings.connection.offline}</span>{/if}</span>{#if since !== undefined}<time class="since" title={exactTime(since)}>{ago(since, now)}</time>{/if}</span>
 {/snippet}
-{#snippet why()}
-  {@render placeLine(at)}
-  {#if ask}<span class="why" data-testid="mobile-row-reason"><span class="text">{ask}</span></span>{/if}
-{/snippet}
+{#snippet why()}{@render placeLine(at)}{/snippet}
 
 <div class="row" out:collapseRow|global={() => !owner.threads.some(entry => entry.id === thread.id)} class:reason={reason !== undefined} class:tiled={compact && project !== undefined && where === undefined} data-testid="mobile-row" data-thread-id={thread.id} data-machine-id={machine.id}>
   <!-- Under the row, for a finger that slides it left; the long press offers the same to everyone else. -->
@@ -102,19 +103,24 @@
   <div class="body" use:swipeRow oncontextmenu={openMenu}>
     <button class="ghost thread" class:offline={away} class:stated={kind !== null} data-testid="mobile-thread-{thread.id}" title={[thread.title, reason, thread.branch].filter(Boolean).join('\n')} onclick={onopen} use:longPress>
       <!-- One line for every list (ThreadHeadline.svelte): the title, then the mark in the row's one slot and the time
-           after it; in Activity what is asked is one line under the title. The project's header says how many need
-           the user, so no row repeats the word. -->
+           after it; in Activity the decision's kind over it and the place line under it. The project's header says
+           how many need the user, so no row repeats the word. -->
+      {#if feedKind}<ActivityKind kind={feedKind} />{/if}
       <ThreadHeadline {owner} {thread} {now} tile={compact && where === undefined ? project : undefined} mark offline={away} ask={reason === undefined ? undefined : why}
         at={reason === undefined && form !== null ? thread.lastUserMessageAt ?? thread.createdAt : undefined} />
-      {#if reason !== undefined}
-        {#if operation}<code class="operation" class:long data-testid="thread-operation"><CommandWords text={operation} /></code>{/if}
+      {#if reason === undefined && (where || chip)}{@render placeLine()}{/if}
+    </button>
+    {#if reason !== undefined && (ask || operation || helpers.length > 0)}
+      <!-- What is decided on, whole up to four lines and behind "Show all" past them (ClampText.svelte), then the
+           sub-agents asking the same; outside the row's button, since the fold is a button of its own. -->
+      <div class="detail">
+        {#if ask}<ClampText text={ask} testid="mobile-row-reason" />{/if}
+        {#if operation}<ClampText text={operation} testid="thread-operation" mono><CommandWords text={operation} /></ClampText>{/if}
         {#each helpers as helper (helper.thread.id)}
           <span class="why helper" data-testid="thread-helper" data-thread-id={helper.thread.id}><span class="text"><span class="who">{helper.thread.title}</span> <span class="sep" aria-hidden="true">·</span> {helper.reason}</span></span>
         {/each}
-      {:else if where || chip}
-        {@render placeLine()}
-      {/if}
-    </button>
+      </div>
+    {/if}
     {#if action}
       <div class="verbs">
         <DecisionActions>
@@ -143,7 +149,10 @@
   /* The line under the title, in the list's quiet ink, from the title's edge: where the row lives, or a sub-agent
      that asks the same. */
   .meta, .why { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--text-sm); line-height: 1.4; color: var(--color-muted-foreground); }
-  .tiled :is(.meta, .helper, .operation) { margin-left: 26px; }
+  .tiled .meta { margin-left: 26px; }
+  /* Activity's content under the title's button, on its edge. */
+  .detail { display: flex; flex-direction: column; gap: 6px; padding: 0 12px 10px; margin-top: -4px; }
+  .detail :global(.clamp-text .body) { font-size: var(--text-sm); }
   .helper .who { color: var(--color-foreground); font-weight: 500; }
   .sep { flex: none; color: var(--color-subtle); }
   /* The label inside is trimmed to its capitals, so the clip gets the room of its descenders back without
@@ -160,11 +169,8 @@
   .thread :global(.headline > .when) { font-size: var(--text-sm); }
   .thread :global(.headline > .when:not(.state)) { font-weight: 400; }
   .thread :global(.headline > .at) { line-height: 22px; font-size: var(--text-sm); }
-  /* Activity: what is asked, one line under the title; the row's tooltip and the thread hold the whole. */
+  /* A sub-agent's line: one line under the content; its thread holds the whole. */
   .why .text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  /* The command as it will run: mono, wrapped, every line; too long, its first lines and Review. */
-  .operation { display: block; padding: 6px 8px; border-radius: var(--radius-sm); background: var(--color-code-background); color: var(--color-code-foreground); font-family: var(--font-mono); font-size: var(--text-xs); line-height: 1.5; white-space: pre-wrap; overflow-x: auto; scrollbar-width: none; }
-  .operation.long { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; line-clamp: 6; overflow: hidden; }
   /* The pair follows what it answers, right-aligned on the row's edge as on the desktop: the title keeps the row's
      width up to its mark and time, which stand in one column down the page. */
   .verbs { padding: 0 12px 10px; margin-top: -2px; }

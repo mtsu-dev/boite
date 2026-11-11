@@ -4,6 +4,8 @@ export const strings = {
     status: { running: 'Running', paused: 'Paused', done: 'Done', failed: 'Failed', stopped: 'Stopped' },
     stepStatus: { waiting: 'Waiting', running: 'Running', done: 'Done', failed: 'Failed', skipped: 'Skipped', stopped: 'Stopped' },
     steps: '{done} of {total} done',
+    /** Under a failed run's row in the chat: the step that failed and the first line of its error. */
+    stepFailed: '{step}: {error}',
     phase: 'Phase {n}',
     pause: 'Pause',
     resume: 'Resume',

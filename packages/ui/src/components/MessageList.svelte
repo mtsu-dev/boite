@@ -251,10 +251,11 @@
     return Math.max(0, promptInset - 20 - before);
   });
   // Keep the remaining screen below the sent prompt. Real response height replaces the
-  // reserved space, including in a virtualized conversation, without moving it.
+  // reserved space, including in a virtualized conversation, without moving it. A question
+  // at the composer's top gives it back: the last message then sits right over the question.
   const promptRoom = $derived.by(() => {
     void measured;
-    if (!reservePrompt) return 0;
+    if (!reservePrompt || asking) return 0;
     const at = rows.findIndex(row => row.id === reservePrompt);
     if (at < 0) return 0;
     const total = totals(rows);
@@ -772,7 +773,7 @@
             {#if !host}{@render changes(false)}{/if}
             <!-- A failure's card holds its cause and its one Retry; a question at the composer's top is a running turn's status. -->
             {#if !failureCarded(turn, messages) && !(asking && turn.status === 'running')}
-            <MessageTurnSummary {store} {threadId} {turn} turns={shownTurns} message={source ?? message} {messages} pointed={pointed === turn.id}
+            <MessageTurnSummary {store} {threadId} {turn} turns={shownTurns} message={source ?? message} {messages} pointed={pointed === turn.id} tucked={!reveal.shows(message)}
               {...summaryMarks(shaped, turn.id, () => store.panel.open('desk'))}>
               {#snippet actions()}
                 <MessageActions
@@ -854,6 +855,11 @@
     transition: opacity var(--motion-duration) var(--motion-curve);
   }
   .timeline.below[data-scroll-root][data-testid]::after { opacity: 1; }
+  /* Under the header the shared edge is a line tall, not a sliver: a line scrolled under it fades out whole, never cut through its letters. */
+  @supports (animation-timeline: scroll()) {
+    .timeline[data-scroll-root][data-testid]::before { --top-edge: calc(var(--scroll-edge) * 3); height: var(--top-edge); margin-bottom: calc(-1 * var(--top-edge));
+      animation-range: var(--scroll-edge-top, 0px) calc(var(--scroll-edge-top, 0px) + var(--top-edge)); }
+  }
   /* Where the fade exists it is the end's room, the shared edge, plus this padding. */
   @supports (animation-timeline: scroll()) { .timeline { --scroll-edge-bottom: var(--space-2); } }
 

@@ -169,8 +169,8 @@
   {/if}
   {#if autoShown}
     <label class="auto" for="{uid}-auto-install" data-testid="app-update-auto">
-      <span class="ui-label-box"><span class="ui-label">{strings.appUpdate.autoInstall}</span><InfoTip topic={strings.appUpdate.autoInstall} text={strings.appUpdate.autoInstallHint} /><PolicyLock store={local!} keys={['updates.app']} /></span>
-      <input id="{uid}-auto-install" type="checkbox" role="switch" data-testid="app-update-auto-switch"
+      <span class="words"><span class="ui-label-box"><span class="ui-label">{strings.appUpdate.autoInstall}</span><InfoTip topic={strings.appUpdate.autoInstall} text={strings.appUpdate.autoInstallHint} /><PolicyLock store={local!} keys={['updates.app']} /></span><span class="effect" id="{uid}-auto-install-effect">{strings.settings.effects.appAutoInstall}</span></span>
+      <input id="{uid}-auto-install" aria-describedby="{uid}-auto-install-effect" type="checkbox" role="switch" data-testid="app-update-auto-switch"
         checked={local!.settings?.autoInstallUpdates === true} disabled={local!.connection !== 'ready' || appPolicy !== null}
         onchange={(event) => void toggleAuto(event.currentTarget)} />
     </label>
@@ -229,7 +229,9 @@
   .where { color: var(--color-foreground); font-weight: 500; }
   .note { color: var(--color-subtle); font-size: var(--text-xs); }
   .auto { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--color-muted-foreground); font-size: var(--text-sm); }
-  .auto > span { display: inline-flex; align-items: center; }
+  .auto > .words { display: grid; gap: 2px; min-width: 0; }
+  .auto .ui-label-box { display: inline-flex; align-items: center; }
+  .effect { color: var(--color-muted-foreground); font-size: var(--text-sm); line-height: 1.4; }
   .auto input { flex: 0 0 40px; width: 40px; }
   .note.error { color: var(--color-danger); }
   .cancel { margin-left: auto; }

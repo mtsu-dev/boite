@@ -56,6 +56,9 @@ export const strings = {
     groupThreadsHint: 'Agents on the other machines of the group may start threads on this machine, in its projects, on their own agent (boite thread new --machine). Off by default.',
     groupBots: 'Bots from the other machines',
     groupBotsHint: 'A bot of another machine of the group may look after the projects of this machine its owner entrusted to it: list, read and steer their threads and answer their questions. Never tool permissions, deleting threads or this machine\'s settings. Turning it off cuts them off at once. Off by default.',
+    /** A project card's head and a Machines row while the machine is out of reach, beside Reconnect. */
+    offlineLine: '{machine} is offline',
+    connectingLine: 'Connecting to {machine}',
     agentLinkAddressRequired: 'Update both machines to relay through the app, or set a reachable HTTPS address for {machine} in General settings.',
   }
 } as const;

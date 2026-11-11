@@ -903,7 +903,13 @@ test('a thread of a machine that dropped still opens and queues its prompts unti
   await store.open(other.id);
   expect(store.openThread?.id).toBe(other.id);
   expect(store.error).toBeFalsy();
-  await waitFor(() => input().placeholder.includes('offline'));
+  await waitFor(() => input().placeholder === fill(strings.composer.placeholderAway, { machine: 'studio' }));
+  // One notice over the box names the machine and holds Reconnect; the field still takes the prompt for the outbox.
+  await waitFor(() => document.querySelector('[data-testid=composer-offline]') !== null);
+  expect(document.querySelectorAll('[data-testid=composer-offline]')).toHaveLength(1);
+  expect(query('[data-testid=composer-offline]').textContent).toContain('is offline');
+  expect(query<HTMLButtonElement>('[data-testid=thread-reconnect]').disabled).toBe(false);
+  expect(input().disabled).toBe(false);
   await type('Run this once you are back');
   press('Enter');
   await waitFor(() => input().value === '' && store.composerStates[other.id]?.queued.length === 1);
@@ -917,6 +923,7 @@ test('a thread of a machine that dropped still opens and queues its prompts unti
   await waitFor(() => start() !== undefined && store.composerStates[other.id]?.queued.length === 0);
   const started = start();
   expect(started).toMatchObject({ threadId: other.id, prompt: 'Run this once you are back', clientRequestId: id });
+  expect(document.querySelector('[data-testid=composer-offline]')).toBeNull();
   // What the offline open skipped is read once the machine is back.
   const asked = (method: string) => rpc.mock.calls.some(([name, params]) => name === method && (params as { threadId?: string }).threadId === other.id);
   await waitFor(() => asked('threads.get') && asked('collaboration.get') && asked('workflows.list') && asked('delegation.get'));
@@ -935,7 +942,7 @@ test('an outbox prompt the core refuses shows why, holds the next one, and goes 
     return start(params);
   });
   fake.drop();
-  await waitFor(() => input().placeholder.includes('offline'));
+  await waitFor(() => input().placeholder === fill(strings.composer.placeholderAway, { machine: 'studio' }));
   for (const prompt of ['First while away', 'Second while away', 'Third while away']) {
     await type(prompt);
     press('Enter');
@@ -1452,7 +1459,8 @@ test('a picture tile draws a small thumbnail, the preview the bytes by URL, both
   }
 });
 
-const REPLY_PLACEHOLDER = fill(strings.composer.replyPlaceholder, { name: 'Echo' });
+/** The field while a question at the top of the box takes a written answer beside its options: Send answers it. */
+const ANSWER_PLACEHOLDER = strings.composer.answerPlaceholder;
 const ANSWER_LABEL = 'Send the answer';
 
 /** The question's card at the end of the timeline. */
@@ -1468,7 +1476,7 @@ test('a waiting question takes the composer as its free answer, with the card pi
   // The question takes the composer only once the typing pause has run out:
   // a budget counted in attempts of at least 2 ms each, well past that pause.
   await waitFor(() => document.querySelector('[data-testid=composer-reply]') !== null, TYPING_PAUSE_MS);
-  expect(input().placeholder).toBe(REPLY_PLACEHOLDER);
+  expect(input().placeholder).toBe(ANSWER_PLACEHOLDER);
   expect(query('[data-testid=composer-send]').getAttribute('aria-label')).toBe(ANSWER_LABEL);
   // The question is written once, at the top of the composer card: the timeline draws no second copy.
   expect(document.querySelectorAll('[data-testid=question-text]')).toHaveLength(1);
@@ -1504,7 +1512,7 @@ test('a waiting question takes the composer as its free answer, with the card pi
   expect(input().value).toBe('');
   expect(chips()).toHaveLength(0);
   await waitFor(() => !store.busy && document.querySelector('[data-testid=composer-reply]') === null);
-  expect(input().placeholder).not.toBe(REPLY_PLACEHOLDER);
+  expect(input().placeholder).not.toBe(ANSWER_PLACEHOLDER);
   expect(call.mock.calls.filter(([method]) => method === 'turns.start')).toHaveLength(0);
 });
 
@@ -1534,7 +1542,7 @@ test('a question asked over a draft leaves it an ordinary message until its card
   await new Promise((resolve) => setTimeout(resolve, TYPING_PAUSE_MS + 50));
   // The pause passed, but the draft predates the question: the box still writes messages.
   expect(document.querySelector('[data-testid=composer-reply]')).toBeNull();
-  expect(input().placeholder).not.toBe(REPLY_PLACEHOLDER);
+  expect(input().placeholder).not.toBe(ANSWER_PLACEHOLDER);
   expect(input().value).toBe('my own steering message');
   // The card's "Answer in writing" hands the question the box, draft included.
   query<HTMLButtonElement>('[data-testid=question-write]').click();
@@ -1560,7 +1568,7 @@ test('a question asked while the user types takes the emptied composer only afte
   await waitFor(() => store.openThread?.id === 't-trace');
   expect(document.querySelector('[data-testid=composer-reply]')).toBeNull();
   await waitFor(() => document.querySelector<HTMLElement>('[data-testid=composer-reply]')?.dataset.question === asked.id, 2000);
-  expect(input().placeholder).toBe(REPLY_PLACEHOLDER);
+  expect(input().placeholder).toBe(ANSWER_PLACEHOLDER);
   // Once released, typing again does not hand the box back to messages.
   await type('my answer');
   expect(query('[data-testid=composer-reply]').dataset.question).toBe(asked.id);

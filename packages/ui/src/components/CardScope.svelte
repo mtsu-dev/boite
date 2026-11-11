@@ -5,17 +5,18 @@
   import { machineName, workspace } from '../lib/workspace.svelte';
 
   /**
-   * Where a settings card's rows apply, at the right of its head:
-   * the page's head alone would leave a card of this device under a machine's
-   * bar reading as that machine's). No `store` and no `account`: this device.
-   * A `store`: the machine it is, by name. An `account`: that account.
+   * Where a settings card's rows apply, at the right of its head, in one short
+   * phrase the cards of a page pair up on: "For this device only" beside "For
+   * agents on studio", so a device card under a machine's line never reads as
+   * the machine's. No `store` and no `account`: this device. A `store`: that
+   * machine, by name. An `account`: that account.
    */
   let { store, account }: { store?: Store; account?: string } = $props();
   let machine = $derived(store ? workspace.machines.find((entry) => entry.store === store) : undefined);
   let kind = $derived(account !== undefined ? 'account' : store ? 'machine' : 'device');
   let text = $derived(account !== undefined ? fill(strings.settings.scopeAccount, { account })
-    : store ? fill(strings.machines.scopeOn, { machine: machine ? machineName(machine) : strings.machines.local })
-    : strings.settings.scopeDevice);
+    : store ? fill(strings.settings.cardMachine, { machine: machine ? machineName(machine) : strings.machines.local })
+    : strings.settings.cardDevice);
 </script>
 
 <span class="card-scope" data-testid="card-scope" data-kind={kind}>

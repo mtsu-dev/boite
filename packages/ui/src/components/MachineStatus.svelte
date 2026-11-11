@@ -1,3 +1,8 @@
+<script lang="ts" module>
+  /** One machine in the filter's card: its name, its state in words and the status grammar's tone for its dot. */
+  export type MachineLine = { id: string; name: string; state: string; tone: 'success' | 'warning' | 'neutral' | 'danger' };
+</script>
+
 <script lang="ts">
   import { machineName, listedName, isThisPC, machineHealth, workspace } from '../lib/workspace.svelte';
   import { Monitor, TriangleAlert } from '@lucide/svelte';
@@ -19,8 +24,9 @@
    */
   let { store, filter = null, onfilter, testid = 'machine-status', card }: {
     store: Store; filter?: string | null; onfilter?: (id: string | null) => void; testid?: string;
-    /** The rail's name card, drawn beside the button in place of the native tooltip: the name, then the trouble or the machine it filters on. */
-    card?: Snippet<[string, string | null]>;
+    /** The rail's name card, drawn beside the button in place of the native tooltip: "Filter machines", the trouble,
+     *  then one line per machine with its state dot ("studio  Connected"). */
+    card?: Snippet<[string, string | null, MachineLine[]]>;
   } = $props();
 
   const machines = $derived([...workspace.machinesOr(store)]
@@ -40,6 +46,7 @@
   const states = $derived((chosen ? [chosen] : machines).map(m => fill(strings.machines.state, { name: machineName(m), state: stateOf(m) })).join(', '));
   const note = $derived(issues > 0 ? `${trouble}. ${states}` : states);
   const label = $derived(`${name} · ${note}`);
+  const lines = $derived<MachineLine[]>(machines.map(m => ({ id: m.id, name: machineName(m), state: stateOf(m), tone: tones[health.get(m)!] })));
   const items = $derived<MenuItem[]>([
     ...(machines.length > 1 ? [
       { id: 'all', label: strings.machines.all, checked: filter === null, radio: true },
@@ -62,7 +69,7 @@
       {#if issues}<TriangleAlert size={19} />{:else}<Monitor size={19} />{#if away.length > 0}<span class="dot off" data-testid="machine-offline" aria-hidden="true"></span>{:else if store.connection === 'ready'}<span class="dot on" data-testid="machine-online" aria-hidden="true"></span>{/if}{/if}
       {#if chosen}<span class="name ui-label">{machineName(chosen)}</span>{/if}
     </Menu>
-    {@render card?.(name, note)}
+    {@render card?.(name, issues > 0 ? trouble : null, lines)}
   {/if}
 </div>
 

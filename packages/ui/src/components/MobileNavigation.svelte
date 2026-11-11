@@ -37,7 +37,7 @@
   import GroupLabel from './GroupLabel.svelte';
   import ProjectTile from './ProjectTile.svelte';
   import MachinePlace from './MachinePlace.svelte';
-  import MachineReconnect from './MachineReconnect.svelte';
+  import MachineOffline from './MachineOffline.svelte';
   import { projectKey, projectView, type ProjectEntry } from '../lib/project-view.svelte';
   import { activeProject, archiveCount, projectSections, projectThreadView } from '../lib/project-threads.svelte';
   import { workingThread } from '../lib/recent.svelte';
@@ -45,7 +45,7 @@
   import { rowPlaces, type RowPlace } from '../lib/row-place';
   import { feedWhere } from '../lib/feed-row';
   import { hostName } from '../lib/machine-host';
-  import { activityFeed, feedGroups, storeNeedsYou, type FeedVerb } from '../lib/activity-feed';
+  import { activityFeed, feedGroups, storeNeedsYou, type FeedKind, type FeedVerb } from '../lib/activity-feed';
   import { tabHeader } from '../lib/tab-header.svelte';
   import EmptyState, { HOUSE_BOT } from './EmptyState.svelte';
   import RobotFace from './agents/RobotFace.svelte';
@@ -147,7 +147,7 @@
   let elsewhere = $derived(waiting.filter(e => !(e.machine.store === store && e.thread.id === store.openThread?.id)).length);
   const matches = (e: typeof entries[number]) => !query || [e.thread.title, projectName(e.project), e.thread.branch, e.machine.label].some(value => value?.toLocaleLowerCase().includes(query));
   /** Activity: what needs the user, failures included, then the updates, each with its reason; sub-agents under their parent. */
-  let rows: (typeof entries[number] & { reason?: string; place?: string; at?: number; nested?: boolean; section?: 'needs' | 'updates'; verb?: FeedVerb | null })[] = $derived(listScreen === 'activity'
+  let rows: (typeof entries[number] & { reason?: string; place?: string; at?: number; nested?: boolean; section?: 'needs' | 'updates'; verb?: FeedVerb | null; kind?: FeedKind | null })[] = $derived(listScreen === 'activity'
     ? activityFeed(entries.filter(matches), feedPlace)
     : entries.filter(e => matches(e) && !e.thread.parentThreadId && !e.project?.archived && (workspace.view !== 'recent' || !selected || (e.machine.id === selected.machine.id && e.thread.projectId === selected.project.id)))
       // Recent is a flat history, newest first under the pins, as on the desktop; the cards rank by status.
@@ -362,7 +362,7 @@
     {#snippet threadRow(row: typeof rows[number], grouped = false, helpers: typeof rows = [])}
       <!-- Activity: the row's verb is its own, else the first asking sub-agent's, which opens that sub-agent (ActivityRow.svelte). -->
       {@const target = row.verb ? row : helpers.find(helper => helper.verb) ?? row}
-      <MobileThreadRow machine={row.machine} thread={row.thread} project={row.project} {now} compact={!grouped} reason={row.reason} at={row.at} {helpers} verb={target.verb ?? null} where={rowWhere(row, grouped)} placed={grouped && !!hostName(row.machine, machines, home?.id)?.away} items={rowItems(row.machine.store, row.thread)}
+      <MobileThreadRow machine={row.machine} thread={row.thread} project={row.project} {now} compact={!grouped} reason={row.reason} at={row.at} {helpers} verb={target.verb ?? null} kind={target.kind ?? null} where={rowWhere(row, grouped)} placed={grouped && !!hostName(row.machine, machines, home?.id)?.away} items={rowItems(row.machine.store, row.thread)}
         onopen={() => { show('chat'); void workspace.select(row.machine.store, row.thread.id); }}
         onverb={(event) => { leaveForAct(target.machine.store, target.thread.id, event?.currentTarget as Element ?? null, true); show('chat'); void workspace.select(target.machine.store, target.thread.id); }}
         onaction={action => rowAction(row.machine.store, row.thread, action, row.machine.id)} />
@@ -385,7 +385,7 @@
         {#if !query || groupRows.length > 0 || doneOpen || archivedOpen}
         <section class="project-group" class:inactive={!activeProject(group)} data-testid="mobile-project-group" data-project-id={group.project.id} data-machine-id={group.machine.id}>
           <div class="project-heading" data-row-edge>
-            <ProjectTile project={group.project} store={group.machine.store} /><h2><span class="name">{projectName(group.project)}</span>{#if hostName(group.machine, machines, home?.id)}<MachinePlace host={hostName(group.machine, machines, home?.id)!} testid="mobile-project-host" />{/if}</h2>
+            <ProjectTile project={group.project} store={group.machine.store} /><h2><span class="name">{projectName(group.project)}</span>{#if hostName(group.machine, machines, home?.id)}<MachinePlace host={{ ...hostName(group.machine, machines, home?.id)!, away: false }} testid="mobile-project-host" />{/if}</h2>
             <ProjectThreadCounters entry={group} working={group.machine.store.threadsOf(group.project.id).filter(thread => workingThread(group.machine.store, thread)).length} waiting={waitingHere} {controls} searching={!!query} away={group.machine.store.connection !== 'ready'} />
             {#if projectView.order === 'manual'}
               <Menu items={[
@@ -397,6 +397,8 @@
             <button type="button" class="ghost icon project-actions" data-testid="mobile-project-menu" title={strings.sidebar.projectMenu} aria-label={strings.sidebar.projectMenu}
               onclick={(event) => projectMenu(event, group.machine.store, group.project, undefined, () => show('chat'), { count: archiveCount(group.project, 'archived') })}><Ellipsis size={18} /></button>
           </div>
+          <!-- Out of reach, said once under the name with its next step; the rows below dim as last seen. -->
+          {#if group.machine.store.connection !== 'ready'}<div class="offline"><MachineOffline store={group.machine.store} label={group.machine.label} /></div>{/if}
           {#if !query}{#each drafts as draft (draft.id)}<DraftRow owner={group.machine.store} entry={draft} onopen={() => show('chat')} />{/each}{/if}
           <WindowList items={attentionRows} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} estimate={66} measurements={measurements(projectKey(group))}>
             {#snippet row(entry)}{@render threadRow(entry, true)}{/snippet}
@@ -419,7 +421,6 @@
             <RecentDone kind="archived" entries={[group]} {scrollRoot} {now} {query} open={archivedOpen && (!later || projectThreadView.laterOpen)} header={false} onopen={() => show('chat')} />
           </div>
           {#if groupRows.length === 0 && !group.project.archivedThreads && drafts.length === 0}<p class="empty">{strings.sidebar.noThreads}</p>{/if}
-          {#if group.machine.store.connection !== 'ready' && group.machine.store.connection !== 'connecting'}<MachineReconnect store={group.machine.store} />{/if}
         </section>
         {/if}
       {/each}
@@ -568,6 +569,9 @@
     /* A whole touch target that eats the heading's padding rather than making it taller. */
     /* The folded quiet threads' action (FoldMore.svelte): a finger's height, on the rows' text edge. */
     .fold-more { --fold-more-height: var(--touch-target); --fold-more-inset: 12px; }
+    /* The machine's state, its dot on the name's edge (the heading's 12 px, the tile and its 8 px gap), a finger's Reconnect at its end. */
+    .offline { padding: 0 12px 8px 40px; }
+    .offline :global(.machine-offline) { font-size: var(--text-sm); }
     .project-heading .project-actions { flex: none; margin: -8px -8px -8px 0; color: var(--color-muted-foreground); }
     .project-heading :global(.counters) { margin: -8px 0; }
     /* The list's content box, the empty view a little above its centre, where the eye lands. */

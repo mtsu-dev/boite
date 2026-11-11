@@ -5,7 +5,7 @@ export const fr: Translation = {
   activity: {
     goal: 'Objectif',
     question: 'Vous attend',
-    questionOf: '{index} sur {total}',
+    questionOf: 'Question {index} sur {total}',
     questionPrev: 'Question précédente',
     questionNext: 'Question suivante',
     questionFold: 'Replier la question',
@@ -78,6 +78,9 @@ export const fr: Translation = {
     error: 'Échec',
     pending: 'À faire',
     in_progress: 'En cours',
-    completed: 'Terminée'
+    completed: 'Terminée',
+    kind: { permission: 'Permission', question: 'Question', request: 'Demande de contact', mail: 'Message retenu', failed: 'Échec', stopped: 'Arrêtée' },
+    textAll: 'Tout afficher',
+    textLess: 'Afficher moins'
   }
 };

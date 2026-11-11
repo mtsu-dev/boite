@@ -12,7 +12,7 @@
    * it, such as a workflow's graph. The head button's own attributes pass
    * through.
    */
-  let { live, heading, timing, mark, progress, extra, progressTestId, expanded, children, ...button }: Omit<HTMLButtonAttributes, 'children'> & {
+  let { live, heading, timing, mark, progress, extra, cause, progressTestId, expanded, children, ...button }: Omit<HTMLButtonAttributes, 'children'> & {
     live: boolean;
     heading: string;
     /** No start yet means no clock. */
@@ -21,6 +21,8 @@
     progress: Snippet;
     /** After the counts, such as the workflow's phases. */
     extra?: Snippet;
+    /** Why it failed, one muted line under the counts, whole in its tooltip. */
+    cause?: string;
     /** Test hook on the counts, beside the row's own data-testid. */
     progressTestId?: string;
     /** Whether the list is unfolded; only read with `children`. */
@@ -37,6 +39,7 @@
     <span class="words">
       <span class="heading">{heading}</span>
       <span class="progress" data-testid={progressTestId}>{@render progress()}{@render extra?.()}</span>
+      {#if cause}<span class="cause" data-testid="activity-cause" title={cause}>{cause}</span>{/if}
     </span>
     {#if timing.startedAt !== null}<span class="timing"><Elapsed startedAt={timing.startedAt} finishedAt={timing.finishedAt} active={timing.active} /></span>{/if}
     <span class="caret" aria-hidden="true">{#if children}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}</span>
@@ -73,6 +76,7 @@
   .heading { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-foreground); font-weight: 500; }
   /* The counts are what the row says: on a narrow column they wrap, never cut. */
   .progress { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; min-width: 0; margin-top: 1px; font-size: var(--text-xs); line-height: 16px; color: var(--color-subtle); }
+  .cause { min-width: 0; contain: inline-size; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); line-height: 16px; color: var(--color-muted-foreground); }
   .timing { flex: none; color: var(--color-subtle); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
   .caret { display: inline-flex; flex: none; color: var(--color-subtle); transition: transform var(--motion-duration) var(--motion-curve); }
   .activity[aria-expanded='true'] .caret { transform: rotate(180deg); }

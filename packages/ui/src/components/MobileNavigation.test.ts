@@ -66,9 +66,9 @@ test('Activity gives each row its reason and its time, a sub-agent under its par
     if (project) expect(row.querySelector('[data-testid=mobile-row-where]')?.textContent).toContain(projectName(project));
   }
   const helpers = Array.from(document.querySelectorAll<HTMLElement>('[data-testid=thread-helper]'));
-  const reasons = rows.map(row => row.querySelector('[data-testid=mobile-row-reason] .text')?.textContent ?? '');
-  // A question is its own reason, a permission says what it runs.
-  const asked = store.pendingQuestions.map(question => question.text.split('\n')[0]!.trim());
+  const reasons = rows.map(row => row.querySelector('[data-testid=mobile-row-reason]')?.textContent ?? '');
+  // A question is its own reason, whole, a permission says what it runs.
+  const asked = store.pendingQuestions.map(question => question.text.trim());
   expect(reasons.some(reason => /^Wants to run /.test(reason) || asked.includes(reason))).toBe(true);
   // Triage: what asks the user under "Needs you", before the updates' heading when there is one.
   const needs = document.querySelector<HTMLElement>('[data-testid=activity-needs]')!;
@@ -78,7 +78,7 @@ test('Activity gives each row its reason and its time, a sub-agent under its par
   expect(needs.querySelector('.feed-dot')?.nextSibling?.textContent).toBe('Needs you');
   expect(needs.querySelector('.feed-count')?.textContent).toBe(document.querySelector('[data-testid=mobile-activity-waiting]')?.textContent);
   const updates = document.querySelector<HTMLElement>('[data-testid=activity-updates]');
-  const asking = rows.find(row => asked.includes(row.querySelector('[data-testid=mobile-row-reason] .text')?.textContent ?? '') || /^Wants to run /.test(row.textContent ?? ''))!;
+  const asking = rows.find(row => asked.includes(row.querySelector('[data-testid=mobile-row-reason]')?.textContent ?? '') || /^Wants to run /.test(row.textContent ?? ''))!;
   expect(needs.compareDocumentPosition(asking) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   if (updates) expect(updates.compareDocumentPosition(asking) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
   // The asking row says what to do there; its verb opens the thread like the row does.
@@ -365,7 +365,7 @@ test("with two machines the gear names the machine on the threads list only: Act
   expect(document.querySelector('[data-testid=mobile-settings] .dot')).toBeNull();
 });
 
-test("a project header names another machine as a place once two are connected, and an unreachable one's state as its own mark", async () => {
+test("a project header names another machine as a place once two are connected, and an unreachable one's state once, in a line with Reconnect", async () => {
   vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
     media, matches: true, onchange: null, addListener() {}, removeListener() {}
   }));
@@ -386,19 +386,20 @@ test("a project header names another machine as a place once two are connected, 
     expect(host()?.classList.contains('offline')).toBe(false);
     const reconnect = () => document.querySelector<HTMLButtonElement>(`[data-testid=mobile-project-group][data-machine-id="${remote.machineId}"] [data-testid=project-reconnect]`);
     expect(reconnect()).toBeNull();
+    const line = () => document.querySelector<HTMLElement>(`[data-testid=mobile-project-group][data-machine-id="${remote.machineId}"] [data-testid=project-offline]`);
+    expect(line()).toBeNull();
     remote.connection = 'closed'; await settle();
-    // The offline card ends on its next step, never on the Offline label alone.
-    expect(reconnect()?.textContent).toBe('Reconnect');
+    // The state said once under the name, with its next step on that same line.
+    expect(line()?.textContent).toContain('Builder is offline');
+    expect(line()?.querySelector('[data-testid=project-reconnect]')?.textContent).toBe('Reconnect');
     reconnect()!.click();
     await vi.waitFor(() => expect(remote.connection).toBe('ready'));
     await settle();
     expect(reconnect()).toBeNull();
     remote.connection = 'closed'; await settle();
-    // Out of reach: the state as a word of its own beside the name, never run into it, no dot to decode.
-    expect(host()?.classList.contains('offline')).toBe(true);
-    expect(host()?.querySelector('.on')?.textContent).toBe('on Builder');
-    expect(host()?.querySelector('[data-testid=machine-away]')?.textContent).toBe('Offline');
-    expect(host()?.querySelector('.off-dot')).toBeNull();
+    // Out of reach: the name keeps its place, with no Offline chip repeating the line under it.
+    expect(host()?.textContent).toBe('on Builder');
+    expect(host()?.querySelector('[data-testid=machine-away]')).toBeNull();
   } finally {
     remote.detach(); remoteClient.close();
   }

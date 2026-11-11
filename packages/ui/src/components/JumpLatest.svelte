@@ -1,6 +1,7 @@
 <script lang="ts">
-  // The strip's way back to the end of the timeline, at its right edge while
-  // the reader is scrolled up (`lib/latest.svelte.ts`). A phone keeps the arrow.
+  // The way back to the end of the timeline while the reader is scrolled up
+  // (`lib/latest.svelte.ts`): a round arrow at the right of the slot above the
+  // composer's foot, its name (or what arrived meanwhile) in its tooltip.
   import { ArrowDown } from '@lucide/svelte';
   import { latest } from '../lib/latest.svelte';
   import { fill, strings } from '../lib/strings';
@@ -9,31 +10,28 @@
 </script>
 
 {#if latest.behind && latest.jump}
-  <button type="button" class="jump" data-testid="jump-to-latest" aria-label={label} onclick={() => latest.jump?.()}>
-    <ArrowDown size={14} />
-    <span class="ui-label">{label}</span>
+  <button type="button" class="jump" data-testid="jump-to-latest" title={label} aria-label={label} onclick={() => latest.jump?.()}>
+    <ArrowDown size={16} aria-hidden="true" />
+    <span class="visually-hidden">{label}</span>
   </button>
 {/if}
 
 <style>
+  /* A raised disc of the composer's surface; a finger gets the platform's 44 px around it. */
   .jump {
+    position: relative;
     flex: none;
-    height: 30px;
-    gap: 6px;
-    padding: 0 10px;
-    border: 1px solid var(--color-edge);
-    background: var(--color-surface-2);
+    width: var(--control-lg);
+    height: var(--control-lg);
+    padding: 0;
+    border: 1px solid var(--color-composer-edge);
+    border-radius: var(--radius-full);
+    background: var(--color-composer-surface);
+    box-shadow: var(--shadow-composer);
     color: var(--color-foreground);
-    font-size: var(--text-sm);
     animation: rise var(--motion-duration) var(--motion-curve);
   }
-
-  .jump:hover { background: var(--color-surface-3); }
-
-  @media (max-width: 720px) {
-    /* The 30 px disc stays; a finger gets the platform's 44 px around it. */
-    .jump { position: relative; z-index: 1; width: 30px; padding: 0; justify-content: center; }
-    .jump::after { content: ''; position: absolute; inset: calc((30px - var(--touch-target)) / 2 - 2px); }
-    .jump .ui-label { display: none; }
-  }
+  @media (max-width: 720px) { .jump { width: var(--control-touch); height: var(--control-touch); } }
+  .jump::after { content: ''; position: absolute; inset: min(-1px, calc((100% - var(--touch-target)) / 2 - 1px)); border-radius: var(--radius-full); }
+  @media (hover: hover) { .jump:hover { background: var(--color-surface-3); } }
 </style>

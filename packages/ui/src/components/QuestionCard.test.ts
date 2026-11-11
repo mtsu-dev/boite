@@ -75,7 +75,7 @@ test('an option turns Answer on, and what was picked goes out once', () => {
   expect(sent).toHaveLength(1);
 });
 
-test('a docked question speaks the decision pair: Skip outlined then Answer primary, on one right-aligned line, Answer waiting as an outline until a pick', () => {
+test('a docked question speaks the decision pair: Skip outlined then Answer primary, on one right-aligned line, Answer filled before and after a pick', async () => {
   running = mount(QuestionCard, {
     target: document.body,
     props: { text: 'Which shape?', options: OPTIONS, allowText: false, multiple: false, answer: null, pending: true, docked: true, submit: () => true, skip: () => true }
@@ -88,10 +88,30 @@ test('a docked question speaks the decision pair: Skip outlined then Answer prim
   // Skip leaves the head: the pair is the only place a decision is made.
   expect(document.querySelector('.decision-head [data-testid=question-skip]')).toBeNull();
   expect(submit().disabled).toBe(true);
-  options()[0]!.click();
-  flushSync();
-  expect(submit().disabled).toBe(false);
-  expect(submit().classList.contains('primary')).toBe(true);
+  // jsdom gets no component CSS from Vite: compile the pair's own, under the scope class it renders with.
+  // app.css draws a disabled primary as an outline; the pair keeps its Answer filled, only faded.
+  const { compile } = await import('svelte/compiler');
+  const { readFileSync } = await import('node:fs');
+  const scope = [...pair.classList].find((name) => name !== 'decision-actions')!;
+  const source = readFileSync(`${import.meta.dirname}/DecisionActions.svelte`, 'utf8').replace(/<script lang="ts">[\s\S]*?<\/script>/, '<script></script>');
+  const style = document.createElement('style');
+  style.textContent = compile(source, { filename: 'DecisionActions.svelte', cssHash: () => scope }).css?.code ?? '';
+  document.head.append(style);
+  try {
+    // jsdom resolves no var(): read the pair's rule that holds the disabled Answer and check it fills it.
+    const rule = [...style.sheet!.cssRules].find((entry): entry is CSSStyleRule => entry instanceof CSSStyleRule && entry.selectorText.includes('primary:disabled'))!;
+    expect(submit().matches(rule.selectorText)).toBe(true);
+    expect(rule.style.getPropertyValue('background')).toBe('var(--primary-fill)');
+    expect(rule.style.getPropertyValue('color')).toBe('var(--primary-ink)');
+    expect(getComputedStyle(submit()).opacity).toBe('0.45');
+    options()[0]!.click();
+    flushSync();
+    expect(submit().disabled).toBe(false);
+    expect(submit().classList.contains('primary')).toBe(true);
+    expect(buttons.at(-1)).toBe(submit());
+    // Lit, it is app.css's own filled primary, faded no more.
+    expect(submit().matches(rule.selectorText)).toBe(false);
+  } finally { style.remove(); }
 });
 
 test('Skip sends no answer, prevents duplicate presses and allows retry after failure', async () => {
@@ -137,7 +157,7 @@ test('a docked question with options keeps its own Answer while the composer is 
   flushSync();
   expect(submit().textContent?.trim()).toBe('Answer');
   expect(submit().disabled).toBe(true);
-  expect(document.querySelector('[data-testid=question-how]')?.textContent).toBe('Pick one, then press Answer');
+  expect(document.querySelector('[data-testid=question-how]')).toBeNull();
   options()[1]?.click();
   flushSync();
   // One choice too: its row fills and its ring turns to a solid check.
@@ -223,7 +243,7 @@ test('several options are kept at once when the question takes several', () => {
 
   expect(options().every(option => option.getAttribute('role') === 'checkbox')).toBe(true);
   // The card says what a pick does: it marks rows, the card's Answer sends them.
-  expect(document.querySelector('[data-testid=question-how]')?.textContent).toBe('Pick any, then press Answer');
+  expect(document.querySelector('[data-testid=question-how]')).toBeNull();
   // Docked, each row leads with an empty square, a choice before any pick, and a check once picked;
   // its key stays a quiet hint at the row's end, never the mark of the choice.
   expect(options().every(option => option.firstElementChild?.classList.contains('box') && !option.querySelector('.box')?.classList.contains('round'))).toBe(true);

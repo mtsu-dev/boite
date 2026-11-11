@@ -20,7 +20,9 @@ export type FeedSection = 'needs' | 'updates';
 export type FeedVerb = 'answer' | 'allow' | 'review';
 /** `place`: where the row lives in words (its project, a bot's name, Drafts), for its place line; `reason` repeats it
     when the thread has nothing more to say. */
-export type FeedRow<M> = FeedSource<M> & { reason: string; place: string; at: number; nested: boolean; section: FeedSection; verb: FeedVerb | null };
+export type FeedRow<M> = FeedSource<M> & { reason: string; place: string; at: number; nested: boolean; section: FeedSection; verb: FeedVerb | null; kind: FeedKind | null };
+/** What a Needs you row is, named on its first line so its verbs are expected: Allow once a permission, Answer a question, Review a failure or a stop. */
+export type FeedKind = 'permission' | 'question' | 'failed' | 'stopped';
 type Requests = { pendingQuestions: readonly QuestionRequest[]; pendingPermissions: readonly PermissionRequest[] };
 type Owner = Requests & { subagents: (id: ThreadSummary['id']) => Delegated };
 
@@ -73,6 +75,11 @@ export function feedVerbLabel(verb: FeedVerb | FeedSecondary): string {
   return verb === 'allow' ? strings.chat.allowOnce : strings.mobile.feed.verb[verb];
 }
 
+/** The whole of a thread's held question, every line: Activity shows it above Answer, never its first line alone. */
+export function feedQuestion(owner: Pick<Requests, 'pendingQuestions'>, threadId: ThreadSummary['id']): string | null {
+  return owner.pendingQuestions.find(q => q.threadId === threadId)?.text.trim() || null;
+}
+
 /** Why the thread waits on the user, in a few words, and since when; null when its request is not known here. */
 export function waitingReason(owner: Requests, thread: ThreadSummary): { text: string; since: number } | null {
   const question = owner.pendingQuestions.find(q => q.threadId === thread.id);
@@ -91,6 +98,13 @@ export function waitingReason(owner: Requests, thread: ThreadSummary): { text: s
 function verbOf(owner: Requests, thread: ThreadSummary, kind: ThreadState | null): FeedVerb | null {
   if (kind === 'waiting') return owner.pendingPermissions.some(p => p.threadId === thread.id) && !owner.pendingQuestions.some(q => q.threadId === thread.id) ? 'allow' : 'answer';
   return kind === 'error' || kind === 'interrupted' ? 'review' : null;
+}
+
+/** The row's kind from the same facts as its verb. */
+function kindOf(verb: FeedVerb | null, kind: ThreadState | null): FeedKind | null {
+  if (verb === 'allow') return 'permission';
+  if (verb === 'answer') return 'question';
+  return kind === 'error' ? 'failed' : kind === 'interrupted' ? 'stopped' : null;
 }
 
 /** A thread outside any project: a bot's worker names its bot, through `place`, a draft says Drafts. */
@@ -191,7 +205,8 @@ export function activityFeed<M extends { id: string; store: Owner }>(all: readon
     const section: FeedSection = rank <= NEEDS_RANK ? 'needs' : 'updates';
     const row = (entry: FeedSource<M>, nested: boolean): FeedRow<M> => {
       const kind = stateOf(entry);
-      return { ...entry, nested, section, ...reasonOf(entry.machine.store, entry, kind, place), verb: section === 'needs' ? verbOf(entry.machine.store, entry.thread, kind) : null };
+      const verb = section === 'needs' ? verbOf(entry.machine.store, entry.thread, kind) : null;
+      return { ...entry, nested, section, ...reasonOf(entry.machine.store, entry, kind, place), verb, kind: kindOf(verb, kind) };
     };
     return [row(lead, false), ...helpers.map(helper => row(helper, true))];
   });

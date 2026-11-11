@@ -167,11 +167,71 @@ test('a phone sheet draws the sheet scrim behind it', () => {
 });
 
 /** A switch that is on reads as on at a glance, without the accent: the filled foreground track, a primary's ink as the knob. */
-test('a switch on wears the foreground track and its ink knob; off, a quiet track', () => {
+test('a switch on wears the foreground track and its ink knob; off, a ringed track with a knob of the rim', () => {
   const root = block(':root');
   expect(root).toMatch(/--switch-on:\s*var\(--color-foreground\);/);
   expect(root).toMatch(/--switch-knob-on:\s*var\(--color-on-foreground\);/);
   expect(root).toMatch(/--switch-off:\s*var\(--color-surface-3\);/);
+  expect(root).toMatch(/--switch-knob:\s*var\(--switch-rim\);/);
+  expect(css).toMatch(/role=switch\], \.switch \{[^}]*border: [^;]*solid var\(--switch-rim\)/);
+});
+
+/** sRGB to OKLab and back, for the `color-mix(in oklab, ...)` a token is written as. */
+function oklab(hex: string): number[] {
+  const [r, g, b] = [1, 3, 5].map((i) => {
+    const v = parseInt(hex.slice(i, i + 2), 16) / 255;
+    return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  }) as [number, number, number];
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  return [0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s, 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s, 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s];
+}
+
+function fromOklab([L, a, b]: number[]): string {
+  const l = (L! + 0.3963377774 * a! + 0.2158037573 * b!) ** 3;
+  const m = (L! - 0.1055613458 * a! - 0.0638541728 * b!) ** 3;
+  const s = (L! - 0.0894841775 * a! - 1.291485548 * b!) ** 3;
+  const linear = [4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s, -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s, -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s];
+  return '#' + linear.map((v) => {
+    const c = Math.min(1, Math.max(0, v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055));
+    return Math.round(c * 255).toString(16).padStart(2, '0');
+  }).join('');
+}
+
+function mixOklab(a: string, b: string, share: number): string {
+  const [x, y] = [oklab(a), oklab(b)];
+  return fromOklab(x.map((v, i) => v * share + y[i]! * (1 - share)));
+}
+
+/**
+ * An off switch is drawn, not guessed: its rim and its knob (the same grey)
+ * clear 3:1 against every card surface it sits on, in both themes and every
+ * curated palette. The old dark track on a dark card (1.06:1) fails.
+ */
+describe('an off switch reads on every card', () => {
+  const rim = /--switch-rim:\s*color-mix\(in oklab, var\(--color-foreground\) (\d+)%, var\(--color-surface\)\);/.exec(block(':root'));
+  const share = Number(rim?.[1]) / 100;
+  const themes: [string, string, string, string[]][] = [
+    ...([['dark', ':root'], ['light', "[data-theme='light']"]] as const).map(([name, selector]): [string, string, string, string[]] => {
+      const scope = block(selector);
+      return [name, token(scope, '--color-foreground'), token(scope, '--color-surface'), ['--color-surface', '--color-surface-2', '--color-surface-3'].map((ground) => token(scope, ground))];
+    }),
+    ...[...css.matchAll(/--palette-((?:dark|light)-[\w-]+?)-surface-low:/g)].map((match): [string, string, string, string[]] => {
+      const role = (name: string) => token(css, `--palette-${match[1]}-${name}`);
+      return [match[1]!, role('foreground'), role('surface-low'), [role('surface-low'), role('surface'), role('surface-high')]];
+    })
+  ];
+
+  test('the rim is a mix of the ink into the card', () => {
+    expect(share).toBeGreaterThan(0);
+    expect(themes.length).toBeGreaterThanOrEqual(8);
+  });
+
+  test.each(themes)('%s: the rim and knob clear 3:1 on every card surface', (_name, ink, surface, grounds) => {
+    const color = mixOklab(ink, surface, share);
+    for (const ground of grounds) expect(ratio(color, ground), `rim ${color} on ${ground}`).toBeGreaterThanOrEqual(3);
+  });
 });
 
 test('a menu or popover edge sits one step over the edge, toward the text, in every theme and palette', () => {

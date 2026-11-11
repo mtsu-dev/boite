@@ -193,8 +193,8 @@
   {#if store.owner && store.settings && !dashboard}
     <section class="card resume" id="settings-limit-resume">
       <label for="{uid}-resume" class="switch-row">
-        <span class="text ui-label-box"><span class="ui-label" id="{uid}-resume-name">{strings.quotas.autoResume}</span><InfoTip topic={strings.quotas.autoResume} text={strings.quotas.autoResumeHint} /></span>
-        <input id="{uid}-resume" type="checkbox" role="switch" data-testid="setting-auto-resume" aria-labelledby="{uid}-resume-name"
+        <span class="text"><span class="ui-label-box"><span class="ui-label" id="{uid}-resume-name">{strings.quotas.autoResume}</span><InfoTip topic={strings.quotas.autoResume} text={strings.quotas.autoResumeHint} /></span><span class="hint" id="{uid}-resume-effect">{strings.settings.effects.autoResume}</span></span>
+        <input id="{uid}-resume" type="checkbox" role="switch" data-testid="setting-auto-resume" aria-labelledby="{uid}-resume-name" aria-describedby="{uid}-resume-effect"
           checked={store.settings.autoResumeLimitedThreads === true} onchange={(event) => void toggleAutoResume(event.currentTarget)} />
       </label>
     </section>

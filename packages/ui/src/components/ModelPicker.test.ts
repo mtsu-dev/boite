@@ -83,8 +83,33 @@ test('account rows never reveal the login email in their tooltip', async () => {
   await waitFor(() => accountItems().length === 2);
   expect(accountItems().map(item => item.title)).toEqual(['Work', 'Personal']);
   expect(accountItems().map(item => item.querySelector('.seat-name')?.textContent?.trim())).toEqual(['Work', 'Personal']);
-  // A signed-out login says so on a quiet second line.
-  expect(accountItems().map(item => item.querySelector('.seat-note')?.textContent ?? null)).toEqual([null, strings.accounts.status.unauthenticated]);
+  // A signed-out login says so in muted words beside its name.
+  expect(accountItems().map(item => item.querySelector('.seat-note')?.textContent ?? null)).toEqual([null, strings.providerSettings.step['sign-in']]);
+});
+
+test('a signed-out account carries a Sign in button that goes to the sign-in path, and the arrows reach it', async () => {
+  const seats: Account[] = [twoSeats[0]!, { ...twoSeats[1]!, status: 'unauthenticated' }];
+  const signedIn: string[] = [];
+  mountSeats({ seats, onsignin: (seat) => signedIn.push(seat.id) });
+  accountButton()!.click();
+  await waitFor(() => accountItems().length === 2);
+  const signIn = document.querySelector<HTMLButtonElement>('[data-testid=picker-account-sign-in]')!;
+  expect(signIn.textContent?.trim()).toBe(strings.accounts.login);
+  // The signed-out row itself cannot be picked; its button is the next stop after the current account.
+  expect(accountItems()[1]!.disabled).toBe(true);
+  key(document.activeElement!, 'ArrowDown');
+  expect(document.activeElement).toBe(signIn);
+  signIn.click();
+  flushSync();
+  expect(signedIn).toEqual(['personal']);
+  expect(accountItems()).toEqual([]);
+});
+
+test('without a sign-in path the signed-out row only says so', async () => {
+  mountSeats({ seats: [twoSeats[0]!, { ...twoSeats[1]!, status: 'unauthenticated' }] });
+  accountButton()!.click();
+  await waitFor(() => accountItems().length === 2);
+  expect(document.querySelector('[data-testid=picker-account-sign-in]')).toBeNull();
 });
 
 test('one account: the provider name is plain text, no button', () => {
@@ -346,6 +371,16 @@ test('a signed-in Claude seat is probed before its model and account are applied
     await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null && accountButton() !== null);
     accountButton()!.click();
     await waitFor(() => document.querySelector('[data-instance="claude::a-claude-side"]') !== null);
+    // The accounts unfold inside the column's head, in its flow: the search and the models come after them, not under a layer.
+    const list = document.querySelector<HTMLElement>('[data-testid=picker-accounts]')!;
+    const head = list.closest('.head')!;
+    const search = document.querySelector<HTMLElement>('[data-testid=composer-picker-menu] input')!;
+    const firstModel = document.querySelector<HTMLElement>('[data-testid=composer-picker-menu] [data-model]')!;
+    expect(head.closest('.main-models')).not.toBeNull();
+    expect(head.contains(search)).toBe(false);
+    expect(list.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(list.compareDocumentPosition(firstModel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(getComputedStyle(list).position).not.toBe('absolute');
     const seat = document.querySelector<HTMLButtonElement>('[data-instance="claude::a-claude-side"]')!;
     expect(seat.disabled).toBe(false);
     seat.click();

@@ -5,6 +5,7 @@
   import { fill, strings } from '../lib/strings';
   import { agentProgress, teamProgress } from '../lib/delegation-progress';
   import { openAgent } from '../lib/open-agent';
+  import { agentFailure } from '../lib/failure-cause';
   import ActivityCard from './ActivityCard.svelte';
   import Elapsed from './Elapsed.svelte';
   import FailMark from './FailMark.svelte';
@@ -15,7 +16,8 @@
    * The subagents one message started, grouped on one row where they
    * started: up to three provider marks then "+N", "4 subagents" over where
    * they stand ("2 working, 1 needs you, 1 done"), the time, a chevron. It
-   * unfolds on one row per subagent, each opening its own conversation.
+   * unfolds on one row per subagent, each opening its own conversation; a
+   * failed one says why in a muted line under its name.
    */
   let { store, agents }: { store: Store; agents: DelegatedAgent[] } = $props();
   const team = $derived(teamProgress(agents));
@@ -68,12 +70,17 @@
       <li>
         <button type="button" class="ghost agent" data-testid="delegation-agent" data-state={row.state} title={row.agent.thread.title} onclick={() => openAgent(store, row.agent)}>
           <span class="glyph" aria-hidden="true"><ProviderLogo providerId={row.agent.thread.providerId} size={13} /></span>
-          <span class="name">{row.agent.thread.title}</span>
+          {#if row.state === 'failed'}
+            {@const cause = agentFailure(row.agent)}
+            <span class="words"><span class="name">{row.agent.thread.title}</span><span class="cause" data-testid="delegation-agent-cause" title={cause}>{cause}</span></span>
+          {:else}
+            <span class="name">{row.agent.thread.title}</span>
+          {/if}
           <span class="state" data-state={row.state} role="img" aria-label={strings.delegation.rowState[row.state]} title={strings.delegation.rowState[row.state]}>
             {#if row.state === 'working'}<Spinner size={11} />
             {:else if row.state === 'asking'}<span class="dot"></span>
             {:else if row.state === 'done'}<Check size={12} strokeWidth={2.25} />
-            {:else if row.state === 'failed'}<FailMark />
+            {:else if row.state === 'failed'}<FailMark size={14} />
             {:else}<Square size={9} fill="currentColor" />{/if}
           </span>
           <span class="timing"><Elapsed startedAt={row.progress.startedAt} finishedAt={row.progress.finishedAt} active={row.progress.active} /></span>
@@ -99,6 +106,10 @@
   .agent:active { transform: none; }
   .glyph { display: inline-flex; flex: none; justify-content: center; width: var(--activity-glyph); }
   .name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* A failed row: its name over its cause, the row a line taller, still one button to its conversation. */
+  .words { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; line-height: 18px; }
+  /* The cause adds no width of its own (`contain`): a long one ends in an ellipsis, never widens the list past the screen. */
+  .cause { min-width: 0; contain: inline-size; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); line-height: 16px; color: var(--color-muted-foreground); }
   .state { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 16px; color: var(--color-subtle); }
   .state[data-state='done'] { color: var(--color-success); }
   .state[data-state='failed'] { color: var(--color-danger); }

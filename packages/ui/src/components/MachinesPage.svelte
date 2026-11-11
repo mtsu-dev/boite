@@ -221,7 +221,7 @@
               </span>
               <span class="meta" title={machine.store.localCore ? undefined : carrier !== undefined ? fill(strings.group.through, { machine: machineName(carrier) }) : machine.id}>
                 <span class="dot" class:ready={machine.store.connection === 'ready'} aria-hidden="true"></span>
-                <span class="status ui-label" class:ready={machine.store.connection === 'ready'} data-testid="machine-card-status">{machine.store.pairingRequired ? strings.mobile.pairingRequired : gone ? strings.connection.offline : carrier !== undefined && machine.store.connection === 'ready' ? fill(strings.group.relayed, { machine: machineName(carrier) }) : strings.connection[machine.store.connection]}</span>
+                <span class="status ui-label" class:ready={machine.store.connection === 'ready'} data-testid="machine-card-status">{machine.store.pairingRequired ? strings.mobile.pairingRequired : gone ? fill(strings.machines.offlineLine, { machine: machineName(machine) }) : carrier !== undefined && machine.store.connection === 'ready' ? fill(strings.group.relayed, { machine: machineName(carrier) }) : strings.connection[machine.store.connection]}</span>
                 {#if machine.store.connection === 'ready' && machine.store.core?.version && machine.store.core.version !== headVersion}<span class="version" data-testid="machine-version">{machine.store.core.version}</span>{/if}
                 <!-- A current machine shows a quiet check, its words for a screen reader: the card above already says
                      "Up to date", and a word on every row repeated it. Other states say themselves. -->
@@ -431,13 +431,14 @@
   }
   .version::before,
   .updates::before { content: '·'; margin-right: 6px; color: var(--color-subtle); font-family: var(--font-sans); }
-  /* Out of reach: still named and still removable, its state an Offline chip like the one a thread's
-     machine wears (MachinePlace), so the row never reads as off by its dimmed logo alone. */
+  /* Out of reach: still named and still removable, its state the words a project card's head says ("Builder is
+     offline", MachineOffline.svelte) after the status grammar's grey dot, Reconnect among the row's actions. */
   .away .logo { opacity: 0.5; }
   .away .machine-name { color: var(--color-muted-foreground); }
-  .away .dot { display: none; }
-  .away .status { padding: 0 6px; border: 1px solid var(--color-edge); border-radius: var(--radius-sm); color: var(--color-muted-foreground); line-height: 1.4; }
-  .lost .status { border-color: color-mix(in srgb, var(--color-danger) 55%, transparent); color: var(--color-danger); }
+  .away .dot { background: var(--color-muted-foreground); }
+  .away .status { color: var(--color-muted-foreground); }
+  .lost .dot { background: var(--color-danger); }
+  .lost .status { color: var(--color-danger); }
   /* What the machine has to say about its updates, after its connection. */
   .updates { color: var(--color-muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: none; }
   .updates[data-state='current'] { display: inline-flex; align-items: center; overflow: visible; }

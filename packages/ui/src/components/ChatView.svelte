@@ -6,7 +6,7 @@
   import Deferred from './Deferred.svelte';
   import { parts } from '../lib/deferred-parts';
   import { ChevronDown, FolderOpen, VenetianMask } from '@lucide/svelte';
-  import { fill, strings } from '../lib/strings';
+  import { strings } from '../lib/strings';
   import { modePhrase } from '../lib/permission-modes';
   import { projectName } from '../lib/format';
   import type { Store } from '../lib/store.svelte';
@@ -186,9 +186,9 @@
               <span class="machine" data-testid="draft-machine"><span class="ui-label">{machine.label}</span></span>
             {/if}
           </h1>
-          <!-- What this pane is for, one line over the composer: the task goes in the box, the agent works in this folder,
-               in full; the heading above names the machine (two lines read as a paragraph). -->
-          <p class="start-hint" data-testid="draft-hint">{project ? fill(strings.thread.startWhere, { path: project.path }) : strings.thread.startHint}</p>
+          <!-- The one thing the composer does not say: the folder the agent works in, whole, as a path. Without a
+               project there is no folder to name, and the composer's placeholder already says what to type. -->
+          {#if project}<p class="start-hint" data-testid="draft-hint">{strings.thread.startIn} <code class="path">{project.path}</code></p>{/if}
         </div>
     {/if}
 
@@ -363,11 +363,13 @@
     max-width: 64ch;
     overflow-wrap: anywhere;
     margin: 0;
-    color: var(--color-muted-foreground);
-    font-size: var(--text-base);
+    color: var(--color-subtle);
+    font-size: var(--text-sm);
     line-height: 1.5;
-    text-wrap: balance;
+    text-align: center;
   }
+  /* The folder in the path's own face, muted: read as where, not as words to act on. */
+  .start-hint .path { padding: 0; background: none; color: var(--color-muted-foreground); font-family: var(--font-mono); font-size: var(--text-xs); }
 
   @media (max-width: 720px) {
     .chat.drafting {

@@ -121,8 +121,9 @@
     <label for="{uid}-on" class="master">
       <span class="words">
         <h2 class="ui-label-box"><span class="ui-label" id="{uid}-on-name">{strings.settings.autoCompact}</span><InfoTip topic={strings.settings.autoCompact} text={strings.settings.autoCompactHint} /><SyncMark {store} key={target ? 'compactionByType' : 'autoCompact'} /></h2>
+        <span class="effect" id="{uid}-on-effect">{strings.settings.effects.autoCompact}</span>
       </span>
-      <input id="{uid}-on" aria-labelledby="{uid}-on-name" type="checkbox" role="switch" data-testid="auto-compact-on"
+      <input id="{uid}-on" aria-labelledby="{uid}-on-name" aria-describedby="{uid}-on-effect" type="checkbox" role="switch" data-testid="auto-compact-on"
         checked={rule !== null} disabled={!store.settings || saving} onchange={(event) => void save(event.currentTarget.checked ? FIRST : null, event.currentTarget)} />
     </label>
 
@@ -192,6 +193,7 @@
   textarea { width: 100%; min-height: 80px; resize: vertical; }
   .master { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; cursor: pointer; }
   .master .words { display: grid; gap: 6px; flex: 1; min-width: 0; }
+  .effect { color: var(--color-muted-foreground); font-size: var(--text-sm); line-height: 1.5; }
   .master h2 { margin: 0; }
   h3 { margin: var(--space-6) 0 var(--space-2); color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; }
   .options { display: grid; gap: 8px; }

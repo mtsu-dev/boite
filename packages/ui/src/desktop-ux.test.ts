@@ -2,7 +2,7 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import App from './App.svelte';
 import { store } from './lib/store.svelte';
-import { workspace } from './lib/workspace.svelte';
+import { machineName, workspace } from './lib/workspace.svelte';
 import { writeExperiments } from './lib/experiments';
 import { closeTour } from './lib/onboarding.svelte';
 import { work } from './lib/work-prefs.svelte';
@@ -10,7 +10,7 @@ import { archiveThread } from './lib/archive';
 import { runCommand } from './lib/commands.svelte';
 import { undo } from './lib/undo.svelte';
 import { confirm } from './lib/confirm.svelte';
-import { strings } from './lib/strings';
+import { fill, strings } from './lib/strings';
 import { clampPanel, rightPanel } from './lib/right-panel.svelte';
 import { contactsRail } from './lib/contacts-rail.svelte';
 import { AgentsView, openAgent } from './lib/agents.svelte';
@@ -706,9 +706,9 @@ test('the settings bar picks the machine a page changes without moving the windo
   remote.store.showSettings('plugins');
   await waitFor(() => document.querySelector('[data-testid=settings-machine]') !== null && document.querySelector('[data-testid=plugins-page]') !== null);
   expect(query('[data-testid=settings-machine]').textContent).toContain(`${store.core!.hostname} (you)`);
-  // The picker is the machine's name in the title's scope line, and every title says where it applies.
+  // The picker is the machine's name in the title's scope line.
   expect(query('[data-testid=settings-scope]').contains(query('[data-testid=settings-machine]'))).toBe(true);
-  expect(query('[data-testid=settings-scope]').textContent).toContain(strings.machines.scopeOn.split('{machine}')[0]!.trim());
+  expect(query('[data-testid=settings-scope]').textContent).toContain(strings.settings.scopeMachine.split('{machine}')[0]!.trim());
   expect(document.querySelectorAll('[data-testid=settings-machine]')).toHaveLength(1);
   // Every other page opens on the window's machine.
   remote.store.showSettings('general', 'quiet');
@@ -724,10 +724,24 @@ test('the settings bar picks the machine a page changes without moving the windo
   expect(remote.store.settings?.muteAgents).toBe(true);
   // The window never moved: same machine, same conversation, still on the page it showed.
   expect([workspace.active, remote.store.openThread, remote.store.settingsTab]).toEqual([remote.store, thread, 'general']);
-  // A page of this device and one of the whole group say so under their titles.
-  for (const [page, kind, text] of [['appearance', 'device', strings.settings.scopeDevice], ['machines', 'all', strings.settings.scopeEvery]] as const) {
+  // A page of this device or of the whole group shows its title alone.
+  for (const page of ['appearance', 'machines'] as const) {
     remote.store.showSettings(page);
-    await waitFor(() => document.querySelector(`[data-testid=settings-scope][data-scope=${kind}]`) !== null);
-    expect(query('[data-testid=settings-scope]').textContent?.trim()).toBe(text);
+    await waitFor(() => remote.store.settingsTab === page && document.querySelector('[data-testid=settings-machine]') === null);
+    expect(document.querySelector('[data-testid=settings-scope]')).toBeNull();
   }
+});
+
+test('with one machine the scope line is plain words, and the cards under it pair up on where they apply', async () => {
+  await mountOnFake('/?fake=1');
+  await waitFor(() => workspace.machines.length === 1 && store.connection === 'ready');
+  store.showSettings('general');
+  await waitFor(() => document.querySelector('[data-testid=settings-scope]') !== null && document.querySelector('#settings-agent-replies [data-testid=card-scope]') !== null);
+  const machine = workspace.machines[0]!;
+  // "Agent settings apply on studio": the name is text, not a picker, with nothing to pick.
+  expect(query('[data-testid=settings-scope]').textContent?.trim()).toBe(fill(strings.settings.scopeMachine, { machine: machineName(machine) }));
+  expect(document.querySelector('[data-testid=settings-scope] [data-testid=settings-machine]')).toBeNull();
+  // "For this device only" beside "For agents on studio".
+  expect(query('#settings-conversations [data-testid=card-scope]').textContent?.trim()).toBe(strings.settings.cardDevice);
+  expect(query('#settings-agent-replies [data-testid=card-scope]').textContent?.trim()).toBe(fill(strings.settings.cardMachine, { machine: machineName(machine) }));
 });

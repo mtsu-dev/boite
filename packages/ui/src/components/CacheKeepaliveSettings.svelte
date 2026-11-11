@@ -45,8 +45,9 @@
     <label for="{uid}-on" class="master">
       <span class="words">
         <h2 class="ui-label-box"><span class="ui-label" id="{uid}-on-name">{strings.settings.cacheKeepalive}</span><InfoTip topic={strings.settings.cacheKeepalive} text={strings.settings.cacheKeepaliveHint} /><SyncMark {store} key="cacheKeepalive" /></h2>
+        <span class="effect" id="{uid}-on-effect">{strings.settings.effects.cacheKeepalive}</span>
       </span>
-      <input id="{uid}-on" aria-labelledby="{uid}-on-name" type="checkbox" role="switch" data-testid="cache-keepalive-on"
+      <input id="{uid}-on" aria-labelledby="{uid}-on-name" aria-describedby="{uid}-on-effect" type="checkbox" role="switch" data-testid="cache-keepalive-on"
         checked={rule !== null} disabled={!store.settings || saving} onchange={(event) => void save(event.currentTarget.checked, event.currentTarget)} />
     </label>
 
@@ -72,6 +73,7 @@
 <style>
   .master { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; cursor: pointer; }
   .master .words { display: grid; gap: 6px; flex: 1; min-width: 0; }
+  .effect { color: var(--color-muted-foreground); font-size: var(--text-sm); line-height: 1.5; }
   .card .master h2 { margin: 0; }
   .option { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; column-gap: 14px; row-gap: 4px; margin-top: 16px; padding: 14px 16px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-2); }
   .icon { display: grid; place-items: center; width: 34px; height: 34px; border-radius: var(--radius-sm); background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-muted-foreground); }

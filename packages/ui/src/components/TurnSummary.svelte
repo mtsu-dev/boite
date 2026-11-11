@@ -19,7 +19,7 @@
   import type { Snippet } from 'svelte';
   import InfoTip from './InfoTip.svelte';
   import Spinner from './Spinner.svelte';
-  let { turn, workedBefore = 0, clockOffset = 0, progress, waiting = false, activeTool = false, activeContent = false, background = [], stop, pointed = false, steps, memory, compactions = [], actions }: {
+  let { turn, workedBefore = 0, clockOffset = 0, progress, waiting = false, activeTool = false, activeContent = false, background = [], stop, pointed = false, tucked = false, steps, memory, compactions = [], actions }: {
     turn: Turn;
     /**
      * What the user's request this turn belongs to worked before it, in ms,
@@ -41,6 +41,11 @@
     stop?: () => void;
     /** The pointer is on another message of this turn: the settled summary shows as if its own message were pointed at. */
     pointed?: boolean;
+    /**
+     * A phone's message that is neither the last answer nor tapped (`MessageReveal`): its buttons wait for a tap,
+     * so a settled line with nothing else to say at rest is not drawn, and leaves no band under the answer.
+     */
+    tucked?: boolean;
     /** A persistent agent's folded steps, counted on the line; the count opens them above the answer. */
     steps?: SummarySteps;
     /** The memory pass that followed this turn: a small mark whose tooltip says what changed. */
@@ -101,14 +106,14 @@
   const marked = $derived(!!steps || !!memory || compactions.length > 0);
   const finishedLabel = $derived(turn.finishedAt === null ? '' : fill(turn.status === 'error' ? strings.chat.failedAt : strings.chat.finishedAt, { time: clockTime(turn.finishedAt) }));
   const tokensLabel = $derived(`${formatTokens(total)} ${strings.units.tokens}`);
-  /** A settled line's time and spend, gathered behind one "i" where there is no pointer to show them. */
-  const details = $derived([spent === null ? '' : fill(elapsedLabel, { time: elapsed(spent) }), finishedLabel, total > 0 ? tokensLabel : ''].filter(Boolean).join(' · '));
+  /** Where there is no pointer, a settled line says how long it worked at rest; when it ended and what it spent wait behind one "i". */
+  const details = $derived([finishedLabel, total > 0 ? tokensLabel : ''].filter(Boolean).join(' · '));
 </script>
 
 {#snippet metric(id: string, text: string | null, title?: string, quiet = false, meta = false)}
   <span class="metric" class:meta><span class="dot ui-label" aria-hidden="true">·</span><span class="ui-label" class:quiet data-testid={id} {title}>{text}</span></span>
 {/snippet}
-{#if turn.status !== 'queued' && !(running && activeTool && !waiting && background.length === 0 && !observed && !compacting)}
+{#if turn.status !== 'queued' && !(running && activeTool && !waiting && background.length === 0 && !observed && !compacting) && !(tucked && settled && !marked)}
   <div class="summary" class:compacting class:settled class:pointed class:marked class:paused={hidden || waiting} data-testid="turn-summary" data-status={turn.status} role="status" aria-label={label} title={label}>
     {#if compacting}
       <span class="compaction-icon"><Spinner size={16} paused={hidden || waiting} /></span>
@@ -204,7 +209,8 @@
   }
   /* A settled line keeps what the agent did at rest (its steps, a memory mark) and
      its buttons; how long it took, when and what it spent wait for the pointer. A
-     finger reads them behind the "i" instead, the line's last mark. */
+     finger reads how long at rest, the buttons on the same row, and when and what
+     it spent behind the "i", the line's last mark. */
   .details { display: none; }
   /* The count's dot hides but keeps its room: taken out, the count opened the line under the clip and lost its number. */
   .summary.settled.marked .meta { display: none; }
@@ -212,9 +218,12 @@
   :global(.message:hover) .summary.settled.marked .meta, .summary.settled.marked.pointed .meta, .summary.settled.marked:focus-within .meta { display: inline-flex; }
   :global(.message:hover) .summary.settled.marked .marks > .dot:first-child, .summary.settled.marked.pointed .marks > .dot:first-child, .summary.settled.marked:focus-within .marks > .dot:first-child { visibility: visible; }
   @media (hover: none) {
-    .summary.settled .meta, .summary.settled.marked .meta { display: none; }
-    .summary.settled.marked .marks > .dot:first-child { visibility: hidden; }
+    .summary.settled .metric.meta { display: none; }
+    .summary.settled.marked .meta:not(.metric) { display: inline-flex; }
+    .summary.settled.marked .marks > .dot:first-child { visibility: visible; }
     .details { display: inline-flex; }
+    /* The row starts where the answer's text does. */
+    .summary.settled:not(.compacting) { margin-left: calc(-1 * var(--lead)); }
   }
   /* The step count and the memory mark: text buttons on the line, no box, the foreground on hover. */
   .mark { position: relative; display: inline-flex; align-items: center; gap: 2px; height: 18px; padding: 0 2px; margin: -2px 0; border: 0; border-radius: var(--radius-sm); background: none; color: inherit; font-size: inherit; font-variant-numeric: inherit; cursor: pointer; transition: color var(--dur-2) var(--ease-out-quint); }

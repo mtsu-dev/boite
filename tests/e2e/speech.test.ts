@@ -247,9 +247,10 @@ test('device voice settings select and test the microphone, stop capture, and pe
   await page.click(id('settings-tab-voice'));
   await page.waitFor(`document.querySelector('${id('voice-enabled')}')`);
   expect(await page.evaluate(`document.querySelector('${id('voice-enabled')}').checked`)).toBe(false);
-  expect(await page.evaluate(`document.querySelector('${id('voice-microphone-test')}').disabled`)).toBe(true);
-  expect(await page.text(id('voice-microphone'))).toContain('Headset microphone');
+  expect(await page.evaluate(`!!document.querySelector('${id('voice-microphone')}') || !!document.querySelector('${id('voice-microphone-test')}')`)).toBe(false);
   await page.click(id('voice-enabled'));
+  await page.waitFor(`document.querySelector('${id('voice-microphone')}')`);
+  expect(await page.text(id('voice-microphone'))).toContain('Headset microphone');
   await leaveSettings();
   await page.waitFor(`document.querySelector('${id('dictation-start')}')`);
   expect(page.errors()).toEqual([]);

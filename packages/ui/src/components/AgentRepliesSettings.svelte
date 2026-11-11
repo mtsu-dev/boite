@@ -25,24 +25,27 @@
 <section class="card" id="settings-agent-replies" data-testid="agent-replies">
   <h2 class="ui-label-box"><span class="ui-label">{strings.settings.agentReplies}</span><CardScope {store} /></h2>
   <label for="{uid}-async" class="switch-row">
-    <span class="text ui-label-box">
-      <span class="ui-label" id="{uid}-async-name">{strings.settings.asyncQuestions}</span><InfoTip topic={strings.settings.asyncQuestions} text={strings.settings.asyncQuestionsHint} /><SyncMark {store} key="asyncQuestions" />
+    <span class="text">
+      <span class="ui-label-box"><span class="ui-label" id="{uid}-async-name">{strings.settings.asyncQuestions}</span><SyncMark {store} key="asyncQuestions" /></span>
+      <span class="hint" id="{uid}-async-effect">{strings.settings.effects.asyncQuestions}</span>
     </span>
-    <input id="{uid}-async" aria-labelledby="{uid}-async-name" type="checkbox" role="switch" data-testid="setting-async-questions"
+    <input id="{uid}-async" aria-labelledby="{uid}-async-name" aria-describedby="{uid}-async-effect" type="checkbox" role="switch" data-testid="setting-async-questions"
       checked={store.settings?.asyncQuestions ?? true} disabled={!store.settings} onchange={(event) => void toggle('asyncQuestions', event.currentTarget)} />
   </label>
   <label for="{uid}-short" class="switch-row">
-    <span class="text ui-label-box">
-      <span class="ui-label" id="{uid}-short-name">{strings.settings.shortAnswers}</span><InfoTip topic={strings.settings.shortAnswers} text={strings.settings.shortAnswersHint} /><SyncMark {store} key="shortAnswers" />
+    <span class="text">
+      <span class="ui-label-box"><span class="ui-label" id="{uid}-short-name">{strings.settings.shortAnswers}</span><InfoTip topic={strings.settings.shortAnswers} text={strings.settings.shortAnswersHint} /><SyncMark {store} key="shortAnswers" /></span>
+      <span class="hint" id="{uid}-short-effect">{strings.settings.effects.shortAnswers}</span>
     </span>
-    <input id="{uid}-short" aria-labelledby="{uid}-short-name" type="checkbox" role="switch" data-testid="setting-short-answers"
+    <input id="{uid}-short" aria-labelledby="{uid}-short-name" aria-describedby="{uid}-short-effect" type="checkbox" role="switch" data-testid="setting-short-answers"
       checked={store.settings?.shortAnswers ?? true} disabled={!store.settings} onchange={(event) => void toggle('shortAnswers', event.currentTarget)} />
   </label>
   <label for="{uid}-tool-summaries" class="switch-row">
-    <span class="text ui-label-box">
-      <span class="ui-label" id="{uid}-tool-summaries-name">{strings.settings.toolSummaries}</span><InfoTip topic={strings.settings.toolSummaries} text={strings.settings.toolSummariesHint} /><SyncMark {store} key="toolSummaries" />
+    <span class="text">
+      <span class="ui-label-box"><span class="ui-label" id="{uid}-tool-summaries-name">{strings.settings.toolSummaries}</span><InfoTip topic={strings.settings.toolSummaries} text={strings.settings.toolSummariesHint} /><SyncMark {store} key="toolSummaries" /></span>
+      <span class="hint" id="{uid}-tool-summaries-effect">{strings.settings.effects.toolSummaries}</span>
     </span>
-    <input id="{uid}-tool-summaries" aria-labelledby="{uid}-tool-summaries-name" type="checkbox" role="switch" data-testid="setting-tool-summaries"
+    <input id="{uid}-tool-summaries" aria-labelledby="{uid}-tool-summaries-name" aria-describedby="{uid}-tool-summaries-effect" type="checkbox" role="switch" data-testid="setting-tool-summaries"
       checked={store.settings?.toolSummaries ?? false} disabled={!store.settings} onchange={(event) => void toggle('toolSummaries', event.currentTarget)} />
   </label>
   {#if store.settings}<TitleModelSetting {store} /><GoalTrackerSetting {store} />{/if}

@@ -4,11 +4,12 @@
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
   import { phasesOf, runProgress } from '../lib/workflow-view';
+  import { workflowFailure } from '../lib/failure-cause';
   import ActivityCard from './ActivityCard.svelte';
   import StatusMark from './StatusMark.svelte';
   import { workflowTone } from '../lib/thread-state';
 
-  /** A run grouped on one row of the chat where it started, like the subagents it runs: its name over its state, steps and one tick per phase, its time, and the way to its graph. */
+  /** A run grouped on one row of the chat where it started, like the subagents it runs: its name over its state, steps and one tick per phase, its time, and the way to its graph. A failed run says why under them. */
   let { store, run }: { store: Store; run: WorkflowRun } = $props();
   let steps = $derived(runProgress(run));
   let phases = $derived(phasesOf(run));
@@ -28,7 +29,8 @@
   }
 </script>
 
-<ActivityCard live={run.status === 'running'} heading={run.name} timing={{ startedAt: run.createdAt, finishedAt: run.finishedAt, active: run.status === 'running' }} onclick={open} data-testid="workflow-activity" data-run-id={run.id} data-status={run.status} title={strings.workflow.show}>
+<ActivityCard live={run.status === 'running'} heading={run.name} timing={{ startedAt: run.createdAt, finishedAt: run.finishedAt, active: run.status === 'running' }} onclick={open} data-testid="workflow-activity" data-run-id={run.id} data-status={run.status} title={strings.workflow.show}
+  cause={run.status === 'failed' ? workflowFailure(run) : undefined}>
   {#snippet mark()}<Workflow size={15} strokeWidth={1.75} />{/snippet}
   {#snippet progress()}
     <StatusMark {...workflowTone(run.status, true)} />

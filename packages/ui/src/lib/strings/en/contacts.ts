@@ -52,6 +52,10 @@ export const strings = {
       asks: '{contact} asks',
       /** Identical asks merged into one row, said in words rather than a multiplier. */
       sentMany: '{contact} sent {count} requests',
+      /** A merged ask's sub-row: the contact's thread it came from, then where it arrived and when. */
+      from: '{thread} in {project}',
+      /** A merged ask's actions settle every copy: accepting opens one thread, the copies are closed as duplicates. */
+      acceptBoth: 'Accept both', refuseBoth: 'Refuse both', acceptAll: 'Accept all', refuseAll: 'Refuse all',
       asked: 'You asked {contact}',
       remote: 'Git remote',
       accept: 'Accept',

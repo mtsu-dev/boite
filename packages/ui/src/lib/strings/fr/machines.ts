@@ -56,6 +56,8 @@ export const fr: Translation = {
     syncStopped: 'La copie s’est arrêtée sur {stage} : {error}. Ce qui précède reste copié.',
     syncStages: { settings: 'les réglages', keybindings: 'les raccourcis clavier', brain: 'les options du brain' },
     threadFailed: 'Une conversation a échoué ici : {thread}',
+    offlineLine: '{machine} est hors ligne',
+    connectingLine: 'Connexion à {machine}',
     agentLinkAddressRequired: 'Mettez les deux machines à jour pour utiliser le relais de l’app, ou définissez une adresse HTTPS joignable pour {machine} dans les réglages généraux.',
   }
 };

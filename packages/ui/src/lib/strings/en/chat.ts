@@ -25,9 +25,6 @@ export const strings = {
     /** The jump button once something arrived below the reader. */
     newMessage: '1 new message',
     newMessages: '{count} new messages',
-    /** The strip's way back to a decision out of view at the timeline's end; several show the bare count. */
-    decisionWaiting: '1 decision waiting',
-    decisionsWaiting: '{count} decisions waiting',
     findPlaceholder: 'Find in thread',
     findNone: 'No match',
     findCount: '{at} of {total}',
@@ -246,9 +243,8 @@ export const strings = {
     questionMore: 'Show {count} more options',
     questionMoreOne: 'Show 1 more option',
     questionSkip: 'Skip',
-    /** Over a docked question's choices: a pick marks the row, the composer's Send answers. */
-    questionPickOne: 'Pick one, then press Answer',
-    questionPickMany: 'Pick any, then press Answer',
+    /** After the pager of several questions, where there is room: the title of the one it goes to next. */
+    questionUpNext: 'Next: {title}',
     questionOpenPage: 'Open',
     questionWrite: 'Answer in writing',
     /** The timeline's line for a question waiting in the dock at the top of the composer, where it is answered. */

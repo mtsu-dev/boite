@@ -21,7 +21,7 @@
   import { followActivityReturn } from '../lib/activity-return.svelte';
   import AgentAvatar from './agents/AgentAvatar.svelte';
   import { avatarLit } from '../lib/avatar-lit';
-  import MachineStatus from './MachineStatus.svelte';
+  import MachineStatus, { type MachineLine } from './MachineStatus.svelte';
   import WhipButton from './WhipButton.svelte';
   import FailMark from './FailMark.svelte';
   import Deferred from './Deferred.svelte';
@@ -150,6 +150,14 @@
   <span class="rail-name" aria-hidden="true"><span class="ui-label">{label}</span>{#if note}<span class="ui-label note">{note}</span>{/if}{#if key}<span class="kbd" id={keyId}>{key}</span>{/if}</span>
 {/snippet}
 {#snippet statusName(label: string, note: string | null)}{@render railName(label, null, note)}{/snippet}
+<!-- The machine filter's card, right beside its button: its name, the trouble if any, then each machine on a line
+     of its own with the state dot the filter's menu shows. -->
+{#snippet machinesName(label: string, note: string | null, lines: MachineLine[])}
+  <span class="rail-name machines-name" aria-hidden="true" data-testid="machine-status-card">
+    <span class="ui-label">{label}</span>{#if note}<span class="ui-label note">{note}</span>{/if}
+    {#each lines as line (line.id)}<span class="machine-line" data-tone={line.tone}><span class="state-dot" aria-hidden="true"></span><span class="ui-label">{line.name}</span><span class="ui-label note">{line.state}</span></span>{/each}
+  </span>
+{/snippet}
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <nav class="app-rail" class:mac={macShell} aria-label={strings.app.rail.label} data-testid="app-rail" onmousedown={dragWindow}>
@@ -236,7 +244,7 @@
     <!-- Lit like the buttons above while it filters the list or its menu is open. -->
     <div class="slot status" class:selected={machineFilter.shown(machines) !== null}>
       <span class="pip" aria-hidden="true"></span>
-      <MachineStatus {store} filter={machineFilter.shown(machines)} onfilter={pickMachine} card={statusName} />
+      <MachineStatus {store} filter={machineFilter.shown(machines)} onfilter={pickMachine} card={machinesName} />
     </div>
     <!-- Each with the same name card as every rail button; a slot with no button (nothing to update) takes no room. -->
     <div class="slot extra"><Deferred part={parts.UpdatesNotice} quiet>{#snippet children(UpdatesNotice)}<UpdatesNotice name={statusName} />{/snippet}</Deferred></div>
@@ -342,6 +350,18 @@
     transition: opacity var(--dur-1) var(--ease-out-quint), transform var(--dur-1) var(--ease-out-quint);
   }
   .rail-name .note { color: var(--color-muted-foreground); font-weight: 400; }
+  /* The machine filter's card sits right beside its button, centred on it, since its lines describe that button;
+     it opens only under the pointer or the keyboard, and goes with the menu. */
+  .rail-name.machines-name { left: calc(100% + 4px); width: max-content; display: grid; grid-template-columns: 7px auto auto; align-items: center; gap: 4px 8px; padding: 7px 10px; }
+  .machines-name > .ui-label { grid-column: 1 / -1; }
+  /* One grid for every machine, so the names and the states each start on one edge. */
+  .machine-line { display: contents; font-weight: 400; }
+  .machine-line .ui-label { font-weight: 400; }
+  .machine-line .note { padding-left: 8px; }
+  .state-dot { width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--color-live); }
+  .machine-line[data-tone='success'] .state-dot { background: var(--color-success); }
+  .machine-line[data-tone='neutral'] .state-dot { background: var(--color-muted-foreground); }
+  .machine-line[data-tone='danger'] .state-dot { background: var(--color-danger); }
   /* Descendants: the machines button and its card sit inside MachineStatus. An open menu keeps its card away. */
   .slot:hover .rail-name { opacity: 1; transform: translate(0, -50%); transition-delay: 400ms; }
   .slot:has(:global(:focus-visible)) .rail-name { opacity: 1; transform: translate(0, -50%); }

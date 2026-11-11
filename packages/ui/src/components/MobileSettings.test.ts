@@ -7,6 +7,7 @@ import { archiveThread } from '../lib/archive';
 import type { FakeClient } from '../lib/fake-client';
 import { workspace } from '../lib/workspace.svelte';
 import { experimentOn } from '../lib/experiments.svelte';
+import { strings } from '../lib/strings';
 
 /** The phone has no General page: the archive it can fill must be reachable from its own settings list. */
 
@@ -136,6 +137,18 @@ test('the phone settings list the desktop\'s families, each page a peer row, Gen
   ]);
   // The header already says Settings, and the list's display options group the threads.
   expect(document.querySelector('[data-testid=mobile-settings-home] h1')).toBeNull();
+  // The desktop's search is the home's first row: its results take the families' place, a pick opens the page.
+  expect(query('[data-testid=mobile-settings-home]').firstElementChild?.getAttribute('data-testid')).toBe('settings-home');
+  const search = query<HTMLInputElement>('[data-testid=mobile-settings-home] [data-testid=settings-search]');
+  search.value = strings.settings.tabs.appearance;
+  search.dispatchEvent(new Event('input', { bubbles: true }));
+  await waitFor(shown('settings-search-results'));
+  expect(document.querySelector('[data-testid=mobile-settings-home] [data-testid=settings-family]')).toBeNull();
+  query<HTMLButtonElement>('[data-testid=settings-search-result]').click();
+  await waitFor(() => store.settingsTab === 'appearance' && document.querySelector('[data-testid=mobile-settings-header]') !== null);
+  await back();
+  expect(query<HTMLInputElement>('[data-testid=settings-search]').value).toBe('');
+  expect(document.querySelectorAll('[data-testid=mobile-settings-home] [data-testid=settings-family]')).toHaveLength(4);
   expect(query('[data-testid=settings]').dataset.detail).toBeUndefined();
   await open('settings-tab-general', general);
   expect(rows('mobile-settings-general')).toEqual([
@@ -182,7 +195,7 @@ test('the phone settings list the desktop\'s families, each page a peer row, Gen
   await back();
   await open('settings-tab-browser', () => document.querySelector('[data-testid=browser-page] [data-testid=browser-profiles-card]') !== null);
   // Its one card says where it applies; the page repeats no scope over it.
-  expect(query('[data-testid=browser-profiles-card] [data-testid=card-scope]').textContent).toBe('On this device');
+  expect(query('[data-testid=browser-profiles-card] [data-testid=card-scope]').textContent).toBe(strings.settings.cardDevice);
   expect(document.querySelector('[data-testid=mobile-settings-page-scope]')).toBeNull();
   await back();
 

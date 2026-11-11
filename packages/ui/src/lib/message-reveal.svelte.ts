@@ -30,11 +30,19 @@ export class MessageReveal {
 
   key(message: Message): string { return message.role === 'user' ? `prompt:${message.id}` : `turn:${message.turnId}`; }
 
+  #latest(message: Message): boolean {
+    return message.role === 'user' ? message.id === this.#lastPrompt : message.turnId === this.#lastAnswer;
+  }
+
   /** A row's marks: its key, and whether its buttons show. */
   attrs(message: Message): Record<string, string | undefined> {
     const key = this.key(message);
-    const latest = message.role === 'user' ? message.id === this.#lastPrompt : message.turnId === this.#lastAnswer;
-    return { 'data-reveal': key, 'data-latest': latest ? '' : undefined, 'data-revealed': this.revealed === key ? '' : undefined };
+    return { 'data-reveal': key, 'data-latest': this.#latest(message) ? '' : undefined, 'data-revealed': this.revealed === key ? '' : undefined };
+  }
+
+  /** Whether the message's buttons show: always on a desktop, on a phone under the latest ones and the one tapped. */
+  shows(message: Message): boolean {
+    return !this.#phone() || this.#latest(message) || this.revealed === this.key(message);
   }
 
   /** A tap in the timeline: on a message it shows or hides that message's row. A selection is being read, not tapped. */

@@ -1,5 +1,4 @@
 <script lang="ts">
-  import InfoTip from './InfoTip.svelte';
   import AgentRepliesSettings from './AgentRepliesSettings.svelte';
   import CardScope from './CardScope.svelte';
   import ShellSettings from './ShellSettings.svelte';
@@ -36,13 +35,14 @@
 
   <!-- This device's switches, then the machine's: two cards, each saying where it applies. -->
   <section class="card" id="settings-conversations">
-    <h2 class="ui-label-box"><span class="ui-label">{strings.settings.conversations}</span><InfoTip gather topic={strings.settings.conversations} text="" testid="section-info" /><CardScope /></h2>
+    <h2><span class="ui-label">{strings.settings.conversations}</span><CardScope /></h2>
     <ConversationSwitches />
     <label for="{uid}-notifications" class="switch-row">
-      <span class="text ui-label-box">
-        <span class="ui-label" id="{uid}-notifications-name">{strings.settings.notifications}</span><InfoTip topic={strings.settings.notifications} text={strings.settings.notificationsHint} />
+      <span class="text">
+        <span class="ui-label" id="{uid}-notifications-name">{strings.settings.notifications}</span>
+        <span class="hint" id="{uid}-notifications-effect">{strings.settings.effects.notifications}</span>
       </span>
-      <input id="{uid}-notifications" aria-labelledby="{uid}-notifications-name" type="checkbox" role="switch" data-testid="setting-notifications"
+      <input id="{uid}-notifications" aria-labelledby="{uid}-notifications-name" aria-describedby="{uid}-notifications-effect" type="checkbox" role="switch" data-testid="setting-notifications"
         checked={here.notifications} onchange={(event) => void here.setNotifications(event.currentTarget.checked)} />
     </label>
     <NotificationKinds store={here} />
@@ -62,8 +62,8 @@
     {#if inShell}<ShellSettings />{/if}
     <!-- How this device draws a terminal: a renderer choice, once under Appearance. -->
     <label for="{uid}-terminal-gpu" class="switch-row">
-      <span class="text ui-label-box"><span class="ui-label" id="{uid}-terminal-gpu-name">{strings.settings.terminalGpu}</span><InfoTip topic={strings.settings.terminalGpu} text={strings.settings.terminalGpuHint} /></span>
-      <input id="{uid}-terminal-gpu" aria-labelledby="{uid}-terminal-gpu-name" type="checkbox" role="switch" checked={terminalGpu} data-testid="terminal-gpu"
+      <span class="text"><span class="ui-label" id="{uid}-terminal-gpu-name">{strings.settings.terminalGpu}</span><span class="hint" id="{uid}-terminal-gpu-effect">{strings.settings.terminalGpuHint}</span></span>
+      <input id="{uid}-terminal-gpu" aria-labelledby="{uid}-terminal-gpu-name" aria-describedby="{uid}-terminal-gpu-effect" type="checkbox" role="switch" checked={terminalGpu} data-testid="terminal-gpu"
         onchange={(event) => { terminalGpu = event.currentTarget.checked; setTerminalGpu(terminalGpu); }} />
     </label>
     <div class="switch-row">

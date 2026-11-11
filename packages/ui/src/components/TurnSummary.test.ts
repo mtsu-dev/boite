@@ -300,3 +300,22 @@ test('at rest, a line that opens on its step count keeps the count whole: the hi
     expect(getComputedStyle(dot).visibility).toBe('hidden');
   } finally { style.remove(); }
 });
+
+test('on a phone, a settled answer whose buttons wait for a tap draws no empty row under it, and one with steps keeps them', async () => {
+  const { createRawSnippet } = await import('svelte');
+  const actions = createRawSnippet(() => ({ render: () => '<span data-testid="message-actions"><button data-testid="message-copy"></button></span>' }));
+  running = mount(TurnSummary, { target: document.body, props: { turn: turn(), tucked: true, actions } });
+  flushSync();
+  expect(document.querySelector('[data-testid=turn-summary]')).toBeNull();
+  expect(document.querySelector('[data-testid=message-copy]')).toBeNull();
+  unmount(running, { outro: false });
+  // Tapped or latest, the row holds how long it worked beside the buttons.
+  running = mount(TurnSummary, { target: document.body, props: { turn: turn(), tucked: false, actions } });
+  flushSync();
+  expect(text('turn-elapsed')).toBe('Worked for 4m 41s');
+  expect(document.querySelector('[data-testid=turn-summary] [data-testid=message-copy]')).not.toBeNull();
+  unmount(running, { outro: false });
+  running = mount(TurnSummary, { target: document.body, props: { turn: turn(), tucked: true, steps: { count: 2, words: 'Ran 2 commands', open: false, toggle: () => {} } } });
+  flushSync();
+  expect(text('turn-steps')).toBe('Ran 2 commands');
+});

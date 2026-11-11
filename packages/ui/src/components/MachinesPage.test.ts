@@ -198,7 +198,8 @@ test('a machine that does not answer is grey and offers only its name, its icon 
   target.store.error = 'connection did not answer within 10 seconds';
   flushSync();
   expect(card().dataset.away).toBe('offline');
-  expect(query('[data-machine-id="target"] [data-testid="machine-card-status"]').textContent).toBe(strings.connection.offline);
+  // The words a project card's head says, beside the same Reconnect.
+  expect(query('[data-machine-id="target"] [data-testid="machine-card-status"]').textContent).toBe(fill(strings.machines.offlineLine, { machine: query<HTMLInputElement>('[data-machine-id="target"] [data-testid="machine-rename"]').value }));
   // Away, the menu keeps only the removal: the switches need the machine.
   expect([has('machine-open'), has('machine-rename'), has('machine-customize'), has('machine-remove'), has('machine-group-threads-switch')]).toEqual([false, true, true, true, false]);
   expect(card().querySelector('.error')).toBeNull();

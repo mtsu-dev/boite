@@ -38,27 +38,32 @@ test('a phone row that needs you says it once, by its named dot, and an Activity
 
   // Activity: where it comes from, what it asks by what it does (the composer's title), then the command as it will
   // run, both lines of it.
-  mounted = mount(MobileThreadRow, { target: document.body, props: { ...props, compact: true, reason: 'Wants to run:', at: Date.now(), verb: 'allow', where: { project: 'orbit', text: 'orbit' } } });
+  mounted = mount(MobileThreadRow, { target: document.body, props: { ...props, compact: true, reason: 'Wants to run:', at: Date.now(), verb: 'allow', kind: 'permission', where: { project: 'orbit', text: 'orbit' } } });
   flushSync();
+  // Its kind first, over the title, as on the desktop.
+  const kind = document.querySelector<HTMLElement>('[data-testid=activity-kind]')!;
+  expect([kind.dataset['kind'], kind.textContent]).toEqual(['permission', 'Permission']);
   const place = document.querySelector('[data-testid=mobile-row-where]')!;
   const ask = document.querySelector('[data-testid=mobile-row-reason]')!;
   expect(place.textContent).toBe('orbit');
   expect(ask.textContent?.trim()).toBe('Build the project');
   expect(place.compareDocumentPosition(ask) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  expect(document.querySelector('[data-testid=mobile-row] code')!.textContent).toBe(command);
+  expect(document.querySelector('[data-testid=thread-operation]')!.textContent).toBe(command);
   expect(document.querySelector<HTMLElement>('[data-testid=thread-verb]')!.dataset['verb']).toBe('allow');
   // The desktop's pair: Deny outlined, then Allow solid, right-aligned under the content.
   const deny = document.querySelector<HTMLElement>('[data-testid=thread-verb-secondary]')!;
   expect([deny.dataset['verb'], deny.classList.contains('secondary'), deny.parentElement!.classList.contains('decision-actions')]).toEqual(['deny', true, true]);
 });
 
-test('an Activity row keeps the title on the row\'s width: the ask is one line under it, the verb follows the content', () => {
+test('an Activity row keeps the title on the row\'s width: the ask is whole under it, a sub-agent one line, the verb follows the content', () => {
   const css = readFileSync(resolve('src/components/MobileThreadRow.svelte'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
   const headline = readFileSync(resolve('src/components/ThreadHeadline.svelte'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
   // No room reserved beside the title for the verb: at 360 that squeezed a title into three lines next to an empty column.
   expect(css).not.toMatch(/\.reason \.thread :global\(\.headline\) \{[^}]*margin-right/);
   expect(css).not.toMatch(/\.verb \{[^}]*position: absolute/);
-  // What is asked: one line, cut with an ellipsis, under the title (the headline's lead is a column).
+  // What is asked: whole up to four lines, then Show all (ClampText.svelte), never a cut line; a sub-agent's line
+  // under it stays one line, cut with an ellipsis (the headline's lead is a column).
+  expect(readFileSync(resolve('src/components/MobileThreadRow.svelte'), 'utf8')).toMatch(/<ClampText text=\{ask\} testid="mobile-row-reason" \/>/);
   expect(css).toMatch(/\.why \.text \{[^}]*white-space: nowrap[^}]*\}/);
   expect(css).toMatch(/\.why \.text \{[^}]*text-overflow: ellipsis/);
   expect(headline).toMatch(/\.lead \{[^}]*flex-direction: column/);

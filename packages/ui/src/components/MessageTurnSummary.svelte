@@ -5,7 +5,7 @@
   import TurnSummary, { type SummaryMemory, type SummarySteps } from './TurnSummary.svelte';
   import type { CompactionPart } from '../lib/tool-groups';
 
-  let { store, threadId, turn, turns = [], message, messages, pointed = false, steps, memory, compactions, actions }: {
+  let { store, threadId, turn, turns = [], message, messages, pointed = false, tucked = false, steps, memory, compactions, actions }: {
     store: Store;
     threadId: string;
     turn: Turn;
@@ -15,6 +15,8 @@
     messages: Message[];
     /** The pointer is on one of the turn's answers, maybe not the one this summary closes. */
     pointed?: boolean;
+    /** A phone's message whose buttons wait for a tap (`TurnSummary`). */
+    tucked?: boolean;
     /** A persistent agent's folded steps, counted on the line and opened from it. */
     steps?: SummarySteps;
     /** The memory pass that followed this turn, as a mark on the line. */
@@ -46,6 +48,7 @@
   background={store.openThread?.turns.at(-1)?.id === turn.id ? store.openThread?.background ?? [] : []}
   stop={() => void store.stop()}
   {pointed}
+  {tucked}
   {steps}
   {memory}
   {compactions}

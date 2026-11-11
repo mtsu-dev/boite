@@ -5,7 +5,7 @@ export const strings = {
     /** An agent's question it did not stop for (`boite ask`), docked above the composer like a goal. */
     question: 'Needs you',
     /** The pager of several questions waiting at the top of the composer. */
-    questionOf: '{index} of {total}',
+    questionOf: 'Question {index} of {total}',
     questionPrev: 'Previous question',
     questionNext: 'Next question',
     questionFold: 'Fold the question',
@@ -86,6 +86,11 @@ export const strings = {
     error: 'Failed',
     pending: 'Pending',
     in_progress: 'In progress',
-    completed: 'Completed'
+    completed: 'Completed',
+    /** The first line of each Needs you card in Activity: what kind of decision it is, so its verbs are expected. */
+    kind: { permission: 'Permission', question: 'Question', request: 'Contact request', mail: 'Held message', failed: 'Failed', stopped: 'Stopped' },
+    /** Under a text cut at four lines in Activity: it unfolds in place, then folds back. */
+    textAll: 'Show all',
+    textLess: 'Show less'
   }
 } as const;

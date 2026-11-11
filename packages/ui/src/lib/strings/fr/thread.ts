@@ -70,8 +70,7 @@ export const fr: Translation = {
     inWorktree: 'dans un worktree',
     inProject: 'dans',
     onMachine: 'sur',
-    startHint: "Décrivez une tâche ci-dessous : l'agent travaille dans ce dossier.",
-    startWhere: "Décrivez une tâche ci-dessous : l'agent travaille dans {path}.",
+    startIn: 'dans',
     draftMode: {
       default: 'avec demandes d\'autorisation',
       acceptEdits: 'avec les modifications autorisées',

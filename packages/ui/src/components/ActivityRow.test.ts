@@ -45,10 +45,13 @@ test('a permission reads whole under its row, its sub-agent\'s question is a row
   mounted = mount(ActivityRow, { target: document.body, props: { ...own, now: Date.now() } });
   await settle();
   expect(document.querySelectorAll('[data-testid=thread-row]')).toHaveLength(1);
-  // The decision is titled by what it does, the composer's own title (lib/decision-title.ts), whole in its tooltip.
+  // The card opens on its kind, so its verbs are expected: a permission.
+  const kind = document.querySelector<HTMLElement>('[data-testid=activity-kind]')!;
+  expect([kind.dataset.kind, kind.textContent]).toEqual(['permission', 'Permission']);
+  expect(kind.compareDocumentPosition(document.querySelector('[data-testid=thread-row] .title')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  // The decision is titled by what it does, the composer's own title (lib/decision-title.ts), whole.
   const reason = document.querySelector('[data-testid=thread-reason]')!;
   expect(reason.textContent).toBe('Push feature/a-branch-name-long-enough-to-wrap-in-the-row');
-  expect(reason.getAttribute('title')).toBe(reason.textContent);
   // Where it comes from first: the place line under the title names its project, then the ask, then the command.
   const where = document.querySelector('[data-testid=thread-where]')!;
   expect(where.textContent).toContain(projectName(store.projects.find(project => project.id === parent.projectId)!));
@@ -77,6 +80,7 @@ test('a permission reads whole under its row, its sub-agent\'s question is a row
   store.pendingQuestions = [{ id: 'q', threadId: child.id, text: 'Which retry policy?', options: [], createdAt: Date.now() } as never];
   mounted = mount(ActivityRow, { target: document.body, props: { ...asks, now: Date.now() } });
   await settle();
+  expect(document.querySelector('[data-testid=activity-kind]')?.textContent).toBe('Question');
   const verb = document.querySelector<HTMLButtonElement>('[data-testid=thread-verb]')!;
   expect([verb.textContent?.trim(), verb.dataset.verb]).toEqual(['Answer', 'answer']);
   // Skip settles the question in place, without leaving Activity.
@@ -101,7 +105,6 @@ test('a command too long to read in the row asks for Review before any Allow', a
   const { parent, groups } = await rows(Array.from({ length: 12 }, (_, line) => `echo step ${line}`).join('\n'));
   mounted = mount(ActivityRow, { target: document.body, props: { ...groups.find(group => group.row.thread.id === parent.id)!, now: Date.now() } });
   await settle();
-  expect(document.querySelector('[data-testid=thread-operation]')?.classList.contains('long')).toBe(true);
   const verb = document.querySelector<HTMLButtonElement>('[data-testid=thread-verb]')!;
   expect([verb.textContent?.trim(), verb.dataset.verb]).toEqual(['Review', 'review']);
   // Reading first is not a decision: an outline button, never plain text, and no Deny beside it.
@@ -113,9 +116,54 @@ test('a command too long to read in the row asks for Review before any Allow', a
 test('an Updates row has no pair, and its time stands where the Needs you rows\' time stands', async () => {
   const { parent, groups } = await rows('bun test');
   const own = groups.find(group => group.row.thread.id === parent.id)!;
-  mounted = mount(ActivityRow, { target: document.body, props: { ...own, row: { ...own.row, section: 'updates', verb: null }, now: Date.now() } });
+  mounted = mount(ActivityRow, { target: document.body, props: { ...own, row: { ...own.row, section: 'updates', verb: null, kind: null }, now: Date.now() } });
   await settle();
+  // Nothing to decide, no kind line: the title keeps the row's top.
+  expect(document.querySelector('[data-testid=activity-kind]')).toBeNull();
   // The time ends the place line on every row, beside where it comes from; the pair lives under the content.
   expect(document.querySelector('[data-testid=thread-where] > time.since')).not.toBeNull();
   expect(document.querySelector('[data-testid=thread-verb]')).toBeNull();
+});
+
+/** jsdom lays nothing out: the clamp's box reports `lines` of text behind a four-line window. */
+function lay(lines: number) {
+  const line = 20;
+  const scroll = vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function (this: HTMLElement) { return this.classList.contains('body') ? lines * line : 0; });
+  const client = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function (this: HTMLElement) { return this.classList.contains('body') ? Math.min(lines, 4) * line : 0; });
+  return () => { scroll.mockRestore(); client.mockRestore(); };
+}
+
+test('a question is read whole above Answer: four lines in full, past them a Show all that unfolds in place', async () => {
+  const { child, groups } = await rows('bun test');
+  const asks = groups.find(group => group.row.thread.id === child.id)!;
+  const short = 'Which retry policy?\nExponential backs off to 30 s.\nLinear retries every 5 s.';
+  store.pendingQuestions = [{ id: 'q', threadId: child.id, text: short, options: [], createdAt: Date.now() } as never];
+  let restore = lay(3);
+  try {
+    mounted = mount(ActivityRow, { target: document.body, props: { ...asks, now: Date.now() } });
+    await settle();
+    // Every line of the question, not its first alone, and no fold under four lines.
+    expect(document.querySelector('[data-testid=thread-reason]')?.textContent).toBe(short);
+    expect(document.querySelector('[data-testid=clamp-text-toggle]')).toBeNull();
+    const reason = document.querySelector('[data-testid=thread-reason]')!;
+    expect(reason.compareDocumentPosition(document.querySelector('[data-testid=thread-verb]')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  } finally { restore(); }
+  await unmount(mounted); mounted = undefined; document.body.innerHTML = '';
+  const long = Array.from({ length: 7 }, (_, line) => `Option ${line + 1}: a policy worth reading before choosing.`).join('\n');
+  store.pendingQuestions = [{ id: 'q', threadId: child.id, text: long, options: [], createdAt: Date.now() } as never];
+  restore = lay(7);
+  try {
+    mounted = mount(ActivityRow, { target: document.body, props: { ...asks, now: Date.now() } });
+    await settle();
+    const reason = document.querySelector<HTMLElement>('[data-testid=thread-reason]')!;
+    // Past four lines: the whole text is there, folded to its first four, and Show all opens it in place.
+    expect(reason.textContent).toBe(long);
+    expect(reason.classList.contains('open')).toBe(false);
+    const toggle = document.querySelector<HTMLButtonElement>('[data-testid=clamp-text-toggle]')!;
+    expect([toggle.textContent?.trim(), toggle.getAttribute('aria-expanded'), toggle.classList.contains('text')]).toEqual(['Show all', 'false', true]);
+    toggle.click(); await settle();
+    expect([reason.classList.contains('open'), toggle.textContent?.trim(), toggle.getAttribute('aria-expanded')]).toEqual([true, 'Show less', 'true']);
+    // Unfolding is not a decision: the thread stays where it was.
+    expect(store.openThread?.id).not.toBe(child.id);
+  } finally { restore(); }
 });

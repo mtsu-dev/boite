@@ -21,7 +21,7 @@
    * its questions (the ones it stopped for first, then the ones it asked
    * without stopping), its secrets, and its subagents' questions, each titled
    * with the subagent's name. Several stand in one stack behind a pager
-   * ("1 of 3"); each keeps what was picked while another is on screen. The
+   * ("Question 1 of 3"); each keeps what was picked while another is on screen. The
    * body scrolls inside a cap (desktop about 45% of the chat's height, phone
    * about half), so Skip and Answer always show whole. Once answered, the
    * question leaves the composer; its receipt stays in the timeline
@@ -58,7 +58,7 @@
   $effect(() => {
     if (!asked.some((question) => question.id === shownId)) { shownId = asked[0]?.id ?? null; questionOpen = true; }
   });
-  /** A plain question draws its own head (`QuestionCard`): the fold sits in it, the pager under its choices. */
+  /** A plain question draws its own head (`QuestionCard`): the fold sits in it, the pager on the line of its Skip and Answer. */
   const plain = (question: Asked) => !question.secret && !question.setting && !question.agentSetting && !question.team;
   // A card's "Answer in writing" brings that question up.
   $effect(() => {
@@ -115,10 +115,11 @@
 
 {#snippet pager()}
   {#if asked.length > 1}
+    <!-- "Question 1 of 2" between the family's icon buttons, in the secondary ink: a line the eye reads, not a caption. -->
     <span class="pager">
-      <button type="button" class="ghost small icon" aria-label={strings.activity.questionPrev} title={strings.activity.questionPrev} data-testid="activity-question-prev" onclick={() => page(-1)}><ChevronLeft size={16} /></button>
-      <span class="meta ui-label" data-testid="activity-question-index">{fill(strings.activity.questionOf, { index: String(at + 1), total: String(asked.length) })}</span>
-      <button type="button" class="ghost small icon" aria-label={strings.activity.questionNext} title={strings.activity.questionNext} data-testid="activity-question-next" onclick={() => page(1)}><ChevronRight size={16} /></button>
+      <button type="button" class="icon-button" aria-label={strings.activity.questionPrev} title={strings.activity.questionPrev} data-testid="activity-question-prev" onclick={() => page(-1)}><ChevronLeft size={16} /></button>
+      <span class="index ui-label" data-testid="activity-question-index">{fill(strings.activity.questionOf, { index: String(at + 1), total: String(asked.length) })}</span>
+      <button type="button" class="icon-button" aria-label={strings.activity.questionNext} title={strings.activity.questionNext} data-testid="activity-question-next" onclick={() => page(1)}><ChevronRight size={16} /></button>
     </span>
   {/if}
 {/snippet}
@@ -211,10 +212,7 @@
               title={foldTitle(question.id)} data-testid="activity-question-toggle"
               onclick={() => toggleQuestion(question.id)}><ChevronDown size={16} class={questionOpen ? 'turned' : ''} /></button>
             {/if}
-          {/snippet}{#snippet foot()}
-            <!-- The pager is a secondary line under the choices: the question keeps the head's width. -->
-            {#if question.id === shown?.id && asked.length > 1}<div class="pager-line">{@render pager()}</div>{/if}
-          {/snippet}</QuestionCard>{/snippet}</Deferred>
+          {/snippet}{#snippet foot()}{#if question.id === shown?.id && asked.length > 1}{@const upNext = asked[at + 1]}<div class="pager-line">{@render pager()}{#if upNext}<span class="up-next ui-label" title={upNext.text} data-testid="activity-question-up-next">{fill(strings.chat.questionUpNext, { title: upNext.text })}</span>{/if}</div>{/if}{/snippet}</QuestionCard>{/snippet}</Deferred>
           {/if}
         </div>
       {/each}
@@ -260,16 +258,20 @@
   .question-toggle > :global(.turned), .thread-decision :global(.fold-toggle > .turned) { transform: rotate(180deg); }
   .thread-decision :global(.fold-toggle > svg) { transition: transform var(--motion-duration) var(--motion-curve); }
   .question-line { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: left; }
-  .pager { display: inline-flex; align-items: center; gap: 2px; flex: none; }
-  .pager .meta { font-variant-numeric: tabular-nums; }
-  /* Under the choices, its first arrow under their keycaps. */
-  .pager-line { display: flex; margin: -2px 0 0 2px; }
-  .meta { color: var(--color-muted-foreground); font-size: var(--text-xs); }
+  .pager { display: inline-flex; align-items: center; gap: 4px; flex: none; }
+  .index { color: var(--color-muted-foreground); font-size: var(--text-sm); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  /* The pager leads the line of Skip and Answer (DecisionActions' lead): the line breaks before the pager does,
+     and the next question's title takes what room is left, adding none of its own (`contain`). */
+  .questions.plain { --decision-lead: max-content; }
+  .pager-line { display: flex; align-items: center; gap: 8px; min-width: 0; margin-left: -6px; }
+  .up-next { flex: 1 1 auto; min-width: 0; contain: inline-size; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--color-subtle); font-size: var(--text-sm); }
   @media (max-width: 720px) {
     .thread-decision { --dock-row: 30px; --dock-inset: 12px; --question-cap: max(200px, calc(50dvh - 40px)); }
     .activity-row { gap: 6px; }
-    /* The pager's arrows stay a finger tall but narrow, so the question beside them keeps its words. */
-    .pager .icon { min-width: 32px; width: 32px; }
+    /* A finger's arrows; the next title waits for a wider screen. */
+    .pager { --icon-button: 40px; gap: 2px; }
+    .pager-line { margin-left: -12px; }
+    .up-next { display: none; }
   }
   @media (prefers-reduced-motion: reduce) { .thread-decision { animation: none; } }
   :global(html[data-motion='reduced']) .thread-decision { animation: none; }

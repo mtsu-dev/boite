@@ -210,11 +210,20 @@ test('a project card names its machine only when it is not this app\'s own', asy
   // Everything runs here by default: the own machine goes unsaid, the other is named on its cards.
   expect(card(own.id)!.querySelector('[data-testid=project-host]')).toBeNull();
   expect(card(remote.id)!.querySelector('[data-testid=project-host]')?.textContent).toBe(`on ${remote.label}`);
-  // Out of reach, the card ends on Reconnect rather than on its Offline label, and the button goes once it answers.
-  const reconnect = () => card(remote.id)?.querySelector<HTMLButtonElement>('[data-testid=project-reconnect]') ?? null;
-  expect(reconnect()).toBeNull();
+  // Out of reach, the head says it once in a line of its own with Reconnect on it, above the rows, and the button
+  // goes once the machine answers.
+  const line = () => card(remote.id)?.querySelector<HTMLElement>('[data-testid=project-offline]') ?? null;
+  const reconnect = () => line()?.querySelector<HTMLButtonElement>('[data-testid=project-reconnect]') ?? null;
+  expect(line()).toBeNull();
   remote.store.connection = 'closed';
   await waitFor(() => reconnect()?.textContent === 'Reconnect');
+  expect(line()!.textContent).toContain(`${remote.label} is offline`);
+  expect(card(remote.id)!.querySelectorAll('[data-testid=project-reconnect]')).toHaveLength(1);
+  // No second Offline chip beside the name, and the line sits under the head, before any row.
+  expect(card(remote.id)!.querySelector('[data-testid=project-host]')?.textContent).toBe(`on ${remote.label}`);
+  expect(card(remote.id)!.querySelector('[data-testid=machine-away]')).toBeNull();
+  const firstRow = card(remote.id)!.querySelector('[data-testid=thread-row]');
+  if (firstRow) expect(line()!.compareDocumentPosition(firstRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   reconnect()!.click();
   await waitFor(() => remote.store.connection === 'ready' && reconnect() === null);
 });

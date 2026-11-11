@@ -18,6 +18,7 @@
     picker?: boolean;
   } = $props();
   let items = $derived(machines.map((entry) => ({ id: entry.id, label: listedName(entry), active: entry === machine })));
+  let words = $derived(strings.settings.scopeMachine.split('{machine}'));
   let home = $derived(workspace.settingsSync.sourceName(machine));
   let connected = $derived(workspace.settingsSync.source(machine) !== undefined);
   /** The default machine itself, while others follow it. */
@@ -27,9 +28,14 @@
 
 <div class="machine-bar" data-testid="settings-machine-bar">
   {#if picker && machines.length > 1}
-    <Menu {items} label={strings.machines.pick} placement="bottom" testid="settings-machine" onpick={onpick}>
-      <MachineIcon icon={machine.icon} os={machine.store.core?.os} size={15} /><span class="name ui-label">{listedName(machine)}</span><ChevronDown size={13} />
-    </Menu>
+    <!-- The scope line's words around the picker: "Agent settings apply on [studio v]". -->
+    <p class="scope-line">
+      {#if words[0]?.trim()}<span class="ui-label">{words[0].trim()}</span>{/if}
+      <Menu {items} label={strings.machines.pick} placement="bottom" testid="settings-machine" onpick={onpick}>
+        <MachineIcon icon={machine.icon} os={machine.store.core?.os} size={15} /><span class="name ui-label">{listedName(machine)}</span><ChevronDown size={13} />
+      </Menu>
+      {#if words[1]?.trim()}<span class="ui-label">{words[1].trim()}</span>{/if}
+    </p>
   {/if}
   {#if home !== undefined}
     <p class="info" role="note" data-testid="settings-follows">
@@ -53,6 +59,7 @@
     max-width: var(--settings-width);
   }
   .machine-bar:empty { display: none; }
+  .scope-line { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; color: var(--color-muted-foreground); font-size: var(--text-sm); }
   .name {
     overflow: hidden;
     text-overflow: ellipsis;
