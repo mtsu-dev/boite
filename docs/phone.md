@@ -74,7 +74,7 @@ the VPN or the Wi-Fi.
 - In the [agent's browser](browser.md), press Show, tap to click, drag to
   scroll and type in the field below the preview.
 
-Provider accounts, keyboard shortcuts, plugins, resource limits, the brain,
+Provider accounts, keyboard shortcuts, resource limits, the brain,
 the task manager, worktrees, diagnostics, voice engines, server settings, the
 terminal, forks and moving a conversation stay on the desktop.
 

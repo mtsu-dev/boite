@@ -1,6 +1,7 @@
 import type {
   CoreInfo,
   PROTOCOL_VERSION as CORE_PROTOCOL_VERSION,
+  PluginSettingValues,
   Principal,
   RPC_PATH as CORE_RPC_PATH,
   RpcEventName,
@@ -35,6 +36,8 @@ export interface ConnectOptions {
   timeoutMs?: number;
   /** How long a call waits for its answer. Default 2 minutes. */
   requestTimeoutMs?: number;
+  /** The plugin's id, whose settings `settings()` reads. Default: `BOITE_PLUGIN_ID`. */
+  pluginId?: string;
   /** Where the defaults are read. Default: `process.env`. */
   env?: Record<string, string | undefined>;
 }
@@ -50,6 +53,16 @@ export interface PluginClient {
    * A handler that throws is reported on stderr; the other handlers and the socket go on.
    */
   on<E extends RpcEventName>(event: E, handler: (payload: RpcEvents[E]) => void): () => void;
+  /**
+   * The value of every setting the manifest declares, the declared default
+   * where the owner set none. Needs no permission.
+   */
+  settings(): Promise<PluginSettingValues>;
+  /**
+   * Calls `handler` with every value each time the owner changes the plugin's
+   * settings. Returns the function that stops listening.
+   */
+  onSettingsChanged(handler: (values: PluginSettingValues) => void): () => void;
   /** Resolves once the socket is closed, by either side. */
   readonly closed: Promise<{ code: number; reason: string }>;
   close(): void;
@@ -88,6 +101,7 @@ export async function connect(options: ConnectOptions = {}): Promise<PluginClien
   const token = options.token ?? env.BOITE_TOKEN;
   if (!base) throw new Error('BOITE_CORE_URL is not set: Boite sets it in a plugin\'s processes; pass `url` to connect from elsewhere');
   if (!token) throw new Error('BOITE_TOKEN is not set: Boite sets it in a plugin\'s processes; pass `token` to connect from elsewhere');
+  const pluginId = options.pluginId ?? env.BOITE_PLUGIN_ID;
   const timeoutMs = options.timeoutMs ?? 5000;
   const requestTimeoutMs = options.requestTimeoutMs ?? 120_000;
 
@@ -153,17 +167,29 @@ export async function connect(options: ConnectOptions = {}): Promise<PluginClien
     throw new Error(`the core speaks protocol ${String(hello.core.protocolVersion)}, this SDK ${PROTOCOL_VERSION}`);
   }
 
+  const on = <E extends RpcEventName>(event: E, handler: (payload: RpcEvents[E]) => void): (() => void) => {
+    let set = listeners.get(event);
+    if (set === undefined) { set = new Set(); listeners.set(event, set); }
+    const wrapped = (payload: unknown): void => handler(payload as RpcEvents[E]);
+    set.add(wrapped);
+    return () => { set.delete(wrapped); };
+  };
+  const self = (): string => {
+    if (!pluginId) throw new Error('BOITE_PLUGIN_ID is not set: Boite sets it in a plugin\'s processes; pass `pluginId` to connect from elsewhere');
+    return pluginId;
+  };
+
   return {
     core: hello.core,
     principal: hello.principal,
     closed,
     call: <M extends RpcMethodName>(method: M, params: RpcParams<M>) => send(method, params, requestTimeoutMs) as Promise<RpcResult<M>>,
-    on<E extends RpcEventName>(event: E, handler: (payload: RpcEvents[E]) => void): () => void {
-      let set = listeners.get(event);
-      if (set === undefined) { set = new Set(); listeners.set(event, set); }
-      const wrapped = (payload: unknown): void => handler(payload as RpcEvents[E]);
-      set.add(wrapped);
-      return () => { set.delete(wrapped); };
+    on,
+    settings: async () => send('plugins.settings.get', { id: self() }, requestTimeoutMs) as Promise<PluginSettingValues>,
+    onSettingsChanged(handler) {
+      const id = self();
+      // The core sends a plugin its own changes only; the owner's token hears every plugin's.
+      return on('plugin.settings.changed', (payload) => { if (payload.id === id) handler(payload.values); });
     },
     close: () => socket.close(),
   };

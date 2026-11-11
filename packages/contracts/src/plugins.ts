@@ -163,7 +163,7 @@ export const PLUGIN_CLOSED: readonly { name: string; reason: string }[] = [
   { name: 'subscriptionProxy.setEnabled', reason: 'it routes the owner\'s provider traffic' },
   { name: 'secrets.', reason: 'secrets reach only the agent that asked for one' },
   { name: 'secret.', reason: 'secrets reach only the agent that asked for one' },
-  { name: 'plugins.', reason: 'installing, removing and granting plugins is the owner\'s' },
+  { name: 'plugins.', reason: 'installing, removing, granting, turning off and setting up plugins is the owner\'s' },
   { name: 'core.', reason: 'updating, restarting and stopping Boite and the app is the owner\'s' },
   { name: 'policy.', reason: 'policies hold the owner\'s machines to an administrator\'s rules, which a plugin neither reads nor changes' },
   { name: 'sessions.', reason: 'pairing a device is the owner\'s' },
@@ -194,6 +194,82 @@ export function pluginPermissionFor(method: string): PluginPermission | null {
 export interface PluginActor {
   pluginId: string;
   pluginName: string;
+}
+
+// ---------------------------------------------------------------------------
+// Settings. A schema 2 manifest declares them; Boite draws them in the same
+// dialog for every plugin, keeps the owner's values on the core, and the
+// plugin reads them (`plugins.settings.get`) and hears each change
+// (`plugin.settings.changed`) with no permission, for itself only.
+// ---------------------------------------------------------------------------
+
+export const PLUGIN_SETTING_TYPES = ['switch', 'number', 'slider', 'text', 'select'] as const;
+export type PluginSettingType = (typeof PLUGIN_SETTING_TYPES)[number];
+/** A setting's key: a letter, then letters, digits and `_`, at most 40 characters. */
+export const PLUGIN_SETTING_KEY_PATTERN = /^[A-Za-z][A-Za-z0-9_]{0,39}$/;
+/** How many settings one plugin may declare, and how long a text value or a select's list may be. */
+export const PLUGIN_SETTING_LIMITS = { settings: 30, text: 1000, options: 30 } as const;
+
+export type PluginSettingValue = boolean | number | string;
+/** Every declared key with its value: the owner's, or the declared default. */
+export type PluginSettingValues = Record<string, PluginSettingValue>;
+
+interface PluginSettingBase {
+  key: string;
+  /** One short line, the setting's name. */
+  label: string;
+  /** One line under the label. */
+  description?: string;
+}
+/** A number field; `min`, `max` and `step` bound what the owner may enter. */
+export interface PluginNumberSetting extends PluginSettingBase { type: 'number'; default: number; min?: number; max?: number; step?: number }
+/** A slider: `min` and `max` are required. */
+export interface PluginSliderSetting extends PluginSettingBase { type: 'slider'; default: number; min: number; max: number; step?: number }
+export interface PluginSelectOption { value: string; label: string }
+export type PluginSetting =
+  | (PluginSettingBase & { type: 'switch'; default: boolean })
+  | PluginNumberSetting
+  | PluginSliderSetting
+  | (PluginSettingBase & { type: 'text'; default: string })
+  | (PluginSettingBase & { type: 'select'; default: string; options: PluginSelectOption[] });
+
+/**
+ * Why `value` cannot be the setting's value, or null when it can. The core
+ * checks every default and every value the owner sets with it; the UI uses it
+ * to refuse a field before sending it.
+ */
+export function pluginSettingProblem(setting: PluginSetting, value: unknown): string | null {
+  switch (setting.type) {
+    case 'switch': return typeof value === 'boolean' ? null : 'true or false';
+    case 'text':
+      return typeof value === 'string' && value.length <= PLUGIN_SETTING_LIMITS.text && !/[\u0000-\u001f\u007f]/.test(value)
+        ? null : `a string of at most ${PLUGIN_SETTING_LIMITS.text} characters on one line`;
+    case 'select': {
+      const values = setting.options.map((option) => option.value);
+      return typeof value === 'string' && values.includes(value) ? null : `one of ${values.join(', ')}`;
+    }
+    default: {
+      const { min, max, step } = setting;
+      const range = [min === undefined ? '' : `at least ${min}`, max === undefined ? '' : `at most ${max}`, step === undefined ? '' : `a multiple of ${step}${min === undefined ? '' : ` from ${min}`}`].filter(Boolean).join(', ');
+      if (typeof value !== 'number' || !Number.isFinite(value)) return `a number${range ? `, ${range}` : ''}`;
+      if ((min !== undefined && value < min) || (max !== undefined && value > max) || (step !== undefined && !onStep(value, min ?? 0, step))) return `a number, ${range}`;
+      return null;
+    }
+  }
+}
+
+/** Whether `value` lands on a step from `base`, within float error. */
+function onStep(value: number, base: number, step: number): boolean {
+  const steps = (value - base) / step;
+  return Math.abs(steps - Math.round(steps)) < 1e-9;
+}
+
+/** The value of each declared setting: the stored one while it is still valid, the default otherwise. */
+export function pluginSettingValues(settings: readonly PluginSetting[], stored: Readonly<Record<string, unknown>>): PluginSettingValues {
+  return Object.fromEntries(settings.map((setting) => {
+    const value = stored[setting.key];
+    return [setting.key, value !== undefined && pluginSettingProblem(setting, value) === null ? value as PluginSettingValue : setting.default];
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -380,6 +456,8 @@ export interface PluginManifest {
   artifacts?: Partial<Record<PluginPlatform | typeof PLUGIN_ANY_PLATFORM, PluginArtifact>>;
   /** Schema 2: what the plugin's own token reaches. Absent means nothing. */
   permissions?: PluginPermission[];
+  /** Schema 2: the settings Boite draws for the owner, in this order. */
+  settings?: PluginSetting[];
   provides: PluginProvides;
 }
 
@@ -466,6 +544,16 @@ export interface PluginState {
   adds?: PluginAdds | null;
   /** The folder a `dev` plugin runs from. Absent or null otherwise. */
   devPath?: string | null;
+  /**
+   * False once the owner turned the plugin off (`plugins.setEnabled`): its
+   * processes stopped, its token revoked, what it adds gone, its files kept.
+   * Absent from older cores, where every installed plugin is on.
+   */
+  enabled?: boolean;
+  /** The settings its manifest declares, empty when none. Absent from older cores. */
+  settings?: PluginSetting[];
+  /** The current value of each declared setting. Absent from older cores. */
+  settingValues?: PluginSettingValues;
 }
 
 /** The agent commands, skills and slash commands a plugin adds, and whether it adds guide lines. */
@@ -593,9 +681,28 @@ export interface PluginsRpcMethods {
    * the plugin's app or service.
    */
   'plugins.dev': { params: { path: string }; result: PluginState };
+  /**
+   * Owner-only. Turns an installed plugin off or on without uninstalling it.
+   * Off stops its desktop app, service and gateway, revokes its token and
+   * drops its commands, skills, guide lines and slash commands; on brings
+   * them back. Its files, data and settings stay either way.
+   */
+  'plugins.setEnabled': { params: { id: string; enabled: boolean }; result: PluginState };
+  /**
+   * The values of the plugin's declared settings, defaults filled in. Open to
+   * the plugin itself for its own id with no permission; any other id is the owner's.
+   */
+  'plugins.settings.get': { params: { id: string }; result: PluginSettingValues };
+  /**
+   * Owner-only. Sets some of the plugin's declared settings. Every key must be
+   * declared and every value valid, or nothing changes; the refusal names the key.
+   */
+  'plugins.settings.set': { params: { id: string; values: PluginSettingValues }; result: PluginState };
 }
 
 export interface PluginsRpcEvents {
   /** One plugin after any change. A `url` plugin that comes back `not-installed` is gone from the list. */
   'plugins.updated': PluginState;
+  /** A plugin's settings after the owner changed them: every value. Heard by the owner and by that plugin alone. */
+  'plugin.settings.changed': { id: string; values: PluginSettingValues };
 }
