@@ -1,7 +1,7 @@
-import type { DelegatedAgent, MessagePart, DelegationResultPage, DelegationWaitResult, RpcParams, ThreadId, Turn, Usage } from '@boite/contracts';
+import type { AgentLetter, DelegatedAgent, MessagePart, DelegationResultPage, DelegationWaitResult, RpcParams, ThreadId, Turn, Usage } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import type { Connection } from '../router.ts';
-import { invalidParams, refused } from '../errors.ts';
+import { invalidParams, messageOf, refused } from '../errors.ts';
 import { spoken } from '../coordination-lookup.ts';
 import { usageGroups } from '../journal/usage-sums.ts';
 import { usageTotal } from '../usage.ts';
@@ -37,6 +37,33 @@ export function delegatedResultPage(core: Core, params: RpcParams<'delegation.re
 
 /** The most characters of a final answer automatic mail and views carry, the note on the rest included. */
 export const RESULT_TEXT = 4000;
+
+/** The turns a child that owns a pull request answers quietly: that pull request's news and its own background work. */
+const QUIET_OPERATIONS = new Set<string>(['pull-request', 'background']);
+
+/**
+ * Whether a child's result goes to its parent's conversation only (`AgentLetter.quiet`): it answers its pull
+ * request's news or its own background work and still watches a pull request. The parent's agent wakes for what
+ * the child writes to it, and for its result once it watches nothing (`docs/delegation.md`).
+ */
+export function quietResult(core: Core, childId: ThreadId, turn: Turn): boolean {
+  return turn.status === 'done' && QUIET_OPERATIONS.has(turn.execution?.operation ?? '') && core.pullRequestWatches.of(childId).length > 0;
+}
+
+/**
+ * A delegated agent at rest whose last pull request watch ended without a wake (it merged or closed the pull
+ * request itself): its last result went to the parent quietly, so it goes again, this time to the parent's agent.
+ */
+export function resendQuietResult(core: Core, childId: ThreadId): void {
+  const thread = core.journal.getThread(childId);
+  if (!thread?.parentThreadId || thread.archived || thread.status !== 'idle' || !core.delegation.delegated(childId) || core.pullRequestWatches.of(childId).length > 0) return;
+  const row = core.journal.db.query("SELECT data FROM delegation_messages WHERE sender_id = ? AND recipient_id = ? AND request_id LIKE 'result:%' ORDER BY created_at DESC, rowid DESC LIMIT 1").get(childId, thread.parentThreadId) as { data: string } | null;
+  const last = row ? JSON.parse(row.data) as AgentLetter : null;
+  if (!last?.quiet) return;
+  try {
+    core.delegation.send({ threadId: childId, toThreadId: thread.parentThreadId, requestId: `result:${last.id}:watch-ended`, text: `${thread.title}: its pull request watch ended\n${last.text}`.slice(0, RESULT_TEXT) }, 'result');
+  } catch (error) { core.log('warn', `delegation result ${childId}: ${messageOf(error)}`); }
+}
 
 /**
  * How a reader of a cut answer reaches the rest: `delegate`, the child's

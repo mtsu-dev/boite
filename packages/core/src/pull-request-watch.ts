@@ -5,6 +5,7 @@ import {
   CLOSER_QUERY, DETAIL_QUERY, FINGERPRINT_QUERY, REMARK_PAGES, evaluate, initialMemory, mergeChanges, parseCloser, stillTrue, parseDetail, parseFingerprint, parseRemarks,
   rateLimited, remarkPath, wakeMessage, type Fingerprint, type Remark, type RemarkKind, type WatchChange, type WatchDetail, type WatchMemory,
 } from './pull-request-watch-read.ts';
+import { resendQuietResult } from './delegation/results.ts';
 import { RequiredContexts, withRequired } from './pull-request-required.ts';
 import { withLoad } from './threads/records.ts';
 
@@ -307,6 +308,8 @@ export class PullRequestWatches {
     this.core.log('info', `pull request #${record.number} is ${state.toLowerCase()}${closer.by ? ` by ${closer.by}` : ''}: its watch ended`, { source: 'pull-request-watch', threadId });
     if (!closer.by || closer.own) {
       this.#remove(threadId, record.url);
+      // No wake follows: a delegated agent that merged its own pull request reports to its parent now.
+      if (!this.#records.has(threadId)) resendQuietResult(this.core, threadId);
     } else {
       record.ended = true;
       record.pending = mergeChanges(record.pending, [{ kind: 'closed', state, by: closer.by }]);
@@ -367,7 +370,7 @@ export class PullRequestWatches {
     const thread = this.core.journal.getThread(threadId);
     if (!thread || thread.archived) return;
     if (this.core.threads.isBusy(threadId)) return;
-    const { text, label } = wakeMessage(due.map(record => ({ number: record.number, url: record.url, changes: record.pending })));
+    const { text, label } = wakeMessage(due.map(record => ({ number: record.number, url: record.url, changes: record.pending })), this.core.delegation.delegated(threadId));
     try {
       this.core.threads.startTurn(threadId, { prompt: text, display: label }, { kind: 'pull-request' });
     } catch (error) {
