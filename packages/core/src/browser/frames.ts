@@ -39,7 +39,7 @@ export async function captureFrame(tabId: string, page: FramePage, maxWidth: num
 }
 
 /** What a screencast needs of the browser: the connection its tab's page is attached on. */
-interface StreamCdp {
+export interface StreamCdp {
   send<T = Record<string, unknown>>(method: string, params?: Record<string, unknown>, sessionId?: string, timeoutMs?: number): Promise<T>;
   on(method: string, listener: (params: Record<string, unknown>, sessionId: string | undefined) => void): () => void;
 }

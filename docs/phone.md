@@ -830,19 +830,19 @@ clipboard. A tap on a page's drop-down list opens its options over the preview
 ([the agent's browser](browser.md#watching-it)). A computer has none of these controls: it types, scrolls, selects,
 copies and pastes on the page itself ([the agent's browser](browser.md#watching-it)).
 
-The phone requests JPEG frames while the view is shown and the app visible,
-one at a time: the next as soon as the last has arrived, at most four a second
-while the page moves, slower on a still page or a slow link, sized to the
-phone's screen (at most twice its CSS width) and lighter when frames take long
-to arrive. Each frame is decoded before it replaces the one shown. The browser
-shrinks the frame itself. Each request names the frame shown; on a still page
-the core holds it for a second and answers `unchanged`, so the phone downloads
-nothing until the page draws, and the time the core held a request is not
-counted as a slow link. A failed frame is retried with a growing pause up to eight seconds. Pause, Hide,
-closing the view or hiding the app stops those requests; returning to the
-app, regaining the network or reconnecting resumes them at once. This is a
-periodically refreshed preview, not a video stream with audio.
-
+While the view is shown and the app visible, the core pushes the page's
+pictures to the phone on a websocket of their own
+([the agent's browser](browser.md#watching-it)): JPEGs sized to the phone's
+screen (at most twice its CSS width), some twenty a second while the page
+moves on a link that carries them, smaller and lighter while a finger scrolls,
+and nothing while the page rests. The phone acknowledges each picture, so a
+slow link is sent the next only once the last arrived, and decodes one at a
+time, the newest first. A stream that closes is opened again with a growing
+pause, up to ten seconds. Pause, Hide, closing the view or hiding the app
+closes it; returning to the app, regaining the network or reconnecting opens
+it again at once. A core from before 2026-11-11 pushes nothing: the phone asks
+it for one frame at a time, at most four a second, as it did then. This is a
+live picture of the page, not a video stream with audio.
 The toolbar's **Display** button offers phone, tablet and PC resolutions, custom dimensions from
 240 to 3840 pixels, rotation and a fit-to-screen action. Resolution changes
 the agent's tab too, as `boite browser resize` does; the reset returns it to
@@ -852,8 +852,9 @@ to scroll the web page. Changing resolution waits for a new frame before
 accepting more input.
 
 The core permits the paired device's `browser.remoteStatus`,
-`browser.remoteFrame` and `browser.remoteInput` only for a subscribed
-conversation. Inputs must refer to a recent frame issued to that connection;
+`browser.remoteFrame`, `browser.remoteStream` and `browser.remoteInput` only
+for a subscribed conversation. Inputs must refer to the page its stream shows
+or to a recent frame issued to that connection;
 a tap or key after the page navigates or its viewport changes is refused, and
 the address bar accepts only http and https addresses. The phone cannot use
 `browser.command` or execute JavaScript. It can interact with the visible web

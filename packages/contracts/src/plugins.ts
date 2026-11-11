@@ -130,7 +130,7 @@ export const PLUGIN_PERMISSIONS: Readonly<Record<PluginPermission, PluginPermiss
   'questions.write': { methods: ['permissions.answer', 'questions.answer', 'questions.openPage', 'questions.skip'], events: [], danger: true },
   // What an agent's browser, a phone emulator or a desktop window shows.
   'screens.read': {
-    methods: ['browser.remoteFrame', 'browser.remoteSelection', 'browser.remoteStatus', 'devices.list', 'devices.sessions', 'devices.frame', 'devices.screenshot', 'devices.stream', 'windows.list', 'windows.frame'],
+    methods: ['browser.remoteFrame', 'browser.remoteStream', 'browser.remoteSelection', 'browser.remoteStatus', 'devices.list', 'devices.sessions', 'devices.frame', 'devices.screenshot', 'devices.stream', 'windows.list', 'windows.frame'],
     events: ['browser.remoteChanged', 'devices.changed', 'windows.changed'],
   },
   // Taps, types and opens there, reads the emulator's clipboard, closes what is shown.

@@ -40,13 +40,14 @@ import type { Core } from './core.ts';
 import type { Connection } from './router.ts';
 import { refused } from './errors.ts';
 import { machineName } from './paths.ts';
-import { findChromium } from './browser/chromium.ts';
+import { findChromium, RENDER_SCALE } from './browser/chromium.ts';
 import { PageProbes, PROBE_TIMEOUT_MS, type PageProbe, type ViewCheckOptions } from './browser/probe.ts';
 import { TabRecorder } from './browser/recorder.ts';
 import { watchPage } from './browser/page-events.ts';
 import { BrowserHost } from './browser/host.ts';
 import { BrowserEngines } from './browser/engines.ts';
-import { RemoteDrive } from './browser/remote-drive.ts';
+import { RemoteDrive, type StreamHandle, type StreamPeer } from './browser/remote-drive.ts';
+import { shrunkScreenshot } from './browser/shrink.ts';
 import type { Engine, Tab } from './browser/types.ts';
 import { SETTLED_VIEWPORT_SCRIPT } from './browser/scripts.ts';
 import { screenTurns, takeTurn } from './browser/frames.ts';
@@ -680,14 +681,14 @@ export class AgentBrowser {
       case 'evaluate': return done(await this.#evaluate(tab, action.expression, 30_000));
       // The page takes a few frames to reach a new size: the next command meets it laid out.
       case 'resize':
-        await this.#screen(tab, () => this.#send(tab, 'Emulation.setDeviceMetricsOverride', { width: action.width, height: action.height, deviceScaleFactor: 1, mobile: false }), true);
+        await this.#screen(tab, () => this.#send(tab, 'Emulation.setDeviceMetricsOverride', { width: action.width, height: action.height, deviceScaleFactor: RENDER_SCALE, mobile: false }), true);
         tab.preset = null; this.#remote.stale(tab); await this.#settle(tab); return done();
       case 'reset-viewport':
         await this.#screen(tab, () => this.#send(tab, 'Emulation.clearDeviceMetricsOverride'), true);
         tab.preset = null; this.#remote.stale(tab); await this.#settle(tab); return done();
       case 'preset': {
         const size = browserPresetSize(action.preset, action.orientation);
-        await this.#screen(tab, () => this.#send(tab, 'Emulation.setDeviceMetricsOverride', { ...size, deviceScaleFactor: 1, mobile: false }), true);
+        await this.#screen(tab, () => this.#send(tab, 'Emulation.setDeviceMetricsOverride', { ...size, deviceScaleFactor: RENDER_SCALE, mobile: false }), true);
         tab.preset = action.preset; tab.orientation = size.width > size.height ? 'landscape' : 'portrait'; this.#remote.stale(tab);
         await this.#settle(tab);
         return done(size);
@@ -696,7 +697,12 @@ export class AgentBrowser {
         await this.#send(tab, 'Emulation.setEmulatedMedia', { features: action.colorScheme === 'system' ? [] : [{ name: 'prefers-color-scheme', value: action.colorScheme }] });
         tab.colorScheme = action.colorScheme; this.#remote.stale(tab); return done();
       case 'screenshot': {
-        const shot = await this.#screen(tab, () => this.#send(tab, 'Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })) as { data?: string };
+        // The core's own browser draws at `RENDER_SCALE`: its picture is given at the page's size (`shrink.ts`).
+        // A page that cannot shrink it gets Chromium's own scaled capture; the desktop app's webview is left as its display draws it.
+        const shrunk = tab.engine.hosted ? null : await this.#screen(tab, () => shrunkScreenshot((method, params) => this.#send(tab, method, params))).catch(() => null);
+        if (shrunk) return { tabId: tab.id, screenshot: { mime: 'image/png', base64: shrunk } };
+        const clip = tab.engine.hosted ? null : await this.#evaluate(tab, '({x:scrollX,y:scrollY,width:innerWidth,height:innerHeight,scale:1/(devicePixelRatio||1)})', 5000).catch(() => null) as Record<string, number> | null;
+        const shot = await this.#screen(tab, () => this.#send(tab, 'Page.captureScreenshot', { format: 'png', captureBeyondViewport: false, ...(clip ? { clip } : {}) }), clip !== null) as { data?: string };
         if (typeof shot.data !== 'string') throw refused('the browser did not return a PNG screenshot');
         return { tabId: tab.id, screenshot: { mime: 'image/png', base64: shot.data } };
       }
@@ -824,31 +830,20 @@ export class AgentBrowser {
 
   // ---------- viewers ----------
 
-  remoteStatus(params: RpcParams<'browser.remoteStatus'>, connection: Connection): AgentBrowserStatus {
-    return this.#remote.remoteStatus(params, connection);
-  }
+  remoteStatus(params: RpcParams<'browser.remoteStatus'>, connection: Connection): AgentBrowserStatus { return this.#remote.remoteStatus(params, connection); }
+  remoteFrame(params: RpcParams<'browser.remoteFrame'>, connection: Connection): Promise<RemoteBrowserFrame | RemoteBrowserUnchanged> { return this.#remote.remoteFrame(params, connection); }
+  remoteStream(params: RpcParams<'browser.remoteStream'>, connection: Connection): RpcResult<'browser.remoteStream'> { return this.#remote.remoteStream(params, connection); }
+  /** A viewer's stream socket, for the server: see `RemoteDrive`. */
+  streamOffered(ticket: string): boolean { return this.#remote.streamOffered(ticket); }
+  openStream(ticket: string, peer: StreamPeer): StreamHandle | null { return this.#remote.openStream(ticket, peer); }
+  remoteWatch(params: RpcParams<'browser.remoteWatch'>, connection: Connection): Promise<{ ok: true }> { return this.#remote.remoteWatch(params, connection); }
+  remoteInput(params: RpcParams<'browser.remoteInput'>, connection: Connection): Promise<RpcResult<'browser.remoteInput'>> { return this.#remote.remoteInput(params, connection); }
+  remoteSelection(params: RpcParams<'browser.remoteSelection'>, connection: Connection): Promise<RemoteBrowserSelection> { return this.#remote.remoteSelection(params, connection); }
 
   /** Captures, size changes (`strict`) and reads of the page's size (`strict`) take turns: see `takeTurn` in `browser/frames.ts`. */
   #screen<T>(tab: Tab, run: () => Promise<T>, strict = false): Promise<T> {
     return takeTurn(tab.screen, strict, run, SCREEN_TURN_MS);
   }
-
-  remoteFrame(params: RpcParams<'browser.remoteFrame'>, connection: Connection): Promise<RemoteBrowserFrame | RemoteBrowserUnchanged> {
-    return this.#remote.remoteFrame(params, connection);
-  }
-
-  remoteWatch(params: RpcParams<'browser.remoteWatch'>, connection: Connection): Promise<{ ok: true }> {
-    return this.#remote.remoteWatch(params, connection);
-  }
-
-  remoteInput(params: RpcParams<'browser.remoteInput'>, connection: Connection): Promise<RpcResult<'browser.remoteInput'>> {
-    return this.#remote.remoteInput(params, connection);
-  }
-
-  remoteSelection(params: RpcParams<'browser.remoteSelection'>, connection: Connection): Promise<RemoteBrowserSelection> {
-    return this.#remote.remoteSelection(params, connection);
-  }
-
   /**
    * Loads `url` in a browser of its own that no conversation lists, and says
    * what the page threw or was refused and how tall it stands at each width.

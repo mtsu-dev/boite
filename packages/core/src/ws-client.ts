@@ -10,7 +10,8 @@
  * macOS arm64, through `client.ts`). The relay read the same bytes through
  * `Bun.connect` without a fault, so this client parses them itself.
  *
- * RFC 6455 for text messages only: server frames must be unmasked, fragmented
+ * RFC 6455 for text messages, and binary ones for a socket opened with
+ * `binary` (a viewer's browser frames, group/relay.ts): server frames must be unmasked, fragmented
  * messages are joined, pings are answered and a close is echoed. Reserved bits
  * stay clear unless `deflate` negotiated permessage-deflate (RFC 7692), and
  * then only without context takeover, so each message inflates on its own;
@@ -29,6 +30,8 @@ const CLOSE_GRACE_MS = 1_000;
 
 export type Frame =
   | { kind: 'text'; text: string }
+  /** Only from a reader made with `binary`. */
+  | { kind: 'binary'; data: Uint8Array }
   | { kind: 'ping'; payload: Uint8Array }
   | { kind: 'pong' }
   | { kind: 'close'; code: number; reason: string }
@@ -52,12 +55,16 @@ export class FrameReader {
   #fragmented = false;
   /** Whether the message being read set RSV1: its joined payload is deflated. */
   #compressed = false;
+  /** Whether the message being read is a binary one. */
+  #bytes = false;
   #decoder = new TextDecoder('utf-8', { fatal: true });
   #broken = false;
   /** Whether permessage-deflate was negotiated, so the first frame of a message may set RSV1. */
   readonly #inflate: boolean;
+  /** Whether binary messages are read; a text socket takes one for a broken stream. */
+  readonly #binary: boolean;
 
-  constructor(options: { inflate?: boolean } = {}) { this.#inflate = options.inflate === true; }
+  constructor(options: { inflate?: boolean; binary?: boolean } = {}) { this.#inflate = options.inflate === true; this.#binary = options.binary === true; }
 
   push(bytes: Uint8Array): Frame[] {
     if (this.#broken) return [];
@@ -127,10 +134,13 @@ export class FrameReader {
         return this.#data(fin, payload);
       case 0x1:
         if (this.#fragmented) throw new ProtocolError('a text frame inside a fragmented message');
-        this.#compressed = compressed;
+        this.#compressed = compressed; this.#bytes = false;
         return this.#data(fin, payload);
       case 0x2:
-        throw new ProtocolError('a binary message on a text socket');
+        if (!this.#binary) throw new ProtocolError('a binary message on a text socket');
+        if (this.#fragmented) throw new ProtocolError('a binary frame inside a fragmented message');
+        this.#compressed = compressed; this.#bytes = true;
+        return this.#data(fin, payload);
       case 0x8: {
         if (payload.length === 1) throw new ProtocolError('a close frame of 1 B');
         const code = payload.length >= 2 ? (payload[0]! << 8) | payload[1]! : 1005;
@@ -156,9 +166,10 @@ export class FrameReader {
     }
     const whole = this.#parts.length === 0 ? payload : concat([...this.#parts, payload]);
     this.#parts = []; this.#partBytes = 0; this.#fragmented = false;
-    if (!this.#compressed) return { kind: 'text', text: this.#text(whole) };
+    const plain = this.#compressed ? inflated(whole) : whole;
     this.#compressed = false;
-    return { kind: 'text', text: this.#text(inflated(whole)) };
+    // A whole payload is a view of the caller's buffer, which may be reused: a binary message is a copy.
+    return this.#bytes ? { kind: 'binary', data: plain === payload ? payload.slice() : plain } : { kind: 'text', text: this.#text(plain) };
   }
 
   #text(bytes: Uint8Array): string {
@@ -201,6 +212,8 @@ export interface ConnectOptions {
   address?: string;
   /** Offer permessage-deflate without context takeover, for a server that compresses what it sends. */
   deflate?: boolean;
+  /** Read binary messages (`onBinary`) instead of ending the stream on one. */
+  binary?: boolean;
 }
 
 /** One client frame, masked as RFC 6455 requires of a client. */
@@ -230,6 +243,7 @@ export class TextSocket {
   #open = true;
   #closed = false;
   #onMessage: ((text: string) => void) | null = null;
+  #onBinary: ((data: Uint8Array) => void) | null = null;
   /** Messages that came before the reader listened: those sent with the upgrade's answer. */
   #inbox: string[] = [];
   #onClose: Array<(event: CloseEvent) => void> = [];
@@ -281,6 +295,14 @@ export class TextSocket {
     else this.#onClose.push(listener);
   }
 
+  /** The one listener of binary messages, on a socket opened with `binary`; those that came before it are dropped. */
+  onBinary(listener: (data: Uint8Array) => void): void { this.#onBinary = listener; }
+
+  /** One binary message, masked like any client frame. */
+  sendBinary(data: Uint8Array): void {
+    if (this.#open) this.#write(encodeFrame(0x2, data));
+  }
+
   #deliver(text: string): void {
     const listener = this.#onMessage;
     if (listener === null) this.#inbox.push(text);
@@ -326,7 +348,7 @@ export class TextSocket {
     this.#socket.end();
     const listeners = this.#onClose;
     this.#onClose = [];
-    this.#onMessage = null;
+    this.#onMessage = null; this.#onBinary = null;
     for (const listener of listeners) reported(() => listener(event));
   }
 
@@ -351,7 +373,7 @@ export class TextSocket {
     return new Promise<TextSocket>((resolve, reject) => {
       let client: TextSocket | null = null;
       let handshake: Uint8Array = new Uint8Array(0);
-      let reader = new FrameReader();
+      let reader = new FrameReader({ binary: options.binary === true });
       let settled = false;
       /** The connection before it upgraded: a failed upgrade ends it, including one that connects after the timeout. */
       let raw: Bun.Socket | null = null;
@@ -373,6 +395,7 @@ export class TextSocket {
           if (client!.#closed) return;
           delivered = frame.kind === 'text';
           if (frame.kind === 'text') client!.#deliver(frame.text);
+          else if (frame.kind === 'binary') { const listener = client!.#onBinary; if (listener !== null) reported(() => listener(frame.data)); }
           else if (frame.kind === 'ping') { if (client!.#open) client!.#write(encodeFrame(0xa, frame.payload)); }
           else if (frame.kind === 'close') {
             // Echo the close unless this side sent one first, then hang up.
@@ -419,7 +442,7 @@ export class TextSocket {
             if (extensions) {
               const refusal = deflateRefusal(extensions, options.deflate === true);
               if (refusal !== null) { fail(refusal); return; }
-              reader = new FrameReader({ inflate: true });
+              reader = new FrameReader({ inflate: true, binary: options.binary === true });
             }
             settled = true;
             clearTimeout(timer);
