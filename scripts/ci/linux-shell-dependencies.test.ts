@@ -41,7 +41,7 @@ function fixture(format: 'list' | 'sources', failure?: 'unavailable' | 'signatur
       gpg('--armor', '--output', `${file}.gpg`, '--detach-sign', file);
     }
     if (failure === 'signature') writeFileSync(release, readFileSync(release, 'utf8').replace('Origin: Ubuntu', 'Origin: changed'));
-    // `.invalid` never resolves (RFC 6761), like the image's Azure mirror during an outage.
+    // The image's mirror during an outage: the apt-get wrapper below answers for it.
     const uri = failure === 'unresolvable' ? 'http://boite-fixture.invalid/ubuntu'
       : `file:${failure === 'unavailable' ? `${root}/missing-ubuntu` : repo}`;
     writeFileSync(`${root}/os-release`, 'VERSION_CODENAME=stable\n');
@@ -55,13 +55,20 @@ function fixture(format: 'list' | 'sources', failure?: 'unavailable' | 'signatur
     const config = `${root}/apt.conf`;
     writeFileSync(config, `Dir::Etc::sourcelist "${sources}/sources.list";\nDir::Etc::sourceparts "${sources}/sources.list.d";\nDir::Etc::parts "${root}/config-parts";\nDir::Etc::main "-";\nDir::State::lists "${root}/lists";\nDir::State::status "${root}/status";\nDir::Cache::archives "${root}/archives";\nDir::Cache::pkgcache "${root}/pkgcache.bin";\nDir::Cache::srcpkgcache "${root}/srcpkgcache.bin";\nDir::Log "${root}";\nDir::Etc::trusted "${root}/trusted.gpg";\nDir::Etc::trustedparts "${root}/trusted.gpg.d";\nAPT::Architecture "amd64";\nAcquire::Languages "none";\n`);
     // Execute the workflow verbatim except its machine paths, Ubuntu's archive hosts and
-    // components, and its privilege boundary.
-    // Only installation is simulated; index acquisition and signatures use real APT.
+    // components, and its privilege boundary. Only installation and the unresolvable
+    // mirror's DNS answer are simulated; index acquisition and signatures use real APT.
     const script = `sudo() { "$@"; }
 apt-get() {
+  local arg list=
   for arg in "$@"; do
     if [ "$arg" = install ]; then command apt-get --simulate "$@"; return; fi
+    case "$arg" in Dir::Etc::sourcelist=*) list=\${arg#*=} ;; esac
   done
+  if [ -n "$list" ] && grep -q boite-fixture.invalid "$list"; then
+    echo "Err:1 http://boite-fixture.invalid/ubuntu stable InRelease"
+    echo "  Temporary failure resolving 'boite-fixture.invalid'"
+    return 100
+  fi
   command apt-get "$@"
 }
 ${step.replaceAll('/etc/apt', sources).replaceAll('/etc/os-release', `${root}/os-release`)
