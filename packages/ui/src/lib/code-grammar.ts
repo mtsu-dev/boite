@@ -78,7 +78,15 @@ export async function highlightText(text: string, language: Language): Promise<s
   // HTML-like templates can contain both script and style blocks.
   if (language === 'xml') await Promise.all([load('javascript'), load('typescript'), load('css')]);
   const { default: highlighter } = await import('highlight.js/lib/core');
-  // Rows split on LF alone, so a CRLF ends one line and a lone CR ends none. The lone CR goes:
-  // inside a token span it would add a second visual line, and as a break it shifted every later row.
-  return linesOf(highlighter.highlight(text.replace(/\r\n?/g, crlf => (crlf.length === 2 ? '\n' : '')), { language, ignoreIllegals: true }).value);
+  // Rows split on LF alone, so a CRLF ends one line and a lone CR ends none: it reads as a space, as in `codeRow`.
+  return linesOf(highlighter.highlight(text.replace(/\r\n?/g, cr => (cr.length === 2 ? '\n' : ' ')), { language, ignoreIllegals: true }).value);
+}
+
+/**
+ * One row of a text split on LF, as a plain row shows it before or without its colors: the CR of a
+ * CRLF goes and a lone CR is a space. Left in, a CR would wrap the row onto a second visual line;
+ * deleted, it would join the tokens on both sides. The highlighted rows read it the same way.
+ */
+export function codeRow(row: string): string {
+  return row.replace(/\r$/, '').replaceAll('\r', ' ');
 }

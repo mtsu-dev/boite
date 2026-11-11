@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import { codeLanguage, highlightCode, HIGHLIGHT_LIMIT } from './code-highlight';
+import { codeLanguage, codeRow, highlightCode, HIGHLIGHT_LIMIT } from './code-highlight';
 
 test('file extensions and conventional names select a grammar, unknown files stay plain', () => {
   expect(codeLanguage('C:\\src\\App.SVELTE')).toBe('xml');
@@ -38,18 +38,19 @@ test('CRLF files keep one displayed line per editor line and diff row', async ()
     row.innerHTML = html;
     expect(row.textContent).not.toMatch(/[\r\n]/);
   }
-  // A lone CR ends no row (rows split on LF): the lines after it keep their own colors.
-  const text = 'const a = 1;\rconst b = 2;\nconst c = 3;';
+  // A lone CR ends no row (rows split on LF): the lines after it keep their own colors, and it reads
+  // as a space, so the tokens on both sides stay apart and the colored row matches the plain one.
+  const text = 'const a = 1;\rreturn b;\r\nconst c = 3;';
   const stray = await highlightCode(text, 'typescript');
-  expect(stray).toHaveLength(text.split('\n').length);
-  for (const html of stray!) {
+  const plain = text.split('\n').map(codeRow);
+  expect(plain).toEqual(['const a = 1; return b;', 'const c = 3;']);
+  expect(stray).toHaveLength(plain.length);
+  stray!.forEach((html, index) => {
     const row = document.createElement('span');
     row.innerHTML = html;
-    expect(row.textContent).not.toMatch(/[\r\n]/);
-  }
-  const last = document.createElement('span');
-  last.innerHTML = stray!.at(-1)!;
-  expect(last.textContent).toBe('const c = 3;');
+    expect(row.textContent).toBe(plain[index]);
+  });
+  expect(stray![0]).toMatch(/hljs-keyword">return</);
 });
 
 afterEach(() => {

@@ -11,7 +11,7 @@
   import type { BoundPanel, Surface } from '../lib/right-panel.svelte';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
-  import { codeLanguage, highlightCode } from '../lib/code-highlight';
+  import { codeLanguage, codeRow, highlightCode } from '../lib/code-highlight';
 
   let { store, surface, panel }: { store: Store; surface: Surface; panel: BoundPanel } = $props();
 
@@ -393,7 +393,7 @@
         <li class="line" class:on={index + 1 === highlight} data-testid="file-line" data-line={index + 1}>
           <span class="line-number" aria-hidden="true">{index + 1}</span>
           <!-- highlightCode escapes the file and emits only token spans. -->
-          <span class="line-text code-syntax">{#if colored?.[index] !== undefined}{@html colored[index]}{:else}{text}{/if}</span>
+          <span class="line-text code-syntax">{#if colored?.[index] !== undefined}{@html colored[index]}{:else}{codeRow(text)}{/if}</span>
         </li>
       {/each}
     </ol>

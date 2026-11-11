@@ -1,4 +1,5 @@
 import { highlightText, knownLanguage, type Language } from './code-grammar';
+export { codeRow } from './code-grammar';
 
 /** File names select a grammar; unknown files remain plain text. No guessing on every keystroke. */
 const EXTENSIONS: Record<string, string> = {
