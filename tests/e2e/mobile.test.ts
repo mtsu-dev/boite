@@ -48,9 +48,9 @@ test('phone settings expose browser profiles and allowed windows only to owners 
   await navigateMobile('mobile-settings');
   await page.waitFor(`document.querySelector('[data-testid=mobile-settings-home]')`);
   const rows = `[...document.querySelectorAll('[data-testid=mobile-settings-home] .row')].map(row => row.dataset.testid)`;
-  // Home lists the desktop's families; the owner-only pages (accounts, the brain, the browser's profiles, System's compaction, Diagnostics) leave a paired phone.
-  const expected = ['settings-tab-general', 'settings-tab-voice', 'settings-tab-appearance', 'settings-tab-accounts', 'settings-tab-brain', 'settings-tab-limits', 'settings-tab-usage', 'settings-tab-browser', 'mobile-settings-connection', 'settings-tab-advanced', 'settings-tab-experiments', 'settings-tab-diagnostics'];
-  const ownerOnly = ['settings-tab-accounts', 'settings-tab-brain', 'settings-tab-browser', 'settings-tab-advanced', 'settings-tab-diagnostics'];
+  // Home lists the desktop's families; the owner-only pages (accounts, plugins, the brain, the browser's profiles, System's compaction, Diagnostics) leave a paired phone.
+  const expected = ['settings-tab-general', 'settings-tab-voice', 'settings-tab-appearance', 'settings-tab-accounts', 'settings-tab-plugins', 'settings-tab-brain', 'settings-tab-limits', 'settings-tab-usage', 'settings-tab-browser', 'mobile-settings-connection', 'settings-tab-advanced', 'settings-tab-experiments', 'settings-tab-diagnostics'];
+  const ownerOnly = ['settings-tab-accounts', 'settings-tab-plugins', 'settings-tab-brain', 'settings-tab-browser', 'settings-tab-advanced', 'settings-tab-diagnostics'];
   expect(await page.evaluate<string[]>(rows)).toEqual(expected);
   expect(await page.evaluate(`document.querySelector('[data-testid=settings-tab-resources]') === null && document.querySelector('[data-testid=settings-tab-keyboard]') === null`)).toBe(true);
   // An owner finds the browser profiles under Browser and the windows agents may see under Machines.

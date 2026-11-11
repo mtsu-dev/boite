@@ -24,10 +24,11 @@ const PAGES: Record<SettingsTab, SettingsPage> = {
   appearance: { device: true, phone: 'page' },
   keyboard: { machine: true, phone: 'home' },
   voice: { machine: true, phone: 'page' },
-  // A phone lists the providers, as the desktop does; plugins stay on the
-  // desktop: a phone shows Home, and the window widened again shows the page.
+  // A phone lists the providers, as the desktop does.
   accounts: { owner: true, machine: true, phone: 'page' },
-  plugins: { owner: true, machine: true, phone: 'home' },
+  // Plugins run beside the core, so a phone turns them on and off, sets them
+  // and installs them as well as the desktop; nothing there needs a right-click.
+  plugins: { owner: true, machine: true, phone: 'page' },
   // The built-in browser of this device: its profiles and the sign-ins it hands to a machine's agent browser.
   browser: { owner: true, device: true, phone: 'page' },
   brain: { owner: true, machine: true, phone: 'page' },

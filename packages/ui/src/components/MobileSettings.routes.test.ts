@@ -17,9 +17,10 @@ afterEach(async () => {
 
 /** What a phone shows for a route: the page a desktop shows for it, the card's own page, its group's index, or Home where the phone has no such page. */
 const ROUTES: { owner: boolean; tab: SettingsTab; section?: string; shows: string }[] = [
-  // Providers has its page as on the desktop; plugins and the keyboard stay on the desktop.
+  // Providers and plugins, owner-only, have their page as on the desktop; the keyboard stays on the desktop.
   { owner: true, tab: 'accounts', shows: 'accounts-page' },
-  { owner: true, tab: 'plugins', shows: 'mobile-settings-home' },
+  { owner: true, tab: 'plugins', shows: 'plugins-page' },
+  { owner: false, tab: 'plugins', shows: 'mobile-settings-home' },
   // The keys agents ask for moved under Providers, the windows under Machines.
   { owner: true, tab: 'general', section: 'secrets', shows: 'secrets-card' },
   { owner: true, tab: 'general', section: 'windows', shows: 'window-allowlist' },

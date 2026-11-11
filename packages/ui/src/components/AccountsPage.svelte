@@ -208,7 +208,7 @@
 
   async function uninstall(provider: ProviderSummary) {
     const ok = await confirm.ask({
-      title: strings.install.removeTitle.replace('{provider}', provider.name),
+      title: fill(strings.install.removeTitle, { provider: provider.name }),
       body: strings.install.removeBody,
       confirmLabel: strings.install.removeConfirm,
       cancelLabel: strings.install.removeCancel,
@@ -263,7 +263,7 @@
     const body = account.isolationDir === null ? strings.accounts.removeDefaultBody : strings.accounts.removeBody;
     const warning = count === 0 ? '' : (count === 1 ? strings.accounts.removeThread : strings.accounts.removeThreads).replace('{count}', String(count));
     const accepted = await confirm.ask({
-      title: strings.accounts.removeTitle.replace('{account}', account.label),
+      title: fill(strings.accounts.removeTitle, { account: account.label }),
       body: warning ? `${warning} ${body}` : body,
       confirmLabel: strings.accounts.remove,
       cancelLabel: strings.install.removeCancel,
@@ -361,7 +361,7 @@
     <button class="quiet small" data-testid="providers-refresh" disabled={detecting} onclick={() => void detect()}><span class="ui-label">{strings.providerSettings.refresh}</span></button>
     <InfoTip
       topic={provider.name}
-      text={(step === 'manual' ? strings.providerSettings.manualHint : strings.providerSettings.externalHint).replace('{provider}', provider.name)}
+      text={fill(step === 'manual' ? strings.providerSettings.manualHint : strings.providerSettings.externalHint, { provider: provider.name })}
     />
   {/if}
 {/snippet}

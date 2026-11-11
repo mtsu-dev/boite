@@ -825,7 +825,7 @@ export function startServer(options: ServerOptions): RunningServer {
     const frames: EventFrames = new Map();
     for (const connection of connections) {
       if (!connection.authenticated) continue;
-      if (!mayReceiveEvent(name, connection)) continue;
+      if (!mayReceiveEvent(name, connection, payload)) continue;
       if (connection.identity.principal === 'agent' && !agentHearsEvent(name, payload, connection.identity.threadId, id => core.journal.getThread(id)?.projectId ?? null)) continue;
       if (SUBSCRIBED_EVENTS.has(name) && !connection.subscriptions.has(threadId ?? '')) continue;
       if (scoped && !agentQuestion && (threadId === null || !(connection.subscriptions.has(threadId) || (parentId !== null && connection.subscriptions.has(parentId))))) continue;

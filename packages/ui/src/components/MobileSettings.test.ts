@@ -128,7 +128,7 @@ test('the phone settings list the desktop\'s families, each page a peer row, Gen
   store.showSettings();
   await waitFor(home);
   expect(rows('mobile-settings-home')).toEqual([
-    'settings-tab-general', 'settings-tab-voice', 'settings-tab-appearance', 'settings-tab-accounts', 'settings-tab-brain', 'settings-tab-limits', 'settings-tab-usage',
+    'settings-tab-general', 'settings-tab-voice', 'settings-tab-appearance', 'settings-tab-accounts', 'settings-tab-plugins', 'settings-tab-brain', 'settings-tab-limits', 'settings-tab-usage',
     'settings-tab-browser', 'mobile-settings-connection', 'settings-tab-advanced', 'settings-tab-experiments', 'settings-tab-diagnostics'
   ]);
   // A row holding one value shows it before its chevron: the theme and language, the machine reached, dictation on or off once read.

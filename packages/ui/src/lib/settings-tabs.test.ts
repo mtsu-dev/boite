@@ -31,7 +31,9 @@ describe('the settings families', () => {
     expect(phonePage('experiments', null, true)).toBe('experiments');
     expect(phonePage('resources', null, true)).toBe('diagnostics');
     expect(phonePage('resources', null, false)).toBe('home');
-    expect(phonePage('plugins', null, true)).toBe('home');
+    // A phone turns plugins on and off and sets them as the desktop does; a paired device has no such page.
+    expect(phonePage('plugins', null, true)).toBe('plugins');
+    expect(phonePage('plugins', null, false)).toBe('home');
   });
 
   test('an old task-manager link opens Diagnostics at its section for the owner, its own page for a device', () => {

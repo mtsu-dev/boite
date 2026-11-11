@@ -78,7 +78,11 @@ CLIProxyAPI gateway on or off
 Owner sessions have an Automatic compaction row with common defaults and
 independent settings for conversations, subagents and bots.
 
-Provider accounts, keyboard shortcuts, plugins, resource limits, the brain,
+Owner sessions also get Plugins, the same page as the desktop's: the grid
+takes one card per row and a card's gear opens as a bottom sheet
+([plugins](plugins.md)).
+
+Provider accounts, keyboard shortcuts, resource limits, the brain,
 the task manager, worktrees, diagnostics, the tour and
 server configuration have no row in the phone's settings list. A link or a
 card can still open a supported detail page, subject to its permissions;
@@ -315,8 +319,8 @@ HTTPS ([relay](groups.md#relay)), as from any HTTPS page.
 Exchanged without a device key, such a grant becomes a session key for that core
 alone. A phone that holds one sends its device key the next time it connects,
 and signs from then on. Session keys are stored hashed in the journal.
-`sessions.list` shows every session with the client it said it was, its role and
-when it was last seen; `sessions.revoke` closes its sockets and deletes the row,
+`sessions.list` shows the owner every session with the client it said it was, its role and
+when it was last seen, and a paired device its own row only; `sessions.revoke` closes its sockets and deletes the row,
 and for a device of the group removes the device on every machine.
 
 ## What a paired device may call
@@ -489,7 +493,7 @@ Safari 17 and Chrome 114 for the complete layout:
 | Feature | Safari | Chrome | Without it |
 | --- | --- | --- | --- |
 | `color-mix()` | 16.2 | 111 | The shared accent tint has a plain fallback; a few one-off tints are not drawn. |
-| Container queries | 16.0 | 105 | The narrow rules are ignored and the wide layout stays at phone width: the panel's Agents surface and the usage limits (`<= 520px`), the usage table's hidden columns (`<= 560px`, `<= 420px`), the plugin rows (`<= 560px`), the onboarding scenes (`<= 400px`). The changes list keeps the diff under it, which is its phone layout anyway. |
+| Container queries | 16.0 | 105 | The narrow rules are ignored and the wide layout stays at phone width: the panel's Agents surface and the usage limits (`<= 520px`), the usage table's hidden columns (`<= 560px`, `<= 420px`), the plugins toolbar and grid (`<= 560px`), the onboarding scenes (`<= 400px`). The changes list keeps the diff under it, which is its phone layout anyway. |
 | Popover API | 17.0 | 114 | `lib/floating.ts` calls `showPopover` only when it exists, so the phone menus and their backdrop are not moved to the top layer. A menu inside the composer is then placed against the composer's glass layer instead of the viewport, and can land off its anchor. |
 
 This table describes features in the built CSS and `lib/floating.ts`. It does

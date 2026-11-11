@@ -249,7 +249,7 @@ test('a paired phone switches the gateway the owner saved, on and off, from Limi
   } finally { await phone.close(); }
 }, 45_000);
 
-test('the Douane plugin: its row in Plugins and the proxy card pointing at it, at desktop and phone widths', async () => {
+test('the Douane plugin: its gear in Plugins and the proxy card pointing at it, at desktop and phone widths', async () => {
   const local = await BrowserPage.launch({ url: `${origin}/?fake=1&open=recent`, windowSize: { width: 1280, height: 900 } });
   const shot = async (name: string) => {
     await local.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
@@ -264,6 +264,9 @@ test('the Douane plugin: its row in Plugins and the proxy card pointing at it, a
     await local.waitFor('document.querySelector("[data-testid=nav-settings]")');
     await local.click('[data-testid="nav-settings"]');
     await local.click('[data-testid="settings-tab-plugins"]');
+    // The gateway's strip sits behind Douane's gear.
+    await local.waitFor('document.querySelector("[data-testid=plugin-open][data-plugin=douane]")');
+    await local.click('[data-testid="plugin-open"][data-plugin="douane"]');
     await local.evaluate(scrolled);
     await local.waitFor(stripRunning);
     expect(await local.text('[data-testid=plugin-gateway][data-plugin=douane] [data-testid=plugin-gateway-state]')).toContain('0.3.0 on 127.0.0.1:8787');
@@ -271,6 +274,8 @@ test('the Douane plugin: its row in Plugins and the proxy card pointing at it, a
     await local.waitFor(stripInView);
     await shot('boite-douane-plugin-desktop.png');
 
+    await local.click('[data-testid="plugin-dialog-close"]');
+    await local.waitFor('document.querySelector("[data-testid=plugin-dialog]") === null');
     await local.click('[data-testid="settings-tab-accounts"]');
     await local.waitFor('document.querySelector("[data-testid=subscription-proxy-settings]")');
     await local.click('[data-testid="subscription-proxy-enabled"]');
@@ -285,7 +290,7 @@ test('the Douane plugin: its row in Plugins and the proxy card pointing at it, a
     await local.waitFor('window.__inView("[data-testid=subscription-proxy-settings]")');
     await shot('boite-douane-proxy-desktop.png');
 
-    // The phone has no Plugins page (plugins are the desktop's to manage): the proxy card under Limits.
+    // On the phone the proxy card sits under Limits.
     await local.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
     await local.waitFor('document.querySelector("[data-testid=mobile-header]")');
     await mobileAction(local, 'mobile-settings');

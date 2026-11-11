@@ -235,7 +235,7 @@
             {#if conflict?.id === row.id}
               {@const chosen = parseChord(conflict.chord)}
               <div class="row-note" data-testid="keybinding-conflict">
-                <span class="ui-label">{strings.keyboard.conflict.replace('{chord}', chosen.ok ? chordParts(chosen.chord, mac).join('+') : conflict.chord).replace('{command}', commandLabel(conflict.other))}</span>
+                <span class="ui-label">{fill(strings.keyboard.conflict, { chord: chosen.ok ? chordParts(chosen.chord, mac).join('+') : conflict.chord, command: commandLabel(conflict.other) })}</span>
                 <span class="note-actions">
                   <button class="primary small" data-testid="keybinding-replace" onclick={() => void replace()}><span class="ui-label">{strings.keyboard.replace}</span></button>
                   <button class="quiet small" onclick={() => (conflict = null)}><span class="ui-label">{strings.common.cancel}</span></button>

@@ -64,7 +64,7 @@ describe('the plugin permission table', () => {
     const caller = { principal: 'plugin' as const, sessionId: null, threadId: null, permissions: ['threads.read' as const] };
     expect(accessRefusal('todos.list', caller)?.message).toBe('todos.list needs the plugin permission todos.read, which the owner did not grant (granted: threads.read)');
     expect(accessRefusal('secrets.list', caller)?.message).toBe('secrets.list is never open to plugins: secrets reach only the agent that asked for one');
-    expect(accessRefusal('plugins.setGrants', caller)?.message).toBe("plugins.setGrants is never open to plugins: installing, removing and granting plugins is the owner's");
+    expect(accessRefusal('plugins.setGrants', caller)?.message).toBe("plugins.setGrants is never open to plugins: installing, removing, granting, turning off and setting up plugins is the owner's");
     expect(accessRefusal('settings.set', caller)?.message).toBe('settings.set is for the owner only; a plugin reaches the methods of its permissions (granted: threads.read)');
     const writer = { ...caller, permissions: ['threads.read', 'threads.write', 'todos.read', 'todos.write'] as const };
     expect(accessRefusal('threads.archive', writer, { threadId: 't', archived: false })?.message).toContain('a plugin only archives');

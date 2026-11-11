@@ -784,9 +784,13 @@ describe('server', () => {
     expect(rows[0]?.token_hash).not.toContain(phone.session?.token ?? 'never');
     expect(rows[0]?.client_name).toBe('pwa');
 
-    // A session sees the list with itself marked, and cannot mint or revoke.
+    // A session sees itself, marked, and not the owner's other devices; it cannot mint or revoke.
+    const other = await connect(harness.url, '', { grant: (await owner.call('pairing.grant', {})).grant, client: { name: 'tablet', version: '2.0.0-beta.1' } });
     const seen = await again.call('sessions.list', {});
-    expect(seen.map((row) => row.current)).toEqual([true]);
+    expect(seen.map((row) => [row.client.name, row.current])).toEqual([['pwa', true]]);
+    expect((await owner.call('sessions.list', {})).map((row) => row.client.name).sort()).toEqual(['pwa', 'tablet']);
+    await owner.call('sessions.revoke', { sessionId: other.session?.id ?? '' });
+    other.close();
     let minted = 'none';
     try {
       await again.call('pairing.grant', {});

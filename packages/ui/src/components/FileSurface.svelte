@@ -13,7 +13,7 @@
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import SurfaceHead from './SurfaceHead.svelte';
-  import { codeLanguage, highlightCode } from '../lib/code-highlight';
+  import { codeLanguage, codeRow, highlightCode } from '../lib/code-highlight';
 
   let { store, surface, panel }: { store: Store; surface: Surface; panel: BoundPanel } = $props();
 
@@ -36,7 +36,9 @@
   let colored = $state.raw<string[] | null>(null);
 
   $effect(() => {
-    const text = content?.kind === 'text' ? draft : null;
+    // The editor's textarea shows a lone CR as a line break (its value turns it into LF), so the colors
+    // painted under it break there too. The read-only list splits rows on LF alone, as `codeRow` reads them.
+    const text = content?.kind === 'text' ? (store.owner ? draft.replace(/\r(?!\n)/g, '\n') : draft) : null;
     const grammar = language;
     colored = null;
     if (text === null || grammar === null) return;
@@ -395,7 +397,7 @@
         <li class="line" class:on={index + 1 === highlight} data-testid="file-line" data-line={index + 1}>
           <span class="line-number" aria-hidden="true">{index + 1}</span>
           <!-- highlightCode escapes the file and emits only token spans. -->
-          <span class="line-text code-syntax">{#if colored?.[index] !== undefined}{@html colored[index]}{:else}{text}{/if}</span>
+          <span class="line-text code-syntax">{#if colored?.[index] !== undefined}{@html colored[index]}{:else}{codeRow(text)}{/if}</span>
         </li>
       {/each}
     </ol>

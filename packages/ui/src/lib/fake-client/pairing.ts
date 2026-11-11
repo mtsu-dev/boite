@@ -62,7 +62,11 @@ export function pairingMethods(ctx: FakeContext) {
       return structuredClone(ctx.firewall);
     },
     'sessions.list': async (params) => {
-      return structuredClone(ctx.sessions);
+      if (ctx.bus.principal === 'owner') return structuredClone(ctx.sessions);
+      // A paired device sees its own row only, marked current, as on the real core. The fake has no
+      // caller session, so the paired phone of the fixture stands for it.
+      const own = ctx.sessions.find(session => session.role !== 'owner');
+      return structuredClone(own === undefined ? [] : [{ ...own, current: true }]);
     },
     'push.status': async (params) => {
       return { publicKey: '', subscribed: false };

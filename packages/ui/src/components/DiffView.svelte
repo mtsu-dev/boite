@@ -11,7 +11,7 @@
   import DiffOptions from './DiffOptions.svelte';
   import ChangeCount from './ChangeCount.svelte';
   import { fill, strings } from '../lib/strings';
-  import { codeLanguage, highlightCode } from '../lib/code-highlight';
+  import { codeLanguage, codeRow, highlightCode } from '../lib/code-highlight';
   import { whenIdle } from '../lib/idle';
   import { boxWidth } from '../lib/box-width';
 
@@ -85,8 +85,10 @@
     const html = codeOf(row);
     const marks = words.get(row);
     if (html !== undefined) return breakAfterOperators(marks ? markHtml(html, marks) : html);
-    if (!marks) return breakAfterOperators(escapeCode(row.text));
-    return breakAfterOperators(markText(row.text, marks).map((part) => (part.marked ? `<mark class="word">${escapeCode(part.text)}</mark>` : escapeCode(part.text))).join(''));
+    // A plain row reads a CR as the grammar's rows do (lib/code-grammar `codeRow`).
+    const text = codeRow(row.text);
+    if (!marks) return breakAfterOperators(escapeCode(text));
+    return breakAfterOperators(markText(text, marks).map((part) => (part.marked ? `<mark class="word">${escapeCode(part.text)}</mark>` : escapeCode(part.text))).join(''));
   }
 
   /** The gutter of a row: what a patch puts in its first column. */

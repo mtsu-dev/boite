@@ -566,11 +566,12 @@ export class VirtualDesktops {
   }
 
   async #session(thread: ThreadSummary, width?: number, height?: number): Promise<Session> {
-    const open = this.#sessions.get(thread.id);
-    if (open && !open.stopping) return open;
+    // Before an open desktop is reused: one started before the protection came on would run programs outside it.
     if (this.#core.procs.protection.policy(thread.id)) {
       throw refused('this conversation runs under execution protection: what its desktop starts would run outside it', { threadId: thread.id });
     }
+    const open = this.#sessions.get(thread.id);
+    if (open && !open.stopping) return open;
     if (this.#closed) throw refused('Boite is stopping', { threadId: thread.id });
     const pending = this.#starting.get(thread.id);
     if (pending) return pending.promise;
