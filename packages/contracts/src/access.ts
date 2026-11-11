@@ -1,6 +1,6 @@
 import type { Principal } from './agent-door.ts';
 import type { RpcEventName, RpcMethodName } from './index.ts';
-import { PLUGIN_PERMISSIONS, type PluginPermission } from './plugins.ts';
+import { PLUGIN_PERMISSIONS, pluginClosedReason, pluginPermissionFor, type PluginPermission } from './plugins.ts';
 
 /*
  * The device and agent boundaries, declared once. The core's router enforces
@@ -457,6 +457,16 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
 ]);
 
 /**
+ * A caller held to what a paired device reaches: the device, and a plugin,
+ * which gets no more than a device does on top of its permissions. A core
+ * guard that narrows a device's reads or actions asks this, never
+ * `principal === 'session'`, so no plugin slips past it.
+ */
+export function deviceBound(principal: Principal): boolean {
+  return principal === 'session' || principal === 'plugin';
+}
+
+/**
  * The one diff a paired device asks for is the Changes panel's: the working
  * tree against HEAD. Any other revision would let it walk the repository's
  * history, which is the owner's to browse.
@@ -467,12 +477,12 @@ export function deviceDiffRef(ref: unknown): boolean {
 
 /**
  * Who calls: the owner, a paired device, the agent of the one thread its
- * token names, or a plugin with the permissions its manifest declares.
+ * token names, or a plugin with the permissions the owner granted it.
  */
 export interface Caller {
   principal: Principal;
   threadId: string | null;
-  /** Set on a plugin connection: what its manifest declared, nothing else. */
+  /** Set on a plugin connection: what the owner granted of what its manifest asks for, nothing else. */
   permissions?: readonly PluginPermission[];
   /** Set on a plugin connection: the plugin its token was minted for. */
   pluginId?: string;
@@ -515,21 +525,14 @@ export interface AccessRefusal {
 export function accessRefusal(method: RpcMethodName, caller: Caller, params?: unknown): AccessRefusal | null {
   if (caller.principal === 'owner') return null;
   if (caller.principal === 'plugin') {
-    if (pluginMayCall(method, caller.permissions) || pluginSelfCall(method, caller, params)) return null;
+    if (pluginSelfCall(method, caller, params)) return null;
     if (PLUGIN_SELF_METHODS.has(method)) {
       return {
         message: `${method} reads only the calling plugin's own settings: id must be ${caller.pluginId ?? 'its own id'}, not ${String((params as { id?: unknown } | null | undefined)?.id)}`,
         data: { method, principal: 'plugin', permissions: caller.permissions ?? [] },
       };
     }
-    const needed = (Object.keys(PLUGIN_PERMISSIONS) as PluginPermission[]).filter(permission => PLUGIN_PERMISSIONS[permission].methods.includes(method));
-    const declared = caller.permissions?.length ? caller.permissions.join(', ') : 'none';
-    return {
-      message: needed.length === 0
-        ? `${method} is not open to plugins; the plugin declared ${declared}`
-        : `${method} needs the plugin permission ${needed.join(' or ')}; the plugin declared ${declared}`,
-      data: { method, principal: 'plugin', permissions: caller.permissions ?? [] },
-    };
+    return pluginRefusal(method, caller.permissions ?? [], params);
   }
   if (caller.principal === 'agent') {
     if (!AGENT_METHODS.has(method)) {
@@ -543,19 +546,54 @@ export function accessRefusal(method: RpcMethodName, caller: Caller, params?: un
     }
     return null;
   }
-  if (method === 'git.diff' && !deviceDiffRef((params as { ref?: unknown } | null | undefined)?.ref)) {
-    return { message: 'git.diff: paired devices compare the working tree with HEAD only', data: { method, principal: caller.principal } };
-  }
-  if ((method === 'quotas.list' || method === 'subscriptionProxy.quotas') && (params as { refresh?: unknown } | null | undefined)?.refresh === true) {
-    return { message: `${method}: paired devices read the last reading; refresh must be false or absent`, data: { method, principal: caller.principal } };
-  }
+  const narrowed = deviceParamsRefusal(method, params, 'paired devices');
+  if (narrowed !== null) return { message: narrowed, data: { method, principal: caller.principal } };
   if (DEVICE_METHODS.has(method)) return null;
   return { message: `${method} is for the owner only`, data: { method, principal: caller.principal } };
 }
 
+/** What a paired device, and a plugin after it, may not ask of a method it reaches. */
+function deviceParamsRefusal(method: RpcMethodName, params: unknown, who: string): string | null {
+  const read = params as { ref?: unknown; refresh?: unknown } | null | undefined;
+  if (method === 'git.diff' && !deviceDiffRef(read?.ref)) return `git.diff: ${who} compare the working tree with HEAD only`;
+  if ((method === 'quotas.list' || method === 'subscriptionProxy.quotas') && read?.refresh === true) {
+    return `${method}: ${who} read the last reading; refresh must be false or absent`;
+  }
+  return null;
+}
+
+/**
+ * A plugin reaches the methods of the permissions the owner granted it
+ * (`PLUGIN_PERMISSIONS`), under the checks a paired device meets, and none
+ * of `PLUGIN_CLOSED`. The refusal names the permission it lacks, or why no
+ * plugin reaches the method.
+ */
+function pluginRefusal(method: RpcMethodName, granted: readonly PluginPermission[], params: unknown): AccessRefusal | null {
+  const data = { method, principal: 'plugin' as const, permissions: granted };
+  const refuse = (message: string): AccessRefusal => ({ message, data });
+  if (!pluginMayCall(method, granted)) {
+    const closed = pluginClosedReason(method);
+    if (closed !== null) return refuse(`${method} is never open to plugins: ${closed}`);
+    const needed = pluginPermissionFor(method);
+    const holds = granted.length > 0 ? granted.join(', ') : 'none';
+    if (needed === null) return refuse(`${method} is for the owner only; a plugin reaches the methods of its permissions (granted: ${holds})`);
+    return refuse(`${method} needs the plugin permission ${needed}, which the owner did not grant (granted: ${holds})`);
+  }
+  const narrowed = deviceParamsRefusal(method, params, 'plugins');
+  if (narrowed !== null) return refuse(narrowed);
+  const read = params as { archived?: unknown; sharedProjectId?: unknown } | null | undefined;
+  if (method === 'threads.archive' && read?.archived === false) {
+    return refuse('threads.archive: a plugin only archives; archived must be true or absent, restoring is for the owner only');
+  }
+  if ((method === 'todos.update' || method === 'todos.remove') && read?.sharedProjectId !== undefined) {
+    return refuse(`${method}: sharedProjectId is not for plugins; a shared board is open to the people it is shared with`);
+  }
+  return null;
+}
+
 /**
  * Whether a connection of `principal` hears `name` at all; `agentHearsEvent`
- * narrows an agent's to its thread. A plugin hears what its permissions grant.
+ * narrows an agent's to its thread. A plugin hears what its granted permissions open.
  */
 export function mayHearEvent(name: RpcEventName, principal: Principal, permissions?: readonly PluginPermission[]): boolean {
   if (principal === 'plugin') return pluginMayHear(name, permissions) || PLUGIN_SELF_EVENTS.has(name);

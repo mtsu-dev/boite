@@ -1,10 +1,11 @@
-import { accessSync, constants, existsSync, statSync } from 'node:fs';
-import { delimiter, normalize } from 'node:path';
+import { accessSync, closeSync, constants, existsSync, openSync, readSync, realpathSync, statSync } from 'node:fs';
+import { basename, delimiter, normalize, resolve, sep } from 'node:path';
 import type { ExecutableCandidate, Os, OsProfile, ProviderDescriptor } from '@boite/contracts';
 import { currentOs } from '../paths.ts';
 import { codexBehindLauncher } from './codex-launcher.ts';
 import { substituteHome } from './expand.ts';
 import { globalRoots, resolveNpm } from './npm.ts';
+import { prefixPackageOf } from './termux.ts';
 import { majorAt } from './versions.ts';
 import { which } from './which.ts';
 
@@ -91,6 +92,65 @@ export function whichProgram(name: string, scripts = false): string | null {
     if (hit !== null && !isLauncherScript(hit)) return hit;
   }
   return null;
+}
+
+function realpathOr(path: string): string {
+  try {
+    return realpathSync(path);
+  } catch {
+    return path;
+  }
+}
+
+/** A file that starts with `#!`: a script the kernel hands to its interpreter. */
+function startsWithShebang(path: string): boolean {
+  let fd: number | null = null;
+  try {
+    fd = openSync(path, 'r');
+    const head = Buffer.alloc(2);
+    return readSync(fd, head, 0, 2, 0) === 2 && head.toString('latin1') === '#!';
+  } catch {
+    return false;
+  } finally {
+    if (fd !== null) closeSync(fd);
+  }
+}
+
+/**
+ * The copy of an agent a wrapper first on PATH runs. A launcher that caps,
+ * traces or sandboxes agents is linked under each agent's name at the head of
+ * PATH and runs the next program of that name after its own directory, so the
+ * program PATH resolves says nothing about where the agent is installed. When
+ * `found` is what PATH resolves for its name and is a script that is not an
+ * install by itself (a package's own bin script under `node_modules`, a Termux
+ * package), this is the next program of that name on PATH whose real path
+ * differs from the wrapper's, followed again when that one is a wrapper too.
+ * Anything else, and every program on Windows, whose launchers
+ * `isLauncherScript` covers, is returned as is. The updater reads that copy's
+ * install and still runs `found`, so the wrapper's own caps apply to it.
+ */
+export function programBehindWrappers(found: string): string {
+  if (process.platform === 'win32') return found;
+  const wraps = (path: string): boolean => startsWithShebang(path) && !realpathOr(path).includes(`${sep}node_modules${sep}`) && prefixPackageOf(path) === null;
+  if (!wraps(found)) return found;
+  const name = basename(found);
+  let copy = found;
+  let first = true;
+  for (const dir of (process.env['PATH'] ?? '').split(delimiter)) {
+    if (dir.length === 0) continue;
+    const hit = which(name, dir);
+    if (hit === null) continue;
+    // Only the program PATH resolves runs a wrapper's contract; a file named outright is what it says.
+    if (first) {
+      if (resolve(hit) !== resolve(found)) return found;
+      first = false;
+      continue;
+    }
+    if (realpathOr(hit) === realpathOr(copy)) continue;
+    copy = hit;
+    if (!wraps(copy)) return copy;
+  }
+  return copy;
 }
 
 /** True when the profile names a launcher script as a file, so its driver knows what to make of one. */

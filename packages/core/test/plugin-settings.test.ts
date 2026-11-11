@@ -66,8 +66,8 @@ describe('the plugin principal and its settings', () => {
     const caller = { principal: 'plugin' as const, sessionId: null, threadId: null, permissions: [], pluginId: 'hello' };
     expect(accessRefusal('plugins.settings.get', caller, { id: 'hello' })).toBeNull();
     expect(accessRefusal('plugins.settings.get', caller, { id: 'other' })?.message).toBe("plugins.settings.get reads only the calling plugin's own settings: id must be hello, not other");
-    expect(accessRefusal('plugins.settings.set', caller, { id: 'hello', values: {} })?.message).toContain('is not open to plugins');
-    expect(accessRefusal('plugins.setEnabled', caller, { id: 'hello', enabled: false })?.message).toContain('is not open to plugins');
+    expect(accessRefusal('plugins.settings.set', caller, { id: 'hello', values: {} })?.message).toContain('is never open to plugins: installing, removing, granting, turning off and setting up plugins');
+    expect(accessRefusal('plugins.setEnabled', caller, { id: 'hello', enabled: false })?.message).toContain('is never open to plugins: installing, removing, granting, turning off and setting up plugins');
     expect(mayHearEvent('plugin.settings.changed', 'plugin', [])).toBe(true);
     expect(mayHearEvent('plugins.updated', 'plugin', [])).toBe(false);
   });
@@ -110,7 +110,7 @@ describe('plugin settings and turning a plugin off, end to end', () => {
       const heard: RpcEvents['plugin.settings.changed'][] = [];
       plugin.on('plugin.settings.changed', (payload) => heard.push(payload));
       expect(await plugin.call('plugins.settings.get', { id: 'hello' })).toEqual({ loud: false, times: 2, volume: 40, name: '', tone: 'warm' });
-      expect(await thrown(plugin.call('plugins.settings.set', { id: 'hello', values: { loud: true } }))).toThrow('is not open to plugins');
+      expect(await thrown(plugin.call('plugins.settings.set', { id: 'hello', values: { loud: true } }))).toThrow('is never open to plugins');
 
       // A key not declared or a value out of range changes nothing, and says which.
       expect(await thrown(owner.call('plugins.settings.set', { id: 'hello', values: { loud: true, color: 'red' } }))).toThrow('hello declares no setting color; expected one of loud, times, volume, name, tone');

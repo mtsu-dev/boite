@@ -6,6 +6,7 @@ import {
   readPluginSource,
   type PluginAppState,
   type PluginManifest,
+  type PluginPermission,
   type PluginPool,
   type PluginPreview,
   type PluginState,
@@ -42,16 +43,30 @@ export class FakePlugins {
   private readonly handlers: Handlers = {
     'plugins.list': (params) => { return structuredClone(this.#plugins).sort((a, b) => (Number(b.origin === 'recommended') - Number(a.origin === 'recommended')) || (a.origin === 'recommended' ? 0 : a.id.localeCompare(b.id))); },
     'plugins.inspect': (params) => { return this.#inspectPlugin(params); },
-    'plugins.add': (params) => { return this.#addPlugin(params.previewId); },
+    'plugins.add': (params) => { return this.#addPlugin(params.previewId, params.grants); },
     'plugins.install': (params) => {
       const plugin = this.#requirePlugin(params.id);
       if (plugin.status === 'installing') return structuredClone(plugin);
       if (plugin.status === 'rejected' && plugin.origin === 'url') {
         throw new RpcFailure({ code: RpcErrorCode.Refused, message: `${plugin.id} was refused (${plugin.rejected?.message ?? ''}). Remove it, then add it again from its URL.` });
       }
+      // As the core's: the grants sent, else all on a first install and what was granted on an update.
+      if (plugin.requested !== undefined) {
+        const requested = plugin.requested;
+        const kept = plugin.version === null || plugin.permissions === undefined ? requested : requested.filter((name) => (plugin.granted ?? plugin.permissions ?? []).includes(name));
+        plugin.granted = params.grants === undefined ? kept : checkGrants(params.grants, requested, plugin.id);
+      }
       Object.assign(plugin, { status: 'installing', progress: 0, error: null });
       this.host.emit('plugins.updated', structuredClone(plugin));
       void this.#runPluginInstall(plugin.id);
+      return structuredClone(plugin);
+    },
+    'plugins.setGrants': (params) => {
+      const plugin = this.#requirePlugin(params.id);
+      if (plugin.status !== 'installed') throw new RpcFailure({ code: RpcErrorCode.Refused, message: `${plugin.id} is not installed; its permissions are granted at install` });
+      if (plugin.permissions === undefined) throw new RpcFailure({ code: RpcErrorCode.Refused, message: `${plugin.id} is a schema 1 plugin: its processes hold the owner token, which no grant narrows` });
+      plugin.granted = checkGrants(params.grants, plugin.permissions, plugin.id);
+      this.host.emit('plugins.updated', structuredClone(plugin));
       return structuredClone(plugin);
     },
     'plugins.cancel': (params) => {
@@ -261,6 +276,7 @@ export class FakePlugins {
       else {
         // An enabled desktop app starts once its install or update is in place.
         Object.assign(plugin, { status: 'installed', version: plugin.availableVersion, progress: 0, error: null, rejected: null });
+        if (plugin.requested !== undefined) plugin.permissions = [...plugin.requested];
         // Installed, the release found is no longer an update.
         if (plugin.updates?.available != null) plugin.updates = { ...plugin.updates, available: null };
         if (plugin.app?.enabled) plugin.app = this.#running(plugin.app);
@@ -308,6 +324,14 @@ export class FakePlugins {
         provides: { desktopApp: {}, slashCommands: [{ name: 'waiting', description: 'Lists the threads that wait for you.', prompt: 'List the threads that wait for me.' }] },
       });
     }
+    if (text.includes('bureau')) {
+      // A schema 2 app asking for most of the domains, one of them dangerous: what the consent dialog draws at its fullest.
+      Object.assign(manifest, {
+        schema: 2, runtime: 'bun', description: 'A desk for your threads and boards.', permissions: ['threads.read', 'threads.write', 'todos.read', 'todos.write', 'questions.write'],
+        artifacts: { any: { url: `${source.url}/releases/download/v1.5.0/${slug}.js`, sha256: '5a7c9e1b3d5f7a9c2e4b6d8f0a1c3e5b7d9f2a4c6e8b0d1f3a5c7e9b2d4f6a8c' } },
+        provides: { desktopApp: {} },
+      });
+    }
     if (text.includes('text-only')) {
       // Skills, a prompt and slash commands: nothing to download, nothing that runs.
       delete manifest.executable; delete manifest.artifacts;
@@ -332,7 +356,7 @@ export class FakePlugins {
     return structuredClone(preview);
   }
 
-  #addPlugin(previewId: string): PluginState {
+  #addPlugin(previewId: string, grants: PluginPermission[] | undefined): PluginState {
     const preview = this.#pluginPreviews.get(previewId);
     const manifest = preview?.manifest;
     // A preview is read once and only within its ten minutes, as the core's is.
@@ -340,6 +364,9 @@ export class FakePlugins {
     if (preview === undefined || manifest == null || preview.expiresAt <= this.host.now()) {
       throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'plugin preview is unknown or expired; inspect the URL again' });
     }
+    const requested = manifest.schema === 1 ? undefined : [...(manifest.permissions ?? [])];
+    // Checked before the preview is spent, as the core checks the owner's ticks against the manifest they saw.
+    const granted = requested === undefined ? undefined : grants === undefined ? requested : checkGrants(grants, requested, manifest.id);
     this.#pluginPreviews.delete(previewId);
     const existing = this.#plugins.find((entry) => entry.id === manifest.id);
     const pools = manifest.provides.accountPools?.providers ?? [];
@@ -350,7 +377,8 @@ export class FakePlugins {
       version: existing?.version ?? null, availableVersion: manifest.version, status: 'installing', progress: 0, error: null,
       source: preview.source, artifact: preview.artifact, platform: preview.platform, commands: preview.commands, pools, rejected: null, app,
       // What the core derives from the manifest it installs: the token's permissions and the names the plugin adds.
-      ...(manifest.schema === 1 ? {} : { permissions: [...(manifest.permissions ?? [])] }),
+      ...(requested === undefined ? {} : { permissions: existing?.permissions ?? requested, requested, granted }),
+      runsProgram: manifest.executable !== undefined,
       enabled: existing?.enabled ?? true,
       settings: structuredClone(manifest.settings ?? []),
       settingValues: pluginSettingValues(manifest.settings ?? [], existing?.settingValues ?? {}),
@@ -366,4 +394,16 @@ export class FakePlugins {
     void this.#runPluginInstall(manifest.id);
     return structuredClone(plugin);
   }
+}
+
+/** The core's `checkGrants`: distinct names among what the manifest asks for, else refused naming the entry. */
+function checkGrants(grants: unknown, requested: readonly PluginPermission[], id: string): PluginPermission[] {
+  const expected = `an array of distinct permissions ${id} asks for: ${requested.join(', ') || 'none'}`;
+  if (!Array.isArray(grants)) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `grants must be ${expected}`, data: { field: 'grants', expected } });
+  grants.forEach((name: unknown, index) => {
+    if (typeof name !== 'string' || !(requested as readonly string[]).includes(name) || grants.indexOf(name) !== index) {
+      throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `grants[${index}] must be one of ${expected}; got ${JSON.stringify(name)}`, data: { field: `grants[${index}]`, expected } });
+    }
+  });
+  return [...grants] as PluginPermission[];
 }

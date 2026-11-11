@@ -4,12 +4,14 @@
   import { errorText } from '../lib/errors';
   import InfoTip from './InfoTip.svelte';
   import PolicyLock from './PolicyLock.svelte';
-  import { Download, ExternalLink, Play, Plus, Puzzle, RefreshCw, RotateCw, Search, ShieldAlert, Square, TriangleAlert } from '@lucide/svelte';
+  import { Download, ExternalLink, Play, Plus, Puzzle, RefreshCw, RotateCw, Search, ShieldAlert, ShieldCheck, Square, TriangleAlert } from '@lucide/svelte';
   import type { PluginAdds, PluginAppState, PluginGatewayState, PluginManifest, PluginPermission, PluginPool, PluginPreview, PluginRejected, PluginSettingValue, PluginState, PluginUpdates, RpcParams } from '@boite/contracts';
   import { PLUGIN_ADD_SECTION, gatewayDashboardReachable } from '@boite/contracts';
   import { besideCore } from '../lib/gateway-dashboard';
   import { openExternal } from '../lib/links';
   import GatewayMoveDialog from './GatewayMoveDialog.svelte';
+  import PluginConsent, { type ConsentRequest } from './PluginConsent.svelte';
+  import { asGrants, consentForEdit, consentForInstall, consentForPreview, grantsEditable } from '../lib/plugin-consent';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
   import { relativeTime } from '../lib/format';
@@ -37,6 +39,10 @@
   let error = $state('');
   /** The gateway plugin whose connections dialog is open. */
   let moving = $state(false);
+  /** The consent dialog's question, and who waits for its answer. A core without grants installs everything, as it always did. */
+  let consent = $state<ConsentRequest | null>(null);
+  let answerConsent: ((grants: string[] | null) => void) | null = null;
+  const asksGrants = $derived(store.core?.features?.pluginGrants === true);
 
   let url = $state('');
   let ref = $state('');
@@ -104,7 +110,43 @@
     }
   }
 
-  async function change(plugin: PluginState, method: 'plugins.install' | 'plugins.cancel' | 'plugins.uninstall') {
+  /** Opens the consent dialog; null when the owner cancels it. */
+  function ask(request: ConsentRequest): Promise<string[] | null> {
+    answerConsent?.(null);
+    return new Promise((resolve) => { answerConsent = resolve; consent = request; });
+  }
+  function answered(grants: string[] | null) {
+    const waiting = answerConsent;
+    answerConsent = null;
+    consent = null;
+    waiting?.(grants);
+  }
+
+  /** Install, update or retry once the owner ticked what the version may reach; a schema 1 plugin sends no grants. */
+  async function install(plugin: PluginState) {
+    if (!asksGrants) return change(plugin, 'plugins.install');
+    const request = consentForInstall(plugin);
+    const grants = await ask(request);
+    if (grants !== null) await change(plugin, 'plugins.install', request.requested === null ? undefined : asGrants(grants));
+  }
+
+  /** What an installed plugin's token reaches, from its row: the core reissues the token. */
+  async function editGrants(plugin: PluginState) {
+    const client = store.client;
+    const grants = await ask(consentForEdit(plugin));
+    if (!client || grants === null) return;
+    busy[plugin.id] = true;
+    try {
+      put(await client.call('plugins.setGrants', { id: plugin.id, grants: asGrants(grants) }));
+      delete errors[plugin.id];
+    } catch (cause) {
+      errors[plugin.id] = messageOf(cause);
+    } finally {
+      busy[plugin.id] = false;
+    }
+  }
+
+  async function change(plugin: PluginState, method: 'plugins.install' | 'plugins.cancel' | 'plugins.uninstall', grants?: PluginPermission[]) {
     const client = store.client;
     if (!client) return;
     if (method === 'plugins.uninstall' && !await confirm.ask({
@@ -113,7 +155,7 @@
     })) return;
     busy[plugin.id] = true;
     try {
-      put(await client.call(method, { id: plugin.id }));
+      put(await client.call(method, { id: plugin.id, ...(grants ? { grants } : {}) }));
       delete errors[plugin.id];
       if (method === 'plugins.uninstall' && openId === plugin.id) openId = null;
     } catch (cause) {
@@ -183,9 +225,12 @@
     const client = store.client;
     const previewId = preview?.previewId;
     if (!client || !previewId || adding) return;
+    const request = asksGrants && preview ? consentForPreview(preview) : null;
+    const grants = request ? await ask(request) : [];
+    if (grants === null || preview?.previewId !== previewId) return;
     adding = true;
     try {
-      put(await client.call('plugins.add', { previewId }));
+      put(await client.call('plugins.add', { previewId, ...(request?.requested ? { grants: asGrants(grants) } : {}) }));
       preview = null;
       url = '';
       ref = '';
@@ -421,7 +466,7 @@
     <dt class="with-tip"><span class="ui-label">{t.reaches}</span><InfoTip topic={t.reaches} text={t.reachesHint} /></dt>
     <dd>
       {#if permissions.length > 0}
-        <ul class="chips">{#each permissions as permission (permission)}<li class="chip" title={permission} data-testid="plugin-permission">{t.permission[permission]}</li>{/each}</ul>
+        <ul class="chips">{#each permissions as permission (permission)}<li class="chip" title={permission} data-testid="plugin-permission" data-permission={permission}>{t.permission[permission].title}</li>{/each}</ul>
       {:else}<span class="subtle">{t.reachesNothing}</span>{/if}
     </dd>
   {/if}
@@ -646,7 +691,7 @@
       {#each shown as plugin (plugin.id)}
         <PluginCard {plugin} working={busy[plugin.id] === true} {installLocked} error={errors[plugin.id]}
           onopen={() => { openId = plugin.id; }} ontoggle={(on) => void setEnabled(plugin, on)}
-          oninstall={() => void change(plugin, 'plugins.install')} oncancel={() => void change(plugin, 'plugins.cancel')} />
+          oninstall={() => void install(plugin)} oncancel={() => void change(plugin, 'plugins.cancel')} />
       {/each}
     </div>
   {:else if loaded}
@@ -655,8 +700,10 @@
 </div>
 
 <PluginDialog plugin={opened} working={openId !== null && busy[openId] === true} onclose={() => { openId = null; }}
-  onsave={saveSetting} onuninstall={(plugin) => void change(plugin, 'plugins.uninstall')} {details} />
+  onsave={saveSetting} onuninstall={(plugin) => void change(plugin, 'plugins.uninstall')}
+  onedit={opened && asksGrants && grantsEditable(opened) ? (plugin) => void editGrants(plugin) : null} {details} />
 <GatewayMoveDialog {store} open={moving} target="plugin" onclose={() => { moving = false; }} />
+<PluginConsent request={consent} onanswer={answered} />
 
 <style>
   .page { container-type: inline-size; }

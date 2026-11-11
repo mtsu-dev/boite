@@ -1,8 +1,8 @@
 <script lang="ts">
   import { tick, untrack, type Snippet } from 'svelte';
-  import { Puzzle, X } from '@lucide/svelte';
+  import { Puzzle, ShieldCheck, X } from '@lucide/svelte';
   import type { PluginSettingValue, PluginState } from '@boite/contracts';
-  import { pluginSettingValues } from '@boite/contracts';
+  import { PLUGIN_PERMISSIONS, pluginSettingValues } from '@boite/contracts';
   import { Closing } from '../lib/closing.svelte';
   import { mobileOverlay } from '../lib/mobile-history';
   import { hasFiles, pluginAuthor } from '../lib/plugin-card';
@@ -15,7 +15,7 @@
    * token may call, and the details the card leaves out (its program, its
    * accounts, where it comes from), with Uninstall at the bottom.
    */
-  let { plugin, working, onclose, onsave, onuninstall, details }: {
+  let { plugin, working, onclose, onsave, onuninstall, onedit = null, details }: {
     /** Null closes the dialog. */
     plugin: PluginState | null;
     working: boolean;
@@ -23,6 +23,8 @@
     /** Resolves to the core's refusal, or null once it kept the value. */
     onsave: (plugin: PluginState, key: string, value: PluginSettingValue) => Promise<string | null>;
     onuninstall: (plugin: PluginState) => void;
+    /** Opens the grant editor (`plugins.setGrants`); null when this core keeps no grants or the plugin has none to edit. */
+    onedit?: ((plugin: PluginState) => void) | null;
     details: Snippet<[PluginState]>;
   } = $props();
 
@@ -47,6 +49,8 @@
 
   function onkeydown(event: KeyboardEvent) {
     if (!overlay.open) return;
+    // The grant editor opened from Authorizations sits above: its keys are its own.
+    if (document.querySelector('[data-testid="plugin-consent"]:not(.closing)')) return;
     // A menu of choices open inside the dialog takes its own Escape first.
     if (event.key === 'Escape' && card?.querySelector('[role="menu"]')) return;
     if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onclose(); return; }
@@ -64,7 +68,7 @@
   const settings = $derived(shown?.settings ?? []);
   const values = $derived(shown ? pluginSettingValues(settings, shown.settingValues ?? {}) : {});
   const author = $derived(shown ? pluginAuthor(shown) : null);
-  /** A schema 1 plugin's program gets the owner token; a schema 2 one, what it declared. */
+  /** A schema 1 plugin's program gets the owner token; a schema 2 one, what the owner granted of what it asks for. */
   const reach = $derived.by((): 'listed' | 'owner' | null => {
     if (!shown) return null;
     if (shown.permissions !== undefined) return 'listed';
@@ -112,9 +116,15 @@
                 {#if reach === 'owner'}<p class="hint">{t.authorizationsOwner}</p>{/if}
               </div>
               {#if reach === 'listed'}
-                {#if (current.permissions ?? []).length > 0}
-                  <ul class="chips">{#each current.permissions ?? [] as permission (permission)}<li class="chip" title={permission} data-testid="plugin-authorization">{t.permission[permission]}</li>{/each}</ul>
-                {:else}<span class="hint">{t.reachesNothing}</span>{/if}
+                {@const granted = current.granted ?? current.permissions ?? []}
+                <div class="reach">
+                  {#if granted.length > 0}
+                    <ul class="chips">{#each granted as permission (permission)}<li class="chip" class:danger={PLUGIN_PERMISSIONS[permission]?.danger === true} title={permission} data-testid="plugin-authorization" data-permission={permission}>{t.permission[permission].title}</li>{/each}</ul>
+                  {:else}<span class="hint">{t.reachesNothing}</span>{/if}
+                  {#if onedit}
+                    <button type="button" class="ghost small" data-testid="plugin-grants" data-plugin={current.id} disabled={working} onclick={() => onedit(current)}><ShieldCheck size={14} /><span class="ui-label">{t.authorizationsEdit}</span></button>
+                  {/if}
+                </div>
               {/if}
             </div>
           </section>
@@ -173,8 +183,10 @@
   .authorizations .text { display: grid; gap: 3px; min-width: 0; }
   .label { margin: 0; display: flex; align-items: center; gap: 4px; font-size: var(--text-base); font-weight: 500; }
   .hint { margin: 0; font-size: var(--text-sm); line-height: 1.45; color: var(--color-muted-foreground); }
+  .reach { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; }
   .chips { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
   .chips .chip { height: auto; padding: 1px 6px; font-size: var(--text-xs); }
+  .chips .chip.danger { color: var(--color-danger); border-color: color-mix(in srgb, var(--color-danger) 40%, transparent); }
   .details { display: grid; gap: 10px; padding-bottom: 2px; }
   .actions { display: flex; align-items: center; gap: 6px; padding: 8px 12px 10px; border-top: 1px solid var(--color-border); }
   .push { margin-left: auto; }
@@ -183,6 +195,6 @@
     .scrim { align-items: flex-end; padding-top: 0; }
     .dialog { width: 100vw; max-height: 90dvh; border-radius: var(--radius-xl) var(--radius-xl) 0 0; padding-bottom: env(safe-area-inset-bottom); }
     .authorizations { grid-template-columns: minmax(0, 1fr); }
-    .chips { justify-content: flex-start; }
+    .reach, .chips { justify-content: flex-start; }
   }
 </style>

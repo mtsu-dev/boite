@@ -1,4 +1,4 @@
-import { threadActive } from '@boite/contracts';
+import { deviceBound, threadActive } from '@boite/contracts';
 import { createHash } from 'node:crypto';
 import {
   DEFAULT_WORKFLOW_LIMITS, WORKFLOW_LIMITS, checkPlan, checkSteps, closeLoop, conditionHolds, executionsUsed, itemLabel, loopAgain,
@@ -743,7 +743,7 @@ export class Workflows {
         this.#stop(run, 'Stopped');
         return this.#view(this.#load(run.id)!);
       case 'retry': {
-        if (principal === 'session') throw refused('retrying a workflow step is an owner action');
+        if (deviceBound(principal)) throw refused('retrying a workflow step is an owner action');
         if (run.status === 'done') throw refused('the run finished; start it again instead');
         // A retry leaves the run running: on a paused run that is a resume.
         if (run.status === 'paused') mayResume(this.#core, run, principal);

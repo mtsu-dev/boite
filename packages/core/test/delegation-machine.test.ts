@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { RpcErrorCode, type DelegatedAgent, type ModelInfo, type RpcParams } from '@boite/contracts';
 import { runCli } from '../src/cli.ts';
-import type { CoreClient } from '../src/client.ts';
+import { connect, type CoreClient } from '../src/client.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import type { TurnContext, TurnResult } from '../src/drivers/types.ts';
 import { invalidParams } from '../src/errors.ts';
@@ -673,6 +673,25 @@ test('a stop asked by request id before that machine named the child stops it on
   expect(held.has(child.id)).toBe(false);
   expect(pc.core.threads.require(child.id).archived).toBe(false);
   expect(desk.core.delegation.remote.child(threadId, child.id)?.stopping).toBeUndefined();
+});
+
+test('a parent idle here whose child works on another machine is not put away by Mark done or a plugin', async () => {
+  const { held } = answering();
+  const { desk, pc, owner, threadId, spawn } = await setup();
+  const child = await spawn('Read HOLD-ON', '--project', 'notes', '--title', 'Read', '--request-id', 'idle-parent');
+  await waitFor(() => held.has(child.thread.id) && desk.core.delegation.remote.busy(threadId));
+  await waitFor(() => desk.core.threads.require(threadId).status === 'idle');
+  const plugin = await connect(desk.url, desk.core.plugins.tokens.tokenFor('archiver', ['threads.write']), { client: { name: 'plugin', version: '0' } });
+  // Before, the family check looked only at this machine's threads: the plugin archived the parent and, with it, the running child there.
+  expect(await thrown(plugin.call('threads.archive', { threadId })))
+    .toThrow('threadId: a subagent on another machine is still running; expected an idle conversation family');
+  expect(await thrown(owner.call('threads.archive', { threadId, onlyIfIdle: true }))).toThrow('a subagent on another machine is still running');
+  expect(desk.core.threads.require(threadId).archived).toBe(false);
+  expect(pc.core.threads.require(child.thread.id).archived).toBe(false);
+  held.get(child.thread.id)!();
+  await waitFor(() => !desk.core.delegation.remote.busy(threadId) && desk.core.threads.require(threadId).status === 'idle');
+  expect((await plugin.call('threads.archive', { threadId })).archiveReason).toMatchObject({ type: 'plugin', pluginId: 'archiver' });
+  plugin.close();
 });
 
 test('a restart of the child\'s machine keeps the child at work for its parent until that stop is final', async () => {

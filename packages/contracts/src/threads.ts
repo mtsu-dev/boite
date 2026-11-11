@@ -4,6 +4,7 @@ import type { AccountId, MessageId, ProjectId, ProviderId, ThreadId, Timestamp, 
 import type { AgentShape } from './imports';
 import type { Attachment, Message, MoveNotice, PendingMove, PreviewReference } from './messages';
 import type { PermissionRequest } from './permissions';
+import type { PluginActor } from './plugins';
 import type { ThreadCapabilities } from './providers';
 import type { PullRequestWatch } from './pull-requests';
 import type { BackgroundTask, BackgroundTaskObservation, BackgroundWait, QuestionRequest } from './questions';
@@ -98,12 +99,10 @@ export interface ThreadProgress {
   providerAt?: Timestamp | null;
 }
 
-export interface ThreadArchiveReason {
-  type: 'pr-merged';
-  number: number;
-  url: string;
-  archivedAt: Timestamp;
-}
+/** A merged PR, or a plugin granted `threads.write` (`pluginName` as it was then, readable after an uninstall). */
+export type ThreadArchiveReason =
+  | { type: 'pr-merged'; number: number; url: string; archivedAt: Timestamp }
+  | ({ type: 'plugin'; archivedAt: Timestamp } & PluginActor);
 
 /**
  * The core removed the worktree this thread worked in while it was archived.
@@ -175,6 +174,8 @@ export interface ThreadSummary {
 
   /** Durable explanation for an automatic archive; absent for manual archives and restored conversations. */
   archiveReason?: ThreadArchiveReason;
+  /** The plugin that created the conversation (`threads.write`), its name as it was then; absent when anyone else did. */
+  createdBy?: PluginActor;
   /** Set once the core removed this thread's worktree, kept after a restore while `cwd` still names it. */
   worktreeRemoved?: ThreadWorktreeRemoval | null;
   /** Core-owned delegation relationship. Absent on ordinary conversations. */
@@ -828,6 +829,8 @@ export interface ThreadsRpcMethods {
    * processes end once those turns have settled. Restoring restarts nothing.
    * `onlyIfIdle: true` marks done, recording its expiry date after refusing active work in the family.
    * Unsent drafts do not block this explicit action.
+   * A plugin (permission `threads.write`) always marks done, checked as an automatic pass; `pinned`
+   * and `archived: false` are refused, and `archiveReason` names it (docs/plugins.md).
    */
   'threads.archive': { params: { threadId: ThreadId; archived?: boolean; onlyIfIdle?: boolean }; result: ThreadSummary };
   /**

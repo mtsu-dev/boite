@@ -9,7 +9,7 @@ import { notFound, refused } from '../errors.ts';
 import { currentOs } from '../paths.ts';
 import type { InstallOutcome } from './install.ts';
 import { npmCli, npmInstallOf, unwritableDir, type NpmCommand } from './npm.ts';
-import { profileFor, resolveCommand, type ResolvedCommand } from './resolve.ts';
+import { profileFor, programBehindWrappers, resolveCommand, type ResolvedCommand } from './resolve.ts';
 import { BACKGROUND_LIMIT_MS, backgroundHolders, resumeCut, withCut } from './update-background.ts';
 import { readReadings, readSkips, writeReadings, writeSkips, type Entry } from './update-readings.ts';
 import { resumeAfterUpdate, resumePostponed, resumeUnwaited, type Resume } from './update-resume.ts';
@@ -85,7 +85,7 @@ interface Target {
   descriptor: ProviderDescriptor;
   profile: OsProfile;
   route: HarnessUpdate['route'];
-  /** The program the route resolves to now, as a person would recognise it. */
+  /** The copy the route runs now, links followed: on the self route, the one behind a wrapper first on PATH. */
   program: string;
 }
 
@@ -437,7 +437,7 @@ export class HarnessUpdates {
       inside(managedDir, resolve(command.executable));
     if (runsManaged && profile.install !== undefined) return { descriptor, profile, route: 'managed', program: programIdentity(command.shown) };
     // A download in flight belongs to the install card, not to this list.
-    if (profile.update !== undefined && command !== null) return { descriptor, profile, route: 'self', program: programIdentity(command.shown) };
+    if (profile.update !== undefined && command !== null) return { descriptor, profile, route: 'self', program: programIdentity(programBehindWrappers(command.shown)) };
     return null;
   }
 
@@ -554,7 +554,7 @@ export class HarnessUpdates {
     const label = via?.label ?? args.join(' ');
     const spawned = this.#core.procs.spawnPiped(updateThreadId(target.descriptor.id), command.executable, [...command.prefix, ...args], {
       cwd: this.#core.dataDir,
-      env: updaterEnv(command.shown, command.updateEnv),
+      env: updaterEnv(programBehindWrappers(command.shown), command.updateEnv),
     });
     spawned.proc.stdin.end();
     const readers = [spawned.proc.stdout.getReader(), spawned.proc.stderr.getReader()] as const;

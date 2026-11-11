@@ -206,6 +206,7 @@ export class Connection {
             watchDemo: params.get('watch') === '1',
             windowsDemo: params.get('windows') === '1',
             councilDemo: params.get('council') === '1',
+            pluginArchiveDemo: params.get('pluginArchive') === '1',
             uninstalled: params.get('uninstalled') === '1',
             ...(params.get('principal') === 'session' ? { principal: 'session' as const } : {}),
             ...(params.get('missing') ? { missing: params.get('missing')!.split(',') } : {})
