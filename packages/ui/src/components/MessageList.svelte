@@ -37,6 +37,7 @@
   import { TurnProgress } from '../lib/turn-progress.svelte';
   import { GAP, OVERSCAN, SlotTotals, WINDOW_FROM, atOrBefore, estimateSlot, gapChanged, keepOnly, measurable, reaches, sameView, slotGap, windowStats, type WindowView } from '../lib/message-window';
   import { TimelineRows, rowEstimate, rowIndexOf, seam, type TimelineRow } from '../lib/timeline-rows';
+  import { timelineEndRoom } from '../lib/timeline-follow';
   import { GapRows, NO_GAPS, READ_AHEAD, RangeAsk, gapHeight, heldNear, loadKeepingReader, wantedRange } from '../lib/history-gaps';
   import TimelineGap from './TimelineGap.svelte';
   import { latest } from '../lib/latest.svelte';
@@ -175,21 +176,9 @@
     while (store.readingPositions.size > 32) store.readingPositions.delete(store.readingPositions.keys().next().value!);
   });
   let viewHeight = $state(savedReading?.height ?? 0);
-  /**
-   * What lies under the last row inside the viewport: its bottom padding and
-   * the fade at its end, which takes its own room in the flow (styles below).
-   * Read from the styles, which give it 18 px where scroll timelines exist and
-   * 20 px elsewhere: a fixed 20 left a sent prompt 2 px under its inset.
-   */
+  /** What lies under the last row inside the viewport (`timelineEndRoom`), 20 px until read. */
   let endRoom = $state(20);
-  function readEndRoom(box: HTMLElement): void {
-    const padding = parseFloat(getComputedStyle(box).paddingBottom);
-    // No layout to read (a test DOM): the 20 px of the styles without scroll timelines stand.
-    if (!Number.isFinite(padding)) return;
-    const fade = getComputedStyle(box, '::after');
-    const inFlow = fade.content !== 'none' && fade.position !== 'absolute' && fade.position !== 'fixed';
-    endRoom = padding + (inFlow ? (parseFloat(fade.height) || 0) + (parseFloat(fade.marginTop) || 0) : 0);
-  }
+  const readEndRoom = (box: HTMLElement) => { endRoom = timelineEndRoom(box) ?? endRoom; };
   let navigationTarget = $state<string | null>(null);
   let failureTarget = $state<{ id: string } | null>(null);
   let promptTarget = $state<string | null>(savedReading?.followPrompt ?? null);
@@ -348,10 +337,8 @@
   });
 
   /**
-   * The slice of messages that meets the viewport, the overscan added, and the
-   * two heights the spacers carry for everything left out. While pinned the
-   * window hangs off the end of the list instead of off `scrollTop`, so the
-   * bottom is right on the first frame rather than after a measurement.
+   * The slice of messages that meets the viewport, the overscan added, and the two heights the spacers carry for the rest.
+   * While pinned the window hangs off the end of the list, not `scrollTop`, so the bottom is right on the first frame.
    */
   let lastView: WindowView | undefined;
   const view = $derived.by(() => {
@@ -386,9 +373,8 @@
   const rendered = $derived(rows.slice(view.start, view.end));
 
   /**
-   * A rendered message's real height replaces its estimate. One that sits above
-   * what the user is reading would push the text down as it lands, so the same
-   * delta goes back into `scrollTop` and the viewport does not move.
+   * A rendered message's real height replaces its estimate. One above what the user reads would push the text down
+   * as it lands, so the same delta goes back into `scrollTop` and the viewport does not move.
    */
   function onMeasured(entries: ResizeObserverEntry[]): void {
     const box = viewport;
@@ -436,9 +422,8 @@
   $effect(() => () => tail.stop());
 
   /**
-   * Every rendered message reports its height here and says which id it is. The
-   * rise plays once per message: a second element for the same id, minted when
-   * the window scrolled back over it, opens with the animation off.
+   * Every rendered message reports its height here and says which id it is. The rise plays once per message: a second
+   * element for the same id, minted when the window scrolled back over it, opens with the animation off.
    */
   function track(node: HTMLElement, { row }: { row: TimelineRow; joined: string | null }): { update(next: { row: TimelineRow; joined: string | null }): void; destroy(): void } {
     const id = row.id;
@@ -706,10 +691,8 @@
     () => timeline.filter(message => !cards.has(message.id) && !grouped.groups.has(message.id) && !shaped.folds.has(message.id) && !movedBy(message) && !startedFrom(message)));
 
   /**
-   * Edit and retry go through the core's rewind, fork through its fork, and
-   * only on a thread at rest: a turn still running is stopped first (Escape).
-   * A persistent agent's thread rewinds like any other, but has no project to
-   * fork into.
+   * Edit and retry go through the core's rewind, fork through its fork, and only on a thread at rest: a turn still
+   * running is stopped first (Escape). A persistent agent's thread rewinds like any other, but has no project to fork into.
    */
   const branchable = $derived(store.openThread?.id === threadId && (!!store.openThread.agentSessionId || store.openThread.projectId !== null));
   const forkable = $derived(branchable && !store.openThread?.agentSessionId);
