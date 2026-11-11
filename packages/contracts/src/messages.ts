@@ -2,6 +2,7 @@ import type { ThreadLink } from './agent-door';
 import type { AgentSettingAsk } from './agent-setting-requests.ts';
 import type { ImageMimeType } from './attachment-limits.ts';
 import type { NativeAgentUpdate } from './delegation';
+import type { PluginActor } from './plugins';
 import type { MessageId, ProjectId, RequestId, ThreadId, Timestamp, TurnId } from './ids';
 import type { RpcMethods } from './index';
 import type { QuestionAnswer, QuestionOption } from './questions';
@@ -125,7 +126,7 @@ export type MessagePart =
    * `omitted`: characters a page left out of the end of `text` because the
    * message was too heavy to send whole (`MESSAGE_SENT_MAX_BYTES`). Never persisted.
    */
-  | { type: 'text'; text: string; complete?: boolean; displayText?: string; previewReferences?: PreviewReference[]; activity?: ActivityTurn; moved?: MoveNotice; startedBy?: ThreadLink; started?: ThreadLink; sentFrom?: SentFrom; omitted?: number; teamPost?: TeamPostRef }
+  | { type: 'text'; text: string; complete?: boolean; displayText?: string; previewReferences?: PreviewReference[]; activity?: ActivityTurn; moved?: MoveNotice; startedBy?: ThreadLink; started?: ThreadLink; sentFrom?: SentFrom; byPlugin?: PluginActor; omitted?: number; teamPost?: TeamPostRef }
   /**
    * An image the user sent with the prompt, journalled with the message. A page
    * asked with `compactImages` leaves a large one's `data` empty, with

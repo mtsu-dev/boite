@@ -30,36 +30,171 @@ export type PluginRuntime = 'native' | 'bun';
 
 // ---------------------------------------------------------------------------
 // Permissions. A schema 2 plugin's processes get a token of their own that
-// reaches only what its manifest declares, shown to the owner before install.
-// A schema 1 desktop app keeps the owner token it always had.
+// reaches only what the owner granted of what its manifest asks for
+// (docs/plugins.md, Permissions). A schema 1 desktop app keeps the owner token
+// it always had.
+//
+// Every method and event a paired device reaches (`DEVICE_METHODS` and
+// `DEVICE_EVENTS` in access.ts) sits in exactly one domain below or in
+// `PLUGIN_CLOSED`; core/test/plugin-permissions.test.ts fails on one
+// filed nowhere. A method added later joins its domain here and every plugin
+// granted that domain reaches it, with no change to the plugin.
 // ---------------------------------------------------------------------------
 
-export const PLUGIN_PERMISSION_NAMES = ['threads.read', 'threads.write', 'todos', 'ui.reveal'] as const;
+export const PLUGIN_PERMISSION_NAMES = [
+  'threads.read', 'threads.write', 'projects.read', 'projects.write', 'todos.read', 'todos.write',
+  'agents.read', 'agents.write', 'files.read', 'questions.write', 'screens.read', 'screens.write',
+  'status.read', 'ui.reveal',
+] as const;
 export type PluginPermission = (typeof PLUGIN_PERMISSION_NAMES)[number];
+
+/**
+ * Names older manifests used, read as the permissions they stand for, so an
+ * installed manifest still loads. A manifest may name both forms.
+ */
+export const PLUGIN_PERMISSION_ALIASES: Readonly<Record<string, readonly PluginPermission[]>> = {
+  todos: ['todos.read', 'todos.write'],
+};
 
 /** What one permission opens: the methods a plugin token may call and the events it hears. */
 export interface PluginPermissionGrant {
   methods: readonly RpcMethodName[];
   events: readonly RpcEventName[];
+  /** Drawn in red at install: granting it hands the plugin the owner's own say. */
+  danger?: true;
 }
 
 /**
  * The whole of what a plugin token reaches. A method or an event in none of
- * these is refused to every plugin, whatever it declares.
+ * these is refused to every plugin, whatever it asks for. A plugin passes the
+ * same checks as a paired device on top (access.ts): the working tree's diff
+ * against HEAD only, the last quota reading only.
  */
 export const PLUGIN_PERMISSIONS: Readonly<Record<PluginPermission, PluginPermissionGrant>> = {
-  // Every conversation of every project, read only: rows, transcripts, the project list.
+  // Every conversation of every project, read only: rows, transcripts, cards waiting on the owner, the composer's drafts.
+  // `projects.list` too: a row names its project, and plugins asking for threads.read before the domains used it.
   'threads.read': {
-    methods: ['threads.list', 'threads.get', 'projects.list'],
-    events: ['thread.created', 'thread.updated', 'thread.removed', 'turn.started', 'turn.finished'],
+    methods: [
+      'projects.list', 'threads.list', 'threads.listChanges', 'threads.get', 'threads.capabilities', 'threads.stats', 'threads.subscribe', 'threads.unsubscribe',
+      'threads.pullRequest', 'threads.pullRequests', 'threads.pullRequestReview', 'threads.pullRequestFiles',
+      'messages.list', 'messages.toolOutput', 'messages.toolPart', 'messages.attachment', 'artifacts.read', 'artifacts.viewBlock',
+      'composer.list', 'composer.asset.get', 'permissions.list', 'questions.list',
+    ],
+    events: [
+      'thread.created', 'thread.updated', 'thread.removed', 'thread.commands', 'thread.background', 'thread.btw', 'thread.load', 'thread.activity',
+      'turn.started', 'turn.finished', 'turn.toolCompleted',
+      'message.started', 'message.delta', 'message.part', 'message.completed', 'message.truncated',
+      'permission.requested', 'permission.resolved', 'question.asked', 'question.answered',
+      'composer.updated', 'threads.pullRequestsChanged',
+    ],
   },
-  // Starts conversations and turns, and stops them: it spends the owner's agent quota.
-  'threads.write': { methods: ['threads.create', 'turns.start', 'turns.stop'], events: [] },
-  // The project boards: read, add and update cards.
-  todos: { methods: ['todos.list', 'todos.add', 'todos.update'], events: ['todos.updated'] },
+  // Starts, steers, stops, renames, moves, forks and archives conversations: it spends the owner's agent quota.
+  // `threads.archive` stays idle-only and never restores (threads/plugin-archive.ts, access.ts).
+  'threads.write': {
+    methods: [
+      'threads.create', 'threads.update', 'threads.retitle', 'threads.archive', 'threads.remove', 'threads.restore', 'threads.pin', 'threads.markRead',
+      'threads.move', 'threads.moveCancel', 'threads.fork', 'threads.rewind', 'threads.mergeBack', 'threads.compact',
+      'threads.btw', 'threads.btw.cancel', 'threads.btw.fork', 'threads.activity.set', 'threads.activity.control', 'threads.unwatchPullRequest',
+      'turns.start', 'turns.steer', 'turns.stop', 'turns.recover', 'turns.cancelRetry',
+      'composer.asset.put', 'drafts.prepare', 'drafts.release', 'attachments.upload', 'attachments.release',
+    ],
+    events: [],
+  },
+  // The projects' icons, file lists and changes, and the composer's skill menu (the list itself is threads.read's).
+  'projects.read': {
+    methods: ['projects.icon', 'projects.files', 'brain.commands'],
+    events: ['project.added', 'project.removed', 'project.updated'],
+  },
+  // Adds a folder as a project, renames or archives one.
+  'projects.write': { methods: ['projects.add', 'projects.archive', 'projects.rename', 'projects.drafts'], events: [] },
+  'todos.read': { methods: ['todos.list'], events: ['todos.updated'] },
+  // Adds, edits, moves and removes cards, a done one included, as the owner would.
+  'todos.write': { methods: ['todos.add', 'todos.update', 'todos.remove'], events: [] },
+  // Bots, delegated children, workflows, teams, councils and the coordination inbox, read only.
+  'agents.read': {
+    methods: [
+      'agents.snapshot', 'agents.runtime.get', 'agents.brain.get', 'agents.picture.get',
+      'delegation.get', 'delegation.result', 'delegation.wait', 'workflows.list', 'workflows.get', 'workflows.templates.list',
+      'teams.list', 'council.list', 'council.get', 'collaboration.get', 'collaboration.directory',
+    ],
+    events: ['agents.changed', 'delegation.changed', 'workflows.changed', 'collaboration.changed', 'teams.changed', 'council.changed'],
+  },
+  // Wakes a bot, writes to children and teams, pauses or stops their work.
+  'agents.write': {
+    methods: ['agents.open', 'agents.event', 'delegation.send', 'delegation.stop', 'workflows.control', 'teams.post', 'council.post', 'council.closeRound', 'council.stop'],
+    events: [],
+  },
+  // The working trees: changed files, their diffs, any file, and the folders of this machine.
+  'files.read': { methods: ['git.status', 'git.diff', 'files.list', 'files.read', 'projects.browse'], events: [] },
+  // Answers the cards agents raise, tool permissions included: what the agent then runs, the owner did not approve.
+  'questions.write': { methods: ['permissions.answer', 'questions.answer', 'questions.openPage', 'questions.skip'], events: [], danger: true },
+  // What an agent's browser, a phone emulator or a desktop window shows.
+  'screens.read': {
+    methods: ['browser.remoteFrame', 'browser.remoteSelection', 'browser.remoteStatus', 'devices.list', 'devices.sessions', 'devices.frame', 'devices.screenshot', 'devices.stream', 'windows.list', 'windows.frame'],
+    events: ['browser.remoteChanged', 'devices.changed', 'windows.changed'],
+  },
+  // Taps, types and opens there, reads the emulator's clipboard, closes what is shown.
+  'screens.write': { methods: ['browser.remoteInput', 'devices.input', 'devices.open', 'devices.close', 'devices.clipboard', 'windows.close'], events: [] },
+  // This machine's load and usage, the quota readings, the agents installed, settings and shortcuts, read only.
+  'status.read': {
+    methods: ['resources.usage', 'resources.machine', 'scheduler.get', 'usage.get', 'usage.history', 'quotas.list', 'subscriptionProxy.quotas', 'providers.list', 'settings.get', 'keybindings.get'],
+    events: [
+      'scheduler.updated', 'quotas.updated', 'quotas.progress', 'quotas.alerted', 'subscriptionProxy.quotasUpdated',
+      'settings.updated', 'keybindings.updated', 'providers.updated', 'providers.installProgress', 'providers.probed',
+    ],
+  },
   // Brings a conversation, a bot or the app updates to the front of the owner's desktop window.
   'ui.reveal': { methods: ['ui.reveal'], events: [] },
 };
+
+/**
+ * What no plugin reaches, whatever it asks for, and why. A name ending in
+ * `.` closes every method or event under it. Methods a paired device does
+ * not reach are the owner's and closed anyway; those are listed only when the
+ * reason is worth saying.
+ */
+export const PLUGIN_CLOSED: readonly { name: string; reason: string }[] = [
+  { name: 'accounts.', reason: 'the agents\' sign-ins and their settings are the owner\'s' },
+  { name: 'quotas.alert', reason: 'an account\'s alert thresholds are the owner\'s account settings' },
+  { name: 'providers.probe', reason: 'it starts an agent with the owner\'s login' },
+  { name: 'providers.install', reason: 'installing an agent runs its installer on this machine' },
+  { name: 'providers.update', reason: 'updating an agent runs its installer on this machine' },
+  { name: 'providers.uninstall', reason: 'removing an agent is the owner\'s' },
+  { name: 'subscriptionProxy.setEnabled', reason: 'it routes the owner\'s provider traffic' },
+  { name: 'secrets.', reason: 'secrets reach only the agent that asked for one' },
+  { name: 'secret.', reason: 'secrets reach only the agent that asked for one' },
+  { name: 'plugins.', reason: 'installing, removing and granting plugins is the owner\'s' },
+  { name: 'core.', reason: 'updating, restarting and stopping Boite and the app is the owner\'s' },
+  { name: 'policy.', reason: 'policies hold the owner\'s machines to an administrator\'s rules, which a plugin neither reads nor changes' },
+  { name: 'sessions.', reason: 'pairing a device is the owner\'s' },
+  { name: 'pairing.', reason: 'pairing a device is the owner\'s' },
+  { name: 'group.', reason: 'the machines of the group and their pairing are the owner\'s' },
+  { name: 'push.', reason: 'notifications belong to the device that subscribed' },
+  { name: 'client.', reason: 'each app\'s language and experiments are its own' },
+  { name: 'threads.focus', reason: 'which conversation the person is looking at decides their notifications' },
+  { name: 'speech.', reason: 'the microphone belongs to the person speaking to the app' },
+  { name: 'composer.put', reason: 'a queued line goes out as the owner\'s own; a plugin sends with turns.start or turns.steer, which name it' },
+  { name: 'diagnostics.report', reason: 'the app reports its own errors' },
+  { name: 'windows.consent', reason: 'only the owner lets an agent see a window' },
+  { name: 'contacts.', reason: 'a contact letter speaks as the owner to another person' },
+  { name: 'shared', reason: 'a shared project is open to the people it is shared with, not to plugins' },
+];
+
+/** Why no plugin reaches `name`, or null when a permission may open it. */
+export function pluginClosedReason(name: string): string | null {
+  return PLUGIN_CLOSED.find((entry) => entry.name.endsWith('.') ? name.startsWith(entry.name) : (entry.name === 'shared' ? /^shared[A-Z]/.test(name) : entry.name === name))?.reason ?? null;
+}
+
+/** The permission that opens `method`, or null when none does. */
+export function pluginPermissionFor(method: string): PluginPermission | null {
+  return (PLUGIN_PERMISSION_NAMES.find((permission) => (PLUGIN_PERMISSIONS[permission].methods as readonly string[]).includes(method))) ?? null;
+}
+
+/** Who did something a plugin asked for, recorded on what it changed: the name as it was then, so it still reads after an uninstall. */
+export interface PluginActor {
+  pluginId: string;
+  pluginName: string;
+}
 
 // ---------------------------------------------------------------------------
 // What a schema 2 plugin adds to agents and to the composer. Each is plain
@@ -317,6 +452,16 @@ export interface PluginState {
    * from older cores, where every plugin does.
    */
   permissions?: PluginPermission[];
+  /**
+   * What the owner granted of `permissions`: all the plugin's token reaches.
+   * Absent with `permissions`. A permission the plugin asks for and the owner
+   * left out is refused by name (docs/plugins.md, Permissions).
+   */
+  granted?: PluginPermission[];
+  /** What the version an install or an update brings asks for; the consent dialog lists it. Absent when that version is schema 1. */
+  requested?: PluginPermission[];
+  /** It runs a program of its own on this machine, with Boite's rights: an executable, which its app or service runs too. */
+  runsProgram?: boolean;
   /** What it adds to agents and to the composer, by name. Absent from older cores. */
   adds?: PluginAdds | null;
   /** The folder a `dev` plugin runs from. Absent or null otherwise. */
@@ -389,10 +534,24 @@ export interface PluginsRpcMethods {
    * Downloads no artifact and runs nothing. https URLs only.
    */
   'plugins.inspect': { params: { url: string; ref?: string }; result: PluginPreview };
-  /** Installs exactly what a preview showed: that manifest, read at that commit. */
-  'plugins.add': { params: { previewId: string }; result: PluginState };
-  /** Installs a recommended plugin, or reinstalls one already added from a URL. */
-  'plugins.install': { params: { id: string }; result: PluginState };
+  /**
+   * Installs exactly what a preview showed: that manifest, read at that commit.
+   * `grants`: what the owner ticked of the manifest's permissions; all of them when absent.
+   */
+  'plugins.add': { params: { previewId: string; grants?: PluginPermission[] }; result: PluginState };
+  /**
+   * Installs a recommended plugin, or reinstalls or updates one already added
+   * from a URL. `grants`: what the owner ticked of the permissions that
+   * version asks for. Absent, a first install grants all of them and an
+   * update keeps what was granted, granting nothing new.
+   */
+  'plugins.install': { params: { id: string; grants?: PluginPermission[] }; result: PluginState };
+  /**
+   * Owner-only. What an installed schema 2 plugin's token reaches, among the
+   * permissions its manifest asks for. Its token is reissued, the sockets the
+   * old one opened close, and its app or service restarts with the new one.
+   */
+  'plugins.setGrants': { params: { id: string; grants: PluginPermission[] }; result: PluginState };
   'plugins.cancel': { params: { id: string }; result: PluginState };
   'plugins.uninstall': { params: { id: string }; result: PluginState };
   'plugins.accounts': { params: { id: string; refresh?: boolean }; result: PluginPool[] };

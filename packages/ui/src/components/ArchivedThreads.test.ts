@@ -211,3 +211,16 @@ test('a thread archived live takes its place by archive time, not the top', asyn
   await settle();
   expect(rows()).toEqual(['t-parser', 't-trace', 't-bench']);
 });
+
+test('a thread a plugin marked done names the plugin and when', async () => {
+  const store = new Store(), client = new FakeClient({ delayMs: 0, pluginArchiveDemo: true });
+  store.attach(client); await store.connect();
+  cleanups.push(() => { store.detach(); client.close(); });
+  running = mount(ArchivedThreads, { target: document.body, props: { store, eager: true } });
+  await settle();
+  const reason = document.querySelector<HTMLElement>('[data-thread-id="t-trace"] [data-testid=archive-plugin-reason]')!;
+  expect(reason.textContent).toContain('Archived by plugin Bureau');
+  expect(reason.title).toBe('bureau');
+  expect(reason.querySelector('time')?.getAttribute('datetime')).toBe(new Date((await client.call('threads.get', { threadId: 't-trace' })).archiveReason!.archivedAt).toISOString());
+  expect(document.querySelector('[data-thread-id="t-trace"] [data-testid=done-expires]')).not.toBeNull();
+});

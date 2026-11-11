@@ -15,9 +15,10 @@
  */
 
 import { TODO_STATUSES, TODO_TEXT_MAX } from '@boite/contracts';
-import type { Principal, ProjectId, RpcEvents, RpcParams, ThreadActivity, ThreadId, Todo, TodoGoal } from '@boite/contracts';
+import type { PluginActor, Principal, ProjectId, RpcEvents, RpcParams, ThreadActivity, ThreadId, Todo, TodoGoal } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { refused } from './errors.ts';
+import { pluginActor } from './plugins/actor.ts';
 import { newId } from './ids.ts';
 
 const ORDER: Record<Todo['status'], number> = { open: 0, claimed: 1, done: 2 };
@@ -134,7 +135,8 @@ export function listTodos(core: Core, threadId: ThreadId): Todo[] {
 /** Replication invalidates the same project board without persisting foreign cards as local ones. */
 export function notifySharedTodos(core: Core, projectId: ProjectId): void { send(core, projectId, stored(core, projectId)); }
 
-export function addTodo(core: Core, params: RpcParams<'todos.add'>, principal: Principal = 'owner'): Todo {
+/** `plugin`: the plugin adding it, recorded on the card. */
+export function addTodo(core: Core, params: RpcParams<'todos.add'>, principal: Principal = 'owner', plugin?: PluginActor): Todo {
   const projectId = projectOfThread(core, params.threadId);
   const todos = stored(core, projectId);
   if (principal === 'agent') {
@@ -154,6 +156,7 @@ export function addTodo(core: Core, params: RpcParams<'todos.add'>, principal: P
     text: checkText(params.text),
     status: 'open',
     threadId: params.threadId,
+    ...(plugin ? { plugin } : {}),
     createdAt: now,
     updatedAt: now,
   };
@@ -161,7 +164,8 @@ export function addTodo(core: Core, params: RpcParams<'todos.add'>, principal: P
   return todo;
 }
 
-export function updateTodo(core: Core, params: RpcParams<'todos.update'>, principal: Principal = 'owner'): Todo {
+/** `plugin`: the plugin changing it, which the card names until another hand moves it. */
+export function updateTodo(core: Core, params: RpcParams<'todos.update'>, principal: Principal = 'owner', plugin?: PluginActor): Todo {
   // Claiming asks the user to confirm; the confirmation itself is the user's,
   // on this machine or on a device paired to it.
   if (principal === 'agent' && params.status === 'done') {
@@ -212,13 +216,15 @@ export function updateTodo(core: Core, params: RpcParams<'todos.update'>, princi
       });
     }
   }
+  const { plugin: _previous, ...rest } = current;
   const updated: Todo = {
-    ...current,
+    ...rest,
     ...(params.status === undefined ? {} : { status: params.status }),
     ...(params.text === undefined ? {} : { text: checkText(params.text) }),
     ...(params.goalThreadId === undefined ? {} : { goalThreadId: params.goalThreadId }),
     // The last hand on the card, so the list says which thread moved it.
     threadId: params.threadId,
+    ...(plugin ? { plugin } : {}),
     updatedAt: Date.now(),
   };
   const list = save(core, projectId, todos.map((todo) => (todo.id === updated.id ? updated : todo)));
@@ -299,8 +305,8 @@ export function registerTodoMethods(core: Core): void {
     }
   });
   core.router.register('todos.list', (params, ctx) => core.sharedBoard.visibleTodos(params.threadId, listTodos(core, params.threadId), ctx.connection));
-  core.router.register('todos.add', (params, ctx) => addTodo(core, params, ctx.connection.identity.principal));
-  core.router.register('todos.update', (params, ctx) => params.sharedProjectId ? core.sharedBoard.updateTodo(params, ctx.connection) : updateTodo(core, params, ctx.connection.identity.principal));
+  core.router.register('todos.add', (params, ctx) => addTodo(core, params, ctx.connection.identity.principal, pluginActor(core, ctx.connection.identity)));
+  core.router.register('todos.update', (params, ctx) => params.sharedProjectId ? core.sharedBoard.updateTodo(params, ctx.connection) : updateTodo(core, params, ctx.connection.identity.principal, pluginActor(core, ctx.connection.identity)));
   // Deleting a card is the user's: an agent that is done with one claims it.
   core.router.register('todos.remove', async (params, ctx) => {
     if (params.sharedProjectId) {

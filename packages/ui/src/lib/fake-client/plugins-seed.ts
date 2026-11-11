@@ -45,7 +45,7 @@ export const FAKE_RELEASES: Record<string, { version: string; commit: string; ar
  * installed, one stuck mid-download, and one whose installed.json the core refuses.
  */
 export function fakePlugins(): PluginState[] {
-  const base = { platform: 'win32-x64', progress: 0, error: null, rejected: null, app: null, gateway: null };
+  const base = { platform: 'win32-x64', progress: 0, error: null, rejected: null, app: null, gateway: null, runsProgram: true };
   const legacy = `${DATA_DIR}\\plugins\\pool-legacy\\installed.json`;
   return [
     {
@@ -94,12 +94,14 @@ export function fakePlugins(): PluginState[] {
       ...base, id: 'standup', name: 'Standup', origin: 'dev',
       description: 'Writes a standup from the threads you worked in today.',
       homepage: null, version: '0.1.0', availableVersion: '0.1.0', status: 'installed', source: null, artifact: null,
-      commands: ['bun standup.js standup [--since <time>] (an agent\'s boite standup, in its directory)', 'environment: BOITE_CORE_URL=<this core> BOITE_TOKEN=<standup\'s token: threads.read, todos> BOITE_PLUGIN_ID=standup BOITE_PLUGIN_DATA=<its data directory>'], pools: [],
-      devPath: 'C:\\Users\\you\\plugins\\standup', permissions: ['threads.read', 'todos'],
+      commands: ['bun standup.js standup [--since <time>] (an agent\'s boite standup, in its directory)', 'environment: BOITE_CORE_URL=<this core> BOITE_TOKEN=<standup\'s token: threads.read, todos.read> BOITE_PLUGIN_ID=standup BOITE_PLUGIN_DATA=<its data directory>'], pools: [],
+      devPath: 'C:\\Users\\you\\plugins\\standup', permissions: ['threads.read', 'todos.read', 'todos.write'],
+      // The owner left the board's writes out: the token reaches the other two.
+      granted: ['threads.read', 'todos.read'], requested: ['threads.read', 'todos.read', 'todos.write'],
       adds: { commands: ['standup'], skills: ['standup-notes'], slashCommands: ['standup'], prompt: true },
     },
     {
-      ...base, id: 'pool-legacy', name: 'pool-legacy', origin: 'url', description: '', homepage: null,
+      ...base, id: 'pool-legacy', name: 'pool-legacy', origin: 'url', description: '', homepage: null, runsProgram: false,
       version: null, availableVersion: null, status: 'rejected', source: null, artifact: null, commands: [], pools: [],
       rejected: { file: legacy, field: 'manifest.schema', expected: '1 or 2', message: `${legacy}: manifest.schema must be 1 or 2, found number 0` }
     }

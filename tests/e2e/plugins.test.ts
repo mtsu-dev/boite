@@ -25,6 +25,12 @@ async function captureColumn(name: string) {
 async function scrollTo(selector: string) {
   await page.evaluate(`document.querySelector('${selector}').scrollIntoView({ block: 'start' })`);
 }
+/** Answers the consent dialog with Allow and waits for it to go. */
+async function allow() {
+  await page.waitFor(`document.querySelector('${id('plugin-consent-allow')}')`);
+  await page.click(id('plugin-consent-allow'));
+  await page.waitFor(`document.querySelector('${id('plugin-consent')}') === null`);
+}
 async function inspect(url: string) {
   await page.type(id('plugin-url'), url);
   await page.click(id('plugin-inspect'));
@@ -75,6 +81,9 @@ test('a URL shows its manifest before anything installs, and a refused one says 
 
   await inspect('https://github.com/example/pi-pool');
   await page.click(id('plugin-add'));
+  // A schema 1 plugin has no list to tick: the dialog says it gets the owner's access and runs a program.
+  await page.waitFor(`document.querySelector('${id('plugin-consent-owner')}') && document.querySelector('${id('plugin-consent-program')}')`);
+  await allow();
   await page.waitFor(`document.querySelector('${row('pi-pool')}')?.dataset.status === 'installed'`);
   expect(await page.evaluate(`document.querySelector('${row('pi-pool')}').closest('section').dataset.testid`)).toBe('plugins-installed');
   await page.click(`${row('pi-pool')} ${id('plugin-uninstall')}`);
@@ -102,7 +111,42 @@ test('a pool switches its login, and the recommended plugin uninstalls back to R
   await scrollTo(id('plugins-recommended'));
   await capture('plugins-recommended-desktop.png');
   await page.click(`${row('bots')} ${id('plugin-install')}`);
+  await allow();
   await page.waitFor(`document.querySelector('${row('bots')}')?.closest('section')?.dataset.testid === 'plugins-installed' && document.querySelector('${row('bots')}').dataset.status === 'installed'`);
+}, 30_000);
+
+test('a plugin asks before it installs, gets only what the owner ticked, and its grants change from its row', async () => {
+  const box = (permission: string) => `${id('plugin-consent-row')}[data-permission="${permission}"] input`;
+  const chips = (plugin: string) => page.evaluate<string>(`[...document.querySelectorAll('${row(plugin)} ${id('plugin-permission')}')].map((el) => el.title).join(',')`);
+  await inspect('https://github.com/example/scoped-board');
+  await page.click(id('plugin-add'));
+  await page.waitFor(`document.querySelector('${box('ui.reveal')}')?.checked === true`);
+  expect(await page.text('#consent-title')).toBe('Scoped board wants to access your Boite');
+  expect(await page.evaluate(`document.querySelector('${id('plugin-consent-program')} input') === null`)).toBe(true);
+  await capture('plugins-consent-desktop.png');
+  // Cancel installs nothing and keeps the preview.
+  await page.click(id('plugin-consent-cancel'));
+  await page.waitFor(`document.querySelector('${id('plugin-consent')}') === null`);
+  expect(await page.evaluate(`document.querySelector('${row('scoped-board')}') === null && document.querySelector('${id('plugin-preview')}') !== null`)).toBe(true);
+
+  await page.click(id('plugin-add'));
+  await page.waitFor(`document.querySelector('${box('ui.reveal')}')?.checked === true`);
+  await page.click(box('ui.reveal'));
+  await allow();
+  await page.waitFor(`document.querySelector('${row('scoped-board')}')?.dataset.status === 'installed'`);
+  expect(await chips('scoped-board')).toBe('threads.read');
+
+  await page.click(`${row('scoped-board')} ${id('plugin-grants')}`);
+  await page.waitFor(`document.querySelector('${id('plugin-consent')}')?.dataset.mode === 'edit' && document.querySelector('${box('ui.reveal')}')?.checked === false`);
+  await page.click(box('ui.reveal'));
+  await capture('plugins-grants-desktop.png');
+  await allow();
+  await page.waitFor(`[...document.querySelectorAll('${row('scoped-board')} ${id('plugin-permission')}')].length === 2`);
+  expect(await chips('scoped-board')).toBe('threads.read,ui.reveal');
+
+  await page.click(`${row('scoped-board')} ${id('plugin-uninstall')}`);
+  await page.waitFor(`document.querySelector('${id('confirm-ok')}')`); await page.click(id('confirm-ok'));
+  await page.waitFor(`document.querySelector('${row('scoped-board')}') === null`);
 }, 30_000);
 
 test('in a 390 pixel column the page wraps instead of scrolling sideways', async () => {
@@ -125,6 +169,14 @@ test('in a 390 pixel column the page wraps instead of scrolling sideways', async
   expect(await page.evaluate(fits)).toBe(true);
   await captureColumn('plugins-390-preview.png');
   await page.click(id('plugin-dismiss'));
+  // The dialog sizes itself on the window (100vw less 32 pixels): the column gives it a 390 pixel window's width.
+  await page.evaluate(`document.getElementById('plugins-column').textContent += ' [data-testid="plugin-consent"] { width: 358px !important; } .scrim:has([data-testid="plugin-consent"]) { right: auto !important; width: 390px; }'`);
+  await page.click(`${row('standup')} ${id('plugin-grants')}`);
+  await page.waitFor(`document.querySelector('${id('plugin-consent')}')?.dataset.mode === 'edit'`);
+  expect(await page.evaluate(`document.querySelector('${id('plugin-consent')}').scrollWidth <= 358`)).toBe(true);
+  await captureColumn('plugins-390-grants.png');
+  await page.click(id('plugin-consent-cancel'));
+  await page.waitFor(`document.querySelector('${id('plugin-consent')}') === null`);
   await page.evaluate(`document.getElementById('plugins-column').remove()`);
 }, 30_000);
 

@@ -151,6 +151,8 @@ export interface FakeClientOptions {
   windowsDemo?: boolean;
   /** A thread that started a finished council, one under way and an older debate, with their salons, on `?fake=1&council=1`. */
   councilDemo?: boolean;
+  /** The trace thread marked done an hour ago by a plugin granted `threads.write`, on `?fake=1&pluginArchive=1`. */
+  pluginArchiveDemo?: boolean;
   /** Who this client is. `'session'` makes it a paired phone, refused like one. */
   principal?: Principal;
   /** The thread an agent's token names; with none, every agent call fails closed, as on the core. */
@@ -550,7 +552,7 @@ export class FakeContext {
       version: '2.0.0-beta.1',
       coreId,
       protocolVersion: PROTOCOL_VERSION,
-      features: { draftPreparation: true, attachmentUploads: true, threadSnapshots: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, projectBoard: true, deviceProjects: true, settingsHome: true, botsHome: true, botMove: true, botMoveQueue: true, sharedProjects: 1, listChanges: true },
+      features: { draftPreparation: true, attachmentUploads: true, threadSnapshots: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, pluginGrants: true, projectBoard: true, deviceProjects: true, settingsHome: true, botsHome: true, botMove: true, botMoveQueue: true, sharedProjects: 1, listChanges: true },
       os: 'windows',
       channel: 'stable',
       pid: 4242,

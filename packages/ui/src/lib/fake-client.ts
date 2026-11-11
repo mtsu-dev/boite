@@ -149,6 +149,10 @@ export class FakeClient implements ObservableClient {
     }
     if (options.windowsDemo) seedWindowsDemo(ctx);
     if (options.councilDemo) seedCouncilDemo(ctx);
+    if (options.pluginArchiveDemo) {
+      const at = Date.now() - 3_600_000;
+      Object.assign(ctx.thread('t-trace'), { unread: false, archived: true, doneAt: at, archivedAt: at, archiveReason: { type: 'plugin', pluginId: 'bureau', pluginName: 'Bureau', archivedAt: at } });
+    }
     if (options.uninstalled) {
       ctx.providers = ctx.providers.filter(provider => provider.id !== 'echo').map(provider => ({
         ...provider, available: false, executable: null,
