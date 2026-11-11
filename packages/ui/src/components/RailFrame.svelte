@@ -101,12 +101,16 @@
 
   /** At rest the foot never shows half a row: its fade ends at the top of the row the edge slices (lib/row-cut.ts). */
   let cut = $state(0);
+  /** Rows below the foot: the limits line under the list takes a hairline, the head's mirror, so it stands on its own
+   *  ground and never reads as part of the card fading above it. */
+  let more = $state(false);
+  const measureMore = () => { const box = scroller; more = !!box && box.scrollTop + box.clientHeight < box.scrollHeight - 1; };
   $effect(() => {
     const box = scroller;
     if (!box) return;
     let stop: (() => void) | undefined;
     let gone = false;
-    void import('../lib/row-cut').then(({ watchRowCut }) => { if (!gone) stop = watchRowCut(box, value => { cut = value; }); });
+    void import('../lib/row-cut').then(({ watchRowCut }) => { if (!gone) stop = watchRowCut(box, value => { cut = value; measureMore(); }); });
     return () => { gone = true; stop?.(); };
   });
 </script>
@@ -118,6 +122,7 @@
   class:open={drawer && store.sidebarOpen}
   class:collapsed={store.sidebarCollapsed}
   class:absent
+  class:more
   aria-hidden={absent ? 'true' : undefined}
   class:was-folded={wasFolded}
   style:--sidebar-width={`${store.sidebarWidth}px`}
@@ -128,7 +133,7 @@
   <div class="views" class:scrolled={scrolled && !subhead}>{@render head()}</div>
   {@render subhead?.()}
   <div class="scroll" class:scrolled data-project-list={kind === 'sidebar' ? '' : undefined} bind:this={scroller} style:--cut={cut ? `${cut}px` : undefined}
-    onscroll={() => { scrolled = (scroller?.scrollTop ?? 0) > 0; onscroll?.(); }}>
+    onscroll={() => { scrolled = (scroller?.scrollTop ?? 0) > 0; measureMore(); onscroll?.(); }}>
     {@render children()}
   </div>
   {#if (store.page === 'chat' || store.page === 'agents') && dockVisible && experimentOn('pinned-quotas') && pinnedQuotas.current.pinned && pinnedQuotas.wantsDock(store)}
@@ -213,6 +218,7 @@
        head in that band, level with the main column's title. */
     .rail { padding-top: 6px; }
     .views.scrolled { border-bottom-color: var(--color-border); }
+    .rail.more > :global(.quota-line) { border-top-color: var(--color-border); }
     .rail {
       --slide-room: calc(var(--sidebar-width) + var(--frame-gap));
       /* One motion with the panel that comes in on the other side: the same duration and curve for the slide and the fade. */

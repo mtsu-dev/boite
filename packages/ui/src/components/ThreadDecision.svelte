@@ -235,7 +235,8 @@
     max-height: var(--question-cap);
     overflow: hidden;
     --question-cap: max(220px, calc(45dvh - 24px));
-    --dock-row: 28px; --dock-icon: 16px; --dock-type: var(--text-base); --dock-inset: 14px;
+    /* The question is the card's title: one step over the body its choices read in (app.css `--text-title`). */
+    --dock-row: 28px; --dock-icon: 16px; --dock-type: var(--text-title); --dock-inset: 14px;
     --decision-fill: var(--color-composer-surface);
     animation: rise var(--dur-3) var(--ease-out-quint);
   }

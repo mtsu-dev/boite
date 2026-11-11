@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { MediaQuery } from 'svelte/reactivity';
   import { textEntries, type ComposerState } from '../lib/composer-queue';
   import type { Store } from '../lib/store.svelte';
   import AgentDock from './AgentDock.svelte';
@@ -8,9 +9,12 @@
    * What waits, in one container on the composer card's top edge, one row
    * each and only the rows that apply: the permission out of view by its
    * title (`DecisionPill`, loaded with the first permission: its titles stay
-   * out of the entry chunk), the subagents and workflows this thread waits on
-   * (`AgentDock`), then the answers held for the turn and the queued prompts
-   * (`ComposerQueue`). It grows upward: the field under it never moves.
+   * out of the entry chunk) with its Deny and Allow once, the subagents and
+   * workflows this thread waits on (`AgentDock`), then the answers held for
+   * the turn and the queued prompts (`ComposerQueue`). It grows upward: the
+   * field under it never moves. On a phone, at rest, the waiting line and the
+   * held rows fold into one line ("3 working · 1 queued") that a tap unfolds;
+   * the decision row stays apart.
    */
   let { store, key, thread, composer, blocked, alone = false, machine, sendNow, onrestore, onsendnow }: {
     store: Store;
@@ -31,13 +35,22 @@
   let answers = $derived(thread?.pendingAnswers?.length ? thread.pendingAnswers : null);
   let queued = $derived(composer && composer.queued.length > 0 ? composer : null);
   let permission = $derived(thread ? store.pendingPermissions.find((request) => request.threadId === thread.id) ?? null : null);
+
+  const phone = new MediaQuery('(max-width: 720px)');
+  let waiting = $state(0);
+  let unfolded = $state(false);
+  let heldCount = $derived((answers?.length ?? 0) + (queued?.queued.length ?? 0));
+  let foldable = $derived(phone.current && waiting > 0 && heldCount > 0);
+  let folded = $derived(foldable && !unfolded);
+  // Another thread opens folded.
+  $effect(() => { void thread?.id; unfolded = false; });
 </script>
 
 <div class="foot" class:alone data-testid="composer-foot">
-  {#if permission}{#await import('./DecisionPill.svelte') then pill}<pill.default {permission} />{/await}{/if}
-  {#if thread}<AgentDock {store} threadId={thread.id} />{/if}
+  {#if permission}{#await import('./DecisionPill.svelte') then pill}<pill.default {permission} answer={(decision: 'allow' | 'deny') => store.answer(permission.id, decision)} />{/await}{/if}
+  {#if thread}<AgentDock {store} threadId={thread.id} bind:waiting held={foldable ? heldCount : 0} {folded} ontoggle={() => (unfolded = !unfolded)} />{/if}
   {#if answers || queued}
-    <div class="held" data-testid="composer-held">
+    <div class="held" data-testid="composer-held" hidden={folded}>
       {#if answers}
         <div class="answers" data-testid="question-queued">
           <ComposerQueue queued={answerEntries(answers)} disabled={true} paused={false} sendNow={null} onrestore={() => {}} onsendnow={() => {}} />

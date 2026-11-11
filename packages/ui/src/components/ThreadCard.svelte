@@ -171,7 +171,7 @@
       {/if}
       <!-- Where the row lives, under the title: the project, the machine among several, Offline once. -->
       {#if where || chip || (detail && at !== undefined)}
-        <span class="where" data-testid="thread-where" title={where?.text}>{#if where?.project}<span class="ui-label" use:wordFit={where.project}></span>{/if}{#if where?.host}<MachinePlace host={where.host} />{/if}{#if chip}<span class="away" data-testid="thread-offline">{strings.connection.offline}</span>{/if}{#if detail && at !== undefined}<time class="since" title={exactTime(at)}>{ago(at, now)}</time>{/if}</span>
+        <span class="where" data-testid="thread-where" title={where?.text}>{#if where?.project}<span class="ui-label" use:wordFit={where.project}></span>{/if}{#if where?.host}<MachinePlace host={where.host} />{/if}{#if chip}<span class="away" data-testid="thread-offline">{strings.connection.offline}</span>{/if}{#if detail && at !== undefined}<time class="since ui-label" title={exactTime(at)}>{ago(at, now)}</time>{/if}</span>
       {/if}
       {#if pending}
         <span class="pending" data-testid="thread-pending" title={pending}><FolderInput size={12} /><span class="ui-label">{pending}</span></span>
@@ -256,7 +256,8 @@
   /* A kind line over the title (16 px and the row's 4 px gap): the menu and the pair stay centred on the title. */
   .feed.led { --feed-lead: 20px; }
   .kind-line { display: block; margin-bottom: 4px; }
-  .feed > .row { padding-block: var(--feed-pad) 0; }
+  /* No button border on the card's row: its words start on the same edge as the detail and the pair under it. */
+  .feed > .row { padding-block: var(--feed-pad) 0; border-inline-width: 0; }
   .feed-detail { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 4px var(--pad-x) var(--feed-pad) calc(var(--pad-x) + var(--gutter)); }
   /* Nothing asked (an update): the row keeps its own bottom padding only. */
   .feed-detail:not(:has(*)) { padding: 0 0 var(--feed-pad); }
@@ -269,21 +270,23 @@
   .feed .row :global(.headline > :is(.tile, .bot)) { margin-top: 2px; }
   /* The menu at the title line's end, never over the pair. */
   .feed .actions { top: calc(var(--feed-pad) + var(--feed-lead) + 10px - var(--act) / 2); }
-  /* The place line on the title's edge, one line: the project gives way at a word, then the machine. */
+  /* The place line on the title's edge, one line: the project gives way at a word, then the machine. Every item is
+     trimmed to its capitals (.ui-label) and centred, so all stand on one baseline. */
   .feed .where { height: 20px; line-height: 20px; margin: 0 0 0 var(--gutter); }
   /* The pair answers what is asked, right under it: right-aligned on the row's edge, clear of the next row. */
   .feed-actions { padding: 0 var(--pad-x) var(--feed-pad); margin-top: -2px; }
-  /* Where Activity has room (ActivityList.svelte's three columns), the pair stands at the card's top right, centred
-     on the kind and title lines: the title block takes the page's first column, the pair the other two, the outline
-     action in one and the solid one in the next, so every pair lines up; what is asked runs under both, the card's
-     whole width, so no empty band parts the text from the pair. */
+  /* Where Activity has room (ActivityList.svelte's four columns), the title block takes the page's first column, the
+     pair the next two, the outline action in one and the solid one in the next, so every pair lines up, and the menu
+     the last, at the card's top right on every card, a pair or not; the pair and the menu are centred on the title's
+     line. What is asked runs under them, the card's whole width, so no empty band parts the text from the pair. */
   @container activity (min-width: 640px) {
     .thread.feed { display: grid; grid-template-columns: subgrid; align-items: start; }
-    .thread.feed > .row, .feed .actions { grid-column: 1; grid-row: 1; }
+    .thread.feed > .row { grid-column: 1; grid-row: 1; }
+    .feed .title-line { margin-right: 0; }
     .feed-detail { grid-column: 1 / -1; grid-row: 2; }
-    /* In the flow of the text's cell, at its end: an absolute box would take the whole row as its edge. */
-    .feed .actions { position: relative; top: auto; right: auto; justify-self: end; align-self: start; margin: calc(var(--feed-pad) + var(--feed-lead) + 10px - var(--act) / 2) 3px 0 0; }
-    .feed-actions { grid-column: 2 / -1; grid-row: 1; display: grid; grid-template-columns: subgrid; margin: 0; padding: calc(var(--feed-pad) + (var(--feed-lead) + 20px - var(--control)) / 2) var(--pad-x) 0 0; }
+    /* In the flow of the last column: an absolute box would take the whole row as its edge. */
+    .feed .actions { grid-column: -2; grid-row: 1; position: relative; top: auto; right: auto; justify-self: end; align-self: start; margin: calc(var(--feed-pad) + var(--feed-lead) + 10px - var(--act) / 2) 3px 0 0; }
+    .feed-actions { grid-column: 2 / -2; grid-row: 1; display: grid; grid-template-columns: subgrid; margin: 0; padding: calc(var(--feed-pad) + var(--feed-lead) + 10px - var(--control) / 2) 4px 0 0; }
     .feed-actions > :global(.decision-actions) { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; gap: 0; }
     .feed-actions :global(.decision-actions > button) { grid-column: 2; }
     .feed-actions :global(.decision-actions > button:not(:last-child)) { grid-column: 1; margin: 0 8px 0 var(--space-4); }

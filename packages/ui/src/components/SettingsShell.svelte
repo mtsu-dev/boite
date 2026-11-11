@@ -4,7 +4,7 @@
   import MobileSettings from './MobileSettings.svelte';
   import BrainPage from './BrainPage.svelte';
   import InfoTip from './InfoTip.svelte';
-  import { ChevronDown, ChevronLeft, ChevronRight, Search, Monitor } from '@lucide/svelte';
+  import { ChevronDown, ChevronLeft, ChevronRight, Search, Monitor, MonitorSmartphone } from '@lucide/svelte';
   import { SETTINGS_ICONS, SETTINGS_ICON_SIZE, SETTINGS_ICON_STROKE } from '../lib/settings-icons';
   import KeyboardPage from './KeyboardPage.svelte';
   import LimitsPage from './LimitsPage.svelte';
@@ -34,7 +34,8 @@
   import MachineIcon from './MachineIcon.svelte';
   import { untrack } from 'svelte';
   import { holdSettingsCard, revealSettingsCard } from '../lib/settings-flash';
-  import { desktopPage, desktopSettings, familyOf, machinePage, movedTo, navOf, ownerOnly, phonePage, sectionsOf, SETTINGS_FAMILIES } from '../lib/settings-tabs';
+  import { desktopPage, desktopSettings, familyOf, machinePage, movedTo, navOf, ownerOnly, pageScopeOf, phonePage, sectionsOf, SETTINGS_FAMILIES } from '../lib/settings-tabs';
+  import { PageScope, providePageScope } from '../lib/page-scope.svelte';
   import { titleSlot } from '../lib/title-slot.svelte';
 
   let { store, onopenthread }: { store: Store; onopenthread?: () => void } = $props();
@@ -204,19 +205,21 @@
   /** One title per screen, at the top of its card: the page's own name, as the nav lists it. */
   let title = $derived(tabs.find((entry) => entry.id === tab)?.label ?? '');
   let info = $derived(infoOf(tab));
+  let scopePicks = $derived(bar && tab !== 'experiments' && choices.length > 1 && chosen !== undefined);
   /**
-   * The header is the page's title alone; a page holding machine settings adds one line under it,
-   * "Agent settings apply on studio". Where there is a machine to pick, its name in that line is
-   * the picker, the way the panel door names the open panel and switches it. Its cards say the rest.
+   * Where the page's settings apply, said once: under the title when every card
+   * shares the page's scope ("Saved on this device", "Agent settings apply on
+   * studio", the name the picker where there are several), on each card's head
+   * when the page mixes them, the first machine card then holding the picker.
    */
+  const scopes = providePageScope(new PageScope(() => pageScopeOf(tab), () => (scopePicks ? scopePicker : undefined)));
+  let scopeKind = $derived(scopes.line ?? (scopePicks && !scopes.hasMachineCard ? 'machine' : null));
   let scope = $derived.by((): string | null => {
-    if (!machinePage(tab)) return null;
+    if (scopeKind === 'device') return strings.settings.scopeDevice;
+    if (scopeKind !== 'machine') return null;
     const machine = workspace.machines.find((m) => m.store === target);
     return machine ? fill(strings.settings.scopeMachine, { machine: machineName(machine) }) : null;
   });
-  /** The words around the machine's name, so the name alone is the picker. */
-  let scopeWords = $derived(strings.settings.scopeMachine.split('{machine}'));
-  let scopePicks = $derived(bar && tab !== 'experiments' && choices.length > 1 && chosen !== undefined);
 
   /**
    * On a desktop the card carries the screen's one title, a step over the
@@ -398,8 +401,9 @@
 {#snippet machineBar()}
   {#if chosen}<SettingsMachineBar machine={chosen} machines={choices} onpick={(id) => { picked = id; }} />{/if}
 {/snippet}
-<!-- The scope line's machine as its picker, "Agent settings apply on [studio v]": it says where they apply and switches it. -->
-{#snippet scopePicker()}
+<!-- A scope phrase with its machine as the picker, "Agent settings apply on [studio v]": it says where they apply and switches it. -->
+{#snippet scopePicker(template: string)}
+  {@const scopeWords = template.split('{machine}')}
   {#if chosen}
     {#if scopeWords[0]?.trim()}<span class="ui-label">{scopeWords[0].trim()}</span>{/if}
     <Menu items={choices.map((entry) => ({ id: entry.id, label: listedName(entry), active: entry === chosen }))} label={strings.machines.pick} placement="bottom" variant="text" testid="settings-machine" onpick={(id) => { picked = id; }}>
@@ -478,9 +482,9 @@
         <header class="screen" data-testid="settings-crumb">
           <h1 class="ui-label-box"><span class="ui-label">{title}</span>{#if info}<InfoTip topic={title} text={info} testid="settings-info" />{/if}</h1>
           {#if scope}
-            <p class="scope" data-testid="settings-scope" data-scope="machine">
-              {#if !scopePicks}<Monitor size={14} strokeWidth={1.75} aria-hidden="true" />{/if}
-              {#if scopePicks}{@render scopePicker()}{:else}<span class="ui-label">{scope}</span>{/if}
+            <p class="scope" data-testid="settings-scope" data-scope={scopeKind}>
+              {#if scopeKind === 'device'}<MonitorSmartphone size={14} strokeWidth={1.75} aria-hidden="true" />{:else if !scopePicks}<Monitor size={14} strokeWidth={1.75} aria-hidden="true" />{/if}
+              {#if scopeKind === 'machine' && scopePicks}{@render scopePicker(strings.settings.scopeMachine)}{:else}<span class="ui-label">{scope}</span>{/if}
             </p>
           {/if}
         </header>

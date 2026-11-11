@@ -199,9 +199,9 @@ test('the phone settings list the desktop\'s families, each page a peer row, Gen
   expect(document.querySelector('[data-testid=browser-profiles-card]')).toBeNull();
   await back();
   await open('settings-tab-browser', () => document.querySelector('[data-testid=browser-page] [data-testid=browser-profiles-card]') !== null);
-  // Its one card says where it applies; the page repeats no scope over it.
-  expect(query('[data-testid=browser-profiles-card] [data-testid=card-scope]').textContent).toBe(strings.settings.cardDevice);
-  expect(document.querySelector('[data-testid=mobile-settings-page-scope]')).toBeNull();
+  // A page of this device's settings alone says so once under its title; its card carries no tag.
+  expect(query('[data-testid=mobile-settings-page-scope]').textContent?.trim()).toBe(strings.settings.scopeDevice);
+  expect(document.querySelector('[data-testid=browser-profiles-card] [data-testid=card-scope]')).toBeNull();
   await back();
 
   await open('settings-tab-general', general);
@@ -231,7 +231,10 @@ test('the phone settings list the desktop\'s families, each page a peer row, Gen
   for (const id of ['setting-preview-comments', 'chat-group-changes', 'chat-expand-diffs']) expect(document.querySelector(`[data-testid=${id}]`), id).not.toBeNull();
   // How agents answer is the machine's, a phone reaches it here too, under the machine's name.
   for (const id of ['setting-async-questions', 'setting-short-answers', 'setting-tool-summaries']) expect(document.querySelector(`[data-testid=agent-replies] [data-testid=${id}]`), id).not.toBeNull();
+  // The page mixes this phone's switches with the machine's: each card says its own, no line under the title.
   expect(query('[data-testid=agent-replies] [data-testid=card-scope]').dataset.kind).toBe('machine');
+  expect(query('#settings-conversations [data-testid=card-scope]').dataset.kind).toBe('device');
+  expect(document.querySelector('[data-testid=mobile-settings-page-scope]')).toBeNull();
   expect(document.querySelector('[data-testid=setting-group-working-threads]')).toBeNull();
   await back(general);
   await back();

@@ -208,7 +208,7 @@
       </span>
     {/if}
     {#if status === 'running'}
-      <span class="status" title={strings.chat.toolStatus.running}><Spinner size={11} stale={away} /></span>
+      <span class="status" title={away ? strings.chat.toolPaused : strings.chat.toolStatus.running}><Spinner size={11} stale={away} /></span>
     {:else if carded}
       <!-- The error card under the answer says this stop, its code and its log. -->
     {:else if failed && permission !== 'deny'}

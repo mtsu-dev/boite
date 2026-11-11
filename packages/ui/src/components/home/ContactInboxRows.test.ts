@@ -69,12 +69,12 @@ test('a contact request reads whole above Accept, under its kind line, with no f
   expect(one('activity-contact-copies')).toBeNull();
 });
 
-test('the same ask on two machines lists each copy, folds a long text behind Show all, and its verbs say they settle both', async () => {
+test('the same ask on two machines lists each copy and folds a long text behind Show all', async () => {
   lay(6);
   await draw('Studio', 'Builder');
   const row = one('activity-contact')!;
   expect(row.dataset.count).toBe('2');
-  expect(one('activity-contact-open')!.textContent).toBe('Chris sent 2 requests');
+  expect(one('activity-contact-open')!.textContent).toBe('Chris asks for a project');
   // Unfolded, each copy a line of its own: the contact's thread it came from, then where it arrived.
   one<HTMLButtonElement>('activity-contact-copies-fold')!.click(); flushSync();
   const copies = [...document.querySelectorAll<HTMLElement>('[data-testid=activity-contact-copy]')];
@@ -85,8 +85,23 @@ test('the same ask on two machines lists each copy, folds a long text behind Sho
   expect([toggle.textContent?.trim(), toggle.getAttribute('aria-expanded')]).toEqual(['Show all', 'false']);
   toggle.click(); flushSync();
   expect([one('activity-contact-text')!.classList.contains('open'), toggle.textContent?.trim()]).toEqual([true, 'Show less']);
-  // The group's actions settle every copy, and say so.
-  expect([one('activity-refuse-creq-pending')!.textContent, one('activity-accept-creq-pending')!.textContent]).toEqual(['Refuse both', 'Accept both']);
+});
+
+test('one request sent twice reads as one request: "Chris asks for a project", "Sent 2 times" on its fold, single verbs that settle both copies', async () => {
+  lay(2);
+  await draw('Studio', 'Builder');
+  // The data: the same ask from the same contact, received on two machines, merged into one row.
+  expect(document.querySelectorAll('[data-testid=activity-contact]').length).toBe(1);
+  expect(one('activity-contact')!.dataset.count).toBe('2');
+  // The title says one request, never a count of requests; the count is how many times it was sent.
+  expect(one('activity-contact-open')!.textContent).toBe('Chris asks for a project');
+  expect(one('activity-contact-copies-fold')!.textContent).toMatch(/^Sent 2 times: on (Studio|Builder) /);
+  // One verb each, as for a single ask.
+  const accept = one<HTMLButtonElement>('activity-accept-creq-pending')!;
+  expect([one('activity-refuse-creq-pending')!.textContent, accept.textContent]).toEqual(['Refuse', 'Accept']);
+  // Accept answers every copy: no row is left waiting on the other machine.
+  accept.click();
+  await vi.waitFor(() => { flushSync(); expect(one('activity-contact')).toBeNull(); });
 });
 
 test('identical copies fold into one quiet line under the text, where and when each arrived, which opens on each copy', async () => {
@@ -94,7 +109,7 @@ test('identical copies fold into one quiet line under the text, where and when e
   await draw('Studio', 'Builder');
   const fold = one<HTMLButtonElement>('activity-contact-copies-fold')!;
   // One line after the text, in words: how many, then each copy's machine and time; no sub-rows yet.
-  expect(fold.textContent).toMatch(/^2 copies: on (Studio|Builder) [^,]+, on (Studio|Builder) [^,]+$/);
+  expect(fold.textContent).toMatch(/^Sent 2 times: on (Studio|Builder) [^,]+, on (Studio|Builder) [^,]+$/);
   expect(fold.textContent).toContain('on Studio');
   expect(fold.textContent).toContain('on Builder');
   expect(one('activity-contact-text')!.compareDocumentPosition(fold) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  /** One machine in the filter's card: its name, its state in words and the status grammar's tone for its dot. */
+  /** One machine in the rail's card: its name, its state in words and the status grammar's tone for its dot. */
   export type MachineLine = { id: string; name: string; state: string; tone: 'success' | 'warning' | 'neutral' | 'danger' };
 </script>
 
@@ -24,9 +24,9 @@
    */
   let { store, filter = null, onfilter, testid = 'machine-status', card }: {
     store: Store; filter?: string | null; onfilter?: (id: string | null) => void; testid?: string;
-    /** The rail's name card, drawn beside the button in place of the native tooltip: "Filter machines", the trouble,
-     *  then one line per machine with its state dot ("studio  Connected"). */
-    card?: Snippet<[string, string | null, MachineLine[]]>;
+    /** The rail's name card, drawn in place of the native tooltip: "Machines", what a click does when it filters, the
+     *  trouble, then one line per machine with its state dot ("studio  Connected"). */
+    card?: Snippet<[string, string | null, string | null, MachineLine[]]>;
   } = $props();
 
   const machines = $derived([...workspace.machinesOr(store)]
@@ -36,7 +36,7 @@
   const tones = { ready: 'success', connecting: 'warning', offline: 'neutral', lost: 'danger' } as const;
   const chosen = $derived(filter === null ? null : machines.find(m => m.id === filter) ?? null);
   const shown = $derived(machines.length > 1 || issues > 0 || chosen !== null);
-  const name = strings.machines.filter;
+  const name = strings.machines.heading;
   // Off by choice or by sleep, not a fault: quiet, in the status grammar's grey, named in the tooltip and the name.
   const away = $derived(machines.filter(m => health.get(m) === 'offline'));
   const trouble = $derived(issues > 0 ? `${issues} ${strings.connection.issues}`
@@ -69,7 +69,7 @@
       {#if issues}<TriangleAlert size={19} />{:else}<Monitor size={19} />{#if away.length > 0}<span class="dot off" data-testid="machine-offline" aria-hidden="true"></span>{:else if store.connection === 'ready'}<span class="dot on" data-testid="machine-online" aria-hidden="true"></span>{/if}{/if}
       {#if chosen}<span class="name ui-label">{machineName(chosen)}</span>{/if}
     </Menu>
-    {@render card?.(name, issues > 0 ? trouble : null, lines)}
+    {@render card?.(name, machines.length > 1 ? strings.machines.filterHint : null, issues > 0 ? trouble : null, lines)}
   {/if}
 </div>
 

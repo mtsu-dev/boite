@@ -56,8 +56,11 @@ export const strings = {
     /** The foot's row while a permission waits out of view: what waits, by its title, and the way back to it. */
     footDecision: 'Waiting for approval:',
     footDecisions: '{count} decisions waiting:',
-    footShow: 'Show',
     footShowHint: 'Scroll to the command that asks',
+    /** A phone's folded foot: the waiting line and the queued prompts in one line; a tap unfolds them. */
+    footFolded: '{working} working · {queued} queued',
+    footUnfold: 'Show what runs and what is queued',
+    footFold: 'Fold into one line',
     send: 'Send',
     sendWhenLoaded: 'Sends once the files are ready',
     stop: 'Stop',

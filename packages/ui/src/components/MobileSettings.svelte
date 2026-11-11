@@ -1,6 +1,7 @@
 <script lang="ts">
   import TelemetrySettings from './TelemetrySettings.svelte';
-  import { ArrowLeft, ChevronRight, Monitor } from '@lucide/svelte';
+  import { ArrowLeft, ChevronRight, Monitor, MonitorSmartphone } from '@lucide/svelte';
+  import CardScope from './CardScope.svelte';
   import { SETTINGS_ICONS, SETTINGS_ICON_SIZE, SETTINGS_ICON_STROKE } from '../lib/settings-icons';
   import type { SettingsTab, Store } from '../lib/store.svelte';
   import { machineName, workspace } from '../lib/workspace.svelte';
@@ -33,6 +34,7 @@
   import { tick, type Snippet } from 'svelte';
   import { holdSettingsCard, revealSettingsCard } from '../lib/settings-flash';
   import { phonePage } from '../lib/settings-tabs';
+  import { PageScope, providePageScope } from '../lib/page-scope.svelte';
   import { readTheme } from '../lib/theme';
   import { activeLocale } from '../lib/i18n.svelte';
 
@@ -44,8 +46,8 @@
     store: Store;
     target?: Store;
     bar?: Snippet;
-    /** The machine picker as the header's scope word ("On [studio v]"), where several machines can be picked. */
-    pick?: Snippet;
+    /** The machine picker inside a scope phrase it is given ("Agent settings apply on [studio v]"), where several machines can be picked. */
+    pick?: Snippet<[string]>;
     /** The bar without its picker, under a header that holds it. */
     notes?: Snippet;
     /** The desktop's settings search (`SettingsShell.svelte`), the home's first row. */
@@ -98,10 +100,17 @@
    * where there are several; other pages show their title alone. Limits names its machine in its title already.
    */
   const scopeOf = (page: string): string | null => {
-    if (page === 'limits' || !MACHINE_PAGES.includes(page) || (bar && !pick)) return null;
+    if (scopes.line === 'device') return strings.settings.scopeDevice;
+    if (scopes.line !== 'machine' || page === 'limits' || (bar && !pick)) return null;
     const shown = workspace.machines.find((m) => m.store === target);
     return shown ? fill(strings.settings.scopeMachine, { machine: machineName(shown) }) : null;
   };
+  /** The phone's pages by where they save: a mixed one (Conversations, with the machine's cards) tags its cards instead (`lib/page-scope.svelte.ts`). */
+  const DEVICE_PAGES = ['appearance', 'browser', 'conversations'];
+  const scopes = providePageScope(new PageScope(
+    () => (page === 'limits' ? null : MACHINE_PAGES.includes(page) ? 'machine' : DEVICE_PAGES.includes(page) ? 'device' : null),
+    () => (bar ? pick : undefined)
+  ));
 
   /**
    * A page slides in over the screen it opens from and back off it, as the
@@ -255,8 +264,8 @@
       <div class="heading">
         <h1>{#if shown === 'limits'}<QuotaMachineScope store={target} fallback={title} />{:else}{title}{/if}{#if info}<InfoTip topic={title} text={info} testid="mobile-settings-info" />{/if}</h1>
         {#if scope}
-          {@const picks = pick && bar && MACHINE_PAGES.includes(shown)}
-          <p class="scope page-scope" class:picks data-testid="mobile-settings-page-scope">{#if !picks}<Monitor size={14} strokeWidth={1.75} aria-hidden="true" />{/if}{#if picks && pick}{@render pick()}{:else}<span class="ui-label">{scope}</span>{/if}</p>
+          {@const picks = scopes.line === 'machine' && pick && bar}
+          <p class="scope page-scope" class:picks data-testid="mobile-settings-page-scope" data-scope={scopes.line}>{#if scopes.line === 'device'}<MonitorSmartphone size={14} strokeWidth={1.75} aria-hidden="true" />{:else if !picks}<Monitor size={14} strokeWidth={1.75} aria-hidden="true" />{/if}{#if picks && pick}{@render pick(strings.settings.scopeMachine)}{:else}<span class="ui-label">{scope}</span>{/if}</p>
         {/if}
       </div>
     </header>
@@ -297,9 +306,9 @@
         <BrowserPage />
       {:else if shown === 'conversations'}
         <!-- General's Conversations card, the switches this phone keeps; the list groups from its own display options. -->
-        <div class="page"><section class="card" id="settings-conversations"><h2><span class="ui-label">{strings.settings.inConversation}</span></h2><ConversationSwitches part="conversation" phone /></section>
-          <!-- How agents answer and Quiet change one machine: its bar sits above them, under this phone's switches. -->
-          {#if target.owner}{#if bar}<div class="bar inline">{@render bar()}</div>{/if}<AgentRepliesSettings store={target} /><QuietCard store={target} />{/if}
+        <div class="page"><section class="card" id="settings-conversations"><h2><span class="ui-label">{strings.settings.inConversation}</span><CardScope /></h2><ConversationSwitches part="conversation" phone /></section>
+          <!-- How agents answer and Quiet change one machine: the first one's scope phrase holds the picker, the bar above keeps its notes. -->
+          {#if target.owner}{#if bar}<div class="bar inline">{@render (pick && notes ? notes : bar)()}</div>{/if}<AgentRepliesSettings store={target} /><QuietCard store={target} />{/if}
         </div>
       {:else if shown === 'brain' && target.owner}
         <BrainPage store={target} />
@@ -429,4 +438,6 @@
   .row :global(svg.lead) { color: var(--color-muted-foreground); }
   /* A bar inside a page, above the one card that changes a machine. */
   .bar.inline { padding: var(--space-5) 0 0; }
+  /* Notes alone, with none to give: no band. */
+  .bar.inline:not(:has(:global(.machine-bar > *))) { display: none; }
 </style>

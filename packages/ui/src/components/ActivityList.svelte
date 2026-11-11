@@ -95,12 +95,11 @@
   .column > :global(:is(.thread.feed, .contact-row):not([data-testid=activity-updates] ~ *)) { background: var(--color-surface); border-radius: var(--radius-lg); }
   .column > :global(:is(.thread.feed, .contact-row):not([data-testid=activity-updates] ~ *):hover) { background: var(--color-surface-2); }
   .column > :global(:is(.thread.feed, .contact-row) + :is(.thread.feed, .contact-row):not([data-testid=activity-updates] ~ *)) { margin-top: 4px; }
-  /* Room for the pair beside the text: the rows share three columns, the text, then one for every Deny, Skip and
+  /* Room for the pair beside the text: the rows share four columns, the text, then one for every Deny, Skip and
      Refuse and one for every Allow once, Answer and Accept, each as wide as its widest word, so the pairs stand in
-     one aligned column at the rows' right edge. Every row's mark follows its title and its time ends its place
-     line, so nothing stands alone between the text and the pair. */
+     one aligned column, then the cards' menus, one place on every card. */
   @container activity (min-width: 640px) {
-    .column { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-content: start; row-gap: 2px; }
+    .column { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-content: start; row-gap: 2px; }
     .column:has(:global([data-testid=activity-empty])) { align-content: center; }
     .column > :global(*) { grid-column: 1 / -1; }
   }

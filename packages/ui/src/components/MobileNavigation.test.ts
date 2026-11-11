@@ -157,7 +157,10 @@ test('the header holds the search, opened in place, the new thread and the Setti
   expect(id('mobile-new')).toBeNull();
   id('mobile-conversations')!.click(); await settle();
   expect(list()).toBe('Threads');
-  expect(id('mobile-new')).not.toBeNull();
+  // The new thread is the header's one labelled action, filled, its short word in sight at a phone's width.
+  expect(id('mobile-new')?.classList.contains('primary')).toBe(true);
+  expect(id('mobile-new')?.getAttribute('aria-label')).toBe('New thread');
+  expect(id('mobile-new')?.querySelector('.short')?.textContent).toBe('New');
   // The header names the list's two views, the one on marked, a press switching them; the display menu is beside them.
   const views = () => [...id('mobile-view-switch')!.querySelectorAll('[role=radio]')].map(side => `${side.textContent?.trim()}:${side.getAttribute('aria-checked')}`);
   expect(views()).toEqual(['Projects:true', 'Recent:false']);
@@ -352,10 +355,10 @@ test("with two machines the gear names the machine on the threads list only: Act
   workspace.machines = [{ id: 'local', label: 'Local', store }, { id: 'pc', label: 'PC', store: new Store() }]; workspace.active = store;
   mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'threads' } });
   await settle();
-  // One row: the gear wears the machine's dot and name, so the views keep four squares beside them, none on a line of its own.
+  // One row: the gear names the machine in its label, no dot for a machine in reach, no line of its own.
   const gear = document.querySelector<HTMLElement>('[data-testid=mobile-settings]')!;
   expect(gear.getAttribute('aria-label')).toBe('Settings, Local');
-  expect(gear.querySelector('.dot.ready')).not.toBeNull();
+  expect(gear.querySelector('.dot')).toBeNull();
   expect(gear.parentElement?.dataset['testid']).toBe('mobile-header');
   expect(document.querySelector('[data-testid=mobile-connection]')).toBeNull();
   await unmount(mounted);

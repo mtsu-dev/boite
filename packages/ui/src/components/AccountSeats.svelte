@@ -251,15 +251,18 @@
     min-width: 0;
   }
 
-  /* The name stays where the plain one sits: the button's padding hangs into the head's. */
+  /* The name stays where the plain one sits: the button's padding hangs into
+     the head's, and its height past the line's into the space around it, so
+     the chevron gets a full target while the head keeps its height. */
   .name-button {
+    --target: var(--control);
     display: inline-flex;
     align-items: center;
     gap: 5px;
     min-width: 0;
     max-width: calc(100% + 12px);
-    height: var(--control-sm);
-    margin: 0 -6px;
+    height: var(--target);
+    margin: calc((var(--control-sm) - var(--target)) / 2) -6px;
     padding: 0 6px;
     border: none;
     border-radius: var(--radius-overlay-row);
@@ -294,6 +297,9 @@
   }
   /* The provider's name gives way last: the account's name shrinks first. */
   .name-button .provider-name { flex: none; }
+  @media (max-width: 720px) {
+    .name-button { --target: var(--touch-target); }
+  }
 
   /* The menu's own rows, hung into the head's padding like the name button, so their checks line up with it. */
   .accounts {

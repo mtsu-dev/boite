@@ -99,6 +99,8 @@ export const strings = {
     toolCommandFailed: 'No diagnostic was reported. See the full output below.',
     /** Under an expanded tool input that opened cut to six lines. */
     showAll: 'Show all',
+    /** A call last seen running on a machine out of reach: its mark is paused, its time frozen. */
+    toolPaused: 'Paused while the machine is offline',
     toolStatus: {
       running: 'running',
       done: 'done',

@@ -22,7 +22,7 @@ function agent(id: string, title: string, turn: Partial<Turn> | null, background
   } as unknown as DelegatedAgent;
 }
 
-test('a failed subagent says why under its name, from its error, its interrupted work, or in words, and still opens its conversation', () => {
+test('a failed or stopped subagent says why under its name, from its error, its interrupted work, or in words, and still opens its conversation', () => {
   const open = vi.fn(async () => undefined);
   const store = { pendingQuestions: [], pendingPermissions: [], subagentQuestions: () => [], open } as unknown as Store;
   running = mount(DelegationActivity, { target: document.body, props: { store, agents: [
@@ -36,7 +36,9 @@ test('a failed subagent says why under its name, from its error, its interrupted
   flushSync();
   const rows = [...document.querySelectorAll<HTMLButtonElement>('[data-testid=delegation-agent]')];
   const cause = (row: HTMLElement) => row.querySelector('[data-testid=delegation-agent-cause]')?.textContent ?? null;
-  expect(rows.map((row) => row.dataset.state)).toEqual(['failed', 'failed', 'failed', 'done']);
+  // Work that ended without reporting back is a stop, the word Activity uses for it; an error is a failure.
+  expect(rows.map((row) => row.dataset.state)).toEqual(['failed', 'stopped', 'failed', 'done']);
+  expect(document.querySelector('[data-testid=delegation-progress]')?.textContent).toBe('1 done, 2 failed, 1 stopped');
   // One line: the error's first line, never the trace under it.
   expect(cause(rows[0]!)).toBe('Rate limit reached');
   // The words Activity uses for the same interrupted thread.
@@ -47,4 +49,18 @@ test('a failed subagent says why under its name, from its error, its interrupted
   expect(rows[0]!.querySelector<HTMLElement>('.fail')!.style.getPropertyValue('--fail')).toBe('14px');
   rows[0]!.click();
   expect(open).toHaveBeenCalledWith('t-error');
+});
+
+test('a cause wraps to two lines, then ends on a word: the row is a button, whose one-line words it must not inherit', async () => {
+  // jsdom applies no component CSS: read the rules as Svelte compiles them, for the row and the run's card.
+  const { compile } = await import('svelte/compiler');
+  const { readFileSync } = await import('node:fs');
+  for (const file of ['DelegationActivity.svelte', 'ActivityCard.svelte']) {
+    const source = readFileSync(`${import.meta.dirname}/${file}`, 'utf8').replace(/<script lang="ts">[\s\S]*?<\/script>/, '<script></script>');
+    const css = compile(source, { filename: file, cssHash: () => 'c' }).css?.code ?? '';
+    const rule = css.match(/\.cause\.c \{([^}]*)\}/)?.[1] ?? '';
+    expect(rule, file).toContain('white-space: normal');
+    expect(rule, file).toContain('line-clamp: 2');
+    expect(rule, file).not.toContain('nowrap');
+  }
 });

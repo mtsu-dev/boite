@@ -120,6 +120,8 @@ export const strings = {
     theme: 'Theme',
     /** Under the title of a page with a machine's settings; the name is the picker when there are several. */
     scopeMachine: 'Agent settings apply on {machine}',
+    /** Under the title of a page whose settings are all kept by this device. */
+    scopeDevice: 'Saved on this device',
     /** A card's head: the pair that says where its rows apply. */
     cardDevice: 'For this device only',
     cardMachine: 'For agents on {machine}',

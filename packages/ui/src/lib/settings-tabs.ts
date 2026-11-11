@@ -7,6 +7,8 @@ interface SettingsPage {
   owner?: true;
   /** It changes one machine, picked from the bar above it. */
   machine?: true;
+  /** Every setting on it is saved on this device. */
+  device?: true;
   /**
    * What a phone shows for it: the page itself, a phone page for some of its
    * cards (`SECTION_PAGES`, the rest landing on its index), or Home,
@@ -19,7 +21,7 @@ interface SettingsPage {
 const PAGES: Record<SettingsTab, SettingsPage> = {
   home: { phone: 'home' },
   general: { machine: true, phone: 'sections' },
-  appearance: { phone: 'page' },
+  appearance: { device: true, phone: 'page' },
   keyboard: { machine: true, phone: 'home' },
   voice: { machine: true, phone: 'page' },
   // A phone lists the providers, as the desktop does; plugins stay on the
@@ -27,7 +29,7 @@ const PAGES: Record<SettingsTab, SettingsPage> = {
   accounts: { owner: true, machine: true, phone: 'page' },
   plugins: { owner: true, machine: true, phone: 'home' },
   // The built-in browser of this device: its profiles and the sign-ins it hands to a machine's agent browser.
-  browser: { owner: true, phone: 'page' },
+  browser: { owner: true, device: true, phone: 'page' },
   brain: { owner: true, machine: true, phone: 'page' },
   usage: { phone: 'page' },
   limits: { machine: true, phone: 'page' },
@@ -130,6 +132,11 @@ export function ownerOnly(tab: SettingsTab): boolean {
 
 export function machinePage(tab: SettingsTab): boolean {
   return PAGES[tab].machine === true;
+}
+
+/** Where a page's settings are saved, or null for a page that holds none of its own (Usage, Machines). */
+export function pageScopeOf(tab: SettingsTab): 'device' | 'machine' | null {
+  return PAGES[tab].machine ? 'machine' : PAGES[tab].device ? 'device' : null;
 }
 
 /**

@@ -150,11 +150,11 @@
   <span class="rail-name" aria-hidden="true"><span class="ui-label">{label}</span>{#if note}<span class="ui-label note">{note}</span>{/if}{#if key}<span class="kbd" id={keyId}>{key}</span>{/if}</span>
 {/snippet}
 {#snippet statusName(label: string, note: string | null)}{@render railName(label, null, note)}{/snippet}
-<!-- The machine filter's card, right beside its button: its name, the trouble if any, then each machine on a line
-     of its own with the state dot the filter's menu shows. -->
-{#snippet machinesName(label: string, note: string | null, lines: MachineLine[])}
+<!-- The machines' card: its name and what a click does ("Machines · click to filter"), the trouble if any, then each
+     machine on a line of its own with the state dot the filter's menu shows. -->
+{#snippet machinesName(label: string, hint: string | null, note: string | null, lines: MachineLine[])}
   <span class="rail-name machines-name" aria-hidden="true" data-testid="machine-status-card">
-    <span class="ui-label">{label}</span>{#if note}<span class="ui-label note">{note}</span>{/if}
+    <span class="title"><span class="ui-label">{label}</span>{#if hint}<span class="ui-label note">· {hint}</span>{/if}</span>{#if note}<span class="ui-label note">{note}</span>{/if}
     {#each lines as line (line.id)}<span class="machine-line" data-tone={line.tone}><span class="state-dot" aria-hidden="true"></span><span class="ui-label">{line.name}</span><span class="ui-label note">{line.state}</span></span>{/each}
   </span>
 {/snippet}
@@ -350,11 +350,12 @@
     transition: opacity var(--dur-1) var(--ease-out-quint), transform var(--dur-1) var(--ease-out-quint);
   }
   .rail-name .note { color: var(--color-muted-foreground); font-weight: 400; }
-  /* The machine filter's card sits right beside its button, centred on it, since its lines describe that button:
-     over the list, on the rail's layer above it, with the overlay's own surface and shadow. It opens only under the
-     pointer or the keyboard, and goes with the menu. Its name, then one 20 px line per machine: dot, name, state. */
-  .rail-name.machines-name { left: calc(100% + 6px); width: max-content; display: grid; grid-template-columns: 7px auto auto; grid-auto-rows: 20px; align-items: center; gap: 4px 8px; padding: 8px 12px; line-height: 20px; }
-  .machines-name > .ui-label { grid-column: 1 / -1; margin-bottom: 2px; }
+  /* The machines' card opens where every name card does, past the list column, so it never meets the list or the
+     limits line at its foot; its foot level with the button's, so a long list of machines grows up, inside the
+     window. Its name, then one 20 px line per machine: dot, name, state. */
+  .rail-name.machines-name { top: auto; bottom: 0; transform: translateX(-4px); width: max-content; display: grid; grid-template-columns: 7px auto auto; grid-auto-rows: 20px; align-items: center; gap: 4px 8px; padding: 8px 12px; line-height: 20px; }
+  .machines-name > :is(.title, .ui-label) { grid-column: 1 / -1; margin-bottom: 2px; }
+  .machines-name > .title { display: flex; align-items: center; gap: 4px; }
   /* One grid for every machine, so the names and the states each start on one edge. */
   .machine-line { display: contents; font-weight: 400; }
   .machine-line .ui-label { font-weight: 400; }
@@ -367,6 +368,7 @@
   .slot:hover .rail-name { opacity: 1; transform: translate(0, -50%); transition-delay: 400ms; }
   .slot:has(:global(:focus-visible)) .rail-name { opacity: 1; transform: translate(0, -50%); }
   .slot:has(:global([aria-expanded='true'])) .rail-name { opacity: 0; transition-delay: 0ms; }
+  .slot:hover .rail-name.machines-name, .slot:has(:global(:focus-visible)) .rail-name.machines-name { transform: none; }
   .separator { flex: none; width: 28px; height: 1px; background: var(--color-edge); }
   .bots { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; min-height: 0; }
 

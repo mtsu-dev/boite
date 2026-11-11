@@ -49,7 +49,7 @@ test('a machine that is off reads quiet: a grey dot on the button and "offline" 
     const button = document.querySelector<HTMLButtonElement>('[data-testid=machine-status]')!;
     expect(button.querySelector('[data-testid=machine-offline]')).not.toBeNull();
     // The glyph says which machines and how, in words: each name and its state.
-    expect(button.getAttribute('aria-label')).toBe('Filter machines · Desktop: Connected, Laptop: Offline');
+    expect(button.getAttribute('aria-label')).toBe('Machines · Desktop: Connected, Laptop: Offline');
     expect(document.querySelector('.machines')?.classList.contains('problem')).toBe(false);
   } finally {
     workspace.machines = before;

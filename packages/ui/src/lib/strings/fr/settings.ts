@@ -118,6 +118,7 @@ export const fr: Translation = {
     theme: 'Thème',
     /** Under the title of a page with a machine's settings; the name is the picker when there are several. */
     scopeMachine: 'Les réglages des agents s\'appliquent sur {machine}',
+    scopeDevice: 'Réglages enregistrés sur cet appareil',
     cardDevice: 'Pour cet appareil uniquement',
     cardMachine: 'Pour les agents sur {machine}',
     /** On a setting kept for one provider account (its default model). */

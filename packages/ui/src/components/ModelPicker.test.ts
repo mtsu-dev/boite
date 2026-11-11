@@ -51,6 +51,12 @@ async function mountAt(open: 'landing' | 'recent'): Promise<FakeClient> {
   return store.client as FakeClient;
 }
 
+function query<T extends Element = Element>(selector: string): T {
+  const found = document.querySelector<T>(selector);
+  if (!found) throw new Error(`missing ${selector}`);
+  return found;
+}
+
 const rows = () => document.querySelectorAll('[data-testid=composer-picker-menu] [data-model]').length;
 const showAll = () => document.querySelector<HTMLButtonElement>('[data-testid=picker-show-all]');
 
@@ -220,7 +226,7 @@ test('a short gateway catalog identifies each upstream provider, including after
   }
 });
 
-test('a provider with one model gets a menu as tall as its content, the current model checked as Menu marks a choice', async () => {
+test('a provider with one model beside a long rail: the menu follows the list, the rail scrolls under a fade, the current fill spans its star', async () => {
   const models: ModelInfo[] = [{ id: 'douane/opencode/solo', name: 'Solo' }];
   await mountAt('landing');
   const real = store.modelsOf.bind(store);
@@ -234,8 +240,26 @@ test('a provider with one model gets a menu as tall as its content, the current 
   document.querySelector<HTMLButtonElement>('[data-testid=composer-picker-menu] [data-provider=opencode]')!.click();
   await waitFor(() => rows() === 1);
   expect(getComputedStyle(menu).height).not.toMatch(/px|vh/);
+  // The rail sets no height of its own: its tiles scroll, the add tile and refresh stay pinned below them.
+  const tiles = query<HTMLElement>('[data-testid=picker-rail-tiles]');
+  expect(tiles.querySelectorAll('[data-provider]').length).toBeGreaterThan(5);
+  const foot = query('[data-testid=picker-rail] > .foot');
+  expect(foot.contains(query('[data-testid=picker-refresh]'))).toBe(true);
+  expect(tiles.contains(query('[data-testid=picker-refresh]'))).toBe(false);
+  // Tiles past the visible end fade that edge, and the fade follows the scroll.
+  Object.defineProperty(tiles, 'scrollHeight', { configurable: true, value: 400 });
+  Object.defineProperty(tiles, 'clientHeight', { configurable: true, value: 120 });
+  tiles.dispatchEvent(new Event('scroll'));
+  await waitFor(() => tiles.classList.contains('hidden-end') && !tiles.classList.contains('hidden-start'));
+  tiles.scrollTop = 280;
+  tiles.dispatchEvent(new Event('scroll'));
+  await waitFor(() => tiles.classList.contains('hidden-start') && !tiles.classList.contains('hidden-end'));
   const current = document.querySelector<HTMLElement>('[data-testid=composer-picker-menu] [aria-current=true]');
-  if (current) expect(current.querySelector('.mark svg')).not.toBeNull();
+  if (current) {
+    expect(current.querySelector('.mark svg')).not.toBeNull();
+    // The selected fill is the entry's, so it runs under the star too.
+    expect(current.closest('.model-entry')!.classList.contains('current')).toBe(true);
+  }
   expect(document.querySelectorAll('[data-testid=composer-picker-menu] .mark svg').length).toBeLessThanOrEqual(1);
 });
 

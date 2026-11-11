@@ -74,6 +74,7 @@ export const fr: Translation = {
     moveProjectDown: 'Descendre le projet',
     search: 'Rechercher une conversation',
     newThread: 'Nouvelle conversation',
+    newShort: 'Créer',
     newThreadIn: 'Nouvelle conversation dans {project}',
     addProject: 'Ajouter un projet',
     noProjects: 'Aucun projet pour le moment.',

@@ -296,8 +296,11 @@
     margin: 22px 0 8px;
   }
 
+  /* The smallest heading still stands one step over the text it heads, in the titles' weight. */
+  .prose :global(:is(h3, h4, h5, h6)) { font-weight: var(--weight-title); }
   .prose :global(h3) { font-size: 1.3em; letter-spacing: -0.015em; }
   .prose :global(h4) { font-size: 1.15em; letter-spacing: -0.01em; }
+  .prose :global(:is(h5, h6)) { font-size: 1.075em; }
   .prose :global(h6) { color: var(--color-muted-foreground); }
 
   /* A heading alone in its block: its own bottom margin replaces the block gap under it. */

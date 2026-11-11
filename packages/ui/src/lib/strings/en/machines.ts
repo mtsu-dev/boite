@@ -24,6 +24,8 @@ export const strings = {
     duplicate: 'This machine is already connected.', refreshPr: 'Refresh pull request',
     manual: 'Connect with URL and token',
     filter: 'Filter machines', all: 'All machines',
+    /** The rail's machine card, after its title (`heading`): what a click on the button does. */
+    filterHint: 'click to filter',
     /** The rail's machine button names each machine and its state in its card. */
     state: '{name}: {state}',
     main: 'Main machine', mainLast: 'Last one used',

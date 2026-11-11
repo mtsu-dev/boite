@@ -5,7 +5,10 @@ import { flushSync, mount, unmount } from 'svelte';
 import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
 import { activityFeed, feedGroups } from '../lib/activity-feed';
+import { setExperiment } from '../lib/experiments';
+import { workspace } from '../lib/workspace.svelte';
 import ActivityRow from './ActivityRow.svelte';
+import ContactInboxRows from './home/ContactInboxRows.svelte';
 
 let mounted: ReturnType<typeof mount> | undefined;
 let client: FakeClient;
@@ -155,6 +158,37 @@ test('the state mark stands in one place on every kind of card: its own column, 
     expect(document.querySelector('.headline > .when')).toBeNull();
     await unmount(mounted); mounted = undefined;
   }
+});
+
+test('the menu stands in one place on every kind of card, Needs you and Updates alike: the card\'s last part, after its pair', async () => {
+  const { parent, child, groups } = await rows('bun test');
+  const own = groups.find(group => group.row.thread.id === parent.id)!;
+  const asks = groups.find(group => group.row.thread.id === child.id)!;
+  const failed = { ...own, row: { ...own.row, kind: 'failed' as const, verb: 'review' as const, thread: { ...parent, status: 'error' } as ThreadSummary } };
+  const update = { ...own, row: { ...own.row, section: 'updates' as const, verb: null, kind: 'done' as const, thread: { ...parent, status: 'idle' } as ThreadSummary }, helpers: [] };
+  const menus: (string | null)[] = [];
+  /** The card's last part is its menu (the page's last column), every pair before it; returns the menu's name. */
+  const place = (card: HTMLElement, pair: string) => {
+    const last = card.lastElementChild as HTMLElement;
+    const pairBox = card.querySelector(pair);
+    if (pairBox) expect(pairBox.compareDocumentPosition(last) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    menus.push((last.matches('button') ? last : last.querySelector('button'))?.getAttribute('aria-label') ?? null);
+  };
+  for (const group of [own, asks, failed, update]) {
+    mounted = mount(ActivityRow, { target: document.body, props: { ...group, now: Date.now() } });
+    await settle();
+    place(document.querySelector<HTMLElement>('.thread.feed')!, '.feed-actions');
+    await unmount(mounted); mounted = undefined;
+  }
+  // A contact request: its menu (another project to accept into) in the same place.
+  setExperiment('contacts', true);
+  workspace.machines = [{ id: 'local', label: 'Local', store }];
+  mounted = mount(ContactInboxRows, { target: document.body, props: { store } });
+  await vi.waitFor(() => { flushSync(); expect(document.querySelector('[data-testid=activity-contact]')).not.toBeNull(); });
+  place(document.querySelector<HTMLElement>('[data-testid=activity-contact]')!, '.pair');
+  expect(menus).toEqual([...Array(4).fill('Thread actions'), 'More actions']);
+  setExperiment('contacts', false);
+  workspace.machines = [];
 });
 
 /** jsdom lays nothing out: the clamp's box reports `lines` of text behind a four-line window. */

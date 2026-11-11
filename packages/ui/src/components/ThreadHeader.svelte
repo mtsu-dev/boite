@@ -230,6 +230,8 @@
               {#if mobile.current}<Ellipsis size={16} />{:else}<ChevronDown size={16} />{/if}
             </Menu>
           </span>
+          <!-- The desktop's crumb names project and thread; the machine follows in the phone's muted form, once there are two. -->
+          {#if !mobile.current && place?.machine}<span class="crumb-place" data-testid="thread-place"><MachinePlace host={place.machine} /></span>{/if}
         {/if}
         {@const pending = pendingLine(thread)}
         {#if pending}
@@ -371,6 +373,9 @@
 
   .title { min-width: 0; }
   .title-menu { display: flex; flex: none; }
+  /* After the title and its menu, in meta: the machine reads as where it runs, and gives way before the title does. */
+  .crumb-place { display: flex; flex: 0 1 auto; min-width: 0; margin-left: 2px; overflow: hidden; }
+  .crumb-place :global(.machine-place) { font-size: var(--text-sm); color: var(--color-muted-foreground); }
   .title-menu :global(.trigger) { min-width: 32px; min-height: 32px; justify-content: center; }
   @media (max-width: 720px) {
     /* The title is what tells one conversation from another: the buttons give
@@ -398,9 +403,9 @@
     /* A long title takes a second line rather than losing its end. */
     .title-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; max-width: 100%; min-width: 0; overflow: hidden; white-space: normal; overflow-wrap: anywhere; line-height: 1.2; }
     .title-place { display: flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; white-space: nowrap; font-size: var(--text-xs); font-weight: 400; color: var(--color-muted-foreground); }
-    /* The machine label stays whole; the project name gives way. */
+    /* The machine label stays whole (its root is `MachinePlace`'s, hence global); the project name gives way. */
     .place-project { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-    .title-place > :not(.place-project) { flex: none; }
+    .title-place > :global(:not(.place-project)) { flex: none; }
     .crumb { min-height: var(--touch-target); }
     .crumb-sep { margin: 0; }
   }

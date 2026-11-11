@@ -21,7 +21,8 @@
    * The model picker's popover, its own chunk: only a click on the chip
    * (`ModelPicker.svelte`) draws it. Provider logos in a rail beside a
    * scrolling model list on desktop, the same tiles as a top strip on a phone;
-   * the frame is as tall as its content, never shorter than the rail. The shown provider's name heads the column; when it has more than
+   * the frame is as tall as the column's content over a floor of a few rows,
+   * and a longer rail scrolls inside it. The shown provider's name heads the column; when it has more than
    * one account the name is a button that unfolds them in place, above the
    * search (`AccountSeats.svelte`), and its models fill the rest. A click on a model closes the picker; nothing else does.
    */
@@ -174,7 +175,7 @@
   $effect(() => {
     const current = favoritesOpen ? 'favorites' : shown?.id;
     if (!popover.shown || !menu || !current) return;
-    const rail = menu.querySelector<HTMLElement>('.rail');
+    const rail = menu.querySelector<HTMLElement>('[data-testid=picker-rail-tiles]');
     const tile = rail?.querySelector<HTMLElement>(`[data-provider="${current}"]`);
     if (!rail || !tile) return;
     const railBox = rail.getBoundingClientRect();
@@ -330,16 +331,20 @@
   onanimationend={popover.end}
   {onkeydown}
 >
-  <button class="refresh" type="button" data-testid="picker-refresh" aria-label={strings.composer.refreshModels} title={strings.composer.refreshModels} disabled={disabled || probing || pickPending || needsInstall} onclick={() => void refreshModels()}><RefreshCw size={14} class={probing || pickPending ? 'spin' : ''} /></button>
-  {#if !single}
-    <div class="column rail">
-      <ProviderTiles {store} {choice} {locked} current={shown?.id ?? null} {favoritesOpen} onfavorites={() => { favoritesOpen = true; modelQuery = ''; }} onpick={pickTile} onmore={providersReachable ? openInstall : undefined} />
+  {#snippet refresh()}
+    <button class="refresh" type="button" data-testid="picker-refresh" aria-label={strings.composer.refreshModels} title={strings.composer.refreshModels} disabled={disabled || probing || pickPending || needsInstall} onclick={() => void refreshModels()}><RefreshCw size={14} class={probing || pickPending ? 'spin' : ''} /></button>
+  {/snippet}
+  {#if single}
+    {@render refresh()}
+  {:else}
+    <div class="rail-cell">
+      <ProviderTiles {store} {choice} {locked} current={shown?.id ?? null} {favoritesOpen} onfavorites={() => { favoritesOpen = true; modelQuery = ''; }} onpick={pickTile} onmore={providersReachable ? openInstall : undefined} foot={refresh} />
     </div>
   {/if}
 
   <div class="column models main-models">
     {#snippet modelRow(model: ModelInfo)}
-      <div class="model-entry">
+      <div class="model-entry" class:current={isCurrentModel(model)}>
       <button
         type="button"
         class="row model"
@@ -468,7 +473,7 @@
   <div class="column models">
     <div class="head"><button type="button" class="icon-button legacy-back" aria-label={strings.settings.back} onclick={() => legacy.hide()}><ChevronRight size={14} style="transform: rotate(180deg)" /></button><span class="provider-name ui-label">{strings.composer.legacyModels}</span></div>
             {#each filteredLegacy as model (model.id)}
-              <div class="model-entry">
+              <div class="model-entry" class:current={isCurrentModel(model)}>
               <button
                 type="button"
                 class="row model legacy"
@@ -495,9 +500,18 @@
 {/if}
 
 <style>
-  .model-entry { display: flex; align-items: center; }
+  /* A model's row and its star are one entry: the hover and the current model's fill span both. */
+  .model-entry { display: flex; align-items: center; border-radius: var(--radius-overlay-row); }
   .model-entry .model { flex: 1; min-width: 0; }
-  .favorite-button { width: var(--control-sm); height: var(--control-sm); padding: 0; flex: none; color: var(--color-muted-foreground); background: transparent; border: none; }
+  .model-entry.current { background: var(--color-accent-soft); }
+  .model-entry:not(.current):has(> .row:focus-visible) { background: var(--color-hover); }
+  @media (hover: hover) {
+    .model-entry:not(.current):hover:has(> .row:not(:disabled)) { background: var(--color-hover); }
+    .model-entry > .row:hover:not(:disabled) { background: transparent; }
+  }
+  .model-entry > .row:focus-visible { background: transparent; }
+  /* The star's target is a control's box (44 px on a phone), its glyph keeps its size, the row its height. */
+  .favorite-button { display: inline-flex; align-items: center; justify-content: center; width: var(--control); height: var(--control); padding: 0; flex: none; color: var(--color-muted-foreground); background: transparent; border: none; }
   .favorite-button[aria-pressed='true'] { color: var(--color-foreground); }
   /** A paired device reads the owner's stars without changing them. */
   .favorite-mark { display: inline-flex; align-items: center; justify-content: center; color: var(--color-foreground); }
@@ -510,10 +524,12 @@
     display: grid;
     grid-template-columns: calc(var(--control-lg) + 20px) minmax(0, 1fr);
     width: min(440px, calc(100vw - 32px));
-    /* As tall as its content: the rail's tiles or the column's search, account and models, whichever is taller. */
+    /* As tall as the column's head, search and models, over a floor of five rows;
+       the rail takes no part in it (.rail-cell) and scrolls when it is longer. */
     height: auto;
+    min-height: min(calc(var(--row) * 5), 45dvh);
     max-height: min(360px, 45dvh);
-    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-rows: minmax(0, 1fr);
     /* floating() puts the menu in the top layer as a [popover], whose 0.25em
        padding left the rail 7px short of its tiles. */
     padding: 0;
@@ -543,26 +559,28 @@
     touch-action: pan-y;
   }
 
-  .rail {
-    align-items: center;
-    gap: 2px;
-    padding: 4px;
+  /* The rail's cell is as tall as the column beside it: its size containment keeps its tiles out of the menu's height. */
+  .rail-cell {
+    grid-area: 1 / 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    contain: size;
     background: var(--color-surface);
   }
 
   .models > * { flex-shrink: 0; }
-  .main-models { grid-area: 1 / 2 / 3 / 3; overflow: hidden; padding: 0; gap: 0; border-left: 1px solid var(--color-border); }
+  .main-models { grid-area: 1 / 2; overflow: hidden; padding: 0; gap: 0; border-left: 1px solid var(--color-border); }
   .main-models .head { flex-direction: column; align-items: stretch; justify-content: center; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--color-border); }
   /* The favorites' heading stands as tall as a provider's name line (AccountSeats). */
   .main-models .head > .provider-name { min-height: var(--control-sm); display: flex; align-items: center; }
   .model-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; padding: 6px; }
-  .rail { grid-area: 1 / 1; }
   /* One provider: its model list is the whole popover, the refresh sits in the list's head. */
   .popover.single { grid-template-columns: minmax(0, 1fr); width: min(320px, calc(100vw - 32px)); }
-  .single .main-models { grid-area: 1 / 1 / 3 / 2; border-left: none; }
+  .single .main-models { grid-area: 1 / 1; border-left: none; }
   .single .main-models .head { padding-right: 44px; }
-  .single .refresh { position: absolute; top: 6px; right: 6px; margin: 0; width: var(--control-sm); height: var(--control-sm); padding: 0; border: none; background: transparent; }
-  .refresh { grid-area: 2 / 1; align-self: end; justify-self: center; margin: 6px; position: relative; z-index: 3; display: grid; place-items: center; width: var(--control-lg); height: var(--control-lg); padding: 0; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); color: var(--color-muted-foreground); }
+  .single .refresh { position: absolute; top: 4px; right: 4px; margin: 0; width: var(--control); height: var(--control); padding: 0; border: none; background: transparent; }
+  .refresh { position: relative; z-index: 3; display: grid; place-items: center; width: var(--control-lg); height: var(--control-lg); margin-top: 2px; padding: 0; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); color: var(--color-muted-foreground); }
   @media (hover: hover) { .refresh:hover:not(:disabled) { background: linear-gradient(var(--color-hover) 0 0), var(--color-surface); color: var(--color-foreground); } }
   .head {
     display: flex;
@@ -637,7 +655,6 @@
     color: var(--color-accent);
   }
 
-  .row.current { background: var(--color-accent-soft); }
 
   .name {
     font-weight: 500;
@@ -668,7 +685,7 @@
 
   .fold {
     margin-top: 4px;
-    min-height: var(--control-sm);
+    min-height: var(--control);
   }
 
   p.none {
@@ -700,7 +717,7 @@
 
   @media (max-width: 720px) {
     .popover {
-      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-columns: minmax(0, 1fr);
       grid-template-rows: auto minmax(0, 1fr);
       width: calc(100vw - 24px);
       /* As tall as the strip and the column's content, up to this cap. */
@@ -709,37 +726,27 @@
       padding-inline: var(--space-1);
     }
 
-    .rail {
-      flex-direction: row;
-      flex-wrap: nowrap;
-      padding-bottom: 6px;
-      align-items: center;
-      touch-action: pan-x;
-      overflow-x: auto;
-      justify-content: flex-start;
-      border-right: none;
+    /* The strip across the top: as tall as its tiles, as wide as the sheet. */
+    .rail-cell {
+      grid-area: 1 / 1;
+      contain: inline-size;
       border-bottom: 1px solid var(--color-border);
     }
 
     /* The rail is the finger's first stop on a phone, so its tiles (ProviderTiles)
        and the refresh button take a full touch target like every other control. */
-    .main-models { grid-area: 2 / 1 / 3 / 3; border-left: none; }
-    /* The refresh ends the logo strip: the same ground and hairline under both, no box of its own. */
+    .main-models { grid-area: 2 / 1; border-left: none; }
+    /* The refresh ends the logo strip on its ground, no box of its own. */
     .refresh {
-      grid-area: 1 / 2;
-      align-self: stretch;
-      justify-self: stretch;
       width: var(--touch-target);
-      height: auto;
-      min-height: var(--touch-target);
+      height: var(--touch-target);
       margin: 0;
-      padding: 4px 0 6px;
       border: none;
-      border-bottom: 1px solid var(--color-border);
-      border-radius: 0;
+      border-radius: var(--radius-md);
+      background: transparent;
     }
     .popover.single { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
-    .single .main-models { grid-area: 1 / 1 / 2 / 2; }
+    .single .main-models { grid-area: 1 / 1; }
     .single .main-models .head { padding-right: calc(var(--touch-target) + 8px); }
     /* Show all and Legacy models are rows a finger takes like any other. */
     .fold { min-height: var(--touch-target); }

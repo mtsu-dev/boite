@@ -131,7 +131,8 @@
     color: var(--instrument-meta);
   }
 
-  .title { color: var(--instrument-ink); font-weight: 600; }
+  /* The plan's heading one step over its body (app.css `--text-head`), in full ink: it reads as a heading, not as meta. */
+  .title { color: var(--color-foreground); font-size: var(--text-head); font-weight: var(--weight-title); }
   .count { font-variant-numeric: tabular-nums; }
   .saved { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -149,7 +150,7 @@
   .body :global(.prose) { font-size: var(--instrument-size); line-height: var(--instrument-leading); }
   /* Normal weight: the agent's bold lead words read as the step, not as a shout. */
   .body :global(strong) { font-weight: inherit; }
-  .body :global(:is(h1, h2, h3, h4, h5, h6)) { font-size: var(--instrument-meta-size); font-weight: 600; margin: 10px 0 4px; }
+  .body :global(:is(h1, h2, h3, h4, h5, h6)) { font-size: var(--text-head); font-weight: var(--weight-title); color: var(--color-foreground); margin: 12px 0 4px; }
   /* A plan headed "Plan" says it once, in the head above. */
   .lead .body :global(.paragraph:first-child > :is(h1, h2, h3, h4, h5, h6):first-child) { display: none; }
   .lead .body :global(.paragraph:first-child:has(> :is(h1, h2, h3, h4, h5, h6):only-child)) { display: none; }

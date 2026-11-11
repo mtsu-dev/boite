@@ -329,19 +329,19 @@
   <!-- One way to create per screen: a page (Bots, Contacts, Settings) owns its own. Activity answers what is
        asked, so it creates nothing; the thread list's "+" is one tab away. -->
   {#if tabbed && !recover && store.page === 'chat' && listScreen === 'threads' && !(searching && searchable)}
-    <!-- A new conversation, neutral at the header's end as on the desktop list. -->
-    <button class="ghost icon new" data-testid="mobile-new" aria-label={strings.sidebar.newThread} title={strings.sidebar.newThread} disabled={draftOwner.connection !== 'ready'} onclick={() => void newThread()}><Plus size={20} /></button>
+    <!-- A new conversation, the list's one labelled action: "New" where the row is narrow, "New thread" past it. -->
+    <button class="primary new" data-testid="mobile-new" aria-label={strings.sidebar.newThread} disabled={draftOwner.connection !== 'ready'} onclick={() => void newThread()}><Plus size={14} aria-hidden="true" /><span class="ui-label short">{strings.sidebar.newShort}</span><span class="ui-label long">{strings.sidebar.newThread}</span></button>
   {:else if lent?.create && !(searching && searchable)}
     {@const create = lent.create}
     {#if create.items}<Menu items={create.items} onpick={id => create.onpick(id)} label={create.label} placement="bottom" align="end" variant="ghost" testid={create.testid}><Plus size={20} /></Menu>
     {:else}<button class="ghost icon new" data-testid={create.testid} aria-label={create.label} title={create.label} onclick={() => create.onpick()}><Plus size={20} /></button>{/if}
   {/if}
   {#if tabbed && !recover && !(searching && searchable)}
-    <!-- Settings, a page with its way back: the gear closes every list's header. When the machine needs naming it wears
-         the machine's dot, so the views keep four finger squares beside them at 360 px, never a fifth on its own line. -->
+    <!-- Settings, a page with its way back: the gear closes every list's header. It names the machine in its label
+         when there are several; only a machine out of reach marks it, with a grey dot. -->
     {@const gear = placeShown ? `${strings.settings.heading}, ${place}` : strings.settings.heading}
     <button class="ghost icon gear" data-testid="mobile-settings" data-preload-view="settings" aria-label={gear} title={gear}
-      onclick={() => store.showSettings(store.connection === 'ready' && !store.pairingRequired ? 'home' : 'machines')}><Settings size={20} />{#if placeShown}<span class="dot" class:ready={store.connection === 'ready'}></span>{/if}</button>
+      onclick={() => store.showSettings(store.connection === 'ready' && !store.pairingRequired ? 'home' : 'machines')}><Settings size={20} />{#if store.connection !== 'ready' || store.pairingRequired}<span class="dot"></span>{/if}</button>
   {/if}
   <!-- The filters on, in words on a line of their own: the row above keeps the views, the machine and three squares. -->
   {#if threadViews && !chatting}<FilterChips entries={groups} owner={store} prefix="mobile-" compact {atWork} />{/if}
@@ -508,6 +508,17 @@
     /* A list's row holds the view switch and up to four finger squares (the machine, the display menu, the search, a
        new thread): the squares touch, their glyphs still 24 px apart, so the switch keeps its room at 360 px. */
     .mobile-header:not(.chatting) > :is(.icon, .header-display) { margin-left: -10px; }
+    /* The new thread's button: filled, shorter than the finger squares beside it, its target the header's height,
+       10 px from the glyphs on both sides. At 360 px the row holds the views, three squares and "+ New" once the
+       views' sides give 3 px each, the search reaches 6 px into the display menu's square (glyphs still 18 px apart)
+       and the button and the gear 2 px into the square before them; past 480 px it says "New thread". */
+    .mobile-header > .primary.new { position: relative; flex: none; gap: 4px; height: 36px; margin-left: -12px; padding: 0 8px 0 6px; }
+    .mobile-header:has(> .primary.new) > [data-testid=mobile-search-open] { margin-left: -16px; }
+    .mobile-header:has(> .primary.new) > .gear { margin-left: -12px; }
+    .mobile-header > .primary.new::before { content: ''; position: absolute; inset: -4px 0; }
+    .new .long { display: none; }
+    .mobile-header:has(> .primary.new) .brand strong :global(.view-switch .side) { padding-inline: 7px; }
+    @media (min-width: 480px) { .new .long { display: block; } .new .short { display: none; } }
     /* The filters' line under the row, the whole width. */
     .mobile-header > :global(.filter-chips) { flex-basis: 100%; padding-bottom: 4px; }
     .search { display: flex; flex: 1; min-width: 0; gap: 8px; align-items: center; padding: 0 0 0 12px; background: var(--color-surface-2); border: 1px solid var(--color-border); border-radius: var(--radius-lg); color: var(--color-muted-foreground); }

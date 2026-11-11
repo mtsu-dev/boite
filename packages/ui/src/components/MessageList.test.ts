@@ -93,8 +93,8 @@ test('the parent timeline keeps one grouped row per launch, its counts live, tha
   expect(row.querySelector('.heading')?.textContent).toBe('4 subagents');
   expect(row.querySelectorAll('.stack > .logo')).toHaveLength(3);
   expect(row.querySelector('.more')?.textContent).toBe('+1');
-  // The one waiting on its background run still works; the interrupted one failed.
-  expect(row.querySelector('[data-testid=delegation-progress]')?.textContent).toBe('2 working, 1 done, 1 failed');
+  // The one waiting on its background run still works; the interrupted one stopped, the word Activity uses.
+  expect(row.querySelector('[data-testid=delegation-progress]')?.textContent).toBe('2 working, 1 done, 1 stopped');
   const settle = (id: string) => {
     const agent = owner.delegation!.agents.find(agent => agent.thread.id === id)!;
     agent.thread.status = 'idle';
@@ -105,7 +105,7 @@ test('the parent timeline keeps one grouped row per launch, its counts live, tha
   settle('t-team-waiting');
   settle('t-team-running');
   flushSync();
-  expect(row.querySelector('[data-testid=delegation-progress]')?.textContent).toBe('3 done, 1 failed');
+  expect(row.querySelector('[data-testid=delegation-progress]')?.textContent).toBe('3 done, 1 stopped');
   // A click unfolds it in place, one row per subagent with its state, and opens no panel.
   expect(row.getAttribute('aria-expanded')).toBe('false');
   row.click();
@@ -113,7 +113,7 @@ test('the parent timeline keeps one grouped row per launch, its counts live, tha
   expect(row.getAttribute('aria-expanded')).toBe('true');
   expect(owner.panel.isOpen).toBe(false);
   const agents = [...document.querySelectorAll<HTMLButtonElement>('[data-testid=delegation-agent]')];
-  expect(agents.map(agent => agent.dataset.state).sort()).toEqual(['done', 'done', 'done', 'failed']);
+  expect(agents.map(agent => agent.dataset.state).sort()).toEqual(['done', 'done', 'done', 'stopped']);
   // A subagent's row opens its own conversation.
   const child = agents.find(agent => agent.title === owner.delegation!.agents.find(agent => agent.thread.id === 't-team-done')!.thread.title)!;
   child.click();

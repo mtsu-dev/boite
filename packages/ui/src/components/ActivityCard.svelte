@@ -77,8 +77,9 @@
   .heading { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-foreground); font-weight: 500; }
   /* The counts are what the row says: on a narrow column they wrap, never cut. */
   .progress { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; min-width: 0; margin-top: 1px; font-size: var(--text-xs); line-height: 16px; color: var(--color-subtle); }
-  /* Two lines at most, then cut on a whole word (`wordFit`): the reason reads whole, never cut inside a word. */
-  .cause { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; min-width: 0; contain: inline-size; margin-top: 1px; overflow: hidden; overflow-wrap: anywhere; font-size: var(--text-xs); line-height: 16px; color: var(--color-muted-foreground); }
+  /* Two lines at most, then cut on a whole word (`wordFit`): the reason reads whole, never cut inside a word.
+     `normal`: the button around it keeps its words on one line, which would hold the cause to one. */
+  .cause { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; min-width: 0; contain: inline-size; margin-top: 1px; overflow: hidden; overflow-wrap: anywhere; font-size: var(--text-xs); line-height: 16px; color: var(--color-muted-foreground); }
   .timing { flex: none; color: var(--color-subtle); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
   .caret { display: inline-flex; flex: none; color: var(--color-subtle); transition: transform var(--motion-duration) var(--motion-curve); }
   .activity[aria-expanded='true'] .caret { transform: rotate(180deg); }

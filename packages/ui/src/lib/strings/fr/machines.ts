@@ -26,6 +26,7 @@ export const fr: Translation = {
     duplicate: 'Cette machine est déjà connectée.', refreshPr: 'Actualiser la pull request',
     manual: 'Connecter avec une URL et un jeton',
     filter: 'Filtrer les machines', all: 'Toutes les machines',
+    filterHint: 'cliquer pour filtrer',
     state: '{name} : {state}',
     main: 'Machine principale', mainLast: 'La dernière utilisée',
     mainHint: "Boite s'ouvre sur cette machine. Si elle est éteinte, Boite s'ouvre sur une autre.",

@@ -35,7 +35,7 @@ function foot(props: { onrestore?: (at: number) => void } = {}): void {
 
 const rows = () => [...document.querySelectorAll<HTMLElement>('[data-testid=composer-foot] .foot-row')];
 
-test('a permission out of view is the foot\'s first row, named by its title, and Show leads back to it', async () => {
+test('a permission out of view is the foot\'s first row, named by its title, decided there, and its title leads back to it', async () => {
   await open();
   const threadId = store.openThread!.id;
   store.pendingPermissions = [{ id: 'perm', threadId, turnId: 'turn', toolName: 'Bash', input: { command: 'git push origin orbit/csv-import' }, description: 'Publish the branch', createdAt: 1 }];
@@ -48,7 +48,11 @@ test('a permission out of view is the foot\'s first row, named by its title, and
   expect(rows()[0]).toBe(row);
   expect(row.textContent).toContain('Waiting for approval:');
   expect(row.querySelector('[data-testid=decision-pill-title]')?.textContent).toBe('Push orbit/csv-import');
-  expect(row.querySelector('[data-testid=decision-pill-show]')?.textContent).toBe('Show');
+  // The title is the way back; no separate "Show" word. The pair is the transcript's, the affirmative last.
+  expect(row.querySelector('[data-testid=decision-pill-show] [data-testid=decision-pill-title]')).not.toBeNull();
+  expect(row.textContent).not.toContain('Show');
+  expect([...row.querySelectorAll('.decision-actions > button')].map((button) => [button.textContent?.trim(), button.className.includes('primary')]))
+    .toEqual([['Deny', false], ['Allow once', true]]);
 
   // Two waiting: the count, then the oldest's title.
   decisionTail.count = 2;
@@ -61,6 +65,60 @@ test('a permission out of view is the foot\'s first row, named by its title, and
   flushSync();
   expect(document.querySelector('[data-testid=decision-pill]')).toBeNull();
   expect(rows()).toHaveLength(0);
+});
+
+test('Allow once in the foot decides the permission without scrolling to its row', async () => {
+  await open();
+  const threadId = store.openThread!.id;
+  store.pendingPermissions = [{ id: 'perm', threadId, turnId: 'turn', toolName: 'Bash', input: { command: 'git push origin orbit/csv-import' }, description: 'Publish the branch', createdAt: 1 }];
+  decisionTail.count = 1;
+  decisionTail.away = true;
+  const answer = vi.spyOn(store, 'answer').mockResolvedValue(true);
+  const scroll = vi.fn();
+  Element.prototype.scrollIntoView = scroll;
+  foot();
+  await vi.waitFor(() => expect(document.querySelector('[data-testid=decision-pill-allow]')).not.toBeNull());
+  const allow = document.querySelector<HTMLButtonElement>('[data-testid=decision-pill-allow]')!;
+  allow.click();
+  await tick();
+  expect(answer).toHaveBeenCalledWith('perm', 'allow');
+  expect(scroll).not.toHaveBeenCalled();
+  // On its way, both buttons stay down: a second press sends nothing.
+  expect(allow.disabled).toBe(true);
+  expect(document.querySelector<HTMLButtonElement>('[data-testid=decision-pill-deny]')!.disabled).toBe(true);
+  allow.click();
+  expect(answer).toHaveBeenCalledTimes(1);
+});
+
+test('on a phone the waiting line and the queued rows fold into one line, Stop at its end, and a tap unfolds them', async () => {
+  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
+    media, matches: media.includes('max-width: 720px'), onchange: null, addListener() {}, removeListener() {}
+  }) as unknown as MediaQueryList);
+  client = new FakeClient({ delayMs: 0, delegationDemo: true });
+  store = new Store();
+  store.attach(client);
+  await store.connect();
+  await store.open('t-native');
+  const [run] = await client.call('workflows.list', { threadId: 't-trace' });
+  await vi.waitFor(() => expect(store.openThread?.id).toBe('t-native'));
+  store.composerStates['t-native'] = { text: '', attachments: [], queued: [{ text: 'Add a test for a file with a BOM', attachments: [] }], sending: false, paused: false };
+  foot();
+  await vi.waitFor(() => expect(store.workflowsThreadId).toBe('t-native'));
+  store.workflows = [{ ...run!, rootThreadId: 't-native', status: 'running', createdAt: Date.now() - 62_000, nodes: [] }];
+  await tick();
+  flushSync();
+  const toggle = document.querySelector<HTMLButtonElement>('[data-testid=composer-foot-fold]')!;
+  expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  expect(toggle.textContent).toContain('1 working · 1 queued');
+  expect(document.querySelector('[data-testid=agent-dock-stop]')).not.toBeNull();
+  expect(document.querySelector<HTMLElement>('[data-testid=composer-held]')!.hidden).toBe(true);
+  toggle.click();
+  flushSync();
+  expect(toggle.getAttribute('aria-expanded')).toBe('true');
+  expect(toggle.textContent).toContain('Waiting on 1 workflow');
+  expect(document.querySelector<HTMLElement>('[data-testid=composer-held]')!.hidden).toBe(false);
+  expect(document.querySelector('[data-testid=composer-queued-item]')).not.toBeNull();
+  vi.restoreAllMocks();
 });
 
 test('queued prompts are "Queued" rows: their text, Edit and Delete, and the text itself takes the prompt back', async () => {

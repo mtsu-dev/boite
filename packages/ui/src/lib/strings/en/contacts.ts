@@ -44,20 +44,18 @@ export const strings = {
     removeTitle: 'Remove {name}?',
     removeBody: 'Every project you share with it closes, letters waiting both ways are rejected and the link closes. The Tailscale share stays until you remove it in the admin console.',
     requests: {
-      /** Identical asks merged into one Activity row, and the reason their copies get once one is accepted. */
-      same: '{count} identical requests',
+      /** The same ask received more than once, merged into one Activity row: how many times, then the reason the
+          copies get once one is accepted. */
+      sentTimes: 'Sent {count} times',
       duplicate: 'Same request as one already accepted',
       title: 'Requests',
       review: 'Review the contact request',
-      asks: '{contact} asks',
-      /** Identical asks merged into one row, said in words rather than a multiplier. */
-      sentMany: '{contact} sent {count} requests',
+      asks: '{contact} asks for a project',
       /** A merged ask's sub-row: the contact's thread it came from, then where it arrived and when. */
       from: '{thread} in {project}',
-      /** A merged ask's copies folded into one line under its text: where each arrived (among several machines) and when. */
-      copies: '{count} copies: {list}',
-      /** A merged ask's actions settle every copy: accepting opens one thread, the copies are closed as duplicates. */
-      acceptBoth: 'Accept both', refuseBoth: 'Refuse both', acceptAll: 'Accept all', refuseAll: 'Refuse all',
+      /** A merged ask's copies folded into one line under its text: how many times, then where each arrived (among
+          several machines) and when. Its Accept and Refuse settle every copy. */
+      copies: 'Sent {count} times: {list}',
       asked: 'You asked {contact}',
       remote: 'Git remote',
       accept: 'Accept',

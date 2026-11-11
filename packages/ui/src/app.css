@@ -2050,6 +2050,10 @@ tr:last-child td {
   font-weight: 400;
 }
 .card-scope > .ui-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* On a page that mixes scopes, the first machine card's phrase holds the machine picker: its name with an edge and a chevron. */
+.card-scope.picks { gap: 6px; }
+.card-scope .trigger.text { margin: -2px 0; color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-edge); }
+.card-scope .pick-name { overflow: hidden; max-width: 20ch; text-overflow: ellipsis; white-space: nowrap; }
 .card-scope + .save-status { margin-left: 0; }
 
 /* Where a page's settings apply, under every title: this device, every machine, a machine (its picker). */

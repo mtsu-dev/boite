@@ -61,7 +61,8 @@
 {/if}
 
 <style>
-  .quota-line { flex: none; padding: 4px 6px 8px; }
+  /* Under the list on the rail's own ground; RailFrame.svelte draws the hairline above it while rows lie below. */
+  .quota-line { flex: none; margin: 0 6px; padding: 4px 0 8px; border-top: 1px solid transparent; transition: border-color var(--motion-duration) var(--motion-curve); }
   /* A quiet line, the rows' grey. Running low, the line takes the full ink (amber is only for what needs the user);
      run out, its glyph turns red. */
   .line { display: flex; align-items: center; gap: 8px; width: 100%; height: var(--control-sm); padding: 0 var(--pad-x, 8px); justify-content: flex-start;

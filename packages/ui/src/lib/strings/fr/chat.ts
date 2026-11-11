@@ -85,6 +85,7 @@ export const fr: Translation = {
     toolFailed: 'Échec',
     toolCommandFailed: 'Aucun diagnostic signalé. Consultez la sortie complète ci-dessous.',
     showAll: 'Tout afficher',
+    toolPaused: 'En pause tant que la machine est hors ligne',
     toolStatus: {
       running: 'en cours',
       done: 'terminé',

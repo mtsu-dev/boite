@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { ChevronDown } from '@lucide/svelte';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import Spinner from './Spinner.svelte';
@@ -6,7 +7,17 @@
   import { inStrip } from '../lib/one-status';
   import { wordFit } from '../lib/word-fit';
 
-  let { store, threadId }: { store: Store; threadId: string } = $props();
+  let { store, threadId, waiting = $bindable(0), held = 0, folded = false, ontoggle }: {
+    store: Store;
+    threadId: string;
+    /** How many runs the line waits on, for the foot to fold around. */
+    waiting?: number;
+    /** A phone's foot folds the held prompts into this line: how many, 0 when it does not fold. */
+    held?: number;
+    /** Folded, the line says both counts ("3 working · 1 queued") and a tap unfolds the rows. */
+    folded?: boolean;
+    ontoggle?: () => void;
+  } = $props();
   /**
    * The foot's quiet row above the composer while this thread waits on work it
    * sent (`ComposerFoot`): a spinner, "Waiting on 4 subagents", their names whole as far as
@@ -30,6 +41,8 @@
     ? (agents === 1 ? strings.delegation.waitingOne : fill(strings.delegation.waiting, { count: String(agents) }))
     : !agents ? (runs.length === 1 ? strings.delegation.waitingWorkflowOne : fill(strings.delegation.waitingWorkflows, { count: String(runs.length) }))
     : fill(strings.delegation.waitingMixed, { count: String(count) }));
+  $effect(() => { waiting = count; });
+  let summary = $derived(fill(strings.composer.footFolded, { working: String(count), queued: String(held) }));
   let names = $derived([...active.map(agent => agent.thread.title), ...native.map(agent => agent.name ?? agent.task ?? agent.id), ...runs.map(run => run.name)]);
 
   // A provider's subagent ends with the turn that runs it; a command's agent follows its own process, which Stop never kills.
@@ -56,10 +69,18 @@
 {#if count > 0}
   <div class="foot-row waiting" data-testid="agent-dock" data-count={agents} data-runs={runs.length} role="status">
     <span class="mark"><Spinner size={12} stale={away} /></span>
-    <span class="label ui-label" data-testid="agent-dock-label" data-text={label} use:wordFit={label}></span>
-    <span class="names" data-testid="agent-dock-names" title={names.join(', ')}>
-      <span class="start" aria-hidden="true"></span>{' '}{#each names as name, index (index)}<span class="item">{index > 0 ? ', ' : ''}<span class="name">{name}</span></span>{/each}
-    </span>
+    {#if held > 0 && ontoggle}
+      <!-- A phone's fold: the line is the toggle, folded it says both counts, open the usual label over the rows. -->
+      <button type="button" class="ghost fold" data-testid="composer-foot-fold" aria-expanded={!folded} title={folded ? strings.composer.footUnfold : strings.composer.footFold} onclick={ontoggle}>
+        <span class="label ui-label" data-testid="agent-dock-label" data-text={folded ? summary : label} use:wordFit={folded ? summary : label}></span>
+        <ChevronDown size={14} class={folded ? '' : 'turned'} aria-hidden="true" />
+      </button>
+    {:else}
+      <span class="label ui-label" data-testid="agent-dock-label" data-text={label} use:wordFit={label}></span>
+      <span class="names" data-testid="agent-dock-names" title={names.join(', ')}>
+        <span class="start" aria-hidden="true"></span>{' '}{#each names as name, index (index)}<span class="item">{index > 0 ? ', ' : ''}<span class="name">{name}</span></span>{/each}
+      </span>
+    {/if}
     {#if stoppable}
       <button type="button" class="small ghost stop" data-testid="agent-dock-stop" title={strings.delegation.waitingStopHint} disabled={stopping} onclick={() => void stop()}>
         <span class="stop-mark" aria-hidden="true"></span><span class="ui-label">{strings.delegation.waitingStop}</span>
@@ -87,6 +108,10 @@
   .start { display: inline-block; width: 0; }
   .item { display: inline-block; white-space: nowrap; }
   .stop { flex: none; margin-left: auto; gap: 5px; }
+  /* The fold toggle: the line's own words, no frame, the chevron after them. */
+  .fold { display: flex; align-items: center; gap: 6px; flex: 1 1 auto; min-width: 0; height: calc(var(--foot-row) - 4px); margin-left: -6px; padding: 0 6px; justify-content: flex-start; border: none; color: inherit; font: inherit; }
+  .fold > :global(svg) { flex: none; color: var(--color-subtle); transition: transform var(--motion-duration) var(--motion-curve); }
+  .fold > :global(svg.turned) { transform: rotate(180deg); }
   /* A media stop, the square in a ring, drawn here: a bare square reads as a checkbox, and an icon would weigh on the first load. */
   .stop-mark { position: relative; flex: none; width: 14px; height: 14px; border: 1.5px solid currentColor; border-radius: var(--radius-full); }
   .stop-mark::after { content: ''; position: absolute; inset: 3px; background: currentColor; }

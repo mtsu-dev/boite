@@ -39,9 +39,9 @@
    * right-aligned as on the desktop (DecisionActions.svelte), Deny or Skip outlined and settled here, then the verb
    * solid; Review, when the command is too long to read here, outlined alone.
    * `onverb` opens what the verb is for, the row itself unless a sub-agent asks.
-   * The row menu has no button of its own: a long press opens it, a slide
-   * left shows pin and archive. Its trigger stays for the keyboard, drawn
-   * only while focused.
+   * In the lists the row menu has no button of its own: a long press opens it, a slide left shows pin and archive,
+   * and its trigger stays for the keyboard, drawn only while focused. An Activity card shows it at its title line's
+   * end, as every Activity card does.
    */
   let { machine, thread, project, now, items, compact = false, reason, at, helpers = [], verb = null, kind: feedKind = null, where, placed = false, onopen, onverb = onopen, onaction }: {
     machine: Machine; thread: ThreadSummary; project: Project | undefined; now: number; items: MenuItem[]; compact?: boolean;
@@ -90,7 +90,7 @@
 </script>
 
 {#snippet placeLine(since?: number)}
-  <span class="meta" data-testid="mobile-row-meta"><span class="where" data-testid="mobile-row-where" title={where?.text}>{#if where?.project}<span class="ui-label" use:wordFit={where.project}></span>{/if}{#if where?.host}<MachinePlace host={where.host} />{/if}{#if chip}<span class="away" data-testid="thread-offline">{strings.connection.offline}</span>{/if}</span>{#if since !== undefined}<time class="since" title={exactTime(since)}>{ago(since, now)}</time>{/if}</span>
+  <span class="meta" data-testid="mobile-row-meta"><span class="where" data-testid="mobile-row-where" title={where?.text}>{#if where?.project}<span class="ui-label" use:wordFit={where.project}></span>{/if}{#if where?.host}<MachinePlace host={where.host} />{/if}{#if chip}<span class="away" data-testid="thread-offline">{strings.connection.offline}</span>{/if}</span>{#if since !== undefined}<time class="since ui-label" title={exactTime(since)}>{ago(since, now)}</time>{/if}</span>
 {/snippet}
 {#snippet why()}{@render placeLine(verb || !feedKind ? at : undefined)}{/snippet}
 
@@ -164,6 +164,10 @@
      title's capitals, which its trimmed box (.ui-label) starts on. */
   .title-line { display: flex; align-items: flex-start; gap: 6px; min-width: 0; --mark-shift: calc(0.36 * var(--text-reading) - 10px); }
   .title-line > :global(.headline) { flex: 1; }
+  /* An Activity card: no button border, so the kind line, the title, the place line and what is asked start on one
+     edge; the title's line ends before the menu, which shows at its end on every card. */
+  .reason .thread { border-inline-width: 0; }
+  .reason .title-line { margin-right: calc(var(--touch-target) - 8px); }
   .helper .who { color: var(--color-foreground); font-weight: 500; }
   .sep { flex: none; color: var(--color-subtle); }
   /* The label inside is trimmed to its capitals, so the clip gets the room of its descenders back without
@@ -209,6 +213,10 @@
   .row-menu { position: absolute; top: 0; right: 4px; bottom: 0; display: flex; align-items: center; pointer-events: none; }
   .row-menu :global(.trigger) { opacity: 0; background: var(--row-background, var(--color-background)); }
   .row-menu :global(.trigger:focus-visible) { opacity: 1; pointer-events: auto; }
+  /* Activity's cards show it, centred on the title's first line (the button's 10 px, the kind line's 16 px and the
+     4 px gap, then the middle of the title's capitals), the contact cards' place (ContactInboxRows.svelte). */
+  .reason .row-menu { bottom: auto; top: calc(30px + 0.36 * var(--text-reading) - var(--touch-target) / 2); height: var(--touch-target); right: 0; pointer-events: auto; }
+  .reason .row-menu :global(.trigger) { opacity: 1; min-width: var(--touch-target); background: transparent; }
   /* The sheet lives in the top layer but inherits the hidden trigger's pointer rule. */
   .row-menu :global(.popover) { pointer-events: auto; }
 </style>

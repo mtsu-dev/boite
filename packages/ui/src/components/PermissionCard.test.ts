@@ -83,7 +83,7 @@ test('the waiting row is the command itself, its reason and the pair; out of vie
   const request: PermissionRequest = { id: 'perm', threadId: 'thread', turnId: 'turn', toolName: 'Bash', input: { command: 'git push origin main' }, description: 'Publish the branch', createdAt: 1 };
   const answer = (decision: 'allow' | 'deny') => { sent.push(decision); };
   running = mount(PermissionCard, { target: root, props: { toolName: 'Bash', decision: null, request, answer } });
-  const pill = mount(DecisionPill, { target: strip, props: { permission: request } });
+  const pill = mount(DecisionPill, { target: strip, props: { permission: request, answer } });
   decisionTail.count = 1;
   flushSync();
   const away = (ratio: number) => { flushSync(() => seen!([{ intersectionRatio: ratio, intersectionRect: { height: ratio * 100 } as DOMRectReadOnly }])); };
@@ -94,7 +94,7 @@ test('the waiting row is the command itself, its reason and the pair; out of vie
     expect(row.querySelector('[data-testid=permission-why]')?.textContent).toBe('Publish the branch');
     expect(row.querySelector('[data-testid=permission-status]')?.textContent).toContain('Waiting for approval');
     expect([...row.querySelectorAll('.decision-actions > button')].map((entry) => entry.textContent?.trim())).toEqual(['Deny', 'Allow once']);
-    // In view, no foot row; scrolled away, its Show leads back to the row and focuses it.
+    // In view, no foot row; scrolled away, its title leads back to the row and focuses it.
     away(1);
     expect(strip.querySelector('[data-testid=decision-pill]')).toBeNull();
     away(0);

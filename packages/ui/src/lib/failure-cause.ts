@@ -7,8 +7,8 @@ function firstLine(text: string | null | undefined): string {
 }
 
 /**
- * Why a subagent failed, in the words Activity uses for the same thread: its background work that ended without
- * reporting back, or its last turn's error; "Failed" when the core says nothing more.
+ * Why a subagent stopped or failed, in the words Activity uses for the same thread: its background work that ended
+ * without reporting back (a stop), or its last turn's error; "Failed" when the core says nothing more.
  */
 export function agentFailure(agent: DelegatedAgent): string {
   const wait = agent.thread.backgroundWait;

@@ -181,7 +181,7 @@
         <span class="pulse" aria-hidden="true"></span>
       {/if}
       {#if running}
-        <Spinner size={11} stale={away} />
+        <Spinner size={11} stale={away} label={away ? strings.chat.toolPaused : undefined} />
       {/if}
       {#if verdict}
         <span class="verdict" class:denied={verdict === 'deny'} data-testid="tool-group-permission" data-decision={verdict} title={said} aria-label={said}>

@@ -30,10 +30,10 @@
    * among several) and since when, as a thread row's place line, then what is asked, whole up
    * to four lines and behind "Show all" past them, so nothing is accepted
    * unread; the decision pair beside the head or under it all (DecisionActions.svelte):
-   * Refuse outlined, Accept or Deliver solid. Identical asks merge into one row
-   * that says how many in words ("Chris sent 2 requests") and folds its copies into one quiet line under the text
-   * ("2 copies: on Builder Sep 5, on studio 3h"), which opens on each copy's line (the contact's thread it came
-   * from, where and when); its actions settle them all and say so ("Accept both", lib/contact-inbox.ts).
+   * Refuse outlined, Accept or Deliver solid. Identical asks are one request received more than once
+   * (lib/contact-inbox.ts): one row titled as one ask ("Chris asks"), its copies folded into one quiet line under
+   * the text ("Sent 2 times: on Builder Sep 5, on studio 3h"), which opens on each copy's line (the contact's thread
+   * it came from, where and when); Accept and Refuse settle every copy.
    */
   let { store }: { store: Store } = $props();
   type Row = { machine: Machine; view: ContactsView; key: string; createdAt: number }
@@ -47,9 +47,6 @@
   const merged = $derived(mergeAsks(rows));
   const several = $derived(workspace.machinesOr(store).length > 1);
   const labels = strings.contacts.requests;
-  /** A merged ask's verbs say that they settle every copy. */
-  const verbs = (count: number) => count === 1 ? { accept: labels.accept, refuse: labels.refuse }
-    : count === 2 ? { accept: labels.acceptBoth, refuse: labels.refuseBoth } : { accept: labels.acceptAll, refuse: labels.refuseAll };
   /** The menu's own rows, beside the projects (whose ids are never these). */
   const INTO = '\u0000into';
 
@@ -111,11 +108,11 @@
       <p class="head">
         <!-- The title opens the contact's page, with the whole of it; the amber mark leads it as a thread card's. -->
         <ActivityMark><span class="mark" aria-hidden="true"></span></ActivityMark>
-        <button type="button" class="ghost title ui-label" title={labels.review} onclick={() => void openContact(row.machine.store, (row.request ?? row.letter!).coreId)} data-testid="activity-contact-open"><span class="clamp">{row.letter ? fill(strings.contacts.mail.writes, { contact: row.letter.contact, thread: row.letter.thread }) : fill(same.length > 1 ? labels.sentMany : labels.asks, { contact: row.request.contact, count: String(same.length) })}</span></button>
-        <!-- Merged letters say how many in words beside who writes; merged requests say it in the title. -->
-        {#if same.length > 1}<span class="times" data-testid="activity-contact-count" data-count={same.length}>{#if row.letter}{fill(labels.same, { count: String(same.length) })}{/if}</span>{/if}
+        <button type="button" class="ghost title ui-label" title={labels.review} onclick={() => void openContact(row.machine.store, (row.request ?? row.letter!).coreId)} data-testid="activity-contact-open"><span class="clamp">{row.letter ? fill(strings.contacts.mail.writes, { contact: row.letter.contact, thread: row.letter.thread }) : fill(labels.asks, { contact: row.request.contact })}</span></button>
+        <!-- A letter received more than once says how many times beside who writes; a request says it on its fold line. -->
+        {#if same.length > 1 && row.letter}<span class="times" data-testid="activity-contact-count" data-count={same.length}>{fill(labels.sentTimes, { count: String(same.length) })}</span>{/if}
       </p>
-      <p class="place">{#if several}<MachinePlace host={hostMark(row.machine.label)} />{/if}<time datetime={new Date(row.createdAt).toISOString()}>{ago(row.createdAt, minuteClock.now)}</time></p>
+      <p class="place">{#if several}<MachinePlace host={hostMark(row.machine.label)} />{/if}<time class="ui-label" datetime={new Date(row.createdAt).toISOString()}>{ago(row.createdAt, minuteClock.now)}</time></p>
     </div>
     <div class="content">
       <ClampText {text} testid="activity-contact-text" />
@@ -154,10 +151,9 @@
             {@const request = row.request}
             {@const chosen = acceptProject(row.view.store, request)}
             {@const tip = chosen ? fill(labels.acceptInto, { project: projectName(chosen) }) : labels.accept}
-            {@const words = verbs(same.length)}
-            <button type="button" class="secondary" disabled={busy} onclick={() => void openRefusal(row)} data-testid="activity-refuse-{request.id}"><span class="ui-label">{words.refuse}</span></button>
-            <button type="button" class="primary answer" disabled={busy || !chosen} title={tip} aria-label={same.length > 1 ? undefined : tip}
-              onclick={() => chosen && void accept({ ...row, request }, same, chosen.id)} data-testid="activity-accept-{request.id}"><span class="ui-label">{words.accept}</span></button>
+            <button type="button" class="secondary" disabled={busy} onclick={() => void openRefusal(row)} data-testid="activity-refuse-{request.id}"><span class="ui-label">{labels.refuse}</span></button>
+            <button type="button" class="primary answer" disabled={busy || !chosen} title={tip} aria-label={tip}
+              onclick={() => chosen && void accept({ ...row, request }, same, chosen.id)} data-testid="activity-accept-{request.id}"><span class="ui-label">{labels.accept}</span></button>
           {:else}
             {@const letter = row.letter!}
             <button type="button" class="secondary" disabled={busy} title={strings.contacts.mail.refuseTip} onclick={() => answerMail(row, same, false)} data-testid="activity-mail-refuse-{letter.id}"><span class="ui-label">{strings.contacts.mail.refuse}</span></button>
@@ -199,13 +195,12 @@
   /* The clamp sits on an inner span, so the button itself does not clip and can carry a wider hit area. No
      .ui-label margin or trim: the line keeps its 20 px, or the text under it rides up into the title and the
      time, and the clamp cuts the descenders. */
-  .title { position: relative; display: block; flex: 0 1 auto; min-width: 0; height: auto; padding: 0; margin: 0; text-box: normal; background: none; white-space: normal; text-align: start; font-weight: 400; line-height: 20px; color: var(--color-foreground); }
+  .title { position: relative; display: block; flex: 0 1 auto; min-width: 0; height: auto; padding: 0; margin: 0; border: 0; text-box: normal; background: none; white-space: normal; text-align: start; font-weight: 400; line-height: 20px; color: var(--color-foreground); }
   .clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
   .title:hover { text-decoration: underline; background: none; }
   /* The user's turn, the thread rows' amber dot (ThreadState.svelte), centred on the title's untrimmed first line. */
   .mark { flex: none; width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--color-live); }
   .times { flex: none; line-height: 20px; font-size: var(--text-xs); color: var(--color-muted-foreground); }
-  .times:empty { display: none; }
   /* Where it arrived and since when, a thread row's place line (ThreadCard.svelte's `.where`). */
   .place { display: flex; align-items: center; gap: 8px; min-width: 0; height: 20px; margin: 3px 0 0 var(--gutter); font-size: var(--text-xs); line-height: 20px; color: var(--color-subtle); white-space: nowrap; overflow: hidden; }
   time { flex: none; font-variant-numeric: tabular-nums; }
@@ -227,16 +222,17 @@
   /* The pair under what it decides, at the row's right edge as on a thread row (ThreadCard's `.feed-actions`). */
   .pair { margin-top: 8px; }
   /* Beside the text where Activity has room, as a thread row's pair (ThreadCard.svelte): Refuse in the outline
-     column, the answer in the solid one, centred on the title's line, the pair's end on the thread rows' 8 px. */
+     column, the answer in the solid one, then the menu in the last column, both centred on the title's line, the
+     menu's end on the thread rows' 3 px. */
   @container activity (min-width: 640px) {
     .contact-row { display: grid; grid-template-columns: subgrid; align-items: start; padding-right: 0; }
-    .lines, .side { grid-column: 1; grid-row: 1; }
+    .lines { grid-column: 1; grid-row: 1; }
+    .head { margin-right: 0; }
     /* What is asked runs under the head and the pair, the card's whole width: no empty band beside the pair. */
     .content { grid-column: 1 / -1; grid-row: 2; padding-right: 8px; }
-    /* In the flow of the text's cell, at its end, as a thread row's time; the row's top padding is its own. */
-    .side { position: static; justify-self: end; margin-top: calc(var(--feed-lead) - var(--feed-pad)); }
-    .lines { padding-right: 3px; }
-    .pair { grid-column: 2 / -1; grid-row: 1; display: grid; grid-template-columns: subgrid; margin: calc((var(--feed-lead) + 20px - var(--control)) / 2) 0 0; padding-right: 8px; }
+    /* In the flow of the last column, as a thread card's menu; the row's top padding is its own. */
+    .side { grid-column: -2; grid-row: 1; position: static; justify-self: end; margin-top: calc(var(--feed-lead) - var(--feed-pad)); padding-right: 3px; }
+    .pair { grid-column: 2 / -2; grid-row: 1; display: grid; grid-template-columns: subgrid; margin: calc(var(--feed-lead) + 10px - var(--control) / 2) 0 0; padding-right: 4px; }
     .pair > :global(.decision-actions) { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; gap: 0; }
     .pair :global(.decision-actions > button) { grid-column: 2; }
     .pair :global(.decision-actions > button:not(:last-child)) { grid-column: 1; margin: 0 8px 0 var(--space-4); }
@@ -253,15 +249,20 @@
     /* The phone row's own edge (MobileThreadRow.svelte): 12 px in; the menu always shows at the title line's end,
        so who asks keeps the row's width up to it. */
     .contact-row { --feed-pad: 10px; --pad-x: 12px; --side-room: calc(var(--touch-target) + 2px + var(--pad-x)); }
-    .side { right: calc(var(--pad-x) - 12px); height: calc(22px + 2 * var(--feed-pad)); padding-right: 0; }
+    /* Centred on who asks: its 20 px line starts 6 px above the row's padding (`.head` below), so its middle is 4 px
+       under it, where a thread card's menu stands (MobileThreadRow.svelte). */
+    .side { right: calc(var(--pad-x) - 12px); height: calc(8px + 2 * var(--feed-pad)); padding-right: 0; }
     .side :global(.trigger) { opacity: 1; min-width: var(--touch-target); }
     /* Who asks at a phone row title's size and spot (MobileThreadRow.svelte): that title is trimmed to its
        capitals, so this untrimmed 20 px line rises by the difference to sit as far under the kind line. */
     .head { margin-top: -6px; }
     .title { font-size: var(--text-reading); }
-    .place { font-size: var(--text-sm); line-height: 1.4; height: auto; margin-top: -2px; }
+    .place { font-size: var(--text-sm); line-height: 1.4; height: 1.4em; margin-top: -2px; }
     .content { padding-top: 7px; }
-    .fold { font-size: var(--text-sm); min-height: 24px; }
+    /* Every copy said in full: the line wraps under itself, the chevron on its first line's capitals. */
+    .fold { align-items: flex-start; height: auto; min-height: 24px; padding-block: 5px; font-size: var(--text-sm); text-align: start; }
+    .fold > .ui-label { white-space: normal; }
+    .fold :global(svg) { margin-top: calc(0.36em - 6.5px); }
     .copy { font-size: var(--text-sm); line-height: 1.4; }
     .actions :global(button) { min-height: var(--touch-target); }
     /* The title line is the row's open button: a finger needs 44 px, not its text's height, with no taller row. */

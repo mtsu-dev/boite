@@ -86,6 +86,8 @@ export const strings = {
     moveProjectDown: 'Move project down',
     search: 'Search threads',
     newThread: 'New thread',
+    /** The phone header's new thread button where the row is narrow; its label stays `newThread`. */
+    newShort: 'New',
     newThreadIn: 'New thread in {project}',
     addProject: 'Add a project',
     noProjects: 'No project yet.',

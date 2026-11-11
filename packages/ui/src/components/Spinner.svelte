@@ -2,8 +2,8 @@
   /**
    * The one working mark of the stream, the bots and their desk: a ring whose
    * live arc turns. `paused` holds it while the page is hidden or the turn waits.
-   * `stale` is work last seen running on a machine out of reach: a still grey
-   * ring, since nothing says it still turns.
+   * `stale` is work last seen running on a machine out of reach: a paused
+   * mark (two bars, no ring), since a still ring still reads as turning.
    */
   let { size = 12, paused = false, stale = false, label }: { size?: number; paused?: boolean; stale?: boolean; label?: string } = $props();
 </script>
@@ -25,7 +25,15 @@
   }
 
   .paused { animation-play-state: paused; }
-  .stale { animation: none; border-top-color: var(--color-edge); }
+  /* Two grey bars in the ring's box: paused, nothing that could read as a turning arc. */
+  .stale {
+    animation: none;
+    border: none;
+    border-radius: 0;
+    background:
+      linear-gradient(var(--color-subtle), var(--color-subtle)) 22% 50% / 26% 76% no-repeat,
+      linear-gradient(var(--color-subtle), var(--color-subtle)) 78% 50% / 26% 76% no-repeat;
+  }
   @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
   :global(html[data-motion='reduced']) .spinner { animation: none; }
 </style>

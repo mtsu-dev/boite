@@ -710,7 +710,8 @@ test('the settings bar picks the machine a page changes without moving the windo
   expect(query('[data-testid=settings-scope]').contains(query('[data-testid=settings-machine]'))).toBe(true);
   expect(query('[data-testid=settings-scope]').textContent).toContain(strings.settings.scopeMachine.split('{machine}')[0]!.trim());
   expect(document.querySelectorAll('[data-testid=settings-machine]')).toHaveLength(1);
-  // Every other page opens on the window's machine.
+  // Every other page opens on the window's machine. General mixes this device's cards with the machine's:
+  // no line under its title, and its first machine card's phrase holds the picker.
   remote.store.showSettings('general', 'quiet');
   await waitFor(() => query('[data-testid=settings-machine]').textContent?.includes(remote.label) === true && document.querySelector('[data-testid=setting-mute-agents]') !== null);
   await remote.store.client!.call('settings.set', { muteAgents: true });
@@ -724,24 +725,37 @@ test('the settings bar picks the machine a page changes without moving the windo
   expect(remote.store.settings?.muteAgents).toBe(true);
   // The window never moved: same machine, same conversation, still on the page it showed.
   expect([workspace.active, remote.store.openThread, remote.store.settingsTab]).toEqual([remote.store, thread, 'general']);
-  // A page of this device or of the whole group shows its title alone.
-  for (const page of ['appearance', 'machines'] as const) {
-    remote.store.showSettings(page);
-    await waitFor(() => remote.store.settingsTab === page && document.querySelector('[data-testid=settings-machine]') === null);
-    expect(document.querySelector('[data-testid=settings-scope]')).toBeNull();
-  }
+  expect(document.querySelector('[data-testid=settings-scope]')).toBeNull();
+  expect(query('#settings-agent-replies [data-testid=card-scope]').contains(query('[data-testid=settings-machine]'))).toBe(true);
+  expect(document.querySelectorAll('[data-testid=settings-machine]')).toHaveLength(1);
+  // A page of this device says so once under its title, with no picker; the group's Machines page shows its title alone.
+  remote.store.showSettings('appearance');
+  await waitFor(() => remote.store.settingsTab === 'appearance' && document.querySelector('[data-testid=settings-machine]') === null);
+  expect(query('[data-testid=settings-scope]').textContent?.trim()).toBe(strings.settings.scopeDevice);
+  remote.store.showSettings('machines');
+  await waitFor(() => remote.store.settingsTab === 'machines' && document.querySelector('[data-testid=settings-scope]') === null);
 });
 
-test('with one machine the scope line is plain words, and the cards under it pair up on where they apply', async () => {
+test('a page says where it applies once: one line over cards that share it, a tag on each card where they mix', async () => {
   await mountOnFake('/?fake=1');
   await waitFor(() => workspace.machines.length === 1 && store.connection === 'ready');
-  store.showSettings('general');
-  await waitFor(() => document.querySelector('[data-testid=settings-scope]') !== null && document.querySelector('#settings-agent-replies [data-testid=card-scope]') !== null);
   const machine = workspace.machines[0]!;
-  // "Agent settings apply on studio": the name is text, not a picker, with nothing to pick.
-  expect(query('[data-testid=settings-scope]').textContent?.trim()).toBe(fill(strings.settings.scopeMachine, { machine: machineName(machine) }));
-  expect(document.querySelector('[data-testid=settings-scope] [data-testid=settings-machine]')).toBeNull();
-  // "For this device only" beside "For agents on studio".
+  // General mixes this device's switches with the machine's: each card says its own, nothing under the title contradicts them.
+  store.showSettings('general');
+  await waitFor(() => document.querySelector('#settings-agent-replies [data-testid=card-scope]') !== null);
+  expect(document.querySelector('[data-testid=settings-scope]')).toBeNull();
   expect(query('#settings-conversations [data-testid=card-scope]').textContent?.trim()).toBe(strings.settings.cardDevice);
   expect(query('#settings-agent-replies [data-testid=card-scope]').textContent?.trim()).toBe(fill(strings.settings.cardMachine, { machine: machineName(machine) }));
+  // Browser holds this device's settings alone: its card carries no tag, the line under the title says it once.
+  store.showSettings('browser');
+  await waitFor(() => document.querySelector('[data-testid=browser-profiles-card]') !== null && document.querySelector('[data-testid=settings-scope]') !== null);
+  expect(query('[data-testid=settings-scope]').dataset.scope).toBe('device');
+  expect(query('[data-testid=settings-scope]').textContent?.trim()).toBe(strings.settings.scopeDevice);
+  expect(document.querySelectorAll('[data-testid=card-scope]')).toHaveLength(0);
+  // A page of the machine's agent settings: "Agent settings apply on studio", the name plain text with nothing to pick.
+  store.showSettings('voice');
+  await waitFor(() => document.querySelector('[data-testid=settings-scope][data-scope=machine]') !== null);
+  expect(query('[data-testid=settings-scope]').textContent?.trim()).toBe(fill(strings.settings.scopeMachine, { machine: machineName(machine) }));
+  expect(document.querySelector('[data-testid=settings-scope] [data-testid=settings-machine]')).toBeNull();
+  expect(document.querySelectorAll('[data-testid=card-scope]')).toHaveLength(0);
 });
