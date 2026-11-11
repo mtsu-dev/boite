@@ -229,7 +229,7 @@ describe('plugins v2 end to end', () => {
       const first = harness.core.plugins.tokens.tokenFor('hello', ['threads.read']);
       const open = await connect(harness.url, first, asPlugin);
       expect(Array.isArray(await open.call('threads.list', {}))).toBe(true);
-      expect(await thrown(open.call('plugins.list', {}))).toThrow('plugins.list is never open to plugins: installing, removing and granting plugins is the owner\'s');
+      expect(await thrown(open.call('plugins.list', {}))).toThrow('plugins.list is never open to plugins: installing, removing, granting, turning off and setting up plugins is the owner\'s');
 
       // A reload declaring less: the old token opens nothing, not even the socket already open.
       const manifest = JSON.parse(readFileSync(join(dir, 'boite-plugin.json'), 'utf8'));

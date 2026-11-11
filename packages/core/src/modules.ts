@@ -106,6 +106,9 @@ export function registerModules(core: Core): void {
   core.router.register('plugins.command', (params, ctx) => core.plugins.command(params, ctx.connection.identity));
   core.router.register('plugins.dev', (params) => core.plugins.dev(params));
   core.router.register('plugins.checkUpdates', (params) => core.plugins.checkUpdates(params));
+  core.router.register('plugins.setEnabled', (params) => core.plugins.setEnabled(params));
+  core.router.register('plugins.settings.get', (params) => core.plugins.settings(params));
+  core.router.register('plugins.settings.set', (params) => core.plugins.setSettings(params));
   core.router.register('ui.reveal', (params) => reveal(core, params));
   registerProjectMethods(core);
   registerProviderMethods(core);

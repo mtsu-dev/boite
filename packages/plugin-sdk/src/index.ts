@@ -14,6 +14,9 @@ export type {
   PluginManifest,
   PluginPermission,
   PluginRuntime,
+  PluginSetting,
+  PluginSettingValue,
+  PluginSettingValues,
   PluginSkill,
   PluginSlashCommand,
 } from '@boite/contracts';

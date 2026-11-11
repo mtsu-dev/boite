@@ -22,8 +22,23 @@ async function captureColumn(name: string) {
   mkdirSync(artifacts, { recursive: true });
   writeFileSync(join(artifacts, name), Buffer.from(raw.data, 'base64'));
 }
+/** Opens a card's gear and waits for its dialog. */
+async function gear(plugin: string) {
+  await page.click(`${id('plugin-open')}[data-plugin="${plugin}"]`);
+  await page.waitFor(`document.querySelector('${id('plugin-dialog')}[data-plugin="${plugin}"]')`);
+}
+async function closeGear() {
+  await page.click(id('plugin-dialog-close'));
+  await page.waitFor(`document.querySelector('${id('plugin-dialog')}') === null`);
+}
+const shown = () => page.evaluate<string[]>(`[...document.querySelectorAll('${id('plugins-grid')} ${id('plugin-row')}')].map((el) => el.dataset.plugin)`);
 async function scrollTo(selector: string) {
   await page.evaluate(`document.querySelector('${selector}').scrollIntoView({ block: 'start' })`);
+}
+/** The URL form sits behind its button. */
+async function openAdd() {
+  if (await page.evaluate<boolean>(`document.querySelector('${id('plugins-add')}') === null`)) await page.click(id('plugins-from-url'));
+  await page.waitFor(`document.querySelector('${id('plugin-url')}')`);
 }
 /** Answers the consent dialog with Allow and waits for it to go. */
 async function allow() {
@@ -32,6 +47,7 @@ async function allow() {
   await page.waitFor(`document.querySelector('${id('plugin-consent')}') === null`);
 }
 async function inspect(url: string) {
+  await openAdd();
   await page.type(id('plugin-url'), url);
   await page.click(id('plugin-inspect'));
   await page.waitFor(`document.querySelector('${id('plugin-preview')}')`);
@@ -49,20 +65,47 @@ beforeAll(async () => {
 }, 60_000);
 afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);
 
-test('the page lists installed plugins, then the recommended ones, then the URL form, every state visible', async () => {
-  const sectionOf = (plugin: string) => page.evaluate<string>(`document.querySelector('${row(plugin)}').closest('section').dataset.testid`);
-  expect(await sectionOf('seat-pool')).toBe('plugins-installed');
-  expect(await sectionOf('grok-seats')).toBe('plugins-installed');
-  expect(await sectionOf('pool-legacy')).toBe('plugins-installed');
-  expect(await sectionOf('bots')).toBe('plugins-installed');
-  // Every recommended plugin is installed, so the section is not drawn.
-  expect(await page.evaluate(`document.querySelector('${id('plugins-recommended')}') === null`)).toBe(true);
+test('the page is one grid of cards, every state on its card and the details behind its gear', async () => {
+  expect(await shown()).toEqual(['bots', 'douane', 'grok-seats', 'pool-legacy', 'quiet-hours', 'seat-pool', 'standup']);
   expect(await page.evaluate(`document.querySelector('${row('grok-seats')} ${id('plugin-progress')}').getAttribute('aria-valuenow')`)).toBe('45');
-  expect(await page.evaluate(`document.querySelector('${row('pool-legacy')} ${id('plugin-rejected')}').dataset.field`)).toBe('manifest.schema');
-  await page.waitFor(`document.querySelector('${row('seat-pool')} ${id('plugin-pool')}[data-provider="opencode"]')`);
+  expect(await page.evaluate(`document.querySelector('${row('pool-legacy')} ${id('plugin-state')}').dataset.field`)).toBe('manifest.schema');
+  expect(await page.evaluate(`document.querySelector('${row('quiet-hours')}').dataset.enabled`)).toBe('false');
+  // The URL form waits behind its button.
+  expect(await page.evaluate(`document.querySelector('${id('plugins-add')}') === null`)).toBe(true);
   await capture('plugins-desktop.png');
-  await scrollTo(id('plugins-add'));
-  await capture('plugins-desktop-lower.png');
+
+  await gear('standup');
+  expect(await page.evaluate(`[...document.querySelectorAll('${id('plugin-setting')}')].map((el) => el.dataset.type).join()`)).toBe('switch,slider,select,number,text');
+  expect(await page.evaluate(`[...document.querySelectorAll('${id('plugin-authorization')}')].map((el) => el.title).join()`)).toBe('threads.read,todos.read');
+  await capture('plugins-dialog-desktop.png');
+  await closeGear();
+
+  await gear('pool-legacy');
+  expect(await page.evaluate(`document.querySelector('${id('plugin-dialog')} ${id('plugin-rejected')}').dataset.field`)).toBe('manifest.schema');
+  await closeGear();
+}, 30_000);
+
+test('the switch turns a plugin off and on, and a setting saves as soon as it changes', async () => {
+  const toggle = `${row('bots')} ${id('plugin-enabled')}`;
+  await page.click(toggle);
+  await page.waitFor(`document.querySelector('${row('bots')}').dataset.enabled === 'false'`);
+  await page.click(`${id('plugins-filter-disabled')}`);
+  expect(await shown()).toEqual(['bots', 'quiet-hours']);
+  await capture('plugins-off-desktop.png');
+  await page.click(`${id('plugins-filter-all')}`);
+  await page.click(toggle);
+  await page.waitFor(`document.querySelector('${row('bots')}').dataset.enabled === 'true'`);
+
+  await gear('standup');
+  const field = (key: string) => `${id('plugin-setting')}[data-key="${key}"] ${id('plugin-setting-input')}`;
+  await page.click(field('includeTodos'));
+  await page.waitFor(`document.querySelector('${field('includeTodos')}').checked === false`);
+  // A number outside the manifest's range is refused on the spot.
+  await page.evaluate(`(() => { const input = document.querySelector('${field('maxThreads')}'); input.value = '99'; input.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+  await page.waitFor(`document.querySelector('${id('plugin-setting')}[data-key="maxThreads"] ${id('plugin-setting-error')}')`);
+  expect(await page.text(`${id('plugin-setting')}[data-key="maxThreads"] ${id('plugin-setting-error')}`)).toBe('Must be a number, at least 1, at most 50.');
+  await capture('plugins-setting-refused-desktop.png');
+  await closeGear();
 }, 30_000);
 
 test('a URL shows its manifest before anything installs, and a refused one says why', async () => {
@@ -85,37 +128,44 @@ test('a URL shows its manifest before anything installs, and a refused one says 
   await page.waitFor(`document.querySelector('${id('plugin-consent-owner')}') && document.querySelector('${id('plugin-consent-program')}')`);
   await allow();
   await page.waitFor(`document.querySelector('${row('pi-pool')}')?.dataset.status === 'installed'`);
-  expect(await page.evaluate(`document.querySelector('${row('pi-pool')}').closest('section').dataset.testid`)).toBe('plugins-installed');
-  await page.click(`${row('pi-pool')} ${id('plugin-uninstall')}`);
+  await gear('pi-pool');
+  await page.click(`${id('plugin-uninstall')}[data-plugin="pi-pool"]`);
   await page.waitFor(`document.querySelector('${id('confirm-ok')}')`); await page.click(id('confirm-ok'));
-  await page.waitFor(`document.querySelector('${row('pi-pool')}') === null`);
+  await page.waitFor(`document.querySelector('${row('pi-pool')}') === null && document.querySelector('${id('plugin-dialog')}') === null`);
+  await page.click(id('plugins-from-url'));
 }, 30_000);
 
 test('a pool switches its login, and the recommended plugin uninstalls back to Recommended and installs again', async () => {
-  const account = `${row('seat-pool')} ${id('plugin-pool')}[data-provider="opencode"] ${id('plugin-account')}[data-email="side@example.com"]`;
+  await gear('seat-pool');
+  const account = `${id('plugin-dialog')} ${id('plugin-pool')}[data-provider="opencode"] ${id('plugin-account')}[data-email="side@example.com"]`;
+  await page.waitFor(`document.querySelector('${account}')`);
   await page.click(`${account} ${id('plugin-switch')}`);
   await page.waitFor(`document.querySelector('${id('confirm-ok')}')`); await page.click(id('confirm-ok'));
   // The active login says so and has nothing to switch to.
   await page.waitFor(`document.querySelector('${account} ${id('plugin-account-active')}') !== null && document.querySelector('${account} ${id('plugin-switch')}') === null`);
-  await scrollTo(row('seat-pool'));
   await capture('plugins-installed-desktop.png');
+  await closeGear();
 
-  await page.click(`${row('bots')} ${id('plugin-uninstall')}`);
+  await gear('bots');
+  await page.click(`${id('plugin-uninstall')}[data-plugin="bots"]`);
   await page.waitFor(`document.querySelector('${id('confirm-ok')}')`); await page.click(id('confirm-ok'));
-  await page.waitFor(`document.querySelector('${row('bots')}')?.closest('section')?.dataset.testid === 'plugins-recommended'`);
+  await page.waitFor(`document.querySelector('${row('bots')}')?.dataset.status === 'not-installed' && document.querySelector('${id('plugin-dialog')}') === null`);
   await page.click(id('settings-tab-general'));
   await page.click(id('settings-tab-plugins'));
   await page.waitFor(`document.querySelector('${row('bots')} h3')?.textContent.includes('v0.1.10')`);
-  expect(await page.evaluate(`document.querySelector('${row('bots')}').dataset.status`)).toBe('not-installed');
-  expect(await page.evaluate(`document.querySelector('${row('bots')} ${id('plugin-check-updates')}') !== null`)).toBe(true);
-  await scrollTo(id('plugins-recommended'));
+  expect((await shown()).at(-1)).toBe('bots');
+  await gear('bots');
+  expect(await page.evaluate(`document.querySelector('${id('plugin-dialog')} ${id('plugin-check-updates')}') !== null`)).toBe(true);
+  await closeGear();
+  await scrollTo(row('bots'));
   await capture('plugins-recommended-desktop.png');
   await page.click(`${row('bots')} ${id('plugin-install')}`);
   await allow();
-  await page.waitFor(`document.querySelector('${row('bots')}')?.closest('section')?.dataset.testid === 'plugins-installed' && document.querySelector('${row('bots')}').dataset.status === 'installed'`);
+  await page.waitFor(`document.querySelector('${row('bots')}')?.dataset.status === 'installed'`);
+  expect((await shown())[0]).toBe('bots');
 }, 30_000);
 
-test('a plugin asks before it installs, gets only what the owner ticked, and its grants change from its row', async () => {
+test('a plugin asks before it installs, gets only what the owner ticked, and its grants change from its gear', async () => {
   const box = (permission: string) => `${id('plugin-consent-row')}[data-permission="${permission}"] input`;
   const chips = (plugin: string) => page.evaluate<string>(`[...document.querySelectorAll('${row(plugin)} ${id('plugin-permission')}')].map((el) => el.title).join(',')`);
   await inspect('https://github.com/example/scoped-board');
@@ -136,7 +186,9 @@ test('a plugin asks before it installs, gets only what the owner ticked, and its
   await page.waitFor(`document.querySelector('${row('scoped-board')}')?.dataset.status === 'installed'`);
   expect(await chips('scoped-board')).toBe('threads.read');
 
-  await page.click(`${row('scoped-board')} ${id('plugin-grants')}`);
+  await gear('scoped-board');
+  await capture('plugins-gear-authorizations-desktop.png');
+  await page.click(`${id('plugin-dialog')} ${id('plugin-grants')}`);
   await page.waitFor(`document.querySelector('${id('plugin-consent')}')?.dataset.mode === 'edit' && document.querySelector('${box('ui.reveal')}')?.checked === false`);
   await page.click(box('ui.reveal'));
   await capture('plugins-grants-desktop.png');
@@ -144,14 +196,13 @@ test('a plugin asks before it installs, gets only what the owner ticked, and its
   await page.waitFor(`[...document.querySelectorAll('${row('scoped-board')} ${id('plugin-permission')}')].length === 2`);
   expect(await chips('scoped-board')).toBe('threads.read,ui.reveal');
 
-  await page.click(`${row('scoped-board')} ${id('plugin-uninstall')}`);
+  await page.click(`${id('plugin-dialog')} ${id('plugin-uninstall')}`);
   await page.waitFor(`document.querySelector('${id('confirm-ok')}')`); await page.click(id('confirm-ok'));
-  await page.waitFor(`document.querySelector('${row('scoped-board')}') === null`);
+  await page.waitFor(`document.querySelector('${row('scoped-board')}') === null && document.querySelector('${id('plugin-dialog')}') === null`);
 }, 30_000);
 
 test('in a 390 pixel column the page wraps instead of scrolling sideways', async () => {
-  // The desktop shell never gets this narrow and the phone has its own settings,
-  // so the column is made here: the nav hidden, the page 390 pixels wide. The
+  // A narrow desktop window: the nav hidden, the page 390 pixels wide. The
   // section's frame edge goes too, or its two pixels come off the 390.
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 844, deviceScaleFactor: 1, mobile: false });
   await page.evaluate(`(() => {
@@ -163,27 +214,40 @@ test('in a 390 pixel column the page wraps instead of scrolling sideways', async
   const fits = `(() => { const el = document.querySelector('${id('plugins-page')}'); return el.getBoundingClientRect().width === 390 && el.scrollWidth <= el.clientWidth; })()`;
   await page.evaluate(`document.querySelector('${id('plugins-page')}').scrollTop = 0`);
   expect(await page.evaluate(fits)).toBe(true);
-  await captureColumn('plugins-390.png');
+  await captureColumn('plugins-390-column.png');
   await inspect('https://github.com/example/pi-pool');
   await scrollTo(id('plugins-add'));
   expect(await page.evaluate(fits)).toBe(true);
   await captureColumn('plugins-390-preview.png');
   await page.click(id('plugin-dismiss'));
-  // The dialog sizes itself on the window (100vw less 32 pixels): the column gives it a 390 pixel window's width.
+  await page.click(id('plugins-from-url'));
+  // The dialogs size themselves on the window (100vw less 32 pixels): the column gives them a 390 pixel window's width.
   await page.evaluate(`document.getElementById('plugins-column').textContent += ' [data-testid="plugin-consent"] { width: 358px !important; } .scrim:has([data-testid="plugin-consent"]) { right: auto !important; width: 390px; }'`);
-  await page.click(`${row('standup')} ${id('plugin-grants')}`);
+  await gear('standup');
+  await page.click(`${id('plugin-dialog')} ${id('plugin-grants')}`);
   await page.waitFor(`document.querySelector('${id('plugin-consent')}')?.dataset.mode === 'edit'`);
   expect(await page.evaluate(`document.querySelector('${id('plugin-consent')}').scrollWidth <= 358`)).toBe(true);
   await captureColumn('plugins-390-grants.png');
   await page.click(id('plugin-consent-cancel'));
   await page.waitFor(`document.querySelector('${id('plugin-consent')}') === null`);
+  await closeGear();
   await page.evaluate(`document.getElementById('plugins-column').remove()`);
 }, 30_000);
 
-test('a phone-wide window gets the phone settings, which leave plugins to the desktop', async () => {
+test('a phone gets the plugins page too: one card per row, the gear a bottom sheet', async () => {
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-  await page.waitFor(`document.querySelector('${id('mobile-settings-home')}')`);
-  expect(await page.evaluate(`document.querySelector('${id('plugins-page')}') === null && document.querySelector('${id('settings-tab-plugins')}') === null`)).toBe(true);
-  await capture('plugins-phone-home.png');
+  // The phone shell first: the desktop page is still in the DOM until the layout switches.
+  await page.waitFor(`document.querySelector('${id('mobile-header')}')`);
+  if (await page.evaluate<boolean>(`document.querySelector('${id('plugins-page')}') === null`)) await page.click(id('settings-tab-plugins'));
+  await page.waitFor(`document.querySelector('${id('plugins-grid')}')`);
+  expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
+  // One column: every card as wide as the grid.
+  expect(await page.evaluate(`(() => { const grid = document.querySelector('${id('plugins-grid')}').getBoundingClientRect().width; return [...document.querySelectorAll('${id('plugin-row')}')].every((el) => Math.abs(el.getBoundingClientRect().width - grid) < 1); })()`)).toBe(true);
+  await capture('plugins-390.png');
+  await gear('standup');
+  await capture('plugins-390-dialog.png');
+  // A bottom sheet: its foot on the screen's, once it has risen.
+  expect(await page.evaluate<number>(`Math.abs(document.querySelector('${id('plugin-dialog')}').getBoundingClientRect().bottom - 844)`)).toBeLessThanOrEqual(1);
+  await closeGear();
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
 }, 30_000);

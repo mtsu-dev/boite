@@ -198,8 +198,13 @@ before it has no `DISPLAY` and skips that file. The same step installs
 `packages/core/test/desktop.test.ts` again: with the tools present, `boite
 desktop` starts a real virtual desktop of its own, runs programs on it and
 stops it. Linux desktop packages build on Ubuntu 22.04,
-setting a glibc 2.35 floor. Portable jobs run Rust tests and installed smoke
-checks against Debian, extracted AppImage and macOS application bundles.
+setting a glibc 2.35 floor. Both Linux apt steps, these packages and the X11
+capture tools, run `scripts/ci/ubuntu-apt.sh`: it reads only Ubuntu's sources
+and, when a mirror's name does not resolve, as no `ubuntu.com` name did for hours
+on 2026-11-11, tries Ubuntu mirrors on other domains (kernel.org, MIT, dotsrc)
+before Ubuntu's own archive. apt still checks each index against Ubuntu's key,
+and a missing index or a bad signature fails the step.
+Portable jobs run Rust tests and installed smoke checks against Debian, extracted AppImage and macOS application bundles.
 These verify startup, UI serving, authenticated RPC and a fixture echo turn
 outside the checkout. Native WebView2 E2E remains Windows-only.
 
@@ -421,10 +426,6 @@ printed (`BOITE_TEST_FILE_DEADLINE_MS`).
 
 Browser command, sharing and profile scenarios run in separate files so their
 combined Chromium startup time does not consume one five-minute file budget.
-The Linux core job prepares X11 through the signed Ubuntu sources alone,
-using the public archive on x64 and ports on ARM64 instead of the runner's
-Azure mirror list. APT connection deadlines and retries are bounded, and an
-index acquisition failure fails the step before the X11 tests start.
 Each file registers its own loopback site and fresh-core hooks through a fixture
 factory; individual scenario deadlines and assertions remain unchanged.
 Crash-recovery fixtures disarm resident delegation, coordination, workflow and

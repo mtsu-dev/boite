@@ -29,7 +29,13 @@ for (const state of ['drained', 'revoked', 'occupied'] as const) {
     });
     // Real scope preparation and registry with a synthetic external scope and
     // OS boundary. No installed provider or credential is needed.
-    const core: Core = Object.assign(Object.create(harness.core), {procs});
+    // An open desktop of the thread is stopped before the protection is installed.
+    const desktopStops: number[] = [];
+    const desktops = {stop: async ({threadId}: {threadId: string}) => {
+      if (threadId === thread.id) desktopStops.push(opens);
+      return {stopped: true};
+    }};
+    const core: Core = Object.assign(Object.create(harness.core), {procs, desktops});
     const execution = new SharedNativeExecution(core, () => ({threadId: thread.id, checkoutPath: root,
       job: {id: null, sharedProjectId: 'preparation', grantRevision: 1,
         source: {project: {ownerCoreId: 'source', coreId: 'source', projectId: 'source'}, threadId: 'source', address: {coreId: 'source', threadId: 'source'}}},
@@ -61,6 +67,7 @@ for (const state of ['drained', 'revoked', 'occupied'] as const) {
       } else {
         expect(error).toBeNull();
         expect(opens).toBe(1);
+        expect(desktopStops).toEqual([0]);
         expect(execution.context(thread.id)).toBeDefined();
         expect(procs.protection.policy(thread.id)?.route).toMatchObject({providerId: 'pi', accountId: account.id, permissionMode: 'yolo'});
       }

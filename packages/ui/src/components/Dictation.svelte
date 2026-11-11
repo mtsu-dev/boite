@@ -11,7 +11,7 @@
   import { SpeechRecorder, audioBase64, microphoneError } from '../lib/speech-recorder';
   import { SpeechPreview } from '../lib/speech-preview';
   import { SpeechStream } from '../lib/speech-stream';
-  import { strings } from '../lib/strings';
+  import { fill, strings } from '../lib/strings';
   import { voice } from '../lib/voice-prefs.svelte';
   let { store, ontext, onbusy, onpreview }: { store: Store; ontext: (text: string) => void; onbusy: (busy: boolean) => void; onpreview: (text: string, status: string, error: boolean) => void } = $props();
   let phase = $state<'idle' | 'opening' | 'recording' | 'transcribing' | 'error'>('idle');
@@ -67,7 +67,7 @@
       // A core from before dictation has no voice engine: name the machine to update instead of the raw RPC error.
       const statusPromise = client.call('speech.status', {}).catch((cause: unknown) => {
         if (cause instanceof RpcFailure && cause.code === RpcErrorCode.MethodNotFound) {
-          throw new Error(strings.speech.unsupportedDictation.replace('{machine}', store.core?.hostname ?? strings.app.name));
+          throw new Error(fill(strings.speech.unsupportedDictation, { machine: store.core?.hostname ?? strings.app.name }));
         }
         throw cause;
       });

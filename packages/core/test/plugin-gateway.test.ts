@@ -436,3 +436,29 @@ test('an updated gateway that crashes later starts again', async () => {
   await gatewayIs(owner, 'running', 'running again');
   await until(live, (count) => count === 1, 'one gateway process');
 }, 30_000);
+
+test.skipIf(process.platform !== 'linux')('turned off while its start waits on a gateway a previous core left, it stays stopped and starts nothing', async () => {
+  const { owner } = await core();
+  await owner.call('plugins.install', { id: 'douane' });
+  await gatewayIs(owner, 'running');
+  await owner.call('plugins.setEnabled', { id: 'douane', enabled: false });
+  await until(live, (count) => count === 0, 'no gateway process left');
+
+  // A gateway a previous core left running, which takes a second to go once asked.
+  const gateways = harness!.core.plugins.gateways;
+  const config = join(gateways.dataDir('douane'), 'douane.toml');
+  const orphan = Bun.spawn(['sh', '-c', 'trap "sleep 1; exit 0" TERM; while :; do sleep 0.1; done', 'sh', config]);
+  writeFileSync(join(gateways.dataDir('douane'), 'gateway.pid'), `${JSON.stringify({ pid: orphan.pid, config })}\n`);
+  try {
+    await owner.call('plugins.setEnabled', { id: 'douane', enabled: true });
+    await Bun.sleep(300);
+    expect(live()).toBe(0);
+    await owner.call('plugins.setEnabled', { id: 'douane', enabled: false });
+    await orphan.exited;
+    await Bun.sleep(1_000);
+    expect(live()).toBe(0);
+    expect((await state(owner)).gateway?.status).toBe('stopped');
+  } finally {
+    orphan.kill('SIGKILL');
+  }
+}, 30_000);
