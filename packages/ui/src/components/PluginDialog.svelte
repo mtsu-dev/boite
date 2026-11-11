@@ -5,7 +5,7 @@
   import { PLUGIN_PERMISSIONS, pluginSettingValues } from '@boite/contracts';
   import { Closing } from '../lib/closing.svelte';
   import { mobileOverlay } from '../lib/mobile-history';
-  import { hasFiles, pluginAuthor } from '../lib/plugin-card';
+  import { hasFiles, permissionTitle, pluginAuthor } from '../lib/plugin-card';
   import { fill, strings } from '../lib/strings';
   import InfoTip from './InfoTip.svelte';
   import PluginSettingField from './PluginSettingField.svelte';
@@ -119,7 +119,7 @@
                 {@const granted = current.granted ?? current.permissions ?? []}
                 <div class="reach">
                   {#if granted.length > 0}
-                    <ul class="chips">{#each granted as permission (permission)}<li class="chip" class:danger={PLUGIN_PERMISSIONS[permission]?.danger === true} title={permission} data-testid="plugin-authorization" data-permission={permission}>{t.permission[permission].title}</li>{/each}</ul>
+                    <ul class="chips">{#each granted as permission (permission)}<li class="chip" class:danger={PLUGIN_PERMISSIONS[permission]?.danger === true} title={permission} data-testid="plugin-authorization" data-permission={permission}>{permissionTitle(permission)}</li>{/each}</ul>
                   {:else}<span class="hint">{t.reachesNothing}</span>{/if}
                   {#if onedit}
                     <button type="button" class="ghost small" data-testid="plugin-grants" data-plugin={current.id} disabled={working} onclick={() => onedit(current)}><ShieldCheck size={14} /><span class="ui-label">{t.authorizationsEdit}</span></button>

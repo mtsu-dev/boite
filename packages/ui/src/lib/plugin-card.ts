@@ -14,6 +14,11 @@ export interface PluginChip {
   testid?: string;
 }
 
+/** A permission's short title; a name this app does not know (an older core's `todos`) shows as written. */
+export function permissionTitle(permission: string): string {
+  return (strings.plugins.permission as Record<string, { title: string } | undefined>)[permission]?.title ?? permission;
+}
+
 /** Anything with files on disk, and every plugin added from a URL whatever its state. */
 export function hasFiles(plugin: PluginState): boolean {
   return plugin.origin === 'url' || plugin.version !== null;
@@ -44,7 +49,7 @@ export function pluginChips(plugin: PluginState): PluginChip[] {
   const chips: PluginChip[] = [];
   if (plugin.origin === 'recommended' && plugin.version === null) chips.push({ id: 'recommended', label: t.chipRecommended, tone: 'accent' });
   if (plugin.origin === 'dev') chips.push({ id: 'dev', label: t.dev, tone: 'accent', testid: 'plugin-dev' });
-  for (const permission of plugin.granted ?? plugin.permissions ?? []) chips.push({ id: `permission-${permission}`, label: t.permission[permission].title, title: permission, testid: 'plugin-permission' });
+  for (const permission of plugin.granted ?? plugin.permissions ?? []) chips.push({ id: `permission-${permission}`, label: permissionTitle(permission), title: permission, testid: 'plugin-permission' });
   if (plugin.pools.length > 0) chips.push({ id: 'accounts', label: t.chipAccounts });
   if (plugin.app) chips.push({ id: 'app', label: plugin.app.kind === 'service' ? t.service : t.app });
   if (plugin.gateway) chips.push({ id: 'gateway', label: t.gateway });

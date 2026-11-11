@@ -4,7 +4,7 @@
   import { errorText } from '../lib/errors';
   import InfoTip from './InfoTip.svelte';
   import PolicyLock from './PolicyLock.svelte';
-  import { Download, ExternalLink, Play, Plus, Puzzle, RefreshCw, RotateCw, Search, ShieldAlert, ShieldCheck, Square, TriangleAlert } from '@lucide/svelte';
+  import { Download, ExternalLink, Play, Plus, Puzzle, RefreshCw, RotateCw, Search, ShieldAlert, Square, TriangleAlert } from '@lucide/svelte';
   import type { PluginAdds, PluginAppState, PluginGatewayState, PluginManifest, PluginPermission, PluginPool, PluginPreview, PluginRejected, PluginSettingValue, PluginState, PluginUpdates, RpcParams } from '@boite/contracts';
   import { PLUGIN_ADD_SECTION, gatewayDashboardReachable } from '@boite/contracts';
   import { besideCore } from '../lib/gateway-dashboard';
@@ -18,7 +18,7 @@
   import { confirm } from '../lib/confirm.svelte';
   import QuotaList from './QuotaList.svelte';
   import { SnapshotFeed } from '../lib/snapshot-feed';
-  import { hasFiles, isOn, pluginMatches, type PluginFilter } from '../lib/plugin-card';
+  import { hasFiles, isOn, permissionTitle, pluginMatches, type PluginFilter } from '../lib/plugin-card';
   import PluginCard from './PluginCard.svelte';
   import PluginDialog from './PluginDialog.svelte';
 
@@ -466,7 +466,7 @@
     <dt class="with-tip"><span class="ui-label">{t.reaches}</span><InfoTip topic={t.reaches} text={t.reachesHint} /></dt>
     <dd>
       {#if permissions.length > 0}
-        <ul class="chips">{#each permissions as permission (permission)}<li class="chip" title={permission} data-testid="plugin-permission" data-permission={permission}>{t.permission[permission].title}</li>{/each}</ul>
+        <ul class="chips">{#each permissions as permission (permission)}<li class="chip" title={permission} data-testid="plugin-permission" data-permission={permission}>{permissionTitle(permission)}</li>{/each}</ul>
       {:else}<span class="subtle">{t.reachesNothing}</span>{/if}
     </dd>
   {/if}

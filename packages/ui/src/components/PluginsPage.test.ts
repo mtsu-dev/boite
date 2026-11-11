@@ -232,6 +232,17 @@ test('a value outside the manifest\'s rule is refused on the spot and never sent
   await vi.waitFor(() => expect(setting.querySelector('[data-testid="plugin-setting-error"]')).toBeNull());
 });
 
+test('a core from before the permission domains lists todos as written, on the card and under the gear', async () => {
+  await open((rows) => {
+    const standup = rows.find((plugin) => plugin.id === 'standup')!;
+    delete standup.granted;
+    standup.permissions = ['threads.read', 'todos'] as never;
+  });
+  expect([...row('standup')!.querySelectorAll('[data-testid="plugin-permission"]')].map((el) => el.textContent)).toEqual(['Read your threads', 'todos']);
+  const standup = await gear('standup');
+  expect([...standup.querySelectorAll('[data-testid="plugin-authorization"]')].map((el) => el.textContent)).toEqual(['Read your threads', 'todos']);
+});
+
 test('the gear shows what the plugin\'s token may call, and no settings section when it declares none', async () => {
   await open();
   const standup = await gear('standup');
