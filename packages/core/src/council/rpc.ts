@@ -48,9 +48,9 @@ export function registerCouncil(core: Core, probe: ProviderProbe): void {
   core.router.register('council.start', async params => {
     core.council.gate();
     const body = object(params);
-    const { parent, models, known } = core.council.admit(body);
+    const { parent, routes, known } = core.council.admit(body);
     if (known) return known;
-    return core.council.start(body, await prepareMembers(core, probe, parent.id, models));
+    return core.council.start(body, await prepareMembers(core, probe, parent.id, routes));
   });
   core.router.register('council.again', (params, ctx) => core.council.again(object(params), ctx.connection.identity.principal));
   core.router.register('council.list', params => core.council.list(object(params ?? {})));

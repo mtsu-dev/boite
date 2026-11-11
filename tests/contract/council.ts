@@ -42,16 +42,22 @@ export const COUNCIL_SCENARIOS: Record<string, Scenario> = {
       const parent = await env.call('threads.create', { projectId: project.id, providerId: provider.id, accountId: account.id, title: 'council' });
       const tag = Math.random().toString(36).slice(2, 7);
       // The echo members sleep through the scenario, so the round is still running when it is read and closed.
-      const params = { threadId: parent.id, request: `Review the cache plan [sleep:30000] ${tag}`, models: [route, route], requestId: `council-${tag}` };
+      const params = { threadId: parent.id, request: `Review the cache plan [sleep:30000] ${tag}`, models: [`${route}:low`, `${route}:high`], roles: { [`${route}:low`]: 'Look for what breaks.' }, requestId: `council-${tag}` };
 
-      same((await refused(env.call('council.start', { ...params, models: [route] }), RpcErrorCode.InvalidParams)).field, 'models', 'a single member');
-      same((await refused(env.call('council.start', { ...params, models: [route, 'nobody/model'] }), RpcErrorCode.InvalidParams)).field, 'models', 'a member who cannot run');
+      same((await refused(env.call('council.start', { ...params, models: [route], roles: {} }), RpcErrorCode.InvalidParams)).field, 'models', 'a single member');
+      same((await refused(env.call('council.start', { ...params, models: [route, 'nobody/model'], roles: {} }), RpcErrorCode.InvalidParams)).field, 'models', 'a member who cannot run');
       same((await refused(env.call('council.start', { ...params, timeoutMinutes: 0 }), RpcErrorCode.InvalidParams)).field, 'timeoutMinutes', 'no time for a round');
+      // A member's own effort is that level or a refusal that lists the model's; the same model sits twice only at two efforts.
+      same((await refused(env.call('council.start', { ...params, models: [`${route}:low`, `${route}:nope`], roles: {} }), RpcErrorCode.InvalidParams)).expected, 'low, high', 'an effort the model lacks');
+      same((await refused(env.call('council.start', { ...params, models: [`${route}:low`, `${route}:low`], roles: {} }), RpcErrorCode.InvalidParams)).field, 'models', 'the same model twice at one effort');
+      same((await refused(env.call('council.start', { ...params, models: [route, route], roles: {} }), RpcErrorCode.InvalidParams)).field, 'models', 'the same model twice at the shared effort');
+      same((await refused(env.call('council.start', { ...params, roles: { 'nobody/model': 'x' } }), RpcErrorCode.InvalidParams)).field, 'roles', 'a role for nobody');
 
       const council = await env.call('council.start', params);
       started.push(council.id);
       same([council.status, council.round, council.roundsDone, council.members.length, council.parentThreadId], ['running', 1, 0, 2, parent.id], 'a started council');
       same(council.members.map(member => member.scores), [[], []], 'scores before an answer');
+      same(council.members.map(member => [member.effort, member.role ?? null]), [['low', 'Look for what breaks.'], ['high', null]], 'each member\'s effort and role');
       check(new Set(council.members.map(member => member.handle.toLowerCase())).size === 2, 'two members share a handle');
       same((await env.call('council.start', params)).id, council.id, 'a retried start');
       same((await refused(env.call('council.start', { ...params, timeoutMinutes: 3 }), RpcErrorCode.Refused)).field, 'requestId', 'a reused requestId for another council');
@@ -82,7 +88,9 @@ export const COUNCIL_SCENARIOS: Record<string, Scenario> = {
       // The user closes the round: nobody answered, so nobody has a score, and the table says so.
       const closed = await env.call('council.closeRound', { councilId: council.id });
       same([closed.status, closed.roundsDone, closed.members.map(member => member.absent), closed.members.map(member => member.scores)], ['waiting', 1, [[1], [1]], [[null], [null]]], 'a closed round');
+      same((await refused(env.call('council.again', { councilId: council.id, sendChanges: true }), RpcErrorCode.InvalidParams)).field, 'changes', 'nothing to send');
       const { table } = await env.call('council.table', { councilId: council.id });
+      check(table.includes('(low, Look for what breaks.)') && table.includes('(high)'), `the table names each member's effort and role: ${table}`);
       same(table.split('\n').slice(0, 5), ['## Council review', '', 'Rounds: 1', '', '| Delegate | Round 1 |'], 'the table of a closed round');
       check(table.endsWith('no score |'), `a member without an answer: ${table}`);
       same((await refused(env.call('council.closeRound', { councilId: council.id }), RpcErrorCode.Refused)).status, 'waiting', 'closing it twice');

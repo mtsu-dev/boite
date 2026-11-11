@@ -497,8 +497,8 @@ boite team list|say|dm|read|propose|invite|leave
 boite delegate models [--machine <name>]
 boite delegate profiles|list
 boite delegate spawn <brief> [--model <provider/model>] [--effort <level>] [--speed <tier>] [--profile <id>] [--title <t>] [--worktree] [--machine <name> [--project <name>]] [context flags]
-boite delegate council <request> [--models <a>,<b>[,...]] [--effort <level>] [--timeout <minutes>]
-boite delegate council again <council-id> <what-changed>
+boite delegate council <request>|--request-file <path> [--models <a>[:<effort>],<b>[:<effort>][,...]] [--effort <level>] [--role <member>=<text>]... [--timeout <minutes>]
+boite delegate council again <council-id> [<what-changed>] [--send-changes] [--request-file <path>]
 boite delegate council table <council-id>
 boite delegate send <thread-id> <text>
 boite delegate wait [thread-id] [--timeout <s>]
@@ -539,9 +539,11 @@ parent's checkout ([delegation](delegation.md#children-in-their-own-worktree)).
 `delegate council`, behind the Council experiment, has 2 to 6 models (three
 providers by default) review one request alone and read-only, each with a score
 out of 10, while the user can follow in the salon; `--timeout` sets the minutes
-a round may last, 30 by default. It returns the council id once the members'
+a round may last, 30 by default. `--models a:<effort>,b:<effort>` gives each
+member its own level, `--request-file` reads the request from a file and
+`--role <member>=<text>` adds a text one member alone reads. It returns the council id once the members'
 model lists are read, up to a minute when none is saved yet; the answers
-and the table arrive as one message, `council again` asks for one more round,
+and the table arrive as one message, `council again` asks the same members for one more round,
 `council table` prints the scores, `delegate list` shows the council and
 `delegate stop <council-id>` stops it. It needs no git and no pull request
 ([council](council.md)). `delegate debate` starts nothing and points here.

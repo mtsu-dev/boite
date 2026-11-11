@@ -19,6 +19,7 @@ import {
   councilNames,
   councilNearestEffort,
   councilOver,
+  councilSplitEffort,
   councilTable,
   RpcErrorCode,
   type Council,
@@ -165,7 +166,17 @@ export function councilMethods(ctx: FakeContext): CouncilMethods {
       const asked = params.effort !== undefined && params.effort !== null;
       const effort = asked ? text(params.effort, 'effort', 32) : COUNCIL_DEFAULT_EFFORT;
       const requestId = params.requestId === undefined ? null : text(params.requestId, 'requestId', 100);
-      const fingerprint = JSON.stringify([request, models, effort, timeoutMinutes]);
+      // Each member's own text, by its place in `models`; a key is a member as `models` writes it.
+      const roles: (string | null)[] = models.map(() => null);
+      if (params.roles !== undefined && params.roles !== null) {
+        if (typeof params.roles !== 'object' || Array.isArray(params.roles)) throw invalid('roles: expected an object of member to text', { field: 'roles' });
+        for (const [key, role] of Object.entries(params.roles)) {
+          const index = models.findIndex(model => model.toLowerCase() === key.trim().toLowerCase());
+          if (index < 0) throw invalid(`roles: ${key} is not a member; the members are ${models.join(', ')}`, { field: 'roles', expected: models.join(', ') });
+          roles[index] = text(role, `roles.${key}`, COUNCIL_LIMITS.roleChars);
+        }
+      }
+      const fingerprint = JSON.stringify([request, models, effort, timeoutMinutes, roles]);
       const known = requestId === null ? undefined : state(ctx).requests.get(`${parent.id}\n${requestId}`);
       if (known) {
         if (known.fingerprint !== fingerprint) throw refused('requestId already used for a different council', { field: 'requestId', expected: 'a fresh id' });
@@ -175,23 +186,43 @@ export function councilMethods(ctx: FakeContext): CouncilMethods {
       if (config.enabled && config.paused) throw refused('this conversation\'s subagents are paused; resume them before a council', { threadId: parent.id });
       const warnings: string[] = [];
       const choices = modelChoices(ctx, parent);
-      const routes = models.map((model, index) => {
-        const what = named ? `models[${index}]` : `default member ${model}`;
+      const routes = models.map((entry, index) => {
+        const what = named ? `models[${index}]` : `default member ${entry}`;
+        // `provider/model:effort` is that model at that level, unless the whole text is itself a listed route.
+        const split = councilSplitEffort(entry);
+        const whole = split !== null && choices.some(choice => `${choice.providerId}/${choice.model}`.toLowerCase() === entry.toLowerCase());
+        const own = split !== null && !whole ? split.effort : null;
+        const model = own === null ? entry : split!.model;
+        let route: ReturnType<typeof pickModel>;
         try {
-          const route = pickModel(ctx, parent, config, model, undefined);
+          route = pickModel(ctx, parent, config, model, undefined);
           // A route with a slash is that very provider/model, not one it is a part of.
           const head = model.slice(0, Math.max(0, model.indexOf('/')));
           if (head !== '' && route.id.toLowerCase() !== model.toLowerCase()) throw new Error(`${head} does not offer it; the nearest is ${route.id}`);
-          const levels = choices.find(choice => `${choice.providerId}/${choice.model}` === route.id)?.efforts ?? [];
-          if (levels.includes(effort)) return { ...route, effort };
-          // A level a model lacks is said, not refused: its strongest below the one asked.
-          const level = councilNearestEffort(levels, effort) ?? route.effort;
-          if (asked || levels.length > 0) warnings.push(`${route.name} has no ${effort} effort, so it runs at ${level ?? 'its default'}.`);
-          return { ...route, effort: level };
         } catch (error) {
           throw invalid(`${what}: ${error instanceof Error ? error.message : String(error)}. A council member is never replaced${named ? '' : '; name others with --models'}.`, { field: 'models', model });
         }
+        const levels = choices.find(choice => `${choice.providerId}/${choice.model}` === route.id)?.efforts ?? [];
+        // A level written on the member itself is that level or a refusal; the one shared by all falls to the nearest below.
+        if (own !== null) {
+          if (!levels.includes(own)) throw invalid(`${what}: ${levels.length > 0 ? `${route.id} has no ${own} effort; its levels are ${levels.join(', ')}` : `${route.id} takes no effort level; name it without :${own}`}. Nothing was started.`, { field: 'models', model: entry, expected: levels.join(', ') });
+          return { ...route, effort: own };
+        }
+        if (levels.includes(effort)) return { ...route, effort };
+        // A level a model lacks is said, not refused: its strongest below the one asked.
+        const level = councilNearestEffort(levels, effort) ?? route.effort;
+        if (asked || levels.length > 0) warnings.push(`${route.name} has no ${effort} effort, so it runs at ${level ?? 'its default'}.`);
+        return { ...route, effort: level };
       });
+      if (named) {
+        const seen = new Map<string, number>();
+        for (const [index, r] of routes.entries()) {
+          const key = `${r.providerId}/${r.model}:${r.effort ?? ''}`.toLowerCase();
+          const first = seen.get(key);
+          if (first !== undefined) throw invalid(`models[${index}]: ${r.providerId}/${r.model}${r.effort ? ` at ${r.effort}` : ''} is already models[${first}]; the same model sits twice only at two efforts`, { field: 'models', model: models[index]! });
+          seen.set(key, index);
+        }
+      }
       const names = councilNames(routes.map(r => r.name));
       const handles = councilHandles(names);
       const id = `cnl_${++ctx.seq}`;
@@ -201,7 +232,7 @@ export function councilMethods(ctx: FakeContext): CouncilMethods {
         if (readOnly === 'approvals') warnings.push(`${name} has no read-only mode: Boite refuses every permission it asks.`);
         if (readOnly === 'none') warnings.push(`${name} has no read-only mode and asks no permission: it could change files.`);
         if (r.providerId === 'opencode') warnings.push(`${name} runs in OpenCode's plan mode, which refuses edits and allows commands: only its instructions keep those read-only.`);
-        return { id: `p${index + 1}`, name, handle: handles[index]!, providerId: r.providerId, model: r.model ?? '', effort: r.effort ?? null, threadId: null, readOnly, absent: [], pending: false, scores: [] };
+        return { id: `p${index + 1}`, name, handle: handles[index]!, providerId: r.providerId, model: r.model ?? '', effort: r.effort ?? null, ...(roles[index] ? { role: roles[index]! } : {}), threadId: null, readOnly, absent: [], pending: false, scores: [] };
       });
       const salon = salonOf(ctx, parent, id, request);
       const now = ctx.now();
@@ -218,11 +249,16 @@ export function councilMethods(ctx: FakeContext): CouncilMethods {
       gate();
       const council = require(params?.councilId);
       own(council, params.threadId);
-      const changes = text(params.changes, 'changes', COUNCIL_LIMITS.requestChars);
+      const given = (value: unknown) => value !== undefined && value !== null && value !== '';
+      const changes = given(params.changes) ? text(params.changes, 'changes', COUNCIL_LIMITS.requestChars) : null;
+      const request = given(params.request) ? text(params.request, 'request', COUNCIL_LIMITS.requestChars) : null;
+      if (params.sendChanges !== undefined && typeof params.sendChanges !== 'boolean') throw invalid('sendChanges: expected true or false', { field: 'sendChanges' });
+      if (params.sendChanges === true && changes === null) throw invalid('sendChanges: nothing to send; say what changed', { field: 'changes' });
       const requestId = params.requestId === undefined ? null : text(params.requestId, 'requestId', 100);
       const key = `${council.id}\n${requestId}`;
+      const fingerprint = JSON.stringify([changes, request, params.sendChanges === true]);
       if (requestId !== null && state(ctx).rounds.has(key)) {
-        if (state(ctx).rounds.get(key) !== changes) throw refused('requestId already used for a different round', { field: 'requestId', expected: 'a fresh id' });
+        if (state(ctx).rounds.get(key) !== fingerprint) throw refused('requestId already used for a different round', { field: 'requestId', expected: 'a fresh id' });
         return structuredClone(council);
       }
       if (councilOver(council)) throw refused(`council ${council.id} is over (${council.status}); start a new one with boite delegate council`, { councilId: council.id, status: council.status });
@@ -231,9 +267,10 @@ export function councilMethods(ctx: FakeContext): CouncilMethods {
       if (parent.archived) throw refused('the thread that started it is archived', { threadId: parent.id });
       const config = delegationConfig(ctx, parent.id);
       if (config.enabled && config.paused) throw refused('this conversation\'s subagents are paused; resume them before a new round', { threadId: parent.id });
-      if (requestId !== null) state(ctx).rounds.set(key, changes);
+      if (requestId !== null) state(ctx).rounds.set(key, fingerprint);
       const round = council.round + 1;
-      post(council, { round, author: COUNCIL_AUTHOR, text: changes, to: null, inReplyTo: null });
+      if (request !== null) save(state(ctx).councils.get(council.id)!, draft => { draft.request = request; });
+      if (changes !== null) post(council, { round, author: COUNCIL_AUTHOR, text: changes, to: null, inReplyTo: null });
       beginRound(council.id, round);
       return structuredClone(state(ctx).councils.get(council.id)!);
     },

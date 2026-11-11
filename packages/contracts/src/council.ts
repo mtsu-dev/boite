@@ -16,6 +16,8 @@ export const COUNCIL_LIMITS = {
   timeoutMinutesMax: 120,
   /** A request, or what changed since the last round. */
   requestChars: 12_000,
+  /** What one member is told beside the request all of them read. */
+  roleChars: 200,
   /** An owner's message in the salon. */
   postChars: 4000,
   /** What one answer keeps in the salon; the rest stays in the member's thread. */
@@ -30,6 +32,19 @@ export const COUNCIL_LIMITS = {
  */
 export const COUNCIL_DEFAULT_MODELS = ['claude/claude-opus-5-5', 'codex/gpt-6.1-sol', 'antigravity/gemini-4-argon'] as const;
 export const COUNCIL_DEFAULT_EFFORT = 'xhigh';
+
+/**
+ * A member as `--models` writes it: `provider/model`, or `provider/model:effort`
+ * for a level of its own. Only a colon after the last slash splits, and the
+ * caller keeps the whole text when it is itself a listed route, as a model id
+ * may hold a colon.
+ */
+export function councilSplitEffort(entry: string): { model: string; effort: string } | null {
+  const at = entry.lastIndexOf(':');
+  if (at <= entry.lastIndexOf('/') || at === entry.length - 1) return null;
+  const model = entry.slice(0, at).trim(), effort = entry.slice(at + 1).trim();
+  return model && effort ? { model, effort } : null;
+}
 
 const EFFORT_ORDER = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 /** The strongest of a model's levels that is not above the one asked. Null when none can be compared, as names like `fast` cannot. */
@@ -81,6 +96,8 @@ export interface CouncilMember {
   providerId: string;
   model: string;
   effort: string | null;
+  /** What this member alone is told beside the request, every round. Absent when it has none. */
+  role?: string;
   /** Its delegated thread, the same every round; null before it is created. */
   threadId: ThreadId | null;
   readOnly: CouncilReadOnly;
@@ -201,6 +218,18 @@ export function councilScore(score: number | null | undefined, noScore: string =
 
 const cell = (text: string) => text.replace(/\s+/g, ' ').replace(/\|/g, '\\|');
 
+/** A role on one line, cut to what a row or a heading can hold. */
+export function councilRoleBrief(role: string | undefined): string {
+  const line = role?.replace(/\s+/g, ' ').trim() ?? '';
+  return line.length > 40 ? `${line.slice(0, 39).trimEnd()}…` : line;
+}
+
+/** A member as the table, the round's message and `delegate list` name it: its name, then its effort and the start of its role. */
+export function councilLabel(member: Pick<CouncilMember, 'name' | 'effort' | 'role'>): string {
+  const extra = [member.effort, councilRoleBrief(member.role)].filter(Boolean);
+  return extra.length > 0 ? `${member.name} (${extra.join(', ')})` : member.name;
+}
+
 /** The `## Council review` section: the same text for a pull request's description, a final reply and the salon. */
 export function councilTable(council: Pick<Council, 'roundsDone' | 'members'>, words: typeof COUNCIL_TABLE_WORDS = COUNCIL_TABLE_WORDS): string {
   const rounds = Array.from({ length: council.roundsDone }, (_, index) => index);
@@ -212,23 +241,32 @@ export function councilTable(council: Pick<Council, 'roundsDone' | 'members'>, w
     '',
     row([words.delegate, ...rounds.map(index => words.round.replace('{round}', String(index + 1)))]),
     row(['---', ...rounds.map(() => '---')]),
-    ...council.members.map(member => row([cell(member.name), ...rounds.map(index => councilScore(member.scores[index], words.noScore))])),
+    ...council.members.map(member => row([cell(councilLabel(member)), ...rounds.map(index => councilScore(member.scores[index], words.noScore))])),
   ].join('\n');
 }
 
 export interface CouncilRpcMethods {
   /**
    * Starts a council from the thread `threadId` and returns at once. `models`
-   * are `provider/model` routes of `boite delegate models`, one per member; without
-   * them, `COUNCIL_DEFAULT_MODELS`. A route that cannot run refuses the whole
-   * council: a member is never replaced. Refused while the experiment is off.
+   * are `provider/model` routes of `boite delegate models`, one per member, each
+   * with its own level as `provider/model:effort` or else `effort`; without them,
+   * `COUNCIL_DEFAULT_MODELS`. A provider may sit more than once; the same model
+   * at the same effort may not. A level written on a route that its model lacks
+   * refuses the council, as does a route that cannot run: a member is never
+   * replaced. `roles` gives a member, named as `models` writes it, a text of its
+   * own beside the request. Refused while the experiment is off.
    */
   'council.start': {
-    params: { threadId: ThreadId; request: string; models?: string[]; effort?: string | null; timeoutMinutes?: number; requestId?: string };
+    params: { threadId: ThreadId; request: string; models?: string[]; effort?: string | null; roles?: Record<string, string>; timeoutMinutes?: number; requestId?: string };
     result: Council;
   };
-  /** A fresh round: the same members in the same threads review again from zero. `threadId` is the calling agent's thread. */
-  'council.again': { params: { councilId: string; changes: string; threadId?: ThreadId; requestId?: string }; result: Council };
+  /**
+   * A fresh round: the same members, with their efforts and roles, in the same
+   * threads review again from zero. `request` replaces the council's request from
+   * this round on. `changes` is kept in the salon and reaches the members only
+   * with `sendChanges`. `threadId` is the calling agent's thread.
+   */
+  'council.again': { params: { councilId: string; changes?: string; request?: string; sendChanges?: boolean; threadId?: ThreadId; requestId?: string }; result: Council };
   /** The councils a thread started, or every council for the owner without one. Newest first. */
   'council.list': { params: { threadId?: ThreadId }; result: { councils: Council[] } };
   'council.get': { params: { councilId: string }; result: { council: Council; posts: CouncilPost[] } };

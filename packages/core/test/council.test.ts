@@ -210,7 +210,7 @@ test('each member reviews alone, in parallel; the parent gets one message; again
   // A council between rounds runs nothing: waiting on the team returns.
   expect((await boite(h, threadId, ['delegate', 'wait', '--timeout', '1'])).code).toBe(0);
 
-  // Round 2: same threads, what changed, from zero, the user's messages, and still no other member's answer.
+  // Round 2: same threads, from zero, the user's messages, and still no other member's answer. What changed stays with the salon.
   d.reply = () => null;
   const again = await boite(h, threadId, ['delegate', 'council', 'again', councilId, 'Added the missing index.', '--request-id', 'second']);
   expect(again.err).toBe('');
@@ -218,7 +218,7 @@ test('each member reviews alone, in parallel; the parent gets one message; again
   expect([...d.round(2).map(run => run.threadId)].sort()).toEqual([...threads].sort());
   for (const run of d.round(2)) {
     const prompt = d.memberPart(run);
-    expect(prompt).toContain('Added the missing index.');
+    expect(prompt).not.toContain('Added the missing index.');
     expect(prompt).toContain('Review again from zero');
     expect(prompt).toContain('Do not assume your earlier points are fixed');
     expect(prompt).toContain('Think about phones too.');
@@ -279,6 +279,94 @@ test('a council needs no git, no pull request and no code', async () => {
   await waitFor(() => d.delivered().length === 2);
   expect(existsSync(join(folder, '.git'))).toBe(false);
 });
+
+test('each member has its own effort and part, the request comes from a file, and again keeps them and sends what changed only when asked', async () => {
+  const d = driver(run => (run.prompt.includes('Boite council, round') ? 'Fine.\n\nScore: 8/10' : 'Noted.'));
+  const { h, owner, threadId, read } = await setup();
+  const scale = (...ids: string[]) => ({ default: ids[0]!, levels: ids.map(id => ({ id, label: id })) });
+  await twinProvider(h, owner, [{ id: 'claude-opus-5-5', name: 'Opus', effort: scale('low', 'high', 'xhigh', 'max') }, { id: 'claude-fable-5-2', name: 'Fable', effort: scale('low', 'medium', 'high') }], 'anthro');
+  await twinProvider(h, owner, [{ id: 'gpt-6.1-sol', name: 'Sol', effort: scale('low', 'high', 'max') }], 'openai');
+  const folder = mkdtempSync(join(h.dataDir, 'brief-'));
+  mkdirSync(join(folder, '.boite-briefs', 'council'), { recursive: true });
+  writeFileSync(join(folder, '.boite-briefs', 'council', 'brief.md'), 'Review the plan, café included.\n');
+  writeFileSync(join(folder, 'long.md'), 'x'.repeat(12_001));
+  writeFileSync(join(folder, 'latin1.md'), Buffer.from([0x63, 0x61, 0x66, 0xe9]));
+  writeFileSync(join(folder, 'second.md'), 'Review the second plan.');
+  const models = 'anthro/claude-opus-5-5:max,openai/gpt-6.1-sol:max,anthro/claude-fable-5-2:high';
+  const council = (...words: string[]) => boite(h, threadId, ['delegate', 'council', ...words], folder);
+  const fromFile = ['--request-file', '.boite-briefs/council/brief.md'];
+
+  // Every refusal says what it expected, and starts nothing.
+  for (const [words, said] of [
+    [['Typed too', ...fromFile, '--models', models], 'as text or as --request-file, not both'],
+    [['--request-file', 'long.md', '--models', models], '12001 characters; the limit is 12000'],
+    [['--request-file', 'latin1.md', '--models', models], 'expected UTF-8 text'],
+    [['--request-file', 'absent.md', '--models', models], 'absent.md'],
+    [[...fromFile, '--models', 'anthro/claude-opus-5-5:max,anthro/claude-fable-5-2:max'], 'anthro/claude-fable-5-2 has no max effort; its levels are low, medium, high. Nothing was started.'],
+    [[...fromFile, '--models', 'anthro/claude-opus-5-5:max,twin/alpha:high'], 'twin/alpha takes no effort level; name it without :high'],
+    [[...fromFile, '--models', 'anthro/claude-opus-5-5:max,anthro/claude-opus-5-5:max'], 'anthro/claude-opus-5-5 at max is already models[0]'],
+    [[...fromFile, '--models', 'anthro/claude-opus-5-5,anthro/claude-opus-5-5'], 'is already models[0]'],
+    [[...fromFile, '--models', 'anthro/claude-opus-5-5:max'], '--models needs 2 to 6'],
+    [[...fromFile, '--models', models, '--role', 'openai/gpt-6.1-sol=Hunt for races.'], 'openai/gpt-6.1-sol is not a member; the members are'],
+    [[...fromFile, '--models', models, '--role', 'Hunt for races.'], '--role needs <member>=<text>'],
+    [[...fromFile, '--models', models, '--role', `openai/gpt-6.1-sol:max=${'x'.repeat(201)}`], '201 characters; the limit is 200'],
+  ] as const) {
+    const refusal = await council(...words);
+    expect(refusal.code).not.toBe(0);
+    expect(refusal.err).toContain(said);
+  }
+  expect(councilRows(h)).toEqual({ n: 0 });
+  expect(d.runs).toEqual([]);
+
+  // The same provider twice, each member at the effort written on it, one of them with a part of its own.
+  const cli = await council(...fromFile, '--models', models, '--role', 'openai/gpt-6.1-sol:max=Hunt for races.');
+  expect(cli.err).toBe('');
+  expect(cli.out).toContain('Opus (anthro/claude-opus-5-5, max), Sol (openai/gpt-6.1-sol, max, "Hunt for races."), Fable (anthro/claude-fable-5-2, high)');
+  expect(cli.out).not.toContain('effort, so it runs at');
+  const councilId = /council: (cnl_\S+)/.exec(cli.out)![1]!;
+  let state = (await read(councilId)).council;
+  expect(state.request).toBe('Review the plan, café included.');
+  expect(state.members.map(member => [member.providerId, member.model, member.effort, member.role ?? null])).toEqual([['anthro', 'claude-opus-5-5', 'max', null], ['openai', 'gpt-6.1-sol', 'max', 'Hunt for races.'], ['anthro', 'claude-fable-5-2', 'high', null]]);
+  const threads = threadsOf(state);
+  expect(threads.map(thread => h.core.threads.require(thread).effort)).toEqual(['max', 'max', 'high']);
+  const told = (round: number, what: string) => d.round(round).filter(run => d.memberPart(run).includes(what)).map(run => run.model).sort();
+  const settled = async (rounds: number) => {
+    await waitFor(() => d.delivered().length === rounds);
+    await waitFor(() => h.core.council.get({ councilId }).council.delivered);
+  };
+  await settled(1);
+  expect(told(1, JSON.stringify('Review the plan, café included.'))).toHaveLength(3);
+  expect(told(1, 'Hunt for races.')).toEqual(['gpt-6.1-sol']);
+  for (const head of ['### Opus (max) · 8/10', '### Sol (max, Hunt for races.) · 8/10', '### Fable (high) · 8/10']) expect(d.delivered()[0]!.prompt).toContain(head);
+  expect((await council('table', councilId)).out).toContain('| Sol (max, Hunt for races.) | 8/10 |');
+  expect((await boite(h, threadId, ['delegate', 'list'])).out).toContain('anthro/claude-opus-5-5:max,openai/gpt-6.1-sol:max (Hunt for races.),anthro/claude-fable-5-2:high');
+
+  // One more round with nothing said: the same threads, efforts and parts.
+  expect((await council('again', councilId)).err).toBe('');
+  await settled(2);
+  expect([...d.round(2).map(run => run.threadId)].sort()).toEqual([...threads].sort());
+  expect(told(2, 'Hunt for races.')).toEqual(['gpt-6.1-sol']);
+  // What changed is the salon's unless the command sends it; the request can come from another file.
+  expect((await council('again', councilId, 'Fixed the race.')).err).toBe('');
+  await settled(3);
+  expect(told(3, 'Fixed the race.')).toEqual([]);
+  expect((await council('again', councilId, '--send-changes')).err).toContain('--send-changes sends the members what changed');
+  expect((await council('again', councilId, 'Rewrote the lock.', '--send-changes', '--request-file', 'second.md')).err).toBe('');
+  await settled(4);
+  expect(told(4, 'Rewrote the lock.')).toHaveLength(3);
+  expect(told(4, JSON.stringify('Review the second plan.'))).toHaveLength(3);
+  expect(told(4, 'Hunt for races.')).toEqual(['gpt-6.1-sol']);
+  state = (await read(councilId)).council;
+  expect(state.request).toBe('Review the second plan.');
+  expect(state.members.map(member => [member.effort, member.role ?? null])).toEqual([['max', null], ['max', 'Hunt for races.'], ['high', null]]);
+  expect(threadsOf(state)).toEqual(threads);
+  expect((await read(councilId)).posts.filter(post => post.author === 'author').map(post => [post.round, post.text])).toEqual([[3, 'Fixed the race.'], [4, 'Rewrote the lock.']]);
+
+  // One model at two efforts is two members.
+  const twice = await owner.call('council.start', { threadId, request: REQUEST, models: ['anthro/claude-opus-5-5:max', 'anthro/claude-opus-5-5:high'] });
+  expect(twice.members.map(member => [member.model, member.effort])).toEqual([['claude-opus-5-5', 'max'], ['claude-opus-5-5', 'high']]);
+  expect(new Set(twice.members.map(member => member.name)).size).toBe(2);
+}, 20_000);
 
 test('after -- the words are the request, flag-like or naming a subcommand', () => {
   const words = (...argv: string[]) => parse(['delegate', 'council', ...argv]).positional.slice(2);

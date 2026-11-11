@@ -189,7 +189,7 @@ test('the salon shows who reviews, each answer with its score, round by round, t
   expect(text('[data-testid=council-status-line]')).toBe('GPT-6 Astra is writing…');
 
   // Only the rounds that closed: round 2 is still under way.
-  expect(tableRows()).toEqual([['Delegate', 'Round 1'], ['Sonnet 5.5', '8/10'], ['GPT-6 Astra', '7/10'], ['Gemini 4 Pro', '6/10']]);
+  expect(tableRows()).toEqual([['Delegate', 'Round 1'], ['Sonnet 5.5 (xhigh)', '8/10'], ['GPT-6 Astra (xhigh)', '7/10'], ['Gemini 4 Pro (xhigh)', '6/10']]);
   expect(text('[data-testid=council-table]')).toContain('Council review');
   expect(text('[data-testid=council-table]')).toContain('Rounds: 1');
   for (const gone of ['vote', 'tally', 'summary', 'anonymous', 'angle', 'rounds']) expect(document.querySelector(`[data-testid*=council-${gone}]`)).toBeNull();
@@ -201,9 +201,9 @@ test('a closed salon shows every round in the table and takes no more messages',
   await vi.waitFor(() => expect(document.querySelector('[data-testid=council-table]')).not.toBeNull());
   expect(tableRows()).toEqual([
     ['Delegate', 'Round 1', 'Round 2'],
-    ['Sonnet 5.5', '7/10', '9/10'],
-    ['GPT-6 Astra', '6/10', '9/10'],
-    ['Gemini 4 Pro', 'no score', '8/10'],
+    ['Sonnet 5.5 (xhigh)', '7/10', '9/10'],
+    ['GPT-6 Astra (xhigh)', '6/10', '9/10'],
+    ['Gemini 4 Pro (xhigh)', 'no score', '8/10'],
   ]);
   expect(text('[data-testid=council-system]')).toContain('Gemini 4 Pro did not answer round 1');
   expect(text('[data-testid=council-status-line]')).toBe('Council closed. Its reviews went back to the thread.');
@@ -263,7 +263,7 @@ test('closing a round leaves the member who did not answer without a score, and 
   expect(calls).toHaveBeenCalledWith('council.closeRound', { councilId: 'cnl_demo_live' });
   expect(text('[data-testid=council-system]')).toBe('GPT-6 Astra did not answer round 2: closed early.');
   await vi.waitFor(() => expect(tableRows()[0]).toEqual(['Delegate', 'Round 1', 'Round 2']));
-  expect(tableRows()[2]).toEqual(['GPT-6 Astra', '7/10', 'no score']);
+  expect(tableRows()[2]).toEqual(['GPT-6 Astra (xhigh)', '7/10', 'no score']);
   expect(text('[data-testid=council-status-line]')).toContain('Round 2 is done');
   expect(document.querySelector('[data-testid=council-close-round]')).toBeNull();
   expect(document.querySelector('[data-testid=council-composer]')).not.toBeNull();

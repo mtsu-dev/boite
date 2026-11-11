@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { COUNCIL_AUTHOR, COUNCIL_DEFAULT_EFFORT, COUNCIL_DEFAULT_MODELS, COUNCIL_EXPERIMENT, COUNCIL_LEGACY_SUMMARY, COUNCIL_LIMITS, COUNCIL_OWNER, COUNCIL_SYSTEM, councilHandles, councilMention, councilNames, councilNearestEffort, councilOver, councilTable, threadActive } from '@boite/contracts';
+import { COUNCIL_AUTHOR, COUNCIL_DEFAULT_EFFORT, COUNCIL_DEFAULT_MODELS, COUNCIL_EXPERIMENT, COUNCIL_LEGACY_SUMMARY, COUNCIL_LIMITS, COUNCIL_OWNER, COUNCIL_SYSTEM, councilHandles, councilMention, councilNames, councilNearestEffort, councilOver, councilSplitEffort, councilTable, threadActive } from '@boite/contracts';
 import type { Council, CouncilMember, CouncilPost, CouncilReadOnly, CouncilStatus, Message, Principal, RpcParams, ThreadSummary, Turn } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { invalidParams, messageOf, notFound, refused } from '../errors.ts';
@@ -19,6 +19,8 @@ interface Internal {
   roundStartedAt: number;
   /** `again`'s request ids and what each asked, so a retry starts no second round. */
   again: Record<string, string>;
+  /** The round whose members read what the parent says changed (`sendChanges`); the others review without it. */
+  toldRound?: number;
 }
 type Stored = Council & { internal: Internal };
 /** A debate written before the council: its row holds these names. */
@@ -238,6 +240,19 @@ export class CouncilStore {
     return { table: councilTable(council), council: this.#public(council) };
   }
 
+  /** Each member's own text, by its place in `models`; a key is a member as `models` writes it. */
+  #roles(value: unknown, models: readonly string[]): (string | null)[] {
+    const roles: (string | null)[] = models.map(() => null);
+    if (value === undefined || value === null) return roles;
+    if (typeof value !== 'object' || Array.isArray(value)) throw invalidParams('roles: expected an object of member to text', { field: 'roles' });
+    for (const [key, role] of Object.entries(value)) {
+      const index = models.findIndex(model => model.toLowerCase() === key.trim().toLowerCase());
+      if (index < 0) throw invalidParams(`roles: ${key} is not a member; the members are ${models.join(', ')}`, { field: 'roles', expected: models.join(', ') });
+      roles[index] = text(role, `roles.${key}`, COUNCIL_LIMITS.roleChars);
+    }
+    return roles;
+  }
+
   /**
    * What refuses a council before any list is read, and the council a retry of
    * this `requestId` already started (`known`). The RPC asks before it reads the
@@ -257,8 +272,11 @@ export class CouncilStore {
     const timeoutMinutes = whole(params.timeoutMinutes, 'timeoutMinutes', 1, COUNCIL_LIMITS.timeoutMinutesMax, COUNCIL_LIMITS.timeoutMinutesDefault);
     const effort = params.effort === undefined || params.effort === null ? COUNCIL_DEFAULT_EFFORT : text(params.effort, 'effort', 32);
     const requestId = params.requestId === undefined ? null : text(params.requestId, 'requestId', 100);
-    const fingerprint = hash([request, models, effort, timeoutMinutes]);
-    const asked = { parent, request, named, models, timeoutMinutes, effort, requestId, fingerprint };
+    const roles = this.#roles(params.roles, models);
+    const fingerprint = hash([request, models, effort, timeoutMinutes, roles]);
+    // What the lists are read for: a member's route, and the whole text too when its end may be an effort or part of a model id.
+    const routes = [...new Set(models.flatMap(model => [councilSplitEffort(model)?.model ?? model, model]))];
+    const asked = { parent, request, named, models, routes, roles, timeoutMinutes, effort, requestId, fingerprint };
     if (requestId !== null) {
       const row = this.#core.journal.db.query('SELECT id, fingerprint FROM debates WHERE parent_thread_id = ? AND request_id = ?').get(parent.id, requestId) as { id: string; fingerprint: string } | null;
       if (row) {
@@ -278,11 +296,17 @@ export class CouncilStore {
    */
   /** `unread`: the routes whose lists or effort scales `prepareMembers` could not read. */
   start(params: RpcParams<'council.start'>, unread: ReadonlySet<string> = new Set()): Council {
-    const { parent, request, named, models, timeoutMinutes, effort, requestId, fingerprint, known } = this.admit(params);
+    const { parent, request, named, models, roles, timeoutMinutes, effort: shared, requestId, fingerprint, known } = this.admit(params);
     if (known) return known;
     const warnings: string[] = [];
-    const route = (model: string, index: number): ChildRoute => {
-      const what = named ? `models[${index}]` : `default member ${model}`;
+    const route = (entry: string, index: number): ChildRoute => {
+      const what = named ? `models[${index}]` : `default member ${entry}`;
+      // `provider/model:effort` is that model at that level, unless the whole text is itself a listed route.
+      const split = councilSplitEffort(entry);
+      const whole = split !== null && catalog(this.#core, parent, true).choices.some(choice => `${choice.providerId}/${choice.model}`.toLowerCase() === entry.toLowerCase());
+      const own = split !== null && !whole ? split.effort : null;
+      const model = own === null ? entry : split!.model;
+      const effort = own ?? shared;
       const unavailable = (why: string, details: Record<string, string>) => invalidParams(`${what}: ${why}. A council member is never replaced${named ? '' : '; name others with --models'}.`, { field: 'models', ...details });
       // A route with a slash is that very provider/model: `antigravity/x` is not `codex/antigravity/x`, which a gateway may list, and `twin/alpha` is not `twin/alpha-next`.
       const head = providersNamed(this.#core, model)?.[0];
@@ -300,6 +324,10 @@ export class CouncilStore {
       const provider = this.#core.providers.require(resolved.providerId);
       // One level across models that name theirs differently: the strongest not above the one asked, and any other than that is said.
       const levels = modelsFor(provider, resolved.accountId).find(entry => entry.id === resolved.model)?.effort?.levels ?? [];
+      // A level written on the member itself is that level or a refusal; the one shared by all falls to the nearest below.
+      if (own !== null && !levels.some(level => level.id === own)) {
+        throw invalidParams(`${what}: ${notRead ?? (levels.length > 0 ? `${resolved.providerId}/${resolved.model} has no ${own} effort; its levels are ${levels.map(level => level.id).join(', ')}` : `${resolved.providerId}/${resolved.model} takes no effort level; name it without :${own}`)}. Nothing was started.`, { field: 'models', model: entry, expected: levels.map(level => level.id).join(', ') });
+      }
       const level = levels.some(entry => entry.id === effort) ? effort : councilNearestEffort(levels.map(entry => entry.id), effort);
       if (level !== null) resolved = { ...resolved, effort: level };
       if (levels.length === 0 && unread.has(model)) warnings.push(`${resolved.name}: its effort levels were not read yet, so it runs at ${resolved.effort ?? 'its default'}.`);
@@ -315,6 +343,15 @@ export class CouncilStore {
       return resolved;
     };
     const routes = models.map(route);
+    if (named) {
+      const seen = new Map<string, number>();
+      for (const [index, r] of routes.entries()) {
+        const key = `${r.providerId}/${r.model}:${r.effort ?? ''}`.toLowerCase();
+        const first = seen.get(key);
+        if (first !== undefined) throw invalidParams(`models[${index}]: ${r.providerId}/${r.model}${r.effort ? ` at ${r.effort}` : ''} is already models[${first}]; the same model sits twice only at two efforts`, { field: 'models', model: models[index]! });
+        seen.set(key, index);
+      }
+    }
     const names = councilNames(routes.map(r => r.name));
     const handles = councilHandles(names);
     const now = Date.now();
@@ -324,7 +361,7 @@ export class CouncilStore {
       const name = names[index]!;
       const warning = readOnlyWarning(name, r.providerId, readOnly);
       if (warning !== null) warnings.push(warning);
-      return { id: `p${index + 1}`, name, handle: handles[index]!, providerId: r.providerId, model: r.model ?? '', effort: r.effort ?? null, threadId: null, readOnly, absent: [], pending: false, scores: [] };
+      return { id: `p${index + 1}`, name, handle: handles[index]!, providerId: r.providerId, model: r.model ?? '', effort: r.effort ?? null, ...(roles[index] ? { role: roles[index] } : {}), threadId: null, readOnly, absent: [], pending: false, scores: [] };
     });
     const short = request.replace(/\s+/g, ' ');
     const salon: ThreadSummary = {
@@ -361,7 +398,7 @@ export class CouncilStore {
       throw error;
     }
     this.#card(parent, id, request);
-    this.#core.logs.info(`Council ${id} started by ${parent.id} with ${members.map(m => `${m.providerId}/${m.model}`).join(', ')}`, {
+    this.#core.logs.info(`Council ${id} started by ${parent.id} with ${members.map(m => `${m.providerId}/${m.model}${m.effort ? `:${m.effort}` : ''}`).join(', ')}`, {
       source: 'council', event: 'council.started', threadId: parent.id, data: { councilId: id, members: members.length, warnings: warnings.length },
     });
     this.#beginRound(id, 1);
@@ -377,9 +414,14 @@ export class CouncilStore {
     this.gate();
     const council = this.#require(params?.councilId);
     this.#own(council, params.threadId, principal);
-    const changes = text(params.changes, 'changes', COUNCIL_LIMITS.requestChars);
+    const given = (value: unknown) => value !== undefined && value !== null && value !== '';
+    const changes = given(params.changes) ? text(params.changes, 'changes', COUNCIL_LIMITS.requestChars) : null;
+    const request = given(params.request) ? text(params.request, 'request', COUNCIL_LIMITS.requestChars) : null;
+    if (params.sendChanges !== undefined && typeof params.sendChanges !== 'boolean') throw invalidParams('sendChanges: expected true or false', { field: 'sendChanges' });
+    const send = params.sendChanges === true;
+    if (send && changes === null) throw invalidParams('sendChanges: nothing to send; say what changed', { field: 'changes' });
     const requestId = params.requestId === undefined ? null : text(params.requestId, 'requestId', 100);
-    const fingerprint = hash(changes);
+    const fingerprint = hash([changes, request, send]);
     if (requestId !== null && council.internal.again[requestId] !== undefined) {
       if (council.internal.again[requestId] !== fingerprint) throw refused('requestId already used for a different round', { field: 'requestId', expected: 'a fresh id' });
       return this.#public(council);
@@ -394,9 +436,11 @@ export class CouncilStore {
     const round = council.round + 1;
     this.#mutate(council.id, current => {
       current.status = 'running';
+      if (request !== null) current.request = request;
+      if (send) current.internal.toldRound = round;
       if (requestId !== null) current.internal.again[requestId] = fingerprint;
     });
-    this.#post(council.id, { round, author: COUNCIL_AUTHOR, text: changes, to: null, inReplyTo: null });
+    if (changes !== null) this.#post(council.id, { round, author: COUNCIL_AUTHOR, text: changes, to: null, inReplyTo: null });
     this.#core.logs.info(`Council ${council.id} round ${round}`, { source: 'council', event: 'council.again', threadId: parent.id, data: { councilId: council.id, round } });
     this.#beginRound(council.id, round);
     return this.#public(this.#load(council.id)!);
@@ -477,7 +521,8 @@ export class CouncilStore {
     const member = council?.members.find(m => m.id === memberId);
     if (!council || !member?.threadId || council.status !== 'running' || council.round !== round || !member.pending) return;
     const posts = this.#posts(id, 'AND round = ?', round);
-    const changes = posts.findLast(post => post.author === COUNCIL_AUTHOR)?.text ?? null;
+    // What the parent says changed stays in the salon unless it asked to send it: the members judge the work as it stands.
+    const changes = council.internal.toldRound === round ? posts.findLast(post => post.author === COUNCIL_AUTHOR)?.text ?? null : null;
     const owner = posts.filter(post => post.author === COUNCIL_OWNER && (post.to === null || post.to === memberId)).map(post => post.text);
     // Its last turn is still stopping (a closed round, a deadline): it is asked once that ends (`#wake`).
     if (this.#core.threads.isBusy(member.threadId)) {
@@ -488,7 +533,7 @@ export class CouncilStore {
     this.#waiting.delete(member.threadId);
     this.#mutate(id, current => { current.internal.turns[memberId] = STARTING; });
     try {
-      const turn = this.#core.threads.startTurn(member.threadId, { prompt: roundPrompt(council, round, changes, owner), display: `Council round ${round}` }, { kind: 'delegation' });
+      const turn = this.#core.threads.startTurn(member.threadId, { prompt: roundPrompt(council, member, round, changes, owner), display: `Council round ${round}` }, { kind: 'delegation' });
       this.#mutate(id, current => {
         const now = current.members.find(m => m.id === memberId);
         if (current.round !== round || !now?.pending || current.internal.turns[memberId] !== STARTING) return false;
