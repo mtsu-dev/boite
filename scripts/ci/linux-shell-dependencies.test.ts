@@ -62,9 +62,12 @@ function fixture(format: 'list' | 'sources', failure?: 'unavailable' | 'signatur
     writeFileSync(`${root}/status`, '');
     const config = `${root}/apt.conf`;
     writeFileSync(config, `Dir::Etc::sourcelist "${sources}/sources.list";\nDir::Etc::sourceparts "${sources}/sources.list.d";\nDir::Etc::parts "${root}/config-parts";\nDir::Etc::main "-";\nDir::State::lists "${root}/lists";\nDir::State::status "${root}/status";\nDir::Cache::archives "${root}/archives";\nDir::Cache::pkgcache "${root}/pkgcache.bin";\nDir::Cache::srcpkgcache "${root}/srcpkgcache.bin";\nDir::Log "${root}";\nDir::Etc::trusted "${root}/trusted.gpg";\nDir::Etc::trustedparts "${root}/trusted.gpg.d";\nAPT::Architecture "amd64";\nAcquire::Languages "none";\n`);
-    // Execute the desktop step's script and packages verbatim except its machine paths, Ubuntu's archive hosts and
-    // components, and its privilege boundary. Only installation and the unresolvable
-    // mirror's DNS answer are simulated; index acquisition and signatures use real APT.
+    // Execute the desktop step's script and packages verbatim except its machine paths,
+    // its fallback mirrors and components, and its privilege boundary. Only installation
+    // and the unresolvable mirrors' DNS answer are simulated; index acquisition and
+    // signatures use real APT. During the outage the first fallback mirror does not
+    // resolve either, as archive.ubuntu.com did not on 2026-11-11.
+    let mirror = 0;
     const run = `sudo() { "$@"; }
 apt-get() {
   local arg list=
@@ -81,7 +84,7 @@ apt-get() {
 }
 set -- ${packages.join(' ')}
 ${script.replaceAll('/etc/apt', sources).replaceAll('/etc/os-release', `${root}/os-release`)
-    .replace(/http:\/\/(?:archive|security|ports)\.ubuntu\.com\/ubuntu(?:-ports)?/g, `file:${repo}`)
+    .replace(/https?:\/\/[a-z.]+\/ubuntu(?:-ports)?/g, () => failure === 'unresolvable' && mirror++ % 3 === 0 ? 'http://boite-fixture.invalid/ubuntu' : `file:${repo}`)
     .replace("components='main restricted universe multiverse'", "components='main'")}`;
     const result = Bun.spawnSync(['bash', '-c', run], {
       env: { ...process.env, APT_CONFIG: config }, stdout: 'pipe', stderr: 'pipe',
@@ -113,7 +116,8 @@ test.skipIf(!available)('Linux shell dependency setup still fails on unavailable
 
 test.skipIf(!available)('Linux shell dependencies fall back to Ubuntu\'s archive when the image mirror does not resolve', () => {
   const result = fixture('sources', 'unresolvable');
-  expect(result.output).toContain('boite-fixture.invalid');
+  // The image's mirror, then the first fallback, then the second one serves.
+  expect(result.output.split("Temporary failure resolving 'boite-fixture.invalid'").length - 1).toBe(2);
   expect(result.output).not.toContain('missing-microsoft');
   expect(result.code, result.output).toBe(0);
   for (const name of packages) expect(result.output).toContain(`Inst ${name} `);

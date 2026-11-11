@@ -14,26 +14,28 @@ sudo apt-get "${apt_sources[@]}" -o APT::Update::Error-Mode=any update 2>&1 | te
 update_status=${PIPESTATUS[0]}
 set -e
 if [ "$update_status" -ne 0 ]; then
-  # The image's mirror list starts with Azure's mirror, whose name can stop resolving
-  # for hours. Only that failure retries, once, on Ubuntu's own archive for this
-  # release; a missing index or a bad signature still fails here.
+  # The image's mirror list starts with Azure's mirror. On 2026-11-11 no ubuntu.com name
+  # resolved on the runners for hours, archive.ubuntu.com included. Only a resolution
+  # failure moves on, through Ubuntu mirrors on other domains; apt still checks every
+  # index against Ubuntu's archive key, and a missing index or a bad signature fails.
   grep -Eq "Temporary failure resolving|Could not resolve" "$update_log" || exit "$update_status"
   # shellcheck source=/dev/null
   . /etc/os-release
   if [ "$(dpkg --print-architecture)" = amd64 ]; then
-    archive=http://archive.ubuntu.com/ubuntu security=http://security.ubuntu.com/ubuntu
+    mirrors=(https://mirrors.edge.kernel.org/ubuntu https://mirrors.mit.edu/ubuntu http://archive.ubuntu.com/ubuntu)
   else
-    archive=http://ports.ubuntu.com/ubuntu-ports security=http://ports.ubuntu.com/ubuntu-ports
+    mirrors=(https://mirrors.mit.edu/ubuntu-ports https://mirrors.dotsrc.org/ubuntu-ports http://ports.ubuntu.com/ubuntu-ports)
   fi
   components='main restricted universe multiverse'
-  ubuntu_sources=$(mktemp --suffix=.list)
-  {
-    for suite in "$VERSION_CODENAME" "$VERSION_CODENAME-updates" "$VERSION_CODENAME-backports"; do
-      echo "deb $archive $suite $components"
-    done
-    echo "deb $security $VERSION_CODENAME-security $components"
-  } > "$ubuntu_sources"
-  apt_sources=(-o "Dir::Etc::sourcelist=$ubuntu_sources" -o "Dir::Etc::sourceparts=-")
-  sudo apt-get "${apt_sources[@]}" -o APT::Update::Error-Mode=any update
+  updated=
+  for mirror in "${mirrors[@]}"; do
+    ubuntu_sources=$(mktemp --suffix=.list)
+    for suite in "$VERSION_CODENAME" "$VERSION_CODENAME-updates" "$VERSION_CODENAME-backports" "$VERSION_CODENAME-security"; do
+      echo "deb $mirror $suite $components"
+    done > "$ubuntu_sources"
+    apt_sources=(-o "Dir::Etc::sourcelist=$ubuntu_sources" -o "Dir::Etc::sourceparts=-")
+    if sudo apt-get "${apt_sources[@]}" -o APT::Update::Error-Mode=any update; then updated=$mirror; break; fi
+  done
+  test -n "$updated"
 fi
 sudo apt-get "${apt_sources[@]}" install -y "$@"
