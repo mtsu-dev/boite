@@ -34,24 +34,34 @@ fails with the same sentence. Nothing is installed or downloaded.
 
 The browser runs with `--headless=new`, muted, without a first-run page, sync
 or background downloads, in a 1280 × 800 window whose page measured
-1280 × 720 on Chrome 153. WebGL uses the GPU:
-`--enable-gpu` with software rendering off, and ANGLE over EGL on Linux, which
-a process with no display reaches. A page that needs WebGL on a machine
-without a usable GPU gets none rather than SwiftShader on every core. On the
-M2 container on 2026-10-05, WebGL reported `ANGLE (AMD, AMD Radeon Graphics
-(radeonsi renoir ACO), OpenGL ES 3.2)`.
+1280 × 720 on Chrome 153.
 
-A Mac in a virtual machine, where the kernel sets `kern.hv_vmm_present` to 1,
-starts the browser with `--disable-gpu` instead: pages draw on the CPU and
-WebGL is off. On the paravirtual GPU of a macos-15 arm64 CI runner, Chrome's
-GPU process lost its Metal device (`[Device] is lost`) and restarted. The
-process that exited stayed a zombie with a thread in the kernel's
-`IOService::newUserClient`, and the browser's UI thread sat in `wait4` until
-it ended, so no DevTools command was answered for 10 to 30 seconds. Over 40
-minutes of the browser tests, 1180 browsers had 48 GPU restarts and 20
-silences past 3 seconds; with `--disable-gpu`, 3177 browsers had none, and
-none took more than 1.6 seconds to answer. A Mac's own hardware keeps the GPU.
+The GPU is off (`--disable-gpu`) and every page is drawn at twice its CSS size
+(`--force-device-scale-factor=2`), on Windows, Linux and macOS alike. Both come
+from T3 Code's browser ([pingdotgg/t3code](https://github.com/pingdotgg/t3code),
+MIT License), whose way of sending a page to a viewer Boite follows
+([Watching it](#watching-it)): a screencast ignores a device scale that
+DevTools emulates, so only a real factor of 2 gives a dense screen sharp
+frames, and a headless browser that composites on the CPU draws the same
+pictures on a machine with a GPU, a weak one or none. Pages draw on the CPU,
+and WebGL runs on SwiftShader, on the CPU too, or is refused by a Chromium
+that no longer falls back to it: a heavy WebGL page costs processor time it
+did not cost when the browser used the GPU
+([performance](performance.md#a-remote-browser-view)). A page sees
+`devicePixelRatio` 2, as on a laptop with a dense screen. The agent's
+screenshots stay in CSS pixels: the browser shrinks them itself
+(`browser/shrink.ts`), and recordings keep the page's CSS size.
 
+Before 2026-11-11 the browser used the GPU (`--enable-gpu`, ANGLE over EGL on
+Linux) except on a Mac in a virtual machine, where Chrome's GPU process lost
+its Metal device on the paravirtual GPU and no DevTools command was answered
+for 10 to 30 seconds.
+
+Boite's other options differ from T3 Code's and were left as they are: T3
+starts Chromium through Playwright (`headless: true`, without
+`--enable-automation`), Boite starts it itself with `--headless=new`, speaks
+DevTools directly, and passes the options under
+[What sites see](#what-sites-see).
 ### What sites see
 
 Headless Chrome names itself `HeadlessChrome` in its user agent, sets
@@ -71,7 +81,9 @@ each tab gets the same user agent and the high-entropy client hints through
 `Emulation.setUserAgentOverride`: the flag alone empties those. The browser
 also runs with `--disable-blink-features=AutomationControlled`, which leaves
 `navigator.webdriver` false, `--test-type`, which hides the warning bar that
-flag adds and that took 56 pixels of the page, and `--screen-info={1920x1080}`.
+flag adds and that took 56 pixels of the page, and `--screen-info={7680x4320}`:
+a page sees a screen of 1920 × 1080 CSS pixels, as Chrome 157 divides the
+flag's size by the forced scale of 2 twice.
 A browser whose identity cannot be read starts as it is, with a warning in the
 log. A page check of `boite view` skips the read.
 
@@ -610,28 +622,71 @@ its window's: on Show, and again once the view stops changing size, the viewer
 sends that size (`viewport`). That size is the agent's too. **Display** picks
 another by hand, which holds until **Fit this screen**.
 
-The live view asks for one JPEG at a time (`browser.remoteFrame`), the next as
-soon as the last has arrived, sized to what the view shows and lighter on a
-slow link; [phone](phone.md#the-agents-browser-on-a-phone) has the schedule.
-The frames come from a screencast of the tab on a DevTools session of its own,
-started by the first viewer and stopped 3 s after the last one asked, when the
-tab closes or its viewers disconnect (`browser/frames.ts`). Chrome sends a
-picture only when the page draws, so a still page sends nothing. The core keeps
-the newest picture and acknowledges it when a viewer takes it, so Chrome draws
-no faster than the fastest viewer. Viewers of a tab that ask the same width and
-quality share one screencast; each other width or quality gets its own, so a
-phone on a slow link never downloads the desktop's wider, heavier frames. A
-viewer names the frame it shows (`after`): the core answers with a newer one,
-or with `unchanged` once a second passes without one, and the frame it shows
-stays valid for input. Chrome sends nothing for the last size of a quick run
-of resizes, and skips paints while two pictures wait for an acknowledgement:
-when no picture follows within 300 ms, the screencast restarts, which always
-sends the page as it is. A tab the desktop app hosts has one DevTools session,
-the agent's, so its viewers still get one capture per request, shared within
-150 ms. Input names the frame it was aimed at; a tap
-on a frame of another page or another viewport size is refused, and the
-address bar accepts only http and https.
+The core pushes the page to each viewer, the way T3 Code's server browser
+does ([pingdotgg/t3code](https://github.com/pingdotgg/t3code), MIT License;
+`browser/push-stream.ts` keeps its constants and its loop). A viewer asks once
+(`browser.remoteStream`) and is answered a path, `/browser-stream/<ticket>`,
+that it opens as a websocket of its own beside its RPC socket. On it the core
+sends the page shown as JSON (`page`: its id, tab, title, address and CSS
+size), then each picture as a binary JPEG, uncompressed by the socket: a JPEG
+does not deflate. The viewer answers `{"type":"ack"}` for each picture and
+`{"type":"size","maxWidth":n}` when the width it shows changes.
 
+- Each viewer has a screencast of the tab on a DevTools session of its own, at
+  the width its view shows in device pixels (at most 3840) and JPEG quality
+  70. Chrome sends a picture only when the page draws, so a still page sends
+  nothing.
+- Chrome is acknowledged a picture 100 ms after it came, and only once the
+  viewer acknowledged it. Chrome keeps two pictures unacknowledged, so a moving
+  page comes at some twenty pictures a second on a link that carries them, and
+  at the link's pace on one that does not: one picture is on the wire at a
+  time and only the newest waits behind it.
+- While the viewer scrolls (four pictures within 300 ms of a scroll it sent),
+  the pictures come at half the width and quality 50 at most. Once nothing has
+  come for 200 ms the screencast is back at full size and the page is sent
+  whole, as a still at the quality of rest. A change of document or size is
+  followed by a still too.
+- A viewer whose socket holds more than 8 MiB unsent is disconnected (close
+  code 1013) rather than buffered for; pictures that wait for a socket not yet
+  open are kept up to 64, the rest dropped and acknowledged.
+
+The quality of the picture no longer depends on the round trip: no request
+leaves the viewer for a frame. The viewer decodes one picture at a time off
+the main thread (`createImageBitmap`), keeps only the newest one waiting, and
+draws it on a canvas (`lib/remote-browser-stream.ts`).
+
+The ticket is 24 random bytes, opens one socket within 30 seconds, and belongs
+to the RPC connection that asked: the stream is refused or closed (1008) when
+that connection is gone or no longer subscribed to the conversation, so the
+socket reaches nothing its client could not already ask for frame by frame. It
+closes with 4404 when the tab closes and 1012 when the browser restarts; the
+viewer asks again with a growing pause, up to 10 seconds. The path sits under
+the address the client reaches that core at, so it follows every way there:
+directly, through the desktop's own core, or through another machine of the
+group, whose relay carries `/browser-stream/<ticket>` as it carries the RPC
+socket ([groups](groups.md)), binary and with the same 8 MiB bound. The
+stream runs while the view shows and the app is visible; pausing, hiding the
+page or leaving the panel closes it, and the tab sleeps again 3 s after its
+last viewer left ([a tab nobody uses sleeps](#a-tab-nobody-uses-sleeps)).
+
+Input names the page it was aimed at. The page a stream shows stays valid for
+as long as the stream lasts, however long the page rests; a page it replaced,
+like a frame asked for, stays valid five seconds. A tap on another page or
+another viewport size is refused, and the address bar accepts only http and
+https.
+
+Two versions meet without guessing. A core that pushes says so
+(`features.browserStream` in its hello). A viewer that does not read it there
+asks for frames as before, and a core still answers them: `browser.remoteFrame`
+gives one JPEG per request, from a screencast shared by the viewers that ask
+the same width and quality (`browser/frames.ts`), with `after` and `unchanged`
+on a still page. So a new app on an old core, and an old app or an installed
+phone app on a new core, both show the page the way they did before
+2026-11-11. A tab the desktop app hosts has one DevTools session, the agent's,
+and no second one to stream on: `browser.remoteStream` answers `pull` for it,
+and its viewers get one capture per request, shared within 150 ms. That
+webview is the desktop's own and keeps its GPU; the options above are those of
+the core's Chromium only.
 A computer drives the page itself, with nothing under it; the page's tooltip
 says how, and a copy shows a short note over the page. A click on the page gives it the keyboard until a click or a focus lands
 elsewhere: characters, Enter, Tab, Escape, the arrows, Home, End, Page Up and
@@ -682,16 +737,16 @@ tap selects a word first. Pasting there goes through the text field.
 `lib/live-input.ts` holds the keyboard and clipboard rules for this view and
 the Device panel.
 
-These are frames, not a video stream: a few a second while the page moves.
-A video stream (the screencast encoded as H.264 and decoded by WebCodecs in the
-client) would be smoother on a fast link; it is not built.
+These are JPEG frames, not an encoded video stream and without sound: every
+picture is whole, so a lost or skipped one costs nothing after it, and nothing
+needs an encoder on either machine.
 
 ## Who may do what
 
 `browser.command` is the owner's and the conversation's own agent's, never
 another conversation's: its token names one thread. A paired phone has
-`browser.remoteStatus`, `browser.remoteFrame` and `browser.remoteInput` for a
-conversation it has subscribed to, with `browser.remoteSelection` for the text
+`browser.remoteStatus`, `browser.remoteFrame`, `browser.remoteStream` and
+`browser.remoteInput` for a conversation it has subscribed to, with `browser.remoteSelection` for the text
 selected there, and never `browser.command`, so it cannot run a script in the
 page. It can act in the page as a person would, signed-in
 sites included: pair only devices you would give that. `browser.remoteChanged`

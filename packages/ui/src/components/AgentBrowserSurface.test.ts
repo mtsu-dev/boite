@@ -29,7 +29,8 @@ const open = (url: string) => client.call('browser.command', { threadId: thread,
 test('nothing streams before Show; Show watches the picked tab, Hide covers it and stops the frames', async () => {
   vi.useFakeTimers();
   const calls = vi.spyOn(client, 'call');
-  const frames = () => calls.mock.calls.filter(([method]) => method === 'browser.remoteFrame');
+  // The fake core pushes frames: watching a tab is asking for its stream.
+  const frames = () => calls.mock.calls.filter(([method]) => method === 'browser.remoteStream');
   app = mount(AgentBrowserSurface, { target: document.body, props: { store, threadId: thread } }); await settle();
   // The owner starts on a new tab page, as a browser opens on one.
   expect(query('agent-browser-start')!.textContent).toMatch(/Open a page in this conversation’s browser on .+/);
@@ -111,7 +112,7 @@ test('the desktop of the machine that runs the browser shows the page at once, w
   await vi.advanceTimersByTimeAsync(300); await settle();
   expect(query('agent-browser-cover')).toBeNull();
   expect(query('agent-browser-hide')).toBeNull();
-  expect(calls.mock.calls.some(([method]) => method === 'browser.remoteFrame')).toBe(true);
+  expect(calls.mock.calls.some(([method]) => method === 'browser.remoteStream')).toBe(true);
 });
 
 test('a paired phone watches the agent tabs but cannot open or close one', async () => {

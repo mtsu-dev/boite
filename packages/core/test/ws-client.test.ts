@@ -515,3 +515,44 @@ test('messages that came with the upgrade answer reach a late reader in order, e
     socket.close();
   } finally { server.stop(true); }
 });
+
+test('a socket opened for binary messages reads and sends them whole; a text socket takes one for a broken stream', async () => {
+  const received: number[] = [];
+  const server = Bun.serve({
+    hostname: '127.0.0.1', port: 0,
+    fetch: (request, self) => (self.upgrade(request) ? undefined : new Response('upgrade required', { status: 426 })),
+    websocket: {
+      perMessageDeflate: false,
+      open(socket) {
+        socket.send('page');
+        for (const size of [0, 125, 126, 70_000, 1_000_000]) socket.sendBinary(new Uint8Array(size).fill(size % 251));
+      },
+      message(socket, data) {
+        if (typeof data === 'string') return;
+        received.push(data.byteLength);
+        if (received.length === 2) socket.close(4000, 'done');
+      },
+    },
+  });
+  try {
+    const socket = await TextSocket.connect(`ws://127.0.0.1:${server.port}/browser-stream/a`, 5_000, { binary: true });
+    const texts: string[] = [], sizes: number[] = [];
+    socket.onMessage(text => texts.push(text));
+    socket.onBinary((data) => {
+      expect(data.every(byte => byte === data.length % 251)).toBe(true);
+      sizes.push(data.length);
+      if (data.length >= 70_000) socket.sendBinary(data);
+    });
+    expect(await new Promise<CloseEvent>(resolve => socket.onClose(resolve))).toEqual({ code: 4000, reason: 'done' });
+    expect(texts).toEqual(['page']);
+    expect(sizes).toEqual([0, 125, 126, 70_000, 1_000_000]);
+    expect(received).toEqual([70_000, 1_000_000]);
+
+    const plain = await TextSocket.connect(`ws://127.0.0.1:${server.port}/rpc`, 5_000);
+    const heard: string[] = [];
+    plain.onMessage(text => heard.push(text));
+    const ended = await new Promise<CloseEvent>(resolve => plain.onClose(resolve));
+    expect(heard).toEqual(['page']);
+    expect(ended.code).not.toBe(4000);
+  } finally { await server.stop(true); }
+}, 30_000);

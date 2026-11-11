@@ -360,6 +360,8 @@ export const SCENARIOS: Record<string, Scenario> = {
     await refusedWith(env.call('browser.command', { threadId, tabId: 'main', action: { kind: 'snapshot' } }), RpcErrorCode.Refused);
     await refusedWith(env.call('browser.remoteFrame', { threadId, maxWidth: 99 }), RpcErrorCode.Refused);
     await refusedWith(env.call('browser.remoteFrame', { threadId }), RpcErrorCode.Refused);
+    await refusedWith(env.call('browser.remoteStream', { threadId, maxWidth: 99 }), RpcErrorCode.Refused);
+    await refusedWith(env.call('browser.remoteStream', { threadId }), RpcErrorCode.Refused);
     await refusedWith(env.call('browser.remoteInput', { threadId, frameId: 'none', input: { kind: 'key', key: 'Enter' } }), RpcErrorCode.Refused);
   },
   'the virtual desktop refuses bad input before starting anything and has nothing to stop': async env => {

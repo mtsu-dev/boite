@@ -210,6 +210,7 @@ export function setTasks(core: Core, params: RpcParams<'threads.tasks.set'>): Th
  */
 export function registerAgentMethods(core: Core): void {
   core.router.register('browser.remoteFrame', (params, { connection }) => core.browser.remoteFrame(params, connection));
+  core.router.register('browser.remoteStream', (params, { connection }) => core.browser.remoteStream(params, connection));
   core.router.register('browser.remoteInput', (params, { connection }) => core.browser.remoteInput(params, connection));
   core.router.register('browser.remoteSelection', (params, { connection }) => core.browser.remoteSelection(params, connection));
   core.router.register('devices.list', (params, { connection }) => core.devices.list(params, connection));

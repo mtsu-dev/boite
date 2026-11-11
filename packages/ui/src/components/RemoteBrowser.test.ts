@@ -5,10 +5,12 @@ import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
 import RemoteBrowser from './RemoteBrowser.svelte';
 
+// A core from before `browser.remoteStream`: the view asks it for each frame, as it always did.
+const OLD_CORE = ['browser.remoteStream'];
 let app: ReturnType<typeof mount> | undefined, client: FakeClient, store: Store;
 test.each([-30000, 30000])('remote input uses local frame age despite a server clock offset of %i ms', async offset => {
   vi.spyOn(document, 'hidden', 'get').mockReturnValue(false);
-  client = new FakeClient({ delayMs: 0 }); store = new Store(); store.attach(client); await store.connect();
+  client = new FakeClient({ delayMs: 0, missing: OLD_CORE }); store = new Store(); store.attach(client); await store.connect();
   const original = client.call.bind(client);
   let delivered = false;
   const calls = vi.spyOn(client, 'call').mockImplementation(((method: string, params: unknown) => {
@@ -41,38 +43,46 @@ afterEach(async () => {
   document.body.innerHTML = ''; localStorage.clear();
 });
 
-test('a new frame replaces the shown one only once decoded, and the next is asked for without a fixed pause', async () => {
-  client = new FakeClient({ delayMs: 0 }); store = new Store(); store.attach(client); await store.connect();
+/** jsdom decodes and paints nothing: the frames handed to the decoder and those drawn are counted instead. */
+function canvasStub() {
+  const decodes: { blob: Blob; done: () => void }[] = [], drawn: unknown[] = [];
+  vi.stubGlobal('createImageBitmap', (blob: Blob) => new Promise(resolve => { const bitmap = { width: 380, height: 450, close() {} }; decodes.push({ blob, done: () => resolve(bitmap) }); }));
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: (bitmap: unknown) => { drawn.push(bitmap); } } as never);
+  return { decodes, drawn };
+}
+
+test('a frame asked for is drawn only once decoded, and the next is asked for without a fixed pause', async () => {
+  client = new FakeClient({ delayMs: 0, missing: OLD_CORE }); store = new Store(); store.attach(client); await store.connect();
   const original = client.call.bind(client), requests: number[] = [];
   vi.spyOn(client, 'call').mockImplementation(((method: string, params: unknown) => {
     if (method !== 'browser.remoteFrame') return original(method as never, params as never);
     requests.push(Date.now());
     return new Promise<unknown>(resolve => setTimeout(() => resolve({ id: `f${requests.length}`, tabId: 'tab', title: 'Desktop', width: 760, height: 900, at: Date.now(), base64: requests.length === 1 ? 'AAAA' : 'BBBB' }), 400));
   }) as typeof client.call);
-  const decodes: (() => void)[] = [], decode = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'decode');
-  HTMLImageElement.prototype.decode = () => new Promise<void>(resolve => decodes.push(resolve));
+  const { decodes, drawn } = canvasStub();
   vi.useFakeTimers();
   try {
     app = mount(RemoteBrowser, { target: document.body, props: { store, threadId: 't-trace' } }); await settle();
+    expect(document.querySelector('[data-testid=remote-browser-frame]')).toBeNull();
     await vi.advanceTimersByTimeAsync(401); await settle();
     expect(decodes).toHaveLength(1);
-    expect(document.querySelector('[data-testid=remote-browser-frame]')).toBeNull();
-    decodes[0]!(); await settle();
-    expect(document.querySelector<HTMLImageElement>('[data-testid=remote-browser-frame]')!.src).toContain('AAAA');
+    expect(drawn).toHaveLength(0);
+    decodes[0]!.done(); await settle();
+    const canvas = document.querySelector<HTMLCanvasElement>('canvas[data-testid=remote-browser-frame]')!;
+    expect(drawn).toHaveLength(1);
+    expect([canvas.width, canvas.height]).toEqual([380, 450]);
     // The frame took longer than the frame interval: the next request leaves at once.
     await vi.advanceTimersByTimeAsync(1); await settle();
     expect(requests).toHaveLength(2);
     await vi.advanceTimersByTimeAsync(400); await settle();
-    expect(document.querySelector<HTMLImageElement>('[data-testid=remote-browser-frame]')!.src).toContain('AAAA');
-    decodes[1]!(); await settle();
-    expect(document.querySelector<HTMLImageElement>('[data-testid=remote-browser-frame]')!.src).toContain('BBBB');
-  } finally {
-    if (decode) Object.defineProperty(HTMLImageElement.prototype, 'decode', decode); else delete (HTMLImageElement.prototype as { decode?: unknown }).decode;
-  }
+    expect(drawn).toHaveLength(1);
+    decodes[1]!.done(); await settle();
+    expect(drawn).toHaveLength(2);
+  } finally { vi.unstubAllGlobals(); }
 });
 
 test('visibility changes do not flood the host; leaving the panel stops the stream', async () => {
-  client = new FakeClient({ delayMs: 0 }); store = new Store(); store.attach(client); await store.connect();
+  client = new FakeClient({ delayMs: 0, missing: OLD_CORE }); store = new Store(); store.attach(client); await store.connect();
   const original = client.call.bind(client), requests: number[] = [];
   vi.spyOn(client, 'call').mockImplementation(((method: string, params: unknown) => {
     if (method !== 'browser.remoteFrame') return original(method as never, params as never);
@@ -96,7 +106,7 @@ test('visibility changes do not flood the host; leaving the panel stops the stre
 });
 
 test('phone resolution waits for a new frame; preview zoom stays local', async () => {
-  client = new FakeClient({ delayMs: 0, principal: 'session' }); store = new Store(); store.attach(client); await store.connect();
+  client = new FakeClient({ delayMs: 0, missing: OLD_CORE, principal: 'session' }); store = new Store(); store.attach(client); await store.connect();
   let width = 800, height = 600;
   const original = client.call.bind(client);
   const calls = vi.spyOn(client, 'call').mockImplementation(((method: string, params: any) => {
@@ -124,7 +134,7 @@ test('phone resolution waits for a new frame; preview zoom stays local', async (
 const frameAt = (id: string, extra: Record<string, unknown> = {}) => ({ id, tabId: 'browser:test', title: 'Desktop', width: 780, height: 600, at: Date.now(), base64: id === 'same' ? 'AAAA' : btoa(id), url: 'https://example.test/', ...extra });
 
 test('the watched tab reaches every frame request; a refused frame says why, backs off and recovers', async () => {
-  client = new FakeClient({ delayMs: 0, principal: 'session' }); store = new Store(); store.attach(client); await store.connect();
+  client = new FakeClient({ delayMs: 0, missing: OLD_CORE, principal: 'session' }); store = new Store(); store.attach(client); await store.connect();
   const original = client.call.bind(client);
   let open = false;
   const calls = vi.spyOn(client, 'call').mockImplementation(((method: string, params: unknown) => {
@@ -149,7 +159,7 @@ test('the watched tab reaches every frame request; a refused frame says why, bac
 });
 
 test('the address bar, Return and erase on an empty field reach the page', async () => {
-  client = new FakeClient({ delayMs: 0, principal: 'session' }); store = new Store(); store.attach(client); await store.connect();
+  client = new FakeClient({ delayMs: 0, missing: OLD_CORE, principal: 'session' }); store = new Store(); store.attach(client); await store.connect();
   const original = client.call.bind(client), inputs: unknown[] = [];
   let n = 0, url = 'https://example.test/';
   vi.spyOn(client, 'call').mockImplementation(((method: string, params: any) => {
@@ -193,7 +203,7 @@ test('the address bar, Return and erase on an empty field reach the page', async
 });
 
 test('a drag scrolls continuously from where the finger started; a short touch taps', async () => {
-  client = new FakeClient({ delayMs: 0, principal: 'session' }); store = new Store(); store.attach(client); await store.connect();
+  client = new FakeClient({ delayMs: 0, missing: OLD_CORE, principal: 'session' }); store = new Store(); store.attach(client); await store.connect();
   const original = client.call.bind(client), inputs: any[] = [];
   let n = 0;
   vi.spyOn(client, 'call').mockImplementation(((method: string, params: any) => {
@@ -202,7 +212,7 @@ test('a drag scrolls continuously from where the finger started; a short touch t
     return original(method as never, params as never);
   }) as typeof client.call);
   Object.defineProperty(Element.prototype, 'setPointerCapture', { configurable: true, value: () => {} });
-  vi.spyOn(HTMLImageElement.prototype, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 390, height: 300, right: 390, bottom: 300, x: 0, y: 0, toJSON() {} } as DOMRect);
+  vi.spyOn(HTMLCanvasElement.prototype, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 390, height: 300, right: 390, bottom: 300, x: 0, y: 0, toJSON() {} } as DOMRect);
   vi.useFakeTimers();
   app = mount(RemoteBrowser, { target: document.body, props: { store, threadId: 't-trace' } }); await settle();
   await vi.advanceTimersByTimeAsync(1); await settle();
@@ -226,7 +236,7 @@ test('a drag scrolls continuously from where the finger started; a short touch t
 });
 
 test('a mouse reaches the page as it moves: hover, a press past the click threshold, the held path and the release, each on the frame shown then', async () => {
-  client = new FakeClient({ delayMs: 0, principal: 'session' }); store = new Store(); store.attach(client); await store.connect();
+  client = new FakeClient({ delayMs: 0, missing: OLD_CORE, principal: 'session' }); store = new Store(); store.attach(client); await store.connect();
   const original = client.call.bind(client), inputs: any[] = [];
   let n = 0, release: (() => void) | undefined;
   vi.spyOn(client, 'call').mockImplementation(((method: string, params: any) => {
@@ -239,7 +249,7 @@ test('a mouse reaches the page as it moves: hover, a press past the click thresh
     return original(method as never, params as never);
   }) as typeof client.call);
   Object.defineProperty(Element.prototype, 'setPointerCapture', { configurable: true, value: () => {} });
-  vi.spyOn(HTMLImageElement.prototype, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 390, height: 300, right: 390, bottom: 300, x: 0, y: 0, toJSON() {} } as DOMRect);
+  vi.spyOn(HTMLCanvasElement.prototype, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 390, height: 300, right: 390, bottom: 300, x: 0, y: 0, toJSON() {} } as DOMRect);
   vi.useFakeTimers();
   app = mount(RemoteBrowser, { target: document.body, props: { store, threadId: 't-trace' } }); await settle();
   await vi.advanceTimersByTimeAsync(1); await settle();
@@ -273,7 +283,7 @@ test('a mouse reaches the page as it moves: hover, a press past the click thresh
 });
 
 test('a held mouse is let go on the page when the view fails mid-drag, and when the view closes', async () => {
-  client = new FakeClient({ delayMs: 0, principal: 'session' }); store = new Store(); store.attach(client); await store.connect();
+  client = new FakeClient({ delayMs: 0, missing: OLD_CORE, principal: 'session' }); store = new Store(); store.attach(client); await store.connect();
   const original = client.call.bind(client), inputs: any[] = [];
   let n = 0, failing = false;
   vi.spyOn(client, 'call').mockImplementation(((method: string, params: any) => {
@@ -282,7 +292,7 @@ test('a held mouse is let go on the page when the view fails mid-drag, and when 
     return original(method as never, params as never);
   }) as typeof client.call);
   Object.defineProperty(Element.prototype, 'setPointerCapture', { configurable: true, value: () => {} });
-  vi.spyOn(HTMLImageElement.prototype, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 390, height: 300, right: 390, bottom: 300, x: 0, y: 0, toJSON() {} } as DOMRect);
+  vi.spyOn(HTMLCanvasElement.prototype, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 390, height: 300, right: 390, bottom: 300, x: 0, y: 0, toJSON() {} } as DOMRect);
   vi.useFakeTimers();
   app = mount(RemoteBrowser, { target: document.body, props: { store, threadId: 't-trace' } }); await settle();
   await vi.advanceTimersByTimeAsync(1); await settle();
@@ -310,7 +320,7 @@ test('a held mouse is let go on the page when the view fails mid-drag, and when 
 });
 
 test('a tap on a <select> draws its list here, since Chrome draws its own on the agent’s machine, and a pick goes back as choose', async () => {
-  client = new FakeClient({ delayMs: 0, principal: 'session' }); store = new Store(); store.attach(client); await store.connect();
+  client = new FakeClient({ delayMs: 0, missing: OLD_CORE, principal: 'session' }); store = new Store(); store.attach(client); await store.connect();
   const original = client.call.bind(client), inputs: any[] = [];
   const picker = { selected: 1, rect: { x: 0.1, y: 0.2, width: 0.3, height: 0.05 }, options: [{ label: '1' }, { label: '20' }, { label: '21', disabled: true }, { label: '22', hidden: true }, { label: 'Thirty', group: 'Late' }] };
   vi.spyOn(client, 'call').mockImplementation(((method: string, params: any) => {
@@ -319,7 +329,7 @@ test('a tap on a <select> draws its list here, since Chrome draws its own on the
     return original(method as never, params as never);
   }) as typeof client.call);
   Object.defineProperty(Element.prototype, 'setPointerCapture', { configurable: true, value: () => {} });
-  vi.spyOn(HTMLImageElement.prototype, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 390, height: 300, right: 390, bottom: 300, x: 0, y: 0, toJSON() {} } as DOMRect);
+  vi.spyOn(HTMLCanvasElement.prototype, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 390, height: 300, right: 390, bottom: 300, x: 0, y: 0, toJSON() {} } as DOMRect);
   vi.spyOn(HTMLDivElement.prototype, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 390, height: 300, right: 390, bottom: 300, x: 0, y: 0, toJSON() {} } as DOMRect);
   vi.useFakeTimers();
   app = mount(RemoteBrowser, { target: document.body, props: { store, threadId: 't-trace' } }); await settle();
@@ -345,7 +355,7 @@ test('a tap on a <select> draws its list here, since Chrome draws its own on the
 });
 
 test('a still page is polled slowly, and a phone back from the background resumes at once', async () => {
-  client = new FakeClient({ delayMs: 0, principal: 'session' }); store = new Store(); store.attach(client); await store.connect();
+  client = new FakeClient({ delayMs: 0, missing: OLD_CORE, principal: 'session' }); store = new Store(); store.attach(client); await store.connect();
   const original = client.call.bind(client), requests: number[] = [];
   vi.spyOn(client, 'call').mockImplementation(((method: string, params: unknown) => {
     if (method === 'browser.remoteFrame') { requests.push(Date.now()); return Promise.resolve(frameAt('same')); }
@@ -368,7 +378,7 @@ test('a still page is polled slowly, and a phone back from the background resume
 });
 
 test('a frame the core reports unchanged stays shown and usable, and its wait is not counted as a slow link', async () => {
-  client = new FakeClient({ delayMs: 0 }); store = new Store(); store.attach(client); await store.connect();
+  client = new FakeClient({ delayMs: 0, missing: OLD_CORE }); store = new Store(); store.attach(client); await store.connect();
   const original = client.call.bind(client), asked: Record<string, unknown>[] = [];
   const calls = vi.spyOn(client, 'call').mockImplementation(((method: string, params: unknown) => {
     if (method === 'browser.remoteFrame') {
@@ -396,7 +406,7 @@ test('a computer drives the page itself: keys in order, the wheel, a paste and a
   vi.stubGlobal('matchMedia', (query: string) => ({ matches: query.startsWith('not all'), addEventListener() {}, removeEventListener() {} }));
   const writeText = vi.fn(async () => {});
   vi.stubGlobal('navigator', Object.assign(Object.create(navigator), { clipboard: { writeText } }));
-  client = new FakeClient({ delayMs: 0 }); store = new Store(); store.attach(client); await store.connect();
+  client = new FakeClient({ delayMs: 0, missing: OLD_CORE }); store = new Store(); store.attach(client); await store.connect();
   const original = client.call.bind(client), inputs: unknown[] = [];
   let release: (() => void) | undefined;
   vi.spyOn(client, 'call').mockImplementation(((method: string, params: { input?: unknown }) => {
@@ -457,7 +467,7 @@ test('a computer drives the page itself: keys in order, the wheel, a paste and a
 test('a phone keeps the text field and gets a copy button for the page selection', async () => {
   const writeText = vi.fn(async () => {});
   vi.stubGlobal('navigator', Object.assign(Object.create(navigator), { clipboard: { writeText } }));
-  client = new FakeClient({ delayMs: 0 }); store = new Store(); store.attach(client); await store.connect();
+  client = new FakeClient({ delayMs: 0, missing: OLD_CORE }); store = new Store(); store.attach(client); await store.connect();
   const original = client.call.bind(client);
   let picked = '';
   vi.spyOn(client, 'call').mockImplementation(((method: string, params: unknown) => {
@@ -483,7 +493,7 @@ test('the page takes the size of the view once per size: a tap or key afterwards
   for (const [name, value] of [['clientWidth', 700], ['clientHeight', 500]] as const) {
     vi.spyOn(HTMLElement.prototype, name, 'get').mockImplementation(function (this: HTMLElement) { return this.classList.contains('screen-area') ? value : 0; });
   }
-  client = new FakeClient({ delayMs: 0, principal: 'session' }); store = new Store(); store.attach(client); await store.connect();
+  client = new FakeClient({ delayMs: 0, missing: OLD_CORE, principal: 'session' }); store = new Store(); store.attach(client); await store.connect();
   // The agent's own size: a phone preset it applied.
   const width = 393, height = 852;
   const original = client.call.bind(client);
@@ -505,4 +515,103 @@ test('the page takes the size of the view once per size: a tap or key afterwards
     await settle(); await vi.advanceTimersByTimeAsync(400); await settle();
   }
   expect(viewports()).toHaveLength(1);
+});
+
+/** A conversation whose agent has a tab open, on a core that pushes frames. */
+async function streamed(): Promise<string> {
+  client = new FakeClient({ delayMs: 0 }); store = new Store(); store.attach(client); await store.connect();
+  await client.call('threads.subscribe', { threadId: 't-trace' });
+  return (await client.call('browser.command', { threadId: 't-trace', action: { kind: 'open', url: 'https://example.com/docs' } })).tabId!;
+}
+
+test('a core that pushes frames is asked for a stream once: its frames are acknowledged, painted newest first, and input names the page shown however long it rests', async () => {
+  const tabId = await streamed();
+  const calls = vi.spyOn(client, 'call'), opened = vi.spyOn(client, 'frames');
+  const { decodes, drawn } = canvasStub();
+  vi.useFakeTimers();
+  try {
+    app = mount(RemoteBrowser, { target: document.body, props: { store, threadId: 't-trace', tabId } }); await settle();
+    await vi.advanceTimersByTimeAsync(60); await settle();
+    expect(calls.mock.calls.filter(([method]) => method === 'browser.remoteStream')).toEqual([['browser.remoteStream', { threadId: 't-trace', tabId }]]);
+    expect(calls.mock.calls.some(([method]) => method === 'browser.remoteFrame')).toBe(false);
+    expect(opened).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('canvas[data-testid=remote-browser-frame]')).not.toBeNull();
+    expect(decodes).toHaveLength(1);
+    // Two more frames arrive while the first decodes: only the newest is decoded after it.
+    const enter = [...document.querySelectorAll<HTMLButtonElement>('.keys button')].find(b => b.textContent === 'Enter')!;
+    await client.call('browser.command', { threadId: 't-trace', tabId, action: { kind: 'evaluate', expression: '1' } }).catch(() => {});
+    const page = (await client.call('browser.remoteStatus', { threadId: 't-trace' })).tabs[0]!;
+    expect(page.tabId).toBe(tabId);
+    document.querySelector<HTMLButtonElement>('[aria-label="Scroll down"]')!.click(); await settle();
+    await vi.advanceTimersByTimeAsync(60); await settle();
+    document.querySelector<HTMLButtonElement>('[aria-label="Scroll down"]')!.click(); await settle();
+    await vi.advanceTimersByTimeAsync(60); await settle();
+    expect(decodes).toHaveLength(1);
+    decodes[0]!.done(); await settle();
+    expect(drawn).toHaveLength(1);
+    expect(decodes).toHaveLength(2);
+    decodes[1]!.done(); await settle();
+    expect(drawn).toHaveLength(2);
+    // A page at rest sends nothing, and the page shown is still the page: input lands long after the last frame.
+    calls.mockClear();
+    await vi.advanceTimersByTimeAsync(20_000); await settle();
+    enter.click(); await settle();
+    expect(calls.mock.calls.filter(([method]) => method === 'browser.remoteInput')).toHaveLength(1);
+    expect(calls.mock.calls.some(([method]) => method === 'browser.remoteStream' || method === 'browser.remoteFrame')).toBe(false);
+    expect(document.querySelector('.error')).toBeNull();
+  } finally { vi.unstubAllGlobals(); }
+});
+
+test('a stream that closes is opened again with a growing pause, a hidden page closes it, and a closed tab says so', async () => {
+  const tabId = await streamed();
+  const calls = vi.spyOn(client, 'call');
+  const sockets: ReturnType<FakeClient['frames']>[] = [], open = client.frames.bind(client);
+  let closed = 0;
+  vi.spyOn(client, 'frames').mockImplementation((path) => { const socket = open(path), close = socket.close; socket.close = () => { closed++; close(); }; sockets.push(socket); return socket; });
+  const streams = () => calls.mock.calls.filter(([method]) => method === 'browser.remoteStream').length;
+  canvasStub();
+  vi.useFakeTimers();
+  try {
+    app = mount(RemoteBrowser, { target: document.body, props: { store, threadId: 't-trace', tabId } }); await settle();
+    await vi.advanceTimersByTimeAsync(60); await settle();
+    expect(streams()).toBe(1);
+    // The core restarts the stream (1012): asked again after half a second, not before.
+    sockets[0]!.onclose!(1012); await settle();
+    await vi.advanceTimersByTimeAsync(450); await settle();
+    expect(streams()).toBe(1);
+    await vi.advanceTimersByTimeAsync(100); await settle();
+    expect(streams()).toBe(2);
+    await vi.advanceTimersByTimeAsync(60); await settle();
+    // Nobody looks at a hidden page: the socket closes, and opens again when the page is back.
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+    document.dispatchEvent(new Event('visibilitychange')); await settle();
+    expect(closed).toBe(1);
+    await vi.advanceTimersByTimeAsync(5000); await settle();
+    expect(streams()).toBe(2);
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false);
+    document.dispatchEvent(new Event('visibilitychange')); await settle();
+    await vi.advanceTimersByTimeAsync(60); await settle();
+    expect(streams()).toBe(3);
+    // The agent closes the tab: the stream ends (4404) and the refusal is shown.
+    await client.call('browser.command', { threadId: 't-trace', tabId, action: { kind: 'close' } });
+    await vi.advanceTimersByTimeAsync(700); await settle();
+    expect(document.querySelector('.error')?.textContent).toContain('closed');
+  } finally { vi.unstubAllGlobals(); }
+});
+
+test('a tab the desktop app hosts has no stream: the core says so and its frames are asked for', async () => {
+  const tabId = await streamed();
+  const original = client.call.bind(client);
+  const calls = vi.spyOn(client, 'call').mockImplementation(((method: string, params: unknown) => method === 'browser.remoteStream' ? Promise.resolve({ pull: true }) : original(method as never, params as never)) as typeof client.call);
+  const opened = vi.spyOn(client, 'frames');
+  canvasStub();
+  vi.useFakeTimers();
+  try {
+    app = mount(RemoteBrowser, { target: document.body, props: { store, threadId: 't-trace', tabId } }); await settle();
+    await vi.advanceTimersByTimeAsync(300); await settle();
+    expect(opened).not.toHaveBeenCalled();
+    expect(calls.mock.calls.filter(([method]) => method === 'browser.remoteStream')).toHaveLength(1);
+    expect(calls.mock.calls.some(([method, params]) => method === 'browser.remoteFrame' && (params as { tabId?: string }).tabId === tabId)).toBe(true);
+    expect(document.querySelector('canvas[data-testid=remote-browser-frame]')).not.toBeNull();
+  } finally { vi.unstubAllGlobals(); }
 });

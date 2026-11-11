@@ -7,12 +7,12 @@ import {
   type ClientName, type CoreInfo, type DeviceHello, type Principal, type UngroupedData,
   type RpcEventName, type RpcMethodName, type RpcParams, type RpcResult, type StreamChannel, type ThreadId
 } from '@boite/contracts';
-import type { CallOptions, ClientState, EventHandler, ObservableClient, Session, SocketLike, WsClientOptions } from './client';
+import type { CallOptions, ClientState, EventHandler, FrameSocket, ObservableClient, Session, SocketLike, WsClientOptions } from './client';
 import { RpcFailure, closedFailure, droppedFailure, transportFailure, unansweredFailure } from './rpc-error';
 import { receiveFrame, type Pending } from './ws-client-frames';
 import {
   IDLE_PROBE_MS, PROBE_DEADLINE_MS, QUIET_CALL_MS, RESUME_PROBE_MS, MESSAGE_TOO_BIG, UPLOAD_FLOOR_BYTES_PER_S,
-  browserSocket, defaultBackoff, frameBytes, isLoopbackUrl, megabytes, openDeadline, pageHidden, rpcUrl
+  browserSocket, defaultBackoff, frameBytes, isLoopbackUrl, megabytes, openDeadline, pageHidden, rpcUrl, streamUrl
 } from './ws-client-utils';
 
 export class WsClient implements ObservableClient {
@@ -312,6 +312,22 @@ export class WsClient implements ObservableClient {
         pending.reject(error instanceof Error ? error : transportFailure(String(error)));
       }
     });
+  }
+
+  /** A socket of its own beside the RPC one, to the same core: frames never wait behind an answer, nor an answer behind frames. */
+  frames(path: string): FrameSocket {
+    const socket = new WebSocket(streamUrl(this.#options.url, path));
+    socket.binaryType = 'arraybuffer';
+    let closed = false;
+    const frames: FrameSocket = {
+      onmessage: null,
+      onclose: null,
+      send: (text) => { if (socket.readyState === WebSocket.OPEN) socket.send(text); },
+      close: () => { closed = true; socket.close(); },
+    };
+    socket.onmessage = (event) => { if (!closed) frames.onmessage?.(event.data as string | ArrayBuffer); };
+    socket.onclose = (event) => { if (!closed) { closed = true; frames.onclose?.(event.code); } };
+    return frames;
   }
 
   #open(): Promise<CoreInfo> {

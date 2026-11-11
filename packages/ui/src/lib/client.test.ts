@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from 'vitest';
 import { PROTOCOL_VERSION, RPC_CHUNK_MARK, RPC_MAX_FRAME_BYTES, RpcCloseCode, RpcErrorCode, type CoreInfo } from '@boite/contracts';
-import { RpcFailure, WsClient, defaultBackoff, openDeadline, readyAgain, rpcUrl, wasDropped, type SocketLike } from './client';
+import { RpcFailure, WsClient, defaultBackoff, openDeadline, readyAgain, rpcUrl, streamUrl, wasDropped, type SocketLike } from './client';
 
 const CORE: CoreInfo = {
   version: '2.0.0-beta.1',
@@ -157,6 +157,13 @@ describe('rpcUrl', () => {
   test('points at the RPC path over ws', () => {
     expect(rpcUrl('http://127.0.0.1:8777')).toBe('ws://127.0.0.1:8777/rpc');
     expect(rpcUrl('https://box.local/')).toBe('wss://box.local/rpc');
+  });
+});
+
+describe('streamUrl', () => {
+  test('puts a path the core answered under the address of the core, a relay route included', () => {
+    expect(streamUrl('http://127.0.0.1:8777', '/browser-stream/abc')).toBe('ws://127.0.0.1:8777/browser-stream/abc');
+    expect(streamUrl('https://box.local/group-relay/core-2/', '/browser-stream/abc')).toBe('wss://box.local/group-relay/core-2/browser-stream/abc');
   });
 });
 
