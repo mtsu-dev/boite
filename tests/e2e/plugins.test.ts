@@ -198,7 +198,7 @@ test('a plugin asks before it installs, gets only what the owner ticked, and its
 
   await page.click(`${id('plugin-dialog')} ${id('plugin-uninstall')}`);
   await page.waitFor(`document.querySelector('${id('confirm-ok')}')`); await page.click(id('confirm-ok'));
-  await page.waitFor(`document.querySelector('${row('scoped-board')}') === null`);
+  await page.waitFor(`document.querySelector('${row('scoped-board')}') === null && document.querySelector('${id('plugin-dialog')}') === null`);
 }, 30_000);
 
 test('in a 390 pixel column the page wraps instead of scrolling sideways', async () => {
