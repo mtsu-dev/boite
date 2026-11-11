@@ -215,7 +215,26 @@ jobs:
           if [ ! -s "$ubuntu_sources" ]; then ubuntu_sources=/etc/apt/sources.list; fi
           test -s "$ubuntu_sources"
           apt_sources=(-o "Dir::Etc::sourcelist=$ubuntu_sources" -o "Dir::Etc::sourceparts=-")
-          sudo apt-get "${apt_sources[@]}" -o APT::Update::Error-Mode=any update
+          if ! sudo apt-get "${apt_sources[@]}" -o APT::Update::Error-Mode=any update; then
+            # The image's mirror list starts with Azure's mirror, which can stop resolving
+            # for hours. Retry once on Ubuntu's own archive for this release.
+            . /etc/os-release
+            if [ "$(dpkg --print-architecture)" = amd64 ]; then
+              archive=http://archive.ubuntu.com/ubuntu security=http://security.ubuntu.com/ubuntu
+            else
+              archive=http://ports.ubuntu.com/ubuntu-ports security=http://ports.ubuntu.com/ubuntu-ports
+            fi
+            ubuntu_sources="$RUNNER_TEMP/ubuntu-archive.list"
+            components='main restricted universe multiverse'
+            {
+              for suite in "$VERSION_CODENAME" "$VERSION_CODENAME-updates" "$VERSION_CODENAME-backports"; do
+                echo "deb $archive $suite $components"
+              done
+              echo "deb $security $VERSION_CODENAME-security $components"
+            } > "$ubuntu_sources"
+            apt_sources=(-o "Dir::Etc::sourcelist=$ubuntu_sources" -o "Dir::Etc::sourceparts=-")
+            sudo apt-get "${apt_sources[@]}" -o APT::Update::Error-Mode=any update
+          fi
           sudo apt-get "${apt_sources[@]}" install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf xvfb dbus-x11 xdg-utils
       - name: Run Intel binaries under Rosetta
         if: runner.os == 'macOS' && env.BOITE_TARGET == 'x86_64-apple-darwin'
