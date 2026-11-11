@@ -206,11 +206,14 @@ test('the owner\'s Accept on a talk request the bot settles lets the bot act ins
   await waitFor(() => incomingOf(host, asked.id) !== undefined, 10000);
   const incoming = incomingOf(host, asked.id)!;
   expect(incoming).toMatchObject({ want: 'talk', stage: 'bot', approved: false });
+  const { questionId } = await hostClient.call('contacts.bot.askOwner', { threadId: hostBot.threadId, id: incoming.id, text: 'May I connect it?' });
 
-  // The owner accepts it from the app before the bot acted: the request waits for the bot, approved, and no project answers it.
+  // The owner accepts it from the app instead of the bot's card: the request waits for the bot, approved, no project answers it and the card closes.
   const decided = await hostClient.call('contacts.decide', { id: incoming.id, accept: true, projectId: project.id });
   expect(decided).toMatchObject({ status: 'pending', stage: 'bot', approved: true });
   expect(decided.project).toBeUndefined();
+  expect(host.core.threads.cards.questions.has(questionId)).toBe(false);
+  expect(incomingOf(host, asked.id)).toMatchObject({ status: 'pending', stage: 'bot', approved: true });
   expect(hostFacts.some(fact => fact.key === `contacts-approved-${incoming.id}`)).toBe(true);
   const settled = await hostClient.call('contacts.bot.connect', { threadId: hostBot.threadId, id: incoming.id, target: hostThread });
   expect(settled).toMatchObject({ status: 'accepted', decidedBy: 'bot', relation: { local: { threadId: hostThread } } });

@@ -584,8 +584,8 @@ sequenceDiagram
    Requests card offers the same Accept (**Let the Operator connect it**) on a
    `talk` or `thread` request that waits for the bot or the owner's card:
    `contacts.decide` then approves it for the bot (`approved: true`, back to
-   `stage: 'bot'`) and opens no project, so the request stays pending until
-   the bot connects it. A trusted contact's request has no Accept there.
+   `stage: 'bot'`), closes the bot's card for it and opens no project, so the
+   request stays pending until the bot connects it. A trusted contact's request has no Accept there.
 3. The bot settles it: `connect` puts the asking thread in relation with an
    existing thread, `start` starts a thread on a project with a brief and puts
    it in relation, `refuse` answers with a reason. Opening a project,

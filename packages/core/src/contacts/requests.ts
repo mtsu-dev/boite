@@ -12,7 +12,7 @@ import { PeerRefusal } from '../coordination-wire.ts';
 import type { Core } from '../core.ts';
 import { invalidParams, messageOf, refused } from '../errors.ts';
 import { newId } from '../ids.ts';
-import { contactsBot, tellBot } from './bot.ts';
+import { contactsBot, tellBot, withdrawOwnerCards } from './bot.ts';
 import { checkNormalizedRemote, gitRemoteOf } from './git-remote.ts';
 import type { ContactStore } from './store.ts';
 import { contactFace } from './face.ts';
@@ -327,6 +327,7 @@ export class ContactRequests {
     Object.assign(request, { stage: 'bot', approved: true });
     this.save(requests);
     this.#store.changed();
+    withdrawOwnerCards(this.#core, request.id);
     tellBot(this.#core, `contacts-approved-${request.id}`, `The owner accepted request ${request.id} from ${request.contact}: settle it with boite contacts connect or start, without asking them again.`);
     return this.view(request);
   }
