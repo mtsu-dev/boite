@@ -63,7 +63,7 @@ export function resendQuietResult(core: Core, childId: ThreadId): void {
   const last = row ? JSON.parse(row.data) as AgentLetter : null;
   if (!last?.quiet) return;
   try {
-    core.delegation.send({ threadId: childId, toThreadId: thread.parentThreadId, requestId: `result:${last.id}:watch-ended`, text: `${thread.title}: its pull request watch ended\n${last.text}`.slice(0, RESULT_TEXT) }, 'result');
+    core.delegation.send({ threadId: childId, toThreadId: thread.parentThreadId, requestId: `result:${last.id}:watch-ended`, text: last.text }, 'result');
   } catch (error) { core.log('warn', `delegation result ${childId}: ${messageOf(error)}`); }
 }
 

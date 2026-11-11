@@ -822,12 +822,18 @@ test('a delegated agent that merges its own pull request between turns wakes its
   const setup = await watchedThread();
   const { threadId, github, drive, watches } = setup;
   const child = await watchingChild(setup, 'owner');
+  // A full quiet letter must keep the exact pointer to its remaining answer when resent.
+  const rest = '\n[Cut at character 3700 of 9000. The rest: boite delegate result ' + child + ' turn-id 3700]';
+  const result = spyOn(harness!.core.delegation, 'result').mockImplementation((_turn, _rest, max = 4000) => 'r'.repeat(max - rest.length) + rest);
   github.runs = [{ name: 'test', conclusion: 'SUCCESS' }];
   github.updatedAt = '2026-10-15T09:31:00Z';
   await drive();
   await settled(child);
   const quiet = letterOf(child, threadId, `result:${wakes(child)[0]!.id}`);
   expect(quiet).toMatchObject({ quiet: true });
+  expect(quiet!.text).toHaveLength(4000);
+  expect(quiet!.text.endsWith(rest)).toBe(true);
+  result.mockRestore();
   await settled(threadId);
   const parentTurns = harness!.core.journal.listTurns(threadId).length;
   // It merged with gh in that turn: the next read finds the pull request merged by this account, which wakes nobody.
@@ -839,7 +845,7 @@ test('a delegated agent that merges its own pull request between turns wakes its
   const id = (harness!.core.journal.db.query('SELECT id FROM delegation_messages WHERE sender_id = ? AND request_id = ?').get(child, `result:${wakes(child)[0]!.id}`) as { id: string }).id;
   const again = letterOf(child, threadId, `result:${id}:watch-ended`);
   expect(again?.quiet).toBeUndefined();
-  expect(again?.text).toContain('its pull request watch ended');
+  expect(again?.text).toBe(quiet!.text);
   await waitFor(() => harness!.core.journal.listTurns(threadId).length > parentTurns);
 });
 
