@@ -1483,9 +1483,10 @@ test('a picture tile draws a small thumbnail, the preview the bytes by URL, both
   }
 });
 
-/** The field while a question at the top of the box takes a written answer beside its options: Send answers it. */
+/** The field while a question at the top of the box takes a written answer beside its options: Send reads Answer and answers it. */
 const ANSWER_PLACEHOLDER = strings.composer.answerPlaceholder;
-const ANSWER_LABEL = 'Send as your answer';
+const ANSWER_LABEL = 'Answer';
+const sendWords = () => query('[data-testid=composer-send]').textContent?.trim();
 
 /** The question's card at the end of the timeline. */
 function pendingCard(): HTMLElement {
@@ -1501,7 +1502,14 @@ test('a waiting question takes the composer as its free answer, with the card pi
   // a budget counted in attempts of at least 2 ms each, well past that pause.
   await waitFor(() => document.querySelector('[data-testid=composer-reply]') !== null, TYPING_PAUSE_MS);
   expect(input().placeholder).toBe(ANSWER_PLACEHOLDER);
-  expect(query('[data-testid=composer-send]').getAttribute('aria-label')).toBe(ANSWER_LABEL);
+  // One commit: the composer's Send reads Answer, and the card has no Answer of its own and no hint line repeating the placeholder.
+  expect(sendWords()).toBe(ANSWER_LABEL);
+  expect(pendingCard().querySelector('[data-testid=question-submit]')).toBeNull();
+  expect(pendingCard().querySelector('[data-testid=question-skip]')?.textContent?.trim()).toBe(strings.chat.questionSkip);
+  expect(pendingCard().textContent).not.toContain(ANSWER_PLACEHOLDER);
+  // Nothing picked or typed: Answer is disabled and its tooltip says what makes it act.
+  const waits = query<HTMLButtonElement>('[data-testid=composer-send]');
+  expect([waits.disabled, waits.classList.contains('primary'), waits.title]).toEqual([true, false, strings.chat.questionPickOrType]);
   // The question is written once, at the top of the composer card: the timeline draws no second copy.
   expect(document.querySelectorAll('[data-testid=question-text]')).toHaveLength(1);
   expect(document.querySelector('[data-testid=composer] [data-testid=thread-decision] [data-testid=question-text]')).not.toBeNull();
@@ -1512,14 +1520,20 @@ test('a waiting question takes the composer as its free answer, with the card pi
   // Folding the question gives the composer back to ordinary messages; opened again, the card offers it again.
   query<HTMLButtonElement>('[data-testid=activity-question-toggle]').click();
   await waitFor(() => document.querySelector('[data-testid=composer-reply]') === null);
-  expect(query('[data-testid=composer-send]').getAttribute('aria-label')).not.toBe(ANSWER_LABEL);
+  expect(sendWords()).not.toBe(ANSWER_LABEL);
   query<HTMLButtonElement>('[data-testid=activity-question-toggle]').click();
   await waitFor(() => pendingCard().querySelector('[data-testid=question-write]') !== null);
+  // Set aside, the box sends messages: the card answers its picks with its own Answer.
+  expect(pendingCard().querySelector('[data-testid=question-submit]')).not.toBeNull();
   expect(document.querySelector('[data-testid=composer-reply]')).toBeNull();
   pendingCard().querySelector<HTMLButtonElement>('[data-testid=question-write]')!.click();
   await waitFor(() => document.querySelector('[data-testid=composer-reply]') !== null);
 
   pendingCard().querySelector<HTMLButtonElement>('[data-option=short]')!.click();
+  flushSync();
+  // A pick is enough: Answer turns primary.
+  const live = query<HTMLButtonElement>('[data-testid=composer-send]');
+  expect([live.disabled, live.classList.contains('primary'), live.title]).toEqual([false, true, '']);
   await type('one line please');
   paste(pngFile('mockup.png'));
   await waitFor(() => chips().length === 1);
@@ -1540,18 +1554,17 @@ test('a waiting question takes the composer as its free answer, with the card pi
   expect(call.mock.calls.filter(([method]) => method === 'turns.start')).toHaveLength(0);
 });
 
-test('while a question takes the field during a turn, its round button is Send alone and the foot\'s line holds Stop', async ({ app: _app }) => {
+test('while a question takes the field during a turn, its button is Answer alone and the foot\'s line holds Stop', async ({ app: _app }) => {
   await store.open('t-trace');
   await send('check this [ask]');
   await waitFor(() => document.querySelector('[data-testid=composer-reply]') !== null);
   store.openThread!.status = 'running';
   flushSync();
-  // No Stop in the field: an empty field shows the send arrow, resting.
+  // No Stop in the field: an empty field shows Answer, disabled, with its reason.
   expect(document.querySelector('[data-testid=composer-stop]')).toBeNull();
   const sendButton = query<HTMLButtonElement>('[data-testid=composer-send]');
-  expect(sendButton.classList.contains('resting')).toBe(false);
   expect(sendButton.disabled).toBe(true);
-  expect(sendButton.getAttribute('aria-label')).toBe(ANSWER_LABEL);
+  expect(sendWords()).toBe(ANSWER_LABEL);
   // The turn's Stop is on the foot's waiting line, said as Working.
   await waitFor(() => document.querySelector('[data-testid=agent-dock-stop]') !== null);
   expect(query('[data-testid=agent-dock-label]').dataset.text).toBe(strings.chat.working);

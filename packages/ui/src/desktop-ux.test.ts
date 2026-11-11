@@ -713,8 +713,8 @@ test('the settings bar picks the machine a page changes without moving the windo
   expect(query('[data-testid=settings-scope]').contains(query('[data-testid=settings-machine]'))).toBe(true);
   expect(query('[data-testid=settings-scope]').textContent).toContain(strings.settings.scopeMachine.split('{machine}')[0]!.trim());
   expect(document.querySelectorAll('[data-testid=settings-machine]')).toHaveLength(1);
-  // Every other page opens on the window's machine. General mixes this device's cards with the machine's:
-  // no line under its title, and its first machine card's phrase holds the picker.
+  // Every other page opens on the window's machine. General is mostly this device's cards:
+  // the line under its title says so once, and its machine card's phrase holds the picker.
   remote.store.showSettings('general', 'quiet');
   await waitFor(() => query('[data-testid=settings-machine]').textContent?.includes(remote.label) === true && document.querySelector('[data-testid=setting-mute-agents]') !== null);
   await remote.store.client!.call('settings.set', { muteAgents: true });
@@ -728,7 +728,7 @@ test('the settings bar picks the machine a page changes without moving the windo
   expect(remote.store.settings?.muteAgents).toBe(true);
   // The window never moved: same machine, same conversation, still on the page it showed.
   expect([workspace.active, remote.store.openThread, remote.store.settingsTab]).toEqual([remote.store, thread, 'general']);
-  expect(document.querySelector('[data-testid=settings-scope]')).toBeNull();
+  expect(query('[data-testid=settings-scope]').dataset.scope).toBe('device');
   expect(query('#settings-agent-replies [data-testid=card-scope]').contains(query('[data-testid=settings-machine]'))).toBe(true);
   expect(document.querySelectorAll('[data-testid=settings-machine]')).toHaveLength(1);
   // A page of this device says so once under its title, with no picker; the group's Machines page shows its title alone.
@@ -739,15 +739,16 @@ test('the settings bar picks the machine a page changes without moving the windo
   await waitFor(() => remote.store.settingsTab === 'machines' && document.querySelector('[data-testid=settings-scope]') === null);
 });
 
-test('a page says where it applies once: one line over cards that share it, a tag on each card where they mix', async () => {
+test('a page says where it applies once: one line for most of its cards, a tag only on a card that differs', async () => {
   await mountOnFake('/?fake=1');
   await waitFor(() => workspace.machines.length === 1 && store.connection === 'ready');
   const machine = workspace.machines[0]!;
-  // General mixes this device's switches with the machine's: each card says its own, nothing under the title contradicts them.
+  // General is mostly this device's switches and two machine cards: the line says "this device" once, each machine card its own.
   store.showSettings('general');
   await waitFor(() => document.querySelector('#settings-agent-replies [data-testid=card-scope]') !== null);
-  expect(document.querySelector('[data-testid=settings-scope]')).toBeNull();
-  expect(query('#settings-conversations [data-testid=card-scope]').textContent?.trim()).toBe(strings.settings.cardDevice);
+  expect(query('[data-testid=settings-scope]').textContent?.trim()).toBe(strings.settings.scopeDevice);
+  expect([...document.querySelectorAll<HTMLElement>('[data-testid=card-scope]')].map((tag) => tag.dataset.kind)).toEqual(['machine', 'machine']);
+  expect(document.body.textContent?.split(strings.settings.cardDevice)).toHaveLength(1);
   expect(query('#settings-agent-replies [data-testid=card-scope]').textContent?.trim()).toBe(fill(strings.settings.cardMachine, { machine: machineName(machine) }));
   // Browser holds this device's settings alone: its card carries no tag, the line under the title says it once.
   store.showSettings('browser');

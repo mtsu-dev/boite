@@ -43,16 +43,12 @@ export const strings = {
     elapsed: 'Elapsed time',
     /** One subagent's mark in the unfolded list. */
     rowState: { working: 'Working', asking: 'Needs you', done: 'Done', failed: 'Failed', stopped: 'Stopped' },
-    /** The line above the composer while the thread waits on work it sent, and its Stop. */
+    /** The line above the composer while the thread waits on work it sent, before the names. */
     waitingOne: 'Waiting on 1 subagent',
     waiting: 'Waiting on {count} subagents',
     waitingWorkflowOne: 'Waiting on 1 workflow',
     waitingWorkflows: 'Waiting on {count} workflows',
     waitingMixed: 'Waiting on {count} subagents and workflows',
-    waitingStop: 'Stop',
-    waitingStopHint: 'Stop the subagents and workflows this conversation waits on',
-    /** The same line while a question takes the field and the turn runs: the turn's Stop, out of the field's button. */
-    waitingStopTurn: 'Stop the agent',
     showTeam: 'View subagents',
     stoppedStatus: 'Stopped',
     failedStatus: 'Failed',

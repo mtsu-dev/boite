@@ -286,6 +286,8 @@
   .status-dot[data-tone='success'] { background: var(--color-success); }
   .status-dot[data-tone='danger'] { background: var(--color-danger); }
   .status-dot[data-tone='neutral'] { background: var(--color-muted-foreground); }
+  /* A machine out of reach: the offline ring, as on its list line (MachineOffline). */
+  .status-dot[data-tone='offline'] { background: transparent; box-shadow: inset 0 0 0 1.5px var(--color-muted-foreground); }
   .menu {
     position: relative;
     display: inline-flex;

@@ -30,14 +30,14 @@ function submit(): HTMLButtonElement {
   return query<HTMLButtonElement>('[data-testid=question-submit]');
 }
 
-test('Answer with nothing picked waits as an outline under a line that says what enables it, sends nothing, moves to the first option; 1 to 9 still pick there, and what was picked goes out once', () => {
+test('Answer with nothing picked waits as an outline whose tooltip says what enables it, sends nothing, moves to the first option; 1 to 9 still pick there, and what was picked goes out once', () => {
   const sent: string[][] = [];
   running = mount(QuestionCard, {
     target: document.body,
     props: {
       text: 'Which shape should the echo take?',
       options: OPTIONS,
-      allowText: true,
+      allowText: false,
       multiple: false,
       answer: null,
       pending: true,
@@ -49,15 +49,14 @@ test('Answer with nothing picked waits as an outline under a line that says what
 
   expect(query('[data-testid=question-card]').getAttribute('data-state')).toBe('pending');
   expect(options()).toHaveLength(2);
-  // Nothing picked: Answer waits as the outline secondary, never a faint primary; the line under the choices says what
-  // enables it, before any press, and describes it to a screen reader. A press still answers.
+  // Nothing picked: Answer waits as the outline secondary, never a faint primary; its tooltip says what enables it,
+  // with no line of its own under the choices. A press still answers.
   expect(submit().disabled).toBe(false);
   expect(submit().getAttribute('aria-disabled')).toBe('true');
   expect(submit().classList.contains('secondary')).toBe(true);
   expect(submit().classList.contains('primary')).toBe(false);
   expect(submit().title).toBe('Pick an option first');
-  expect(query('[data-testid=question-pick-first]').textContent).toBe('Pick an option first');
-  expect(submit().getAttribute('aria-describedby')).toBe(query('[data-testid=question-pick-first]').id);
+  expect(document.querySelector('[data-testid=question-pick-first]')).toBeNull();
   // The card has no field of its own: the composer is the free answer.
   expect(document.querySelector('input, textarea')).toBeNull();
 
@@ -66,13 +65,11 @@ test('Answer with nothing picked waits as an outline under a line that says what
   flushSync();
   expect(sent).toEqual([]);
   expect(document.activeElement).toBe(options()[0]);
-  expect(query('[data-testid=question-pick-first]').textContent).toBe('Pick an option first');
 
-  // The composer's numbers still pick with the focus on the choices; the line goes at the first pick.
+  // The composer's numbers still pick with the focus on the choices.
   options()[0]!.dispatchEvent(new KeyboardEvent('keydown', { key: '1', bubbles: true }));
   flushSync();
   expect(options()[0]?.getAttribute('aria-checked')).toBe('true');
-  expect(document.querySelector('[data-testid=question-pick-first]')).toBeNull();
   // A pick lights Answer as the primary.
   expect(submit().hasAttribute('aria-disabled')).toBe(false);
   expect(submit().classList.contains('primary')).toBe(true);
@@ -94,14 +91,13 @@ test('Answer with nothing picked waits as an outline under a line that says what
   expect(sent).toHaveLength(1);
 });
 
-test('a waiting Answer reads: the muted ink on its outline, and where the box below writes the answer the line says so', async () => {
+test('a waiting Answer reads: the muted ink on its outline, its tooltip saying a pick enables it', async () => {
   running = mount(QuestionCard, {
     target: document.body,
-    props: { text: 'Which shape?', options: OPTIONS, allowText: true, multiple: false, answer: null, pending: true, docked: true, replying: true, submit: () => true }
+    props: { text: 'Which shape?', options: OPTIONS, allowText: true, multiple: false, answer: null, pending: true, docked: true, submit: () => true }
   });
   flushSync();
-  expect(query('[data-testid=question-pick-first]').textContent).toBe('Pick an option, or type your own answer below');
-  expect(submit().title).toBe('Pick an option, or type your own answer below');
+  expect(submit().title).toBe('Pick an option first');
   // The ink is the muted text tier, which lib/contrast.test.ts holds over 14:1 on every ground: not the faint tier of a disabled mark.
   const { compile } = await import('svelte/compiler');
   const { readFileSync } = await import('node:fs');
@@ -111,7 +107,6 @@ test('a waiting Answer reads: the muted ink on its outline, and where the box be
   expect(readFileSync(`${import.meta.dirname}/../app.css`, 'utf8')).not.toContain("button.primary[aria-disabled='true']");
   options()[1]!.click();
   flushSync();
-  expect(document.querySelector('[data-testid=question-pick-first]')).toBeNull();
   expect(submit().classList.contains('primary')).toBe(true);
 });
 
@@ -189,26 +184,36 @@ test('Skip sends no answer, prevents duplicate presses and allows retry after fa
   settle(true);
 });
 
-test('a docked question with options keeps its own Answer while the composer is its field, and a pick shows at once', () => {
-  // While the agent works, the card has its own Answer: it never leaves Stop as the only round button.
+test('a docked question the composer answers has no Answer of its own; one it does not answer keeps it, and a pick shows at once', () => {
   const sent: string[][] = [];
-  running = mount(QuestionCard, {
-    target: document.body,
-    props: {
-      text: 'Which shape?', options: OPTIONS, allowText: true, multiple: false,
-      answer: null, pending: true, docked: true, replying: true, drafted: false, submit: (ids: string[]) => sent.push(ids)
-    }
-  });
-  flushSync();
-  expect(submit().textContent?.trim()).toBe('Answer');
-  expect(submit().disabled).toBe(false);
-  expect(document.querySelector('[data-testid=question-how]')).toBeNull();
+  const card = (replying: boolean) => {
+    if (running) unmount(running, { outro: false });
+    running = mount(QuestionCard, {
+      target: document.body,
+      props: {
+        text: 'Which shape?', options: OPTIONS, allowText: true, multiple: false,
+        answer: null, pending: true, docked: true, replying, drafted: false, skip: () => true, submit: (ids: string[]) => sent.push(ids)
+      }
+    });
+    flushSync();
+  };
+  // The composer is its field: its Send reads Answer and is the one commit, the card keeps Skip and its options.
+  card(true);
+  expect(document.querySelector('[data-testid=question-submit]')).toBeNull();
+  expect(query('[data-testid=question-skip]').textContent?.trim()).toBe('Skip question');
   options()[1]?.click();
   flushSync();
   // One choice too: its row fills and its ring turns to a solid check.
   expect(options()[1]?.classList.contains('picked')).toBe(true);
   expect(options()[1]?.querySelector('.box.round svg')).not.toBeNull();
   expect(options()[0]?.querySelector('.box.round svg')).toBeNull();
+
+  // A subagent's question docked in its parent: the composer is not its field, so the card answers its picks.
+  card(false);
+  expect(submit().textContent?.trim()).toBe('Answer');
+  expect(document.querySelector('[data-testid=question-how]')).toBeNull();
+  options()[1]?.click();
+  flushSync();
   submit().click();
   flushSync();
   expect(sent).toEqual([['long']]);
@@ -293,10 +298,10 @@ test('several options are kept at once when the question takes several', () => {
   // The card says what a pick does: it marks rows, the card's Answer sends them.
   expect(document.querySelector('[data-testid=question-how]')).toBeNull();
   // Docked, each row leads with an empty square, a choice before any pick, and a check once picked;
-  // its key stays a quiet hint at the row's end, never the mark of the choice.
+  // its key stays a quiet hint right after the label it picks, never the mark of the choice.
   expect(options().every(option => option.firstElementChild?.classList.contains('box') && !option.querySelector('.box')?.classList.contains('round'))).toBe(true);
   expect(document.querySelector('.box svg')).toBeNull();
-  expect(options().map(option => option.lastElementChild?.tagName === 'KBD' ? option.lastElementChild.textContent : null)).toEqual(['1', '2']);
+  expect(options().map(option => option.querySelector('.label > kbd:last-child')?.textContent ?? null)).toEqual(['1', '2']);
   options()[0]?.click();
   options()[1]?.click();
   flushSync();

@@ -90,16 +90,16 @@
      state sits in the middle. */
   .column { display: flex; flex-direction: column; gap: 2px; width: 100%; max-width: var(--content); min-height: 100%; margin: 0 auto; padding: var(--space-6) 0 max(var(--space-6), 10vh); }
   .column:has(:global([data-testid=activity-empty])) { justify-content: center; }
-  /* What asks stands on the card's ground, one step over the page (app.css ladder), so each decision reads as an
-     item; updates stay flat rows under their label. */
-  .column > :global(:is(.thread.feed, .contact-row):not([data-testid=activity-updates] ~ *)) { background: var(--color-surface); border-radius: var(--radius-lg); }
-  .column > :global(:is(.thread.feed, .contact-row):not([data-testid=activity-updates] ~ *):hover) { background: var(--color-surface-2); }
-  .column > :global(:is(.thread.feed, .contact-row) + :is(.thread.feed, .contact-row):not([data-testid=activity-updates] ~ *)) { margin-top: 4px; }
-  /* Room for the pair beside the text: the rows share four columns, the text, then one for every Deny, Skip and
+  /* Every entry, in Needs you and in Updates, is one card: the card's ground, one step over the page (app.css ladder),
+     4 px apart. */
+  .column > :global(:is(.thread.feed, .contact-row)) { background: var(--color-surface); border-radius: var(--radius-lg); }
+  .column > :global(:is(.thread.feed, .contact-row):hover) { background: var(--color-surface-2); }
+  .column > :global(:is(.thread.feed, .contact-row) + :is(.thread.feed, .contact-row)) { margin-top: 4px; }
+  /* Room for the pair beside the text: the rows share three columns, the text, then one for every Deny, Skip and
      Refuse and one for every Allow once, Answer and Accept, each as wide as its widest word, so the pairs stand in
-     one aligned column, then the cards' menus, one place on every card. */
+     one aligned column on the cards' right edge. */
   @container activity (min-width: 640px) {
-    .column { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-content: start; row-gap: 2px; }
+    .column { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-content: start; row-gap: 2px; }
     .column:has(:global([data-testid=activity-empty])) { align-content: center; }
     .column > :global(*) { grid-column: 1 / -1; }
   }

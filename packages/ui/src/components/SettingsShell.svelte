@@ -207,10 +207,10 @@
   let info = $derived(infoOf(tab));
   let scopePicks = $derived(bar && tab !== 'experiments' && choices.length > 1 && chosen !== undefined);
   /**
-   * Where the page's settings apply, said once: under the title when every card
-   * shares the page's scope ("Saved on this device", "Agent settings apply on
-   * studio", the name the picker where there are several), on each card's head
-   * when the page mixes them, the first machine card then holding the picker.
+   * Where the page's settings apply, said once under the title, for most of
+   * its cards ("Saved on this device", "Agent settings apply on studio", the
+   * name the picker where there are several); a card that differs says its
+   * own at its head, the first machine one then holding the picker.
    */
   const scopes = providePageScope(new PageScope(() => pageScopeOf(tab), () => (scopePicks ? scopePicker : undefined)));
   let scopeKind = $derived(scopes.line ?? (scopePicks && !scopes.hasMachineCard ? 'machine' : null));

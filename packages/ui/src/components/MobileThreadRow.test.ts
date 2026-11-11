@@ -43,6 +43,8 @@ test('a phone row that needs you says it beside its dot, and an Activity row rea
   // Its kind first, over the title, as on the desktop.
   const kind = document.querySelector<HTMLElement>('[data-testid=activity-kind]')!;
   expect([kind.dataset['kind'], kind.textContent]).toEqual(['permission', 'Permission']);
+  // Its glyph is the card's one mark: no state dot stacked under it beside the title.
+  expect(document.querySelector('[data-testid=thread-state]')).toBeNull();
   const place = document.querySelector('[data-testid=mobile-row-where]')!;
   const ask = document.querySelector('[data-testid=mobile-row-reason]')!;
   expect(place.textContent).toBe('orbit');

@@ -105,7 +105,7 @@
     const shown = workspace.machines.find((m) => m.store === target);
     return shown ? fill(strings.settings.scopeMachine, { machine: machineName(shown) }) : null;
   };
-  /** The phone's pages by where they save: a mixed one (Conversations, with the machine's cards) tags its cards instead (`lib/page-scope.svelte.ts`). */
+  /** The phone's pages by where they save: on a mixed one (Conversations, with the machine's card) only the card that differs tags itself (`lib/page-scope.svelte.ts`). */
   const DEVICE_PAGES = ['appearance', 'browser', 'conversations'];
   const scopes = providePageScope(new PageScope(
     () => (page === 'limits' ? null : MACHINE_PAGES.includes(page) ? 'machine' : DEVICE_PAGES.includes(page) ? 'device' : null),

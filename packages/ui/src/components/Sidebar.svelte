@@ -13,7 +13,7 @@
   import { hostName } from '../lib/machine-host';
   import { projectRollup, threadState } from '../lib/thread-state';
   import { foldQuiet } from '../lib/card-fold';
-  import { storeNeedsYou } from '../lib/activity-feed';
+  import { storeNeeds } from '../lib/activity-feed';
   import { needsYou, rowAsks } from '../lib/status-order';
   import { groupWorkingThread, recentPreferences } from '../lib/recent.svelte';
   import { dropKey as threadDropKey, takesDrop, threadDrag } from '../lib/thread-move.svelte';
@@ -197,11 +197,11 @@
       : projectRows().concat(idleRows)
     ).slice(0, 9);
   });
-  /** The threads of a project that wait on the user, its header's amber count; a sub-agent's question counts for its parent. */
-  function waitingCount(entry: ProjectEntry): number {
+  /** The threads of a project that need the user, its header's count, and how many of them failed; a sub-agent's question counts for its parent. */
+  function needsCount(entry: ProjectEntry): { count: number; failed: number } {
     const owner = entry.machine.store;
     // Activity's own count over the project's threads: the card and the rail's badge never disagree.
-    return storeNeedsYou(owner, owner.threadsOf(entry.project.id));
+    return storeNeeds(owner, owner.threadsOf(entry.project.id));
   }
   const canAddProject = $derived(store.owner && work.shows('sidebar.add-project'));
   /** Nothing listed yet: the list says why, and where the projects come from. */
@@ -306,6 +306,7 @@
         {@const collapsed = owner.isCollapsed(project.id)}
         {@const listed = collapsed ? 0 : fold.shown.filter(thread => needsYou(threadState(thread, rowAsks(owner, thread.id)))).length}
         {@const away = owner.connection !== 'ready'}
+        {@const needs = away ? { count: 0, failed: 0 } : needsCount(entry)}
         {@const rollup = collapsed && !away ? projectRollup(owner.threadsOf(project.id), thread => rowAsks(owner, thread.id)) : null}
         {@const draftsHere = owner.draftEntries.filter(entry => entry.projectId === project.id)}
         {@const dropKey = threadDropKey(machine.id, project.id)}
@@ -346,7 +347,7 @@
                   >{#if rollup.kind === 'interrupted'}<Square size={9} fill="currentColor" aria-hidden="true" />{:else}<span class="work-ring" aria-hidden="true"></span>{/if}{#if rollup.count > 1}<span class="ui-label">{rollup.count}</span>{/if}</span
                 >{/if}
             </button>
-            <ProjectThreadCounters {entry} working={lists.working.length} waiting={away ? 0 : waitingCount(entry)} {listed} {controls} {collapsed} {away} />
+            <ProjectThreadCounters {entry} working={lists.working.length} waiting={needs.count} failed={needs.failed} {listed} {controls} {collapsed} {away} />
             <button
               class="ghost small icon project-actions"
               data-testid="project-menu"
@@ -365,7 +366,7 @@
                 {#snippet row(thread)}<ThreadCard {machine} {project} {thread} {now} showDone placed={!!host(machine)?.away} />{/snippet}
               </WindowList>
               {#if fold.folded.length}<FoldMore count={fold.folded.length} open={fold.open} ontoggle={() => toggleFold(key)} />{/if}
-              <ProjectThreadCounters {entry} working={lists.working.length} waiting={away ? 0 : waitingCount(entry)} {controls} {collapsed} {away} place="fold" />
+              <ProjectThreadCounters {entry} working={lists.working.length} waiting={needs.count} {controls} {collapsed} {away} place="fold" />
               <div id="{controls}-working" hidden={!workingOpen || lists.working.length === 0} data-testid="project-working">
                 {#if workingOpen && lists.working.length > 0}
                   <WindowList items={lists.working} keyOf={thread => JSON.stringify([machine.id, thread.id])} {scrollRoot} active={!collapsed} estimate={36} measurements={measurements(JSON.stringify([machine.id, project.id, 'working']))}>

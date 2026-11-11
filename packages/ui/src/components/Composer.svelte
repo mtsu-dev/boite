@@ -811,8 +811,8 @@
     <!-- A bot's gone account said once, to a screen reader: the placeholder and its banner (AgentProblem) show it. -->
     {#if botGone}<span class="visually-hidden" role="status" data-testid="composer-bot-gone">{bot ? fill(strings.composer.botAccountGone, { name: bot }) : strings.accounts.removedHint}</span>{/if}
 
-    <ComposerBar bind:this={toolbar} {store} {key} {target} {bot} {botGone} {provider} canSend={sendable && !stopped && !accountGone} typed={!reply || text.trim().length > 0 || attachments.length > 0} waiting={sendWhenLoaded !== null} answering={!!reply} declining={!reply && !offline ? permission : null}
-      onmention={!target && !reply && mentionProject !== null ? startMention : undefined} oncommand={!target && !reply && text.trim() === '' ? startCommand : undefined} sendLabel={reply ? strings.composer.replySend : undefined} bind:choice bind:picking bind:dictating
+    <ComposerBar bind:this={toolbar} {store} {key} {target} {bot} {botGone} {provider} canSend={sendable && !stopped && !accountGone} typed={!reply || text.trim().length > 0 || attachments.length > 0} waiting={sendWhenLoaded !== null} answering={reply} declining={!reply && !offline ? permission : null}
+      onmention={!target && !reply && mentionProject !== null ? startMention : undefined} oncommand={!target && !reply && text.trim() === '' ? startCommand : undefined} bind:choice bind:picking bind:dictating
       onsubmit={() => void submit()}
       onfiles={(files) => void take(files)}
       onpreview={(text, status, error) => { speechPreview = text; speechStatus = status; speechError = error; }}

@@ -215,6 +215,6 @@ test('not a developer, New thread still follows the project on screen', async ({
 
 test('the title counts the threads that wait on the user or finished unread', async ({ app: _app }) => {
   await waitFor(() => /^\(\d+\) /.test(document.title));
-  const waiting = document.querySelectorAll('[data-testid=sidebar] [data-state=waiting]').length;
+  const waiting = document.querySelectorAll('[data-testid=sidebar] [data-testid=thread-state][data-state=waiting]').length;
   expect(Number(/^\((\d+)\)/.exec(document.title)?.[1])).toBeGreaterThanOrEqual(Math.max(1, waiting));
 });

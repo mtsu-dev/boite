@@ -1,21 +1,21 @@
 <script lang="ts">
-  import { MediaQuery } from 'svelte/reactivity';
   import { textEntries, type ComposerState } from '../lib/composer-queue';
   import type { Store } from '../lib/store.svelte';
   import AgentDock from './AgentDock.svelte';
   import ComposerQueue from './ComposerQueue.svelte';
 
   /**
-   * What waits, in one container on the composer card's top edge, one row
-   * each and only the rows that apply: the permission out of view by its
-   * title (`DecisionPill`, loaded with the first permission: its titles stay
-   * out of the entry chunk) with its Deny and Allow once, the subagents and
-   * workflows this thread waits on (`AgentDock`), then the answers held for
-   * the turn and the queued prompts (`ComposerQueue`). It grows upward: the
-   * field under it never moves. On a phone, at rest, the waiting line and the
-   * held rows fold into one line ("3 working · 1 queued") that a tap unfolds;
-   * the decision row stays apart. While a question takes the field during a
-   * turn, the field's button is Send alone, so the turn's Stop is on this line.
+   * What waits, over the composer card. The permission out of view is the one
+   * card, on the composer card's top edge, by its title (`DecisionPill`, loaded
+   * with the first permission: its titles stay out of the entry chunk) with its
+   * Deny and Allow once. Above it, outside the card, one quiet strip: the work
+   * this thread waits on and the prompts held for the turn in one line ("3
+   * working · 1 queued", `AgentDock`), the same on a desktop and a phone, that a
+   * press unfolds into one row per run and the held prompts with their Edit and
+   * Delete (`ComposerQueue`). With nothing running, the held prompts are the
+   * strip's rows. It grows upward: the field under it never moves. While a
+   * question takes the field during a turn, the field's button is Send alone,
+   * so the turn's Stop is on the strip's line.
    */
   let { store, key, thread, composer, blocked, alone = false, stopsTurn = false, machine, sendNow, onrestore, onsendnow }: {
     store: Store;
@@ -26,7 +26,7 @@
     blocked: boolean;
     /** No card under it (a notice stands in the box's place): the foot closes on its own edge. */
     alone?: boolean;
-    /** A question takes the field while the turn runs: the waiting line carries the turn's Stop, alone ("Working") or with what it waits on. */
+    /** A question takes the field while the turn runs: the strip's line carries the turn's Stop, alone ("Working") or with what it waits on. */
     stopsTurn?: boolean;
     machine: string;
     sendNow: 'steer' | 'resume' | null;
@@ -39,21 +39,17 @@
   let queued = $derived(composer && composer.queued.length > 0 ? composer : null);
   let permission = $derived(thread ? store.pendingPermissions.find((request) => request.threadId === thread.id) ?? null : null);
 
-  const phone = new MediaQuery('(max-width: 720px)');
-  let waiting = $state(0);
-  let unfolded = $state(false);
+  let line = $state(false);
+  let open = $state(false);
   let heldCount = $derived((answers?.length ?? 0) + (queued?.queued.length ?? 0));
-  let foldable = $derived(phone.current && waiting > 0 && heldCount > 0);
-  let folded = $derived(foldable && !unfolded);
   // Another thread opens folded.
-  $effect(() => { void thread?.id; unfolded = false; });
+  $effect(() => { void thread?.id; open = false; });
 </script>
 
-<div class="foot" class:alone data-testid="composer-foot">
-  {#if permission}{#await import('./DecisionPill.svelte') then pill}<pill.default {permission} answer={(decision: 'allow' | 'deny') => store.answer(permission.id, decision)} />{/await}{/if}
-  {#if thread}<AgentDock {store} threadId={thread.id} turn={stopsTurn} bind:waiting held={foldable ? heldCount : 0} {folded} ontoggle={() => (unfolded = !unfolded)} />{/if}
+<div class="strip-lines" data-testid="composer-strip-lines">
+  {#if thread}<AgentDock {store} threadId={thread.id} turn={stopsTurn} bind:shown={line} held={heldCount} {open} ontoggle={() => (open = !open)} />{/if}
   {#if answers || queued}
-    <div class="held" data-testid="composer-held" hidden={folded}>
+    <div class="held" data-testid="composer-held" hidden={line && !open}>
       {#if answers}
         <div class="answers" data-testid="question-queued">
           <ComposerQueue queued={answerEntries(answers)} disabled={true} paused={false} sendNow={null} onrestore={() => {}} onsendnow={() => {}} />
@@ -70,13 +66,12 @@
     </div>
   {/if}
 </div>
+<div class="foot" class:alone data-testid="composer-foot">
+  {#if permission}{#await import('./DecisionPill.svelte') then pill}<pill.default {permission} answer={(decision: 'allow' | 'deny') => store.answer(permission.id, decision)} />{/await}{/if}
+</div>
 
 <style>
-  /* On the card's top edge: its width, its surface and edge, the top corners
-     rounded and no gap, so card and foot read as one object (Composer squares
-     the card's top corners under it). A hairline between rows. */
-  .foot {
-    --foot-row: 32px;
+  .strip-lines, .foot {
     --foot-radius: var(--radius-composer);
     display: flex;
     flex-direction: column;
@@ -84,22 +79,30 @@
     max-width: var(--content);
     min-width: 0;
     margin: 0 auto;
+    font-size: var(--text-sm);
+  }
+  /* The strip: no surface of its own, the quiet ink of a status line, its rows
+     lined up with the card's words under it. */
+  .strip-lines { --foot-row: 28px; padding: 0 2px 4px; color: var(--color-muted-foreground); font-size: var(--text-meta); }
+  .strip-lines:not(:has(.foot-row)) { display: none; }
+  .answers { display: flex; flex-direction: column; min-width: 0; }
+
+  /* The card: on the composer card's top edge, its width, its surface and edge,
+     the top corners rounded and no gap, so card and foot read as one object
+     (Composer squares the card's top corners under it). */
+  .foot {
+    --foot-row: 32px;
     border: 1px solid var(--color-composer-edge);
     border-bottom: none;
     border-radius: var(--foot-radius) var(--foot-radius) 0 0;
     background: var(--color-composer-surface);
-    font-size: var(--text-sm);
     animation: rise var(--motion-duration) var(--motion-curve);
   }
   .foot.alone { margin-bottom: 8px; border-bottom: 1px solid var(--color-composer-edge); border-radius: var(--foot-radius); }
   .foot:not(:has(.foot-row)) { display: none; }
-  .foot > :global(* + *),
-  .held > :global(* + *),
-  .foot :global(.queued > .foot-row + .foot-row) { border-top: 1px solid var(--color-border); }
-  .answers { display: flex; flex-direction: column; min-width: 0; }
 
   /* One row form for all of them: its height, its inset and type, one line. */
-  .foot :global(.foot-row) {
+  :is(.strip-lines, .foot) :global(.foot-row) {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -110,7 +113,10 @@
     white-space: nowrap;
   }
   @media (max-width: 720px) {
+    .strip-lines { --foot-row: 36px; }
     .foot { --foot-row: 40px; --foot-radius: var(--radius-xl); }
-    .foot :global(.foot-row) { padding: 0 2px 0 12px; }
+    :is(.strip-lines, .foot) :global(.foot-row) { padding: 0 2px 0 12px; }
+    /* The strip's line holds its counts and Stop on a 360 px phone. */
+    .strip-lines :global(.foot-row) { gap: 6px; }
   }
 </style>

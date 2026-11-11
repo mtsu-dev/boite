@@ -2,7 +2,7 @@
   import { ArrowUp, LoaderCircle, Mic, MicOff, Square } from '@lucide/svelte';
   import { tick } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
-  import { effectiveCompaction, type PermissionMode, type PermissionRequest, type ProviderSummary } from '@boite/contracts';
+  import { effectiveCompaction, type PermissionMode, type PermissionRequest, type ProviderSummary, type QuestionRequest } from '@boite/contracts';
   import { formatTokens, providerName } from '../lib/format';
   import { confirm } from '../lib/confirm.svelte';
   import { switchDropsHistory, switchResetsCache, type CacheKey } from '../lib/switch-warning';
@@ -26,6 +26,7 @@
   import { desktopSettings } from '../lib/settings-tabs';
   import { machineAway } from '../lib/machine-away';
   import { declineHint } from '../lib/composer-placeholder';
+  import { repliesOf } from '../lib/question-reply.svelte';
   /** The context's reading shows in the row from this percent used. */
   const CONTEXT_SHOWN_FROM = 70;
 
@@ -37,8 +38,10 @@
    * phone, the context's ring and "x% context left" once it matters, then dictation and one round
    * button that is Send, or Stop while a turn runs and nothing typed waits to go
    * (not while it stands on a decision of the owner's). While the field
-   * answers a question the button is Send alone, live once text is typed: the
-   * card's Answer sends its picks, and the turn's Stop waits in the foot's line.
+   * answers a question the button is the words "Answer", the one commit of
+   * the card's picks with the text and files: the primary once something is
+   * picked or typed, disabled before with its reason in the tooltip. The
+   * turn's Stop then waits in the foot's line.
    * While a permission waits and the box holds text, Send says what it does:
    * the outline words "Decline and send", the permission named in its tooltip.
    * Nothing comes or goes with a decision docked above: the row keeps its
@@ -57,9 +60,8 @@
     provider,
     canSend,
     waiting = false,
-    answering = false,
+    answering = null,
     typed = true,
-    sendLabel = strings.composer.send,
     declining = null,
     choice = $bindable(),
     picking = $bindable(),
@@ -83,11 +85,10 @@
     canSend: boolean;
     /** Send was pressed while files were still being read: it goes once they are ready. */
     waiting?: boolean;
-    answering?: boolean;
-    /** Text or files are in the box. False while only a question's picks make it sendable: Send rests and the card sends them. */
+    /** The question the field answers (`lib/question-reply.svelte.ts`): Send reads Answer. */
+    answering?: QuestionRequest | null;
+    /** Text or files are in the box: with them or a pick, Answer can act. */
     typed?: boolean;
-    /** What Send does, when it answers a question rather than sending a message. */
-    sendLabel?: string;
     /** The thread's waiting permission, which a message sent now declines. */
     declining?: Pick<PermissionRequest, 'toolName' | 'input'> | null;
     choice: Choice | null;
@@ -112,6 +113,9 @@
   let stopShown = $derived(stopping && !held && !answering && !waiting && !(canSend && typed) && (!!target || !machineAway(store)));
   /** Send declines: a permission waits and the box holds something to send. */
   let declines = $derived(!target && !answering && !waiting && canSend && declining ? declineHint(declining) : null);
+  /** Why Answer cannot act yet: nothing picked or typed. */
+  let answerWaits = $derived(answering && !typed && !repliesOf(store).picks[answering.id]?.length
+    ? (answering.options.length > 0 ? strings.chat.questionPickOrType : strings.chat.questionTypeFirst) : null);
 
   let picker = $state<HTMLInputElement | undefined>(undefined);
   let bar = $state<HTMLDivElement | undefined>(undefined);
@@ -340,7 +344,7 @@
   {/if}
 
   <!-- Dictation and the round button: at the row's end on a desktop, at the field's end on a phone (where the row gives its width to the chips' words). -->
-  <div class="tools" data-count={voice.current.enabled ? 2 : 1} data-declines={declines ? 'true' : undefined}>
+  <div class="tools" data-count={voice.current.enabled ? 2 : 1} data-worded={answering ? 'answer' : declines ? 'decline' : undefined}>
   {#if voice.current.enabled}
   {#key store}
     {#key `${key}:${store.draft?.projectId ?? ''}`}
@@ -360,9 +364,15 @@
       <Square size={12} strokeWidth={2.5} />
     </button>
   {/if}
-  {#if declines}
+  {#if answering}
+    <!-- The one commit of the question at the top of the card: its picks with what the box holds. -->
+    <button type="button" class={canSend ? 'primary worded' : 'secondary worded'} data-testid="composer-send" data-answers="true" disabled={!canSend}
+      title={answerWaits ?? (waiting ? strings.composer.sendWhenLoaded : undefined)} onmousedown={keepFocus} onclick={() => onsubmit()}>
+      <span class="ui-label">{strings.chat.questionAnswer}</span>
+    </button>
+  {:else if declines}
     <!-- The consequence in words, never the accent: the outline secondary, the permission named in its tooltip. -->
-    <button type="button" class="secondary decline" data-testid="composer-send" data-declines="true" title={declines} onmousedown={keepFocus} onclick={() => onsubmit()}>
+    <button type="button" class="secondary worded" data-testid="composer-send" data-declines="true" title={declines} onmousedown={keepFocus} onclick={() => onsubmit()}>
       <span class="ui-label">{strings.composer.declineSend}</span>
     </button>
   {:else}
@@ -372,9 +382,9 @@
     class:resting={stopShown}
     data-testid="composer-send"
     data-waiting={waiting || undefined}
-    title={waiting ? strings.composer.sendWhenLoaded : sendLabel}
-    aria-label={waiting ? strings.composer.sendWhenLoaded : sendLabel}
-    disabled={!canSend || (answering && !typed)}
+    title={waiting ? strings.composer.sendWhenLoaded : strings.composer.send}
+    aria-label={waiting ? strings.composer.sendWhenLoaded : strings.composer.send}
+    disabled={!canSend}
     onmousedown={keepFocus}
     onclick={() => onsubmit()}
   >
@@ -472,8 +482,8 @@
   }
 
   .send { box-shadow: var(--shadow-send); }
-  /* Send that declines: words in the family's outline, send's round ends and height. */
-  .decline { flex: none; height: 32px; padding: 0 14px; border-radius: var(--radius-full); font-size: var(--text-sm); font-weight: 500; }
+  /* Send in words (Answer, Decline and send): the family's button, send's round ends and height. */
+  .worded { flex: none; height: 32px; padding: 0 14px; border-radius: var(--radius-full); font-size: var(--text-sm); font-weight: 500; }
   .send.resting { display: none; }
   .send :global(.spinner) { animation: spin 1s linear infinite var(--loops); }
   @media (prefers-reduced-motion: reduce) { .send :global(.spinner) { animation: none; } }
@@ -522,10 +532,12 @@
     .tools :is(.send, .stop) { position: relative; width: 36px; height: 36px; min-width: 0; min-height: 0; margin: 4px; }
     .tools :is(.send, .stop)::after { content: ''; position: absolute; inset: -5px; border-radius: inherit; }
     /* The words at the field's end, 36 px drawn in a 44 px target; the field's text stops short of them. */
-    .tools .decline { position: relative; height: 36px; margin: 4px; padding: 0 12px; }
-    .tools .decline::after { content: ''; position: absolute; inset: -4px 0; }
-    :global(.composer-wrap .composer:has(.bar .tools[data-declines][data-count='1'])) { --composer-tools: 10.5rem; }
-    :global(.composer-wrap .composer:has(.bar .tools[data-declines][data-count='2'])) { --composer-tools: calc(10.5rem + var(--touch-target)); }
+    .tools .worded { position: relative; height: 36px; margin: 4px; padding: 0 12px; }
+    .tools .worded::after { content: ''; position: absolute; inset: -4px 0; }
+    :global(.composer-wrap .composer:has(.bar .tools[data-worded][data-count='1'])) { --composer-tools: 10.5rem; }
+    :global(.composer-wrap .composer:has(.bar .tools[data-worded][data-count='2'])) { --composer-tools: calc(10.5rem + var(--touch-target)); }
+    :global(.composer-wrap .composer:has(.bar .tools[data-worded=answer][data-count='1'])) { --composer-tools: 6.5rem; }
+    :global(.composer-wrap .composer:has(.bar .tools[data-worded=answer][data-count='2'])) { --composer-tools: calc(6.5rem + var(--touch-target)); }
     /* Every value whole: a row too short for them wraps onto a second one
        under it, each row a 44 px target (36 px chips, 8 px between rows). The
        "+" stays on the first row, the field above never changes its place in

@@ -171,13 +171,15 @@ window is connected, and at the same moment probes its own tailnet address and
 republishes its group entry instead of waiting for the next 15 second pass
 (`packages/core/src/network-watch.ts`).
 
-A remote machine that cannot be reached is not a fault in itself: a laptop
-switched off between uses shows a grey "Offline" dot in the footer's machine
-menu and the button keeps its normal icon. The button turns into a warning, and
-the dot red, only when the user must act or depends on the missing machine: a
-machine that refused this device's key, the machine the window runs on, this
-PC's own core, or a machine whose last known threads still had a turn queued,
-running or waiting when the connection went.
+A machine out of reach has one mark everywhere: a hollow grey ring beside
+"Offline", on its list line, in the rail's machine card and its menu. The
+rail's button has one look per state: the monitor with a green dot while every
+machine answers, the monitor with the ring while one is offline, and a crossed
+monitor once none answers. A laptop switched off between uses and a machine
+the user depends on (one that refused this device's key, the machine the window
+runs on, this PC's own core, or one whose last known threads still had a turn
+queued, running or waiting when the connection went) look the same; the card
+adds how many need attention for the second kind.
 
 A key a remote core refuses is not retried: the machine shows as closed with
 the reason. A page opened on its own core with no key says the device is not in

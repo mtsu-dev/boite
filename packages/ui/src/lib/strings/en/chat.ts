@@ -242,18 +242,19 @@ export const strings = {
     questionAsyncHeading: 'Needs you',
     questionAsyncHint: 'The agent keeps working. Without an answer it goes on with a default.',
     questionAnswer: 'Answer',
-    /** The primary of a question that another one follows: it answers this one and shows the next. */
-    questionAnswerNext: 'Next',
-    questionAnswerNextHint: 'Answer and go to the next question',
-    /** Under the choices until one is picked: what makes Answer act. The second when the box below writes this answer. */
+    /** Answer's tooltip on a question another one follows: it answers this one and shows the next. */
+    questionAnswerNextHint: 'Answer and show the next question',
+    /** Answer's tooltip until it can act: the card's own with options, the composer's beside options or alone. */
     questionPickFirst: 'Pick an option first',
-    questionPickOrType: 'Pick an option, or type your own answer below',
+    questionPickOrType: 'Pick an option or type your answer',
+    questionTypeFirst: 'Type your answer first',
     questionAnswered: 'You answered: {answer}',
     /** A question skipped or dropped with its turn: one line in the run, never the card again. */
     questionCancelled: 'Not answered: {question}',
     questionMore: 'Show {count} more options',
     questionMoreOne: 'Show 1 more option',
-    questionSkip: 'Skip',
+    /** Skips the question on screen only, never the others waiting behind it. */
+    questionSkip: 'Skip question',
     /** After the pager of several questions, where there is room: the title of the one it goes to next. */
     questionUpNext: 'Next: {title}',
     questionOpenPage: 'Open',

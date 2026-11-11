@@ -12,7 +12,7 @@ export const strings = {
     editingCancel: 'Stop editing (Esc)',
     /** The box while the agent works: what is written answers. One line on a 360 px phone. */
     replyPlaceholder: 'Reply to {name}',
-    /** The box while a question at its top takes a written answer beside its options, or alone: Send answers it. */
+    /** The box while a question at its top takes a written answer beside its options, or alone: Send reads Answer and answers it. */
     answerPlaceholder: 'Or type your own answer',
     answerTextPlaceholder: 'Type your answer',
     /** The box while a question at its top takes no text: a message is queued until the answer. */
@@ -24,7 +24,6 @@ export const strings = {
     /** Its tooltip, the permission named by its title ("Push orbit/csv-import"). */
     declineSendHint: 'Declines {title}, then sends your message',
     declineSendHintFallback: 'Declines this request, then sends your message',
-    replySend: 'Send as your answer',
     switchTitle: 'Switch a {tokens} token thread to {provider}?',
     switchBody: '{provider} starts a new session and receives excerpts of the opening and of the most recent exchanges, about 20k tokens. The rest is lost to it. Compacting first changes nothing.',
     switchConfirm: 'Switch',
@@ -57,10 +56,22 @@ export const strings = {
     footDecision: 'Waiting for approval:',
     footDecisions: '{count} decisions waiting:',
     footShowHint: 'Scroll to the command that asks',
-    /** A phone's folded foot: the waiting line and the queued prompts in one line; a tap unfolds them. */
-    footFolded: '{working} working · {queued} queued',
-    footUnfold: 'Show what runs and what is queued',
-    footFold: 'Fold into one line',
+    /** The strip over the composer, the same on every screen: what this conversation waits on (`delegation.waiting`), then what waits to be sent; a press unfolds them. */
+    stripQueued: '· {count} queued',
+    stripQueuedAlone: '{count} queued',
+    stripOpen: 'Show each one',
+    stripClose: 'Fold into one line',
+    /** The strip's Stop, worded by what it stops, its tooltip saying the rest. */
+    stopAgent: 'Stop agent',
+    stopAgentHint: 'Stops the agent\'s turn',
+    stopAll: 'Stop all',
+    stopAllHint: 'Stops the agent\'s turn and everything it waits on',
+    stopSubagents: 'Stop subagents',
+    stopSubagentsHint: 'Stops the work this conversation sent and waits on. The agent itself is not stopped.',
+    stopWorkflows: 'Stop workflows',
+    stopWorkflowsHint: 'Stops the workflows this conversation waits on. The agent itself is not stopped.',
+    stopSent: 'Stop all',
+    stopSentHint: 'Stops the subagents and workflows this conversation waits on. The agent itself is not stopped.',
     send: 'Send',
     sendWhenLoaded: 'Sends once the files are ready',
     stop: 'Stop',

@@ -45,7 +45,7 @@
   import { rowPlaces, type RowPlace } from '../lib/row-place';
   import { feedWhere } from '../lib/feed-row';
   import { hostName } from '../lib/machine-host';
-  import { activityFeed, feedGroups, storeNeedsYou, type FeedKind, type FeedVerb } from '../lib/activity-feed';
+  import { activityFeed, feedGroups, storeNeeds, type FeedKind, type FeedVerb } from '../lib/activity-feed';
   import { tabHeader } from '../lib/tab-header.svelte';
   import EmptyState, { HOUSE_BOT } from './EmptyState.svelte';
   import RobotFace from './agents/RobotFace.svelte';
@@ -217,11 +217,11 @@
     chat: () => screen === 'chat',
     reopen: () => { show('activity'); void tick().then(() => { if (scrollRoot) void restoreActivity(scrollRoot); }); }
   });
-  /** The threads of a project that wait on the user, its heading's amber count, as on the desktop card. */
-  function waitingCount(entry: ProjectEntry): number {
+  /** The threads of a project that need the user, its heading's count, and how many of them failed, as on the desktop card. */
+  function needsCount(entry: ProjectEntry): { count: number; failed: number } {
     const owner = entry.machine.store;
     // Activity's own count over the project's threads: the card and the rail's badge never disagree.
-    return storeNeedsYou(owner, owner.threadsOf(entry.project.id));
+    return storeNeeds(owner, owner.threadsOf(entry.project.id));
   }
   /** A phone's row menu: the desktop's short first level, its named group opening in the same sheet (`Menu.svelte`). */
   function rowItems(owner: Store, thread: ThreadSummary): MenuItem[] {
@@ -377,7 +377,8 @@
         {@const doneOpen = archiveCount(group.project, 'done') > 0 && doneFilter.shown}
         {@const archivedOpen = later && archiveCount(group.project, 'archived') > 0}
         {@const workingRows = groupRows.filter(row => workingThread(row.machine.store, row.thread))}
-        {@const waitingHere = group.machine.store.connection === 'ready' ? waitingCount(group) : 0}
+        {@const needsHere = group.machine.store.connection === 'ready' ? needsCount(group) : { count: 0, failed: 0 }}
+        {@const waitingHere = needsHere.count}
         {@const attentionAll = query || !recentPreferences.groupWorking ? groupRows : groupRows.filter(row => workingOpen ? !workingThread(row.machine.store, row.thread) : !groupWorkingThread(group.machine.store, row.thread))}
         {@const fold = query ? { shown: attentionAll, folded: [] } : foldQuiet(attentionAll, row => row.thread.pinned === true || threadState(row.thread, rowAsks(row.machine.store, row.thread.id)) !== null)}
         {@const foldOpen = !!unfolded[projectKey(group)] && fold.folded.length > 0}
@@ -388,7 +389,7 @@
         <section class="project-group" class:inactive={!activeProject(group)} data-testid="mobile-project-group" data-project-id={group.project.id} data-machine-id={group.machine.id}>
           <div class="project-heading" data-row-edge>
             <ProjectTile project={group.project} store={group.machine.store} /><h2><span class="name">{projectName(group.project)}</span>{#if hostName(group.machine, machines, home?.id)}<MachinePlace host={{ ...hostName(group.machine, machines, home?.id)!, away: false }} testid="mobile-project-host" />{/if}</h2>
-            <ProjectThreadCounters entry={group} working={group.machine.store.threadsOf(group.project.id).filter(thread => workingThread(group.machine.store, thread)).length} waiting={waitingHere} listed={attentionRows.filter(row => needsYou(threadState(row.thread, rowAsks(row.machine.store, row.thread.id)))).length} {controls} searching={!!query} away={group.machine.store.connection !== 'ready'} />
+            <ProjectThreadCounters entry={group} working={group.machine.store.threadsOf(group.project.id).filter(thread => workingThread(group.machine.store, thread)).length} waiting={waitingHere} failed={needsHere.failed} listed={attentionRows.filter(row => needsYou(threadState(row.thread, rowAsks(row.machine.store, row.thread.id)))).length} {controls} searching={!!query} away={group.machine.store.connection !== 'ready'} />
             {#if projectView.order === 'manual'}
               <Menu items={[
                 { id: 'up', label: strings.sidebar.moveProjectUp, disabled: projectKey(foldOf(group)[0]!) === projectKey(group) },
@@ -451,13 +452,13 @@
       <!-- The amber dot beside "Needs you", as on the desktop page; only updates left, the house bot says nothing waits. -->
       {#if needsCount > 0}<h2 class="section-label feed-section" data-testid="activity-needs" data-count={needsCount}><span class="feed-dot" aria-hidden="true"></span>{strings.sidebar.state.waiting}<span class="feed-count">{count(needsCount)}</span></h2>
       {:else if rows.length > 0}<p class="all-done" data-testid="activity-all-done"><span class="face" aria-hidden="true"><RobotFace robot={HOUSE_BOT} /></span>{strings.mobile.nothingNeedsYou}</p>{/if}
-      <div class="needs-tiles">{#if asked && ContactInboxRows}<ContactInboxRows {store} />{/if}<WindowList items={needs} keyOf={group => JSON.stringify([group.row.machine.id, group.row.thread.id])} {scrollRoot} estimate={66} measurements={measurements('activity')}>
+      <div class="feed-tiles">{#if asked && ContactInboxRows}<ContactInboxRows {store} />{/if}<WindowList items={needs} keyOf={group => JSON.stringify([group.row.machine.id, group.row.thread.id])} {scrollRoot} estimate={66} measurements={measurements('activity')}>
         {#snippet row(group)}{@render threadRow(group.row, false, group.helpers)}{/snippet}
       </WindowList></div>
       {#if updates.length > 0}<h2 class="section-label feed-section" data-testid="activity-updates">{strings.mobile.feed.updates}</h2>{/if}
-      <WindowList items={updates} keyOf={group => JSON.stringify([group.row.machine.id, group.row.thread.id])} {scrollRoot} estimate={66} measurements={measurements('activity-updates')}>
+      <div class="feed-tiles"><WindowList items={updates} keyOf={group => JSON.stringify([group.row.machine.id, group.row.thread.id])} {scrollRoot} estimate={66} measurements={measurements('activity-updates')}>
         {#snippet row(group)}{@render threadRow(group.row, false, group.helpers)}{/snippet}
-      </WindowList>
+      </WindowList></div>
     {:else}
       <WindowList items={attention} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} estimate={66} measurements={measurements(atWorkShown ? 'at-work' : listScreen)}>
         {#snippet row(entry)}{@render threadRow(entry)}{/snippet}
@@ -616,18 +617,18 @@
     .feed-count { margin-left: 6px; color: var(--color-live); font-variant-numeric: tabular-nums; }
     .feed-section[data-testid=activity-needs] { display: flex; align-items: center; }
     .feed-dot { width: 8px; height: 8px; margin-right: 8px; flex: none; border-radius: var(--radius-full); background: var(--color-live); }
-    /* What needs the user stands on tiles, 4 px apart, the ground a step up under a finger; the updates stay flat
-       rows. The gap is the slot's padding, so the window list measures it with the row. */
-    .needs-tiles { --row-background: var(--color-surface); }
-    .needs-tiles :global([data-window-key]) { padding-bottom: 4px; }
-    .needs-tiles :global(.row) { border-radius: var(--radius-lg); }
-    .needs-tiles :global(.row:has(.thread:active)) { --row-background: var(--color-surface-2); }
+    /* Every Activity entry, in Needs you and in Updates, is one card: a tile 4 px from the next, the ground a step up
+       under a finger. The gap is the slot's padding, so the window list measures it with the row. */
+    .feed-tiles { --row-background: var(--color-surface); }
+    .feed-tiles :global([data-window-key]) { padding-bottom: 4px; }
+    .feed-tiles :global(.row) { border-radius: var(--radius-lg); }
+    .feed-tiles :global(.row:has(.thread:active)) { --row-background: var(--color-surface-2); }
     /* A contact's request (ContactInboxRows.svelte) is one of them, on the same tile. */
-    .needs-tiles :global(.contact-row) { margin: 0 0 4px; border-radius: var(--radius-lg); background: var(--color-surface); }
-    .needs-tiles :global(.contact-row:active) { background: var(--color-surface-2); }
+    .feed-tiles :global(.contact-row) { margin: 0 0 4px; border-radius: var(--radius-lg); background: var(--color-surface); }
+    .feed-tiles :global(.contact-row:active) { background: var(--color-surface-2); }
     @media (hover: hover) {
-      .needs-tiles :global(.row:hover), .needs-tiles :global(.contact-row:hover) { --row-background: var(--color-surface-2); background: var(--color-surface-2); }
-      .needs-tiles :global(.thread:hover:not(:disabled)) { background: transparent; }
+      .feed-tiles :global(.row:hover), .feed-tiles :global(.contact-row:hover) { --row-background: var(--color-surface-2); background: var(--color-surface-2); }
+      .feed-tiles :global(.thread:hover:not(:disabled)) { background: transparent; }
     }
     .all-done { display: flex; align-items: center; gap: 10px; margin: 8px 12px 4px; font-size: var(--text-sm); font-weight: 500; color: var(--color-muted-foreground); }
     .face { display: block; width: 24px; height: 24px; flex: none; }

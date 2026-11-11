@@ -19,7 +19,6 @@
     docked = false,
     folded = false,
     head,
-    foot,
     answer,
     pending,
     picked = $bindable([]),
@@ -40,19 +39,17 @@
     async?: boolean;
     /**
      * Drawn at the top of the composer: the question once, in bold on a line
-     * of its own, Skip and the fold a compact group at its end, the options as rows numbered for the keyboard
-     * (the composer's 1 to 9), then the pager, Skip and the card's own Answer
-     * (Next while another question follows): the composer's round button
-     * sends what is typed as the answer.
-     * A question with no options is answered from the box's Send alone.
+     * of its own, the fold a compact group at its end, the options as rows
+     * numbered for the keyboard (the composer's 1 to 9), then Skip question.
+     * While the composer answers it (`replying`), the composer's Send reads
+     * Answer and is the one commit: it takes the picks with its text and
+     * files. A question the composer does not answer keeps its own Answer.
      */
     docked?: boolean;
     /** Docked and folded: the head alone, the question on one line. */
     folded?: boolean;
-    /** What the dock adds to the head's end, after Skip: its fold. */
+    /** What the dock adds to the head's end: its fold. */
     head?: Snippet;
-    /** The dock's pager: it leads the line of Skip and Answer, or stands under the head when folded. */
-    foot?: Snippet;
     answer: QuestionAnswer | null;
     /** False on a card whose turn ended before anyone answered: nothing to press. */
     pending: boolean;
@@ -60,9 +57,9 @@
     picked?: string[];
     /** The composer holds text or files for this answer: Answer needs no option then. */
     drafted?: boolean;
-    /** The composer is this question's free field: the card says so instead of offering it. */
+    /** The composer is this question's free field and its Send the commit: the card has no Answer of its own. */
     replying?: boolean;
-    /** Another question follows this one in the dock: the primary reads Next, answering this one and showing that one. */
+    /** Another question follows this one in the dock: Answer's tooltip says it shows that one next. */
     next?: boolean;
     /** False when the answer did not reach the core: the card is given back to answer again. */
     submit: (optionIds: string[]) => unknown;
@@ -76,22 +73,20 @@
   } = $props();
 
   let sent = $state(false);
-  const hintId = $props.id();
   let open = $state(false);
   const verdict = $derived(strings.chat.questionAnswered.split('{answer}') as [string, string?]);
   let built = $state(false);
   $effect(() => { if (open) built = true; });
 
   const ready = $derived(picked.length > 0 || drafted);
-  /** Docked with options, the card keeps its own Answer. */
-  const answers = $derived(docked && options.length > 0);
+  /** The card's own Answer: on the timeline, and docked whenever the composer does not answer this question. */
+  const answers = $derived(!docked || !replying);
   /**
-   * Choices and nothing picked or typed: Answer waits as an outline in the
-   * muted ink, a line under the choices says what makes it act, and a press
-   * goes to the first choice. At the first pick it becomes the primary.
+   * Choices and nothing picked: Answer waits as an outline in the muted ink,
+   * its tooltip says what makes it act, and a press goes to the first choice.
+   * At the first pick it becomes the primary.
    */
   const waiting = $derived(options.length > 0 && !ready);
-  const waitHint = $derived(allowText && replying ? strings.chat.questionPickOrType : strings.chat.questionPickFirst);
 
   /**
    * The docked choices get a room: the composer's cap on the question
@@ -163,7 +158,7 @@
     picked = picked[0] === id ? [] : [id];
   }
 
-  /** Answer always answers to a press: with nothing picked or typed it sends nothing and points at the choices. */
+  /** Answer always answers to a press: with nothing picked it sends nothing and points at the choices, or hands a written answer to the composer. */
   async function send(): Promise<void> {
     if (!pending || sent) return;
     if (!ready) {
@@ -249,7 +244,6 @@
     <DecisionHead end={head}>
       <span class="prompt" class:folded data-testid="question-text"><CodeText {text} /></span>
     </DecisionHead>
-    {#if folded}{@render foot?.()}{/if}
   {:else}
     <div class="head">
       <span class="glyph"><MessageCircleQuestionMark size={15} strokeWidth={1.75} /></span>
@@ -283,25 +277,23 @@
                 <Check size={docked ? 12 : 10} strokeWidth={3} />
               {/if}
             </span>
+            <!-- The composer's 1 to 9 beside the label it picks, quiet: a hint for a keyboard, gone on a phone. -->
             <span class="labels">
-              <span class="label"><CodeText text={option.label} /></span>
+              <span class="label"><CodeText text={option.label} />{#if docked && index < 9}<kbd class="kbd" aria-hidden="true">{index + 1}</kbd>{/if}</span>
               {#if option.description}
                 <span class="muted description"><CodeText text={option.description} /></span>
               {/if}
             </span>
-            <!-- The composer's 1 to 9, a quiet hint at the row's end for a keyboard. -->
-            {#if docked && index < 9}<kbd class="kbd" aria-hidden="true">{index + 1}</kbd>{/if}
           </button>
         {/each}
       </div>
       {#if below > 0}
         <button type="button" class="ghost more" data-testid="question-more" onmousedown={keepFocus} onclick={more}><span class="ui-label">{below === 1 ? strings.chat.questionMoreOne : fill(strings.chat.questionMore, { count: String(below) })}</span><ChevronDown size={14} strokeWidth={2} aria-hidden="true" /></button>
       {/if}
-      {#if waiting && pending && !sent}<p class="muted pick-first" data-testid="question-pick-first" id={hintId}>{waitHint}</p>{/if}
     {/if}
-    <!-- The decision's pair closes the card: Skip, then Answer, drawn disabled until a pick or a typed answer (it takes what the box holds too, sendAnswer). Docked, the pager leads the line. -->
-    {#if pending && (!docked || skip || answers || !replying || page)}
-      <DecisionActions lead={foot}>
+    <!-- The decision's pair closes the card: Skip question, then the card's own Answer when the composer's Send is not the commit. -->
+    {#if pending && (skip || answers || page || (allowText && !replying && onwrite))}
+      <DecisionActions>
         {#if page && onopen}
           <button type="button" class="ghost" data-testid="question-open" title={page} onmousedown={keepFocus} onclick={onopen}><span class="ui-label">{strings.chat.questionOpenPage}</span></button>
         {/if}
@@ -311,12 +303,10 @@
         {#if skip}
           <button type="button" class="secondary" data-testid="question-skip" disabled={sent} onmousedown={keepFocus} onclick={pass}><span class="ui-label">{strings.chat.questionSkip}</span></button>
         {/if}
-        {#if !docked || !replying || answers}
-          <button type="button" class={waiting ? 'secondary waiting' : 'primary'} data-testid="question-submit" disabled={sent} aria-disabled={waiting ? 'true' : undefined} aria-describedby={waiting ? hintId : undefined} title={waiting ? waitHint : next ? strings.chat.questionAnswerNextHint : undefined} onmousedown={keepFocus} onclick={send}><span class="ui-label">{next ? strings.chat.questionAnswerNext : strings.chat.questionAnswer}</span></button>
+        {#if answers}
+          <button type="button" class={waiting ? 'secondary waiting' : 'primary'} data-testid="question-submit" disabled={sent} aria-disabled={waiting ? 'true' : undefined} title={waiting ? strings.chat.questionPickFirst : next ? strings.chat.questionAnswerNextHint : undefined} onmousedown={keepFocus} onclick={send}><span class="ui-label">{strings.chat.questionAnswer}</span></button>
         {/if}
       </DecisionActions>
-    {:else}
-      {@render foot?.()}
     {/if}
   {/if}
   {/if}
@@ -367,7 +357,6 @@
   .more { align-self: flex-start; gap: 4px; height: 28px; padding: 0 8px; color: var(--color-foreground); font-size: var(--text-sm); font-weight: 550; }
   .more .ui-label { text-decoration: underline; text-decoration-color: color-mix(in oklab, currentColor 45%, transparent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
   .more:hover .ui-label { text-decoration-color: currentColor; }
-  .pick-first { margin: 0; font-size: var(--text-sm); }
   /* Answer before a pick: the family's outline in the muted ink, which reads at 4.5:1 and more on the card (lib/contrast.test.ts). */
   .waiting { color: var(--color-muted-foreground); }
 
@@ -393,8 +382,9 @@
   .docked .option:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -1px; }
   .docked .labels { flex: 1 1 auto; }
   .docked .label { font-weight: 550; }
-  /* The shared keycap at the row's end, quiet: a hint for the keyboard, not the choice itself. */
-  .kbd { flex: none; width: 20px; height: 20px; padding: 0; color: var(--color-subtle); }
+  /* The shared keycap right after the label it picks, quiet: a hint for the keyboard, not the choice itself. */
+  .kbd { width: 20px; height: 20px; margin-left: 8px; padding: 0; vertical-align: 1px; color: var(--color-subtle); font-weight: 400; }
+
   /* After the rows' own padding, so the phone's tighter one wins; a phone has no 1 to 9 to hint. */
   @media (max-width: 720px) {
     .docked .option { min-height: var(--touch-target); padding: 3px 8px; }

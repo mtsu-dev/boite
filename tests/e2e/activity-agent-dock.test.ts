@@ -4,7 +4,7 @@ import { BrowserPage, freePort } from './lib/cdp.ts';
 import { startDevUi } from './lib/ui.ts';
 
 // `team=1` seeds a running workflow and its subagents on `t-trace`: the
-// "Waiting on" line that counts them stands above the composer card, outside
+// "Waiting on" line that counts and names them stands above the composer card, outside
 // it, and the band of tasks floats inside the card.
 let server: { close(): Promise<void> };
 let page: BrowserPage;
@@ -69,9 +69,11 @@ test('the waiting line stands above the card that holds the task band, folded an
   expect(withNotice.gap).toBeGreaterThanOrEqual(0);
   expect(withNotice.barOnTop).toBe(true);
   await page.evaluate(`import('/src/lib/store.svelte.ts').then(({store}) => { store.openThread.retry = null; })`);
-  // Queued prompts stand under the waiting line, above the card; the band stays inside the card.
+  // Queued prompts fold into the waiting line ("Waiting on 1 subagent · 1 queued"); unfolded, they stand under it, above the card; the band stays inside the card.
   await page.evaluate(`globalThis.__boiteTest.workspace.active.composerStates['t-trace'] = { text: '', attachments: [], queued: [{ text: 'Check the review once the subagent is back', attachments: [] }], paused: true, sending: false }`);
   await page.waitFor(`document.querySelector('${id('composer-queued')}') && document.querySelector('${id('thread-activity')}').offsetHeight > 0`);
+  expect((await page.text(id('agent-dock-queued'))).trim()).toBe('· 1 queued');
+  await page.click(id('composer-foot-fold'));
   await settle();
   const stack = await page.evaluate<{ order: boolean; barOnTop: boolean }>(`(() => {
     const [bar, queue, band, composer] = ['${id('agent-dock')}', '${id('composer-queued')}', '${id('thread-activity')}', '${id('composer')}'].map(selector => document.querySelector(selector).getBoundingClientRect());

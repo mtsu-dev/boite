@@ -196,8 +196,14 @@ export function needsYouCount<M extends { id: string; store: RowSource<Delegated
 
 /** One machine's Needs you count over some of its threads (a project's, say): the same rows, the same number. */
 export function storeNeedsYou(store: RowSource<Delegated>, threads: readonly ThreadSummary[]): number {
+  return storeNeeds(store, threads).count;
+}
+
+/** The same count with how many of its rows are failures, so a project's head wears the mark of what it counts. */
+export function storeNeeds(store: RowSource<Delegated>, threads: readonly ThreadSummary[]): { count: number; failed: number } {
   const machine = { id: '', store };
-  return needsYouCount(threads.filter(feedThread).map(thread => ({ machine, thread, project: undefined })));
+  const ranks = feedEvents(threads.filter(feedThread).map(thread => ({ machine, thread, project: undefined }))).map(({ rank }) => rank).filter(rank => rank <= NEEDS_RANK);
+  return { count: ranks.length, failed: ranks.filter(rank => rank === statusRank('error')).length };
 }
 
 export function activityFeed<M extends { id: string; store: Owner }>(all: readonly FeedSource<M>[], place?: FeedPlace<M>): FeedRow<M>[] {

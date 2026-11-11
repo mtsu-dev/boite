@@ -8,6 +8,8 @@ export const fr: Translation = {
     workingThreads: 'En cours',
     projectWorkingThreads: '{project} : {count} en cours',
     projectWaitingThreads: '{project} : {count} vous attendent',
+    projectFailedThreads: '{project} : {count} en échec',
+    projectMixedThreads: '{project} : {waiting} vous attendent, {failed} en échec',
     loadingProjects: 'Chargement des projets',
     projectDoneThreads: '{project} : {count} terminées',
     projectArchivedThreads: '{project} : {count} archivées',

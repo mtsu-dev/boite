@@ -352,12 +352,11 @@ test(
     await clickWhenEnabled(testid('composer-send'));
     await page.waitFor(`document.querySelector('${testid('question-card')}')`, 30_000);
     expect(await page.text(testid('question-text'))).toContain('Which shape');
-    // Answer is live with nothing picked: the press sends nothing and asks for a pick under the options.
+    // The composer answers it: its Send reads Answer, waits with nothing picked or typed and says why in its tooltip.
+    await page.waitFor(`document.querySelector('${testid('composer-send')}[data-answers]')`, 30_000);
     expect(
-      await page.evaluate<boolean>(`document.querySelector('${testid('question-submit')}').disabled`),
-    ).toBe(false);
-    await page.click(testid('question-submit'));
-    await page.waitFor(`document.querySelector('${testid('question-pick-first')}')`, 30_000);
+      await page.evaluate<[boolean, string, boolean]>(`(() => { const send = document.querySelector('${testid('composer-send')}'); return [send.disabled, send.title, !!document.querySelector('${testid('question-submit')}')]; })()`),
+    ).toEqual([true, 'Pick an option or type your answer', false]);
     expect(await page.evaluate<string>(`document.querySelector('${testid('question-card')}').dataset.state`)).toBe('pending');
 
     await page.click(`${testid('question-option')}[data-option=short]`);

@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import type { PermissionRequest, QuestionRequest, ThreadSummary } from '@boite/contracts';
-import { activityFeed, feedOperation, needsYouCount } from './activity-feed';
+import { activityFeed, feedOperation, needsYouCount, storeNeeds } from './activity-feed';
 
 const NOW = Date.UTC(2026, 10, 7, 12);
 
@@ -66,6 +66,8 @@ test('a sub-agent that failed under a parent still at work is the parent\'s busi
   const machine = { id: 'local', store: { pendingQuestions: [], pendingPermissions: [], subagents: () => null } };
   const feed = activityFeed(threads.map(t => ({ machine, thread: t, project: undefined })), entry => entry.thread.id === 'bot' ? 'Scout' : null);
   expect(feed.map(row => [row.thread.id, row.reason, row.place])).toEqual([['bot', 'Scout', 'Scout']]);
+  // A project's head counts the same row, and knows it is a failure, so it wears the failure's mark.
+  expect(storeNeeds(machine.store, threads)).toEqual({ count: 1, failed: 1 });
 });
 
 test('one event per row: a sub-agent shares its parent\'s row only for the same ask, so a permission never carries a stopped helper', () => {

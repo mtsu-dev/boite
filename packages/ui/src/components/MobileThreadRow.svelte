@@ -13,7 +13,6 @@
   import type { RowPlace } from '../lib/row-place';
   import ThreadHeadline from './ThreadHeadline.svelte';
   import ThreadState from './ThreadState.svelte';
-  import ActivityMark from './ActivityMark.svelte';
   import { wordFit } from '../lib/word-fit';
   import { threadState } from '../lib/thread-state';
   import { feedOperation, feedQuestion, feedSecondary, feedVerbLabel, type FeedKind, type FeedVerb } from '../lib/activity-feed';
@@ -29,9 +28,9 @@
    * width, two lines of it before any ellipsis, its mark, its word and its time at the end of its first line, then where it
    * lives under it when the list says so. The pull request waits in the thread, the pin under the slide. `compact` is
    * the flat lists' form (Recent, Activity): the project's tile first, unless the line under the title names the
-   * project in words. Activity (the phone's screen) is the whole
-   * title on the row's width, led by its mark in the card's mark column (ActivityMark.svelte), the desktop card's
-   * place; under it the place line, where the decision comes from and since when (`where`, lib/feed-row.ts); an
+   * project in words. Activity (the phone's screen) is a card under its kind line, whose glyph is the card's one
+   * mark (ActivityKind.svelte): the whole title on the card's width, on the kind word's edge as on the desktop; under
+   * it the place line, where the decision comes from and since when (`where`, lib/feed-row.ts); an
    * update opens on what happened with its time beside it, so its place line only says where; then what the thread wants, one line, a permission titled by what it
    * does as the composer titles it; a command it asks to run reads in full in a mono block under them.
    * Its machine out of reach, "Offline" is said once: on the place line, unless the card above says it (`placed`). A sub-agent with the same ask is a line of its own (`helpers`), one
@@ -40,7 +39,7 @@
    * solid; Review, when the command is too long to read here, outlined alone.
    * `onverb` opens what the verb is for, the row itself unless a sub-agent asks.
    * In the lists the row menu has no button of its own: a long press opens it, a slide left shows pin and archive,
-   * and its trigger stays for the keyboard, drawn only while focused. An Activity card shows it at its title line's
+   * and its trigger stays for the keyboard, drawn only while focused. An Activity card shows it at its kind line's
    * end, as every Activity card does.
    */
   let { machine, thread, project, now, items, compact = false, reason, at, helpers = [], verb = null, kind: feedKind = null, where, placed = false, onopen, onverb = onopen, onaction }: {
@@ -108,11 +107,11 @@
   <div class="body" use:swipeRow oncontextmenu={openMenu}>
     <button class="ghost thread" class:offline={away} class:stated={kind !== null} data-testid="mobile-thread-{thread.id}" title={[thread.title, reason, thread.branch].filter(Boolean).join('\n')} onclick={onopen} use:longPress>
       <!-- One line for every list (ThreadHeadline.svelte): the title, then the mark and its word in the row's one slot
-           and the time after it; in Activity the decision's kind over it and the place line under it, the mark alone
-           in its column. -->
-      {#if feedKind}<ActivityKind kind={feedKind} news={!verb}>{#if !verb && at !== undefined}<time title={exactTime(at)}>{ago(at, now)}</time>{/if}</ActivityKind>{/if}
+           and the time after it; in Activity the decision's kind over it, its glyph the card's mark, and the place
+           line under it. A card with no kind wears the row's mark in that glyph's place. -->
+      {#if feedKind}<ActivityKind kind={feedKind}>{#if !verb && at !== undefined}<time title={exactTime(at)}>{ago(at, now)}</time>{/if}</ActivityKind>{/if}
       {#if reason !== undefined}
-        <span class="title-line" data-row-title><ActivityMark>{#if form !== null}<ThreadState {thread} {now} subagents={rowAsks(owner, thread.id)} {away} mark />{/if}</ActivityMark><ThreadHeadline {owner} {thread} offline={away} ask={why} /></span>
+        <span class="title-line" data-row-title>{#if !feedKind && form !== null}<span class="lone-mark"><ThreadState {thread} {now} subagents={rowAsks(owner, thread.id)} {away} mark /></span>{/if}<ThreadHeadline {owner} {thread} offline={away} ask={why} /></span>
       {:else}
         <ThreadHeadline {owner} {thread} {now} tile={compact && where === undefined ? project : undefined} offline={away}
           at={form !== null ? thread.lastUserMessageAt ?? thread.createdAt : undefined} />
@@ -161,14 +160,18 @@
   .tiled .meta { margin-left: 26px; }
   /* Activity's content under the title's button, on its edge. */
   .detail { display: flex; flex-direction: column; gap: 6px; padding: 0 12px 10px 31px; margin-top: -4px; }
-  /* Activity's title line: the mark column (the kind glyph's 13 px and 6 px gap), the mark on the middle of the
-     title's capitals, which its trimmed box (.ui-label) starts on. */
-  .title-line { display: flex; align-items: flex-start; gap: 6px; min-width: 0; --mark-shift: calc(0.36 * var(--text-reading) - 10px); }
+  /* Activity's title line, on the kind word's edge (the glyph's 13 px and its 6 px gap, ActivityKind.svelte). */
+  .title-line { position: relative; display: flex; align-items: flex-start; min-width: 0; padding-left: 19px; }
   .title-line > :global(.headline) { flex: 1; }
-  /* An Activity card: no button border, so the kind line, the title, the place line and what is asked start on one
-     edge; the title's line ends before the menu, which shows at its end on every card. */
+  /* A card with no kind line: the row's mark in the glyph's column, on the middle of the title's capitals, which its
+     trimmed box (.ui-label) starts on; the title's line ends before the menu there. */
+  .lone-mark { position: absolute; left: 0; top: calc(0.36 * var(--text-reading) - 10px); display: flex; align-items: center; height: 20px; }
+  .reason .thread:not(:has(:global(.activity-kind))) .title-line { margin-right: calc(var(--touch-target) - 8px); }
+  /* An Activity card: no button border, so the kind line, the place line and what is asked start on the card's
+     12 px edge; the kind line ends before the menu, which shows at its end on every card and leaves the title the
+     card's width. A 10 px step to the title: the menu's 32 px stay clear of it. */
   .reason .thread { border-inline-width: 0; }
-  .reason .title-line { margin-right: calc(var(--touch-target) - 8px); }
+  .reason .thread > :global(.activity-kind) { margin: 0 calc(var(--touch-target) - 8px) 6px 0; }
   .helper .who { color: var(--color-foreground); font-weight: 500; }
   .sep { flex: none; color: var(--color-subtle); }
   /* The label inside is trimmed to its capitals, so the clip gets the room of its descenders back without
@@ -204,9 +207,9 @@
   /* A clamped title's second line keeps its untrimmed box: .ui-label's half-em under it showed the top of the third
      line, so only a descender's room is kept. */
   .thread :global(.headline .title) { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; padding-bottom: 0.25em; margin-bottom: -0.25em; }
-  .reason .thread :global(.headline .title) { display: block; -webkit-line-clamp: none; line-clamp: none; overflow: visible; }
-  /* What is asked, under the title, clears its descenders. */
-  .reason .thread :global(.lead) { row-gap: 6px; }
+  .reason .thread :global(.headline .title) { display: block; -webkit-line-clamp: none; line-clamp: none; overflow: visible; font-weight: var(--weight-title); }
+  /* The place line under the title clears its last line's descenders by as much as the kind line stands above it. */
+  .reason .thread :global(.lead) { row-gap: 10px; }
   .thread :global(.headline .pin) { display: none; }
   /* One status per row: a state outranks the unsent draft's mark, which the thread shows once open. */
   .thread.stated :global(.headline > .draft) { display: none; }
@@ -214,10 +217,11 @@
   .row-menu { position: absolute; top: 0; right: 4px; bottom: 0; display: flex; align-items: center; pointer-events: none; }
   .row-menu :global(.trigger) { opacity: 0; background: var(--row-background, var(--color-background)); }
   .row-menu :global(.trigger:focus-visible) { opacity: 1; pointer-events: auto; }
-  /* Activity's cards show it, centred on the title's first line (the button's 10 px, the kind line's 16 px and the
-     4 px gap, then the middle of the title's capitals), the contact cards' place (ContactInboxRows.svelte). */
-  .reason .row-menu { bottom: auto; top: calc(30px + 0.36 * var(--text-reading) - var(--touch-target) / 2); height: var(--touch-target); right: 0; pointer-events: auto; }
-  .reason .row-menu :global(.trigger) { opacity: 1; min-width: var(--touch-target); background: transparent; }
+  /* Activity's cards show it on the kind line's end (the button's 10 px, then half its 16 px), a finger's width and
+     32 px tall, its glyph's box on the card's 12 px edge, the contact cards' place (ContactInboxRows.svelte); with no kind line, on the title's first line. */
+  .reason .row-menu { bottom: auto; top: 2px; height: 32px; right: calc(12px - (var(--touch-target) - 14px) / 2); pointer-events: auto; }
+  .reason:not(:has(:global(.activity-kind))) .row-menu { top: calc(10px + 0.36 * var(--text-reading) - 16px); }
+  .reason .row-menu :global(.trigger) { opacity: 1; min-width: var(--touch-target); height: 32px; min-height: 0; background: transparent; }
   /* The sheet lives in the top layer but inherits the hidden trigger's pointer rule. */
   .row-menu :global(.popover) { pointer-events: auto; }
 </style>

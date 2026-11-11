@@ -350,10 +350,10 @@
     transition: opacity var(--dur-1) var(--ease-out-quint), transform var(--dur-1) var(--ease-out-quint);
   }
   .rail-name .note { color: var(--color-muted-foreground); font-weight: 400; }
-  /* The machines' card opens where every name card does, past the list column, so it never meets the list or the
-     limits line at its foot; its foot level with the button's, so a long list of machines grows up, inside the
-     window. Its name, then one 20 px line per machine: dot, name, state. */
-  .rail-name.machines-name { top: auto; bottom: 0; transform: translateX(-4px); width: max-content; display: grid; grid-template-columns: 7px auto auto; grid-auto-rows: 20px; align-items: center; gap: 4px 8px; padding: 8px 12px; line-height: 20px; }
+  /* The machines' card opens against its button, the way its menu does, so it reads as the button's own: over the
+     list's foot while the pointer is on the button, its foot level with the button's, so a long list of machines
+     grows up, inside the window. Its name, then one 20 px line per machine: mark, name, state. */
+  .rail-name.machines-name { left: calc(100% + 4px); top: auto; bottom: 0; transform: translateX(-4px); width: max-content; display: grid; grid-template-columns: 7px auto auto; grid-auto-rows: 20px; align-items: center; gap: 4px 8px; padding: 8px 12px; line-height: 20px; }
   .machines-name > :is(.title, .ui-label) { grid-column: 1 / -1; margin-bottom: 2px; }
   .machines-name > .title { display: flex; align-items: center; gap: 4px; }
   /* One grid for every machine, so the names and the states each start on one edge. */
@@ -362,8 +362,8 @@
   .machine-line .note { padding-left: 12px; }
   .state-dot { width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--color-live); }
   .machine-line[data-tone='success'] .state-dot { background: var(--color-success); }
-  .machine-line[data-tone='neutral'] .state-dot { background: var(--color-muted-foreground); }
-  .machine-line[data-tone='danger'] .state-dot { background: var(--color-danger); }
+  /* Out of reach: the offline ring of its list line (MachineOffline), never a filled dot that reads as on. */
+  .machine-line[data-tone='offline'] .state-dot { background: transparent; box-shadow: inset 0 0 0 1.5px var(--color-muted-foreground); }
   /* Descendants: the machines button and its card sit inside MachineStatus. An open menu keeps its card away. */
   .slot:hover .rail-name { opacity: 1; transform: translate(0, -50%); transition-delay: 400ms; }
   .slot:has(:global(:focus-visible)) .rail-name { opacity: 1; transform: translate(0, -50%); }

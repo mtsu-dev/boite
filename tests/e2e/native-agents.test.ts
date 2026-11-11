@@ -56,7 +56,8 @@ test('running native agents contribute to one count without becoming Boite subag
   await onStore('store.delegation.nativeAgents[0].status = "running";');
   // Two count on the one waiting line, by name; the team still lists them, never as Boite subagents.
   await page.waitFor('document.querySelector("[data-testid=agent-dock-label]")?.textContent === "Waiting on 2 subagents"');
-  expect(await page.evaluate('document.querySelectorAll("[data-testid=agent-dock-names] .name").length')).toBe(2);
+  // The names may be cut at a word on screen; the tooltip holds them whole.
+  expect(await page.evaluate('document.querySelector("[data-testid=agent-dock-names]").title.split(", ").length')).toBe(2);
   expect(await page.evaluate('document.querySelectorAll("[data-testid=delegation-member]").length')).toBe(0);
 }, 15_000);
 

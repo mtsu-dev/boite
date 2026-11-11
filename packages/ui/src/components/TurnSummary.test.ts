@@ -53,6 +53,24 @@ test('a silent running turn reports work without implying an answer is being wri
   expect(document.querySelector('[data-testid=turn-summary] .spinner')).not.toBeNull();
 });
 
+test('while an approval or a question waits on the user, the turn says no "Working for": the card that asks is the one status', () => {
+  const message = { id: 'prompt', role: 'user', turnId: 'turn-1', parts: [{ type: 'text', text: 'Push the branch' }] } as Message;
+  const show = (status: string) => {
+    if (running) unmount(running, { outro: false });
+    running = mount(MessageTurnSummary, { target: document.body, props: {
+      store: { connection: 'ready', openThread: { id: 't-1', status, turns: [] } } as unknown as Store,
+      threadId: 't-1', turn: turn({ status: 'running', finishedAt: null, usage: null }), message, messages: [message],
+    } });
+    flushSync();
+  };
+  show('waiting');
+  expect(document.querySelector('[data-testid=turn-summary]')).toBeNull();
+  expect(document.body.textContent).not.toContain('Working');
+  // Answered, the turn works again and says so with its time.
+  show('running');
+  expect(text('turn-elapsed')).toMatch(/^Working for /);
+});
+
 test('a running turn on a machine out of reach says how old its last update is, with no spinner, no running clock and no Stop', () => {
   const now = Date.now();
   const tasks: BackgroundTask[] = [{ id: 'bash-1', kind: 'shell', description: 'render', toolId: 'tool-1', startedAt: now - 1_700_000 }];

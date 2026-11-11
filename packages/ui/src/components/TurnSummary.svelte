@@ -63,6 +63,8 @@
   const hidden = $derived(page.hidden);
   const running = $derived(turn.status === 'running');
   const stale = $derived(running && heard !== null);
+  /** A running turn held on the user (a permission or a question): the card that asks says so, so the line says no time and no "Working". */
+  const held = $derived(running && waiting && !stale);
   /** The second clock ticks while the turn runs and the page is on screen; a settled turn keeps the time it stopped at. */
   const now = $derived((running ? secondClock.now : Date.now()) + clockOffset);
   const compactOperation = $derived(turn.execution?.operation === 'compact');
@@ -121,7 +123,7 @@
 {#snippet metric(id: string, text: string | null, title?: string, quiet = false, meta = false)}
   <span class="metric" class:meta><span class="dot ui-label" aria-hidden="true">·</span><span class="ui-label" class:quiet data-testid={id} {title}>{text}</span></span>
 {/snippet}
-{#if turn.status !== 'queued' && !(running && activeTool && !waiting && !stale && background.length === 0 && !observed && !compacting) && !(tucked && settled && !marked)}
+{#if turn.status !== 'queued' && !(held && !still) && !(running && activeTool && !waiting && !stale && background.length === 0 && !observed && !compacting) && !(tucked && settled && !marked)}
   <div class="summary" class:compacting class:stale class:settled class:pointed class:marked class:paused={hidden || waiting} data-testid="turn-summary" data-status={turn.status} role="status" aria-label={label} title={label}>
     {#if compacting}
       <span class="compaction-icon"><Spinner size={16} paused={hidden || waiting} /></span>
@@ -133,10 +135,10 @@
       </div>
     {:else}
     <!-- A finished turn needs no tick: its time and the answer above already say it ended; only a failure or a stop is marked. -->
-    {#if turn.status === 'error'}<CircleAlert size={14} />{:else if turn.status === 'stopped'}<Square size={12} />{:else if turn.status !== 'done' && !activeContent && !activeTool && !stale}<Spinner size={12} paused={hidden || waiting} />{/if}
+    {#if turn.status === 'error'}<CircleAlert size={14} />{:else if turn.status === 'stopped'}<Square size={12} />{:else if turn.status !== 'done' && !activeContent && !activeTool && !stale && !held}<Spinner size={12} paused={hidden || waiting} />{/if}
     {#if stale}
       <span class="ui-label meta" data-testid="turn-last-update" title={exactTime(heard!)}>{lastUpdate}</span>
-    {:else if spent !== null}
+    {:else if spent !== null && !held}
       <span class="ui-label meta" data-testid="turn-elapsed" title={ownLabel}>{fill(elapsedLabel, { time: elapsed(spent) })}</span>
     {/if}
     {#if compactOperation && (turn.status === 'error' || turn.status === 'stopped')}

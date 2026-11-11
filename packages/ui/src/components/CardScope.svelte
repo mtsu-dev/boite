@@ -10,9 +10,9 @@
    * phrase the cards of a page pair up on: "For this device only" beside "For
    * agents on studio". No `store` and no `account`: this device. A `store`:
    * that machine, by name. An `account`: that account, always said, since it
-   * names whose setting it is. A device or machine tag shows only on a page
-   * that mixes scopes (`lib/page-scope.svelte.ts`); elsewhere the line under
-   * the page's title says it once.
+   * names whose setting it is. A device or machine tag shows only on a card
+   * that differs from the line under the page's title, which says the rest
+   * once (`lib/page-scope.svelte.ts`).
    */
   let { store, account }: { store?: Store; account?: string } = $props();
   let machine = $derived(store ? workspace.machines.find((entry) => entry.store === store) : undefined);
@@ -30,7 +30,7 @@
     id = entry.id;
     return entry.remove;
   });
-  let shown = $derived(kind === 'account' || !scope || scope.mixed);
+  let shown = $derived(kind === 'account' || !scope || scope.tags(kind));
   let picker = $derived(kind === 'machine' && scope && id ? scope.pickerFor(id) : undefined);
 </script>
 

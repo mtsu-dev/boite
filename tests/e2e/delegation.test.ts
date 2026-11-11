@@ -104,7 +104,9 @@ test('a newly started workflow appears above the composer without reopening the 
   await page.waitFor('document.querySelector("[data-testid=agent-dock]")?.dataset.runs === "1"');
   expect(await page.text('[data-testid="agent-dock-label"]')).toBe('Waiting on 1 workflow');
   expect(await page.text('[data-testid="agent-dock-names"]')).toContain('Check the workflow indicator');
-  expect(await page.evaluate('document.querySelectorAll("[data-testid=agent-dock] button").length')).toBe(1);
+  // The line's two controls: its fold and a Stop that names what it stops.
+  expect(await page.evaluate('[...document.querySelectorAll("[data-testid=agent-dock] button")].map(button => button.dataset.testid)')).toEqual(['composer-foot-fold', 'agent-dock-stop']);
+  expect(await page.text('[data-testid="agent-dock-stop"]')).toBe('Stop workflows');
   await page.waitFor('document.getAnimations().every(a => a.playState !== "running" || a.effect?.getTiming().iterations === Infinity)');
   await page.screenshot(join(import.meta.dir, '.artifacts/workflow-dock-desktop.png'));
   // Its own grouped row in the timeline opens its graph.

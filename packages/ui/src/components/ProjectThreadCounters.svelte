@@ -4,10 +4,12 @@
   import { count as formatCount, projectName } from '../lib/format';
   import { fill, strings } from '../lib/strings';
   import { recentPreferences } from '../lib/recent.svelte';
+  import FailMark from './FailMark.svelte';
 
   /**
-   * A project card's one count: the threads that need the user (`waiting`), the rows' amber dot and its number on
-   * every device. Each of those rows says "Needs you" itself, so the head says it only while one of them is out of
+   * A project card's one count: the threads that need the user (`waiting`), on every device, wearing the mark of
+   * what they are: the rows' amber dot while one waits on the user's turn (it ranks first), the failure's disc and
+   * colour when all of them failed (`failed`: how many of `waiting` are failures). The tooltip names both counts. Each of those rows says "Needs you" itself, so the head says it only while one of them is out of
    * sight (`listed`: how many the card shows as rows; a folded card shows none), or while a list too narrow for the
    * rows' words leaves them their dot alone (ThreadState.svelte `fit`). The tooltip and the accessible name always
    * say it. The working count stands only where no row says it:
@@ -17,12 +19,16 @@
    * The amber count stands alone in the header: with threads that need the user, the working fold's toggle moves
    * into the card, over the fold it opens (`place="fold"`, a row of its own with the same test id).
    */
-  let { entry, working, controls, collapsed = false, searching = false, away = false, waiting = 0, listed = 0, place = 'head' }: {
-    entry: ProjectEntry; working: number; controls: string; collapsed?: boolean; searching?: boolean; away?: boolean; waiting?: number; listed?: number; place?: 'head' | 'fold';
+  let { entry, working, controls, collapsed = false, searching = false, away = false, waiting = 0, failed = 0, listed = 0, place = 'head' }: {
+    entry: ProjectEntry; working: number; controls: string; collapsed?: boolean; searching?: boolean; away?: boolean; waiting?: number; failed?: number; listed?: number; place?: 'head' | 'fold';
   } = $props();
   const grouped = $derived(recentPreferences.groupWorking);
   const open = $derived(!collapsed && !searching && projectThreadView.isOpen(entry, 'working'));
-  const waitingLabel = $derived(fill(strings.sidebar.projectWaitingThreads, { count: String(waiting), project: projectName(entry.project) }));
+  const failOnly = $derived(failed > 0 && failed >= waiting);
+  const waitingLabel = $derived(
+    failOnly ? fill(strings.sidebar.projectFailedThreads, { count: String(waiting), project: projectName(entry.project) })
+    : failed > 0 ? fill(strings.sidebar.projectMixedThreads, { waiting: String(waiting - failed), failed: String(failed), project: projectName(entry.project) })
+    : fill(strings.sidebar.projectWaitingThreads, { count: String(waiting), project: projectName(entry.project) }));
   const workingLabel = $derived(fill(strings.sidebar.projectWorkingThreads, { count: String(working), project: projectName(entry.project) }));
 </script>
 
@@ -36,7 +42,7 @@
   {/if}
 {:else}<div class="counters">
   {#if waiting > 0}
-    <span class="counter waiting" data-testid="project-waiting-count" data-count={waiting} role="img" title={waitingLabel} aria-label={waitingLabel}><span class="dot" aria-hidden="true"></span><span class="ui-label word" class:spare={!collapsed && listed >= waiting}>{strings.sidebar.state.waiting}</span><span class="ui-label number">{formatCount(waiting)}</span></span>
+    <span class="counter waiting" class:failed={failOnly} data-testid="project-waiting-count" data-count={waiting} data-state={failOnly ? 'error' : 'waiting'} role="img" title={waitingLabel} aria-label={waitingLabel}>{#if failOnly}<FailMark />{:else}<span class="dot" aria-hidden="true"></span>{/if}<span class="ui-label word" class:spare={!collapsed && listed >= waiting}>{failOnly ? strings.sidebar.state.error : strings.sidebar.state.waiting}</span><span class="ui-label number">{formatCount(waiting)}</span></span>
   {/if}
   {#if working > 0 && waiting === 0 && (grouped || collapsed)}
     <button type="button" class="ghost counter working" class:away class:active={open && grouped} data-testid="project-working-toggle" data-count={working}
@@ -55,14 +61,19 @@
     background: transparent; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 400; font-variant-numeric: tabular-nums; }
   .counter:disabled { opacity: 1; }
   .waiting .number { color: var(--color-live); font-weight: var(--weight-title); }
+  .waiting.failed .number { color: var(--color-danger); }
   /* The word beside the mark the rows wear, so the dot is learned where it is first named. */
   .dot { width: 8px; height: 8px; flex: none; border-radius: var(--radius-full); background: var(--color-live); }
   .counter .word { margin-right: 2px; }
   /* Said by every row that needs the user, so not here, unless the rows drop their word: a row's word gives way under
-     274 px (ThreadState.svelte), which is a 294 px list, its card's 20 px of edges around the row. */
+     a 200 px row in English, 220 px in French (ThreadState.svelte), a 236 or 256 px list, its 36 px of edges around
+     the row's text. */
   .spare { display: none; }
-  @container sidebar (max-width: 293.98px) {
+  @container sidebar (max-width: 235.98px) {
     .counter .spare { display: block; }
+  }
+  @container sidebar (max-width: 255.98px) {
+    :global(html:lang(fr)) .counter .spare { display: block; }
   }
   /* Work, still: the rows' accent arc (ThreadState.svelte). The open thread keeps the one live spinner. */
   .work-ring { box-sizing: border-box; width: 9px; height: 9px; border: 1.5px solid var(--color-accent); border-top-color: transparent; border-radius: var(--radius-full); transform: rotate(45deg); }

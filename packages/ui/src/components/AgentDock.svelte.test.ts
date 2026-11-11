@@ -18,7 +18,8 @@ afterEach(async () => {
 
 const line = () => document.querySelector<HTMLElement>('[data-testid=agent-dock]');
 const label = () => document.querySelector('[data-testid=agent-dock-label]')?.textContent;
-const names = () => [...document.querySelectorAll('[data-testid=agent-dock-names] .name')].map(name => name.textContent);
+/** The names the line lists, in muted ink after the counts (whole here: tests have no ResizeObserver, so word-fit never cuts). */
+const names = () => (document.querySelector('[data-testid=agent-dock-names]')?.textContent ?? '').split(', ').filter(Boolean);
 const stop = () => document.querySelector<HTMLButtonElement>('[data-testid=agent-dock-stop]');
 
 test('a running workflow puts the waiting line up by name, and Stop stops it', async () => {
@@ -86,10 +87,15 @@ test('the work a thread waits on reads "Waiting on N" with its names, and Stop s
   // Two subagents and the workflow it started.
   expect(line()?.dataset.runs).toBe('1');
   expect(label()).toBe('Waiting on 3 subagents and workflows');
+  // Stop names its reach, and its tooltip that the agent itself goes on.
+  expect(stop()?.textContent?.trim()).toBe('Stop all');
+  expect(stop()?.title).toBe('Stops the subagents and workflows this conversation waits on. The agent itself is not stopped.');
   const titles = [...store.delegation!.agents.map(agent => agent.thread.title), ...store.workflowsOf(parent).map(run => run.name)];
-  // Whole names, one box each, so the line can end between two, never inside one.
-  for (const name of names()) expect(titles.some(title => name === title || name === `${title},`)).toBe(true);
-  // A line outside the card, never a fold or a list.
+  // Every one of them by name, never a count alone; its tooltip holds them whole.
+  expect(names()).toHaveLength(3);
+  for (const name of names()) expect(titles).toContain(name);
+  expect(document.querySelector<HTMLElement>('[data-testid=agent-dock-names]')?.title).toBe(names().join(', '));
+  // Without a strip to fold into, the line is the counts, the names and Stop.
   expect(document.querySelector('[data-testid=agent-dock] [aria-expanded]')).toBeNull();
   expect(document.querySelectorAll('[data-testid=agent-dock] button')).toHaveLength(1);
 
@@ -126,6 +132,8 @@ test('a command\'s own agent keeps the line up without a Stop that could never r
   // A provider's own subagent runs inside the turn: Stop ends that turn.
   store.delegation!.nativeAgents = [{ id: 'native-1', toolId: 'native-1', name: 'Review parser boundaries', status: 'running', startedAt: Date.now() }];
   await tick();
+  // It stops the turn and what runs in it: Stop says all.
+  expect(stop()?.textContent?.trim()).toBe('Stop all');
   const turn = vi.spyOn(store, 'stop').mockResolvedValue();
   stop()!.click();
   await tick();

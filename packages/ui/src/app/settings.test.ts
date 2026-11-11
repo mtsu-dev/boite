@@ -126,8 +126,9 @@ test('the checklist model sits with how agents answer on General, with no experi
   await waitFor(() => document.querySelector('[data-testid=goal-tracker]') !== null);
   const tracker = query('[data-testid=goal-tracker]');
   expect(tracker.closest('#settings-agent-replies')?.querySelector('[data-testid=setting-title-model]')).not.toBeNull();
-  // Each card says where it applies at its head: this device's switches apart from the machine's.
-  expect(query('#settings-conversations > h2 [data-testid=card-scope]').dataset.kind).toBe('device');
+  // This device's switches are said once under the title; the machine's card says its own at its head.
+  expect(query('[data-testid=settings-scope]').dataset.scope).toBe('device');
+  expect(document.querySelector('#settings-conversations > h2 [data-testid=card-scope]')).toBeNull();
   expect(query('#settings-agent-replies > h2 [data-testid=card-scope]').dataset.kind).toBe('machine');
   expect(document.querySelector('#settings-conversations [data-testid=setting-async-questions]')).toBeNull();
   // One card per topic: how the list groups, what a conversation shows, what reaches you, in that order.

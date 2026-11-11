@@ -132,12 +132,17 @@ tick per phase; a click opens its graph. The components are
 `DelegationActivity.svelte` and `WorkflowActivity.svelte` on `ActivityCard.svelte`.
 
 While the thread waits on work it sent, one quiet line stands above the
-composer card, outside it: a spinner, "Waiting on 4 subagents" (or workflows),
-their names whole as far as they fit, and a Stop text button that stops the
-subagents and the running workflows. Queued messages stand under that line. A
-provider's own running subagents count in it, and Stop ends the turn that runs
-them. An agent a command started follows its own process: it counts too, but
-the line offers no Stop for it alone. A
+composer card, outside it, in the same words on a desktop and a phone: a
+spinner, "Waiting on 4 subagents" (or workflows, or both; "· 1 queued" follows
+with queued messages), their names in muted ink cut at a word (a phone cuts
+them earlier, never drops them while a word fits), and at the right a Stop
+that names what it stops: "Stop
+subagents" or "Stop workflows" for the work it sent, "Stop all" when it also
+ends the turn, its tooltip saying the rest. A press on the counts unfolds one
+row per subagent and workflow, each opening it, then the queued messages with
+their Edit and Delete. A provider's own running subagents count in it, and
+Stop ends the turn that runs them. An agent a command started follows its own
+process: it counts too, but the line offers no Stop for it alone. A
 subagent's own conversation counts only the children it started, never itself
 or its siblings. The component is `AgentDock.svelte`.
 

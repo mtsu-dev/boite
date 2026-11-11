@@ -5,7 +5,7 @@
 
   /**
    * A machine out of reach, said once in a full line where its work is listed (a project card's head on the desktop
-   * and the phone, its Machines row): the status grammar's grey dot, "Builder is offline", and Reconnect on that
+   * and the phone, its Machines row): the offline ring, "Builder is offline", and Reconnect on that
    * same line, so the next step stands beside the state instead of at a card's foot. Connecting, it is already
    * trying: the words change and the button goes.
    */
@@ -26,9 +26,9 @@
 
 <style>
   .machine-offline { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-width: 0; margin: 0; font-size: var(--text-xs); line-height: 18px; color: var(--color-muted-foreground); }
-  /* The status grammar's dots (Menu.svelte's `.status-dot`): grey away, amber while it tries. */
-  .dot { flex: none; width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--color-muted-foreground); }
-  .dot.connecting { background: var(--color-live); }
+  /* The offline ring, the one mark of a machine out of reach (the rail's button, its card and menu); amber, filled, while it tries. */
+  .dot { flex: none; width: 7px; height: 7px; border-radius: var(--radius-full); box-shadow: inset 0 0 0 1.5px var(--color-muted-foreground); }
+  .dot.connecting { background: var(--color-live); box-shadow: none; }
   .words { min-width: 0; overflow-wrap: anywhere; }
   .machine-offline :global(button) { margin-left: auto; }
 </style>

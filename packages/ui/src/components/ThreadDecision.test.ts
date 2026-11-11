@@ -2,7 +2,7 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import type { QuestionRequest, Thread, ThreadSummary } from '@boite/contracts';
 import { Store } from '../lib/store.svelte';
-import { replyTarget, repliesOf } from '../lib/question-reply.svelte';
+import { replyTarget, repliesOf, sendAnswer } from '../lib/question-reply.svelte';
 import { workspace } from '../lib/workspace.svelte';
 import ThreadDecision from './ThreadDecision.svelte';
 
@@ -33,11 +33,12 @@ test('pending questions open oldest first, including a restored unordered list',
   const store = render();
   flushSync(() => { store.pendingQuestions = [question('middle', 2), question('oldest', 1), question('newest', 3)]; });
   expect(shownQuestion()).toBe('oldest');
-  // The head holds the question and the fold; the pager leads the line of Skip and Answer.
+  // The head holds the question and the fold; the pager is a row of its own over it, never on the line of Skip and Answer.
   const head = document.querySelector('[data-testid=activity-question]:not([hidden]) .decision-head')!;
   expect(head.querySelector('[data-testid=activity-question-index]')).toBeNull();
   expect(head.querySelector('[data-testid=activity-question-toggle]')).not.toBeNull();
-  expect(document.querySelector('[data-testid=activity-question]:not([hidden]) .decision-actions .pager-line [data-testid=activity-question-index]')).not.toBeNull();
+  expect(document.querySelector('[data-testid=activity-questions] > .pager-line [data-testid=activity-question-index]')).not.toBeNull();
+  expect(document.querySelector('.decision-actions [data-testid=activity-question-index]')).toBeNull();
   document.querySelector<HTMLButtonElement>('[data-testid=activity-question-next]')!.click();
   flushSync();
   expect(shownQuestion()).toBe('middle');
@@ -71,22 +72,37 @@ test('new questions leave the current question and selection in place, then answ
   expect(shownQuestion()).toBe('newest');
 });
 
-test('with two questions the first one\'s primary reads Next and pages to the second, which reads Answer', async () => {
+test('of several questions, the one on screen commits once (the composer\'s Answer, or the card\'s when it takes no text) and the next shows', async () => {
   const store = render();
-  flushSync(() => { store.pendingQuestions = [question('first', 1), question('second', 2)]; });
-  const submit = () => document.querySelector<HTMLButtonElement>('[data-testid=activity-question]:not([hidden]) [data-testid=question-submit]')!;
-  expect(shownQuestion()).toBe('first');
-  expect(submit().textContent).toBe('Next');
+  const shown = (selector: string) => document.querySelector<HTMLButtonElement>(`[data-testid=activity-question]:not([hidden]) ${selector}`);
   vi.spyOn(store, 'answerQuestion').mockImplementation(async (_thread, id) => {
     store.pendingQuestions = store.pendingQuestions.filter(q => q.id !== id);
     return true;
   });
-  document.querySelector<HTMLButtonElement>('[data-testid=activity-question]:not([hidden]) [data-testid=question-option]')!.click();
+  // Questions that take text: the composer answers them, so the card has no Answer, only Skip.
+  flushSync(() => { store.pendingQuestions = [question('first', 1), question('second', 2)]; });
+  expect(shownQuestion()).toBe('first');
+  expect(replyTarget(store)?.id).toBe('first');
+  expect(shown('[data-testid=question-submit]')).toBeNull();
+  expect(shown('[data-testid=question-skip]')!.textContent).toBe('Skip question');
+  shown('[data-testid=question-option]')!.click();
   flushSync();
+  await sendAnswer(store, store.pendingQuestions[0]!);
+  flushSync();
+  expect(shownQuestion()).toBe('second');
+
+  // Questions that take no text: the card's own Answer, whose tooltip says it shows the next one.
+  flushSync(() => { store.pendingQuestions = [{ ...question('third', 3), allowText: false }, { ...question('fourth', 4), allowText: false }]; });
+  const submit = () => shown('[data-testid=question-submit]')!;
+  expect(shownQuestion()).toBe('third');
+  expect([submit().textContent, submit().title]).toEqual(['Answer', 'Pick an option first']);
+  shown('[data-testid=question-option]')!.click();
+  flushSync();
+  expect(submit().title).toBe('Answer and show the next question');
   submit().click();
-  await vi.waitFor(() => expect(shownQuestion()).toBe('second'));
+  await vi.waitFor(() => expect(shownQuestion()).toBe('fourth'));
   flushSync();
-  expect(submit().textContent).toBe('Answer');
+  expect([submit().textContent, submit().title]).toEqual(['Answer', 'Pick an option first']);
 });
 
 test('a card holds its own thread\'s questions; one for another thread opens its own, unfolded', () => {

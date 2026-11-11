@@ -81,13 +81,14 @@ test('desktop and paired phone replace an edited message and silently skip a que
       expect(await page.evaluate('document.querySelectorAll("[data-testid=question-text]").length')).toBe(1);
       expect(await page.evaluate('document.querySelector("[data-testid=activity-question] [data-testid=question-reply-hint], [data-testid=activity-question] [data-testid=question-submit]")')).toBeNull();
       expect(await page.evaluate('document.querySelector("[data-testid=composer-picker]")')).toBeNull();
-      expect((await page.text(send)).trim()).toBe('Envoyer la réponse');
+      expect((await page.text(send)).trim()).toBe('Répondre');
       expect(await page.evaluate('(() => { const card = document.querySelector("[data-testid=thread-decision]").getBoundingClientRect(); const field = document.querySelector("[data-testid=composer]").getBoundingClientRect(); return card.bottom <= field.top && document.documentElement.scrollWidth <= innerWidth; })()')).toBe(true);
       await capture(page, `question-answer-${mobile ? 'phone' : 'desktop'}.png`);
       const clip = await page.evaluate<{ x: number; y: number; width: number; height: number; scale: number }>('(() => { const r = document.querySelector("[data-testid=composer]").getBoundingClientRect(); return {x:r.x, y:r.y, width:r.width, height:r.height, scale:1}; })()');
       const detail = await page.send('Page.captureScreenshot', { format: 'png', clip }) as { data: string };
       await writeFile(join(captures, `question-detail-${mobile ? 'phone' : 'desktop'}.png`), Buffer.from(detail.data, 'base64'));
-      await page.click('[data-testid=composer-reply-ignore]');
+      // Folding the question sets it aside: the box sends ordinary messages again.
+      await page.click('[data-testid=activity-question-toggle]');
       await page.waitFor('!document.querySelector("[data-testid=composer-reply]") && document.querySelector("[data-testid=composer-picker]")');
       expect(await client.call('questions.list', { threadId: thread.id })).toHaveLength(1);
       await page.click('[data-testid=question-write]');

@@ -36,7 +36,7 @@ test('one connected machine says nothing; a filter brings back the button, its n
   expect(rows).toEqual(['manage']);
 });
 
-test('a machine that is off reads quiet: a grey dot on the button and "offline" after its name, never the trouble sign', async () => {
+test('a machine out of reach reads one way, off or lost: the offline ring on the button and "Offline" after its name; none answering crosses the monitor', async () => {
   client = new FakeClient({ delayMs: 0 });
   store = new Store(); store.attach(client); await store.connect();
   // A Store is a class instance, which `$state` keeps as it is rather than proxying.
@@ -51,6 +51,25 @@ test('a machine that is off reads quiet: a grey dot on the button and "offline" 
     // The glyph says which machines and how, in words: each name and its state.
     expect(button.getAttribute('aria-label')).toBe('Machines · Desktop: Connected, Laptop: Offline');
     expect(document.querySelector('.machines')?.classList.contains('problem')).toBe(false);
+
+    // The same machine lost with a turn still running there wears the same ring and word, never a warning sign.
+    await unmount(mounted);
+    const lost = Object.assign(Object.create({}), { connection: 'closed', booted: true, threads: [{ id: 't', status: 'running' }], pairingRequired: false }) as Store;
+    workspace.machines = [{ id: 'local', label: 'Desktop', store }, { id: 'http://laptop', label: 'Laptop', store: lost }];
+    mounted = mount(MachineStatus, { target: document.body, props: { store } });
+    await settle();
+    const again = document.querySelector<HTMLButtonElement>('[data-testid=machine-status]')!;
+    expect(again.querySelector('[data-testid=machine-offline]')).not.toBeNull();
+    expect(again.getAttribute('aria-label')).toContain('Laptop: Offline');
+
+    // None answers: the crossed monitor, no dot.
+    await unmount(mounted);
+    workspace.machines = [{ id: 'http://studio', label: 'Studio', store: lost }, { id: 'http://laptop', label: 'Laptop', store: asleep }];
+    mounted = mount(MachineStatus, { target: document.body, props: { store } });
+    await settle();
+    const none = document.querySelector<HTMLButtonElement>('[data-testid=machine-status]')!;
+    expect(none.querySelector('[data-testid=machine-all-offline]')).not.toBeNull();
+    expect(none.querySelector('[data-testid=machine-offline], [data-testid=machine-online]')).toBeNull();
   } finally {
     workspace.machines = before;
   }

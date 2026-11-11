@@ -139,7 +139,7 @@ test('an update leads with what happened in words, its time beside the word, and
   expect(document.querySelector('[data-testid=thread-where] > time')).toBeNull();
 });
 
-test('the state mark stands in one place on every kind of card: its own column, before the title', async () => {
+test('the kind\'s glyph is every card\'s one mark: no state mark beside the title, at either end', async () => {
   const { parent, child, groups } = await rows('bun test');
   const own = groups.find(group => group.row.thread.id === parent.id)!;
   const asks = groups.find(group => group.row.thread.id === child.id)!;
@@ -147,20 +147,15 @@ test('the state mark stands in one place on every kind of card: its own column, 
   for (const group of [own, asks, failed]) {
     mounted = mount(ActivityRow, { target: document.body, props: { ...group, now: Date.now() } });
     await settle();
-    const mark = document.querySelector<HTMLElement>('[data-testid=activity-mark]')!;
-    // The column leads the title's line, the title right after it, and holds the row's mark, never its time.
-    expect(mark.parentElement?.classList.contains('title-line')).toBe(true);
-    expect(mark.previousElementSibling).toBeNull();
-    expect(mark.nextElementSibling?.classList.contains('headline')).toBe(true);
-    expect(mark.querySelector('.when.state')).not.toBeNull();
-    expect(mark.querySelector('time')).toBeNull();
-    // Nothing of the state at the title's end, where its words run.
-    expect(document.querySelector('.headline > .when')).toBeNull();
+    // The kind line leads the card with its glyph; the title's line starts on the title.
+    expect(document.querySelector('[data-testid=activity-kind] svg')).not.toBeNull();
+    expect(document.querySelector('.title-line')?.firstElementChild?.classList.contains('headline')).toBe(true);
+    expect(document.querySelector('.title-line .when')).toBeNull();
     await unmount(mounted); mounted = undefined;
   }
 });
 
-test('a stop wears the grey square of a stopped subagent, never the failure\'s red "!", which only a failure keeps', async () => {
+test('a stop wears the quiet stop glyph, never the failure\'s red one, which only a failure keeps', async () => {
   const { parent, groups } = await rows('bun test');
   const own = groups.find(group => group.row.thread.id === parent.id)!;
   // The thread no longer asks: what is left is its own end.
@@ -171,13 +166,12 @@ test('a stop wears the grey square of a stopped subagent, never the failure\'s r
   for (const [kind, thread, verb] of [['stopped', stoppedThread, null], ['failed', failedThread, 'review']] as const) {
     mounted = mount(ActivityRow, { target: document.body, props: { ...own, helpers: [], row: { ...own.row, section: verb ? 'needs' : 'updates', kind, verb, thread }, now: Date.now() } });
     await settle();
-    const mark = document.querySelector<HTMLElement>('[data-testid=activity-mark] .when.state')!;
-    expect(mark.dataset.state).toBe(kind === 'stopped' ? 'interrupted' : 'error');
-    expect(mark.getAttribute('aria-label')?.split('\n')[0]).toBe(kind === 'stopped' ? 'Stopped' : 'Failed');
-    expect(mark.querySelector('.fail') !== null).toBe(kind === 'failed');
-    expect(mark.querySelector('svg.lucide-square') !== null).toBe(kind === 'stopped');
-    // The kind line's glyph is red for a failure only.
-    expect(document.querySelector('[data-testid=activity-kind]')!.classList.contains('alarm')).toBe(kind === 'failed');
+    const line = document.querySelector<HTMLElement>('[data-testid=activity-kind]')!;
+    expect(line.dataset.kind).toBe(kind);
+    // The glyph is red for a failure only; a stop reads in the quiet ink.
+    expect([line.classList.contains('alarm'), line.classList.contains('news')]).toEqual(kind === 'failed' ? [true, false] : [false, true]);
+    expect(line.querySelector('svg.lucide-circle-alert') !== null).toBe(kind === 'failed');
+    expect(line.querySelector('svg.lucide-circle-stop') !== null).toBe(kind === 'stopped');
     await unmount(mounted); mounted = undefined;
   }
 });

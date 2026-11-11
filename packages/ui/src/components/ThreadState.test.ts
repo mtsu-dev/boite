@@ -6,6 +6,7 @@ import type { ThreadId, ThreadSummary } from '@boite/contracts';
 import ThreadState from './ThreadState.svelte';
 import { projectRollup, threadState, threadTone, workflowTone } from '../lib/thread-state';
 import { workingChildren, type WorkingChildren } from '../lib/thread-rows';
+import { SIDEBAR_DEFAULT } from '../lib/prefs';
 
 type Shown = Pick<ThreadSummary, 'status' | 'unread' | 'runningSince' | 'requestSince' | 'backgroundWork' | 'lastUserMessageAt' | 'createdAt' | 'backgroundWait'> & { archived?: boolean };
 
@@ -237,11 +238,29 @@ test('a mark column (Activity, the palette) draws every state as its mark alone,
   }
 });
 
+/** The list's thresholds (ThreadState.svelte's style): the row text width under which each language drops the word. */
+function wordThresholds(): { en: number; fr: number } {
+  const css = readFileSync(resolve('src/components/ThreadState.svelte'), 'utf8');
+  const en = css.match(/@container thread-row \(max-width: ([\d.]+)px\)\s*\{\s*\.fit[^{]*\.word[^{]*\{\s*display: none/);
+  const fr = css.match(/@container thread-row \(max-width: ([\d.]+)px\)\s*\{\s*:global\(html:lang\(fr\)\) \.fit[^{]*\.word[^{]*\{\s*display: none/);
+  return { en: Number(en?.[1]), fr: Number(fr?.[1]) };
+}
+/** What a list row's text loses to the list's edges: the scroll's 6 px, the card's 4 px and the row's 9 px of padding and border, each side (measured in the showcase). */
+const LIST_EDGES = 38;
+
+test('the desktop list keeps every row\'s word at its default width in every view, a thread open included, in both languages', () => {
+  // The list keeps the user's width whatever the main column shows (RailFrame.svelte), so the default decides.
+  const { en, fr } = wordThresholds();
+  expect(en).toBeGreaterThan(0);
+  expect(fr).toBeGreaterThanOrEqual(en);
+  expect(SIDEBAR_DEFAULT - LIST_EDGES).toBeGreaterThan(fr);
+});
+
 test('a desktop list row below its threshold keeps the mark alone, the word in its accessible name', () => {
-  // The rule lives in the component's own style: under a 274 px row (the thread-row container) the word gives way.
-  const rule = readFileSync(resolve('src/components/ThreadState.svelte'), 'utf8')
-    .match(/@container thread-row \(max-width: ([\d.]+)px\)\s*\{\s*\.fit[^{]*\.word[^{]*\{\s*display: none/);
-  expect(Number(rule?.[1])).toBeCloseTo(274, 0);
+  // The word goes only where the title would keep under about 12 characters a line: 198 px of row text in English, 218 in French, a 236 or 256 px list.
+  const { en, fr } = wordThresholds();
+  expect(en).toBeCloseTo(198, 0);
+  expect(fr).toBeCloseTo(218, 0);
   for (const [thread, name, word] of [
     [{ status: 'waiting' }, /^Needs you$/, 'Needs you'],
     [{ status: 'error' }, /^Failed$/, 'Failed'],

@@ -21,7 +21,8 @@
    * its questions (the ones it stopped for first, then the ones it asked
    * without stopping), its secrets, and its subagents' questions, each titled
    * with the subagent's name. Several stand in one stack behind a pager
-   * ("Question 1 of 3"); each keeps what was picked while another is on screen. The
+   * ("Question 1 of 3", a row of its own over the question); each keeps what
+   * was picked while another is on screen. The
    * body scrolls inside a cap (desktop about 45% of the chat's height, phone
    * about half), so Skip and Answer always show whole. Once answered, the
    * question leaves the composer; its receipt stays in the timeline
@@ -58,7 +59,7 @@
   $effect(() => {
     if (!asked.some((question) => question.id === shownId)) { shownId = asked[0]?.id ?? null; questionOpen = true; }
   });
-  /** A plain question draws its own head (`QuestionCard`): the fold sits in it, the pager on the line of its Skip and Answer. */
+  /** A plain question draws its own head (`QuestionCard`): the fold sits in it, the pager on its own row over it. */
   const plain = (question: Asked) => !question.secret && !question.setting && !question.agentSetting && !question.team;
   // A card's "Answer in writing" brings that question up.
   $effect(() => {
@@ -71,7 +72,7 @@
     const focus = decisionTail.focus;
     if (untrack(() => asked.some((question) => question.id === focus))) { shownId = focus; questionOpen = true; }
   });
-  // The composer answers the question on screen when the agent stopped for none.
+  // The composer answers the question on screen when the agent stopped for none; its 1 to 9 pick it.
   $effect(() => {
     const replies = repliesOf(store);
     replies.docked = shown?.id ?? null;
@@ -83,12 +84,13 @@
     const next = asked[(at + step + asked.length) % asked.length];
     if (next) show(next);
   }
+  /** The question on screen; one the box can answer becomes the box's, unless the user set the thread's questions aside. */
   function show(next: Asked): void {
     shownId = next.id;
     if (next.allowText && !next.secret && next.threadId === threadId && !repliesOf(store).ignored[next.id]) repliesOf(store).chosen = next.id;
   }
 
-  /** Next answers the question on screen, then shows the one after it rather than the first left. */
+  /** The card's own Answer sends the question on screen, then shows the one after it rather than the first left. */
   async function answerAndPage(question: Asked): Promise<boolean> {
     const after = asked[asked.indexOf(question) + 1];
     const sent = await sendAnswer(store, question);
@@ -149,7 +151,12 @@
     <div class="child-questions"><SubagentQuestions {store} {threadId} only={unread.map((child) => child.threadId)} /></div>
   {/if}
   {#if shown}
-    <div class="questions" class:plain={plain(shown)} data-testid="activity-questions" data-count={asked.length}>
+    <div class="questions" data-testid="activity-questions" data-count={asked.length}>
+      {#if plain(shown) && asked.length > 1}
+        {@const upNext = asked[at + 1]}
+        <!-- The pager, a row of its own over the question: where this one stands, and which comes next. -->
+        <div class="pager-line">{@render pager()}{#if upNext}<span class="up-next ui-label" title={upNext.text} data-testid="activity-question-up-next">{fill(strings.chat.questionUpNext, { title: upNext.text })}</span>{/if}</div>
+      {/if}
       {#if !plain(shown)}
       <div class="activity-row question-row">
         {#if shown.secret}<KeyRound size={16} />{:else if shown.setting}<Settings2 size={16} />{:else if shown.agentSetting}<Bot size={16} />{:else if shown.team}<Users size={16} />{:else}<MessageCircleQuestionMark size={16} />{/if}
@@ -223,7 +230,7 @@
               title={foldTitle(question.id)} data-testid="activity-question-toggle"
               onclick={() => toggleQuestion(question.id)}><ChevronDown size={16} class={questionOpen ? 'turned' : ''} /></button>
             {/if}
-          {/snippet}{#snippet foot()}{#if question.id === shown?.id && asked.length > 1}{@const upNext = asked[at + 1]}<div class="pager-line">{@render pager()}{#if upNext}<span class="up-next ui-label" title={upNext.text} data-testid="activity-question-up-next">{fill(strings.chat.questionUpNext, { title: upNext.text })}</span>{/if}</div>{/if}{/snippet}</QuestionCard>{/snippet}</Deferred>
+          {/snippet}</QuestionCard>{/snippet}</Deferred>
           {/if}
         </div>
       {/each}
@@ -272,17 +279,16 @@
   .question-line { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: left; }
   .pager { display: inline-flex; align-items: center; gap: 4px; flex: none; }
   .index { color: var(--color-muted-foreground); font-size: var(--text-sm); font-variant-numeric: tabular-nums; white-space: nowrap; }
-  /* The pager leads the line of Skip and Answer (DecisionActions' lead): the line breaks before the pager does,
-     and the next question's title takes what room is left, adding none of its own (`contain`). */
-  .questions.plain { --decision-lead: max-content; }
-  .pager-line { display: flex; align-items: center; gap: 8px; min-width: 0; margin-left: -6px; }
+  /* The pager's own row over the question, its arrows full targets; the next question's title takes what room is left, adding none of its own (`contain`). */
+  .pager { --icon-button: var(--control); }
+  .pager-line { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 6px 8px 0 calc(var(--dock-inset) - 8px); }
   .up-next { flex: 1 1 auto; min-width: 0; contain: inline-size; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--color-subtle); font-size: var(--text-sm); }
   @media (max-width: 720px) {
     .thread-decision { --dock-row: 30px; --dock-inset: 12px; --question-cap: max(200px, calc(50dvh - 40px)); }
     .activity-row { gap: 6px; }
     /* A finger's arrows; the next title waits for a wider screen. */
     .pager { --icon-button: 40px; gap: 2px; }
-    .pager-line { margin-left: -12px; }
+    .pager-line { padding-left: calc(var(--dock-inset) - 12px); }
     .up-next { display: none; }
   }
   @media (prefers-reduced-motion: reduce) { .thread-decision { animation: none; } }

@@ -16,7 +16,6 @@
   import Menu from '../Menu.svelte';
   import DecisionActions from '../DecisionActions.svelte';
   import ActivityKind from '../ActivityKind.svelte';
-  import ActivityMark from '../ActivityMark.svelte';
   import ClampText from '../ClampText.svelte';
 
   /**
@@ -26,7 +25,7 @@
    * refused with the reason its agent reads; a held message is
    * delivered or refused. Open shows the contact's page with the whole of it.
    * The rows of a thread's own: its kind ("Contact request", "Held message"),
-   * who asks led by the amber mark in the card's mark column (ActivityMark.svelte), where it arrived (the machine
+   * its glyph the card's one mark, who asks, where it arrived (the machine
    * among several) and since when, as a thread row's place line, then what is asked, whole up
    * to four lines and behind "Show all" past them, so nothing is accepted
    * unread; the decision pair beside the head or under it all (DecisionActions.svelte):
@@ -106,8 +105,7 @@
     <div class="lines">
       <ActivityKind kind={row.letter ? 'mail' : 'request'} />
       <p class="head">
-        <!-- The title opens the contact's page, with the whole of it; the amber mark leads it as a thread card's. -->
-        <ActivityMark><span class="mark" aria-hidden="true"></span></ActivityMark>
+        <!-- The title opens the contact's page, with the whole of it. -->
         <button type="button" class="ghost title ui-label" title={labels.review} onclick={() => void openContact(row.machine.store, (row.request ?? row.letter!).coreId)} data-testid="activity-contact-open"><span class="clamp">{row.letter ? fill(strings.contacts.mail.writes, { contact: row.letter.contact, thread: row.letter.thread }) : fill(labels.asks, { contact: row.request.contact })}</span></button>
         <!-- A letter received more than once says how many times beside who writes; a request says it on its fold line. -->
         {#if same.length > 1 && row.letter}<span class="times" data-testid="activity-contact-count" data-count={same.length}>{fill(labels.sentTimes, { count: String(same.length) })}</span>{/if}
@@ -163,7 +161,7 @@
         </DecisionActions>
       </div>
     {/if}
-    <!-- The title line's end, the menu under the pointer: another project to accept into. -->
+    <!-- The kind line's end, the menu under the pointer: another project to accept into. -->
     {#if row.request}
       {@const request = row.request}
       {@const chosen = acceptProject(row.view.store, request)}
@@ -179,30 +177,29 @@
 {/each}
 
 <style>
-  /* Built as Activity's thread cards (ThreadCard.svelte's `.feed`): 8 px in, the kind line, then the mark column and
-     the title, every line after on the title's edge (`--gutter`); the title's line keeps its end for the menu, the
-     place line under it, the text under that, the pair beside the head or under it all. */
-  .contact-row { --feed-pad: 8px; --feed-lead: 20px; --menu-room: 32px; --pad-x: 8px; --gutter: 19px; --side-room: calc(var(--menu-room) + 8px + var(--pad-x));
-    position: relative; display: flex; flex-direction: column; padding: var(--feed-pad) var(--pad-x); border-radius: var(--radius-md); }
-  .contact-row + .contact-row { margin-top: 2px; }
-  .contact-row:hover { background: var(--color-hover); }
+  /* Built as Activity's thread cards (ThreadCard.svelte's `.feed`), on the ground the list gives every card
+     (ActivityList.svelte, MobileNavigation.svelte): 12 px in on every side, the kind line with the
+     menu at its end on the card's edge, then the title and every line after on the kind word's edge (`--gutter`),
+     the place line under it, the text under that, the pair beside the head or under it all. */
+  .contact-row { --feed-pad: 12px; --pad-x: 12px; --gutter: 19px; --menu-w: max(32px, var(--control-sm)); --menu-h: 20px;
+    position: relative; display: flex; flex-direction: column; padding: var(--feed-pad) var(--pad-x); }
   .lines { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-  .content { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 4px 0 0 var(--gutter); }
-  /* Baseline: the count reads on the name's first line, whatever height a phone gives the button. */
-  .head { display: flex; align-items: flex-start; gap: 6px; margin: 0 calc(var(--side-room) - var(--pad-x)) 0 0; }
-  .head > :global(.activity-mark) { margin-top: 0; }
-  /* Two lines of who asks before any ellipsis, as a thread row's title. */
+  .lines > :global(.activity-kind) { margin: 0 calc(var(--menu-w) + 4px) 8px 0; }
+  .content { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 8px 0 0 var(--gutter); }
+  /* Baseline: the count reads on the name's first line, whatever height a phone gives the button. Its untrimmed
+     20 px line rises by its leading, so its capitals stand as far under the kind line as a thread card's trimmed
+     title. */
+  .head { display: flex; align-items: flex-start; gap: 6px; margin: -4px 0 0 var(--gutter); }
+  /* Two lines of who asks before any ellipsis, as a thread card's title, its strongest line. */
   /* The clamp sits on an inner span, so the button itself does not clip and can carry a wider hit area. No
      .ui-label margin or trim: the line keeps its 20 px, or the text under it rides up into the title and the
      time, and the clamp cuts the descenders. */
-  .title { position: relative; display: block; flex: 0 1 auto; min-width: 0; height: auto; padding: 0; margin: 0; border: 0; text-box: normal; background: none; white-space: normal; text-align: start; font-weight: 400; line-height: 20px; color: var(--color-foreground); }
+  .title { position: relative; display: block; flex: 0 1 auto; min-width: 0; height: auto; padding: 0; margin: 0; border: 0; text-box: normal; background: none; white-space: normal; text-align: start; font-size: var(--text-head); font-weight: var(--weight-title); line-height: 20px; color: var(--color-foreground); }
   .clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
   .title:hover { text-decoration: underline; background: none; }
-  /* The user's turn, the thread rows' amber dot (ThreadState.svelte), centred on the title's untrimmed first line. */
-  .mark { flex: none; width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--color-live); }
   .times { flex: none; line-height: 20px; font-size: var(--text-xs); color: var(--color-muted-foreground); }
-  /* Where it arrived and since when, a thread row's place line (ThreadCard.svelte's `.where`). */
-  .place { display: flex; align-items: center; gap: 8px; min-width: 0; height: 20px; margin: 3px 0 0 var(--gutter); font-size: var(--text-xs); line-height: 20px; color: var(--color-subtle); white-space: nowrap; overflow: hidden; }
+  /* Where it arrived and since when, a thread card's place line (ThreadCard.svelte's `.where`). */
+  .place { display: flex; align-items: center; gap: 8px; min-width: 0; height: 20px; margin: 6px 0 0 var(--gutter); font-size: var(--text-xs); line-height: 20px; color: var(--color-subtle); white-space: nowrap; overflow: hidden; }
   time { flex: none; font-variant-numeric: tabular-nums; }
   /* The folded copies: one quiet line, the place line's ink, its chevron turned down while they show. */
   .fold { display: flex; align-items: center; gap: 4px; align-self: flex-start; max-width: 100%; height: 20px; padding: 0; margin: -2px 0 0; background: none; font-size: var(--text-xs); font-weight: 400; color: var(--color-subtle); }
@@ -214,25 +211,21 @@
   .copies { display: flex; flex-direction: column; gap: 2px; margin: 2px 0 0; padding: 0 0 0 10px; border-left: 2px solid var(--color-edge); list-style: none; }
   .copy { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; min-width: 0; font-size: var(--text-xs); line-height: 18px; color: var(--color-subtle); }
   .from { min-width: 0; color: var(--color-muted-foreground); overflow-wrap: anywhere; }
-  /* The menu at the title line's end, its end on the thread rows' (ThreadCard's 8 px), shown under the pointer or
-     the keyboard as on a thread row; a 20 px track, so its taller trigger never grows the row. */
-  .side { position: absolute; top: var(--feed-lead); right: 0; display: flex; align-items: center; height: calc(20px + 2 * var(--feed-pad)); padding-right: 8px; }
-  .side :global(.trigger) { opacity: 0; }
+  /* The menu at the kind line's end, its glyph's box on the card's edge, as a thread card's; shown under the pointer
+     or the keyboard. */
+  .side { position: absolute; top: calc(var(--feed-pad) + 8px - var(--menu-h) / 2); right: calc(var(--pad-x) - (var(--menu-w) - 14px) / 2); display: flex; align-items: center; height: var(--menu-h); }
+  .side :global(.trigger) { opacity: 0; width: var(--menu-w); min-width: 0; height: var(--menu-h); min-height: 0; }
   .contact-row:is(:hover, :focus-within) .side :global(.trigger) { opacity: 1; }
-  /* The pair under what it decides, at the row's right edge as on a thread row (ThreadCard's `.feed-actions`). */
+  /* The pair under what it decides, at the card's right edge as on a thread card (ThreadCard's `.feed-actions`). */
   .pair { margin-top: 8px; }
-  /* Beside the text where Activity has room, as a thread row's pair (ThreadCard.svelte): Refuse in the outline
-     column, the answer in the solid one, then the menu in the last column, both centred on the title's line, the
-     menu's end on the thread rows' 3 px. */
+  /* Beside the head where Activity has room, as a thread card's pair (ThreadCard.svelte): Refuse in the outline
+     column, the answer in the solid one, on the card's edge, centred on who asks. */
   @container activity (min-width: 640px) {
-    .contact-row { display: grid; grid-template-columns: subgrid; align-items: start; padding-right: 0; }
+    .contact-row { display: grid; grid-template-columns: subgrid; align-items: start; }
     .lines { grid-column: 1; grid-row: 1; }
-    .head { margin-right: 0; }
     /* What is asked runs under the head and the pair, the card's whole width: no empty band beside the pair. */
-    .content { grid-column: 1 / -1; grid-row: 2; padding-right: 8px; }
-    /* In the flow of the last column, as a thread card's menu; the row's top padding is its own. */
-    .side { grid-column: -2; grid-row: 1; position: static; justify-self: end; margin-top: calc(var(--feed-lead) - var(--feed-pad)); padding-right: 3px; }
-    .pair { grid-column: 2 / -2; grid-row: 1; display: grid; grid-template-columns: subgrid; margin: calc(var(--feed-lead) + 10px - var(--control) / 2) 0 0; padding-right: 4px; }
+    .content { grid-column: 1 / -1; grid-row: 2; }
+    .pair { grid-column: 2 / -1; grid-row: 1; display: grid; grid-template-columns: subgrid; margin: calc(24px + 10px - var(--control) / 2) 0 0; }
     .pair > :global(.decision-actions) { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; gap: 0; }
     .pair :global(.decision-actions > button) { grid-column: 2; }
     .pair :global(.decision-actions > button:not(:last-child)) { grid-column: 1; margin: 0 8px 0 var(--space-4); }
@@ -246,19 +239,14 @@
   .refusal .actions { justify-content: flex-end; }
   .failed { margin: 0; font-size: var(--text-xs); color: var(--color-danger); overflow-wrap: anywhere; }
   @media (max-width: 720px) {
-    /* The phone row's own edge (MobileThreadRow.svelte): 12 px in; the menu always shows at the title line's end,
-       so who asks keeps the row's width up to it. */
-    .contact-row { --feed-pad: 10px; --pad-x: 12px; --side-room: calc(var(--touch-target) + 2px + var(--pad-x)); }
-    /* Centred on who asks: its 20 px line starts 6 px above the row's padding (`.head` below), so its middle is 4 px
-       under it, where a thread card's menu stands (MobileThreadRow.svelte). */
-    .side { right: calc(var(--pad-x) - 12px); height: calc(8px + 2 * var(--feed-pad)); padding-right: 0; }
-    .side :global(.trigger) { opacity: 1; min-width: var(--touch-target); }
-    /* Who asks at a phone row title's size and spot (MobileThreadRow.svelte): that title is trimmed to its
-       capitals, so this untrimmed 20 px line rises by the difference to sit as far under the kind line. */
-    .head { margin-top: -6px; }
+    /* The phone card's form (MobileThreadRow.svelte): the menu always shows, a finger's width and 32 px tall on the
+       kind line's end, clear of the title 8 px under that line. */
+    .contact-row { --menu-w: var(--touch-target); --menu-h: 32px; }
+    .side :global(.trigger) { opacity: 1; }
+    .lines > :global(.activity-kind) { margin-right: calc(var(--menu-w) - 8px); }
+    .head { margin-top: -7px; }
     .title { font-size: var(--text-reading); }
-    .place { font-size: var(--text-sm); line-height: 1.4; height: 1.4em; margin-top: -2px; }
-    .content { padding-top: 7px; }
+    .place { font-size: var(--text-sm); line-height: 1.4; height: 1.4em; margin-top: 0; }
     /* Every copy said in full: the line wraps under itself, the chevron on its first line's capitals. */
     .fold { align-items: flex-start; height: auto; min-height: 24px; padding-block: 5px; font-size: var(--text-sm); text-align: start; }
     .fold > .ui-label { white-space: normal; }

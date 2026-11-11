@@ -7,6 +7,8 @@ export const strings = {
     workingThreads: 'Working',
     projectWorkingThreads: '{project}: {count} working',
     projectWaitingThreads: '{project}: {count} need you',
+    projectFailedThreads: '{project}: {count} failed',
+    projectMixedThreads: '{project}: {waiting} need you, {failed} failed',
     loadingProjects: 'Loading projects',
     projectDoneThreads: '{project}: {count} done',
     projectArchivedThreads: '{project}: {count} archived',

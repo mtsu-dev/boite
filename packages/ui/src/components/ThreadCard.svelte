@@ -14,7 +14,6 @@
   import type { RowPlace } from '../lib/row-place';
   import ThreadHeadline, { pullRequestLabel } from './ThreadHeadline.svelte';
   import ThreadState from './ThreadState.svelte';
-  import ActivityMark from './ActivityMark.svelte';
   import { threadState } from '../lib/thread-state';
   import { rowAsks, stateForm } from '../lib/status-order';
   import { wordFit } from '../lib/word-fit';
@@ -49,7 +48,7 @@
     compact?: boolean;
     /** Activity's Needs you row (ActivityRow.svelte): since when, at the end of its place line. */
     at?: number;
-    /** Activity's Needs you rows: the kind line over the title (ActivityKind.svelte). */
+    /** Activity: the kind line over the title, the card's one mark (ActivityKind.svelte). */
     lead?: Snippet;
     /** Activity: what runs under the place line, whole: what is asked, the command, the sub-agents asking the same. */
     detail?: Snippet;
@@ -68,8 +67,6 @@
       (work it last saw, ThreadState.svelte) already says it. */
   const chip = $derived(away && !placed && !where?.host?.away && stateForm(kind) !== 'work');
   let open = $derived(workspace.active === owner && owner.openThread?.id === thread.id);
-  /** Activity draws the row's mark in the card's mark column (ActivityMark.svelte), never its time there. */
-  const marked = $derived(detail !== undefined && stateForm(kind) !== null);
   /** The rename in progress, bound to the machine and thread it began on. */
   let renaming = $state<ThreadRename | null>(null);
   commitOnUnmount(() => renaming);
@@ -165,9 +162,10 @@
     >
       {#if lead}<span class="kind-line">{@render lead()}</span>{/if}
       <!-- Every list row ends its title's line the same way: the mark when there is one, then the time of the
-           last message. An Activity card's mark leads its title in the card's mark column, its time on another line. -->
+           last message. An Activity card's mark is its kind line's glyph, its time on another line; a card with no
+           kind (work going on under a sub-agent that asks) wears the row's mark in that glyph's place. -->
       {#if detail}
-        <span class="title-line"><ActivityMark>{#if marked}<ThreadState {thread} {now} subagents={rowAsks(owner, thread.id)} {away} mark />{/if}</ActivityMark><ThreadHeadline {owner} {thread} {open} {pullRequest} offline={away} /></span>
+        <span class="title-line">{#if !lead && stateForm(kind) !== null}<span class="lone-mark"><ThreadState {thread} {now} subagents={rowAsks(owner, thread.id)} {away} mark /></span>{/if}<ThreadHeadline {owner} {thread} {open} {pullRequest} offline={away} /></span>
       {:else}
         <ThreadHeadline {owner} {thread} {now} {open} tile={compact && !where ? project : undefined} {pullRequest} fit offline={away} at={thread.lastUserMessageAt ?? thread.createdAt} />
       {/if}
@@ -248,46 +246,49 @@
      pointer or the keyboard (a click's focus does not count: the row just opened would keep them), and stay in
      the tooltip; how long work has run lives in the thread. */
   .thread:not(:hover, :has(:focus-visible)) .row :global(.headline > :is(.draft, .pin, .pr)) { display: none; }
-  /* Activity's card: the kind line, then the title, two lines at most, led by its mark in the card's mark column;
-     the place line under it says where the row lives and since when; what is asked runs under that, the decision
-     pair beside the title block or under everything. The column is the kind glyph's 13 px and its 6 px gap
-     (ActivityKind.svelte), so every line's words start on one edge. The title's line keeps the menu's room free
-     at its end. */
-  .feed { --feed-pad: 8px; --feed-lead: 0px; --gutter: 19px; }
-  /* A kind line over the title (16 px and the row's 4 px gap): the menu and the pair stay centred on the title. */
-  .feed.led { --feed-lead: 20px; }
-  .kind-line { display: block; margin-bottom: 4px; }
+  /* Activity's card, one form for every entry (ActivityList.svelte draws its surface): the kind line, its glyph the
+     card's one mark, then the title, two lines at most, the place line under it, where the row lives and since when;
+     what is asked runs under that, the decision pair beside the title or under everything. Every line after the kind
+     line starts on its word's edge (the glyph's 13 px and its 6 px gap, ActivityKind.svelte). One padding on every
+     side, and one right edge for the pair, the menu and a command's block. The type steps down from the title: the
+     kind line and the place line small in the secondary inks, what is asked at the body's size. */
+  .feed { --pad-x: 12px; --feed-pad: 12px; --feed-lead: 0px; --gutter: 19px; --menu-w: var(--act); --menu-h: 20px; --menu-at: 8px; }
+  /* A kind line over the title: its 16 px and a 12 px step, which also keeps the menu on it clear of the pair. */
+  .feed.led { --feed-lead: 28px; }
+  .kind-line { display: block; margin: 0 calc(var(--menu-w) + 4px) 8px 0; }
   /* No button border on the card's row: its words start on the same edge as the detail and the pair under it. */
   .feed > .row { padding-block: var(--feed-pad) 0; border-inline-width: 0; }
-  .feed-detail { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 4px var(--pad-x) var(--feed-pad) calc(var(--pad-x) + var(--gutter)); }
+  .feed-detail { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 8px var(--pad-x) var(--feed-pad) calc(var(--pad-x) + var(--gutter)); }
   /* Nothing asked (an update): the row keeps its own bottom padding only. */
   .feed-detail:not(:has(*)) { padding: 0 0 var(--feed-pad); }
-  /* The mark on the middle of the title's capitals: the title's box is trimmed to them (.ui-label). */
-  .title-line { display: flex; align-items: flex-start; gap: 6px; min-width: 0; margin-right: calc(var(--act-room) - var(--pad-x)); --mark-shift: calc(0.36 * var(--text-body) - 10px); }
+  .title-line { position: relative; display: flex; align-items: flex-start; min-width: 0; padding-left: var(--gutter); }
+  /* No kind line: the menu stays on the title's first line, which keeps its room, and the row's mark stands in the
+     glyph's column, on the middle of the title's capitals. */
+  .feed:not(.led) { --menu-at: calc(0.36 * var(--text-head)); }
+  .feed:not(.led) .title-line { margin-right: calc(var(--menu-w) + 4px); }
+  .lone-mark { position: absolute; left: 0; top: calc(0.36 * var(--text-head) - 10px); display: flex; height: 20px; align-items: center; }
   .title-line > :global(.headline) { flex: 1; align-items: flex-start; }
-  /* A clamped title's second line keeps its untrimmed box: .ui-label's half-em under it showed the top of the third
-     line, so only a descender's room is kept. */
-  .feed .row :global(.headline .title) { flex: 0 1 auto; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; padding-bottom: 0.25em; margin-bottom: -0.25em; }
+  /* The card's strongest line. A clamped title's second line keeps its untrimmed box: .ui-label's half-em under it
+     showed the top of the third line, so only a descender's room is kept. */
+  .feed .row :global(.headline .title) { flex: 0 1 auto; font-size: var(--text-head); font-weight: var(--weight-title); white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; padding-bottom: 0.25em; margin-bottom: -0.25em; }
   .feed .row :global(.headline > :is(.tile, .bot)) { margin-top: 2px; }
-  /* The menu at the title line's end, never over the pair. */
-  .feed .actions { top: calc(var(--feed-pad) + var(--feed-lead) + 10px - var(--act) / 2); }
-  /* The place line on the title's edge, one line: the project gives way at a word, then the machine. Every item is
-     trimmed to its capitals (.ui-label) and centred, so all stand on one baseline. */
-  .feed .where { height: 20px; line-height: 20px; margin: 0 0 0 var(--gutter); }
-  /* The pair answers what is asked, right under it: right-aligned on the row's edge, clear of the next row. */
+  /* The menu at the kind line's end, its glyph's box on the card's right edge, so the title keeps the card's width. */
+  .feed .actions { top: calc(var(--feed-pad) + var(--menu-at) - var(--menu-h) / 2); right: calc(var(--pad-x) - (var(--menu-w) - 14px) / 2); width: var(--menu-w); height: var(--menu-h); min-height: 0; }
+  /* The place line under the title, a descender's room and the row's 4 px clear of it, one line: the project gives
+     way at a word, then the machine. Every item is trimmed to its capitals (.ui-label) and centred, so all stand on
+     one baseline. */
+  .feed .where { height: 20px; line-height: 20px; margin: 2px 0 0 var(--gutter); }
+  /* The pair answers what is asked, right under it: right-aligned on the card's edge. */
   .feed-actions { padding: 0 var(--pad-x) var(--feed-pad); margin-top: -2px; }
-  /* Where Activity has room (ActivityList.svelte's four columns), the title block takes the page's first column, the
-     pair the next two, the outline action in one and the solid one in the next, so every pair lines up, and the menu
-     the last, at the card's top right on every card, a pair or not; the pair and the menu are centred on the title's
-     line. What is asked runs under them, the card's whole width, so no empty band parts the text from the pair. */
+  /* Where Activity has room (ActivityList.svelte's three columns), the title block takes the page's first column, the
+     pair the next two, the outline action in one and the solid one in the next, so every pair lines up on the card's
+     edge, centred on the title's first line (its capitals' middle, 0.36 em into its trimmed box). What is asked runs
+     under them, the card's whole width, so no empty band parts the text from the pair. */
   @container activity (min-width: 640px) {
     .thread.feed { display: grid; grid-template-columns: subgrid; align-items: start; }
     .thread.feed > .row { grid-column: 1; grid-row: 1; }
-    .feed .title-line { margin-right: 0; }
     .feed-detail { grid-column: 1 / -1; grid-row: 2; }
-    /* In the flow of the last column: an absolute box would take the whole row as its edge. */
-    .feed .actions { grid-column: -2; grid-row: 1; position: relative; top: auto; right: auto; justify-self: end; align-self: start; margin: calc(var(--feed-pad) + var(--feed-lead) + 10px - var(--act) / 2) 3px 0 0; }
-    .feed-actions { grid-column: 2 / -2; grid-row: 1; display: grid; grid-template-columns: subgrid; margin: 0; padding: calc(var(--feed-pad) + var(--feed-lead) + 10px - var(--control) / 2) 4px 0 0; }
+    .feed-actions { grid-column: 2 / -1; grid-row: 1; display: grid; grid-template-columns: subgrid; margin: 0; padding: calc(var(--feed-pad) + var(--feed-lead) + 0.36 * var(--text-head) - var(--control) / 2) var(--pad-x) 0 0; }
     .feed-actions > :global(.decision-actions) { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; gap: 0; }
     .feed-actions :global(.decision-actions > button) { grid-column: 2; }
     .feed-actions :global(.decision-actions > button:not(:last-child)) { grid-column: 1; margin: 0 8px 0 var(--space-4); }

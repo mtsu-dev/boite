@@ -56,8 +56,10 @@ test('a contact request reads whole above Accept, under its kind line, with no f
   const kind = row.querySelector<HTMLElement>('[data-testid=activity-kind]')!;
   expect([kind.dataset.kind, kind.textContent]).toEqual(['request', 'Contact request']);
   expect(kind.compareDocumentPosition(one('activity-contact-open')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  // The amber mark in the thread cards' mark column (ActivityMark.svelte), right before who asks.
-  expect(one('activity-mark')?.nextElementSibling).toBe(one('activity-contact-open'));
+  // The kind's glyph is the card's one mark: nothing else is drawn before who asks.
+  const before = [...row.querySelectorAll('svg, .mark')].filter(mark => mark.compareDocumentPosition(one('activity-contact-open')!) & Node.DOCUMENT_POSITION_FOLLOWING);
+  expect(before.length).toBe(1);
+  expect(kind.contains(before[0]!)).toBe(true);
   // The whole ask, never a cut line, and it comes before the decision.
   const text = one('activity-contact-text')!;
   expect(text.textContent).toBe('An agent on a project like the Boite pairing flow: our site embeds it and the redirect loops after login.');

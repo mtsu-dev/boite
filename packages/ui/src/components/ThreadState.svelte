@@ -25,9 +25,10 @@
    * rest show the time. Lists hold many rows at work: their marks stay still,
    * the one live spinner is the open thread's. How long work has run lives in
    * the thread and the tooltip.
-   * `fit`: the desktop list, where the word shows only once the row is wide
-   * enough to keep its title on two lines (the `thread-row` container,
-   * ThreadCard.svelte); narrower, the mark stands alone.
+   * `fit`: the desktop list, where the word stays at every width a user gets by
+   * default and the title gives way first (two lines, cut at a word); the word
+   * goes only where the title would keep under about 12 characters a line (the
+   * `thread-row` container, ThreadCard.svelte), and the mark stands alone.
    * `mark`: a column that holds the mark only (Activity's mark column, the
    * palette). In both, the word stays in the tooltip and the accessible name.
    * An archived thread carries no live state: its time alone.
@@ -123,10 +124,14 @@
   }
   /* The word is the secondary tier, the time's weight in the row's grey: the mark carries the hue. */
   .word { font-weight: 400; }
-  /* The desktop list's word gives way where it would push a title past its two lines: measured on the seeded
-     titles in English and French (the widest word, "Vous attend"), every title stays whole from a 274 px row. */
-  @container thread-row (max-width: 273.98px) {
+  /* The desktop list's word goes only where the title beside it would keep under about 12 characters a line:
+     measured on the seeded titles beside the widest word, a 198 px row of text in English ("Needs you"), 218 px in
+     French ("Vous attend"), a 236 or 256 px list. */
+  @container thread-row (max-width: 197.98px) {
     .fit .word { display: none; }
+  }
+  @container thread-row (max-width: 217.98px) {
+    :global(html:lang(fr)) .fit .word { display: none; }
   }
   /* Every mark is 8 px. Work, of any kind: a still accent arc, a spinner at rest, so it never reads as an idle ring
      or as the amber of the user's turn; which work it is lives in the tooltip. */

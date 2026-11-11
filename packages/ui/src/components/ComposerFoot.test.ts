@@ -90,36 +90,54 @@ test('Allow once in the foot decides the permission without scrolling to its row
   expect(answer).toHaveBeenCalledTimes(1);
 });
 
-test('on a phone the waiting line and the queued rows fold into one line, Stop at its end, and a tap unfolds them', async () => {
-  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
-    media, matches: media.includes('max-width: 720px'), onchange: null, addListener() {}, removeListener() {}
-  }) as unknown as MediaQueryList);
-  client = new FakeClient({ delayMs: 0, delegationDemo: true });
-  store = new Store();
-  store.attach(client);
-  await store.connect();
-  await store.open('t-native');
-  const [run] = await client.call('workflows.list', { threadId: 't-trace' });
-  await vi.waitFor(() => expect(store.openThread?.id).toBe('t-native'));
-  store.composerStates['t-native'] = { text: '', attachments: [], queued: [{ text: 'Add a test for a file with a BOM', attachments: [] }], sending: false, paused: false };
-  foot();
-  await vi.waitFor(() => expect(store.workflowsThreadId).toBe('t-native'));
-  store.workflows = [{ ...run!, rootThreadId: 't-native', status: 'running', createdAt: Date.now() - 62_000, nodes: [] }];
-  await tick();
-  flushSync();
-  const toggle = document.querySelector<HTMLButtonElement>('[data-testid=composer-foot-fold]')!;
-  expect(toggle.getAttribute('aria-expanded')).toBe('false');
-  expect(toggle.textContent).toContain('1 working · 1 queued');
-  expect(document.querySelector('[data-testid=agent-dock-stop]')).not.toBeNull();
-  expect(document.querySelector<HTMLElement>('[data-testid=composer-held]')!.hidden).toBe(true);
-  toggle.click();
-  flushSync();
-  expect(toggle.getAttribute('aria-expanded')).toBe('true');
-  expect(toggle.textContent).toContain('Waiting on 1 workflow');
-  expect(document.querySelector<HTMLElement>('[data-testid=composer-held]')!.hidden).toBe(false);
-  expect(document.querySelector('[data-testid=composer-queued-item]')).not.toBeNull();
-  vi.restoreAllMocks();
-});
+for (const phone of [false, true]) {
+  test(`on a ${phone ? 'phone' : 'desktop'} the work under way and the queued prompts are one quiet line in the same words, Stop naming what it stops, and a press unfolds them`, async () => {
+    vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
+      media, matches: phone && media.includes('max-width: 720px'), onchange: null, addListener() {}, removeListener() {}
+    }) as unknown as MediaQueryList);
+    client = new FakeClient({ delayMs: 0, delegationDemo: true });
+    store = new Store();
+    store.attach(client);
+    await store.connect();
+    await store.open('t-native');
+    const [run] = await client.call('workflows.list', { threadId: 't-trace' });
+    await vi.waitFor(() => expect(store.openThread?.id).toBe('t-native'));
+    store.composerStates['t-native'] = { text: '', attachments: [], queued: [{ text: 'Add a test for a file with a BOM', attachments: [] }], sending: false, paused: true };
+    foot();
+    await vi.waitFor(() => expect(store.workflowsThreadId).toBe('t-native'));
+    store.workflows = [{ ...run!, rootThreadId: 't-native', status: 'running', createdAt: Date.now() - 62_000, nodes: [] }];
+    await tick();
+    flushSync();
+    // Outside the card: the card holds only a decision.
+    expect(document.querySelector('[data-testid=composer-foot] [data-testid=agent-dock]')).toBeNull();
+    expect(document.querySelector('[data-testid=composer-strip-lines] [data-testid=agent-dock]')).not.toBeNull();
+    const toggle = document.querySelector<HTMLButtonElement>('[data-testid=composer-foot-fold]')!;
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(document.querySelector<HTMLElement>('[data-testid=agent-dock-label]')!.dataset.text).toBe('Waiting on 1 workflow');
+    expect(document.querySelector('[data-testid=agent-dock-queued]')?.textContent).toBe('· 1 queued');
+    // The names follow on the same line on both screens: a phone cuts them earlier at a word, never drops them by rule.
+    expect(document.querySelector('[data-testid=agent-dock-names]')?.textContent).toContain(run!.name);
+    const { compile } = await import('svelte/compiler');
+    const { readFileSync } = await import('node:fs');
+    const dock = readFileSync(`${import.meta.dirname}/AgentDock.svelte`, 'utf8').replace(/<script lang="ts">[\s\S]*?<\/script>/, '<script></script>');
+    expect(compile(dock, { filename: 'AgentDock.svelte', cssHash: () => 'd' }).css?.code).not.toMatch(/\.names\.d \{[^}]*display: none/);
+    const stop = document.querySelector<HTMLElement>('[data-testid=agent-dock-stop]')!;
+    expect(stop.textContent?.trim()).toBe('Stop workflows');
+    expect(stop.title).toContain('The agent itself is not stopped');
+    expect(document.querySelector<HTMLElement>('[data-testid=composer-held]')!.hidden).toBe(true);
+    toggle.click();
+    flushSync();
+    // Unfolded: the same words, then one row per run and the queued prompt with its Edit and Delete.
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(document.querySelector<HTMLElement>('[data-testid=agent-dock-label]')!.dataset.text).toBe('Waiting on 1 workflow');
+    expect(document.querySelector('[data-testid=agent-dock-queued]')?.textContent).toBe('· 1 queued');
+    expect([...document.querySelectorAll('[data-testid=agent-dock-row]')].map(row => row.textContent)).toEqual([run!.name]);
+    expect(document.querySelector<HTMLElement>('[data-testid=composer-held]')!.hidden).toBe(false);
+    expect(document.querySelector('[data-testid=composer-queued-item] [data-testid=composer-queued-edit]')).not.toBeNull();
+    expect(document.querySelector('[data-testid=composer-queued-item] [data-testid=composer-queued-remove]')).not.toBeNull();
+    vi.restoreAllMocks();
+  });
+}
 
 test('queued prompts are "Queued" rows: their text, Edit and Delete, and the text itself takes the prompt back', async () => {
   await open();

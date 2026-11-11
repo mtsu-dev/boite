@@ -14,7 +14,7 @@ export interface MenuItem {
   live?: boolean;
   /** A project's tile before the label: its logo, its stack's mark or its initial, read through the Store that owns it. */
   projectTile?: { project: Project; store: Store };
-  status?: { tone: 'success' | 'warning' | 'danger' | 'neutral'; label: string };
+  status?: { tone: 'success' | 'warning' | 'danger' | 'neutral' | 'offline'; label: string };
   /** The chosen row of a list that is not a toggle: drawn with the same check as `checked`. */
   active?: boolean;
   /** A persistent toggle, announced and drawn as a checkbox in the context menu. */

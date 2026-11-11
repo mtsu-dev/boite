@@ -13,10 +13,10 @@
 
   /**
    * One Activity row (ActivityList.svelte): a Needs you row opens on its kind ("Permission", "Question", "Failed"),
-   * then the list's own row (menu, drag, rename) with its title on two lines at most, led by its mark in the card's
-   * mark column (ActivityMark.svelte); the place line under it, where the decision comes from (the project, the
+   * its glyph the card's one mark, then the list's own row (menu, drag, rename) with its title on two lines at most;
+   * the place line under it, where the decision comes from (the project, the
    * machine among several, lib/feed-row.ts) and since when; an update opens on what happened ("Finished",
-   * "Stopped") in the title's ink with its time beside it, so its place line only says where; what is asked under that, a question whole and a permission titled by what it does as the composer titles
+   * "Stopped") with its time beside it, so its place line only says where; what is asked under that, a question whole and a permission titled by what it does as the composer titles
    * it ("Push orbit/csv-import"); the command of a permission in a mono block under them, both whole up to four
    * lines and folded behind "Show all" past them (ClampText.svelte), so nothing is decided on a cut line; each
    * sub-agent that asks the same as a line of its own (lib/activity-feed.ts: one event, one row). The decision pair (DecisionActions.svelte, the composer's) stands at
@@ -43,7 +43,7 @@
   }
 </script>
 
-{#snippet lead()}{#if kind}<ActivityKind {kind} news={!verb}>{#if !verb}<time title={exactTime(row.at)}>{ago(row.at, now)}</time>{/if}</ActivityKind>{/if}{/snippet}
+{#snippet lead()}{#if kind}<ActivityKind {kind}>{#if !verb}<time title={exactTime(row.at)}>{ago(row.at, now)}</time>{/if}</ActivityKind>{/if}{/snippet}
 
 <!-- An update's time follows its event's word; with no word, it ends the place line as a Needs you row's. -->
 <ThreadCard machine={row.machine} project={row.project} thread={row.thread} {now} compact at={verb || !kind ? row.at : undefined} {where} lead={kind ? lead : undefined}>
