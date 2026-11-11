@@ -690,7 +690,7 @@ describe('server', () => {
       expect(manifest.headers.get('cache-control')).toBe('no-cache');
 
       // Android reads it before opening the APK without an address bar
-      // (docs/android.md), and Vite only copies a dot directory on purpose.
+      // (docs/internals/android.md), and Vite only copies a dot directory on purpose.
       const assetlinks = await fetch(`${harness.url}/.well-known/assetlinks.json`);
       expect(assetlinks.status).toBe(200);
       expect(assetlinks.headers.get('content-type')).toStartWith('application/json');

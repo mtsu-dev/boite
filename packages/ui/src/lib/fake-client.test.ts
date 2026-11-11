@@ -1250,7 +1250,7 @@ test('fake panel.open refuses what the core refuses and names the file by its re
   }
   expect(heard).toEqual([]);
   await client.call('panel.open', { threadId: 't-trace', surface: { kind: 'file', path: 'C:\\src\\boite\\docs\\.\\panel.md', line: 3 } });
-  expect(heard).toEqual([{ kind: 'file', path: 'docs/panel.md', line: 3 }]);
+  expect(heard).toEqual([{ kind: 'file', path: 'docs/internals/panel.md', line: 3 }]);
   // A page opens as a tab of the conversation's browser, as on the core, and asks the panel for nothing.
   await client.call('panel.open', { threadId: 't-trace', surface: { kind: 'browser', url: 'https://example.com/docs' } });
   expect(heard).toHaveLength(1);

@@ -96,7 +96,7 @@
     void store.connection;
     if (threadId && store.client?.state === 'ready') return watchAgentBrowser(store, threadId);
   });
-  // A simulator or emulator the agent opens shows up in the panel, here and on a phone (docs/devices.md); so does a desktop window it watches.
+  // A simulator or emulator the agent opens shows up in the panel, here and on a phone (docs/internals/devices.md); so does a desktop window it watches.
   $effect(() => {
     const threadId = store.openThread?.id;
     void store.connection;

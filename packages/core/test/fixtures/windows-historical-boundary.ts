@@ -23,7 +23,7 @@ export class HistoricalWindowsExecutionBoundary implements NativeExecutionBounda
 
   async open(policy: ExecutionPolicy, run: ProtectionRunner): Promise<NativeExecutionSession> {
     const candidate = this.executable();
-    if (!candidate) throw new Error('execution.windows.helper: protected-tool.exe is required; build the userspace helper described in docs/contacts.md');
+    if (!candidate) throw new Error('execution.windows.helper: protected-tool.exe is required; build the userspace helper described in docs/internals/contacts.md');
     const helper = realpathSync(candidate);
     if (!isAbsolute(helper) || !lstatSync(helper).isFile()) throw new Error('execution.windows.helper: expected a canonical native helper executable');
     const identity = helperIdentity(helper);

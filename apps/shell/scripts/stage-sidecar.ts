@@ -7,7 +7,7 @@
  * shell starts it as `boite-core.exe core/main.js`. The runtime carries its
  * publisher's signature and the output of `bun build --compile` carries none,
  * which Windows 11 makes it pay for at every start: see "Known cost" in
- * `docs/performance.md`. Everywhere else the sidecar is the compiled core.
+ * `docs/internals/performance.md`. Everywhere else the sidecar is the compiled core.
  *
  * `tauri build --config src-tauri/tauri.bundle.conf.json` wants
  * `src-tauri/binaries/boite-core-<target triple>.exe` for `bundle.externalBin`,
@@ -89,7 +89,7 @@ const BUNDLE_DIR = 'core';
  * Bun's baseline runtime for Windows x64, of the version running this script.
  * The default build needs AVX2 and stops with an illegal instruction on a CPU
  * without it, before the core's first line; the baseline one runs on every x64
- * CPU, starts as fast and carries the same signature (docs/performance.md). It
+ * CPU, starts as fast and carries the same signature (docs/internals/performance.md). It
  * is downloaded once, checked against the release's SHASUMS256.txt and kept
  * under `node_modules/.cache`. The checksum comes from the same release, so the
  * publisher's signature is what vouches for the file: it is checked on the

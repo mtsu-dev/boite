@@ -344,10 +344,10 @@ structured output, with "Open conversation" for the execution picked. The arrow
 in the run's header goes back to the list. Templates are saved, listed and started from the
 CLI only.
 
-Captures: [the graph on the desktop](images/workflow-desktop.png) · [a step's
-detail](images/workflow-step.png) · [the graph on a phone](images/workflow-phone.png) ·
-[a loop in its second round](images/workflow-loop.png) · [the step that closes
-it](images/workflow-loop-step.png) · [the loop on a phone](images/workflow-loop-phone.png)
+Captures: [the graph on the desktop](../images/workflow-desktop.png) · [a step's
+detail](../images/workflow-step.png) · [the graph on a phone](../images/workflow-phone.png) ·
+[a loop in its second round](../images/workflow-loop.png) · [the step that closes
+it](../images/workflow-loop-step.png) · [the loop on a phone](../images/workflow-loop-phone.png)
 
 ## Commands
 

@@ -10,9 +10,9 @@ changing the stored desktop layout.
 `lib/right-panel.svelte.ts` owns layout and `RightPanel.svelte` renders it;
 `lib/surface-labels.ts` defines labels and availability.
 
-Captures: [phone chat](images/agent-browser-chat-phone.png),
-[phone browser](images/agent-browser-return-phone.png),
-[desktop browser](images/agent-browser-live-desktop.png).
+Captures: [phone chat](../images/agent-browser-chat-phone.png),
+[phone browser](../images/agent-browser-return-phone.png),
+[desktop browser](../images/agent-browser-live-desktop.png).
 
 The panel's left edge, the thread list's right edge, the terminal drawer's top
 edge and the line between two terminal panes share `ResizeHandle.svelte`. It is
@@ -304,7 +304,7 @@ selected and never opened: a program an agent wrote is not run from here. A
 file outside the thread's directory shows without the open action, since
 `files.read` stays inside it.
 
-Captures: [changes](images/panel-changes-desktop.png) · [files](images/panel-files-desktop.png) · [editor](images/panel-file-text-desktop.png) · [picture, zoomed](images/panel-file-image-zoomed.png) · [video](images/panel-cli-video.png) · [tasks](images/panel-tasks-desktop.png) · [changes at phone width](images/panel-changes-phone.png) · [editor at phone width](images/panel-file-text-phone.png) · [floating panel](images/browser-floating-desktop.png) · [floating browser menu](images/browser-floating-menu.png) · [floating panel at phone width](images/browser-floating-phone.png)
+Captures: [changes](../images/panel-changes-desktop.png) · [files](../images/panel-files-desktop.png) · [editor](../images/panel-file-text-desktop.png) · [picture, zoomed](../images/panel-file-image-zoomed.png) · [video](../images/panel-cli-video.png) · [tasks](../images/panel-tasks-desktop.png) · [changes at phone width](../images/panel-changes-phone.png) · [editor at phone width](../images/panel-file-text-phone.png) · [floating panel](../images/browser-floating-desktop.png) · [floating browser menu](../images/browser-floating-menu.png) · [floating panel at phone width](../images/browser-floating-phone.png)
 
 ## What the core provides
 

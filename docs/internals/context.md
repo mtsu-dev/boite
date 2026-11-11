@@ -720,7 +720,7 @@ The source is the session transcript, at
 `<config dir>/projects/<cwd, every non-alphanumeric character as ->/<sessionId>.jsonl`,
 the config directory being the account's isolation directory, else the
 provider's default (`CLAUDE_CONFIG_DIR`, then `~/.claude`), as
-[imports](../packages/core/src/imports.ts) finds it. Claude Code 2.1.300 and
+[imports](../../packages/core/src/imports.ts) finds it. Claude Code 2.1.300 and
 later write an `api-request-shape` record per distinct system and tool set and
 an `api-request` record per request naming its shape by hash
 (`packages/core/src/imports/claude-shape.ts`). The core reads the file

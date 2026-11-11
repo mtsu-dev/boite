@@ -270,7 +270,7 @@ pub fn app_update_status(webview: Webview, state: State<'_, AppUpdater>) -> Resu
 /// A policy is a few hundred bytes; past the core's limit a file is not one.
 const MAX_POLICY_BYTES: u64 = 256 * 1024;
 
-/// The machine's admin policy file (docs/enterprise.md), as the core finds it:
+/// The machine's admin policy file (docs/internals/enterprise.md), as the core finds it:
 /// the platform's location, else `BOITE_POLICY_FILE` when that one is absent.
 fn policy_file() -> PathBuf {
     let machines = if cfg!(windows) {

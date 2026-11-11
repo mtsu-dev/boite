@@ -3,7 +3,7 @@
  * first use: one pinned npm release, checked against the digests below, so no
  * agent installs a tool, and every machine runs the version the CLI's help
  * describes. Only this machine's binary and its helper are kept, in
- * `<data dir>/tools/agent-desktop-<version>/<install id>/`. See docs/desktop.md.
+ * `<data dir>/tools/agent-desktop-<version>/<install id>/`. See docs/internals/desktop.md.
  */
 import { createHash, randomBytes } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';

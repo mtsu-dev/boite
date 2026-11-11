@@ -5,7 +5,7 @@ on:
     branches: [main]
   # A pull request, draft or ready, runs Linux, plus native Windows for
   # protection inputs; the merge queue runs the full matrix on top of main
-  # (docs/ci.md#pull-request-runs).
+  # (docs/internals/ci.md#pull-request-runs).
   pull_request:
   merge_group:
   workflow_dispatch:
@@ -49,7 +49,7 @@ permissions:
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   # A main run finishes: merges land faster than a run takes, so cancelling
-  # left main without a green commit to publish (docs/ci.md#run-modes-and-platforms).
+  # left main without a green commit to publish (docs/internals/ci.md#run-modes-and-platforms).
   # A newer push only replaces the pending one.
   cancel-in-progress: ${{ github.workflow == 'ci' && github.event_name == 'pull_request' }}
 
@@ -116,7 +116,7 @@ jobs:
           "$RUNNER_TEMP/actionlint"
 
   # The ruleset requires each check name a pull request reports
-  # (docs/ci.md#check-names). Outside every needs chain: a gap fails this job
+  # (docs/internals/ci.md#check-names). Outside every needs chain: a gap fails this job
   # on main, so the run stays red and the nightly waits, while the tests still
   # run and a rerun of this job alone clears it. Pull requests skip it:
   # required-checks.test.ts already fails on a renamed job.
@@ -137,7 +137,7 @@ jobs:
         run: bun scripts/ci/required-checks.ts --live
 
   # One job per runner of CORE_ALL in changes.ts, not a matrix: a skipped job
-  # then reports its own fixed name (docs/ci.md#check-names). Each runs when
+  # then reports its own fixed name (docs/internals/ci.md#check-names). Each runs when
   # coreRunners lists its label; the quotes keep `ubuntu-24.04` from matching
   # `ubuntu-24.04-arm`. The merge queue leaves out the Intel Mac; pull requests
   # run the Linux x64 one, plus Windows for protection inputs.
@@ -311,14 +311,14 @@ jobs:
           }
           if ($failed) { exit 1 }
       # Core data directories, worktrees and Chrome profiles go to the runner's
-      # temp drive (D: on Windows), as in the E2E shards (docs/ci.md#build-cost).
+      # temp drive (D: on Windows), as in the E2E shards (docs/internals/ci.md#build-cost).
       - run: bun run --cwd packages/core test
         if: ${{ !cancelled() && (success() || runner.os == 'Windows' && steps.native_providers.outcome == 'success') }}
         env:
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
       # The suite above has no DISPLAY and skips the X11 window capture test;
-      # this runs that one file against a real X server (docs/ci.md#run-modes-and-platforms).
+      # this runs that one file against a real X server (docs/internals/ci.md#run-modes-and-platforms).
       - name: X11 window capture and virtual desktop under Xvfb
         if: runner.os == 'Linux'
         run: |
@@ -414,7 +414,7 @@ jobs:
 
   # The UI the E2E shards and stress test, built once. Vite emits the same
   # chunks on Linux and Windows except for a CSS color rounded in its sixth
-  # decimal and the gzip OS byte (docs/ci.md#e2e-preparation).
+  # decimal and the gzip OS byte (docs/internals/ci.md#e2e-preparation).
   ui:
     name: Build UI
     needs: changes
@@ -475,7 +475,7 @@ jobs:
 
   # A pull request's sizes, measured on Linux against its base's, which
   # bundle-size.yml keeps for every main commit, and against the last
-  # published build plus 2 % (docs/ci.md#bundle-growth). Rerun this job alone
+  # published build plus 2 % (docs/internals/ci.md#bundle-growth). Rerun this job alone
   # after editing the body.
   size:
     name: Bundle size
@@ -507,7 +507,7 @@ jobs:
 
   # The callers of reusable workflows always run and pass `enabled`: a skipped
   # caller reports one check named after itself, a running one each inner
-  # job's name, skipped or not (docs/ci.md#check-names).
+  # job's name, skipped or not (docs/internals/ci.md#check-names).
   desktop:
     name: Desktop
     needs: changes
@@ -545,7 +545,7 @@ jobs:
     steps: &e2e-steps
       # The test step stops a run still going 4 min before the job's limit,
       # which counts from about the job's start, and leaves a report for the failure
-      # captures (scripts/ci/hang-watch.ts, docs/ci.md#hung-test-runs).
+      # captures (scripts/ci/hang-watch.ts, docs/internals/ci.md#hung-test-runs).
       - name: Note when the job started
         run: Add-Content $env:GITHUB_ENV "BOITE_JOB_STARTED_MS=$([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1

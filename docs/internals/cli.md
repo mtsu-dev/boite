@@ -781,7 +781,7 @@ A core restart keeps it too: an open card is read back from the journal at
 startup, for as long as events are kept (30 days).
 Each extra argument is an option label; with none the question takes free
 text, and `--multiple` lets the user pick several. `--open <url>` adds an Open
-button for a page the user must sign in to (docs/browser.md). The answer reaches the agent
+button for a page the user must sign in to (docs/internals/browser.md). The answer reaches the agent
 as a message that quotes the question, `> question` then the answer: steered
 into the running turn when the agent takes steering (Codex, pi, Muse, Grok),
 handed to Claude at the main agent's next tool call through the PostToolUse

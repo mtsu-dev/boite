@@ -461,7 +461,7 @@ children ask the parent when another worker is needed.
 
 A child that opened a pull request waits on it with `boite pr watch`, never a
 polling loop (`sleep`, `gh pr checks`, a monitor that expires): its subagent
-note says so. Each wake (`docs/cli.md`, "Watching a pull request") opens the
+note says so. Each wake (`docs/internals/cli.md`, "Watching a pull request") opens the
 child's next turn, and that turn's answer goes to the parent as a result, so
 the parent hears only what the child made of a CI verdict or a review. The
 child's watches end when it is stopped, by its own Stop, `delegate stop` or a

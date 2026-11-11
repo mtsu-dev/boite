@@ -1,6 +1,6 @@
 /**
  * Simulators and emulators on the machine that runs the core, which an agent
- * opens in a conversation's Device panel (docs/devices.md). "Mobile device"
+ * opens in a conversation's Device panel (docs/internals/devices.md). "Mobile device"
  * keeps them apart from paired devices (`DEVICE_METHODS`), which are the
  * phones and browsers that watch a machine.
  */
@@ -126,7 +126,7 @@ export interface MobileDeviceStreamChunk {
 }
 
 /**
- * The device's screen as H.264 from scrcpy (docs/devices.md, "Live stream").
+ * The device's screen as H.264 from scrcpy (docs/internals/devices.md, "Live stream").
  * `off`: the `deviceStream` setting is off. `unavailable`: no stream for this
  * device (an iOS Simulator). `failed`: the session could not start or ended,
  * with `reason`. A client falls back to `devices.frame` in each of these.

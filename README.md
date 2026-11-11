@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://github.com/mtsu-dev/boite/releases">Download page</a> ·
   <a href="docs/README.md">Documentation</a> ·
-  <a href="docs/server.md">Self-host</a>
+  <a href="docs/internals/server.md">Self-host</a>
 </p>
 
 <a href="https://mtsu.dev"><img align="right" src="https://mtsu.dev/press/mtsu-icon-1024.png" width="48" alt="MTSU"></a>
@@ -51,17 +51,17 @@ New release notes put the download links under each platform, above the changelo
 2. Install and sign in to your agents, then connect them in Settings, Providers.
 3. Open a project, choose a model and start a conversation.
 
-See [installation and platform notes](docs/portability.md), [phone pairing](docs/phone.md)
-or [the Android app](docs/android.md). To run agents on another machine, use the
-[self-hosting guide](docs/server.md) or [Android server setup](docs/android-server.md).
-[Desktop updates](docs/updates.md) explains channels and installing updates.
+See [installation and platform notes](docs/internals/portability.md), [phone pairing](docs/internals/phone.md)
+or [the Android app](docs/internals/android.md). To run agents on another machine, use the
+[self-hosting guide](docs/internals/server.md) or [Android server setup](docs/internals/android-server.md).
+[Desktop updates](docs/internals/updates.md) explains channels and installing updates.
 
 ## Documentation
 
 The [documentation index](docs/README.md) groups guides by task. Start with
-[accounts and agent setup](docs/accounts.md), [projects and machines](docs/machines.md)
-or [bots](docs/bots.md). [Architecture](docs/architecture.md) and
-[development](docs/development.md) cover the implementation.
+[accounts and agent setup](docs/internals/accounts.md), [projects and machines](docs/internals/machines.md)
+or [bots](docs/internals/bots.md). [Architecture](docs/internals/architecture.md) and
+[development](docs/internals/development.md) cover the implementation.
 
 ## Development
 
@@ -75,7 +75,7 @@ bun run dev:ui
 
 Open the local URL with `?fake=1` to try it without agent calls.
 [Contributing](CONTRIBUTING.md) covers checks;
-[development](docs/development.md) covers the real core and desktop builds.
+[development](docs/internals/development.md) covers the real core and desktop builds.
 
 ## Thanks
 

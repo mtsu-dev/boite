@@ -5,7 +5,7 @@ name: android-server
 # signs it with the Boite app's key, or takes the previous release's back when
 # nothing that goes into it changed (scripts/ci/android-server-apk.ts). The
 # app carries its own version, apps/android-server/VERSION plus a patch
-# counted from the last published APK. docs/android-server.md.
+# counted from the last published APK. docs/internals/android-server.md.
 
 on:
   workflow_call:

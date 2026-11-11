@@ -52,7 +52,7 @@ in ms after process spawn.
 
 The compiled core alone took 791 ms (spawned by hand, 7 runs) of the remaining
 1024 ms. About 650 ms passed before it ran its first line. See "The Windows
-sidecar is the signed runtime" in [docs/performance.md](../../docs/performance.md).
+sidecar is the signed runtime" in [docs/internals/performance.md](../../docs/internals/performance.md).
 
 ## UI bundle
 

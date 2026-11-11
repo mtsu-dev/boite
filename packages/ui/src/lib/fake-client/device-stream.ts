@@ -2,7 +2,7 @@
  * Four frames of H.264 (baseline, 72 by 160, a test pattern) for the fake core's
  * live stream: a key frame carrying its SPS and PPS, then three deltas, as the
  * real core sends them. Made with ffmpeg's testsrc2 and libx264; see
- * docs/devices.md, "Live stream".
+ * docs/internals/devices.md, "Live stream".
  */
 export const FAKE_STREAM = { codec: 'avc1.42c01e', width: 72, height: 160 } as const;
 

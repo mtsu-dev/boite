@@ -210,7 +210,7 @@ describe('the right panel', () => {
     expect(bound.surfaces[0]?.path).toBe('src/app.ts');
 
     const first = bound.openFile('src/main.ts', 12);
-    const other = bound.openFile('docs/panel.md');
+    const other = bound.openFile('docs/internals/panel.md');
     expect(first.id).toBe('file:src/main.ts');
     expect(bound.surfaces).toHaveLength(5);
 

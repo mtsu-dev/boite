@@ -44,7 +44,7 @@ heading names the machine shown and switches to another one this window owns.
 
 ## Write a plugin in 5 minutes
 
-The example in [`examples/plugins/hello`](../examples/plugins/hello) is a
+The example in [`examples/plugins/hello`](../../examples/plugins/hello) is a
 complete plugin on the `bun` runtime. It gives agents `boite hello-threads`,
 which prints the five conversations that changed last, a skill, a guide line
 and the slash command `/recap`. Start from a copy of it.
@@ -75,7 +75,7 @@ and the slash command `/recap`. Start from a copy of it.
    ```
 
 2. The command, `src/main.ts`, with the SDK (`@boite/plugin-sdk`,
-   [`packages/plugin-sdk`](../packages/plugin-sdk)):
+   [`packages/plugin-sdk`](../../packages/plugin-sdk)):
 
    ```ts
    import { runCommands } from '@boite/plugin-sdk';
@@ -435,7 +435,7 @@ instead, held to the permissions the owner granted.
 
 ## SDK
 
-`@boite/plugin-sdk` lives in [`packages/plugin-sdk`](../packages/plugin-sdk),
+`@boite/plugin-sdk` lives in [`packages/plugin-sdk`](../../packages/plugin-sdk),
 a workspace package of this repository; it is not on npm yet. A plugin inside
 the repository depends on it with `"@boite/plugin-sdk": "workspace:*"`, as the
 example does. Its code is a few hundred lines with no runtime dependency, and

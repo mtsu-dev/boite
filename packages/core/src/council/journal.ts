@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite';
 
 /**
- * The council (`docs/council.md`). The tables keep the name of the debates they
+ * The council (`docs/internals/council.md`). The tables keep the name of the debates they
  * were made for: a debate stored then stays readable next to a council, and a
  * rename would have an older core refuse this journal for nothing.
  *

@@ -1,11 +1,11 @@
 export const strings = {
-  /** The Teams section of the Bots page and a team's chat, where the owner talks with its bots (`docs/teams.md`). */
+  /** The Teams section of the Bots page and a team's chat, where the owner talks with its bots (`docs/internals/teams.md`). */
   teamChat: {
     heading: 'Teams',
     /** The Teams heading's button on the Bots page, and the empty line under it before the first team. */
     newTeam: 'New team',
     noTeams: 'No team yet: put a few bots in one chat.',
-    /** On a paired phone, where creating a team and changing one stay on the computer (`docs/teams.md`). */
+    /** On a paired phone, where creating a team and changing one stay on the computer (`docs/internals/teams.md`). */
     onComputer: 'Only the computer running Boite can create or change teams.',
     /** The team chat header's menu. */
     menu: 'Team options',

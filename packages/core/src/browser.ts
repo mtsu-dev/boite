@@ -3,7 +3,7 @@
  * running the conversation starts and drives over the DevTools protocol.
  * Agents act through `browser.command`; every client subscribed to the
  * conversation watches and drives its tabs through `browser.remoteFrame` and
- * `browser.remoteInput`, from this machine or another. See docs/browser.md.
+ * `browser.remoteInput`, from this machine or another. See docs/internals/browser.md.
  */
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';

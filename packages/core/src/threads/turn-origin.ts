@@ -32,7 +32,7 @@ export type TurnOrigin =
   | Keyed & { kind: 'compact'; automatic: boolean }
   | Keyed & { kind: 'keepalive' }
   | Keyed & { kind: 'resume'; reason: ResumeReason }
-  /** `owner`: a team letter with the owner's post among its triggers, a wake no bot pause or budget holds (`docs/teams.md`). */
+  /** `owner`: a team letter with the owner's post among its triggers, a wake no bot pause or budget holds (`docs/internals/teams.md`). */
   | Keyed & { kind: 'coordination'; owner?: true }
   /** `followUp`: whoever delegated this thread's work writes to it again, as opposed to its own agents reporting or Boite running a step. */
   | Keyed & { kind: 'delegation'; followUp?: true }
@@ -45,7 +45,7 @@ export interface StartTurnOptions {
   persistAdmission?: () => (() => void);
   /** The agent selection the input was queued with, which the turn keeps. */
   choice?: ComposerChoice;
-  /** The prompt as typed, when it may start an automatic goal (`docs/goals.md`). */
+  /** The prompt as typed, when it may start an automatic goal (`docs/internals/goals.md`). */
   autoGoal?: string;
 }
 

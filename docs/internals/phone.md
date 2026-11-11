@@ -90,7 +90,7 @@ remain owner-only. Event permissions are deny-by-default in
 `packages/contracts/src/access.ts`, just like RPC permissions, and `?fake=1`
 with `principal=session` withholds the same events.
 
-[Phone settings](images/phone-settings.png) · [Desktop settings](images/phone-settings-desktop.png)
+[Phone settings](../images/phone-settings.png) · [Desktop settings](../images/phone-settings-desktop.png)
 
 ## Listening on the LAN
 
@@ -864,7 +864,7 @@ devices you intend to give that control.
   ([machines](machines.md#connecting-a-machine)). No offline history: the
   journal is on the core. Prompts
   written in a thread that was open before the connection went wait in the
-  device's outbox (`docs/machines.md`), and go out once it is back, even after
+  device's outbox (`docs/internals/machines.md`), and go out once it is back, even after
   the PWA was closed in between. Input that never reached the core requires a
   client to reconnect first. Once synchronized, the core runs pending prompts
   and draft starts with every app closed. Drafts, unsent replies and their

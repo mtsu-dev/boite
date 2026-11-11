@@ -189,7 +189,7 @@ then place the page in your answer with the printed image line.
 `,
 };
 
-/** Listed only while the Council experiment is on (`threads/turn-context.ts`). The rules are Theo Browne's (`docs/council.md#credit`). */
+/** Listed only while the Council experiment is on (`threads/turn-context.ts`). The rules are Theo Browne's (`docs/internals/council.md#credit`). */
 export const COUNCIL_SKILL: BuiltinSkill = {
   name: 'boite-council',
   description: "Trigger this if the user says 'council'. Three models of different providers review or answer one request alone and read-only, on code or anything else, with or without git.",

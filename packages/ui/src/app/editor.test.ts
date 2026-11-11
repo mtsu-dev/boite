@@ -19,11 +19,11 @@ test('the file tree lists the root, expands a directory on click and opens a fil
   expect(query('[data-testid=files-row][data-path="docs"]').querySelector('[data-testid=files-size]')).toBeNull();
 
   // Nothing under a directory is read before it opens.
-  expect(document.querySelector('[data-testid=files-row][data-path="docs/panel.md"]')).toBeNull();
+  expect(document.querySelector('[data-testid=files-row][data-path="docs/internals/panel.md"]')).toBeNull();
   query<HTMLButtonElement>('[data-testid=files-row][data-path="docs"]').click();
   await waitFor(() => document.querySelector('[data-testid=files-row][data-path="docs/guide"]') !== null);
-  expect(treePaths().slice(0, 5)).toEqual(['assets', 'docs', 'docs/guide', 'docs/panel.md', 'docs/panel.svg']);
-  expect(query('[data-testid=files-row][data-path="docs/panel.md"]').getAttribute('data-depth')).toBe('1');
+  expect(treePaths().slice(0, 5)).toEqual(['assets', 'docs', 'docs/guide', 'docs/internals/panel.md', 'docs/panel.svg']);
+  expect(query('[data-testid=files-row][data-path="docs/internals/panel.md"]').getAttribute('data-depth')).toBe('1');
   expect(query('[data-testid=files-row][data-path="docs"]').getAttribute('aria-expanded')).toBe('true');
 
   // A third level, so the tree is a tree and not one nesting.
@@ -40,9 +40,9 @@ test('the file tree lists the root, expands a directory on click and opens a fil
   await waitFor(() => treePaths().length > 3);
 
   // A file click opens a tab of its own, named after the file.
-  query<HTMLButtonElement>('[data-testid=files-row][data-path="docs/panel.md"]').click();
+  query<HTMLButtonElement>('[data-testid=files-row][data-path="docs/internals/panel.md"]').click();
   await waitFor(() => store.panel.active?.kind === 'file');
-  expect(store.panel.active?.path).toBe('docs/panel.md');
+  expect(store.panel.active?.path).toBe('docs/internals/panel.md');
   await waitFor(() => document.querySelector('[data-testid=file-panel]') !== null);
   expect(document.querySelectorAll('[data-testid=panel-tab]').length).toBe(2);
 });
@@ -63,11 +63,11 @@ test('the tree of one thread is not shown for the next: a thread switch starts i
   store.panel.openFiles();
   await waitFor(() => treePaths().length > 0);
   query<HTMLButtonElement>('[data-testid=files-row][data-path="docs"]').click();
-  await waitFor(() => treePaths().includes('docs/panel.md'));
+  await waitFor(() => treePaths().includes('docs/internals/panel.md'));
 
   query<HTMLButtonElement>('[data-thread-id="t-trace"]').click();
   await waitFor(() => store.openThread?.id === 't-trace');
-  await waitFor(() => treePaths().length > 0 && !treePaths().includes('docs/panel.md'));
+  await waitFor(() => treePaths().length > 0 && !treePaths().includes('docs/internals/panel.md'));
   expect(query('[data-testid=files-row][data-path="docs"]').getAttribute('aria-expanded')).toBe('false');
 
   store.panel.closeAll();

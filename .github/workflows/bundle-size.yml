@@ -1,7 +1,7 @@
 name: bundle size
 
 # Measures every main commit for pull requests to compare with
-# (docs/ci.md#bundle-growth). One light job, never cancelled by the next push,
+# (docs/internals/ci.md#bundle-growth). One light job, never cancelled by the next push,
 # so a pull request's base almost always has its `bundle-sizes` artifact and
 # no pull request builds its base again. Then it fails when main is above the
 # published ceiling: pull requests are charged only for growth they add.

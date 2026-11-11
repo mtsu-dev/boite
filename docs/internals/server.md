@@ -24,7 +24,7 @@ docker build -t boite-server:local .
 BOITE_IMAGE=boite-server:local docker compose up -d
 ```
 
-For a published stable image, download [compose.yaml](../compose.yaml) into an
+For a published stable image, download [compose.yaml](../../compose.yaml) into an
 empty directory, then:
 
 ```sh

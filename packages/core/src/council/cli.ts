@@ -2,7 +2,7 @@
  * `boite delegate council`: models of different providers review one request
  * alone and read-only, each with a score out of 10; their answers come back to
  * this thread as one message, and `again` asks the same members for a fresh
- * review after the fixes (`docs/council.md`).
+ * review after the fixes (`docs/internals/council.md`).
  */
 import { COUNCIL_LIMITS, type Council, type RpcParams } from '@boite/contracts';
 import type { CoreClient } from '../client.ts';

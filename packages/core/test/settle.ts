@@ -1,5 +1,5 @@
 // Under `bun test`, `expect(promise).rejects` and `.resolves` run a nested event loop tick that
-// can drop the outer tick's socket events on macOS (docs/development.md#promise-matchers-under-bun-test).
+// can drop the outer tick's socket events on macOS (docs/internals/development.md#promise-matchers-under-bun-test).
 // Await the promise first, then match: `expect(await thrown(promise)).toThrow(message)`,
 // `expect((await rejection(promise)).reason).toMatchObject(shape)`, `expect(await promise).toEqual(value)`.
 

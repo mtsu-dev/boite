@@ -764,7 +764,7 @@ describe('a machine the device key opens', () => {
 });
 
 /**
- * The rows of the rule in docs/groups.md, and of PR #672: what a removed machine
+ * The rows of the rule in docs/internals/groups.md, and of PR #672: what a removed machine
  * the device key opens says of itself decides, and only for itself.
  */
 describe('a removed machine the device key opens', () => {

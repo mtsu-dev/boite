@@ -96,7 +96,7 @@ export function createRemovedTurnUsage(db: Database): void {
  * Copies the finished turns of `threadIds` into `removed_turn_usage`, in the
  * transaction that erases them, so a turn is counted from one table or the
  * other and never twice. An incognito conversation and the threads it started
- * leave nothing (`docs/drafts.md`), even when a project removal takes them.
+ * leave nothing (`docs/internals/drafts.md`), even when a project removal takes them.
  */
 export function keepRemovedTurnUsage(db: Database, threadIds: readonly string[]): void {
   db.query(

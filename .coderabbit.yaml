@@ -7,7 +7,7 @@ reviews:
   poem: false
   review_status: false
   review_details: false
-  # mtsu-patrol reviews pull requests; CodeRabbit stays off (docs/ci.md).
+  # mtsu-patrol reviews pull requests; CodeRabbit stays off (docs/internals/ci.md).
   auto_review:
     enabled: false
   path_filters:

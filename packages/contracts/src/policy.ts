@@ -2,7 +2,7 @@ import type { ProviderId, Timestamp } from './ids';
 
 /**
  * The admin policy: a machine-wide file only an administrator can write
- * (`docs/enterprise.md`). Each key locks one behaviour of Boite; a key that is
+ * (`docs/internals/enterprise.md`). Each key locks one behaviour of Boite; a key that is
  * absent leaves the user's own choice. The core reads it, enforces it and
  * tells its clients what it locks. Only the file changes it.
  */

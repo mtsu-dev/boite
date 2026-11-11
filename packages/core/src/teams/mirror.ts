@@ -1,5 +1,5 @@
 /**
- * A team between its machines, in this core's tables (`docs/teams.md`): what
+ * A team between its machines, in this core's tables (`docs/internals/teams.md`): what
  * the machine holding it sends a member's machine and hears back, and the
  * mirror kept there. `peers.ts` carries them.
  */

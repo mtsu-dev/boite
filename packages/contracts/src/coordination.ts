@@ -114,7 +114,7 @@ export interface AgentLetter {
    */
   carriesOn?: true;
   /**
-   * A team letter (`docs/teams.md`): the posts of one team that woke this
+   * A team letter (`docs/internals/teams.md`): the posts of one team that woke this
    * bot, by seq. Later posts join it while it waits; `owner` when one of them
    * is the owner's, so its wake is the owner's message and no bot budget
    * holds it. Its text is rendered from the posts when it is delivered.

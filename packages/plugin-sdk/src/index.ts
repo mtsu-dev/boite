@@ -1,6 +1,6 @@
 /*
  * The plugin SDK: what a plugin's executable needs to answer agent commands
- * and talk to the core. docs/plugins.md explains the manifest it goes with.
+ * and talk to the core. docs/internals/plugins.md explains the manifest it goes with.
  */
 
 import type { PluginManifest } from '@boite/contracts';
