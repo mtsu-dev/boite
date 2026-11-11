@@ -49,10 +49,12 @@
     <div class="who">
       <h3>
         <span class="name">{plugin.name}</span>
-        {#if plugin.version ?? plugin.availableVersion}<span class="version">v{plugin.version ?? plugin.availableVersion}</span>{/if}
-        {#if plugin.homepage && !plugin.source}
-          <a class="home" href={plugin.homepage} target="_blank" rel="noreferrer" title={t.source} aria-label={t.source} data-testid="plugin-home"><ExternalLink size={12} /></a>
-        {/if}
+        <span class="meta">
+          {#if plugin.version ?? plugin.availableVersion}<span class="version">v{plugin.version ?? plugin.availableVersion}</span>{/if}
+          {#if plugin.homepage && !plugin.source}
+            <a class="home" href={plugin.homepage} target="_blank" rel="noreferrer" title={t.source} aria-label={t.source} data-testid="plugin-home"><ExternalLink size={12} /></a>
+          {/if}
+        </span>
       </h3>
       {#if author}<p class="author" data-testid="plugin-author">{fill(t.byAuthor, { author })}</p>{/if}
     </div>
@@ -122,9 +124,11 @@
   header { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
   .glyph { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: var(--radius-md); background: var(--color-active); color: var(--color-muted-foreground); }
   .who { flex: 1; min-width: 0; display: grid; gap: 3px; padding-top: 1px; }
-  h3 { margin: 0; display: flex; align-items: baseline; gap: 6px; min-width: 0; font-size: var(--text-base); font-weight: 600; }
+  h3 { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 6px; min-width: 0; font-size: var(--text-base); font-weight: 600; }
   .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .version { flex: none; font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 400; color: var(--color-muted-foreground); }
+  .meta { flex: none; display: inline-flex; align-items: baseline; gap: 6px; }
+  .meta:empty { display: none; }
+  .version { font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 400; color: var(--color-muted-foreground); }
   .home { flex: none; align-self: center; display: inline-grid; place-items: center; color: var(--color-muted-foreground); border-radius: var(--radius-sm); transition: color var(--dur-1) var(--ease-out-quint); }
   .home:hover, .home:focus-visible { color: var(--color-foreground); }
   .author { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); color: var(--color-muted-foreground); }
