@@ -75,6 +75,28 @@ test('a header unmounted with its rename open, as a machine switch does, still w
   expect(rename.mock.calls).toEqual([['t-trace', 'Typed before the switch']]);
 });
 
+test("a phone row draws no pull request, so the phone's thread menu opens it", async () => {
+  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
+    media, matches: true, onchange: null, addListener() {}, removeListener() {}
+  }));
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  await store.open('t-trace');
+  const pr = { number: 214, url: 'https://github.com/example/repo/pull/214', state: 'OPEN' as const };
+  const original = client.call.bind(client);
+  vi.spyOn(client, 'call').mockImplementation((async (method: string, params: unknown) => method === 'threads.pullRequest' ? pr : original(method as never, params as never)) as typeof client.call);
+  const opened = vi.spyOn(window, 'open').mockReturnValue(null);
+  mounted = mount(ThreadHeader, { target: document.body, props: { store } });
+  await settle();
+  document.querySelector<HTMLButtonElement>('[data-testid=thread-menu-trigger]')!.click(); await settle();
+  // The folder group, beside the move.
+  document.querySelector<HTMLElement>('[data-testid=thread-menu-trigger-menu] [data-value=more]')!.click(); await settle();
+  const row = document.querySelector<HTMLElement>('[data-testid=thread-menu-trigger-menu] [data-value=thread-pr]')!;
+  expect(row.textContent).toContain('#214');
+  row.click(); await settle();
+  expect(opened).toHaveBeenCalledWith(pr.url, '_blank', 'noopener,noreferrer');
+});
+
 test("a phone's header is back, the title, one menu of the thread's actions and the panel button; no panel in the menu, no contact requests", async () => {
   vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
     media, matches: true, onchange: null, addListener() {}, removeListener() {}
@@ -97,10 +119,12 @@ test("a phone's header is back, the title, one menu of the thread's actions and 
   expect(rows.indexOf('retitle')).toBe(rows.indexOf('rename') + 1);
   expect(rows.length).toBeLessThanOrEqual(8);
   expect(rows.at(-1)).toBe('delete');
-  // No bot to give it to and no path on a phone: the move alone is left, a row of its own rather than a group of one.
-  expect(rows).toContain('move');
-  expect(rows).not.toContain('more');
+  // No bot to give it to and no path on a phone: the folder group holds the thread's pull request and the move, never a copy.
+  expect(rows).toContain('more');
   expect(rows).not.toContain('copy');
+  menu.querySelector<HTMLElement>('[data-value=more]')!.click(); await settle();
+  expect(values(menu)).toEqual(expect.arrayContaining(['thread-pr', 'move']));
+  expect(values(menu)).not.toContain('copy');
   for (const tool of ['phone-browser-toggle', 'changes', 'panel']) expect(rows).not.toContain(tool);
   for (const panel of ['changes', 'phone-browser-toggle', 'agents', 'panel', 'board', 'coordination']) expect(rows).not.toContain(panel);
   const list = menu;
