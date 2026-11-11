@@ -12,6 +12,9 @@
   import MachinePlace from './MachinePlace.svelte';
   import type { RowPlace } from '../lib/row-place';
   import ThreadHeadline from './ThreadHeadline.svelte';
+  import ThreadState from './ThreadState.svelte';
+  import ActivityMark from './ActivityMark.svelte';
+  import { wordFit } from '../lib/word-fit';
   import { threadState } from '../lib/thread-state';
   import { feedOperation, feedQuestion, feedSecondary, feedVerbLabel, type FeedKind, type FeedVerb } from '../lib/activity-feed';
   import { feedAsk } from '../lib/feed-row';
@@ -27,8 +30,9 @@
    * lives under it when the list says so. The pull request waits in the thread, the pin under the slide. `compact` is
    * the flat lists' form (Recent, Activity): the project's tile first, unless the line under the title names the
    * project in words. Activity (the phone's screen) is the whole
-   * title on the row's width, ended by its mark; under it the place line, where the decision comes from and
-   * since when (`where`, lib/feed-row.ts), then what the thread wants, one line, a permission titled by what it
+   * title on the row's width, led by its mark in the card's mark column (ActivityMark.svelte), the desktop card's
+   * place; under it the place line, where the decision comes from and since when (`where`, lib/feed-row.ts); an
+   * update opens on what happened with its time beside it, so its place line only says where; then what the thread wants, one line, a permission titled by what it
    * does as the composer titles it; a command it asks to run reads in full in a mono block under them.
    * Its machine out of reach, "Offline" is said once: on the place line, unless the card above says it (`placed`). A sub-agent with the same ask is a line of its own (`helpers`), one
    * event per row, as on the desktop; `verb` names what a Needs you row asks: the decision pair after the content,
@@ -86,11 +90,11 @@
 </script>
 
 {#snippet placeLine(since?: number)}
-  <span class="meta" data-testid="mobile-row-meta"><span class="where" data-testid="mobile-row-where" title={where?.text}>{#if where?.project}<span class="ui-label">{where.project}</span>{/if}{#if where?.host}<MachinePlace host={where.host} />{/if}{#if chip}<span class="away" data-testid="thread-offline">{strings.connection.offline}</span>{/if}</span>{#if since !== undefined}<time class="since" title={exactTime(since)}>{ago(since, now)}</time>{/if}</span>
+  <span class="meta" data-testid="mobile-row-meta"><span class="where" data-testid="mobile-row-where" title={where?.text}>{#if where?.project}<span class="ui-label" use:wordFit={where.project}></span>{/if}{#if where?.host}<MachinePlace host={where.host} />{/if}{#if chip}<span class="away" data-testid="thread-offline">{strings.connection.offline}</span>{/if}</span>{#if since !== undefined}<time class="since" title={exactTime(since)}>{ago(since, now)}</time>{/if}</span>
 {/snippet}
-{#snippet why()}{@render placeLine(at)}{/snippet}
+{#snippet why()}{@render placeLine(verb || !feedKind ? at : undefined)}{/snippet}
 
-<div class="row" out:collapseRow|global={() => !owner.threads.some(entry => entry.id === thread.id)} class:reason={reason !== undefined} class:tiled={compact && project !== undefined && where === undefined} data-testid="mobile-row" data-thread-id={thread.id} data-machine-id={machine.id}>
+<div class="row" out:collapseRow|global={() => !owner.threads.some(entry => entry.id === thread.id)} class:reason={reason !== undefined} class:tiled={compact && project !== undefined && where === undefined} data-row-card={reason !== undefined ? '' : undefined} data-testid="mobile-row" data-thread-id={thread.id} data-machine-id={machine.id}>
   <!-- Under the row, for a finger that slides it left; the long press offers the same to everyone else. -->
   {#if pin || archive}
     <div class="swipe-actions" data-swipe-actions aria-hidden="true">
@@ -105,9 +109,13 @@
       <!-- One line for every list (ThreadHeadline.svelte): the title, then the mark in the row's one slot and the time
            after it; in Activity the decision's kind over it and the place line under it. The project's header says
            how many need the user, so no row repeats the word. -->
-      {#if feedKind}<ActivityKind kind={feedKind} />{/if}
-      <ThreadHeadline {owner} {thread} {now} tile={compact && where === undefined ? project : undefined} mark offline={away} ask={reason === undefined ? undefined : why}
-        at={reason === undefined && form !== null ? thread.lastUserMessageAt ?? thread.createdAt : undefined} />
+      {#if feedKind}<ActivityKind kind={feedKind} news={!verb}>{#if !verb && at !== undefined}<time title={exactTime(at)}>{ago(at, now)}</time>{/if}</ActivityKind>{/if}
+      {#if reason !== undefined}
+        <span class="title-line" data-row-title><ActivityMark>{#if form !== null}<ThreadState {thread} {now} subagents={rowAsks(owner, thread.id)} {away} mark />{/if}</ActivityMark><ThreadHeadline {owner} {thread} offline={away} ask={why} /></span>
+      {:else}
+        <ThreadHeadline {owner} {thread} {now} tile={compact && where === undefined ? project : undefined} mark offline={away}
+          at={form !== null ? thread.lastUserMessageAt ?? thread.createdAt : undefined} />
+      {/if}
       {#if reason === undefined && (where || chip)}{@render placeLine()}{/if}
     </button>
     {#if reason !== undefined && (ask || operation || helpers.length > 0)}
@@ -151,8 +159,11 @@
   .meta, .why { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--text-sm); line-height: 1.4; color: var(--color-muted-foreground); }
   .tiled .meta { margin-left: 26px; }
   /* Activity's content under the title's button, on its edge. */
-  .detail { display: flex; flex-direction: column; gap: 6px; padding: 0 12px 10px; margin-top: -4px; }
-  .detail :global(.clamp-text .body) { font-size: var(--text-sm); }
+  .detail { display: flex; flex-direction: column; gap: 6px; padding: 0 12px 10px 31px; margin-top: -4px; }
+  /* Activity's title line: the mark column (the kind glyph's 13 px and 6 px gap), the mark on the middle of the
+     title's capitals, which its trimmed box (.ui-label) starts on. */
+  .title-line { display: flex; align-items: flex-start; gap: 6px; min-width: 0; --mark-shift: calc(0.36 * var(--text-reading) - 10px); }
+  .title-line > :global(.headline) { flex: 1; }
   .helper .who { color: var(--color-foreground); font-weight: 500; }
   .sep { flex: none; color: var(--color-subtle); }
   /* The label inside is trimmed to its capitals, so the clip gets the room of its descenders back without
@@ -169,6 +180,8 @@
   .thread :global(.headline > .when) { font-size: var(--text-sm); }
   .thread :global(.headline > .when:not(.state)) { font-weight: 400; }
   .thread :global(.headline > .at) { line-height: 22px; font-size: var(--text-sm); }
+  /* A row with no mark: its time drawn by the state itself, on the same line as a marked row's. */
+  .thread :global(.headline > .when:not(.state)) { line-height: 22px; }
   /* A sub-agent's line: one line under the content; its thread holds the whole. */
   .why .text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* The pair follows what it answers, right-aligned on the row's edge as on the desktop: the title keeps the row's

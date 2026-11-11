@@ -220,6 +220,25 @@ test('a short gateway catalog identifies each upstream provider, including after
   }
 });
 
+test('a provider with one model gets a menu as tall as its content, the current model checked as Menu marks a choice', async () => {
+  const models: ModelInfo[] = [{ id: 'douane/opencode/solo', name: 'Solo' }];
+  await mountAt('landing');
+  const real = store.modelsOf.bind(store);
+  vi.spyOn(store, 'modelsOf').mockImplementation((providerId, accountId) => providerId === 'opencode' ? models : real(providerId, accountId));
+  document.querySelector<HTMLButtonElement>('[data-testid=composer-picker]')!.click();
+  await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null);
+  const menu = document.querySelector<HTMLElement>('[data-testid=composer-picker-menu]')!;
+  // A fixed height left an empty band under a short list: the frame follows its content, the rail its floor.
+  expect(getComputedStyle(menu).height).not.toMatch(/px|vh/);
+  expect(getComputedStyle(menu).maxHeight).not.toBe('none');
+  document.querySelector<HTMLButtonElement>('[data-testid=composer-picker-menu] [data-provider=opencode]')!.click();
+  await waitFor(() => rows() === 1);
+  expect(getComputedStyle(menu).height).not.toMatch(/px|vh/);
+  const current = document.querySelector<HTMLElement>('[data-testid=composer-picker-menu] [aria-current=true]');
+  if (current) expect(current.querySelector('.mark svg')).not.toBeNull();
+  expect(document.querySelectorAll('[data-testid=composer-picker-menu] .mark svg').length).toBeLessThanOrEqual(1);
+});
+
 test('a first probe shows a reading column, never the descriptor list it is about to replace', async () => {
   // Every Claude probe waits for the test: the first one lands, the second one fails.
   const original = FakeClient.prototype.call;

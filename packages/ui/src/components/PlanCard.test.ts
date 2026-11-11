@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
 import PlanCard from './PlanCard.svelte';
+import { phoneWidth } from '../test/phone-width';
 
 let running: Record<string, unknown> | null = null;
 
@@ -65,4 +66,25 @@ test('a paired device can copy and download but not write into the folder', () =
   const { card } = draw(false);
   expect(card.querySelector('[data-testid=plan-download]')).not.toBeNull();
   expect(card.querySelector('[data-testid=plan-save]')).toBeNull();
+});
+
+test('each action says its word on a desktop; a phone gathers them under one "more" button whose menu names them', async () => {
+  let { card } = draw(true);
+  expect([...card.querySelectorAll('.actions button')].map((button) => button.textContent?.trim())).toEqual(['Copy', 'Download', 'Save']);
+  unmount(running!, { outro: false });
+  document.body.innerHTML = '';
+  const restore = phoneWidth();
+  // The menu sizes its sheet with a ResizeObserver, which jsdom lacks.
+  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
+  try {
+    ({ card } = draw(true));
+    // No bare row of icons: one button, named, at the head's end.
+    expect(card.querySelector('.actions')).toBeNull();
+    const more = card.querySelector<HTMLButtonElement>('[data-testid=plan-menu]')!;
+    expect(more.getAttribute('aria-label')).toBe('Plan actions');
+    more.click();
+    await settle();
+    const rows = [...document.querySelectorAll<HTMLElement>('[data-testid=plan-menu-menu] [role^=menuitem]')];
+    expect(rows.map((row) => row.textContent?.trim())).toEqual(['Copy', 'Download .md', 'Save to folder']);
+  } finally { restore(); }
 });

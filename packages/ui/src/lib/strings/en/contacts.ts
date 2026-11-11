@@ -54,6 +54,8 @@ export const strings = {
       sentMany: '{contact} sent {count} requests',
       /** A merged ask's sub-row: the contact's thread it came from, then where it arrived and when. */
       from: '{thread} in {project}',
+      /** A merged ask's copies folded into one line under its text: where each arrived (among several machines) and when. */
+      copies: '{count} copies: {list}',
       /** A merged ask's actions settle every copy: accepting opens one thread, the copies are closed as duplicates. */
       acceptBoth: 'Accept both', refuseBoth: 'Refuse both', acceptAll: 'Accept all', refuseAll: 'Refuse all',
       asked: 'You asked {contact}',

@@ -53,6 +53,25 @@ test('a silent running turn reports work without implying an answer is being wri
   expect(document.querySelector('[data-testid=turn-summary] .spinner')).not.toBeNull();
 });
 
+test('a running turn on a machine out of reach says how old its last update is, with no spinner, no running clock and no Stop', () => {
+  const now = Date.now();
+  const tasks: BackgroundTask[] = [{ id: 'bash-1', kind: 'shell', description: 'render', toolId: 'tool-1', startedAt: now - 1_700_000 }];
+  const message = { id: 'prompt', role: 'user', turnId: 'turn-1', parts: [{ type: 'text', text: 'Render the frames' }] } as Message;
+  const progress = { turnId: 'turn-1', phase: 'tool', detail: 'Bash', at: now - 28 * 60_000 - 5_000 };
+  running = mount(MessageTurnSummary, { target: document.body, props: {
+    store: { connection: 'closed', booted: true, clockOffset: 0, openThread: { id: 't-1', status: 'running', updatedAt: now - 40 * 60_000, turns: [{ id: 'turn-1' }], progress, background: tasks } } as unknown as Store,
+    threadId: 't-1', turn: turn({ status: 'running', startedAt: now - 30 * 60_000, finishedAt: null, usage: null }), message, messages: [message],
+  } });
+  flushSync();
+  expect(text('turn-last-update')).toBe('Last update 28m ago');
+  expect(document.querySelector('[data-testid=turn-elapsed]')).toBeNull();
+  expect(document.querySelector('[data-testid=turn-progress]')).toBeNull();
+  expect(document.querySelector('[data-testid=turn-summary] .spinner')).toBeNull();
+  // Nothing reaches the machine: its background work is named, not offered to stop.
+  expect(text('turn-background')).toBe('1 shell still running');
+  expect(document.querySelector('[data-testid=turn-background-stop]')).toBeNull();
+});
+
 test('a finished turn reads how long it worked, when it was done and what it spent', () => {
   running = mount(TurnSummary, { target: document.body, props: { turn: turn() } });
   flushSync();

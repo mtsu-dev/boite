@@ -12,6 +12,9 @@ export const strings = {
     /** The footer of a turn: `Working 12s`, then `Worked 4m 41s`. */
     workingFor: 'Working for {time}',
     workedFor: 'Worked for {time}',
+    /** A running turn whose machine is out of reach: how old the last word from it is (`{time}` is "28m ago"). */
+    lastUpdate: 'Last update {time}',
+    lastUpdateNow: 'Last update just now',
     compacting: 'Compacting conversation',
     compactionElapsed: 'Elapsed: {time}',
     turnOwnTime: 'This reply alone: {time}',
@@ -237,6 +240,7 @@ export const strings = {
     questionAsyncHeading: 'Needs you',
     questionAsyncHint: 'The agent keeps working. Without an answer it goes on with a default.',
     questionAnswer: 'Answer',
+    questionPickFirst: 'Pick an option first',
     questionAnswered: 'You answered: {answer}',
     /** A question skipped or dropped with its turn: one line in the run, never the card again. */
     questionCancelled: 'Not answered: {question}',
@@ -273,6 +277,10 @@ export const strings = {
     plan: 'Plan',
     planDownload: 'Download .md',
     planSave: 'Save to folder',
+    planDownloadShort: 'Download',
+    planSaveShort: 'Save',
+    planSavedShort: 'Saved',
+    planActions: 'Plan actions',
     planSaveHint: "Write the plan as a markdown file at the root of this thread's folder",
     planSaved: 'Saved as {name}',
     planProgress: '{done} of {total}',

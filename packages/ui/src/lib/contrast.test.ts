@@ -9,7 +9,7 @@ const css = readFileSync(resolve('src/app.css'), 'utf8');
  * themes. The subtle tier carries paths, timestamps and hints, so it is text
  * and has to clear WCAG AA (4.5:1) on the raised surface-3 too, with margin:
  * 8:1 on every ground, and within 7 L* of the muted tier, while
- * the three tiers stay at least 4 L* apart so the hierarchy still reads.
+ * the three tiers stay at least 3 L* apart so the hierarchy still reads.
  */
 
 function block(selector: string): string {
@@ -55,13 +55,12 @@ function alpha(scope: string, name: string): number {
 /**
  * Secondary text, the hairline and the edge that must read sit high enough
  * that small meta (timestamps, counts, diff line numbers, the quota line)
- * never reads as dim. A dimmer pair, such as 13.19:1 and 11.83:1 in dark or
- * 12.69:1 and 11.16:1 in light, fails the floors below.
+ * never reads as dim. A dimmer pair, such as 13.78:1 and 12.39:1 in dark or
+ * 13.6:1 and 12.51:1 in light, fails the floors below.
  */
-// The light tiers sit at the 4 L* step under the ink: the previous 13.46:1 and 12.21:1 on the frame fail.
 const FLOORS = {
-  dark: { muted: 13.6, subtle: 12.3, border: 0.09, edge: 0.13 },
-  light: { muted: 13.55, subtle: 12.45, border: 0.095, edge: 0.19 }
+  dark: { muted: 14.1, subtle: 13, border: 0.09, edge: 0.13 },
+  light: { muted: 13.8, subtle: 13, border: 0.095, edge: 0.19 }
 };
 
 describe.each([
@@ -70,7 +69,7 @@ describe.each([
 ] as const)('%s theme', (theme, selector) => {
   const scope = block(selector);
 
-  test('secondary and tertiary text sit one step brighter than round 19', () => {
+  test('secondary and tertiary text read at a glance on every ground', () => {
     for (const ground of GROUNDS) {
       expect(ratio(token(scope, '--color-muted-foreground'), token(scope, ground)), `muted on ${ground}`).toBeGreaterThanOrEqual(FLOORS[theme].muted);
       expect(ratio(token(scope, '--color-subtle'), token(scope, ground)), `subtle on ${ground}`).toBeGreaterThanOrEqual(FLOORS[theme].subtle);
@@ -94,8 +93,8 @@ describe.each([
 
   test('the three tiers stay a visible step apart, subtle one step under muted', () => {
     const [primary, muted, subtle] = ['--color-foreground', '--color-muted-foreground', '--color-subtle'].map((name) => lightness(token(scope, name)));
-    expect(Math.abs(primary! - muted!), 'primary to muted').toBeGreaterThanOrEqual(4);
-    expect(Math.abs(muted! - subtle!), 'muted to subtle').toBeGreaterThanOrEqual(4);
+    expect(Math.abs(primary! - muted!), 'primary to muted').toBeGreaterThanOrEqual(3);
+    expect(Math.abs(muted! - subtle!), 'muted to subtle').toBeGreaterThanOrEqual(3);
     // More than one step under muted reads as dim (8.6 L* in dark, 8.8 in light).
     expect(Math.abs(muted! - subtle!), 'muted to subtle').toBeLessThanOrEqual(7);
   });
@@ -241,10 +240,10 @@ test('a menu or popover edge sits one step over the edge, toward the text, in ev
 /**
  * The curated palettes carry their own text tiers. Their subtle gets the same
  * lift as the default: within 7 L* of its muted tier, so tertiary text does
- * not read dim on any theme. The small tier keeps a margin over AA: muted 7:1
- * and subtle 6:1 on every ground the palette draws, each palette set 0.2 over
- * the floor, and the foreground stays 4 L* clear of the lifted muted so the
- * hierarchy still reads. The selection stands 5 L* off the surface and the
+ * not read dim on any theme. The small tier keeps a margin over AA: muted
+ * 7.35:1 and subtle 6.7:1 on every ground the palette draws, and the
+ * foreground stays 3 L* clear of the lifted muted, the subtle 3 L* under it,
+ * so the hierarchy still reads. The selection stands 5 L* off the surface and the
  * raised fill, so a selected row never differs by a near-identical grey (2.5
  * L* under a raised fill does).
  */
@@ -256,20 +255,21 @@ describe('curated palettes', () => {
     expect(ids.length).toBeGreaterThanOrEqual(11);
   });
 
-  // Each palette with margin over the floor, not on it (a subtle at 6.20 or a muted at 7.26 fails).
-  test.each(ids)('%s: muted clears 7.25:1 and subtle 6.25:1 on every ground, subtle within 7 L* of muted, the foreground 4 L* past muted', (id) => {
+  // Each palette with margin over the floor, not on it (a subtle at 6.6 or a muted at 7.3 fails).
+  test.each(ids)('%s: muted clears 7.35:1 and subtle 6.7:1 on every ground, subtle 3 to 7 L* under muted, the foreground 3 L* past muted', (id) => {
     const value = (name: string) => new RegExp(`--palette-${id}-${name}:\\s*(#[0-9a-f]{6})\\s*;`, 'i').exec(css)?.[1];
     const grounds = PALETTE_GROUNDS.map(value).filter((hex): hex is string => !!hex);
     const [foreground, muted, subtle] = [value('foreground'), value('muted-foreground'), value('subtle')];
     expect(grounds.length, 'grounds').toBeGreaterThanOrEqual(4);
     expect(muted && subtle, 'muted and subtle').toBeTruthy();
     for (const ground of grounds) {
-      expect(ratio(subtle!, ground), `subtle on ${ground}`).toBeGreaterThanOrEqual(6.25);
-      expect(ratio(muted!, ground), `muted on ${ground}`).toBeGreaterThanOrEqual(7.25);
+      expect(ratio(subtle!, ground), `subtle on ${ground}`).toBeGreaterThanOrEqual(6.7);
+      expect(ratio(muted!, ground), `muted on ${ground}`).toBeGreaterThanOrEqual(7.35);
       expect(ratio(foreground!, ground), `foreground on ${ground}`).toBeGreaterThanOrEqual(7.25);
     }
     expect(Math.abs(lightness(muted!) - lightness(subtle!)), 'muted to subtle').toBeLessThanOrEqual(7);
-    expect(Math.abs(lightness(foreground!) - lightness(muted!)), 'foreground to muted').toBeGreaterThanOrEqual(4);
+    expect(Math.abs(lightness(muted!) - lightness(subtle!)), 'muted to subtle').toBeGreaterThanOrEqual(3);
+    expect(Math.abs(lightness(foreground!) - lightness(muted!)), 'foreground to muted').toBeGreaterThanOrEqual(3);
   });
 
   /**

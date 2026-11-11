@@ -33,10 +33,17 @@
     <h1>{strings.settings.tabs.general}</h1>
   </header>
 
-  <!-- This device's switches, then the machine's: two cards, each saying where it applies. -->
-  <section class="card" id="settings-conversations">
-    <h2><span class="ui-label">{strings.settings.conversations}</span><CardScope /></h2>
-    <ConversationSwitches />
+  <!-- This device's switches by topic, then the machine's: each card saying where it applies. -->
+  <section class="card" id="settings-thread-list" data-testid="settings-card-thread-list">
+    <h2><span class="ui-label">{strings.settings.threadList}</span><CardScope /></h2>
+    <ConversationSwitches part="list" />
+  </section>
+  <section class="card" id="settings-conversations" data-testid="settings-card-conversation">
+    <h2><span class="ui-label">{strings.settings.inConversation}</span><CardScope /></h2>
+    <ConversationSwitches part="conversation" />
+  </section>
+  <section class="card" id="settings-notifications" data-testid="settings-card-notifications">
+    <h2><span class="ui-label">{strings.settings.notificationsHeading}</span><CardScope /></h2>
     <label for="{uid}-notifications" class="switch-row">
       <span class="text">
         <span class="ui-label" id="{uid}-notifications-name">{strings.settings.notifications}</span>

@@ -58,7 +58,8 @@
     gap: 10px;
     max-width: var(--settings-width);
   }
-  .machine-bar:empty { display: none; }
+  /* With neither picker nor note it takes no room: Svelte's anchors keep it from matching `:empty`. */
+  .machine-bar:not(:has(> *)) { display: none; }
   .scope-line { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; color: var(--color-muted-foreground); font-size: var(--text-sm); }
   .name {
     overflow: hidden;

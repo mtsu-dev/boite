@@ -56,10 +56,10 @@ test('Activity gives each row its reason and its time, a sub-agent under its par
   await settle();
   const rows = Array.from(document.querySelectorAll<HTMLElement>('[data-testid=mobile-row]'));
   expect(rows.length).toBeGreaterThan(0);
-  // Every row says where it comes from, its project, and since when ends that place line.
+  // Every row says where it comes from, its project; since when ends that place line, or an update's event word.
   for (const row of rows) {
     expect(row.querySelector('[data-testid=mobile-row-where]')?.textContent?.trim()).toBeTruthy();
-    expect(row.querySelector('[data-testid=mobile-row-meta] > time.since')?.textContent?.trim()).toBeTruthy();
+    expect((row.querySelector('[data-testid=mobile-row-meta] > time.since') ?? row.querySelector('[data-testid=activity-kind].news > time'))?.textContent?.trim()).toBeTruthy();
   }
   for (const row of rows) {
     const project = store.projects.find(entry => entry.id === store.threads.find(thread => thread.id === row.dataset['threadId'])?.projectId);

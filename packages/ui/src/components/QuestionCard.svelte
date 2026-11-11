@@ -78,6 +78,9 @@
   $effect(() => { if (open) built = true; });
 
   const ready = $derived(picked.length > 0 || drafted);
+  /** Answer pressed with nothing to send: a quiet line under the choices, gone at the first pick. */
+  let pickFirst = $state(false);
+  $effect(() => { if (ready) pickFirst = false; });
   /** Docked with options, the card keeps its own Answer. */
   const answers = $derived(docked && options.length > 0);
 
@@ -151,10 +154,24 @@
     picked = picked[0] === id ? [] : [id];
   }
 
+  /** Answer always answers to a press: with nothing picked or typed it sends nothing and points at the choices. */
   async function send(): Promise<void> {
-    if (!pending || !ready || sent) return;
+    if (!pending || sent) return;
+    if (!ready) {
+      if (options.length === 0) { onwrite?.(); return; }
+      pickFirst = true;
+      list?.querySelector<HTMLButtonElement>('button')?.focus();
+      return;
+    }
     sent = true;
     if ((await submit(picked)) === false) sent = false;
+  }
+
+  /** The composer's 1 to 9 still pick once the focus moved onto the choices. */
+  function numbered(event: KeyboardEvent): void {
+    if (!/^[1-9]$/.test(event.key) || Number(event.key) > options.length || event.ctrlKey || event.metaKey || event.altKey) return;
+    event.preventDefault();
+    toggle(options[Number(event.key) - 1]!.id);
   }
 
   async function pass(): Promise<void> {
@@ -238,7 +255,7 @@
   {/if}
 
     {#if options.length > 0}
-      <div class="options" class:scroll-edges={docked} class:clipped={below > 0} role={multiple ? 'group' : 'radiogroup'} bind:this={list} onscroll={measure}>
+      <div class="options" class:scroll-edges={docked} class:clipped={below > 0} role={multiple ? 'group' : 'radiogroup'} bind:this={list} onscroll={measure} onkeydown={numbered}>
         {#each options as option, index (option.id)}
           <button
             type="button"
@@ -272,8 +289,9 @@
       {#if below > 0}
         <button type="button" class="ghost more" data-testid="question-more" onmousedown={keepFocus} onclick={more}><span class="ui-label">{below === 1 ? strings.chat.questionMoreOne : fill(strings.chat.questionMore, { count: String(below) })}</span><ChevronDown size={14} strokeWidth={2} aria-hidden="true" /></button>
       {/if}
+      {#if pickFirst && pending}<p class="muted pick-first" data-testid="question-pick-first" role="status">{strings.chat.questionPickFirst}</p>{/if}
     {/if}
-    <!-- The decision's pair closes the card: Skip, then Answer, filled from the start and lit at a pick (it takes what the box holds too, sendAnswer). Docked, the pager leads the line. -->
+    <!-- The decision's pair closes the card: Skip, then Answer, filled and pressable from the start (it takes what the box holds too, sendAnswer). Docked, the pager leads the line. -->
     {#if pending && (!docked || skip || answers || !replying || page)}
       <DecisionActions lead={foot}>
         {#if page && onopen}
@@ -286,7 +304,7 @@
           <button type="button" class="secondary" data-testid="question-skip" disabled={sent} onmousedown={keepFocus} onclick={pass}><span class="ui-label">{strings.chat.questionSkip}</span></button>
         {/if}
         {#if !docked || !replying || answers}
-          <button type="button" class="primary" data-testid="question-submit" disabled={!ready || sent} onmousedown={keepFocus} onclick={send}><span class="ui-label">{strings.chat.questionAnswer}</span></button>
+          <button type="button" class="primary" data-testid="question-submit" disabled={sent} onmousedown={keepFocus} onclick={send}><span class="ui-label">{strings.chat.questionAnswer}</span></button>
         {/if}
       </DecisionActions>
     {:else}
@@ -341,6 +359,7 @@
   .more { align-self: flex-start; gap: 4px; height: 28px; padding: 0 8px; color: var(--color-foreground); font-size: var(--text-sm); font-weight: 550; }
   .more .ui-label { text-decoration: underline; text-decoration-color: color-mix(in oklab, currentColor 45%, transparent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
   .more:hover .ui-label { text-decoration-color: currentColor; }
+  .pick-first { margin: 0; font-size: var(--text-sm); }
 
   /* The choices are lines of the decision, not boxes in it: no fill and no
      edge at rest, a fill under the pointer. The numbered keycap says each one

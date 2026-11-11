@@ -17,6 +17,7 @@
   import Spinner from './Spinner.svelte';
   import { chatPrefs } from '../lib/chat-prefs.svelte';
   import type { Store } from '../lib/store.svelte';
+  import { lastHeard, machineAway } from '../lib/machine-away';
 
   /*
    * One tool call as a plain line of the timeline: what it did
@@ -77,11 +78,13 @@
     threadId?: string;
   } = $props();
 
+  /** The machine is out of reach: a running call is its last known state, its clock stopped at the last word heard. */
+  let away = $derived(!!store && machineAway(store));
   /** Shown from one second on: a quick call needs no clock. */
   let took = $derived.by(() => {
     if (startedAt === null) return '';
     // A running call reads the second clock, paused while the page is hidden.
-    const end = status === 'running' ? secondClock.now : finishedAt;
+    const end = status === 'running' ? away ? lastHeard(store?.openThread) : secondClock.now : finishedAt;
     if (end === null || end === undefined) return '';
     const spent = end - startedAt;
     return spent >= 1000 ? elapsed(spent) : '';
@@ -185,7 +188,7 @@
     onclick={() => { if (!shown) { attempted = false; loadError = null; } toggled = !shown; }}
   >
     <span class="glyph"><Glyph size={15} strokeWidth={1.75} /></span>
-    <span class="line ui-label" class:mono={!compact && line.mono} class:live={status === 'running'} title={diffs[0]?.path ?? line.title}>{label}</span>
+    <span class="line ui-label" class:mono={!compact && line.mono} class:live={status === 'running' && !away} title={diffs[0]?.path ?? line.title}>{label}</span>
     {#if counts.added > 0 || counts.removed > 0}
       <span class="counts" data-testid="tool-diff-counts"><ChangeCount added={counts.added} removed={counts.removed} /></span>
     {/if}
@@ -205,7 +208,7 @@
       </span>
     {/if}
     {#if status === 'running'}
-      <span class="status" title={strings.chat.toolStatus.running}><Spinner size={11} /></span>
+      <span class="status" title={strings.chat.toolStatus.running}><Spinner size={11} stale={away} /></span>
     {:else if carded}
       <!-- The error card under the answer says this stop, its code and its log. -->
     {:else if failed && permission !== 'deny'}

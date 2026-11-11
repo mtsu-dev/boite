@@ -116,7 +116,9 @@
 
   let children: Partial<Record<SettingsTab, { id: string; label: string }[]>> = $derived({
     general: [
-      { id: 'conversations', label: strings.settings.conversations },
+      { id: 'thread-list', label: strings.settings.threadList },
+      { id: 'conversations', label: strings.settings.inConversation },
+      { id: 'notifications', label: strings.settings.notificationsHeading },
       ...(store.owner ? [{ id: 'agent-replies', label: strings.settings.agentReplies }] : []),
       ...(store.owner ? [{ id: 'quiet', label: strings.protection.quiet }] : []),
       { id: 'workspace', label: strings.settings.workspace },
@@ -234,9 +236,9 @@
    * people look for "network" or "accent", not for the card's title.
    */
   let settingsWords = $derived<[SettingsTab, string | null, string][]>([
-    ['general', 'conversations', strings.settings.groupWorkingThreads],
-    ['general', 'conversations', strings.settings.groupOtherProjects],
-    ['general', 'conversations', strings.settings.notifications],
+    ['general', 'thread-list', strings.settings.groupWorkingThreads],
+    ['general', 'thread-list', strings.settings.groupOtherProjects],
+    ['general', 'notifications', strings.settings.notifications],
     ['general', 'agent-replies', strings.settings.asyncQuestions],
     ['general', 'agent-replies', strings.settings.shortAnswers],
     ['general', 'agent-replies', strings.settings.toolSummaries],
@@ -653,7 +655,10 @@
   /* The screen's one title, at the top of its card in the settings column, one step over a card's. */
   .screen { display: flex; flex-direction: column; align-items: flex-start; padding: var(--space-8) max(var(--settings-gutter), calc((100% - var(--settings-width)) / 2)) 0; }
   .screen h1 { min-width: 0; margin: 0; color: var(--color-foreground); font-size: var(--text-lg); font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; }
-  .screen + :global(.page) { padding-top: var(--space-5); }
+  /* The first card's title follows the screen's title at the normal step, with no empty band between. */
+  .screen ~ :global(.page) { padding-top: var(--space-4); }
+  .screen ~ :global(.page > .card:first-child:has(> h2:first-child)),
+  .screen ~ :global(.page > header:first-child + .card:has(> h2:first-child)) { margin-top: var(--card-head); }
   /* The machine's name in the scope line is the picker: a word with an edge and a chevron, so it reads as one at rest. */
   :global(.settings .scope .trigger.text) { margin: -2px 0; color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-edge); }
   :global(.settings .scope .pick-name) { overflow: hidden; max-width: 28ch; text-overflow: ellipsis; white-space: nowrap; }

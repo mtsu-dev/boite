@@ -49,7 +49,7 @@
   .kinds:not(.mobile) .kind { min-height: 52px; padding: 10px 0 10px 16px; gap: 12px; }
   .kind .text { flex: 1; min-width: 0; }
   .kind :global(svg) { align-self: flex-start; margin-top: 2px; }
-  .hint { display: block; margin-top: var(--space-1); color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 400; line-height: 1.4; }
+  .hint { display: block; margin-top: var(--space-1); color: var(--color-subtle); font-size: var(--text-sm); font-weight: 400; line-height: 1.4; }
   /* The desktop's rows sit in a wrapper: the separators the card draws between its rows are drawn here. */
   .kinds:not(.mobile) .kind:first-child, .kinds:not(.mobile) + :global(.switch-row) { border-top: 1px solid var(--color-border); }
   /* The phone's rows, inside the notifications card: the height of a settings row, no side padding of their own. */

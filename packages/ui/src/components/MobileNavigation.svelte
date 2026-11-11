@@ -278,9 +278,11 @@
 </script>
 
 {#snippet connection()}
-  <!-- The machine: on the first run its name, the screen's one line; on the list's row a monitor and its dot, the name in its tooltip. -->
-  <button class="ghost connection" class:icon={!firstRun} data-testid="mobile-connection" title={place} onclick={() => store.showSettings('machines')}>
-    {#if !firstRun}<Monitor size={20} aria-hidden="true" />{/if}<span class="dot" class:ready={store.connection === 'ready'}></span><span class="ui-label" class:visually-hidden={!firstRun}>{place}</span>{#if firstRun}<ChevronDown size={12} />{/if}
+  <!-- The machine: on the first run its name, the screen's one line; on the list's row a monitor and its dot, the name in its tooltip;
+       over Settings, whose pages change that machine, the monitor, its dot and its name in words. -->
+  {@const named = !firstRun && store.page === 'settings'}
+  <button class="ghost connection" class:icon={!firstRun && !named} class:named data-testid="mobile-connection" title={place} onclick={() => store.showSettings('machines')}>
+    {#if !firstRun}<Monitor size={named ? 16 : 20} aria-hidden="true" />{/if}<span class="dot" class:ready={store.connection === 'ready'}></span><span class="ui-label" class:visually-hidden={!firstRun && !named}>{place}</span>{#if firstRun}<ChevronDown size={12} />{/if}
   </button>
 {/snippet}
 
@@ -529,6 +531,7 @@
     .dot.ready { background: var(--color-success); }
     /* On the list's row: a finger's square, the monitor with its dot on the corner, like the desktop rail's machines. */
     .connection.icon { flex: none; justify-content: center; width: var(--touch-target); height: var(--touch-target); margin: 0; color: var(--color-muted-foreground); }
+    .connection.named { flex: 0 1 auto; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; max-width: 45%; margin: 0; padding: 0 var(--space-2); font-size: var(--text-sm); color: var(--color-muted-foreground); }
     .gear { position: relative; }
     :is(.connection.icon, .gear) .dot { position: absolute; top: 9px; right: 8px; width: 7px; height: 7px; box-shadow: 0 0 0 2px var(--color-background); }
     .identity { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; flex: 1; }

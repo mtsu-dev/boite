@@ -3,6 +3,7 @@
   import type { Snippet } from 'svelte';
   import type { HTMLButtonAttributes } from 'svelte/elements';
   import Elapsed from './Elapsed.svelte';
+  import { wordFit } from '../lib/word-fit';
 
   /**
    * Work the agent sent, grouped on one row of the chat where it started:
@@ -39,7 +40,7 @@
     <span class="words">
       <span class="heading">{heading}</span>
       <span class="progress" data-testid={progressTestId}>{@render progress()}{@render extra?.()}</span>
-      {#if cause}<span class="cause" data-testid="activity-cause" title={cause}>{cause}</span>{/if}
+      {#if cause}<span class="cause" data-testid="activity-cause" title={cause} use:wordFit={cause}></span>{/if}
     </span>
     {#if timing.startedAt !== null}<span class="timing"><Elapsed startedAt={timing.startedAt} finishedAt={timing.finishedAt} active={timing.active} /></span>{/if}
     <span class="caret" aria-hidden="true">{#if children}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}</span>
@@ -76,7 +77,8 @@
   .heading { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-foreground); font-weight: 500; }
   /* The counts are what the row says: on a narrow column they wrap, never cut. */
   .progress { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; min-width: 0; margin-top: 1px; font-size: var(--text-xs); line-height: 16px; color: var(--color-subtle); }
-  .cause { min-width: 0; contain: inline-size; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); line-height: 16px; color: var(--color-muted-foreground); }
+  /* Two lines at most, then cut on a whole word (`wordFit`): the reason reads whole, never cut inside a word. */
+  .cause { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; min-width: 0; contain: inline-size; margin-top: 1px; overflow: hidden; overflow-wrap: anywhere; font-size: var(--text-xs); line-height: 16px; color: var(--color-muted-foreground); }
   .timing { flex: none; color: var(--color-subtle); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
   .caret { display: inline-flex; flex: none; color: var(--color-subtle); transition: transform var(--motion-duration) var(--motion-curve); }
   .activity[aria-expanded='true'] .caret { transform: rotate(180deg); }

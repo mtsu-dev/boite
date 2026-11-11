@@ -79,7 +79,7 @@ export const fr: Translation = {
     pending: 'À faire',
     in_progress: 'En cours',
     completed: 'Terminée',
-    kind: { permission: 'Permission', question: 'Question', request: 'Demande de contact', mail: 'Message retenu', failed: 'Échec', stopped: 'Arrêtée' },
+    kind: { permission: 'Permission', question: 'Question', request: 'Demande de contact', mail: 'Message retenu', failed: 'Échec', stopped: 'Arrêtée', done: 'Terminée' },
     textAll: 'Tout afficher',
     textLess: 'Afficher moins'
   }

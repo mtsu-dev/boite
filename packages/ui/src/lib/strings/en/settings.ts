@@ -35,6 +35,13 @@ export const strings = {
     searchEmpty: 'No setting matches',
     connectProvider: 'Connect a provider',
     conversations: 'Conversations',
+    /** General's cards by topic: how the list groups, what a conversation shows, what reaches you. */
+    threadList: 'Thread list',
+    inConversation: 'In the conversation',
+    notificationsHeading: 'Notifications',
+    /** A phone's Settings home: what Voice holds now, before its chevron. */
+    homeOn: 'On',
+    homeOff: 'Off',
     /** The muted line under a switch: what turning it on does. */
     effects: {
       groupWorking: 'Working threads fold away, and projects all at work list under Working, on top',

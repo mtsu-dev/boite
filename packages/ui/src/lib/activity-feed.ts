@@ -21,8 +21,9 @@ export type FeedVerb = 'answer' | 'allow' | 'review';
 /** `place`: where the row lives in words (its project, a bot's name, Drafts), for its place line; `reason` repeats it
     when the thread has nothing more to say. */
 export type FeedRow<M> = FeedSource<M> & { reason: string; place: string; at: number; nested: boolean; section: FeedSection; verb: FeedVerb | null; kind: FeedKind | null };
-/** What a Needs you row is, named on its first line so its verbs are expected: Allow once a permission, Answer a question, Review a failure or a stop. */
-export type FeedKind = 'permission' | 'question' | 'failed' | 'stopped';
+/** What a row is, named on its first line: a Needs you row's so its verbs are expected (Allow once a permission, Answer
+    a question, Review a failure or a stop), an update's as what happened (a stop, a finish). */
+export type FeedKind = 'permission' | 'question' | 'failed' | 'stopped' | 'done';
 type Requests = { pendingQuestions: readonly QuestionRequest[]; pendingPermissions: readonly PermissionRequest[] };
 type Owner = Requests & { subagents: (id: ThreadSummary['id']) => Delegated };
 
@@ -104,7 +105,7 @@ function verbOf(owner: Requests, thread: ThreadSummary, kind: ThreadState | null
 function kindOf(verb: FeedVerb | null, kind: ThreadState | null): FeedKind | null {
   if (verb === 'allow') return 'permission';
   if (verb === 'answer') return 'question';
-  return kind === 'error' ? 'failed' : kind === 'interrupted' ? 'stopped' : null;
+  return kind === 'error' ? 'failed' : kind === 'interrupted' ? 'stopped' : kind === 'done' ? 'done' : null;
 }
 
 /** A thread outside any project: a bot's worker names its bot, through `place`, a draft says Drafts. */

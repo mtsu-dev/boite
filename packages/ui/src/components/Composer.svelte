@@ -202,7 +202,7 @@
   const narrow = new MediaQuery('(max-width: 720px)');
   // What Send does to the question at the top of the box (composerPlaceholder's `answer`); the foot names a permission out of view.
   let answer = $derived(reply ? (reply.options.length ? 'options' as const : 'text' as const) : docked && docked.threadId === thread?.id && !docked.async && store.busy ? 'after' as const : null);
-  let placeholder = $derived(composerPlaceholder({ target, replying: !!thread && store.busy, answer, permission: !!permission && !reply && !decisionTail.away, narrow: narrow.current, bot, offline, away, accountGone, onThread: !!thread, machine: machineLabel, provider: provider?.name ?? null }));
+  let placeholder = $derived(composerPlaceholder({ target, replying: !!thread && store.busy, answer, permission: !reply && !decisionTail.away ? permission : null, narrow: narrow.current, bot, offline, away, accountGone, onThread: !!thread, machine: machineLabel, provider: provider?.name ?? null }));
 
   // -- the slash menu -----------------------------------------------------------
   // `/` on an empty box, then the word being typed: nothing else opens it, and a
@@ -756,7 +756,7 @@
       if (older()) event.preventDefault();
     } else if (event.key === 'ArrowDown' && !event.shiftKey) {
       if (newer()) event.preventDefault();
-    } else if (event.key === 'Escape' && !reply && (target ? target.busy && !!target.stop : store.busy || thread?.activity?.goal?.status === 'active' || thread?.activity?.loop?.status === 'active')) {
+    } else if (event.key === 'Escape' && !reply && (target ? target.busy && !!target.stop : !away && (store.busy || thread?.activity?.goal?.status === 'active' || thread?.activity?.loop?.status === 'active'))) {
       // Not while the box answers a question: a thread waiting on one opens
       // with the focus there, and an Escape pressed out of habit threw the
       // question away with the turn. Skip and the stop button still end it.

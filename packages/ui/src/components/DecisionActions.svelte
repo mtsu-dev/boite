@@ -6,8 +6,8 @@
    * right-aligned, the secondary (Deny, Skip) an outline button, then the
    * primary (Allow once, Answer) solid in the neutral ink, both one height.
    * The buttons are the caller's: `class="secondary"` and `class="primary"`.
-   * A primary that cannot act yet stays solid, faded: the decision's one
-   * filled action reads first whether or not it is ready. `lead` holds what
+   * A primary already pressed and on its way stays solid, faded: the
+   * decision's one filled action reads first. `lead` holds what
    * reads before them at the line's start (a pager, a count).
    */
   let { lead, children }: { lead?: Snippet; children: Snippet } = $props();

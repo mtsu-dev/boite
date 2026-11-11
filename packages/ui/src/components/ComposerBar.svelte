@@ -24,6 +24,7 @@
   import { speedControl } from '../lib/model-speeds';
   import type { ComposerTarget } from '../lib/composer-target';
   import { desktopSettings } from '../lib/settings-tabs';
+  import { machineAway } from '../lib/machine-away';
   /** The context's reading shows in the row from this percent used. */
   const CONTEXT_SHOWN_FROM = 70;
 
@@ -100,7 +101,8 @@
   /** The turn stands still on the owner's answer (a permission, a question it stopped for): Deny or Skip is the way out, Escape still stops. */
   let held = $derived(!target && store.openThread?.status === 'waiting');
   /** One round button at the row's end: Stop while a turn runs and nothing typed waits to go, Send otherwise. */
-  let stopShown = $derived(stopping && !held && !waiting && !(canSend && typed));
+  /** Nothing reaches a machine out of reach: no Stop, and Send queues what is written for its return. */
+  let stopShown = $derived(stopping && !held && !waiting && !(canSend && typed) && (!!target || !machineAway(store)));
 
   let picker = $state<HTMLInputElement | undefined>(undefined);
   let bar = $state<HTMLDivElement | undefined>(undefined);

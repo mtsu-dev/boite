@@ -130,6 +130,16 @@ test('the checklist model sits with how agents answer on General, with no experi
   expect(query('#settings-conversations > h2 [data-testid=card-scope]').dataset.kind).toBe('device');
   expect(query('#settings-agent-replies > h2 [data-testid=card-scope]').dataset.kind).toBe('machine');
   expect(document.querySelector('#settings-conversations [data-testid=setting-async-questions]')).toBeNull();
+  // One card per topic: how the list groups, what a conversation shows, what reaches you, in that order.
+  const topics = [...document.querySelectorAll<HTMLElement>('[data-testid^=settings-card-]')];
+  expect(topics.map((card) => [card.id, card.querySelector('h2 .ui-label')?.textContent])).toEqual([
+    ['settings-thread-list', 'Thread list'], ['settings-conversations', 'In the conversation'], ['settings-notifications', 'Notifications']
+  ]);
+  expect(query('#settings-thread-list [data-testid=setting-group-working-threads]')).toBeTruthy();
+  expect(query('#settings-conversations [data-testid=chat-expand-diffs]')).toBeTruthy();
+  expect(document.querySelector('#settings-conversations [data-testid=setting-group-working-threads]')).toBeNull();
+  expect(query('#settings-notifications [data-testid=setting-notifications]')).toBeTruthy();
+  expect(document.querySelector('#settings-conversations [data-testid=setting-notifications]')).toBeNull();
   expect(query('[data-testid=goal-tracker-model]').textContent).toContain('Automatic');
   query<HTMLButtonElement>('[data-testid=view-threads]').click();
   await waitFor(() => document.querySelector('[data-testid=settings]') === null);

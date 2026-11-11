@@ -44,7 +44,8 @@
 <style>
   .clamp-text { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; contain: inline-size; }
   .frame { align-self: stretch; min-width: 0; }
-  .body { margin: 0; min-width: 0; font-size: var(--text-sm); line-height: 1.45; color: var(--color-muted-foreground); text-align: start; white-space: pre-wrap; overflow-wrap: anywhere;
+  /* Prose a decision rests on: the body's size at the conversation's reading leading, so it reads as text, not meta. */
+  .body { margin: 0; min-width: 0; font-size: var(--text-body); line-height: var(--leading-reading); color: var(--color-muted-foreground); text-align: start; white-space: pre-wrap; overflow-wrap: anywhere;
     display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; line-clamp: 4; overflow: hidden; }
   .body.open { display: block; -webkit-line-clamp: none; line-clamp: none; overflow-x: auto; scrollbar-width: thin; }
   /* The command as it will run, the code block's face; the frame holds the padding, so a fifth line never peeks under the fourth. */

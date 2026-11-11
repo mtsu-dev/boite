@@ -51,6 +51,7 @@ export const fr: Translation = {
       asks: '{contact} demande',
       sentMany: '{contact} a envoyé {count} demandes',
       from: '{thread} dans {project}',
+      copies: '{count} copies : {list}',
       acceptBoth: 'Accepter les deux', refuseBoth: 'Refuser les deux', acceptAll: 'Tout accepter', refuseAll: 'Tout refuser',
       asked: 'Vous avez demandé à {contact}',
       remote: 'Remote git',

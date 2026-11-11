@@ -4,6 +4,7 @@ export const fr: Translation = {
 
   accounts: {
     heading: 'Fournisseurs',
+    pickerSection: 'Compte',
     login: 'Se connecter',
     loginStarting: 'Démarrage de la connexion',
     loginOpen: 'Ouvrir la page de connexion',

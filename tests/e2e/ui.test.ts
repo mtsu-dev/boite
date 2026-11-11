@@ -352,10 +352,13 @@ test(
     await clickWhenEnabled(testid('composer-send'));
     await page.waitFor(`document.querySelector('${testid('question-card')}')`, 30_000);
     expect(await page.text(testid('question-text'))).toContain('Which shape');
-    // Nothing picked yet, so there is nothing to send.
+    // Answer is live with nothing picked: the press sends nothing and asks for a pick under the options.
     expect(
       await page.evaluate<boolean>(`document.querySelector('${testid('question-submit')}').disabled`),
-    ).toBe(true);
+    ).toBe(false);
+    await page.click(testid('question-submit'));
+    await page.waitFor(`document.querySelector('${testid('question-pick-first')}')`, 30_000);
+    expect(await page.evaluate<string>(`document.querySelector('${testid('question-card')}').dataset.state`)).toBe('pending');
 
     await page.click(`${testid('question-option')}[data-option=short]`);
     // The composer is the question's free field: Enter there sends the pick with the text.

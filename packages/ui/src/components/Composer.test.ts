@@ -910,6 +910,15 @@ test('a thread of a machine that dropped still opens and queues its prompts unti
   expect(query('[data-testid=composer-offline]').textContent).toContain('is offline');
   expect(query<HTMLButtonElement>('[data-testid=thread-reconnect]').disabled).toBe(false);
   expect(input().disabled).toBe(false);
+  // A turn last seen running there is its last known state: nothing here can stop it, by button or by Escape.
+  store.openThread!.status = 'running';
+  flushSync();
+  expect(document.querySelector('[data-testid=composer-stop]')).toBeNull();
+  input().focus();
+  press('Escape');
+  expect(rpc).not.toHaveBeenCalled();
+  store.openThread!.status = 'idle';
+  flushSync();
   await type('Run this once you are back');
   press('Enter');
   await waitFor(() => input().value === '' && store.composerStates[other.id]?.queued.length === 1);
@@ -1012,7 +1021,9 @@ test('the permission waits on its command row in the timeline, the field says a 
   await type('Hold on [permission]');
   press('Enter');
   await waitFor(() => store.openThread?.status === 'waiting' && document.querySelector('[data-testid=timeline] [data-testid=permission-card][data-decision=pending]') !== null);
-  expect(input().placeholder).toBe('Send a message to decline and redirect');
+  // The field names the request by its title once the titles have loaded, or as "this request" until then.
+  await waitFor(() => input().placeholder !== 'Send a message to decline this request and redirect');
+  expect(input().placeholder).toMatch(/^Send a message to decline ".+" and redirect$/);
   // The decision lives in the transcript, once, on its own row: neither the composer card nor the question above it holds it.
   expect(document.querySelectorAll('[data-testid=permission-card]')).toHaveLength(1);
   expect(document.querySelector('[data-testid=composer] [data-testid=permission-card]')).toBeNull();

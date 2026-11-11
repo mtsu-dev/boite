@@ -9,9 +9,9 @@
   import { count, formatTokens, providerName } from '../lib/format';
   import { isNamedModel } from '../lib/model-order';
   import { planOf } from '../lib/plan';
-  import PlanCard from './PlanCard.svelte';
   import Deferred from './Deferred.svelte';
   import { parts } from '../lib/deferred-parts';
+  import { planPart } from '../lib/plan-part';
   import { openQuestionPage } from '../lib/question-page';
   import SettingRequestCard from './SettingRequestCardLoader.svelte';
   import AgentSettingCard from './AgentSettingCardLoader.svelte';
@@ -119,6 +119,14 @@
   });
 </script>
 
+<!-- A plan's card is its own chunk: until it lands the plan reads as plain text in its place. -->
+{#snippet plan(text: string)}
+  <Deferred part={planPart}>
+    {#snippet children(PlanCard)}<PlanCard {store} {threadId} plan={text} />{/snippet}
+    {#snippet pending()}<Prose {text} {store} {threadId} />{/snippet}
+  </Deferred>
+{/snippet}
+
 {#if showModel && message.role === 'assistant' && execution}
   {@const model = store.modelsOf(execution.providerId, execution.accountId).find((model) => model.id === execution.model)}
   {@const engine = execution.model && isNamedModel(model ?? { id: execution.model, name: execution.model }) ? model?.name ?? execution.model : providerName(store, execution.providerId)}
@@ -173,7 +181,7 @@
             <div class="system-copy"><Prose text={shownText} {store} {threadId} /></div>
           </div>
         {:else if writtenPlan(shownText) && !(index === caretAt && part.complete !== true)}
-          <PlanCard {store} {threadId} plan={shownText} />
+          {@render plan(shownText)}
         {:else}
         <Prose text={shownText} live={index === caretAt && part.complete !== true}
           typing={!compacting && latestInTurn && !toolRunning && message.role === 'assistant' && store.connection === 'ready' && store.openThread?.status === 'running' && index === message.parts.length - 1 && index === caretAt && part.complete !== true} {store} {threadId}
@@ -186,7 +194,7 @@
       {:else if part.type === 'file' || part.type === 'artifact'}
         <ChatFile file={part} {store} {threadId} messageId={message.id} partIndex={index} />
       {:else if part.type === 'tool' && planOf(part.name, part.input) !== null}
-        <PlanCard {store} {threadId} plan={planOf(part.name, part.input) ?? ''} />
+        {@render plan(planOf(part.name, part.input) ?? '')}
       {:else if part.type === 'question' && part.async === true && (part.answer ?? null) === null && store.pendingQuestions.some((q) => q.id === part.questionId)}
         <!-- Waiting at the top of the composer: here only a line that brings it up. -->
         <button type="button" class="ghost docked-question" data-testid="question-docked" title={strings.chat.questionOpen} onclick={() => showDecision(part.questionId)}>

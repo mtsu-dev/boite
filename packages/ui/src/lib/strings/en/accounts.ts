@@ -2,6 +2,8 @@ export const strings = {
 
   accounts: {
     heading: 'Providers',
+    /** The model menu's head over a provider's unfolded accounts. */
+    pickerSection: 'Account',
     login: 'Sign in',
     loginStarting: 'Starting the sign-in',
     loginOpen: 'Open the sign-in page',

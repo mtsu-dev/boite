@@ -56,6 +56,8 @@ test('a contact request reads whole above Accept, under its kind line, with no f
   const kind = row.querySelector<HTMLElement>('[data-testid=activity-kind]')!;
   expect([kind.dataset.kind, kind.textContent]).toEqual(['request', 'Contact request']);
   expect(kind.compareDocumentPosition(one('activity-contact-open')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  // The amber mark in the thread cards' mark column (ActivityMark.svelte), right before who asks.
+  expect(one('activity-mark')?.nextElementSibling).toBe(one('activity-contact-open'));
   // The whole ask, never a cut line, and it comes before the decision.
   const text = one('activity-contact-text')!;
   expect(text.textContent).toBe('An agent on a project like the Boite pairing flow: our site embeds it and the redirect loops after login.');
@@ -73,7 +75,8 @@ test('the same ask on two machines lists each copy, folds a long text behind Sho
   const row = one('activity-contact')!;
   expect(row.dataset.count).toBe('2');
   expect(one('activity-contact-open')!.textContent).toBe('Chris sent 2 requests');
-  // Each copy a line of its own: the contact's thread it came from, then where it arrived.
+  // Unfolded, each copy a line of its own: the contact's thread it came from, then where it arrived.
+  one<HTMLButtonElement>('activity-contact-copies-fold')!.click(); flushSync();
   const copies = [...document.querySelectorAll<HTMLElement>('[data-testid=activity-contact-copy]')];
   expect(copies.map(copy => copy.querySelector('.from')?.textContent)).toEqual(['Fix the login redirect in website', 'Fix the login redirect in website']);
   expect(copies.map(copy => copy.querySelector('.machine-place')?.textContent).sort()).toEqual(['on Builder', 'on Studio']);
@@ -84,4 +87,20 @@ test('the same ask on two machines lists each copy, folds a long text behind Sho
   expect([one('activity-contact-text')!.classList.contains('open'), toggle.textContent?.trim()]).toEqual([true, 'Show less']);
   // The group's actions settle every copy, and say so.
   expect([one('activity-refuse-creq-pending')!.textContent, one('activity-accept-creq-pending')!.textContent]).toEqual(['Refuse both', 'Accept both']);
+});
+
+test('identical copies fold into one quiet line under the text, where and when each arrived, which opens on each copy', async () => {
+  lay(2);
+  await draw('Studio', 'Builder');
+  const fold = one<HTMLButtonElement>('activity-contact-copies-fold')!;
+  // One line after the text, in words: how many, then each copy's machine and time; no sub-rows yet.
+  expect(fold.textContent).toMatch(/^2 copies: on (Studio|Builder) [^,]+, on (Studio|Builder) [^,]+$/);
+  expect(fold.textContent).toContain('on Studio');
+  expect(fold.textContent).toContain('on Builder');
+  expect(one('activity-contact-text')!.compareDocumentPosition(fold) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect([fold.getAttribute('aria-expanded'), one('activity-contact-copies')]).toEqual(['false', null]);
+  fold.click(); flushSync();
+  expect([fold.getAttribute('aria-expanded'), document.querySelectorAll('[data-testid=activity-contact-copy]').length]).toEqual(['true', 2]);
+  fold.click(); flushSync();
+  expect(one('activity-contact-copies')).toBeNull();
 });

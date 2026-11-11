@@ -11,8 +11,9 @@
    * one account it is the plain name. With several it is a button, "Claude",
    * or "Claude · Second seat" when the column runs on another login than the
    * provider's own (the rule the chip follows, `ModelPicker.svelte`), that
-   * unfolds the provider's accounts right under it, in the menu's flow: the
-   * search and the models move down, nothing is covered.
+   * unfolds the provider's accounts right under it as a section of their own,
+   * headed "Account", in the menu's flow: the search and the models move down
+   * below the head's hairline, nothing is covered.
    */
   let {
     name,
@@ -197,6 +198,7 @@
         bind:this={list}
         onkeydown={listKeys}
       >
+        <span class="section-head ui-label" aria-hidden="true">{strings.accounts.pickerSection}</span>
         {#each seats as seat (seat.id)}
           {@const note = seatNote(seat)}
           <div class="seat-row">
@@ -299,8 +301,15 @@
     flex-direction: column;
     gap: 1px;
     align-self: stretch;
-    margin: 4px -6px 0;
+    margin: var(--space-3) -6px 0;
     animation: unfold var(--dur-2) var(--ease-out-quint);
+  }
+  /* Every overlay's section head (Menu.svelte): the accounts read as their own group, apart from the models. */
+  .section-head {
+    padding: 0 6px var(--space-1);
+    color: var(--color-subtle);
+    font-size: var(--text-xs);
+    font-weight: 500;
   }
   @keyframes unfold { from { opacity: 0; transform: translateY(-4px); } }
   @media (prefers-reduced-motion: reduce) { .accounts { animation: none; } }
@@ -333,11 +342,13 @@
   }
   .seat:disabled { opacity: 1; }
 
+  /* The menus' selection mark (Menu.svelte): the accent check. */
   .check {
     display: inline-flex;
     flex: none;
     width: 14px;
     justify-content: center;
+    color: var(--color-accent);
   }
 
   .seat-name {

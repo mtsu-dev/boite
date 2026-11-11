@@ -121,7 +121,9 @@ export function settingsSectionLabel(section: string, providers: readonly Provid
   if (section.startsWith('provider-')) return providers.find((provider) => provider.id === section.slice('provider-'.length))?.name ?? null;
   const settings = strings.settings;
   const labels: Record<string, string> = {
-    conversations: settings.conversations,
+    'thread-list': settings.threadList,
+    conversations: settings.inConversation,
+    notifications: settings.notificationsHeading,
     archived: settings.archived.heading,
     worktrees: settings.worktrees.heading,
     app: settings.app,

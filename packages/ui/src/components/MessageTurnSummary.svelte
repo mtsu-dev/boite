@@ -3,6 +3,7 @@
   import type { Snippet } from 'svelte';
   import type { Store } from '../lib/store.svelte';
   import TurnSummary, { type SummaryMemory, type SummarySteps } from './TurnSummary.svelte';
+  import { lastHeard, machineAway } from '../lib/machine-away';
   import type { CompactionPart } from '../lib/tool-groups';
 
   let { store, threadId, turn, turns = [], message, messages, pointed = false, tucked = false, steps, memory, compactions, actions }: {
@@ -46,7 +47,8 @@
   {activeContent}
   waiting={store.openThread?.status === 'waiting' && turn.status === 'running'}
   background={store.openThread?.turns.at(-1)?.id === turn.id ? store.openThread?.background ?? [] : []}
-  stop={() => void store.stop()}
+  stop={machineAway(store) ? undefined : () => void store.stop()}
+  heard={machineAway(store) && store.openThread?.id === threadId ? lastHeard(store.openThread) : null}
   {pointed}
   {tucked}
   {steps}

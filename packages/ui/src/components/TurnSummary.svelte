@@ -11,7 +11,7 @@
   import { ChevronRight, Square, CircleAlert } from '@lucide/svelte';
   import { compactionMark, compactionText, type CompactionPart } from '../lib/tool-groups';
   import type { BackgroundTask, ThreadProgress, Turn } from '@boite/contracts';
-  import { clockTime, elapsed, exactTime, formatTokens } from '../lib/format';
+  import { clockTime, elapsed, exactTime, formatTokens, relativeTime } from '../lib/format';
   import { totalTokens } from '../lib/usage';
   import { fill, strings } from '../lib/strings';
   import { backgroundLabel } from '../lib/background';
@@ -19,7 +19,7 @@
   import type { Snippet } from 'svelte';
   import InfoTip from './InfoTip.svelte';
   import Spinner from './Spinner.svelte';
-  let { turn, workedBefore = 0, clockOffset = 0, progress, waiting = false, activeTool = false, activeContent = false, background = [], stop, pointed = false, tucked = false, steps, memory, compactions = [], actions }: {
+  let { turn, workedBefore = 0, clockOffset = 0, progress, waiting = false, activeTool = false, activeContent = false, background = [], stop, pointed = false, tucked = false, steps, memory, compactions = [], actions, heard = null }: {
     turn: Turn;
     /**
      * What the user's request this turn belongs to worked before it, in ms,
@@ -54,15 +54,23 @@
     compactions?: CompactionPart[];
     /** The turn's own buttons (copy, retry, fork), at the end of the line. */
     actions?: Snippet;
+    /**
+     * The machine is out of reach, and when it was last heard from on the core's clock: a running turn is its last
+     * known state, so the line says how old that is, with no spinner and no running clock (`lib/machine-away.ts`).
+     */
+    heard?: number | null;
   } = $props();
   const hidden = $derived(page.hidden);
   const running = $derived(turn.status === 'running');
+  const stale = $derived(running && heard !== null);
   /** The second clock ticks while the turn runs and the page is on screen; a settled turn keeps the time it stopped at. */
   const now = $derived((running ? secondClock.now : Date.now()) + clockOffset);
   const compactOperation = $derived(turn.execution?.operation === 'compact');
-  const observed = $derived(running && !waiting && progress?.turnId === turn.id ? progress : null);
-  const compacting = $derived(running && !waiting && (compactOperation || observed?.phase === 'compacting'));
+  const observed = $derived(running && !waiting && !stale && progress?.turnId === turn.id ? progress : null);
+  const compacting = $derived(running && !waiting && !stale && (compactOperation || observed?.phase === 'compacting'));
+  const lastUpdate = $derived(!stale ? '' : now - heard! < 60_000 ? strings.chat.lastUpdateNow : fill(strings.chat.lastUpdate, { time: relativeTime(heard!, now) }));
   const label = $derived.by(() => {
+    if (stale) return lastUpdate;
     if (compacting) return strings.chat.compacting;
     if (turn.status === 'done') return compactOperation ? strings.chat.compactionUnknown : strings.notify.done;
     if (turn.status === 'error') return compactOperation ? strings.chat.compactionFailed : strings.notify.failed;
@@ -113,7 +121,7 @@
 {#snippet metric(id: string, text: string | null, title?: string, quiet = false, meta = false)}
   <span class="metric" class:meta><span class="dot ui-label" aria-hidden="true">·</span><span class="ui-label" class:quiet data-testid={id} {title}>{text}</span></span>
 {/snippet}
-{#if turn.status !== 'queued' && !(running && activeTool && !waiting && background.length === 0 && !observed && !compacting) && !(tucked && settled && !marked)}
+{#if turn.status !== 'queued' && !(running && activeTool && !waiting && !stale && background.length === 0 && !observed && !compacting) && !(tucked && settled && !marked)}
   <div class="summary" class:compacting class:settled class:pointed class:marked class:paused={hidden || waiting} data-testid="turn-summary" data-status={turn.status} role="status" aria-label={label} title={label}>
     {#if compacting}
       <span class="compaction-icon"><Spinner size={16} paused={hidden || waiting} /></span>
@@ -125,8 +133,10 @@
       </div>
     {:else}
     <!-- A finished turn needs no tick: its time and the answer above already say it ended; only a failure or a stop is marked. -->
-    {#if turn.status === 'error'}<CircleAlert size={14} />{:else if turn.status === 'stopped'}<Square size={12} />{:else if turn.status !== 'done' && !activeContent && !activeTool}<Spinner size={12} paused={hidden || waiting} />{/if}
-    {#if spent !== null}
+    {#if turn.status === 'error'}<CircleAlert size={14} />{:else if turn.status === 'stopped'}<Square size={12} />{:else if turn.status !== 'done' && !activeContent && !activeTool && !stale}<Spinner size={12} paused={hidden || waiting} />{/if}
+    {#if stale}
+      <span class="ui-label meta" data-testid="turn-last-update" title={exactTime(heard!)}>{lastUpdate}</span>
+    {:else if spent !== null}
       <span class="ui-label meta" data-testid="turn-elapsed" title={ownLabel}>{fill(elapsedLabel, { time: elapsed(spent) })}</span>
     {/if}
     {#if compactOperation && (turn.status === 'error' || turn.status === 'stopped')}

@@ -33,6 +33,8 @@
   import { tick, type Snippet } from 'svelte';
   import { holdSettingsCard, revealSettingsCard } from '../lib/settings-flash';
   import { phonePage } from '../lib/settings-tabs';
+  import { readTheme } from '../lib/theme';
+  import { activeLocale } from '../lib/i18n.svelte';
 
   /**
    * `target` is the machine the settings bar picked, `store` this window's:
@@ -119,6 +121,22 @@
     arrived = way ? to : null;
     return way;
   });
+  /**
+   * What Home's rows hold now, read again each time Home shows: the theme and
+   * the language the app speaks, whether dictation is ready on the machine
+   * Voice shows (unknown, no word, on a machine that cannot say).
+   */
+  const THEME_WORDS = { system: strings.settings.themeSystem, dark: strings.settings.themeDark, light: strings.settings.themeLight, grain: strings.settings.themeGrain };
+  let appearance = $derived.by(() => { void page; return `${THEME_WORDS[readTheme()]} · ${strings.settings.languageNames[activeLocale()]}`; });
+  let connected = $derived(store.connection === 'ready' && !store.pairingRequired);
+  let voiceReady = $state<boolean | null>(null);
+  $effect(() => {
+    const client = target.client;
+    if (page !== 'home' || !client || target.connection !== 'ready') return;
+    let live = true;
+    client.call('speech.status', {}).then((status) => { if (live) voiceReady = status.ready; }, () => { if (live) voiceReady = null; });
+    return () => { live = false; };
+  });
   /** During a slide the screen it leaves stays drawn; the one on top comes last, so it paints over the other. */
   let screens = $derived(slide.direction && slide.from ? (slide.direction === 'push' ? [slide.from, page] : [page, slide.from]) : [page]);
   /** Which of `app.css`'s screen keyframes plays on a screen, during a slide. */
@@ -162,10 +180,11 @@
   });
 </script>
 
-<!-- A row says where it leads by its icon and its words, the icon the desktop's nav gives the same entry. -->
-{#snippet row(testid: string, label: string, go: () => void, icon: keyof typeof SETTINGS_ICONS)}
+<!-- A row says where it leads by its icon and its words, the icon the desktop's nav gives the same entry,
+     and what it holds now, when that fits a word, before its chevron. -->
+{#snippet row(testid: string, label: string, go: () => void, icon: keyof typeof SETTINGS_ICONS, value?: string)}
   {@const Icon = SETTINGS_ICONS[icon]}
-  <button class="ghost row" data-testid={testid} onclick={go}><Icon class="lead" size={SETTINGS_ICON_SIZE} strokeWidth={SETTINGS_ICON_STROKE} aria-hidden="true" /><span class="ui-label">{label}</span><ChevronRight size={18} /></button>
+  <button class="ghost row" data-testid={testid} onclick={go}><Icon class="lead" size={SETTINGS_ICON_SIZE} strokeWidth={SETTINGS_ICON_STROKE} aria-hidden="true" /><span class="ui-label">{label}</span>{#if value}<small class="value ui-label" data-testid="{testid}-value">{value}</small>{/if}<ChevronRight size={18} /></button>
 {/snippet}
 
 <!-- `settings` gives the detail pages the same grammar as the desktop ones. `data-detail` lets the app drop
@@ -184,8 +203,8 @@
         <h2 class="family-head ui-label" id="mobile-family-app">{strings.settings.families.app}</h2>
         <div class="rows">
           {@render row('settings-tab-general', strings.settings.tabs.general, () => store.showSettings('general'), 'general')}
-          {@render row('settings-tab-voice', strings.speech.heading, () => store.showSettings('voice'), 'voice')}
-          {@render row('settings-tab-appearance', strings.settings.tabs.appearance, () => store.showSettings('appearance'), 'appearance')}
+          {@render row('settings-tab-voice', strings.speech.heading, () => store.showSettings('voice'), 'voice', voiceReady === null ? undefined : voiceReady ? strings.settings.homeOn : strings.settings.homeOff)}
+          {@render row('settings-tab-appearance', strings.settings.tabs.appearance, () => store.showSettings('appearance'), 'appearance', appearance)}
         </div>
       </section>
       <section class="family" aria-labelledby="mobile-family-agents" data-testid="settings-family" data-family="agents">
@@ -202,9 +221,10 @@
         <h2 class="family-head ui-label" id="mobile-family-connections">{strings.settings.families.connections}</h2>
         <div class="rows">
           {#if store.owner}{@render row('settings-tab-browser', strings.settings.tabs.browser, () => store.showSettings('browser'), 'browser')}{/if}
-          <!-- Machines carries the machine this phone reaches and how. -->
+          <!-- Machines carries the machine this phone reaches, a green dot while connected, and the state word otherwise. -->
           <button class="ghost row machine-link" data-testid="mobile-settings-connection" onclick={() => store.showSettings('machines')}>
-            <Monitor class="lead" size={SETTINGS_ICON_SIZE} strokeWidth={SETTINGS_ICON_STROKE} aria-hidden="true" /><span><strong class="ui-label">{strings.settings.tabs.machines}</strong><small>{#if machine}{`${machineName(machine)} · `}{/if}<span class:ready={store.connection === 'ready'}>{store.pairingRequired ? strings.mobile.pairingRequired : strings.connection[store.connection]}</span></small></span><ChevronRight size={18} />
+            <Monitor class="lead" size={SETTINGS_ICON_SIZE} strokeWidth={SETTINGS_ICON_STROKE} aria-hidden="true" /><span class="ui-label">{strings.settings.tabs.machines}</span>
+            <small class="value ui-label" data-testid="mobile-settings-connection-value" title={store.pairingRequired ? strings.mobile.pairingRequired : strings.connection[store.connection]}>{#if connected}<span class="dot" aria-hidden="true"></span>{machine ? machineName(machine) : strings.connection.ready}{:else}{store.pairingRequired ? strings.mobile.pairingRequired : strings.connection[store.connection]}{/if}</small><ChevronRight size={18} />
           </button>
         </div>
       </section>
@@ -277,7 +297,7 @@
         <BrowserPage />
       {:else if shown === 'conversations'}
         <!-- General's Conversations card, the switches this phone keeps; the list groups from its own display options. -->
-        <div class="page"><section class="card" id="settings-conversations"><ConversationSwitches phone /></section>
+        <div class="page"><section class="card" id="settings-conversations"><h2><span class="ui-label">{strings.settings.inConversation}</span></h2><ConversationSwitches part="conversation" phone /></section>
           <!-- How agents answer and Quiet change one machine: its bar sits above them, under this phone's switches. -->
           {#if target.owner}{#if bar}<div class="bar inline">{@render bar()}</div>{/if}<AgentRepliesSettings store={target} /><QuietCard store={target} />{/if}
         </div>
@@ -342,10 +362,10 @@
   .home { padding: var(--space-4); }
   .home > :global(.policy-banner) { margin-bottom: var(--space-5); }
   /* The group's first row is the machine itself: its name over its connection. */
-  .machine-link { min-height: 56px; }
-  .machine-link strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; }
-  .machine-link small { display: block; margin-top: var(--space-1); font-size: var(--text-xs); font-weight: 400; color: var(--color-muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .machine-link small .ready { color: var(--color-success); }
+  /* What a row holds now, quieter than its name, shortened before the name is. */
+  .row .value { flex: 0 1 auto; max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); color: var(--color-muted-foreground); }
+  .machine-link .value { display: inline-flex; align-items: center; gap: 6px; }
+  .machine-link .dot { flex: none; width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--color-success); }
   p { font-size: var(--text-sm); color: var(--color-muted-foreground); line-height: 1.5; margin: var(--space-2) 0 var(--space-3); }
   /* A family: its head in the meta size over its card of rows, air between two. */
   .family + .family { margin-top: var(--space-5); }

@@ -350,14 +350,15 @@
     transition: opacity var(--dur-1) var(--ease-out-quint), transform var(--dur-1) var(--ease-out-quint);
   }
   .rail-name .note { color: var(--color-muted-foreground); font-weight: 400; }
-  /* The machine filter's card sits right beside its button, centred on it, since its lines describe that button;
-     it opens only under the pointer or the keyboard, and goes with the menu. */
-  .rail-name.machines-name { left: calc(100% + 4px); width: max-content; display: grid; grid-template-columns: 7px auto auto; align-items: center; gap: 4px 8px; padding: 7px 10px; }
-  .machines-name > .ui-label { grid-column: 1 / -1; }
+  /* The machine filter's card sits right beside its button, centred on it, since its lines describe that button:
+     over the list, on the rail's layer above it, with the overlay's own surface and shadow. It opens only under the
+     pointer or the keyboard, and goes with the menu. Its name, then one 20 px line per machine: dot, name, state. */
+  .rail-name.machines-name { left: calc(100% + 6px); width: max-content; display: grid; grid-template-columns: 7px auto auto; grid-auto-rows: 20px; align-items: center; gap: 4px 8px; padding: 8px 12px; line-height: 20px; }
+  .machines-name > .ui-label { grid-column: 1 / -1; margin-bottom: 2px; }
   /* One grid for every machine, so the names and the states each start on one edge. */
   .machine-line { display: contents; font-weight: 400; }
   .machine-line .ui-label { font-weight: 400; }
-  .machine-line .note { padding-left: 8px; }
+  .machine-line .note { padding-left: 12px; }
   .state-dot { width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--color-live); }
   .machine-line[data-tone='success'] .state-dot { background: var(--color-success); }
   .machine-line[data-tone='neutral'] .state-dot { background: var(--color-muted-foreground); }

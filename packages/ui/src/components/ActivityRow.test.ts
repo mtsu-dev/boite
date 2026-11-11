@@ -120,9 +120,41 @@ test('an Updates row has no pair, and its time stands where the Needs you rows\'
   await settle();
   // Nothing to decide, no kind line: the title keeps the row's top.
   expect(document.querySelector('[data-testid=activity-kind]')).toBeNull();
-  // The time ends the place line on every row, beside where it comes from; the pair lives under the content.
+  // With no event to name, the time ends the place line as a Needs you row's; nothing to decide, no pair.
   expect(document.querySelector('[data-testid=thread-where] > time.since')).not.toBeNull();
   expect(document.querySelector('[data-testid=thread-verb]')).toBeNull();
+});
+
+test('an update leads with what happened in words, its time beside the word, and its place line only says where', async () => {
+  const { parent, groups } = await rows('bun test');
+  const own = groups.find(group => group.row.thread.id === parent.id)!;
+  mounted = mount(ActivityRow, { target: document.body, props: { ...own, row: { ...own.row, section: 'updates', verb: null, kind: 'done', thread: { ...own.row.thread, status: 'idle' } }, helpers: [], now: Date.now() } });
+  await settle();
+  const kind = document.querySelector<HTMLElement>('[data-testid=activity-kind]')!;
+  expect([kind.dataset.kind, kind.classList.contains('news'), kind.querySelector('.ui-label')?.textContent]).toEqual(['done', true, 'Finished']);
+  expect(kind.querySelector('time')?.textContent).toBeTruthy();
+  expect(document.querySelector('[data-testid=thread-where] > time')).toBeNull();
+});
+
+test('the state mark stands in one place on every kind of card: its own column, before the title', async () => {
+  const { parent, child, groups } = await rows('bun test');
+  const own = groups.find(group => group.row.thread.id === parent.id)!;
+  const asks = groups.find(group => group.row.thread.id === child.id)!;
+  const failed = { ...own, row: { ...own.row, kind: 'failed' as const, verb: 'review' as const, thread: { ...parent, status: 'error' } as ThreadSummary } };
+  for (const group of [own, asks, failed]) {
+    mounted = mount(ActivityRow, { target: document.body, props: { ...group, now: Date.now() } });
+    await settle();
+    const mark = document.querySelector<HTMLElement>('[data-testid=activity-mark]')!;
+    // The column leads the title's line, the title right after it, and holds the row's mark, never its time.
+    expect(mark.parentElement?.classList.contains('title-line')).toBe(true);
+    expect(mark.previousElementSibling).toBeNull();
+    expect(mark.nextElementSibling?.classList.contains('headline')).toBe(true);
+    expect(mark.querySelector('.when.state')).not.toBeNull();
+    expect(mark.querySelector('time')).toBeNull();
+    // Nothing of the state at the title's end, where its words run.
+    expect(document.querySelector('.headline > .when')).toBeNull();
+    await unmount(mounted); mounted = undefined;
+  }
 });
 
 /** jsdom lays nothing out: the clamp's box reports `lines` of text behind a four-line window. */

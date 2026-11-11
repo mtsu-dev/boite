@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte';
-  import { Ellipsis } from '@lucide/svelte';
+  import { ChevronRight, Ellipsis } from '@lucide/svelte';
   import type { ContactRequest, HeldContactLetter, Project } from '@boite/contracts';
   import { minuteClock } from '../../lib/clock.svelte';
   import { contactsShown } from '../../lib/contacts-rail.svelte';
@@ -16,6 +16,7 @@
   import Menu from '../Menu.svelte';
   import DecisionActions from '../DecisionActions.svelte';
   import ActivityKind from '../ActivityKind.svelte';
+  import ActivityMark from '../ActivityMark.svelte';
   import ClampText from '../ClampText.svelte';
 
   /**
@@ -25,14 +26,14 @@
    * refused with the reason its agent reads; a held message is
    * delivered or refused. Open shows the contact's page with the whole of it.
    * The rows of a thread's own: its kind ("Contact request", "Held message"),
-   * who asks with the amber mark, where it arrived (the machine among several)
-   * and since when, as a thread row's place line, then what is asked, whole up
+   * who asks led by the amber mark in the card's mark column (ActivityMark.svelte), where it arrived (the machine
+   * among several) and since when, as a thread row's place line, then what is asked, whole up
    * to four lines and behind "Show all" past them, so nothing is accepted
-   * unread; the decision pair beside or under them (DecisionActions.svelte):
+   * unread; the decision pair beside the head or under it all (DecisionActions.svelte):
    * Refuse outlined, Accept or Deliver solid. Identical asks merge into one row
-   * that says how many in words ("Chris sent 2 requests") and lists each copy
-   * under the text (the contact's thread it came from, where and when); its
-   * actions settle them all and say so ("Accept both", lib/contact-inbox.ts).
+   * that says how many in words ("Chris sent 2 requests") and folds its copies into one quiet line under the text
+   * ("2 copies: on Builder Sep 5, on studio 3h"), which opens on each copy's line (the contact's thread it came
+   * from, where and when); its actions settle them all and say so ("Accept both", lib/contact-inbox.ts).
    */
   let { store }: { store: Store } = $props();
   type Row = { machine: Machine; view: ContactsView; key: string; createdAt: number }
@@ -51,6 +52,15 @@
     : count === 2 ? { accept: labels.acceptBoth, refuse: labels.refuseBoth } : { accept: labels.acceptAll, refuse: labels.refuseAll };
   /** The menu's own rows, beside the projects (whose ids are never these). */
   const INTO = '\u0000into';
+
+  /** The merged rows whose copies are unfolded. */
+  let unfolded = $state<string[]>([]);
+  function fold(key: string) { unfolded = unfolded.includes(key) ? unfolded.filter(entry => entry !== key) : [...unfolded, key]; }
+  /** The folded copies in one line: where each arrived (among several machines) and when. */
+  function copiesLine(same: Row[]): string {
+    const list = same.map(copy => several ? `${fill(strings.connection.onMachine, { name: copy.machine.label })} ${ago(copy.createdAt, minuteClock.now)}` : ago(copy.createdAt, minuteClock.now));
+    return fill(labels.copies, { count: String(same.length), list: list.join(', ') });
+  }
 
   /** The row whose refusal is being written, with its reason. */
   let refusing = $state<string | null>(null);
@@ -94,27 +104,34 @@
   {@const busy = row.view.isBusy(row.request ? `decide:${row.request.id}` : `mail:${row.letter!.id}`)}
   {@const text = (row.request ?? row.letter).text}
   <!-- Activity's row (ActivityRow.svelte): its kind, who asks, where and since when, then what, whole; the answer
-       beside the content, under it on a phone. Another project waits in the row's menu. -->
+       beside the head, under it all on a phone. Another project waits in the row's menu. -->
   <article class="contact-row" data-testid="activity-contact" data-kind={row.letter ? 'mail' : 'request'} data-count={same.length}>
     <div class="lines">
       <ActivityKind kind={row.letter ? 'mail' : 'request'} />
       <p class="head">
-        <!-- The title opens the contact's page, with the whole of it; the amber mark ends it as a thread row's. -->
+        <!-- The title opens the contact's page, with the whole of it; the amber mark leads it as a thread card's. -->
+        <ActivityMark><span class="mark" aria-hidden="true"></span></ActivityMark>
         <button type="button" class="ghost title ui-label" title={labels.review} onclick={() => void openContact(row.machine.store, (row.request ?? row.letter!).coreId)} data-testid="activity-contact-open"><span class="clamp">{row.letter ? fill(strings.contacts.mail.writes, { contact: row.letter.contact, thread: row.letter.thread }) : fill(same.length > 1 ? labels.sentMany : labels.asks, { contact: row.request.contact, count: String(same.length) })}</span></button>
-        <span class="mark" aria-hidden="true"></span>
         <!-- Merged letters say how many in words beside who writes; merged requests say it in the title. -->
         {#if same.length > 1}<span class="times" data-testid="activity-contact-count" data-count={same.length}>{#if row.letter}{fill(labels.same, { count: String(same.length) })}{/if}</span>{/if}
       </p>
       <p class="place">{#if several}<MachinePlace host={hostMark(row.machine.label)} />{/if}<time datetime={new Date(row.createdAt).toISOString()}>{ago(row.createdAt, minuteClock.now)}</time></p>
+    </div>
+    <div class="content">
       <ClampText {text} testid="activity-contact-text" />
       {#if row.request && same.length > 1}
-        <!-- Each copy of the ask, one line: the contact's thread it came from, where it arrived and when. -->
+        {@const open = unfolded.includes(row.key)}
+        <!-- The copies folded into one quiet line; a click lists each: the contact's thread it came from, where it
+             arrived and when. -->
+        <button type="button" class="ghost fold" aria-expanded={open} onclick={() => fold(row.key)} data-testid="activity-contact-copies-fold"><ChevronRight size={13} aria-hidden="true" /><span class="ui-label">{copiesLine(same)}</span></button>
+        {#if open}
         <ul class="copies" data-testid="activity-contact-copies">
           {#each same as copy (copy.key)}
             {@const from = copy.request!.from}
             <li class="copy" data-testid="activity-contact-copy"><span class="from">{from.project ? fill(labels.from, { thread: from.title, project: from.project }) : from.title}</span>{#if several}<MachinePlace host={hostMark(copy.machine.label)} />{/if}<time datetime={new Date(copy.createdAt).toISOString()}>{ago(copy.createdAt, minuteClock.now)}</time></li>
           {/each}
         </ul>
+        {/if}
       {/if}
       {#if row.request && refusing === row.key}
         {@const request = row.request}
@@ -166,16 +183,18 @@
 {/each}
 
 <style>
-  /* Built as Activity's thread rows (ThreadCard.svelte's `.feed`): 8 px in, the kind line, then the title on the same
-     edge as every row's; the title's line keeps its end for the menu, the place line and the text run under it, the
-     pair beside or under. */
-  .contact-row { --feed-pad: 8px; --feed-lead: 20px; --menu-room: 32px; --pad-x: 8px; --side-room: calc(var(--menu-room) + 8px + var(--pad-x));
+  /* Built as Activity's thread cards (ThreadCard.svelte's `.feed`): 8 px in, the kind line, then the mark column and
+     the title, every line after on the title's edge (`--gutter`); the title's line keeps its end for the menu, the
+     place line under it, the text under that, the pair beside the head or under it all. */
+  .contact-row { --feed-pad: 8px; --feed-lead: 20px; --menu-room: 32px; --pad-x: 8px; --gutter: 19px; --side-room: calc(var(--menu-room) + 8px + var(--pad-x));
     position: relative; display: flex; flex-direction: column; padding: var(--feed-pad) var(--pad-x); border-radius: var(--radius-md); }
   .contact-row + .contact-row { margin-top: 2px; }
   .contact-row:hover { background: var(--color-hover); }
-  .lines { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+  .lines { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .content { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 4px 0 0 var(--gutter); }
   /* Baseline: the count reads on the name's first line, whatever height a phone gives the button. */
   .head { display: flex; align-items: flex-start; gap: 6px; margin: 0 calc(var(--side-room) - var(--pad-x)) 0 0; }
+  .head > :global(.activity-mark) { margin-top: 0; }
   /* Two lines of who asks before any ellipsis, as a thread row's title. */
   /* The clamp sits on an inner span, so the button itself does not clip and can carry a wider hit area. No
      .ui-label margin or trim: the line keeps its 20 px, or the text under it rides up into the title and the
@@ -183,13 +202,19 @@
   .title { position: relative; display: block; flex: 0 1 auto; min-width: 0; height: auto; padding: 0; margin: 0; text-box: normal; background: none; white-space: normal; text-align: start; font-weight: 400; line-height: 20px; color: var(--color-foreground); }
   .clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
   .title:hover { text-decoration: underline; background: none; }
-  /* The user's turn, the thread rows' amber dot (ThreadState.svelte), right after the title's last word. */
-  .mark { flex: none; width: 8px; height: 8px; margin-top: 6px; border-radius: var(--radius-full); background: var(--color-live); }
+  /* The user's turn, the thread rows' amber dot (ThreadState.svelte), centred on the title's untrimmed first line. */
+  .mark { flex: none; width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--color-live); }
   .times { flex: none; line-height: 20px; font-size: var(--text-xs); color: var(--color-muted-foreground); }
   .times:empty { display: none; }
   /* Where it arrived and since when, a thread row's place line (ThreadCard.svelte's `.where`). */
-  .place { display: flex; align-items: center; gap: 8px; min-width: 0; height: 18px; margin: -2px 0 0; font-size: var(--text-xs); line-height: 18px; color: var(--color-subtle); white-space: nowrap; overflow: hidden; }
+  .place { display: flex; align-items: center; gap: 8px; min-width: 0; height: 20px; margin: 3px 0 0 var(--gutter); font-size: var(--text-xs); line-height: 20px; color: var(--color-subtle); white-space: nowrap; overflow: hidden; }
   time { flex: none; font-variant-numeric: tabular-nums; }
+  /* The folded copies: one quiet line, the place line's ink, its chevron turned down while they show. */
+  .fold { display: flex; align-items: center; gap: 4px; align-self: flex-start; max-width: 100%; height: 20px; padding: 0; margin: -2px 0 0; background: none; font-size: var(--text-xs); font-weight: 400; color: var(--color-subtle); }
+  .fold:hover { color: var(--color-muted-foreground); background: none; }
+  .fold > .ui-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fold :global(svg) { flex: none; transition: rotate var(--dur-2) var(--ease-out-quint); }
+  .fold[aria-expanded='true'] :global(svg) { rotate: 90deg; }
   /* Each copy of a merged ask: one line on the desktop, its words whole; they wrap on a phone. */
   .copies { display: flex; flex-direction: column; gap: 2px; margin: 2px 0 0; padding: 0 0 0 10px; border-left: 2px solid var(--color-edge); list-style: none; }
   .copy { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; min-width: 0; font-size: var(--text-xs); line-height: 18px; color: var(--color-subtle); }
@@ -206,10 +231,12 @@
   @container activity (min-width: 640px) {
     .contact-row { display: grid; grid-template-columns: subgrid; align-items: start; padding-right: 0; }
     .lines, .side { grid-column: 1; grid-row: 1; }
+    /* What is asked runs under the head and the pair, the card's whole width: no empty band beside the pair. */
+    .content { grid-column: 1 / -1; grid-row: 2; padding-right: 8px; }
     /* In the flow of the text's cell, at its end, as a thread row's time; the row's top padding is its own. */
     .side { position: static; justify-self: end; margin-top: calc(var(--feed-lead) - var(--feed-pad)); }
     .lines { padding-right: 3px; }
-    .pair { grid-column: 2 / -1; grid-row: 1; display: grid; grid-template-columns: subgrid; margin: calc(var(--feed-lead) + 10px - var(--control) / 2) 0 0; padding-right: 8px; }
+    .pair { grid-column: 2 / -1; grid-row: 1; display: grid; grid-template-columns: subgrid; margin: calc((var(--feed-lead) + 20px - var(--control)) / 2) 0 0; padding-right: 8px; }
     .pair > :global(.decision-actions) { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; gap: 0; }
     .pair :global(.decision-actions > button) { grid-column: 2; }
     .pair :global(.decision-actions > button:not(:last-child)) { grid-column: 1; margin: 0 8px 0 var(--space-4); }
@@ -230,9 +257,11 @@
     .side :global(.trigger) { opacity: 1; min-width: var(--touch-target); }
     /* Who asks at a phone row title's size and spot (MobileThreadRow.svelte): that title is trimmed to its
        capitals, so this untrimmed 20 px line rises by the difference to sit as far under the kind line. */
-    .head { margin-top: -4px; }
+    .head { margin-top: -6px; }
     .title { font-size: var(--text-reading); }
-    .place { font-size: var(--text-sm); line-height: 1.4; height: auto; margin: 0; }
+    .place { font-size: var(--text-sm); line-height: 1.4; height: auto; margin-top: -2px; }
+    .content { padding-top: 7px; }
+    .fold { font-size: var(--text-sm); min-height: 24px; }
     .copy { font-size: var(--text-sm); line-height: 1.4; }
     .actions :global(button) { min-height: var(--touch-target); }
     /* The title line is the row's open button: a finger needs 44 px, not its text's height, with no taller row. */

@@ -83,3 +83,29 @@ test('queued prompts are "Queued" rows: their text, Edit and Delete, and the tex
   items[0]!.querySelector<HTMLButtonElement>('[data-testid=composer-queued-remove]')!.click();
   expect(remove).toHaveBeenCalledWith(threadId, 0);
 });
+
+test('on a phone a queued prompt shows two lines, its text edits it, and Edit sits beside Delete on 40 px targets', async () => {
+  await open();
+  const threadId = store.openThread!.id;
+  store.composerStates[threadId] = { text: '', attachments: [], queued: [{ text: 'Rename the export button and move it beside the filters, then rerun the suite', attachments: [] }], sending: false, paused: false };
+  const restore = vi.fn();
+  foot({ onrestore: restore });
+  await tick();
+  const item = document.querySelector<HTMLElement>('[data-testid=composer-queued-item]')!;
+  item.querySelector<HTMLButtonElement>('[data-testid=composer-queued-text]')!.click();
+  expect(restore).toHaveBeenLastCalledWith(0);
+  // The same two icons as a desktop, in that order at the row's end.
+  expect([...item.querySelectorAll<HTMLElement>('.tools button')].map((button) => button.dataset.testid)).toEqual(['composer-queued-edit', 'composer-queued-remove']);
+  item.querySelector<HTMLButtonElement>('[data-testid=composer-queued-edit]')!.click();
+  expect(restore).toHaveBeenCalledTimes(2);
+  // jsdom applies no component CSS: read the queue's phone rules as Svelte compiles them.
+  const { compile } = await import('svelte/compiler');
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync(`${import.meta.dirname}/ComposerQueue.svelte`, 'utf8').replace(/<script lang="ts">[\s\S]*?<\/script>/, '<script></script>');
+  const css = compile(source, { filename: 'ComposerQueue.svelte', cssHash: () => 'q' }).css?.code ?? '';
+  const phone = css.slice(css.indexOf('@media (max-width: 720px)'), css.indexOf('@media (max-width: 400px)'));
+  expect(phone).toContain('-webkit-line-clamp: 2');
+  expect(phone).toContain('--icon-button: 40px');
+  // Nothing is hidden on a phone: Edit keeps its icon.
+  expect(phone).not.toContain('display: none');
+});

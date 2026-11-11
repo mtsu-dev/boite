@@ -1,15 +1,20 @@
 <script lang="ts">
   import { errorText } from '../lib/errors';
-  import { Check, Copy, Download, FolderDown } from '@lucide/svelte';
+  import { Check, Copy, Download, Ellipsis, FolderDown } from '@lucide/svelte';
+  import { MediaQuery } from 'svelte/reactivity';
+  import type { MenuItem } from '../lib/menu';
   import { planFileName } from '../lib/plan';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
+  import Menu from './Menu.svelte';
   import Prose from './Prose.svelte';
 
   /**
    * The plan an agent proposes before it edits, read as a document rather than
    * a tool's JSON: copy it, download it as markdown, or write it into the
    * thread's folder. Writing is the editor's save, so only the owner gets it.
+   * Each action says its word beside its icon; a phone gathers them under one
+   * quiet "more" button whose menu names them.
    */
   let { store, threadId, plan }: { store: Store; threadId: string; plan: string } = $props();
 
@@ -25,6 +30,19 @@
   let saved = $state<string | null>(null);
   let reset = 0;
   $effect(() => () => clearTimeout(reset));
+  const narrow = new MediaQuery('(max-width: 720px)');
+  const savedLabel = $derived(saved ? fill(strings.chat.planSaved, { name: saved }) : '');
+  const saveBlocked = $derived(saving || saved !== null || store.connection !== 'ready');
+  const items = $derived<MenuItem[]>([
+    { id: 'copy', label: copied ? strings.chat.copied : strings.common.copy, glyph: copied ? Check : Copy, testid: 'plan-copy' },
+    { id: 'download', label: strings.chat.planDownload, glyph: Download, testid: 'plan-download' },
+    ...(store.owner ? [{ id: 'save', label: saved ? savedLabel : strings.chat.planSave, title: saved ? undefined : strings.chat.planSaveHint, glyph: saved ? Check : FolderDown, testid: 'plan-save', disabled: saveBlocked }] : [])
+  ]);
+  function pick(id: string): void {
+    if (id === 'copy') void copy();
+    else if (id === 'download') download();
+    else if (id === 'save') void save();
+  }
 
   async function copy(): Promise<void> {
     try {
@@ -68,20 +86,25 @@
   <div class="head">
     <span class="title">{strings.chat.plan}</span>
     {#if tasks.total > 0}<span class="count">{fill(strings.chat.planProgress, { done: String(tasks.done), total: String(tasks.total) })}</span>{/if}
-    {#if saved}<span class="saved" title={fill(strings.chat.planSaved, { name: saved })}>{fill(strings.chat.planSaved, { name: saved })}</span>{/if}
-    <span class="actions">
-      <button type="button" class="ghost icon small" data-testid="plan-copy" title={copied ? strings.chat.copied : strings.common.copy} onclick={() => void copy()}>
-        {#if copied}<Check size={14} />{:else}<Copy size={14} />{/if}
-      </button>
-      <button type="button" class="ghost icon small" data-testid="plan-download" title={strings.chat.planDownload} onclick={download}><Download size={14} /></button>
-      {#if store.owner}
-        {@const label = saved ? fill(strings.chat.planSaved, { name: saved }) : strings.chat.planSave}
-        <button type="button" class="ghost icon small" data-testid="plan-save" disabled={saving || saved !== null || store.connection !== 'ready'}
-          title={saved ? label : strings.chat.planSaveHint} aria-label={label} onclick={() => void save()}>
-          {#if saved}<Check size={14} />{:else}<FolderDown size={14} />{/if}
+    {#if saved}<span class="saved" title={savedLabel}>{savedLabel}</span>{/if}
+    {#if narrow.current}
+      <span class="more">
+        <Menu {items} onpick={pick} label={strings.chat.planActions} placement="bottom" align="end" variant="icon" testid="plan-menu"><Ellipsis size={16} /></Menu>
+      </span>
+    {:else}
+      <span class="actions">
+        <button type="button" class="ghost small" data-testid="plan-copy" title={copied ? strings.chat.copied : strings.common.copy} onclick={() => void copy()}>
+          {#if copied}<Check size={14} />{:else}<Copy size={14} />{/if}<span class="ui-label">{copied ? strings.chat.copied : strings.common.copy}</span>
         </button>
-      {/if}
-    </span>
+        <button type="button" class="ghost small" data-testid="plan-download" title={strings.chat.planDownload} onclick={download}><Download size={14} /><span class="ui-label">{strings.chat.planDownloadShort}</span></button>
+        {#if store.owner}
+          <button type="button" class="ghost small" data-testid="plan-save" disabled={saveBlocked}
+            title={saved ? savedLabel : strings.chat.planSaveHint} aria-label={saved ? savedLabel : strings.chat.planSave} onclick={() => void save()}>
+            {#if saved}<Check size={14} />{:else}<FolderDown size={14} />{/if}<span class="ui-label">{saved ? strings.chat.planSavedShort : strings.chat.planSaveShort}</span>
+          </button>
+        {/if}
+      </span>
+    {/if}
   </div>
   <div class="body"><Prose text={plan} {store} {threadId} /></div>
 </section>
@@ -112,12 +135,14 @@
   .count { font-variant-numeric: tabular-nums; }
   .saved { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-  /* The buttons stay quiet until the plan is pointed at; a finger always has them. */
+  /* Each button its icon and its word, quiet until the plan is pointed at; a finger always has them. */
   .actions { display: flex; gap: 2px; margin-left: auto; opacity: 0; transition: opacity var(--dur-2); }
   .plan:hover .actions, .plan:focus-within .actions { opacity: 1; }
-  .actions button { color: var(--color-subtle); }
+  .actions button { gap: 5px; padding: 0 8px; color: var(--color-subtle); font-size: var(--instrument-meta-size); font-weight: 400; }
   .actions button:hover:not(:disabled) { color: var(--color-foreground); }
   @media (hover: none) { .actions { opacity: 1; } }
+  /* A phone: one quiet button at the line's end, its menu names the three. */
+  .more { flex: none; margin-left: auto; color: var(--color-subtle); }
 
   .body { min-width: 0; padding-right: 4px; color: var(--instrument-ink); }
   /* The instrumental tier under the agent's words (app.css --instrument-*): the reply stays the one full-size layer. */
@@ -133,8 +158,4 @@
   .body :global(li.task:has(> input:checked)) { color: var(--color-subtle); text-decoration: line-through; text-decoration-color: var(--color-edge); }
   .body :global(li.task:first-child:not(:has(> input:checked))),
   .body :global(li.task:has(> input:checked) + li.task:not(:has(> input:checked))) { color: var(--color-foreground); }
-
-  @media (max-width: 720px) {
-    .actions button { width: var(--touch-target); height: var(--touch-target); }
-  }
 </style>

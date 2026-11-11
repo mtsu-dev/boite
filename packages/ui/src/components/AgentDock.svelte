@@ -2,6 +2,7 @@
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import Spinner from './Spinner.svelte';
+  import { machineAway } from '../lib/machine-away';
   import { inStrip } from '../lib/one-status';
   import { wordFit } from '../lib/word-fit';
 
@@ -33,7 +34,9 @@
 
   // A provider's subagent ends with the turn that runs it; a command's agent follows its own process, which Stop never kills.
   let inTurn = $derived(native.some(agent => agent.source !== 'process') && store.openThread?.id === threadId);
-  let stoppable = $derived(active.length + runs.length > 0 || inTurn);
+  /** The machine is out of reach: the line is what it last ran, still, and nothing here can stop it. */
+  let away = $derived(machineAway(store));
+  let stoppable = $derived(!away && (active.length + runs.length > 0 || inTurn));
 
   /** Stops what the line waits on: the subagents this thread sent, its running workflows, and the turn that runs a provider's own. */
   let stopping = $state(false);
@@ -52,7 +55,7 @@
 
 {#if count > 0}
   <div class="foot-row waiting" data-testid="agent-dock" data-count={agents} data-runs={runs.length} role="status">
-    <span class="mark"><Spinner size={12} /></span>
+    <span class="mark"><Spinner size={12} stale={away} /></span>
     <span class="label ui-label" data-testid="agent-dock-label" data-text={label} use:wordFit={label}></span>
     <span class="names" data-testid="agent-dock-names" title={names.join(', ')}>
       <span class="start" aria-hidden="true"></span>{' '}{#each names as name, index (index)}<span class="item">{index > 0 ? ', ' : ''}<span class="name">{name}</span></span>{/each}

@@ -87,8 +87,8 @@ export const strings = {
     pending: 'Pending',
     in_progress: 'In progress',
     completed: 'Completed',
-    /** The first line of each Needs you card in Activity: what kind of decision it is, so its verbs are expected. */
-    kind: { permission: 'Permission', question: 'Question', request: 'Contact request', mail: 'Held message', failed: 'Failed', stopped: 'Stopped' },
+    /** The first line of each Activity card: what kind of decision it is, so its verbs are expected, or what happened (an update). */
+    kind: { permission: 'Permission', question: 'Question', request: 'Contact request', mail: 'Held message', failed: 'Failed', stopped: 'Stopped', done: 'Finished' },
     /** Under a text cut at four lines in Activity: it unfolds in place, then folds back. */
     textAll: 'Show all',
     textLess: 'Show less'

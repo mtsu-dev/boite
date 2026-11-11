@@ -14,7 +14,7 @@ afterEach(() => {
 });
 
 test('file grouping and automatic previews default to compact and persist independently', () => {
-  running = mount(ConversationSwitches, { target: document.body, props: {} });
+  running = mount(ConversationSwitches, { target: document.body, props: { part: 'conversation' } });
   flushSync();
   const group = document.querySelector<HTMLInputElement>('[data-testid=chat-group-changes]')!;
   const preview = document.querySelector<HTMLInputElement>('[data-testid=chat-expand-diffs]')!;
@@ -28,10 +28,18 @@ test('file grouping and automatic previews default to compact and persist indepe
   expect(preview.checked).toBe(false);
 });
 
-test('a phone leaves out the list grouping, which its list display options hold', () => {
-  running = mount(ConversationSwitches, { target: document.body, props: { phone: true } });
+test('the list part holds the grouping alone, and a phone, whose list display options hold it, has none', () => {
+  running = mount(ConversationSwitches, { target: document.body, props: { part: 'list' } });
+  flushSync();
+  expect(document.querySelector('[data-testid=setting-group-working-threads]')).not.toBeNull();
+  expect(document.querySelector('[data-testid=setting-chat-artifacts]')).toBeNull();
+  unmount(running, { outro: false });
+  running = mount(ConversationSwitches, { target: document.body, props: { part: 'list', phone: true } });
   flushSync();
   expect(document.querySelector('[data-testid=setting-group-working-threads]')).toBeNull();
+  unmount(running, { outro: false });
+  running = mount(ConversationSwitches, { target: document.body, props: { part: 'conversation', phone: true } });
+  flushSync();
   expect(document.querySelector('[data-testid=setting-chat-artifacts]')).not.toBeNull();
   expect(document.querySelector('[data-testid=chat-group-changes]')).not.toBeNull();
 });

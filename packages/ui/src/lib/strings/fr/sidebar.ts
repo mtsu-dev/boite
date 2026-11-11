@@ -143,7 +143,6 @@ export const fr: Translation = {
     },
     rollupOne: '1 conversation : {state}',
     rollupMany: '{count} conversations : {state}',
-    quotaLeft: 'Il reste {percent} % de votre limite {window}',
     pin: 'Épingler',
     unpin: 'Désépingler',
     archive: 'Archiver',

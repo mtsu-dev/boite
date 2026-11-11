@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
-  import { ChevronRight, Star, RefreshCw } from '@lucide/svelte';
+  import { Check, ChevronRight, Star, RefreshCw } from '@lucide/svelte';
   import { orderedModels, type FavoriteModel } from '../lib/model-order';
   import type { Account, ModelInfo } from '@boite/contracts';
   import AccountSeats from './AccountSeats.svelte';
@@ -19,9 +19,9 @@
 
   /**
    * The model picker's popover, its own chunk: only a click on the chip
-   * (`ModelPicker.svelte`) draws it. A fixed frame: provider logos in a rail
-   * beside a scrolling model list on desktop, the same tiles as a top row on a
-   * phone. The shown provider's name heads the column; when it has more than
+   * (`ModelPicker.svelte`) draws it. Provider logos in a rail beside a
+   * scrolling model list on desktop, the same tiles as a top strip on a phone;
+   * the frame is as tall as its content, never shorter than the rail. The shown provider's name heads the column; when it has more than
    * one account the name is a button that unfolds them in place, above the
    * search (`AccountSeats.svelte`), and its models fill the rest. A click on a model closes the picker; nothing else does.
    */
@@ -345,13 +345,14 @@
         class="row model"
         class:current={isCurrentModel(model)}
         role="menuitem"
+        aria-current={isCurrentModel(model) || undefined}
         data-row
         data-model={model.id}
         title={model.id}
         disabled={disabled || pickPending}
         onclick={() => pickModel(model)}
       >
-        <span class="mark"></span>
+        <span class="mark" aria-hidden="true">{#if isCurrentModel(model)}<Check size={14} />{/if}</span>
         <span class="name ui-label">{model.name}</span>
         {#if model.badge === 'new'}
           <span class="badge ui-label-box"><span class="ui-label">{strings.composer.newBadge}</span></span>
@@ -479,7 +480,7 @@
                 title={model.id}
                 onclick={() => pickModel(model)}
               >
-                <span class="mark"></span>
+                <span class="mark" aria-hidden="true">{#if isCurrentModel(model)}<Check size={14} />{/if}</span>
                 <span class="name ui-label">{model.name}</span>
               </button>
               {#if store.owner}
@@ -509,7 +510,8 @@
     display: grid;
     grid-template-columns: calc(var(--control-lg) + 20px) minmax(0, 1fr);
     width: min(440px, calc(100vw - 32px));
-    height: 360px;
+    /* As tall as its content: the rail's tiles or the column's search, account and models, whichever is taller. */
+    height: auto;
     max-height: min(360px, 45dvh);
     grid-template-rows: minmax(0, 1fr) auto;
     /* floating() puts the menu in the top layer as a [popover], whose 0.25em
@@ -556,11 +558,10 @@
   .model-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; padding: 6px; }
   .rail { grid-area: 1 / 1; }
   /* One provider: its model list is the whole popover, the refresh sits in the list's head. */
-  /* No provider to switch to, so no height to hold steady: it is as tall as its models. */
-  .popover.single { grid-template-columns: minmax(0, 1fr); width: min(320px, calc(100vw - 32px)); height: auto; }
+  .popover.single { grid-template-columns: minmax(0, 1fr); width: min(320px, calc(100vw - 32px)); }
   .single .main-models { grid-area: 1 / 1 / 3 / 2; border-left: none; }
   .single .main-models .head { padding-right: 44px; }
-  .single .refresh { position: absolute; top: 6px; right: 6px; margin: 0; width: var(--control-sm); height: var(--control-sm); border: none; background: transparent; }
+  .single .refresh { position: absolute; top: 6px; right: 6px; margin: 0; width: var(--control-sm); height: var(--control-sm); padding: 0; border: none; background: transparent; }
   .refresh { grid-area: 2 / 1; align-self: end; justify-self: center; margin: 6px; position: relative; z-index: 3; display: grid; place-items: center; width: var(--control-lg); height: var(--control-lg); padding: 0; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); color: var(--color-muted-foreground); }
   @media (hover: hover) { .refresh:hover:not(:disabled) { background: linear-gradient(var(--color-hover) 0 0), var(--color-surface); color: var(--color-foreground); } }
   .head {
@@ -627,17 +628,16 @@
     background: color-mix(in srgb, var(--color-surface-3) 85%, var(--color-foreground));
   }
 
+  /* The current model wears every menu's selection form (Menu.svelte): the accent check and the selected fill. */
   .mark {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
+    display: inline-flex;
     flex: none;
-    background: transparent;
+    width: 14px;
+    justify-content: center;
+    color: var(--color-accent);
   }
 
-  .row.current .mark {
-    background: var(--color-foreground);
-  }
+  .row.current { background: var(--color-accent-soft); }
 
   .name {
     font-weight: 500;
@@ -703,9 +703,8 @@
       grid-template-columns: minmax(0, 1fr) auto;
       grid-template-rows: auto minmax(0, 1fr);
       width: calc(100vw - 24px);
-      /* The sheet's grabber and top padding come out of this height: 420 left
-         the last row of a three model provider under the bottom edge. */
-      height: min(460px, 62dvh);
+      /* As tall as the strip and the column's content, up to this cap. */
+      max-height: min(460px, 62dvh);
       /* The sheet runs edge to edge: the rail strip and the list keep off its sides. */
       padding-inline: var(--space-1);
     }
@@ -725,10 +724,19 @@
     /* The rail is the finger's first stop on a phone, so its tiles (ProviderTiles)
        and the refresh button take a full touch target like every other control. */
     .main-models { grid-area: 2 / 1 / 3 / 3; border-left: none; }
-    .refresh { grid-area: 1 / 2; align-self: center; justify-self: end; justify-content: center; width: var(--touch-target); padding: 0; border: none; }
+    /* The refresh ends the logo strip: the same ground and hairline under both, no box of its own. */
     .refresh {
+      grid-area: 1 / 2;
+      align-self: stretch;
+      justify-self: stretch;
       width: var(--touch-target);
-      height: var(--touch-target);
+      height: auto;
+      min-height: var(--touch-target);
+      margin: 0;
+      padding: 4px 0 6px;
+      border: none;
+      border-bottom: 1px solid var(--color-border);
+      border-radius: 0;
     }
     .popover.single { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
     .single .main-models { grid-area: 1 / 1 / 2 / 2; }

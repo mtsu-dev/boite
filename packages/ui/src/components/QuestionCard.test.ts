@@ -30,7 +30,7 @@ function submit(): HTMLButtonElement {
   return query<HTMLButtonElement>('[data-testid=question-submit]');
 }
 
-test('an option turns Answer on, and what was picked goes out once', () => {
+test('Answer with nothing picked sends nothing, moves to the first option and asks for a pick until one is made; 1 to 9 still pick there, and what was picked goes out once', () => {
   const sent: string[][] = [];
   running = mount(QuestionCard, {
     target: document.body,
@@ -49,15 +49,24 @@ test('an option turns Answer on, and what was picked goes out once', () => {
 
   expect(query('[data-testid=question-card]').getAttribute('data-state')).toBe('pending');
   expect(options()).toHaveLength(2);
-  // Nothing picked and nothing in the composer: there is nothing to send yet.
-  expect(submit().disabled).toBe(true);
+  // Answer is live from the start, never a dead button.
+  expect(submit().disabled).toBe(false);
+  expect(document.querySelector('[data-testid=question-pick-first]')).toBeNull();
   // The card has no field of its own: the composer is the free answer.
   expect(document.querySelector('input, textarea')).toBeNull();
 
-  options()[0]?.click();
+  // Nothing picked and nothing in the composer: the press sends nothing and points at the choices.
+  submit().click();
   flushSync();
-  expect(submit().disabled).toBe(false);
+  expect(sent).toEqual([]);
+  expect(document.activeElement).toBe(options()[0]);
+  expect(query('[data-testid=question-pick-first]').textContent).toBe('Pick an option first');
+
+  // The composer's numbers still pick with the focus on the choices; the line goes at the first pick.
+  options()[0]!.dispatchEvent(new KeyboardEvent('keydown', { key: '1', bubbles: true }));
+  flushSync();
   expect(options()[0]?.getAttribute('aria-checked')).toBe('true');
+  expect(document.querySelector('[data-testid=question-pick-first]')).toBeNull();
 
   // One choice only: the second option replaces the first.
   options()[1]?.click();
@@ -75,7 +84,7 @@ test('an option turns Answer on, and what was picked goes out once', () => {
   expect(sent).toHaveLength(1);
 });
 
-test('a docked question speaks the decision pair: Skip outlined then Answer primary, on one right-aligned line, Answer filled before and after a pick', async () => {
+test('a docked question speaks the decision pair: Skip outlined then Answer primary, on one right-aligned line, Answer filled and live before a pick, faded once on its way', async () => {
   running = mount(QuestionCard, {
     target: document.body,
     props: { text: 'Which shape?', options: OPTIONS, allowText: false, multiple: false, answer: null, pending: true, docked: true, submit: () => true, skip: () => true }
@@ -87,9 +96,9 @@ test('a docked question speaks the decision pair: Skip outlined then Answer prim
     .toEqual([['question-skip', 'secondary'], ['question-submit', 'primary']]);
   // Skip leaves the head: the pair is the only place a decision is made.
   expect(document.querySelector('.decision-head [data-testid=question-skip]')).toBeNull();
-  expect(submit().disabled).toBe(true);
+  expect(submit().disabled).toBe(false);
   // jsdom gets no component CSS from Vite: compile the pair's own, under the scope class it renders with.
-  // app.css draws a disabled primary as an outline; the pair keeps its Answer filled, only faded.
+  // app.css draws a disabled primary as an outline; the pair keeps its Answer filled, only faded, while it goes out.
   const { compile } = await import('svelte/compiler');
   const { readFileSync } = await import('node:fs');
   const scope = [...pair.classList].find((name) => name !== 'decision-actions')!;
@@ -100,17 +109,19 @@ test('a docked question speaks the decision pair: Skip outlined then Answer prim
   try {
     // jsdom resolves no var(): read the pair's rule that holds the disabled Answer and check it fills it.
     const rule = [...style.sheet!.cssRules].find((entry): entry is CSSStyleRule => entry instanceof CSSStyleRule && entry.selectorText.includes('primary:disabled'))!;
+    // Before any pick it is app.css's own filled primary, not faded.
+    expect(submit().classList.contains('primary')).toBe(true);
+    expect(buttons.at(-1)).toBe(submit());
+    expect(submit().matches(rule.selectorText)).toBe(false);
+    options()[0]!.click();
+    flushSync();
+    submit().click();
+    flushSync();
+    expect(submit().disabled).toBe(true);
     expect(submit().matches(rule.selectorText)).toBe(true);
     expect(rule.style.getPropertyValue('background')).toBe('var(--primary-fill)');
     expect(rule.style.getPropertyValue('color')).toBe('var(--primary-ink)');
     expect(getComputedStyle(submit()).opacity).toBe('0.45');
-    options()[0]!.click();
-    flushSync();
-    expect(submit().disabled).toBe(false);
-    expect(submit().classList.contains('primary')).toBe(true);
-    expect(buttons.at(-1)).toBe(submit());
-    // Lit, it is app.css's own filled primary, faded no more.
-    expect(submit().matches(rule.selectorText)).toBe(false);
   } finally { style.remove(); }
 });
 
@@ -156,7 +167,7 @@ test('a docked question with options keeps its own Answer while the composer is 
   });
   flushSync();
   expect(submit().textContent?.trim()).toBe('Answer');
-  expect(submit().disabled).toBe(true);
+  expect(submit().disabled).toBe(false);
   expect(document.querySelector('[data-testid=question-how]')).toBeNull();
   options()[1]?.click();
   flushSync();
@@ -185,9 +196,12 @@ test('the docked card offers the composer, whose send arrow is then the only sub
 
   // Another question or an ordinary message has the composer: the card offers to take it.
   card(false);
-  expect(submit().disabled).toBe(true);
+  expect(submit().disabled).toBe(false);
   query<HTMLButtonElement>('[data-testid=question-write]').click();
   expect(onwrite).toHaveBeenCalledTimes(1);
+  // Answer with nothing written hands the composer over too: there is no option to point at.
+  submit().click();
+  expect(onwrite).toHaveBeenCalledTimes(2);
 
   // Once it has the composer, the question is written once and nothing repeats the send.
   card(true);

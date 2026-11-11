@@ -76,3 +76,17 @@ test('sameJson reads like JSON: undefined fields are absent, key order is free',
   expect(sameJson([1, 2], [1, 2, 3])).toBe(false);
   expect(sameJson({ a: { b: 'x' } }, { a: { b: 'y' } })).toBe(false);
 });
+
+test('a thread on an account whose models were never read here keeps its model name and effort scale from another machine\'s probe', () => {
+  const sonnet = { id: 'claude-sonnet-5-5', name: 'Sonnet 5.5', effort: { levels: [{ id: 'low', label: 'Low' }, { id: 'medium', label: 'Medium' }], default: 'medium' } };
+  const choice = { providerId: 'claude', accountId: 'acc-builder', model: 'claude-sonnet-5-5', effort: 'medium', permissionMode: 'default' as const };
+  // The machine went out of reach before its own catalog was read: nothing says "Claude" in place of the model.
+  const builder: Models = models({ modelsOf: (providerId: string, accountId: string) => builder.modelsOf(providerId, accountId), providerOf: () => providers[0] });
+  expect(builder.modelOf(choice)).toBeNull();
+  const local = models();
+  local.probedModels = { 'claude::acc-1': [sonnet] };
+  expect(builder.modelOf(choice)).toEqual(sonnet);
+  // Its own catalog, once read, is the word: a model it no longer lists is not shown as offered.
+  builder.probedModels = { 'claude::acc-builder': [{ id: 'claude-opus-5-5', name: 'Opus 5.5' }] };
+  expect(builder.modelOf(choice)).toBeNull();
+});

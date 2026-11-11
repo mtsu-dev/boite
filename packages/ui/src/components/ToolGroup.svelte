@@ -12,6 +12,7 @@
   import ToolCard from './ToolCard.svelte';
   import Spinner from './Spinner.svelte';
   import type { Store } from '../lib/store.svelte';
+  import { lastHeard, machineAway } from '../lib/machine-away';
   import type { Snippet } from 'svelte';
 
   /*
@@ -84,7 +85,9 @@
   let open = $state(false);
   let running = $derived(tools.findLast((part) => part.status === 'running'));
   let thinking = $derived(running === undefined && thinkingLive);
-  let live = $derived(running !== undefined || thinking);
+  /** Its machine is out of reach: a running step is the last state known, drawn still. */
+  let away = $derived(!!store && machineAway(store));
+  let live = $derived((running !== undefined || thinking) && !away);
   let issues = $derived(tools.filter(part => (part.status === 'error' || part.status === 'denied') && part.toolId !== carded).length);
   let said = $derived(verdict === 'allow' ? strings.chat.permissionAllowedBy : verdict === 'deny' ? strings.chat.permissionDeniedBy : null);
   let issueLabel = $derived(fill(issues === 1 ? strings.chat.toolIssueOne : strings.chat.toolIssueMany, { count: String(issues) }));
@@ -101,7 +104,7 @@
   let took = $derived.by(() => {
     const span = runSpan(parts);
     if (!span) return '';
-    const ms = (live ? secondClock.now : span.end) - span.start;
+    const ms = (live ? secondClock.now : running && away ? lastHeard(store?.openThread) ?? span.end : span.end) - span.start;
     return live || ms >= 1000 ? elapsed(ms) : '';
   });
 
@@ -178,7 +181,7 @@
         <span class="pulse" aria-hidden="true"></span>
       {/if}
       {#if running}
-        <Spinner size={11} />
+        <Spinner size={11} stale={away} />
       {/if}
       {#if verdict}
         <span class="verdict" class:denied={verdict === 'deny'} data-testid="tool-group-permission" data-decision={verdict} title={said} aria-label={said}>
@@ -316,11 +319,11 @@
   .took.settled { opacity: 0; transition: opacity var(--dur-2); }
   .head:hover .took.settled, .head:focus-visible .took.settled, .head[aria-expanded='true'] .took.settled { opacity: 1; }
 
-  /* A phone reads the run's line whole: a settled summary wraps rather than
-     ends in an ellipsis, and its time, which no pointer can bring up there,
+  /* A phone reads the run's line whole: a settled summary fills the width,
+     then wraps rather than ends in an ellipsis, and its time, which no pointer can bring up there,
      leaves the line its width until the run is opened. */
   @media (max-width: 720px) {
-    .label:not(.shimmer) { white-space: normal; overflow-wrap: anywhere; text-wrap: balance; }
+    .label:not(.shimmer) { white-space: normal; overflow-wrap: anywhere; }
   }
   @media (hover: none) {
     .head[aria-expanded='false'] .took.settled { display: none; }

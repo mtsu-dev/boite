@@ -9,7 +9,7 @@ const row = (label: string, ...used: number[]) => ({
 
 test('the gauge reads the least left in any window of any account, toned as the limits views tone it', () => {
   expect(lowestLimit([])).toBeNull();
-  expect(lowestLimit([row('Work', 20, 40), row('Home', 10, 94.5)])).toEqual({ left: 5, tone: 'low', account: 'Home', window: 'Weekly' });
+  expect(lowestLimit([row('Work', 20, 40), row('Home', 10, 94.5)])).toEqual({ left: 5, tone: 'low', account: 'Home', provider: 'Claude', several: true, window: 'Weekly' });
   expect(lowestLimit([row('Work', 100)])?.tone).toBe('out');
-  expect(lowestLimit([row('Work', 12)])).toMatchObject({ left: 88, tone: 'ok' });
+  expect(lowestLimit([row('Work', 12)])).toMatchObject({ left: 88, tone: 'ok', provider: 'Claude', several: false });
 });

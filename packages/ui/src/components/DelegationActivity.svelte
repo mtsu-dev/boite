@@ -6,6 +6,7 @@
   import { agentProgress, teamProgress } from '../lib/delegation-progress';
   import { openAgent } from '../lib/open-agent';
   import { agentFailure } from '../lib/failure-cause';
+  import { wordFit } from '../lib/word-fit';
   import ActivityCard from './ActivityCard.svelte';
   import Elapsed from './Elapsed.svelte';
   import FailMark from './FailMark.svelte';
@@ -72,7 +73,7 @@
           <span class="glyph" aria-hidden="true"><ProviderLogo providerId={row.agent.thread.providerId} size={13} /></span>
           {#if row.state === 'failed'}
             {@const cause = agentFailure(row.agent)}
-            <span class="words"><span class="name">{row.agent.thread.title}</span><span class="cause" data-testid="delegation-agent-cause" title={cause}>{cause}</span></span>
+            <span class="words"><span class="name">{row.agent.thread.title}</span><span class="cause" data-testid="delegation-agent-cause" title={cause} use:wordFit={cause}></span></span>
           {:else}
             <span class="name">{row.agent.thread.title}</span>
           {/if}
@@ -108,8 +109,8 @@
   .name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* A failed row: its name over its cause, the row a line taller, still one button to its conversation. */
   .words { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; line-height: 18px; }
-  /* The cause adds no width of its own (`contain`): a long one ends in an ellipsis, never widens the list past the screen. */
-  .cause { min-width: 0; contain: inline-size; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); line-height: 16px; color: var(--color-muted-foreground); }
+  /* The cause adds no width of its own (`contain`): it wraps to two lines, then ends on a whole word (`wordFit`), never widens the list past the screen. */
+  .cause { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; min-width: 0; contain: inline-size; overflow: hidden; overflow-wrap: anywhere; font-size: var(--text-xs); line-height: 16px; color: var(--color-muted-foreground); }
   .state { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 16px; color: var(--color-subtle); }
   .state[data-state='done'] { color: var(--color-success); }
   .state[data-state='failed'] { color: var(--color-danger); }

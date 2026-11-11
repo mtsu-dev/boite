@@ -131,6 +131,11 @@ test('the phone settings list the desktop\'s families, each page a peer row, Gen
     'settings-tab-general', 'settings-tab-voice', 'settings-tab-appearance', 'settings-tab-accounts', 'settings-tab-brain', 'settings-tab-limits', 'settings-tab-usage',
     'settings-tab-browser', 'mobile-settings-connection', 'settings-tab-advanced', 'settings-tab-experiments', 'settings-tab-diagnostics'
   ]);
+  // A row holding one value shows it before its chevron: the theme and language, the machine reached, dictation on or off once read.
+  expect(query('[data-testid=settings-tab-appearance-value]').textContent).toBe(`${strings.settings.themeSystem} · ${strings.settings.languageNames.en}`);
+  expect(query('[data-testid=mobile-settings-connection-value]').textContent?.trim()).not.toBe('');
+  await waitFor(shown('settings-tab-voice-value'));
+  expect([strings.settings.homeOn, strings.settings.homeOff]).toContain(query('[data-testid=settings-tab-voice-value]').textContent);
   // The rows stand under the desktop's four family heads, Advanced named like the others.
   expect([...document.querySelectorAll<HTMLElement>('[data-testid=mobile-settings-home] [data-testid=settings-family]')].map(family => [family.dataset.family, family.querySelector('h2')?.textContent ?? null])).toEqual([
     ['app', 'App'], ['agents', 'Agents'], ['connections', 'Connections'], ['advanced', 'Advanced']

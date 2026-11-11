@@ -80,6 +80,8 @@ export const fr: Translation = {
     unavailable: 'Aucune lecture de quota disponible.',
     refresh: 'Actualiser les quotas',
     glance: 'Limites des comptes',
+    lineLeft: 'Il reste {percent} % de la limite {window} de {provider}',
+    lineLeftAccount: 'Il reste {percent} % de la limite {window} de {provider} sur {account}',
     allLimits: 'Page des limites',
     readFailed: 'Lecture des limites impossible : {error}',
     quit: 'Quitter Boite',

@@ -37,6 +37,11 @@ export const fr: Translation = {
     searchEmpty: 'Aucun réglage ne correspond',
     connectProvider: 'Connecter un fournisseur',
     conversations: 'Conversations',
+    threadList: 'Liste des conversations',
+    inConversation: 'Dans la conversation',
+    notificationsHeading: 'Notifications',
+    homeOn: 'Activée',
+    homeOff: 'Désactivée',
     effects: {
       groupWorking: 'Les conversations au travail se replient, et les projets tout au travail passent en haut, dans En cours',
       groupIdle: 'Les projets sans rien à faire se replient dans Projets inactifs, en fin de liste',
