@@ -69,6 +69,15 @@ stored key could be its own core's from an earlier start.
 
 Machine names and icons can be changed in Settings. These preferences are saved on this client and follow the core across address changes. Connections to the same host, data directory and channel appear once.
 
+Another machine goes by the name it reports now, its host name or
+`BOITE_MACHINE_NAME`, unless the owner renamed it here. The saved entry marks a
+typed name with `named`; any other saved name is only what the machine was
+called last time and gives way once it says hello, so a core that moved hosts
+shows its new name. An entry saved before that mark counts as renamed when a
+machine profile holds its name under a different host name, which is what a
+rename wrote; a name saved automatically, or rewritten by picking an icon,
+follows the host. Picking an icon never marks a name as typed.
+
 The shell discovers its local core on startup instead of remembering its temporary
 port as another machine. Older generated `This computer` loopback entries are
 removed during startup. Paired remote connections are retained. The sidebar

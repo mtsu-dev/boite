@@ -15,6 +15,8 @@ import { startsAutoGoal } from '../composer-activity.ts';
 import { readToolOutput, readToolPart } from './records.ts';
 import { readMessageAttachment } from './attachment-read.ts';
 import { CreationRequests } from './creation-requests.ts';
+import { archiveForPlugin } from './plugin-archive.ts';
+import { pluginActor, recordCreator } from '../plugins/actor.ts';
 import { trustLetters } from '../contacts/letter-scopes.ts';
 
 /**
@@ -150,7 +152,8 @@ export function registerThreadMethods(core: Core, probe: ProviderProbe): void {
       const provider = core.providers.require(params.providerId);
       await discover(provider.id, params.accountId, params.model ?? defaultModel(provider), params.effort ?? null, params.speed ?? null);
       const adopted = await core.drafts.claim(ctx.connection.id, params);
-      return adopted ?? (params.worktree === undefined ? core.threads.create(params) : await core.threads.createInWorktree(params));
+      const made = adopted ?? (params.worktree === undefined ? core.threads.create(params) : await core.threads.createInWorktree(params));
+      return recordCreator(core, made, pluginActor(core, ctx.connection.identity));
     }, threadId => core.journal.getThread(threadId));
     if (params.subscribe === true) ctx.connection.subscriptions.add(thread.id);
     return thread;
@@ -195,9 +198,14 @@ export function registerThreadMethods(core: Core, probe: ProviderProbe): void {
     return core.threads.update({ ...params, expectedSelectionVersion: params.expectedSelectionVersion ?? version });
   });
   core.router.register('threads.retitle', (params) => core.threads.retitle(params.threadId));
-  core.router.register('threads.archive', (params) =>
-    core.threads.archive(params.threadId, params.archived !== false, params.onlyIfIdle === true),
-  );
+  core.router.register('threads.archive', (params, { connection }) => {
+    const { principal, pluginId } = connection.identity;
+    // A plugin's call is always idle-only and named; `archived: false` was refused before this (contracts/access.ts).
+    if (principal === 'plugin' && pluginId !== undefined) {
+      return archiveForPlugin(core, params.threadId, pluginId);
+    }
+    return core.threads.archive(params.threadId, params.archived !== false, params.onlyIfIdle === true);
+  });
   core.router.register('threads.remove', async (params) => {
     await core.threads.remove(params.threadId);
     return { ok: true } as const;
@@ -238,7 +246,7 @@ export function registerThreadMethods(core: Core, probe: ProviderProbe): void {
     const thread = core.threads.require(params.threadId);
     const preferences = core.clients.use(ctx.connection);
     const autoGoal = startsAutoGoal(params.prompt, preferences?.experiments, core.settings.get().autoGoalMinChars) ? params.prompt : undefined;
-    const start = () => core.threads.startTurn(params.threadId, { prompt: params.prompt, attachments, previews: params.previewReferences ?? [] }, { kind: 'user', requestId: params.clientRequestId, sentFrom: promptOrigin(ctx.connection, preferences) }, { expectedSelectionVersion: params.expectedSelectionVersion, autoGoal });
+    const start = () => core.threads.startTurn(params.threadId, { prompt: params.prompt, attachments, previews: params.previewReferences ?? [] }, { kind: 'user', requestId: params.clientRequestId, sentFrom: promptOrigin(ctx.connection, preferences), plugin: pluginActor(core, ctx.connection.identity) }, { expectedSelectionVersion: params.expectedSelectionVersion, autoGoal });
     return core.delegation.retirements.revivable(thread) ? core.delegation.retirements.revive(thread, start) : start();
   });
   core.router.register('turns.stop', (params, ctx) => {
@@ -256,7 +264,7 @@ export function registerThreadMethods(core: Core, probe: ProviderProbe): void {
     return core.threads.recoverTurn(params);
   });
   core.router.register('turns.cancelRetry', (params) => ({ cancelled: core.threads.cancelRetry(params.threadId) }));
-  core.router.register('turns.steer', (params, ctx) => steerUser(core, core.threads, params, promptOrigin(ctx.connection, core.clients.use(ctx.connection))));
+  core.router.register('turns.steer', (params, ctx) => steerUser(core, core.threads, params, promptOrigin(ctx.connection, core.clients.use(ctx.connection)), pluginActor(core, ctx.connection.identity)));
   core.router.register('permissions.list', (params) => core.threads.listPermissions(params.threadId));
   core.router.register('permissions.answer', (params) => {
     core.threads.answerPermission({ requestId: params.requestId, decision: params.decision });

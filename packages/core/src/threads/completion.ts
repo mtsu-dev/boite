@@ -15,6 +15,7 @@ function pending(core: Core, id: ThreadId, scheduled: Set<ThreadId>, request: Co
   const threads = core.threads;
   if (threads.isBusy(id) || scheduled.has(id) || threads.runner.steering.has(id)) return 'a turn is still running';
   if (threads.agentState.background.get(id)?.length) return 'background work is still running';
+  if (core.delegation.remote.busy(id)) return 'a subagent on another machine is still running';
   if (threads.moves.pendingOf(id)) return 'a move is still in progress';
   if (threads.deferred.deferredAnswers.get(id)?.length || threads.deferred.pendingWakes.has(id)) return 'a message is still waiting to be delivered';
   // Done stops a paused run, as archiving does; only an automatic pass keeps it for its resume.

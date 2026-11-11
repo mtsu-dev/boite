@@ -6,9 +6,13 @@
  * what was expected, never skipped. docs/plugins.md is the authoring guide.
  */
 
-import { PLUGIN_ANY_PLATFORM, PLUGIN_EXECUTABLE_PATTERN, PLUGIN_MANIFEST_SCHEMAS, PLUGIN_NAME_PATTERN, PLUGIN_PERMISSION_NAMES, PLUGIN_PLATFORMS, PLUGIN_UI_PATH_PATTERN } from '@boite/contracts';
+import {
+  PLUGIN_ANY_PLATFORM, PLUGIN_EXECUTABLE_PATTERN, PLUGIN_MANIFEST_SCHEMAS, PLUGIN_NAME_PATTERN, PLUGIN_PERMISSION_ALIASES, PLUGIN_PERMISSION_NAMES, PLUGIN_PLATFORMS,
+  PLUGIN_UI_PATH_PATTERN,
+  PLUGIN_SETTING_KEY_PATTERN, PLUGIN_SETTING_LIMITS, PLUGIN_SETTING_TYPES, pluginSettingProblem,
+} from '@boite/contracts';
 import type {
-  PluginAdds, PluginArtifact, PluginCommand, PluginManifest, PluginPermission, PluginPlatform, PluginRejected, PluginSkill, PluginSlashCommand, PluginUiFiles, ProviderId,
+  PluginAdds, PluginArtifact, PluginCommand, PluginManifest, PluginPermission, PluginPlatform, PluginRejected, PluginSetting, PluginSkill, PluginSlashCommand, PluginUiFiles, ProviderId,
 } from '@boite/contracts';
 import { BUILTIN_COMMANDS } from '../cli-commands.ts';
 import { RETIRED_PROVIDERS } from '../providers/retired.ts';
@@ -21,7 +25,7 @@ export const MANIFEST_MAX_BYTES = 256 * 1024;
 export const MANIFEST_V1_MAX_BYTES = 64 * 1024;
 
 const FIELDS_V1 = ['schema', 'id', 'name', 'version', 'description', 'homepage', 'executable', 'artifacts', 'provides'] as const;
-const FIELDS_V2 = [...FIELDS_V1, 'runtime', 'permissions'] as const;
+const FIELDS_V2 = [...FIELDS_V1, 'runtime', 'permissions', 'settings'] as const;
 const FEATURES_V1 = ['accountPools', 'desktopApp', 'gateway'] as const;
 const FEATURES_V2 = [...FEATURES_V1, 'service', 'commands', 'skills', 'prompt', 'slashCommands', 'ui'] as const;
 /** The features that run the executable; a plugin providing none of them has no executable to ship. */
@@ -175,15 +179,77 @@ class Reader {
     return out;
   }
 
+  /** The permissions asked for; an older name (`todos`) reads as those it stands for. */
   permissions(value: unknown): PluginPermission[] {
-    const expected = `an array of distinct permissions among ${PLUGIN_PERMISSION_NAMES.join(', ')}`;
+    const expected = `an array of distinct permissions among ${PLUGIN_PERMISSION_NAMES.join(', ')} (or ${Object.keys(PLUGIN_PERMISSION_ALIASES).join(', ')}, their older names)`;
     if (!Array.isArray(value)) this.refuse('permissions', expected, value);
+    const out = new Set<PluginPermission>();
     value.forEach((permission: unknown, index) => {
-      if (typeof permission !== 'string' || !(PLUGIN_PERMISSION_NAMES as readonly string[]).includes(permission) || value.indexOf(permission) !== index) {
-        this.refuse(`permissions[${index}]`, expected, permission);
-      }
+      const known = typeof permission === 'string' && ((PLUGIN_PERMISSION_NAMES as readonly string[]).includes(permission) || Object.hasOwn(PLUGIN_PERMISSION_ALIASES, permission));
+      if (!known || value.indexOf(permission) !== index) this.refuse(`permissions[${index}]`, expected, permission);
+      for (const name of PLUGIN_PERMISSION_ALIASES[permission as string] ?? [permission as PluginPermission]) out.add(name);
     });
-    return [...value] as PluginPermission[];
+    return [...out];
+  }
+
+  /**
+   * `settings`: up to 30 declarations with distinct keys, each one of the
+   * five types with only the fields that type takes, its default valid for it.
+   */
+  settings(value: unknown): PluginSetting[] {
+    const max = PLUGIN_SETTING_LIMITS.settings;
+    if (!Array.isArray(value) || value.length > max) this.refuse('settings', `an array of at most ${max} settings`, value);
+    const seen = new Set<string>();
+    return value.map((entry: unknown, index) => {
+      const at = `settings[${index}]`;
+      if (!isRecord(entry)) this.refuse(at, 'an object with key, type, label and default', entry);
+      const type = entry['type'];
+      if (typeof type !== 'string' || !(PLUGIN_SETTING_TYPES as readonly string[]).includes(type)) this.refuse(`${at}.type`, `one of ${PLUGIN_SETTING_TYPES.join(', ')}`, type);
+      const extra = type === 'number' || type === 'slider' ? ['min', 'max', 'step'] : type === 'select' ? ['options'] : [];
+      this.keys(entry, `${at}.`, ['key', 'type', 'label', 'description', 'default', ...extra]);
+      const key = this.matching(entry['key'], `${at}.key`, PLUGIN_SETTING_KEY_PATTERN, 'a letter, then letters, digits and _, at most 40 characters');
+      if (seen.has(key)) this.refuse(`${at}.key`, 'a key no other setting takes', key);
+      seen.add(key);
+      const base = { key, label: this.text(entry['label'], `${at}.label`, 60) };
+      const described = entry['description'] === undefined ? {} : { description: this.text(entry['description'], `${at}.description`, PLUGIN_LIMITS.description) };
+      let setting: PluginSetting;
+      if (type === 'number' || type === 'slider') {
+        const bound = (field: 'min' | 'max' | 'step'): number | undefined => {
+          const raw = entry[field];
+          if (raw === undefined && (type === 'number' || field === 'step')) return undefined;
+          if (typeof raw !== 'number' || !Number.isFinite(raw) || (field === 'step' && raw <= 0)) {
+            this.refuse(`${at}.${field}`, field === 'step' ? 'a number above 0' : type === 'slider' ? 'a number (a slider needs min and max)' : 'a number', raw);
+          }
+          return raw;
+        };
+        const min = bound('min'), max = bound('max'), step = bound('step');
+        if (min !== undefined && max !== undefined && max <= min) this.refuse(`${at}.max`, `a number above min (${min})`, max);
+        const range = { ...(min === undefined ? {} : { min }), ...(max === undefined ? {} : { max }), ...(step === undefined ? {} : { step }) };
+        setting = type === 'slider'
+          ? { ...base, ...described, type, default: 0, min: min!, max: max!, ...(step === undefined ? {} : { step }) }
+          : { ...base, ...described, type, default: 0, ...range };
+      } else if (type === 'select') {
+        const options = entry['options'];
+        const limit = PLUGIN_SETTING_LIMITS.options;
+        if (!Array.isArray(options) || options.length === 0 || options.length > limit) this.refuse(`${at}.options`, `an array of 1 to ${limit} objects with value and label`, options);
+        const values = new Set<string>();
+        setting = { ...base, ...described, type, default: '', options: options.map((option: unknown, which) => {
+          const where = `${at}.options[${which}]`;
+          if (!isRecord(option)) this.refuse(where, 'an object with value and label', option);
+          this.keys(option, `${where}.`, ['value', 'label']);
+          const chosen = this.text(option['value'], `${where}.value`, 60);
+          if (values.has(chosen)) this.refuse(`${where}.value`, 'a value no other option takes', chosen);
+          values.add(chosen);
+          return { value: chosen, label: this.text(option['label'], `${where}.label`, 60) };
+        }) };
+      } else {
+        setting = type === 'switch' ? { ...base, ...described, type, default: false } : { ...base, ...described, type: 'text', default: '' };
+      }
+      const problem = pluginSettingProblem(setting, entry['default']);
+      if (problem !== null) this.refuse(`${at}.default`, problem, entry['default']);
+      (setting as { default: unknown }).default = entry['default'];
+      return setting;
+    });
   }
 
   /** A list of named entries: an array of 1 to `max` objects with distinct names. */
@@ -332,6 +398,7 @@ export function parseManifest(raw: unknown, file: string, prefix = '', dev = fal
   const manifest: PluginManifest = { schema: 2, ...head, provides };
   if (raw['runtime'] !== undefined) manifest.runtime = runtime;
   if (raw['permissions'] !== undefined) manifest.permissions = read.permissions(raw['permissions']);
+  if (raw['settings'] !== undefined) manifest.settings = read.settings(raw['settings']);
   // Code in the owner's window is the widest thing a plugin asks for: the owner reads it in the list, never implied.
   if (provides.ui !== undefined && !permissionsOf(manifest).includes('ui')) read.refuse('permissions', 'a list holding ui: provides.ui loads code into Boite\'s window', raw['permissions']);
   if (RUNNING_FEATURES.some((feature) => provides[feature] !== undefined)) {

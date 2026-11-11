@@ -6,8 +6,8 @@ import { startDevUi } from './lib/ui.ts';
 /*
  * The example plugin's interface (examples/plugins/hello/ui), end to end on the
  * fake client: added from its URL, its script imported from a blob URL in the
- * page, its header button opening its panel tab, its message action, its card
- * line, then gone on uninstall. Safe mode keeps every script off.
+ * page, its header button opening its panel tab, its message action, its line
+ * under the card's gear, then gone on uninstall. Safe mode keeps every script off.
  */
 
 const artifacts = join(import.meta.dir, '.artifacts', 'plugin-ui');
@@ -34,7 +34,7 @@ beforeAll(async () => {
 }, 60_000);
 afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);
 
-test('the example plugin adds a header button that opens its panel tab, a message action and a card line, and leaves on uninstall', async () => {
+test('the example plugin adds a header button that opens its panel tab, a message action and a line under its gear, and leaves on uninstall', async () => {
   expect(await page.evaluate(`document.querySelector('${id('plugin-button')}') === null`)).toBe(true);
   await page.evaluate(`(async () => {
     const c = ${client};
@@ -70,13 +70,17 @@ test('the example plugin adds a header button that opens its panel tab, a messag
   await capture('plugin-header-phone.png');
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
 
-  // Its card says the interface is loaded.
+  // Its gear says the interface is loaded.
   await page.click(id('nav-settings'));
   await page.click(id('settings-tab-plugins'));
-  const state = `${id('plugin-ui-state')}[data-plugin="hello"]`;
+  // Its card draws the ui permission in red, as the consent dialog did.
+  await page.waitFor(`document.querySelector('${id('plugin-row')}[data-plugin="hello"] ${id('plugin-permission')}[title="ui"]')?.classList.contains('danger')`);
+  await page.click(`${id('plugin-open')}[data-plugin="hello"]`);
+  const state = `${id('plugin-dialog')}[data-plugin="hello"] ${id('plugin-ui-state')}[data-plugin="hello"]`;
   await page.waitFor(`document.querySelector('${state}')?.dataset.uiState === 'running'`);
-  await page.evaluate(`document.querySelector('[data-testid="plugin-row"][data-plugin="hello"]').scrollIntoView({ block: 'center' })`);
-  await capture('plugin-card-desktop.png');
+  await capture('plugin-gear-desktop.png');
+  await page.click(id('plugin-dialog-close'));
+  await page.waitFor(`document.querySelector('${id('plugin-dialog')}') === null`);
 
   await page.evaluate(`(async () => { await (${client}).call('plugins.uninstall', { id: 'hello' }); })()`);
   await page.waitFor(`document.querySelector('${button}') === null && document.querySelector('style[data-boite-plugin="hello"]') === null`);

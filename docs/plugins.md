@@ -15,27 +15,45 @@ checks against the SHA-256 the manifest publishes. Schema 2 is the format to
 write today ([Schema 2](#schema-2)); schema 1 manifests keep loading as they
 always did ([Schema 1 manifest](#schema-1-manifest)).
 
-Settings > Plugins has three sections. Installed and Recommended are drawn
-only when they hold a plugin:
+Settings > Plugins is one grid of cards, with a search field (name, id,
+description or author) and a filter: All, On or Off.
 
-- Installed: every plugin on this core, with its version, the commit it came
-  from, its pools and its errors.
-- Recommended: the plugins Boite ships a manifest for and that are not
-  installed yet, in the order Boite lists them. Today that is
-  [Bots](https://github.com/Skollheim/bots), the desktop companion, and
-  [Douane](https://github.com/mtsu-dev/douane), the subscription gateway. A row there
-  carries the name, version, a link to the source, the description and
-  Install, with no state line.
-- Add from a git URL: any repository with a `boite-plugin.json` at its root.
+- A card holds the name, version, author, two lines of description, small
+  chips for what the plugin touches (its permissions, account pools, a desktop
+  app or service, a gateway, a program or text only), an on/off switch and a
+  gear. A state worth a look (installing, refused, an error, off, a crashed
+  app, an update) takes one line on the card, its detail behind an "i".
+- The plugins on this core come first, then the recommended ones: those Boite
+  ships a manifest for and that are not installed yet, in the order Boite lists
+  them. Today that is [Bots](https://github.com/Skollheim/bots), the desktop
+  companion, and [Douane](https://github.com/mtsu-dev/douane), the subscription
+  gateway. Their card carries a Recommended chip and Install instead of a switch.
+- From a URL, beside the filter, opens the form that reads any repository with
+  a `boite-plugin.json` at its root and shows it before installing.
+- The gear opens the plugin's dialog: its [settings](#settings), what its
+  token may call (Authorizations, whose Edit opens the grant editor of
+  [Consent and grants](#consent-and-grants)), where it comes from, its updates, its pools,
+  its desktop app or gateway with Start, Stop and Restart, and Uninstall. On a
+  phone it is a bottom sheet.
 
 A plugin installed as recommended that a later Boite no longer lists, such as
-kebacc-switcher before 2026-10-16, stays under Installed with its pools until
-the owner uninstalls it; it no longer receives updates.
+kebacc-switcher before 2026-10-16, stays in the grid with its pools until the
+owner uninstalls it; it no longer receives updates.
 
 Plugins are administration of the machine that hosts the core, so every
 `plugins.*` method is owner only, except `plugins.command`, which an agent
-calls to run a plugin's command ([Agent commands](#agent-commands)). The phone
-settings leave the page to the desktop app ([phone](phone.md)).
+calls to run a plugin's command ([Agent commands](#agent-commands)), and
+`plugins.settings.get`, which a plugin calls for its own settings. The owner's
+phone has the same page under Settings > Plugins; a paired device has none.
+
+### Turning a plugin off
+
+The switch on a card turns an installed plugin off without uninstalling it
+(`plugins.setEnabled`). Off stops its desktop app, service and gateway, revokes
+its token (its sockets close), and drops its commands, skills, guide lines and
+slash commands. Its files, data directory and settings stay. On starts again
+what it runs. The core keeps the choice across restarts. `PluginState.enabled` is `false` while
+it is off; an older core leaves the field out, and every installed plugin is on.
 
 Each core has its own plugins. The page opens on this PC when the window has
 one, since a desktop app shows its window there, whichever machine the open
@@ -139,7 +157,8 @@ and the slash command `/recap`. Start from a copy of it.
 | `runtime` | `"native"` or `"bun"` ([Runtime](#runtime)). Absent means `"native"`. |
 | `executable` | As in schema 1. Absent exactly when the plugin provides only `skills`, `prompt` and `slashCommands`: a plugin of text that downloads nothing. |
 | `artifacts` | `native`: keyed by platform as in schema 1. `bun`: exactly one key, `any`, `{ "url", "sha256" }`. Absent exactly when `executable` is. |
-| `permissions` | A list of distinct names among `threads.read`, `threads.write`, `todos`, `ui.reveal` and `ui` ([Permissions](#permissions)). Absent means none. |
+| `permissions` | A list of distinct permission names ([Permissions](#permissions)), `todos` standing for `todos.read` and `todos.write`. Absent means none. |
+| `settings` | Up to 30 settings Boite draws for the owner ([Settings](#settings)). Absent means none. |
 | `provides` | At least one of `accountPools`, `desktopApp`, `gateway` (as in schema 1), `service`, `commands`, `skills`, `prompt`, `slashCommands` and `ui` ([Interface](#interface)). |
 
 Unknown fields at any depth are refused, as in schema 1, and the manifest file
@@ -164,30 +183,117 @@ may be 256 KB. Every limit is under [Limits](#limits).
 ### Permissions
 
 A schema 2 plugin's processes do not get the owner token. The core mints a
-token for the plugin that reaches only what its `permissions` declare; its
-connections speak as the principal `plugin`. The install preview lists the
-permissions before anything is downloaded. The token lasts while the plugin
-declares the same permissions: an uninstall, or an install or a dev reload
-that changes them, revokes it and closes every socket it opened, and the
-plugin's processes restart with a new one.
+token for the plugin that reaches only the permissions the owner granted of
+those its `permissions` ask for; its connections speak as the principal
+`plugin`.
 
-| Permission | Methods | Events | What it means |
-| --- | --- | --- | --- |
-| `threads.read` | `threads.list`, `threads.get`, `projects.list` | `thread.created`, `thread.updated`, `thread.removed`, `turn.started`, `turn.finished` | Every conversation of every project, read only: rows, transcripts, the project list. |
-| `threads.write` | `threads.create`, `turns.start`, `turns.stop` | none | Starts conversations and turns, and stops them: it spends the owner's agent quota. |
-| `todos` | `todos.list`, `todos.add`, `todos.update` | `todos.updated` | The project boards: read, add and update cards. |
-| `ui.reveal` | `ui.reveal` | none | Brings a conversation, a bot or the app updates to the front of the owner's desktop window ([Showing Boite](#showing-boite)). |
-| `ui` | none | none | Runs its `provides.ui` script and style inside Boite's window, on every client of this core ([Interface](#interface)). Shown in red: that code can do anything you can in the app. |
+Each permission is a domain, read or write. Every method and event a paired
+device may use is filed into exactly one, or in the closed list below; a
+method added to Boite later joins its domain in the same table, and the
+plugins granted that domain reach it with no change of their own.
 
-A method or an event in none of these rows is refused to every plugin,
-whatever it declares. A refused call answers with the method, the permission
-it needs and what the plugin declared:
+| Permission | What it opens |
+| --- | --- |
+| `threads.read` | Every conversation of every project, read only: rows, transcripts, pull request links, cards waiting on the owner, the composer's drafts, the project list, and their events. |
+| `threads.write` | Creates, starts, steers, stops, renames, moves, forks, archives and deletes conversations: it spends the owner's agent quota. Archiving keeps its guards ([Archiving](#archiving-threads)). |
+| `projects.read` | The projects' icons, file lists and changes, and the composer's skill menu. |
+| `projects.write` | Adds a folder as a project, renames or archives one. |
+| `todos.read` | The project boards, read only. |
+| `todos.write` | Adds, updates and removes cards. |
+| `agents.read` | Agents, delegations, workflows, teams and councils, read only. |
+| `agents.write` | Opens agents, posts to teams and councils, sends and stops delegations, controls workflows. |
+| `files.read` | Git status and diffs, the files of a project and their content. |
+| `questions.write` | Answers the cards agents wait on, permission requests included: shown in red at install, since it answers in the owner's name. |
+| `screens.read` | The devices, windows and remote browser Boite shows, their frames included. |
+| `screens.write` | Types and clicks in them, opens and closes them, reads the emulator's clipboard. |
+| `status.read` | Machine usage, quotas, providers, settings, the scheduler and key bindings, read only. |
+| `ui.reveal` | Brings a conversation, a bot or the app updates to the front of the owner's desktop window ([Showing Boite](#showing-boite)). |
+| `ui` | Runs its `provides.ui` script and style inside Boite's window, on every client of this core ([Interface](#interface)). The token gains nothing, but that code can do anything you can in the app: shown in red at install. |
+
+The table is `PLUGIN_PERMISSIONS` in `packages/contracts/src/plugins.ts`, with
+each domain's methods and events; `packages/core/test/plugin-permissions.test.ts`
+fails when a device method is in no domain and not closed. A manifest may
+still ask for `todos`, which reads as `todos.read` and `todos.write`.
+
+Never open to a plugin, whatever it asks for (`PLUGIN_CLOSED`, each with its
+reason): accounts and provider sign-ins, secrets, plugins and their grants,
+updating, restarting or stopping Boite, the admin policy (read or changed),
+the composer's queue (a queued line goes out as the owner's), paired sessions and
+pairing, the machine group, push subscriptions, the client's own settings,
+which conversation the owner is looking at, dictation, diagnostics reports,
+window capture consent, contacts and shared projects. A method in no domain
+and not closed (settings changes, hooks, the brain) is the owner's.
+
+A refused call names the method and the permission it needs:
 
 ```
-turns.start needs the plugin permission threads.write; the plugin declared threads.read
+turns.start needs the plugin permission threads.write, which the owner did not grant (granted: threads.read)
+secrets.list is never open to plugins: secrets reach only the agent that asked for one
 ```
 
-The table is `PLUGIN_PERMISSIONS` in `packages/contracts/src/plugins.ts`.
+#### Consent and grants
+
+On install, and on an update that asks for more, the app shows "<name> wants
+to access your Boite": one line per permission asked for, ticked unless the owner refused it
+before.
+The owner unticks what the plugin should not get; `plugins.add` and
+`plugins.install` carry the ticked list as `grants`, which must be among the
+permissions the manifest asks for (else refused naming `grants[<index>]`).
+The line for `questions.write` is red. A plugin with an executable adds a line
+with no box: it runs a program on this machine with Boite's rights.
+
+The grant is stored per installed plugin, apart from the manifest. An install
+with no `grants` (`boite plugin install`, an older app) grants everything on a
+first install; an update keeps what was granted and grants nothing it asks
+for anew. A dev load (`boite plugin dev`) grants what the folder asks for. The
+owner changes a grant later with `plugins.setGrants`: the old token and every
+socket it opened close, and a running app or service restarts with the new
+one. An uninstall forgets the grant.
+
+#### In the plugin's name
+
+Every change a plugin's token makes is in the core's log as
+`<method> by plugin <name>`. The records that name who acted name the plugin,
+by id and by its name at that time, so they still read after an uninstall:
+
+- a conversation it creates carries `createdBy`;
+- a prompt it sends or steers into a running turn carries `byPlugin` on the
+  message, shown above it;
+- a card it adds or changes carries `plugin`, until another hand changes it;
+- a conversation it archives carries `archiveReason` of type `plugin`.
+
+A plugin passes the same checks as a paired device (`deviceBound` in
+`packages/contracts/src/access.ts`, which every core guard asks): reads held
+to the projects and never credential files or Boite's data folder, a project
+folder it adds held to the same rules, the working tree's diff against HEAD
+only, the last quota reading only, a desktop, device or window only of a
+conversation it subscribed to, no workflow retry or resume. It neither reads
+nor changes a shared board's cards, and archives only when idle.
+
+#### Archiving threads
+
+A plugin's `threads.archive` is always a Mark done, whatever it passes:
+
+- The core forces `onlyIfIdle: true` and checks the family as an automatic
+  pass does: a turn running or queued, background work, a subagent at work
+  on another machine, a move, a message
+  waiting to be delivered, a workflow (a paused one included), unsent input
+  on a device, a side question or a card waiting for an answer refuses it,
+  naming `threadId`.
+- A pinned thread is refused naming `pinned`. `pinned` is already in the
+  `ThreadSummary` rows `threads.list` answers, so a plugin can skip them
+  first.
+- `archived: false` is refused: restoring is the owner's.
+- An already archived thread is answered unchanged.
+- The row's `archiveReason` becomes `{ type: 'plugin', pluginId, pluginName,
+  archivedAt }`. The app shows "Archived by plugin <name>" under the done row
+  and in Settings, Archived threads, and the core's log records the archive.
+  An owner's restore drops it.
+- Being done, the thread counts toward Delete done threads after, as after
+  the owner's Mark done.
+
+A thread in error is idle: a plugin that must leave those alone reads
+`status` in `threads.list` (permission `threads.read`) first.
 
 ### Environment
 
@@ -291,7 +397,7 @@ text only: it runs nothing until the agent acts on the prompt.
 executable in the background with no argument and no window, on any machine,
 a headless server included. It is started, stopped, kept running and
 relaunched after a crash exactly like a [desktop app](#desktop-apps): the same
-Start, Stop and Restart and Start with Boite switch on its row
+Start, Stop and Restart and Start with Boite switch behind its gear
 (`plugins.app`), the same 2, 10 and 30 second retries and the same `crashed`
 state after a fourth exit within five minutes. Its state is
 `PluginState.app` with `kind: "service"`.
@@ -319,15 +425,16 @@ How the files get to the window:
   one past its limit, naming `provides.ui.script` or `provides.ui.style`.
   It saves them under the plugin's directory as `ui/<sha-256>.js` and
   `.css` and writes their digests in `installed.json`. A file whose bytes no
-  longer match is not served: its card says the files are missing or altered
+  longer match is not served: its gear says the files are missing or altered
   and to reinstall. A recommended entry has no repository, so it cannot bring
   an interface.
 - Every client reads them with `plugins.ui`, an RPC rather than an HTTP route
   so that it reaches the desktop app, a browser and a paired phone over the
   connection each already has. It answers the plugins that are installed,
-  enabled and granted `ui`, with their files, permissions and settings.
-  The core sends `plugins.uiUpdated` with a digest when that answer changes:
-  an install, an update, an uninstall, a permission or a setting.
+  turned on and granted `ui`, with their files, the permissions granted and
+  the settings' values. The core sends `plugins.uiUpdated` with a digest when
+  that answer changes: an install, an update, an uninstall, turning it off or
+  on, a grant taken back or given, or a setting.
 - The window loads them once it has started, never before its first screen:
   the style goes in a `<style>` element, the script is imported as a module
   from a `blob:` URL.
@@ -397,17 +504,68 @@ present they are ignored.
   interface on the plugin's card.
 - The schema, the permissions and what Boite starts for it (a desktop app, a
   service, a gateway, account pools) stay those of the last
-  `boite plugin dev`. An edit that changes one turns the row to an error
+  `boite plugin dev`. An edit that changes one turns the card to an error
   and closes the plugin's token, its sockets with it, until you run
   `boite plugin dev <folder>` again: anything that can write the folder, an
   agent working in it say, cannot give the plugin more than you loaded.
 - Run `boite plugin dev <folder>` again to read the manifest again and restart
   the plugin's service or desktop app.
 - `boite plugin dev --remove <id>` removes it.
-- The row in Settings > Plugins shows its origin as `dev` and its folder.
+- Its card in Settings > Plugins wears a Dev chip, and its gear shows the folder.
 
 It is the owner's (`plugins.dev`): run it from your own terminal. The core
 refuses it to an agent or a paired device.
+
+### Settings
+
+A schema 2 manifest declares the settings it wants from the owner. Boite draws
+them in the plugin's gear dialog, in the manifest's order, keeps the values on
+the core and hands them to the plugin; the plugin draws no settings page of
+its own.
+
+```json
+"settings": [
+  { "key": "includeTodos", "type": "switch", "label": "Include todos", "description": "Lists the todos closed today under each thread.", "default": true },
+  { "key": "lookback", "type": "slider", "label": "Look back", "min": 4, "max": 72, "step": 4, "default": 24 },
+  { "key": "tone", "type": "select", "label": "Tone", "default": "plain", "options": [
+    { "value": "plain", "label": "Plain" }, { "value": "short", "label": "Short" }
+  ] },
+  { "key": "maxThreads", "type": "number", "label": "Threads at most", "min": 1, "max": 50, "default": 8 },
+  { "key": "signature", "type": "text", "label": "Signature", "default": "" }
+]
+```
+
+| Field | What Boite accepts |
+| --- | --- |
+| `key` | A letter, then letters, digits and `_`, at most 40 characters, distinct within the plugin. |
+| `type` | `switch`, `number`, `slider`, `text` or `select`. |
+| `label` | At most 60 characters. |
+| `description` | Optional, at most 200 characters: one line under the label. |
+| `default` | Valid for the type: `true` or `false`, a number within the bounds, a line of at most 1,000 characters, or one of the options' values. |
+| `min`, `max`, `step` | `number` and `slider` only. A slider needs `min` and `max`; `max` must be above `min`, `step` above 0. A value must be a multiple of `step` from `min` (from 0 without `min`). |
+| `options` | `select` only: 1 to 30 `{ "value", "label" }`, values distinct, each at most 60 characters. |
+
+Any other field in a setting is refused, as everywhere in the manifest.
+
+- A switch, a slider and a choice save as soon as they change; a number and a
+  line of text save when the field is left or Enter is pressed. A value outside
+  the setting's rule is refused in the dialog with what is expected, and the
+  core checks it again.
+- `plugins.settings.set { id, values }` is the owner's. Every key must be
+  declared and every value valid, or nothing is stored and the refusal names
+  the key. Keys left out keep their value.
+- `plugins.settings.get { id }` answers every declared key with the owner's
+  value or the default. A plugin's token may call it for its own id with no
+  permission; any other id is the owner's.
+- After a change, the core sends `plugin.settings.changed { id, values }`
+  with every value, to the owner and to that plugin's sockets only.
+- A new version that drops a key or makes a stored value invalid falls back
+  to the default; the stored value is not shown.
+- The values stay through turning the plugin off and on, and through updates;
+  uninstalling removes them.
+
+In the SDK, `settings()` reads them and `onSettingsChanged(handler)` hears
+each change ([SDK](#sdk)).
 
 ### Limits
 
@@ -433,7 +591,7 @@ A schema 1 manifest loads unchanged. Its desktop app keeps the owner token in
 `BOITE_TOKEN` and reaches everything the owner can ([Desktop apps](#desktop-apps),
 [Security model](#security-model)); it gets neither `BOITE_PLUGIN_DATA` nor a
 permission check. A desktop app moved to schema 2 gets the plugin's token
-instead, held to the permissions its manifest declares.
+instead, held to the permissions the owner granted.
 
 ## SDK
 
@@ -465,6 +623,10 @@ import { connect, definePlugin, runCommands, RpcError } from '@boite/plugin-sdk'
   the method's result, `on` returns the function that stops listening. A call
   the core refuses rejects with an `RpcError` carrying the core's `message`,
   `code` and `data`.
+- On the object `connect` returns, `settings()` answers the values of the
+  plugin's declared [settings](#settings), and `onSettingsChanged(handler)`
+  calls `handler` with every value after each change and returns the function
+  that stops listening. Both use `BOITE_PLUGIN_ID`, or `options.pluginId`.
 - `definePlugin(manifest)`: returns its argument, typed as `PluginManifest`,
   to write a manifest in TypeScript with the editor's checks.
 
@@ -663,7 +825,7 @@ Exits and stops:
   start while Start with Boite is on, or when the owner starts it.
 - Any other exit, or a signal, starts it again after 2 seconds, then 10, then
   30. A fourth crash within five minutes leaves it crashed, with the exit code
-  and a message on its row, until the owner starts it.
+  and a message on its card, until the owner starts it.
 - Stop kills the app's process tree and turns it off until the next core
   start, or for good while Start with Boite is off. Start and Restart turn it
   back on.
@@ -671,7 +833,7 @@ Exits and stops:
   replaces the old one, and starts the new one after.
 - Core shutdown kills it.
 
-Start with Boite is the switch under the app's state on its row
+Start with Boite is the switch under the app's state behind its gear
 (`plugins.autostart {id, autostart}`). It decides only what the next core
 start does: nothing running starts or stops when it changes.
 
@@ -681,9 +843,9 @@ first install turns both on. A file written before `autostart` existed starts
 with the core when it was left on, as that core did.
 
 A Linux core with neither `DISPLAY` nor `WAYLAND_DISPLAY` set has no desktop to
-show a window on: it does not start the app, and the row says so.
+show a window on: it does not start the app, and its card says so.
 
-The plugin's row shows the app's state (running, starting again, stopped,
+The plugin's card shows the app's state (running, starting again, stopped,
 crashed with its exit code, or unavailable with the reason) with Start, Stop
 and Restart. `plugins.app` answers with the plugin's state, and every change is
 announced by `plugins.updated`. The state is `PluginState.app`:
@@ -693,7 +855,7 @@ announced by `plugins.updated`. The state is `PluginState.app`:
   pid: number | null; exitCode: number | null; error: string | null; startedAt: number | null }
 ```
 
-A core older than `plugins.autostart` sends no `autostart`, and the row shows
+A core older than `plugins.autostart` sends no `autostart`, and the gear shows
 no switch.
 
 ### Showing Boite
@@ -785,7 +947,7 @@ treated as a crash. Crashes, Stop, uninstall and core shutdown follow the
 [desktop apps](#desktop-apps)' rules: 2, 10 and 30 seconds, then `crashed`
 after a fourth exit within five minutes; whether it is on and whether it
 starts with Boite are kept in `<dataDir>/plugins/<id>/gateway.json`, and the
-same switch sits on its row.
+same switch sits behind its gear.
 
 An update waits until `in_flight` reads 0 (five minutes at most, then it goes
 ahead), stops the gateway, keeps the old executable as `<executable>.previous`
@@ -806,7 +968,7 @@ it down with the core.
   error: string | null; startedAt: number | null; dataDir: string }
 ```
 
-Douane's row in Settings > Plugins shows it with Start, Stop and Restart, Open
+Douane's gear in Settings > Plugins shows it with Start, Stop and Restart, Open
 Douane (its dashboard, beside the core only) and Move my connections to Douane,
 which moves this machine's sign-ins into the plugin (`subscriptionProxy.move`
 with `target: "plugin"`, [providers](providers.md#moving-connections-to-douane)).
@@ -817,7 +979,7 @@ tests' fake Douane starts.
 
 ## Install and run
 
-A recommended plugin installs from its row. A plugin from a URL takes two
+A recommended plugin installs from its card. A plugin from a URL takes two
 steps:
 
 1. The owner pastes the repository and, optionally, a branch, tag or commit
@@ -886,7 +1048,7 @@ Updating:
   available: either Boite ships a newer entry, or the plugin's update source
   publishes a newer release (see [Updates from the source](#updates-from-the-source)).
   The newest of the two wins, and the version installed is never replaced by
-  an older one. The row shows the download's progress, Cancel and any error.
+  an older one. The card shows the download's progress, Cancel and any error.
 - A URL plugin updates when the owner reads the same URL again at a newer ref;
   the preview names the version it replaces.
 - An id already installed from another URL is refused, so one repository cannot
@@ -911,19 +1073,19 @@ When the core checks:
 
 - a minute after it starts, then every six hours, for the recommended plugins
   that are installed. A core whose owner never installed one sends nothing.
-- when the owner clicks Check for updates on the plugin's row
+- when the owner clicks Check for updates behind the plugin's gear
   (`plugins.checkUpdates {id?}`), whether it is installed or not. A check
   finished less than ten seconds before answers instead of a new read.
 - when the owner opens Settings > Plugins, for recommendations not installed
   yet. The list appears immediately and the available versions refresh as
-  their sources answer. Their rows also offer Check for updates and show
+  their sources answer. Their gears also offer Check for updates and their cards show
   checking or failure notes before installation.
 - when the owner installs or updates the plugin, before the download: a first
   install brings the release the source names, not a pinned entry several
   releases behind. A source that fails or takes more than 15 seconds leaves
   the newest version already known.
 - A read that fails waits 15 minutes, then twice as long each time, up to six
-  hours. The row shows the failure as a quiet note, never as an install error.
+  hours. The card shows the failure as a quiet note, never as an install error.
 
 The core reads `boite-plugin.json` at the ref through the same git path,
 limits and rules as `plugins.inspect`. It offers the manifest found only when:
@@ -935,7 +1097,7 @@ limits and rules as `plugins.inspect`. It offers the manifest found only when:
   version installed;
 - it has an artifact for the core's platform.
 
-Otherwise it is not offered, and the row says why under the plugin. A release
+Otherwise it is not offered, and the gear says why. A release
 taken back at the source stops being offered at the next check. Installing
 what was found is the owner's click. It takes the usual path: download, SHA-256
 check, and a desktop app stopped before the binary is replaced and started
@@ -960,8 +1122,8 @@ Uninstall deletes `<dataDir>/plugins/<id>/`, which is everything an install
 wrote. Whatever the program itself saved elsewhere, such as the logins in its
 pools, stays where it put it. Say in your README where that is.
 
-When `installed.json` cannot be read, the row reports the file and offers a
-reinstall. When it reads but breaks a rule above, the row says the plugin was
+When `installed.json` cannot be read, the card reports the file and offers a
+reinstall. When it reads but breaks a rule above, the card says the plugin was
 refused, with the file, the field and the expected value, and offers only
 Uninstall.
 
@@ -1017,8 +1179,9 @@ program's output. An agent command's output goes to the agent that ran it,
 and to nobody else.
 
 A schema 2 plugin's processes hold the plugin's own token, which reaches only
-the methods and events of the permissions its manifest declares
-([Permissions](#permissions)); the owner reads that list before installing.
+the methods and events of the permissions the owner granted of those its
+manifest asks for ([Permissions](#permissions)); the owner ticks that list
+before installing.
 The token limits what the plugin does through the core, not what its
 executable does on the machine: it still runs as the core's user, like any
 program you install, and can read that user's files, Boite's data directory

@@ -15,7 +15,7 @@ import { PLUGIN_MANIFEST_FILE, PLUGIN_UI_LIMITS } from '@boite/contracts';
 import type { PluginManifest, PluginPermission, PluginRejected, PluginSource, PluginUiBundle, RpcEvents } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { messageOf, refused } from '../errors.ts';
-import { ManifestRefused, permissionsOf, refusal } from './manifest.ts';
+import { ManifestRefused, refusal } from './manifest.ts';
 import type { InstalledUi } from './record.ts';
 import { fetchManifest, type FetchedFile } from './source.ts';
 
@@ -202,6 +202,13 @@ export interface UiOnDisk {
   };
 }
 
+/** What the owner chose for a plugin: left on, the permissions granted of those its manifest asks for, its settings' values. */
+export interface InterfaceOwner {
+  enabled(id: string): boolean;
+  granted(id: string, manifest: PluginManifest): PluginPermission[];
+  settings(id: string, manifest: PluginManifest): PluginUiBundle['settings'];
+}
+
 /**
  * The interfaces clients load, and `plugins.uiUpdated` when that set moves.
  * It watches the store's own `plugins.updated` (and any later `plugin*`
@@ -212,13 +219,15 @@ export class PluginInterfaces {
   readonly #ids: () => string[];
   readonly #onDisk: (id: string) => UiOnDisk;
   readonly #directory: (id: string) => string;
+  readonly #owner: InterfaceOwner;
   /** The digest last announced. Only an announcement sets it, so one client reading first never silences the others. */
   #digest: string | null = null;
 
-  constructor(core: Core, ids: () => string[], onDisk: (id: string) => UiOnDisk, directory: (id: string) => string) {
-    this.#ids = ids;
-    this.#onDisk = onDisk;
-    this.#directory = directory;
+  constructor(core: Core, store: { ids: () => string[]; onDisk: (id: string) => UiOnDisk; directory: (id: string) => string }, owner: InterfaceOwner) {
+    this.#ids = store.ids;
+    this.#onDisk = store.onDisk;
+    this.#directory = store.directory;
+    this.#owner = owner;
     core.bus.onCommitted((name, payload) => {
       if (!name.startsWith('plugin') || name === 'plugins.uiUpdated') return;
       // A download's progress changes no interface: the set is read again once the job ends.
@@ -250,8 +259,8 @@ export class PluginInterfaces {
       try { disk = this.#onDisk(id); } catch { continue; }
       if (disk.kind !== 'installed' || disk.installed === undefined) continue;
       const { manifest, devPath, ui } = disk.installed;
-      if (manifest.provides.ui === undefined || !this.#enabled(id)) continue;
-      const granted = this.#granted(id, manifest);
+      if (manifest.provides.ui === undefined || !this.#owner.enabled(id)) continue;
+      const granted = this.#owner.granted(id, manifest);
       if (!granted.includes('ui')) continue;
       let texts: UiTexts | null = null;
       let error: string | null = null;
@@ -261,27 +270,8 @@ export class PluginInterfaces {
         texts = ui === null ? null : readInstalledUi(this.#directory(id), ui);
         if (texts === null) error = `The interface files of ${id} ${manifest.version} are missing or altered. Reinstall ${id}.`;
       }
-      out.push(uiBundle(manifest, granted, texts, error, this.#settings(id)));
+      out.push(uiBundle(manifest, granted, texts, error, this.#owner.settings(id, manifest)));
     }
     return out;
-  }
-
-  /** Whether the owner left the plugin on. Every installed plugin is, until the Plugins page can turn one off (#989, part 2). */
-  #enabled(_id: string): boolean {
-    return true;
-  }
-
-  /**
-   * What the owner granted the plugin. The permissions its manifest
-   * declares, which installing it accepted, until grants are kept apart
-   * from declarations (#989, part 1).
-   */
-  #granted(_id: string, manifest: PluginManifest): PluginPermission[] {
-    return permissionsOf(manifest);
-  }
-
-  /** The plugin's settings as the owner set them. None until manifests declare settings (#989, part 2). */
-  #settings(_id: string): PluginUiBundle['settings'] {
-    return {};
   }
 }

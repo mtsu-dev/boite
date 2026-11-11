@@ -54,17 +54,6 @@ export function normalizeSourceUrl(input: unknown, allowLocal = false): string {
   return `${url.origin}${url.pathname.replace(/\/+$/, '')}`;
 }
 
-/** Drops the expired previews, then the oldest until one more fits under `max`. */
-export function prunePreviews(previews: Map<string, { expiresAt: number }>, max: number): void {
-  const now = Date.now();
-  for (const [key, preview] of previews) if (preview.expiresAt <= now) previews.delete(key);
-  while (previews.size >= max) {
-    const oldest = previews.keys().next().value;
-    if (oldest === undefined) break;
-    previews.delete(oldest);
-  }
-}
-
 /**
  * What the owner pasted, read as people share a repository (`readPluginSource`):
  * a page, `owner/repo` or a clone URL, with the ref a page names unless `ref`

@@ -1,4 +1,4 @@
-import type { ActivityTurn, Attachment, ComposerChoice, PreviewReference, SentFrom, ThreadLink, Turn } from '@boite/contracts';
+import type { ActivityTurn, Attachment, ComposerChoice, PreviewReference, PluginActor, SentFrom, ThreadLink, Turn } from '@boite/contracts';
 import type { AutonomousSource } from '../agents/runtime.ts';
 
 /** What a turn opens with. `display` replaces the prompt in the conversation. */
@@ -25,7 +25,8 @@ interface Keyed { requestId?: string }
  * follow from the kind, never from the shape of the other arguments.
  */
 export type TurnOrigin =
-  | Keyed & { kind: 'user'; sentFrom?: SentFrom | null }
+  /** `plugin`: a plugin granted `threads.write` sent it; the message names it. */
+  | Keyed & { kind: 'user'; sentFrom?: SentFrom | null; plugin?: PluginActor }
   | Keyed & { kind: 'goal'; activity: ActivityTurn }
   | Keyed & { kind: 'spawned'; startedBy: ThreadLink }
   | Keyed & { kind: 'compact'; automatic: boolean }

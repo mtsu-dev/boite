@@ -5,6 +5,7 @@
  * a device is acted on only after the SDK listed it. See docs/devices.md.
  */
 import {
+  deviceBound,
   isAdbText,
   LOCAL_DEVICE_HOST,
   MOBILE_PLATFORMS,
@@ -134,7 +135,7 @@ export class MobileDevices {
   sessions({ threadId }: RpcParams<'devices.sessions'>, connection?: Connection): RpcResult<'devices.sessions'> {
     this.#thread(threadId, connection);
     const sessions = this.#list(threadId);
-    if (connection?.identity.principal === 'session') return { sessions };
+    if (connection && deviceBound(connection.identity.principal)) return { sessions };
     const control: Record<string, string[]> = {};
     for (const session of sessions) {
       const target = this.#targets.get(session.deviceId);
@@ -617,7 +618,7 @@ export class MobileDevices {
   #thread(threadId: ThreadId, connection?: Connection): void {
     const thread = this.#core.threads.require(threadId);
     if (thread.archived) throw refused('the Device panel needs an active conversation', { threadId });
-    if (connection?.identity.principal === 'session' && !connection.subscriptions.has(threadId)) {
+    if (connection && deviceBound(connection.identity.principal) && !connection.subscriptions.has(threadId)) {
       throw refused('subscribe to the conversation before using its Device panel', { threadId });
     }
   }

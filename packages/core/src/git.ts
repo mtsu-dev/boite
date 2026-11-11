@@ -1,4 +1,4 @@
-import type { GitStatus, ThreadId } from '@boite/contracts';
+import { deviceBound, type GitStatus, type ThreadId } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { gitDiff } from './git/diff.ts';
 import { gitFailed } from './git/errors.ts';
@@ -37,13 +37,13 @@ export async function gitStatus(core: Core, threadId: ThreadId): Promise<GitStat
 }
 
 export function registerGitMethods(core: Core): void {
-  // A paired device reads only a thread that lives in its project or the core's worktrees.
+  // A paired device or a plugin reads only a thread that lives in its project or the core's worktrees.
   core.router.register('git.status', (params, ctx) => {
-    if (ctx.connection.identity.principal === 'session') assertDeviceReadable(core, params.threadId);
+    if (deviceBound(ctx.connection.identity.principal)) assertDeviceReadable(core, params.threadId);
     return gitStatus(core, params.threadId);
   });
   core.router.register('git.diff', (params, ctx) => {
-    if (ctx.connection.identity.principal === 'session') {
+    if (deviceBound(ctx.connection.identity.principal)) {
       assertDeviceReadable(core, params.threadId);
       const cwd = threadCwd(core, params.threadId);
       assertDeviceFile(core, params.threadId, cwd, params.path);

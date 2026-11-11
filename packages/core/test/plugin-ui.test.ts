@@ -67,7 +67,7 @@ describe('provides.ui in the manifest', () => {
     expect(manifest.executable).toBeUndefined();
     expect(parseManifest(uiPlugin({}, { style: 'theme.css' }), PLUGIN_MANIFEST_FILE).provides.ui).toEqual({ style: 'theme.css' });
     // The token gains nothing from it: the code runs in the app, not as the plugin's process.
-    expect(PLUGIN_PERMISSIONS.ui).toEqual({ methods: [], events: [] });
+    expect(PLUGIN_PERMISSIONS.ui).toEqual({ methods: [], events: [], danger: true });
 
     expect(refusedField(uiPlugin({ permissions: [] }))).toBe('permissions');
     expect(refusedField(uiPlugin({ permissions: undefined }))).toBe('permissions');
@@ -81,7 +81,7 @@ describe('provides.ui in the manifest', () => {
     expect(refusedField(uiPlugin({ runtime: 'bun', executable: 'panel' }))).toBe('executable');
   });
 
-  test('ui is the only permission a client draws as dangerous, and a paired device reads the interfaces', () => {
+  test('a paired device reads the interfaces, and installing one stays the owner\'s', () => {
     expect(DEVICE_METHODS.has('plugins.ui')).toBe(true);
     expect(DEVICE_EVENTS.has('plugins.uiUpdated')).toBe(true);
     // Installing one stays the owner's.
@@ -148,6 +148,43 @@ describe('a plugin interface from a git URL', () => {
     expect(await client.call('plugins.ui', {})).toEqual([]);
     expect(existsSync(dir)).toBe(false);
     await waitFor(() => announced.length > removed);
+  }, GIT_URL_TEST_MS);
+
+  test('the owner\'s grant, off switch and settings decide what plugins.ui serves', async () => {
+    harness = await startTestCore();
+    harness.core.plugins.allowLocalSources = true;
+    const client = await harness.connect();
+    const announced: string[] = [];
+    client.on('plugins.uiUpdated', (event) => { announced.push(event.digest); });
+    const settings = [{ key: 'compact', label: 'Compact', type: 'switch', default: false }];
+    const repo = repository(uiPlugin({ permissions: ['threads.read', 'ui'], settings }, { script: 'ui/index.js' }), { 'ui/index.js': 'export default () => {};\n' });
+    const preview = await client.call('plugins.inspect', { url: repo.path });
+    expect(preview.rejected).toBeNull();
+    await client.call('plugins.add', { previewId: preview.previewId!, grants: ['threads.read', 'ui'] });
+    await waitFor(() => harness!.core.plugins.state('panel').status === 'installed');
+    expect(await client.call('plugins.ui', {})).toMatchObject([{ id: 'panel', permissions: ['threads.read', 'ui'], settings: { compact: false } }]);
+
+    // A setting reaches the running script with the next read, and is announced.
+    let before = announced.length;
+    await client.call('plugins.settings.set', { id: 'panel', values: { compact: true } });
+    expect(await client.call('plugins.ui', {})).toMatchObject([{ settings: { compact: true } }]);
+    await waitFor(() => announced.length > before);
+
+    // Taking ui back unloads the interface; giving it again brings it back.
+    before = announced.length;
+    await client.call('plugins.setGrants', { id: 'panel', grants: ['threads.read'] });
+    expect(await client.call('plugins.ui', {})).toEqual([]);
+    await waitFor(() => announced.length > before);
+    await client.call('plugins.setGrants', { id: 'panel', grants: ['ui'] });
+    expect(await client.call('plugins.ui', {})).toMatchObject([{ id: 'panel', permissions: ['ui'] }]);
+
+    // Turned off, it loads nowhere; turned on, it is back.
+    before = announced.length;
+    await client.call('plugins.setEnabled', { id: 'panel', enabled: false });
+    expect(await client.call('plugins.ui', {})).toEqual([]);
+    await waitFor(() => announced.length > before);
+    await client.call('plugins.setEnabled', { id: 'panel', enabled: true });
+    expect(await client.call('plugins.ui', {})).toMatchObject([{ id: 'panel', settings: { compact: true } }]);
   }, GIT_URL_TEST_MS);
 
   test('a missing or oversized file is refused at the preview, naming its field', async () => {

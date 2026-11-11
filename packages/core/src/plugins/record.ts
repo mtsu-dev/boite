@@ -9,7 +9,7 @@ import { readFileSync, statSync } from 'node:fs';
 import { rename, rm, writeFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { PLUGIN_MANIFEST_FILE } from '@boite/contracts';
-import type { PluginManifest, PluginPool, PluginSource, PluginState } from '@boite/contracts';
+import type { PluginManifest, PluginPool, PluginRejected, PluginSource, PluginState } from '@boite/contracts';
 import { invalidParams, messageOf, refused } from '../errors.ts';
 import { ManifestRefused, authorityChange, isRecord, parseManifest, parseManifestText, refusal } from './manifest.ts';
 import { parseRecommendedEntry, type UpdateSource } from './updates.ts';
@@ -93,6 +93,30 @@ export async function writeRecord(dir: string, text: string): Promise<void> {
 /** installed.json as an install writes it: `ui` only when the plugin brought an interface. */
 export function recordText(origin: Origin, source: PluginSource | null, manifest: PluginManifest, ui: InstalledUi | null): string {
   return JSON.stringify({ schema: 1, origin, source, installedAt: Date.now(), manifest, ...(ui === null ? {} : { ui }) }, null, 2);
+}
+
+/** An installed plugin as the guide, the composer and the command runner read it. */
+export interface InstalledPlugin {
+  id: string;
+  manifest: PluginManifest;
+  /** Its directory under the data dir: where its skills are written. */
+  dir: string;
+}
+
+/** What a plugin's directory holds, as the store reads it. */
+export type OnDisk =
+  | { kind: 'none' }
+  | { kind: 'installed'; installed: Installed }
+  | { kind: 'error'; message: string }
+  | { kind: 'rejected'; rejected: PluginRejected };
+
+/** A download or text install under way. */
+export interface Job {
+  controller: AbortController;
+  progress: number;
+  promise: Promise<void>;
+  /** The install finished, or stopped the desktop app to replace its binary: start the app again after. */
+  relaunch: boolean;
 }
 
 /** installed.json as `plugins.add` and `plugins.install` write it. */
