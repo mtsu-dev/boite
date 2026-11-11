@@ -215,17 +215,23 @@ jobs:
           if [ ! -s "$ubuntu_sources" ]; then ubuntu_sources=/etc/apt/sources.list; fi
           test -s "$ubuntu_sources"
           apt_sources=(-o "Dir::Etc::sourcelist=$ubuntu_sources" -o "Dir::Etc::sourceparts=-")
-          if ! sudo apt-get "${apt_sources[@]}" -o APT::Update::Error-Mode=any update; then
-            # The image's mirror list starts with Azure's mirror, which can stop resolving
-            # for hours. Retry once on Ubuntu's own archive for this release.
+          update_log=$(mktemp)
+          update_status=0
+          sudo apt-get "${apt_sources[@]}" -o APT::Update::Error-Mode=any update > "$update_log" 2>&1 || update_status=$?
+          cat "$update_log"
+          if [ "$update_status" -ne 0 ]; then
+            # The image's mirror list starts with Azure's mirror, whose name can stop resolving
+            # for hours. Only that failure retries, once, on Ubuntu's own archive for this
+            # release; a missing index or a bad signature still fails here.
+            grep -Eq "Temporary failure resolving|Could not resolve" "$update_log" || exit "$update_status"
             . /etc/os-release
             if [ "$(dpkg --print-architecture)" = amd64 ]; then
               archive=http://archive.ubuntu.com/ubuntu security=http://security.ubuntu.com/ubuntu
             else
               archive=http://ports.ubuntu.com/ubuntu-ports security=http://ports.ubuntu.com/ubuntu-ports
             fi
-            ubuntu_sources="$RUNNER_TEMP/ubuntu-archive.list"
             components='main restricted universe multiverse'
+            ubuntu_sources=$(mktemp --suffix=.list)
             {
               for suite in "$VERSION_CODENAME" "$VERSION_CODENAME-updates" "$VERSION_CODENAME-backports"; do
                 echo "deb $archive $suite $components"

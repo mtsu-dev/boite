@@ -198,8 +198,10 @@ before it has no `DISPLAY` and skips that file. The same step installs
 `packages/core/test/desktop.test.ts` again: with the tools present, `boite
 desktop` starts a real virtual desktop of its own, runs programs on it and
 stops it. Linux desktop packages build on Ubuntu 22.04,
-setting a glibc 2.35 floor. Their apt step retries once on Ubuntu's own archive when
-the image's mirror list cannot update, as when Azure's mirror stops resolving. Portable jobs run Rust tests and installed smoke
+setting a glibc 2.35 floor. When the image's mirror list fails to update
+because a mirror's name does not resolve, as Azure's did for hours, their apt
+step retries once on Ubuntu's own archive; a missing index or a bad signature
+still fails it. Portable jobs run Rust tests and installed smoke
 checks against Debian, extracted AppImage and macOS application bundles.
 These verify startup, UI serving, authenticated RPC and a fixture echo turn
 outside the checkout. Native WebView2 E2E remains Windows-only.
