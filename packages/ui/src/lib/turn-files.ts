@@ -29,6 +29,8 @@ export interface TurnFilesData {
   diffs: TurnDiff[];
   cwd: string;
   deferred: { messageId: string; toolId: string }[];
+  /** Every call whose diff a visible preview must pin, including hydrated calls. */
+  sources: { messageId: string; toolId: string }[];
 }
 
 /** Whether a turn's end shows a files card: never for a queued turn, for a running one only when changes are grouped. */
@@ -64,8 +66,6 @@ interface TurnFileEntry {
   parts: MessagePart[];
   sources: FileSource[];
   snapshots: unknown[][];
-  /** Indices in `sources` of the calls a deferred load fills in place. */
-  deferredAt: number[];
   data: TurnFilesData;
 }
 
@@ -76,20 +76,22 @@ interface TurnFileEntry {
  */
 export class TurnFileCache {
   static readonly SIZE = 24;
-  #entries = new Map<string, TurnFileEntry>();
+  // Invisible rows must not make this cache an owner of full diffs or inputs.
+  // Visible data keeps its entry alive, preserving identity across text deltas.
+  #entries = new Map<string, WeakRef<TurnFileEntry>>();
+  #readers = new WeakMap<TurnFilesData, TurnFileEntry>();
 
   /**
    * The files of one turn, from its assistant messages in order. A running
    * turn compares every finished call field by field, since its calls are
-   * still written. A finished turn's parts are only ever replaced, so the
-   * same messages holding the same part objects read the same, except the
-   * fields `loadToolOutput` fills in place on a deferred call.
+   * still written. Finished calls also change in place when disclosures
+   * hydrate or restore them, so both directions compare their source fields.
    */
   read(id: string, messages: readonly Message[], cwd: string, running: boolean): TurnFilesData {
-    const before = this.#entries.get(id);
+    const before = this.#entries.get(id)?.deref();
     if (before?.cwd === cwd && (running ? this.#sameCalls(before, messages) : this.#sameParts(before, messages))) {
       this.#entries.delete(id);
-      this.#entries.set(id, before);
+      this.#entries.set(id, new WeakRef(before));
       return before.data;
     }
     const parts: MessagePart[] = [];
@@ -104,9 +106,12 @@ export class TurnFileCache {
     const deferredAt = sources.flatMap(({ part }, at) => part.inputDeferred || part.documentsDeferred ? [at] : []);
     const deferred = deferredAt.map(at => sources[at]!).filter(({ part }) => touched(part).length > 0)
       .map(({ messageId, part }) => ({ messageId, toolId: part.toolId }));
-    const data = { files: turnFiles(tools, cwd), diffs: turnDiffs(tools), cwd, deferred };
+    const data = { files: turnFiles(tools, cwd), diffs: turnDiffs(tools), cwd, deferred,
+      sources: sources.filter(({ part }) => touched(part).length > 0).map(({ messageId, part }) => ({ messageId, toolId: part.toolId })) };
     this.#entries.delete(id);
-    this.#entries.set(id, { cwd, messages: [...messages], parts, sources, snapshots: sources.map(snapshotOf), deferredAt, data });
+    const entry = { cwd, messages: [...messages], parts, sources, snapshots: sources.map(snapshotOf), data };
+    this.#readers.set(data, entry);
+    this.#entries.set(id, new WeakRef(entry));
     for (const oldest of this.#entries.keys()) {
       if (this.#entries.size <= TurnFileCache.SIZE) break;
       this.#entries.delete(oldest);
@@ -134,7 +139,7 @@ export class TurnFileCache {
       const parts = message.parts;
       for (let part = 0; part < parts.length; part += 1) if (parts[part] !== before.parts[at++]) return false;
     }
-    return at === before.parts.length && before.deferredAt.every(index => sameRow(snapshotOf(before.sources[index]!), before.snapshots[index]));
+    return at === before.parts.length && before.sources.every((source, index) => sameRow(snapshotOf(source), before.snapshots[index]));
   }
 }
 

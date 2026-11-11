@@ -11,19 +11,93 @@ interface Snapshots {
   messages(threadId: ThreadId, messageId: string): Message[];
 }
 
+export interface ToolDisclosure {
+  ready: Promise<void>;
+  refresh(): Promise<void>;
+  release(): void;
+}
+
+interface ToolConsumers {
+  users: Set<symbol>;
+  restore: (() => void)[];
+  legacy: boolean;
+}
+
 /**
  * What a page leaves folded on the core until the reader opens it: a call's
  * output (its input and documents too on a core with `deferredToolParts`) and
- * an attachment's bytes. Duplicate requests share one fetch. Refreshing a
- * visit keeps what it opened; leaving the thread (`leave`) drops what the old
- * visit still waits for.
+ * an attachment's bytes. Duplicate requests share one fetch. Disclosures pin
+ * fetched tool fields until their last body closes; leaving the thread also
+ * invalidates pending reads from the old visit.
  */
 export class DeferredParts {
   #visit = 0;
 
   constructor(private readonly ctx: StoreContext, private readonly threads: Snapshots) {}
 
-  leave(): void { this.#visit++; }
+  leave(): void {
+    this.#visit++;
+    for (const held of this.#toolConsumers.values()) this.#restore(held);
+    this.#toolConsumers.clear();
+  }
+
+  readonly #toolConsumers = new Map<string, ToolConsumers>();
+
+  #consumers(key: string): ToolConsumers {
+    let held = this.#toolConsumers.get(key);
+    if (!held) { held = { users: new Set(), restore: [], legacy: false }; this.#toolConsumers.set(key, held); }
+    return held;
+  }
+
+  #restore(held: ToolConsumers): void {
+    for (const restore of held.restore.splice(0)) restore();
+  }
+
+  /** A body owns fetched fields until closing/unmount. `load=false` pins an existing diff without fetching an unrelated deferred output. */
+  acquireToolOutput(threadId: ThreadId, messageId: MessageId, toolId: string, load = true): ToolDisclosure {
+    const key = JSON.stringify([threadId, messageId, toolId]);
+    const consumers = this.#consumers(key), user = Symbol();
+    consumers.users.add(user);
+    const refresh = () => {
+      if (!consumers.users.has(user) || this.#toolConsumers.get(key) !== consumers) return Promise.resolve();
+      const needsFetch = this.threads.messages(threadId, messageId).some(message => message.parts.some(part =>
+        part.type === 'tool' && part.toolId === toolId && (part.inputDeferred || part.documentsDeferred || (part.outputDeferred && part.status !== 'running'))));
+      return needsFetch ? this.#readToolOutput(threadId, messageId, toolId, consumers) : Promise.resolve();
+    };
+    return { ready: load ? refresh() : Promise.resolve(), refresh, release: () => {
+      if (!consumers.users.delete(user) || this.#toolConsumers.get(key) !== consumers || consumers.users.size > 0 || consumers.legacy) return;
+      this.#restore(consumers);
+      // A quick reopen shares the pending request, whose result checks its owners.
+      if (!this.#toolOutputs.has(key)) this.#toolConsumers.delete(key);
+    } };
+  }
+
+  #hydrate(part: ToolPart, full: Partial<ToolPart>, held: ToolConsumers): void {
+    if (part.outputDeferred && full.output !== undefined) {
+      const before = part.output, fetched = full.output;
+      part.output = fetched; delete part.outputDeferred;
+      held.restore.push(() => {
+        if (part.status !== 'running' && part.output === fetched && !part.outputDeferred) { part.output = before; part.outputDeferred = true; }
+      });
+    }
+    if (part.inputDeferred && 'input' in full) {
+      const before = part.input;
+      part.input = full.input; delete part.inputDeferred;
+      // Read after assignment: a reactive Store wraps objects in a proxy.
+      const fetched = part.input;
+      held.restore.push(() => {
+        if (part.status !== 'running' && part.input === fetched && !part.inputDeferred) { part.input = before; part.inputDeferred = true; }
+      });
+    }
+    if (part.documentsDeferred && full.documents !== undefined) {
+      const before = part.documents;
+      part.documents = full.documents; delete part.documentsDeferred;
+      const fetched = part.documents;
+      held.restore.push(() => {
+        if (part.status !== 'running' && part.documents === fetched && !part.documentsDeferred) { part.documents = before; part.documentsDeferred = true; }
+      });
+    }
+  }
 
   readonly #toolOutputs = new Map<string, { client: NonNullable<StoreContext['client']>; generation: number; promise: Promise<void> }>();
   /**
@@ -31,6 +105,14 @@ export class DeferredParts {
    * output, and on a core with `deferredToolParts` its input and documents.
    */
   toolOutput(threadId: ThreadId, messageId: MessageId, toolId: string): Promise<void> {
+    const consumers = this.#consumers(JSON.stringify([threadId, messageId, toolId]));
+    // Callers without a release API (e.g. ExitPlanMode) own their response for
+    // the visit. Lifecycle readers use refresh(), never this compatibility pin.
+    consumers.legacy = true;
+    return this.#readToolOutput(threadId, messageId, toolId, consumers);
+  }
+
+  #readToolOutput(threadId: ThreadId, messageId: MessageId, toolId: string, consumers: ToolConsumers): Promise<void> {
     const key = JSON.stringify([threadId, messageId, toolId]);
     const client = this.ctx.client;
     if (!client) return Promise.reject(new Error(strings.connection.unavailable));
@@ -52,15 +134,17 @@ export class DeferredParts {
       return part;
     }).then(full => {
       if (!full || this.ctx.client !== client || generation !== this.#visit) return;
+      if (!consumers.legacy && consumers.users.size === 0) return;
       for (const message of this.threads.messages(threadId, messageId)) {
         for (const part of message.parts) {
           if (part.type !== 'tool' || part.toolId !== toolId) continue;
-          if (part.outputDeferred && full.output !== undefined) { part.output = full.output; delete part.outputDeferred; }
-          if (part.inputDeferred && 'input' in full) { part.input = full.input; delete part.inputDeferred; }
-          if (part.documentsDeferred && full.documents !== undefined) { part.documents = full.documents; delete part.documentsDeferred; }
+          this.#hydrate(part, full, consumers);
         }
       }
-    }).finally(() => { if (this.#toolOutputs.get(key)?.promise === loading) this.#toolOutputs.delete(key); });
+    }).finally(() => {
+      if (this.#toolOutputs.get(key)?.promise === loading) this.#toolOutputs.delete(key);
+      if (!this.#toolOutputs.has(key) && !consumers.legacy && consumers.users.size === 0 && this.#toolConsumers.get(key) === consumers) this.#toolConsumers.delete(key);
+    });
     this.#toolOutputs.set(key, { client, generation, promise: loading });
     return loading;
   }

@@ -827,7 +827,8 @@ export function startServer(options: ServerOptions): RunningServer {
       if (!connection.authenticated) continue;
       if (!mayReceiveEvent(name, connection)) continue;
       if (connection.identity.principal === 'agent' && !agentHearsEvent(name, payload, connection.identity.threadId, id => core.journal.getThread(id)?.projectId ?? null)) continue;
-      if (SUBSCRIBED_EVENTS.has(name) && !connection.subscriptions.has(threadId ?? '')) continue;
+      const templateChange = name === 'workflows.changed' && (payload as RpcEvents['workflows.changed']).templatesProjectId !== undefined;
+      if (SUBSCRIBED_EVENTS.has(name) && !templateChange && !connection.subscriptions.has(threadId ?? '')) continue;
       if (scoped && !agentQuestion && (threadId === null || !(connection.subscriptions.has(threadId) || (parentId !== null && connection.subscriptions.has(parentId))))) continue;
       // The whole activity, loop history included, is for the clients that have
       // that thread open; an agent socket still gets its own thread's.

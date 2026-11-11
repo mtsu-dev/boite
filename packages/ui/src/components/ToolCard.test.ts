@@ -125,6 +125,31 @@ test('a short input has no cut and no Show all', () => {
   expect(document.querySelector('[data-testid=tool-input-show-all]')).toBeNull();
 });
 
+test('closing keeps its output through the height transition, then unmounts and reopens it', async () => {
+  const release = vi.fn();
+  const acquireOutput = vi.fn(() => ({ ready: Promise.resolve(), refresh: () => Promise.resolve(), release }));
+  running = mount(ToolCard, { target: document.body, props: { name: 'Read', input: LONG_INPUT, output: 'ok', status: 'done', acquireOutput } });
+  flushSync();
+  query<HTMLButtonElement>('[data-testid=tool-toggle]').click(); flushSync();
+  const fold = query<HTMLElement>('.disclosure-fold');
+  fold.getAnimations = () => [{ } as Animation];
+  const toggle = query<HTMLButtonElement>('[data-testid=tool-toggle]');
+  toggle.click(); flushSync();
+  await Promise.resolve(); flushSync();
+  expect(query('[data-testid=tool-output]').textContent).toBe('ok');
+  expect(release).not.toHaveBeenCalled();
+  const opacityEnd = new Event('transitionend', { bubbles: true });
+  Object.defineProperty(opacityEnd, 'propertyName', { value: 'opacity' });
+  fold.dispatchEvent(opacityEnd); flushSync();
+  expect(release).not.toHaveBeenCalled();
+  fold.dispatchEvent(new Event('transitionend', { bubbles: true })); flushSync();
+  expect(document.querySelector('[data-testid=tool-output]')).toBeNull();
+  expect(release).toHaveBeenCalledTimes(1);
+  toggle.click(); flushSync();
+  expect(query('[data-testid=tool-output]').textContent).toBe('ok');
+  expect(acquireOutput).toHaveBeenCalledTimes(2);
+});
+
 test('a failed edit claims no change: no counts, no diff drawn from what it meant to do', () => {
   running = mount(ToolCard, {
     target: document.body,

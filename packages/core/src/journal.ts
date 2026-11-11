@@ -24,7 +24,7 @@ import { cachePages, runWrite } from './journal/statements.ts';
 import { WAL_LIMIT_BYTES, WalCheckpoints, type WalCheckpointOptions } from './journal/wal-checkpoints.ts';
 import { toAccount, toMessage, toProcess, toProject, toThread, toTurn, parseJson } from './journal/rows.ts';
 import { restoreDeletedRows, threadsWhere, VISIBLE_THREADS, writeThread } from './journal/thread-rows.ts';
-import { oneTurn, sumSessionUsage, writeTurn, type SessionUsage } from './journal/turn-rows.ts';
+import { oneTurn, pageTurns, sumSessionUsage, writeTurn, type SessionUsage } from './journal/turn-rows.ts';
 import type { AccountRow, MessageRow, ProcessRow, ProjectIconRow, ProjectRow, ThreadRow, TurnRow } from './journal/rows.ts';
 import type { DetectedIcon as StoredProjectIcon } from './project-icons.ts';
 import { copyStoredParts, foldStreamingParts, messageOfError, StreamBuffer } from './journal/stream-buffer.ts';
@@ -276,8 +276,9 @@ export class Journal {
     return row === null ? null : toThread(row);
   }
 
-  listThreads(projectId?: string): ThreadSummary[] {
-    return projectId === undefined ? threadsWhere(this.db, '') : threadsWhere(this.db, 'AND project_id = ?', projectId);
+  listThreads(projectId?: string, { includeArchived = true } = {}): ThreadSummary[] {
+    const visible = includeArchived ? '' : 'AND archived = 0';
+    return projectId === undefined ? threadsWhere(this.db, visible) : threadsWhere(this.db, `${visible} AND project_id = ?`, projectId);
   }
 
   /** Startup reads: only the threads each recovery acts on, not every thread's JSON. */
@@ -472,13 +473,7 @@ export class Journal {
    * of every turn: a thousand-turn thread costs the page, not the lot.
    */
   listTurnsFor(threadId: string, turnIds: Iterable<string>): Turn[] {
-    const ids = [...new Set(turnIds)];
-    // One JSON list, not one `?` per id: every page size shares one cached statement.
-    const rows = (ids.length === 0
-      ? this.db.query("SELECT * FROM turns WHERE thread_id = ? AND status IN ('running', 'queued') ORDER BY rowid").all(threadId)
-      : this.db.query("SELECT * FROM turns WHERE thread_id = ? AND (status IN ('running', 'queued') OR id IN (SELECT value FROM json_each(?))) ORDER BY rowid")
-        .all(threadId, JSON.stringify(ids))) as TurnRow[];
-    return rows.map(toTurn);
+    return pageTurns(this.db, threadId, turnIds);
   }
 
   /** When the turn this thread now runs started, or null when none runs. */
@@ -590,11 +585,11 @@ export class Journal {
   }
 
   /** The agent's messages of a turn, newest first: a notification reads only as far as the last reply. */
-  *walkAgentMessagesBackwards(threadId: string, turnId: string): Iterable<Message> {
+  *walkAgentMessagesBackwards(threadId: string, turnId: string, { blobs = true } = {}): Iterable<Message> {
     this.flushDeltas();
     const statement = this.db.prepare("SELECT * FROM messages WHERE thread_id = ? AND turn_id = ? AND role = 'assistant' ORDER BY rowid DESC");
     try {
-      for (const row of statement.iterate(threadId, turnId)) yield this.currentMessage(row as MessageRow);
+      for (const row of statement.iterate(threadId, turnId) as Iterable<MessageRow>) yield blobs ? this.currentMessage(row) : this.stream.openCopy(row.id) ?? toMessage(row);
     } finally { statement.finalize(); }
   }
 

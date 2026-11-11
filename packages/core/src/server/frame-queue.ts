@@ -157,8 +157,12 @@ export class FrameQueue {
     this.#timer = null;
     const deadline = performance.now() + SLICE_MS;
     while (this.#pending.size > 0 && this.#active < MAX_ACTIVE && performance.now() < deadline) {
-      const available = [...this.#pending].find(([connection]) => (this.#activeByConnection.get(connection) ?? 0) < MAX_ACTIVE_PER_CONNECTION
-        && (!fromAgent(connection) || this.#activeAgents < MAX_AGENT_ACTIVE));
+      let available: [ServerConnection, Pending] | undefined;
+      for (const entry of this.#pending) {
+        const connection = entry[0];
+        if ((this.#activeByConnection.get(connection) ?? 0) < MAX_ACTIVE_PER_CONNECTION
+          && (!fromAgent(connection) || this.#activeAgents < MAX_AGENT_ACTIVE)) { available = entry; break; }
+      }
       if (!available) return;
       const [connection, queue] = available;
       const frame = queue.frames[queue.head++]!;

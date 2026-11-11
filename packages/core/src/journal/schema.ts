@@ -15,8 +15,9 @@ import { createTeamMachines, createTeams } from '../teams/journal.ts';
 import { createCouncil } from '../council/journal.ts';
 import { createRemovedTurnUsage } from './usage-sums.ts';
 import { createKeptProcesses } from './kept-processes.ts';
+import { createMessageStats } from './thread-stats.ts';
 
-export const SCHEMA_VERSION = 49;
+export const SCHEMA_VERSION = 50;
 
 /** Raised when the journal was written by a newer core than this one. */
 export class JournalTooNewError extends Error {
@@ -499,6 +500,11 @@ export function migrate(db: Database, file: string): { from: number; to: number 
     createKeptProcesses(db);
     version = 49;
   }
+  if (version < 50) {
+    // Counts are filled on demand, without reading historical parts at startup.
+    createMessageStats(db);
+    version = 50;
+  }
   createSharedProjects(db);
   createSharedBoard(db);
   createSharedCompute(db);
@@ -548,6 +554,7 @@ export function ensureIndexes(db: Database): void {
   db.exec('CREATE INDEX IF NOT EXISTS thread_deletions_by_date ON thread_deletions (deleted_at)');
   db.exec('CREATE INDEX IF NOT EXISTS processes_by_started ON processes (thread_id, started_at DESC)');
   db.exec('CREATE INDEX IF NOT EXISTS turns_by_status ON turns (status)');
+  db.exec("CREATE INDEX IF NOT EXISTS turns_active_by_thread ON turns (thread_id) WHERE status IN ('running', 'queued')");
   db.exec('CREATE INDEX IF NOT EXISTS messages_by_turn ON messages (thread_id, turn_id)');
   db.exec('CREATE INDEX IF NOT EXISTS turns_by_finished ON turns (finished_at)');
   // `requestSince` walks a busy thread's turns back from the newest on every summary.

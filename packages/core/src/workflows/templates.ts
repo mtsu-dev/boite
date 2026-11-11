@@ -28,13 +28,13 @@ export function saveTemplate(core: Core, root: ThreadSummary, params: RpcParams<
   core.journal.append({ type: 'workflow.template', threadId: root.id, version: 1, payload: { id: template.id, name } }, db => {
     db.query('INSERT OR REPLACE INTO workflow_templates VALUES (?, ?, ?, ?, ?, ?)').run(template.id, template.projectId, template.name, template.createdAt, template.updatedAt, JSON.stringify(template));
   });
-  core.bus.emit('workflows.changed', { threadId: root.id, runId: '' });
+  core.bus.emit('workflows.changed', { threadId: root.id, runId: '', templatesProjectId: root.projectId });
   return template;
 }
 
 export function removeTemplate(core: Core, root: ThreadSummary, templateId: string): { removed: boolean } {
   const removed = core.journal.append({ type: 'workflow.template.removed', threadId: root.id, version: 1, payload: { id: templateId } }, db =>
     db.query('DELETE FROM workflow_templates WHERE id = ? AND project_id IS ?').run(templateId, root.projectId).changes > 0);
-  core.bus.emit('workflows.changed', { threadId: root.id, runId: '' });
+  core.bus.emit('workflows.changed', { threadId: root.id, runId: '', templatesProjectId: root.projectId });
   return { removed };
 }

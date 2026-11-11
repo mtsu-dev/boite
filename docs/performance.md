@@ -41,6 +41,39 @@ bun bench/core-idle.ts 10
 The audit records samples, workload limits and remaining candidates, including
 queue admission, WebSocket fan-out and retained tool bodies in the browser.
 
+### Server and client hot paths
+
+The [2026-11-11 measurements](../bench/results/2026-11-11-client-server.md)
+compare local read, queue and rendering costs on synthetic data. Visible thread
+lists filter archives before decoding rows. Page turn reads look up requested
+IDs and active turns through indexes. An agent's final answer reads inline text
+and the current stream overlay without decompressing tool blobs.
+
+Schema 50 adds lazy per-message compaction counts. The first context-statistics
+read fills them; message writes invalidate only their own counts, in the same
+transaction, without scanning JSON on the streaming write path. Pending result
+mail for paused or disabled teams stays in SQLite; ordinary letters still
+reach the expiry pass.
+
+An open tool disclosure pins the fields it fetched. After the last body finishes
+closing, those fields return to their original previews and deferred markers;
+reopening fetches them again. Concurrent tool and end-of-turn diff readers keep
+their acquisition until both close. The body, formatted input and cached diff
+documents then leave the DOM and renderer state. Live or subsequently replaced
+fields remain intact.
+Streaming paragraph and drawing scans reuse completed lines and record append
+provenance locally, resetting for replacements. Windowed lists share one scroll
+listener and root geometry read per frame, while each list keeps measuring its
+own position. Workflow run updates reuse the conversation's template library,
+including a parent bot's library when a child uses a different project.
+Template writes invalidate the owning library across conversations, and
+reconnects revalidate it. A child's empty library revalidates on template
+writes until its owning project is known. Older cores' root-scoped
+invalidations remain supported.
+
+These measurements do not establish an application-wide RAM, CPU, frame-rate or
+remote-latency improvement.
+
 ### MCP servers per Claude session
 
 On 2026-10-17 a Windows machine ran 20 Claude sessions with three stdio MCP

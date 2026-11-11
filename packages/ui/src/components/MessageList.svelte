@@ -793,7 +793,7 @@
           {/if}
           {#if turn && closes}
             {@const files = filesOf(turn)}
-            {#if files}<TurnFiles {store} {...files} loadDiffs={() => Promise.all(files.deferred.map(source => store.loadToolOutput(threadId, source.messageId, source.toolId))).then(() => {})} />{/if}
+            {#if files}<TurnFiles {store} {...files} acquireDiff={source => store.acquireToolOutput(threadId, source.messageId, source.toolId, false)} />{/if}
             <MessageTurnSummary {store} {threadId} {turn} turns={shownTurns} message={source ?? message} {messages} pointed={pointed === turn.id}
               {...summaryMarks(shaped, turn.id, () => store.panel.open('desk'))}>
               {#snippet actions()}

@@ -2,7 +2,7 @@
   import { tick } from 'svelte';
   import { renderBlock } from '../lib/markdown';
   import { workspace } from '../lib/workspace.svelte';
-  import { ParagraphScan, answerText, pendingDrawing } from '../lib/message-display';
+  import { ParagraphScan, answerText } from '../lib/message-display';
   import { strings } from '../lib/strings';
   import { featureOn } from '../lib/features.svelte';
   import type { Store } from '../lib/store.svelte';
@@ -27,8 +27,8 @@
    * of the answer that names one (`answerPieces`) draws it there, and the
    * text around it becomes a bubble above it and another under it.
    */
-  let { text, live = false, typing = false, bubble = false, store, threadId, views }: {
-    text: string; live?: boolean; typing?: boolean; bubble?: boolean; store?: Store; threadId?: string; views?: readonly Message[];
+  let { text, live = false, typing = false, bubble = false, store, threadId, views, revision }: {
+    text: string; live?: boolean; typing?: boolean; bubble?: boolean; store?: Store; threadId?: string; views?: readonly Message[]; revision?: object;
   } = $props();
   let selected = $state<{ path: string; line?: number } | null>(null);
   const directLinks = $derived(featureOn('open-chat-links'));
@@ -102,10 +102,10 @@
   }
   // The scan resumes where the last delta stopped instead of reading the answer again.
   const scan = new ParagraphScan();
-  let blocks = $derived(scan.blocks(answerText(text, live), live));
+  const answer = $derived(answerText(text, live));
+  let blocks = $derived(scan.blocks(answer, live, revision));
   // Completed blocks keep their DOM; only the unfinished paragraph changes on a delta.
   // It stays plain text until complete, so partial Markdown cannot rebuild earlier blocks.
-  let pending = $derived.by(() => { void blocks; return live ? scan.pending(answerText(text, live)) : ''; });
 
   type Group = { kind: 'text'; key: string; blocks: Array<{ key: string; block: string }> } | { kind: 'view'; key: string; message: Message };
   /**
@@ -129,10 +129,15 @@
     }
     return out;
   });
-  /** A line being written that may yet place a page is not shown as its raw link: the page or the paragraph replaces it once complete. */
-  const tail = $derived(views?.length && /^ {0,3}!\[[^\n]*$/.test(pending) ? '' : pending);
   /** A diagram, formula or view being written shows as a placeholder, not as its source. */
-  const drafting = $derived(pendingDrawing(tail));
+  const drafting = $derived.by(() => {
+    void blocks;
+    if (!live) return { text: '', drawing: false };
+    const draft = scan.drafting(answer);
+    // A partial page link waits until its view can replace it.
+    return views?.length && !draft.drawing && /^ {0,3}!\[[^\n]*$/.test(draft.text) ? { text: '', drawing: false } : draft;
+  });
+  const hasPending = $derived(drafting.text.length > 0 || drafting.drawing);
 
   let host = $state<HTMLDivElement>();
 
@@ -225,13 +230,13 @@
         </div>
       {/if}
     {/each}
-    {#if end?.kind !== 'text' && (tail || (typing && text.trim().length > 0))}
-      <div class="prose" class:live class:answer-bubble={bubble && tail.length > 0} data-testid="text-run">{@render writing()}</div>
+    {#if end?.kind !== 'text' && (hasPending || (typing && text.trim().length > 0))}
+      <div class="prose" class:live class:answer-bubble={bubble && hasPending} data-testid="text-run">{@render writing()}</div>
     {/if}
   </div>
 {:else}
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-  <div class="prose" class:live class:answer-bubble={bubble && (blocks.length > 0 || tail.length > 0)} data-testid="text-part" bind:this={host} use:selectionClicks use:longPress={hasMenu} use:richMarkdown={drawing} onclick={follow} oncontextmenu={linkMenu}>
+  <div class="prose" class:live class:answer-bubble={bubble && (blocks.length > 0 || hasPending)} data-testid="text-part" bind:this={host} use:selectionClicks use:longPress={hasMenu} use:richMarkdown={drawing} onclick={follow} oncontextmenu={linkMenu}>
     {#each blocks as block, index (index)}
       <!-- Completed Markdown blocks stay mounted while the pending paragraph changes. -->
       <div class="paragraph" data-testid="paragraph">{@html renderBlock(block, rich)}</div>

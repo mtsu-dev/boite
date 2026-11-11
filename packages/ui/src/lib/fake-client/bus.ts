@@ -92,7 +92,8 @@ export class FakeBus {
     if (!mayHearEvent(event, this.principal)) return;
     const agentThreadId = this.agent.threadId();
     if (this.principal === 'agent' && !agentHearsEvent(event, payload, agentThreadId, this.agent.projectOf)) return;
-    if (SUBSCRIBED_EVENTS.has(event) && !this.subscribed.has(eventThreadId(payload) ?? '')) return;
+    const templateChange = event === 'workflows.changed' && (payload as RpcEvents['workflows.changed']).templatesProjectId !== undefined;
+    if (SUBSCRIBED_EVENTS.has(event) && !templateChange && !this.subscribed.has(eventThreadId(payload) ?? '')) return;
     // An agent's board leaves out the shared cards its source may not reach, as `todos.list` does.
     if (event === 'todos.updated' && this.principal === 'agent' && agentThreadId !== null) {
       const board = payload as RpcEvents['todos.updated'];

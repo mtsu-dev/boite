@@ -166,10 +166,8 @@ export class ThreadStore {
   // -- reads ----------------------------------------------------------------
 
   list(params: { projectId?: ThreadId; includeArchived?: boolean }): ThreadSummary[] {
-    const threads = this.#core.journal.listThreads(params.projectId);
-    // Archived rows are most of a long-lived journal: only the ones answered get their live state.
-    const shown = params.includeArchived === true ? threads : threads.filter((thread) => !thread.archived);
-    return shown.map((thread) => this.#withLoad(thread));
+    const threads = this.#core.journal.listThreads(params.projectId, { includeArchived: params.includeArchived === true });
+    return threads.map((thread) => this.#withLoad(thread));
   }
 
   require(threadId: ThreadId): ThreadSummary {

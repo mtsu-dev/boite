@@ -2,7 +2,7 @@ import { afterEach, expect, test } from 'bun:test';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DEFAULT_DELEGATION_CONFIG, extractJson, RpcErrorCode } from '@boite/contracts';
-import type { DelegationConfig, Turn, WorkflowPlan, WorkflowRun } from '@boite/contracts';
+import type { DelegationConfig, RpcEvents, Turn, WorkflowPlan, WorkflowRun } from '@boite/contracts';
 import { connect } from '../src/client.ts';
 import { Core } from '../src/core.ts';
 import { setDriver } from '../src/drivers/index.ts';
@@ -658,6 +658,13 @@ test('a handoff older than an hour continues nothing: the team and the run wait,
 test('templates are kept per project, refreshed by name, started by id, and the CLI speaks the same plan', async () => {
   scripted(() => 'ok');
   const { h, owner, threadId } = await setup();
+  const templateChanges: RpcEvents['workflows.changed'][] = [];
+  const off = h.core.bus.onAny((name, payload) => {
+    if (name !== 'workflows.changed') return;
+    const event = payload as RpcEvents['workflows.changed'];
+    if (event.runId === '') templateChanges.push(event);
+  });
+  restores.push(off);
   const saved = await owner.call('workflows.templates.save', { threadId, name: 'Review', plan: REVIEW });
   const again = await owner.call('workflows.templates.save', { threadId, name: 'Review', plan: { ...REVIEW, steps: REVIEW.steps.slice(0, 1) } });
   expect(again.id).toBe(saved.id);
@@ -665,6 +672,9 @@ test('templates are kept per project, refreshed by name, started by id, and the 
   const run = await owner.call('workflows.start', { threadId, plan: again.plan, templateId: again.id, requestId: 'tpl' });
   expect(run.templateId).toBe(again.id);
   expect(await owner.call('workflows.templates.remove', { threadId, templateId: again.id })).toEqual({ removed: true });
+  expect(templateChanges).toEqual(Array.from({ length: 3 }, () => ({
+    threadId, runId: '', templatesProjectId: h.core.threads.require(threadId).projectId,
+  })));
 
   const file = join(h.dataDir, 'plan.json');
   writeFileSync(file, JSON.stringify(REVIEW));
@@ -943,4 +953,22 @@ test('retrying one of two failed steps names the other, changes nothing, and a r
   expect(h.core.workflows.get(threadId, run.id).nodes.map(node => node.status)).toEqual(['running', 'running']);
   for (const finish of [...held.values()]) finish('ok');
   expect((await settled(h, threadId, run.id)).status).toBe('done');
+});
+
+test('template invalidations reach another subscribed root while run changes remain scoped', async () => {
+  const { h, owner, threadId } = await setup();
+  const source = h.core.threads.require(threadId);
+  const target = await owner.call('threads.create', { projectId: source.projectId!, providerId: source.providerId, accountId: source.accountId });
+  const watcher = await h.connect();
+  try {
+    await watcher.call('threads.subscribe', { threadId: target.id });
+    const seen: RpcEvents['workflows.changed'][] = [];
+    watcher.on('workflows.changed', event => seen.push(event));
+    h.core.bus.emit('workflows.changed', { threadId, runId: 'progress' });
+    const saved = await owner.call('workflows.templates.save', { threadId, name: 'Shared library', plan: { name: 'Shared library', steps: [{ id: 'read', task: 'Read.' }] } });
+    await owner.call('workflows.templates.remove', { threadId, templateId: saved.id });
+    // This socket's response follows the committed invalidations, without a timing guess.
+    await watcher.call('workflows.templates.list', { threadId: target.id });
+    expect(seen).toEqual(Array.from({ length: 2 }, () => ({ threadId, runId: '', templatesProjectId: source.projectId })));
+  } finally { watcher.close(); }
 });

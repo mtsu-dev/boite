@@ -24,6 +24,7 @@ import { delegationPrompt, mailOrigin, teamInstructions } from './delegation/gui
 import { RemoteDelegation, type ChildState } from './delegation/remote.ts';
 import { sentBack } from './workflows/follow-up.ts';
 import type { Connection } from './router.ts';
+import { pendingMail } from './delegation/pending-mail.ts';
 
 interface AgentRow { thread_id: string; root_id: string; request_id: string; fingerprint: string; profile_id: string; task: string }
 interface LetterRow { data: string; fingerprint: string }
@@ -849,8 +850,7 @@ export class Delegation {
     if (this.#core.journal.isClosed()) { clearInterval(this.#timer); return; }
     // A result never expires, so only other letters are parsed. A paused or off team takes no
     // mail; its letters wait for the owner, whose resume kicks them (`configure`).
-    const rows = this.#core.journal.db.query(`SELECT root_id, recipient_id, CASE WHEN request_id GLOB 'result:*' THEN NULL ELSE data END AS data
-      FROM delegation_messages WHERE status = 'received'`).all() as { root_id: string; recipient_id: string; data: string | null }[];
+    const rows = pendingMail(this.#core.journal.db);
     const recipients = new Set<string>(), configs = new Map<string, DelegationConfig>();
     for (const row of rows) {
       const letter = row.data === null ? null : JSON.parse(row.data) as AgentLetter;

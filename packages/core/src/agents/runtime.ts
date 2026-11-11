@@ -102,7 +102,7 @@ export const EVENT_HEADER = 'Events from Boite about your desk and your projects
 
 /** The final text block of the turn's last answer, trimmed: what quiet detection reads. */
 export function finalText(core: Core, turn: Pick<Turn, 'id' | 'threadId'>): string {
-  for (const message of core.journal.walkAgentMessagesBackwards(turn.threadId, turn.id)) {
+  for (const message of core.journal.walkAgentMessagesBackwards(turn.threadId, turn.id, { blobs: false })) {
     for (let at = message.parts.length - 1; at >= 0; at--) {
       const part = message.parts[at]!;
       if (part.type === 'text' && part.text.trim()) return part.text.trim();

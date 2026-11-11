@@ -125,37 +125,60 @@ function blockText(text: string): string {
  * read, because an unfinished line can open a fence but never close a block.
  */
 export class ParagraphScan {
-  #read = '';
+  #read = 0;
+  #searched = 0;
+  #previous = '';
+  #epoch: object | undefined;
   #start = 0;
   #fences = new FenceScan();
   #done: string[] = [];
   #tail = '';
   #result: string[] | null = null;
+  #drawing = new DrawingScan();
+  #drawAt = -1;
 
   /** The unfinished paragraph, for disclosures that show live text without parsing it. */
   pending(text: string): string { return blockText(text.slice(this.#start)); }
 
-  blocks(text: string, live: boolean): string[] {
-    if (!text.startsWith(this.#read)) {
-      this.#read = '';
+  /** Reuses the completed-line grammar, speculating only on the unfinished line. */
+  drafting(text: string): { text: string; drawing: boolean } {
+    const at = this.#drawAt >= 0 ? this.#drawAt : this.#drawing.line(text.slice(this.#read), false) ? this.#read : -1;
+    return at < 0 ? { text: this.pending(text), drawing: false }
+      : { text: blockText(text.slice(this.#start, at)).replace(/\r\n/g, '\n'), drawing: true };
+  }
+
+  /** An epoch is supplied only by a writer that records appends and rotates it on replacement. */
+  blocks(text: string, live: boolean, epoch?: object): string[] {
+    const append = epoch !== undefined && epoch === this.#epoch && text.length >= this.#previous.length;
+    if ((epoch !== undefined && epoch !== this.#epoch) || (!append && !text.startsWith(this.#previous))) {
+      this.#read = 0;
+      this.#searched = 0;
       this.#start = 0;
       this.#fences.reset();
       this.#done = [];
       this.#result = null;
+      this.#drawing = new DrawingScan();
+      this.#drawAt = -1;
     }
-    let offset = this.#read.length;
+    this.#previous = text;
+    this.#epoch = epoch;
+    let offset = this.#read;
     let grew = false;
-    for (let end = text.indexOf('\n', offset); end !== -1; end = text.indexOf('\n', offset)) {
+    for (let end = text.indexOf('\n', this.#searched); end !== -1; end = text.indexOf('\n', offset)) {
       const line = text.slice(offset, end);
+      if (this.#drawAt < 0 && this.#drawing.line(line)) this.#drawAt = offset;
       offset = end + 1;
       this.#fences.line(line);
       if (!this.#fences.inside && !line.trim()) {
         const block = blockText(text.slice(this.#start, offset));
         if (block) { this.#done.push(block); grew = true; }
         this.#start = offset;
+        this.#drawing = new DrawingScan();
+        this.#drawAt = -1;
       }
     }
-    this.#read = text.slice(0, offset);
+    this.#read = offset;
+    this.#searched = text.length;
     const tail = live ? '' : blockText(text.slice(this.#start));
     if (this.#result && !grew && tail === this.#tail) return this.#result;
     this.#tail = tail;
@@ -187,24 +210,37 @@ export function pendingDrawing(tail: string): { text: string; drawing: boolean }
  * it draws.
  */
 function drawingLine(lines: string[]): number {
-  const fences = new FenceScan();
+  const scan = new DrawingScan();
   for (let index = 0; index < lines.length; index++) {
-    const line = lines[index]!;
-    const inside = fences.inside;
-    const fence = fences.line(line);
-    if (inside) {
-      continue;
-    } else if ((fence && DRAWN.has(fenceLanguage(openFence(line)!).toLowerCase())) || (!fence && DISPLAY_MATH.test(line.trim()))) {
-      return index;
-    } else if (!fence && QUOTE.test(line)) {
-      let end = index;
-      while (end < lines.length && QUOTE.test(lines[end]!)) end++;
-      const inner = drawingLine(lines.slice(index, end).map(text => QUOTE.exec(text)![1]!));
-      if (inner >= 0) return index + inner;
-      index = end - 1;
-    }
+    if (scan.line(lines[index]!)) return index;
   }
   return -1;
+}
+
+/** Each contiguous quote is its own document, including its own nested fences. */
+class DrawingScan {
+  #fences = new FenceScan();
+  #quote: DrawingScan | null = null;
+
+  line(line: string, complete = true): boolean {
+    // pendingDrawing splits CRLF before descending through quote documents.
+    if (line.endsWith('\r')) line = line.slice(0, -1);
+    if (this.#fences.inside) {
+      if (complete) this.#fences.line(line);
+      return false;
+    }
+    const fence = openFence(line);
+    if (fence) {
+      if (complete) { this.#fences.line(line); this.#quote = null; }
+      return DRAWN.has(fenceLanguage(fence).toLowerCase());
+    }
+    if (DISPLAY_MATH.test(line.trim())) return true;
+    const quote = QUOTE.exec(line);
+    if (!quote) { if (complete) this.#quote = null; return false; }
+    const inner = this.#quote ?? new DrawingScan();
+    if (complete) this.#quote = inner;
+    return inner.line(quote[1]!, complete);
+  }
 }
 
 /** The core's line for a move the agent asked for itself (`boite thread move`), drawn as a marker, not a message. */

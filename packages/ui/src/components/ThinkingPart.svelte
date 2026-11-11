@@ -3,7 +3,7 @@
   import { Brain, ChevronRight } from '@lucide/svelte';
   import { renderMarkdown } from '../lib/markdown';
   import { workspace } from '../lib/workspace.svelte';
-  import { ParagraphScan, pendingDrawing } from '../lib/message-display';
+  import { ParagraphScan } from '../lib/message-display';
   import { strings } from '../lib/strings';
   import { elapsed } from '../lib/format';
   import { ThoughtTitleScan } from '../lib/tool-groups';
@@ -12,7 +12,7 @@
   import { viewerHost } from '../lib/media-gallery';
 
   /** `store` and `threadId` say where a thread link in the reasoning starts from. */
-  let { text, live = false, startedAt = null, finishedAt = null, store, threadId }: { text: string; live?: boolean; startedAt?: number | null; finishedAt?: number | null; store?: Store; threadId?: string } = $props();
+  let { text, live = false, startedAt = null, finishedAt = null, store, threadId, revision }: { text: string; live?: boolean; startedAt?: number | null; finishedAt?: number | null; store?: Store; threadId?: string; revision?: object } = $props();
 
   const took = $derived(startedAt === null || (!live && finishedAt === null) ? '' : elapsed((live ? secondClock.now : finishedAt!) - startedAt));
   // A diagram in the reasoning opens in the timeline's viewer.
@@ -38,8 +38,8 @@
   // earlier ones keep their nodes, folded or not.
   const scan = new ParagraphScan();
   const content = $derived.by(() => {
-    const blocks = scan.blocks(text, live);
-    return { blocks, pending: pendingDrawing(live ? scan.pending(text) : '') };
+    const blocks = scan.blocks(text, live, revision);
+    return { blocks, pending: live ? scan.drafting(text) : { text: '', drawing: false } };
   });
 </script>
 
