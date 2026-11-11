@@ -421,6 +421,10 @@ printed (`BOITE_TEST_FILE_DEADLINE_MS`).
 
 Browser command, sharing and profile scenarios run in separate files so their
 combined Chromium startup time does not consume one five-minute file budget.
+The Linux core job prepares X11 through the signed Ubuntu sources alone,
+using the public archive on x64 and ports on ARM64 instead of the runner's
+Azure mirror list. APT connection deadlines and retries are bounded, and an
+index acquisition failure fails the step before the X11 tests start.
 Each file registers its own loopback site and fresh-core hooks through a fixture
 factory; individual scenario deadlines and assertions remain unchanged.
 Crash-recovery fixtures disarm resident delegation, coordination, workflow and
