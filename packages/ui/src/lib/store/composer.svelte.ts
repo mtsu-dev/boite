@@ -10,7 +10,7 @@ import { patchFields } from '../thread-rows';
 import { DRAFT_STASH_KEY } from '../prefs';
 import { editPreviewMentions, insertPreviewMention } from '../preview-mentions';
 import { showPreviewReference } from '../preview-navigation';
-import { strings } from '../strings';
+import { fill, strings } from '../strings';
 import { unresolvedAssetId } from '../draft-attachments';
 import { secureId } from '../secure-id';
 import { readExperiments } from '../experiments';
@@ -648,7 +648,7 @@ export class Composer {
     if (previewReferences.length) throw new Error(strings.previewComments.activityUnsupported);
     const accepted = await client.call('threads.activity.set', { threadId, ...activity, ...(attachments.length ? { attachments } : {}) }).catch((error: unknown) => {
       if (error instanceof RpcFailure && error.code === RpcErrorCode.MethodNotFound) {
-        throw new Error(strings.errors.activityUnsupported.replace('{machine}', s.core?.hostname ?? strings.app.name));
+        throw new Error(fill(strings.errors.activityUnsupported, { machine: s.core?.hostname ?? strings.app.name }));
       }
       throw error;
     });
