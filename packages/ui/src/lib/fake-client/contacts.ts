@@ -552,6 +552,12 @@ export function contactMethods(ctx: FakeContext) {
       const state = contactState(ctx);
       const request = state.requests.find(entry => entry.id === params.id && entry.direction === 'in');
       if (!request || request.status !== 'pending') throw invalid('id: expected a pending request from a contact', 'id');
+      if (params.accept && (request.stage === 'bot' || request.stage === 'owner') && request.want !== undefined && request.want !== 'share') {
+        // Like the core: a request for a thread the bot settles stays pending, approved, until the bot puts the threads in touch.
+        Object.assign(request, { stage: 'bot', approved: true });
+        changed();
+        return structuredClone(request);
+      }
       if (params.accept) {
         const opened = project(params.projectId);
         const contact = state.contacts.find(entry => entry.coreId === request.coreId);

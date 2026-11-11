@@ -551,6 +551,11 @@ export class ContactStore implements LinkedContacts {
 
   decide(params: RpcParams<'contacts.decide'>): ContactRequest {
     if (typeof params.accept !== 'boolean') throw invalidParams('accept: expected a boolean', { field: 'accept' });
+    if (params.accept) {
+      // A talk or a new thread the bot settles: the owner's Accept lets the bot act; a project would close it with no thread in touch.
+      const { request } = this.requests.pending(params.id, 'in');
+      if ((request.stage === 'bot' || request.stage === 'owner') && request.want !== undefined && request.want !== 'share') return this.requests.approve(request.id);
+    }
     return this.requests.settle(params.id, params.accept, params.projectId, params.reason, 'owner');
   }
 

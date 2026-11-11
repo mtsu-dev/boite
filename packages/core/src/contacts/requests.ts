@@ -316,6 +316,21 @@ export class ContactRequests {
     return this.view(request);
   }
 
+  /**
+   * The owner accepted a request the Contacts bot settles that asks for a
+   * thread, not a project: as `Let the bot handle it` on the bot's card, the
+   * bot may act on it now. It stays pending until the bot puts the threads in
+   * touch, since opening a project would answer it with no thread to write to.
+   */
+  approve(id: string): ContactRequest {
+    const { requests, request } = this.pending(id, 'in');
+    Object.assign(request, { stage: 'bot', approved: true });
+    this.save(requests);
+    this.#store.changed();
+    tellBot(this.#core, `contacts-approved-${request.id}`, `The owner accepted request ${request.id} from ${request.contact}: settle it with boite contacts connect or start, without asking them again.`);
+    return this.view(request);
+  }
+
   /** The request moves to `stage`, or `approved` changes: nothing is told to the contact. */
   mark(id: string, change: Partial<Pick<ContactRequest, 'stage' | 'approved'>>): void {
     const requests = this.list();

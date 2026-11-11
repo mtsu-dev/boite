@@ -155,6 +155,57 @@ test('a message from a contact outside a shared project pops up to be read: Deli
   }
 });
 
+test('a thread request the Operator settles waits on it, not on the owner: no notice, and Accept lets the Operator connect it instead of opening a project', async () => {
+  const store = await draw();
+  const sam = new FakeClient({ delayMs: 0, coreId: 'core-sam', coreName: 'Sam' });
+  await sam.connect();
+  try {
+    const client = store.client!;
+    await client.call('contacts.join', { link: (await sam.call('contacts.invite', { share: false })).link });
+    for (const each of [client, sam]) await each.call('contacts.settings', { settings: { minTier: 2 } });
+    await client.call('agents.builtin.ensure', { kind: 'contacts' });
+    await sam.call('agents.builtin.ensure', { kind: 'contacts' });
+    const samBot = (await sam.call('contacts.get', {})).bot!.threadId;
+    const home = (await sam.call('contacts.get', {})).contacts.find(entry => entry.coreId !== 'core-chris')!.coreId;
+    const ask = async (text: string) => {
+      const waiting = await sam.call('collaboration.ask', { threadId: 't-trace', contact: home, want: 'thread', text });
+      const asked = await sam.call('contacts.bot.forward', { threadId: samBot, id: waiting.id, contact: home });
+      await vi.waitFor(async () => expect((await contacts(store)).requests.some(entry => entry.id === asked.id)).toBe(true));
+      return asked.id;
+    };
+    // Chris's request, with no bot behind it, is the owner's: the notice and its bell show, then go once it is answered.
+    components.push(mount(TitleBar, { target: document.body, props: { store } }));
+    await vi.waitFor(() => { flushSync(); expect(one('contact-request-notice')).not.toBeNull(); });
+    await client.call('contacts.decide', { id: 'creq-pending', accept: false, reason: 'Not now' });
+    await vi.waitFor(() => { flushSync(); expect(one('contact-request-open')).toBeNull(); });
+
+    // Not trusted: the Operator holds it until the owner says yes; the card offers that yes, not a project.
+    const held = await ask('A thread that knows the descriptor loader');
+    await vi.waitFor(() => { flushSync(); expect(one(`contact-request-${held}`)).not.toBeNull(); });
+    expect(one('contact-request-notice')).toBeNull();
+    expect(one('contact-request-open')).toBeNull();
+    expect(one(`contact-accept-${held}`)).toBeNull();
+    one<HTMLButtonElement>(`contact-approve-${held}`)!.click();
+    await vi.waitFor(async () => {
+      const request = (await contacts(store)).requests.find(entry => entry.id === held)!;
+      expect([request.status, request.stage, request.approved, request.project]).toEqual(['pending', 'bot', true, undefined]);
+    });
+    await vi.waitFor(() => { flushSync(); expect(one(`contact-approve-${held}`)).toBeNull(); });
+
+    // Trusted: the Operator settles it alone, so nothing asks the owner.
+    await client.call('contacts.update', { coreId: 'core-sam', trusted: true });
+    const trusted = await ask('A thread that runs the fuzzer');
+    await vi.waitFor(() => { flushSync(); expect(one(`contact-request-${trusted}`)).not.toBeNull(); });
+    expect(one('contact-request-notice')).toBeNull();
+    expect(one('contact-request-open')).toBeNull();
+    expect(one(`contact-accept-${trusted}`)).toBeNull();
+    expect(one(`contact-approve-${trusted}`)).toBeNull();
+    expect(one(`contact-refuse-${trusted}`)).not.toBeNull();
+  } finally {
+    sam.close();
+  }
+});
+
 function type(input: HTMLInputElement, value: string) {
   input.value = value;
   input.dispatchEvent(new Event('input', { bubbles: true }));

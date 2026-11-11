@@ -218,9 +218,12 @@ never spent, and the client joins again by itself for up to 15 minutes, with
 
 ## Projects and requests
 
-A pending incoming request appears at the top of the app, with the contact,
-receiving machine and request text. Dismissing the notice leaves a bell with
-the pending count. Either opens the request on its owning machine, including
+A pending incoming request the owner must answer appears at the top of the
+app, with the contact, receiving machine and request text: one with no
+Contacts bot behind it, or one the bot put on the owner's card (`stage:
+'owner'`). A request with the bot (`'bot'`) or on its way to the Bots machine
+(`'host'`) is not the owner's yet and only shows in the Requests card.
+Dismissing the notice leaves a bell with the pending count. Either opens the request on its owning machine, including
 from Settings and on a phone. Reconnection refreshes requests even when the
 Contacts page is closed.
 
@@ -577,7 +580,12 @@ sequenceDiagram
 2. The contact's core keeps the request for its own bot. A contact marked
    trusted is settled by the bot alone. For one that is not, the bot raises a
    card for its owner (`contacts.bot.askOwner`), and only the owner's Accept,
-   never an agent's answer, lets it act; Refuse refuses the request.
+   never an agent's answer, lets it act; Refuse refuses the request. The
+   Requests card offers the same Accept (**Let the Operator connect it**) on a
+   `talk` or `thread` request that waits for the bot or the owner's card:
+   `contacts.decide` then approves it for the bot (`approved: true`, back to
+   `stage: 'bot'`) and opens no project, so the request stays pending until
+   the bot connects it. A trusted contact's request has no Accept there.
 3. The bot settles it: `connect` puts the asking thread in relation with an
    existing thread, `start` starts a thread on a project with a brief and puts
    it in relation, `refuse` answers with a reason. Opening a project,
@@ -585,7 +593,10 @@ sequenceDiagram
    it as `contacts.grant` would, without reading conversations.
 4. The answer comes back to the asking thread as a message naming the thread
    it now works with. Both threads write to each other with
-   `boite threads send <contact>/<thread-id>`.
+   `boite threads send <contact>/<thread-id>`. An answer that opened a
+   project lists its threads; with a Contacts bot on the asking core, an
+   ordinary thread reaches one only through a relation, so the answer tells it
+   to ask for it with `boite threads ask --to <contact>/<thread-id>`.
 
 ### In the conversation
 
@@ -616,6 +627,7 @@ chip (`AgentLetter.contact`).
 A relation (`ContactRelation`) joins two threads, one per side, and lets
 letters through for as long as it lasts, whatever projects are opened. It
 carries no file, read or command: each thread works in its own checkout.
+Both cores keep it in their journal, so it outlives a restart of either.
 Either bot cuts it (`contacts.bot.cut` with `relation: <id>`), and the owner ends one from the
 contact's page (`contacts.cutRelation`); archiving a thread or removing the
 contact ends its relations. The two bots may always write to each other: the
