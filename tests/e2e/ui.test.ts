@@ -70,6 +70,16 @@ afterAll(async () => {
   if (worktreesDir !== undefined) await removeDirectory(worktreesDir);
 }, 30_000);
 
+
+/** The permission's tool input: the card's "i" (InfoTip) holds it in its bubble, read once opened, then closed again. */
+async function permissionInput(): Promise<string> {
+  await page.click(testid('permission-input'));
+  await page.waitFor(`document.querySelector('${testid('permission-input-text')}')`, 30_000);
+  const text = await page.text(testid('permission-input-text'));
+  await page.click(testid('permission-input'));
+  await page.waitFor(`!document.querySelector('${testid('permission-input-text')}')`, 30_000);
+  return text;
+}
 test('the core serves the production bundle: no fake client, no Svelte dev runtime', async () => {
   const index = await (await fetch(`${core.url}/`)).text();
   const scripts = [...index.matchAll(/src="(?:\.\/|\/)(assets\/[^"]+\.js)"/g)].map((match) => match[1] ?? '');
@@ -125,7 +135,7 @@ test(
   'the turn streams, the permission is allowed inline, and the thread goes back to idle',
   async () => {
     await page.waitFor(`document.querySelector('${testid('permission-card')}')`, 30_000);
-    expect(await page.text(testid('permission-input'))).toContain('echo');
+    expect(await permissionInput()).toContain('echo');
 
     await page.click(testid('permission-allow'));
     await page.waitFor(
@@ -149,7 +159,8 @@ test(
       percent = Math.min(100, Math.round(thread!.context!.tokens / thread!.context!.window! * 100));
     } finally { client.close(); }
     await page.waitFor(`document.querySelector('${testid('context-meter')}')?.dataset.percent === '${percent}'`);
-    expect((await page.text(testid('context-trigger'))).trim()).toBe('');
+    // The ring says the share left in words beside it once most of the window is used (ContextControl.svelte).
+    expect((await page.text(testid('context-trigger'))).trim()).toBe(`${100 - percent}% context left`);
 
     await page.screenshot(SCREENSHOT);
     expect(existsSync(SCREENSHOT)).toBe(true);
@@ -545,10 +556,17 @@ test(
     }
 
     await page.click(testid('new-thread'));
+    // The worktree switch is a checkable row of the composer's options menu (its "+").
+    await page.waitFor(`document.querySelector('${testid('composer-options')}')`);
+    await page.click(testid('composer-options'));
     await page.waitFor(`document.querySelector('${testid('composer-worktree')}')`);
-    expect(await page.evaluate<string>(`document.querySelector('${testid('composer-worktree')}').getAttribute('aria-pressed')`)).toBe('false');
+    expect(await page.evaluate<string>(`document.querySelector('${testid('composer-worktree')}').getAttribute('aria-checked')`)).toBe('false');
     await page.click(testid('composer-worktree'));
-    await page.waitFor(`document.querySelector('${testid('composer-worktree')}').getAttribute('aria-pressed') === 'true'`);
+    await page.waitFor(`document.querySelector('${testid('composer-worktree')}')?.getAttribute('aria-checked') === 'true'`);
+    if (await page.evaluate<boolean>(`!!document.querySelector('${testid('composer-options-sheet')}')`)) {
+      await page.click(testid('composer-options'));
+      await page.waitFor(`!document.querySelector('${testid('composer-options-sheet')}')`);
+    }
     await page.waitFor(`document.querySelector('[data-testid=composer-picker] .label')?.textContent.trim() === 'Echo'`);
     await page.type(testid('composer-input'), 'worktree thread');
     await clickWhenEnabled(testid('composer-send'));
@@ -568,8 +586,12 @@ test(
       expect(existsSync(join(worktree, 'src', 'lib', 'store.ts'))).toBe(true);
       expect(await page.evaluate<string>(`document.querySelector('${testid('thread-branch')}').title`)).toContain(worktree);
       await page.screenshot(WORKTREE_SCREENSHOT);
-      // The chip is a draft's: the thread has no such choice left.
+      // The switch is a draft's: the thread's options menu has no such choice left.
+      await page.click(testid('composer-options'));
+      await page.waitFor(`document.querySelector('${testid('composer-options-sheet')}')`);
       expect(await page.evaluate<boolean>(`!!document.querySelector('${testid('composer-worktree')}')`)).toBe(false);
+      await page.click(testid('composer-options'));
+      await page.waitFor(`!document.querySelector('${testid('composer-options-sheet')}')`);
       // Restore the first thread for the following scenarios.
       await client.call('threads.archive', { threadId: created.id, archived: true });
     } finally {
@@ -628,9 +650,12 @@ test(
     expect(await page.evaluate<string>(textOf('settings-endpoint'))).toBe(`127.0.0.1:${core.port}`);
     expect(await page.evaluate<string>(textOf('settings-version'))).toBe(corePackage.version);
     await page.click(testid('settings-tab-machines'));
-    await page.waitFor(`document.querySelector('${testid('machine-card')} ${testid('machine-version')}')`);
-    // Its row names the machine and the version of the core it runs; the address stays under Advanced.
-    expect(await page.evaluate<string>(textOf('machine-version'))).toBe(corePackage.version);
+    // The updates card heads the page with the version of the core it runs; the machine's row repeats a version
+    // only where it differs, so this one names the machine alone. The address stays under Advanced.
+    await page.waitFor(`document.querySelector('${testid('updates-version')} .number')`);
+    expect(await page.evaluate<string>(`document.querySelector('${testid('updates-version')} .number').textContent.trim()`)).toBe(corePackage.version);
+    await page.waitFor(`document.querySelector('${testid('machine-card')}')`);
+    expect(await page.evaluate<boolean>(`!!document.querySelector('${testid('machine-card')} ${testid('machine-version')}')`)).toBe(false);
     expect(await page.evaluate<string>(textOf('machine-card-status'))).toBe('Connected');
     expect(await page.evaluate<string>(`document.querySelector('${testid('machine-rename')}').value`)).not.toBe('');
 
@@ -683,7 +708,7 @@ test(
       await page.waitFor(`${textOf('thread-title')} === 'Echo: reloaded'`, 30_000);
       await page.waitFor(`document.querySelector('${testid('permission-card')}')`, 30_000);
       await page.waitFor(`document.querySelector('${testid('permission-input')}')`, 30_000);
-      expect(await page.text(testid('permission-input'))).toContain('echo');
+      expect(await permissionInput()).toContain('echo');
       await page.screenshot(RELOAD_SCREENSHOT);
 
       await page.click(testid('permission-allow'));

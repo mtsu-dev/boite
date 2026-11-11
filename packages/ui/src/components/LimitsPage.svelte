@@ -173,7 +173,9 @@
       {#if providersReachable}<button type="button" onclick={() => workspace.active.showSettings('accounts')}><span class="ui-label">{strings.settings.connectProvider}</span></button>{/if}
     </div>{/if}
   {:else}
-    {#if rows.length > 0}<UsageLimits {rows} {store} loading={reader.busy} completed={reader.landed} onalert={alert} />{/if}
+    <!-- The priority the popup, the tray and the pinned card follow: the owner reorders it here too, on a phone as well. -->
+    {#if rows.length > 0}<UsageLimits {rows} {store} loading={reader.busy} completed={reader.landed} onalert={alert}
+      order={store.settings?.quotaOrder ?? []} onreorder={store.owner ? (quotaOrder) => store.saveSettings({ quotaOrder }) : undefined} />{/if}
     {#if store.owner}<section class="card tracked" data-testid="limits-tracked">
       <h2 class="ui-label-box"><span class="ui-label">{strings.quotas.tracked}</span><InfoTip topic={strings.quotas.tracked} text={strings.quotas.trackedHint} /></h2>
       {#each tracked as row (row.accountId)}

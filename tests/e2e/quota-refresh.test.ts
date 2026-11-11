@@ -1,4 +1,4 @@
-import { openLimitsTab } from './lib/mobile.ts';
+import { mobileAction, openLimitsTab } from './lib/mobile.ts';
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -539,56 +539,64 @@ test('the same popup shares priorities across the app, tray and phone through th
     await tray.send('Emulation.setDeviceMetricsOverride', { width: 380, height: 460, deviceScaleFactor: 1, mobile: false });
     await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
     await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
-    // Reload gives the phone's real sheet placement rather than retaining the desktop floating action.
+    // A phone has no limits glance: it reaches the limits from its Settings tab, whose Limits page reorders the
+    // priorities as the popup does (lib/quota-reorder.svelte.ts).
     await page.navigate(`${origin}/?${endpoint}`);
-    await page.click('[data-testid="sidebar-toggle"]');
-    await page.click('[data-testid="nav-limits"]');
-    await page.waitFor(`document.querySelectorAll('[data-testid="quota-provider"]').length === 5`);
+    await mobileAction(page, 'mobile-settings');
+    await openLimitsTab(page);
+    const card = '[data-testid="usage-limit-provider"]';
+    await page.waitFor(`document.querySelectorAll('${card}').length === 5`);
+    expect(await page.evaluate<string[]>(`[...document.querySelectorAll('${card} .name')].map(row => row.textContent)`)).toEqual(names);
     for (const [index, reset] of resets.entries()) {
-      expect(await page.text(`[data-account-id="${accounts[index]!.id}"] .reset`)).toStartWith(`${reset.label} `);
+      expect(await page.text(`${card}[data-account-id="${accounts[index]!.id}"] .primary-reset`)).toContain(`${reset.label} `);
     }
-    await page.waitFor(`document.querySelector('[data-account-id="${accounts[1]!.id}"] [data-testid="quota-reorder"]')?.disabled === false`);
+    await page.waitFor(`document.querySelector('${card}[data-account-id="${accounts[1]!.id}"] [data-testid="usage-limit-reorder"]')?.disabled === false`);
     const touch = await page.evaluate<{ from: { x: number; y: number }; to: { x: number; y: number } }>(`(async () => {
-      // The phone sheet animates and its ResizeObserver places it after the rows appear.
+      // The settings screen slides in; measure once it rests.
       await Promise.all(document.getAnimations().filter(animation => animation.timeline === document.timeline && animation.effect?.getTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {})));
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-      const grip = document.querySelector('[data-account-id="${accounts[1]!.id}"] .name').getBoundingClientRect();
-      const first = document.querySelector('[data-testid="quota-provider"]').getBoundingClientRect();
+      const grip = document.querySelector('${card}[data-account-id="${accounts[1]!.id}"] .name').getBoundingClientRect();
+      const first = document.querySelector('${card}').getBoundingClientRect();
       return { from: { x: grip.x + grip.width / 2, y: grip.y + grip.height / 2 }, to: { x: grip.x + grip.width / 2, y: first.y + 16 } };
     })()`);
-    expect(await page.evaluate(`document.elementFromPoint(${touch.from.x}, ${touch.from.y})?.closest('[data-testid="quota-reorder"]')?.closest('[data-account-id]')?.dataset.accountId === '${accounts[1]!.id}'`)).toBe(true);
+    expect(await page.evaluate(`document.elementFromPoint(${touch.from.x}, ${touch.from.y})?.closest('${card}')?.dataset.accountId === '${accounts[1]!.id}'`)).toBe(true);
     await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...touch.from, id: 1 }] });
     await page.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ ...touch.to, id: 1 }] });
-    await page.waitFor(`document.querySelector('[data-testid="quota-provider"]')?.dataset.accountId === '${accounts[1]!.id}'`);
+    await page.waitFor(`document.querySelector('${card}')?.dataset.accountId === '${accounts[1]!.id}'`);
     await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await tray.waitFor(`document.querySelector('[data-testid="quota-provider"]')?.dataset.accountId === '${accounts[1]!.id}'`);
-    expect(await page.evaluate(`document.querySelectorAll('${panel} .details').length`)).toBe(0);
-    await capture('limits-popup-phone.png');
-    expect(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth && document.querySelector('${panel} .body').scrollWidth <= document.querySelector('${panel} .body').clientWidth`)).toBe(true);
+    // The drag folded nothing out: no account's alerts opened under the finger.
+    expect(await page.evaluate(`document.querySelectorAll('${card} [data-testid="quota-alert-bell"][aria-expanded="true"]').length`)).toBe(0);
+    await capture('limits-page-phone.png');
+    expect(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth && [...document.querySelectorAll('${card}')].every(box => box.getBoundingClientRect().right <= innerWidth)`)).toBe(true);
     await client.call('accounts.rename', { accountId: accounts[1]!.id, label: 'Work subscription' });
-    for (const browser of [page, tray]) await browser.waitFor(`document.querySelector('[data-testid="quota-provider"] .name')?.textContent === 'Work subscription'`);
+    await page.waitFor(`document.querySelector('${card} .name')?.textContent === 'Work subscription'`);
+    await tray.waitFor(`document.querySelector('[data-testid="quota-provider"] .name')?.textContent === 'Work subscription'`);
     // A fresh webview starts from the saved core order.
     await tray.navigate(`${origin}/?view=quotas`);
     await tray.waitFor(`document.querySelector('[data-testid="quota-provider"] .name')?.textContent === 'Work subscription'`);
     expect((await client.call('settings.get', {})).quotaOrder?.[0]).toBe(accounts[1]!.id);
 
-    // Swiping a meter on a short phone viewport scrolls without rearranging or expanding its account.
+    // Swiping a meter on a short phone viewport scrolls the page without rearranging or expanding its account.
     await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 340, deviceScaleFactor: 1, mobile: true });
-    await page.waitFor(`document.querySelector('${panel} .body').scrollHeight > document.querySelector('${panel} .body').clientHeight`);
+    const scroller = `(() => { for (let box = document.querySelector('${card}').parentElement; box; box = box.parentElement) if (/(auto|scroll)/.test(getComputedStyle(box).overflowY) && box.scrollHeight > box.clientHeight) return box; return document.scrollingElement; })()`;
+    await page.waitFor(`${scroller}.scrollHeight > ${scroller}.clientHeight`);
     const swipe = await page.evaluate<{ x: number; y: number }>(`(async () => {
-      const body = document.querySelector('${panel} .body');
+      const body = ${scroller};
       body.scrollTop = 0;
+      document.querySelector('${card}[data-account-id="${accounts[0]!.id}"] .track').scrollIntoView({ block: 'center' });
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-      const meter = document.querySelector('[data-account-id="${accounts[0]!.id}"] .track').getBoundingClientRect();
+      const meter = document.querySelector('${card}[data-account-id="${accounts[0]!.id}"] .track').getBoundingClientRect();
       return { x: meter.x + meter.width / 2, y: meter.y + meter.height / 2 };
     })()`);
+    const before = await page.evaluate<number>(`${scroller}.scrollTop`);
     await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...swipe, id: 1 }] });
     for (let step = 1; step <= 6; step++) {
       await page.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: swipe.x, y: swipe.y - step * 12, id: 1 }] });
     }
     await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-    await page.waitFor(`document.querySelector('${panel} .body').scrollTop > 0`);
+    await page.waitFor(`${scroller}.scrollTop > ${before}`);
     expect((await client.call('settings.get', {})).quotaOrder?.[0]).toBe(accounts[1]!.id);
-    expect(await page.evaluate(`document.querySelectorAll('${panel} .details').length`)).toBe(0);
+    expect(await page.evaluate(`document.querySelectorAll('${card} [data-testid="quota-alert-bell"][aria-expanded="true"]').length`)).toBe(0);
   } finally { await tray?.close(); client.close(); await harness.stop(); }
 }, 60_000);

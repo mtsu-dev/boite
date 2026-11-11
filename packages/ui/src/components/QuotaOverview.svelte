@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onDestroy } from 'svelte';
   import { ChevronDown, RotateCcw } from '@lucide/svelte';
   import type { AccountQuota } from '@boite/contracts';
   import ProviderLogo from './ProviderLogo.svelte';
@@ -9,6 +8,7 @@
   import { creditBalance, exactTime, quotaResetTime, quotaWindowName, tenth } from '../lib/format';
   import { quotaAccountName, quotaCredits, quotaTone, remainingPercent } from '../lib/quota-reader.svelte';
   import { shownWindows } from '../lib/quota-display';
+  import { QuotaReorder } from '../lib/quota-reorder.svelte';
 
   let { rows, loading = false, completed = [], connect, order = [], onreorder }: {
     rows: AccountQuota[]; loading?: boolean; completed?: string[]; connect?: () => void;
@@ -16,131 +16,18 @@
   } = $props();
 
   let expanded = $state<string | null>(null);
-  let overview: HTMLDivElement;
-  let draft = $state<string[] | null>(null);
-  let dragging = $state<string | null>(null);
-  let saving = $state(false);
-  let pointer: number | null = null;
-  let candidate: string | null = null;
-  let pressedAt = { x: 0, y: 0 };
-  let suppressClick = false;
-  let clickTimer = 0;
-  let original: string[] = [];
-  let lastPoint = { x: 0, y: 0 };
-  let scrolling = 0;
-  let ordered = $derived.by(() => {
-    const priority = new Map((draft ?? order).map((id, index) => [id, index]));
-    return [...rows].sort((a, b) => (priority.get(a.accountId) ?? Infinity) - (priority.get(b.accountId) ?? Infinity));
+  /** The priority, dragged by a summary (its name on a touch screen) or moved with the arrow keys: shared with the Limits page. */
+  const reorder = new QuotaReorder({
+    order: () => order, onreorder: () => onreorder, item: '[data-testid="quota-provider"]', grip: '.name',
+    scroller: (root) => root.closest<HTMLElement>('.body')
   });
+  let ordered = $derived(reorder.sort(rows));
   const left = (used: number) => fill(strings.quotas.remaining, { percent: tenth(remainingPercent(used)) });
   const miniName = (label: string) => label.includes(' · ') ? label.split(' · ').slice(1).join(' · ') :
     label === 'Weekly' ? strings.quotas.windowWeeklyCompact : label === 'Monthly' ? strings.quotas.windowMonthlyCompact : quotaWindowName(label);
-
-  async function save(ids: string[]) {
-    if (!onreorder) return;
-    saving = true;
-    try { await onreorder([...ids, ...order.filter((id) => !ids.includes(id))]); }
-    finally { saving = false; draft = null; }
-  }
-  function scroll() {
-    if (!dragging) return;
-    const body = overview.closest<HTMLElement>('.body');
-    if (body) {
-      const box = body.getBoundingClientRect();
-      const delta = lastPoint.y < box.top + 32 ? -8 : lastPoint.y > box.bottom - 32 ? 8 : 0;
-      if (delta) { body.scrollTop += delta; place(lastPoint.x, lastPoint.y); }
-    }
-    scrolling = requestAnimationFrame(scroll);
-  }
-  onDestroy(() => { cancelAnimationFrame(scrolling); clearTimeout(clickTimer); });
-  function trackDrag(node: HTMLDivElement) {
-    const end = (event: PointerEvent) => finish(event);
-    const cancel = (event: PointerEvent) => finish(event, true);
-    const lost = (event: PointerEvent) => { if (event.target === node) cancel(event); };
-    const click = (event: MouseEvent) => {
-      if (!suppressClick) return;
-      suppressClick = false;
-      event.preventDefault();
-      event.stopPropagation();
-    };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', end);
-    window.addEventListener('pointercancel', cancel);
-    node.addEventListener('lostpointercapture', lost);
-    node.addEventListener('click', click, true);
-    return { destroy() {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', end);
-      window.removeEventListener('pointercancel', cancel);
-      node.removeEventListener('lostpointercapture', lost);
-      node.removeEventListener('click', click, true);
-    } };
-  }
-  function start(event: PointerEvent, id: string) {
-    if (!onreorder || event.button !== 0 || !event.isPrimary || saving) return;
-    // Touch drags start on the name; swiping the bars keeps the list's native scrolling.
-    if (event.pointerType === 'touch' && !(event.target as Element).closest('.name')) return;
-    (event.currentTarget as HTMLButtonElement).focus({ preventScroll: true });
-    pointer = event.pointerId;
-    candidate = id;
-    original = ordered.map((row) => row.accountId);
-    pressedAt = { x: event.clientX, y: event.clientY };
-  }
-  function move(event: PointerEvent) {
-    if (event.pointerId !== pointer || !candidate) return;
-    if (!dragging) {
-      if (Math.hypot(event.clientX - pressedAt.x, event.clientY - pressedAt.y) < 6) return;
-      // Capture only an actual drag, keeping a click or tap available for expanding details.
-      overview.setPointerCapture(event.pointerId);
-      dragging = candidate;
-      draft = [...original];
-      suppressClick = true;
-      scrolling = requestAnimationFrame(scroll);
-    }
-    event.preventDefault();
-    lastPoint = { x: event.clientX, y: event.clientY };
-    place(event.clientX, event.clientY);
-  }
-  function place(x: number, y: number) {
-    if (!dragging || !draft) return;
-    const target = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-testid="quota-provider"]');
-    if (!target || !overview.contains(target) || target.dataset.accountId === dragging) return;
-    const ids = draft.filter((id) => id !== dragging);
-    const index = ids.indexOf(target.dataset.accountId!);
-    if (index < 0) return;
-    const box = target.getBoundingClientRect();
-    ids.splice(index + (y > box.top + box.height / 2 ? 1 : 0), 0, dragging);
-    draft = ids;
-  }
-  function finish(event: PointerEvent, cancel = false) {
-    if (event.pointerId !== pointer) return;
-    cancelAnimationFrame(scrolling);
-    const ids = draft;
-    pointer = null;
-    candidate = null;
-    dragging = null;
-    clearTimeout(clickTimer);
-    clickTimer = window.setTimeout(() => { suppressClick = false; }, 0);
-    if (!cancel && ids && ids.some((id, index) => id !== original[index])) void save(ids);
-    else draft = null;
-  }
-  function keyboard(event: KeyboardEvent, id: string) {
-    if (!onreorder) return;
-    const ids = ordered.map((row) => row.accountId);
-    const from = ids.indexOf(id);
-    const to = event.key === 'ArrowUp' ? from - 1 : event.key === 'ArrowDown' ? from + 1 :
-      event.key === 'Home' ? 0 : event.key === 'End' ? ids.length - 1 : -1;
-    if (to < 0 || to >= ids.length || saving) return;
-    event.preventDefault();
-    event.stopPropagation();
-    ids.splice(from, 1);
-    ids.splice(to, 0, id);
-    draft = ids;
-    void save(ids);
-  }
 </script>
 
-<div class="overview" class:loading bind:this={overview} use:trackDrag data-testid="quota-overview">
+<div class="overview" class:loading use:reorder.track data-testid="quota-overview">
   {#if rows.length === 0}
     <div class="empty" data-testid="quota-empty">
       <p>{strings.quotas.empty}</p>
@@ -159,12 +46,12 @@
     {@const credits = quotaCredits(row)}
     {@const paid = credits !== null && drained}
     {@const percent = credits?.kind === 'budget' ? Math.max(0, Math.min(100, credits.remaining! / credits.limit! * 100)) : null}
-    <article data-testid="quota-provider" data-provider={row.providerId} data-account-id={row.accountId} class:expanded={expanded === row.accountId} class:dragging={dragging === row.accountId}>
+    <article data-testid="quota-provider" data-provider={row.providerId} data-account-id={row.accountId} class:expanded={expanded === row.accountId} class:dragging={reorder.dragging === row.accountId}>
       <div class="account-heading">
-        <button class="summary ghost" class:reorderable={!!onreorder && !saving} data-testid={onreorder ? 'quota-reorder' : undefined}
+        <button class="summary ghost" class:reorderable={!!onreorder && !reorder.saving} data-testid={onreorder ? 'quota-reorder' : undefined}
           aria-expanded={expanded === row.accountId} aria-controls={`usage-${row.accountId}`} aria-keyshortcuts={onreorder ? 'ArrowUp ArrowDown Home End' : undefined}
-          title={onreorder ? fill(strings.quotas.reorder, { name }) : undefined} disabled={saving || (windows.length === 0 && !onreorder)}
-          onpointerdown={(event) => start(event, row.accountId)} onkeydown={(event) => keyboard(event, row.accountId)}
+          title={onreorder ? fill(strings.quotas.reorder, { name }) : undefined} disabled={reorder.saving || (windows.length === 0 && !onreorder)}
+          onpointerdown={(event) => reorder.start(event, row.accountId)} onkeydown={(event) => reorder.keyboard(event, row.accountId)}
           onclick={() => { if (windows.length) expanded = expanded === row.accountId ? null : row.accountId; }}>
           <span class="logo" title={row.providerName}><ProviderLogo providerId={row.providerId} size={20} /></span>
           <span class="summary-content">

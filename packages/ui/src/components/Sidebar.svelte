@@ -571,9 +571,12 @@
   @media (prefers-reduced-motion: reduce) {
     .mark > :global(*) { transition: none; }
   }
-  /* The machine, after the name, as a place (MachinePlace.svelte). A machine label is short and says where the work
-     runs, so it stays whole: the project name gives way. */
-  .toggle :global(.machine-place) { flex: none; }
+  /* The machine, after the name, as a place (MachinePlace.svelte). The project name keeps priority: in a narrow
+     column the place gives way first, shrinking to an ellipsis, then the counter's spare word hides. */
+  .toggle :global(.machine-place) { flex: 0 1000 auto; min-width: 0; overflow: hidden; }
+  @container sidebar (max-width: 255.98px) {
+    .head:has(:global(.machine-place)) :global(.counter .spare) { display: none; }
+  }
   .head :global(.counters) { margin-right: 2px; transition: margin-right var(--dur-2) var(--ease-out-quint); }
   /* The menu appears at the right end on hover and the counters step left of it, as a row's state does. */
   .project-actions {

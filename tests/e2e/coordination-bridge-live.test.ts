@@ -90,7 +90,8 @@ test('the owner app relays signed reads, preserves directional grants on reload,
     await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
     await capture(page, 'agent-activity-phone.png');
     expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
-    expect(await page.evaluate('document.querySelector("[data-testid=turn-summary] button") === null')).toBe(true);
+    // The activity line links to no trace: its one button is the "i" that holds the live facts.
+    expect(await page.evaluate('[...document.querySelectorAll("[data-testid=turn-summary] button")].map(button => button.dataset.testid)')).toEqual(['turn-activity']);
     await page.evaluate('globalThis.__boiteTest.workspace.active.panel.open("trace")');
     await page.waitFor('document.querySelector("[data-testid=trace-panel]")');
     await pc.call('turns.stop', { threadId: threads[0]!.id });

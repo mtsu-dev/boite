@@ -11,18 +11,32 @@
   import { quotaAccountName, quotaTone, remainingPercent } from '../lib/quota-reader.svelte';
   import { shownWindows } from '../lib/quota-display';
   import ProviderLogo from './ProviderLogo.svelte';
+  import { QuotaReorder } from '../lib/quota-reorder.svelte';
 
   /**
    * One card per signed-in account, named by its label beside the provider's
    * logo. Its primary window comes first and largest, with its reset; the
    * other windows follow, compact. While a new reading loads, the old one
    * stays desaturated until that account answers. With `onalert`, a bell in
-   * the header folds out the account's alerts.
+   * the header folds out the account's alerts. With `onreorder`, the cards
+   * follow the priority and a card's header reorders it as the limits popup's
+   * rows do (lib/quota-reorder.svelte.ts): dragged, by its name on a touch
+   * screen, or its logo focused and moved with the arrow keys.
    */
-  let { rows, loading = false, completed = [], store, onalert }: {
+  let { rows, loading = false, completed = [], store, onalert, order = [], onreorder }: {
     rows: AccountQuota[]; loading?: boolean; completed?: string[]; store?: Store;
     onalert?: (accountId: string, period: QuotaAlertPeriod, thresholds: number[]) => Promise<void>;
+    order?: string[]; onreorder?: (order: string[]) => Promise<boolean>;
   } = $props();
+  /** The nearest box that scrolls: the settings page's on a phone and the desktop alike. */
+  function scroller(node: HTMLElement): HTMLElement | null {
+    for (let box = node.parentElement; box; box = box.parentElement) {
+      if (/(auto|scroll)/.test(getComputedStyle(box).overflowY) && box.scrollHeight > box.clientHeight) return box;
+    }
+    return document.scrollingElement as HTMLElement | null;
+  }
+  const reorder = new QuotaReorder({ order: () => order, onreorder: () => onreorder, item: '[data-testid="usage-limit-provider"]', grip: '.name', scroller });
+  let ordered = $derived(reorder.sort(rows));
   /** The cards whose alerts are folded out. */
   let opened = $state<string[]>([]);
 
@@ -34,19 +48,28 @@
   }
 </script>
 
-<div class="limits" class:loading data-testid="usage-limits">
-  {#each rows as row (row.accountId)}
+<div class="limits" class:loading data-testid="usage-limits" use:reorder.track>
+  {#each ordered as row (row.accountId)}
     {@const name = quotaAccountName(row)}
     {@const at = row.checkedAt}
     {@const observed = row.source === 'observation'}
     {@const pending = loading && !completed.includes(row.accountId)}
     {@const stale = row.windows.length > 0 && (row.error !== null || row.status === 'unavailable')}
     {@const shown = shownWindows(row)}
-    <section class="card provider" data-testid="usage-limit-provider" data-provider={row.providerId} data-account-id={row.accountId}>
-      <header>
-        <span class="logo" title={row.providerName}><ProviderLogo providerId={row.providerId} size={22} /></span>
+    <section class="card provider" class:dragging={reorder.dragging === row.accountId} data-testid="usage-limit-provider" data-provider={row.providerId} data-account-id={row.accountId}>
+      <!-- The logo below is the focusable handle; the header only widens where a press starts a drag. -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <header class:reorderable={!!onreorder && !reorder.saving}
+        onpointerdown={(event) => { if (!(event.target as Element).closest('.bell')) reorder.start(event, row.accountId); }}>
+        {#if onreorder}
+          <button type="button" class="logo handle" title={fill(strings.quotas.reorder, { name })} aria-label={fill(strings.quotas.reorder, { name })}
+            aria-keyshortcuts="ArrowUp ArrowDown Home End" disabled={reorder.saving} data-testid="usage-limit-reorder"
+            onkeydown={(event) => reorder.keyboard(event, row.accountId)}><ProviderLogo providerId={row.providerId} size={22} /></button>
+        {:else}
+          <span class="logo" title={row.providerName}><ProviderLogo providerId={row.providerId} size={22} /></span>
+        {/if}
         <div class="identity">
-          <strong title={name}>{name}</strong>
+          <strong class="name" title={name}>{name}</strong>
           {#if row.gateway && (row.gateway.plan || row.gateway.status !== 'ready')}
             <span class="badges">
               {#if row.gateway.plan}<span class="badge" data-testid="usage-limit-plan"><span class="ui-label">{row.gateway.plan}</span></span>{/if}
@@ -115,6 +138,14 @@
   .provider { display: grid; align-content: start; gap: 20px; margin: 0; padding: var(--settings-padding); background: linear-gradient(145deg, var(--color-surface-2), var(--color-surface)); }
   header { display: flex; align-items: center; gap: 11px; min-width: 0; }
   .logo { display: grid; place-items: center; flex: none; width: 38px; height: 38px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface-3); }
+  .handle { padding: 0; color: inherit; }
+  .handle:disabled { opacity: 1; }
+  /* A held card, as the popup's held row. */
+  .provider.dragging { outline: 1px solid var(--color-muted-foreground); background: var(--color-active); }
+  header.reorderable { cursor: grab; }
+  .dragging header { cursor: grabbing; }
+  /* On a touch screen the name is the grip; the rest of the card scrolls the page. */
+  header.reorderable .name { touch-action: none; }
   .identity { flex: 1; min-width: 0; display: grid; gap: 3px; }
   .bell { flex: none; align-self: flex-start; color: var(--color-muted-foreground); }
   .bell.set { color: var(--color-foreground); }

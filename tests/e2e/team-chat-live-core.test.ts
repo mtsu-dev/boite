@@ -63,11 +63,12 @@ test('the owner finds a team on the Bots page on a desktop and a phone, reads it
     const told = await boiteAs(harness, jeuxThread, ['team', 'dm', 'Skollheim', 'owner', 'Entre nous : le budget est serré.']);
     expect([said.code, said.err, told.code, told.err]).toEqual([0, '', 0, '']);
 
-    // Desktop: the app rail shows the team after the bots, its chat unread.
+    // Desktop: the app rail shows the team after the bots, its chat unread: a news mark on its
+    // picture, and its name read out with "nouvelles réponses".
     const pin = railTeam(team.id);
-    const unread = `document.querySelector('${pin}')?.closest('.slot')?.classList.contains('unread')`;
+    const unread = `!!document.querySelector('${pin} .badge .news')`;
     await page.waitFor(`${unread} === true`);
-    expect(await page.evaluate(`document.querySelector('${pin}').getAttribute('aria-label')`)).toBe('Skollheim');
+    expect(await page.evaluate(`document.querySelector('${pin}').getAttribute('aria-label')`)).toBe('Skollheim, nouvelles réponses');
     await page.settleAnimations();
     await page.screenshot(join(import.meta.dir, '.artifacts', 'team-chat-bots-desktop.png'));
     await page.click(pin);
@@ -79,7 +80,7 @@ test('the owner finds a team on the Bots page on a desktop and a phone, reads it
     expect([await page.text('[data-testid=team-title]'), await page.text('[data-testid=team-room]')]).toEqual(['Skollheim', 'Salon d\'équipe · 2 bots et vous']);
     // Opened, the chat reads as read, and its picture in the rail is the open one.
     await page.waitFor(`${unread} === false`);
-    expect(await page.evaluate(`document.querySelector('${pin}').getAttribute('aria-current')`)).toBe('page');
+    expect(await page.evaluate(`[document.querySelector('${pin}').getAttribute('aria-current'), document.querySelector('${pin}').getAttribute('aria-label')]`)).toEqual(['page', 'Skollheim']);
 
     // A post that names nobody wakes the whole team, bot by bot as @tous would.
     await page.type('[data-testid=team-composer-input]', 'Où en est-on ?');

@@ -239,10 +239,15 @@ test('dock reserves rail space above the foot and leaves the final thread reacha
     const base = store.threads.find(thread => thread.id === 't-trace');
     store.threads = [...store.threads, ...Array.from({ length: 24 }, (_, i) => ({ ...base, id: 'pinned-list-' + i, title: 'Fixture thread ' + String(i + 1).padStart(2, '0'), updatedAt: base.updatedAt - (i + 1) * 1000 }))];
   })()`);
+  // A big project card folds its quiet threads under "N more" (lib/card-fold.ts): unfold them so the list overflows.
+  await page.waitFor(`document.querySelector('[data-testid="sidebar"] [data-testid="project-more"][aria-expanded="false"]')`);
+  await page.evaluate(`document.querySelectorAll('[data-testid="sidebar"] [data-testid="project-more"][aria-expanded="false"]').forEach(button => button.click())`);
+  await page.waitFor(`document.querySelectorAll('[data-project-list] [data-testid="thread-row"]').length > 24`);
   await move('dock');
   expect(await page.evaluate(`(() => {
     const q = document.querySelector('${card}'), list = document.querySelector('[data-project-list]');
-    const foot = q.parentElement.querySelector('.foot');
+    // The desktop rail's foot is the limits line (QuotaLine.svelte) since the redesign.
+    const foot = q.parentElement.querySelector(':scope > .quota-line');
     return !list.contains(q) && q.previousElementSibling === list && q.nextElementSibling === foot
       && list.getBoundingClientRect().bottom <= q.getBoundingClientRect().top
       && q.getBoundingClientRect().bottom <= foot.getBoundingClientRect().top;

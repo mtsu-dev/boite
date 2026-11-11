@@ -9,8 +9,14 @@ export const screensSettled = `!document.getAnimations().some(animation => /^(sc
 /** From a conversation, which hides the bottom bar, Back leads to the list that shows it. */
 export async function toMobileList(page: BrowserPage): Promise<void> {
   if (await page.evaluate(`!!document.querySelector('[data-testid=mobile-tabs]')`)) return;
-  // Settings is a page over a list: its arrow leads back there.
-  await page.click(await page.evaluate(`!!document.querySelector('[data-testid=mobile-settings-leave]')`) ? '[data-testid=mobile-settings-leave]' : '[data-testid=mobile-back]');
+  // Settings is a page over the place it was opened from (MobileNavigation.svelte leaveSettings): its arrow leads back
+  // there, to the list or to the conversation it covered, whose own arrow then leads to the list.
+  if (await page.evaluate(`!!document.querySelector('[data-testid=mobile-settings-leave]')`)) {
+    await page.click('[data-testid=mobile-settings-leave]');
+    await page.waitFor(`document.querySelector('[data-testid=mobile-tabs], [data-testid=mobile-back]')`);
+    if (await page.evaluate(`!!document.querySelector('[data-testid=mobile-tabs]')`)) return;
+  }
+  await page.click('[data-testid=mobile-back]');
   await page.waitFor(`document.querySelector('[data-testid=mobile-tabs]')`);
 }
 

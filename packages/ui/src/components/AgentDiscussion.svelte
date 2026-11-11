@@ -224,10 +224,11 @@
   .msg.first { margin-top: 10px; }
   .msg.right { align-self: flex-end; align-items: flex-end; }
   .label { margin: 0 6px 3px; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; }
-  .bubble { max-width: 100%; padding: 7px 11px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface-2); color: var(--color-foreground); transition: box-shadow var(--dur-3) var(--ease-out-quint); }
+  /* What reaches the agent wears the user's prompt bubble; its own words take the soft tint, on either theme. */
+  .bubble { max-width: 100%; padding: 7px 11px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-active); color: var(--color-foreground); transition: box-shadow var(--dur-3) var(--ease-out-quint); }
   .msg .bubble { border-bottom-left-radius: var(--radius-sm); }
   .msg:not(.first) .bubble { border-top-left-radius: var(--radius-sm); }
-  .msg.right .bubble { border-color: var(--color-edge); border-bottom-left-radius: var(--radius-lg); border-bottom-right-radius: var(--radius-sm); background: var(--color-accent-soft); }
+  .msg.right .bubble { border-bottom-left-radius: var(--radius-lg); border-bottom-right-radius: var(--radius-sm); background: var(--color-surface-2); }
   .msg.right:not(.first) .bubble { border-top-left-radius: var(--radius-lg); border-top-right-radius: var(--radius-sm); }
   .msg.resident .bubble { border-color: color-mix(in oklch, var(--color-resident) 45%, transparent); border-left: 2px solid var(--color-resident); background: var(--color-resident-soft); }
   .msg.resident .label { color: var(--color-resident); }

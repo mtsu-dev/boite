@@ -153,10 +153,11 @@
     if (!anchor || !viewport?.isConnected || pinned || navigationTarget || promptTarget) return;
     const delta = anchors.drift(viewport, anchor);
     if (delta === null) return;
-    if (Math.abs(delta) > 1) { viewport.scrollTop += delta; scrollTop = viewport.scrollTop; }
+    // A held row was read to the fraction: rounding to the nearest pixel leaves it at most half a pixel off.
+    if (Math.abs(delta) > (anchors.held ? 0.5 : 1)) { viewport.scrollTop += delta; scrollTop = viewport.scrollTop; }
     anchors.current = anchor;
   }
-  function releaseAnchor() { anchors.restoring = false; }
+  function releaseAnchor() { anchors.restoring = false; anchors.held = false; }
   onMount(() => {
     // Capture the settled layout before a navigation click removes this list.
     document.addEventListener('pointerdown', rememberAnchor, true);
@@ -174,6 +175,21 @@
     while (store.readingPositions.size > 32) store.readingPositions.delete(store.readingPositions.keys().next().value!);
   });
   let viewHeight = $state(savedReading?.height ?? 0);
+  /**
+   * What lies under the last row inside the viewport: its bottom padding and
+   * the fade at its end, which takes its own room in the flow (styles below).
+   * Read from the styles, which give it 18 px where scroll timelines exist and
+   * 20 px elsewhere: a fixed 20 left a sent prompt 2 px under its inset.
+   */
+  let endRoom = $state(20);
+  function readEndRoom(box: HTMLElement): void {
+    const padding = parseFloat(getComputedStyle(box).paddingBottom);
+    // No layout to read (a test DOM): the 20 px of the styles without scroll timelines stand.
+    if (!Number.isFinite(padding)) return;
+    const fade = getComputedStyle(box, '::after');
+    const inFlow = fade.content !== 'none' && fade.position !== 'absolute' && fade.position !== 'fixed';
+    endRoom = padding + (inFlow ? (parseFloat(fade.height) || 0) + (parseFloat(fade.marginTop) || 0) : 0);
+  }
   let navigationTarget = $state<string | null>(null);
   let failureTarget = $state<{ id: string } | null>(null);
   let promptTarget = $state<string | null>(savedReading?.followPrompt ?? null);
@@ -260,7 +276,7 @@
     if (at < 0) return 0;
     const total = totals(rows);
     const content = (total[rows.length] ?? 0) - (total[at] ?? 0) - GAP;
-    return Math.max(0, viewHeight - promptInset - 20 - content);
+    return Math.max(0, viewHeight - promptInset - endRoom - content);
   });
 
   function promptTop(id: string): number {
@@ -383,6 +399,7 @@
       const node = entry.target as HTMLElement;
       if (node === box) {
         viewHeight = node.clientHeight;
+        readEndRoom(node);
         continue;
       }
       const id = node.dataset['mid'];
@@ -465,6 +482,7 @@
       }
     }
     viewHeight = box.clientHeight;
+    readEndRoom(box);
     scrollTop = box.scrollTop;
     if (typeof ResizeObserver === 'undefined') return;
     let frame = 0;
@@ -513,6 +531,7 @@
     const distance = height - box.scrollTop - box.clientHeight, closer = distance < scrolledGap - 1; scrolledGap = distance;
     // Pulled up by a finger or the scrollbar thumb, the list leaves the bottom as the wheel does.
     if (hold.held && box.scrollTop < scrollTop - 1) leftBottom = true;
+    anchors.release(box);
     const relaid = edge.relaid(box), moved = edge.moved(box);
     // `scrollTop` lags the observer's follows; the edge alone counts this list's own corrections.
     const rose = moved < -1, descended = moved > 1 && box.scrollTop > scrollTop + 1;
@@ -576,7 +595,7 @@
   $effect(() => { void [measured, store.loadingRange, rows, viewHeight, pinned, scrollTop]; asked.soon(() => { if (!gapped.gaps.length || store.loadingRange || glide.active || lifting) return null; const total = totals(rows), reach = Math.max(LOAD_AT, viewHeight * (pinned ? 1 : READ_AHEAD)), top = pinned ? (total[rows.length] ?? 0) - viewHeight : scrollTop;
     return { top, range: wantedRange(total, gapped.gaps, top - reach, top + viewHeight + reach, MESSAGE_PAGE) }; }, ({ from, limit, below }) =>
       // A page landing above the reader can weigh more than its gap: the row at the top of the view stays where it was, drawn.
-      loadKeepingReader(landing => store.loadRange(from, limit, landing, below), () => pinned ? undefined : viewport, kept => { const total = totals(rows), at = slots.indexOf(rows, kept.id); if (at >= 0) scrollTop = Math.max(0, (total[at] ?? 0) - kept.offset); }, tick, top => { scrollTop = top; })); });
+      loadKeepingReader(landing => store.loadRange(from, limit, landing, below), () => pinned ? undefined : viewport, kept => { const total = totals(rows), at = slots.indexOf(rows, kept.id); if (at >= 0) scrollTop = Math.max(0, (total[at] ?? 0) - kept.offset); anchors.hold({ ...kept, message: anchors.nodes.get(kept.id)?.dataset['message'] ?? kept.id }); }, tick, top => { scrollTop = top; })); });
   // A list too short to scroll asks for the pages beside it, again after each lands (`fillShort`).
   $effect(() => { void rows.length; void viewHeight; fillShort(viewport, store.openThread?.id === threadId, () => !!(navigationTarget || promptTarget), LOAD_AT, box => { loadAbove(box); pullNewer(store, box, LOAD_AT); }); });
 

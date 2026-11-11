@@ -38,8 +38,11 @@ test('project picker browses folders, opens a draft, and fits a phone', async ()
 test('an unreachable remembered machine appears as a problem without counting as connected', async () => {
   const port = await freePort();
   await page.evaluate(`import('/src/lib/workspace.svelte.ts').then(({workspace}) => { void workspace.add({url:'http://127.0.0.1:${port}',token:'test-only',paired:false}, 'Build server'); })`);
-  await page.waitFor(`document.querySelector('[data-testid=status-connection]')?.classList.contains('problem')`, 15_000);
-  // The footer draws one warning icon and no words; its label counts the machine in trouble.
+  // One status grammar: the machine out of reach puts the offline ring on the rail's monitor (MachineStatus.svelte),
+  // while this PC still answers, so the monitor is not crossed out.
+  await page.waitFor(`!!document.querySelector('[data-testid=status-connection] [data-testid=machine-offline]')`, 15_000);
+  expect(await page.evaluate(`!!document.querySelector('[data-testid=status-connection] [data-testid=machine-online]')`)).toBe(false);
+  // The rail draws one icon and no words; its label counts the machine in trouble.
   expect(await page.evaluate(`document.querySelector('[data-testid=machine-status]').getAttribute('aria-label')`)).toContain('1 need attention');
   await page.click('[data-testid=machine-status]');
   await page.waitFor(`document.querySelector('[data-testid=status-connection]')?.textContent.includes('Build server')`);
