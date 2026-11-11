@@ -88,8 +88,9 @@ export function trimProfile(profileDir: string): void {
  * MIT License), and the frames a viewer is sent follow its method
  * (`push-stream.ts`). A screencast ignores the device scale DevTools
  * emulates, so only a real factor of 2 gives sharp frames. Without a GPU
- * Chromium draws pages on the CPU and WebGL with SwiftShader, on the CPU
- * too: a heavy WebGL page costs processor time it did not cost before.
+ * Chromium draws pages on the CPU and WebGL with a software renderer
+ * (SwiftShader on Linux, Direct3D's Basic Render Driver on Windows): a
+ * heavy WebGL page takes several cores and draws fewer frames than before.
  *
  * Sites turn away a browser that says it is automated, so it says what the
  * same browser says with a window. `userAgent` replaces the one that names

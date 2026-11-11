@@ -44,9 +44,9 @@ MIT License), whose way of sending a page to a viewer Boite follows
 DevTools emulates, so only a real factor of 2 gives a dense screen sharp
 frames, and a headless browser that composites on the CPU draws the same
 pictures on a machine with a GPU, a weak one or none. Pages draw on the CPU,
-and WebGL runs on SwiftShader, on the CPU too, or is refused by a Chromium
-that no longer falls back to it: a heavy WebGL page costs processor time it
-did not cost when the browser used the GPU
+and WebGL runs on a software renderer, on the CPU too (SwiftShader on Linux,
+Direct3D's Basic Render Driver on Windows): a heavy WebGL page takes several
+cores and draws far fewer frames than when the browser used the GPU
 ([performance](performance.md#a-remote-browser-view)). A page sees
 `devicePixelRatio` 2, as on a laptop with a dense screen. The agent's
 screenshots stay in CSS pixels: the browser shrinks them itself
@@ -804,8 +804,24 @@ and through the DOM when a button is drawn over the frame. The desktop app's
 relay of frames is not covered.
 `tests/e2e/agent-browser-core.test.ts` runs the whole path on a real core: the
 owner's desktop at 1280 × 900 and a paired phone at 390 × 844 see the cover,
-show the page and tap it, and the tap reaches the page. `browser-remote.test.ts`
-covers the same views on the fake client.
+show the page and tap it, and the tap reaches the page; both views are pushed
+the page on the stream's socket, and the desktop's keeps it across the resize
+that fits the page to it. `browser-remote.test.ts` covers the same views on
+the fake client.
+`browser-push-stream.test.ts` plays Chromium's screencast against the stream:
+the still that opens it, acknowledgements held to the pace, half-size pictures
+only while the viewer scrolls and the still that follows, the queue of 64 and
+the single picture on the wire. `browser-stream.test.ts` opens the socket on a
+real core and browser: a ticket opens one socket and an unknown one none, the
+pictures arrive as binary at the width the viewer shows, a page at rest sends
+nothing yet takes input, a held acknowledgement holds the next pictures back,
+the stream ends with the tab, the subscription or the connection,
+`browser.remoteFrame` still answers a client from before the stream beside it,
+and a phone paired with another machine of the group is pushed the frames
+through that machine's relay. `ws-client.test.ts` checks the binary socket
+that relay opens. In the UI, `RemoteBrowser.test.ts` and `client.test.ts`
+check the canvas, the decode of one picture at a time and the return to
+polling on a core that announces no stream.
 The same tests pass on the Linux, Windows and macOS CI jobs. Reading a
 WebView2 profile's cookies in the Windows shell is covered by unit tests of
 the bridge with the shell stubbed, not by a run on Windows.
