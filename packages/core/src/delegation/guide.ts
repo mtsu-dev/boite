@@ -30,7 +30,7 @@ export const DELEGATION_WORDS = /delegat|d[ée]l[èée]gu|sub-?agent|sous-agent|
 
 const WORKFLOW_LINE = 'Workflow (steps with dependencies): boite workflow help, then boite workflow check plan.json and boite workflow run plan.json. "forEach" runs a step per item, "when" skips one, "repeat" reruns steps until a condition holds, boite workflow extend <run-id> <steps> adds steps. Steps run on this conversation\'s model unless they set "model"/"effort". Report the run ID; results return in one message.';
 /** Only while the Council experiment is on (`docs/council.md`). */
-const COUNCIL_LINE = 'Council (models of three providers review one request alone and read-only, each with a score; you summarize, fix and ask again): when the user says council, read the boite-council skill, then boite delegate council "<request>". Code or anything else, with or without git. The answers return in one message.';
+const COUNCIL_LINE = 'Council (several models answer one request alone and read-only, each with a score; code or anything else, with or without git): when the user says council, read the boite-council skill, then boite delegate council "<request>". The answers return in one message.';
 export const COUNCIL_WORDS = /council|conseil d|d[ée]bat/i;
 
 /** The whole manual a parent needs, short enough for every fresh session. `machines`: this machine has others in its group; `council`: the experiment is on. */

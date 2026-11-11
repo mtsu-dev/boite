@@ -541,7 +541,7 @@ providers by default) review one request alone and read-only, each with a score
 out of 10, while the user can follow in the salon; `--timeout` sets the minutes
 a round may last, 30 by default. It returns the council id once the members'
 model lists are read, up to a minute when none is saved yet; the answers
-and the table arrive as one message, `council again` asks for a fresh round,
+and the table arrive as one message, `council again` asks for one more round,
 `council table` prints the scores, `delegate list` shows the council and
 `delegate stop <council-id>` stops it. It needs no git and no pull request
 ([council](council.md)). `delegate debate` starts nothing and points here.

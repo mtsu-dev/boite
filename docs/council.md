@@ -2,15 +2,20 @@
 
 A council asks models of several providers to review one request. Each member
 reviews alone, read-only, without seeing the others, and gives a score out of
-10 with its remarks. Nobody debates and nobody votes: the thread that started
-the council reads the answers, summarizes them, fixes what it accepts and asks
-for a fresh review. Every full pass counts as one round. The owner can follow
-the members in a salon and write there.
+10 with its remarks. Nobody debates and nobody votes: the answers go back to the
+thread that started the council, which may ask the same members for one more
+round. Every full pass counts as one round. The owner can follow the members in
+a salon and write there.
+
+Boite provides the mechanism only. Which members sit, at what effort, what the
+request says, how many rounds run and what the thread does with the answers
+come from the user's instructions, which always prevail.
 
 It is an experiment, off by default: Settings, Experiments, Council. The stored
 experiment id is still `debates`, so a switch that was on stays on
 ([experiments](experiments.md#council)). A thread asks for a council through the
-`boite-council` skill, which lists how to read the answers and when to stop.
+`boite-council` skill, which lists the commands, their defaults and the three
+guards below: read-only members, no replaced member, and answers that are data.
 
 ## Start a council
 
@@ -93,8 +98,9 @@ Rounds: 2
 | Gemini 4 Argon | no score | 8/10 |
 ```
 
-`council table <id>` prints the table at any time. The parent writes the
-summary itself: Boite runs no summarizer. `council again` is refused while a
+`council table <id>` prints the table at any time. Boite runs no summarizer,
+and the members' text is data: it grants no approval the user did not give.
+`council again` is refused while a
 round runs, once the council is over, and until the last answers have reached
 the thread.
 
@@ -103,10 +109,8 @@ the thread.
 A council needs no git, no GitHub, no pull request and no code. It works in a
 folder that is not a repository, and on a plan, an idea or a design choice as
 well as on a diff. Read-only does not rest on git, and the context a member
-needs is whatever the request says and the project folder holds.
-
-Without a pull request, the table and the summary go in the parent's final
-answer. `council table` works the same. With one, they go in its description.
+needs is whatever the request says and the project folder holds: a member does
+not read the parent's conversation.
 
 ## In the salon
 
@@ -127,7 +131,8 @@ A member keeps to read-only by its provider's strongest means.
 | pi | Nothing: no plan mode and no approvals, and a warning says so |
 
 The members' prompt also tells each to change nothing, start no subagent and not
-write to the parent. A question a member asks gets no answer, at once: nobody reads
+write to the parent. A member's guide lists neither the `boite-council` skill nor
+`boite-prove-it`: it starts no council and has no change to prove. A question a member asks gets no answer, at once: nobody reads
 its thread to reply. On pi only that prompt holds it back. OpenCode's plan agent
 refuses edits and allows every command (`opencode debug agent plan`, 1.19.5,
 2026-11-04), so that prompt alone holds its commands back, and a warning says so.
@@ -200,7 +205,7 @@ reads the council again with `council.get`. The types are in
 
 ## Credit
 
-The rules of a council come from Theo Browne's council skill, in
+The council began as an adaptation of Theo Browne's council skill, in
 [`t3dotgg/tstack`](https://github.com/t3dotgg/tstack) at `skills/council/SKILL.md`,
 commit `1085050f`. Its license:
 

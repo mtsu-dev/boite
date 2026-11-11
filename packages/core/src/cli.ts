@@ -216,14 +216,14 @@ ${PLUGIN_HELP}
                                  --machine <name> runs it on another machine of the
                                  group, in its project named like yours or --project
   delegate list                  every subagent, workflow and council: state, model, time
-  delegate council <request>     with the Council experiment: models of three providers
-                                 review it alone, read-only, each with a score out of
-                                 10, on code or anything else, with or without git; the
-                                 answers come back as one message (--models <a>,<b>[,...]
+  delegate council <request>     with the Council experiment: several models answer it
+                                 alone, read-only, each with a score out of 10, on code
+                                 or anything else, with or without git; the answers
+                                 come back as one message (--models <a>,<b>[,...]
                                  from delegate models, --effort <level> (xhigh),
                                  --timeout <minutes per round> (30))
   delegate council again <id> <what changed>
-                                 a fresh review by the same members, from zero
+                                 one more round: the same members, from zero
   delegate council table <id>    the "Council review" section with every round's scores
   delegate send <thread-id> <text>
                                  steer or reuse a subagent, or ask the parent;
