@@ -117,6 +117,8 @@ export class SharedNativeExecution {
       const current = this.#input(id);
       if (!current || this.key(current, id) !== key) throw refused('execution.scope: captured host selection, claim, grant or read exception changed');
     };
+    // A desktop opened before the protection runs its apps outside it: it goes, like the thread's processes.
+    await this.#core.desktops.stop({threadId: id});
     await this.#core.procs.protection.install(id, input, check);
     const execution = protectedTools(this.#core.procs, id, check, paths => {
       for (const path of paths) changed.set(path, existsSync(join(input.checkout, path)) ? policyFile(input.checkout, path).identity : null);
