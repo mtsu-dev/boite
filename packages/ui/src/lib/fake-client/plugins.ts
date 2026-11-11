@@ -111,7 +111,10 @@ export class FakePlugins {
       return structuredClone(this.#pluginPools[plugin.id] ?? []);
     },
     'plugins.accountAction': (params) => {
-      const pools = this.#pluginPools[this.#requirePlugin(params.id).id] ?? [];
+      const plugin = this.#requirePlugin(params.id);
+      if (plugin.status !== 'installed') throw new RpcFailure({ code: RpcErrorCode.Refused, message: `Install ${plugin.id} first.` });
+      if (plugin.enabled === false) throw new RpcFailure({ code: RpcErrorCode.Refused, message: `${plugin.id} is turned off. Turn it on in Settings > Plugins first.`, data: { id: plugin.id, enabled: false } });
+      const pools = this.#pluginPools[plugin.id] ?? [];
       const pool = pools.find((pool) => pool.provider === params.provider);
       if (pool && params.action === 'switch') for (const account of pool.accounts) account.active = account.email === params.email;
       if (pool && params.action === 'remove') pool.accounts = pool.accounts.filter((a) => a.email !== params.email);

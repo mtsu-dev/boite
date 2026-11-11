@@ -33,8 +33,9 @@ description or author) and a filter: All, On or Off.
 - The gear opens the plugin's dialog: its [settings](#settings), what its
   token may call (Authorizations, whose Edit opens the grant editor of
   [Consent and grants](#consent-and-grants)), where it comes from, its updates, its pools,
-  its desktop app or gateway with Start, Stop and Restart, and Uninstall. On a
-  phone it is a bottom sheet.
+  its interface state with Reload interface ([Interface](#interface)), its desktop
+  app or gateway with Start, Stop and Restart, and Uninstall. On a phone it is a
+  bottom sheet.
 
 A plugin installed as recommended that a later Boite no longer lists, such as
 kebacc-switcher before 2026-10-16, stays in the grid with its pools until the
@@ -42,16 +43,17 @@ owner uninstalls it; it no longer receives updates.
 
 Plugins are administration of the machine that hosts the core, so every
 `plugins.*` method is owner only, except `plugins.command`, which an agent
-calls to run a plugin's command ([Agent commands](#agent-commands)), and
-`plugins.settings.get`, which a plugin calls for its own settings. The owner's
-phone has the same page under Settings > Plugins; a paired device has none.
+calls to run a plugin's command ([Agent commands](#agent-commands)),
+`plugins.settings.get`, which a plugin calls for its own settings, and
+`plugins.ui`, which every client reads to draw the interfaces ([Interface](#interface)).
+The owner's phone has the same page under Settings > Plugins; a paired device has none.
 
 ### Turning a plugin off
 
 The switch on a card turns an installed plugin off without uninstalling it
 (`plugins.setEnabled`). Off stops its desktop app, service and gateway, revokes
-its token (its sockets close), and drops its commands, skills, guide lines and
-slash commands. Its files, data directory and settings stay. On starts again
+its token (its sockets close), unloads its interface, and drops its commands,
+skills, guide lines and slash commands. Its files, data directory and settings stay. On starts again
 what it runs. The core keeps the choice across restarts. `PluginState.enabled` is `false` while
 it is off; an older core leaves the field out, and every installed plugin is on.
 
