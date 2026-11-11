@@ -42,10 +42,11 @@ export const fr: Translation = {
     notificationsHeading: 'Notifications',
     homeOn: 'Activée',
     homeOff: 'Désactivée',
+    appearanceAndLanguage: 'Apparence et langue',
     effects: {
-      groupWorking: 'Les conversations au travail se replient, et les projets tout au travail passent en haut, dans En cours',
+      groupWorking: 'Les conversations au travail se replient sous En cours, celles qui vous attendent restent en vue',
       groupIdle: 'Les projets sans rien à faire se replient dans Projets inactifs, en fin de liste',
-      groupChanges: 'Les modifications se rangent dans les étapes du tour, et ses fichiers modifiés s\'affichent pendant qu\'il tourne',
+      groupChanges: 'Les modifications rejoignent les autres étapes du tour au lieu d\'avoir chacune sa ligne',
       expandDiffs: 'Chaque modification montre son diff ouvert, sans clic',
       openChatLinks: 'Un lien de fichier ou de dossier s\'ouvre dans son application',
       notifications: 'Une alerte quand une conversation que vous ne regardez pas a besoin de vous',

@@ -42,11 +42,13 @@ export const strings = {
     /** A phone's Settings home: what Voice holds now, before its chevron. */
     homeOn: 'On',
     homeOff: 'Off',
+    /** A phone's Settings row and page that hold the theme and the language. */
+    appearanceAndLanguage: 'Appearance and language',
     /** The muted line under a switch: what turning it on does. */
     effects: {
-      groupWorking: 'Working threads fold away, and projects all at work list under Working, on top',
+      groupWorking: 'Threads at work fold under Working, so the ones that need you stay in view',
       groupIdle: 'Projects with nothing to do fold into Idle projects at the end of the list',
-      groupChanges: 'Edits fold into the turn\'s steps, and its changed files list while it runs',
+      groupChanges: 'Edits join the turn\'s other steps instead of each standing on its own row',
       expandDiffs: 'Each edit shows its diff open, without a click',
       openChatLinks: 'A file or folder link opens in its own app',
       notifications: 'An alert when a thread you are not looking at needs you',

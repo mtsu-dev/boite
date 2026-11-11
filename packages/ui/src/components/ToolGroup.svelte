@@ -238,6 +238,9 @@
     font-size: var(--instrument-size);
     line-height: var(--instrument-leading);
     font-weight: 400;
+    /* No body tracking on the run's line: where glyphs land on whole pixels (Chrome on Linux), the
+       -0.006em drift rounds a pixel out of a space every few glyphs ("Ran 1 command" shows as "Ran 1command"). */
+    letter-spacing: normal;
     justify-content: flex-start;
   }
 

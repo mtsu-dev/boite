@@ -51,6 +51,8 @@ export const strings = {
     waitingMixed: 'Waiting on {count} subagents and workflows',
     waitingStop: 'Stop',
     waitingStopHint: 'Stop the subagents and workflows this conversation waits on',
+    /** The same line while a question takes the field and the turn runs: the turn's Stop, out of the field's button. */
+    waitingStopTurn: 'Stop the agent',
     showTeam: 'View subagents',
     stoppedStatus: 'Stopped',
     failedStatus: 'Failed',

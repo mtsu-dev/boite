@@ -14,9 +14,10 @@
    * the turn and the queued prompts (`ComposerQueue`). It grows upward: the
    * field under it never moves. On a phone, at rest, the waiting line and the
    * held rows fold into one line ("3 working · 1 queued") that a tap unfolds;
-   * the decision row stays apart.
+   * the decision row stays apart. While a question takes the field during a
+   * turn, the field's button is Send alone, so the turn's Stop is on this line.
    */
-  let { store, key, thread, composer, blocked, alone = false, machine, sendNow, onrestore, onsendnow }: {
+  let { store, key, thread, composer, blocked, alone = false, stopsTurn = false, machine, sendNow, onrestore, onsendnow }: {
     store: Store;
     key: string;
     thread: Store['openThread'];
@@ -25,6 +26,8 @@
     blocked: boolean;
     /** No card under it (a notice stands in the box's place): the foot closes on its own edge. */
     alone?: boolean;
+    /** A question takes the field while the turn runs: the waiting line carries the turn's Stop, alone ("Working") or with what it waits on. */
+    stopsTurn?: boolean;
     machine: string;
     sendNow: 'steer' | 'resume' | null;
     onrestore: (at: number) => void;
@@ -48,7 +51,7 @@
 
 <div class="foot" class:alone data-testid="composer-foot">
   {#if permission}{#await import('./DecisionPill.svelte') then pill}<pill.default {permission} answer={(decision: 'allow' | 'deny') => store.answer(permission.id, decision)} />{/await}{/if}
-  {#if thread}<AgentDock {store} threadId={thread.id} bind:waiting held={foldable ? heldCount : 0} {folded} ontoggle={() => (unfolded = !unfolded)} />{/if}
+  {#if thread}<AgentDock {store} threadId={thread.id} turn={stopsTurn} bind:waiting held={foldable ? heldCount : 0} {folded} ontoggle={() => (unfolded = !unfolded)} />{/if}
   {#if answers || queued}
     <div class="held" data-testid="composer-held" hidden={folded}>
       {#if answers}

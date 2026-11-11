@@ -1472,7 +1472,7 @@ test('a picture tile draws a small thumbnail, the preview the bytes by URL, both
 
 /** The field while a question at the top of the box takes a written answer beside its options: Send answers it. */
 const ANSWER_PLACEHOLDER = strings.composer.answerPlaceholder;
-const ANSWER_LABEL = 'Send the answer';
+const ANSWER_LABEL = 'Send as your answer';
 
 /** The question's card at the end of the timeline. */
 function pendingCard(): HTMLElement {
@@ -1524,6 +1524,35 @@ test('a waiting question takes the composer as its free answer, with the card pi
   expect(chips()).toHaveLength(0);
   await waitFor(() => !store.busy && document.querySelector('[data-testid=composer-reply]') === null);
   expect(input().placeholder).not.toBe(ANSWER_PLACEHOLDER);
+  expect(call.mock.calls.filter(([method]) => method === 'turns.start')).toHaveLength(0);
+});
+
+test('while a question takes the field during a turn, its round button is Send alone and the foot\'s line holds Stop', async ({ app: _app }) => {
+  await store.open('t-trace');
+  await send('check this [ask]');
+  await waitFor(() => document.querySelector('[data-testid=composer-reply]') !== null);
+  store.openThread!.status = 'running';
+  flushSync();
+  // No Stop in the field: an empty field shows the send arrow, resting.
+  expect(document.querySelector('[data-testid=composer-stop]')).toBeNull();
+  const sendButton = query<HTMLButtonElement>('[data-testid=composer-send]');
+  expect(sendButton.classList.contains('resting')).toBe(false);
+  expect(sendButton.disabled).toBe(true);
+  expect(sendButton.getAttribute('aria-label')).toBe(ANSWER_LABEL);
+  // The turn's Stop is on the foot's waiting line, said as Working.
+  await waitFor(() => document.querySelector('[data-testid=agent-dock-stop]') !== null);
+  expect(query('[data-testid=agent-dock-label]').dataset.text).toBe(strings.chat.working);
+  const stop = vi.spyOn(store, 'stop').mockResolvedValue(undefined as never);
+  query<HTMLButtonElement>('[data-testid=agent-dock-stop]').click();
+  await waitFor(() => stop.mock.calls.length === 1);
+  stop.mockRestore();
+  // Typed words make it live, and it sends them as the answer, never as a turn.
+  await type('port 4000');
+  expect(query<HTMLButtonElement>('[data-testid=composer-send]').disabled).toBe(false);
+  const call = vi.spyOn(store.client!, 'call');
+  query<HTMLButtonElement>('[data-testid=composer-send]').click();
+  await waitFor(() => call.mock.calls.some(([method]) => method === 'questions.answer'));
+  expect(call.mock.calls.find(([method]) => method === 'questions.answer')?.[1]).toMatchObject({ text: 'port 4000' });
   expect(call.mock.calls.filter(([method]) => method === 'turns.start')).toHaveLength(0);
 });
 

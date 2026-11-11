@@ -71,6 +71,24 @@ test('new questions leave the current question and selection in place, then answ
   expect(shownQuestion()).toBe('newest');
 });
 
+test('with two questions the first one\'s primary reads Next and pages to the second, which reads Answer', async () => {
+  const store = render();
+  flushSync(() => { store.pendingQuestions = [question('first', 1), question('second', 2)]; });
+  const submit = () => document.querySelector<HTMLButtonElement>('[data-testid=activity-question]:not([hidden]) [data-testid=question-submit]')!;
+  expect(shownQuestion()).toBe('first');
+  expect(submit().textContent).toBe('Next');
+  vi.spyOn(store, 'answerQuestion').mockImplementation(async (_thread, id) => {
+    store.pendingQuestions = store.pendingQuestions.filter(q => q.id !== id);
+    return true;
+  });
+  document.querySelector<HTMLButtonElement>('[data-testid=activity-question]:not([hidden]) [data-testid=question-option]')!.click();
+  flushSync();
+  submit().click();
+  await vi.waitFor(() => expect(shownQuestion()).toBe('second'));
+  flushSync();
+  expect(submit().textContent).toBe('Answer');
+});
+
 test('a card holds its own thread\'s questions; one for another thread opens its own, unfolded', () => {
   const question = (id: string, threadId: string): QuestionRequest => ({
     id, threadId, turnId: 'turn', text: `Which way for ${threadId}?`, options: [], allowText: true, multiple: false, async: true, createdAt: 1

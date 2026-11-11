@@ -25,6 +25,7 @@
     picked = $bindable([]),
     drafted = false,
     replying = false,
+    next = false,
     submit,
     skip,
     onwrite,
@@ -40,8 +41,9 @@
     /**
      * Drawn at the top of the composer: the question once, in bold on a line
      * of its own, Skip and the fold a compact group at its end, the options as rows numbered for the keyboard
-     * (the composer's 1 to 9), then the pager, Skip and the card's own Answer: the
-     * composer's round button stays Stop while the turn runs.
+     * (the composer's 1 to 9), then the pager, Skip and the card's own Answer
+     * (Next while another question follows): the composer's round button
+     * sends what is typed as the answer.
      * A question with no options is answered from the box's Send alone.
      */
     docked?: boolean;
@@ -60,6 +62,8 @@
     drafted?: boolean;
     /** The composer is this question's free field: the card says so instead of offering it. */
     replying?: boolean;
+    /** Another question follows this one in the dock: the primary reads Next, answering this one and showing that one. */
+    next?: boolean;
     /** False when the answer did not reach the core: the card is given back to answer again. */
     submit: (optionIds: string[]) => unknown;
     /** Resolve without sending an answer. A failure leaves the card usable. */
@@ -304,7 +308,7 @@
           <button type="button" class="secondary" data-testid="question-skip" disabled={sent} onmousedown={keepFocus} onclick={pass}><span class="ui-label">{strings.chat.questionSkip}</span></button>
         {/if}
         {#if !docked || !replying || answers}
-          <button type="button" class="primary" data-testid="question-submit" disabled={sent} onmousedown={keepFocus} onclick={send}><span class="ui-label">{strings.chat.questionAnswer}</span></button>
+          <button type="button" class="primary" data-testid="question-submit" disabled={sent} title={next ? strings.chat.questionAnswerNextHint : undefined} onmousedown={keepFocus} onclick={send}><span class="ui-label">{next ? strings.chat.questionAnswerNext : strings.chat.questionAnswer}</span></button>
         {/if}
       </DecisionActions>
     {:else}

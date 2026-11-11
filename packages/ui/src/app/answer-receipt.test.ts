@@ -12,9 +12,10 @@ test('a question answered while the agent works leaves the composer and its rece
   // The agent keeps working while the question waits (`boite ask`).
   store.openThread!.status = 'running';
   query<HTMLButtonElement>('[data-testid=question-option]').click();
-  // A pick alone leaves Stop as Stop (never turned into Send): the card's own Answer sends.
+  // While a question waits, the turn's Stop lives on the foot's Working line, never in the field; the card's own Answer sends.
   await waitFor(() => document.querySelector<HTMLButtonElement>('[data-testid=question-submit]')?.disabled === false);
-  expect(document.querySelector('[data-testid=composer-stop]')).not.toBeNull();
+  expect(document.querySelector('[data-testid=composer-stop]')).toBeNull();
+  await waitFor(() => document.querySelector('[data-testid=agent-dock-stop]') !== null);
   const field = query('[data-testid=composer-input]');
   query<HTMLButtonElement>('[data-testid=question-submit]').click();
   await waitFor(() => !store.pendingQuestions.some((pending) => pending.id === question.questionId));

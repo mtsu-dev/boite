@@ -84,4 +84,16 @@
   .caret { display: inline-flex; flex: none; color: var(--color-subtle); transition: transform var(--motion-duration) var(--motion-curve); }
   .activity[aria-expanded='true'] .caret { transform: rotate(180deg); }
   @media (prefers-reduced-motion: reduce) { .caret { transition: none; } }
+  /* A phone: the heading, the time and the chevron share the first line, and the counts take the full width
+     under them, so "2 working, 1 done, 1 stopped" stays on one line beside the marks instead of three. */
+  @media (max-width: 720px) {
+    .activity { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; line-height: 18px; }
+    .words { display: contents; }
+    .glyph { grid-column: 1; grid-row: 1 / span 3; }
+    .heading { grid-column: 2; grid-row: 1; }
+    .timing { grid-column: 3; grid-row: 1; }
+    .caret { grid-column: 4; grid-row: 1; }
+    .progress { grid-column: 2 / -1; grid-row: 2; }
+    .cause { grid-column: 2 / -1; grid-row: 3; }
+  }
 </style>

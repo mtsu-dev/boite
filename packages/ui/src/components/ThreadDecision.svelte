@@ -81,9 +81,19 @@
   $effect(() => releaseWaiting(store));
   function page(step: -1 | 1) {
     const next = asked[(at + step + asked.length) % asked.length];
-    if (!next) return;
+    if (next) show(next);
+  }
+  function show(next: Asked): void {
     shownId = next.id;
     if (next.allowText && !next.secret && next.threadId === threadId && !repliesOf(store).ignored[next.id]) repliesOf(store).chosen = next.id;
+  }
+
+  /** Next answers the question on screen, then shows the one after it rather than the first left. */
+  async function answerAndPage(question: Asked): Promise<boolean> {
+    const after = asked[asked.indexOf(question) + 1];
+    const sent = await sendAnswer(store, question);
+    if (sent && after && asked.includes(after)) show(after);
+    return sent;
   }
 
   /**
@@ -197,7 +207,8 @@
             bind:picked={() => repliesOf(store).picks[question.id] ?? [], (ids) => (repliesOf(store).picks[question.id] = ids)}
             replying={reply.replying}
             drafted={reply.drafted}
-            submit={() => sendAnswer(store, question)}
+            next={question.id === shown?.id && at < asked.length - 1}
+            submit={() => answerAndPage(question)}
             skip={() => store.skipQuestion(question.threadId, question.id)}
             onwrite={child ? undefined : () => writeAnswer(store, question.id)}
             page={question.open?.url}

@@ -28,8 +28,8 @@ test('opening a thread with choices and answering them leaves the touch keyboard
   await waitFor(() => document.querySelector('[data-testid=question-option]') !== null);
   expect(typing()).toBe(false);
   query<HTMLButtonElement>('[data-testid=question-option]').click();
-  await waitFor(() => !query<HTMLButtonElement>('[data-testid=composer-send]').disabled);
-  query<HTMLButtonElement>('[data-testid=composer-send]').click();
+  await waitFor(() => !query<HTMLButtonElement>('[data-testid=question-submit]').disabled);
+  query<HTMLButtonElement>('[data-testid=question-submit]').click();
   await waitFor(() => !store.pendingQuestions.some(pending => pending.id === question.questionId));
   expect(typing()).toBe(false);
   store.startDraft(store.openThread!.projectId);

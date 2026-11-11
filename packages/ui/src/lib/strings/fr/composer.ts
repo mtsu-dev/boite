@@ -19,7 +19,7 @@ export const fr: Translation = {
     permissionPlaceholderShort: 'Écris pour refuser {subject}',
     permissionSubject: '« {title} »',
     permissionSubjectFallback: 'cette demande',
-    replySend: 'Envoyer la réponse',
+    replySend: 'Envoyer comme réponse',
     switchTitle: 'Passer une conversation de {tokens} jetons à {provider} ?',
     switchBody: "{provider} démarre une nouvelle session et reçoit des extraits du début et des échanges les plus récents, environ 20 000 jetons. Le reste lui est inaccessible. Compacter avant ne change rien.",
     switchConfirm: "Changer d'agent",

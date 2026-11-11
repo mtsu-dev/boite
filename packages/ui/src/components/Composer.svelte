@@ -779,7 +779,7 @@
   {#if !target}<ComposerStrip />{/if}
   {#if away && !stopped}<ThreadOfflineNotice {store} machine={machineLabel} />{/if}
   {#if accountGone && !botGone}<AccountGoneNotice onpick={() => void toolbar?.openChip('composer-picker')} />{/if}
-  <ComposerFoot {store} {key} {thread} {composer} machine={machineLabel} {sendNow} alone={stopped} blocked={text.length > 0 || attachments.length > 0 || previewReferences.length > 0} onrestore={restoreQueued} onsendnow={sendQueuedNow} />
+  <ComposerFoot {store} {key} {thread} {composer} machine={machineLabel} {sendNow} alone={stopped} stopsTurn={!!reply && store.busy && thread?.status !== 'waiting'} blocked={text.length > 0 || attachments.length > 0 || previewReferences.length > 0} onrestore={restoreQueued} onsendnow={sendQueuedNow} />
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="composer" class:dictating class:keys={viaKeys} class:loading={loadingThread} data-testid="composer" tabindex="-1" bind:this={shell} hidden={stopped} {ondragover} {ondrop} onkeydown={(event) => {
     if (event.target !== event.currentTarget || event.key !== 'Escape') return;

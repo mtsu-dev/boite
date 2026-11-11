@@ -24,7 +24,7 @@ export const strings = {
     /** The permission named by its short title ("Push orbit/csv-import"), cut at a word. */
     permissionSubject: '"{title}"',
     permissionSubjectFallback: 'this request',
-    replySend: 'Send the answer',
+    replySend: 'Send as your answer',
     switchTitle: 'Switch a {tokens} token thread to {provider}?',
     switchBody: '{provider} starts a new session and receives excerpts of the opening and of the most recent exchanges, about 20k tokens. The rest is lost to it. Compacting first changes nothing.',
     switchConfirm: 'Switch',

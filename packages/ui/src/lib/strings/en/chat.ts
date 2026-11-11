@@ -242,6 +242,9 @@ export const strings = {
     questionAsyncHeading: 'Needs you',
     questionAsyncHint: 'The agent keeps working. Without an answer it goes on with a default.',
     questionAnswer: 'Answer',
+    /** The primary of a question that another one follows: it answers this one and shows the next. */
+    questionAnswerNext: 'Next',
+    questionAnswerNextHint: 'Answer and go to the next question',
     questionPickFirst: 'Pick an option first',
     questionAnswered: 'You answered: {answer}',
     /** A question skipped or dropped with its turn: one line in the run, never the card again. */

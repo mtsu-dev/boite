@@ -7,9 +7,11 @@
   import { inStrip } from '../lib/one-status';
   import { wordFit } from '../lib/word-fit';
 
-  let { store, threadId, waiting = $bindable(0), held = 0, folded = false, ontoggle }: {
+  let { store, threadId, turn = false, waiting = $bindable(0), held = 0, folded = false, ontoggle }: {
     store: Store;
     threadId: string;
+    /** The line also stops the turn, and shows with nothing sent ("Working"): a question holds the field's button. */
+    turn?: boolean;
     /** How many runs the line waits on, for the foot to fold around. */
     waiting?: number;
     /** A phone's foot folds the held prompts into this line: how many, 0 when it does not fold. */
@@ -37,7 +39,7 @@
 
   let agents = $derived(active.length + native.length);
   let count = $derived(agents + runs.length);
-  let label = $derived(!runs.length
+  let label = $derived(count === 0 ? strings.chat.working : !runs.length
     ? (agents === 1 ? strings.delegation.waitingOne : fill(strings.delegation.waiting, { count: String(agents) }))
     : !agents ? (runs.length === 1 ? strings.delegation.waitingWorkflowOne : fill(strings.delegation.waitingWorkflows, { count: String(runs.length) }))
     : fill(strings.delegation.waitingMixed, { count: String(count) }));
@@ -46,7 +48,7 @@
   let names = $derived([...active.map(agent => agent.thread.title), ...native.map(agent => agent.name ?? agent.task ?? agent.id), ...runs.map(run => run.name)]);
 
   // A provider's subagent ends with the turn that runs it; a command's agent follows its own process, which Stop never kills.
-  let inTurn = $derived(native.some(agent => agent.source !== 'process') && store.openThread?.id === threadId);
+  let inTurn = $derived((turn || native.some(agent => agent.source !== 'process')) && store.openThread?.id === threadId);
   /** The machine is out of reach: the line is what it last ran, still, and nothing here can stop it. */
   let away = $derived(machineAway(store));
   let stoppable = $derived(!away && (active.length + runs.length > 0 || inTurn));
@@ -66,7 +68,7 @@
   }
 </script>
 
-{#if count > 0}
+{#if count > 0 || (turn && !away)}
   <div class="foot-row waiting" data-testid="agent-dock" data-count={agents} data-runs={runs.length} role="status">
     <span class="mark"><Spinner size={12} stale={away} /></span>
     {#if held > 0 && ontoggle}
@@ -82,7 +84,7 @@
       </span>
     {/if}
     {#if stoppable}
-      <button type="button" class="small ghost stop" data-testid="agent-dock-stop" title={strings.delegation.waitingStopHint} disabled={stopping} onclick={() => void stop()}>
+      <button type="button" class="small ghost stop" data-testid="agent-dock-stop" title={count === 0 ? strings.delegation.waitingStopTurn : strings.delegation.waitingStopHint} disabled={stopping} onclick={() => void stop()}>
         <span class="stop-mark" aria-hidden="true"></span><span class="ui-label">{strings.delegation.waitingStop}</span>
       </button>
     {/if}

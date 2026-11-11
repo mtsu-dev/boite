@@ -2,6 +2,8 @@ import { afterEach, expect, test } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import type { ToolPart } from '../lib/tool-groups';
 import ToolGroup from './ToolGroup.svelte';
+import toolGroupSource from './ToolGroup.svelte?raw';
+import toolCardSource from './ToolCard.svelte?raw';
 
 let component: ReturnType<typeof mount> | null = null;
 afterEach(() => {
@@ -29,6 +31,25 @@ test('a folded run counts every failed or denied call even after a success', () 
   document.querySelector<HTMLButtonElement>('[data-testid=tool-toggle]')!.click();
   flushSync();
   expect(document.querySelector('[data-testid=tool-output]')?.textContent).toBe('command output');
+});
+
+test('a run reads "Ran 1 command" on a line that sets its own tracking, since the body\'s rounds a pixel out of its space', () => {
+  const parts: ToolPart[] = [
+    { type: 'tool', toolId: 'one', name: 'Bash', input: { command: 'git status' }, output: '', status: 'done', exitCode: 0 },
+    { type: 'tool', toolId: 'two', name: 'Read', input: { file_path: 'a.ts' }, output: '', status: 'done', exitCode: null }
+  ];
+  component = mount(ToolGroup, { target: document.body, props: { parts, isBackground: () => false } });
+  flushSync();
+  const toggle = document.querySelector<HTMLElement>('[data-testid=tool-group-toggle]')!;
+  expect(toggle.querySelector('[data-testid=tool-group-label]')?.textContent).toBe('Ran 1 command and read 1 file');
+  // app.css makes a button inherit the body's -0.006em, and jsdom draws no component CSS: read the line's own rule.
+  expect(toolGroupSource.match(/\n  \.head \{[^}]*\}/)?.[0]).toContain('letter-spacing: normal;');
+  // A lone call is its own card, on a line of the same words.
+  unmount(component, { outro: false });
+  component = mount(ToolGroup, { target: document.body, props: { parts: parts.slice(0, 1), isBackground: () => false } });
+  flushSync();
+  expect(document.querySelector('[data-testid=tool-toggle] .line')?.textContent).toBe('Ran 1 command');
+  expect(toolCardSource.match(/\n  \.head \{[^}]*\}/)?.[0]).toContain('letter-spacing: normal;');
 });
 
 test('a folded group with a denied call says who denied it, not only the count of failures', () => {

@@ -35,8 +35,9 @@
    * permission (an icon and a word), the same three on a thread, a bot and a
    * phone, the context's ring and "x% context left" once it matters, then dictation and one round
    * button that is Send, or Stop while a turn runs and nothing typed waits to go
-   * (not while it stands on a decision of the owner's). A question's picks
-   * alone leave Stop in place: the card carries its own send.
+   * (not while it stands on a decision of the owner's). While the field
+   * answers a question the button is Send alone, live once text is typed: the
+   * card's Answer sends its picks, and the turn's Stop waits in the foot's line.
    * Nothing comes or goes with a decision docked above: the row keeps its
    * place and its controls. A pick on a thread is saved at once, after the
    * switch warnings; on a draft the whole choice is remembered. `choice`,
@@ -79,7 +80,7 @@
     /** Send was pressed while files were still being read: it goes once they are ready. */
     waiting?: boolean;
     answering?: boolean;
-    /** Text or files are in the box. False while only a question's picks make it sendable: Stop stays Stop and the card sends them. */
+    /** Text or files are in the box. False while only a question's picks make it sendable: Send rests and the card sends them. */
     typed?: boolean;
     /** What Send does, when it answers a question rather than sending a message. */
     sendLabel?: string;
@@ -102,7 +103,7 @@
   let held = $derived(!target && store.openThread?.status === 'waiting');
   /** One round button at the row's end: Stop while a turn runs and nothing typed waits to go, Send otherwise. */
   /** Nothing reaches a machine out of reach: no Stop, and Send queues what is written for its return. */
-  let stopShown = $derived(stopping && !held && !waiting && !(canSend && typed) && (!!target || !machineAway(store)));
+  let stopShown = $derived(stopping && !held && !answering && !waiting && !(canSend && typed) && (!!target || !machineAway(store)));
 
   let picker = $state<HTMLInputElement | undefined>(undefined);
   let bar = $state<HTMLDivElement | undefined>(undefined);
@@ -359,7 +360,7 @@
     data-waiting={waiting || undefined}
     title={waiting ? strings.composer.sendWhenLoaded : sendLabel}
     aria-label={waiting ? strings.composer.sendWhenLoaded : sendLabel}
-    disabled={!canSend}
+    disabled={!canSend || (answering && !typed)}
     onmousedown={keepFocus}
     onclick={() => onsubmit()}
   >

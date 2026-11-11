@@ -303,6 +303,8 @@
     color: var(--color-muted-foreground);
     font-size: var(--text-sm);
     font-weight: 400;
+    /* The run's line drops the body tracking, as ToolGroup's does: on whole-pixel glyphs it eats a space ("Ran 1command"). */
+    letter-spacing: normal;
     justify-content: flex-start;
   }
 

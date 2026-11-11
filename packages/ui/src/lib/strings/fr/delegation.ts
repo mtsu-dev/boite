@@ -50,6 +50,7 @@ export const fr: Translation = {
     waitingMixed: 'En attente de {count} sous-agents et workflows',
     waitingStop: 'Arrêter',
     waitingStopHint: 'Arrêter les sous-agents et workflows que cette conversation attend',
+    waitingStopTurn: 'Arrêter l’agent',
     showTeam: 'Voir les sous-agents',
     stoppedStatus: 'Arrêté',
     failedStatus: 'Échec',
