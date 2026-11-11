@@ -117,7 +117,11 @@ and assertions when making the suite faster.
 
 ## Documentation map
 
-- [Documentation index](docs/README.md): one page per subject.
+- [User guide](docs/README.md): short pages for people who use the app. No RPC
+  names, source paths or internal terms there; name buttons as the app does. A
+  user-visible change updates its guide page in the same pull request.
+- [Technical reference](docs/internals/README.md): one page per subject for
+  contributors and agents. Implementation detail goes there, never in the guide.
 - [Architecture](docs/internals/architecture.md): ownership, persistence and protocols.
 - [Providers](docs/internals/providers.md) and [accounts](docs/internals/accounts.md): descriptors,
   executable detection, isolation and login.

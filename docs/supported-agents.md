@@ -52,7 +52,7 @@ same agent.
   a command or edits a file. pi never asks.
 
 Every agent keeps its conversation when you close and reopen Boite, and you can
-[switch agent or model](model-switching.md) in the middle of a conversation.
+[switch agent or model](models.md) in the middle of a conversation.
 
 ## Use an agent that is not listed
 
@@ -67,9 +67,9 @@ disappears from the model picker. Nothing is uninstalled and your sign-in stays.
 
 ## Going further
 
-- [Accounts](accounts.md): several accounts for one agent, and what Boite
-  shares between them.
+- [Accounts](accounts.md): several accounts for one agent.
+- [Models](models.md): change agent or model inside a conversation.
 - [Usage](usage.md): tokens, cost and subscription limits per agent.
-- [Agent updates](agent-updates.md): how Boite keeps the agents up to date.
-- [Provider reference](providers.md): the technical description of each agent,
-  for contributors and for adding one to Boite.
+- [Updates](updates.md): how Boite keeps the agents up to date.
+- Technical reference: [providers](internals/providers.md), for contributors
+  and for adding an agent to Boite.

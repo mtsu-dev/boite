@@ -16,7 +16,7 @@
    */
   let { store, onchosen }: { store: Store; onchosen: () => void } = $props();
 
-  const DOC_URL = 'https://github.com/mtsu-dev/boite/blob/main/docs/internals/analytics.md';
+  const DOC_URL = 'https://github.com/mtsu-dev/boite/blob/main/docs/privacy.md';
   /** How long the refusal clip plays before the tour closes. */
   const REFUSAL_MS = 2000;
   const reduced = document.documentElement.dataset.motion === 'reduced' || (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false);
