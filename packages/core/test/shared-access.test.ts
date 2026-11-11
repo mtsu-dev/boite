@@ -253,7 +253,8 @@ test.skipIf(!nativePlatforms.includes(process.platform) || process.env.BOITE_TES
     await b.h.core.sharedAccess.execution.prepare(b.threadId);
     api.enqueue({name, input: nativeCommand("require('fs').writeFileSync('tool-active','running'); setInterval(()=>{},1000)")});
     const stopped = await b.client.call('turns.start', {threadId: b.threadId, prompt: 'Run the cancellable protected tool'});
-    await waitFor(() => b.h.core.procs.liveCount(b.threadId) > 0, 15000).catch(error => {throw new Error(`Native scope did not start cancellable control: ${JSON.stringify(b.h.core.journal.getTurn(stopped.id))}`, {cause: error});});
+    // A third agent process started from cold, like the two turns above, which are given 30 s: OpenCode's takes 10 s and more on a Windows runner.
+    await waitFor(() => b.h.core.procs.liveCount(b.threadId) > 0, 30000).catch(error => {throw new Error(`Native scope did not start cancellable control: ${JSON.stringify(b.h.core.journal.getTurn(stopped.id))}`, {cause: error});});
     const active = b.h.core.sharedAccess.execution.context(b.threadId)!;
     b.h.core.threads.stopTurn(b.threadId);
     expect(() => active.check()).toThrow();
