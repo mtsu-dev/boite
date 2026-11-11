@@ -75,9 +75,9 @@ test('a header unmounted with its rename open, as a machine switch does, still w
   expect(rename.mock.calls).toEqual([['t-trace', 'Typed before the switch']]);
 });
 
-test("a phone row draws no pull request, so the phone's thread menu opens it", async () => {
+for (const phone of [true, false]) test(`the thread menu opens its pull request by keyboard or touch, ${phone ? 'on a phone, whose row draws no mark' : 'on a desktop, whose row mark is pointer-only'}`, async () => {
   vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
-    media, matches: true, onchange: null, addListener() {}, removeListener() {}
+    media, matches: phone && media.includes('max-width'), onchange: null, addListener() {}, removeListener() {}
   }));
   client = new FakeClient({ delayMs: 0 });
   store = new Store(); store.attach(client); await store.connect();

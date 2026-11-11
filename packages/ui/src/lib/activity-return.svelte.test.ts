@@ -5,11 +5,14 @@ import { FakeClient } from './fake-client';
 import { Store } from './store.svelte';
 import { inbox } from './inbox.svelte';
 import { activityReturn, followActivityReturn, leaveForAct, restoreActivity } from './activity-return.svelte';
+import { workspace } from './workspace.svelte';
 
 let client: FakeClient;
 let store: Store;
 let stop: (() => void) | undefined;
+const front = workspace.active;
 afterEach(() => {
+  workspace.active = front;
   stop?.(); stop = undefined;
   store?.detach(); client?.close();
   activityReturn.away = null; activityReturn.back = null; inbox.open = false;
@@ -19,6 +22,7 @@ afterEach(() => {
 test('an Allow pressed in Activity comes back to Activity once its thread no longer waits, the keyboard on the row now in its place', async () => {
   client = new FakeClient({ delayMs: 0 });
   store = new Store(); store.attach(client); await store.connect();
+  workspace.active = store;
   const thread = store.threads.find(entry => !entry.parentThreadId && entry.projectId && entry.id !== store.openThread?.id)!;
   thread.status = 'waiting';
   store.pendingPermissions = [{ id: 'perm', threadId: thread.id, toolName: 'Bash', input: { command: 'ls' }, createdAt: Date.now() } as unknown as PermissionRequest];
@@ -50,6 +54,7 @@ test('an Allow pressed in Activity comes back to Activity once its thread no lon
 test('leaving the thread for something else drops the way back', async () => {
   client = new FakeClient({ delayMs: 0 });
   store = new Store(); store.attach(client); await store.connect();
+  workspace.active = store;
   const [first, second] = store.threads.filter(entry => !entry.parentThreadId && entry.projectId && entry.id !== store.openThread?.id);
   stop = $effect.root(() => followActivityReturn());
   leaveForAct(store, first!.id, null);
@@ -66,6 +71,7 @@ test('leaving the thread for something else drops the way back', async () => {
 test('on a phone an Allow pressed in Activity brings the Activity screen back once the thread no longer waits, and the desktop frame stays out of it', async () => {
   client = new FakeClient({ delayMs: 0 });
   store = new Store(); store.attach(client); await store.connect();
+  workspace.active = store;
   const thread = store.threads.find(entry => !entry.parentThreadId && entry.projectId && entry.id !== store.openThread?.id)!;
   thread.status = 'waiting';
   store.pendingPermissions = [{ id: 'perm', threadId: thread.id, toolName: 'Bash', input: { command: 'ls' }, createdAt: Date.now() } as unknown as PermissionRequest];
@@ -89,4 +95,27 @@ test('on a phone an Allow pressed in Activity brings the Activity screen back on
   expect(phone.screen).toBe('activity');
   expect(inbox.open).toBe(false);
   expect(activityReturn.back).toEqual({ scroll: 80, index: 1 });
+});
+
+test('a thread opened on another machine drops the way back, so Activity never covers that machine', async () => {
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  workspace.active = store;
+  const thread = store.threads.find(entry => !entry.parentThreadId && entry.projectId && entry.id !== store.openThread?.id)!;
+  stop = $effect.root(() => followActivityReturn());
+  leaveForAct(store, thread.id, null);
+  store.openThread = { ...thread, status: 'waiting', messages: [] } as never;
+  store.threads = store.threads.map(entry => entry.id === thread.id ? { ...entry, status: 'waiting' } : entry);
+  flushSync();
+  expect(activityReturn.away?.arrived).toBe(true);
+  // The user opens a thread on machine B: A's thread stays open behind it.
+  const other = new Store();
+  workspace.active = other;
+  flushSync();
+  expect(activityReturn.away).toBeNull();
+  // A's thread stops waiting: Activity stays shut and A keeps its open thread.
+  store.threads = store.threads.map(entry => entry.id === thread.id ? { ...entry, status: 'idle' } : entry);
+  flushSync();
+  expect(inbox.open).toBe(false);
+  expect(store.openThread?.id).toBe(thread.id);
 });

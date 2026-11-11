@@ -132,13 +132,13 @@
       ...(resident ? [{ id: 'thread-resident-chip', label: fill(strings.agents.openAgent, { name: resident.name }), title: fill(strings.resident.lookedAfterBy, { name: resident.name }), glyph: Bot }] : [])
     ];
   });
-  /** A phone row draws no pull request mark, so the phone's menu is its way to open it. */
-  let phonePullRequest = $state<NonNullable<ThreadSummary['pullRequest']> | null>(null);
-  /** Where it lives, first in the group's folder rows: its pull request and watches on a phone, its branch on a desktop. */
+  /** The thread's pull request, opened from its menu: a phone row draws no mark, and a desktop row's mark is pointer-only. */
+  let pullRequest = $state<NonNullable<ThreadSummary['pullRequest']> | null>(null);
+  /** Where it lives, first in the group's folder rows: its pull request, then its watches on a phone, its branch on a desktop. */
   let where = $derived.by((): MenuItem[] => {
     if (!thread) return [];
     const watches = thread.pullRequestWatches ?? [];
-    const pr = mobile.current ? phonePullRequest : null;
+    const pr = pullRequest;
     return [
       ...(pr ? [{ id: 'thread-pr', label: pullRequestLabel(pr), title: pr.url, glyph: pr.state === 'MERGED' ? GitMerge : pr.state === 'CLOSED' ? GitPullRequestClosed : GitPullRequest }] : []),
       ...(mobile.current ? watches.map((watch): MenuItem => ({ id: `watch:${watch.url}`, label: fill(strings.tasks.stopWatchOf, { number: String(watch.number) }), hint: watchStatus(watch), title: watch.url, glyph: GitPullRequest })) : []),
@@ -151,7 +151,7 @@
   /**
    * One menu on a desktop and a phone: find, then the frequent actions, then
    * the named group, which opens in place (`Menu.svelte`): its bot, its title,
-   * its folder. A phone's has no path; its pull request opens from here.
+   * its folder, its pull request first. A phone's has no path.
    */
   let menuShown = $derived(thread ? threadMenuItems(store, thread, { tools, lead: identity, place: where, showDone: true, phone: mobile.current }) : []);
   /** The right-click's two levels, which the shared context menu swaps through the picks. */
@@ -165,7 +165,7 @@
     if (action === 'thread-entrusted-chip' && carrier) store.showAgents(carrier.agent.id);
     else if (action === 'thread-resident-chip' && resident) openResident(store, resident.id);
     else if (action === 'thread-branch' && open.branch) void store.copy(open.branch);
-    else if (action === 'thread-pr' && phonePullRequest) void openExternal(phonePullRequest.url);
+    else if (action === 'thread-pr' && pullRequest) void openExternal(pullRequest.url);
     else if (action.startsWith('watch:')) void store.unwatchPullRequest(open.id, action.slice('watch:'.length));
     else if (action === 'find') {
       store.findOpen = true;
@@ -186,7 +186,7 @@
   }
 </script>
 
-{#if thread && mobile.current}{#key thread.id}<ThreadPullRequestProbe owner={store} {thread} bind:value={phonePullRequest} />{/key}{/if}
+{#if thread}{#key thread.id}<ThreadPullRequestProbe owner={store} {thread} bind:value={pullRequest} />{/key}{/if}
 <div class="thread-header" data-testid="thread-header" data-status={thread?.status}>
       {#if thread}
         {#if thread.parentThreadId && !mobile.current}

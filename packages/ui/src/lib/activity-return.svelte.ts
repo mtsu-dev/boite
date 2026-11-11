@@ -4,13 +4,14 @@ import { inbox } from './inbox.svelte';
 import { needsYou, rowAsks } from './status-order';
 import type { Store } from './store.svelte';
 import { threadState } from './thread-state';
+import { workspace } from './workspace.svelte';
 
 /**
  * The way back to Activity after acting from it, on a desktop and a phone. An action on a row
  * (Allow, Answer, Review) opens its thread; once that thread no longer needs
  * the user, Activity comes back with its scroll and the keyboard on the row
- * that now stands where the settled one stood. Opening anything else first
- * drops the way back.
+ * that now stands where the settled one stood. Opening anything else first,
+ * another machine's thread included, drops the way back.
  */
 type Away = { store: Store; threadId: ThreadId; scroll: number; index: number; arrived: boolean; phone: boolean };
 
@@ -52,10 +53,11 @@ export function followActivityReturn(phone?: PhoneScreens): void {
     if (!away || away.phone !== (phone !== undefined)) return;
     const { store, threadId } = away;
     const inActivity = phone ? phone.activity() : inbox.open;
-    const there = !inActivity && (phone?.chat() ?? true) && store.page === 'chat' && store.openThread?.id === threadId;
+    // Another machine in front: its open thread is not this one, even with the same id.
+    const there = !inActivity && workspace.active === store && (phone?.chat() ?? true) && store.page === 'chat' && store.openThread?.id === threadId;
     if (!there) {
       // Arrived, then left for something else, or back in Activity by hand: nothing to return to.
-      if (away.arrived || inActivity) activityReturn.away = null;
+      if (away.arrived || inActivity || workspace.active !== store) activityReturn.away = null;
       return;
     }
     away.arrived = true;
