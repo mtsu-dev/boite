@@ -154,7 +154,7 @@ describe('deferred pictures on a real core', () => {
   })()`;
 
   async function settled(): Promise<void> {
-    await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+    await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
   }
 
   /** Blur transitions use cached previews; a cold page may return before any are ready. */

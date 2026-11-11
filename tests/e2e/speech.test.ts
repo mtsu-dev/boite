@@ -49,7 +49,7 @@ afterAll(async () => {
 
 async function capture(name: string) {
   await page.evaluate(`document.fonts.ready`);
-  await page.evaluate(`Promise.all(document.getAnimations().filter(animation => animation.effect?.getTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {})))`);
+  await page.evaluate(`Promise.all(document.getAnimations().filter(animation => animation.timeline === document.timeline && animation.effect?.getTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {})))`);
   await page.screenshot(join(import.meta.dir, '.artifacts', name));
 }
 async function type(value: string) {

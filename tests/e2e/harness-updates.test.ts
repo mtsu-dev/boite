@@ -14,7 +14,7 @@ const card = id('harness-updates-card');
 const row = (provider: string) => `${card} ${id('machine-agent-update')}[data-provider-id="${provider}"]`;
 async function capture(name: string) {
   await page.evaluate('document.fonts.ready');
-  await page.evaluate('Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))');
+  await page.evaluate('Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))');
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
   await page.screenshot(join(process.env.BOITE_UPDATE_CAPTURES ?? join(import.meta.dir, '.artifacts'), `${name}.png`));
 }

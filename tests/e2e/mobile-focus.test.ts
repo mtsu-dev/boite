@@ -9,7 +9,7 @@ let url: string;
 const typing = `!!document.activeElement?.matches('textarea, input:not([type=radio]):not([type=checkbox]), [contenteditable=true]')`;
 
 async function capture(name: string) {
-  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
   await page.screenshot(join(import.meta.dir, '.artifacts', name));
 }

@@ -58,7 +58,7 @@ test('inspect and stop a real delegated thread from the panel, which launches no
   await page.waitFor('document.querySelector("[data-testid=delegation-progress]")?.textContent.includes("1 stopped")');
   expect(await page.text('[data-testid="delegation-progress"]')).toBe('1 stopped');
   expect(page.errors()).toEqual([]);
-  await page.waitFor('document.getAnimations().every(animation => animation.playState !== "running" || animation.effect?.getTiming().iterations === Infinity)');
+  await page.waitFor('document.getAnimations().every(animation => animation.playState !== "running" || animation.effect?.getTiming().iterations === Infinity || animation.timeline !== document.timeline)');
   await page.screenshot(join(import.meta.dir, '.artifacts/delegation-desktop.png'));
 }, 40_000);
 
@@ -73,7 +73,7 @@ test('the phone opens a subagent in the chat, under its parent\'s title', async 
   // The task shows as the chat's first message, the way any conversation reads.
   await page.waitFor('document.querySelector("[data-testid=timeline]")?.textContent.includes("Review parser boundaries")');
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
-  await page.waitFor('document.getAnimations().every(animation => animation.playState !== "running" || animation.effect?.getTiming().iterations === Infinity)');
+  await page.waitFor('document.getAnimations().every(animation => animation.playState !== "running" || animation.effect?.getTiming().iterations === Infinity || animation.timeline !== document.timeline)');
   await page.screenshot(join(import.meta.dir, '.artifacts/delegation-phone.png'));
   await page.click('[data-testid="delegation-back-parent"]');
   await page.waitFor(`!document.querySelector("[data-testid=delegation-back-parent]") && !!document.querySelector("[data-testid=delegation-activity]")`);
@@ -107,7 +107,7 @@ test('a newly started workflow appears above the composer without reopening the 
   // The line's two controls: its fold and a Stop that names what it stops.
   expect(await page.evaluate('[...document.querySelectorAll("[data-testid=agent-dock] button")].map(button => button.dataset.testid)')).toEqual(['composer-foot-fold', 'agent-dock-stop']);
   expect(await page.text('[data-testid="agent-dock-stop"]')).toBe('Stop workflows');
-  await page.waitFor('document.getAnimations().every(a => a.playState !== "running" || a.effect?.getTiming().iterations === Infinity)');
+  await page.waitFor('document.getAnimations().every(a => a.playState !== "running" || a.effect?.getTiming().iterations === Infinity || a.timeline !== document.timeline)');
   await page.screenshot(join(import.meta.dir, '.artifacts/workflow-dock-desktop.png'));
   // Its own grouped row in the timeline opens its graph.
   await page.click(`[data-testid="workflow-activity"][data-run-id="${run.id}"]`);
@@ -116,7 +116,7 @@ test('a newly started workflow appears above the composer without reopening the 
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   await page.waitFor('innerWidth === 390');
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
-  await page.waitFor('document.getAnimations().every(a => a.playState !== "running" || a.effect?.getTiming().iterations === Infinity)');
+  await page.waitFor('document.getAnimations().every(a => a.playState !== "running" || a.effect?.getTiming().iterations === Infinity || a.timeline !== document.timeline)');
   await page.screenshot(join(import.meta.dir, '.artifacts/workflow-dock-phone.png'));
   // Stop on the waiting line stops the run.
   await page.click('[data-testid="agent-dock-stop"]');

@@ -15,7 +15,7 @@ async function newMobileThread() {
 async function capture(name: string) {
   const settled = await page.evaluate<{ timedOut: boolean; fonts: FontFaceSetLoadStatus; animations: Array<{ playState: AnimationPlayState; currentTime: number | null; endTime: number }> }>(`(async () => {
     // Skipped content (the chat behind the list) advances no animation until it shows again: nothing of it is on screen.
-    const animations = document.getAnimations().filter(animation => animation.effect?.getTiming().iterations !== Infinity
+    const animations = document.getAnimations().filter(animation => animation.timeline === document.timeline && animation.effect?.getTiming().iterations !== Infinity
       && (!(animation.effect instanceof KeyframeEffect) || animation.effect.target?.checkVisibility?.({ contentVisibilityAuto: true }) !== false));
     const ready = Promise.all([document.fonts.ready, ...animations.map(animation => animation.finished.catch(() => {}))]);
     return Promise.race([

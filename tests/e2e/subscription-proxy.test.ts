@@ -24,7 +24,7 @@ beforeAll(async () => {
 afterAll(async () => { await page?.close(); await server?.close(); gateway?.stop(true); }, 30_000);
 
 async function capture(name: string) {
-  await page.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
+  await page.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
   await page.screenshot(join(process.env.BOITE_CAPTURE_DIR ?? join(import.meta.dir, '.artifacts'), name));
 }
 
@@ -216,7 +216,7 @@ test('phone Limits opens the same gateway and disabling it restores the native p
 test('a paired phone switches the gateway the owner saved, on and off, from Limits', async () => {
   const phone = await BrowserPage.launch({ url: `${origin}/?fake=1&principal=session&open=recent&gateway=douane`, windowSize: { width: 390, height: 844 } });
   const shot = async (name: string) => {
-    await phone.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
+    await phone.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
     await phone.screenshot(join(process.env.BOITE_CAPTURE_DIR ?? join(import.meta.dir, '.artifacts'), name));
   };
   const input = '[data-testid=mobile-settings-detail] [data-testid=gateway-switch-input]';
@@ -247,7 +247,7 @@ test('a paired phone switches the gateway the owner saved, on and off, from Limi
 test('the Douane plugin: its row in Plugins and the proxy card pointing at it, at desktop and phone widths', async () => {
   const local = await BrowserPage.launch({ url: `${origin}/?fake=1&open=recent`, windowSize: { width: 1280, height: 900 } });
   const shot = async (name: string) => {
-    await local.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
+    await local.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
     await local.screenshot(join(process.env.BOITE_CAPTURE_DIR ?? join(import.meta.dir, '.artifacts'), name));
   };
   // The list above can still grow as rows land: scroll until the element stays in view.
@@ -325,7 +325,7 @@ test('production desktop and phone embed the dashboard through the real core wit
     await browser.waitFor(`document.querySelector('[data-testid=subscription-proxy-slot] > iframe')?.src === ${JSON.stringify(`${dashboard}/admin/#quotas`)}`);
     expect(await browser.evaluate('new URLSearchParams(location.search).get("fake")')).toBeNull();
     expect(await browser.text('[data-testid=subscription-proxy-browser-hint]')).toContain('Sign in');
-    await browser.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
+    await browser.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
     type FrameEntry = { frame: { id: string; url: string } };
     let child: FrameEntry | undefined;
     const deadline = Date.now() + 5_000;
@@ -350,7 +350,7 @@ test('production desktop and phone embed the dashboard through the real core wit
     await browser.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
     await browser.waitFor('document.querySelector("[data-testid=mobile-settings-detail]")');
     expect(await browser.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
-    await browser.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
+    await browser.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
     await browser.screenshot(join(process.env.BOITE_CAPTURE_DIR ?? join(import.meta.dir, '.artifacts'), 'boite-proxy-production-phone.png'));
     await browser.click('[data-testid=subscription-proxy-configure]');
     await browser.waitFor('document.querySelector("[data-testid=subscription-proxy-slot] > iframe") === null');

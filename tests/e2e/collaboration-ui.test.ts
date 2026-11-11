@@ -8,7 +8,7 @@ let page: BrowserPage;
 let uiUrl: string;
 
 async function settled() {
-  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(animation => animation.effect?.getTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {}))])`);
+  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(animation => animation.timeline === document.timeline && animation.effect?.getTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {}))])`);
 }
 
 beforeAll(async () => {

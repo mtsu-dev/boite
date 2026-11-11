@@ -18,7 +18,7 @@ beforeAll(async () => {
 afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);
 
 async function capture(name: string) {
-  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
   await page.screenshot(join(process.env.BOITE_CAPTURE_DIR ?? join(import.meta.dir, '.artifacts'), name));
 }
 
@@ -534,7 +534,7 @@ test('the same popup shares priorities across the app, tray and phone through th
     await page.waitFor(`document.querySelector('[data-account-id="${accounts[1]!.id}"] [data-testid="quota-reorder"]')?.disabled === false`);
     const touch = await page.evaluate<{ from: { x: number; y: number }; to: { x: number; y: number } }>(`(async () => {
       // The phone sheet animates and its ResizeObserver places it after the rows appear.
-      await Promise.all(document.getAnimations().filter(animation => animation.effect?.getTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {})));
+      await Promise.all(document.getAnimations().filter(animation => animation.timeline === document.timeline && animation.effect?.getTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {})));
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       const grip = document.querySelector('[data-account-id="${accounts[1]!.id}"] .name').getBoundingClientRect();
       const first = document.querySelector('[data-testid="quota-provider"]').getBoundingClientRect();

@@ -22,7 +22,7 @@ test('queued prompts sit above the activity dock attached to the input', async (
     await page.waitFor(`document.querySelector('[data-testid="composer-queued"]')`);
     for (const width of [1300, 390]) {
       await page.send('Emulation.setDeviceMetricsOverride', { width, height: 850, deviceScaleFactor: 1, mobile: width === 390 });
-      await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+      await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
       await page.evaluate(`(() => { const timeline = document.querySelector('[data-testid="timeline"]'); timeline.scrollTop = timeline.scrollHeight; })()`);
       const gap = await page.evaluate<number>(`(() => {
         const last = [...document.querySelectorAll('[data-testid="message"]')].at(-1);
@@ -57,7 +57,7 @@ test('queued prompts sit above the activity dock attached to the input', async (
       await page.send('Emulation.setDeviceMetricsOverride', { width, height: 850, deviceScaleFactor: 1, mobile: width === 390 });
       await page.waitFor(`(() => { const dock = document.querySelector('[data-testid="thread-activity"]'); return dock?.offsetHeight > 0 && parseFloat(document.querySelector('.queue-region').style.paddingBottom) === dock.offsetHeight; })()`);
       await page.evaluate(`(() => { const timeline = document.querySelector('[data-testid="timeline"]'); timeline.scrollTop = timeline.scrollHeight; })()`);
-      await page.evaluate(`Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`);
+      await page.evaluate(`Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`);
       const gap = await page.evaluate<number>(`document.querySelector('[data-testid="composer-queued"]').getBoundingClientRect().top - [...document.querySelectorAll('[data-testid="message"]')].at(-1).getBoundingClientRect().bottom`);
       expect(gap).toBeGreaterThanOrEqual(12);
       expect(gap).toBeLessThanOrEqual(40);
@@ -71,10 +71,10 @@ test('queued prompts sit above the activity dock attached to the input', async (
       expect(placement.gap).toBeLessThanOrEqual(4);
       expect(placement.queueBottom).toBeLessThanOrEqual(placement.dockTop);
       await page.click('[data-testid="activity-tasks-toggle"]');
-      await page.evaluate(`Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`);
+      await page.evaluate(`Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`);
       await page.waitFor(`document.querySelector('[data-testid="composer-queued"]').getBoundingClientRect().bottom <= document.querySelector('[data-testid="thread-activity"]').getBoundingClientRect().top`);
       await page.click('[data-testid="activity-tasks-toggle"]');
-      await page.evaluate(`Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`);
+      await page.evaluate(`Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`);
     }
     // A short pinned history starts at zero, but a new dock can make it overflow.
     await page.evaluate(`(() => {

@@ -19,7 +19,7 @@ afterAll(async () => {
 }, 30_000);
 
 const STORE = `globalThis.__boiteTest.workspace.active`;
-const settle = `Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`;
+const settle = `Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`;
 const shot = (page: BrowserPage, name: string) => page.screenshot(join(import.meta.dir, '.artifacts', `${name}.png`));
 
 /** A spare account with one idle conversation on it, the seeded ones being busy. */

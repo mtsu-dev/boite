@@ -9,7 +9,7 @@ let uiUrl: string;
 let page: BrowserPage;
 const id = (name: string) => `[data-testid="${name}"]`;
 async function settled() {
-  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
 }
 async function capture(name: string) { await settled(); await page.screenshot(join(import.meta.dir, '.artifacts', name)); }
 beforeAll(async () => {
@@ -350,7 +350,7 @@ test('composer and buttons keep solid fallback fills without color-mix', async (
       for (const mode of ['dark', 'light', 'grain', 'glass']) {
         root.dataset.theme = mode === 'glass' ? 'dark' : mode;
         if (mode === 'glass') root.dataset.glass = 'acrylic'; else delete root.dataset.glass;
-        await Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})));
+        await Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})));
         result.push(['composer', 'composer-picker'].map(name => {
           context.clearRect(0, 0, 1, 1);
           context.fillStyle = getComputedStyle(document.querySelector('[data-testid="' + name + '"]')).backgroundColor;

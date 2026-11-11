@@ -10,7 +10,7 @@ async function update(code: string) {
   await page.evaluate(`(async () => { const store = globalThis.__boiteTest.workspace.active; const thread = store.openThread; ${code} })()`);
 }
 async function capture(name: string) {
-  await page.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
+  await page.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
   await page.screenshot(join(import.meta.dir, '.artifacts', `${name}.png`));
 }
 beforeAll(async () => {

@@ -747,7 +747,7 @@ ${await this.#historyReport()}`);
         .map((a) => (a.animationName ?? a.transitionProperty ?? a.id) + ' on .' + String(a.effect?.target?.className ?? '?').split(' ')[0] + ' ' + a.playState).concat(fonts ? [] : [...document.fonts].filter((f) => f.status === 'loading').map((f) => 'font ' + f.family + ' ' + f.weight + ' loading').concat(['document.fonts ' + document.fonts.status]))); };
       const drawn = (a) => !(a.effect instanceof KeyframeEffect) || a.effect.target?.checkVisibility?.({ contentVisibilityAuto: true }) !== false;
       const ended = new Set();
-      const watched = document.getAnimations().filter((a) => a.effect?.getTiming().iterations !== Infinity && drawn(a));
+      const watched = document.getAnimations().filter((a) => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity && drawn(a));
       for (const a of watched) a.finished.then(() => ended.add(a), () => ended.add(a));
       document.fonts.ready.then(() => { fonts = true; });
       const frame = () => {

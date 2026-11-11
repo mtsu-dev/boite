@@ -32,7 +32,7 @@ for (const width of [1280, 390]) {
       await page.waitFor(`document.querySelector('[data-testid=done-expires]')`);
       expect(await page.evaluate(`document.querySelector('[data-testid=done-retention-days]').value`)).toBe('3');
       await page.evaluate(`document.querySelector('[data-testid=done-retention-days]').scrollIntoView({block:'center'})`);
-      await page.evaluate(`Promise.all([document.fonts.ready, ...document.querySelector('[data-testid=archived-threads]').getAnimations({subtree:true}).filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+      await page.evaluate(`Promise.all([document.fonts.ready, ...document.querySelector('[data-testid=archived-threads]').getAnimations({subtree:true}).filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
       await page.screenshot(join(import.meta.dir, '.artifacts', `done-retention-${width}.png`));
       expect(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true);
       await page.choose('[data-testid=done-retention-days]', '0.5');

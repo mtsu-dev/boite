@@ -15,7 +15,7 @@ test('summary instructions keep their label above a full-width editor on desktop
       await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile });
       if (mobile) await page.evaluate(`[...document.querySelectorAll('button')].find(button => button.textContent.trim() === 'Automatic compaction').click()`);
       await page.waitFor('document.querySelector("[data-testid=compaction-summary]")');
-      await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+      await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
       const layout = await page.evaluate<{ labelAbove: boolean; fullWidth: boolean; fits: boolean }>(`(() => {
         const editor = document.querySelector('[data-testid=compaction-summary]');
         const box = editor.getBoundingClientRect();

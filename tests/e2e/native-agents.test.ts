@@ -9,7 +9,7 @@ let page: BrowserPage;
 const onStore = (code: string) => page.evaluate(`import('/src/lib/store.svelte.ts').then(async ({ store }) => { ${code} })`);
 async function capture(name: string) {
   await page.evaluate('document.querySelector("[data-testid=delegation-surface]")?.scrollTo(0, 0)');
-  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
   await page.screenshot(join(import.meta.dir, '.artifacts', name));
 }
 beforeAll(async () => {

@@ -36,7 +36,7 @@ function writeState(serve: Record<string, unknown> = {}): void {
 }
 
 async function capture(page: BrowserPage, name: string): Promise<void> {
-  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
   await page.screenshot(join(captures, name));
 }
 

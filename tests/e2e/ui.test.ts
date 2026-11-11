@@ -722,7 +722,7 @@ test(
       expect(await phone.evaluate(`document.querySelector('[data-testid=phone-public-url]') === null`)).toBe(true);
       await phone.waitFor(`navigator.serviceWorker.controller !== null`, RECONNECT_TIMEOUT_MS);
       await phone.waitFor(`Array.from(document.querySelectorAll('[data-testid=phone-settings] button')).some(button => button.textContent.includes('Enable notifications') && !button.disabled)`);
-      await phone.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(animation => animation.effect?.getTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {}))])`);
+      await phone.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(animation => animation.timeline === document.timeline && animation.effect?.getTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {}))])`);
       await phone.screenshot(join(import.meta.dir, '.artifacts', 'mobile-paired-settings.png'));
       await mobileAction(phone, 'mobile-conversations');
       await phone.waitFor(`document.querySelector('[data-testid=status-connection]')?.dataset.state === 'ready'`);
@@ -817,7 +817,7 @@ test('inline code stays literal at desktop and phone widths', async () => {
   try {
     for (const [name, width, height] of [['desktop', 1280, 900], ['phone', 390, 844]] as const) {
       await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: name === 'phone' });
-      await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+      await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
       await page.screenshot(join(import.meta.dir, '.artifacts', `markdown-${name}.png`));
     }
   } finally {

@@ -12,7 +12,7 @@ let page: BrowserPage;
 let owner: CoreClient;
 let threadId: string;
 
-const settledAnimations = 'document.getAnimations().every(a => a.playState !== "running" || a.effect?.getTiming().iterations === Infinity)';
+const settledAnimations = 'document.getAnimations().every(a => a.playState !== "running" || a.effect?.getTiming().iterations === Infinity || a.timeline !== document.timeline)';
 
 beforeAll(async () => {
   core = await startCore(); owner = await connect(core.url, core.token);

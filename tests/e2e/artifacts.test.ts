@@ -116,7 +116,7 @@ test('live output after published files stays at the bottom on desktop and paire
         await page!.screenshot(join(import.meta.dir, '.artifacts', `artifacts-continued-failure-${mobile ? 'phone' : 'desktop'}.png`));
         throw error;
       });
-      await page.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
+      await page.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
       await page.screenshot(join(import.meta.dir, '.artifacts', `artifacts-continued-${mobile ? 'phone' : 'desktop'}.png`));
       await page.send('Page.reload', {});
       await page.waitFor('document.querySelector("[data-testid=status-connection]")?.dataset.state === "ready"');
@@ -184,7 +184,7 @@ test('remote file previews load under the shell content security policy', async 
     for (const phone of [false, true]) {
       if (phone) await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
       await page.evaluate(`document.querySelector('${preview}').scrollIntoView({ block: 'center' })`);
-      await page.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
+      await page.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
       await page.screenshot(join(import.meta.dir, '.artifacts', `remote-preview-${phone ? 'phone' : 'desktop'}.png`));
       expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
     }
@@ -283,7 +283,7 @@ test('agent deliverables and file links open in chat on desktop and paired phone
       await page.click(`a[data-file-path=${JSON.stringify(notesPath)}]`);
       await page.waitFor(mobile ? 'document.querySelector("[data-testid=chat-file] [role=alert]")' : 'document.querySelector("[data-testid=artifact-content] pre")');
       expect(await page.text('[data-testid=chat-file]')).toContain(mobile ? 'owner connection' : 'Ready for review.');
-      await page.evaluate('Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))');
+      await page.evaluate('Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))');
       await page.screenshot(join(import.meta.dir, '.artifacts', `artifacts-${mobile ? 'phone' : 'desktop'}.png`));
       if (!mobile) {
         await page.click(`a[data-file-path=${JSON.stringify(picturePath)}]`);

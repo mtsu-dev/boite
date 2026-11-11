@@ -16,7 +16,7 @@ async function update(code: string) {
   await page.evaluate(`(async () => { const {workspace} = await import('/src/lib/workspace.svelte.ts'); const store = workspace.active; const thread = store.openThread; ${code} })()`);
 }
 async function capture(name: string) {
-  await page.evaluate(`Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`);
+  await page.evaluate(`Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`);
   await page.screenshot(join(import.meta.dir,'.artifacts',name + '.png'));
 }
 test('silent work has no typing bubble, live text stays visible, and receipts follow actual activity', async () => {

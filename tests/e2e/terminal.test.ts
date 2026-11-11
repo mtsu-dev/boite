@@ -9,7 +9,7 @@ async function settled(page: BrowserPage): Promise<void> {
   // ResizeObserver updates the drawer after the new viewport has been laid out.
   await page.evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
   await page.evaluate(
-    `Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`,
+    `Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`,
   );
 }
 

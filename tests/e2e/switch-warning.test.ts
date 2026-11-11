@@ -32,7 +32,7 @@ async function switchAway(size: { width: number; height: number }, name: string)
   await page.waitFor(`document.querySelector('[data-testid="composer-picker-menu"] [data-model]')`);
   await page.evaluate(`document.querySelector('[data-testid="composer-picker-menu"] [data-model]').click()`);
   await page.waitFor(`document.querySelector('[data-testid="confirm-dialog"]')`);
-  await page.evaluate(`Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`);
+  await page.evaluate(`Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`);
   await page.screenshot(join(import.meta.dir, '.artifacts', `${name}.png`));
   return page;
 }
@@ -71,7 +71,7 @@ async function lowerEffort(size: { width: number; height: number }, name: string
   await page.waitFor(`document.querySelector('[data-testid=effort-track]')`);
   await page.evaluate(`document.querySelector('[data-testid=effort-track]').dispatchEvent(new KeyboardEvent('keydown', { key:'Home', bubbles:true }))`);
   await page.waitFor(`document.querySelector('[data-testid="confirm-dialog"]')`);
-  await page.evaluate(`Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`);
+  await page.evaluate(`Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`);
   await page.screenshot(join(import.meta.dir, '.artifacts', `${name}.png`));
   return page;
 }
@@ -119,7 +119,7 @@ test('native speed switches keep Codex unblocked and warn only when enabling Cla
         expect(await page.evaluate(`!!document.querySelector('[data-testid="confirm-dialog"]')`)).toBe(false);
         if (name === 'phone') await page.waitFor(`!document.querySelector('[data-testid="composer-options-sheet"] input[name="mobile-speed"]').matches(':disabled')`);
         if (speed === 'fast') {
-          await page.evaluate(`Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`);
+          await page.evaluate(`Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`);
           await page.screenshot(join(import.meta.dir, '.artifacts', `speed-cache-${provider}-${name}.png`));
         }
       }

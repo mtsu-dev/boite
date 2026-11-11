@@ -16,7 +16,7 @@ async function size(phone: boolean) {
   await page.waitFor(`innerWidth === ${phone ? 390 : 1280}`);
 }
 async function settle() {
-  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
   // The band measures itself on the next frame; the timeline's reserve follows.
   await page.evaluate(`new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
 }

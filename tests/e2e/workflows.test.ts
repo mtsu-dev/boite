@@ -12,7 +12,7 @@ const id = (name: string) => `[data-testid="${name}"]`;
 async function capture(name: string) {
   await page.evaluate(`document.fonts.ready`);
   // The panel fades in: wait for the finite animations, not the live dots that pulse forever.
-  await page.waitFor(`document.getAnimations().every(a => a.playState !== 'running' || a.effect?.getTiming().iterations === Infinity)`);
+  await page.waitFor(`document.getAnimations().every(a => a.playState !== 'running' || a.effect?.getTiming().iterations === Infinity || a.timeline !== document.timeline)`);
   await page.screenshot(join(import.meta.dir, '.artifacts', name));
 }
 beforeAll(async () => {

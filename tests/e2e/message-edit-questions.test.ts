@@ -11,7 +11,7 @@ const send = '[data-testid=composer-send]';
 const captures = process.env.BOITE_E2E_CAPTURE_DIR ?? join(import.meta.dir, '.artifacts');
 
 async function capture(page: BrowserPage, name: string): Promise<void> {
-  await page.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(animation => animation.effect?.getTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {}))])');
+  await page.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(animation => animation.timeline === document.timeline && animation.effect?.getTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {}))])');
   await page.screenshot(join(captures, name));
 }
 

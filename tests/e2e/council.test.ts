@@ -44,7 +44,7 @@ async function launch(experiments: string[], viewport: typeof DESKTOP): Promise<
 async function capture(current: BrowserPage, name: string) {
   await current.evaluate(`document.fonts.ready`);
   // Panels slide in: wait for the finite animations, not the dots that pulse while an AI writes.
-  await current.waitFor(`document.getAnimations().every(a => a.playState !== 'running' || a.effect?.getTiming().iterations === Infinity)`);
+  await current.waitFor(`document.getAnimations().every(a => a.playState !== 'running' || a.effect?.getTiming().iterations === Infinity || a.timeline !== document.timeline)`);
   await current.screenshot(join(ARTIFACTS, name));
 }
 

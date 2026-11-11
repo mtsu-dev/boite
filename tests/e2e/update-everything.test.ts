@@ -11,7 +11,7 @@ const fixture = '/?fake=1&updates=1&open=recent&machines=1&appUpdate=available&s
 const width = (value: number, height = 900) => page.send('Emulation.setDeviceMetricsOverride', { width: value, height, deviceScaleFactor: 1, mobile: value < 720 });
 async function capture(name: string) {
   await page.evaluate('document.fonts.ready');
-  await page.evaluate('Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))');
+  await page.evaluate('Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))');
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
   await page.screenshot(join(process.env.BOITE_UPDATE_CAPTURES ?? join(import.meta.dir, '.artifacts'), `update-everything-${name}.png`));
 }
@@ -40,7 +40,7 @@ test('a release found opens the card bottom left at once, without downloading, a
   expect(rows.every((row) => !/Downloading|Updating/.test(row.text))).toBe(true);
   expect(await page.text(id('updates-card'))).toContain('then asks to restart');
   // Bottom left: the card's left edge on the sidebar's, its bottom just above the foot.
-  await page.evaluate('Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))');
+  await page.evaluate('Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))');
   const place = await page.evaluate<{ left: number; gap: number }>(`(() => {
     const card = document.querySelector('${id('updates-card')}').getBoundingClientRect();
     const rail = document.querySelector('${id('sidebar')}').getBoundingClientRect();

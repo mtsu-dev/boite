@@ -11,7 +11,7 @@ const jump = '[data-testid=jump-to-latest]';
 const artifacts = process.env.BOITE_SCROLL_CAPTURES ?? join(import.meta.dir, '.artifacts');
 
 async function settled() {
-  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
 }
 
 test('sending from history respects reduced motion and preserves the prompt across navigation', async () => {

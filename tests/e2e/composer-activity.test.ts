@@ -12,7 +12,7 @@ async function size(phone: boolean) {
   });
 }
 async function capture(name: string) {
-  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
   expect(await page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')).toBe(true);
   await page.screenshot(join(import.meta.dir, '.artifacts', `${name}.png`));
 }
@@ -138,7 +138,7 @@ test('tasks stay folded until requested and never move the reading position', as
   await page.evaluate(`globalThis.__boiteTest.workspace.active.openThread.messages.at(-1).parts.push({ type: 'text', text: 'Earlier conversation context.\\n'.repeat(80) })`);
   // Opening the thread schedules layout measurements and scroll restoration.
   // Finish those before choosing the reading position this test must preserve.
-  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
   await page.evaluate(`new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
   await page.evaluate(`document.querySelector('${id('timeline')}').scrollTop = 0`);
   await page.waitFor(`document.querySelector('[data-testid="jump-to-latest"]')`);

@@ -11,7 +11,7 @@ const id = (name: string) => `[data-testid="${name}"]`;
 const row = (plugin: string) => `${id('plugin-row')}[data-plugin="${plugin}"]`;
 
 async function settled() {
-  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
 }
 async function capture(name: string) { await settled(); await page.screenshot(join(artifacts, name)); }
 /** The left 390 pixels of the viewport: the page laid out in a phone-wide column. */
