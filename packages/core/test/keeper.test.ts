@@ -280,6 +280,14 @@ test('a keeper frame longer than the limit is refused, whole or cut', () => {
   expect(new LineReader(8).push(encode('{"a":1}\n{"b":2}\n'))).toEqual(['{"a":1}', '{"b":2}']);
   expect(() => new LineReader(8).push(encode('{"a":"0123456789"}\n'))).toThrow('without a line break');
   expect(() => new LineReader(8).push(encode('{"a":"0123456789'))).toThrow('without a line break');
+  // A frame cut over many reads, one of them inside a character, comes whole; so does the limit across the cuts.
+  const frame = encode('{"a":"été"}\n{"b":2}\n');
+  const reader = new LineReader(12), read: string[] = [];
+  for (const byte of frame) read.push(...reader.push(Uint8Array.of(byte)));
+  expect(read).toEqual(['{"a":"été"}', '{"b":2}']);
+  const cut = new LineReader(8);
+  expect(cut.push(encode('{"a":'))).toEqual([]);
+  expect(() => cut.push(encode('"0123"'))).toThrow('without a line break');
 });
 
 test('a keeper token file cut short is replaced by a new token', () => {
