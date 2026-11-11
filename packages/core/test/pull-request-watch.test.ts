@@ -843,6 +843,48 @@ test('a delegated agent that merges its own pull request between turns wakes its
   await waitFor(() => harness!.core.journal.listTurns(threadId).length > parentTurns);
 });
 
+test('a quiet result whose watch ends while its worktree settles wakes the parent', async () => {
+  const setup = await watchedThread();
+  const { threadId, github, drive, watches } = setup;
+  const child = await watchingChild(setup, 'race');
+  await settled(threadId);
+  const before = harness!.core.journal.listTurns(threadId).length;
+  let release!: () => void;
+  const settle = spyOn(harness!.core.delegation.worktrees, 'settle').mockReturnValue(new Promise<void>(resolve => { release = resolve; }));
+  try {
+    github.runs = [{ name: 'test', conclusion: 'SUCCESS' }];
+    github.updatedAt = '2026-10-15T09:31:00Z';
+    await drive();
+    await settled(child);
+    const turn = wakes(child)[0]!;
+    expect(letterOf(child, threadId, `result:${turn.id}`)).toBeNull();
+    github.state = 'MERGED';
+    github.updatedAt = '2026-10-15T09:40:00Z';
+    await drive();
+    expect(watches.of(child)).toEqual([]);
+    release();
+    await waitFor(() => letterOf(child, threadId, `result:${turn.id}`) !== null);
+    expect(letterOf(child, threadId, `result:${turn.id}`)?.quiet).toBeUndefined();
+    await waitFor(() => harness!.core.journal.listTurns(threadId).length > before);
+  } finally { settle.mockRestore(); }
+});
+
+test('unwatching a delegated agent at rest wakes its parent with its last quiet result', async () => {
+  const setup = await watchedThread();
+  const { threadId, github, drive, watches } = setup;
+  const child = await watchingChild(setup, 'unwatch');
+  github.runs = [{ name: 'test', conclusion: 'SUCCESS' }];
+  github.updatedAt = '2026-10-15T09:31:00Z';
+  await drive();
+  await settled(child);
+  expect(letterOf(child, threadId, `result:${wakes(child)[0]!.id}`)).toMatchObject({ quiet: true });
+  await settled(threadId);
+  const before = harness!.core.journal.listTurns(threadId).length;
+  await setup.owner.call('threads.unwatchPullRequest', { threadId: child });
+  expect(watches.of(child)).toEqual([]);
+  await waitFor(() => harness!.core.journal.listTurns(threadId).length > before);
+});
+
 test('a persistent agent takes its next work and keeps a subagent that still watches its pull request until the watch ends', async () => {
   const setup = await watchedThread();
   const { threadId, watches } = setup;

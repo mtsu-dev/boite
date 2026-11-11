@@ -44,7 +44,8 @@ const QUIET_OPERATIONS = new Set<string>(['pull-request', 'background']);
 /**
  * Whether a child's result goes to its parent's conversation only (`AgentLetter.quiet`): it answers its pull
  * request's news or its own background work and still watches a pull request. The parent's agent wakes for what
- * the child writes to it, and for its result once it watches nothing (`docs/delegation.md`).
+ * the child writes to it, and for its result once it watches nothing (`docs/delegation.md`). Read when the result is
+ * sent, after a worktree settles: a watch that ended meanwhile makes it a result that wakes.
  */
 export function quietResult(core: Core, childId: ThreadId, turn: Turn): boolean {
   return turn.status === 'done' && QUIET_OPERATIONS.has(turn.execution?.operation ?? '') && core.pullRequestWatches.of(childId).length > 0;
@@ -52,7 +53,8 @@ export function quietResult(core: Core, childId: ThreadId, turn: Turn): boolean 
 
 /**
  * A delegated agent at rest whose last pull request watch ended without a wake (it merged or closed the pull
- * request itself): its last result went to the parent quietly, so it goes again, this time to the parent's agent.
+ * request itself, or someone unwatched it): its last result went to the parent quietly, so it goes again, this
+ * time to the parent's agent. Called before the watch change is announced, which may retire the agent.
  */
 export function resendQuietResult(core: Core, childId: ThreadId): void {
   const thread = core.journal.getThread(childId);

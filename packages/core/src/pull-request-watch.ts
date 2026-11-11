@@ -157,24 +157,29 @@ export class PullRequestWatches {
   /** Ends one watch, or all of the thread's; answers with what is left. */
   unwatch(threadId: ThreadId, url?: string): PullRequestWatch[] {
     this.core.threads.require(threadId);
-    if (url === undefined) this.endThread(threadId);
+    if (url === undefined) this.endThread(threadId, true);
     else {
       const key = pullRequestAddress(url).url.toLowerCase();
       const record = (this.#records.get(threadId) ?? []).find(entry => entry.url.toLowerCase() === key);
       if (!record) throw refused(`this conversation does not watch ${url}`, { field: 'url', expected: 'a watched pull request' });
       this.#remove(threadId, record.url);
+      if (!this.#records.has(threadId)) resendQuietResult(this.core, threadId);
       this.#save(threadId);
       this.#changed(threadId);
     }
     return this.of(threadId);
   }
 
-  /** Stop, archive, Mark done, removal: every watch of the thread ends. Returns how many did. */
-  endThread(threadId: ThreadId): number {
+  /**
+   * Stop, archive, Mark done, removal: every watch of the thread ends. Returns how many did. `unwatched` when the
+   * thread or its owner asked for it: a delegated agent at rest then reports its last quiet result again.
+   */
+  endThread(threadId: ThreadId, unwatched = false): number {
     const records = this.#records.get(threadId);
     if (!records?.length) return 0;
     for (const record of records) this.#runtime.delete(runtimeKey(threadId, record.url));
     this.#records.delete(threadId);
+    if (unwatched) resendQuietResult(this.core, threadId);
     this.core.journal.deleteSetting(PREFIX + threadId);
     this.#changed(threadId);
     return records.length;

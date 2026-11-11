@@ -583,7 +583,7 @@ export class Delegation {
       if (link) this.remote.state(thread.id);
       return;
     }
-    const live = end.kind === 'checkpoint' ? end.live : [], quiet = !link && quietResult(this.#core, thread.id, turn);
+    const live = end.kind === 'checkpoint' ? end.live : [];
     const settling = live.length > 0 ? null : this.worktrees.settle(thread.id);
     // A workflow step's answer goes to its run, and a goal reviewer's to its goal, never to the parent as mail.
     if (!followUp && this.#stepOwned(thread.id)) return;
@@ -617,7 +617,7 @@ export class Delegation {
       const body = `${`${head}\n${result ?? 'No text result was returned.'}`.slice(0, RESULT_TEXT - tail.length)}${tail}`;
       if (link) { this.remote.letter(thread.id, { origin: 'result', requestId: `result:${turn.id}`, text: body, ...(live.length > 0 ? { checkpoint: true as const } : {}) }); return; }
       try {
-        this.send({ threadId: thread.id, toThreadId: parentId, requestId: `result:${turn.id}`, text: body }, 'result', { ...(live.length > 0 ? { checkpoint: true } : {}), ...(quiet ? { quiet: true as const } : {}) });
+        this.send({ threadId: thread.id, toThreadId: parentId, requestId: `result:${turn.id}`, text: body }, 'result', { ...(live.length > 0 ? { checkpoint: true } : {}), ...(quietResult(this.#core, thread.id, turn) ? { quiet: true as const } : {}) });
       } catch (error) { this.#core.log('warn', `delegation result ${thread.id}: ${messageOf(error)}`); }
     };
     if (settling) this.#track(settling.then(() => { if (!this.#closed) deliver(); }));
