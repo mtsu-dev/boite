@@ -1703,3 +1703,10 @@ test('fake rewind keeps background checkpoints owned by their provider session',
   expect(after.backgroundHistory!.filter(task => task.sessionGeneration === after.sessionGeneration))
     .toContainEqual(expect.objectContaining({ state: 'running', checkpointTurnId: after.turns.at(-1)!.id }));
 });
+
+test('a paired device lists its own session, marked current, and not the owner devices', async ({ createClient }) => {
+  const owner = await createClient({ delayMs: 0 });
+  expect((await owner.call('sessions.list', {})).map(row => row.id).sort()).toEqual(['ses-laptop', 'ses-phone']);
+  const phone = await createClient({ delayMs: 0, principal: 'session' });
+  expect((await phone.call('sessions.list', {})).map(row => [row.id, row.current])).toEqual([['ses-phone', true]]);
+});

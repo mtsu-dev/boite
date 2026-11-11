@@ -316,8 +316,8 @@ HTTPS ([relay](groups.md#relay)), as from any HTTPS page.
 Exchanged without a device key, such a grant becomes a session key for that core
 alone. A phone that holds one sends its device key the next time it connects,
 and signs from then on. Session keys are stored hashed in the journal.
-`sessions.list` shows every session with the client it said it was, its role and
-when it was last seen; `sessions.revoke` closes its sockets and deletes the row,
+`sessions.list` shows the owner every session with the client it said it was, its role and
+when it was last seen, and a paired device its own row only; `sessions.revoke` closes its sockets and deletes the row,
 and for a device of the group removes the device on every machine.
 
 ## What a paired device may call

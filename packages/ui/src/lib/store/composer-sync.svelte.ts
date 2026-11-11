@@ -98,7 +98,7 @@ export class ComposerSync {
   /** Queue admission uses the core's composer capability, including while temporarily offline. */
   admitQueue(): boolean {
     if (this.active) return true;
-    this.ctx.store.error = strings.errors.olderCore.replace('{machine}', this.ctx.store.core?.hostname ?? strings.app.name);
+    this.ctx.store.error = fill(strings.errors.olderCore, { machine: this.ctx.store.core?.hostname ?? strings.app.name });
     return false;
   }
 

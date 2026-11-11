@@ -252,7 +252,8 @@ launches it: Boite, or the terminal running the core.
 - Windows and macOS: input stays semantic and macOS commands stay on the
   conversation's apps, as [above](#windows-and-macos).
 - A conversation under an execution policy is refused: what its desktop starts
-  would run outside that policy.
+  would run outside that policy. A desktop already open when the policy comes
+  is stopped first, its apps with it.
 - The `desktop.*` methods are agent methods for the agent's own conversation.
   A paired device cannot call them. A session must subscribe to the
   conversation first.
@@ -268,6 +269,7 @@ A desktop has no idle timeout. It stops when:
 
 - the agent runs `boite desktop stop`;
 - its conversation is archived or removed;
+- its conversation comes under an execution policy;
 - on Linux, Xvfb, the bus, the accessibility bus or openbox exits;
 - the core stops.
 
