@@ -140,6 +140,7 @@
       permission={asked.get(index)?.decision ?? null}
       carded={part.toolId === carded}
       {nested}
+      folded={nested && !open}
       {store}
       {threadId}
     />

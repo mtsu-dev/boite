@@ -1,9 +1,9 @@
-import type { Query, SpawnOptions as SdkSpawnOptions } from '@anthropic-ai/claude-agent-sdk';
+import type { Query } from '@anthropic-ai/claude-agent-sdk';
 import type { ModelInfo } from '@boite/contracts';
 import { unavailable } from '../../errors.ts';
-import type { SpawnedChild } from '../../procs.ts';
 import { profileFor, resolveExecutable } from '../../providers/resolve.ts';
 import type { ProbeContext, ProbeResult } from '../types.ts';
+import { ProbeProcess } from './probe-process.ts';
 import { childEnv, PromptQueue } from './query.ts';
 import type { ClaudeDeps } from './query.ts';
 
@@ -12,6 +12,7 @@ export async function readClaudeModels(ctx: ProbeContext, deps: ClaudeDeps): Pro
   const executable = profile ? resolveExecutable(profile) : null;
   if (!executable) throw unavailable('no Claude executable for model discovery');
   const prompts = new PromptQueue();
+  const cli = new ProbeProcess(ctx);
   const abortController = new AbortController();
   let query: Query | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -24,10 +25,7 @@ export async function readClaudeModels(ctx: ProbeContext, deps: ClaudeDeps): Pro
       settings: { disableAllHooks: true },
       // Without the strict flag an empty `mcpServers` adds no `--mcp-config`, and the CLI starts the user's servers.
       tools: [], mcpServers: {}, strictMcpConfig: true,
-      spawnClaudeCodeProcess: (options: SdkSpawnOptions): SpawnedChild => {
-        const child = ctx.spawnChild(options.command, options.args, { cwd: options.cwd, env: options.env });
-        child.stderr.resume(); return child;
-      },
+      spawnClaudeCodeProcess: cli.spawn,
     } });
     const rows = await Promise.race([query.supportedModels(), new Promise<never>((_, reject) => {
       timer = setTimeout(() => reject(new Error('Claude model discovery timed out after 20 seconds')), 20_000);
@@ -48,5 +46,5 @@ export async function readClaudeModels(ctx: ProbeContext, deps: ClaudeDeps): Pro
     // Native discovery supplies no legacy classification. Keep its rows current
     // and do not append obsolete descriptor entries to the account's catalog.
     return { models: models.filter((model, index) => models.findIndex(m => m.id === model.id) === index), probedAt: Date.now() };
-  } finally { if (timer) clearTimeout(timer); prompts.end(); query?.close(); abortController.abort(); ctx.killTree(); }
+  } finally { if (timer) clearTimeout(timer); cli.end(prompts, query, abortController); }
 }

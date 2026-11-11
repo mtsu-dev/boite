@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { CornerDownLeft, FileText } from '@lucide/svelte';
+  import { CornerDownLeft, FileText, Puzzle } from '@lucide/svelte';
   import type { Message, Turn } from '@boite/contracts';
   import { bytes, count } from '../lib/format';
   import { decodedBytes } from '../lib/attachments';
@@ -145,6 +145,8 @@
   /** The thread whose agent sent this prompt with `boite thread new`. */
   const startedBy = $derived(message.parts.flatMap((part) => (part.type === 'text' && part.startedBy ? [part.startedBy] : []))[0]);
   /** The starting thread opens while this machine still has it. */
+  /** The plugin that sent this prompt in the owner's name, through turns.start. */
+  const byPlugin = $derived(message.parts.flatMap((part) => (part.type === 'text' && part.byPlugin ? [part.byPlugin] : []))[0]);
   const starterPresent = $derived(!!startedBy && store.threads.some((thread) => thread.id === startedBy.threadId && !thread.archived));
 </script>
 
@@ -165,6 +167,7 @@
       </span>
     </div>
   {/if}
+  {#if byPlugin}<p class="by-plugin" data-testid="by-plugin" title={byPlugin.pluginId}><Puzzle size={12} strokeWidth={1.75} aria-hidden="true" />{fill(strings.plugins.byPlugin, { name: byPlugin.pluginName })}</p>{/if}
   {#each message.parts as part, index (index)}
     {#if part.type === 'text'}
       {@const prompt = promptText(part)}
@@ -216,6 +219,7 @@
 <MessageReceipts text={copyText} at={message.createdAt} {edit} {accepted} {responded} agent={!!startedBy} />
 
 <style>
+  .by-plugin { display: flex; align-items: center; gap: 5px; margin: 0 0 6px; font-size: var(--text-xs); color: var(--color-muted-foreground); }
   .text-omitted { margin: 4px 0 0; font-size: var(--text-sm); color: var(--color-muted-foreground); }
 
   .command { color: var(--color-accent); font-weight: 600; }

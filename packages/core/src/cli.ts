@@ -37,6 +37,7 @@ import { contextRequest, parse, requiredText, Usage, type Parsed } from './cli-a
 import { PLUGIN_COMMAND_TIMEOUT_MS, isPluginCommandWord } from './cli-commands.ts';
 import { PLUGIN_HELP, pluginAction, pluginCommand } from './plugin-cli.ts';
 import { issueCommand, logsCommand } from './logs-cli.ts';
+import { projectsCommand } from './projects-cli.ts';
 import { CONTROL_HELP, controlCommand, isControlCommand, ownerThreadNew, ownerWithoutThread, spawnedLines, type Caller } from './control-cli.ts';
 
 export interface CliIo {
@@ -68,7 +69,10 @@ export const USAGE = `usage: boite <command> [args] [--json]
                                  as <machine>/<project>
   projects                       the projects added to Boite
   projects add <folder>          add an existing folder as a project, so thread
-                                 new and thread move can name it (--name <name>)
+                                 new and thread move can name it (--name <name>;
+                                 --machine <name> from an agent thread: a folder
+                                 of another machine of the group, its absolute
+                                 path there, once its owner allows it)
   projects archive|unarchive|remove <p>
                                  the owner's; removing leaves the folder on disk
 ${CONTROL_HELP}
@@ -171,7 +175,7 @@ ${PLUGIN_HELP}
                                  last prompt (the Automatic goals experiment)
   threads find <words>           locate threads by words of their chat, title,
                                  project, branch or model
-  threads read <thread>          its conversation (--last <n>, --before <ms>)
+  threads read <thread>          its conversation (--last <n>, --before <ms>; --entry <id> --offset <n>: the rest of a cut entry; --entry <id> --tool <id> [--offset <n>]: your own thread's tool output)
   threads send <thread> <text>   message it; --wait blocks for its answer
   threads reply <message-id> <text>
   threads log <thread>           what you and that thread said to each other
@@ -492,7 +496,7 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
     // `threads` alone or `threads list` lists (control-cli.ts); the rest talks to other threads.
     threads: async () => {
       try {
-        await agentsCommand(client, threadId, rest, { ...(parsed.requestId === undefined ? {} : { requestId: parsed.requestId }), wait: parsed.wait, ...(parsed.timeout === undefined ? {} : { timeout: parsed.timeout }), ...(parsed.last === undefined ? {} : { last: parsed.last }), ...(parsed.before === undefined ? {} : { before: parsed.before }) }, print);
+        await agentsCommand(client, threadId, rest, { ...(parsed.requestId === undefined ? {} : { requestId: parsed.requestId }), wait: parsed.wait, ...(parsed.timeout === undefined ? {} : { timeout: parsed.timeout }), ...(parsed.last === undefined ? {} : { last: parsed.last }), ...(parsed.before === undefined ? {} : { before: parsed.before }), ...(parsed.entry === undefined ? {} : { entry: parsed.entry }), ...(parsed.offset === undefined ? {} : { offset: parsed.offset }), ...(parsed.tool === undefined ? {} : { tool: parsed.tool }) }, print);
       } catch (error) {
         if (error instanceof AgentsUsage) throw new Usage(error.message);
         throw error;
@@ -515,33 +519,7 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
         where,
       );
     },
-    projects: async () => {
-      if (caller === 'owner' && threadId === '') {
-        if (rest.length > 0 && rest[0] !== 'add') throw new Usage(`projects: unknown action ${rest[0]}`);
-        if (rest[0] === 'add') {
-          const folder = requiredText(rest, 1, 'projects add needs a folder');
-          const project = await client.call('projects.add', { path: absolute(io.cwd, folder), ...(parsed.name === undefined ? {} : { name: parsed.name }) });
-          print([`project: ${project.id}`, `name: ${project.name}`, `path: ${project.path}`, `git: ${project.repository ? 'yes' : 'no'}`], project);
-          return;
-        }
-        const projects = await client.call('projects.list', {});
-        print(projects.filter(p => p.archived !== true).map(p => `${p.id} ${JSON.stringify(p.name)} ${p.path}${p.repository ? '' : ' no-git'}${p.kind === 'drafts' ? ' drafts' : ''}`), projects);
-        return;
-      }
-      if (rest.length > 0) {
-        if (rest[0] !== 'add') throw new Usage(`projects: unknown action ${rest[0]}`);
-        const folder = rest.slice(1).join(' ').trim();
-        if (folder.length === 0) throw new Usage('projects add needs a folder');
-        const project = await client.call('agent.addProject', { threadId, path: absolute(io.cwd, folder), ...(parsed.name === undefined ? {} : { name: parsed.name }) });
-        print([
-          `project: ${project.id}`, `name: ${project.name}`, `path: ${project.path}`, `git: ${project.repository ? 'yes' : 'no'}`,
-          project.added ? 'Added. boite thread new and boite thread move accept it by name, id or folder.' : 'Already a project; nothing changed.',
-        ], project);
-        return;
-      }
-      const projects = await client.call('agent.projects', { threadId });
-      print(projects.map(p => `${p.id} ${JSON.stringify(p.name)} ${p.path}${p.current ? ' (this thread)' : ''}${p.repository ? '' : ' no-git'}${p.drafts ? ' drafts' : ''}`), projects);
-    },
+    projects: async () => { await projectsCommand(client, caller, threadId, parsed, io.cwd, print); },
     thread: async () => {
       const action = want(0, 'move or new');
       if (action === 'new' && caller === 'owner') {

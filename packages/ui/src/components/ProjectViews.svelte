@@ -30,7 +30,7 @@
   const newLabel = $derived(target ? fill(strings.sidebar.newThreadIn, { project: projectName(target) }) : strings.sidebar.newThread);
   /** The filters that hide threads, counted on the display button: the project Recent lists, the machine. */
   const filters = $derived(Number(workspace.view === 'recent' && selected !== undefined) + Number(machineFilter.shown(workspace.machinesOr(store)) !== null));
-  const addProject = $derived(store.owner && work.shows('sidebar.add-project') ? () => { store.projectPickerOpen = true; } : undefined);
+  const addProject = $derived(store.addsProjects && work.shows('sidebar.add-project') ? () => { store.projectPickerOpen = true; } : undefined);
   /** Always a new draft: one already written stays in the list, where it was. */
   async function create() {
     inbox.open = false;

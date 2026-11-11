@@ -59,7 +59,8 @@ between machines in `peers.ts`) and `packages/core/src/team-cli.ts`.
 
 - A group post (`boite team say`) is read by every member in its next
   delivery. `@name`, `@tous` and `@everyone` wake; the rest read it only when
-  something wakes them.
+  something wakes them. An owner post that names nobody wakes every member
+  ([routing](#routing)).
 - A private post (`boite team dm <team> <member|owner> <text>`) has one
   recipient, always wakes it, and enters no other bot's delivery. It is not
   secret from the owner: the team chat shows every post.
@@ -79,14 +80,21 @@ the author is the only one a rule picks, the post wakes nobody.
 1. `@name` (a member's live name, case ignored, ending at a non-word
    character), `@tous` or `@everyone` (every member but the author), or the
    recipients the owner's composer picked.
-2. A reply goes to the author of the post it answers.
-3. An owner post in a team of one bot goes to that bot.
-4. Otherwise an owner post wakes nobody and carries the notice "Nobody was
-   pinged: name a bot with @name, or everyone with @tous."; a bot post wakes
-   nobody, and teammates read it in their next delivery.
+2. A reply goes to the author of the post it answers. The owner's reply to
+   its own post names no one else and falls to rule 3.
+3. Otherwise an owner post wakes every member, bots of other machines
+   included, as `@tous` would (`routedBy: 'everyone'`), so a team of one bot
+   wakes that bot. A bot post wakes nobody, so bots never wake each other in a
+   loop, and teammates read it in their next delivery.
 
-A later version replaces rule 4 for owner posts with a dispatcher that picks
-the recipients from the roster and the brief.
+An owner post that names nobody costs every member a turn, as `@tous` does.
+Mentions keep the owner's way to wake fewer bots, so no dispatcher picks
+recipients for it.
+
+Posts routed before keep what they recorded: `routedBy: 'single'` for an owner
+post in a team of one bot, and `routedBy: 'none'` with the notice "Nobody was
+pinged: name a bot with @name, or everyone with @tous." for an owner post that
+named nobody, which the team chat shows as having woken nobody.
 
 ## Delivery
 
@@ -332,13 +340,15 @@ opening the chat marks it read. Each post shows:
 - its time; posts of one author a few minutes apart read as one;
 - "Private to …" and the recipient, on a private post;
 - the post it answers, which scrolls to that post;
-- whom it woke. An owner post that named nobody says how to name a bot,
-  in the app's language rather than the core's English notice.
+- whom it woke. An owner post routed before one naming nobody woke every
+  member, which woke nobody, says so in the app's language rather than the
+  core's English notice.
 
 The composer (`components/teams/TeamComposer.svelte`) posts with `teams.post`
 and says, before the post goes, whom it wakes, from the same rule the core
-applies (`routeTeamPost`): `@name`, which the mention menu writes at the caret,
-`@tous` or `@everyone`, or a reply's author. The audience menu makes the post
+applies (`routeTeamPost`): the whole team when the post names nobody, the bots
+it names with `@name`, which the mention menu writes at the caret, everyone
+with `@tous` or `@everyone`, or a reply's author. The audience menu makes the post
 private to one member, which wakes that member only. Both menus show a member's
 machine when it is another one. Reply on a post answers
 it. A post keeps its id until it lands, so a retry after a lost answer returns
@@ -402,8 +412,7 @@ invite or leave.
 - A member of another machine has no page here: its row opens nothing.
 - `@name` wakes every member of that name, so two bots of one name on two
   machines wake together.
-- No dispatcher: an owner post that names nobody, in a team of more than one
-  bot, wakes nobody and says so.
+- An owner post that names nobody wakes every member: to wake fewer, name them.
 - Posts carry no attachments; long content goes by path.
 - Two bots that answer each other stop only when one answers `[quiet]`; the
   daily budget is the other bound.

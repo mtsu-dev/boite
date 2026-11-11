@@ -112,6 +112,20 @@ path and stays on the old file when npm replaces it. With a symbolic link,
 Boite can identify the package and update its own prefix directly, including on
 Windows, without asking the agent to guess its installation method.
 
+A wrapper may sit first on the core's PATH under the agent's name: a launcher
+that caps or traces agents and runs the next program of that name after its
+own directory, as BoiteOS links `claude`, `codex` and `opencode` to one shim.
+On Linux and macOS, when the program PATH resolves is a script (`#!`) that is
+neither a package's own bin script under `node_modules` nor a Termux package,
+the core reads the next program of that name on PATH whose real path differs
+from the wrapper's, and that copy's again when it is a wrapper too. The row,
+the npm prefix and the writability check belong to that copy; the version
+read and the updater still run through the wrapper. Without this, OpenCode's
+`upgrade` behind the BoiteOS shim kept the core's own npm prefix and failed
+with `Could not detect the installation method` (2026-11-10). A script agent
+first on PATH with a second copy of the same name later is read as a wrapper
+of that copy.
+
 An agent a Termux package installed updates through Termux's apt. Termux builds
 its own `codex` package, and `codex update` refuses that copy with `Could not
 detect the Codex installation method`. When the program sits under a prefix

@@ -1,3 +1,4 @@
+import { publicDns } from '../src/contacts/public-dns.ts';
 import { afterEach, expect, test } from 'bun:test';
 import { createHash, generateKeyPairSync } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -512,14 +513,28 @@ test('a join to a Funnel name public DNS does not know yet says to wait and leav
   const invite = await host.core.contacts.invite(true, true);
   expect(watched).toEqual(['https://desk.tail0000.ts.net:8443']);
   const original = globalThis.fetch;
-  restore = () => { globalThis.fetch = original; };
+  const resolve = publicDns.resolve;
+  restore = () => { globalThis.fetch = original; publicDns.resolve = resolve; };
+  // The zone's own servers do not know the name either.
+  publicDns.resolve = async () => [];
   let failure: Error = Object.assign(new TypeError('getaddrinfo ENOTFOUND desk.tail0000.ts.net'), { code: 'ENOTFOUND' });
   globalThis.fetch = (async () => { throw failure; }) as unknown as typeof fetch;
   const { reason } = await rejection(guest.core.contacts.join(invite.link));
   expect(String((reason as Error).message)).toContain('has not published its address on the internet yet');
-  expect(reason).toMatchObject({ data: { retryAfterMs: 30_000 } });
+  expect(reason).toMatchObject({ data: { retryAfterMs: 5000 } });
   expect(host.core.contacts.liveInvites()).toHaveLength(1);
   expect(guest.core.contacts.list()).toHaveLength(0);
+  // Each other failure names the one thing to check; a host still setting up is joined again by itself too.
+  failure = Object.assign(new Error('The operation timed out.'), { name: 'TimeoutError' });
+  const slow = await rejection(guest.core.contacts.join(invite.link));
+  expect(String((slow.reason as Error).message)).toContain('did not answer within 10 seconds');
+  expect(slow.reason).toMatchObject({ data: { retryAfterMs: 5000 } });
+  failure = Object.assign(new TypeError('ECONNREFUSED'), { code: 'ECONNREFUSED' });
+  const off = await rejection(guest.core.contacts.join(invite.link));
+  expect(String((off.reason as Error).message)).toContain('Tailscale Funnel is off on that machine');
+  expect((off.reason as { data?: unknown }).data).toBeUndefined();
+  failure = Object.assign(new TypeError('certificate has expired'), { code: 'CERT_HAS_EXPIRED' });
+  expect(await thrown(guest.core.contacts.join(invite.link))).toThrow('did not prove its name (CERT_HAS_EXPIRED)');
   failure = new TypeError('Unable to connect. Is the computer able to access the url?');
   expect(await thrown(guest.core.contacts.join(invite.link))).toThrow('its Boite or its Tailscale Funnel is off');
 }, 30000);

@@ -4,7 +4,7 @@ export const fr: Translation = {
   firstRun: {
     welcome: 'Boite fait travailler vos agents IA sur vos propres machines.',
     heading: 'Ouvrir un projet',
-    deviceBody: "Les projets s'ouvrent depuis l'application où tourne le cœur. Ceux qu'il détient apparaissent ici.",
+    deviceOlderCore: "Cette machine a une version de Boite trop ancienne pour ajouter un projet depuis cet appareil. Mettez-la à jour dans Réglages, Machines et mises à jour, ou ajoutez le projet depuis l'application de cette machine.",
     pathPlaceholder: 'Chemin absolu du dossier',
     agents: 'Agents',
     steps: 'Pour commencer',

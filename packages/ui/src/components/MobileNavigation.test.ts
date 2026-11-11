@@ -431,3 +431,74 @@ test("a subagent's conversation on a phone has one back arrow, and it returns to
   expect(document.querySelector('[data-testid=delegation-back-parent]')).toBeNull();
   expect(document.querySelector('[data-testid=mobile-back]')).not.toBeNull();
 });
+
+test("a tap on a project's header folds it as the sidebar does, and the fold outlives a restart", async () => {
+  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
+    media, matches: true, onchange: null, addListener() {}, removeListener() {}
+  }));
+  const { projectView } = await import('../lib/project-view.svelte');
+  const { contextMenu } = await import('../lib/context-menu.svelte');
+  const order = projectView.order;
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  const thread = store.threadsOf('p-boite').find(t => !t.parentThreadId)!;
+  store.threads = store.threads.map(t => t.id === thread.id ? { ...t, status: 'error' } : t);
+  workspace.machines = [{ id: 'local', label: 'Local', store }]; workspace.active = store;
+  workspace.setView('projects');
+  projectView.order = 'manual';
+  try {
+    mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'threads' } });
+    await settle();
+    const group = () => document.querySelector<HTMLElement>('[data-testid=mobile-project-group][data-project-id=p-boite]')!;
+    const toggle = () => group().querySelector<HTMLButtonElement>('[data-testid=mobile-project-toggle]')!;
+    const body = () => document.getElementById(toggle().getAttribute('aria-controls')!)!;
+    expect(toggle().getAttribute('aria-expanded')).toBe('true');
+    expect(body().inert).toBe(false);
+    expect(body().querySelector(`[data-thread-id="${thread.id}"]`)).not.toBeNull();
+    expect(group().querySelector('[data-testid=project-rollup]')).toBeNull();
+
+    toggle().click(); await settle();
+    // The same fold as the desktop's: the store's, not a second one for the phone.
+    expect(store.isCollapsed('p-boite')).toBe(true);
+    expect(toggle().getAttribute('aria-expanded')).toBe('false');
+    expect(body().inert).toBe(true);
+    expect(body().classList.contains('open')).toBe(false);
+    // Folded, the head still says what needs the user: its count of threads that need the user, with their state named.
+    const waiting = group().querySelector<HTMLElement>('[data-testid=project-waiting-count]');
+    expect(waiting?.dataset.state).toBeTruthy();
+    expect(waiting?.getAttribute('aria-label')).toBeTruthy();
+    expect(store.isCollapsed('p-notes')).toBe(false);
+
+    // The order and project menus beside the name open their own menus and leave the fold alone.
+    group().querySelector<HTMLButtonElement>('[data-testid=mobile-project-order]')!.click(); await settle();
+    expect(document.querySelector('[data-testid=mobile-project-order-menu]')).not.toBeNull();
+    group().querySelector<HTMLButtonElement>('[data-testid=mobile-project-order]')!.click(); await settle();
+    group().querySelector<HTMLButtonElement>('[data-testid=mobile-project-menu]')!.click(); await settle();
+    expect(contextMenu.current?.items.map(item => item.id)).toContain('new');
+    contextMenu.current = null; await settle();
+    expect(store.isCollapsed('p-boite')).toBe(true);
+
+    // A search lists the matches of a folded project, then the fold comes back with the search cleared.
+    document.querySelector<HTMLButtonElement>('[data-testid=mobile-search-open]')!.click(); await settle();
+    const search = document.querySelector<HTMLInputElement>('[data-testid=mobile-search]')!;
+    search.value = thread.title; search.dispatchEvent(new Event('input', { bubbles: true })); await settle();
+    expect(body().inert).toBe(false);
+    expect(body().querySelector(`[data-thread-id="${thread.id}"]`)).not.toBeNull();
+    expect(toggle().disabled).toBe(true);
+    search.value = ''; search.dispatchEvent(new Event('input', { bubbles: true })); await settle();
+    expect(toggle().getAttribute('aria-expanded')).toBe('false');
+
+    // A new start of the app finds it folded: only this device's storage carried it.
+    await unmount(mounted); mounted = undefined; store.detach(); client.close();
+    client = new FakeClient({ delayMs: 0 });
+    store = new Store(); store.attach(client); await store.connect();
+    workspace.machines = [{ id: 'local', label: 'Local', store }]; workspace.active = store;
+    mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'threads' } });
+    await settle();
+    expect(toggle().getAttribute('aria-expanded')).toBe('false');
+    toggle().click(); await settle();
+    expect(toggle().getAttribute('aria-expanded')).toBe('true');
+    expect(body().inert).toBe(false);
+    expect(store.collapsedProjects).toEqual([]);
+  } finally { projectView.order = order; }
+});

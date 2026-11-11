@@ -1,8 +1,8 @@
-import { threadActive } from '@boite/contracts';
+import { deviceBound, threadActive } from '@boite/contracts';
 import { createHash } from 'node:crypto';
 import {
-  DEFAULT_WORKFLOW_LIMITS, WORKFLOW_LIMITS, checkPlan, checkSteps, conditionHolds, itemLabel, renderTask,
-  resolvePath, shapeMismatch, workflowLevels,
+  DEFAULT_WORKFLOW_LIMITS, WORKFLOW_LIMITS, checkPlan, checkSteps, closeLoop, conditionHolds, executionsUsed, itemLabel, loopAgain,
+  loopSpent, renderTask, resolvePath, shapeMismatch, workflowLevels, workflowValues,
 } from '@boite/contracts';
 import type {
   DelegationConfig, PauseOrigin, Principal, RpcParams, ThreadSummary, Turn, WorkflowInstance, WorkflowNode, WorkflowPlan, WorkflowRun,
@@ -24,7 +24,8 @@ import { askFinal, childEnd, unwoken } from './delegation/completion.ts';
 import { workflowUsage } from './workflows/usage.ts';
 import { SharedWorkflowCompute } from './workflows/shared-compute.ts';
 import { MachineWorkflowSteps } from './workflows/machine-steps.ts';
-import { stepPrompt } from './workflows/prompt.ts';
+import { loopPrompt, stepPrompt } from './workflows/prompt.ts';
+import { reused } from './workflows/loops.ts';
 import { sentBack } from './workflows/follow-up.ts';
 import { delivered, endLeftovers, shapedOutput, stepAnswer } from './workflows/step-result.ts';
 export { registerWorkflowMethods } from './workflows/register.ts';
@@ -36,7 +37,6 @@ interface RequestRow { fingerprint: string; run_id: string }
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const ACTIVE_RUNS = 3;
 const LIST_LIMIT = 20;
-const SUMMARY_CHARS = 10000;
 const ended = (status: WorkflowStepStatus) => status === 'done' || status === 'failed' || status === 'skipped' || status === 'stopped';
 const broken = (status: WorkflowStepStatus) => status === 'failed' || status === 'stopped';
 const INTERRUPTED = 'Interrupted by a core restart';
@@ -266,7 +266,7 @@ export class Workflows {
     if (existing) return this.#view(existing);
     if (run.status !== 'running' && run.status !== 'paused') throw refused(`the run is ${run.status}; only a running or paused run takes new steps`);
     const config = this.#team(run.rootThreadId);
-    const steps = planError(() => checkSteps(params.steps, { profiles: config.profiles.map(p => p.id), existing: run.nodes.map(n => ({ id: n.id, after: n.after })) }));
+    const steps = planError(() => checkSteps(params.steps, { profiles: config.profiles.map(p => p.id), existing: run.nodes.map(n => ({ id: n.id, after: n.after, repeat: run.plan.steps.find(s => s.id === n.id)?.repeat })) }));
     this.#checkRoutes(run.rootThreadId, steps);
     this.#committed(() => {
       this.#mutate(run.id, current => {
@@ -280,17 +280,6 @@ export class Workflows {
   }
 
   // -- the graph ---------------------------------------------------------------
-
-  /** Each step's value: its structured output, else its answer; a list for a fan-out; null when skipped. */
-  #values(run: WorkflowRun): Record<string, unknown> {
-    const values: Record<string, unknown> = {};
-    const valueOf = (inst: WorkflowInstance) => inst.output ?? inst.result;
-    for (const node of run.nodes) {
-      if (node.status === 'skipped') values[node.id] = null;
-      else if (node.status === 'done') values[node.id] = node.forEach ? node.instances.map(valueOf) : node.instances[0] ? valueOf(node.instances[0]) : null;
-    }
-    return values;
-  }
 
   #advance(runId: string): void {
     if (this.#closed) return;
@@ -326,7 +315,7 @@ export class Workflows {
     let opened = false;
     for (let progress = true; progress;) {
       progress = false;
-      const values = this.#values(run);
+      const values = workflowValues(run);
       for (const node of run.nodes) {
         if (node.status !== 'waiting' || node.instances.length) continue;
         const deps = node.after.map(id => run!.nodes.find(n => n.id === id)!);
@@ -369,11 +358,12 @@ export class Workflows {
       if (!Array.isArray(list)) return void fail(`forEach: ${step.forEach} is ${describe(list)}, not a list`);
       items = list;
     }
-    const used = run.nodes.reduce((n, other) => n + other.instances.length, 0);
+    const used = executionsUsed(run);
     const count = items ? items.length : 1;
     if (used + count > run.limits.maxSteps) return void fail(`${count} executions would pass this run's limit of ${run.limits.maxSteps} (${used} used); raise limits.maxSteps up to ${WORKFLOW_LIMITS.maxSteps} or narrow the list`);
     if (items && items.length === 0) {
       Object.assign(node, { status: 'done', startedAt: now, finishedAt: now });
+      closeLoop(run, node, now);
       return;
     }
     const instances: WorkflowInstance[] = [];
@@ -383,7 +373,7 @@ export class Workflows {
       instances.push({
         key: items ? `${node.id}#${index}` : node.id, index: items ? index : null, label: items ? itemLabel(item) : '',
         threadId: null, providerId: null, model: null, status: 'waiting', attempts: 0, task, result: null, output: null,
-        error: null, startedAt: null, finishedAt: null,
+        error: null, startedAt: null, finishedAt: null, ...reused(this.#core, node, items ? `${node.id}#${index}` : node.id),
       });
     }
     Object.assign(node, { instances, status: 'running', startedAt: now, error: null });
@@ -396,7 +386,9 @@ export class Workflows {
       Object.assign(inst, { status: 'failed', error, finishedAt: now, startedAt: inst.startedAt ?? now });
       this.#save(run);
     };
-    const retry = inst.threadId !== null;
+    // A loop's next round: the step again, in the conversation it had, with what closed the last round.
+    const again = (node.round ?? 1) > 1 && inst.attempts === 0 && !inst.outputCorrection;
+    const retry = !again && inst.threadId !== null;
     let threadId = inst.threadId;
     if (threadId === null) {
       try {
@@ -428,7 +420,7 @@ export class Workflows {
     Object.assign(inst, { status: 'running', attempts: correction ? inst.attempts : 1, error: null, result: null, output: null, startedAt: correction ? inst.startedAt : now, finishedAt: null });
     delete inst.outputCorrection;
     this.#save(run);
-    const prompt = correction ?? (retry
+    const prompt = correction ?? (again ? loopPrompt(this.#core, run, node, inst) : retry
       ? `Try this workflow step again. The previous attempt ended with: ${previous ?? 'no result'}. The task is unchanged.\n${stepPrompt(this.#core, run, node, inst)}`
       : stepPrompt(this.#core, run, node, inst));
     try {
@@ -488,6 +480,8 @@ export class Workflows {
       node.status = failed ? 'failed' : stopped ? 'stopped' : 'done';
       node.error = (failed ?? stopped)?.error ?? null;
       node.finishedAt = now;
+      // A step closing a loop that does not hold yet sends the loop round again.
+      closeLoop(run, node, now);
       changed = true;
     }
     return changed;
@@ -749,12 +743,14 @@ export class Workflows {
         this.#stop(run, 'Stopped');
         return this.#view(this.#load(run.id)!);
       case 'retry': {
-        if (principal === 'session') throw refused('retrying a workflow step is an owner action');
+        if (deviceBound(principal)) throw refused('retrying a workflow step is an owner action');
         if (run.status === 'done') throw refused('the run finished; start it again instead');
         // A retry leaves the run running: on a paused run that is a resume.
         if (run.status === 'paused') mayResume(this.#core, run, principal);
         const nodes = params.stepId === undefined ? run.nodes.filter(n => broken(n.status) || n.instances.some(i => broken(i.status))) : run.nodes.filter(n => n.id === params.stepId);
         if (params.stepId !== undefined && !nodes.length) throw invalidParams(`stepId: no step ${params.stepId} in this run`);
+        // A loop out of rounds goes one round more.
+        for (const node of nodes) if (loopSpent(run, node)) loopAgain(run, node);
         for (const node of run.nodes) {
           const target = nodes.includes(node);
           for (const inst of node.instances) if (target && broken(inst.status)) {

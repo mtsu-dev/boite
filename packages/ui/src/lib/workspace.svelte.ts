@@ -17,6 +17,7 @@ import {
   storeMainMachine,
   type Endpoint,
   type MainMachine,
+  type StoredEnvironment,
   opens
 } from './endpoint';
 import { fill, strings } from './strings';
@@ -29,6 +30,9 @@ import { limitsMachine, setNotificationCore, setPushHomeClient } from './notify'
 import { appPage } from './app-origin';
 import { pictureSources } from './agent-pictures.svelte';
 import { bootWorkspace, byHand, hostOf, primaryMachine } from './workspace-boot';
+import { machineIcons, namedByUser, PROFILE_KEY, profileKey, profileName, profiles, typedName, type MachineIconName } from './machine-names';
+
+export { machineIcons, type MachineIconName } from './machine-names';
 
 export interface Machine {
   id: string;
@@ -50,9 +54,8 @@ export function isThisPC(machine: Machine): boolean {
 }
 
 /**
- * A machine's name on screen. One under the default name goes by its own:
- * in a group every PC is "this PC" to itself, which tells nobody apart, and a
- * phone or a browser that reaches a computer is not that computer.
+ * A machine's name on screen. One under the default name goes by its own: in a group every PC is "this PC" to itself,
+ * which tells nobody apart, and a phone or a browser that reaches a computer is not that computer.
  */
 export function machineName(machine: Machine): string {
   return localDefault(machine.label) && machine.store.core?.hostname ? machine.store.core.hostname : machine.label;
@@ -63,9 +66,8 @@ export function machineName(machine: Machine): string {
  * then (English, French), or by an older version. The French one is written
  * out rather than read: its catalogue loads only once the app speaks French.
  */
-const LOCAL_DEFAULTS = ['This computer', 'Cet ordinateur', 'This PC', 'Ce PC', 'My computer'];
 function localDefault(label: string): boolean {
-  return label === strings.machines.local || LOCAL_DEFAULTS.includes(label);
+  return label === strings.machines.local || ['This computer', 'Cet ordinateur', 'This PC', 'Ce PC', 'My computer'].includes(label);
 }
 
 /** A machine in a list of machines: this computer by its name and "(you)", once it has a name of its own. */
@@ -102,20 +104,6 @@ export const PRIMARY_PATIENCE_MS = 2000;
 export const STAND_IN_WAIT_MS = 6000;
 /** How long the group links wait for the remembered machines to be in: a connection that never ends must not hide the group's other machines for good. */
 export const SETTLE_WAIT_MS = 30_000;
-
-export const machineIcons = [
-  'desktop', 'laptop', 'phone', 'tablet', 'apple', 'server', 'rack', 'nas',
-  'database', 'cloud', 'cpu', 'router', 'terminal', 'bot', 'gamepad', 'tv', 'house',
-] as const;
-export type MachineIconName = typeof machineIcons[number];
-const PROFILE_KEY = 'boite.machine-profiles';
-function profileKey(machine: Machine): string {
-  const core = machine.store.core;
-  return core?.hostname ? JSON.stringify([core.hostname, core.dataDir, core.channel]) : machine.id;
-}
-function profiles(): Record<string, { label: string; icon?: MachineIconName }> {
-  try { return JSON.parse(localStorage.getItem(PROFILE_KEY) ?? '{}') ?? {}; } catch { return {}; }
-}
 
 /** A connection's URL is also its identity in the workspace and saved list. */
 function endpointIdentity(endpoint: Endpoint): { id: string; host: string } | null {
@@ -246,9 +234,11 @@ export class Workspace {
     if (!this.#current(lifecycle)) return;
     const machine = this.machines.find((m) => m.store === store);
     if (machine && store.connection === 'ready') {
-      // It was listed under its address until it said who it is.
-      if (machine.label === hostOf(store.endpointUrl) && store.core?.hostname) {
-        machine.label = store.core.hostname;
+      // It was listed under its address, or under the name it had last time, until it said who it is now.
+      const own = this.ownName(machine, readEnvironments().find((e) => e.url === machine.id))
+        ?? (machine.label === hostOf(store.endpointUrl) ? store.core?.hostname : undefined);
+      if (own && own !== machine.label) {
+        machine.label = own;
         this.restoreProfile(machine);
         this.#distinct(machine);
         this.machines = [...this.machines];
@@ -313,12 +303,23 @@ export class Workspace {
     });
   }
 
+  /**
+   * What a machine of another computer is listed under: the name the owner
+   * typed for it, else the name it reports now. Undefined for this PC, whose
+   * saved name stays (`machineName` shows its own), and for a machine that has
+   * not said who it is.
+   */
+  ownName(machine: Machine, saved: StoredEnvironment | undefined): string | undefined {
+    if (isThisPC(machine)) return undefined;
+    return namedByUser(saved) ? saved!.label.trim() : machine.store.core?.hostname || undefined;
+  }
+
   restoreProfile(machine: Machine): void {
     const saved = profiles()[profileKey(machine)];
-    if (typeof saved?.label === 'string' && saved.label.trim()) machine.label = saved.label;
+    const name = profileName(saved, !isThisPC(machine) && namedByUser(readEnvironments().find((e) => e.url === machine.id)));
+    if (name) machine.label = name;
     if (saved?.icon && machineIcons.includes(saved.icon)) machine.icon = saved.icon;
-    // A default name saved in another language, or an older one, speaks the app's language now.
-    if (isThisPC(machine) && localDefault(machine.label)) machine.label = strings.machines.local;
+    if (isThisPC(machine) && localDefault(machine.label)) machine.label = strings.machines.local; // A default saved in another language, or an older one, speaks the app's now.
   }
 
   /**
@@ -346,12 +347,14 @@ export class Workspace {
   customize(id: string, label: string, icon?: MachineIconName): void {
     const machine = this.machines.find(m => m.id === id);
     if (!machine || !label.trim() || (icon && !machineIcons.includes(icon))) return;
+    const saved = readEnvironments().find(e => e.url === machine.id);
+    // Picking an icon sends the name back unchanged: only a new name, or one typed before, is the owner's.
+    const named = label.trim() !== machine.label || typedName(machine, saved);
     machine.label = label.trim();
     this.#distinct(machine);
     machine.icon = icon;
-    try { localStorage.setItem(PROFILE_KEY, JSON.stringify({ ...profiles(), [profileKey(machine)]: { label: machine.label, icon } })); } catch { /* session only */ }
-    const saved = readEnvironments().find(e => e.url === machine.id);
-    if (saved) upsertEnvironment({ ...saved, label: machine.label });
+    try { localStorage.setItem(PROFILE_KEY, JSON.stringify({ ...profiles(), [profileKey(machine)]: { label: machine.label, icon, named } })); } catch { /* session only */ }
+    if (saved) upsertEnvironment({ ...saved, label: machine.label, ...(named ? { named: true } : {}) });
     this.machines = [...this.machines];
   }
 
@@ -423,7 +426,10 @@ export class Workspace {
 
   /** Keep a connected machine's display name and resumable session credentials. */
   #rememberConnected(machine: Machine, endpoint: Endpoint, label: string | undefined, host: string): void {
-    machine.label = label?.trim() || machine.store.core?.hostname || host;
+    // A name saved without the owner typing it is only what the machine was called before: the one it reports now wins, a new one handed in wins over that.
+    const before = readEnvironments().find((e) => e.url === machine.id);
+    const named = !isThisPC(machine) && typedName(machine, before), given = label?.trim() !== before?.label.trim() ? label?.trim() : undefined;
+    machine.label = (namedByUser(before) ? this.ownName(machine, before) : undefined) || given || this.ownName(machine, before) || label?.trim() || machine.store.core?.hostname || host;
     this.restoreProfile(machine);
     this.#distinct(machine);
     // Grant and ticket credentials are persisted by WsClient's onSession, never the grant itself.
@@ -431,6 +437,7 @@ export class Workspace {
     if (!endpoint.grant && !endpoint.ticket && !endpoint.local)
       upsertEnvironment({
         url: machine.id, token: endpoint.token, paired: endpoint.paired ?? endpoint.signs !== undefined, label: machine.label,
+        ...(named ? { named: true as const } : {}),
         ...(endpoint.signs === undefined ? {} : { signs: endpoint.signs }),
         ...(machine.coreId === undefined ? {} : { coreId: machine.coreId }),
         ...(machine.groupId === undefined ? {} : { groupId: machine.groupId }),
@@ -438,7 +445,7 @@ export class Workspace {
       });
     else {
       const saved = readEnvironments().find((e) => e.url === machine.id);
-      if (saved) upsertEnvironment({ ...saved, label: machine.label });
+      if (saved) upsertEnvironment({ ...saved, label: machine.label, ...(named ? { named: true as const } : {}) });
     }
     this.machines = [...this.machines];
     if (machine.store === store) {

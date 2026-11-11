@@ -257,7 +257,7 @@ export interface SharedProjectsRpcMethods {
   'sharedProjects.configure': { params: { sharedProjectId: string; board?: boolean; compute?: SharedComputePolicy; /** Host-local parent whose delegation profiles/accounts back this opt-in. Never forwarded. */ computeThreadId?: ThreadId; reviewer?: SharedReviewConfig }; result: SharedProjectView };
   'sharedProjects.threads': { params: SharedProjectScope; result: { threads: SharedProjectThread[]; unavailable: SharedProjectRef[] } };
   'sharedProjects.search': { params: SharedProjectScope & { query: string }; result: { matches: AgentMatch[]; unavailable: SharedProjectRef[] } };
-  'sharedProjects.read': { params: SharedProjectScope & { target: SharedThreadRef; limit?: number; before?: Timestamp }; result: AgentTranscript };
+  'sharedProjects.read': { params: SharedProjectScope & { target: SharedThreadRef; limit?: number; before?: Timestamp; entry?: string; offset?: number }; result: AgentTranscript };
   /** Connection-owned scope, released on unsubscribe, disconnect, project move or revoke. */
   'sharedProjects.subscribe': { params: SharedProjectScope & { enabled: boolean }; result: { ok: true } };
   'sharedBoard.get': { params: SharedProjectScope & { after?: number }; result: SharedBoardPage };
@@ -303,7 +303,7 @@ export interface SharedProjectPeerMethods {
   changed: { params: { subscriptionId: string | null; kinds: ('threads' | 'board' | 'compute' | 'access')[]; boardRevision?: number; jobIds?: string[] }; result: { ok: true } };
   threads: { params: Record<string, never>; result: SharedProjectThread[] };
   search: { params: { query: string }; result: AgentMatch[] };
-  read: { params: { target: SharedThreadRef; limit?: number; before?: Timestamp }; result: AgentTranscript };
+  read: { params: { target: SharedThreadRef; limit?: number; before?: Timestamp; entry?: string; offset?: number }; result: AgentTranscript };
   'board.get': { params: { after?: number }; result: SharedBoardPage };
   'board.apply': { params: { command: SharedBoardCommand; workerInfo?: { agent: string; machine: string } }; result: SharedBoardReceipt };
   /** Durable authority revision hint. Receiver pulls deltas; receiving one never echoes it. */

@@ -2,12 +2,13 @@ import { existsSync, mkdirSync, statSync } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
-import { PROJECT_NAME_MAX, TECH_ICON_IDS, type Project, type ProjectIcon, type ProjectId, type TechIconId } from '@boite/contracts';
+import { PROJECT_NAME_MAX, TECH_ICON_IDS, deviceBound, type Project, type ProjectIcon, type ProjectId, type TechIconId } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { newId } from './ids.ts';
 import { folderGone, messageOf, notFound, refused } from './errors.ts';
 import { FileIndex } from './files.ts';
 import { documentsDir } from './platform/folders.ts';
+import { assertDeviceProjectFolder } from './workdir.ts';
 import type { FilesPage } from './files.ts';
 import type { ProjectIconRow } from './journal/rows.ts';
 import { detectProjectIcon, type DetectedIcon } from './project-icons.ts';
@@ -567,6 +568,27 @@ export class ProjectStore {
   }
 }
 
+/**
+ * What `projects.add` and a member's `project.add` take, checked on the
+ * machine that holds the folder, whose paths they are: an absolute path
+ * there, and a name that fits. An empty name is the folder's own.
+ */
+export function folderToAdd(value: unknown, method = 'projects.add'): { path: string; name?: string } {
+  const raw = (value ?? {}) as Record<string, unknown>;
+  const path = typeof raw.path === 'string' ? raw.path.trim() : '';
+  const where = 'an absolute path to an existing directory on this machine';
+  if (!path || path.length > 4096 || !isAbsolute(path)) {
+    throw refused(`${method}.path must be ${where}${path ? `, got ${path.slice(0, 200)}` : ''}`, { field: 'path', expected: where });
+  }
+  if (raw.name === undefined) return { path };
+  const name = typeof raw.name === 'string' ? raw.name.trim() : null;
+  if (name === null || name.length > PROJECT_NAME_MAX) {
+    const expected = `a string of up to ${PROJECT_NAME_MAX} characters after trimming`;
+    throw refused(`${method}.name must be ${expected}`, { field: 'name', expected });
+  }
+  return name === '' ? { path } : { path, name };
+}
+
 export function registerProjectMethods(core: Core): void {
   core.router.register('projects.browse', async ({ path }) => {
     if (path !== undefined && (typeof path !== 'string' || !isAbsolute(path)))
@@ -586,7 +608,12 @@ export function registerProjectMethods(core: Core): void {
     }
   });
   core.router.register('projects.list', () => core.projects.listFresh());
-  core.router.register('projects.add', (params) => core.projects.add(params.path, params.name));
+  core.router.register('projects.add', (params, ctx) => {
+    const { path, name } = folderToAdd(params);
+    // A device or a plugin names any folder of this machine; the reads it is then allowed start from there.
+    if (deviceBound(ctx.connection.identity.principal)) assertDeviceProjectFolder(core, resolve(path));
+    return core.projects.add(path, name);
+  });
   core.router.register('projects.rename', (params) => core.projects.rename(params.projectId, params.name));
   core.router.register('projects.drafts', () => core.projects.drafts());
   core.router.register('projects.icon', (params) => core.projects.iconImage(params.projectId));

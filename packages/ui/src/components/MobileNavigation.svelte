@@ -4,7 +4,7 @@
   import WindowList from './WindowList.svelte';
   import MobileTabs from './MobileTabs.svelte';
   import ThreadHeader from './ThreadHeader.svelte';
-  import { ArrowLeft, ArrowUpDown, ChevronDown, Ellipsis, MessageSquare, Monitor, Plus, Search, Settings, X } from '@lucide/svelte';
+  import { ArrowLeft, ArrowUpDown, ChevronDown, ChevronRight, Ellipsis, MessageSquare, Monitor, Plus, Search, Settings, X } from '@lucide/svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import MobileConnect from './MobileConnect.svelte';
   import type { Store } from '../lib/store.svelte';
@@ -38,6 +38,7 @@
   import ProjectTile from './ProjectTile.svelte';
   import MachinePlace from './MachinePlace.svelte';
   import MachineOffline from './MachineOffline.svelte';
+  import ProjectRollup from './ProjectRollup.svelte';
   import { projectKey, projectView, type ProjectEntry } from '../lib/project-view.svelte';
   import { activeProject, archiveCount, projectSections, projectThreadView } from '../lib/project-threads.svelte';
   import { workingThread } from '../lib/recent.svelte';
@@ -50,7 +51,7 @@
   import EmptyState, { HOUSE_BOT } from './EmptyState.svelte';
   import RobotFace from './agents/RobotFace.svelte';
   import { threadsNeedingYou } from '../lib/app-rail';
-  import { needsUser, threadState } from '../lib/thread-state';
+  import { needsUser, projectRollup, threadState } from '../lib/thread-state';
   import { foldQuiet } from '../lib/card-fold';
   import { minuteClock } from '../lib/clock.svelte';
   import { needsAnAI } from '../lib/first-run';
@@ -307,7 +308,7 @@
     <!-- The magnifier opened the field in the title's place; the display options close its row, as on the desktop list. -->
     <div class="search"><Search size={17} /><input type="search" bind:value={() => lent ? tabHeader.query : search, value => { if (lent) tabHeader.query = value; else search = value; }}
       aria-label={lent?.searchLabel ?? strings.mobile.search} placeholder={lent?.searchLabel ?? strings.mobile.search} data-testid="mobile-search" use:focusOnMount onkeydown={event => { if (event.key === 'Escape') closeSearch(); }} />
-      {#if listScreen === 'threads' && groups.length}<span class="display"><DisplayOptions entries={groups} target={undefined} owner={store} prefix="mobile-" compact filters={filters} {atWork} onaddproject={store.owner ? addProject : undefined} /></span>{/if}
+      {#if listScreen === 'threads' && groups.length}<span class="display"><DisplayOptions entries={groups} target={undefined} owner={store} prefix="mobile-" compact filters={filters} {atWork} onaddproject={store.addsProjects ? addProject : undefined} /></span>{/if}
     </div>
     <button class="ghost icon" data-testid="mobile-search-close" aria-label={strings.mobile.clearSearch} onclick={closeSearch}><X size={20} /></button>
   {:else}
@@ -321,7 +322,7 @@
       onpick={id => id === 'home' ? store.showHome() : store.showAgents()} options={[{ id: 'agents', label: strings.agents.heading, testid: 'mobile-bots-view', preload: 'agents' }, { id: 'home', label: strings.contacts.heading, testid: 'mobile-contacts', preload: 'home' }]} />{:else}{title}{/if}</strong>{/if}
   </div>
   {#if placeShown && !firstRun && !(tabbed && !recover)}{@render connection()}{/if}
-  {#if threadViews}<span class="header-display"><DisplayOptions entries={groups} target={undefined} owner={store} prefix="mobile-" compact filters={filters} {atWork} onaddproject={store.owner ? addProject : undefined} /></span>{/if}
+  {#if threadViews}<span class="header-display"><DisplayOptions entries={groups} target={undefined} owner={store} prefix="mobile-" compact filters={filters} {atWork} onaddproject={store.addsProjects ? addProject : undefined} /></span>{/if}
   {#if searchable}<button class="ghost icon" data-testid={lent?.searchTestid ?? 'mobile-search-open'} aria-label={lent?.searchLabel ?? strings.mobile.search} title={lent?.searchLabel ?? strings.mobile.search} onclick={() => searching = true}><Search size={20} /></button>{/if}
   {/if}
   {#if !recover && !chatting && experimentOn('whip')}<WhipButton mobile />{/if}
@@ -385,11 +386,18 @@
         {@const attentionRows = foldOpen ? attentionAll : fold.shown}
         {@const controls = `mobile-project-${encodeURIComponent(projectKey(group))}`}
         {@const drafts = group.machine.store.draftEntries.filter(entry => entry.projectId === group.project.id)}
+        {@const folded = !query && group.machine.store.isCollapsed(group.project.id)}
+        {@const rollup = folded && group.machine.store.connection === 'ready' ? projectRollup(group.machine.store.threadsOf(group.project.id), thread => rowAsks(group.machine.store, thread.id)) : null}
         {#if !query || groupRows.length > 0 || doneOpen || archivedOpen}
-        <section class="project-group" class:inactive={!activeProject(group)} data-testid="mobile-project-group" data-project-id={group.project.id} data-machine-id={group.machine.id}>
+        <section class="project-group" class:inactive={!activeProject(group)} class:folded data-testid="mobile-project-group" data-project-id={group.project.id} data-machine-id={group.machine.id}>
           <div class="project-heading" data-row-edge>
-            <ProjectTile project={group.project} store={group.machine.store} /><h2><span class="name">{projectName(group.project)}</span>{#if hostName(group.machine, machines, home?.id)}<MachinePlace host={{ ...hostName(group.machine, machines, home?.id)!, away: false }} testid="mobile-project-host" />{/if}</h2>
-            <ProjectThreadCounters entry={group} working={group.machine.store.threadsOf(group.project.id).filter(thread => workingThread(group.machine.store, thread)).length} waiting={waitingHere} failed={needsHere.failed} listed={attentionRows.filter(row => needsYou(threadState(row.thread, rowAsks(row.machine.store, row.thread.id)))).length} {controls} searching={!!query} away={group.machine.store.connection !== 'ready'} />
+            <!-- The tile and the name fold the project, as its header does on the desktop; the counters and menus beside them keep their own action.
+                 A search lists every match, folded or not, as the desktop's search does: the header folds again once it is cleared. -->
+            <h2><button type="button" class="ghost project-toggle" data-testid="mobile-project-toggle" aria-expanded={!folded} aria-controls="{controls}-body" disabled={!!query}
+              onclick={() => projectThreadView.toggleProject(group, { working: workingRows.map(row => row.thread), attention: attentionRows.map(row => row.thread) }, drafts.length)}>
+              <ProjectTile project={group.project} store={group.machine.store} /><span class="name">{projectName(group.project)}</span><span class="fold-caret" class:open={!folded} aria-hidden="true"><ChevronRight size={16} /></span>{#if rollup && !needsYou(rollup.kind) && rollup.kind !== 'done' && workingRows.length === 0}<ProjectRollup {rollup} />{/if}{#if hostName(group.machine, machines, home?.id)}<MachinePlace host={{ ...hostName(group.machine, machines, home?.id)!, away: false }} testid="mobile-project-host" />{/if}
+            </button></h2>
+            <ProjectThreadCounters entry={group} working={group.machine.store.threadsOf(group.project.id).filter(thread => workingThread(group.machine.store, thread)).length} waiting={waitingHere} failed={needsHere.failed} listed={attentionRows.filter(row => needsYou(threadState(row.thread, rowAsks(row.machine.store, row.thread.id)))).length} {controls} collapsed={folded} searching={!!query} away={group.machine.store.connection !== 'ready'} />
             {#if projectView.order === 'manual'}
               <Menu items={[
                 { id: 'up', label: strings.sidebar.moveProjectUp, disabled: projectKey(foldOf(group)[0]!) === projectKey(group) },
@@ -402,8 +410,10 @@
           </div>
           <!-- Out of reach, said once under the name with its next step; the rows below dim as last seen. -->
           {#if group.machine.store.connection !== 'ready'}<div class="offline"><MachineOffline store={group.machine.store} label={group.machine.label} /></div>{/if}
+          <!-- Folded, the project keeps its header alone: drafts, conversations and their done and archived lists wait under the fold. -->
+          <div id="{controls}-body" class="disclosure-fold" class:open={!folded} inert={folded}><div>
           {#if !query}{#each drafts as draft (draft.id)}<DraftRow owner={group.machine.store} entry={draft} onopen={() => show('chat')} />{/each}{/if}
-          <WindowList items={attentionRows} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} estimate={66} measurements={measurements(projectKey(group))}>
+          <WindowList items={attentionRows} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} active={!folded} estimate={66} measurements={measurements(projectKey(group))}>
             {#snippet row(entry)}{@render threadRow(entry, true)}{/snippet}
           </WindowList>
           {#if fold.folded.length}<div class="fold-more"><FoldMore count={fold.folded.length} open={foldOpen} ontoggle={() => toggleFold(projectKey(group))} /></div>{/if}
@@ -411,19 +421,20 @@
           <div id="{controls}-working" hidden={!workingOpen || !!query || workingRows.length === 0} data-testid="project-working">
             {#if workingOpen && !query && workingRows.length > 0}
               {#if waitingHere === 0}<GroupLabel kind="working" count={workingRows.length} />{/if}
-              <WindowList items={workingRows} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} estimate={66} measurements={measurements(`${projectKey(group)}:working`)}>
+              <WindowList items={workingRows} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} active={!folded} estimate={66} measurements={measurements(`${projectKey(group)}:working`)}>
                 {#snippet row(entry)}{@render threadRow(entry, true)}{/snippet}
               </WindowList>
             {/if}
           </div>
           <div id="{controls}-done" hidden={!doneOpen} data-testid="project-done">
             {#if doneOpen}<GroupLabel kind="done" count={query ? undefined : archiveCount(group.project, 'done')} />{/if}
-            <RecentDone entries={[group]} {scrollRoot} {now} {query} open={doneOpen} header={false} onopen={() => show('chat')} />
+            <RecentDone entries={[group]} {scrollRoot} {now} {query} open={doneOpen && !folded} header={false} onopen={() => show('chat')} />
           </div>
           <div id="{controls}-archived" hidden={!archivedOpen} data-testid="project-archived">
-            <RecentDone kind="archived" entries={[group]} {scrollRoot} {now} {query} open={archivedOpen && (!later || projectThreadView.laterOpen)} header={false} onopen={() => show('chat')} />
+            <RecentDone kind="archived" entries={[group]} {scrollRoot} {now} {query} open={archivedOpen && !folded && (!later || projectThreadView.laterOpen)} header={false} onopen={() => show('chat')} />
           </div>
           {#if groupRows.length === 0 && !group.project.archivedThreads && drafts.length === 0}<p class="empty">{strings.sidebar.noThreads}</p>{/if}
+          </div></div>
         </section>
         {/if}
       {/each}
@@ -581,6 +592,10 @@
     .project-heading .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--weight-title); color: var(--color-foreground); }
     /* The machine as a place (MachinePlace.svelte): its name gives way before the project's, its state never. */
     .project-heading h2 :global(.machine-place) { flex: 0 1000 auto; }
+    /* The fold's target: tile, name and chevron, a finger's height that eats the heading's padding rather than making it taller. */
+    .project-toggle { flex: 1; display: flex; align-items: center; width: 100%; height: auto; min-width: 0; min-height: var(--touch-target); margin: -8px 0; padding: 0; gap: 8px; justify-content: flex-start; border: 0; border-radius: var(--radius-md); font: inherit; color: inherit; text-align: left; white-space: normal; }
+    .project-toggle:hover:not(:disabled) { background: transparent; color: inherit; }
+    .project-toggle:disabled { opacity: 1; }
     /* A whole touch target that eats the heading's padding rather than making it taller. */
     /* The folded quiet threads' action (FoldMore.svelte): a finger's height, on the rows' text edge. */
     .fold-more { --fold-more-height: var(--touch-target); --fold-more-inset: 12px; }

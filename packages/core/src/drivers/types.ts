@@ -411,8 +411,16 @@ export interface ProbeContext {
   model?: string;
   /** The registry that traces the probe process, under the thread `probe:<providerId>:<accountId>`. */
   spawnChild(cmd: string, args: string[], opts?: SpawnOptions): SpawnedChild;
-  /** Terminates whatever that synthetic thread launched. Called on every path. */
+  /** Terminates whatever that synthetic thread launched. Called on every path that does not call `letExit`. */
   killTree(): void;
+  /**
+   * Instead of `killTree`: the processes, their input ended, may take up to
+   * `graceMs` to exit on their own before the caller stops them. An agent that
+   * refreshes a rotating login token at startup must not be cut off between
+   * the server's answer and its write to disk. Absent where the caller gives
+   * no grace.
+   */
+  letExit?(graceMs: number): void;
   log(level: 'info' | 'warn' | 'error', message: string, context?: CoreLogContext): void;
 }
 

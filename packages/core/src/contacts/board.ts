@@ -439,6 +439,8 @@ export class SharedBoard {
   }
   /** The existing board's card shape, with scoped attribution instead of a foreign goalThreadId. */
   visibleTodos(threadId: string, todos: Todo[], connection: Connection): Todo[] {
+    // A shared board is open to the people it is shared with, never to a plugin (PLUGIN_CLOSED).
+    if (connection.identity.principal === 'plugin') return todos.filter(todo => !todo.shared);
     if (connection.identity.principal !== 'agent') return todos;
     const allowed = new Map<string, boolean>();
     return todos.filter(todo => {

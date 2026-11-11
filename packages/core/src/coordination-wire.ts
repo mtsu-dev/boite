@@ -7,6 +7,8 @@
 import { verify } from 'node:crypto';
 import { invalidParams } from './errors.ts';
 import { openResponse, SEALED, unpack, type Sealing } from './group/seal.ts';
+import { CLOCK_ERROR, ClockRefusal } from './peer-clock.ts';
+import { funnelFetch } from './contacts/public-dns.ts';
 
 /** What one core asks another. */
 export type Operation = 'directory' | 'deliver' | 'receipt' | 'search' | 'read' | 'group.sync' | 'group.push' | 'contact.sync' | 'contact.ask' | 'contact.answer' | 'contact.relation' | 'contact.project' | 'contact.route'
@@ -14,8 +16,8 @@ export type Operation = 'directory' | 'deliver' | 'receipt' | 'search' | 'read' 
   | 'contact.hand' | 'contact.move'
   /** Between members of a group, for a contact one of them is linked to (`contacts/members.ts`). */
   | 'relay.project' | 'relay.mirror' | 'relay.in' | 'relay.out'
-  /** Between members of a group: a thread one starts on another, the models it can run on there, and the setting that lets it (`threads/group-spawn.ts`). */
-  | 'thread.start' | 'delegation.catalog' | 'delegation.start' | 'delegation.report' | 'delegation.letter' | 'delegation.read' | 'delegation.stop' | 'setting.read' | 'setting.changed'
+  /** Between members of a group: a thread one starts on another, the models it can run on there, and the setting that lets it (`threads/group-spawn.ts`); a folder of the other machine one adds as a project there, under the same setting. */
+  | 'thread.start' | 'project.add' | 'delegation.catalog' | 'delegation.start' | 'delegation.report' | 'delegation.letter' | 'delegation.read' | 'delegation.stop' | 'setting.read' | 'setting.changed'
   /** Between members of a group: a bot of one looks after projects of another, which hears it while its `groupBots` is on (`agents/group-host.ts`). */
   | BotOperation
   /** Between members of a group: the machine that holds a team and the machines of its members (`teams/peers.ts`). */
@@ -91,8 +93,10 @@ export function settle(url: string | null, publicKey: string, nonce: string, sta
     ({ body: raw, signature } = unpack(openResponse(raw, sealing.responseKey, sealing.context)));
   }
   if (!verify(null, Buffer.from(raw), publicKey, Buffer.from(signature, 'base64'))) throw new Error('invalid peer response signature');
-  const reply = JSON.parse(raw) as { nonce: string; result?: unknown; error?: string; gone?: boolean };
+  const reply = JSON.parse(raw) as { nonce: string; result?: unknown; error?: string; gone?: boolean; now?: unknown };
   if (reply.nonce !== nonce) throw new Error('peer response nonce mismatch');
+  // The peer's clock, under its key and for this very request: the caller dates the next one by it.
+  if (reply.error === CLOCK_ERROR && typeof reply.now === 'number') throw new ClockRefusal(reply.now);
   // "You were removed" is read off the signed body of a sealed answer, never off the
   // status line, which anyone on the path can rewrite, and never off an answer that
   // was not sealed to this very request, which could be one made for another machine.
@@ -138,14 +142,17 @@ export async function firstAnswer<T>(routes: readonly string[], send: (url: stri
   return Promise.any([...(early === null ? [] : [first]), ...routes.slice(1).map(send)]);
 }
 
-/** One signed request to one address of a peer, sealed when `sealing` says the body is. */
-export async function post(url: string, from: string, publicKey: string, body: string, signature: string, nonce: string, sealing: Sealing | null = null): Promise<Answer> {
-  const response = await fetch(`${url}${ROUTE}`, {
+/**
+ * One signed request to one address of a peer, sealed when `sealing` says the body is. `funnel`: the address may be
+ * a contact's Funnel name, asked of its zone when the system's resolver does not know it yet (`contacts/public-dns.ts`).
+ */
+export async function post(url: string, from: string, publicKey: string, body: string, signature: string, nonce: string, sealing: Sealing | null = null, funnel = false): Promise<Answer> {
+  const send = funnel ? funnelFetch : (target: string, init: RequestInit, ms: number) => fetch(target, { ...init, signal: AbortSignal.timeout(ms) });
+  const response = await send(`${url}${ROUTE}`, {
     method: 'POST',
     redirect: 'error',
-    signal: AbortSignal.timeout(5000),
     headers: { 'content-type': 'application/json', 'x-boite-peer': from, 'x-boite-signature': signature },
     body,
-  });
+  }, 5000);
   return settle(url, publicKey, nonce, response.status, await boundedBody(response.body, MAX_ANSWER), response.headers.get('x-boite-signature') ?? '', sealing);
 }

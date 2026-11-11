@@ -1,5 +1,5 @@
 import { checkRpcParams, RpcErrorCode } from '@boite/contracts';
-import type { RpcEventName, RpcEvents, RpcMethodName, RpcMethods, SentFrom, ThreadId, TransportOptions } from '@boite/contracts';
+import type { RpcEventName, RpcEvents, RpcMethodName, RpcMethods, SentFrom, StreamChannel, ThreadId, TransportOptions } from '@boite/contracts';
 import { assertAllowed } from './access.ts';
 import { invalidParams, RpcFailure } from './errors.ts';
 import type { Identity } from './sessions.ts';
@@ -24,6 +24,13 @@ export interface Connection {
   readonly encrypted?: boolean;
   /** The client name hello gave (`shell`, `pwa`, `plugin`, `cli`); unset for tests that build a connection by hand. */
   readonly clientName?: string;
+  /**
+   * What this socket receives of a subscribed thread's streaming messages
+   * (`threads.subscribe` `channels`), every channel when undefined; on a thread
+   * it no longer follows, the channels are forgotten. Unset on a connection
+   * that receives every event: the composer's, a test's.
+   */
+  setStreamChannels?(threadId: ThreadId, channels: readonly StreamChannel[] | undefined): void;
   sendEvent<E extends RpcEventName>(name: E, payload: RpcEvents[E]): void;
   close(code: number, reason?: string): void;
   /** Release held requests when this socket leaves, without stopping their work. */
@@ -52,6 +59,8 @@ export class Router {
   guard?: (method: RpcMethodName, params: unknown, ctx: RpcContext) => void;
   /** The admin policy's refusals (`policy-gate.ts`), for every caller the owner included. */
   policy?: (method: RpcMethodName, params: unknown) => void;
+  /** Hears every call a plugin's token made that succeeded (`plugins/actor.ts` logs the changes). */
+  pluginCall?: (method: RpcMethodName, params: unknown, ctx: RpcContext) => void;
   private readonly handlers = new Map<RpcMethodName, ErasedHandler>();
   private accepting = true;
   private active = 0;
@@ -95,6 +104,8 @@ export class Router {
     if (!checked.ok) throw invalidParams(checked.message, { field: checked.field });
     this.policy?.(method as RpcMethodName, checked.params);
     this.guard?.(method as RpcMethodName, checked.params, ctx);
-    return await this.trackRequest(() => handler(checked.params as never, ctx));
+    const result = await this.trackRequest(() => handler(checked.params as never, ctx));
+    if (ctx.connection.identity.principal === 'plugin') this.pluginCall?.(method as RpcMethodName, checked.params, ctx);
+    return result;
   }
 }

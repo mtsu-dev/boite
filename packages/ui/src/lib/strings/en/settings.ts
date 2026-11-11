@@ -292,7 +292,7 @@ export const strings = {
       allProjects: 'All projects',
       emptyProject: 'No archived thread in {project}.',
       doneRetentionLabel: 'Delete done threads after',
-      doneRetentionHint: 'Counted from Mark done or an automatic archive after a PR merge. 3 days by default; 0 disables deletion. Manual archives are kept. Deleted conversations remain recoverable for the configured deletion retention.',
+      doneRetentionHint: 'Counted from Mark done, an automatic archive after a PR merge or a plugin\'s archive. 3 days by default; 0 disables deletion. Manual archives are kept. Deleted conversations remain recoverable for the configured deletion retention.',
       deletesAt: 'Deletion: {date}',
       heading: 'Archived threads',
       mergedReason: 'Archived after PR #{number} merged',

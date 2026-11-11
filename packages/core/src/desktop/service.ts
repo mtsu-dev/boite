@@ -13,6 +13,7 @@
  */
 import {
   VIRTUAL_DESKTOP_APPS_MAX,
+  deviceBound,
   VIRTUAL_DESKTOP_SIZE,
   virtualDesktopCommandError,
   virtualDesktopSizeError,
@@ -538,7 +539,7 @@ export class VirtualDesktops {
   #thread(threadId: string, connection?: Connection, allowArchived = false): ThreadSummary {
     const thread = this.#core.threads.require(threadId);
     if (thread.archived && !allowArchived) throw refused('a virtual desktop needs an active conversation', { threadId });
-    if (connection?.identity.principal === 'session' && !connection.subscriptions.has(threadId)) {
+    if (connection && deviceBound(connection.identity.principal) && !connection.subscriptions.has(threadId)) {
       throw refused('subscribe to the conversation before using its desktop', { threadId });
     }
     return thread;

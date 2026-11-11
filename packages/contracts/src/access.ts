@@ -1,6 +1,6 @@
 import type { Principal } from './agent-door.ts';
 import type { RpcEventName, RpcMethodName } from './index.ts';
-import { PLUGIN_PERMISSIONS, type PluginPermission } from './plugins.ts';
+import { PLUGIN_PERMISSIONS, pluginClosedReason, pluginPermissionFor, type PluginPermission } from './plugins.ts';
 
 /*
  * The device and agent boundaries, declared once. The core's router enforces
@@ -15,8 +15,9 @@ import { PLUGIN_PERMISSIONS, type PluginPermission } from './plugins.ts';
  * displays. Model discovery may start the configured agent without a prompt.
  * Nothing here changes what the core trusts, with one routing exception: it
  * may turn the owner's saved subscription gateway on or off, never its kind,
- * URLs or key. The only paths a device names are read-only, inside a thread's
- * working tree.
+ * URLs or key. The paths a device names are read-only, inside a thread's
+ * working tree, except in the Add a project form: the folders it browses to
+ * and the one it adds, a project the owner sees appear and can remove.
  * Reserved shared-project methods stay owner-only until their handlers and
  * association scope checks are installed; see docs/contacts.md for permissions.
  */
@@ -87,6 +88,11 @@ export const DEVICE_METHODS: ReadonlySet<RpcMethodName> = new Set<RpcMethodName>
   'projects.archive',
   // Renaming changes only a listed project's display name; it never moves or writes to its folder.
   'projects.rename',
+  // The Add a project form, from a phone or another computer of the owner's: browsing lists folder names, never a
+  // file, and adding registers a folder this core checks is absolute and an existing directory, nothing written in
+  // it. A device already starts agents that run commands in projects, so it reaches nothing it could not before.
+  'projects.browse',
+  'projects.add',
   // What a thread needs to name its agent.
   'providers.list',
   // Read or refresh the configured account's native catalog, including ACP
@@ -355,7 +361,7 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
   ['threads.mergeBack', 'returning bounded conclusions only from this authenticated fork to its recorded origin, under existing coordination permissions'],
   ['collaboration.send', 'authenticated delivery as this thread to a separately authorized recipient'],
   ['collaboration.search', 'contacts it may already reach, found by their title, project, branch, model, resources or chat'],
-  ['collaboration.read', 'the conversation of a contact it may already reach, text and tool names only; the user wants agents to help with each other'],
+  ['collaboration.read', 'the conversation of a contact it may already reach, text and tool names only, and the tool output of its own conversation, which its carried history points to; the user wants agents to help with each other'],
   ['collaboration.wait', 'blocks on its own inbox until a reply arrives'],
   ['collaboration.contacts', 'the contacts it may write to and the project names each opened to this core, never their keys or addresses'],
   ['collaboration.ask', 'a request as this thread to a contact, handed to this core\'s Contacts bot, which forwards it; it opens nothing here'],
@@ -386,7 +392,7 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
   ['plugins.command', 'run a `boite <name>` command an installed plugin provides, in its own working directory'],
   ['agent.where', 'the thread, its project, its working directory and its branch: what the CLI prints first'],
   ['agent.projects', 'the names and folders of the projects the owner added, so it can name one to delegation.spawn or agent.move; reading them opens nothing'],
-  ['agent.addProject', 'registering an existing folder as a project, which the owner sees appear and can remove; it opens no file access the agent\'s process lacks, and it stays within the communication settings and one agent generation, like agent.spawn'],
+  ['agent.addProject', 'registering an existing folder as a project, which the owner sees appear and can remove; it opens no file access the agent\'s process lacks, and it stays within the communication settings and one agent generation, like agent.spawn; on another machine of the group, only while its owner keeps groupThreads on there, like a thread started there'],
   ['agent.spawn', 'a new top-level thread in a project the owner added, on its own model, account and permission mode, within its communication settings and an hourly budget; a thread an agent started cannot start another until the user writes in it'],
   ['agent.move', 'its own thread into a project the owner already registered, applied when its turn ends; never another thread, never a folder the owner did not add'],
   ['panel.open', 'showing the user a file, a diff or a page instead of pasting it into the transcript'],
@@ -451,6 +457,16 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
 ]);
 
 /**
+ * A caller held to what a paired device reaches: the device, and a plugin,
+ * which gets no more than a device does on top of its permissions. A core
+ * guard that narrows a device's reads or actions asks this, never
+ * `principal === 'session'`, so no plugin slips past it.
+ */
+export function deviceBound(principal: Principal): boolean {
+  return principal === 'session' || principal === 'plugin';
+}
+
+/**
  * The one diff a paired device asks for is the Changes panel's: the working
  * tree against HEAD. Any other revision would let it walk the repository's
  * history, which is the owner's to browse.
@@ -461,12 +477,12 @@ export function deviceDiffRef(ref: unknown): boolean {
 
 /**
  * Who calls: the owner, a paired device, the agent of the one thread its
- * token names, or a plugin with the permissions its manifest declares.
+ * token names, or a plugin with the permissions the owner granted it.
  */
 export interface Caller {
   principal: Principal;
   threadId: string | null;
-  /** Set on a plugin connection: what its manifest declared, nothing else. */
+  /** Set on a plugin connection: what the owner granted of what its manifest asks for, nothing else. */
   permissions?: readonly PluginPermission[];
 }
 
@@ -493,38 +509,67 @@ export interface AccessRefusal {
  */
 export function accessRefusal(method: RpcMethodName, caller: Caller, params?: unknown): AccessRefusal | null {
   if (caller.principal === 'owner') return null;
-  if (caller.principal === 'plugin') {
-    if (pluginMayCall(method, caller.permissions)) return null;
-    const needed = (Object.keys(PLUGIN_PERMISSIONS) as PluginPermission[]).filter(permission => PLUGIN_PERMISSIONS[permission].methods.includes(method));
-    const declared = caller.permissions?.length ? caller.permissions.join(', ') : 'none';
-    return {
-      message: needed.length === 0
-        ? `${method} is not open to plugins; the plugin declared ${declared}`
-        : `${method} needs the plugin permission ${needed.join(' or ')}; the plugin declared ${declared}`,
-      data: { method, principal: 'plugin', permissions: caller.permissions ?? [] },
-    };
-  }
+  if (caller.principal === 'plugin') return pluginRefusal(method, caller.permissions ?? [], params);
   if (caller.principal === 'agent') {
-    if (!AGENT_METHODS.has(method)) return { message: `${method} is not one of the agent's methods`, data: { method, principal: 'agent' } };
+    if (!AGENT_METHODS.has(method)) {
+      // Say who may call it: `boite server check` from a thread only said what it was not (#991).
+      const who = DEVICE_METHODS.has(method) ? 'the owner and paired devices call it' : 'it is for the owner only';
+      return { message: `${method} is not one of the agent's methods: ${who}`, data: { method, principal: 'agent' } };
+    }
     const named = (params as { threadId?: unknown } | null | undefined)?.threadId;
     if (caller.threadId === null || named !== caller.threadId) {
       return { message: `${method} is for thread ${caller.threadId ?? 'none'}, not thread ${String(named)}`, data: { method, threadId: named } };
     }
     return null;
   }
-  if (method === 'git.diff' && !deviceDiffRef((params as { ref?: unknown } | null | undefined)?.ref)) {
-    return { message: 'git.diff: paired devices compare the working tree with HEAD only', data: { method, principal: caller.principal } };
-  }
-  if ((method === 'quotas.list' || method === 'subscriptionProxy.quotas') && (params as { refresh?: unknown } | null | undefined)?.refresh === true) {
-    return { message: `${method}: paired devices read the last reading; refresh must be false or absent`, data: { method, principal: caller.principal } };
-  }
+  const narrowed = deviceParamsRefusal(method, params, 'paired devices');
+  if (narrowed !== null) return { message: narrowed, data: { method, principal: caller.principal } };
   if (DEVICE_METHODS.has(method)) return null;
   return { message: `${method} is for the owner only`, data: { method, principal: caller.principal } };
 }
 
+/** What a paired device, and a plugin after it, may not ask of a method it reaches. */
+function deviceParamsRefusal(method: RpcMethodName, params: unknown, who: string): string | null {
+  const read = params as { ref?: unknown; refresh?: unknown } | null | undefined;
+  if (method === 'git.diff' && !deviceDiffRef(read?.ref)) return `git.diff: ${who} compare the working tree with HEAD only`;
+  if ((method === 'quotas.list' || method === 'subscriptionProxy.quotas') && read?.refresh === true) {
+    return `${method}: ${who} read the last reading; refresh must be false or absent`;
+  }
+  return null;
+}
+
+/**
+ * A plugin reaches the methods of the permissions the owner granted it
+ * (`PLUGIN_PERMISSIONS`), under the checks a paired device meets, and none
+ * of `PLUGIN_CLOSED`. The refusal names the permission it lacks, or why no
+ * plugin reaches the method.
+ */
+function pluginRefusal(method: RpcMethodName, granted: readonly PluginPermission[], params: unknown): AccessRefusal | null {
+  const data = { method, principal: 'plugin' as const, permissions: granted };
+  const refuse = (message: string): AccessRefusal => ({ message, data });
+  if (!pluginMayCall(method, granted)) {
+    const closed = pluginClosedReason(method);
+    if (closed !== null) return refuse(`${method} is never open to plugins: ${closed}`);
+    const needed = pluginPermissionFor(method);
+    const holds = granted.length > 0 ? granted.join(', ') : 'none';
+    if (needed === null) return refuse(`${method} is for the owner only; a plugin reaches the methods of its permissions (granted: ${holds})`);
+    return refuse(`${method} needs the plugin permission ${needed}, which the owner did not grant (granted: ${holds})`);
+  }
+  const narrowed = deviceParamsRefusal(method, params, 'plugins');
+  if (narrowed !== null) return refuse(narrowed);
+  const read = params as { archived?: unknown; sharedProjectId?: unknown } | null | undefined;
+  if (method === 'threads.archive' && read?.archived === false) {
+    return refuse('threads.archive: a plugin only archives; archived must be true or absent, restoring is for the owner only');
+  }
+  if ((method === 'todos.update' || method === 'todos.remove') && read?.sharedProjectId !== undefined) {
+    return refuse(`${method}: sharedProjectId is not for plugins; a shared board is open to the people it is shared with`);
+  }
+  return null;
+}
+
 /**
  * Whether a connection of `principal` hears `name` at all; `agentHearsEvent`
- * narrows an agent's to its thread. A plugin hears what its permissions grant.
+ * narrows an agent's to its thread. A plugin hears what its granted permissions open.
  */
 export function mayHearEvent(name: RpcEventName, principal: Principal, permissions?: readonly PluginPermission[]): boolean {
   if (principal === 'plugin') return pluginMayHear(name, permissions);

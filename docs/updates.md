@@ -203,7 +203,18 @@ machine to check its Boite and its agents
 (`packages/ui/src/lib/update-freshness.ts`). The card's Check for updates button checks at
 once; it stays in the card during a check, disabled, and only makes way for
 the download progress and the install action. Checks and downloads run one at
-a time. A release found is announced at once and downloads only when asked:
+a time.
+
+GitHub allows 60 anonymous API calls an hour per network address, shared with
+every other program behind it (#991). An automatic check of the channel whose
+answer is under five minutes old reuses that answer, and a check asked while
+one of that channel runs waits for its result. A 403 or 429 that is GitHub's
+rate limit holds automatic checks for the time it names (`Retry-After`, else
+`X-RateLimit-Reset`), or for one minute doubled per refusal in a row when it
+names none, always between one minute and one hour. The card shows the wait,
+and the log gets one `shell.update.limited` warning per refusal instead of an
+error. Check for updates and a channel change always ask GitHub
+(`apps/shell/src-tauri/src/update_throttle.rs`). A release found is announced at once and downloads only when asked:
 an automatic download first held the announcement back for as long as the
 download took. Install and restart downloads it after the confirmation and
 installs as soon as it is verified. A ready update is kept until installation

@@ -25,11 +25,10 @@ import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync } from 'nod
 import { chmod, rename, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { PLUGIN_MANIFEST_FILE, sameRepository } from '@boite/contracts';
-import type { PluginArtifact, PluginCommandResult, PluginManifest, PluginPool, PluginPreview, PluginRejected, PluginSource, PluginState, RpcParams } from '@boite/contracts';
+import type { PluginArtifact, PluginCommandResult, PluginManifest, PluginPermission, PluginPool, PluginPreview, PluginRejected, PluginSource, PluginState, RpcParams } from '@boite/contracts';
 import type { Identity } from './sessions.ts';
 import type { Core } from './core.ts';
 import { invalidParams, messageOf, refused } from './errors.ts';
-import { newToken } from './ids.ts';
 import {
   ManifestRefused,
   addsOf,
@@ -54,6 +53,8 @@ import { PluginRuns, commandOwner, commandRequest, nameClash } from './plugins/r
 import { PluginAccounts } from './plugins/accounts.ts';
 import { INSTALLED_FILE, devManifest, readDevFolder, readRecord, recommendedPlugins, recommendedUpdates, removeTree, verifyPluginDownload, type Installed, type Origin } from './plugins/record.ts';
 import { PluginTokens } from './plugins/tokens.ts';
+import { PREVIEW_TTL_MS, PluginPreviews } from './plugins/previews.ts';
+import { PluginGrants, carriedGrant, checkGrants } from './plugins/grants.ts';
 import { DOUANE_PLUGIN, PluginGateways } from './plugins/gateway.ts';
 import { prepareLocalProxyKey } from './subscription-proxy-auth.ts';
 import { recoverActivation, switchRelease, type Activation } from './plugins/activation.ts';
@@ -67,8 +68,6 @@ const DOWNLOAD_IDLE_MS = 30_000;
 const DOWNLOAD_CEILING_MS = 30 * 60_000;
 /** How long an install waits on its update source before taking the newest version it already knows. */
 const INSTALL_SOURCE_WAIT_MS = 15_000;
-const PREVIEW_TTL_MS = 10 * 60_000;
-const PREVIEW_MAX = 16;
 
 /** An installed plugin as the guide, the composer and the command runner read it. */
 export interface InstalledPlugin {
@@ -121,7 +120,7 @@ export class PluginStore {
   #pending = new Map<string, Pending>();
   /** Dev plugins being loaded: their command names are taken before they are on disk. */
   #claims = new Set<PluginManifest>();
-  #previews = new Map<string, Pending & { expiresAt: number }>();
+  #previews = new PluginPreviews();
   #inspecting = new Set<Promise<unknown>>();
   #shutdown = new AbortController();
   #closing = false;
@@ -137,14 +136,16 @@ export class PluginStore {
   readonly gateways: PluginGateways;
   /** Newer releases of recommended plugins, read from the update sources the list names. */
   readonly updates: PluginUpdateChecks;
-  /** The tokens schema 2 plugins reach the core with, scoped to their permissions. */
+  /** The tokens schema 2 plugins reach the core with, scoped to the permissions the owner granted. */
   readonly tokens = new PluginTokens((id) => this.#core.subscribers.closePlugin(id));
+  readonly grants: PluginGrants;
   /** The account pools plugins manage. */
   readonly accountPools: PluginAccounts;
   #runs: PluginRuns;
 
   constructor(core: Core) {
     this.#core = core;
+    this.grants = new PluginGrants(core.journal);
     this.#runs = new PluginRuns(core);
     this.accountPools = new PluginAccounts({
       core, lanes: this.#lanes,
@@ -223,13 +224,13 @@ export class PluginStore {
   /**
    * The token and data folder a plugin's processes get: a schema 1 desktop
    * app keeps the owner token it was written for; schema 2 gets its own,
-   * scoped to its permissions, and a data folder that outlives it.
+   * scoped to what the owner granted, and a data folder that outlives it.
    */
   #access(id: string, manifest: PluginManifest): { token: string; dataDir: string | null } {
     if (manifest.schema === 1) return { token: this.#core.token, dataDir: null };
     const dataDir = this.dataDir(id);
     mkdirSync(dataDir, { recursive: true });
-    return { token: this.tokens.tokenFor(id, permissionsOf(manifest)), dataDir };
+    return { token: this.tokens.tokenFor(id, this.grants.effective(id, permissionsOf(manifest))), dataDir };
   }
 
   /** BOITE_PLUGIN_DATA: kept across updates and uninstalls, like a gateway's sign-ins. */
@@ -331,7 +332,9 @@ export class PluginStore {
       commands: running ? commandsOf(running) : [],
       pools: running ? poolsOf(running) : [],
       rejected: disk.kind === 'rejected' ? disk.rejected : null,
-      ...(running?.schema === 1 ? {} : { permissions: running ? permissionsOf(running) : [] }),
+      ...(running?.schema === 1 ? {} : { permissions: running ? permissionsOf(running) : [], granted: installed ? this.grants.effective(id, permissionsOf(installed.manifest)) : [] }),
+      ...(target !== null && target.schema !== 1 ? { requested: permissionsOf(target) } : {}),
+      runsProgram: target !== null && runsExecutable(target),
       adds: running ? addsOf(running) : null,
       devPath: dev,
       app: running !== null && (providesApp(running) || providesService(running)) ? this.apps.state(id, this.#directory(id), providesService(running)) : null,
@@ -368,8 +371,8 @@ export class PluginStore {
     }
   }
 
-  /** Installs a recommended plugin, or reinstalls a URL one from the manifest it recorded. */
-  install(id: string): PluginState {
+  /** Installs a recommended plugin, or reinstalls a URL one from the manifest it recorded. `grants`: plugins.install's. */
+  install(id: string, grants?: unknown): PluginState {
     this.#core.policy.assert(this.#core.policy.pluginInstallsOff(), 'plugins.install', id);
     this.#known(id);
     if (this.#jobs.has(id)) return this.state(id);
@@ -387,25 +390,28 @@ export class PluginStore {
         await Promise.race([this.updates.check([id]), Bun.sleep(INSTALL_SOURCE_WAIT_MS), aborted]);
         return target();
       };
-      return this.#start(id, target(), null, 'recommended', latest);
+      return this.#start(id, target(), null, 'recommended', grants, latest);
     }
     const pending = this.#pending.get(id);
-    if (pending !== undefined) return this.#start(id, pending.manifest, pending.source, 'url');
+    if (pending !== undefined) return this.#start(id, pending.manifest, pending.source, 'url', grants);
     const disk = this.#onDisk(id);
-    if (disk.kind === 'installed' && disk.installed.source !== null) return this.#start(id, disk.installed.manifest, disk.installed.source, 'url');
+    if (disk.kind === 'installed' && disk.installed.source !== null) return this.#start(id, disk.installed.manifest, disk.installed.source, 'url', grants);
     if (disk.kind === 'rejected') throw refused(`${id} was refused (${disk.rejected.message}). Remove it, then add it again from its URL.`, disk.rejected);
     throw refused(`${id} has no manifest to reinstall from. Remove it, then add it again from its URL.`);
   }
 
-  /** `latest`, when given, may swap `manifest` for a newer one before the download starts. */
-  #start(id: string, manifest: PluginManifest, source: PluginSource | null, origin: Origin, latest?: (signal: AbortSignal) => Promise<PluginManifest>): PluginState {
+  /** `latest` may swap `manifest` for a newer one; of what it asks, only `grants` (checked against `manifest`, which the owner saw) or what `carriedGrant` keeps is granted. */
+  #start(id: string, manifest: PluginManifest, source: PluginSource | null, origin: Origin, grants?: unknown, latest?: (signal: AbortSignal) => Promise<PluginManifest>): PluginState {
     if (this.#closing) throw refused('Boite is shutting down.');
     if (this.#lanes.busy(id)) throw refused('Wait for the current plugin operation before installing.');
     const artifact = artifactFor(manifest);
     if (artifact === null && runsExecutable(manifest)) throw refused(`${id} has no binary for ${platformKey()}`);
+    const ticked = grants === undefined ? null : checkGrants(grants, permissionsOf(manifest), id);
     this.#failures.delete(id);
     // A first install that fails leaves nothing behind; an update that fails keeps the version that worked.
-    const fresh = this.#onDisk(id).kind !== 'installed';
+    const disk = this.#onDisk(id);
+    const fresh = disk.kind !== 'installed';
+    const before = disk.kind === 'installed' && disk.installed.manifest.schema !== 1 ? permissionsOf(disk.installed.manifest) : null;
     const controller = new AbortController();
     const job: Job = { controller, progress: 0, promise: Promise.resolve(), relaunch: false };
     this.#jobs.set(id, job);
@@ -413,9 +419,9 @@ export class PluginStore {
       .then((target) => {
         const found = target === manifest ? artifact : artifactFor(target);
         if (found === null && runsExecutable(target)) throw new Error(`${id} ${target.version} has no binary for ${platformKey()}`);
-        return found === null ? this.#installText(id, target, source, origin, job) : this.#download(id, target, source, origin, found, job);
+        return (found === null ? this.#installText(id, target, source, origin, job) : this.#download(id, target, source, origin, found, job)).then(() => target);
       })
-      .then(() => { this.#pending.delete(id); job.relaunch = true; })
+      .then((target) => { const asks = permissionsOf(target); this.grants.set(id, ticked === null ? carriedGrant(this.grants.stored(id), before, asks) : asks.filter((name) => ticked.includes(name))); this.#pending.delete(id); job.relaunch = true; })
       .catch(async (error: unknown) => {
         if (!controller.signal.aborted) this.#failures.set(id, messageOf(error));
         if (fresh) await removeTree(this.#directory(id)).catch(() => undefined);
@@ -581,9 +587,7 @@ export class PluginStore {
       const published = Object.keys(manifest.artifacts ?? {}).join(', ');
       return { ...read, rejected: refusal(PLUGIN_MANIFEST_FILE, 'artifacts', `an artifact for ${platformKey()}, this machine`, published).rejected };
     }
-    this.#prunePreviews();
-    const previewId = newToken();
-    this.#previews.set(previewId, { manifest, source, expiresAt: preview.expiresAt });
+    const previewId = this.#previews.put({ manifest, source }, preview.expiresAt);
     const disk = this.#onDisk(manifest.id);
     return { ...read, previewId, replaces: disk.kind === 'installed' ? disk.installed.version : null };
   }
@@ -619,34 +623,16 @@ export class PluginStore {
     return nameClash(manifest, [...this.installedPlugins(), ...coming.map((other) => ({ id: other.id, manifest: other }))]);
   }
 
-  #prunePreviews(): void {
-    const now = Date.now();
-    for (const [key, preview] of this.#previews) if (preview.expiresAt <= now) this.#previews.delete(key);
-    while (this.#previews.size >= PREVIEW_MAX) {
-      const oldest = this.#previews.keys().next().value;
-      if (oldest === undefined) break;
-      this.#previews.delete(oldest);
-    }
-  }
-
-  /** Installs what one preview showed, at the commit it showed. A preview is used once. */
-  add(previewId: unknown): PluginState {
-    const expected = 'a previewId plugins.inspect returned in the last 10 minutes';
-    if (typeof previewId !== 'string') throw invalidParams(`plugin previewId must be ${expected}`, { field: 'previewId', expected });
-    const preview = this.#previews.get(previewId);
-    if (preview === undefined || preview.expiresAt <= Date.now()) {
-      this.#previews.delete(previewId);
-      throw invalidParams(`plugin preview is unknown or expired; inspect the URL again`, { field: 'previewId', expected });
-    }
-    this.#previews.delete(previewId);
-    const { manifest, source } = preview;
+  /** Installs what one preview showed, at the commit it showed. A preview is used once. `grants`: plugins.add's. */
+  add(previewId: unknown, grants?: unknown): PluginState {
+    const { manifest, source } = this.#previews.take(previewId);
     const conflict = this.#conflict(manifest, source.url);
     if (conflict !== null) throw refused(conflict.message, conflict);
     if (this.#lanes.busy(manifest.id)) throw refused('Wait for the current plugin operation before installing.');
     const before = this.#pending.get(manifest.id);
     this.#pending.set(manifest.id, { manifest, source });
     try {
-      return this.#start(manifest.id, manifest, source, 'url');
+      return this.#start(manifest.id, manifest, source, 'url', grants);
     } catch (error) {
       if (before === undefined) this.#pending.delete(manifest.id);
       else this.#pending.set(manifest.id, before);
@@ -674,6 +660,8 @@ export class PluginStore {
       // Its data directory stays: a gateway's sign-ins outlive its program.
       await this.gateways.forget(id);
       await removeTree(this.#directory(id));
+      // Last: an uninstall that fails above leaves the plugin with its narrowed grant, not all it asks for.
+      this.grants.clear(id);
       this.#pending.delete(id);
       this.#failures.delete(id);
       this.accountPools.forget(id);
@@ -747,27 +735,18 @@ export class PluginStore {
     return this.state(id);
   }
 
-  /** `plugins.app`: start, stop or restart a desktop-app plugin. */
-  async app(params: RpcParams<'plugins.app'>): Promise<PluginState> {
-    const id = this.#known(params.id);
-    if (!['start', 'stop', 'restart'].includes(params.action)) {
-      throw invalidParams('plugin app action must be start, stop or restart', { field: 'action', expected: 'start, stop or restart' });
-    }
-    const installed = this.#usable(id);
-    if (!providesApp(installed.manifest) && !providesService(installed.manifest)) throw refused(`${id} provides no desktop app or service.`);
-    await this.#lanes.shared(id, () => this.apps.control(id, this.#directory(id), params.action));
-    return this.state(id);
-  }
+  /** `plugins.app` and `plugins.gateway`: start, stop or restart the desktop app or service, or the gateway, a plugin provides. */
+  app(params: RpcParams<'plugins.app'>): Promise<PluginState> { return this.#control(params, 'app'); }
+  gateway(params: RpcParams<'plugins.gateway'>): Promise<PluginState> { return this.#control(params, 'gateway'); }
 
-  /** `plugins.gateway`: start, stop or restart a gateway plugin. */
-  async gateway(params: RpcParams<'plugins.gateway'>): Promise<PluginState> {
+  async #control(params: RpcParams<'plugins.app'>, kind: 'app' | 'gateway'): Promise<PluginState> {
     const id = this.#known(params.id);
     if (!['start', 'stop', 'restart'].includes(params.action)) {
-      throw invalidParams('plugin gateway action must be start, stop or restart', { field: 'action', expected: 'start, stop or restart' });
+      throw invalidParams(`plugin ${kind} action must be start, stop or restart`, { field: 'action', expected: 'start, stop or restart' });
     }
-    const installed = this.#usable(id);
-    if (!providesGateway(installed.manifest)) throw refused(`${id} provides no gateway.`);
-    await this.#lanes.shared(id, () => this.gateways.control(id, this.#directory(id), params.action));
+    const { manifest } = this.#usable(id);
+    if (kind === 'app' ? !providesApp(manifest) && !providesService(manifest) : !providesGateway(manifest)) throw refused(`${id} provides no ${kind === 'app' ? 'desktop app or service' : 'gateway'}.`);
+    await this.#lanes.shared(id, () => (kind === 'app' ? this.apps : this.gateways).control(id, this.#directory(id), params.action));
     return this.state(id);
   }
 
@@ -815,11 +794,28 @@ export class PluginStore {
     return appEnv(process.env, { coreUrl: this.#core.baseUrl(), token, pluginId: id, dataDir, callerThreadId });
   }
 
-  /** After an install or a reload: a grant the manifest on disk no longer declares goes, its sockets with it. */
+  /** After an install, a reload or a grant: a token reaching other than what is granted now goes, its sockets with it. */
   #regrant(id: string): void {
     const disk = this.#onDisk(id);
     const manifest = disk.kind === 'installed' ? disk.installed.manifest : null;
-    this.tokens.keepIf(id, manifest === null || manifest.schema === 1 ? null : permissionsOf(manifest));
+    this.tokens.keepIf(id, manifest === null || manifest.schema === 1 ? null : this.grants.effective(id, permissionsOf(manifest)));
+  }
+
+  /** `plugins.setGrants`: a new token reaching `grants`, the app or service restarted on it. */
+  async setGrants(id: string, grants: unknown): Promise<PluginState> {
+    this.#known(id);
+    await this.#lanes.alone(id, 'install', async () => {
+      const disk = this.#onDisk(id);
+      if (disk.kind !== 'installed') throw refused(`${id} is not installed; its permissions are granted at install`);
+      const { manifest } = disk.installed;
+      if (manifest.schema === 1) throw refused(`${id} is a schema 1 plugin: its processes hold the owner token, which no grant narrows`);
+      this.grants.set(id, checkGrants(grants, permissionsOf(manifest), id));
+      this.#regrant(id);
+      const app = providesApp(manifest) || providesService(manifest) ? this.apps.state(id, this.#directory(id), providesService(manifest)).status : 'stopped';
+      if (app === 'running' || app === 'starting') await this.apps.control(id, this.#directory(id), 'restart');
+    }, 'Wait for the current plugin operation before changing its permissions.');
+    this.#emit(id);
+    return this.state(id);
   }
 
   /**
@@ -853,6 +849,8 @@ export class PluginStore {
       await rename(staged, join(dir, INSTALLED_FILE));
       this.#failures.delete(id);
       this.accountPools.forget(id);
+      // The owner loads the folder after reading what it asks for: it gets all of it, until plugins.setGrants narrows it.
+      this.grants.set(id, permissionsOf(manifest));
       this.#regrant(id);
       if (providesApp(manifest) || providesService(manifest)) await this.apps.control(id, dir, 'restart');
       else await this.apps.forget(id);

@@ -75,6 +75,7 @@ import { Workflows } from './workflows.ts';
 import { BrainStore } from './brain.ts';
 import { HookLedger } from './hooks.ts';
 import { TerminalStore } from './terminals.ts';
+import { KeptAgents } from './keeper/kept-agents.ts';
 import { openSecretVault } from './platform/secret-vault.ts';
 import type { SecretVault } from './platform/types.ts';
 import { SecretStore } from './secrets/store.ts';
@@ -229,6 +230,8 @@ export class Core {
   /** What the user's own hooks did since this core started, for Settings. */
   readonly hooks: HookLedger;
   readonly terminals: TerminalStore;
+  /** Agent sessions on the keeper, with `BOITE_KEEPER=1` (`keeper/kept-agents.ts`). */
+  readonly keptAgents: KeptAgents | null;
   readonly secrets: SecretStore;
   readonly stopArtifactRetention: () => Promise<void>;
   readonly artifactPreviews = new ArtifactPreviews(this);
@@ -338,9 +341,19 @@ export class Core {
    * which has no process of its own to stop. `POST /shutdown` calls it too,
    * which is how the desktop shell and its installer stop a resident core.
    */
-  requestShutdown(): boolean {
+  /**
+   * `end` is an explicit stop, the desktop's Quit: the shells the keeper holds
+   * end with this core. Any other stop, a restart or an update, leaves them
+   * running for the next core.
+   */
+  /** Set by an explicit stop: what the keeper holds for this core ends with it. */
+  get endsKept(): boolean { return this.#endKept; }
+  #endKept = false;
+
+  requestShutdown(end = false): boolean {
     const stop = this.#onShutdown;
     if (!stop) return false;
+    if (end) this.#endKept = true;
     if (!this.#shutdownRequested) {
       this.#shutdownRequested = true;
       // Leave time for the acknowledgement before the socket is closed.
@@ -441,6 +454,7 @@ export class Core {
     this.brain = new BrainStore(this);
     this.hooks = new HookLedger(this);
     this.terminals = new TerminalStore(this);
+    this.keptAgents = this.terminals.keeper === null ? null : new KeptAgents(this, this.terminals.keeper);
     this.secrets = new SecretStore(this, options.secretVault ?? openSecretVault);
     this.logs.mask = text => this.secrets.maskAll(text);
     this.procs.mask = (threadId, text) => this.secrets.mask(threadId, text);
@@ -456,7 +470,7 @@ export class Core {
     phase('startup.stores-ready', 'Stores and RPC handlers ready', { methods: this.router.methods().length });
     this.#onShutdown = options.onShutdown;
     this.router.register('core.shutdown', () => {
-      if (!this.requestShutdown()) throw new Error('This embedded core does not support process shutdown.');
+      if (!this.requestShutdown(true)) throw new Error('This embedded core does not support process shutdown.');
       return { ok: true as const };
     });
     this.router.register('core.restart', () => {
@@ -544,7 +558,7 @@ export class Core {
       version: this.version,
       ...(this.bundleHash ? { bundleHash: this.bundleHash } : {}),
       protocolVersion: PROTOCOL_VERSION,
-      features: { threadSnapshots: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, draftPreparation: true, attachmentUploads: true, composerPersistence: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, projectBoard: true, settingsHome: true, botsHome: true, botMove: true, botMoveQueue: true, listChanges: true },
+      features: { threadSnapshots: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, draftPreparation: true, attachmentUploads: true, composerPersistence: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, pluginGrants: true, projectBoard: true, deviceProjects: true, settingsHome: true, botsHome: true, botMove: true, botMoveQueue: true, listChanges: true, streamChannels: true },
       coreId: this.coordination.card().coreId,
       hostname: machineName(),
       os: currentOs(),
@@ -667,6 +681,7 @@ export class Core {
     await this.composer.close();
     this.secrets.stop();
     await this.accounts.closeLogins();
+    this.keptAgents?.close();
     await this.terminals.closeAll();
     // Off Windows this waits out the SIGKILL of a group that ignored SIGTERM,
     // two seconds at most: the timer that sends it dies with the process.

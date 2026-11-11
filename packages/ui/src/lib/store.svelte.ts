@@ -244,6 +244,7 @@ export class Store {
   get booted() { return this.#ctx.connection.booted; }
   set booted(value) { this.#ctx.connection.booted = value; }
   get owner(): boolean { return this.#ctx.connection.owner; }
+  get addsProjects(): boolean { return this.#ctx.connection.addsProjects; }
   get pickerAvailable(): boolean { return this.#ctx.connection.pickerAvailable; }
 
   suspend(...args: Parameters<Connection['suspend']>) { return this.#ctx.connection.suspend(...args); }
@@ -576,6 +577,8 @@ export class Store {
   open(...args: Parameters<Threads['open']>) { return this.#ctx.threads.open(...args); }
   preload(threadId: ThreadId) { return this.#ctx.threads.preloads.preload(threadId); }
   loadToolOutput(...args: Parameters<Threads['loadToolOutput']>) { return this.#ctx.threads.loadToolOutput(...args); }
+  /** A card shows a running call of `threadId`: a phone streams its live output until the release (`store/stream-channels.ts`). */
+  watchLiveOutput(threadId: ThreadId): () => void { return this.#ctx.streams.watch(threadId); }
   loadMessageAttachment(...args: Parameters<Threads['loadMessageAttachment']>) { return this.#ctx.threads.loadMessageAttachment(...args); }
   /** The light copy of a deferred picture the timeline draws (`store/display-images.ts`); the original stays with `loadMessageAttachment`. */
   loadDisplayImage(...args: Parameters<DisplayImages['load']>) { return this.#ctx.displayImages.load(...args); }

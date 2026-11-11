@@ -1,4 +1,5 @@
-import { mkdirSync, renameSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { connect, type CoreClient } from '../../packages/core/src/client.ts';
@@ -64,3 +65,21 @@ test('a ticket cannot read a replacement directory outside its project', async (
   symlinkSync(outside, folder, 'junction');
   expect((await fetch(`${core.url}${content.url}`)).status).toBe(404);
 }, 10_000);
+
+test('a phone adds a folder of the core machine as a project, never one inside boite\'s data folder', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'boite-e2e-phone-project-'));
+  try {
+    mkdirSync(join(home, 'From the phone'));
+    // The Add a project form: browse this machine's folders, then add one.
+    expect((await phone.call('projects.browse', { path: home })).directories.map(entry => entry.name)).toEqual(['From the phone']);
+    const project = await phone.call('projects.add', { path: join(home, 'From the phone') });
+    expect(project.name).toBe('From the phone');
+    expect((await owner.call('projects.list', {})).some(entry => entry.id === project.id)).toBe(true);
+    // The owner may keep a project inside the data folder, as this file's first test does; a device may not.
+    const inside = join(core.dataDir, 'phone-inside');
+    mkdirSync(inside, { recursive: true });
+    expect(await thrown(phone.call('projects.add', { path: inside }))).toThrow('a paired device does not add boite\'s data folder');
+    expect(await thrown(phone.call('projects.add', { path: 'From the phone' }))).toThrow('projects.add.path must be an absolute path');
+    expect(await thrown(phone.call('settings.set', { listenOnLan: true }))).toThrow('settings.set is for the owner only');
+  } finally { rmSync(home, { recursive: true, force: true }); }
+}, 15_000);

@@ -25,6 +25,7 @@ import { ServerUpdater } from './server-update.svelte';
 import type { Account, Project, ThreadSummary } from '@boite/contracts';
 import { DraftStartup } from './draft-startup.svelte';
 import { SnapshotReads } from './snapshot-reads';
+import { StreamChannels } from './stream-channels';
 
 /**
  * What the parts of one Store share and the Store keeps off its public
@@ -69,6 +70,7 @@ export class StoreContext {
   readonly workbench: Workbench;
   readonly workflows: Workflows;
   readonly serverUpdater: ServerUpdater;
+  readonly streams: StreamChannels;
 
   constructor(readonly store: Store) {
     this.connection = new Connection(this);
@@ -93,6 +95,7 @@ export class StoreContext {
     this.workbench = new Workbench(this);
     this.workflows = new Workflows(this);
     this.serverUpdater = new ServerUpdater(this);
+    this.streams = new StreamChannels(this);
   }
 
   /**

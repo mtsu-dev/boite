@@ -830,6 +830,13 @@ test('coordination stays scoped to its core and paired devices can only inspect 
     createClient({ delayMs: 0, principal: 'session', coreId: 'core-phone' })
   ]);
 
+  // As the core: a thread reads its own tool output, whatever its coordination settings, and no other thread's.
+  const ran = (await first.call('threads.get', { threadId: 't-trace' })).messages.flatMap(message => message.parts.flatMap(part => part.type === 'tool' && part.output ? [{ message, part }] : []))[0]!;
+  const self = (await first.call('collaboration.get', { threadId: 't-trace' })).self;
+  const own = (await first.call('collaboration.read', { threadId: 't-trace', target: self, entry: ran.message.id, tool: ran.part.toolId })).entries[0]!;
+  expect(own).toMatchObject({ id: ran.message.id, tools: [ran.part.name], offset: 0 });
+  expect(own.text.startsWith(ran.part.output!.slice(0, 100))).toBe(true);
+  await expect(first.call('collaboration.read', { threadId: 't-descriptors', target: self, entry: ran.message.id, tool: ran.part.toolId })).rejects.toThrow('reads only its own tool output');
   expect((await first.call('collaboration.get', { threadId: 't-trace' })).config.mode).toBe('brief');
   await first.call('collaboration.configure', { threadId: 't-trace', config: { mode: 'team', resources: 'UI', remote: true, paused: false } });
   expect((await first.call('collaboration.get', { threadId: 't-trace' })).config.resources).toBe('UI');
@@ -854,7 +861,13 @@ test('coordination stays scoped to its core and paired devices can only inspect 
   expect(await first.call('collaboration.peers', {})).toEqual([]);
   expect(await second.call('collaboration.peers', {})).toEqual([]);
   expect((await first.call('collaboration.directory', { threadId: 't-trace' })).agents).toContainEqual(expect.objectContaining({ coreId: b.coreId, threadId: 't-trace' }));
-  expect((await first.call('collaboration.read', { threadId: 't-trace', target: { coreId: b.coreId, threadId: 't-trace' } })).entries.length).toBeGreaterThan(0);
+  const page = await first.call('collaboration.read', { threadId: 't-trace', target: { coreId: b.coreId, threadId: 't-trace' } });
+  expect(page.entries.length).toBeGreaterThan(0);
+  // As the core: one entry from an offset within it, and no offset without an entry.
+  const last = page.entries.at(-1)!;
+  expect((await first.call('collaboration.read', { threadId: 't-trace', target: { coreId: b.coreId, threadId: 't-trace' }, entry: last.id })).entries).toEqual([expect.objectContaining({ id: last.id, offset: 0, length: last.text.length, text: last.text })]);
+  await expect(first.call('collaboration.read', { threadId: 't-trace', target: { coreId: b.coreId, threadId: 't-trace' }, entry: last.id, offset: last.text.length + 1 })).rejects.toMatchObject({ code: RpcErrorCode.InvalidParams });
+  await expect(first.call('collaboration.read', { threadId: 't-trace', target: { coreId: b.coreId, threadId: 't-trace' }, offset: 1 })).rejects.toMatchObject({ code: RpcErrorCode.InvalidParams });
   await expect(phone.call('collaboration.bridge.register', { coreId: a.coreId, enabled: true })).rejects.toMatchObject({ code: RpcErrorCode.Refused });
   await second.call('projects.archive', { projectId: 'p-boite', archived: true });
   const remoteContact = (await first.call('collaboration.directory', { threadId: 't-trace' })).agents.find(contact => contact.coreId === b.coreId && contact.threadId === 't-trace')!;

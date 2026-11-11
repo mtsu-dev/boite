@@ -513,6 +513,67 @@ describe('harness updates', () => {
     await waitFor(() => harness?.core.procs.liveCount('update:update-fake') === 0);
   });
 
+  test.skipIf(!unixUser)('an npm install behind a wrapper first on PATH is updated into its own prefix, through the wrapper', async () => {
+    // BoiteOS links each agent name to one shim at the head of the core's PATH; the shim runs the next
+    // program of that name after its own directory, here an npm install under its own prefix.
+    let layout!: ReturnType<typeof npmLayout>;
+    let shimLog = '';
+    const saved = { PATH: process.env['PATH'], NPM_CONFIG_PREFIX: process.env['NPM_CONFIG_PREFIX'] };
+    try {
+      const { client, state } = await start('command', 'update-npm', undefined, (dataDir) => {
+        layout = npmLayout(dataDir);
+        const wrappers = join(dataDir, 'agents-bin');
+        const shim = join(dataDir, 'shim');
+        shimLog = join(dataDir, 'shim.log');
+        mkdirSync(wrappers, { recursive: true });
+        writeFileSync(shim, [
+          '#!/bin/sh',
+          'self=$(dirname "$0"); name=$(basename "$0"); seen=',
+          `echo "$name $*" >> '${shimLog}'`,
+          'IFS=:',
+          'for dir in $PATH; do',
+          '  if [ -n "$seen" ] && [ -x "$dir/$name" ] && [ "$(realpath "$dir/$name")" != "$(realpath "$0")" ]; then exec "$dir/$name" "$@"; fi',
+          '  [ "$dir" = "$self" ] && seen=1',
+          'done',
+          'echo "$name: nothing behind the shim" >&2; exit 127',
+        ].join('\n'));
+        chmodSync(shim, 0o755);
+        symlinkSync(shim, join(wrappers, 'fake-agent'));
+        process.env['PATH'] = [wrappers, dirname(layout.link), saved.PATH].join(delimiter);
+        // The core's own npm prefix names another place, as `NPM_CONFIG_PREFIX=$HOME/.local` did on boite-m1.
+        process.env['NPM_CONFIG_PREFIX'] = join(dataDir, 'core-prefix');
+        return { kind: 'path', value: 'fake-agent' };
+      });
+      const { prefix, scope } = layout;
+      expect(only(await client.call('providers.updates', { refresh: true }))).toMatchObject({ current: '1.0.0', latest: '1.2.0' });
+      const changed = client.next('providers.updatesChanged', (list) => list[0]?.state === 'failed' || (list[0]?.state === 'idle' && list[0]?.current === '1.2.0'), 20000);
+      await client.call('providers.update', { providerId: 'update-fake' });
+      expect(only(await changed)).toMatchObject({ state: 'idle', current: '1.2.0', message: null });
+      expect(readFileSync(`${state}.prefix`, 'utf8')).toBe(prefix);
+      // The updater still ran through what PATH resolves, so a wrapper's own caps and environment apply.
+      expect(readFileSync(shimLog, 'utf8')).toContain(`fake-agent ${FAKE} ${state} update-npm`);
+
+      // The writability check reads the copy behind the wrapper too.
+      writeFileSync(state, '1.0.0');
+      rmSync(`${state}.prefix`);
+      await client.call('providers.updates', { refresh: true });
+      chmodSync(scope, 0o555);
+      try {
+        const failed = client.next('providers.updatesChanged', (list) => list[0]?.state === 'failed', 20000);
+        await client.call('providers.update', { providerId: 'update-fake' });
+        expect(only(await failed).message).toContain(`installed under ${prefix}`);
+        expect(existsSync(`${state}.prefix`)).toBe(false);
+      } finally {
+        chmodSync(scope, 0o755);
+      }
+      await waitFor(() => harness?.core.procs.liveCount('update:update-fake') === 0);
+    } finally {
+      process.env['PATH'] = saved.PATH;
+      if (saved.NPM_CONFIG_PREFIX === undefined) delete process.env['NPM_CONFIG_PREFIX'];
+      else process.env['NPM_CONFIG_PREFIX'] = saved.NPM_CONFIG_PREFIX;
+    }
+  });
+
   test('a turn in flight pauses once its tool call ends, the agent updates, and the same turn goes on in its session', async () => {
     const { client, state } = await start('command', 'update-gated');
     const core = harness!.core;

@@ -62,6 +62,25 @@ CLI 2.1.302 and the real servers against a test core:
 The servers are also connected when the session's `init` arrives, so their
 tools are there on the first turn.
 
+### The `boite mcp` tool list
+
+A client sends the `tools/list` result to the model with every session, so its
+size is paid before the first call. `bun bench/mcp-catalog.ts` prints it in
+bytes, with tokens approximated as bytes / 4. On 2026-11-07, for 24 tools:
+
+| Part | Before | After |
+| --- | --- | --- |
+| Whole result | 22,271 B (~5,568 tokens) | 12,927 B (~3,232 tokens) |
+| Descriptions | 4,022 B | 3,798 B |
+| Input schemas | 7,395 B | 6,027 B |
+| Output schemas | 7,056 B | 0 B |
+| Annotations | 1,608 B | 1,296 B |
+
+Each tool had declared the same result envelope as its output schema, and each
+schema carried a `$schema` line naming JSON Schema 2020-12, the MCP default.
+Both are gone; results still carry `structuredContent`. `test/mcp.test.ts`
+keeps the list under 14,000 bytes.
+
 ## Long threads in the journal
 
 Measured on 2026-10-05 with `bench/rpc-actions.ts --journal` on a copy of a
@@ -294,6 +313,16 @@ It warms up once, then reports six samples. On 2026-09-22, the median fell from
 that stops after the first user message and nonempty assistant answer.
 This measures local history lookup and title persistence, not provider latency.
 
+## A workflow's completion summary
+
+`bun bench/workflow-notice.ts [--root <checkout>]` builds finished runs in memory
+and prints the UTF-8 size of the summary their conversation reads. On 2026-11-07,
+a run of 64 executions (a scan, 62 reviews of which 3 failed with a
+2,000-character error, a report, every answer 4,000 characters) went from 52,367
+to 19,992 bytes in Japanese and from 23,879 to 19,998 bytes in French once the
+whole summary was held to 20,000 bytes. A three-step run stayed at 637 bytes,
+byte for byte the same. Fitting a large run takes about 2.3 ms, once per run.
+
 ## Persistent-agent history
 
 `bun run bench/agents-snapshot.ts [steps]` gives one agent's thread a finished
@@ -417,6 +446,43 @@ returned 0 (dropped) for a 31 MB frame with 29.8 MB already buffered on
 2026-10-05; slicing keeps a long answer off that path. A slice resets the
 call's 120 s timeout. The UI asks for progress on a first open's `threads.get`
 when the core advertises `chunkedAnswers`.
+
+### Stream channels
+
+A socket picks, per thread, what it receives of the streaming messages:
+`text` (text and thinking parts and their deltas), `tools` (the tool cards,
+their streamed input and status) and `liveOutput` (what a running call printed
+so far). `threads.subscribe` and an opening `threads.get` carry `channels`;
+none named means all three, a later call replaces them, and an unknown name is
+refused with `InvalidParams` on `channels[<i>]`. A core that narrows advertises
+`features.streamChannels`; an older core ignores the field. Every other event
+of the thread (a message starting or ending, permissions, questions, a
+finished call) is sent whatever the channels.
+
+Without `liveOutput`, a running call reaches the socket once with its output
+emptied and `outputDeferred` set, and a redraw that changed only the output is
+not sent again (the core remembers the last such frame of up to 1,024 running
+calls per socket). The finished call is sent as before and stays readable with
+`messages.toolPart`. A channel turned back on is caught up before the
+subscribe answer: the core sends the parts its streaming messages hold on
+it, the running output included for `liveOutput`. Parts of messages that
+already ended are not replayed; the next page carries them.
+
+The desktop window names no channels, so it receives what it did before. A
+phone window (`onPhone`, 720 px or narrower outside the shell) subscribes with
+`text` and `tools`, and asks for `liveOutput` on a thread while at least one
+card of a running call is open there (`StreamChannels` in
+`packages/ui/src/lib/store/stream-channels.ts`); a reconnect asks the channels
+it last asked. A `threads.get` page still carries a running call's output,
+bounded by the driver's 4,000 characters.
+
+For a 20 s command whose card is redrawn every second with its last 4,000
+characters, then a short answer, a remote phone received 51,108 bytes after
+deflate with every channel and 28,731 without `liveOutput` (44 % less), its
+`message.part` frames carrying 85,677 bytes of JSON against 2,159
+(`bun run bench/live-output-channels.ts`,
+[results](../bench/results/2026-11-07-live-output-channels.md)). The rest is
+the turn's other events, which no channel holds back.
 
 ## What the UI asks for
 
@@ -963,6 +1029,38 @@ The window is built hidden. It appears once the page has painted and either the
 core answered or two seconds passed, so a fast start shows no empty frame and a
 slow one shows the page's "connecting" state. After ten seconds it appears
 whatever the page said, so a broken bundle still gets a window to quit from.
+
+## App update restart
+
+On Windows an in-app update closes the window when the shell starts the
+installer, and the new window shows once the installer has written the app's
+files, the new shell has started and its core has answered
+([shell startup](#shell-startup)). On 2026-11-07 that gap was 6.2 seconds
+(nightly 20261107.2, Ryzen 7 9800X3D, NVMe), from `shell.update.install` to
+the next `shell.window.show` in the shell's log, split with the install
+directory's times: 1.2 s until the installer began writing, 3.4 s writing
+148 MB in 828 files, 0.7 s to the new `shell.start`, 0.9 s until its core
+answered and the window showed.
+
+Most of the writing was LZMA decompression. The installer now packs with zlib
+(`bundle.windows.nsis.compression` in `tauri.bundle.windows.conf.json`).
+`bench/installer-extract.ps1` packs an installed copy with each NSIS
+compressor into an installer that only extracts it, then times a silent run
+(median of 5, same machine, 2026-11-08):
+
+| Compressor | Installer | Extraction | makensis |
+| --- | --- | --- | --- |
+| lzma, before | 55.3 MB | 5.21 s | 53.3 s |
+| zlib, now | 70.5 MB | 2.27 s | 12.1 s |
+| bzip2 | 66.0 MB | 6.25 s | 9.6 s |
+| none | 148.3 MB | 1.54 s | 0.7 s |
+
+The bench times the installer's start and its extraction, not a whole update:
+the 2.9 s it gives zlib is an estimate of what the closed-window gap loses, for
+15 MB more download, which happens while the old window still runs. The next
+update's `shell.update.install` to `shell.window.show` measures it. No compression would save another
+0.7 s for 78 MB more. LZMA's cost grows on a slower CPU: Tauri's own
+documentation gives it 10 to 20 MB/s at 2 GHz.
 
 ## What a frame costs
 
@@ -1612,6 +1710,29 @@ A lower threshold costs a summary and a rewritten cache at each extra
 compaction, which is why the cost falls far less than the context. Automatic
 compaction is the owner's setting ([context](context.md#automatic-compaction)).
 
+### Pull request file pages
+
+`threads.pullRequestFiles` returns 30 changed files a page. Their patches
+share 60,000 characters, about 15,000 tokens: a file under its fair share
+stays whole and leaves the rest to bigger ones, and a bigger file is cut the
+same way across its hunks, so small hunks stay whole and long ones keep their
+first lines. A cut patch ends with a note giving its page and path; the same
+call with that `path` returns the file alone, up to 100,000 characters. Lock
+files and generated files, known by their path, keep one stat line. Before, each patch kept up to
+100,000 characters, so a page could reach 3 MB and one large file could fill
+a reader's context ahead of the small files after it.
+
+`bench/pr-review-context.ts` rebuilds the files API pages of squash commits of
+this repository from git and reads every page through the service, with no
+network. Measured on 2026-11-07, before against the previous
+`pull-request-review.ts` with `BENCH_REVIEW_MODULE`:
+
+| Pull request | Files | All pages before | All pages after | Largest page before | Largest page after |
+| --- | --- | --- | --- | --- | --- |
+| #614, one strings file per part | 185 | 628,053 B | 398,304 B | 271,909 B | 65,752 B |
+| #621, one contracts file per domain | 44 | 413,740 B | 126,800 B | 306,462 B | 64,037 B |
+| #524, with a 51,000-line results file | 62 | 250,241 B | 131,179 B | 174,421 B | 63,469 B |
+
 ## Benches
 
 ```sh
@@ -1629,12 +1750,15 @@ bun bench/ui-at-rest.ts --runs 2                                   # renderer an
 bun bench/rpc-actions.ts --journal <journal.db> --runs 6   # latency, core CPU, bytes and RSS per RPC (Linux)
 bun bench/claude-turn-heap.ts                  # heap a scripted Claude turn leaves; STEER=1 IMAGE_MIB=0 for a follow-up cut
 bun bench/codex-live-output.ts                 # redraws and characters of one running Codex command's live output
+bun run bench/live-output-channels.ts --seconds 20   # bytes a remote phone receives for a long command, with and without liveOutput
 bun bench/provider-list.ts                     # time per providers list() and summary(); ONLY=1 under strace -c
 bun run bench/continuation.ts 100 1024 25 1100            # history a fresh session carries: messages, tool KiB, files, file KiB
 bun run bench/queue-admission.ts 1024 16                  # one scheduler pass over held child turns: turns, teams
 bun bench/ui-heap.ts --machines --load 4 --tick 25 --switch 0 --minutes 9   # heap, DOM and private bytes of a page left open on busy agents
 bun bench/process-log-replay.ts <logs directory>          # process records a log directory holds, and what this store writes of them
 bun run bench/checkpoint-store.ts --source <checkpoints>  # store passes and retention on a copy: bytes, inodes, 20 rewinds
+bun bench/pr-review-context.ts [commit ...]               # bytes of each pull request file page, from real commits, no network
+powershell -File bench/installer-extract.ps1 -Work <scratch>   # Windows: time to extract the installed app per NSIS compressor
 ```
 
 `bench/bandwidth.ts` puts a TCP relay between the client and the core, counts

@@ -7,7 +7,8 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, readFileSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { RpcMethodName } from '@boite/contracts';
 import { connect } from '../src/client.ts';
@@ -165,7 +166,9 @@ describe('the access gate', () => {
     }
     // Guard against a gate that refuses nothing because the router was empty.
     expect(refusedNames.length).toBeGreaterThan(20);
-    expect(refusedNames).toContain('projects.add');
+    // The Add a project form works from a phone; what it browses and adds is checked in projects.ts.
+    expect(refusedNames).not.toContain('projects.add');
+    expect(refusedNames).toContain('accounts.add');
     expect(refusedNames).toContain('settings.set');
     expect(refusedNames).toContain('providers.dryRun');
     expect(refusedNames).toContain('accounts.login');
@@ -232,6 +235,8 @@ describe('the access gate', () => {
       const attempts: (() => Promise<unknown>)[] = [
         () => agent.call('files.write', { threadId, path: 'from-the-agent.txt', text: 'no' }),
         () => agent.call('trace.get', { threadId }),
+        // What `boite server check` asks from a thread (#991).
+        () => agent.call('core.updateStatus', {}),
         () => agent.call('agent.where', { threadId: other.id }),
         () => agent.call('todos.list', { threadId: other.id }),
       ];
@@ -244,8 +249,9 @@ describe('the access gate', () => {
         }
       }
       expect(failures).toEqual([
-        "files.write is not one of the agent's methods",
-        "trace.get is not one of the agent's methods",
+        "files.write is not one of the agent's methods: it is for the owner only",
+        "trace.get is not one of the agent's methods: it is for the owner only",
+        "core.updateStatus is not one of the agent's methods: it is for the owner only",
         `agent.where is for thread ${threadId}, not thread ${other.id}`,
         `todos.list is for thread ${threadId}, not thread ${other.id}`,
       ]);
@@ -254,12 +260,40 @@ describe('the access gate', () => {
     }
   });
 
-  test('a paired device is refused over the wire on the four it used to reach', async () => {
+  test('a paired device adds a project over the wire, and stays refused on the three others it used to reach', async () => {
     const phone = await pairedDevice();
+    const owner = await harness.connect();
+    const home = mkdtempSync(join(tmpdir(), 'boite-device-projects-'));
     try {
+      // The Add a project form from a phone: browse to a folder of this machine, then add it.
+      const folder = join(home, 'From the phone');
+      mkdirSync(folder);
+      expect((await phone.call('projects.browse', { path: home })).directories.map(entry => entry.name)).toEqual(['From the phone']);
+      const added = owner.next('project.added');
+      const project = await phone.call('projects.add', { path: `  ${folder}  `, name: ' Phone project ' });
+      expect(project).toMatchObject({ name: 'Phone project', path: folder });
+      expect((await added).id).toBe(project.id);
+      // The same folder again answers the project, from either side.
+      expect((await phone.call('projects.add', { path: folder })).id).toBe(project.id);
+
+      // This core checks the path it is handed: absolute, an existing directory.
+      expect(await thrown(phone.call('projects.add', { path: 'relative/folder' }))).toThrow('projects.add.path must be an absolute path to an existing directory on this machine');
+      expect(await thrown(phone.call('projects.add', { path: join(home, 'missing') }))).toThrow('a project path must be an existing directory');
+      writeFileSync(join(home, 'file.txt'), 'not a folder');
+      expect(await thrown(phone.call('projects.add', { path: join(home, 'file.txt') }))).toThrow('a project path must be an existing directory');
+      expect(await thrown(phone.call('projects.add', { path: folder, name: 'x'.repeat(1025) }))).toThrow('projects.add.name must be');
+
+      // A device's reads start from its projects: never boite's data folder, nor one that holds keys.
+      mkdirSync(join(harness.dataDir, 'inside'));
+      expect(await thrown(phone.call('projects.add', { path: harness.dataDir }))).toThrow('a paired device does not add boite\'s data folder');
+      expect(await thrown(phone.call('projects.add', { path: join(harness.dataDir, 'inside') }))).toThrow('a paired device does not add boite\'s data folder');
+      mkdirSync(join(home, '.ssh', 'keys'), { recursive: true });
+      expect(await thrown(phone.call('projects.add', { path: join(home, '.SSH', 'keys') }))).toThrow('a paired device does not add a folder that holds keys or tokens');
+      // The owner's own app is not held to the device's rules.
+      expect((await owner.call('projects.add', { path: join(home, '.ssh', 'keys') })).path).toBe(join(home, '.ssh', 'keys'));
+
       const failures: string[] = [];
       const attempts: (() => Promise<unknown>)[] = [
-        () => phone.call('projects.add', { path: harness.dataDir, name: 'from the phone' }),
         () => phone.call('settings.set', { listenOnLan: true }),
         () => phone.call('providers.dryRun', { file: 'C:\\Windows\\win.ini' }),
         () => phone.call('accounts.add', { providerId: 'echo', label: 'from the phone' }),
@@ -273,17 +307,17 @@ describe('the access gate', () => {
         }
       }
       expect(failures).toEqual([
-        'projects.add is for the owner only',
         'settings.set is for the owner only',
         'providers.dryRun is for the owner only',
         'accounts.add is for the owner only',
       ]);
-      // Nothing went through: the gate runs before the handler.
-      const owner = await harness.connect();
-      expect(await owner.call('projects.list', {})).toEqual([]);
+      // Nothing else went through: the gate runs before the handler.
+      expect((await owner.call('projects.list', {})).map(entry => entry.path).sort()).toEqual([folder, join(home, '.ssh', 'keys')].sort());
       expect(harness.core.settings.get().listenOnLan).toBe(false);
+      expect((await owner.call('accounts.list', {})).some(account => account.label === 'from the phone')).toBe(false);
     } finally {
       phone.close();
+      rmSync(home, { recursive: true, force: true });
     }
   });
 

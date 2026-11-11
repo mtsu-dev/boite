@@ -278,7 +278,7 @@ export const fr: Translation = {
       allProjects: 'Tous les projets',
       emptyProject: 'Aucune conversation archivée dans {project}.',
       doneRetentionLabel: 'Supprimer les conversations terminées après',
-      doneRetentionHint: 'À compter du passage en terminé ou de l\'archivage automatique après une fusion de PR. 3 jours par défaut ; 0 désactive la suppression. Les archives manuelles sont conservées. Les conversations supprimées restent récupérables pendant le délai configuré.',
+      doneRetentionHint: 'À compter du passage en terminé, de l\'archivage automatique après une fusion de PR ou de l\'archivage par un plugin. 3 jours par défaut ; 0 désactive la suppression. Les archives manuelles sont conservées. Les conversations supprimées restent récupérables pendant le délai configuré.',
       deletesAt: 'Suppression : {date}',
       heading: 'Conversations archivées',
       mergedReason: 'Archivée après la fusion de la PR #{number}',

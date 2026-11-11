@@ -10,7 +10,7 @@ const OFFERED: PermissionMode[] = ['yolo', 'bypassPermissions', 'acceptEdits', '
  * The modes worth offering for this agent. Codex gives `acceptEdits` the same
  * sandbox and approval pair as `default` (`drivers/codex.ts`, `MODE_POLICY`),
  * so a second entry would promise a difference that does not exist. YOLO also
- * disables configured hooks, which Auto retains. An agent that never asks
+ * approves what a hook asks. An agent that never asks
  * (`capabilities.approvals` false, pi today) gets no choice at all: every
  * entry would describe something it does not do.
  */

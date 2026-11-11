@@ -69,6 +69,15 @@ stored key could be its own core's from an earlier start.
 
 Machine names and icons can be changed in Settings. These preferences are saved on this client and follow the core across address changes. Connections to the same host, data directory and channel appear once.
 
+Another machine goes by the name it reports now, its host name or
+`BOITE_MACHINE_NAME`, unless the owner renamed it here. The saved entry marks a
+typed name with `named`; any other saved name is only what the machine was
+called last time and gives way once it says hello, so a core that moved hosts
+shows its new name. An entry saved before that mark counts as renamed when a
+machine profile holds its name under a different host name, which is what a
+rename wrote; a name saved automatically, or rewritten by picking an icon,
+follows the host. Picking an icon never marks a name as typed.
+
 The shell discovers its local core on startup instead of remembering its temporary
 port as another machine. Older generated `This computer` loopback entries are
 removed during startup. Paired remote connections are retained. The sidebar
@@ -228,8 +237,9 @@ header, draws the QR code and offers the link ([groups](groups.md#using-it)).
 Once the group has two machines, each machine's row this window controls
 carries a **Threads from the other machines** switch (`groupThreads`), off by
 default: on, the agents of the other machines may start threads in its
-projects with `boite thread new --machine` ([CLI](cli.md#commands)) and read
-the models such a thread can run on with `boite delegate models --machine`. The
+projects with `boite thread new --machine` ([CLI](cli.md#commands)), add its
+folders as projects with `boite projects add --machine`, and read the models
+such a thread can run on with `boite delegate models --machine`. The
 setting belongs to that machine and is saved there, so the PC with the printer
 can accept them while the server does not. Beside it, **Bots from the other
 machines** (`groupBots`, off by default) lets a bot of another machine look
@@ -383,9 +393,13 @@ with the mouse or, on a phone, after holding a header still for a moment; a
 line shows where the project lands and Escape cancels. Their menus also offer Move project up and Move
 project down, including on a phone. Switching back to recent activity keeps
 the saved custom arrangement. The view and custom order belong to this device.
-So do folded projects: a project folded under its header stays folded after a
-restart, kept per core in localStorage (`boite.foldedProjects.v1`). A draft
-opened in a folded project, or a conversation moved into it, unfolds it.
+So do folded projects: a click on a project's header, or on a phone a tap on
+its tile and name, folds it in both layouts, which share one fold. Folded, it
+keeps the summary mark of its conversations beside its name, and a search on a
+phone still lists the matches it holds. It stays folded after a restart, kept
+per core in localStorage (`boite.foldedProjects.v1`); storage that is full or
+refused keeps the folds for the session only. A draft opened in a folded
+project, or a conversation moved into it, unfolds it.
 
 Recent flattens the list. Its All projects picker can limit conversations and
 drafts to one project on one machine. The new-conversation button and Ctrl+N

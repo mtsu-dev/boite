@@ -1,11 +1,14 @@
 import { threadActive, type ProjectId, type ThreadId, type ThreadSummary } from '@boite/contracts';
+import { Closing } from './closing.svelte';
 import { confirm } from './confirm.svelte';
-import { contextMenu } from './context-menu.svelte';
+import { focusedElement, restoreFocus } from './focus';
 import { projectName } from './format';
 import type { MenuItem } from './menu';
 import { startPointerDrag, type DragGrip } from './pointer-drag';
+import { projectRow, type ProjectRow } from './project-rows';
 import { fill, strings } from './strings';
 import type { Store } from './store.svelte';
+import type { Machine } from './workspace.svelte';
 
 /** What a thread row carries while it is dragged: the machine it lives on, so a drop elsewhere is ignored. */
 export interface ThreadDrag {
@@ -115,14 +118,17 @@ export function moveBlocked(store: Store, threadId: ThreadId): boolean {
   return store.moveBlocked(threadId);
 }
 
-/** The picker's rows: every other project of the thread's machine, an archived one marked, or one row saying there is none. */
-export function moveTargets(store: Store, thread: Pick<ThreadSummary, 'projectId'>): MenuItem[] {
-  const others = store.projects.filter((p) => p.id !== thread.projectId);
-  if (others.length === 0) return [{ id: 'none', label: strings.threadMove.noOtherProject, disabled: true }];
-  return others.map((p) => ({
-    id: p.id,
+/**
+ * The picker's rows: every project of the thread's machine, an archived one
+ * marked, the thread's own checked; picking that one moves nothing. None when
+ * the machine has no other project, and the picker says so.
+ */
+export function moveTargets(store: Store, thread: Pick<ThreadSummary, 'projectId'>, machine: Machine): ProjectRow[] {
+  if (!store.projects.some((p) => p.id !== thread.projectId)) return [];
+  return store.projects.map((p) => projectRow(p, machine, {
+    several: false,
+    active: p.id === thread.projectId,
     label: p.archived === true ? fill(strings.threadMove.archivedProject, { project: projectName(p) }) : projectName(p),
-    hint: p.path,
   }));
 }
 
@@ -172,18 +178,57 @@ export async function moveThread(store: Store, threadId: ThreadId, projectId: Pr
   return true;
 }
 
+/** What the move picker (`MoveProjectPicker.svelte`) lists for: the thread, on its own machine's store. */
+export interface MoveRequest {
+  store: Store;
+  threadId: ThreadId;
+  projectId: ProjectId | null;
+  /** Where the keyboard goes back when the picker closes without a move. */
+  returnTo: HTMLElement | null;
+}
+
 /**
- * The project picker, opened from a pick of a thread menu. `anchor` places it
- * under a phone's title sheet trigger; without one it opens where the menu stood.
+ * The one "Move to project" picker of the app: the project search the draft's
+ * "Change project" opens, with the thread's own project checked. The request
+ * outlives the close, so the exit plays on the same rows.
+ */
+class MovePicker {
+  readonly popover = new Closing();
+  request = $state<MoveRequest | null>(null);
+
+  open(request: MoveRequest): void {
+    this.request = request;
+    this.popover.show();
+  }
+
+  /**
+   * However it closes, the keyboard goes back to what opened the menu: left
+   * on the page, the next Escape would stop the thread's running turn.
+   */
+  close(): void {
+    this.popover.hide();
+    restoreFocus(this.request?.returnTo ?? null);
+  }
+
+  /** A pick of a row: the move and its questions, or nothing for the thread's own project. */
+  pick(projectId: ProjectId): void {
+    const request = this.request;
+    this.popover.hide();
+    if (!request) return;
+    restoreFocus(request.returnTo);
+    void moveThread(request.store, request.threadId, projectId);
+  }
+}
+
+export const movePicker = new MovePicker();
+
+/**
+ * The project picker, opened from a pick of a thread menu. It opens where the
+ * command palette does, inside the window on a computer and a phone; `anchor`,
+ * the trigger of the menu it came from, gets the keyboard back.
  */
 export function openMovePicker(store: Store, thread: Pick<ThreadSummary, 'id' | 'projectId'>, anchor?: HTMLElement | null): void {
-  const items = moveTargets(store, thread);
-  const pick = (id: string): void => {
-    if (id !== 'none') void moveThread(store, thread.id, id);
-  };
-  const rect = anchor?.getBoundingClientRect();
-  if (anchor && rect && rect.width > 0) contextMenu.show({ x: rect.left, y: rect.bottom }, items, pick, anchor);
-  else contextMenu.follow(items, pick);
+  movePicker.open({ store, threadId: thread.id, projectId: thread.projectId, returnTo: anchor ?? focusedElement() });
 }
 
 /**

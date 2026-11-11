@@ -115,6 +115,7 @@ export async function withQuotaProbe<T>(core: Core, account: Account, name: stri
       accountEnv: core.accounts.accountEnv(account, provider),
       spawnChild: operation.spawnChild,
       killTree: operation.killTree,
+      letExit: operation.letExit,
       log: (level, message) => core.log(level, `${label}: ${message}`, { source: 'quotas', event: 'quota.read' }),
     });
   } catch (error) {

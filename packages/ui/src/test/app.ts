@@ -238,9 +238,6 @@ export async function showMobileThreads(): Promise<void> {
   await waitFor(() => document.querySelector('[data-testid=mobile-search-open]') !== null);
 }
 
-/** Everything owner-only that is drawn without leaving the chat. The panel is not: its Agents and Workflows surfaces are the device's to follow. */
-export const OWNER_ONLY_IN_CHAT = ['[data-testid=add-project]'];
-
 /** Everything owner-only on the settings nav and its Machines page. Plugins is a section of Providers, so the nav's Providers entry stands for it. */
 export const OWNER_ONLY_IN_SETTINGS = [
   '[data-testid=settings-tab-accounts]',
@@ -252,4 +249,4 @@ export const OWNER_ONLY_IN_SETTINGS = [
 export const OWNER_ONLY_IN_ADVANCED = ['[data-testid=setting-listen-on-lan]'];
 
 /** The palette ids that each end in a method a device may not call. */
-export const OWNER_ONLY_COMMANDS = ['add-project', 'trace', 'providers', 'pair'];
+export const OWNER_ONLY_COMMANDS = ['trace', 'providers', 'pair'];

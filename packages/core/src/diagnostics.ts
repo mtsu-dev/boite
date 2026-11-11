@@ -4,7 +4,7 @@ import { chmod, mkdir, open, readdir, unlink, writeFile } from 'node:fs/promises
 import { arch, cpus, freemem, homedir, hostname, platform, release, totalmem, userInfo, version as osVersion } from 'node:os';
 import { join } from 'node:path';
 import {
-  AGENT_SUBMIT_REFUSED, createLogAnonymizer, formatLogDuration, formatLogLine, formatLogTime, ISSUE_REPOSITORY, logLevelAtLeast, logMatches, validateDiagnosticsLogsQuery, validateDiagnosticsParams,
+  AGENT_SUBMIT_REFUSED, createLogAnonymizer, deviceBound, formatLogDuration, formatLogLine, formatLogTime, ISSUE_REPOSITORY, logLevelAtLeast, logMatches, validateDiagnosticsLogsQuery, validateDiagnosticsParams,
   type CoreLogLevel, type CoreLogRecord, type DiagnosticEnvironment, type DiagnosticProblem, type DiagnosticReportRecord, type DiagnosticsExport, type DiagnosticsExportParams,
   type DiagnosticsIssue, type DiagnosticsIssueParams, type DiagnosticsLogsQuery, type DiagnosticSummary, type DiagnosticThread, type LogAnonymizer, type LogData, type ThreadSummary,
 } from '@boite/contracts';
@@ -107,7 +107,7 @@ export class Diagnostics {
   /** Throws unless this connection may read diagnostics, and returns whether they are an agent's. */
   #gate(connection: Connection | undefined, threadId: string | undefined): boolean {
     // The router already keeps a paired device to diagnostics.report; this holds even if access.ts changes.
-    if (connection?.identity.principal === 'session') throw refused('diagnostics: a paired device only reports its own errors');
+    if (connection && deviceBound(connection.identity.principal)) throw refused('diagnostics: a paired device only reports its own errors');
     if (connection?.identity.principal !== 'agent') return false;
     if (this.#core.settings.get().agentLogAccess === false) throw refused('diagnostics: the owner turned off agent access to logs (Settings > Diagnostics)');
     if (threadId === undefined || threadId !== connection.identity.threadId) throw refused('diagnostics: an agent names its own thread');
@@ -382,7 +382,7 @@ export class Diagnostics {
       // an agent (refused this method by the router today) only under its own.
       const known = record.threadId && this.#core.journal.getThread(record.threadId) ? record.threadId : undefined;
       const principal = connection.identity.principal;
-      const allowed = principal === 'owner' || (principal === 'session' ? connection.subscriptions.has(known ?? '') : known === connection.identity.threadId);
+      const allowed = principal === 'owner' || (deviceBound(principal) ? connection.subscriptions.has(known ?? '') : known === connection.identity.threadId);
       const threadId = known && allowed ? known : undefined;
       this.#core.logs.record(record.level, record.message, {
         origin: 'ui', source: record.source, event: record.event, ...(threadId ? { threadId } : {}),

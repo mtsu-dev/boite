@@ -18,7 +18,7 @@ import { AgentsView } from '../lib/agents.svelte';
 
 /**
  * The three composer keys, on the whole app over the in-memory fake: Ctrl+Enter
- * sends and opens the next draft, ArrowUp walks this thread's sent prompts, and
+ * sends in place (or opens the next draft from a draft), ArrowUp walks this thread's sent prompts, and
  * Ctrl+Shift+S puts the text aside and takes it back. Then the reasoning chip, which
  * carries the level the picker used to hide.
  */
@@ -207,7 +207,7 @@ async function send(prompt: string): Promise<void> {
   await waitFor(() => (store.openThread?.messages.length ?? 0) >= before + 2 && !store.busy);
 }
 
-test.for([false, true])('editing replaces the sent message and later turns (next draft: %s)', async (nextDraft, { app: _app }) => {
+test.for([false, true])('editing replaces the sent message and later turns without leaving the thread (Ctrl: %s)', async (ctrlKey, { app: _app }) => {
   await store.open('t-trace');
   await send('original request');
   const original = store.openThread!.messages.findLast(message => message.role === 'user')!;
@@ -220,13 +220,14 @@ test.for([false, true])('editing replaces the sent message and later turns (next
   expect(document.querySelector('[data-testid=composer-editing]')).not.toBeNull();
   await type('changed request');
   input().focus();
-  press('Enter', { ctrlKey: nextDraft });
+  press('Enter', { ctrlKey });
   await waitFor(() => !store.busy && input().value === '');
   const updated = await store.client!.call('threads.get', { threadId: 't-trace' });
   expect(updated.messages.slice(0, kept.length).map(message => message.id)).toEqual(kept);
   expect(updated.messages.some(message => removed.includes(message.id))).toBe(false);
   expect(updated.messages.filter(message => message.role === 'user').at(-1)?.parts).toEqual([{ type: 'text', text: 'changed request' }]);
-  if (nextDraft) expect(store.draft?.projectId).toBe(updated.projectId);
+  expect(store.openThread?.id).toBe('t-trace');
+  expect(store.draft).toBeNull();
 });
 
 test('a turn that starts during editing does not silently turn the edit into a queued resend', async ({ app: _app }) => {
@@ -306,36 +307,33 @@ test('an edit submitted before navigation replaces the original thread on its ow
   expect(store.openThread?.id).toBe('t-descriptors');
 });
 
-test('Ctrl+Enter sends and leaves a fresh draft open on the same picker values', async ({ app: _app }) => {
+test('Ctrl+Enter sends without leaving an existing thread, and opens the next draft only from a draft', async ({ app: _app }) => {
   await store.open('t-trace');
   await waitFor(() => store.openThread?.id === 't-trace' && !store.busy);
   const thread = store.openThread;
   if (!thread) throw new Error('no open thread');
   const before = store.threads.length;
 
-  await type('Send this one and give me the next box');
+  await type('Send this one and stay in the thread');
   input().focus();
   expect(press('Enter', { ctrlKey: true })).toBe(false);
 
-  await waitFor(() => store.draft !== null && store.openThread === null);
+  await waitFor(() => !store.composerStates['t-trace']!.sending && input().value === '');
+  expect(store.openThread?.id).toBe('t-trace');
+  expect(store.draft).toBeNull();
   // The prompt went into the thread it was typed in, and no thread was created.
   expect(store.threads.length).toBe(before);
   const sentTo = await store.client?.call('threads.get', { threadId: 't-trace' });
   expect(sentTo?.messages.filter((m) => m.role === 'user').at(-1)?.parts).toEqual([
-    { type: 'text', text: 'Send this one and give me the next box' }
+    { type: 'text', text: 'Send this one and stay in the thread' }
   ]);
 
-  // The draft sits in the same project, on the same five values, and the
-  // composer has the keyboard, exactly like Ctrl+N.
+  query<HTMLButtonElement>('[data-testid=new-thread]').click();
+  await waitFor(() => store.draft !== null && store.openThread === null);
+  // Start a draft explicitly, then check Ctrl+Enter preserves its resolved picker values.
   expect(store.draft?.projectId).toBe(thread.projectId);
-  expect(store.defaultChoice()).toEqual({
-    providerId: thread.providerId,
-    accountId: thread.accountId,
-    permissionMode: thread.permissionMode,
-    model: thread.model,
-    effort: thread.effort,
-    speed: null
-  });
+  const choice = store.defaultChoice();
+  expect(choice).toMatchObject({ providerId: thread.providerId, accountId: thread.accountId, model: thread.model, permissionMode: thread.permissionMode });
   expect(input().value).toBe('');
   await waitFor(() => document.activeElement === input());
 
@@ -347,6 +345,7 @@ test('Ctrl+Enter sends and leaves a fresh draft open on the same picker values',
   await waitFor(() => store.draft !== null && store.openThread === null);
   expect(store.threads.at(-1)?.title).toBe('And one more thread');
   expect(store.draft?.projectId).toBe(thread.projectId);
+  expect(store.defaultChoice()).toEqual(choice);
 });
 
 test('on a touch keyboard Enter writes a new line and only the button sends', async ({ app: _app }) => {

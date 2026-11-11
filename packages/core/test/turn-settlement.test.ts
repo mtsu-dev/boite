@@ -200,3 +200,21 @@ test('closing a running tool on a turn that ended keeps its large values', async
     expect(h.core.journal.getMessage('msg_tools')?.parts).toEqual([{ ...message.parts[0]!, status: 'error' } as MessagePart, message.parts[1]!]);
   } finally { await h.stop(); }
 });
+
+test('a queued stop never rewrites a turn that already finished', async () => {
+  const h = await startTestCore();
+  let finishes = 0;
+  h.core.bus.onAny(name => { if (name === 'turn.finished') finishes++; });
+  try {
+    const client = await h.connect();
+    const { threadId } = await echoThread(h, client);
+    const turn = await client.call('turns.start', { threadId, prompt: 'already over' });
+    await waitFor(() => h.core.journal.getTurn(turn.id)?.status === 'done');
+    const finishedAt = h.core.journal.getTurn(turn.id)?.finishedAt;
+    h.core.threads.markQueuedStopped(turn.id);
+    expect(h.core.journal.getTurn(turn.id)?.status).toBe('done');
+    expect(h.core.journal.getTurn(turn.id)?.finishedAt).toBe(finishedAt);
+    expect(finishes).toBe(1);
+    expect(h.core.journal.getThread(threadId)?.status).toBe('idle');
+  } finally { await h.stop(); }
+});

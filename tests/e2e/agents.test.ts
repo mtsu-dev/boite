@@ -212,8 +212,11 @@ test('a question in a thread on its desk wakes the agent with an event turn', as
   // The echo agent asks whenever its prompt says question; the card waits for the user.
   await owner.call('turns.start', { threadId: projectThread, prompt: 'Which hero picture do you want? question' });
   await waitFor(() => harness.core.threads.listQuestions(projectThread).length === 1, 10_000);
+  // Mira was stopped above: what its desk tells it waits for the user's next message, as its letters do.
+  await waitFor(() => harness.core.agentRuntime.facts(agent.id).length > 0, 10_000);
+  await owner.call('turns.start', { threadId, prompt: 'Carry on.' });
   // Facts gather for 30 s before one event turn starts.
-  await waitFor(() => turns(threadId).length > before && free(threadId), 60_000);
+  await waitFor(() => turns(threadId).length > before + 1 && free(threadId), 60_000);
   const event = turns(threadId).at(-1)!;
   expect(event.execution?.operation).toBe('event');
   expect(event.status).toBe('done');

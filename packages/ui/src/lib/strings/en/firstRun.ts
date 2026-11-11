@@ -2,7 +2,7 @@ export const strings = {
   firstRun: {
     welcome: 'Boite runs your AI agents on your own machines.',
     heading: 'Open a project',
-    deviceBody: 'Projects are opened from the app the core runs in. The ones it holds show up here.',
+    deviceOlderCore: 'This machine runs a Boite too old to add a project from this device. Update it in Settings, Machines and updates, or add the project from the app on that machine.',
     pathPlaceholder: 'Absolute path of the folder',
     /** The agents a first run offers, as one choice. */
     agents: 'Agents',

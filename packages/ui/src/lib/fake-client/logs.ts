@@ -203,7 +203,7 @@ export function logMethods(ctx: FakeContext): Pick<FakeMethods, DiagnosticMethod
       };
     },
     'diagnostics.report': async raw => {
-      if (ctx.bus.principal === 'agent') throw refused('diagnostics.report is not one of the agent\'s methods');
+      if (ctx.bus.principal === 'agent') throw refused('diagnostics.report is not one of the agent\'s methods: the owner and paired devices call it');
       let records;
       try { records = validateDiagnosticReport(raw); } catch (error) { throw invalid(error); }
       const minute = Math.floor(Date.now() / 60_000);

@@ -304,6 +304,11 @@ test('a bot starts a thread in a project another machine entrusted to it, and he
   const prompts = answering();
   const { desk, pc, pcOwner, pcId, deskId, notes, self, cli, facts, agent, machine } = await setup();
   await pcOwner.call('settings.set', { groupBots: true });
+  // Its context block tells it how, so it never refuses to start one there.
+  const told = desk.core.workforce.projects.instructions(agent());
+  expect(told).toContain('Projects of other machines of the group entrusted to you: ');
+  expect(told).toContain('`boite thread new <machine>/<project> <brief>` starts a thread there');
+  expect(told).not.toContain('cannot start threads');
   const started = await cli(['thread', 'new', `${machine}/Notes`, 'Sort the letters', '--title', 'Sort', '--request-id', 'sort-1']);
   expect([started.code, started.err]).toEqual([0, '']);
   const id = /^thread: (\S+)$/m.exec(started.out)![1]!;

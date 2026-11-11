@@ -1,9 +1,9 @@
 <script lang="ts">
   import { ArrowLeft, MessageSquare, RotateCcw } from '@lucide/svelte';
-  import type { DelegationProfile, WorkflowNode, WorkflowRun } from '@boite/contracts';
+  import { conditionText, type DelegationProfile, type WorkflowNode, type WorkflowRun } from '@boite/contracts';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
-  import { nodeTiming, routeOf, shown } from '../lib/workflow-view';
+  import { loopsOf, nodeTiming, routeOf, shown } from '../lib/workflow-view';
   import Elapsed from './Elapsed.svelte';
   import ProviderLogo from './ProviderLogo.svelte';
   import StatusMark from './StatusMark.svelte';
@@ -18,6 +18,8 @@
   let step = $derived(run.plan.steps.find(entry => entry.id === node.id));
   let route = $derived(routeOf(node, profiles, step));
   let timing = $derived(nodeTiming(node));
+  let loop = $derived(loopsOf(run).find(entry => entry.body.includes(node.id)));
+  const titleOf = (id: string) => run.nodes.find(n => n.id === id)?.title ?? id;
   /** The execution shown: the one picked, else the first still running or failed, else the first. */
   let instance = $derived(
     node.instances.find(inst => inst.key === picked)
@@ -54,11 +56,14 @@
   </header>
 
   <div class="body">
-    {#if node.after.length || step?.forEach || step?.when}
+    {#if node.after.length || step?.forEach || step?.when || loop}
       <ul class="facts">
-        {#if node.after.length}<li>{fill(strings.workflow.after, { steps: node.after.map(id => run.nodes.find(n => n.id === id)?.title ?? id).join(', ') })}</li>{/if}
+        {#if node.after.length}<li>{fill(strings.workflow.after, { steps: node.after.map(titleOf).join(', ') })}</li>{/if}
         {#if step?.forEach}<li>{fill(strings.workflow.forEach, { path: step.forEach })}</li>{/if}
-        {#if step?.when}<li>{fill(strings.workflow.condition, { path: step.when.path })}</li>{/if}
+        {#if step?.when}<li>{fill(strings.workflow.condition, { condition: conditionText(step.when) })}</li>{/if}
+        {#if loop?.to === node.id}<li>{fill(strings.workflow.loop, { step: titleOf(loop.from), condition: conditionText(loop.until), max: String(loop.max) })}</li>
+        {:else if loop}<li>{fill(strings.workflow.inLoop, { step: titleOf(loop.to) })}</li>{/if}
+        {#if loop && (node.round ?? 1) > 1}<li data-testid="workflow-detail-round">{fill(strings.workflow.round, { round: String(node.round), max: String(loop.max) })}</li>{/if}
       </ul>
     {/if}
     {#if node.error}<p class="error" role="alert">{node.error}</p>{/if}

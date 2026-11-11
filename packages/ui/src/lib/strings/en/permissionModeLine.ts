@@ -5,7 +5,7 @@ export const strings = {
     default: 'Asks before it edits a file or runs a command',
     acceptEdits: 'Edits files on its own, asks before commands',
     bypassPermissions: 'Runs everything without asking',
-    yolo: 'Runs everything and skips your hooks',
+    yolo: 'Approves every request, without exception',
     plan: 'Plans only, changes nothing',
     dontAsk: 'Refuses anything that needs asking'
   }

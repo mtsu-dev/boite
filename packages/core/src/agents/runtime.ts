@@ -16,8 +16,14 @@ export interface AgentWake {
   requestId?: string;
 }
 
-/** Why a wake did not start: the thread is at work, the core or the agent is paused, or its budget is spent. */
-export type WakeHeld = 'busy' | 'paused' | 'budget' | 'inactive' | 'failed';
+/**
+ * Why a wake did not start: the thread is at work, the core or the agent is
+ * paused, its budget is spent, or `off`: the provider its thread runs on is
+ * turned off (by the user's switch or the admin policy). An `off` wake keeps
+ * its facts and events, which run once the provider is back or the bot moves
+ * to another model; its status names the fix meanwhile (`AgentStatus.problem`).
+ */
+export type WakeHeld = 'busy' | 'paused' | 'budget' | 'inactive' | 'off' | 'failed';
 
 /**
  * A turn the core starts on an agent's thread by itself, besides routines and
@@ -196,6 +202,12 @@ export class AgentRuntime {
     try { thread = this.#core.threads.require(this.#store.open(agent.id).threadId); }
     catch (error) { this.#core.log('warn', `agent ${agent.id}: no thread to wake: ${messageOf(error)}`); return { held: 'failed' }; }
     if (this.#atWork(thread)) return { held: 'busy' };
+    // Stopped by the user, or its letters paused by the owner: an event wake, direct or queued, waits for the
+    // user's next message, as its letters and scheduled wakes do. Without this, Stop ends the turn and a fact
+    // older than the batch delay starts the next one half a second later, so Stop seems to do nothing.
+    // A routine is the owner's schedule and still runs at its time.
+    if (wake.kind === 'event' && this.#core.coordination.heldByUser(thread.id)) return { held: 'paused' };
+    if (this.#providerOff(thread)) return { held: 'off' };
     if (this.#overBudget(agent, thread, wake.label)) return { held: 'budget' };
     try { return { turn: this.#begin(thread, wake) }; }
     catch (error) {
@@ -219,6 +231,11 @@ export class AgentRuntime {
     if (agent.status !== 'active') return agent.status === 'paused' ? 'paused' : 'inactive';
     if (this.#store.limits().paused) return 'paused';
     return null;
+  }
+
+  /** The provider the thread runs on is installed but turned off: nothing can start on it until it is back. */
+  #providerOff(thread: ThreadSummary): boolean {
+    return this.#core.providers.get(thread.providerId) !== undefined && !this.#core.providers.enabled(thread.providerId);
   }
 
   /** What the agent's thread and the threads below it spent today against its budget, or null when it has room. */
@@ -245,14 +262,17 @@ export class AgentRuntime {
     if (this.#store.moves.travelling(agent.id)) {
       throw refused(`Held ${SOURCE_TEXT[source]}: ${agent.name} is moving to another machine.`, { reason: AGENT_HELD, threadId: thread.id, source, held: 'busy' });
     }
-    const held = this.#refusal(agent);
+    const held = this.#refusal(agent) ?? (this.#providerOff(thread) ? 'off' : null);
     const over = held === null ? this.#spent(agent, thread.id) : null;
     const key = `${agent.id}:${source}`;
     if (held === null && over === null) { this.#told.delete(key); return; }
+    const provider = this.#core.providers.get(thread.providerId)?.name ?? thread.providerId;
     const why = held === 'inactive' ? `${agent.name} is archived`
+      : held === 'off' ? `${provider} is turned off on this machine`
       : held === 'paused' ? (agent.status === 'paused' ? `${agent.name} is paused` : 'bots are paused')
         : `today's turns cost $${over!.spent.toFixed(2)}, past the daily budget of $${over!.budget.toFixed(2)}`;
-    const after = source === 'resume' ? 'It was dropped.' : held === 'inactive' ? 'It will not run.' : over ? 'It runs tomorrow, or once the budget is raised.'
+    const after = source === 'resume' ? 'It was dropped.' : held === 'inactive' ? 'It will not run.'
+      : held === 'off' ? `It runs once ${provider} is turned on in Settings > Providers, or ${agent.name} moves to another model.` : over ? 'It runs tomorrow, or once the budget is raised.'
       : agent.status === 'paused' ? `It runs once ${agent.name} resumes.` : 'It runs once bots resume.';
     const text = `Held ${SOURCE_TEXT[source]}: ${why}. ${after}`;
     if (!this.#told.has(key)) {
@@ -276,7 +296,7 @@ export class AgentRuntime {
       const agent = this.#store.agentOfThread(threadId);
       const thread = this.#core.journal.getThread(threadId);
       if (!agent || !thread || thread.archived) { this.#waiting.delete(threadId); continue; }
-      if (this.#store.moves.moving(agent.id) || this.#refusal(agent) !== null || this.#spent(agent, threadId) !== null || this.#atWork(thread)) continue;
+      if (this.#store.moves.moving(agent.id) || this.#refusal(agent) !== null || this.#providerOff(thread) || this.#spent(agent, threadId) !== null || this.#atWork(thread)) continue;
       const [key, retry] = held.entries().next().value!;
       held.delete(key);
       if (held.size === 0) this.#waiting.delete(threadId);
@@ -469,7 +489,7 @@ export class AgentRuntime {
       const event = pending.events[0];
       if (event) {
         const attempt = this.attempt(agent, { kind: 'event', label: event.label, prompt: event.prompt, requestId: `event-${agentId.slice(-40)}-${event.at}` });
-        if (attempt.held === 'busy' || attempt.held === 'paused') continue;
+        if (attempt.held === 'busy' || attempt.held === 'paused' || attempt.held === 'off') continue;
         this.#save(agentId, { ...this.#held(agentId), events: this.#held(agentId).events.filter(e => e !== event && e.key !== event.key) });
         continue;
       }
@@ -499,7 +519,7 @@ export class AgentRuntime {
       const first = batch[0]!;
       const receipt = createHash('sha256').update(JSON.stringify([first.at, first.key])).digest('hex');
       const attempt = this.attempt(agent, { kind: 'event', label, prompt, requestId: `facts-${agentId.slice(-40)}-${receipt}` });
-      if (attempt.held === 'busy' || attempt.held === 'paused') continue;
+      if (attempt.held === 'busy' || attempt.held === 'paused' || attempt.held === 'off') continue;
       // Started, skipped for the budget or failed: these facts are spent. Those that arrived meanwhile stay.
       const keys = new Set(batch.map(f => f.key));
       this.#save(agentId, { ...this.#held(agentId), facts: this.#held(agentId).facts.filter(f => !keys.has(f.key)) });

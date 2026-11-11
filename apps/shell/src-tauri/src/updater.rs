@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State, Webview};
 use tauri_plugin_updater::{Update, UpdaterExt};
 use sha2::{Digest, Sha256};
+use crate::update_throttle::{rate_limit, Admit, Throttle};
 
 const RELEASES: &str = "https://api.github.com/repos/mtsu-dev/boite/releases";
 /// Where a release's files may live. The repository moved from `beboite` to
@@ -53,6 +54,8 @@ pub struct AppUpdater {
     cache: PathBuf,
     quiet_restart: PathBuf,
     install: Arc<Mutex<crate::update_stop::InstallState>>,
+    /// When the release API may be asked again (`update_throttle`).
+    throttle: Mutex<Throttle<Track>>,
 }
 struct Operation<'a>(&'a AtomicBool);
 impl Drop for Operation<'_> { fn drop(&mut self) { self.0.store(false, Ordering::Release); } }
@@ -80,7 +83,7 @@ impl AppUpdater {
             received: 0, total: None, error, supported,
         }), pending: Mutex::new(None), busy: AtomicBool::new(false), preference, cache,
             quiet_restart: directory.join(crate::autostart::QUIET_RESTART_FILE),
-            install: Arc::new(Mutex::new(crate::update_stop::InstallState::Idle)) }
+            install: Arc::new(Mutex::new(crate::update_stop::InstallState::Idle)), throttle: Mutex::new(Throttle::default()) }
     }
     fn begin(&self) -> Result<Operation<'_>, String> {
         if !self.snapshot.lock().unwrap().supported { return Err(UNSUPPORTED.into()); }
@@ -106,6 +109,17 @@ impl AppUpdater {
             format!("the app update failed while {phase}: {error}"), serde_json::json!({ "phase": phase }));
         self.pending.lock().unwrap().take();
         self.change(app, |s| { s.phase = "error".into(); s.error = Some(error); })
+    }
+    /// GitHub's rate limit: a warning, once per refusal, and a status that
+    /// says when the next automatic check goes, instead of an error per retry.
+    fn limited(&self, app: &AppHandle, wait: Duration) -> Snapshot {
+        let minutes = wait.as_secs().div_ceil(60);
+        crate::shell_log::warn("updater", "shell.update.limited",
+            format!("GitHub refused the release lookup for its rate limit; the next automatic check waits {minutes} min"),
+            serde_json::json!({ "waitSeconds": wait.as_secs() }));
+        self.pending.lock().unwrap().take();
+        self.change(app, |s| { s.phase = "error".into();
+            s.error = Some(format!("GitHub is limiting release lookups from this network: the next automatic check waits {minutes} min")); })
     }
 }
 
@@ -183,14 +197,31 @@ fn release_client(read: Duration) -> Result<reqwest::Client, String> {
         .connect_timeout(CONNECT_TIMEOUT).read_timeout(read).build().map_err(|e| e.to_string())
 }
 
-async fn find_release(track: Track) -> Result<Release, String> {
+/// Why a check found nothing to offer.
+enum Lookup {
+    Failed(String),
+    /// GitHub's rate limit, with the wait it named if any.
+    Limited(Option<Duration>),
+}
+impl From<String> for Lookup { fn from(error: String) -> Self { Self::Failed(error) } }
+impl From<&str> for Lookup { fn from(error: &str) -> Self { Self::Failed(error.into()) } }
+
+fn unix_now() -> u64 { crate::shell_log::unix_ms() / 1000 }
+
+async fn find_release(track: Track) -> Result<Release, Lookup> {
     // The listing arrives gzipped, a quarter of its size, and pages of release
     // notes grow with every nightly: a total deadline would fail every check
     // on a slow link once they are large enough.
     let client = release_client(READ_TIMEOUT)?;
     for page in 1..=10 {
-        let releases: Vec<Release> = client.get(format!("{RELEASES}?per_page=100&page={page}"))
-            .send().await.map_err(|e| format!("Release lookup failed: {e}"))?
+        let response = client.get(format!("{RELEASES}?per_page=100&page={page}"))
+            .send().await.map_err(|e| format!("Release lookup failed: {e}"))?;
+        let header = |name: &str| response.headers().get(name).and_then(|value| value.to_str().ok());
+        if let Some(wait) = rate_limit(response.status().as_u16(), header("retry-after"),
+            header("x-ratelimit-remaining"), header("x-ratelimit-reset"), unix_now()) {
+            return Err(Lookup::Limited(wait));
+        }
+        let releases: Vec<Release> = response
             .error_for_status().map_err(|e| format!("Release lookup failed: {e}"))?
             .json().await.map_err(|e| format!("Invalid release list: {e}"))?;
         if let Some(selected) = candidate(&releases, track) {
@@ -199,7 +230,7 @@ async fn find_release(track: Track) -> Result<Release, String> {
         }
         if releases.len() < 100 { break; }
     }
-    Err(format!("No signed {track:?} desktop release is published yet"))
+    Err(Lookup::Failed(format!("No signed {track:?} desktop release is published yet")))
 }
 
 fn release_asset_url(release: &Release) -> Result<&str, String> {
@@ -220,13 +251,13 @@ fn offer_version(current: &semver::Version, next: &semver::Version, track: Track
 /// way to check again. Nightlies up to 2026-09-26 did that on every check,
 /// when building the release client panicked. The work of each command runs
 /// through this, so a panic ends as an error the card can retry.
-async fn unwinding<T>(work: impl std::future::Future<Output = Result<T, String>>) -> Result<T, String> {
+async fn unwinding<T, E: From<String>>(work: impl std::future::Future<Output = Result<T, E>>) -> Result<T, E> {
     use futures_util::FutureExt;
     std::panic::AssertUnwindSafe(work).catch_unwind().await.unwrap_or_else(|panic| {
         let reason = panic.downcast_ref::<&str>().copied()
             .or_else(|| panic.downcast_ref::<String>().map(String::as_str))
             .unwrap_or("no reason given");
-        Err(format!("The updater stopped unexpectedly: {reason}"))
+        Err(format!("The updater stopped unexpectedly: {reason}").into())
     })
 }
 
@@ -303,14 +334,28 @@ fn app_updates_blocked() -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn app_update_check(webview: Webview, app: AppHandle, state: State<'_, AppUpdater>, channel: Track) -> Result<Snapshot, String> {
+pub async fn app_update_check(webview: Webview, app: AppHandle, state: State<'_, AppUpdater>, channel: Track, force: Option<bool>) -> Result<Snapshot, String> {
     crate::browser::only_main(&webview)?;
     app_updates_blocked()?;
-    let _operation = state.begin()?;
+    // Only the owner's Check for updates passes `force`: an automatic check
+    // reuses a recent answer and waits out GitHub's rate limit (#991).
+    let current = state.snapshot.lock().unwrap().clone();
+    let holds = current.channel == channel && matches!(current.phase.as_str(), "current" | "available");
+    if state.throttle.lock().unwrap().admit(channel, holds, force.unwrap_or(false), Instant::now()) != Admit::Run { return Ok(current); }
+    let _operation = match state.begin() {
+        Ok(operation) => operation,
+        Err(e) => {
+            // A check of this channel already on its way answers this one too, through its event.
+            // Read again: the snapshot above may predate that check's start.
+            let now = state.snapshot.lock().unwrap().clone();
+            if now.phase == "checking" && now.channel == channel { return Ok(now); }
+            return Err(e);
+        }
+    };
     state.pending.lock().unwrap().take();
     state.change(&app, |s| { s.phase = "checking".into(); s.channel = channel; s.error = None;
         s.version = None; s.notes = None; s.published_at = None; s.received = 0; s.total = None; });
-    let result = unwinding(async {
+    let result: Result<Snapshot, Lookup> = unwinding(async {
         let temporary = state.preference.with_extension("tmp");
         std::fs::write(&temporary, serde_json::to_vec(&channel).unwrap()).map_err(|e| format!("Cannot save update channel: {e}"))?;
         std::fs::rename(temporary, &state.preference).map_err(|e| format!("Cannot save update channel: {e}"))?;
@@ -330,7 +375,12 @@ pub async fn app_update_check(webview: Webview, app: AppHandle, state: State<'_,
                 s.notes = release.body; s.published_at = release.published_at; }))
         } else { Ok(state.change(&app, |s| s.phase = "current".into())) }
     }).await;
-    Ok(result.unwrap_or_else(|e| state.fail(&app, e)))
+    let now = Instant::now();
+    Ok(match result {
+        Ok(snapshot) => { state.throttle.lock().unwrap().answered(channel, now); snapshot }
+        Err(Lookup::Limited(named)) => { let wait = state.throttle.lock().unwrap().refused(named, now); state.limited(&app, wait) }
+        Err(Lookup::Failed(e)) => { state.throttle.lock().unwrap().failed(); state.fail(&app, e) }
+    })
 }
 
 #[tauri::command]

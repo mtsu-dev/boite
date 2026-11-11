@@ -1,7 +1,7 @@
 import { expect } from 'vitest';
 import { test } from '../test/fake-client';
 import { RpcErrorCode, type WorkflowPlan, type WorkflowRun } from '@boite/contracts';
-import { STEP_GAP, STEP_MIN, edgesOf, fitsPhase, nodeProgress, phasesOf, retryable, routeOf, runProgress, shown } from './workflow-view';
+import { STEP_GAP, STEP_MIN, edgesOf, fitsPhase, loopsOf, nodeProgress, phasesOf, retryable, roundLabel, routeOf, runProgress, shown } from './workflow-view';
 import { FakeContext } from './fake-client/context';
 import { seed } from './fake-client/seed';
 import { fakeCore, registerCore, unregisterCore } from './fake-client/coordination';
@@ -360,4 +360,27 @@ test('the store follows the runs of the open thread and of its parent from a ste
   await store.open(step);
   await store.loadWorkflows(step);
   expect(store.workflowsOf(step).map(run => run.id)).toContain(seeded!.id);
+});
+
+test('a fake loop runs its fix again in the same conversation, and its reviewer approves the second round', async ({ createClient }) => {
+  const client = await createClient({ delayMs: 0, delegationDemo: true });
+  const plan: WorkflowPlan = { name: 'Loop', steps: [
+    { id: 'fix', profile: 'implementer', task: 'Fix it.' },
+    { id: 'review', profile: 'reviewer', after: ['fix'], task: 'Review.', output: { verdict: 'string' }, repeat: { from: 'fix', until: { path: 'review.verdict', equals: 'APPROVE' }, max: 3 } }
+  ] };
+  const run = await client.call('workflows.start', { threadId: 't-trace', plan, requestId: 'loop' });
+  const done = await until(() => client.call('workflows.get', { threadId: 't-trace', runId: run.id }), value => value.status !== 'running');
+  expect(done.status).toBe('done');
+  const fix = done.nodes.find(node => node.id === 'fix')!, review = done.nodes.find(node => node.id === 'review')!;
+  expect([fix.round, fix.spent, review.round, review.instances[0]!.output]).toEqual([2, 1, 2, { verdict: 'APPROVE' }]);
+  expect(fix.instances[0]!.threadId).toBe(fix.previous![0]!.threadId);
+  expect(loopsOf(done)).toEqual([{ from: 'fix', to: 'review', body: ['fix', 'review'], round: 2, max: 3, until: { path: 'review.verdict', equals: 'APPROVE' }, state: 'over' }]);
+  expect([roundLabel({ round: 2, max: 3 }), roundLabel({ round: 4, max: 3 })]).toEqual(['2/3', '4']);
+});
+
+test('the loop demo holds its fix in a live second round, the review waiting on it', async ({ createClient }) => {
+  const client = await createClient({ delayMs: 0, delegationDemo: true, loopDemo: true });
+  const [run] = await client.call('workflows.list', { threadId: 't-trace' });
+  expect(run!.nodes.map(node => [node.id, node.status, node.round ?? 1])).toEqual([['plan', 'done', 1], ['tests', 'done', 1], ['fix', 'running', 2], ['review', 'waiting', 2], ['report', 'waiting', 1]]);
+  expect(loopsOf(run!)[0]).toMatchObject({ from: 'fix', to: 'review', state: 'live', round: 2 });
 });

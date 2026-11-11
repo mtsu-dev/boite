@@ -34,13 +34,13 @@ describe('claude driver', () => {
     scripted(fake => {
       fake.emit(init('sess-control-owner'));
       if (queries.length !== 1) return;
-      const apply = fake.applyFlagSettings.bind(fake);
-      fake.applyFlagSettings = async settings => {
-        if (settings.disableAllHooks === true) {
+      const set = fake.setPermissionMode.bind(fake);
+      fake.setPermissionMode = async mode => {
+        if (mode === 'bypassPermissions') {
           changing = true;
           await control.promise;
         }
-        await apply(settings);
+        await set(mode);
         answered.resolve();
       };
     });
@@ -62,28 +62,30 @@ describe('claude driver', () => {
     control.resolve();
     await answered.promise;
     await Bun.sleep(0);
-    // The former owner's delayed overlay must not issue its second native control.
-    expect(previous.setters).not.toContain('setPermissionMode bypassPermissions');
+    // The former owner's delayed control lands on a retired transport, never on the next turn's.
+    expect(queries.at(-1)).not.toBe(previous);
     expect(calls.at(-1)!.options.permissionMode).toBe('default');
-    expect(queries.at(-1)!.setters).not.toContain('disableAllHooks true');
+    expect(queries.at(-1)!.setters).not.toContain('setPermissionMode bypassPermissions');
+    expect(queries.flatMap(query => query.setters).some(setter => setter.startsWith('disableAllHooks'))).toBe(false);
     expect(harness.core.threads.require(threadId).permissionMode).toBe('default');
     expect(harness.core.journal.getTurn(next.id)?.execution?.permissionMode).toBe('default');
     queries.at(-1)!.emit(success('sess-control-owner'));
     await waitFor(() => harness.core.journal.getTurn(next.id)?.status === 'done');
   });
 
-  test('permission mode and hook changes reach a running query without another prompt', async () => {
+  test('permission mode changes reach a running query without another prompt and leave hooks alone', async () => {
     const client = await harness.connect();
     const threadId = await claudeThread(client);
     scripted(fake => fake.emit(init('sess-live-mode')));
     const turn = await client.call('turns.start', { threadId, prompt: 'Keep working' });
     await waitFor(() => calls[0]?.prompts.length === 1);
-    for (const mode of ['bypassPermissions', 'yolo', 'default'] as const) {
+    // YOLO runs the CLI in bypassPermissions; entering it touches no hook setting.
+    const expected = ['setPermissionMode bypassPermissions', 'setPermissionMode default'];
+    for (const [index, mode] of (['yolo', 'default'] as const).entries()) {
       await client.call('threads.update', { threadId, permissionMode: mode });
-      const expected = mode === 'yolo' ? 'disableAllHooks true' : `setPermissionMode ${mode}`;
-      await waitFor(() => queries[0]!.setters.includes(expected));
+      await waitFor(() => queries[0]!.setters.length === index + 1);
     }
-    expect(queries[0]!.setters).toContain('disableAllHooks the default');
+    expect(queries[0]!.setters).toEqual(expected);
     expect(queries).toHaveLength(1);
     expect(calls[0]!.prompts).toEqual(['Keep working']);
     expect(queries[0]!.interrupts).toBe(0);
@@ -504,7 +506,7 @@ describe('claude driver', () => {
     expect(queries[0]?.setters).toEqual(['setPermissionMode default']);
   });
 
-  test('warm queries apply Auto and YOLO in place and restore configured hooks', async () => {
+  test('warm queries apply Auto and YOLO in place and keep configured hooks', async () => {
     const client = await harness.connect();
     const threadId = await claudeThread(client);
     await client.call('settings.set', { warmProcessMinutes: 5 });
@@ -517,10 +519,7 @@ describe('claude driver', () => {
     expect(calls[0]!.options.allowDangerouslySkipPermissions).toBe(true);
     expect(calls[0]!.options.permissionMode).toBe('default');
     expect(calls[0]!.options.settings).toEqual({ fastMode: false, autoMemoryEnabled: false });
-    expect(queries[0]!.setters).toEqual([
-      'setPermissionMode bypassPermissions', 'disableAllHooks true',
-      'disableAllHooks the default', 'setPermissionMode default',
-    ]);
+    expect(queries[0]!.setters).toEqual(['setPermissionMode bypassPermissions', 'setPermissionMode default']);
     expect(calls[0]!.prompts).toEqual(['default', 'bypassPermissions', 'yolo', 'bypassPermissions', 'default']);
     expect(queries[0]!.closes).toBe(0);
   });
@@ -735,9 +734,12 @@ test('with a brain, a new Claude session reads the Boite guide in its system pro
   const guide = appendedPrompt(calls[0]!.options);
   expect(guide).toContain('boite where');
   expect(guide.split('boite ask').length).toBe(2);
-  // The messages carry the brain, and no second `boite ask` note.
+  // The session's first message carries the brain, the second none; neither has a second `boite ask` note.
+  expect(calls[0]!.prompts).toHaveLength(2);
+  expect(first).toContain('Shared convention');
+  // No prefix at all: the user's words open the message, the coordination note follows them.
+  expect(second!.startsWith('second\n')).toBe(true);
   for (const prompt of [first, second]) {
-    expect(prompt).toContain('Shared convention');
     expect(prompt).not.toContain('boite where');
     expect(prompt).not.toContain('boite ask');
   }

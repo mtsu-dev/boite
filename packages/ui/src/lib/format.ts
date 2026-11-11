@@ -274,12 +274,28 @@ export function titleFrom(prompt: string, max = 60): string {
   return line.slice(0, max).trimEnd();
 }
 
-/** A project's name as the user reads it: the drafts in the app's own language, any other as the core named it. */
 /** A folder with the user's home folded to `~`, the part that tells two projects apart. */
 export function homePath(path: string): string {
   return path.replace(/^(\/home\/[^/]+|\/Users\/[^/]+|[A-Za-z]:\\Users\\[^\\]+)(?=[/\\]|$)/, '~');
 }
 
+/**
+ * A folder short enough for one line beside a project's name: the home folded
+ * to `~`, then, past its root and two folders, the middle cut to `…`.
+ * `C:\Users\me\Documents\GitHub\boite` reads `~\…\GitHub\boite`. The root
+ * stays: `~`, a drive, a network share or POSIX's `/`.
+ */
+export function shortPath(path: string): string {
+  const folded = homePath(path);
+  const separator = /[\\/]/.exec(folded)?.[0] ?? '/';
+  const parts = folded.replace(/[\\/]+$/, '').split(/[\\/]/);
+  // `\\server\share\…` splits to two empty parts before the server: the share is the root.
+  const root = folded.startsWith('\\\\') ? 4 : 1;
+  if (parts.length <= root + 2) return folded;
+  return [...parts.slice(0, root), '…', ...parts.slice(-2)].join(separator);
+}
+
+/** A project's name as the user reads it: the drafts in the app's own language, any other as the core named it. */
 export function projectName(project: { name: string; kind?: 'drafts' } | null | undefined): string {
   if (!project) return '';
   return project.kind === 'drafts' ? strings.drafts.name : project.name;

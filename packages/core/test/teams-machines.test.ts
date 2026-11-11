@@ -202,7 +202,7 @@ test('the machine holding a team takes a member\'s word only from the machine th
 }, 90_000);
 
 test('letters for a machine that is away wait and go once it is back, once; a batch sent again wakes nobody twice', async () => {
-  const { host, away, bob, bobKey, team } = await crew();
+  const { host, away, ada, bob, bobKey, team } = await crew();
   speak();
   const awayUrl = away.url;
   const threadId = bob.threadId;
@@ -211,7 +211,8 @@ test('letters for a machine that is away wait and go once it is back, once; a ba
 
   const first = host.core.teams.ownerPost({ teamId: team.id, id: 'first', text: '@Bob one' });
   const second = host.core.teams.ownerPost({ teamId: team.id, id: 'second', text: '@Bob two' });
-  host.core.teams.ownerPost({ teamId: team.id, id: 'third', text: 'for the group, waking nobody' });
+  // A bot's group post that names nobody wakes nobody: Bob reads it without a trigger.
+  host.core.teams.say({ threadId: ada.threadId, team: 'Crew', id: 'third', text: 'for the group, waking nobody' });
   expect(first.to).toEqual([bobKey]);
   await waitFor(() => delivery(host, 'first', bobKey)?.state === 'unreachable' && delivery(host, 'second', bobKey)?.state === 'unreachable', 15_000);
   expect(delivery(host, 'first', bobKey)?.reason).toContain('unreachable');

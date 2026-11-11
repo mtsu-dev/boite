@@ -38,9 +38,9 @@ describe('permission modes', () => {
     expect(modeLabel('bypassPermissions', provider('claude-sdk'))).toBe('Runs everything without asking');
     expect(modeHint('bypassPermissions', null)).toContain('anywhere on this computer');
     // A plain name; the technical one stays in the hint.
-    expect(modeLabel('yolo', provider('claude-sdk'))).toBe('Runs everything and skips your hooks');
+    expect(modeLabel('yolo', provider('claude-sdk'))).toBe('Approves every request, without exception');
     expect(modeHint('yolo', null)).toContain('(YOLO)');
-    expect(modeHint('yolo', null)).toContain('skips Claude and Codex hooks');
+    expect(modeHint('yolo', null)).toContain('your hooks still run');
   });
 
   it('reads each mode at rest in the same word on every agent, Codex\'s folder in the line under it', () => {

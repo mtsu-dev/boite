@@ -59,6 +59,7 @@ import { ThreadFocus } from './threads/focus.ts';
 import { ThreadListLog } from './threads/list-changes.ts';
 import { ProgressState } from './threads/progress.ts';
 import { eraseIncognito } from './threads/incognito.ts';
+import { AccountSessions } from './threads/account-sessions.ts';
 import { removeTranscripts, threadSessions, type NativeSession } from './threads/transcript-purge.ts';
 import { ThreadCreation } from './threads/creation.ts';
 import { accountRemoved, followAgent } from './threads/account-fallback.ts';
@@ -114,6 +115,8 @@ export class ThreadStore {
   readonly autoCompact: AutoCompaction;
   /** The experimental `backgroundCompaction` setting: copies compacted ahead of the limit. */
   readonly backgroundCompact: BackgroundCompaction;
+  /** The native session each account of a thread left, for a switch back (`threads/account-sessions.ts`). */
+  readonly accountSessions: AccountSessions;
   /** The `cacheKeepalive` setting: pings that keep a waiting thread's prompt cache warm. */
   readonly cacheKeepalive: CacheKeepalive;
   /** Every resume the core plans by itself, whatever stopped the turn (`threads/resume.ts`). */
@@ -150,6 +153,7 @@ export class ThreadStore {
     this.spawns = new ThreadSpawns(core, this);
     this.autoCompact = new AutoCompaction(core, this);
     this.backgroundCompact = new BackgroundCompaction(core, this);
+    this.accountSessions = new AccountSessions(core);
     this.cacheKeepalive = new CacheKeepalive(core, this);
     this.resumes = new ResumePlanner(core, this);
     this.limitResumes = new LimitResumes(core, this.resumes);
@@ -363,16 +367,8 @@ export class ThreadStore {
     if (switched || next.model !== thread.model || next.effort !== thread.effort || next.speed !== thread.speed || next.permissionMode !== thread.permissionMode) {
       next.selectionVersion = (thread.selectionVersion ?? 0) + 1;
     }
-    if (switched) {
-      this.agentState.cancelBackground(thread.id);
-      if (!threadActive(thread.status)) {
-        this.releaseAgent(thread.id);
-        this.agentState.noteBackground(thread.id, []);
-      }
-      this.agentState.commands.delete(thread.id);
-      this.#core.bus.emit('thread.commands', { threadId: thread.id, commands: [] });
-    }
-    const saved = this.#save(next, 'thread.updated');
+    // The session left is kept; the one this account left before comes back when it can (`threads/account-sessions.ts`).
+    const saved = switched ? this.accountSessions.switched(thread, next, () => this.#save(next, 'thread.updated')) : this.#save(next, 'thread.updated');
     this.runner.selectionChanged(thread, next);
     return saved;
   }
@@ -417,9 +413,9 @@ export class ThreadStore {
     }
   }
 
-  archive(threadId: ThreadId, archived: boolean, onlyIfIdle = false): ThreadSummary {
+  archive(threadId: ThreadId, archived: boolean, onlyIfIdle = false, plugin?: { pluginId: string; pluginName: string }): ThreadSummary {
     this.require(threadId);
-    if (archived && onlyIfIdle) assertIdleFamily(this.#core, threadId, 'explicit');
+    if (archived && onlyIfIdle) assertIdleFamily(this.#core, threadId, plugin ? 'automatic' : 'explicit');
     if (!archived && this.#removing.has(threadId)) throw refused('threadId: this conversation is being deleted', { threadId, field: 'threadId', expected: 'a conversation not being deleted' });
     const thread = this.require(threadId);
     // A subagent reopened by hand is not put away again for the work it already finished.
@@ -431,7 +427,9 @@ export class ThreadStore {
         this.#core.journal.setSetting(archiveStateKey(threadId), { ...state, reason: undefined, generation: state.generation + 1, dismissed, restoredCheckout: { projectId: thread.projectId, cwd: thread.cwd, branch: thread.branch } });
       } else {
         const state = archiveState(this.#core.journal, threadId);
-        if (state.reason) this.#core.journal.setSetting(archiveStateKey(threadId), { ...state, reason: undefined, generation: state.generation + 1 });
+        // A plugin's archive (threads/plugin-archive.ts) names it; any other drops an automatic one's reason.
+        const reason = plugin ? { type: 'plugin' as const, ...plugin, archivedAt: Date.now() } : undefined;
+        if (state.reason || reason) this.#core.journal.setSetting(archiveStateKey(threadId), { ...state, reason, generation: state.generation + 1 });
       }
       // Keep deletion retryable until staging commits its tombstone and clears this date.
       const doneAt = archived && (onlyIfIdle || this.#removing.has(threadId)) ? thread.doneAt ?? (onlyIfIdle ? Date.now() : null) : null;
@@ -617,7 +615,7 @@ export class ThreadStore {
     const clientRequestId = origin.requestId;
     const activity = origin.kind === 'goal' ? origin.activity : undefined;
     const startedBy = origin.kind === 'spawned' ? origin.startedBy : undefined;
-    const sentFrom = origin.kind === 'user' ? origin.sentFrom ?? null : null;
+    const { sentFrom = null, plugin: byPlugin = undefined } = origin.kind === 'user' ? origin : {};
     if (this.#core.stopping) throw refused('the core is stopping; reconnect before sending another prompt');
     let thread = requireAgent(this, threadId);
     this.codeCheckpoints.assertAvailable(thread.cwd);
@@ -706,7 +704,7 @@ export class ThreadStore {
       turnId: turn.id,
       role: systemOperation(operation) || automatic ? 'system' : 'user',
       parts: [
-        { type: 'text', text: previewPrompt(prompt, previewReferences), ...(previewReferences.length ? { displayText: prompt, previewReferences } : {}), ...(systemOperation(operation) ? { displayText: displayText ?? SYSTEM_LABEL[operation] } : {}), ...(automatic ? { displayText } : {}), ...(activity ? { activity } : {}), ...(moved ? { moved } : {}), ...(startedBy ? { displayText: displayText ?? prompt, startedBy } : {}), ...(sentFrom && !operation ? { sentFrom } : {}) },
+        { type: 'text', text: previewPrompt(prompt, previewReferences), ...(previewReferences.length ? { displayText: prompt, previewReferences } : {}), ...(systemOperation(operation) ? { displayText: displayText ?? SYSTEM_LABEL[operation] } : {}), ...(automatic ? { displayText } : {}), ...(activity ? { activity } : {}), ...(moved ? { moved } : {}), ...(startedBy ? { displayText: displayText ?? prompt, startedBy } : {}), ...(sentFrom && !operation ? { sentFrom } : {}), ...(byPlugin && !operation ? { byPlugin } : {}) },
         ...attachments.map((attachment): MessagePart => attachment.kind === 'file' ? { type: 'file', mimeType: attachment.mimeType, data: attachment.data, name: attachment.name } : ({
           type: 'image',
           mimeType: attachment.mimeType,

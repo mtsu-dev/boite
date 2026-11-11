@@ -21,7 +21,7 @@ export function registerCoordination(core: Core): void {
   core.router.register('collaboration.directory', p => core.coordination.directory(p.threadId));
   core.router.register('collaboration.send', p => core.coordination.send(p));
   core.router.register('collaboration.search', p => core.coordination.search(p.threadId, p.query));
-  core.router.register('collaboration.read', p => core.coordination.read(p.threadId, p.target, p.limit, p.before));
+  core.router.register('collaboration.read', p => core.coordination.read(p.threadId, p.target, p.limit, p.before, p.entry, p.offset, p.tool));
   core.router.register('collaboration.wait', (p, ctx) => core.coordination.wait(p.threadId, p.from, p.timeoutMs, ctx.connection));
   core.router.register('collaboration.identity', () => core.coordination.identity());
   core.router.register('collaboration.peers', () => core.coordination.peers());

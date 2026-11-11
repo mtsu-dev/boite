@@ -117,11 +117,16 @@ test('a grant names a machine of the group and one of its projects, and only mem
 }, 30000);
 
 /** The host's requests to the member fail as a network would while `down` holds for that operation. */
-function cut(host: TestCore, member: string, operations: string[]): { restore(): void } {
+function cut(host: TestCore, member: string, operations: string[]): { restore(): void; refused(): number } {
   const coordination = host.core.coordination;
   const real = coordination.request.bind(coordination);
-  coordination.request = (peer, operation, payload) => peer.coreId === member && operations.includes(operation) ? Promise.reject(new Error('machine unreachable')) : real(peer, operation, payload);
-  return { restore: () => { coordination.request = real; } };
+  let refusals = 0;
+  coordination.request = (peer, operation, payload) => {
+    if (peer.coreId !== member || !operations.includes(operation)) return real(peer, operation, payload);
+    refusals += 1;
+    return Promise.reject(new Error('machine unreachable'));
+  };
+  return { restore: () => { coordination.request = real; }, refused: () => refusals };
 }
 
 test('a member that missed a revoke reaches nothing through the linked machine, and a removal is pushed again until heard', async () => {
@@ -149,7 +154,20 @@ test('a member that missed a revoke reaches nothing through the linked machine, 
   await new Promise(resolve => setTimeout(resolve, 1500));
   expect(host.core.contacts.members.behind()).toBe(true);
   expect((host.core.contacts as unknown as { timer: unknown }).timer).not.toBeNull();
+
+  // A member that stays off is not asked at every round: the same copy waits, and its silence is logged once.
+  const warned: string[] = [];
+  const log = host.core.log.bind(host.core);
+  host.core.log = (level, message, ...rest) => { if (message.includes('did not take its copy')) warned.push(message); return log(level, message, ...rest); };
+  const asked = down.refused();
+  for (let round = 0; round < 5; round++) { host.core.contacts.members.push(); await new Promise(resolve => setTimeout(resolve, 20)); }
+  expect(down.refused()).toBe(asked);
+  expect(warned).toEqual([]);
+  // Heard from again, it is offered its copy at the next round and takes it.
   down.restore();
+  await member.core.coordination.check(hostId);
+  host.core.contacts.members.push();
+  await waitFor(() => !host.core.contacts.members.behind(), 10000);
 }, 60000);
 
 test('a receipt a member could not answer is asked again, never refused', async () => {

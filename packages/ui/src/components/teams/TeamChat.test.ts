@@ -182,10 +182,13 @@ test('the team chat draws each post with its author, a private post with its rec
   await say(huginn.id, 'The draft is up. @tous have a look.');
   await dm(jeux.id, 'owner', 'Between us: the budget is tight.');
   await client.call('teams.post', { teamId: team.id, id: 'owner-thanks', text: 'Thanks' });
+  // An owner post from before a post naming nobody woke the whole team keeps the routing it recorded.
+  await client.call('teams.post', { teamId: team.id, id: 'owner-before', text: 'Anyone?' });
+  client.recordTeamRouting(team.threadId, 'owner-before', { to: [], routedBy: 'none', notice: 'Nobody was pinged: name a bot with @name, or everyone with @tous.' });
   await store.open(team.threadId);
   mounted.push(mount(TeamChat, { target: document.body, props: { store, thread: store.openThread! } }));
 
-  await vi.waitFor(() => expect(all('[data-testid=team-post]')).toHaveLength(4));
+  await vi.waitFor(() => expect(all('[data-testid=team-post]')).toHaveLength(5));
   await settle();
   const posts = all('[data-testid=team-post]');
   const field = (post: HTMLElement, id: string) => post.querySelector(`[data-testid=${id}]`)?.textContent ?? null;
@@ -193,7 +196,9 @@ test('the team chat draws each post with its author, a private post with its rec
     ['You', 'team', null, 'Woke Huginn (Réseaux)'],
     ['Huginn (Réseaux)', 'team', null, 'Woke everyone'],
     ['Jeux (Producteur)', 'private', 'Private to you', null],
-    ['You', 'team', null, 'Nobody was pinged: name a bot with @name, or everyone with @everyone.'],
+    ['You', 'team', null, 'Woke everyone'],
+    // Under the owner's post just before, it reads as its continuation.
+    [null, 'team', null, 'Woke nobody'],
   ]);
   expect(posts[1]!.textContent).toContain('The draft is up.');
   expect(all('[data-testid=team-member]').map(member => [member.textContent?.trim(), member.getAttribute('data-bot-id')])).toEqual([
@@ -260,8 +265,12 @@ test("the owner's composer says who a post wakes before it goes, and posts a men
     return all('[data-testid=team-post]').at(-1)!;
   };
 
+  // A post that names nobody wakes the whole team; naming bots wakes those alone.
   type('Looks fine');
-  expect(wakes()).toBe('Wakes nobody: name a bot with @name, or everyone with @everyone.');
+  expect(wakes()).toBe('Wakes everyone');
+  type('Looks fine @Huginn (Réseaux) @Jeux (Producteur)');
+  expect(wakes()).toBe('Wakes Huginn (Réseaux) and Jeux (Producteur)');
+  type('Looks fine');
   // The mention menu writes the member's name where the caret is.
   query<HTMLButtonElement>('[data-testid=team-mention]').click(); await settle();
   query<HTMLButtonElement>(`[data-testid=team-mention-menu] [data-value="${key(jeux.id)}"]`).click(); await settle();

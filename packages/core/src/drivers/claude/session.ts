@@ -52,8 +52,8 @@ export interface SessionHooks {
  * only an idle window, a stop, a changed setup or the core going down ends it.
  * Model, effort, speed and permission changes go through the SDK's live
  * setters, so the CLI takes them without losing its request headers.
- * Permission changes also reach the active turn, and a flag overlay toggles
- * configured hooks when entering or leaving YOLO.
+ * Permission changes also reach the active turn. Configured hooks follow the
+ * context mode alone, through a flag overlay; YOLO leaves them on.
  */
 export class ClaudeSession {
   readonly #retention = new SessionRetention();

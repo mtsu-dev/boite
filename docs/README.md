@@ -54,6 +54,7 @@
 - [Plugins](plugins.md): install recommended plugins or a Git URL, and write your own.
 - [Task manager](trace.md#agent-task-manager): CPU, GPU, memory and storage across connected machines.
 - [Restart handoff](restart-handoff.md): how an update stops running agents and resumes them.
+- [Keeper](keeper.md): thread shells that outlive a core restart or update, and agent sessions on its pipes with committed offsets, behind `BOITE_KEEPER=1`.
 
 ## Technical reference
 
@@ -61,6 +62,7 @@
 - [Development](development.md): local runs, test fixtures and captures.
 - [Adding an RPC method](development.md#adding-an-rpc-method): contracts, permissions and real/fake parity.
 - [Architecture](architecture.md): the core, clients, journal and drivers.
+- [State machines](state-machines.md): every machine's states, invariants and transitions, and the invalid ones an audit found reachable.
 - [Providers](providers.md): descriptors, protocols and supported capabilities, including experimental providers.
 - [Context modes](context-modes.md): instruction, guide, hook and tool isolation, with provider-specific support.
 - [The `boite` CLI](cli.md): commands an agent uses to reach its thread and panel.

@@ -31,7 +31,11 @@ export interface UpdateSnapshot {
 
 export interface AppUpdateBackend {
   status(): Promise<UpdateSnapshot>;
-  check(channel: UpdateChannel): Promise<UpdateSnapshot>;
+  /**
+   * `force` is the owner asking: the shell otherwise reuses an answer of the
+   * last few minutes and waits out GitHub's rate limit.
+   */
+  check(channel: UpdateChannel, force?: boolean): Promise<UpdateSnapshot>;
   download(): Promise<UpdateSnapshot>;
   install(): Promise<void>;
   /**
@@ -94,7 +98,7 @@ function tauriBackend(): AppUpdateBackend {
   };
   return {
     status: () => invoke<UpdateSnapshot>('app_update_status'),
-    check: (channel) => invoke<UpdateSnapshot>('app_update_check', { channel }),
+    check: (channel, force = false) => invoke<UpdateSnapshot>('app_update_check', { channel, force }),
     download: () => invoke<UpdateSnapshot>('app_update_download'),
     install: () => invoke<void>('app_update_install'),
     installQuietly: () => invoke<boolean>('app_update_install_quietly'),
@@ -205,7 +209,8 @@ export class AppUpdater {
   #firstCheck: unknown = null;
   #interval: unknown = null;
   #active: Promise<void> | null = null;
-  #pendingCheck: UpdateChannel | null = null;
+  /** The next check, and whether the owner asked for it (`checkNow`). */
+  #pendingCheck: { channel: UpdateChannel; force: boolean } | null = null;
   #downloadRequested = false;
 
   constructor(
@@ -286,8 +291,17 @@ export class AppUpdater {
   }
 
   check(channel: UpdateChannel = this.snapshot.channel): void {
+    this.#queueCheck(channel, false);
+  }
+
+  /** The owner's Check for updates or channel choice: asks GitHub even right after another check. */
+  checkNow(channel: UpdateChannel = this.snapshot.channel): void {
+    this.#queueCheck(channel, true);
+  }
+
+  #queueCheck(channel: UpdateChannel, force: boolean): void {
     if (!this.snapshot.supported || ['waiting', 'installing'].includes(this.snapshot.phase)) return;
-    this.#pendingCheck = channel;
+    this.#pendingCheck = { channel, force: force || this.#pendingCheck?.force === true };
     this.#pump(this.#generation);
   }
 
@@ -437,7 +451,7 @@ export class AppUpdater {
     if (!this.#started || generation !== this.#generation || this.#active) return;
 
     if (this.#pendingCheck !== null) {
-      const channel = this.#pendingCheck;
+      const { channel, force } = this.#pendingCheck;
       if (['waiting', 'installing', 'checking'].includes(this.snapshot.phase)) return;
       if (this.snapshot.phase === 'downloading') {
         if (channel === this.snapshot.channel) this.#pendingCheck = null;
@@ -449,7 +463,7 @@ export class AppUpdater {
       }
       this.#pendingCheck = null;
       this.#downloadRequested = false;
-      this.#run(generation, () => this.#backend.check(channel), true);
+      this.#run(generation, () => this.#backend.check(channel, force), true);
       return;
     }
 

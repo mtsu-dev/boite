@@ -530,7 +530,8 @@ export class AgentProjects {
       thread: this.row(target),
       questions: this.#core.threads.listQuestions(target.id),
       permissions: this.#core.threads.listPermissions(target.id),
-      lastAnswer: this.#core.delegation.result(last),
+      // A resident agent is not the thread's parent: it reads the rest as a thread.
+      lastAnswer: this.#core.delegation.result(last, 'thread'),
       wake: this.#core.wakes.of(target.id),
     };
   }
@@ -622,7 +623,8 @@ export class AgentProjects {
     const remote = this.#store.group.views(agent);
     const away = remote.length === 0 ? '' : `Projects of other machines of the group entrusted to you: ${remote.map(project => project.name).join(', ')}. `
       + '`boite threads` lists their threads as `<machine>/<thread-id>` with `machine=<name>`; name them that way in `boite thread show|send|done|archive|unarchive|stop <id>`, `boite thread rename <id> <title>`, `boite answer` and `boite bot watch`. '
-      + 'That machine decides: it may refuse bots of the group, and a machine that does not answer is named unreachable; its events reach you once it is back. You cannot start threads there.';
+      + 'That machine decides: it may refuse bots of the group, and a machine that does not answer is named unreachable; its events reach you once it is back. '
+      + '`boite thread new <machine>/<project> <brief>` starts a thread there (its agent codes, verifies and opens the pull request); it is on your desk and its first answer comes back to you as an event.';
     if (!projectIds.length) return away;
     const projects = projectIds.map(id => this.#core.journal.getProject(id)!).map(p => `${p.name} (${p.path})`).join(', ');
     return `Projects the user entrusted to you: ${projects}. You look after every Boite thread in them. Code work happens in those threads, never in this conversation: `

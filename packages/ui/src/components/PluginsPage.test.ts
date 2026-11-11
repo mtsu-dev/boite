@@ -18,7 +18,7 @@ afterEach(() => {
 const q = (selector: string) => document.querySelector<HTMLElement>(selector);
 const row = (id: string) => q(`[data-testid="plugin-row"][data-plugin="${id}"]`);
 
-async function open(edit?: (rows: PluginState[]) => void): Promise<void> {
+async function open(edit?: (rows: PluginState[]) => void, core?: { features: { pluginGrants: true } }): Promise<void> {
   client = new FakeClient({ delayMs: 0 });
   await client.connect();
   if (edit) {
@@ -29,7 +29,7 @@ async function open(edit?: (rows: PluginState[]) => void): Promise<void> {
       return result;
     }) as never);
   }
-  const store = { client, providers: [] } as unknown as Store;
+  const store = { client, providers: [], core } as unknown as Store;
   mounted = mount(PluginsPage, { target: document.body, props: { store } });
   await vi.waitFor(() => expect(row('bots')).not.toBeNull());
 }
@@ -64,7 +64,8 @@ test('a plugin run from a folder shows the folder, what it adds and what its tok
   expect(dev.querySelector('[data-testid="plugin-dev"]')?.textContent).toBe('Dev');
   expect(dev.querySelector('[data-testid="plugin-dev-path"]')?.textContent).toContain('C:\\Users\\you\\plugins\\standup');
   expect([...dev.querySelectorAll('[data-testid="plugin-adds-item"]')].map((el) => el.textContent)).toEqual(['boite standup', '/standup', 'standup-notes', 'Guide lines']);
-  expect([...dev.querySelectorAll('[data-testid="plugin-permission"]')].map((el) => el.getAttribute('title'))).toEqual(['threads.read', 'todos']);
+  // What the owner granted of what it asks for: the board's writes were left out.
+  expect([...dev.querySelectorAll('[data-testid="plugin-permission"]')].map((el) => el.getAttribute('title'))).toEqual(['threads.read', 'todos.read']);
   // A plugin that declares nothing of the kind draws no such list.
   expect(row('seat-pool')?.querySelector('[data-testid="plugin-extras"]')).toBeNull();
 });
@@ -386,4 +387,69 @@ test('Douane\'s row shows its gateway on loopback, stops and starts it, and its 
   expect(ask.mock.calls[0]![0].body).toMatch(/sign-ins, settings and database stay in .*douane/);
   expect(strip()).not.toBeNull();
   ask.mockRestore();
+});
+
+/** A core that takes grants: every install asks first. */
+const grantsCore = { features: { pluginGrants: true as const } };
+const consentRow = (permission: string) => q(`[data-testid="plugin-consent-row"][data-permission="${permission}"] input`) as HTMLInputElement;
+const chips = (id: string) => [...row(id)!.querySelectorAll('[data-testid="plugin-permission"]')].map((el) => el.getAttribute('title'));
+
+test('a schema 2 plugin installs with what the owner ticked, and Cancel installs nothing', async () => {
+  await open(undefined, grantsCore);
+  const calls = vi.spyOn(client!, 'call');
+  type('[data-testid="plugin-url"]', 'https://github.com/example/scoped-desktop-waiting');
+  q('[data-testid="plugin-inspect"]')!.click();
+  await vi.waitFor(() => expect(q('[data-testid="plugin-add"]')).not.toBeNull());
+
+  q('[data-testid="plugin-add"]')!.click();
+  await vi.waitFor(() => expect(q('[data-testid="plugin-consent"]')).not.toBeNull());
+  expect(q('#consent-title')?.textContent).toBe('Scoped desktop waiting wants to access your Boite');
+  q('[data-testid="plugin-consent-cancel"]')!.click();
+  await vi.waitFor(() => expect(q('[data-testid="plugin-consent"]')?.classList.contains('closing') ?? true).toBe(true));
+  expect(calls.mock.calls.some(([method]) => method === 'plugins.add')).toBe(false);
+  expect(q('[data-testid="plugin-preview"]')).not.toBeNull();
+
+  q('[data-testid="plugin-add"]')!.click();
+  await vi.waitFor(() => expect(consentRow('ui.reveal')?.checked).toBe(true));
+  expect(q('[data-testid="plugin-consent-program"]')).not.toBeNull();
+  consentRow('ui.reveal').click();
+  q('[data-testid="plugin-consent-allow"]')!.click();
+  await vi.waitFor(() => expect(row('scoped-desktop-waiting')?.getAttribute('data-status')).toBe('installed'), { timeout: 3000 });
+  expect(calls.mock.calls.find(([method]) => method === 'plugins.add')?.[1]).toMatchObject({ grants: ['threads.read'] });
+  expect(chips('scoped-desktop-waiting')).toEqual(['threads.read']);
+});
+
+test('Permissions on an installed row edits its grants through plugins.setGrants', async () => {
+  await open(undefined, grantsCore);
+  const calls = vi.spyOn(client!, 'call');
+  // A schema 1 plugin holds the owner token: nothing to edit.
+  expect(row('seat-pool')!.querySelector('[data-testid="plugin-grants"]')).toBeNull();
+  (row('standup')!.querySelector('[data-testid="plugin-grants"]') as HTMLElement).click();
+  await vi.waitFor(() => expect(q('[data-testid="plugin-consent"]')?.dataset.mode).toBe('edit'));
+  expect(consentRow('todos.write').checked).toBe(false);
+  consentRow('todos.write').click();
+  flushSync();
+  q('[data-testid="plugin-consent-allow"]')!.click();
+  await vi.waitFor(() => expect(chips('standup')).toEqual(['threads.read', 'todos.read', 'todos.write']));
+  expect(calls.mock.calls.find(([method]) => method === 'plugins.setGrants')?.[1]).toEqual({ id: 'standup', grants: ['threads.read', 'todos.read', 'todos.write'] });
+});
+
+test('a recommended schema 1 plugin asks too, saying it gets the owner\'s own access, and sends no grants', async () => {
+  await open(undefined, grantsCore);
+  const { confirm } = await import('../lib/confirm.svelte');
+  const ask = vi.spyOn(confirm, 'ask').mockResolvedValue(true);
+  try {
+    (row('bots')!.querySelector('[data-testid="plugin-uninstall"]') as HTMLElement).click();
+    await vi.waitFor(() => expect(row('bots')?.querySelector('[data-testid="plugin-install"]')).not.toBeNull());
+  } finally {
+    ask.mockRestore();
+  }
+  const calls = vi.spyOn(client!, 'call');
+  (row('bots')!.querySelector('[data-testid="plugin-install"]') as HTMLElement).click();
+  await vi.waitFor(() => expect(q('[data-testid="plugin-consent-owner"]')).not.toBeNull());
+  expect(q('[data-testid="plugin-consent-program"]')).not.toBeNull();
+  expect(calls.mock.calls.some(([method]) => method === 'plugins.install')).toBe(false);
+  q('[data-testid="plugin-consent-allow"]')!.click();
+  await vi.waitFor(() => expect(calls.mock.calls.some(([method]) => method === 'plugins.install')).toBe(true));
+  expect(calls.mock.calls.find(([method]) => method === 'plugins.install')?.[1]).toEqual({ id: 'bots' });
 });

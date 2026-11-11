@@ -68,14 +68,18 @@ Unicode code points; returned pages also stay within 16000 UTF-16 units.
 and `limit` (1 to 100, default 20). Their result has `items` and `page`, including
 `nextOffset`. `boite_contact_read` accepts a limit and `before`; when its result
 has `more: true`, use the oldest returned entry's `at` to read older messages.
-Results include both text and `structuredContent`. The complete result is
+Results include both text and `structuredContent`. Tools declare no
+`outputSchema`: every result has the same envelope (`result`, `truncated` and,
+when truncated, `bytes`, `maxBytes`, `preview`, `next`), and declaring it on
+each tool made up a third of the tool list
+([performance](performance.md#the-boite-mcp-tool-list)). The complete result is
 bounded to 256 KiB; larger values return `truncated: true`, measured bytes and
 an explicit preview instead of pretending the output is complete. Read smaller
 pages to recover transcript output. Do not repeat a mutation to recover a
 truncated response. The stdio input frame is limited to 64 KiB.
 
 Implementation: `packages/core/src/mcp/`, pinned
-`@modelcontextprotocol/server` 2.3.1 and Zod 4.6.7 in `packages/core/package.json`.
+`@modelcontextprotocol/server` 2.4.0 and Zod 4.6.7 in `packages/core/package.json`.
 The source CLI dispatch is included in the normal core build and sidecar, so
 no extra executable or staging path is required. See the official SDK
 [stdio guide](https://github.com/modelcontextprotocol/typescript-sdk/blob/main/docs/serving/stdio.md)
@@ -434,8 +438,9 @@ boite thread new <project> <brief> [--worktree] [--title <title>] [--machine <na
                                  another of the group; its first answer comes
                                  back as a message
 boite projects                   the projects added to Boite
-boite projects add <folder> [--name <name>]
-                                 add an existing folder as a project
+boite projects add <folder> [--name <name>] [--machine <name>]
+                                 add an existing folder as a project, on this
+                                 machine or another of the group
 boite projects archive|unarchive|remove <project>
                                  the owner's; removing leaves the folder on disk
 boite threads [list] [--project <p>] [--archived]
@@ -473,7 +478,7 @@ boite todo list|add <text>|claim <id>
 boite goal track
 boite threads inbox
 boite threads find <words>
-boite threads read <thread> [--last <n>] [--before <ms>]
+boite threads read <thread> [--last <n>] [--before <ms>] [--entry <id> [--tool <id>] [--offset <n>]]
 boite threads send <thread> <text> [--wait] [--timeout <s>]
 boite threads reply <message-id> <text> [--wait] [--timeout <s>]
 boite threads log <thread>
@@ -601,7 +606,8 @@ The agent there reads a note before the brief: which thread's agent started
 it, that the user did not type it, and that it grants no approval the user
 did not give. When that first turn ends, its final answer, or its failure,
 goes back to the starter as an [agent coordination](coordination.md) message
-from the new thread, capped at 4,000 characters, and wakes an idle starter. Later turns
+from the new thread, capped at 4,000 characters with the `threads read --entry`
+command that reads the rest of a longer one, and wakes an idle starter. Later turns
 report nothing by themselves; the two agents
 use `threads send` and `threads reply` like any pair of conversations. Both
 timelines show a line linking the other thread: "Started by the agent of ..."
@@ -691,6 +697,20 @@ they do for `thread new` elsewhere: Off, Pause and a thread restricted to its
 own project refuse it. There is no hourly limit. A thread an agent started
 adds none until the user has written in it, and delegated children, workflow steps and bots'
 threads are refused.
+
+With `--machine <name>`, the folder is one of another machine of the group,
+given by its absolute path there (`/home/me/site` from a Windows machine): it
+is sent as written and that machine checks it, absolute and an existing
+directory, then adds it in its own sidebar. The output gains `machine:`, the
+line in the timeline names the machine, and `thread new <project> --machine
+<name>` then names the project. That machine's **Threads from the other
+machines** switch (`groupThreads`) decides as for `thread new --machine`: off,
+the CLI is refused with `<machine> does not let the other machines of its group
+add projects there; propose the switch to the user with boite settings request
+groupThreads true --machine <machine> --why "<what the project is for>"`. The
+Communication settings treat it as elsewhere, so a thread restricted to its own
+project cannot use it. From a terminal, `--machine` is refused; `projects add
+--core <url>` reaches that machine instead, with the folder as it names it.
 
 `view` publishes one HTML page as an [inline view](chat-files.md#inline-views):
 its local files are embedded, a remote resource or a script error refuses it

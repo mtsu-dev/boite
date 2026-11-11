@@ -348,7 +348,7 @@ export class Threads {
     const newest = (): boolean => this.ctx.currentNavigation(client, generation);
     const retire = async (): Promise<void> => {
       if (client === this.ctx.client && this.#openTarget === null && this.subscribedThreadId && this.subscribedThreadId !== threadId) {
-        await client.call('threads.subscribe', { threadId: this.subscribedThreadId }).catch(() => undefined);
+        await client.call('threads.subscribe', { threadId: this.subscribedThreadId, ...this.ctx.streams.params(this.subscribedThreadId) }).catch(() => undefined);
       }
       if (client !== this.ctx.client || (this.subscribedThreadId !== threadId && delegation.delegationSubscribedThreadId !== threadId && (this.#openTarget !== threadId || newest()))) {
         await client.call('threads.unsubscribe', { threadId }).catch(() => undefined);

@@ -15,6 +15,7 @@
   import { activityPage } from './lib/activity-page';
   import ConfirmDialog from './components/ConfirmDialog.svelte';
   import ContextMenu from './components/ContextMenu.svelte';
+  import MoveProjectPicker from './components/MoveProjectPicker.svelte';
   import DragGhost from './components/DragGhost.svelte';
   import DropOverlay from './components/DropOverlay.svelte';
 
@@ -202,29 +203,17 @@
       .catch(() => { settingsLoadError = strings.phone.settingsOffline; });
   });
 
-  $effect(() => {
-    if (panelSlot.shown) need('RightPanel');
-  });
-
-  $effect(() => {
-    if (terminalShown) {
-      need('TerminalDrawer');
-      need('TerminalView');
-    }
-  });
-
-  $effect(() => {
-    if (boardShown) need('BoardDrawer');
-  });
-
   // A drawer left open before a reload or a reconnect opens again, with its tabs and splits.
   $effect(() => {
     const open = store.openThread;
     if (open !== null && store.owner && store.connection === 'ready') untrack(() => store.restoreTerminal(open.id));
   });
 
-  // Asked for before the idle prefetch got to it: fetch it now.
+  // Asked for before the idle prefetch got to it: fetch it now. `need` fetches each part once.
   $effect(() => {
+    if (panelSlot.shown) need('RightPanel');
+    if (terminalShown) { need('TerminalDrawer'); need('TerminalView'); }
+    if (boardShown) need('BoardDrawer');
     if (store.paletteOpen) need('CommandPalette');
     if (store.projectPickerOpen) need('ProjectPicker');
     if (store.imports) need('ImportDialog');
@@ -680,6 +669,7 @@
 </div>
 
 <ContextMenu />
+<MoveProjectPicker />
 <DragGhost />
 {#if tour && deferred.Onboarding}{@const Onboarding = deferred.Onboarding}<Onboarding {store} />{:else if deferred.PluginUpdateNotice}{@const PluginUpdateNotice = deferred.PluginUpdateNotice}<PluginUpdateNotice />{/if}
 {#if deferred.ProjectPicker}{@const ProjectPicker = deferred.ProjectPicker}<ProjectPicker {store} />{/if}

@@ -1,5 +1,6 @@
 // Owns workspace startup, remembered-machine admission and primary-machine entries.
 import type { Machine, Workspace } from './workspace.svelte';
+import { typedName } from './machine-names';
 import {
   clearStoredEndpoint, linkedCore, openOnMainMachine, readEnvironments,
   readStoredEndpoint, readMainMachine, servesThisPage, storeEndpoint,
@@ -31,14 +32,17 @@ export function primaryMachine(workspace: Workspace, selected: Endpoint | null, 
   // With no entry at all, the core the window was stored on says it itself.
   const brought = remembered.find(e => e.url === store.endpointUrl) ?? before.find(e => e.url === store.endpointUrl)
     ?? (selected?.url === store.endpointUrl ? selected : undefined);
+  const saved = remembered.find(e => e.url === selected?.url);
   const machine: Machine = {
     id: store.endpointUrl ?? 'local',
-    label: remembered.find(e => e.url === selected?.url)?.label ?? (store.localCore ? strings.machines.local : store.core?.hostname ?? hostOf(store.endpointUrl)) ?? strings.machines.local,
+    label: saved?.label ?? (store.localCore ? strings.machines.local : store.core?.hostname ?? hostOf(store.endpointUrl)) ?? strings.machines.local,
     store,
     ...(brought?.coreId === undefined ? {} : { coreId: brought.coreId }),
     ...(brought?.groupId === undefined ? {} : { groupId: brought.groupId }),
     ...(brought?.coreId === undefined || brought.epoch === undefined ? {} : { epoch: brought.epoch })
   };
+  // A saved name the owner did not type gives way to the one the machine reports now.
+  machine.label = workspace.ownName(machine, saved) ?? machine.label;
   workspace.restoreProfile(machine);
   return machine;
 }
@@ -156,6 +160,7 @@ export async function bootWorkspace(workspace: Workspace, thread: string | null,
     const was = readEnvironments().some((e) => e.url === primaryEndpoint.url) ? undefined : saved.find((e) => e.url === primaryEndpoint.url);
     upsertEnvironment({
       ...primaryEndpoint, paired: primaryEndpoint.paired ?? false, label: workspace.machines[0]!.label,
+      ...(typedName(workspace.machines[0]!, readEnvironments().find((e) => e.url === primaryEndpoint.url) ?? was) ? { named: true as const } : {}),
       ...(was?.coreId === undefined ? {} : { coreId: was.coreId }),
       ...(was?.groupId === undefined ? {} : { groupId: was.groupId })
     });

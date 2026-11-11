@@ -174,6 +174,53 @@ test('phone reorders a project from its group on a short screen and manages no p
   expect(await keys()).toEqual([before[1]!, before[0]!, ...before.slice(2)]);
 }, 20_000);
 
+test('phone folds a project from a tap on its header and finds it folded after a reload', async () => {
+  await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+  await page.send('Emulation.setTouchEmulationEnabled', { enabled: true });
+  await mobileAction(page, 'mobile-conversations');
+  await showThreadView(page, 'projects', 'mobile-');
+  await page.waitFor(`document.querySelectorAll('${id('mobile-project-group')}').length === 4`);
+  const first = await page.evaluate<{ machineId: string; projectId: string }>(`(({ machineId, projectId }) => ({ machineId, projectId }))(document.querySelector('${id('mobile-project-group')}').dataset)`);
+  const toggle = `${id('mobile-project-group')}[data-machine-id="${first.machineId}"][data-project-id="${first.projectId}"] ${id('mobile-project-toggle')}`;
+  const fold = `document.getElementById(document.querySelector(${JSON.stringify(toggle)}).getAttribute('aria-controls'))`;
+  // A finger on the tile, then on the name: both belong to the fold's target.
+  const tap = async (part: string) => {
+    await page.waitFor(screensSettled);
+    const at = await page.evaluate<{ x: number; y: number }>(`(() => { const r = document.querySelector(${JSON.stringify(`${toggle} ${part}`)}).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+    await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...at, id: 1 }] });
+    await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  };
+  expect(await page.evaluate(`${fold}.getBoundingClientRect().height > 0`)).toBe(true);
+  await tap('[data-testid=project-tile]');
+  await page.waitFor(`document.querySelector(${JSON.stringify(toggle)}).getAttribute('aria-expanded') === 'false'`);
+  await page.settleAnimations();
+  expect(await page.evaluate(`${fold}.getBoundingClientRect().height`)).toBe(0);
+  expect(await page.evaluate(`${fold}.inert`)).toBe(true);
+  expect(await page.evaluate(`document.querySelector(${JSON.stringify(`${toggle} ${id('project-rollup')}`)})?.getBoundingClientRect().width > 0`)).toBe(true);
+  expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
+  await capture('project-fold-phone-folded.png');
+
+  await page.reload();
+  await mobileAction(page, 'mobile-conversations');
+  await page.waitFor(`document.querySelector(${JSON.stringify(toggle)})?.getAttribute('aria-expanded') === 'false'`);
+  await tap('.name');
+  await page.waitFor(`document.querySelector(${JSON.stringify(toggle)}).getAttribute('aria-expanded') === 'true'`);
+  await page.settleAnimations();
+  expect(await page.evaluate(`${fold}.getBoundingClientRect().height > 0 && !${fold}.inert`)).toBe(true);
+  expect(await page.evaluate(`document.querySelector(${JSON.stringify(`${toggle} ${id('project-rollup')}`)})`)).toBeNull();
+  await capture('project-fold-phone-open.png');
+
+  // The desktop's sidebar folds the same project into the same state, with the same rollup beside its name.
+  await page.send('Emulation.setDeviceMetricsOverride', { width: 1300, height: 850, deviceScaleFactor: 1, mobile: false });
+  const row = `[data-project-key='${JSON.stringify([first.machineId, first.projectId])}'] ${id('project-row')}`;
+  await page.click(row);
+  await page.waitFor(`document.querySelector(${JSON.stringify(row)}).getAttribute('aria-expanded') === 'false' && document.querySelector(${JSON.stringify(`${row} ${id('project-rollup')}`)})`);
+  await capture('project-fold-desktop.png');
+  await page.click(row);
+  await page.waitFor(`document.querySelector(${JSON.stringify(row)}).getAttribute('aria-expanded') === 'true'`);
+  expect(page.errors()).toEqual([]);
+}, 30_000);
+
 test('phone exposes project filtering and custom-order controls without overflow', async () => {
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   await mobileAction(page, 'mobile-conversations');

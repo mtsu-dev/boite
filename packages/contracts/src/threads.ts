@@ -4,11 +4,13 @@ import type { AccountId, MessageId, ProjectId, ProviderId, ThreadId, Timestamp, 
 import type { AgentShape } from './imports';
 import type { Attachment, Message, MoveNotice, PendingMove, PreviewReference } from './messages';
 import type { PermissionRequest } from './permissions';
+import type { PluginActor } from './plugins';
 import type { ThreadCapabilities } from './providers';
 import type { PullRequestWatch } from './pull-requests';
 import type { BackgroundTask, BackgroundTaskObservation, BackgroundWait, QuestionRequest } from './questions';
 import type { MemoryEvent } from './scheduler';
 import type { DeletedThreadSummary } from './settings';
+import type { StreamChannel } from './stream-channels';
 import type { Turn } from './turns';
 
 export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'yolo' | 'plan' | 'dontAsk';
@@ -97,12 +99,10 @@ export interface ThreadProgress {
   providerAt?: Timestamp | null;
 }
 
-export interface ThreadArchiveReason {
-  type: 'pr-merged';
-  number: number;
-  url: string;
-  archivedAt: Timestamp;
-}
+/** A merged PR, or a plugin granted `threads.write` (`pluginName` as it was then, readable after an uninstall). */
+export type ThreadArchiveReason =
+  | { type: 'pr-merged'; number: number; url: string; archivedAt: Timestamp }
+  | ({ type: 'plugin'; archivedAt: Timestamp } & PluginActor);
 
 /**
  * The core removed the worktree this thread worked in while it was archived.
@@ -174,6 +174,8 @@ export interface ThreadSummary {
 
   /** Durable explanation for an automatic archive; absent for manual archives and restored conversations. */
   archiveReason?: ThreadArchiveReason;
+  /** The plugin that created the conversation (`threads.write`), its name as it was then; absent when anyone else did. */
+  createdBy?: PluginActor;
   /** Set once the core removed this thread's worktree, kept after a restore while `cwd` still names it. */
   worktreeRemoved?: ThreadWorktreeRemoval | null;
   /** Core-owned delegation relationship. Absent on ordinary conversations. */
@@ -735,6 +737,8 @@ export interface ThreadsRpcMethods {
       sync?: true | MessageSync;
       /** Subscribe after a successful snapshot, optionally replacing the previous subscription and acknowledging unread content. */
       open?: { previous?: ThreadId; requests?: boolean; markRead?: boolean };
+      /** With `open`, the channels the subscription receives, as `threads.subscribe` takes them. */
+      channels?: StreamChannel[];
     };
     result: ThreadSnapshot;
   };
@@ -825,6 +829,8 @@ export interface ThreadsRpcMethods {
    * processes end once those turns have settled. Restoring restarts nothing.
    * `onlyIfIdle: true` marks done, recording its expiry date after refusing active work in the family.
    * Unsent drafts do not block this explicit action.
+   * A plugin (permission `threads.write`) always marks done, checked as an automatic pass; `pinned`
+   * and `archived: false` are refused, and `archiveReason` names it (docs/plugins.md).
    */
   'threads.archive': { params: { threadId: ThreadId; archived?: boolean; onlyIfIdle?: boolean }; result: ThreadSummary };
   /**
@@ -849,8 +855,17 @@ export interface ThreadsRpcMethods {
    * later letter outside one holds the thread again.
    */
   'threads.trustContactHistory': { params: { threadId: ThreadId }; result: { ok: true } };
-  /** Only subscribed threads stream message events to this connection. */
-  'threads.subscribe': { params: { threadId: ThreadId }; result: { ok: true } };
+  /**
+   * Only subscribed threads stream message events to this connection.
+   * `channels` narrows what this connection receives of the thread's streaming
+   * messages (`StreamChannel`); omitted, it receives every channel. A later
+   * call replaces them, and a channel it turns back on resends what the
+   * thread's streaming messages hold on it, so a card opened on a running call
+   * gets its output without waiting for the next redraw. A finished call is
+   * sent whatever the channels; its whole output stays readable with
+   * `messages.toolPart`. Needs `features.streamChannels`; older cores ignore it.
+   */
+  'threads.subscribe': { params: { threadId: ThreadId; channels?: StreamChannel[] }; result: { ok: true } };
   'threads.unsubscribe': { params: { threadId: ThreadId }; result: { ok: true } };
   /** The visible conversation and unsent input leases. Omitted leases remain; an empty list clears them.
    * A focus caller without an input report blocks automatic archive until it reports leases or disconnects.

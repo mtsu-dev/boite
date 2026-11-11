@@ -2,7 +2,7 @@
   import { tick, untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import WindowList from './WindowList.svelte';
-  import { ChevronRight, Ellipsis, FolderPlus, FolderX, GripVertical, LoaderCircle, PanelRightClose, PanelRightOpen, Square, UserPlus } from '@lucide/svelte';
+  import { ChevronRight, Ellipsis, FolderPlus, FolderX, GripVertical, LoaderCircle, PanelRightClose, PanelRightOpen, UserPlus } from '@lucide/svelte';
   import type { Project, ThreadId, ThreadSummary } from '@boite/contracts';
   import type { Store } from '../lib/store.svelte';
   import { workspace, type Machine } from '../lib/workspace.svelte';
@@ -37,6 +37,7 @@
   import ProjectTile from './ProjectTile.svelte';
   import MachinePlace from './MachinePlace.svelte';
   import MachineOffline from './MachineOffline.svelte';
+  import ProjectRollup from './ProjectRollup.svelte';
   import RailFrame from './RailFrame.svelte';
   import FoldMore from './FoldMore.svelte';
   import { minuteClock } from '../lib/clock.svelte';
@@ -203,7 +204,7 @@
     // Activity's own count over the project's threads: the card and the rail's badge never disagree.
     return storeNeeds(owner, owner.threadsOf(entry.project.id));
   }
-  const canAddProject = $derived(store.owner && work.shows('sidebar.add-project'));
+  const canAddProject = $derived(store.addsProjects && work.shows('sidebar.add-project'));
   /** Nothing listed yet: the list says why, and where the projects come from. */
   const loading = $derived(groups.length === 0 && visible.some(machine => machine.store.connection !== 'ready'));
   /**
@@ -337,15 +338,13 @@
               onpointerdown={(event) => dragProject(event, entry, list)}
               ondragstart={(event) => event.preventDefault()}
               aria-expanded={!collapsed}
+              aria-controls="{controls}-body"
               title={multi ? `${project.path} · ${machine.label}` : project.path}
               onclick={() => projectThreadView.toggleProject(entry, lists, draftsHere.length)}
             >
               {#if projectView.order === 'manual'}<GripVertical size={12} />{/if}<span class="mark"><ProjectTile {project} store={owner} size={18} /><span class="fold-caret" class:open={!collapsed} aria-hidden="true"><ChevronRight size={16} /></span></span
               ><span class="name project-title ui-label" class:gone={project.missing === true}>{projectName(project)}</span
-              >{#if host(machine)}<MachinePlace host={{ ...host(machine)!, away: false }} testid="project-host" />{/if}{#if project.missing === true}<span class="missing" data-testid="project-missing" title={strings.sidebar.projectMissing} aria-label={strings.sidebar.projectMissing}><FolderX size={13} aria-hidden="true" /></span>{/if}{#if rollup && !needsYou(rollup.kind) && rollup.kind !== 'done' && lists.working.length === 0}{@const label = fill(rollup.count === 1 ? strings.sidebar.rollupOne : strings.sidebar.rollupMany, { count: String(rollup.count), state: strings.sidebar.state[rollup.kind] })}<span
-                  class="rollup {rollup.kind}" data-testid="project-rollup" data-state={rollup.kind} title={label} aria-label={label}
-                  >{#if rollup.kind === 'interrupted'}<Square size={9} fill="currentColor" aria-hidden="true" />{:else}<span class="work-ring" aria-hidden="true"></span>{/if}{#if rollup.count > 1}<span class="ui-label">{rollup.count}</span>{/if}</span
-                >{/if}
+              >{#if host(machine)}<MachinePlace host={{ ...host(machine)!, away: false }} testid="project-host" />{/if}{#if project.missing === true}<span class="missing" data-testid="project-missing" title={strings.sidebar.projectMissing} aria-label={strings.sidebar.projectMissing}><FolderX size={13} aria-hidden="true" /></span>{/if}{#if rollup && !needsYou(rollup.kind) && rollup.kind !== 'done' && lists.working.length === 0}<ProjectRollup {rollup} />{/if}
             </button>
             <ProjectThreadCounters {entry} working={lists.working.length} waiting={needs.count} failed={needs.failed} {listed} {controls} {collapsed} {away} />
             <button
@@ -358,7 +357,7 @@
           </div>
           <!-- Out of reach, said once under the name with its next step; the rows below dim as last seen. -->
           {#if away}<div class="offline"><MachineOffline store={owner} label={machine.label} /></div>{/if}
-          <div class="disclosure-fold" class:open={!collapsed} inert={collapsed}>
+          <div id="{controls}-body" class="disclosure-fold" class:open={!collapsed} inert={collapsed}>
             <div>
               <SharedProjectThreads store={owner} projectId={project.id} active={!collapsed && !away}>
               {#each draftsHere as draft (draft.id)}<DraftRow {owner} entry={draft} />{/each}
@@ -546,21 +545,6 @@
   /* Its folder left the disk: the name steps back and a mark says why. */
   .name.gone { color: var(--color-muted-foreground); }
   .missing { display: flex; flex: none; color: var(--color-danger); }
-  /* A folded project still says what its threads do when its one count (ProjectThreadCounters: Needs you, else
-     working) says nothing: the most urgent other state, its mark and count. News marks nothing. */
-  .rollup {
-    display: inline-flex;
-    flex: none;
-    align-items: center;
-    gap: 4px;
-    font-size: var(--text-xs);
-    font-variant-numeric: tabular-nums;
-  }
-  .rollup { color: var(--color-muted-foreground); }
-  /* The rows' marks: a grey ring for work (dotted in the queue), the stop's grey square for work that stopped short. */
-  .rollup .work-ring { box-sizing: border-box; width: 8px; height: 8px; border: 1.5px dashed var(--color-accent); border-radius: var(--radius-full); }
-  .rollup.queued .work-ring { border-style: dotted; border-color: var(--color-muted-foreground); }
-  .rollup.interrupted :global(svg) { color: var(--color-subtle); }
   /* The project's mark and its fold chevron share one slot: the mark gives way
      to the chevron while a pointer or the keyboard is on the header. */
   .mark {

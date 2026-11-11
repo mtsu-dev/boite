@@ -1,6 +1,7 @@
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import type { ToolPart } from '../lib/tool-groups';
+import type { Store } from '../lib/store.svelte';
 import ToolGroup from './ToolGroup.svelte';
 import toolGroupSource from './ToolGroup.svelte?raw';
 import toolCardSource from './ToolCard.svelte?raw';
@@ -63,4 +64,29 @@ test('a folded group with a denied call says who denied it, not only the count o
   const label = document.querySelector('[data-testid=tool-group-toggle]')!.getAttribute('aria-label');
   expect(label).toContain('Denied by you');
   expect(label).toContain('1 unsuccessful call');
+});
+
+test('an open card on a running call watches its live output only while its group is unfolded', () => {
+  const release = vi.fn();
+  const watchLiveOutput = vi.fn(() => release);
+  const parts: ToolPart[] = [
+    { type: 'tool', toolId: 'a', name: 'Read', input: { file_path: 'a.ts' }, output: 'text', status: 'done' },
+    { type: 'tool', toolId: 'b', name: 'Bash', input: { command: 'bun run build' }, output: '', outputDeferred: true, status: 'running' },
+  ];
+  component = mount(ToolGroup, { target: document.body, props: { parts, isBackground: () => false, store: { watchLiveOutput } as unknown as Store, threadId: 't-1' } });
+  flushSync();
+  const group = document.querySelector<HTMLButtonElement>('[data-testid=tool-group-toggle]')!;
+  group.click();
+  flushSync();
+  document.querySelectorAll<HTMLButtonElement>('[data-testid=tool-toggle]')[1]!.click();
+  flushSync();
+  expect(watchLiveOutput).toHaveBeenCalledWith('t-1');
+  expect(release).not.toHaveBeenCalled();
+  // Folding the group hides the card: the core keeps its output again.
+  group.click();
+  flushSync();
+  expect(release).toHaveBeenCalledTimes(1);
+  group.click();
+  flushSync();
+  expect(watchLiveOutput).toHaveBeenCalledTimes(2);
 });

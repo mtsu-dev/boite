@@ -113,6 +113,15 @@ export class Connection {
   }
 
   /**
+   * The Add a project form works here: always for the owner, and for a paired
+   * device once its core lets one browse and add (`deviceProjects`). An older
+   * core refuses a device, so the form stays off its screen there.
+   */
+  get addsProjects(): boolean {
+    return this.owner || this.core?.features?.deviceProjects === true;
+  }
+
+  /**
    * The native folder dialog names a path on this computer, which is only a
    * path the core can open when the core runs here too. A shell paired with a
    * core on a server types the server's path instead.
@@ -190,12 +199,14 @@ export class Connection {
             ...(params.get('load') ? { load: Number(params.get('load')) } : {}),
             ...(params.get('loadtick') ? { loadTickMs: Number(params.get('loadtick')) } : {}),
             delegationDemo: params.get('team') === '1',
+            loopDemo: params.get('loop') === '1',
             agentsDemo: params.get('agents') === '1',
             subagentsDemo: params.get('subagents') === '1',
             boardDemo: params.get('board') === '1',
             watchDemo: params.get('watch') === '1',
             windowsDemo: params.get('windows') === '1',
             councilDemo: params.get('council') === '1',
+            pluginArchiveDemo: params.get('pluginArchive') === '1',
             uninstalled: params.get('uninstalled') === '1',
             ...(params.get('principal') === 'session' ? { principal: 'session' as const } : {}),
             ...(params.get('missing') ? { missing: params.get('missing')!.split(',') } : {})

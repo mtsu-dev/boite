@@ -957,7 +957,10 @@ without starting the agent. The update check skips it, its program is not
 even asked its version, its usage is not read, no title is written on it, a
 delegated agent cannot be routed to it and no default account is adopted for
 it. Its warm processes
-are released at once; a turn already queued or running ends by itself.
+are released at once; a turn already queued or running ends by itself. A bot
+on it keeps its event wakes, facts and letters waiting, its status says to turn
+the provider back on or pick another model, and they run once one is done
+([bots](bots.md)).
 
 Nothing is removed. Accounts, threads, the managed install and the user's own
 install stay as they are, and turning the provider back on adopts an existing
@@ -996,7 +999,13 @@ a Job Object and in the trace like any other, then asks the protocol's own quest
   (an empty `mcpServers` alone passes no flag). The CLI quota read, titles and
   side questions do the same. Effort levels, adaptive
   thinking and Fast support come from each returned model. Descriptor effort
-  controls stay hidden until that account has answered.
+  controls stay hidden until that account has answered. Once answered, the
+  probe and the quota read end the prompt stream, which closes the CLI's stdin,
+  and give it up to 30 seconds to exit before the stop (`ProbeContext.letExit`).
+  The CLI refreshes an expired login at startup and can answer before that
+  refresh is written; the server has already rotated the refresh token, so a
+  stop in between leaves the account a spent token and a stale
+  `.oauth_refresh.lock`, and the next CLI signs it out with `invalid_grant`.
 - ACP: `initialize` and `session/new`, then whichever of two answers the agent
   sent. The `configOptions` whose category is `model` and `thought_level` win
   when there is a `model` one, since that option is what a turn sets.
@@ -1128,16 +1137,15 @@ Drivers translate them according to their protocol capabilities.
 
 YOLO is separate from Auto (`bypassPermissions`). It selects the agent's most
 permissive execution mode and automatically accepts tool approval requests that
-still reach Boite, without a permission card. Claude runs with
-`bypassPermissions` and `disableAllHooks: true`, disabling configured and plugin
-hooks while retaining Boite's SDK callbacks for tool reporting and incoming
-answers. Codex runs with approvals set to `never`, full filesystem access and
-`features.hooks=false`. Claude applies the hook setting live; Codex replaces
-its process,
-so turning it off restores the user's hook configuration. No settings file is
-rewritten. ACP and Muse use their native unrestricted mode and Boite accepts
-remaining approval requests; ACP has no standard hook-disable call. Antigravity
-uses its permission-skip flag. Questions seeking input still ask for real
+still reach Boite, without a permission card. It keeps the user's configured
+and plugin hooks; a context mode without hooks, protected execution and Boite's
+internal runs (probes, Codex titles) still turn them off. Claude runs
+with `bypassPermissions` and applies the mode live; a hook that answers `ask`
+reaches the permission callback, which allows it. Codex runs with approvals
+set to `never` and full filesystem access, and entering or leaving YOLO
+replaces its process. No settings file is rewritten. ACP and Muse use their
+native unrestricted mode and Boite accepts remaining approval requests.
+Antigravity uses its permission-skip flag. Questions seeking input still ask for real
 answers; YOLO does not invent form values or complete a device sign-in.
 
 Protected shared work adds an immutable file/tool capability to the host-selected

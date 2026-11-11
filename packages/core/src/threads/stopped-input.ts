@@ -10,6 +10,9 @@ type FilePart = Extract<MessagePart, { type: 'file' }>;
  * session exists. Carry interrupted user input until a later user turn succeeds.
  * Read the journal rather than consuming a queue, so another stop or restart
  * cannot lose it. Native commands and automatic turns do not consume it.
+ * With `through`, the walk starts after `turnId` instead of before it: a
+ * resumed session's last turn (`threads/account-sessions.ts`), whose own
+ * prompt counts.
  */
 export function stoppedInput(
   journal: Journal,
@@ -17,8 +20,11 @@ export function stoppedInput(
   turnId: TurnId,
   input: { prompt: string; attachments: Attachment[] },
   fileReference: (file: FilePart, place: PartPlace) => string,
+  through = false,
 ): { prompt: string; attachments: Attachment[] } {
-  const opening = journal.db.query('SELECT MIN(rowid) AS first FROM messages WHERE thread_id = ? AND turn_id = ?').get(threadId, turnId) as { first: number | null };
+  const opening = journal.db.query(through
+    ? 'SELECT MAX(rowid) + 1 AS first FROM messages WHERE thread_id = ? AND turn_id = ?'
+    : 'SELECT MIN(rowid) AS first FROM messages WHERE thread_id = ? AND turn_id = ?').get(threadId, turnId) as { first: number | null };
   if (opening.first === null) return input;
   // Read user rows without blobs until a completed request: assistant/tool
   // payloads are irrelevant, and stopped attachments load only when carried.

@@ -110,7 +110,8 @@ test('one owner post in a team of one bot gives one wake and one answer post, th
   const { h, bots: [ada], team, key, post } = await setup();
   const driver = teamDriver(() => ({ text: 'Release shipped.' }));
   const sent = post('Ship the release');
-  expect(sent).toMatchObject({ seq: 1, routedBy: 'single', to: [key(ada!)] });
+  // A team of one bot is the whole team: the post names nobody and wakes it.
+  expect(sent).toMatchObject({ seq: 1, routedBy: 'everyone', to: [key(ada!)] });
   await waitFor(() => posts(h, team).length === 2 && settledWakes(h, ada!.threadId));
   const [wake] = wakes(h, ada!.threadId);
   expect(wakes(h, ada!.threadId)).toHaveLength(1);
@@ -142,6 +143,32 @@ test('the author is never a recipient, whatever it names', async () => {
   expect(wakes(h, ada!.threadId)).toHaveLength(0);
   expect(teamLetters(h, ada!.threadId)).toHaveLength(0);
 }, 30_000);
+
+test('an owner post that names nobody wakes every member; mentions, replies, private posts and bot posts keep their rule', () => {
+  // Ada and Bob on this machine, Cy on another one of the group.
+  const member = (key: string, name: string) => ({ key, name }) as Team['members'][number];
+  const [ada, bob, cy] = ['here/ada', 'here/bob', 'firebat/cy'] as const;
+  const team = { members: [member(ada, 'Ada'), member(bob, 'Bob'), member(cy, 'Cy')] };
+  const owner = (text: string, extra: { inReplyTo?: string; to?: string[]; audience?: 'team' | 'private' } = {}, replied: string | null = null) =>
+    routeTeamPost(team, { author: 'owner', text, audience: extra.audience ?? 'team', ...extra }, replied);
+
+  expect(owner('Where are we?')).toEqual({ to: [ada, bob, cy], routedBy: 'everyone' });
+  expect(owner('@Bob where are we?')).toEqual({ to: [bob], routedBy: 'mention' });
+  expect(owner('@Ada and @Cy, where are we?')).toEqual({ to: [ada, cy], routedBy: 'mention' });
+  expect(owner('@tous where are we?')).toEqual({ to: [ada, bob, cy], routedBy: 'everyone' });
+  expect(owner('Where are we?', { to: [cy] })).toEqual({ to: [cy], routedBy: 'mention' });
+  // A reply goes to the post's author, unless it names someone; one to the owner's own post names no one else.
+  expect(owner('Go ahead', { inReplyTo: 'p1' }, cy)).toEqual({ to: [cy], routedBy: 'reply' });
+  expect(owner('Go ahead @Ada', { inReplyTo: 'p1' }, cy)).toEqual({ to: [ada], routedBy: 'mention' });
+  expect(owner('One more thing', { inReplyTo: 'p1' }, 'owner')).toEqual({ to: [ada, bob, cy], routedBy: 'everyone' });
+  expect(owner('Between us', { audience: 'private', to: [bob] })).toEqual({ to: [bob], routedBy: 'private' });
+  // A bot that names nobody wakes nobody, so bots never wake each other in a loop; the author never wakes itself.
+  expect(routeTeamPost(team, { author: ada, text: 'Done.', audience: 'team' }, null)).toEqual({ to: [], routedBy: 'none' });
+  expect(routeTeamPost(team, { author: ada, text: 'Done, @tous.', audience: 'team' }, null)).toEqual({ to: [bob, cy], routedBy: 'everyone' });
+  expect(routeTeamPost(team, { author: ada, text: 'Thanks', audience: 'team', inReplyTo: 'p1' }, 'owner')).toEqual({ to: ['owner'], routedBy: 'reply' });
+  // A team of one bot: that bot.
+  expect(routeTeamPost({ members: [member(cy, 'Cy')] }, { author: 'owner', text: 'Ship it', audience: 'team' }, null)).toEqual({ to: [cy], routedBy: 'everyone' });
+});
 
 test('a private post reaches only its recipient: not the others\' letters, reads, search, directory or transcript reads', async () => {
   const { h, owner, bots: [ada, bob], team, key, post } = await setup(['Ada', 'Bob']);

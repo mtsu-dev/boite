@@ -98,7 +98,7 @@
     if (checking) return;
     checking = true;
     try {
-      if (supported && appPolicy !== 'off') updater.check();
+      if (supported && appPolicy !== 'off') updater.checkNow();
       await Promise.all(workspace.machines.filter((machine) => machine.store.connection === 'ready' && machine.store.owner).flatMap((machine) => [
         machine.store.loadHarnessUpdates(true),
         ...(machine.store.localCore ? [] : [machine.store.serverUpdater.load(true), machine.store.serverUpdater.loadDesktop()])
@@ -115,7 +115,7 @@
 
   function choose(channel: UpdateChannel): void {
     if (!app || channel === app.channel) return;
-    updater.check(channel);
+    updater.checkNow(channel);
   }
 </script>
 

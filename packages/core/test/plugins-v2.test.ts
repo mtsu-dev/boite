@@ -108,8 +108,8 @@ describe('the plugin principal', () => {
   test('reaches the methods and events of its permissions, and nothing else', () => {
     const caller = { principal: 'plugin' as const, sessionId: null, threadId: null, permissions: ['threads.read' as const] };
     expect(accessRefusal('threads.list', caller)).toBeNull();
-    expect(accessRefusal('turns.start', caller)?.message).toBe('turns.start needs the plugin permission threads.write; the plugin declared threads.read');
-    expect(accessRefusal('plugins.dev', caller)?.message).toContain('is not open to plugins');
+    expect(accessRefusal('turns.start', caller)?.message).toBe('turns.start needs the plugin permission threads.write, which the owner did not grant (granted: threads.read)');
+    expect(accessRefusal('plugins.dev', caller)?.message).toContain('is never open to plugins');
     expect(mayHearEvent('thread.updated', 'plugin', ['threads.read'])).toBe(true);
     expect(mayHearEvent('todos.updated', 'plugin', ['threads.read'])).toBe(false);
   });
@@ -174,7 +174,7 @@ describe('plugins v2 end to end', () => {
       // macOS reports the temporary folder under /private/var, its real path.
       expect(realpathSync(report.cwd)).toBe(realpathSync(work));
       expect(report).toMatchObject({ args: ['hello-threads', '--json', 'two words', '--fail'], caller: threadId, plugin: 'hello', agentToken: null, ownerToken: false, threads: 1 });
-      expect(report.todos).toBe('todos.list needs the plugin permission todos; the plugin declared threads.read');
+      expect(report.todos).toBe('todos.list needs the plugin permission todos.read, which the owner did not grant (granted: threads.read)');
       expect(report.data).toBe(join(harness.dataDir, 'plugin-data', 'hello'));
       expect(existsSync(report.data)).toBe(true);
 
@@ -229,7 +229,7 @@ describe('plugins v2 end to end', () => {
       const first = harness.core.plugins.tokens.tokenFor('hello', ['threads.read']);
       const open = await connect(harness.url, first, asPlugin);
       expect(Array.isArray(await open.call('threads.list', {}))).toBe(true);
-      expect(await thrown(open.call('plugins.list', {}))).toThrow('plugins.list is not open to plugins');
+      expect(await thrown(open.call('plugins.list', {}))).toThrow('plugins.list is never open to plugins: installing, removing and granting plugins is the owner\'s');
 
       // A reload declaring less: the old token opens nothing, not even the socket already open.
       const manifest = JSON.parse(readFileSync(join(dir, 'boite-plugin.json'), 'utf8'));
@@ -276,7 +276,7 @@ describe('plugins v2 end to end', () => {
       writeFileSync(file, JSON.stringify({ ...manifest, permissions: ['threads.read', 'todos'] }));
       expect(await thrown(run())).toThrow();
       expect((await owner.call('plugins.list', {})).find((row) => row.id === 'hello')).toMatchObject({
-        status: 'error', error: expect.stringContaining('changed its permissions from [threads.read] to [threads.read, todos] since boite plugin dev loaded it'),
+        status: 'error', error: expect.stringContaining('changed its permissions from [threads.read] to [threads.read, todos.read, todos.write] since boite plugin dev loaded it'),
       });
       expect(await thrown(open.call('threads.list', {}))).toThrow('the client is closed');
 
@@ -422,4 +422,64 @@ console.log(JSON.stringify({ accounts: [{ email: [env.BOITE_PLUGIN_ID, env.BOITE
       await harness?.stop();
     }
   });
+});
+
+describe('threads.archive through the threads.write permission', () => {
+  let harness: TestCore | undefined;
+
+  test('archives an idle unpinned thread as done in the plugin\'s name, and nothing else', async () => {
+    harness = await startTestCore();
+    const asPlugin = { client: { name: 'plugin', version: '0' } };
+    try {
+      const owner = await harness.connect();
+      const idle = await echoThread(harness, owner, 'idle');
+      const running = await echoThread(harness, owner, 'running');
+      const pinned = await echoThread(harness, owner, 'pinned');
+      await owner.call('threads.pin', { threadId: pinned.threadId });
+
+      // Without the permission the method stays closed.
+      const reader = await connect(harness.url, harness.core.plugins.tokens.tokenFor('reader', ['threads.read']), asPlugin);
+      expect(await thrown(reader.call('threads.archive', { threadId: idle.threadId })))
+        .toThrow('threads.archive needs the plugin permission threads.write, which the owner did not grant (granted: threads.read)');
+
+      const plugin = await connect(harness.url, harness.core.plugins.tokens.tokenFor('archiver', ['threads.write']), asPlugin);
+      // A running thread is refused even when the plugin leaves onlyIfIdle out.
+      await owner.call('turns.start', { threadId: running.threadId, prompt: '[sleep:60000] running' });
+      await waitFor(() => harness!.core.threads.require(running.threadId).status === 'running');
+      expect(await thrown(plugin.call('threads.archive', { threadId: running.threadId, onlyIfIdle: false })))
+        .toThrow('a turn is still running; expected an idle conversation family');
+      expect(harness.core.threads.require(running.threadId).archived).toBe(false);
+      // A pinned thread is refused, naming the field.
+      const pinRefusal = await rejection(plugin.call('threads.archive', { threadId: pinned.threadId }));
+      expect(messageOf(pinRefusal.reason)).toStartWith('pinned:');
+      expect(pinRefusal.reason).toMatchObject({ rpc: { data: { field: 'pinned', expected: false } } });
+      expect(harness.core.threads.require(pinned.threadId).archived).toBe(false);
+
+      // An idle thread is marked done, and its row says which plugin did it.
+      const archived = await plugin.call('threads.archive', { threadId: idle.threadId });
+      expect(archived.archived).toBe(true);
+      expect(archived.doneAt).toBeTypeOf('number');
+      expect(archived.archiveReason).toMatchObject({ type: 'plugin', pluginId: 'archiver', pluginName: 'archiver' });
+      expect((await owner.call('threads.get', { threadId: idle.threadId })).archiveReason).toMatchObject({ type: 'plugin', pluginId: 'archiver' });
+
+      // A thread the owner put away stays the owner's: answered unchanged, no record.
+      const byOwner = await echoThread(harness, owner, 'by owner');
+      await owner.call('threads.archive', { threadId: byOwner.threadId });
+      const again = await plugin.call('threads.archive', { threadId: byOwner.threadId });
+      expect(again.archived).toBe(true);
+      expect(again.doneAt ?? null).toBeNull();
+      expect(again.archiveReason).toBeUndefined();
+
+      // Restoring stays the owner's; the owner's restore drops the plugin's record.
+      expect(await thrown(plugin.call('threads.archive', { threadId: idle.threadId, archived: false })))
+        .toThrow('threads.archive: a plugin only archives');
+      expect(harness.core.threads.require(idle.threadId).archived).toBe(true);
+      const restored = await owner.call('threads.archive', { threadId: idle.threadId, archived: false });
+      expect(restored.archived).toBe(false);
+      expect(restored.archiveReason).toBeUndefined();
+      await owner.call('turns.stop', { threadId: running.threadId });
+    } finally {
+      await harness?.stop();
+    }
+  }, 30_000);
 });

@@ -46,8 +46,12 @@ export interface CoreInfo {
     desktopUpdates?: boolean;
     /** `subscriptionProxy.movePlan` and `subscriptionProxy.move`: this machine's logins move into Douane. */
     gatewayMove?: boolean;
+    /** `plugins.add` and `plugins.install` take `grants`, `plugins.setGrants` exists: the app asks the owner what a plugin may reach. */
+    pluginGrants?: boolean;
     /** `todos.update` takes `goalThreadId`, a card carries its goal, and a paired device reads and moves cards: the project board. */
     projectBoard?: boolean;
+    /** `projects.browse` and `projects.add` answer a paired device: the Add a project form works from a phone. */
+    deviceProjects?: boolean;
     /** Shared-project version 1 RPCs and scoped invalidations; absent until all enforcing handlers exist. */
     sharedProjects?: 1;
     /** contacts.sendHuman preserves a contact's human provenance without owner authority. */
@@ -62,6 +66,8 @@ export interface CoreInfo {
     botMoveQueue?: boolean;
     /** `threads.listChanges`: a reconnect reads only the threads that changed while it was away. */
     listChanges?: boolean;
+    /** `threads.subscribe` and an opening `threads.get` take `channels`: a client leaves live command output, or more, on the core. */
+    streamChannels?: boolean;
   };
   /** The fingerprint of this core's identity key: the id its group knows it by, and the one a device signs its hello for. */
   coreId?: string;

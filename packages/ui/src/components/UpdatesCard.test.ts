@@ -76,7 +76,8 @@ test('nothing folded: the version, the release found, the channel with Release c
   expect([release.disabled, release.title]).toEqual([true, strings.appUpdate.noRelease]);
   expect(one<HTMLButtonElement>('updates-run-all')!.disabled).toBe(false);
   one<HTMLButtonElement>('updates-check-all')!.click();
-  await vi.waitFor(() => expect(native.check).toHaveBeenCalledWith('nightly'));
+  // The owner asked: the shell checks even right after another check (#991).
+  await vi.waitFor(() => expect(native.check).toHaveBeenCalledWith('nightly', true));
 });
 
 test('a downloaded release restarts on a confirmed click, and waiting offers a cancel that locks the channel', async () => {

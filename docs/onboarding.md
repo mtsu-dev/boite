@@ -120,8 +120,9 @@ opens, an open tab stays, and a hidden context gauge comes back by itself once
 the context is 90 percent full. The list is `hidden` in `boite.work`, so a
 button added later shows until someone hides it, and a record from before it
 had one reads its old developer switch: off hides the terminal and the Trace
-card. A paired device has no terminal or Add a project to hide; a phone
-connected as owner can add a project from its project picker.
+card. A paired device has no terminal to hide, and Add a project only once its
+core lets it add projects (`deviceProjects`); a phone adds one from its project
+picker.
 
 Composer chips remain visible: on a computer the reasoning, the permission mode and, on a draft
 in a git project, the worktree are always in the bar, and the model's fast mode

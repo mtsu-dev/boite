@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DEFAULT_DELEGATION_CONFIG, queueOrder } from '@boite/contracts';
 import type { CoreClient } from '../src/client.ts';
-import type { DelegatedAgent, DelegationConfig, ModelInfo, ProcessRecord, SpeedTier, Turn } from '@boite/contracts';
+import type { DelegatedAgent, DelegationConfig, DelegationResultPage, ModelInfo, ProcessRecord, SpeedTier, Turn } from '@boite/contracts';
 import { connect } from '../src/client.ts';
 import { Core } from '../src/core.ts';
 import { forgetProbes, probedModelsOf, rememberExternalModels, setDriver } from '../src/drivers/index.ts';
@@ -327,7 +327,8 @@ test('the parent learns dynamic workflows and coordination within a compact prom
   // Then 78 for naming the Mermaid headers chat draws, so a chart or a schema needs no `boite view help` (8 KB) before it (4479 measured 2026-10-26).
   // Then 130 for the ```view fence: an interactive or animated piece is drawn from the answer, with no command and no help (4609 measured 2026-10-26).
   // Then 46 on Linux for `boite desktop help`: GUI apps the agent runs and clicks on a private desktop (4643 measured 2026-10-31).
-  expect(Buffer.byteLength(prompt.replaceAll(h.dataDir, '<data>'))).toBeLessThan(process.platform === 'linux' ? 4644 : 4610);
+  // Then 47 for "repeat": a parent that never hears of loops chains review and fix rounds by hand, one turn each (4690 measured on Linux 2026-11-07).
+  expect(Buffer.byteLength(prompt.replaceAll(h.dataDir, '<data>'))).toBeLessThan(process.platform === 'linux' ? 4691 : 4657);
   runs.get(threadId)!.finish();
   await waitFor(() => h.core.threads.require(threadId).status === 'idle');
   await owner.call('turns.start', { threadId, prompt: 'Continue' });
@@ -689,6 +690,32 @@ test('a child that ends its turn on background work waits, wakes on it, then fin
   const after = await cli(['delegate', 'list']);
   expect(after.split('\n')[0]).toBe('subagents: on; 0 running, 0 waiting, 1 done, 0 failed, 0 stopped');
   expect(after).toContain('result: All 12 emote tests passed.');
+});
+
+test('a checkpoint letter with a long head keeps its note on the rest of a long answer', async () => {
+  const runs = scripted(); const { h, owner, threadId, spawn } = await setup();
+  const child = await spawn(); const childId = child.thread.id;
+  const first = runs.get(childId)!;
+  first.ctx.background!([shellTask('bg-1', 'a'.repeat(1800)), shellTask('bg-2', 'b'.repeat(1800))]);
+  const answer = `Started both.\n${'c'.repeat(6000)} end`;
+  first.finish(answer);
+  await waitFor(() => lettersFrom(h, threadId, childId).length === 1);
+  const [letter] = lettersFrom(h, threadId, childId);
+  expect(letter!.text.length).toBeLessThanOrEqual(4000);
+  expect(letter).toMatchObject({ origin: 'result', checkpoint: true });
+  // Unbounded, this head left the answer its 1,000-character floor and the letter's final cut dropped the note.
+  const cut = /\n([^\n]*\n[\s\S]*)\n\[Cut at character (\d+) of (\d+)\. The rest: boite delegate result \S+ (\S+) (\d+)\]$/.exec(letter!.text)!;
+  expect(cut).not.toBeNull();
+  let rest = '';
+  for (let next: number | null = Number(cut[5]); next !== null;) {
+    const page: DelegationResultPage = await owner.call('delegation.result', { threadId, agentId: childId, turnId: cut[4]!, offset: next });
+    rest += page.text;
+    next = page.nextOffset;
+  }
+  const head = cut[1]!.slice(0, cut[1]!.indexOf('Started'));
+  expect(head).toContain('Checkpoint, not its final result');
+  expect(answer.startsWith(cut[1]!.slice(cut[1]!.indexOf('Started')))).toBe(true);
+  expect(cut[1]!.slice(cut[1]!.indexOf('Started')) + rest).toBe(answer);
 });
 
 test('a child whose background work dies without waking it is interrupted, tells its parent once, and resumes on a send', async () => {

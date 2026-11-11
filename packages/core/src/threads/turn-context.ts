@@ -23,7 +23,7 @@ import { nativeSkillFiles } from '../brain.ts';
 import { takesSystemGuide } from '../drivers/index.ts';
 import { effectiveCompaction, contextRulesBlock, type CompactionPolicy } from '@boite/contracts';
 import { prepareAttachments, FileReferences } from '../attachments.ts';
-import { continuationInput, tailInput, type PartPlace } from '../continuation.ts';
+import { continuationInput, switchBackInput, tailInput, type PartPlace } from '../continuation.ts';
 import type { Core } from '../core.ts';
 import type { BackgroundCompactionSetting, EmitSink, PermissionTicket, ToolPatch, QuestionAsk, QuestionTicket, SessionContext, StepBoundary, StepDecision, TurnContext } from '../drivers/types.ts';
 import { newId } from '../ids.ts';
@@ -35,6 +35,7 @@ import type { ThreadStore } from '../threads.ts';
 import { BACKGROUND_COMPACT, compactionTail } from './background-compact.ts';
 import { nativeCommandPrompt, systemOperation } from './operations.ts';
 import { stoppedInput } from './stopped-input.ts';
+import { brainContextFor, forgetBrainContext } from './brain-context.ts';
 import { sessionUsage } from '../usage.ts';
 import { pluginGuideLines } from '../plugins/extensions.ts';
 
@@ -318,6 +319,9 @@ export class TurnContexts {
         publishPart(messageId, partIndex, part);
         // The agent compacted by itself: a copy made before is of a context that is gone.
         if (part.type === 'compaction' && part.background !== true) this.#threads.backgroundCompact.compactedInTurn(threadId);
+        // Any compaction, a background one in the agent's own session included (pi): the summary keeps no more
+        // than a trace of the brain's instructions, so the next turn sends them whole.
+        if (part.type === 'compaction') forgetBrainContext(this.#core, threadId);
         if (boundary) this.#core.bus.emit('turn.toolCompleted', { threadId, turnId: turn.id, boundary: `${messageId}:${partIndex}` });
         if (segment && answer && segment !== answer.segments.at(-1)) closeIdle(segment);
       },
@@ -343,20 +347,26 @@ export class TurnContexts {
     const input = resumePrompt !== undefined ? { prompt: resumePrompt, attachments: [] } : this.#lastUserInput(threadId, turn.id);
     const carry = carrier(this.#core, this.#files, threadId, resumePrompt !== undefined ? null : turn.id, input, provider);
     const fresh = thread.sessionId === null && ((thread.sessionGeneration ?? 0) > 0 || resumePrompt !== undefined);
+    // A session resumed by a switch back to its account: what it missed goes with its first prompt (`threads/account-sessions.ts`).
+    const kind = turn.execution?.operation;
+    // A resume carries it too, since the cut turn may have stopped before the session saved its prompt, but not a restart inside the turn that carried it.
+    const missed = fresh || kind === 'compact' || kind === 'keepalive' || kind === 'background' || nativeCommandPrompt(input.prompt)
+      || (resumePrompt !== undefined && this.#threads.accountSessions.carrying(threadId) === turn.id)
+      ? null : this.#threads.accountSessions.gap(thread);
     let continued = input;
     if (fresh) continued = carry();
+    // After a switch back, the prompts a stop cut before the resumed session's last turn: the missed exchanges hold the later ones.
     else if (resumePrompt === undefined && !turn.execution?.operation && !turn.execution?.automatic && !nativeCommandPrompt(input.prompt)) {
-      const interrupted = stoppedInput(this.#core.journal, threadId, turn.id, input, (part, place) => {
+      const interrupted = stoppedInput(this.#core.journal, threadId, missed?.turnId ?? turn.id, input, (part, place) => {
         this.#core.sharedAccess.uploads(threadId, [part]);
         return this.#files.of(threadId, part, place);
-      });
+      }, missed !== null);
       // The first stopped prompt may never have created a native session or
       // advanced its generation. That fresh start still needs journal history.
       continued = thread.sessionId === null && interrupted !== input ? carry() : interrupted;
     }
     // A session swapped in by a background compaction summarizes up to its fork:
     // the turns since then go with the next prompt the agent reads as such.
-    const kind = turn.execution?.operation;
     const fileReference = (part: Extract<MessagePart, { type: 'file' }>, place: PartPlace): string => {
       this.#core.sharedAccess.uploads(threadId, [part]);
       return this.#files.of(threadId, part, place);
@@ -368,6 +378,10 @@ export class TurnContexts {
         continued = tailInput(this.#core.journal, threadId, { turnId: tail.after, afterPart: tail.afterPart ?? null }, turn.id, continued, fileReference);
         this.#threads.backgroundCompact.carried(threadId, turn.id);
       }
+    }
+    if (missed !== null) {
+      continued = switchBackInput(this.#core.journal, threadId, missed, turn.id, continued, provider, fileReference);
+      this.#threads.accountSessions.carried(threadId, turn.id);
     }
     this.#core.sharedAccess.uploads(threadId, continued.attachments);
     const prepared = prepareAttachments(this.#core.dataDir, continued, provider);
@@ -410,7 +424,9 @@ export class TurnContexts {
       const style = inject && guideEnabled && !bare && this.#core.settings.get().shortAnswers !== false ? `${SHORT_ANSWERS}\n\n` : '';
       // A persistent agent's identity: whole on a fresh session or once it changed, else nothing (`agents/context.ts`).
       const agent = bare || nativeCommandPrompt(body) ? '' : this.#core.workforce.contextFor(thread, sessionId, turn.id);
-      const prefix = rules + (inject && !noGuides ? this.#core.brain.instructions(provider.id, listedSkills) : '') + guide + agent + style;
+      // The brain's instructions: whole on a fresh session or once they changed, else nothing (`brain-context.ts`).
+      const brain = inject && !noGuides ? brainContextFor(this.#core, thread, sessionId, turn.id, this.#core.brain.instructions(provider.id, listedSkills)) : '';
+      const prefix = rules + brain + guide + agent + style;
       return carried.memory + prefix + (prefix ? 'User request:\n' : '') + said + deferred + body + coordinationGuide + tail(inject && sessionId === null && guideEnabled) + this.#threads.cards.askInstructions({ ...thread, sessionId }, provider, turn, body);
     };
     return {
@@ -547,6 +563,8 @@ export class TurnContexts {
       const child = this.#core.procs.spawnChild(scope, cmd, args, {
         ...opts,
         env: agentEnvOf(this.#core, threadId, opts?.env ?? process.env),
+        // The session's own process, not a shared execution's: the keeper holds it when it is on.
+        ...(session !== undefined && !execution ? { keep: { turnId: session.turnId ?? null, driver: provider.protocol ?? provider.id } } : {}),
       });
       // A diagnostic storage failure must not break a spawn.
       try { if (session !== undefined) watchProviderProcess(this.#core, child, cmd, { threadId, providerId: provider.id, ...session }); } catch { /* the child runs unwatched */ }
@@ -567,7 +585,7 @@ export class TurnContexts {
   /** What the agent session this turn resumes already used (`usage.ts` `sessionUsage`). */
   #sessionBefore(thread: ThreadSummary, turnId: TurnId): AgentTotals {
     if (thread.sessionId === null) return { costUsd: 0, tokens: 0 };
-    return sessionUsage(this.#core, thread.id, thread.sessionGeneration ?? 0, turnId);
+    return sessionUsage(this.#core, thread.id, this.#threads.accountSessions.generations(thread), turnId);
   }
 
   /**

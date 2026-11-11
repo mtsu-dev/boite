@@ -23,6 +23,9 @@ export interface AgentsOptions {
   timeout?: number;
   last?: number;
   before?: number;
+  entry?: string;
+  offset?: number;
+  tool?: string;
 }
 
 type Printer = (lines: string[], value: unknown) => void;
@@ -38,6 +41,10 @@ export function ago(at: number | undefined, now = Date.now()): string {
   return `${Math.round(s / 86_400)}d ago`;
 }
 
+/** An entry id as one shell word: another machine chooses it, and the hint is run as printed. */
+function shellWord(text: string): string {
+  return /^[\w.:-]+$/.test(text) ? text : `'${text.replace(/'/g, `'\\''`)}'`;
+}
 function clock(at: number): string {
   return new Date(at).toISOString().slice(0, 16).replace('T', ' ');
 }
@@ -181,13 +188,21 @@ export async function agentsCommand(client: CoreClient, threadId: string, rest: 
     if (lines.length === 0) lines.push(`no reachable thread matches ${JSON.stringify(query)}`);
     print([...lines, ...result.unavailable.map(name => `unavailable: ${name}`)], result);
   } else if (action === 'read') {
-    const { to, self } = await resolve(want(1, 'a thread from boite threads'));
-    const result = await client.call('collaboration.read', { threadId, target: to, ...(options.last === undefined ? {} : { limit: options.last }), ...(options.before === undefined ? {} : { before: options.before }) });
+    const typed = want(1, 'a thread from boite threads');
+    // Its own id needs no directory: the history a fresh session carries points at its own tool output.
+    const { to, self } = typed === threadId ? await view().then(({ self }) => ({ to: self, self })) : await resolve(typed);
+    if (options.offset !== undefined && options.entry === undefined) throw new AgentsUsage('threads read --offset goes with --entry <id>');
+    if (options.tool !== undefined && options.entry === undefined) throw new AgentsUsage('threads read --tool goes with --entry <id>, the message that made the call');
+    const result = await client.call('collaboration.read', { threadId, target: to, ...(options.last === undefined ? {} : { limit: options.last }), ...(options.before === undefined ? {} : { before: options.before }),
+      ...(options.entry === undefined ? {} : { entry: options.entry, ...(options.offset === undefined ? {} : { offset: options.offset }), ...(options.tool === undefined ? {} : { tool: options.tool }) }) });
     const lines = [contactLine(result.contact, self.coreId)];
     if (result.more && result.entries[0]) lines.push(`(older entries: --before ${result.entries[0].at})`);
     for (const entry of result.entries) {
       const tools = entry.tools.length > 0 ? ` [tools: ${entry.tools.join(', ')}]` : '';
-      lines.push(`${clock(entry.at)} ${entry.role}:${tools}${entry.text ? `\n    ${entry.text.replace(/\n/g, '\n    ')}` : ''}`);
+      const span = entry.offset === undefined ? '' : ` [characters ${entry.offset} to ${entry.offset + entry.text.length} of ${entry.length}]`;
+      lines.push(`${clock(entry.at)} ${entry.role}:${tools}${span}${entry.text ? `\n    ${entry.text.replace(/\n/g, '\n    ')}` : ''}`);
+      // The id and offset of the rest: a cut entry is never lost.
+      if (entry.next !== undefined) lines.push(`    (cut at ${entry.next} of ${entry.length} characters; the rest: boite threads read ${typed} --entry ${shellWord(entry.id)}${options.tool === undefined ? '' : ` --tool ${shellWord(options.tool)}`} --offset ${entry.next})`);
     }
     print(lines, result);
   } else if (action === 'send' || action === 'reply') {

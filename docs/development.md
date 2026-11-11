@@ -100,6 +100,7 @@ client. Development fixtures spend no provider tokens:
 | `?fake=1&readability=1&open=recent` | A request over three days: narration between calls, a mid-turn and an automatic compaction, pull-request and review wakes, day dividers |
 | `?fake=1&council=1` | A thread with a running and a finished council and an older debate; the cards and salon draw with the `debates` experiment on ([council](council.md)) |
 | `?fake=1&asks=1&open=recent` | The opened thread asked the Contacts bot four times: one request with the bot, one sent to Chris, one answered, one refused ([contacts](contacts.md#in-the-conversation)) |
+| `?fake=1&pluginArchive=1` | "Finish the trace tab" is done, marked by the plugin Bureau through `threads.archive`, permission `threads.write` ([plugins](plugins.md#permissions)) |
 | `?fake=1&uninstalled=1` | No connected provider |
 | `?fake=1&policy=managed` | An admin policy that locks every key a control shows; `broken` adds problems, `closed` fails closed ([enterprise](enterprise.md)) |
 
@@ -145,9 +146,11 @@ too. Trimmed names must contain 1 to 1024 UTF-16 code units; the core rejects
 larger names before journaling or broadcasting. The system drafts project
 keeps its localized name.
 
-Owners open a folder through the project dialog by selecting its machine and
-browsing or typing an absolute path. `projects.browse` is owner-only; the native
-folder picker is available only on the shell's local core. Dropping a desktop
+The owner, and a paired device whose core has `deviceProjects`, open a folder
+through the project dialog by selecting its machine and browsing or typing an
+absolute path; `store.addsProjects` says which machines take one
+([phone](phone.md#what-a-paired-device-may-call)). The native folder picker is
+available only on the shell's local core. Dropping a desktop
 folder switches to that core. A delayed dialog response remains tied to its
 original machine and dialog revision.
 
@@ -507,7 +510,10 @@ Manual archive and deletion keep their explicit clearing behavior.
 
 `threads.move { threadId, projectId, stopBackground? }` moves a root and its
 children to another project on the same machine. Desktop drag and the desktop
-or phone menu call the same RPC. Sub-threads and bot sessions cannot
+or phone menu call the same RPC. The menus' "Move to project" opens the draft's
+project search (`ProjectSearch.svelte`) over the thread's machine, with its own
+project checked; a folder there keeps its root and last two folders
+(`shortPath`). Sub-threads and bot sessions cannot
 move independently. Unknown, unchanged, archived or missing targets are refused.
 A target project that was archived becomes visible again.
 
@@ -1231,6 +1237,10 @@ any machine, the pictures join that prompt and the references take their numbers
 there; pasted where every number still names the same picture, only the text goes in. A new image accepted during send
 belongs to the next draft. Refused sends retain input, attachments and edits made
 while sending.
+
+Ctrl+Enter sends without leaving an existing thread, including when replacing
+an edited message. From a new thread's draft, it sends and opens the next draft
+in the same project with the same provider, account, model, effort and mode.
 
 Undo in the composer is the app's, never the textarea's (`lib/composer-history.ts`):
 Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z and the context menu walk one history per draft or

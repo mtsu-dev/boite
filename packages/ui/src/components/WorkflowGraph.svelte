@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { ArrowDown } from '@lucide/svelte';
+  import { ArrowDown, Repeat } from '@lucide/svelte';
   import { tick } from 'svelte';
-  import type { DelegationProfile, WorkflowNode, WorkflowRun } from '@boite/contracts';
+  import { conditionText, type DelegationProfile, type WorkflowNode, type WorkflowRun } from '@boite/contracts';
   import { fill, strings } from '../lib/strings';
-  import { edgesOf, fitsPhase, nodeProgress, nodeTiming, nodeTokens, phasesOf, routeOf } from '../lib/workflow-view';
+  import { edgesOf, fitsPhase, loopsOf, nodeProgress, nodeTiming, nodeTokens, phasesOf, roundLabel, routeOf, type WorkflowLoop } from '../lib/workflow-view';
   import { formatTokens, levelName } from '../lib/format';
   import Elapsed from './Elapsed.svelte';
   import ProviderLogo from './ProviderLogo.svelte';
@@ -16,6 +16,8 @@
    * The panel is taller than wide, so the plan grows down the way it runs.
    * A row too wide for the graph (many steps at once on a phone) turns the
    * whole run into a list of phases, one step under the other.
+   * A `repeat` loop draws a dashed arc on the right, from the step that
+   * closes it back up to the one it starts from, past every card between.
    */
   let {
     run,
@@ -25,14 +27,26 @@
   }: { run: WorkflowRun; profiles: DelegationProfile[]; selectedId: string | null; onselect: (nodeId: string) => void } = $props();
 
   const uid = $props.id();
+  /**
+   * Arcs run in the graph's right padding widened by LOOP_ROOM, small enough
+   * that two steps side by side still fit the panel's default width; a loop
+   * that shares rows with another runs one LOOP_STEP further out.
+   */
+  const LOOP_ROOM = 8;
+  const LOOP_GAP = 13;
+  const LOOP_STEP = 7;
   let rows = $state<HTMLDivElement | undefined>(undefined);
   let width = $state(0);
   let paths = $state<{ key: string; d: string; live: boolean }[]>([]);
+  let arcs = $state<{ loop: WorkflowLoop; d: string; x: number; y: number }[]>([]);
 
   let phases = $derived(phasesOf(run));
   let edges = $derived(edgesOf(run));
   // The widest row decides, less the graph's 16px side padding.
-  let wide = $derived(fitsPhase(width - 32, Math.max(0, ...phases.map(phase => phase.length))));
+  let loops = $derived(loopsOf(run));
+  let closing = $derived(new Map(loops.map(loop => [loop.to, loop])));
+  // The widest row decides, less the room a loop's arc takes on the right.
+  let wide = $derived(fitsPhase(width - 32 - (loops.length ? LOOP_ROOM : 0), Math.max(0, ...phases.map(phase => phase.length))));
   let byId = $derived(new Map(run.nodes.map(node => [node.id, node])));
 
   /**
@@ -45,6 +59,7 @@
     const node = rows;
     if (!node || !wide) {
       paths = [];
+      arcs = [];
       return;
     }
     const origin = node.getBoundingClientRect();
@@ -65,6 +80,41 @@
       });
     }
     paths = next;
+    arcs = loopArcs(node, origin, rect);
+  }
+
+  /**
+   * Each arc leaves the closing step's right edge, runs up past the right
+   * edge of every card in the rows it spans, and comes back into the first
+   * step of the loop with an arrow. A loop of one step curls on its own edge.
+   */
+  function loopArcs(node: HTMLElement, origin: DOMRect, rect: (id: string) => DOMRect | undefined): typeof arcs {
+    const row = new Map(phases.flatMap((phase, index) => phase.map(step => [step.id, index] as const)));
+    const out: typeof arcs = [];
+    const spans: [number, number][] = [];
+    for (const loop of loops) {
+      const from = rect(loop.from), to = rect(loop.to);
+      const top = row.get(loop.from), bottom = row.get(loop.to);
+      if (!from || !to || top === undefined || bottom === undefined) continue;
+      const lane = spans.filter(([a, b]) => a <= bottom && top <= b).length;
+      spans.push([top, bottom]);
+      const right = Math.max(...phases.slice(top, bottom + 1).flat().map(step => rect(step.id)?.right ?? 0));
+      const x = Math.min(right - origin.left + LOOP_GAP + lane * LOOP_STEP, node.clientWidth + 8);
+      const x1 = to.right - origin.left, x2 = from.right - origin.left + 1;
+      if (loop.from === loop.to) {
+        const y = to.top + Math.min(to.height / 2, 22) - origin.top, r = Math.min(6, to.height / 2 - 2);
+        out.push({ loop, x, y, d: `M${x1},${y + r} H${x - r} A${r},${r} 0 0 0 ${x - r},${y - r} H${x2}` });
+        continue;
+      }
+      const y1 = to.top + Math.min(to.height / 2, 22) - origin.top, y2 = from.top + Math.min(from.height / 2, 22) - origin.top;
+      const r = Math.min(6, (y1 - y2) / 2);
+      out.push({ loop, x, y: (y1 + y2) / 2, d: `M${x1},${y1} H${x - r} A${r},${r} 0 0 0 ${x},${y1 - r} V${y2 + r} A${r},${r} 0 0 0 ${x - r},${y2} H${x2}` });
+    }
+    return out;
+  }
+
+  function loopTitle(loop: WorkflowLoop): string {
+    return fill(strings.workflow.loopTitle, { round: String(loop.round), max: String(loop.max), from: byId.get(loop.from)?.title ?? loop.from, condition: conditionText(loop.until) });
   }
 
   $effect(() => {
@@ -94,6 +144,7 @@
   {@const route = routeOf(node, profiles, run.plan.steps.find(step => step.id === node.id))}
   {@const timing = nodeTiming(node)}
   {@const note = hint(node)}
+  {@const loop = closing.get(node.id)}
   <button
     type="button"
     class="node {node.status}"
@@ -108,6 +159,7 @@
       <StatusMark {...workflowTone(node.status)} />
       <span class="name ui-label">{node.title}</span>
       {#if node.forEach && progress.total > 0}<span class="count ui-label" data-testid="workflow-node-count">{progress.done}/{progress.total}</span>{/if}
+      {#if loop}<span class="round {loop.state}" title={loopTitle(loop)} data-testid="workflow-round"><Repeat size={11} strokeWidth={2} />{roundLabel(loop)}</span>{/if}
     </span>
     {#if route}
       <span class="route"><ProviderLogo providerId={route.providerId} size={12} /><span class="model ui-label">{route.model || route.profile}</span>{#if route.effort}<span class="effort ui-label" data-testid="workflow-effort">{levelName({ id: route.effort, label: route.effort })}</span>{/if}</span>
@@ -118,6 +170,7 @@
       </span>
     {/if}
     {#if note}<span class="note ui-label">{note}</span>{/if}
+    {#if loop && !wide}<span class="note ui-label">{fill(strings.workflow.loopsBack, { step: byId.get(loop.from)?.title ?? loop.from })}</span>{/if}
     {#if node.status === 'skipped'}
       <span class="note ui-label">{strings.workflow.stepStatus.skipped}</span>
     {:else if timing.startedAt !== null}
@@ -128,16 +181,26 @@
 
 <div class="graph" bind:clientWidth={width} data-testid="workflow-graph" data-layout={wide ? 'rows' : 'list'}>
   {#if wide}
-    <div class="rows" bind:this={rows}>
+    <div class="rows" class:looped={loops.length > 0} bind:this={rows}>
       <svg class="edges" aria-hidden="true">
         <defs>
           <marker id="{uid}-arrow" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L6,3 L0,6 z" class="tip" /></marker>
           <marker id="{uid}-arrow-live" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L6,3 L0,6 z" class="tip live" /></marker>
+          <!-- A loop's arrow is smaller: the gutter it lands in is a few pixels wide. -->
+          {#each ['idle', 'live', 'over', 'failed'] as state (state)}
+            <marker id="{uid}-loop-{state}" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="4" markerHeight="4" orient="auto"><path d="M0,0 L6,3 L0,6 z" class="loop-tip {state}" /></marker>
+          {/each}
         </defs>
         {#each paths as path (path.key)}
           <path d={path.d} class="edge" class:live={path.live} marker-end="url(#{uid}-arrow{path.live ? '-live' : ''})" data-testid="workflow-edge" />
         {/each}
+        {#each arcs as arc (arc.loop.to)}
+          <path d={arc.d} class="loop {arc.loop.state}" marker-end="url(#{uid}-loop-{arc.loop.state})" data-testid="workflow-loop" data-state={arc.loop.state} />
+        {/each}
       </svg>
+      {#each arcs as arc (arc.loop.to)}
+        <span class="loop-mark {arc.loop.state}" style:left="{arc.x}px" style:top="{arc.y}px" aria-hidden="true"><Repeat size={9} strokeWidth={2.25} /></span>
+      {/each}
       {#each phases as phase, index (index)}
         <section class="phase" data-testid="workflow-phase">
           <p class="section-label">{fill(strings.workflow.phase, { n: String(index + 1) })}</p>
@@ -167,6 +230,26 @@
   .tip.live { fill: color-mix(in srgb, var(--color-live) 70%, transparent); }
   /* The label sits at the left of the gap an arrow crosses; an arrow leaves a card's center, at least half a card from that edge. */
   .rows { position: relative; display: flex; flex-direction: column; gap: 10px; }
+  .rows.looped { padding-right: 8px; }
+  /* A loop's arc: dashed, so it never reads as one more dependency; live while a round runs. */
+  .loop { fill: none; stroke: color-mix(in srgb, var(--color-muted-foreground) 55%, transparent); stroke-width: 1.5; stroke-dasharray: 4 3; stroke-linecap: round; }
+  .loop.live { stroke: color-mix(in srgb, var(--color-live) 75%, transparent); animation: pulse 1.6s var(--loop-ease-in-out-48) infinite var(--loops); }
+  .loop.failed { stroke: color-mix(in srgb, var(--color-danger) 65%, transparent); }
+  .loop.over { stroke: color-mix(in srgb, var(--color-success) 55%, transparent); }
+  .loop-tip { fill: color-mix(in srgb, var(--color-muted-foreground) 55%, transparent); }
+  .loop-tip.live { fill: color-mix(in srgb, var(--color-live) 75%, transparent); }
+  .loop-tip.failed { fill: color-mix(in srgb, var(--color-danger) 65%, transparent); }
+  .loop-tip.over { fill: color-mix(in srgb, var(--color-success) 55%, transparent); }
+  .loop-mark { position: absolute; z-index: 1; width: 16px; height: 16px; display: grid; place-items: center; transform: translate(-50%, -50%); border: 1px solid var(--color-border); border-radius: var(--radius-full); background: var(--color-surface-2); color: var(--color-muted-foreground); pointer-events: none; }
+  .loop-mark.live { border-color: color-mix(in srgb, var(--color-live) 55%, var(--color-border)); color: var(--color-live); }
+  .loop-mark.failed { border-color: color-mix(in srgb, var(--color-danger) 55%, var(--color-border)); color: var(--color-danger); }
+  .loop-mark.over { color: var(--color-success); }
+  .round { flex: none; display: inline-flex; align-items: center; gap: 3px; padding: 1px 5px; border-radius: var(--radius-sm); background: var(--color-surface-3); color: var(--color-muted-foreground); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+  .round.live { background: color-mix(in srgb, var(--color-live) 16%, transparent); color: var(--color-live); }
+  .round.failed { background: color-mix(in srgb, var(--color-danger) 14%, transparent); color: var(--color-danger); }
+  .round.over { background: color-mix(in srgb, var(--color-success) 14%, transparent); color: var(--color-success); }
+  @media (prefers-reduced-motion: reduce) { .loop.live { animation: none; } }
+  :global(html[data-motion='reduced']) .loop.live { animation: none; }
   .phase { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
   .phase .section-label { margin: 0; }
   .rows .steps { display: flex; justify-content: center; gap: 12px; }

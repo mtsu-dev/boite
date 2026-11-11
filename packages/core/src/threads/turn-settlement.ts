@@ -1,10 +1,11 @@
-import type { ThreadId, ThreadSummary, Turn, TurnId } from '@boite/contracts';
+import { turnIsNews, type ThreadId, type ThreadSummary, type Turn, type TurnId } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import type { TurnResult } from '../drivers/types.ts';
 import { logMessageOf } from '../log-errors.ts';
 import { promptCacheOf } from '../prompt-cache.ts';
 import { withLoad } from './records.ts';
 import { restingStatus } from './lifecycle.ts';
+import { brainContextEnded } from './brain-context.ts';
 import { quietTurn } from '../agents/runtime.ts';
 
 interface Settlement {
@@ -35,6 +36,8 @@ export function finishTurn(core: Core, finished: Turn, cause: TurnClose, patch?:
   const toolsClosed = finished.status !== 'done' ? closeTools(core, threadId, finished.id) : 0;
   const type = cause !== 'settled' && finished.status === 'stopped' ? 'turn.stopped' : 'turn.finished';
   core.journal.append({ type, threadId, version: 1, payload: finished }, () => core.journal.putTurn(finished));
+  // In the same transaction: the next turn knows whether the brain's instructions go again.
+  brainContextEnded(core, finished);
   const current = core.journal.getThread(threadId);
   if (current === null) return { thread: null, owned: false, toolsClosed };
   const newer = core.journal.db.query("SELECT id FROM turns WHERE thread_id = ? AND id != ? AND status IN ('queued', 'running') LIMIT 1").get(threadId, finished.id);
@@ -53,10 +56,10 @@ export function announceFinished(core: Core, finished: Turn, { thread, owned }: 
   if (owned && thread) core.bus.emit('thread.updated', withLoad(core, thread));
 }
 
-/** Finish an admitted turn before provider execution, including a held prompt. */
+/** Finish an admitted turn before provider execution, including a held prompt. A turn that already left the queue is not this writer's to close: a closed turn never transitions again. */
 export function markQueuedStopped(core: Core, turnId: TurnId): void {
   const turn = core.journal.getTurn(turnId);
-  if (turn === null) return;
+  if (turn === null || turn.status !== 'queued') return;
   const next: Turn = { ...turn, status: 'stopped', queueHold: null, finishedAt: Date.now() };
   core.bus.afterCommit(() => {
     // The stop and the wake's letters going back to the inbox commit together.
@@ -104,19 +107,20 @@ function ownsTurn(owned: Turn | null, { queued, running, started }: Settlement):
 
 /** The settled turn's row and its thread's: the session and the prompt cache it ended with. */
 function finishThread(core: Core, { thread, finished, result }: Settlement): Completion & { toolsClosed: number } {
+  // A turn of the account the thread left: the session it saved there now ends with this turn.
+  core.threads.accountSessions.settledElsewhere(finished, result, thread.cwd);
   let sameSession = false;
   const done = finishTurn(core, finished, 'settled', current => {
     // Changing the next picker does not grant this result access to the new session.
     sameSession = (current.sessionGeneration ?? 0) === (thread.sessionGeneration ?? 0)
       && current.sessionId === thread.sessionId && current.providerId === thread.providerId && current.accountId === thread.accountId;
     const sessionId = sameSession ? result.sessionId ?? current.sessionId : current.sessionId;
-    // A keepalive is the core's housekeeping: it says nothing new, so it leaves the thread as read as it was.
-    // A quiet wake of a persistent agent had nothing to say either.
-    const silent = finished.execution?.operation === 'keepalive' || finished.quiet === true;
+    // A compaction, a keepalive, a quiet wake or a stop says nothing new: the thread stays as read as it was.
+    const news = turnIsNews(finished);
     return {
       ...current, sessionId,
       sessionResumeAt: !sameSession ? current.sessionResumeAt : current.sessionResumeAt && sessionId === current.sessionId && sessionId === thread.sessionId ? current.sessionResumeAt : null,
-      unread: silent ? current.unread : current.unread || !core.subscribers.hasSubscribers(thread.id),
+      unread: news ? current.unread || !core.subscribers.hasSubscribers(thread.id) : current.unread,
       promptCache: sameSession ? promptCacheOf(result, thread, finished.finishedAt ?? Date.now(), current.promptCache ?? null) ?? current.promptCache ?? null : current.promptCache ?? null,
     };
   });

@@ -3,7 +3,7 @@ import { connect } from '../src/client.ts';
 import { ServerConnection } from '../src/server.ts';
 import { runCli } from '../src/cli.ts';
 import { refused } from '../src/errors.ts';
-import { CONVERSATION_PROFILE_ID, DEFAULT_DELEGATION_CONFIG } from '@boite/contracts';
+import { CONVERSATION_PROFILE_ID, DEFAULT_DELEGATION_CONFIG, type DelegationResultPage } from '@boite/contracts';
 import { setDriver } from '../src/drivers/index.ts';
 import type { TurnContext, TurnResult } from '../src/drivers/types.ts';
 import { echoThread, startTestCore, waitFor } from './harness.ts';
@@ -83,6 +83,16 @@ test('full child result pages and concurrent wait do not duplicate bounded autom
     const letters = s.h.core.delegation.get(s.threadId).messages.filter(letter => letter.origin === 'result');
     expect(letters).toHaveLength(1);
     expect(letters[0]!.text.length).toBeLessThanOrEqual(4000);
+    // The letter's cut names the command and offset of the rest: what it shows and what that reads make the whole answer.
+    const cut = /\n([\s\S]*)\n\[Cut at character (\d+) of (\d+)\. The rest: boite delegate result (\S+) (\S+) (\d+)\]$/.exec(letters[0]!.text)!;
+    expect(cut.slice(3, 6)).toEqual([String([...answer].length), ref.agentId, ref.turnId]);
+    let rest = '';
+    for (let next: number | null = Number(cut[6]); next !== null;) {
+      const page: DelegationResultPage = await s.client.call('delegation.result', { threadId: s.threadId, ...ref, offset: next });
+      rest += page.text;
+      next = page.nextOffset;
+    }
+    expect(cut[1]! + rest).toBe(answer);
     expect(s.h.core.delegation.waits.size).toBe(0);
   } finally { await s.stop(); }
 });

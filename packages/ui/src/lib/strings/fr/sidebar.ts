@@ -49,6 +49,7 @@ export const fr: Translation = {
     prMerged: '#{number} fusionnée',
     prClosed: '#{number} fermée',
     prOpen: '#{number} ouverte',
+    archivedByPlugin: 'Archivée par le plugin {name}',
     reopenThread: 'Remettre dans Récent',
     reopenNamedThread: 'Remettre « {title} » dans Récent',
     doneNotice: 'Cette conversation est terminée. Remettez-la dans Récent pour continuer.',

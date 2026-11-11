@@ -261,7 +261,7 @@ export class Delegation {
     }
     if (threadId === null) return;
     const current = (): boolean => epoch === this.delegationSelectionEpoch && client === this.ctx.client;
-    const subscribed = threadId !== threads.subscribedThreadId ? client.call('threads.subscribe', { threadId }) : null;
+    const subscribed = threadId !== threads.subscribedThreadId ? client.call('threads.subscribe', { threadId, ...this.ctx.streams.params(threadId) }) : null;
     // The transcript draws a call's name and status, never its output.
     const fetched = client.call('threads.get', { threadId, limit: INITIAL_MESSAGE_PAGE, maxBytes: INITIAL_PAGE_BYTES, ...lightPage(this.ctx) });
     // A run that a newer selection overtakes returns early and never awaits the read.

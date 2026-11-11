@@ -179,6 +179,8 @@
             {#if !focusId && projectOf(thread)}<span class="part">{projectOf(thread)}</span>{/if}
             {#if thread.archiveReason?.type === 'pr-merged'}
               <span class="part archive-reason" data-testid="archive-merged-reason"><a href={thread.archiveReason.url} target="_blank" rel="noopener noreferrer">{fill(strings.settings.archived.mergedReason, { number: String(thread.archiveReason.number) })}</a></span>
+            {:else if thread.archiveReason?.type === 'plugin'}
+              <span class="part archive-reason" data-testid="archive-plugin-reason" title={thread.archiveReason.pluginId}>{fill(strings.sidebar.archivedByPlugin, { name: thread.archiveReason.pluginName })} <time datetime={new Date(thread.archiveReason.archivedAt).toISOString()} title={exactTime(thread.archiveReason.archivedAt)}>{ago(thread.archiveReason.archivedAt)}</time></span>
             {/if}
             {#if thread.doneAt != null && retention > 0}
               <span class="part" data-testid="done-expires">{fill(strings.settings.archived.deletesAt, { date: exactTime(thread.doneAt + retention * 86_400_000) })}</span>

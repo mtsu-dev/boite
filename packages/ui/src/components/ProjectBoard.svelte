@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { MessagesSquare, Play, Plus } from '@lucide/svelte';
+  import { MessagesSquare, Play, Plus, Puzzle } from '@lucide/svelte';
   import type { SharedBoardCommand, SharedProjectThread, ThreadId, Todo } from '@boite/contracts';
   import { BOARD_COLUMNS, cardColumn, type BoardColumn } from '../lib/board';
   import { separator, type MenuItem } from '../lib/menu';
@@ -234,6 +234,9 @@
                 <span class="agent-label">{agent.label}</span>
                 {#if agent.running}<span class="running" aria-hidden="true"></span>{/if}
               </span>
+            {/if}
+            {#if todo.plugin}
+              <span class="agent ui-label" data-testid="board-card-plugin" title={todo.plugin.pluginId}><Puzzle size={12} strokeWidth={1.75} aria-hidden="true" /><span class="agent-label">{fill(strings.plugins.byPlugin, { name: todo.plugin.pluginName })}</span></span>
             {/if}
             {#if todo.shared?.card.pending}<span class="state muted ui-label">{strings.shared.queued}</span>{/if}
             {#if todo.shared?.card.assignment?.state === 'reserved' || todo.shared?.card.assignment?.state === 'uncertain'}<span class="state muted ui-label">{todo.shared.card.assignment.state === 'reserved' ? strings.shared.reserved : strings.shared.uncertain}</span>{/if}

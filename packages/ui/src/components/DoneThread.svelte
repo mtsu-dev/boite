@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ArchiveRestore, Folder, GitMerge, GitPullRequest, GitPullRequestClosed } from '@lucide/svelte';
+  import { ArchiveRestore, Folder, GitMerge, GitPullRequest, GitPullRequestClosed, Puzzle } from '@lucide/svelte';
   import type { ThreadSummary } from '@boite/contracts';
   import type { ProjectEntry } from '../lib/project-view.svelte';
   import { archivedTime } from '../lib/archive';
@@ -38,7 +38,10 @@
     ? { number: thread.archiveReason.number, url: thread.archiveReason.url, state: 'MERGED' as const }
     : thread.pullRequest ?? null);
   const prLabel = $derived(pr ? fill(pr.state === 'MERGED' ? strings.sidebar.prMerged : pr.state === 'CLOSED' ? strings.sidebar.prClosed : strings.sidebar.prOpen, { number: String(pr.number) }) : '');
-  const meta = $derived(showProject || pr !== null);
+  /** The plugin that marked it done (`threads.archive`), so a row that went by itself says why. */
+  const plugin = $derived(thread.archiveReason?.type === 'plugin' ? thread.archiveReason.pluginName : null);
+  const byPlugin = $derived(plugin === null ? null : fill(strings.sidebar.archivedByPlugin, { name: plugin }));
+  const meta = $derived(showProject || pr !== null || byPlugin !== null);
 
   function restore(): void {
     void lock.restore(owner, thread.id);
@@ -94,6 +97,8 @@
   {#if meta}
     <div class="metadata">
       {#if showProject}<span class="project-name" title={entry.project.path}><Folder size={12} /><span class="ui-label">{projectName(entry.project)}</span></span>{/if}
+      <!-- The puzzle and the plugin's name; the sentence is for the tooltip and screen readers. -->
+      {#if byPlugin}<span class="by-plugin" data-testid="done-thread-plugin" title={byPlugin}><Puzzle size={12} /><span class="ui-label" aria-hidden="true">{plugin}</span><span class="visually-hidden">{byPlugin}</span></span>{/if}
       {#if pr}
         <a class="pr {pr.state.toLowerCase()}" data-testid="done-thread-pr" data-state={pr.state} href={pr.url} target="_blank" rel="noopener noreferrer" title={pr.url}>
           {#if pr.state === 'MERGED'}<GitMerge size={12} />{:else if pr.state === 'CLOSED'}<GitPullRequestClosed size={12} />{:else}<GitPullRequest size={12} />{/if}<span class="ui-label">{prLabel}</span>
@@ -167,6 +172,8 @@
   .project-name { display: flex; flex: 1; align-items: center; gap: 4px; min-width: 0; }
   .project-name span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .metadata :global(svg) { flex: none; }
+  .by-plugin { display: inline-flex; flex: 0 1 auto; align-items: center; gap: 4px; min-width: 0; }
+  .by-plugin .ui-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pr {
     display: inline-flex;
     flex: none;

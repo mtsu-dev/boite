@@ -77,7 +77,7 @@ import { activityMethods, finishActivityTurn } from './activity';
 import { FakeBus } from './bus';
 import { FAKE_TREE } from './files';
 import { seedHooks } from './hooks';
-import { delegationConfig, watchQuestionParents, workflowAnswer, workflowChild } from './delegation';
+import { delegationConfig, watchQuestionParents, workflowAnswer, workflowAgain, workflowChild } from './delegation';
 import { FakePlugins } from './plugins';
 import { initialHarnessUpdates } from './provider-installs';
 import { DATA_DIR, T0, toSummary } from './shared';
@@ -137,6 +137,8 @@ export interface FakeClientOptions {
   uninstalled?: boolean;
   /** Adds a deterministic active team for visual checks on `?fake=1&team=1`. */
   delegationDemo?: boolean;
+  /** That team's workflow is a fix and review loop in its second round instead, on `?fake=1&team=1&loop=1`. */
+  loopDemo?: boolean;
   /** Two parents at work, one whose sub-agents ask a question and a permission, on `?fake=1&subagents=1`. */
   subagentsDemo?: boolean;
   /** An agent with an entrusted project, a picture, a memory pass and a notice, on `?fake=1&agents=1`. */
@@ -149,6 +151,8 @@ export interface FakeClientOptions {
   windowsDemo?: boolean;
   /** A thread that started a finished council, one under way and an older debate, with their salons, on `?fake=1&council=1`. */
   councilDemo?: boolean;
+  /** The trace thread marked done an hour ago by a plugin granted `threads.write`, on `?fake=1&pluginArchive=1`. */
+  pluginArchiveDemo?: boolean;
   /** Who this client is. `'session'` makes it a paired phone, refused like one. */
   principal?: Principal;
   /** The thread an agent's token names; with none, every agent call fails closed, as on the core. */
@@ -381,6 +385,7 @@ export class FakeContext {
   readonly rttMs: number;
   readonly chunkSize: number | undefined;
   readonly long: boolean;
+  readonly loopDemo: boolean;
   readonly longCopies: number;
   readonly heavy: boolean;
   readonly diagrams: boolean;
@@ -399,7 +404,7 @@ export class FakeContext {
     this.quotaExtras = options.quotaExtras ?? (typeof location !== 'undefined' && new URLSearchParams(location.search).get('quotaExtras') === '1');
     this.brainLinkPermission = options.brainLinkPermission ?? (typeof location !== 'undefined' && new URLSearchParams(location.search).get('brainLinkPermission') === '1');
     this.plainLink = options.plainLink ?? (typeof location !== 'undefined' && new URLSearchParams(location.search).get('plainLink') === '1');
-    this.bus = new FakeBus(options.principal ?? 'owner', { threadId: () => this.agentThreadId, projectOf: id => this.threads.get(id)?.projectId ?? null, visibleTodos: (id, todos) => agentTodos(this, id, todos) });
+    this.bus = new FakeBus(options.principal ?? 'owner', { threadId: () => this.agentThreadId, projectOf: id => this.threads.get(id)?.projectId ?? null, visibleTodos: (id, todos) => agentTodos(this, id, todos), partType: (id, messageId, partIndex) => this.threads.get(id)?.messages.find(message => message.id === messageId)?.parts[partIndex]?.type });
     watchQuestionParents(this);
     this.agents = new FakeAgents(revision => {
       this.emit('agents.changed', { revision });
@@ -451,6 +456,15 @@ export class FakeContext {
         return { coreId: core.coreId, name: core.name, botMove: member?.core.features?.botMove === true, agents: member?.agents };
       },
       selfName: () => this.identity.name,
+      // As the core's status: a bot on a provider turned off says how to let its wakes run.
+      // The thread's own provider first: a move in the composer can set it apart from the profile's.
+      problem: (agent, thread) => {
+        const provider = this.providers.find(p => p.id === (thread?.providerId ?? agent.selection.providerId));
+        if (!provider || provider.enabled !== false) return null;
+        return provider.policy
+          ? `${provider.name} is blocked by your organization's policy; choose another model for ${agent.name} in its settings.`
+          : `${provider.name} is turned off on this machine; turn it on in Settings > Providers, or choose another model for ${agent.name} in its settings.`;
+      },
       // A project's folder holds files: a brain root refuses it.
       occupied: path => this.projects.some(p => p.path.replace(/[\\/]+$/, '') === path),
       checkRoute: (value, previous) => {
@@ -478,6 +492,7 @@ export class FakeContext {
       },
       child: (root, profile, title, task) => workflowChild(this, root, profile, title, task),
       answer: (threadId, text, ok) => workflowAnswer(this, threadId, text, ok),
+      again: (threadId, task) => workflowAgain(this, threadId, task),
       member: (query, field) => void fakeMember(this, query, field),
       there: (root, profile, step, title, task) => workflowThere(this, root, delegationConfig(this, root.id), profile, step, title, task),
       answerThere: (coreId, threadId, text, ok) => {
@@ -496,6 +511,7 @@ export class FakeContext {
     this.rttMs = options.rttMs ?? roundTrip();
     this.chunkSize = options.chunkSize ?? tokenStream();
     this.long = options.long ?? false;
+    this.loopDemo = options.loopDemo ?? false;
     this.longCopies = options.longCopies ?? 0;
     this.heavy = options.heavy ?? false;
     this.diagrams = options.diagrams ?? false;
@@ -540,7 +556,7 @@ export class FakeContext {
       version: '2.0.0-beta.1',
       coreId,
       protocolVersion: PROTOCOL_VERSION,
-      features: { draftPreparation: true, attachmentUploads: true, threadSnapshots: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, projectBoard: true, settingsHome: true, botsHome: true, botMove: true, botMoveQueue: true, sharedProjects: 1, listChanges: true },
+      features: { draftPreparation: true, attachmentUploads: true, threadSnapshots: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, pluginGrants: true, projectBoard: true, deviceProjects: true, settingsHome: true, botsHome: true, botMove: true, botMoveQueue: true, sharedProjects: 1, listChanges: true },
       os: 'windows',
       channel: 'stable',
       pid: 4242,

@@ -64,7 +64,7 @@ export const fr: Translation = {
       autoResumeLimitedThreads: 'Reprendre les conversations après une limite d\'usage',
       deviceStream: "Flux en direct de l'appareil",
       backgroundCompaction: 'Compaction en arrière-plan',
-      groupThreads: 'Laisser les autres machines lancer des conversations ici',
+      groupThreads: 'Laisser les autres machines lancer des conversations et ajouter des projets ici',
       groupBots: "Laisser les bots des autres machines s'occuper des projets ici",
     },
     zero: {

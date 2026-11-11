@@ -3,7 +3,7 @@ import { flushSync } from 'svelte';
 import { confirm } from '../lib/confirm.svelte';
 import { store } from '../lib/store.svelte';
 import { workspace } from '../lib/workspace.svelte';
-import { OWNER_ONLY_COMMANDS, OWNER_ONLY_IN_ADVANCED, OWNER_ONLY_IN_CHAT, OWNER_ONLY_IN_SETTINGS, menuValues, mountOnFake, paletteIds, press, query, showMobileThreads, test, waitFor } from '../test/app';
+import { OWNER_ONLY_COMMANDS, OWNER_ONLY_IN_ADVANCED, OWNER_ONLY_IN_SETTINGS, menuValues, mountOnFake, paletteIds, press, query, showMobileThreads, test, waitFor } from '../test/app';
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
 
@@ -62,15 +62,16 @@ test('a paired device is offered none of the affordances the core refuses it', a
   expect(store.error).toBeNull();
   expect(store.threads.length).toBe(4);
 
-  // Add a project sits in the thread list's display menu: open it so its absence means something.
+  // Its core lets it add a project (deviceProjects): Add a project sits in the thread list's display menu, the same form the desktop opens, checked by that core.
   await openDisplayMenu();
-  for (const selector of OWNER_ONLY_IN_CHAT) expect(document.querySelector(selector)).toBeNull();
+  expect(document.querySelector('[data-testid=add-project]')).not.toBeNull();
   query<HTMLButtonElement>('[data-testid=grouping-options]').click();
 
   store.paletteOpen = true;
   await waitFor(() => document.querySelector('[data-testid=palette]') !== null);
   const commands = paletteIds();
   expect(commands).toContain('new-thread');
+  expect(commands).toContain('add-project');
   for (const id of OWNER_ONLY_COMMANDS) expect(commands).not.toContain(id);
   store.paletteOpen = false;
 
@@ -103,7 +104,7 @@ test('the desktop still has every one of them', async ({ app: _app }) => {
   expect(store.owner).toBe(true);
 
   await openDisplayMenu();
-  for (const selector of OWNER_ONLY_IN_CHAT) expect(document.querySelector(selector)).not.toBeNull();
+  expect(document.querySelector('[data-testid=add-project]')).not.toBeNull();
   query<HTMLButtonElement>('[data-testid=grouping-options]').click();
 
   store.paletteOpen = true;

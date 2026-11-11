@@ -171,7 +171,9 @@ receipt means provider acceptance, not agreement or task completion. An
 uncertain submission is not retried automatically.
 
 The final text of a child turn returns to the parent automatically, capped at
-4,000 characters. Tool output and reasoning stay in the child conversation.
+4,000 characters. A longer answer ends on a note naming its length and the exact
+`boite delegate result <child> <turn> <offset>` that reads the rest from the
+cut, so nothing past it is lost. Tool output and reasoning stay in the child conversation.
 There is no model call to summarize the result. Send another brief to an
 existing child to reuse its session.
 

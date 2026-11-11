@@ -64,7 +64,7 @@ export const strings = {
     archived: 'This team is archived and takes no more posts.',
     /** In the composer's place when the core does not answer for the team: the Teams experiment off, or an older core. */
     unavailable: 'Posting here needs the Teams experiment, in the desktop app under Settings, Experiments.',
-    empty: 'No posts yet. Name a bot with {mention}, or everyone with {everyone}.',
+    empty: 'No posts yet. Write to the whole team, or name a bot with {mention}.',
     earlier: 'Show earlier posts',
     newer: 'Show newer posts',
     loading: 'Loading the posts',
@@ -75,7 +75,8 @@ export const strings = {
     /** Who a post woke, under it. */
     woke: 'Woke {names}',
     wokeEveryone: 'Woke everyone',
-    nobody: 'Nobody was pinged: name a bot with {mention}, or everyone with {everyone}.',
+    /** Under an owner post from before a post naming nobody woke the whole team. */
+    nobody: 'Woke nobody',
     composer: {
       placeholder: 'Write to the team',
       placeholderPrivate: 'Write to {name} only',
@@ -95,7 +96,6 @@ export const strings = {
       wakes: 'Wakes {names}',
       wakesEveryone: 'Wakes everyone',
       wakesReply: 'Wakes {name}, whose post this answers',
-      wakesNobody: 'Wakes nobody: name a bot with {mention}, or everyone with {everyone}.',
       wakesPrivate: 'Only {name} reads it and is woken.',
       tooLong: 'Too long: {max} characters at most.',
     },

@@ -14,7 +14,7 @@ import type { BigIntStats, Stats } from 'node:fs';
 import type { FileHandle } from 'node:fs/promises';
 import { open, readdir, stat } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { FILES_LIST_MAX, FILE_MAX_BYTES, FILE_ROUTE, FILE_TICKET_TTL_MS } from '@boite/contracts';
+import { FILES_LIST_MAX, FILE_MAX_BYTES, FILE_ROUTE, FILE_TICKET_TTL_MS, deviceBound } from '@boite/contracts';
 import type { FileContent, FileEntry, ThreadId, Timestamp } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { locateFile } from './files.ts';
@@ -87,6 +87,22 @@ export function assertDeviceFile(core: Core, threadId: ThreadId, cwd: string, pa
   const parts = relative(base, target).split(sep).filter(Boolean);
   if (parts.some((part) => DEVICE_SECRET_DIRS.has(part.toLowerCase())) || DEVICE_SECRET_FILE.test(basename(target))) {
     throw refused(`a paired device does not read credential files; open ${path ?? ''} on the owner's machine`, { threadId });
+  }
+}
+
+/**
+ * A folder a paired device adds as a project becomes a root the checks above
+ * read from, so it is held to the same two rules first: not boite's data
+ * folder or inside it, and not a folder that holds keys or tokens or one inside it.
+ * Its links are followed, as a read follows them.
+ */
+export function assertDeviceProjectFolder(core: Core, folder: string): void {
+  const real = realOf(folder);
+  if (contains(realOf(core.dataDir), real)) {
+    throw refused(`a paired device does not add boite's data folder, or a folder inside it, as a project: ${folder}`, { field: 'path', path: folder, expected: 'a folder outside boite\'s data folder' });
+  }
+  if (real.split(sep).some((part) => DEVICE_SECRET_DIRS.has(part.toLowerCase()))) {
+    throw refused(`a paired device does not add a folder that holds keys or tokens as a project; add ${folder} on the owner's machine`, { field: 'path', path: folder, expected: `a folder outside ${[...DEVICE_SECRET_DIRS].join(', ')}` });
   }
 }
 
@@ -683,10 +699,10 @@ export class FileTickets {
   }
 }
 
-/** The working directory a read is resolved against, held to the project for a paired device. */
+/** The working directory a read is resolved against, held to the project for a paired device or a plugin. */
 export function readCwd(core: Core, threadId: ThreadId, ctx: RpcContext, path?: string): string {
   const cwd = threadCwd(core, threadId);
-  if (ctx.connection.identity.principal === 'session') {
+  if (deviceBound(ctx.connection.identity.principal)) {
     assertDeviceReadable(core, threadId);
     assertDeviceFile(core, threadId, cwd, path);
   }

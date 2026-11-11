@@ -5,6 +5,7 @@
  * Mailboxes never own a provider, a token, or a real conversation.
  */
 import { createHash, randomUUID } from 'node:crypto';
+import { RpcErrorCode } from '@boite/contracts';
 import type { AgentContact, AgentLetter, ContactRequest, CoordinationPeer, RpcParams, RpcResult } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { checkRemoteContact, checkTranscript, checkMatchExtras, PARTIAL, partialList, partialName } from '../coordination-lookup.ts';
@@ -24,7 +25,12 @@ const SOURCES = 'contacts:source-routes';
 const MAILBOXES = 'contacts:mailboxes';
 const PREFIX = 'cmb_';
 
+/** How long a listing waits on a member that was silent at the last one. */
+const SILENT_MEMBER_MS = 1_000;
+
 export class ContactMailboxes {
+  /** The members that did not answer the last listing of contacts. */
+  readonly #silent = new Set<string>();
   #initialized = false;
   #closed = false;
   readonly #pending = new Set<Promise<unknown>>();
@@ -92,14 +98,27 @@ export class ContactMailboxes {
     const replies = await Promise.all(this.#core.group.peers().sort((a, b) => a.coreId.localeCompare(b.coreId)).map(async peer => {
       try {
         const stamp = this.#stamp(peer.coreId);
-        const contacts = await this.#core.coordination.request(peer, 'contact.route', { action: 'contacts', from }) as (ContactSummary & { admission: number })[];
+        const asked = this.#core.coordination.request(peer, 'contact.route', { action: 'contacts', from }) as Promise<(ContactSummary & { admission: number })[]>;
+        // A member that stayed silent at the last listing (a PC that is off) is given a short wait: every listing
+        // waited the whole request's time on it, five seconds, before an agent saw any contact.
+        // Its answer, even one that comes after the short wait, gives it the whole wait back at the next listing.
+        asked.then(() => { this.#silent.delete(peer.coreId); }, () => undefined);
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const contacts = await (this.#silent.has(peer.coreId)
+          ? Promise.race([asked, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('silent')), SILENT_MEMBER_MS); })]).finally(() => clearTimeout(timer))
+          : asked);
+        this.#silent.delete(peer.coreId);
         if (!Array.isArray(contacts) || contacts.length > 32) throw refused('route.contacts: expected at most 32 contacts');
         if (this.#stamp(peer.coreId) !== stamp) throw refused('route: group admission changed during discovery');
         return contacts.map(contact => {
           if (!Number.isSafeInteger(contact.admission) || !['connected', 'connecting', 'offline'].includes(contact.link)) throw refused('route.contact: expected its admission and link state');
           return { via: peer.coreId, admission: contact.admission, contact: { coreId: text(contact.coreId, 'route.contact.coreId', 100), name: text(contact.name, 'route.contact.name', 200), projects: Array.isArray(contact.projects) ? contact.projects.filter(name => typeof name === 'string').slice(0, 256) : [], link: contact.link } };
         });
-      } catch { return peer.name; }
+      } catch (error) {
+        // Its signed refusal is an answer: only silence shortens the next wait.
+        if (!(error instanceof PeerRefusal) && !(error instanceof RpcFailure && error.code === RpcErrorCode.Refused)) this.#silent.add(peer.coreId);
+        return peer.name;
+      }
     }));
     this.#source(threadId);
     const result = [...local];
@@ -161,7 +180,7 @@ export class ContactMailboxes {
     this.#source(threadId);
     const contact = checkRemoteContact(result.contact, { coreId, name: route.name, url: '', publicKey: '' });
     if (contact.threadId !== (payload as { threadId: string }).threadId) throw refused('transcript of another thread');
-    return { contact, ...checkTranscript(result) };
+    return { contact, ...checkTranscript(result, payload as { entry?: string; offset?: number }) };
   }
   search(threadId: string, words: string[]): Promise<{ entries: RpcResult<'collaboration.search'>['matches']; unavailable: string[] }> {
     return this.#lookup(threadId, 'search', { words, partial: PARTIAL }, (entry, peer) => ({ ...checkRemoteContact(entry as AgentContact, peer), ...checkMatchExtras(entry as { matched?: unknown; excerpts?: unknown }) }));

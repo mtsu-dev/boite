@@ -5,13 +5,17 @@
  * Tailscale publishes a Funnel name in public DNS a few minutes after Funnel
  * is turned on, and sometimes not at all until it is turned off and on again.
  * This machine cannot see that by itself: MagicDNS answers its own tailnet
- * name with its tailnet address. So the name is resolved over DNS-over-HTTPS
- * by public resolvers, then the join route is asked at one of the public
+ * name with its tailnet address. So the name is asked of the servers that
+ * hold the `ts.net` zone (`public-dns.ts`), which know it the moment it is
+ * published, where a public resolver asked too early keeps "no such name"
+ * for five minutes; DNS-over-HTTPS by public resolvers stands in on a network
+ * that lets no DNS out. Then the join route is asked at one of the public
  * addresses they give, the TLS name still the Funnel one. A request with no
  * peer reaches `joinRequest`, which refuses it in its own words: that answer
  * is the proof the request went through Funnel to this core.
  */
 import type { ContactFunnelStatus } from '@boite/contracts';
+import { funnelAddresses } from './public-dns.ts';
 
 const DOH = [
   { url: 'https://dns.google/resolve', headers: {} },
@@ -32,6 +36,8 @@ export type PublicRequest = (address: string, host: string, port: number, path: 
 export type FunnelProbe = (origin: string, path: string) => Promise<Exclude<ContactFunnelStatus, 'checking'>>;
 
 async function resolvePublic(host: string): Promise<string[] | null> {
+  const published = await funnelAddresses(host);
+  if (published !== null) return published;
   for (const resolver of DOH) {
     try {
       const response = await fetch(`${resolver.url}?name=${encodeURIComponent(host)}&type=A`, { headers: resolver.headers, signal: AbortSignal.timeout(DOH_TIMEOUT_MS) });
