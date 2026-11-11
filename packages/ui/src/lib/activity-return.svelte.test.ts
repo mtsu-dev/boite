@@ -117,5 +117,5 @@ test('a thread opened on another machine drops the way back, so Activity never c
   store.threads = store.threads.map(entry => entry.id === thread.id ? { ...entry, status: 'idle' } : entry);
   flushSync();
   expect(inbox.open).toBe(false);
-  expect(store.openThread?.id).toBe(thread.id);
+  expect((store.openThread as { id: string } | null)?.id).toBe(thread.id);
 });
