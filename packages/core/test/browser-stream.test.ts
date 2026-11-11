@@ -106,7 +106,8 @@ real('a moving page comes at the pace of the acknowledgements, a viewer that hol
   // Each picture is acknowledged 100 ms after it came and Chromium keeps two unacknowledged: some twenty a second, never the screen's sixty.
   expect(rate).toBeGreaterThan(3);
   expect(rate).toBeLessThan(35);
-  expect(size(viewer.pictures.at(-1)!.jpeg).width).toBe(800);
+  // The still that opens the stream included, which the page shrinks itself.
+  expect(Math.max(...viewer.pictures.map(one => size(one.jpeg).width))).toBe(800);
 
   // An unacknowledged picture holds the next ones back: nothing queues on a slow link.
   const held = watch(harness.url + ((await client.call('browser.remoteStream', { threadId, tabId, maxWidth: 800 })) as { path: string }).path, true);

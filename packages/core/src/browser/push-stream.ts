@@ -9,6 +9,7 @@
  * only the newest waiting behind it.
  */
 import type { StreamCdp } from './frames.ts';
+import { jpegWidth, shrunkJpeg } from './shrink.ts';
 
 /** Chromium is acknowledged a picture no sooner than this after it came. It keeps two unacknowledged, so it draws some twenty pictures a second. */
 export const SCREENCAST_ACK_PACE_MS = 100;
@@ -155,15 +156,25 @@ export class PushStream {
   }
 
   /**
-   * The page as it is, whole and at the quality of rest. Never a clip scale:
-   * Chromium mirrors the top-left of the page into a `backdrop-filter` in any
-   * capture it shrinks.
+   * The page as it is, whole and at the quality of rest, no wider than the
+   * viewer shows it. Never a clip scale: Chromium mirrors the top-left of the
+   * page into a `backdrop-filter` in any capture it shrinks. The page shrinks
+   * a wider picture itself (`shrink.ts`), and the picture goes as it was taken
+   * when the page cannot.
    */
   async still(): Promise<void> {
     const session = this.#session;
     if (this.closed || !session) return;
-    const shot = await this.capture(() => this.cdp.send<{ data?: string }>('Page.captureScreenshot', { format: 'jpeg', quality: this.#options.quality }, session, 10_000)).catch(() => null);
-    if (typeof shot?.data === 'string') this.#push({ jpeg: Buffer.from(shot.data, 'base64'), ack: () => {} });
+    const { maxWidth, quality } = this.#options;
+    const shot = await this.capture(() => this.cdp.send<{ data?: string }>('Page.captureScreenshot', { format: 'jpeg', quality }, session, 10_000)).catch(() => null);
+    if (typeof shot?.data !== 'string') return;
+    let jpeg: Uint8Array = Buffer.from(shot.data, 'base64');
+    if ((jpegWidth(jpeg) ?? 0) > maxWidth) {
+      const shrunk = await shrunkJpeg((method, params) => this.cdp.send(method, params, session, 10_000), shot.data, maxWidth, quality).catch(() => null);
+      if (this.closed) return;
+      if (shrunk) jpeg = Buffer.from(shrunk, 'base64');
+    }
+    this.#push({ jpeg, ack: () => {} });
   }
 
   /** The page moved to another document or size, which a screencast may not draw: a still follows once it stops changing. */

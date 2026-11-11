@@ -3,6 +3,7 @@ import type { StreamCdp } from '../src/browser/frames.ts';
 import {
   PushStream, SCREENCAST_ACK_PACE_MS, SCREENCAST_SETTLE_MS, StreamWire, VIEWER_OUTPUT_LIMIT, type Picture,
 } from '../src/browser/push-stream.ts';
+import { jpegWidth } from '../src/browser/shrink.ts';
 
 const JPEG = Buffer.from('picture').toString('base64');
 
@@ -91,6 +92,42 @@ test('pictures come at half size and lighter while the viewer scrolls, and a ful
   stream.resize(640);
   await settle();
   expect(chromium.of('Page.startScreencast').at(-1)!.params).toMatchObject({ maxWidth: 640 });
+  stream.close();
+});
+
+test('a still wider than the viewer shows is shrunk by the page, and goes as taken when the page cannot', async () => {
+  // A JPEG's first bytes: start of image, then a frame of 1300 by 2400.
+  const wide = Buffer.from([0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x05, 0x14, 0x09, 0x60, 0x03, 0x01, 0x22, 0x00]);
+  expect(jpegWidth(wide)).toBe(2400);
+  expect(jpegWidth(Buffer.from('still'))).toBeNull();
+  const chromium = fakeCdp(), taken: Picture[] = [];
+  let page: 'shrinks' | 'throws' = 'shrinks';
+  const send = chromium.cdp.send;
+  chromium.cdp.send = (async (method: string, params: Record<string, unknown> = {}, sessionId?: string) => {
+    const answer = await send(method, params, sessionId);
+    if (method === 'Page.captureScreenshot') return { data: wide.toString('base64') };
+    if (method === 'Page.getFrameTree') return { frameTree: { frame: { id: 'main' } } };
+    if (method === 'Page.createIsolatedWorld') return { executionContextId: 7 };
+    if (method === 'Runtime.callFunctionOn') return page === 'shrinks' ? { result: { value: Buffer.from('shrunk').toString('base64') } } : { exceptionDetails: {} };
+    return answer;
+  }) as StreamCdp['send'];
+  const stream = new PushStream(chromium.cdp, 'target', { maxWidth: 1000, quality: 70 }, run => run());
+  stream.attach(picture => taken.push(picture));
+  await stream.start();
+  expect(taken.map(text)).toEqual(['shrunk']);
+  expect(chromium.of('Runtime.callFunctionOn').at(-1)!.params).toMatchObject({
+    executionContextId: 7, arguments: [{ value: wide.toString('base64') }, { value: 1000 }, { value: 70 }],
+  });
+  // A viewer as wide as the picture is sent it as it was taken, without a trip through the page.
+  stream.resize(2400);
+  await stream.still();
+  expect(Buffer.from(taken.at(-1)!.jpeg).equals(wide)).toBe(true);
+  expect(chromium.of('Runtime.callFunctionOn')).toHaveLength(1);
+  stream.resize(1000);
+  page = 'throws';
+  await stream.still();
+  expect(Buffer.from(taken.at(-1)!.jpeg).equals(wide)).toBe(true);
+  expect(chromium.of('Runtime.callFunctionOn')).toHaveLength(2);
   stream.close();
 });
 
