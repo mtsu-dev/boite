@@ -32,6 +32,7 @@
   import AgentAvatar from './agents/AgentAvatar.svelte';
   import { experimentOn } from '../lib/experiments.svelte';
   import { asksDocked, cardedCall, failedCall, questionDocked } from '../lib/one-status';
+  import { machineAway } from '../lib/machine-away';
 
   /**
    * An assistant or system message in the timeline: the model that wrote it,
@@ -104,6 +105,12 @@
   const retryable = $derived(store.openThread?.id === threadId && !store.busy && store.openThread.turns.at(-1)?.id === message.turnId
     && !store.composerStates[threadId]?.sending && (store.composerStates[threadId]?.queued.length ?? 0) === 0);
   const end = $derived(to ?? message.parts.length);
+  /**
+   * A running turn whose machine is out of reach: what it said is its last known
+   * state, an estimate in it as old as the turn's "Last update" line, which
+   * comes first (`TurnSummary`); its words read in the secondary tier, as history.
+   */
+  const stale = $derived(message.role === 'assistant' && turn?.status === 'running' && store.openThread?.id === threadId && machineAway(store));
   // A run over the same parts stays the same object, so a new part does not redraw the groups above it.
   const runList = new MessageRuns();
   const runs = $derived(ping ? [] : runList.build(message.parts, [], from, end, chatPrefs.groupChanges));
@@ -144,7 +151,7 @@
     <span class="rule"></span>
   </div>
 {/snippet}
-<div class="parts">
+<div class="parts" class:stale data-stale={stale || undefined}>
   {#each runs as run (run.kind === 'memory' ? run.key : runKey(run))}
     {#if run.kind === 'memory'}
       <!-- Never built here (no events go in): a memory stop is machine news for the corner. -->
@@ -294,6 +301,8 @@
   @media (hover: none) { .model-attribution { opacity: 1; } }
   /* Narration between calls: the agent thinking aloud, read at the answer's size and quieter only by its colour. */
   .part.narration { padding: 0 2px; color: var(--color-muted-foreground); }
+  .stale .part[data-kind='text'] { color: var(--color-muted-foreground); }
+  .stale .part[data-kind='text'] :global(.prose) { font-size: var(--text-sm); line-height: 1.5; }
   .system-event { display: flex; align-items: flex-start; gap: 8px; color: var(--color-muted-foreground); }
   .system-event > :global(svg) { flex: none; margin-top: 3px; color: var(--color-subtle); }
   .system-copy { min-width: 0; }

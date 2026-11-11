@@ -153,7 +153,7 @@ export const strings = {
       /** A delegated agent's turn ended on its own background work, which wakes it: what it waits for. */
       awaiting: 'Waiting on {what}',
       /** That work ended without waking it: the agent stopped there, its result never came. */
-      interrupted: 'Interrupted',
+      interrupted: 'Stopped',
       /** Its machine stopped answering while it worked: what it does now is unknown until the machine is back. */
       unreachableWas: 'Machine offline. Last known state: {state}',
       interruptedBy: '{what} ended without reporting back: {reason}',

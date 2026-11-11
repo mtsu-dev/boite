@@ -122,7 +122,7 @@
   <span class="metric" class:meta><span class="dot ui-label" aria-hidden="true">·</span><span class="ui-label" class:quiet data-testid={id} {title}>{text}</span></span>
 {/snippet}
 {#if turn.status !== 'queued' && !(running && activeTool && !waiting && !stale && background.length === 0 && !observed && !compacting) && !(tucked && settled && !marked)}
-  <div class="summary" class:compacting class:settled class:pointed class:marked class:paused={hidden || waiting} data-testid="turn-summary" data-status={turn.status} role="status" aria-label={label} title={label}>
+  <div class="summary" class:compacting class:stale class:settled class:pointed class:marked class:paused={hidden || waiting} data-testid="turn-summary" data-status={turn.status} role="status" aria-label={label} title={label}>
     {#if compacting}
       <span class="compaction-icon"><Spinner size={16} paused={hidden || waiting} /></span>
       <div class="compaction-copy">
@@ -204,6 +204,9 @@
   .metric { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
   .tail { display: inline-flex; }
   .summary[data-status='running'] { color: var(--color-muted-foreground); }
+  /* The machine is away: how old the turn's last known state is comes before it, at the top of its message (a
+     flex column), and what it said follows as history (AssistantMessage's `stale`). */
+  .summary.stale { order: -1; margin-top: 0; margin-bottom: var(--chat-block-gap); color: var(--color-foreground); }
   /* Read on demand: the message under the pointer or the keyboard shows it, a finger always does. */
   .summary.settled { opacity: 0; transition: opacity var(--dur-2); }
   :global(.message:hover) .summary.settled, .summary.settled.pointed, .summary.settled:focus-within, .summary.settled:not(:has(.tail)) { opacity: 1; }

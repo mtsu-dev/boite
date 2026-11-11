@@ -17,13 +17,13 @@ export const strings = {
     answerTextPlaceholder: 'Type your answer',
     /** The box while a question at its top takes no text: a message is queued until the answer. */
     afterAnswerPlaceholder: 'A message waits until you answer',
-    /** The box while a permission waits on its command row in view: Send denies it, stops the turn and sends the message as the next one. `{subject}` is `permissionSubject` or its fallback. */
-    permissionPlaceholder: 'Send a message to decline {subject} and redirect',
-    /** The same on a phone, one line on a 360 px screen. */
-    permissionPlaceholderShort: 'Reply to decline {subject}',
-    /** The permission named by its short title ("Push orbit/csv-import"), cut at a word. */
-    permissionSubject: '"{title}"',
-    permissionSubjectFallback: 'this request',
+    /** The box while a permission waits on its command row in view, beside its Deny and Allow once. One line on a 360 px phone. */
+    permissionPlaceholder: 'Or tell {name} what to do instead',
+    /** Send while a permission waits and the box holds text: it denies the permission, stops the turn and sends the message as the next one. */
+    declineSend: 'Decline and send',
+    /** Its tooltip, the permission named by its title ("Push orbit/csv-import"). */
+    declineSendHint: 'Declines {title}, then sends your message',
+    declineSendHintFallback: 'Declines this request, then sends your message',
     replySend: 'Send as your answer',
     switchTitle: 'Switch a {tokens} token thread to {provider}?',
     switchBody: '{provider} starts a new session and receives excerpts of the opening and of the most recent exchanges, about 20k tokens. The rest is lost to it. Compacting first changes nothing.',

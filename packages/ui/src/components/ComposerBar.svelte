@@ -2,7 +2,7 @@
   import { ArrowUp, LoaderCircle, Mic, MicOff, Square } from '@lucide/svelte';
   import { tick } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
-  import { effectiveCompaction, type PermissionMode, type ProviderSummary } from '@boite/contracts';
+  import { effectiveCompaction, type PermissionMode, type PermissionRequest, type ProviderSummary } from '@boite/contracts';
   import { formatTokens, providerName } from '../lib/format';
   import { confirm } from '../lib/confirm.svelte';
   import { switchDropsHistory, switchResetsCache, type CacheKey } from '../lib/switch-warning';
@@ -25,6 +25,7 @@
   import type { ComposerTarget } from '../lib/composer-target';
   import { desktopSettings } from '../lib/settings-tabs';
   import { machineAway } from '../lib/machine-away';
+  import { declineHint } from '../lib/composer-placeholder';
   /** The context's reading shows in the row from this percent used. */
   const CONTEXT_SHOWN_FROM = 70;
 
@@ -38,6 +39,8 @@
    * (not while it stands on a decision of the owner's). While the field
    * answers a question the button is Send alone, live once text is typed: the
    * card's Answer sends its picks, and the turn's Stop waits in the foot's line.
+   * While a permission waits and the box holds text, Send says what it does:
+   * the outline words "Decline and send", the permission named in its tooltip.
    * Nothing comes or goes with a decision docked above: the row keeps its
    * place and its controls. A pick on a thread is saved at once, after the
    * switch warnings; on a draft the whole choice is remembered. `choice`,
@@ -57,6 +60,7 @@
     answering = false,
     typed = true,
     sendLabel = strings.composer.send,
+    declining = null,
     choice = $bindable(),
     picking = $bindable(),
     dictating = $bindable(),
@@ -84,6 +88,8 @@
     typed?: boolean;
     /** What Send does, when it answers a question rather than sending a message. */
     sendLabel?: string;
+    /** The thread's waiting permission, which a message sent now declines. */
+    declining?: Pick<PermissionRequest, 'toolName' | 'input'> | null;
     choice: Choice | null;
     picking: boolean;
     dictating: boolean;
@@ -104,6 +110,8 @@
   /** One round button at the row's end: Stop while a turn runs and nothing typed waits to go, Send otherwise. */
   /** Nothing reaches a machine out of reach: no Stop, and Send queues what is written for its return. */
   let stopShown = $derived(stopping && !held && !answering && !waiting && !(canSend && typed) && (!!target || !machineAway(store)));
+  /** Send declines: a permission waits and the box holds something to send. */
+  let declines = $derived(!target && !answering && !waiting && canSend && declining ? declineHint(declining) : null);
 
   let picker = $state<HTMLInputElement | undefined>(undefined);
   let bar = $state<HTMLDivElement | undefined>(undefined);
@@ -332,7 +340,7 @@
   {/if}
 
   <!-- Dictation and the round button: at the row's end on a desktop, at the field's end on a phone (where the row gives its width to the chips' words). -->
-  <div class="tools" data-count={voice.current.enabled ? 2 : 1}>
+  <div class="tools" data-count={voice.current.enabled ? 2 : 1} data-declines={declines ? 'true' : undefined}>
   {#if voice.current.enabled}
   {#key store}
     {#key `${key}:${store.draft?.projectId ?? ''}`}
@@ -352,6 +360,12 @@
       <Square size={12} strokeWidth={2.5} />
     </button>
   {/if}
+  {#if declines}
+    <!-- The consequence in words, never the accent: the outline secondary, the permission named in its tooltip. -->
+    <button type="button" class="secondary decline" data-testid="composer-send" data-declines="true" title={declines} onmousedown={keepFocus} onclick={() => onsubmit()}>
+      <span class="ui-label">{strings.composer.declineSend}</span>
+    </button>
+  {:else}
   <button
     type="button"
     class="primary icon send"
@@ -366,6 +380,7 @@
   >
     {#if waiting}<LoaderCircle size={16} strokeWidth={2.25} class="spinner" />{:else}<ArrowUp size={16} strokeWidth={2.25} />{/if}
   </button>
+  {/if}
   </div>
 </div>
 
@@ -457,6 +472,8 @@
   }
 
   .send { box-shadow: var(--shadow-send); }
+  /* Send that declines: words in the family's outline, send's round ends and height. */
+  .decline { flex: none; height: 32px; padding: 0 14px; border-radius: var(--radius-full); font-size: var(--text-sm); font-weight: 500; }
   .send.resting { display: none; }
   .send :global(.spinner) { animation: spin 1s linear infinite var(--loops); }
   @media (prefers-reduced-motion: reduce) { .send :global(.spinner) { animation: none; } }
@@ -504,6 +521,11 @@
        ::after below keeps the 44 px target. */
     .tools :is(.send, .stop) { position: relative; width: 36px; height: 36px; min-width: 0; min-height: 0; margin: 4px; }
     .tools :is(.send, .stop)::after { content: ''; position: absolute; inset: -5px; border-radius: inherit; }
+    /* The words at the field's end, 36 px drawn in a 44 px target; the field's text stops short of them. */
+    .tools .decline { position: relative; height: 36px; margin: 4px; padding: 0 12px; }
+    .tools .decline::after { content: ''; position: absolute; inset: -4px 0; }
+    :global(.composer-wrap .composer:has(.bar .tools[data-declines][data-count='1'])) { --composer-tools: 10.5rem; }
+    :global(.composer-wrap .composer:has(.bar .tools[data-declines][data-count='2'])) { --composer-tools: calc(10.5rem + var(--touch-target)); }
     /* Every value whole: a row too short for them wraps onto a second one
        under it, each row a 44 px target (36 px chips, 8 px between rows). The
        "+" stays on the first row, the field above never changes its place in

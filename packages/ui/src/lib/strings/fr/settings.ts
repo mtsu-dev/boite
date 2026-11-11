@@ -20,7 +20,7 @@ export const fr: Translation = {
       general: 'Général',
       machines: 'Machines et mises à jour',
       advanced: 'Système',
-      appearance: 'Apparence',
+      appearance: 'Style et langue',
       keyboard: 'Clavier',
       accounts: 'Fournisseurs',
       plugins: 'Extensions',
@@ -42,7 +42,6 @@ export const fr: Translation = {
     notificationsHeading: 'Notifications',
     homeOn: 'Activée',
     homeOff: 'Désactivée',
-    appearanceAndLanguage: 'Apparence et langue',
     effects: {
       groupWorking: 'Les conversations au travail se replient sous En cours, celles qui vous attendent restent en vue',
       groupIdle: 'Les projets sans rien à faire se replient dans Projets inactifs, en fin de liste',

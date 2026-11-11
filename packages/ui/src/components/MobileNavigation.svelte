@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { rowAsks } from '../lib/status-order';
+  import { needsYou, rowAsks } from '../lib/status-order';
   import { tick } from 'svelte';
   import WindowList from './WindowList.svelte';
   import MobileTabs from './MobileTabs.svelte';
@@ -388,7 +388,7 @@
         <section class="project-group" class:inactive={!activeProject(group)} data-testid="mobile-project-group" data-project-id={group.project.id} data-machine-id={group.machine.id}>
           <div class="project-heading" data-row-edge>
             <ProjectTile project={group.project} store={group.machine.store} /><h2><span class="name">{projectName(group.project)}</span>{#if hostName(group.machine, machines, home?.id)}<MachinePlace host={{ ...hostName(group.machine, machines, home?.id)!, away: false }} testid="mobile-project-host" />{/if}</h2>
-            <ProjectThreadCounters entry={group} working={group.machine.store.threadsOf(group.project.id).filter(thread => workingThread(group.machine.store, thread)).length} waiting={waitingHere} {controls} searching={!!query} away={group.machine.store.connection !== 'ready'} />
+            <ProjectThreadCounters entry={group} working={group.machine.store.threadsOf(group.project.id).filter(thread => workingThread(group.machine.store, thread)).length} waiting={waitingHere} listed={attentionRows.filter(row => needsYou(threadState(row.thread, rowAsks(row.machine.store, row.thread.id)))).length} {controls} searching={!!query} away={group.machine.store.connection !== 'ready'} />
             {#if projectView.order === 'manual'}
               <Menu items={[
                 { id: 'up', label: strings.sidebar.moveProjectUp, disabled: projectKey(foldOf(group)[0]!) === projectKey(group) },

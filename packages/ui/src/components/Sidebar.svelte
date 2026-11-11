@@ -2,8 +2,7 @@
   import { tick, untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import WindowList from './WindowList.svelte';
-  import FailMark from './FailMark.svelte';
-  import { ChevronRight, Ellipsis, FolderPlus, FolderX, GripVertical, LoaderCircle, PanelRightClose, PanelRightOpen, UserPlus } from '@lucide/svelte';
+  import { ChevronRight, Ellipsis, FolderPlus, FolderX, GripVertical, LoaderCircle, PanelRightClose, PanelRightOpen, Square, UserPlus } from '@lucide/svelte';
   import type { Project, ThreadId, ThreadSummary } from '@boite/contracts';
   import type { Store } from '../lib/store.svelte';
   import { workspace, type Machine } from '../lib/workspace.svelte';
@@ -305,6 +304,7 @@
         {@const fold = cardRows(entry, lists.attention)}
         {@const controls = `sidebar-project-${encodeURIComponent(projectKey(entry))}`}
         {@const collapsed = owner.isCollapsed(project.id)}
+        {@const listed = collapsed ? 0 : fold.shown.filter(thread => needsYou(threadState(thread, rowAsks(owner, thread.id)))).length}
         {@const away = owner.connection !== 'ready'}
         {@const rollup = collapsed && !away ? projectRollup(owner.threadsOf(project.id), thread => rowAsks(owner, thread.id)) : null}
         {@const draftsHere = owner.draftEntries.filter(entry => entry.projectId === project.id)}
@@ -343,10 +343,10 @@
               ><span class="name project-title ui-label" class:gone={project.missing === true}>{projectName(project)}</span
               >{#if host(machine)}<MachinePlace host={{ ...host(machine)!, away: false }} testid="project-host" />{/if}{#if project.missing === true}<span class="missing" data-testid="project-missing" title={strings.sidebar.projectMissing} aria-label={strings.sidebar.projectMissing}><FolderX size={13} aria-hidden="true" /></span>{/if}{#if rollup && !needsYou(rollup.kind) && rollup.kind !== 'done' && lists.working.length === 0}{@const label = fill(rollup.count === 1 ? strings.sidebar.rollupOne : strings.sidebar.rollupMany, { count: String(rollup.count), state: strings.sidebar.state[rollup.kind] })}<span
                   class="rollup {rollup.kind}" data-testid="project-rollup" data-state={rollup.kind} title={label} aria-label={label}
-                  >{#if rollup.kind === 'interrupted'}<FailMark size={10} />{:else}<span class="work-ring" aria-hidden="true"></span>{/if}{#if rollup.count > 1}<span class="ui-label">{rollup.count}</span>{/if}</span
+                  >{#if rollup.kind === 'interrupted'}<Square size={9} fill="currentColor" aria-hidden="true" />{:else}<span class="work-ring" aria-hidden="true"></span>{/if}{#if rollup.count > 1}<span class="ui-label">{rollup.count}</span>{/if}</span
                 >{/if}
             </button>
-            <ProjectThreadCounters {entry} working={lists.working.length} waiting={away ? 0 : waitingCount(entry)} {controls} {collapsed} {away} />
+            <ProjectThreadCounters {entry} working={lists.working.length} waiting={away ? 0 : waitingCount(entry)} {listed} {controls} {collapsed} {away} />
             <button
               class="ghost small icon project-actions"
               data-testid="project-menu"
@@ -556,9 +556,10 @@
     font-variant-numeric: tabular-nums;
   }
   .rollup { color: var(--color-muted-foreground); }
-  /* The rows' marks: a grey ring for work (dotted in the queue), the failure's "!" for work that stopped short. */
+  /* The rows' marks: a grey ring for work (dotted in the queue), the stop's grey square for work that stopped short. */
   .rollup .work-ring { box-sizing: border-box; width: 8px; height: 8px; border: 1.5px dashed var(--color-accent); border-radius: var(--radius-full); }
   .rollup.queued .work-ring { border-style: dotted; border-color: var(--color-muted-foreground); }
+  .rollup.interrupted :global(svg) { color: var(--color-subtle); }
   /* The project's mark and its fold chevron share one slot: the mark gives way
      to the chevron while a pointer or the keyboard is on the header. */
   .mark {

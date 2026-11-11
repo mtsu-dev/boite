@@ -56,7 +56,7 @@ export const strings = {
       everydayHint: 'A new conversation waits in Documents/Boite until you give it a folder, and the agent asks before it acts.',
       developer: "I'm a developer, give me the works.",
       developerHint: 'The app opens on your last project, conversations show the terminal and the process trace, and the panel opens on the changes.',
-      later: 'Nothing is taken away either way. Settings, Appearance shows or hides any button, one by one.'
+      later: 'Nothing is taken away either way. Look and language, in Settings, shows or hides any button, one by one.'
     },
 
     welcome: {

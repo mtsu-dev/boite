@@ -130,7 +130,7 @@ export const fr: Translation = {
       watching: 'Surveille une PR',
       watchingMany: 'Surveille {count} PR',
       awaiting: 'Attend : {what}',
-      interrupted: 'Interrompu',
+      interrupted: 'Arrêté',
       unreachableWas: 'Machine hors ligne. Dernier état connu : {state}',
       interruptedBy: '{what} s’est terminé sans rendre de résultat : {reason}',
       interruption: {

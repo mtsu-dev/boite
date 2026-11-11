@@ -160,6 +160,28 @@ test('the state mark stands in one place on every kind of card: its own column, 
   }
 });
 
+test('a stop wears the grey square of a stopped subagent, never the failure\'s red "!", which only a failure keeps', async () => {
+  const { parent, groups } = await rows('bun test');
+  const own = groups.find(group => group.row.thread.id === parent.id)!;
+  // The thread no longer asks: what is left is its own end.
+  store.pendingPermissions = []; store.pendingQuestions = [];
+  store.threads = store.threads.filter(thread => thread.parentThreadId !== parent.id);
+  const stoppedThread = { ...parent, status: 'idle', backgroundWait: { state: 'interrupted', for: 'release build', reason: 'error', at: Date.now() } } as ThreadSummary;
+  const failedThread = { ...parent, status: 'error' } as ThreadSummary;
+  for (const [kind, thread, verb] of [['stopped', stoppedThread, null], ['failed', failedThread, 'review']] as const) {
+    mounted = mount(ActivityRow, { target: document.body, props: { ...own, helpers: [], row: { ...own.row, section: verb ? 'needs' : 'updates', kind, verb, thread }, now: Date.now() } });
+    await settle();
+    const mark = document.querySelector<HTMLElement>('[data-testid=activity-mark] .when.state')!;
+    expect(mark.dataset.state).toBe(kind === 'stopped' ? 'interrupted' : 'error');
+    expect(mark.getAttribute('aria-label')?.split('\n')[0]).toBe(kind === 'stopped' ? 'Stopped' : 'Failed');
+    expect(mark.querySelector('.fail') !== null).toBe(kind === 'failed');
+    expect(mark.querySelector('svg.lucide-square') !== null).toBe(kind === 'stopped');
+    // The kind line's glyph is red for a failure only.
+    expect(document.querySelector('[data-testid=activity-kind]')!.classList.contains('alarm')).toBe(kind === 'failed');
+    await unmount(mounted); mounted = undefined;
+  }
+});
+
 test('the menu stands in one place on every kind of card, Needs you and Updates alike: the card\'s last part, after its pair', async () => {
   const { parent, child, groups } = await rows('bun test');
   const own = groups.find(group => group.row.thread.id === parent.id)!;

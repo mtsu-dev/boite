@@ -245,7 +245,9 @@ export const strings = {
     /** The primary of a question that another one follows: it answers this one and shows the next. */
     questionAnswerNext: 'Next',
     questionAnswerNextHint: 'Answer and go to the next question',
+    /** Under the choices until one is picked: what makes Answer act. The second when the box below writes this answer. */
     questionPickFirst: 'Pick an option first',
+    questionPickOrType: 'Pick an option, or type your own answer below',
     questionAnswered: 'You answered: {answer}',
     /** A question skipped or dropped with its turn: one line in the run, never the card again. */
     questionCancelled: 'Not answered: {question}',

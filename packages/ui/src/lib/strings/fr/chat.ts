@@ -203,6 +203,7 @@ export const fr: Translation = {
     questionAnswerNext: 'Suivant',
     questionAnswerNextHint: 'Répondre et passer à la question suivante',
     questionPickFirst: 'Choisis d\'abord une option',
+    questionPickOrType: 'Choisis une option, ou écris ta réponse en dessous',
     questionAnswered: 'Vous avez répondu : {answer}',
     questionCancelled: 'Sans réponse : {question}',
     questionMore: 'Voir {count} autres choix',

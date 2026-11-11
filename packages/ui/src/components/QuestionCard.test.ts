@@ -30,7 +30,7 @@ function submit(): HTMLButtonElement {
   return query<HTMLButtonElement>('[data-testid=question-submit]');
 }
 
-test('Answer with nothing picked is drawn disabled, sends nothing, moves to the first option and asks for a pick until one is made; 1 to 9 still pick there, and what was picked goes out once', () => {
+test('Answer with nothing picked waits as an outline under a line that says what enables it, sends nothing, moves to the first option; 1 to 9 still pick there, and what was picked goes out once', () => {
   const sent: string[][] = [];
   running = mount(QuestionCard, {
     target: document.body,
@@ -49,11 +49,15 @@ test('Answer with nothing picked is drawn disabled, sends nothing, moves to the 
 
   expect(query('[data-testid=question-card]').getAttribute('data-state')).toBe('pending');
   expect(options()).toHaveLength(2);
-  // Nothing picked: Answer is drawn disabled and its tooltip says why, yet a press still answers.
+  // Nothing picked: Answer waits as the outline secondary, never a faint primary; the line under the choices says what
+  // enables it, before any press, and describes it to a screen reader. A press still answers.
   expect(submit().disabled).toBe(false);
   expect(submit().getAttribute('aria-disabled')).toBe('true');
+  expect(submit().classList.contains('secondary')).toBe(true);
+  expect(submit().classList.contains('primary')).toBe(false);
   expect(submit().title).toBe('Pick an option first');
-  expect(document.querySelector('[data-testid=question-pick-first]')).toBeNull();
+  expect(query('[data-testid=question-pick-first]').textContent).toBe('Pick an option first');
+  expect(submit().getAttribute('aria-describedby')).toBe(query('[data-testid=question-pick-first]').id);
   // The card has no field of its own: the composer is the free answer.
   expect(document.querySelector('input, textarea')).toBeNull();
 
@@ -71,6 +75,7 @@ test('Answer with nothing picked is drawn disabled, sends nothing, moves to the 
   expect(document.querySelector('[data-testid=question-pick-first]')).toBeNull();
   // A pick lights Answer as the primary.
   expect(submit().hasAttribute('aria-disabled')).toBe(false);
+  expect(submit().classList.contains('primary')).toBe(true);
   expect(submit().title).toBe('');
 
   // One choice only: the second option replaces the first.
@@ -89,7 +94,28 @@ test('Answer with nothing picked is drawn disabled, sends nothing, moves to the 
   expect(sent).toHaveLength(1);
 });
 
-test('a docked question speaks the decision pair: Skip outlined then Answer primary, on one right-aligned line, Answer drawn disabled but pressable before a pick, filled at the pick, faded once on its way', async () => {
+test('a waiting Answer reads: the muted ink on its outline, and where the box below writes the answer the line says so', async () => {
+  running = mount(QuestionCard, {
+    target: document.body,
+    props: { text: 'Which shape?', options: OPTIONS, allowText: true, multiple: false, answer: null, pending: true, docked: true, replying: true, submit: () => true }
+  });
+  flushSync();
+  expect(query('[data-testid=question-pick-first]').textContent).toBe('Pick an option, or type your own answer below');
+  expect(submit().title).toBe('Pick an option, or type your own answer below');
+  // The ink is the muted text tier, which lib/contrast.test.ts holds over 14:1 on every ground: not the faint tier of a disabled mark.
+  const { compile } = await import('svelte/compiler');
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync(`${import.meta.dirname}/QuestionCard.svelte`, 'utf8').replace(/<script lang="ts">[\s\S]*?<\/script>/, '<script></script>');
+  const css = compile(source, { filename: 'QuestionCard.svelte', cssHash: () => 'c' }).css?.code ?? '';
+  expect(css.match(/\.waiting\.c \{([^}]*)\}/)?.[1]).toContain('color: var(--color-muted-foreground)');
+  expect(readFileSync(`${import.meta.dirname}/../app.css`, 'utf8')).not.toContain("button.primary[aria-disabled='true']");
+  options()[1]!.click();
+  flushSync();
+  expect(document.querySelector('[data-testid=question-pick-first]')).toBeNull();
+  expect(submit().classList.contains('primary')).toBe(true);
+});
+
+test('a docked question speaks the decision pair: Skip outlined then Answer, on one right-aligned line, Answer an outline but pressable before a pick, the filled primary at the pick, faded once on its way', async () => {
   running = mount(QuestionCard, {
     target: document.body,
     props: { text: 'Which shape?', options: OPTIONS, allowText: false, multiple: false, answer: null, pending: true, docked: true, submit: () => true, skip: () => true }
@@ -98,7 +124,7 @@ test('a docked question speaks the decision pair: Skip outlined then Answer prim
   const pair = query('.decision-actions');
   const buttons = [...pair.querySelectorAll<HTMLButtonElement>(':scope > button')];
   expect(buttons.map((entry) => [entry.dataset.testid, entry.className.split(' ').find((name) => name === 'secondary' || name === 'primary')]))
-    .toEqual([['question-skip', 'secondary'], ['question-submit', 'primary']]);
+    .toEqual([['question-skip', 'secondary'], ['question-submit', 'secondary']]);
   // Skip leaves the head: the pair is the only place a decision is made.
   expect(document.querySelector('.decision-head [data-testid=question-skip]')).toBeNull();
   expect(submit().disabled).toBe(false);
@@ -114,14 +140,15 @@ test('a docked question speaks the decision pair: Skip outlined then Answer prim
   try {
     // jsdom resolves no var(): read the pair's rule that holds the disabled Answer and check it fills it.
     const rule = [...style.sheet!.cssRules].find((entry): entry is CSSStyleRule => entry instanceof CSSStyleRule && entry.selectorText.includes('primary:disabled'))!;
-    // Before any pick it wears app.css's waiting primary (a quiet fill, dim ink), not the pair's faded fill.
-    expect(submit().classList.contains('primary')).toBe(true);
+    // Before any pick it is the outline secondary, not the pair's faded fill.
+    expect(submit().classList.contains('secondary')).toBe(true);
     expect(buttons.at(-1)).toBe(submit());
     expect(submit().getAttribute('aria-disabled')).toBe('true');
     expect(submit().matches(rule.selectorText)).toBe(false);
     options()[0]!.click();
     flushSync();
     expect(submit().hasAttribute('aria-disabled')).toBe(false);
+    expect(submit().classList.contains('primary')).toBe(true);
     submit().click();
     flushSync();
     expect(submit().disabled).toBe(true);

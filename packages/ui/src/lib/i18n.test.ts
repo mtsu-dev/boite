@@ -78,7 +78,7 @@ test('a stored choice that is not a language is the system one', () => {
 test('picking a language stores it, stamps the root and swaps every sentence at once', () => {
   expect(activeLocale()).toBe('en');
   expect(strings.common.yes).toBe('yes');
-  expect(strings.settings.tabs.appearance).toBe('Appearance');
+  expect(strings.settings.tabs.appearance).toBe('Look and language');
 
   setLocaleSetting('fr');
 
@@ -87,7 +87,7 @@ test('picking a language stores it, stamps the root and swaps every sentence at 
   expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('fr');
   expect(document.documentElement.lang).toBe('fr');
   expect(strings.common.yes).toBe('oui');
-  expect(strings.settings.tabs.appearance).toBe('Apparence');
+  expect(strings.settings.tabs.appearance).toBe('Style et langue');
   // A list of sentences comes over whole rather than one proxy per item.
   expect(strings.settings.accentNames[0]).toBe('Bleu');
   expect(Array.isArray(strings.settings.accentNames)).toBe(true);

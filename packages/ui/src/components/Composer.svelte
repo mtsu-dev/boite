@@ -40,8 +40,6 @@
   import SlashMenu from './SlashMenu.svelte';
   import SideAnswer from './SideAnswer.svelte';
   import { permissionRedirect } from '../lib/permission-redirect.svelte';
-  import { decisionTail } from '../lib/decision-tail.svelte';
-  import { MediaQuery } from 'svelte/reactivity';
   import { ComposerSide } from '../lib/composer-side.svelte';
   import { chipChoice, queuedChoice, sendToTarget, type ComposerTarget } from '../lib/composer-target';
 
@@ -199,10 +197,9 @@
   let stopped = $derived(!target && (!!thread?.worktreeRemoved || (store.openProject?.missing === true && !thread?.agentSessionId)
     || (!!thread?.contactHold && !thread.archived)));
 
-  const narrow = new MediaQuery('(max-width: 720px)');
-  // What Send does to the question at the top of the box (composerPlaceholder's `answer`); the foot names a permission out of view.
+  // What Send does to the question at the top of the box (composerPlaceholder's `answer`) or to a waiting permission.
   let answer = $derived(reply ? (reply.options.length ? 'options' as const : 'text' as const) : docked && docked.threadId === thread?.id && !docked.async && store.busy ? 'after' as const : null);
-  let placeholder = $derived(composerPlaceholder({ target, replying: !!thread && store.busy, answer, permission: !reply && !decisionTail.away ? permission : null, narrow: narrow.current, bot, offline, away, accountGone, onThread: !!thread, machine: machineLabel, provider: provider?.name ?? null }));
+  let placeholder = $derived(composerPlaceholder({ target, replying: !!thread && store.busy, answer, permission: !reply ? permission : null, bot, offline, away, accountGone, onThread: !!thread, machine: machineLabel, provider: provider?.name ?? null }));
 
   // -- the slash menu -----------------------------------------------------------
   // `/` on an empty box, then the word being typed: nothing else opens it, and a
@@ -814,7 +811,7 @@
     <!-- A bot's gone account said once, to a screen reader: the placeholder and its banner (AgentProblem) show it. -->
     {#if botGone}<span class="visually-hidden" role="status" data-testid="composer-bot-gone">{bot ? fill(strings.composer.botAccountGone, { name: bot }) : strings.accounts.removedHint}</span>{/if}
 
-    <ComposerBar bind:this={toolbar} {store} {key} {target} {bot} {botGone} {provider} canSend={sendable && !stopped && !accountGone} typed={!reply || text.trim().length > 0 || attachments.length > 0} waiting={sendWhenLoaded !== null} answering={!!reply}
+    <ComposerBar bind:this={toolbar} {store} {key} {target} {bot} {botGone} {provider} canSend={sendable && !stopped && !accountGone} typed={!reply || text.trim().length > 0 || attachments.length > 0} waiting={sendWhenLoaded !== null} answering={!!reply} declining={!reply && !offline ? permission : null}
       onmention={!target && !reply && mentionProject !== null ? startMention : undefined} oncommand={!target && !reply && text.trim() === '' ? startCommand : undefined} sendLabel={reply ? strings.composer.replySend : undefined} bind:choice bind:picking bind:dictating
       onsubmit={() => void submit()}
       onfiles={(files) => void take(files)}

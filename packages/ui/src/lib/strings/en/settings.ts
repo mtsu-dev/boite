@@ -18,7 +18,7 @@ export const strings = {
       general: 'General',
       machines: 'Machines and updates',
       advanced: 'System',
-      appearance: 'Appearance',
+      appearance: 'Look and language',
       keyboard: 'Keyboard',
       accounts: 'Providers',
       plugins: 'Plugins',
@@ -42,8 +42,6 @@ export const strings = {
     /** A phone's Settings home: what Voice holds now, before its chevron. */
     homeOn: 'On',
     homeOff: 'Off',
-    /** A phone's Settings row and page that hold the theme and the language. */
-    appearanceAndLanguage: 'Appearance and language',
     /** The muted line under a switch: what turning it on does. */
     effects: {
       groupWorking: 'Threads at work fold under Working, so the ones that need you stay in view',

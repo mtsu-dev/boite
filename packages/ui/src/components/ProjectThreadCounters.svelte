@@ -6,16 +6,19 @@
   import { recentPreferences } from '../lib/recent.svelte';
 
   /**
-   * A project card's one count: the threads that need the user (`waiting`), "Needs you" and its amber number on
-   * every device (a bare number said nothing on the desktop). The working count stands only where no row says it:
+   * A project card's one count: the threads that need the user (`waiting`), the rows' amber dot and its number on
+   * every device. Each of those rows says "Needs you" itself, so the head says it only while one of them is out of
+   * sight (`listed`: how many the card shows as rows; a folded card shows none), or while a list too narrow for the
+   * rows' words leaves them their dot alone (ThreadState.svelte `fit`). The tooltip and the accessible name always
+   * say it. The working count stands only where no row says it:
    * a folded card, or the fold of working threads (the display menu's grouping), whose toggle it is, so there it
    * stays beside Needs you. The archived ones live in the card's menu (lib/project-menu.ts).
    * `away`: the machine is not connected; its last known working count stays, the counts that ask are not drawn.
    * The amber count stands alone in the header: with threads that need the user, the working fold's toggle moves
    * into the card, over the fold it opens (`place="fold"`, a row of its own with the same test id).
    */
-  let { entry, working, controls, collapsed = false, searching = false, away = false, waiting = 0, place = 'head' }: {
-    entry: ProjectEntry; working: number; controls: string; collapsed?: boolean; searching?: boolean; away?: boolean; waiting?: number; place?: 'head' | 'fold';
+  let { entry, working, controls, collapsed = false, searching = false, away = false, waiting = 0, listed = 0, place = 'head' }: {
+    entry: ProjectEntry; working: number; controls: string; collapsed?: boolean; searching?: boolean; away?: boolean; waiting?: number; listed?: number; place?: 'head' | 'fold';
   } = $props();
   const grouped = $derived(recentPreferences.groupWorking);
   const open = $derived(!collapsed && !searching && projectThreadView.isOpen(entry, 'working'));
@@ -33,7 +36,7 @@
   {/if}
 {:else}<div class="counters">
   {#if waiting > 0}
-    <span class="counter waiting" data-testid="project-waiting-count" data-count={waiting} role="img" title={waitingLabel} aria-label={waitingLabel}><span class="dot" aria-hidden="true"></span><span class="ui-label word">{strings.sidebar.state.waiting}</span><span class="ui-label number">{formatCount(waiting)}</span></span>
+    <span class="counter waiting" data-testid="project-waiting-count" data-count={waiting} role="img" title={waitingLabel} aria-label={waitingLabel}><span class="dot" aria-hidden="true"></span><span class="ui-label word" class:spare={!collapsed && listed >= waiting}>{strings.sidebar.state.waiting}</span><span class="ui-label number">{formatCount(waiting)}</span></span>
   {/if}
   {#if working > 0 && waiting === 0 && (grouped || collapsed)}
     <button type="button" class="ghost counter working" class:away class:active={open && grouped} data-testid="project-working-toggle" data-count={working}
@@ -55,6 +58,12 @@
   /* The word beside the mark the rows wear, so the dot is learned where it is first named. */
   .dot { width: 8px; height: 8px; flex: none; border-radius: var(--radius-full); background: var(--color-live); }
   .counter .word { margin-right: 2px; }
+  /* Said by every row that needs the user, so not here, unless the rows drop their word: a row's word gives way under
+     274 px (ThreadState.svelte), which is a 294 px list, its card's 20 px of edges around the row. */
+  .spare { display: none; }
+  @container sidebar (max-width: 293.98px) {
+    .counter .spare { display: block; }
+  }
   /* Work, still: the rows' accent arc (ThreadState.svelte). The open thread keeps the one live spinner. */
   .work-ring { box-sizing: border-box; width: 9px; height: 9px; border: 1.5px solid var(--color-accent); border-top-color: transparent; border-radius: var(--radius-full); transform: rotate(45deg); }
   .counter:hover:not(:disabled) { background: var(--color-hover); color: var(--color-foreground); }

@@ -7,8 +7,8 @@
    * primary (Allow once, Answer) solid in the neutral ink, both one height.
    * The buttons are the caller's: `class="secondary"` and `class="primary"`.
    * A primary already pressed and on its way stays solid, faded: the
-   * decision's one filled action reads first. One that waits for a pick
-   * (`aria-disabled`) wears app.css's quiet disabled fill. `lead` holds what
+   * decision's one filled action reads first. One that waits for a pick is
+   * the caller's outline secondary until the pick. `lead` holds what
    * reads before them at the line's start (a pager, a count).
    */
   let { lead, children }: { lead?: Snippet; children: Snippet } = $props();

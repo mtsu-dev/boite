@@ -76,19 +76,22 @@
   } = $props();
 
   let sent = $state(false);
+  const hintId = $props.id();
   let open = $state(false);
   const verdict = $derived(strings.chat.questionAnswered.split('{answer}') as [string, string?]);
   let built = $state(false);
   $effect(() => { if (open) built = true; });
 
   const ready = $derived(picked.length > 0 || drafted);
-  /** Answer pressed with nothing to send: a quiet line under the choices, gone at the first pick. */
-  let pickFirst = $state(false);
-  $effect(() => { if (ready) pickFirst = false; });
   /** Docked with options, the card keeps its own Answer. */
   const answers = $derived(docked && options.length > 0);
-  /** Choices and nothing picked or typed: Answer is drawn as the disabled primary, yet a press still says why. */
+  /**
+   * Choices and nothing picked or typed: Answer waits as an outline in the
+   * muted ink, a line under the choices says what makes it act, and a press
+   * goes to the first choice. At the first pick it becomes the primary.
+   */
   const waiting = $derived(options.length > 0 && !ready);
+  const waitHint = $derived(allowText && replying ? strings.chat.questionPickOrType : strings.chat.questionPickFirst);
 
   /**
    * The docked choices get a room: the composer's cap on the question
@@ -165,7 +168,6 @@
     if (!pending || sent) return;
     if (!ready) {
       if (options.length === 0) { onwrite?.(); return; }
-      pickFirst = true;
       list?.querySelector<HTMLButtonElement>('button')?.focus();
       return;
     }
@@ -295,7 +297,7 @@
       {#if below > 0}
         <button type="button" class="ghost more" data-testid="question-more" onmousedown={keepFocus} onclick={more}><span class="ui-label">{below === 1 ? strings.chat.questionMoreOne : fill(strings.chat.questionMore, { count: String(below) })}</span><ChevronDown size={14} strokeWidth={2} aria-hidden="true" /></button>
       {/if}
-      {#if pickFirst && pending}<p class="muted pick-first" data-testid="question-pick-first" role="status">{strings.chat.questionPickFirst}</p>{/if}
+      {#if waiting && pending && !sent}<p class="muted pick-first" data-testid="question-pick-first" id={hintId}>{waitHint}</p>{/if}
     {/if}
     <!-- The decision's pair closes the card: Skip, then Answer, drawn disabled until a pick or a typed answer (it takes what the box holds too, sendAnswer). Docked, the pager leads the line. -->
     {#if pending && (!docked || skip || answers || !replying || page)}
@@ -310,7 +312,7 @@
           <button type="button" class="secondary" data-testid="question-skip" disabled={sent} onmousedown={keepFocus} onclick={pass}><span class="ui-label">{strings.chat.questionSkip}</span></button>
         {/if}
         {#if !docked || !replying || answers}
-          <button type="button" class="primary" data-testid="question-submit" disabled={sent} aria-disabled={waiting ? 'true' : undefined} title={waiting ? strings.chat.questionPickFirst : next ? strings.chat.questionAnswerNextHint : undefined} onmousedown={keepFocus} onclick={send}><span class="ui-label">{next ? strings.chat.questionAnswerNext : strings.chat.questionAnswer}</span></button>
+          <button type="button" class={waiting ? 'secondary waiting' : 'primary'} data-testid="question-submit" disabled={sent} aria-disabled={waiting ? 'true' : undefined} aria-describedby={waiting ? hintId : undefined} title={waiting ? waitHint : next ? strings.chat.questionAnswerNextHint : undefined} onmousedown={keepFocus} onclick={send}><span class="ui-label">{next ? strings.chat.questionAnswerNext : strings.chat.questionAnswer}</span></button>
         {/if}
       </DecisionActions>
     {:else}
@@ -366,6 +368,8 @@
   .more .ui-label { text-decoration: underline; text-decoration-color: color-mix(in oklab, currentColor 45%, transparent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
   .more:hover .ui-label { text-decoration-color: currentColor; }
   .pick-first { margin: 0; font-size: var(--text-sm); }
+  /* Answer before a pick: the family's outline in the muted ink, which reads at 4.5:1 and more on the card (lib/contrast.test.ts). */
+  .waiting { color: var(--color-muted-foreground); }
 
   /* The choices are lines of the decision, not boxes in it: no fill and no
      edge at rest, a fill under the pointer. The numbered keycap says each one

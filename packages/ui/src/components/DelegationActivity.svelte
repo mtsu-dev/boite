@@ -74,11 +74,7 @@
       <li>
         <button type="button" class="ghost agent" data-testid="delegation-agent" data-state={row.state} title={row.agent.thread.title} onclick={() => openAgent(store, row.agent)}>
           <span class="glyph" aria-hidden="true"><ProviderLogo providerId={row.agent.thread.providerId} size={13} /></span>
-          {#if row.cause}
-            <span class="words"><span class="name">{row.agent.thread.title}</span><span class="cause" data-testid="delegation-agent-cause" title={row.cause} use:wordFit={row.cause}></span></span>
-          {:else}
-            <span class="name">{row.agent.thread.title}</span>
-          {/if}
+          <span class="name">{row.agent.thread.title}</span>
           <span class="state" data-state={row.state} role="img" aria-label={strings.delegation.rowState[row.state]} title={strings.delegation.rowState[row.state]}>
             {#if row.state === 'working'}<Spinner size={11} />
             {:else if row.state === 'asking'}<span class="dot"></span>
@@ -87,6 +83,7 @@
             {:else}<Square size={9} fill="currentColor" />{/if}
           </span>
           <span class="timing"><Elapsed startedAt={row.progress.startedAt} finishedAt={row.progress.finishedAt} active={row.progress.active} /></span>
+          {#if row.cause}<span class="cause" data-testid="delegation-agent-cause" title={row.cause} use:wordFit={row.cause}></span>{/if}
         </button>
       </li>
     {/each}
@@ -103,17 +100,16 @@
   .count { white-space: nowrap; }
   .more { margin-left: 4px; color: var(--color-subtle); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
   .agents { display: flex; flex-direction: column; margin: 0; padding: 0 0 2px; list-style: none; }
-  /* One row per subagent, under the group's marks: its provider, its name, its state, its time. */
-  .agent { display: flex; align-items: center; justify-content: flex-start; gap: var(--activity-gap); width: 100%; min-height: var(--control); height: auto; padding: var(--activity-padding); padding-left: calc(var(--activity-padding) + 6px); border-radius: var(--radius-sm); color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 400; text-align: left; }
+  /* One row per subagent, under the group's marks: its provider, its name, its state, its time; a cause on a
+     second line under all but the mark, so the name's column, narrowed by the state and the time, never holds it. */
+  .agent { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; justify-content: stretch; gap: 0 var(--activity-gap); width: 100%; min-height: var(--control); height: auto; padding: var(--activity-padding); padding-left: calc(var(--activity-padding) + 6px); border-radius: var(--radius-sm); color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 400; text-align: left; }
   .agent:hover, .agent:focus-visible { background: var(--color-surface-2); color: var(--color-foreground); }
   .agent:active { transform: none; }
-  .glyph { display: inline-flex; flex: none; justify-content: center; width: var(--activity-glyph); }
-  .name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  /* A failed row: its name over its cause, the row a line taller, still one button to its conversation. */
-  .words { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; line-height: 18px; }
+  .glyph { display: inline-flex; flex: none; justify-content: center; width: var(--activity-glyph); grid-row: 1 / span 2; }
+  .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 18px; }
   /* The cause adds no width of its own (`contain`): it wraps to two lines, then ends on a whole word (`wordFit`), never widens the list past the screen.
      `normal`: the row is a button, whose words stay on one line, which would hold the cause to one. */
-  .cause { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; min-width: 0; contain: inline-size; overflow: hidden; overflow-wrap: anywhere; font-size: var(--text-xs); line-height: 16px; color: var(--color-muted-foreground); }
+  .cause { grid-column: 2 / -1; grid-row: 2; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; min-width: 0; contain: inline-size; overflow: hidden; overflow-wrap: anywhere; font-size: var(--text-xs); line-height: 16px; color: var(--color-muted-foreground); }
   .state { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 16px; color: var(--color-subtle); }
   .state[data-state='done'] { color: var(--color-success); }
   .state[data-state='failed'] { color: var(--color-danger); }

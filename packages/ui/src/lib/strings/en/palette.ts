@@ -15,7 +15,7 @@ export const strings = {
     addProject: 'Add a project',
     importSession: 'Import a Claude Code session',
     settings: 'Open settings',
-    appearance: 'Appearance settings',
+    appearance: 'Look and language settings',
     providers: 'Providers and accounts',
     pair: 'Add a device',
     sidebar: 'Toggle the sidebar',

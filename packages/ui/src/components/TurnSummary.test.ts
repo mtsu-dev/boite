@@ -72,6 +72,39 @@ test('a running turn on a machine out of reach says how old its last update is, 
   expect(document.querySelector('[data-testid=turn-background-stop]')).toBeNull();
 });
 
+test('a stale estimate stays quiet: offline, the last update line comes first in its message, and what the turn said follows in the secondary tier', async () => {
+  const { readFileSync } = await import('node:fs');
+  // jsdom lays nothing out: read the rules from each component's own style block.
+  const style = (file: string) => readFileSync(`${import.meta.dirname}/${file}`, 'utf8').split('<style>')[1] ?? '';
+  const now = Date.now();
+  const message = { id: 'answer', role: 'assistant', turnId: 'turn-1', parts: [{ type: 'text', text: 'Frames 1 to 1312 are done. About 40 minutes left.' }] } as Message;
+  running = mount(MessageTurnSummary, { target: document.body, props: {
+    store: { connection: 'closed', booted: true, clockOffset: 0, openThread: { id: 't-1', status: 'running', updatedAt: now - 8 * 60_000, turns: [{ id: 'turn-1' }], background: [] } } as unknown as Store,
+    threadId: 't-1', turn: turn({ status: 'running', startedAt: now - 20 * 60_000, finishedAt: null, usage: null }), message, messages: [message],
+  } });
+  flushSync();
+  const line = document.querySelector<HTMLElement>('[data-testid=turn-summary]')!;
+  expect(text('turn-last-update')).toBe('Last update 8m ago');
+  expect(line.classList.contains('stale')).toBe(true);
+  // The message is a flex column (MessageList): the stale line goes ahead of the words it dates, in the reading ink.
+  const summary = style('TurnSummary.svelte').match(/\.summary\.stale \{([^}]*)\}/)?.[1] ?? '';
+  expect(summary).toContain('order: -1');
+  expect(summary).toContain('color: var(--color-foreground)');
+  expect(style('MessageList.svelte').match(/\n {2}\.message \{([^}]*)\}/)?.[1]).toMatch(/display: flex;[\s\S]*flex-direction: column/);
+  // What the turn said (the estimate) reads after it, smaller and muted: history, not the current state.
+  const words = style('AssistantMessage.svelte');
+  expect(words).toMatch(/\.stale \.part\[data-kind='text'\] \{[^}]*color: var\(--color-muted-foreground\)/);
+  expect(words).toMatch(/\.stale \.part\[data-kind='text'\] :global\(\.prose\) \{[^}]*font-size: var\(--text-sm\)/);
+  // Back online, the line is the turn's clock again, under its words.
+  unmount(running, { outro: false });
+  running = mount(MessageTurnSummary, { target: document.body, props: {
+    store: { connection: 'ready', booted: true, clockOffset: 0, openThread: { id: 't-1', status: 'running', updatedAt: now, turns: [{ id: 'turn-1' }], background: [] } } as unknown as Store,
+    threadId: 't-1', turn: turn({ status: 'running', startedAt: now - 20 * 60_000, finishedAt: null, usage: null }), message, messages: [message],
+  } });
+  flushSync();
+  expect(document.querySelector('[data-testid=turn-summary]')!.classList.contains('stale')).toBe(false);
+});
+
 test('a finished turn reads how long it worked, when it was done and what it spent', () => {
   running = mount(TurnSummary, { target: document.body, props: { turn: turn() } });
   flushSync();

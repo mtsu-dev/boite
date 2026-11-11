@@ -371,7 +371,7 @@ test('Appearance in French at 360 px keeps every label beside its choices readab
     await navigateMobile('mobile-settings');
     await page.click('[data-testid=settings-tab-appearance]');
     await page.click('[data-testid=locale-fr]');
-    await page.waitFor(`document.querySelector('[data-testid=appearance-page] h1')?.textContent.includes('Apparence')`);
+    await page.waitFor(`document.querySelector('[data-testid=appearance-page] h1')?.textContent.includes('Style et langue')`);
     const rows = await page.evaluate<Array<{ text: string; clipped: boolean; overlap: boolean; narrow: boolean }>>(`[...document.querySelectorAll('[data-testid=appearance-page] .switch-row')].filter(row => row.querySelector('.segmented')).map(row => {
       const text = row.querySelector('.text'), t = text.getBoundingClientRect(), s = row.querySelector('.segmented').getBoundingClientRect();
       return { text: text.textContent.trim(), clipped: text.scrollWidth > text.clientWidth + 1, overlap: t.right > s.left + 1 && t.left < s.right - 1 && t.bottom > s.top + 1 && t.top < s.bottom - 1, narrow: t.width < 120 };

@@ -1016,14 +1016,13 @@ function asks(): typeof store.pendingPermissions {
   return store.pendingPermissions.filter((request) => request.threadId === 't-trace');
 }
 
-test('the permission waits on its command row in the timeline, the field says a message declines it, and Enter or Escape in the emptied field answer it', async ({ app: _app }) => {
+test('the permission waits on its command row in the timeline, the field says a message is the other way out, and Enter or Escape in the emptied field answer it', async ({ app: _app }) => {
   await store.open('t-trace');
   await type('Hold on [permission]');
   press('Enter');
   await waitFor(() => store.openThread?.status === 'waiting' && document.querySelector('[data-testid=timeline] [data-testid=permission-card][data-decision=pending]') !== null);
-  // The field names the request by its title once the titles have loaded, or as "this request" until then.
-  await waitFor(() => input().placeholder !== 'Send a message to decline this request and redirect');
-  expect(input().placeholder).toMatch(/^Send a message to decline ".+" and redirect$/);
+  // Beside the row's Deny and Allow once, the field offers the third way: words for the agent.
+  await waitFor(() => /^Or tell .+ what to do instead$/.test(input().placeholder));
   // The decision lives in the transcript, once, on its own row: neither the composer card nor the question above it holds it.
   expect(document.querySelectorAll('[data-testid=permission-card]')).toHaveLength(1);
   expect(document.querySelector('[data-testid=composer] [data-testid=permission-card]')).toBeNull();
@@ -1057,15 +1056,29 @@ test('the permission waits on its command row in the timeline, the field says a 
   await waitFor(() => !store.busy);
 });
 
-test('a message sent while a permission waits declines it and redirects: the denial goes, and the message is the next turn', async ({ app: _app }) => {
+test('a message sent while a permission waits declines it and redirects, and Send says so: the denial goes, and the message is the next turn', async ({ app: _app }) => {
   await store.open('t-trace');
   await type('Hold on [permission]');
   press('Enter');
   await waitFor(() => asks().length > 0);
   const turnId = asks()[0]!.turnId;
+  const send = () => query<HTMLButtonElement>('[data-testid=composer-send]');
+  // The field empty: the ordinary send arrow, disabled.
+  expect(send().dataset.declines).toBeUndefined();
+  expect(send().classList.contains('send')).toBe(true);
+  expect(send().disabled).toBe(true);
   const rpc = vi.spyOn(store.client!, 'call');
   await type('Write it somewhere else');
-  press('Enter');
+  // Text in the field: Send states its consequence in words, in the outline secondary (never the accent), and its
+  // tooltip names the decision it declines.
+  await waitFor(() => send().dataset.declines === 'true');
+  expect(send().textContent?.trim()).toBe('Decline and send');
+  expect(send().classList.contains('secondary')).toBe(true);
+  expect(send().classList.contains('primary')).toBe(false);
+  expect(send().disabled).toBe(false);
+  await waitFor(() => send().title !== 'Declines this request, then sends your message');
+  expect(send().title).toMatch(/^Declines .+, then sends your message$/);
+  send().click();
   await waitFor(() => asks().length === 0);
   expect(rpc.mock.calls.filter(([method]) => method === 'permissions.answer').map(([, params]) => (params as { decision: string }).decision)).toEqual(['deny']);
   // Never an answer to the ask, never part of the turn that asked: its own turn after it.

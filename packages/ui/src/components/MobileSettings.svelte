@@ -83,7 +83,7 @@
     : page === 'browser' ? strings.settings.tabs.browser
     : page === 'archived' ? strings.settings.archived.heading
     : page === 'worktrees' ? strings.settings.worktrees.heading
-    : page === 'voice' ? strings.speech.heading : page === 'appearance' ? strings.settings.appearanceAndLanguage
+    : page === 'voice' ? strings.speech.heading : page === 'appearance' ? strings.settings.tabs.appearance
     : page === 'usage' ? strings.usage.heading : page === 'limits' ? strings.usage.limits
     : page === 'task-manager' ? strings.taskManager.title
     : page === 'diagnostics' ? strings.diagnostics.heading
@@ -213,7 +213,7 @@
         <div class="rows">
           {@render row('settings-tab-general', strings.settings.tabs.general, () => store.showSettings('general'), 'general')}
           {@render row('settings-tab-voice', strings.speech.heading, () => store.showSettings('voice'), 'voice', voiceReady === null ? undefined : voiceReady ? strings.settings.homeOn : strings.settings.homeOff)}
-          {@render row('settings-tab-appearance', strings.settings.appearanceAndLanguage, () => store.showSettings('appearance'), 'appearance', appearance)}
+          {@render row('settings-tab-appearance', strings.settings.tabs.appearance, () => store.showSettings('appearance'), 'appearance', appearance)}
         </div>
       </section>
       <section class="family" aria-labelledby="mobile-family-agents" data-testid="settings-family" data-family="agents">

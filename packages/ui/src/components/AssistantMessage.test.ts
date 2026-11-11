@@ -340,3 +340,25 @@ test('a run that stopped on a failed command says the stop once: the exit code s
     expect(document.querySelector('[data-testid=error-diagnostic]')?.textContent).toContain('Exit code 2\nboom');
   } finally { store.detach(); client.close(); }
 });
+
+test('a running turn on a machine out of reach marks its words stale; back in reach they read as the answer again', async () => {
+  const client = new FakeClient({ delayMs: 0 });
+  const store = new Store(); store.attach(client);
+  try {
+    await store.connect(); await store.open('t-trace');
+    const message = store.openThread!.messages.at(-1)!;
+    const turn = store.openThread!.turns.find((entry) => entry.id === message.turnId)!;
+    turn.status = 'running';
+    message.parts = [{ type: 'text', text: 'Frames 1 to 1312 are done. About 40 minutes left.' }];
+    mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, signedOut: null, showModel: false } });
+    flushSync();
+    const parts = () => document.querySelector<HTMLElement>('.parts')!;
+    expect(parts().dataset.stale).toBeUndefined();
+    store.connection = 'closed';
+    flushSync();
+    expect(parts().dataset.stale).toBe('true');
+    store.connection = 'ready';
+    flushSync();
+    expect(parts().dataset.stale).toBeUndefined();
+  } finally { store.detach(); client.close(); }
+});

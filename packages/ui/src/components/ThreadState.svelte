@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { CloudOff } from '@lucide/svelte';
+  import { CloudOff, Square } from '@lucide/svelte';
   import { pullRequestWatchWaits, type ThreadSummary } from '@boite/contracts';
   import { backgroundLabel } from '../lib/background';
   import { secondClock } from '../lib/clock.svelte';
@@ -18,9 +18,10 @@
    * ended long ago. The row says so instead of spinning and counting time.
    * One grammar in every list (rows, Recent, the palette, the phone,
    * Activity), from `stateForm`: the user's turn is an amber dot, a failure
-   * its "!" disc, work a still accent arc, an unreached machine its cloud; each
-   * mark is followed by its word ("Needs you", "Failed", "Working", "Queued",
-   * "Offline") in the row's neutral ink, the hue staying on the mark. News and
+   * its "!" disc, a stop the grey square a stopped subagent wears in the thread
+   * (DelegationActivity.svelte), work a still accent arc, an unreached machine
+   * its cloud; each mark is followed by its word ("Needs you", "Failed",
+   * "Stopped", "Working", "Queued", "Offline") in the row's neutral ink, the hue staying on the mark. News and
    * rest show the time. Lists hold many rows at work: their marks stay still,
    * the one live spinner is the open thread's. How long work has run lives in
    * the thread and the tooltip.
@@ -98,7 +99,8 @@
   <span class="when state {stale ? 'unreachable' : kind}" class:fit data-testid="thread-state" data-state={stale ? 'unreachable' : kind} title={name} aria-label={name} role="img">
     {#if stale}<CloudOff size={11} aria-hidden="true" />
     {:else if form === 'work'}<span class="work-ring" aria-hidden="true"></span>
-    {:else if kind === 'error' || kind === 'interrupted'}<FailMark />
+    {:else if kind === 'error'}<FailMark />
+    {:else if kind === 'interrupted'}<Square size={9} fill="currentColor" aria-hidden="true" />
     {:else}<span class="dot" class:needs-dot={kind === 'waiting'} aria-hidden="true"></span>{/if}
     {#if !mark}<span class="word ui-label" aria-hidden="true">{word}</span>{/if}
   </span>
@@ -129,7 +131,8 @@
   /* Every mark is 8 px. Work, of any kind: a still accent arc, a spinner at rest, so it never reads as an idle ring
      or as the amber of the user's turn; which work it is lives in the tooltip. */
   .work-ring { flex: none; box-sizing: border-box; width: 9px; height: 9px; border: 1.5px solid var(--color-accent); border-top-color: transparent; border-radius: var(--radius-full); transform: rotate(45deg); }
-  /* The user's turn is an amber dot; a failure has its own shape (FailMark.svelte). */
+  /* The user's turn is an amber dot; a failure has its own shape (FailMark.svelte); a stop is neutral, never red. */
   .dot { flex: none; width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--color-live); }
   .state :global(svg) { flex: none; }
+  .interrupted :global(svg) { color: var(--color-subtle); }
 </style>

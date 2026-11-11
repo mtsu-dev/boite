@@ -532,9 +532,10 @@ test('a folded project keeps saying what its hidden threads do, and the mark goe
   const [first, second] = store.threadsOf(project.id);
   first!.status = 'running';
   second!.status = 'waiting';
-  // Needs you is the header's own word, folded or not, so the rollup gives way to it.
+  // Needs you is the header's own count, folded or not, so the rollup gives way to it; folded, no row says it, so the head says it in words.
   await waitFor(() => head().parentElement!.querySelector('[data-testid=project-waiting-count]')?.getAttribute('data-count') === '1');
   expect(head().querySelector('[data-testid=project-rollup]')).toBeNull();
+  expect(head().parentElement!.querySelector('[data-testid=project-waiting-count] .word')!.classList.contains('spare')).toBe(false);
   // One count per header: Needs you stands alone while the working thread waits its turn to be counted.
   expect(head().parentElement!.querySelector('[data-testid=project-working-toggle]')).toBeNull();
   second!.status = 'idle';
@@ -550,6 +551,8 @@ test('a folded project keeps saying what its hidden threads do, and the mark goe
   second!.status = 'waiting';
   await waitFor(() => head().parentElement!.querySelector('[data-testid=project-waiting-count]')?.getAttribute('data-count') === '1');
   expect(head().parentElement!.querySelector('[data-testid=project-working-toggle]')).toBeNull();
+  // Open, the row that needs the user says it: the head keeps its dot and count, the words only in its name.
+  expect(head().parentElement!.querySelector('[data-testid=project-waiting-count] .word')!.classList.contains('spare')).toBe(true);
 });
 
 async function openIdleThread(): Promise<string> {

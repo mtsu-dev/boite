@@ -16,7 +16,7 @@ export const fr: Translation = {
     addProject: 'Ajouter un projet',
     importSession: 'Importer une session Claude Code',
     settings: 'Ouvrir les réglages',
-    appearance: "Réglages d'apparence",
+    appearance: 'Réglages du style et de la langue',
     providers: 'Fournisseurs et comptes',
     pair: 'Ajouter un appareil',
     sidebar: 'Afficher ou masquer la barre latérale',
