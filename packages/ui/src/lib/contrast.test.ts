@@ -166,12 +166,12 @@ test('a phone sheet draws the sheet scrim behind it', () => {
 });
 
 /** A switch that is on reads as on at a glance, without the accent: the filled foreground track, a primary's ink as the knob. */
-test('a switch on wears the foreground track and its ink knob; off, a ringed track with a knob of the rim', () => {
+test('a switch on wears the foreground track and its ink knob; off, a ringed track with a knob nearer the ink than the rim', () => {
   const root = block(':root');
   expect(root).toMatch(/--switch-on:\s*var\(--color-foreground\);/);
   expect(root).toMatch(/--switch-knob-on:\s*var\(--color-on-foreground\);/);
   expect(root).toMatch(/--switch-off:\s*var\(--color-surface-3\);/);
-  expect(root).toMatch(/--switch-knob:\s*var\(--switch-rim\);/);
+  expect(root).toMatch(/--switch-knob:\s*color-mix\(in oklab, var\(--color-foreground\) \d+%, var\(--color-surface\)\);/);
   expect(css).toMatch(/role=switch\], \.switch \{[^}]*border: [^;]*solid var\(--switch-rim\)/);
 });
 
@@ -204,13 +204,16 @@ function mixOklab(a: string, b: string, share: number): string {
 }
 
 /**
- * An off switch is drawn, not guessed: its rim and its knob (the same grey)
- * clear 3:1 against every card surface it sits on, in both themes and every
- * curated palette. The old dark track on a dark card (1.06:1) fails.
+ * An off switch is drawn, not guessed: its rim and its knob clear 3:1 against
+ * every card surface it sits on, the raised one its track is filled with
+ * included, in both themes and every curated palette. The knob sits nearer the
+ * ink than the rim, so off reads as available rather than dimmed.
  */
 describe('an off switch reads on every card', () => {
   const rim = /--switch-rim:\s*color-mix\(in oklab, var\(--color-foreground\) (\d+)%, var\(--color-surface\)\);/.exec(block(':root'));
   const share = Number(rim?.[1]) / 100;
+  const knob = /--switch-knob:\s*color-mix\(in oklab, var\(--color-foreground\) (\d+)%, var\(--color-surface\)\);/.exec(block(':root'));
+  const knobShare = Number(knob?.[1]) / 100;
   const themes: [string, string, string, string[]][] = [
     ...([['dark', ':root'], ['light', "[data-theme='light']"]] as const).map(([name, selector]): [string, string, string, string[]] => {
       const scope = block(selector);
@@ -224,12 +227,17 @@ describe('an off switch reads on every card', () => {
 
   test('the rim is a mix of the ink into the card', () => {
     expect(share).toBeGreaterThan(0);
+    expect(knobShare).toBeGreaterThan(share);
     expect(themes.length).toBeGreaterThanOrEqual(8);
   });
 
   test.each(themes)('%s: the rim and knob clear 3:1 on every card surface', (_name, ink, surface, grounds) => {
     const color = mixOklab(ink, surface, share);
-    for (const ground of grounds) expect(ratio(color, ground), `rim ${color} on ${ground}`).toBeGreaterThanOrEqual(3);
+    const knobColor = mixOklab(ink, surface, knobShare);
+    for (const ground of grounds) {
+      expect(ratio(color, ground), `rim ${color} on ${ground}`).toBeGreaterThanOrEqual(3);
+      expect(ratio(knobColor, ground), `knob ${knobColor} on ${ground}`).toBeGreaterThanOrEqual(3);
+    }
   });
 });
 

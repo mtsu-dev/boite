@@ -54,12 +54,13 @@ test('the chat header keeps the title alone, and the rows say what each agent is
   expect(query('[data-testid=thread-header]').getAttribute('data-status')).toBe('idle');
   expect(query('[data-testid=thread-title]').textContent?.trim()).toBe(store.openThread?.title);
 
-  // A desktop row marks the user's turn with an amber dot alone, so the title keeps the width:
-  // "Needs you" is its tooltip and its accessible name, and only a waiting row draws the dot.
+  // A desktop row marks the user's turn with an amber dot and its word, which gives way on a narrow list (`fit`):
+  // "Needs you" is also its tooltip and its accessible name, and only a waiting row draws the dot.
   const waiting = query('[data-testid=thread-row][data-thread-id=t-scheduler] [data-testid=thread-state]');
   expect(waiting.dataset['state']).toBe('waiting');
   expect(waiting.querySelector('.needs-dot')).not.toBeNull();
-  expect(waiting.textContent?.trim()).toBe('');
+  expect(waiting.classList.contains('fit')).toBe(true);
+  expect(waiting.querySelector('.word')?.textContent).toBe('Needs you');
   expect([waiting.getAttribute('role'), waiting.getAttribute('aria-label'), waiting.title]).toEqual(['img', 'Needs you', 'Needs you']);
   const dotted = Array.from(document.querySelectorAll('[data-testid=thread-row] .needs-dot'))
     .map(dot => dot.closest<HTMLElement>('[data-testid=thread-state]')?.dataset['state']);

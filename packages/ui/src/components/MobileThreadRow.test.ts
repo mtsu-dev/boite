@@ -17,7 +17,7 @@ afterEach(async () => {
   document.body.innerHTML = '';
 });
 
-test('a phone row that needs you says it once, by its named dot, and an Activity row reads its command whole', async () => {
+test('a phone row that needs you says it beside its dot, and an Activity row reads its command whole', async () => {
   client = new FakeClient({ delayMs: 0 });
   store = new Store(); store.attach(client); await store.connect();
   const thread = store.threads.find(row => !row.parentThreadId && row.projectId && row.id !== store.openThread?.id)!;
@@ -28,12 +28,12 @@ test('a phone row that needs you says it once, by its named dot, and an Activity
   const project = store.projects.find(row => row.id === thread.projectId);
   const props = { machine, thread, project, now: Date.now(), items: [], onopen: () => {}, onaction: () => {} };
 
-  // A list row: the dot in the one slot, named for a screen reader and the pointer, and no "Needs you" word beside it.
+  // A list row: the dot in the one slot with its word beside it, named once for a screen reader and the pointer.
   mounted = mount(MobileThreadRow, { target: document.body, props });
   flushSync();
   const mark = document.querySelector('[data-testid=thread-state]')!;
   expect([mark.getAttribute('data-state'), mark.getAttribute('aria-label'), mark.getAttribute('title')]).toEqual(['waiting', 'Needs you', 'Needs you']);
-  expect(document.querySelector('[data-testid=mobile-row]')!.textContent).not.toContain('Needs you');
+  expect(mark.querySelector('.word')?.textContent).toBe('Needs you');
   await unmount(mounted);
 
   // Activity: where it comes from, what it asks by what it does (the composer's title), then the command as it will
@@ -53,6 +53,34 @@ test('a phone row that needs you says it once, by its named dot, and an Activity
   // The desktop's pair: Deny outlined, then Allow solid, right-aligned under the content.
   const deny = document.querySelector<HTMLElement>('[data-testid=thread-verb-secondary]')!;
   expect([deny.dataset['verb'], deny.classList.contains('secondary'), deny.parentElement!.classList.contains('decision-actions')]).toEqual(['deny', true, true]);
+});
+
+test('a phone list row says its state in a word after its mark, before its time: Needs you, Working, Failed', async () => {
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  const thread = store.threads.find(row => !row.parentThreadId && row.projectId && row.id !== store.openThread?.id)!;
+  const project = store.projects.find(row => row.id === thread.projectId);
+  const machine = { id: 'local', label: 'Local', store };
+  for (const [status, state, word, mark] of [['waiting', 'waiting', 'Needs you', '.dot'], ['running', 'working', 'Working', '.work-ring'], ['error', 'error', 'Failed', '.fail']] as const) {
+    thread.status = status;
+    thread.runningSince = status === 'running' ? Date.now() - 60_000 : null;
+    thread.archived = false;
+    mounted = mount(MobileThreadRow, { target: document.body, props: { machine, thread, project, now: Date.now(), items: [], onopen: () => {}, onaction: () => {} } });
+    flushSync();
+    const shown = document.querySelector<HTMLElement>('[data-testid=thread-state]')!;
+    expect(shown.dataset['state']).toBe(state);
+    // The phone has the room: the word always shows, never the desktop's narrow rule.
+    expect(shown.classList.contains('fit')).toBe(false);
+    const parts = [...shown.parentElement!.children];
+    const at = shown.parentElement!.querySelector('.at')!;
+    expect(shown.querySelector(mark)).not.toBeNull();
+    expect(shown.querySelector('.word')?.textContent).toBe(word);
+    // Mark, word, then the time, on the title's line.
+    expect(parts.indexOf(at)).toBe(parts.indexOf(shown) + 1);
+    expect(shown.firstElementChild!.compareDocumentPosition(shown.querySelector('.word')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await unmount(mounted);
+    mounted = undefined;
+  }
 });
 
 test('an Activity row keeps the title on the row\'s width: the ask is whole under it, a sub-agent one line, the verb follows the content', () => {

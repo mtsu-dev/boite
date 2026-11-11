@@ -515,7 +515,7 @@ test('the reasoning chip reads the model default level and saves the pick on the
   // The thread runs the echo model, whose scale is two levels with high as its default.
   expect(store.openThread?.effort).toBeNull();
   await waitFor(() => effortChip() !== null);
-  expect(chipText('composer-effort')).toBe('High');
+  expect(chipText('composer-effort')).toBe('Effort High');
 
   const update = vi.spyOn(store, 'update');
   await openEffort();
@@ -525,7 +525,7 @@ test('the reasoning chip reads the model default level and saves the pick on the
   await waitFor(() => store.openThread?.effort === 'low');
   expect(update).toHaveBeenCalledWith('t-trace', { accountId: 'a-echo', model: 'echo-1', effort: 'low', speed: null, expectedSelectionVersion: 0 });
   // The effort chip names the live level; the model chip names the model alone.
-  await waitFor(() => chipText('composer-effort') === 'Low');
+  await waitFor(() => chipText('composer-effort') === 'Effort Low');
   expect(query('[data-testid=composer-picker]').textContent).not.toContain('Low');
 });
 
@@ -546,7 +546,7 @@ test('a level that would rebuild a long thread\'s cache shuts the slider first, 
 test('the reasoning chip remembers the level a draft picks', async ({ app: _app }) => {
   await openDraft();
   await waitFor(() => effortChip() !== null);
-  expect(chipText('composer-effort')).toBe('High');
+  expect(chipText('composer-effort')).toBe('Effort High');
   await openEffort();
   expect(effortRows()).toEqual(['low', 'medium', 'high', 'xhigh', 'max', 'ultrathink']);
 
@@ -556,7 +556,7 @@ test('the reasoning chip remembers the level a draft picks', async ({ app: _app 
     model: 'claude-opus-5-5',
     effort: 'xhigh'
   });
-  await waitFor(() => chipText('composer-effort') === 'Extra high');
+  await waitFor(() => chipText('composer-effort') === 'Effort Extra high');
 });
 
 test('the reasoning slider draws one dot per level, the arrows move it and a hovered dot previews its level under it', async ({ app: _app }) => {
@@ -577,7 +577,7 @@ test('the reasoning slider draws one dot per level, the arrows move it and a hov
   await waitFor(() => store.openThread?.effort === 'low');
   expect(update).toHaveBeenCalledWith('t-trace', { accountId: 'a-echo', model: 'echo-1', effort: 'low', speed: null, expectedSelectionVersion: 0 });
   await waitFor(() => track().getAttribute('aria-valuenow') === '0');
-  expect(chipText('composer-effort')).toBe('Low');
+  expect(chipText('composer-effort')).toBe('Effort Low');
   // The line under the track says what the lowest level gives.
   expect(query('[data-testid=effort-cost]').textContent).toBe(strings.composer.effortCost.low);
 
@@ -586,7 +586,7 @@ test('the reasoning slider draws one dot per level, the arrows move it and a hov
   await waitFor(() => store.openThread?.effort === 'high');
   expect(update).toHaveBeenCalledWith('t-trace', { accountId: 'a-echo', model: 'echo-1', effort: 'high', speed: null, expectedSelectionVersion: 1 });
   expect(document.querySelector('[data-testid=composer-effort-menu]')).not.toBeNull();
-  await waitFor(() => chipText('composer-effort') === 'High');
+  await waitFor(() => chipText('composer-effort') === 'Effort High');
 
   // A mouse over the low dot names it under its ring before any pick, the heading keeping the live level; leaving drops the preview.
   const line = query('[data-testid=effort-track] .line');
@@ -2092,7 +2092,7 @@ test("a bot's composer shows the same three chips as a thread, each reading its 
   // One chip per setting, not "model · effort" merged into one: the same order and form as a thread's.
   expect(chips.map((el) => el.getAttribute('data-testid'))).toEqual(['composer-picker', 'composer-effort', 'composer-mode']);
   expect(chips.map((el) => el.tagName)).toEqual(['SPAN', 'SPAN', 'SPAN']);
-  expect(chipText('composer-effort')).toBe('Low');
+  expect(chipText('composer-effort')).toBe('Effort Low');
   expect(chipText('composer-mode')).toBe('Auto');
   expect(chips.every((el) => el.getAttribute('title') === "Set in Ada's settings")).toBe(true);
   query<HTMLElement>('[data-testid=composer-mode]').click();

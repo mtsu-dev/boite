@@ -30,7 +30,7 @@ function submit(): HTMLButtonElement {
   return query<HTMLButtonElement>('[data-testid=question-submit]');
 }
 
-test('Answer with nothing picked sends nothing, moves to the first option and asks for a pick until one is made; 1 to 9 still pick there, and what was picked goes out once', () => {
+test('Answer with nothing picked is drawn disabled, sends nothing, moves to the first option and asks for a pick until one is made; 1 to 9 still pick there, and what was picked goes out once', () => {
   const sent: string[][] = [];
   running = mount(QuestionCard, {
     target: document.body,
@@ -49,8 +49,10 @@ test('Answer with nothing picked sends nothing, moves to the first option and as
 
   expect(query('[data-testid=question-card]').getAttribute('data-state')).toBe('pending');
   expect(options()).toHaveLength(2);
-  // Answer is live from the start, never a dead button.
+  // Nothing picked: Answer is drawn disabled and its tooltip says why, yet a press still answers.
   expect(submit().disabled).toBe(false);
+  expect(submit().getAttribute('aria-disabled')).toBe('true');
+  expect(submit().title).toBe('Pick an option first');
   expect(document.querySelector('[data-testid=question-pick-first]')).toBeNull();
   // The card has no field of its own: the composer is the free answer.
   expect(document.querySelector('input, textarea')).toBeNull();
@@ -67,6 +69,9 @@ test('Answer with nothing picked sends nothing, moves to the first option and as
   flushSync();
   expect(options()[0]?.getAttribute('aria-checked')).toBe('true');
   expect(document.querySelector('[data-testid=question-pick-first]')).toBeNull();
+  // A pick lights Answer as the primary.
+  expect(submit().hasAttribute('aria-disabled')).toBe(false);
+  expect(submit().title).toBe('');
 
   // One choice only: the second option replaces the first.
   options()[1]?.click();
@@ -84,7 +89,7 @@ test('Answer with nothing picked sends nothing, moves to the first option and as
   expect(sent).toHaveLength(1);
 });
 
-test('a docked question speaks the decision pair: Skip outlined then Answer primary, on one right-aligned line, Answer filled and live before a pick, faded once on its way', async () => {
+test('a docked question speaks the decision pair: Skip outlined then Answer primary, on one right-aligned line, Answer drawn disabled but pressable before a pick, filled at the pick, faded once on its way', async () => {
   running = mount(QuestionCard, {
     target: document.body,
     props: { text: 'Which shape?', options: OPTIONS, allowText: false, multiple: false, answer: null, pending: true, docked: true, submit: () => true, skip: () => true }
@@ -109,12 +114,14 @@ test('a docked question speaks the decision pair: Skip outlined then Answer prim
   try {
     // jsdom resolves no var(): read the pair's rule that holds the disabled Answer and check it fills it.
     const rule = [...style.sheet!.cssRules].find((entry): entry is CSSStyleRule => entry instanceof CSSStyleRule && entry.selectorText.includes('primary:disabled'))!;
-    // Before any pick it is app.css's own filled primary, not faded.
+    // Before any pick it wears app.css's waiting primary (a quiet fill, dim ink), not the pair's faded fill.
     expect(submit().classList.contains('primary')).toBe(true);
     expect(buttons.at(-1)).toBe(submit());
+    expect(submit().getAttribute('aria-disabled')).toBe('true');
     expect(submit().matches(rule.selectorText)).toBe(false);
     options()[0]!.click();
     flushSync();
+    expect(submit().hasAttribute('aria-disabled')).toBe(false);
     submit().click();
     flushSync();
     expect(submit().disabled).toBe(true);

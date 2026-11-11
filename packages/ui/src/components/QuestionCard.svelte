@@ -87,6 +87,8 @@
   $effect(() => { if (ready) pickFirst = false; });
   /** Docked with options, the card keeps its own Answer. */
   const answers = $derived(docked && options.length > 0);
+  /** Choices and nothing picked or typed: Answer is drawn as the disabled primary, yet a press still says why. */
+  const waiting = $derived(options.length > 0 && !ready);
 
   /**
    * The docked choices get a room: the composer's cap on the question
@@ -295,7 +297,7 @@
       {/if}
       {#if pickFirst && pending}<p class="muted pick-first" data-testid="question-pick-first" role="status">{strings.chat.questionPickFirst}</p>{/if}
     {/if}
-    <!-- The decision's pair closes the card: Skip, then Answer, filled and pressable from the start (it takes what the box holds too, sendAnswer). Docked, the pager leads the line. -->
+    <!-- The decision's pair closes the card: Skip, then Answer, drawn disabled until a pick or a typed answer (it takes what the box holds too, sendAnswer). Docked, the pager leads the line. -->
     {#if pending && (!docked || skip || answers || !replying || page)}
       <DecisionActions lead={foot}>
         {#if page && onopen}
@@ -308,7 +310,7 @@
           <button type="button" class="secondary" data-testid="question-skip" disabled={sent} onmousedown={keepFocus} onclick={pass}><span class="ui-label">{strings.chat.questionSkip}</span></button>
         {/if}
         {#if !docked || !replying || answers}
-          <button type="button" class="primary" data-testid="question-submit" disabled={sent} title={next ? strings.chat.questionAnswerNextHint : undefined} onmousedown={keepFocus} onclick={send}><span class="ui-label">{next ? strings.chat.questionAnswerNext : strings.chat.questionAnswer}</span></button>
+          <button type="button" class="primary" data-testid="question-submit" disabled={sent} aria-disabled={waiting ? 'true' : undefined} title={waiting ? strings.chat.questionPickFirst : next ? strings.chat.questionAnswerNextHint : undefined} onmousedown={keepFocus} onclick={send}><span class="ui-label">{next ? strings.chat.questionAnswerNext : strings.chat.questionAnswer}</span></button>
         {/if}
       </DecisionActions>
     {:else}

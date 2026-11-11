@@ -17,16 +17,21 @@
    * `away`: its machine is not connected, so a turn it last saw at work may have
    * ended long ago. The row says so instead of spinning and counting time.
    * One grammar in every list (rows, Recent, the palette, the phone,
-   * Activity), from `stateForm`: the user's turn is an amber dot and a failure
-   * a red one, with their word only where the row has room (`mark` off); work
-   * is a still accent arc alone; news and rest show the time. Lists hold many
-   * rows at work: their marks stay still, the one live spinner is the open
-   * thread's. How long work has run lives in the thread and the tooltip.
-   * `mark`: the desktop list's narrow end, where every mark stands alone, its
-   * word in the tooltip and the accessible name.
+   * Activity), from `stateForm`: the user's turn is an amber dot, a failure
+   * its "!" disc, work a still accent arc, an unreached machine its cloud; each
+   * mark is followed by its word ("Needs you", "Failed", "Working", "Queued",
+   * "Offline") in the row's neutral ink, the hue staying on the mark. News and
+   * rest show the time. Lists hold many rows at work: their marks stay still,
+   * the one live spinner is the open thread's. How long work has run lives in
+   * the thread and the tooltip.
+   * `fit`: the desktop list, where the word shows only once the row is wide
+   * enough to keep its title on two lines (the `thread-row` container,
+   * ThreadCard.svelte); narrower, the mark stands alone.
+   * `mark`: a column that holds the mark only (Activity's mark column, the
+   * palette). In both, the word stays in the tooltip and the accessible name.
    * An archived thread carries no live state: its time alone.
    */
-  let { thread, now, subagents = null, away = false, mark = false }: { thread: Pick<ThreadSummary, 'status' | 'unread' | 'runningSince' | 'requestSince' | 'backgroundWork' | 'openQuestions' | 'lastUserMessageAt' | 'createdAt'> & Partial<Pick<ThreadSummary, 'backgroundWait' | 'pullRequestWatches' | 'archived'>>; now: number; subagents?: WorkingChildren | null; away?: boolean; mark?: boolean } = $props();
+  let { thread, now, subagents = null, away = false, mark = false, fit = false }: { thread: Pick<ThreadSummary, 'status' | 'unread' | 'runningSince' | 'requestSince' | 'backgroundWork' | 'openQuestions' | 'lastUserMessageAt' | 'createdAt'> & Partial<Pick<ThreadSummary, 'backgroundWait' | 'pullRequestWatches' | 'archived'>>; now: number; subagents?: WorkingChildren | null; away?: boolean; mark?: boolean; fit?: boolean } = $props();
 
   function earliest(a: number | null | undefined, b: number | null | undefined): number | null {
     return a == null ? b ?? null : b == null ? a : Math.min(a, b);
@@ -57,8 +62,8 @@
     : live ? thread.backgroundWork?.since ?? (wait?.state === 'waiting' ? wait.since : null) : null);
   /** Counting time reads the second clock, only while the agent works: the list's clock ticks far slower. */
   let spent = $derived(since === null ? null : elapsed(Math.max(secondClock.now, now) - since));
-  /** The word shows only where the user must act and the row has room for it. */
-  let bare = $derived(mark || form === 'mark');
+  /** The word beside the mark: work of every kind reads "Working", its kind in the tooltip; an unreached machine "Offline". */
+  let word = $derived(stale ? strings.connection.offline : kind === null ? null : form === 'work' && kind !== 'queued' ? strings.sidebar.state.working : strings.sidebar.state[kind]);
   let label = $derived.by(() => {
     if (kind === null) return null;
     if (kind === 'working') return spent === null ? strings.sidebar.state.working : fill(strings.sidebar.state.workingFor, { elapsed: spent });
@@ -84,21 +89,18 @@
   });
 </script>
 
-{#if stale && kind !== null}
-  {@const was = fill(strings.sidebar.state.unreachableWas, { state: strings.sidebar.state[kind] })}
-  <span class="when state unreachable" data-testid="thread-state" data-state="unreachable" title={was} aria-label={was}>
-    <CloudOff size={11} aria-hidden="true" /><span class="ui-label">{strings.sidebar.state.unreachable}</span>
-  </span>
-{:else if form === null}
+{#if form === null && !stale}
   <!-- News marks nothing: the title's full ink says it, the time stays. -->
   <span class="when" data-testid={kind === 'done' ? 'thread-state' : undefined} data-state={kind ?? undefined} title={kind === 'done' ? `${strings.sidebar.state.done}\n${exactTime(thread.lastUserMessageAt ?? thread.createdAt)}` : exactTime(thread.lastUserMessageAt ?? thread.createdAt)}>{ago(thread.lastUserMessageAt ?? thread.createdAt, now)}</span>
 {:else if kind !== null}
-  <!-- A mark alone stands for its word: an image named by it. -->
-  <span class="when state {kind}" class:mark={bare} data-testid="thread-state" data-state={kind} title={label} aria-label={label} role={bare ? 'img' : undefined}>
-    {#if form === 'mark'}<span class="work-ring" aria-hidden="true"></span>
+  {@const name = stale ? fill(strings.sidebar.state.unreachableWas, { state: strings.sidebar.state[kind] }) : label}
+  <!-- The mark and its word read as one image named by the state: the word may give way to the title (`fit`). -->
+  <span class="when state {stale ? 'unreachable' : kind}" class:fit data-testid="thread-state" data-state={stale ? 'unreachable' : kind} title={name} aria-label={name} role="img">
+    {#if stale}<CloudOff size={11} aria-hidden="true" />
+    {:else if form === 'work'}<span class="work-ring" aria-hidden="true"></span>
     {:else if kind === 'error' || kind === 'interrupted'}<FailMark />
     {:else}<span class="dot" class:needs-dot={kind === 'waiting'} aria-hidden="true"></span>{/if}
-    {#if !bare}<span class="ui-label">{strings.sidebar.state[kind]}</span>{/if}
+    {#if !mark}<span class="word ui-label" aria-hidden="true">{word}</span>{/if}
   </span>
 {/if}
 
@@ -114,11 +116,16 @@
   .state {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
+    gap: 4px;
     color: var(--color-muted-foreground);
   }
-  /* A word shows only when the user must act: it reads bold, in the row's grey; the dot carries the colour. */
-  .waiting, .error, .interrupted { font-weight: 600; }
+  /* The word is the secondary tier, the time's weight in the row's grey: the mark carries the hue. */
+  .word { font-weight: 400; }
+  /* The desktop list's word gives way where it would push a title past its two lines: measured on the seeded
+     titles in English and French (the widest word, "Vous attend"), every title stays whole from a 274 px row. */
+  @container thread-row (max-width: 273.98px) {
+    .fit .word { display: none; }
+  }
   /* Every mark is 8 px. Work, of any kind: a still accent arc, a spinner at rest, so it never reads as an idle ring
      or as the amber of the user's turn; which work it is lives in the tooltip. */
   .work-ring { flex: none; box-sizing: border-box; width: 9px; height: 9px; border: 1.5px solid var(--color-accent); border-top-color: transparent; border-radius: var(--radius-full); transform: rotate(45deg); }

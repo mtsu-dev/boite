@@ -31,8 +31,8 @@
    * request when there is one, and the state at the end, in one slot, with the
    * time after it. The thread's header names its agent, so the row carries no
    * provider glyph; a flat list (`tile`) shows the project's tile first, since
-   * no card names it. `mark` draws the state as the narrow mark
-   * (ThreadState.svelte). `ask` (Activity) is one line under the title, which
+   * no card names it. The state is its mark and its word; `fit` lets the
+   * word give way on a narrow desktop list (ThreadState.svelte). `ask` (Activity) is one line under the title, which
    * keeps the row's width. `at` is the row's time (its last message in the
    * lists, since when in Activity): it follows the mark, and stands alone when
    * there is none. The title is cut between words (lib/word-fit.ts).
@@ -49,7 +49,7 @@
     open = false,
     tile,
     pullRequest = null,
-    mark = false,
+    fit = false,
     ask,
     at,
     offline = false
@@ -64,7 +64,7 @@
     tile?: Project;
     /** The thread's pull request, looked up by the row. */
     pullRequest?: ThreadSummary['pullRequest'];
-    mark?: boolean;
+    fit?: boolean;
     ask?: Snippet;
     at?: number;
     offline?: boolean;
@@ -104,7 +104,7 @@
       {#if pullRequest.state === 'MERGED'}<GitMerge size={12} aria-hidden="true" />{:else if pullRequest.state === 'CLOSED'}<GitPullRequestClosed size={12} aria-hidden="true" />{:else}<GitPullRequest size={12} aria-hidden="true" />{/if}<span class="ui-label">#{pullRequest.number}</span>
     </span>
   {/if}
-  {#if now !== undefined && (at === undefined || stateForm(thread.archived ? null : kind) !== null)}<ThreadState {thread} {now} subagents={rowAsks(owner, thread.id)} away={owner.connection !== 'ready'} {mark} />{/if}
+  {#if now !== undefined && (at === undefined || stateForm(thread.archived ? null : kind) !== null)}<ThreadState {thread} {now} subagents={rowAsks(owner, thread.id)} away={owner.connection !== 'ready'} {fit} />{/if}
   {#if now !== undefined && at !== undefined}<time class="at" title={exactTime(at)}>{ago(at, now)}</time>{/if}
 </span>
 

@@ -270,13 +270,14 @@
   --color-subtle: #ededef;
   /* Below reading contrast: a disabled mark, a placeholder glyph, never words that must be read. */
   --color-faint: #4a4a50;
-  /* A switch: off is a raised track ringed in a mid grey with a knob of that grey at the left, on the filled track
-     of the foreground ink with the ink a primary wears as the knob at the right. The rim and the knob clear 3:1 on
-     every card surface of every palette (lib/contrast.test.ts). Neutral: the accent stays for send, focus, checks
-     and the effort control; track fill, side and knob colour all say on. */
+  /* A switch: off is a raised track ringed in a mid grey with a knob near the ink at the left, so it reads as
+     a control to turn on, not a dimmed one; on is the filled track of the foreground ink with the ink a primary
+     wears as the knob at the right. The rim and the knob clear 3:1 on every card surface of every palette, the
+     knob also on its track (lib/contrast.test.ts). Neutral: the accent stays for send, focus, checks and the
+     effort control; track fill, side and knob colour all say on. */
   --switch-off: var(--color-surface-3);
   --switch-rim: color-mix(in oklab, var(--color-foreground) 60%, var(--color-surface));
-  --switch-knob: var(--switch-rim);
+  --switch-knob: color-mix(in oklab, var(--color-foreground) 88%, var(--color-surface));
   --switch-on: var(--color-foreground);
   --switch-knob-on: var(--color-on-foreground);
   /* A chosen segment: one raise over the frame its track is drawn on, lighter than surface-3 so it
@@ -1338,7 +1339,7 @@ button {
  * layout moved, so those get a fill step instead, next to their own rules.
  */
 button.icon:active:not(:disabled),
-button.primary:active:not(:disabled),
+button.primary:active:not(:disabled, [aria-disabled='true']),
 .ui-chip:active:not(:disabled) {
   transform: scale(0.97);
 }
@@ -1366,7 +1367,7 @@ button.primary {
 }
 
 @media (hover: hover) {
-  button.primary:hover:not(:disabled) {
+  button.primary:hover:not(:disabled, [aria-disabled='true']) {
     background: var(--primary-hover);
   }
 }
@@ -1391,6 +1392,17 @@ button.primary.send:disabled {
   border-color: transparent;
   color: var(--color-subtle);
   box-shadow: var(--shadow-control);
+}
+
+/* A primary beside an outlined secondary that waits for a choice (`aria-disabled`,
+   a press says why): the disabled send's quiet fill with the disabled ink, so it never
+   reads as a second outline button. */
+button.primary[aria-disabled='true'] {
+  cursor: default;
+  background: color-mix(in oklab, var(--color-foreground) 8%, transparent);
+  border-color: transparent;
+  color: var(--color-faint);
+  box-shadow: none;
 }
 
 button.quiet,

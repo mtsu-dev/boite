@@ -7,7 +7,8 @@
    * primary (Allow once, Answer) solid in the neutral ink, both one height.
    * The buttons are the caller's: `class="secondary"` and `class="primary"`.
    * A primary already pressed and on its way stays solid, faded: the
-   * decision's one filled action reads first. `lead` holds what
+   * decision's one filled action reads first. One that waits for a pick
+   * (`aria-disabled`) wears app.css's quiet disabled fill. `lead` holds what
    * reads before them at the line's start (a pager, a count).
    */
   let { lead, children }: { lead?: Snippet; children: Snippet } = $props();
@@ -28,6 +29,6 @@
   .lead:not(:has(*)) { display: none; }
   /* The family's buttons as they are: a decision pair is a primary and a secondary, nothing local. */
   .decision-actions > :global(button) { flex: none; }
-  /* Not app.css's outline for a disabled primary: here the pair's primary is always the filled one. */
+  /* Not app.css's outline for a disabled primary: on its way it stays the filled one, faded. */
   .decision-actions > :global(button.primary:disabled) { background: var(--primary-fill); border-color: var(--primary-fill); color: var(--primary-ink); box-shadow: none; opacity: 0.45; }
 </style>

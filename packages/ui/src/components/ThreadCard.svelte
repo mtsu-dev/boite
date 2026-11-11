@@ -63,11 +63,13 @@
   } = $props();
   let owner = $derived(machine.store);
   const away = $derived(owner.connection !== 'ready');
-  /** "Offline" said once: on the place line, unless the card's head or the place's machine already says it. */
-  const chip = $derived(away && !placed && !where?.host?.away);
+  const kind = $derived(thread.archived ? null : threadState(thread, rowAsks(owner, thread.id)));
+  /** "Offline" said once: on the place line, unless the card's head, the place's machine or the row's own state
+      (work it last saw, ThreadState.svelte) already says it. */
+  const chip = $derived(away && !placed && !where?.host?.away && stateForm(kind) !== 'work');
   let open = $derived(workspace.active === owner && owner.openThread?.id === thread.id);
   /** Activity draws the row's mark in the card's mark column (ActivityMark.svelte), never its time there. */
-  const marked = $derived(detail !== undefined && stateForm(thread.archived ? null : threadState(thread, rowAsks(owner, thread.id))) !== null);
+  const marked = $derived(detail !== undefined && stateForm(kind) !== null);
   /** The rename in progress, bound to the machine and thread it began on. */
   let renaming = $state<ThreadRename | null>(null);
   commitOnUnmount(() => renaming);
@@ -167,7 +169,7 @@
       {#if detail}
         <span class="title-line"><ActivityMark>{#if marked}<ThreadState {thread} {now} subagents={rowAsks(owner, thread.id)} {away} mark />{/if}</ActivityMark><ThreadHeadline {owner} {thread} {open} {pullRequest} offline={away} /></span>
       {:else}
-        <ThreadHeadline {owner} {thread} {now} {open} tile={compact && !where ? project : undefined} {pullRequest} mark offline={away} at={thread.lastUserMessageAt ?? thread.createdAt} />
+        <ThreadHeadline {owner} {thread} {now} {open} tile={compact && !where ? project : undefined} {pullRequest} fit offline={away} at={thread.lastUserMessageAt ?? thread.createdAt} />
       {/if}
       <!-- Where the row lives, under the title: the project, the machine among several, Offline once. -->
       {#if where || chip || (detail && at !== undefined)}
@@ -241,12 +243,11 @@
     background: transparent;
     container: thread-row / inline-size;
   }
-  /* The title wins. At rest a row, the open one included, carries one mark at most (the user's turn as its dot,
-     work as its ring, a failure as its word), then its time. The pin, a draft and the pull request show under the
+  /* The title wins. At rest a row, the open one included, carries one state at most (its mark and its word,
+     ThreadState.svelte), then its time. The pin, a draft and the pull request show under the
      pointer or the keyboard (a click's focus does not count: the row just opened would keep them), and stay in
      the tooltip; how long work has run lives in the thread. */
-  .thread:not(:hover, :has(:focus-visible)) .row :global(.headline > :is(.draft, .pin, .pr)),
-  .thread:not(:hover, :has(:focus-visible)) .row :global(.headline > .when:not(.waiting, .error, .interrupted, .working, .delegating, .monitoring, .background, .watching)) { display: none; }
+  .thread:not(:hover, :has(:focus-visible)) .row :global(.headline > :is(.draft, .pin, .pr)) { display: none; }
   /* Activity's card: the kind line, then the title, two lines at most, led by its mark in the card's mark column;
      the place line under it says where the row lives and since when; what is asked runs under that, the decision
      pair beside the title block or under everything. The column is the kind glyph's 13 px and its 6 px gap

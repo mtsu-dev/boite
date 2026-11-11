@@ -51,11 +51,11 @@ export function rowAsks(store: RowSource<Delegated | WorkingChildren>, threadId:
 }
 
 /**
- * How every list says a state: a word beside its mark only when the user must
- * act (their turn, a failure), the mark alone for work, nothing but the time
- * for news and rest.
+ * How every list marks a state: the user's own (their turn, a failure) by a
+ * dot or a "!" disc, work by the accent arc, news and rest by nothing but the
+ * time. A marked state carries its word beside the mark (ThreadState.svelte).
  */
-export function stateForm(state: ThreadState | null): 'word' | 'mark' | null {
-  if (state === 'waiting' || state === 'error' || state === 'interrupted') return 'word';
-  return state === null || state === 'done' ? null : 'mark';
+export function stateForm(state: ThreadState | null): 'act' | 'work' | null {
+  if (state === 'waiting' || state === 'error' || state === 'interrupted') return 'act';
+  return state === null || state === 'done' ? null : 'work';
 }

@@ -155,8 +155,7 @@ export const strings = {
       /** That work ended without waking it: the agent stopped there, its result never came. */
       interrupted: 'Interrupted',
       /** Its machine stopped answering while it worked: what it does now is unknown until the machine is back. */
-      unreachable: 'Unreachable',
-      unreachableWas: 'Machine unreachable. Last known state: {state}',
+      unreachableWas: 'Machine offline. Last known state: {state}',
       interruptedBy: '{what} ended without reporting back: {reason}',
       interruption: {
         'error': 'the task failed',

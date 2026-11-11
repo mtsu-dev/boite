@@ -33,7 +33,7 @@ test('a model whose agent keeps its own level reads Default, with no level lit, 
   const onpick = vi.fn();
   // A pi model other than the session's: no level picked and no default known.
   open(null, onpick);
-  expect(query('[data-testid=composer-effort]').textContent?.trim()).toBe('Default');
+  expect(query('[data-testid=composer-effort]').textContent?.trim()).toBe('Effort Default');
   expect(query('[data-testid=composer-effort-menu] .heading').textContent?.trim()).toBe('Default');
   expect(document.querySelectorAll('[data-testid=composer-effort-menu] .dot.on')).toHaveLength(0);
   expect(document.querySelector('[data-testid=composer-effort-menu] .thumb')).toBeNull();
@@ -46,7 +46,7 @@ test('a model whose agent keeps its own level reads Default, with no level lit, 
 
 test('a known level lights its dots and names itself', () => {
   open('low', vi.fn());
-  expect(query('[data-testid=composer-effort]').textContent?.trim()).toBe('Low');
+  expect(query('[data-testid=composer-effort]').textContent?.trim()).toBe('Effort Low');
   expect(Array.from(document.querySelectorAll('[data-testid=composer-effort-menu] .dot.on')).map(dot => dot.getAttribute('data-dot'))).toEqual(['off', 'low']);
   expect(document.querySelector('[data-testid=composer-effort-menu] .thumb')).not.toBeNull();
 });
@@ -145,12 +145,27 @@ test('the fast switch reads its name beside the bolt whether it is on or off', a
   expect(query('[data-testid=effort-speed] .switch').classList.contains('on')).toBe(true);
 });
 
+test('the chip names what it sets then the level, with no step meter; a speed alone reads as itself', () => {
+  mounted = mount(EffortSlider, { target: document.body, props: { levels: LEVELS, active: 'low', onpick() {} } });
+  flushSync();
+  const chip = query<HTMLElement>('[data-testid=composer-effort]');
+  expect(chip.textContent?.trim()).toBe('Effort Low');
+  expect(chip.querySelector('.name')?.textContent).toBe('Effort');
+  // The accessible name is the visible one, value included.
+  expect(chip.hasAttribute('aria-label')).toBe(false);
+  expect(chip.querySelector('[data-testid=effort-meter], .meter, .step')).toBeNull();
+  unmount(mounted);
+  mounted = mount(EffortSlider, { target: document.body, props: { levels: [], active: null, onpick() {}, speeds: [{ id: 'fast', label: 'Fast' }] } });
+  flushSync();
+  expect(query('[data-testid=composer-effort]').textContent?.trim()).toBe('Standard speed');
+});
+
 test("a bot's effort chip names its level and opens nothing", () => {
   mounted = mount(EffortSlider, { target: document.body, props: { levels: LEVELS, active: 'high', onpick() {}, readonly: true, readonlyHint: "Set in Ada's settings" } });
   flushSync();
   const chip = query<HTMLElement>('[data-testid=composer-effort]');
   expect(chip.tagName).toBe('SPAN');
-  expect(chip.textContent?.trim()).toBe('High');
+  expect(chip.textContent?.trim()).toBe('Effort High');
   expect(chip.getAttribute('title')).toBe("Set in Ada's settings");
   chip.click();
   flushSync();

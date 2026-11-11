@@ -41,8 +41,9 @@ test('text and icons share a vertical centre across reading fonts, menus and pho
       window.__alignmentEffort = __boiteTest.workspace.active.openThread.effort;
       __boiteTest.workspace.active.openThread.effort = 'high';
     })()`);
-    await page.waitFor(`document.querySelector('[data-testid="composer-effort"] .ui-label')?.textContent === 'Élevé'`);
-    for (const result of await labelOffsets(page, [['[data-testid="composer-effort"] svg', '[data-testid="composer-effort"] .ui-label']])) {
+    // The chip leads with what it sets, so its plain capitals hold the line's centre beside an accented level.
+    await page.waitFor(`document.querySelector('[data-testid="composer-effort"] .ui-label')?.textContent === 'Effort Élevé'`);
+    for (const result of await labelOffsets(page, [['[data-testid="composer-effort"] svg', '[data-testid="composer-effort"] .name']])) {
       expect(Math.abs(result.inkOffset), `${font}: accented effort label`).toBeLessThanOrEqual(0.8);
       expect(result.inkFits, `${font}: accented effort ink`).toBe(true);
     }

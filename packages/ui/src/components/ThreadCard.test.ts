@@ -181,7 +181,10 @@ test('a turn left running on a machine that went away loses its work mark until 
   store.connection = 'connecting'; await settle();
   expect(state()?.dataset.state).toBe('unreachable');
   expect(state()?.querySelector('.work-ring')).toBeNull();
-  expect(state()?.getAttribute('title')).toBe('Machine unreachable. Last known state: Working');
+  expect(state()?.getAttribute('title')).toBe('Machine offline. Last known state: Working');
+  // "Offline" said once, by the row's own state: no chip repeats it on a place line.
+  expect(state()?.querySelector('.word')?.textContent).toBe('Offline');
+  expect(document.querySelector('[data-testid=thread-offline]')).toBeNull();
   store.connection = 'ready'; await settle();
   expect(state()?.dataset.state).toBe('working');
 });

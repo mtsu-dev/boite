@@ -83,8 +83,10 @@
   /** The fast switch's own name, on or off: the tier that runs, else the first one a click turns on. */
   const fastLabel = $derived(selectedSpeed ?? speeds[0] ? levelName((selectedSpeed ?? speeds[0])!) : '');
   const label = $derived(current || levels.length > 0 ? levelLabel : selectedSpeed ? levelName(selectedSpeed) : strings.composer.standardSpeed);
+  /** A scale of levels: the chip names what its word measures ("Effort High"); a speed alone reads as itself. */
+  const named = $derived(levels.length > 0);
   // An accent above a leading capital raises the label's visible centre.
-  const accentedCap = $derived(/^\p{Lu}[\u0300-\u0314]/u.test(label.normalize('NFD')));
+  const accentedCap = $derived(!named && /^\p{Lu}[\u0300-\u0314]/u.test(label.normalize('NFD')));
   function cycleSpeed() {
     const next = speeds.findIndex(entry => entry.id === speed) + 1;
     onspeed(next >= speeds.length ? null : speeds[next]!.id);
@@ -228,19 +230,14 @@
 <svelte:window onpointerdown={onWindowPointerdown} />
 
 <!--
-  The chip's face is the slider in small: its bolt, the level's word whole,
-  and a meter of the scale's steps rising like its track, lit up to the level.
-  A fast mode switched on fills the bolt, so it shows with the popover shut.
+  The chip's face: the slider's bolt, then what it sets and the level, whole
+  ("Effort High"). A fast mode switched on fills the bolt, so it shows with
+  the popover shut.
 -->
 {#snippet face()}
   {@const fast = levels.length > 0 && !!selectedSpeed}
   <span class="bolt-mark" class:fast data-testid={fast ? 'effort-fast-mark' : undefined} title={fast && selectedSpeed ? levelName(selectedSpeed) : undefined}><Zap size={14} strokeWidth={1.75} fill={fast ? 'currentColor' : 'none'} /></span>
-  <span class="ui-label" class:accented-cap={accentedCap}>{label}</span>
-  {#if levels.length > 1}
-    <span class="meter" aria-hidden="true" data-testid="effort-meter" data-step={index + 1}>
-      {#each levels as level, at (level.id)}<span class="step" class:on={at <= index} style:--rise={(at + 1) / levels.length}></span>{/each}
-    </span>
-  {/if}
+  <span class="ui-label" class:accented-cap={accentedCap}>{#if named}<span class="name">{strings.composer.effortTitle}</span>{' '}<span class="level">{label}</span>{:else}{label}{/if}</span>
 {/snippet}
 
 <div class="effort" bind:this={root}>
@@ -254,7 +251,6 @@
     class="ui-chip trigger"
     aria-haspopup="dialog"
     aria-expanded={popover.open}
-    aria-label={strings.composer.effortTitle}
     title={strings.composer.effortTitle}
     data-testid="composer-effort"
     bind:this={trigger}
@@ -366,10 +362,9 @@
 .bolt-mark { display: inline-flex; flex: none; }
 /* Fast on is a live state: the bolt fills in the accent. */
 .bolt-mark.fast { color: var(--color-accent); filter: drop-shadow(0 0 4px var(--color-accent-soft)); }
-/* One bar per step of the scale, rising like the slider's glow; only the lit ones take the accent. */
-.meter { display: inline-flex; align-items: flex-end; gap: 2px; flex: none; height: 12px; }
-.step { width: 3px; height: calc(4px + var(--rise) * 8px); border-radius: 1px; background: color-mix(in oklab, currentColor 28%, transparent); }
-.step.on { background: var(--color-accent); }
+/* What the chip sets, a tier under the level it reads. */
+.name { color: var(--color-subtle); }
+.level { color: var(--color-foreground); font-weight: 500; }
 /* Every menu's one edge, radius and shadow. */
 .popover { --track-pad: 12px; position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 40; width: 288px; padding: 10px 12px 12px; background: var(--overlay-surface); border: 1px solid var(--overlay-edge); border-radius: var(--radius-overlay); box-shadow: var(--shadow-overlay); animation: pop var(--dur-2) var(--ease-out-quint); transform-origin: bottom left; }
 .popover.closing { animation-name: pop-out; pointer-events: none; }

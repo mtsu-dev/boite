@@ -131,8 +131,7 @@ export const fr: Translation = {
       watchingMany: 'Surveille {count} PR',
       awaiting: 'Attend : {what}',
       interrupted: 'Interrompu',
-      unreachable: 'Injoignable',
-      unreachableWas: 'Machine injoignable. Dernier état connu : {state}',
+      unreachableWas: 'Machine hors ligne. Dernier état connu : {state}',
       interruptedBy: '{what} s’est terminé sans rendre de résultat : {reason}',
       interruption: {
         'error': 'la tâche a échoué',

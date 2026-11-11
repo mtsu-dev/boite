@@ -26,7 +26,7 @@
 
   /**
    * A phone's thread row, the desktop row's grammar at a finger's size (ThreadHeadline.svelte): the title gets the
-   * width, two lines of it before any ellipsis, its mark and its time at the end of its first line, then where it
+   * width, two lines of it before any ellipsis, its mark, its word and its time at the end of its first line, then where it
    * lives under it when the list says so. The pull request waits in the thread, the pin under the slide. `compact` is
    * the flat lists' form (Recent, Activity): the project's tile first, unless the line under the title names the
    * project in words. Activity (the phone's screen) is the whole
@@ -60,11 +60,12 @@
   const pin = $derived(items.find(item => item.id === 'pin'));
   const archive = $derived(items.find(item => item.id === 'archive'));
   const kind = $derived(thread.archived ? null : threadState(thread, rowAsks(owner, thread.id)));
-  /** A dot when the user must act or a turn failed, the arc for work, the time alone otherwise (ThreadState draws it then). */
+  /** A dot when the user must act or a turn failed, the arc for work, each with its word; the time alone otherwise (ThreadState draws it then). */
   const form = $derived(stateForm(kind));
   const away = $derived(owner.connection !== 'ready');
-  /** "Offline" said once: on the place line, unless the card's head or the place's machine already says it. */
-  const chip = $derived(away && !placed && !where?.host?.away);
+  /** "Offline" said once: on the place line, unless the card's head, the place's machine or the row's own state
+      (work it last saw, ThreadState.svelte) already says it. */
+  const chip = $derived(away && !placed && !where?.host?.away && form !== 'work');
   /** Activity: what the thread asks, in words, a question whole; nothing when its reason only names the place line's project. */
   const ask = $derived(reason === undefined ? null : feedQuestion(owner, thread.id) ?? feedAsk(owner, thread.id, { reason, place: where?.project }));
   /** Activity: the whole command the thread asks to run, read before Allow. */
@@ -106,14 +107,14 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="body" use:swipeRow oncontextmenu={openMenu}>
     <button class="ghost thread" class:offline={away} class:stated={kind !== null} data-testid="mobile-thread-{thread.id}" title={[thread.title, reason, thread.branch].filter(Boolean).join('\n')} onclick={onopen} use:longPress>
-      <!-- One line for every list (ThreadHeadline.svelte): the title, then the mark in the row's one slot and the time
-           after it; in Activity the decision's kind over it and the place line under it. The project's header says
-           how many need the user, so no row repeats the word. -->
+      <!-- One line for every list (ThreadHeadline.svelte): the title, then the mark and its word in the row's one slot
+           and the time after it; in Activity the decision's kind over it and the place line under it, the mark alone
+           in its column. -->
       {#if feedKind}<ActivityKind kind={feedKind} news={!verb}>{#if !verb && at !== undefined}<time title={exactTime(at)}>{ago(at, now)}</time>{/if}</ActivityKind>{/if}
       {#if reason !== undefined}
         <span class="title-line" data-row-title><ActivityMark>{#if form !== null}<ThreadState {thread} {now} subagents={rowAsks(owner, thread.id)} {away} mark />{/if}</ActivityMark><ThreadHeadline {owner} {thread} offline={away} ask={why} /></span>
       {:else}
-        <ThreadHeadline {owner} {thread} {now} tile={compact && where === undefined ? project : undefined} mark offline={away}
+        <ThreadHeadline {owner} {thread} {now} tile={compact && where === undefined ? project : undefined} offline={away}
           at={form !== null ? thread.lastUserMessageAt ?? thread.createdAt : undefined} />
       {/if}
       {#if reason === undefined && (where || chip)}{@render placeLine()}{/if}
