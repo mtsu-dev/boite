@@ -49,5 +49,14 @@ export function separator(id = 'sep'): MenuItem {
 export function dangerLast(items: MenuItem[]): MenuItem[] {
   const last = items.findLastIndex((item) => !item.separator && !item.danger);
   if (!items.some((item, at) => item.danger && !item.separator && at < last)) return items;
-  return [...items.filter((item) => !item.danger), separator('sep-danger'), ...items.filter((item) => item.danger)];
+  // The rules the moved rows sat between would open the menu on a rule or show two in a row.
+  // A titled rule heads its section and stays; a bare one goes when nothing precedes it or a rule follows.
+  const head: MenuItem[] = [];
+  for (const item of items) {
+    if (item.danger) continue;
+    if (item.separator && item.label === '' && (!head.length || head.at(-1)!.separator)) continue;
+    head.push(item);
+  }
+  while (head.at(-1)?.separator) head.pop();
+  return [...head, separator('sep-danger'), ...items.filter((item) => item.danger && !item.separator)];
 }
