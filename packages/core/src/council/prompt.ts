@@ -1,7 +1,7 @@
 import { COUNCIL_LIMITS, councilScore, councilTable, type Council, type CouncilMember } from '@boite/contracts';
 
 /**
- * What the members and the parent read (`docs/council.md`). A member reads the
+ * What the members and the parent read (`docs/internals/council.md`). A member reads the
  * request, what the parent says changed and the owner's messages, never another
  * member's answer. Nothing here assumes git, a pull request or code: the request
  * may be a plan, an idea or a design choice.

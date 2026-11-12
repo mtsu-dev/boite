@@ -471,7 +471,7 @@ export class TerminalStore {
       described: described ?? describeShell(shell, integrated),
       env: { ...options.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' },
       emit: (data) => {
-        // A value split across two chunks passes; one whole in a chunk is masked (docs/secrets.md).
+        // A value split across two chunks passes; one whole in a chunk is masked (docs/internals/secrets.md).
         if (options.threadId !== undefined) data = this.#core.secrets.mask(options.threadId, data);
         history.push(data);
         output.sequence++;

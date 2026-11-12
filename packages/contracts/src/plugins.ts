@@ -4,7 +4,7 @@ import type { RpcEventName, RpcMethodName } from './index';
 
 // ---------------------------------------------------------------------------
 // Plugins: one manifest format, `boite-plugin.json`. The recommended ones ship
-// inside the core; the owner adds others from a git URL. docs/plugins.md.
+// inside the core; the owner adds others from a git URL. docs/internals/plugins.md.
 // ---------------------------------------------------------------------------
 
 /** The file a plugin repository carries at its root. */
@@ -31,7 +31,7 @@ export type PluginRuntime = 'native' | 'bun';
 // ---------------------------------------------------------------------------
 // Permissions. A schema 2 plugin's processes get a token of their own that
 // reaches only what the owner granted of what its manifest asks for
-// (docs/plugins.md, Permissions). A schema 1 desktop app keeps the owner token
+// (docs/internals/plugins.md, Permissions). A schema 1 desktop app keeps the owner token
 // it always had.
 //
 // Every method and event a paired device reaches (`DEVICE_METHODS` and
@@ -44,7 +44,7 @@ export type PluginRuntime = 'native' | 'bun';
 export const PLUGIN_PERMISSION_NAMES = [
   'threads.read', 'threads.write', 'projects.read', 'projects.write', 'todos.read', 'todos.write',
   'agents.read', 'agents.write', 'files.read', 'questions.write', 'screens.read', 'screens.write',
-  'status.read', 'ui.reveal',
+  'status.read', 'ui.reveal', 'ui',
 ] as const;
 export type PluginPermission = (typeof PLUGIN_PERMISSION_NAMES)[number];
 
@@ -130,7 +130,7 @@ export const PLUGIN_PERMISSIONS: Readonly<Record<PluginPermission, PluginPermiss
   'questions.write': { methods: ['permissions.answer', 'questions.answer', 'questions.openPage', 'questions.skip'], events: [], danger: true },
   // What an agent's browser, a phone emulator or a desktop window shows.
   'screens.read': {
-    methods: ['browser.remoteFrame', 'browser.remoteSelection', 'browser.remoteStatus', 'devices.list', 'devices.sessions', 'devices.frame', 'devices.screenshot', 'devices.stream', 'windows.list', 'windows.frame'],
+    methods: ['browser.remoteFrame', 'browser.remoteStream', 'browser.remoteSelection', 'browser.remoteStatus', 'devices.list', 'devices.sessions', 'devices.frame', 'devices.screenshot', 'devices.stream', 'windows.list', 'windows.frame'],
     events: ['browser.remoteChanged', 'devices.changed', 'windows.changed'],
   },
   // Taps, types and opens there, reads the emulator's clipboard, closes what is shown.
@@ -145,6 +145,9 @@ export const PLUGIN_PERMISSIONS: Readonly<Record<PluginPermission, PluginPermiss
   },
   // Brings a conversation, a bot or the app updates to the front of the owner's desktop window.
   'ui.reveal': { methods: ['ui.reveal'], events: [] },
+  // Its `provides.ui` script and style run inside Boite's window, on every client of this core.
+  // The token gains nothing: the code runs in the app and reaches what the app reaches. Danger.
+  ui: { methods: [], events: [], danger: true },
 };
 
 /**
@@ -163,7 +166,7 @@ export const PLUGIN_CLOSED: readonly { name: string; reason: string }[] = [
   { name: 'subscriptionProxy.setEnabled', reason: 'it routes the owner\'s provider traffic' },
   { name: 'secrets.', reason: 'secrets reach only the agent that asked for one' },
   { name: 'secret.', reason: 'secrets reach only the agent that asked for one' },
-  { name: 'plugins.', reason: 'installing, removing and granting plugins is the owner\'s' },
+  { name: 'plugins.', reason: 'installing, removing, granting, turning off and setting up plugins is the owner\'s' },
   { name: 'core.', reason: 'updating, restarting and stopping Boite and the app is the owner\'s' },
   { name: 'policy.', reason: 'policies hold the owner\'s machines to an administrator\'s rules, which a plugin neither reads nor changes' },
   { name: 'sessions.', reason: 'pairing a device is the owner\'s' },
@@ -194,6 +197,82 @@ export function pluginPermissionFor(method: string): PluginPermission | null {
 export interface PluginActor {
   pluginId: string;
   pluginName: string;
+}
+
+// ---------------------------------------------------------------------------
+// Settings. A schema 2 manifest declares them; Boite draws them in the same
+// dialog for every plugin, keeps the owner's values on the core, and the
+// plugin reads them (`plugins.settings.get`) and hears each change
+// (`plugin.settings.changed`) with no permission, for itself only.
+// ---------------------------------------------------------------------------
+
+export const PLUGIN_SETTING_TYPES = ['switch', 'number', 'slider', 'text', 'select'] as const;
+export type PluginSettingType = (typeof PLUGIN_SETTING_TYPES)[number];
+/** A setting's key: a letter, then letters, digits and `_`, at most 40 characters. */
+export const PLUGIN_SETTING_KEY_PATTERN = /^[A-Za-z][A-Za-z0-9_]{0,39}$/;
+/** How many settings one plugin may declare, and how long a text value or a select's list may be. */
+export const PLUGIN_SETTING_LIMITS = { settings: 30, text: 1000, options: 30 } as const;
+
+export type PluginSettingValue = boolean | number | string;
+/** Every declared key with its value: the owner's, or the declared default. */
+export type PluginSettingValues = Record<string, PluginSettingValue>;
+
+interface PluginSettingBase {
+  key: string;
+  /** One short line, the setting's name. */
+  label: string;
+  /** One line under the label. */
+  description?: string;
+}
+/** A number field; `min`, `max` and `step` bound what the owner may enter. */
+export interface PluginNumberSetting extends PluginSettingBase { type: 'number'; default: number; min?: number; max?: number; step?: number }
+/** A slider: `min` and `max` are required. */
+export interface PluginSliderSetting extends PluginSettingBase { type: 'slider'; default: number; min: number; max: number; step?: number }
+export interface PluginSelectOption { value: string; label: string }
+export type PluginSetting =
+  | (PluginSettingBase & { type: 'switch'; default: boolean })
+  | PluginNumberSetting
+  | PluginSliderSetting
+  | (PluginSettingBase & { type: 'text'; default: string })
+  | (PluginSettingBase & { type: 'select'; default: string; options: PluginSelectOption[] });
+
+/**
+ * Why `value` cannot be the setting's value, or null when it can. The core
+ * checks every default and every value the owner sets with it; the UI uses it
+ * to refuse a field before sending it.
+ */
+export function pluginSettingProblem(setting: PluginSetting, value: unknown): string | null {
+  switch (setting.type) {
+    case 'switch': return typeof value === 'boolean' ? null : 'true or false';
+    case 'text':
+      return typeof value === 'string' && value.length <= PLUGIN_SETTING_LIMITS.text && !/[\u0000-\u001f\u007f]/.test(value)
+        ? null : `a string of at most ${PLUGIN_SETTING_LIMITS.text} characters on one line`;
+    case 'select': {
+      const values = setting.options.map((option) => option.value);
+      return typeof value === 'string' && values.includes(value) ? null : `one of ${values.join(', ')}`;
+    }
+    default: {
+      const { min, max, step } = setting;
+      const range = [min === undefined ? '' : `at least ${min}`, max === undefined ? '' : `at most ${max}`, step === undefined ? '' : `a multiple of ${step}${min === undefined ? '' : ` from ${min}`}`].filter(Boolean).join(', ');
+      if (typeof value !== 'number' || !Number.isFinite(value)) return `a number${range ? `, ${range}` : ''}`;
+      if ((min !== undefined && value < min) || (max !== undefined && value > max) || (step !== undefined && !onStep(value, min ?? 0, step))) return `a number, ${range}`;
+      return null;
+    }
+  }
+}
+
+/** Whether `value` lands on a step from `base`, within float error. */
+function onStep(value: number, base: number, step: number): boolean {
+  const steps = (value - base) / step;
+  return Math.abs(steps - Math.round(steps)) < 1e-9;
+}
+
+/** The value of each declared setting: the stored one while it is still valid, the default otherwise. */
+export function pluginSettingValues(settings: readonly PluginSetting[], stored: Readonly<Record<string, unknown>>): PluginSettingValues {
+  return Object.fromEntries(settings.map((setting) => {
+    const value = stored[setting.key];
+    return [setting.key, value !== undefined && pluginSettingProblem(setting, value) === null ? value as PluginSettingValue : setting.default];
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -284,6 +363,54 @@ export interface PluginProvides {
   prompt?: string;
   /** Schema 2. Entries of the composer's `/` menu. */
   slashCommands?: PluginSlashCommand[];
+  /**
+   * Schema 2. A script and a stylesheet Boite's window loads: files of the
+   * plugin's repository, read at the commit the owner installed, or of its
+   * dev folder. Needs the `ui` permission. docs/plugins.md, Interface.
+   */
+  ui?: PluginUiFiles;
+}
+
+/** `provides.ui`: paths in the repository, relative to its root. At least one. */
+export interface PluginUiFiles {
+  /** An ES module whose default export Boite calls with the plugin API: `ui/index.js`. */
+  script?: string;
+  /** A stylesheet added to the page while the plugin is loaded: `ui/style.css`. */
+  style?: string;
+}
+
+/**
+ * What `provides.ui` may name: a path inside the repository, of letters,
+ * digits, `.`, `_`, `-` and `/`, with no `..`, a script ending in `.js` or
+ * `.mjs`, a style in `.css`.
+ */
+export const PLUGIN_UI_PATH_PATTERN = /^(?!.*(?:^|\/)\.\.?(?:\/|$))[A-Za-z0-9_][A-Za-z0-9._/-]{0,199}$/;
+/** Bytes each file may take: the window loads them at every start, a phone's included. */
+export const PLUGIN_UI_LIMITS = { script: 512 * 1024, style: 128 * 1024 } as const;
+
+/**
+ * One plugin's interface as `plugins.ui` hands it to a client: the files'
+ * text and what its script may call. Only plugins installed, enabled and
+ * granted `ui` are listed.
+ */
+export interface PluginUiBundle {
+  id: string;
+  name: string;
+  version: string;
+  /** Changes whenever the version or a file's bytes do: what a client compares to reload it. */
+  digest: string;
+  script: string | null;
+  style: string | null;
+  /** The permissions the owner granted: the script's RPC client reaches these and no more. */
+  permissions: PluginPermission[];
+  /**
+   * The values of the plugin's settings, as the owner set them. A change of
+   * these alone reaches the running script through `onSettingsChanged`, with
+   * no reload: `digest` does not cover them.
+   */
+  settings: Record<string, boolean | number | string>;
+  /** Why the files could not be read, a dev folder's missing file say. The bundle carries no code then. */
+  error: string | null;
 }
 
 /** Where a gateway plugin stands. Null on a plugin that provides no gateway. */
@@ -380,6 +507,8 @@ export interface PluginManifest {
   artifacts?: Partial<Record<PluginPlatform | typeof PLUGIN_ANY_PLATFORM, PluginArtifact>>;
   /** Schema 2: what the plugin's own token reaches. Absent means nothing. */
   permissions?: PluginPermission[];
+  /** Schema 2: the settings Boite draws for the owner, in this order. */
+  settings?: PluginSetting[];
   provides: PluginProvides;
 }
 
@@ -455,7 +584,7 @@ export interface PluginState {
   /**
    * What the owner granted of `permissions`: all the plugin's token reaches.
    * Absent with `permissions`. A permission the plugin asks for and the owner
-   * left out is refused by name (docs/plugins.md, Permissions).
+   * left out is refused by name (docs/internals/plugins.md, Permissions).
    */
   granted?: PluginPermission[];
   /** What the version an install or an update brings asks for; the consent dialog lists it. Absent when that version is schema 1. */
@@ -466,6 +595,16 @@ export interface PluginState {
   adds?: PluginAdds | null;
   /** The folder a `dev` plugin runs from. Absent or null otherwise. */
   devPath?: string | null;
+  /**
+   * False once the owner turned the plugin off (`plugins.setEnabled`): its
+   * processes stopped, its token revoked, what it adds gone, its files kept.
+   * Absent from older cores, where every installed plugin is on.
+   */
+  enabled?: boolean;
+  /** The settings its manifest declares, empty when none. Absent from older cores. */
+  settings?: PluginSetting[];
+  /** The current value of each declared setting. Absent from older cores. */
+  settingValues?: PluginSettingValues;
 }
 
 /** The agent commands, skills and slash commands a plugin adds, and whether it adds guide lines. */
@@ -474,6 +613,8 @@ export interface PluginAdds {
   skills: string[];
   slashCommands: string[];
   prompt: boolean;
+  /** Whether it loads a script or a style into Boite's window. Absent from older cores. */
+  ui?: boolean;
 }
 
 /** What `plugins.command` hands back: the command's exit code and its output. */
@@ -487,7 +628,7 @@ export interface PluginCommandResult {
 
 /**
  * A recommended plugin's update source and its last check. The source is the
- * reviewed list's, never the plugin's own: docs/plugins.md, Updating.
+ * reviewed list's, never the plugin's own: docs/internals/plugins.md, Updating.
  */
 export interface PluginUpdates {
   /** The https repository and the ref whose `boite-plugin.json` is read. */
@@ -593,9 +734,36 @@ export interface PluginsRpcMethods {
    * the plugin's app or service.
    */
   'plugins.dev': { params: { path: string }; result: PluginState };
+  /**
+   * Owner-only. Turns an installed plugin off or on without uninstalling it.
+   * Off stops its desktop app, service and gateway, revokes its token and
+   * drops its commands, skills, guide lines and slash commands; on brings
+   * them back. Its files, data and settings stay either way.
+   */
+  'plugins.setEnabled': { params: { id: string; enabled: boolean }; result: PluginState };
+  /**
+   * The values of the plugin's declared settings, defaults filled in. Open to
+   * the plugin itself for its own id with no permission; any other id is the owner's.
+   */
+  'plugins.settings.get': { params: { id: string }; result: PluginSettingValues };
+  /**
+   * Owner-only. Sets some of the plugin's declared settings. Every key must be
+   * declared and every value valid, or nothing changes; the refusal names the key.
+   */
+  'plugins.settings.set': { params: { id: string; values: PluginSettingValues }; result: PluginState };
+  /**
+   * The interface of every installed plugin that provides one and holds the
+   * `ui` permission: what a client's window loads after it starts. Owner and
+   * paired devices alike, since a phone draws the same window.
+   */
+  'plugins.ui': { params: Record<string, never>; result: PluginUiBundle[] };
 }
 
 export interface PluginsRpcEvents {
   /** One plugin after any change. A `url` plugin that comes back `not-installed` is gone from the list. */
   'plugins.updated': PluginState;
+  /** A plugin's settings after the owner changed them: every value. Heard by the owner and by that plugin alone. */
+  'plugin.settings.changed': { id: string; values: PluginSettingValues };
+  /** The set of plugin interfaces changed: `digest` sums every bundle's, so a client reads `plugins.ui` again only when it differs. */
+  'plugins.uiUpdated': { digest: string };
 }

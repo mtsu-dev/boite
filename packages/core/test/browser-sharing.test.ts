@@ -68,7 +68,8 @@ real('the desktop app on this machine hosts the agent tabs: the core drives them
     expect(await evaluate('document.title')).toBe('clicked');
     // A viewer elsewhere still gets frames, taken through the host.
     const frame = await picture(owner.call('browser.remoteFrame', { threadId }));
-    expect(jpegSize(frame.base64)).toEqual({ width: frame.width, height: frame.height });
+    // Asked for without a width, a frame has every pixel the browser drew: two for each CSS pixel.
+    expect(jpegSize(frame.base64)).toEqual({ width: frame.width * 2, height: frame.height * 2 });
     // A reply from a connection that does not host is refused.
     expect(await thrown(owner.call('browser.hostReply', { profile: 'default', messages: ['{}'] }))).toThrow('does not host');
   } finally {
@@ -131,7 +132,8 @@ real('a viewer on another device watches and drives the tab, and hears it come a
     expect((await shown).tabs[0]).toMatchObject({ tabId, profile: 'default', active: true });
     const frame = await picture(phone.call('browser.remoteFrame', { threadId }));
     expect(frame).toMatchObject({ tabId, title: 'Fixture', url: url() });
-    expect(jpegSize(frame.base64)).toEqual({ width: frame.width, height: frame.height });
+    // Asked for without a width, a frame has every pixel the browser drew: two for each CSS pixel.
+    expect(jpegSize(frame.base64)).toEqual({ width: frame.width * 2, height: frame.height * 2 });
     await Bun.sleep(150);
     // A narrow viewer gets a frame no wider than it shows, of the same page.
     const small = await picture(phone.call('browser.remoteFrame', { threadId, tabId, maxWidth: 400, quality: 40 }));

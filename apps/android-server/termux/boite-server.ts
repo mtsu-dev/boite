@@ -1,7 +1,7 @@
 /**
  * Boite in Termux: install.sh bootstraps this controller and Bun; signed bundles supply the core and UI.
  * A detached supervisor restarts the core. The Android app invokes commands through Termux RUN_COMMAND
- * and reads their --json answers. Installation, signature verification and rollback: docs/android-server.md.
+ * and reads their --json answers. Installation, signature verification and rollback: docs/internals/android-server.md.
  */
 import { spawn, spawnSync, type ChildProcess, type SpawnSyncReturns } from 'node:child_process';
 import { createHash, createPublicKey, randomUUID, verify, type KeyObject } from 'node:crypto';
@@ -28,7 +28,7 @@ const CLAUDE_RELEASES = 'https://downloads.claude.ai/claude-code-releases';
 /** What Claude Code's glibc build names as its ELF interpreter. */
 export const GLIBC_INTERPRETER = '/lib/ld-linux-aarch64.so.1';
 const VERSION = /^\d+\.\d+\.\d+(?:-[\w.-]+)?$/;
-/** The core's restart handoff waits up to 30 s for running turns (docs/restart-handoff.md). */
+/** The core's restart handoff waits up to 30 s for running turns (docs/internals/restart-handoff.md). */
 const STOP_GRACE_MS = 60_000;
 /** Seconds between restarts of a core that keeps exiting within a minute of starting. */
 const BACKOFF_S = [1, 2, 5, 10, 30, 60];

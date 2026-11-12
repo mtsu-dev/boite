@@ -2,7 +2,7 @@
  * Secrets an agent asks for on a card and then uses by ref. The value goes
  * from the card to temporary process memory and from there to the file or the
  * command the agent names; it never enters the journal, an event, a log or
- * an error. See docs/secrets.md for what is and is not promised.
+ * an error. See docs/internals/secrets.md for what is and is not promised.
  */
 import {
   parseSecretRef, SECRET_ASK_MAX_TIMEOUT_MINUTES, SECRET_ASK_TIMEOUT_MINUTES, SECRET_MAX_BYTES, SECRET_NAME_PATTERN,

@@ -7,7 +7,7 @@
   import CouncilAvatar from './CouncilAvatar.svelte';
 
   /**
-   * The card a council leaves in the thread that started it (`docs/council.md`):
+   * The card a council leaves in the thread that started it (`docs/internals/council.md`):
    * who reviews, where it stands and the way to its salon. A debate from before
    * the council left a part of its own and draws the same card. The thread's
    * councils are read with `council.list`; one past the newest the list holds

@@ -164,7 +164,7 @@ export class TurnContexts {
       this.#threads.progress.report(threadId, turn.id, phase, detail);
     const thinking = new Map<MessageId, { index: number; startedAt: number }>();
     const publishPart = (messageId: MessageId, partIndex: number, raw: MessagePart): void => {
-      // A secret in use on the thread never reaches the journal or a client in clear (docs/secrets.md).
+      // A secret in use on the thread never reaches the journal or a client in clear (docs/internals/secrets.md).
       const part = this.#core.secrets.maskPart(threadId, raw);
       this.#core.journal.append(
         { type: 'message.part', threadId, version: 1, payload: { messageId, partIndex, part } },

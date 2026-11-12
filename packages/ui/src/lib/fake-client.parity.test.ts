@@ -269,3 +269,13 @@ test('an archived thread with no project reports archived before agent-session, 
   const capabilities = await capabilityMethods(ctx)['threads.capabilities']({ threadId: thread.id });
   expect(capabilities.steering.reason).toBe('archived');
 });
+
+test('a plugin turned off refuses login changes in its pools, as plugins/accounts.ts goes through #usable', async () => {
+  const client = await fake();
+  const params = { id: 'seat-pool', provider: 'opencode', action: 'switch', email: 'side@example.com' } as const;
+  await client.call('plugins.setEnabled', { id: 'seat-pool', enabled: false });
+  expect(await code(client.call('plugins.accountAction', params))).toBe(RpcErrorCode.Refused);
+  await client.call('plugins.setEnabled', { id: 'seat-pool', enabled: true });
+  const pools = await client.call('plugins.accountAction', params);
+  expect(pools[0]!.accounts.find((account) => account.active)?.email).toBe('side@example.com');
+});

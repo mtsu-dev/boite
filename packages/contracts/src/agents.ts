@@ -114,7 +114,7 @@ export interface AgentProfile extends AgentRecord {
   /**
    * A bot Boite ships rather than one the owner wrote. `contacts` is the
    * Contacts bot: the one thread that sends, receives and settles every
-   * request between this owner's agents and a contact's (docs/contacts.md).
+   * request between this owner's agents and a contact's (docs/internals/contacts.md).
    * Its `domain` and `instructions` are the core's and refuse an edit; its
    * name, robot, route and pause stay the owner's. It is never archived,
    * only reset (`agents.builtin.reset`). Missing on an owner's bot.

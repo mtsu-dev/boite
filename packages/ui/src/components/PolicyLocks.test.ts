@@ -257,9 +257,14 @@ test('plugin installs turned off: no link to read, no install, while removing st
   await show(PluginsMachine, { store });
   await vi.waitFor(() => expect(find('[data-testid="plugin-install"][data-plugin="bots"]')).not.toBeNull());
   expect(find<HTMLButtonElement>('[data-testid="plugin-install"][data-plugin="bots"]')?.disabled).toBe(true);
-  const removes = document.querySelectorAll<HTMLButtonElement>('[data-testid="plugin-uninstall"]');
-  expect(removes.length).toBeGreaterThan(0);
-  for (const remove of removes) expect(remove.disabled).toBe(false);
+  // Removing sits behind each installed card's gear and stays open.
+  find<HTMLButtonElement>('[data-testid="plugin-open"][data-plugin="seat-pool"]')!.click();
+  await vi.waitFor(() => expect(find('[data-testid="plugin-dialog"][data-plugin="seat-pool"]')).not.toBeNull());
+  expect(find<HTMLButtonElement>('[data-testid="plugin-uninstall"][data-plugin="seat-pool"]')?.disabled).toBe(false);
+  find<HTMLButtonElement>('[data-testid="plugin-dialog-close"]')!.click();
+  // The URL form still opens, to say why it reads nothing.
+  byId<HTMLButtonElement>('plugins-from-url')!.click();
+  await vi.waitFor(() => expect(byId('plugin-url')).not.toBeNull());
   expect(byId<HTMLInputElement>('plugin-url')?.disabled).toBe(true);
   expect(byId<HTMLButtonElement>('plugin-inspect')?.disabled).toBe(true);
   expect(lockOf('plugins.install')).not.toBeNull();

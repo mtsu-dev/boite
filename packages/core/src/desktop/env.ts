@@ -1,6 +1,6 @@
 /*
  * The environment of a virtual desktop's programs, shared by the core that
- * starts them and the CLI that runs agent-desktop on them (docs/desktop.md).
+ * starts them and the CLI that runs agent-desktop on them (docs/internals/desktop.md).
  */
 import { join as nativeJoin, posix } from 'node:path';
 

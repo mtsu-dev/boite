@@ -12,7 +12,7 @@ import { makeAgent, scripted, settled, turnsOf, type Answer } from './agent-fixt
 import { removeDir, startTestCore, waitFor, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
 
-/* A team across machines (`docs/teams.md`): `host` holds it, `away` runs a member. Every scenario speaks over the real transport between two cores of a test group. */
+/* A team across machines (`docs/internals/teams.md`): `host` holds it, `away` runs a member. Every scenario speaks over the real transport between two cores of a test group. */
 
 const cores: TestCore[] = [];
 const dirs: string[] = [];

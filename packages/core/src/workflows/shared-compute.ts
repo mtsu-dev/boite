@@ -76,7 +76,9 @@ export class SharedWorkflowCompute {
         Object.assign(found, {status: 'failed', error: messageOf(error).slice(0, 500), finishedAt: Date.now()}); this.#hooks.save(current); this.#hooks.advance(run.id);
       }
     });
-    this.#pending.add(task); void task.finally(() => {this.#pending.delete(task); if (this.#dispatching.get(key) === requestId) this.#dispatching.delete(key);});
+    this.#pending.add(task);
+    // A failure left over, as a step that could not be saved failed, is logged: an unhandled one would end the core.
+    void task.catch(error => this.#core.log('warn', `workflow shared step ${inst.key}: ${messageOf(error)}`)).finally(() => {this.#pending.delete(task); if (this.#dispatching.get(key) === requestId) this.#dispatching.delete(key);});
     return true;
   }
   #running(id: string, key: string): boolean {

@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { AgentBrowser } from '../src/browser.ts';
-import { chromiumArgs, drawsWithGpu, findChromium, trimProfile } from '../src/browser/chromium.ts';
+import { chromiumArgs, findChromium, trimProfile } from '../src/browser/chromium.ts';
 import { BrowserEngines } from '../src/browser/engines.ts';
 import { BrowserHost } from '../src/browser/host.ts';
 import type { Cdp } from '../src/browser/cdp.ts';
@@ -42,8 +42,7 @@ test('the browser is found where each OS installs it, and BOITE_BROWSER alone wh
     expect(findChromium({ BOITE_BROWSER: edge }, 'linux', () => '/usr/bin/chromium')).toEqual({ path: edge });
     expect(findChromium({ BOITE_BROWSER: join(root, 'gone') }, 'win32', () => '/usr/bin/chromium').path).toBeNull();
     expect(findChromium({}, 'linux', none)).toMatchObject({ path: null, reason: expect.stringContaining('BOITE_BROWSER') });
-    expect(chromiumArgs('/profile', 'linux')).toEqual(expect.arrayContaining(['--headless=new', '--disable-software-rasterizer', '--use-angle=gl-egl', '--user-data-dir=/profile']));
-    expect(chromiumArgs('/profile', 'win32')).not.toContain('--use-angle=gl-egl');
+    expect(chromiumArgs('/profile', 'linux')).toEqual(expect.arrayContaining(['--headless=new', '--user-data-dir=/profile']));
     expect(chromiumArgs('/profile', 'linux', 'Agent/1')).toEqual(expect.arrayContaining(['--disable-blink-features=AutomationControlled', '--user-agent=Agent/1']));
     expect(chromiumArgs('/profile', 'linux').some(arg => arg.startsWith('--user-agent'))).toBe(false);
     // The DevTools protocol goes over the browser's own pipes: no port for another process to reach.
@@ -60,23 +59,13 @@ test('the browser is found where each OS installs it, and BOITE_BROWSER alone wh
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-test('a browser in a macOS virtual machine draws without the GPU, and SwiftShader stays off everywhere', async () => {
+// T3 Code's two options, on every system: pages drawn on the CPU, at twice their CSS size.
+test('the browser draws without the GPU at a device scale of 2, with SwiftShader left for WebGL', () => {
   for (const platform of ['linux', 'darwin', 'win32'] as const) {
-    expect(chromiumArgs('/profile', platform)).toEqual(expect.arrayContaining(['--enable-gpu', '--disable-software-rasterizer']));
-    expect(chromiumArgs('/profile', platform)).not.toContain('--disable-gpu');
+    const args = chromiumArgs('/profile', platform);
+    expect(args).toEqual(expect.arrayContaining(['--disable-gpu', '--force-device-scale-factor=2']));
+    for (const gone of ['--enable-gpu', '--disable-software-rasterizer', '--use-gl=angle', '--use-angle=gl-egl']) expect(args).not.toContain(gone);
   }
-  const virtual = chromiumArgs('/profile', 'darwin', undefined, false);
-  expect(virtual).toEqual(expect.arrayContaining(['--disable-gpu', '--disable-software-rasterizer']));
-  expect(virtual).not.toContain('--enable-gpu');
-  expect(await drawsWithGpu('linux')).toBe(true);
-  expect(await drawsWithGpu('win32')).toBe(true);
-});
-
-// The GPU process of a CI runner lost its Metal device and the browser answered nothing for 10 to 30 seconds.
-test.skipIf(process.platform !== 'darwin')('a Mac draws with the GPU only on its own hardware, as sysctl reads it', async () => {
-  const hypervisor = Bun.spawnSync({ cmd: ['sysctl', '-n', 'kern.hv_vmm_present'], stdout: 'pipe', stderr: 'pipe' }).stdout.toString().trim();
-  expect(['0', '1']).toContain(hypervisor);
-  expect(await drawsWithGpu()).toBe(hypervisor === '0');
 });
 
 test('a profile loses its downloaded components and caches once, never its cookies, logins or Local State', () => {

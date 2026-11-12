@@ -1,6 +1,6 @@
 /**
  * A conversation's desktop, where an agent runs GUI apps and drives them
- * through agent-desktop (docs/desktop.md). On Linux it is an X server in memory
+ * through agent-desktop (docs/internals/desktop.md). On Linux it is an X server in memory
  * with a window manager and the accessibility bus; on Windows a hidden desktop
  * of the user's session that no screen shows; on macOS the apps run in the
  * background of the user's session and the agent reaches only those.

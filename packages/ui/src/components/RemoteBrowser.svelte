@@ -10,6 +10,7 @@
   import { normalizeUrl } from '../lib/browser-bridge';
   import { policySearch } from '../lib/policy';
   import { dragScroll, FRAME_INTERVAL, frameMaxWidth, framePoint, frameQuality, nextPollDelay } from '../lib/remote-browser-view';
+  import { framePainter, frameStream, jpegBlob, type FrameStream } from '../lib/remote-browser-stream';
   /**
    * One tab of the browser the conversation's agent drives on the machine that
    * runs it, watched and driven from any client. Without `tabId`, the agent's
@@ -17,11 +18,20 @@
    */
   let { store, threadId, tabId }: { store: Store; threadId: string; tabId?: string } = $props();
   let paused = $state(false), busy = $state(false), error = $state(''), text = $state('');
-  let frame = $state.raw<RemoteBrowserFrame | null>(null), picture = $state<HTMLImageElement>();
+  let frame = $state.raw<RemoteBrowserFrame | null>(null), picture = $state<HTMLCanvasElement>();
   // Core timestamps use another device's clock. Retain local age for each frame,
   // including one held by an in-progress pointer gesture.
   const receivedAt = new WeakMap<RemoteBrowserFrame, number>();
   let alive = true, generation = 0, timer: ReturnType<typeof setTimeout> | undefined;
+  /**
+   * A core that announces `browserStream` pushes the tab's frames on a socket of
+   * their own (`remote-browser-stream.ts`); an older one, and a tab the desktop
+   * app hosts (`pullOnly`), is asked for each frame with `browser.remoteFrame`.
+   * Either way a frame is painted on the canvas.
+   */
+  let stream: FrameStream | null = null, pullOnly = false;
+  const painter = framePainter();
+  $effect(() => painter.attach(picture));
   let pending = false, requestedAt = 0;
   // What the next request asks for and when: see remote-browser-view.ts.
   let roundTrip = 0, unchanged = 0, failures = 0;
@@ -53,14 +63,38 @@
   const previewScale = $derived(frame ? (zoom || Math.min(areaWidth / frame.width, areaHeight / frame.height)) : 1);
   const validSize = $derived([viewportWidth, viewportHeight].every(n => typeof n === 'number' && Number.isInteger(n) && n >= 240 && n <= 3840));
   const usable = $derived(!!frame && frameClient === store.client && !paused && !busy && !error && store.connection === 'ready');
-  function stop() { generation++; clearTimeout(timer); }
+  function stop() { generation++; clearTimeout(timer); stream?.stop(); stream = null; }
+  function blank() { frame = null; frameClient = null; painter.clear(); }
+  /** Whether input may still name `target`: the page a live stream shows is the page; any other frame is good for five seconds. */
+  const aged = (target: RemoteBrowserFrame) => !(stream?.live && target === frame) && performance.now() - (receivedAt.get(target) ?? -Infinity) > 5000;
+  const widest = () => frameMaxWidth(frame ? frame.width * previewScale : areaWidth, window.devicePixelRatio);
+  function watch(run: number) {
+    const client = store.client;
+    if (!client || client.state !== 'ready') { error = strings.remoteBrowser.reconnecting; return; }
+    const mine = () => alive && run === generation;
+    const swapped = () => { if (client === store.client) return false; stop(); blank(); error = strings.remoteBrowser.reconnecting; return true; };
+    stream = frameStream({
+      client, threadId, ...(tabId ? { tabId } : {}), maxWidth: widest,
+      page: (page) => {
+        if (!mine() || swapped()) return;
+        // Input already aimed at the page before lands for as long as a frame's would.
+        if (frame) receivedAt.set(frame, performance.now());
+        const next: RemoteBrowserFrame = { ...page, base64: '' };
+        receivedAt.set(next, performance.now()); frameClient = client; frame = next; error = ''; fresh = true;
+        if (!editingAddress) address = next.url ?? '';
+      },
+      frame: (jpeg) => { if (!mine() || swapped()) return; painter.paint(jpeg); error = ''; fresh = true; },
+      lost: () => { if (mine()) { if (frame) receivedAt.set(frame, performance.now()); fresh = false; } },
+      failed: (reason) => { if (mine() && !swapped()) error = reason; },
+      pull: () => { if (mine()) { pullOnly = true; resume(); } },
+    });
+  }
+  const pushed = () => !pullOnly && store.core?.features?.browserStream === true && typeof store.client?.frames === 'function';
+  $effect(() => { void previewScale; void areaWidth; void frame?.width; untrack(() => stream?.resized()); });
+  $effect(() => { void tabId; untrack(() => { if (stream || pullOnly) { pullOnly = false; resume(); } }); });
   // A list stays with the page it was tapped on.
   $effect(() => { if (choice && (!frame || frame.width !== choice.tap.width || frame.height !== choice.tap.height || paused)) choice = null; });
-  async function decoded(base64: string): Promise<void> {
-    const image = new Image();
-    image.src = `data:image/jpeg;base64,${base64}`;
-    if (typeof image.decode === 'function') await image.decode().catch(() => {});
-  }
+
   async function poll(run: number): Promise<void> {
     if (!alive || run !== generation || paused || document.hidden) return;
     if (pending || busy) { timer = setTimeout(() => void poll(run), 100); return; }
@@ -74,10 +108,8 @@
       const after = frame && frameClient === client ? frame.id : undefined;
       const next = await client.call('browser.remoteFrame', { threadId, ...(tabId ? { tabId } : {}), ...(maxWidth ? { maxWidth } : {}), ...(quality !== 55 ? { quality } : {}), ...(after ? { after } : {}) });
       const changed = 'unchanged' in next ? null : next;
-      // Decoded off the main thread before it replaces the shown frame: a drag stays smooth and Safari never paints a half-loaded image.
-      if (changed && changed.base64 !== frame?.base64) await decoded(changed.base64);
       if (!alive || run !== generation) return;
-      if (client !== store.client) { frame = null; frameClient = null; error = strings.remoteBrowser.reconnecting; }
+      if (client !== store.client) { blank(); error = strings.remoteBrowser.reconnecting; }
       else {
         // The core's wait for the page is not the link's.
         roundTrip = Math.max(0, performance.now() - started - (next.waitedMs ?? 0)); failures = 0;
@@ -87,6 +119,8 @@
         } else {
           // A core from before `after` sends every frame again: identical ones count as unchanged.
           unchanged = frame && changed.base64 === frame.base64 && changed.width === frame.width && changed.height === frame.height ? unchanged + 1 : 0;
+          // Decoded off the main thread, and drawn only once it is: a drag stays smooth and the frame before stays shown until then.
+          if (changed.base64 && changed.base64 !== frame?.base64) painter.paint(jpegBlob(changed.base64));
           receivedAt.set(changed, performance.now()); frameClient = client; frame = changed; error = ''; fresh = true;
           if (!editingAddress) address = changed.url ?? '';
         }
@@ -106,13 +140,15 @@
     stop();
     if (!paused && !document.hidden) {
       const run = generation;
+      if (pushed()) { watch(run); return; }
       timer = setTimeout(() => void poll(run), Math.max(0, FRAME_INTERVAL - (Date.now() - requestedAt)));
     }
   }
   /** After an input the page moves: the next frame comes at full rate, without dropping one in flight. */
   function kick() {
     unchanged = 0;
-    if (pending || paused || document.hidden) return;
+    // A stream needs no asking: the page's next frame is on its way.
+    if (stream || pending || paused || document.hidden) return;
     clearTimeout(timer);
     const run = generation;
     timer = setTimeout(() => void poll(run), Math.max(60, FRAME_INTERVAL - (Date.now() - requestedAt)));
@@ -120,13 +156,13 @@
   onMount(() => {
     const visibility = () => { if (document.hidden) { stop(); fresh = false; } else resume(); };
     // A phone back from the background, a reopened PWA or a returning network resumes at once.
-    const back = () => { if (!document.hidden && !pending) resume(); };
+    const back = () => { if (!document.hidden && !pending && !stream?.live) resume(); };
     document.addEventListener('visibilitychange', visibility);
     for (const name of ['pageshow', 'online', 'focus'] as const) window.addEventListener(name, back);
     return () => {
       // A view closed mid-drag lets go of the page.
       if (pointer) release(pointer);
-      pointer = undefined; alive = false; stop(); document.removeEventListener('visibilitychange', visibility);
+      pointer = undefined; alive = false; stop(); painter.close(); document.removeEventListener('visibilitychange', visibility);
       for (const name of ['pageshow', 'online', 'focus'] as const) window.removeEventListener(name, back);
     };
   });
@@ -136,10 +172,12 @@
   });
   async function input(value: RemoteBrowserInput, target = frame): Promise<boolean> {
     const client = store.client;
-    if (!client || frameClient !== client || !target || !usable || performance.now() - (receivedAt.get(target) ?? -Infinity) > 5000) return false;
+    if (!client || frameClient !== client || !target || !usable || aged(target)) return false;
     const resizing = value.kind === 'viewport' || value.kind === 'reset-viewport';
     const moving = resizing || value.kind === 'navigate' || value.kind === 'history' || value.kind === 'reload';
-    if (resizing) { stop(); displaySettings = false; if (pointer) release(pointer); pointer = undefined; }
+    // A stream stays open across a resize: the frame this input names lives with it, and the page's new size comes on it.
+    const reopened = resizing && !stream;
+    if (resizing) { if (reopened) stop(); displaySettings = false; if (pointer) release(pointer); pointer = undefined; }
     const run = generation;
     busy = true;
     try {
@@ -153,11 +191,11 @@
     catch (cause) { if (alive && run === generation && client === store.client) error = errorText(cause); return false; }
     finally {
       busy = false;
-      if (resizing && alive && run === generation) { frame = null; frameClient = null; resume(); }
+      if (reopened && alive && run === generation) { blank(); resume(); }
       else if (alive) kick();
     }
   }
-  const old = (target: RemoteBrowserFrame) => performance.now() - (receivedAt.get(target) ?? -Infinity) > 5000;
+  const old = aged;
   /** Keys typed while a request is in flight leave together in the next one. */
   function direct(value: Direct, target?: RemoteBrowserFrame) {
     const last = queue.at(-1)?.value;
@@ -315,7 +353,7 @@
   /** The page follows the finger while it moves: one wheel in flight, the rest added to the next. */
   function flushScroll() {
     const target = frame, client = store.client, at = scrollAt;
-    if (scrolling || (!scrollX && !scrollY) || !target || !client || frameClient !== client || performance.now() - (receivedAt.get(target) ?? -Infinity) > 5000) return;
+    if (scrolling || (!scrollX && !scrollY) || !target || !client || frameClient !== client || aged(target)) return;
     const delta = dragScroll(scrollX, scrollY, picture?.getBoundingClientRect().width ?? 0, target.width);
     scrollX = 0; scrollY = 0;
     if (!delta.x && !delta.y) return;
@@ -471,7 +509,7 @@
   <div class="screen-area" class:zoomed={zoom > 0} title={desk && frame ? strings.remoteBrowser.deskHint : undefined} bind:this={area} bind:clientWidth={areaWidth} bind:clientHeight={areaHeight}>
     {#if frame}
       <button bind:this={screen} type="button" class="screen" style:width={`${frame.width * previewScale}px`} style:height={`${frame.height * previewScale}px`} class:stale={paused || error} class:desk aria-label={desk ? strings.remoteBrowser.interactDesk : strings.remoteBrowser.interact} aria-describedby={desk ? hintId : undefined} disabled={!usable} onpointerdown={down} onpointermove={move} onpointerup={up} onpointercancel={cancel} oncontextmenu={e => e.preventDefault()}>
-        <img bind:this={picture} src={`data:image/jpeg;base64,${frame.base64}`} alt={strings.remoteBrowser.image} draggable="false" data-testid="remote-browser-frame" />
+        <canvas bind:this={picture} width="0" height="0" aria-label={strings.remoteBrowser.image} data-testid="remote-browser-frame"></canvas>
       </button>
     {:else}<p class="empty">{strings.remoteBrowser.waiting}</p>{/if}
     {#if choice}
@@ -525,7 +563,7 @@
   .screen:hover:not(:disabled) { background: transparent; }
   .screen:active:not(:disabled) { transform: none; }
   .screen:disabled { opacity: 1; } .screen.stale { opacity: .55; }
-  img { display: block; width: 100%; height: 100%; object-fit: contain; pointer-events: none; -webkit-user-select: none; user-select: none; }
+  canvas { display: block; width: 100%; height: 100%; pointer-events: none; -webkit-user-select: none; user-select: none; }
   .picker { position: absolute; z-index: 4; overflow: auto; padding: 4px; display: flex; flex-direction: column; background: var(--color-surface-2); border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-e3); overscroll-behavior: contain; }
   .picker button { flex: none; justify-content: flex-start; min-height: var(--control-sm); padding: 4px 10px; border: 0; border-radius: var(--radius-sm); background: transparent; box-shadow: none; color: var(--color-foreground); font-size: var(--text-sm); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .picker button.grouped { padding-left: 20px; }

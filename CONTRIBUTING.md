@@ -1,7 +1,7 @@
 # Contributing
 
 Read [AGENTS.md](AGENTS.md) for the code boundaries and
-[development.md](docs/development.md) for the test setup.
+[development.md](docs/internals/development.md) for the test setup.
 
 Use the Bun version in `package.json` and install with
 `bun install --frozen-lockfile`. Windows desktop builds also need Rust and the
@@ -12,7 +12,7 @@ Use the Bun version in `package.json` and install with
 A new feature that does not need a change to the core is built as a plugin:
 agent commands, skills, guide lines, slash commands and background services
 are all a plugin can add, with the permissions it declares
-([plugins](docs/plugins.md)). Publish it from your own repository and share
+([plugins](docs/internals/plugins.md)). Publish it from your own repository and share
 its link or `owner/repo`: anyone pastes it in Settings > Plugins, or asks their
 agent to add it, reads the preview and installs.
 
@@ -25,7 +25,7 @@ Pull requests are for:
   and what it cannot do today.
 
 A pull request that adds a feature a plugin could provide is closed with a
-pointer to the [plugin docs](docs/plugins.md).
+pointer to the [plugin docs](docs/internals/plugins.md).
 
 ## Pull requests
 
@@ -37,7 +37,7 @@ in reports or fixtures.
 Every change reaches `main` through a pull request. Its title becomes the squash
 commit and the release notes line, so it reads `type(scope): summary`, for
 example `fix(ui): keep the composer above the keyboard`. The accepted types are
-listed in [ci.md](docs/ci.md).
+listed in [ci.md](docs/internals/ci.md).
 
 Report vulnerabilities privately as [SECURITY.md](SECURITY.md) describes, never
 in a public issue. Participation follows the [code of conduct](CODE_OF_CONDUCT.md).
@@ -50,13 +50,13 @@ bun run test
 ```
 
 For integration or desktop changes, follow the build, staging and E2E procedure
-in [development](docs/development.md#rebuilding-the-shell-executable). Native
+in [development](docs/internals/development.md#rebuilding-the-shell-executable). Native
 shell coverage depends on the host platform; see the
-[portability matrix](docs/portability.md).
+[portability matrix](docs/internals/portability.md).
 
 Tests use temporary data directories and the echo provider. Live-provider tests
 are opt-in because they use real accounts and spend tokens. Never point a test
 at an existing installation's data directory.
 
 For server packaging, run the Docker smoke test described in
-[server.md](docs/server.md). For CI and release behavior, see [ci.md](docs/ci.md).
+[server.md](docs/internals/server.md). For CI and release behavior, see [ci.md](docs/internals/ci.md).

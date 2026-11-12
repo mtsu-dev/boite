@@ -67,6 +67,21 @@ describe('the right panel', () => {
     expect(bound.active).toMatchObject({ kind: 'council', councilId: 'cnl_2' });
   });
 
+  test('a plugin tab is one tab per plugin tab, keeps its title across a reload, and a stored one that names no tab is dropped', () => {
+    const { bound } = panel();
+
+    bound.openPluginTab('hello/recent', 'Recent');
+    bound.open('trace');
+    bound.openPluginTab('hello/recent', 'Recent threads');
+    bound.openPluginTab('other/main', 'Other');
+
+    expect(bound.surfaces.map((surface) => surface.id)).toEqual(['plugin:hello/recent', 'trace', 'plugin:other/main']);
+    expect(new RightPanelStore().for('t-1').surfaces[0]).toEqual({ id: 'plugin:hello/recent', kind: 'plugin', tab: 'hello/recent', title: 'Recent threads' });
+
+    window.localStorage.setItem(PANEL_STORAGE_KEY, JSON.stringify({ version: PANEL_VERSION, threads: { 't-1': { isOpen: true, activeSurfaceId: 'plugin:x/y', surfaces: [{ id: 'plugin:x/y', kind: 'plugin' }, { id: 'plugin:a/b', kind: 'plugin', tab: 'c/d' }, { id: 'plugin:e/f', kind: 'plugin', tab: 'e/f' }] } } }));
+    expect(new RightPanelStore().for('t-1').surfaces.map((surface) => surface.id)).toEqual(['plugin:e/f']);
+  });
+
   test('opens the panel on the surface it just made', () => {
     const { bound } = panel();
 

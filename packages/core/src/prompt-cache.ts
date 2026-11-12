@@ -1,6 +1,6 @@
 /*
  * The prompt cache lifetimes the providers publish, for the drivers whose
- * agent does not report one per request. `docs/prompt-cache.md` has the
+ * agent does not report one per request. `docs/internals/prompt-cache.md` has the
  * sources and what each agent sends; a provider missing here has no published
  * lifetime, and its threads show no timer rather than a guess. Also the cache
  * a finished turn leaves on its thread (`promptCacheOf`).

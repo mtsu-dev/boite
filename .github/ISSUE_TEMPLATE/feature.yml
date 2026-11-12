@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Most features can be built as a plugin, without a change to boite: agent commands, skills, slash commands and background services. Read the [plugin docs](https://github.com/mtsu-dev/boite/blob/main/docs/plugins.md) first. Ask here for what a plugin cannot do yet.
+        Most features can be built as a plugin, without a change to boite: agent commands, skills, slash commands and background services. Read the [plugin docs](https://github.com/mtsu-dev/boite/blob/main/docs/internals/plugins.md) first. Ask here for what a plugin cannot do yet.
   - type: textarea
     id: workflow
     attributes:

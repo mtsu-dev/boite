@@ -1,5 +1,5 @@
 /**
- * Teams of bots (`docs/teams.md`): a few bots and the owner in one group. The
+ * Teams of bots (`docs/internals/teams.md`): a few bots and the owner in one group. The
  * team chat is a projectless thread that runs no agent; each post is one turn
  * there. A post addressed to a bot becomes a team letter in its inbox
  * (`TeamLetters.accept`, `coordination-team.ts`), rendered from what that bot has not seen

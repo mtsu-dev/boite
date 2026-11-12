@@ -5,7 +5,7 @@ import pkg from '../../package.json';
 
 export { androidServerBundle };
 
-// The core's scripts run on any Bun, so one runner builds the Android bundle (docs/android-server.md).
+// The core's scripts run on any Bun, so one runner builds the Android bundle (docs/internals/android-server.md).
 if (import.meta.main) {
   const directory = process.argv[2];
   if (!directory) throw new Error('usage: android-server-bundle.ts <artifact directory>');

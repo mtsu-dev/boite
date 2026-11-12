@@ -8,7 +8,7 @@
 
   /**
    * A window an agent captured with `boite window`, or whose live view a viewer
-   * started (docs/windows.md): no capture is silent. The thumbnail opens in the
+   * started (docs/internals/windows.md): no capture is silent. The thumbnail opens in the
    * image viewer with the timeline's other pictures.
    */
   let { part }: { part: Extract<MessagePart, { type: 'window_capture' }> } = $props();

@@ -22,6 +22,7 @@
   import { watchStatus } from '../lib/pull-request-watch';
   import ContextModeBadge from './ContextModeBadge.svelte';
   import CoordinationDialog from './CoordinationDialog.svelte';
+  import PluginSlotButtons from './PluginSlotButtons.svelte';
   let { store }: { store: Store } = $props();
   let thread = $derived(store.openThread);
   const mobile = new MediaQuery('(max-width: 720px)');
@@ -315,6 +316,7 @@
            its to follow, and the panel's menu offers only what available() allows.
            A team's chat has no title menu: a phone keeps this button, its one way to the panel. -->
       {#if thread}
+        {#if store === workspace.primary}<PluginSlotButtons slot="thread-header" threadId={thread.id} />{/if}
         {#if mobile.current && !thread.teamId && !thread.councilId}
           <button type="button" class="ghost phone-browser" data-testid="phone-browser-toggle"
             aria-label={strings.rightPanel.browser} aria-pressed={store.panelOpen && store.panel.active?.kind === 'agent-browser'}

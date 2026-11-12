@@ -506,6 +506,16 @@ describe('pi driver', () => {
     expect(done.status).toBe('done');
   });
 
+  test('a stderr line that comes in two chunks is quoted whole when the agent dies', async () => {
+    const client = await startCore();
+    const threadId = await piThread(client);
+    const crashed = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
+    await client.call('turns.start', { threadId, prompt: '[splitcrash]' });
+    const failure = await crashed;
+    expect(failure.status).toBe('error');
+    expect(failure.error).toContain('half of a line');
+  });
+
   test('an extension dialog draws a question and returns the answer', async () => {
     const client = await startCore();
     const threadId = await piThread(client);

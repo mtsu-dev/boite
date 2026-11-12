@@ -6,7 +6,7 @@
  * hello on any member with a signature made for that member. The desktop app
  * of a member, and a client paired before device keys, gets a ticket from a
  * member it is connected to instead, exchanged on another member for a key
- * of that member's own. docs/groups.md describes both.
+ * of that member's own. docs/internals/groups.md describes both.
  */
 import { randomUUID, verify } from 'node:crypto';
 import { deviceAdmitInput, deviceHelloInput, DEVICE_LINK_JOIN, GROUP_TICKET_TTL_MS, PAIRING_ROLES, ungroupedInput } from '@boite/contracts';
@@ -32,7 +32,7 @@ const DEVICE_HELLO_SKEW_MS = 2 * 60_000;
 const DEVICE_NONCES_MAX = 20_000;
 
 export class GroupClients {
-  /** Device hello nonces seen, until their hello would be refused for its date anyway. In memory: see docs/groups.md, limits. */
+  /** Device hello nonces seen, until their hello would be refused for its date anyway. In memory: see docs/internals/groups.md, limits. */
   readonly #deviceNonces = new Map<string, number>();
 
   readonly #group: GroupStore;

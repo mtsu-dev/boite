@@ -3,7 +3,7 @@
   import { diffCounts, diffRows, diffRowsOf, splitRows, type DiffRow, type DiffSource } from '../lib/diff';
   import { diffPrefs, setDiffPref } from '../lib/diff-prefs.svelte';
   import { fill, strings } from '../lib/strings';
-  import { codeLanguage, highlightCode } from '../lib/code-highlight';
+  import { codeLanguage, codeRow, highlightCode } from '../lib/code-highlight';
   import { whenIdle } from '../lib/idle';
   import { boxWidth } from '../lib/box-width';
 
@@ -143,7 +143,7 @@
 {#snippet code(row: Exclude<DiffRow, { kind: 'gap' }>)}
   {@const html = codeOf(row)}
   <!-- highlightCode escapes source text before adding its token spans. -->
-  {#if html !== undefined}{@html html}{:else}{row.text}{/if}
+  {#if html !== undefined}{@html html}{:else}{codeRow(row.text)}{/if}
 {/snippet}
 
 {#snippet side(row: Exclude<DiffRow, { kind: 'gap' }> | null, which: 'old' | 'new')}
