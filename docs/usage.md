@@ -43,7 +43,7 @@ Settings, Limits shows the windows each provider last reported for your
 signed-in accounts, such as 5 hours and Weekly, with their reset times.
 
 - Tracked accounts sets which accounts Boite asks. An account whose provider
-  reports no limit is listed under Not monitored.
+  reports no limit is not offered there.
 - Refresh quotas asks the providers again. A failed read keeps the last
   reading, dimmed and labelled Last successful reading.
 - With a banked Claude or Codex reset, Use reset consumes the one closest to

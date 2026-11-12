@@ -93,8 +93,8 @@ the install folder, here `~/.local/lib/boite/`:
 - `~/.local/lib/boite/boite-core group join` joins your [group](machines.md)
   instead, so every desktop of the group drives it. It reads the invitation
   on standard input: paste it, then end the input.
-- `~/.local/lib/boite/boite-core tailscale on` serves it on its tailnet HTTPS address. Linux may
-  first need `sudo tailscale set --operator=$USER`.
+- `~/.local/lib/boite/boite-core tailscale on` serves it on its tailnet
+  HTTPS address. Linux may first need `sudo tailscale set --operator=$USER`.
 
 Such a server, and the Android one below, update from Settings, Machines and
 updates with owner access: Update installs, Cancel stops a download, and a
