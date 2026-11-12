@@ -30,9 +30,10 @@ the bot's exact name; its conversation stays readable.
 - Add a routine from the desk's Routines tab, or ask the bot to plan one. A
   routine runs Once, Every day, Some days, Monthly, Yearly or Repeatedly.
   Run now starts one at once. A bot holds up to 50 routines.
-- A bot also wakes on its own when a thread on its desk ends, fails, asks you
-  something, waits on a permission or stays silent for 20 minutes, and when a
-  pull request there is merged or its checks start to fail.
+- A bot also wakes on its own when a turn ends in a thread on its desk, when
+  that thread fails, asks you something, waits on a permission or stays
+  silent for 20 minutes, and when a pull request there is merged or its
+  checks start to fail.
 - A wake with nothing to report folds to one "Checked" line and sends no
   notification.
 - After downtime, at most one missed occurrence of a routine runs.
