@@ -8,8 +8,8 @@ import './notify-corner.css';
  * the page keeps at its bottom, right above the composer or the tab bar,
  * centred on it, so none covers a line, a title or the field being typed in.
  * With neither, a desktop keeps the bottom-right corner, the cards stacked
- * upward in arrival order and lifted over what owns the bottom edge under
- * them. The lift is `--corner-lift` on each card.
+ * upward in arrival order above the toasts and lifted over what owns the
+ * bottom edge under them. The lift is `--corner-lift` on each card.
  */
 /** Bottom-edge owners. A composer centred in an empty thread is not one. */
 const FLOORS = '[data-testid=composer],[data-testid=thread-activity],[data-testid=mobile-tabs]';
@@ -102,6 +102,8 @@ function placeCards(slotted: HTMLElement[]): void {
       }
       // The strip above the composer (subagents, the way back) sits on that floor: a card rises over it too.
       if (lift > 0 && bar?.height && bar.right > left && bar.left < right && bar.bottom >= innerHeight - lift - 1) lift = Math.max(lift, innerHeight - bar.top);
+      // Toasts in the corner (no timeline to keep room in) sit at its bottom: the cards stack above them.
+      lift = Math.max(lift, toasts.reduce((sum, toast) => sum + (toast.offsetHeight > 0 && toast.dataset.slot === 'end' ? toast.offsetHeight + 8 : 0), 0));
     }
     card.style.setProperty('--corner-lift', `${lift}px`);
     lift += card.offsetHeight + 8;

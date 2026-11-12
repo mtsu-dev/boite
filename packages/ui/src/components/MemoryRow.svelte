@@ -33,7 +33,7 @@
 </script>
 
 {#snippet actions()}
-  <!-- The corner card stays two lines high, so it covers as little of the thread as it can: its way to the settings is an icon. -->
+  <!-- The way to the memory settings: a small text button beside the words, in the row and in the corner card. -->
   {#if onconfigure}<button type="button" class="small configure" onclick={onconfigure}><span class="ui-label">{strings.resources.memorySettings}</span></button>{/if}
 {/snippet}
 <Notice icon={TriangleAlert} tone="caution" testid="memory-row" kind={event.kind} {title} {detail} {info} floating={!!ondismiss} actions={onconfigure ? actions : undefined} {ondismiss} dismissId="memory-row-dismiss" />

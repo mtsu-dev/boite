@@ -22,7 +22,9 @@
     : status?.startsWith('5') || /returned a server error|\boverloaded_error\b|\bserverOverloaded\b/i.test(message) ? 'server' : 'other');
   const title = $derived(kind === 'subscription' ? strings.chat.errorSubscriptionTitle : kind === 'rate' ? strings.chat.errorRateTitle : kind === 'server' ? strings.chat.errorServerTitle : strings.chat.errorTitle);
   const description = $derived(kind === 'subscription' ? strings.chat.errorSubscriptionHint : kind === 'rate' ? strings.chat.errorRateHint : kind === 'server' ? strings.chat.errorServerHint : message.trim().split('\n')[0]);
-  const detailed = $derived(kind !== 'other' || message.includes('\n') || message.length > 240 || call !== null);
+  /** The failed call's exit code and log, when it has either. */
+  const callText = $derived(call ? [call.exitCode !== null ? fill(strings.chat.toolExitCode, { code: String(call.exitCode) }) : '', call.output ?? ''].filter(Boolean).join('\n') : '');
+  const detailed = $derived(kind !== 'other' || message.includes('\n') || message.length > 240 || callText !== '');
 </script>
 
 {#snippet act()}
@@ -40,7 +42,7 @@
   {:else if detailed}
     <details class="fold">
       <summary><ChevronRight size={13} strokeWidth={1.75} /><span class="ui-label">{strings.chat.errorDetails}</span></summary>
-      <pre data-testid="error-diagnostic">{message}{#if call}{'\n\n'}{call.exitCode !== null ? `${fill(strings.chat.toolExitCode, { code: String(call.exitCode) })}\n` : ''}{call.output ?? ''}{/if}</pre>
+      <pre data-testid="error-diagnostic">{message}{#if callText}{'\n\n'}{callText}{/if}</pre>
     </details>
   {/if}
 </Notice>

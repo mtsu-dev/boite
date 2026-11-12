@@ -25,6 +25,18 @@ test('a stopped run reads as one notice: its cause, one Retry, then the exit cod
   expect(retried).toBe(1);
 });
 
+test('a failed call with no exit code and no log adds no blank lines and no fold of its own', () => {
+  running = mount(ErrorCard, { target: document.body, props: { message: STOP, call: { exitCode: null, output: null } } });
+  flushSync();
+  expect(document.querySelector('[data-testid=error-part] details')).toBeNull();
+  unmount(running, { outro: false });
+  document.body.innerHTML = '';
+  const long = `${STOP}\nat emulator.ts:12`;
+  running = mount(ErrorCard, { target: document.body, props: { message: long, call: { exitCode: null, output: null } } });
+  flushSync();
+  expect(document.querySelector('[data-testid=error-diagnostic]')?.textContent).toBe(long);
+});
+
 test('the command a failed answer stopped on is its last call, only when the answer ends in an error', () => {
   const tool = (status: 'error' | 'complete', exitCode: number | null) => ({ type: 'tool' as const, toolId: status, name: 'Bash', input: {}, output: 'log', status, exitCode });
   const message = (parts: unknown[]) => ({ id: 'm', threadId: 't', turnId: 'u', role: 'assistant', parts, createdAt: 0 }) as unknown as Message;
