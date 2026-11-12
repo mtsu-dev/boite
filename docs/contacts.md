@@ -586,6 +586,9 @@ sequenceDiagram
    `contacts.decide` then approves it for the bot (`approved: true`, back to
    `stage: 'bot'`), closes the bot's card for it and opens no project, so the
    request stays pending until the bot connects it. A trusted contact's request has no Accept there.
+   If the local bot is gone, pending incoming bot or owner requests return to
+   the owner: the client receives no bot stage, and Accept opens the chosen
+   project. Host-stage requests keep their route through the Bots host.
 3. The bot settles it: `connect` puts the asking thread in relation with an
    existing thread, `start` starts a thread on a project with a brief and puts
    it in relation, `refuse` answers with a reason. Opening a project,

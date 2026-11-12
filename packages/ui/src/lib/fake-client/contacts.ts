@@ -239,7 +239,8 @@ function words(seed: number): string {
 function botOf(ctx: FakeContext): ContactsState['bot'] {
   const agent = ctx.agents.builtin('contacts');
   const threadId = agent ? ctx.agents.conversationOf(agent.id) : null;
-  return agent && threadId ? { agentId: agent.id, threadId } : null;
+  const thread = threadId ? ctx.threads.get(threadId) : undefined;
+  return agent && thread && !thread.archived ? { agentId: agent.id, threadId: thread.id } : null;
 }
 
 function wantOf(value: unknown): ContactRequestWant | undefined {
@@ -390,7 +391,13 @@ export function contactMethods(ctx: FakeContext) {
     settle(ctx, request, 'bot', local);
   };
   return {
-    'contacts.get': async () => structuredClone({ ...contactState(ctx), bot: botOf(ctx), mail: fakeHeldMail(ctx) }),
+    'contacts.get': async () => {
+      const state = structuredClone({ ...contactState(ctx), bot: botOf(ctx), mail: fakeHeldMail(ctx) });
+      if (state.bot === null) for (const request of state.requests) {
+        if (request.direction === 'in' && request.status === 'pending' && (request.stage === 'bot' || request.stage === 'owner')) delete request.stage;
+      }
+      return state;
+    },
     'contacts.invite': async (params) => {
       if (params?.share !== undefined && typeof params.share !== 'boolean') throw invalid('share: expected true or false', 'share');
       if (params?.internet !== undefined && typeof params.internet !== 'boolean') throw invalid('internet: expected true or false', 'internet');
@@ -552,7 +559,7 @@ export function contactMethods(ctx: FakeContext) {
       const state = contactState(ctx);
       const request = state.requests.find(entry => entry.id === params.id && entry.direction === 'in');
       if (!request || request.status !== 'pending') throw invalid('id: expected a pending request from a contact', 'id');
-      if (params.accept && (request.stage === 'bot' || request.stage === 'owner') && request.want !== undefined && request.want !== 'share') {
+      if (params.accept && (request.stage === 'bot' || request.stage === 'owner') && request.want !== undefined && request.want !== 'share' && botOf(ctx) !== null) {
         // Like the core: a request for a thread the bot settles stays pending, approved, until the bot puts the threads in touch.
         Object.assign(request, { stage: 'bot', approved: true });
         changed();

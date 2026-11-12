@@ -201,6 +201,16 @@ test('a thread request the Operator settles waits on it, not on the owner: no no
     expect(one(`contact-accept-${trusted}`)).toBeNull();
     expect(one(`contact-approve-${trusted}`)).toBeNull();
     expect(one(`contact-refuse-${trusted}`)).not.toBeNull();
+
+    // Without the Operator, pending incoming requests belong to the owner again.
+    const localBot = (await contacts(store)).bot!.threadId;
+    await client.call('threads.archive', { threadId: localBot });
+    const withoutBot = await contacts(store);
+    expect(withoutBot.bot).toBeNull();
+    expect(withoutBot.requests.find(request => request.id === trusted)?.stage).toBeUndefined();
+    const project = store.projects.find(entry => entry.kind !== 'drafts' && !entry.archived)!;
+    const opened = await client.call('contacts.decide', { id: trusted, accept: true, projectId: project.id });
+    expect(opened).toMatchObject({ status: 'accepted', decidedBy: 'owner', project: { id: project.id } });
   } finally {
     sam.close();
   }

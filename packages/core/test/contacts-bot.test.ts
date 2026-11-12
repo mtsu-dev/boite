@@ -233,6 +233,23 @@ test('the owner\'s Accept on a talk request the bot settles lets the bot act ins
   expect(answer.text).not.toContain('boite threads send');
 }, 60000);
 
+test('without its Contacts bot, an incoming bot request waits for the owner and Accept opens the chosen project', async () => {
+  const { host, hostClient, guestClient, hostBot, guestBot, hostName, guestThread } = await linked();
+  const asked = await guestClient.call('collaboration.ask', { threadId: guestThread, contact: hostName, text: 'Someone to maintain the docs' });
+  await guestClient.call('contacts.bot.forward', { threadId: guestBot.threadId, id: asked.id, contact: hostName });
+  await waitFor(() => incomingOf(host, asked.id) !== undefined, 10000);
+  const incoming = incomingOf(host, asked.id)!;
+  await hostClient.call('contacts.bot.askOwner', { threadId: hostBot.threadId, id: incoming.id, text: 'May I connect it?' });
+  await hostClient.call('threads.archive', { threadId: hostBot.threadId });
+  const state = await hostClient.call('contacts.get', {});
+  expect(state.bot).toBeNull();
+  expect(state.requests.find(request => request.id === incoming.id)?.stage).toBeUndefined();
+  const project = host.core.journal.listProjects()[0]!;
+  const decided = await hostClient.call('contacts.decide', { id: incoming.id, accept: true, projectId: project.id });
+  expect(decided).toMatchObject({ status: 'accepted', decidedBy: 'owner', project: { id: project.id } });
+  expect(decided.stage).toBeUndefined();
+}, 60000);
+
 test('a relation outlives a restart of either core: both keep it and their threads still write to each other', async () => {
   const dirs = { host: mkdtempSync(join(tmpdir(), 'boite-host-')), guest: mkdtempSync(join(tmpdir(), 'boite-guest-')) };
   try {

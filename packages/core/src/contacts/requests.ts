@@ -155,6 +155,8 @@ export class ContactRequests {
 
   view(request: StoredRequest): ContactRequest {
     const { pendingSend: _send, remoteId: _remote, pendingHost: _host, pendingMember: _member, holder: _holder, pendingHolder: _held, holderAdmission: _admission, askedBy: _by, ...shown } = request;
+    // A bot may have gone since this request arrived, including before a restart.
+    if (shown.direction === 'in' && shown.status === 'pending' && (shown.stage === 'bot' || shown.stage === 'owner') && contactsBot(this.#core) === null) delete shown.stage;
     return shown;
   }
 
