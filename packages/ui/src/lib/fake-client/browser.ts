@@ -1,9 +1,10 @@
-import { browserActionError, browserCookiesError, browserProfileIdError, browserProfilesOf, BROWSER_PROFILES_MAX, DEFAULT_BROWSER_PROFILE, findBrowserProfile, PRIVATE_BROWSER_PROFILE, remoteBrowserInputError, remoteFrameOptionsError, type AgentBrowserTab, type BrowserReply, type RemoteBrowserFrame, type RpcParams, type ThreadId } from '@boite/contracts';
+import { browserActionError, browserCookiesError, browserProfileIdError, browserProfilesOf, BROWSER_PROFILES_MAX, DEFAULT_BROWSER_PROFILE, findBrowserProfile, PRIVATE_BROWSER_PROFILE, remoteBrowserInputError, remoteFrameOptionsError, remoteStreamOptionsError, BROWSER_STREAM_ROUTE, BrowserStreamClose, type RemoteStreamMessage, type AgentBrowserTab, type BrowserReply, type RemoteBrowserFrame, type RpcParams, type ThreadId } from '@boite/contracts';
 import { refusal } from './shared';
 import { FAKE_SELECT, fakeBrowserScreen, type FakePage } from './browser-screen';
 import type { FakeContext, FakeMethods } from './context';
+import type { FrameSocket } from '../client';
 
-type Methods = 'browser.command' | 'browser.importCookies' | 'browser.remoteFrame' | 'browser.remoteInput' | 'browser.remoteSelection' | 'browser.remoteStatus' | 'browser.remoteWatch' | 'browser.hostAttach' | 'browser.hostDetach' | 'browser.hostReply';
+type Methods = 'browser.command' | 'browser.importCookies' | 'browser.remoteFrame' | 'browser.remoteStream' | 'browser.remoteInput' | 'browser.remoteSelection' | 'browser.remoteStatus' | 'browser.remoteWatch' | 'browser.hostAttach' | 'browser.hostDetach' | 'browser.hostReply';
 
 /** `selected`: the typed text is selected, by a double click or select-all, until the next click or key. */
 interface Tab extends FakePage { tabId: string; profile: string; history: string[]; historyIndex: number; at: number; selected?: boolean }
@@ -54,6 +55,54 @@ export function browserMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
     if (ctx.thread(threadId).archived || !ctx.bus.subscribed.has(threadId)) throw refusal('subscribe to the active conversation before watching its browser');
   };
   /** A page that moves retires the frames a viewer took of it: their taps would land elsewhere. */
+  /** What the page shows, as `fakeBrowserScreen` draws it. */
+  const drawnOf = (tab: Tab) => JSON.stringify([tab.url, tab.title, tab.width, tab.height, tab.taps, tab.text, tab.scrollY, tab.choice ?? null]);
+  /**
+   * The frames pushed to a viewer, as the core's stream sends them: the page
+   * shown as JSON, then a JPEG whenever the page draws something new, one at a
+   * time, the next once the viewer acknowledged the last.
+   */
+  const tickets = new Map<string, { threadId: ThreadId; tabId: string }>(), sockets = new Set<() => void>();
+  ctx.browserFrames = {
+    open(path) {
+      const ticket = path.slice(BROWSER_STREAM_ROUTE.length + 1), entry = tickets.get(ticket);
+      tickets.delete(ticket);
+      let open = true, waiting = false, shown = '', current: Browser['frames'][number] | null = null;
+      const stop = () => { open = false; clearInterval(timer); sockets.delete(stop); };
+      const end = (code: number) => { if (!open) return; stop(); socket.onclose?.(code); };
+      const step = () => {
+        if (!open) return;
+        if (!entry) { end(BrowserStreamClose.Refused); return; }
+        const browser = browsers.get(entry.threadId), tab = browser?.tabs.find(one => one.tabId === entry.tabId);
+        if (!browser || !tab) { end(BrowserStreamClose.TabGone); return; }
+        // The page a stream shows stays good for input for as long as the stream lasts.
+        if (current) current.taken = Date.now();
+        const drawn = drawnOf(tab);
+        const paged = !current || !browser.frames.includes(current) || current.width !== tab.width || current.height !== tab.height || current.url !== tab.url || current.title !== tab.title;
+        if (waiting || (!paged && drawn === shown)) return;
+        if (paged) {
+          const page = { id: crypto.randomUUID(), tabId: tab.tabId, title: tab.title, width: tab.width, height: tab.height, at: Date.now(), url: tab.url };
+          current = { ...page, base64: '', taken: Date.now(), drawn };
+          browser.frames = [...browser.frames.filter(one => Date.now() - one.taken < 5000).slice(-7), current];
+          socket.onmessage?.(JSON.stringify({ type: 'page', page } satisfies RemoteStreamMessage));
+        }
+        shown = drawn; waiting = true;
+        const text = atob(fakeBrowserScreen(tab)), bytes = new Uint8Array(text.length);
+        for (let index = 0; index < text.length; index++) bytes[index] = text.charCodeAt(index);
+        socket.onmessage?.(bytes.buffer);
+      };
+      const socket: FrameSocket = {
+        onmessage: null, onclose: null,
+        send: (text) => { try { if ((JSON.parse(text) as { type?: string }).type === 'ack') waiting = false; } catch { /* not a reply */ } },
+        close: stop,
+      };
+      const timer = setInterval(step, 50);
+      sockets.add(stop);
+      queueMicrotask(step);
+      return socket;
+    },
+    close() { for (const stop of [...sockets]) stop(); },
+  };
   const moved = (browser: Browser, tab: Tab) => { browser.frames = browser.frames.filter(frame => frame.tabId !== tab.tabId); tab.at = Date.now(); };
   const go = (browser: Browser, tab: Tab, url: string) => {
     // The position is kept, not searched for: a page visited twice appears twice.
@@ -191,14 +240,25 @@ export function browserMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
       if (!browser || !tab) throw refusal(tabId ? 'that browser tab is closed' : 'the agent has no browser tab open in this conversation');
       if (Date.now() - browser.requestedAt < 220) throw refusal('wait before requesting another browser frame');
       browser.requestedAt = Date.now();
-      // What the page shows, as `fakeBrowserScreen` draws it.
-      const drawn = JSON.stringify([tab.url, tab.title, tab.width, tab.height, tab.taps, tab.text, tab.scrollY, tab.choice ?? null]);
+      const drawn = drawnOf(tab);
       // The page drew nothing new since the frame the viewer shows: it keeps it, still valid for input. The core waits a second first.
       const held = after === undefined ? undefined : browser.frames.find(one => one.id === after && one.tabId === tab.tabId && Date.now() - one.taken < 5000);
       if (held && held.drawn === drawn) { held.taken = Date.now(); return { unchanged: true, id: held.id, tabId: tab.tabId, at: Date.now(), waitedMs: 0 }; }
       const frame: RemoteBrowserFrame = { id: crypto.randomUUID(), tabId: tab.tabId, title: tab.title, width: tab.width, height: tab.height, base64: fakeBrowserScreen(tab), at: Date.now(), url: tab.url };
       browser.frames = [...browser.frames.filter(one => Date.now() - one.taken < 5000).slice(-7), { ...frame, base64: '', taken: Date.now(), drawn }];
       return frame;
+    },
+    // The demo core hosts no tab in a desktop app, so it never answers `pull`.
+    'browser.remoteStream': async ({ threadId, tabId, maxWidth, quality }) => {
+      watching(threadId);
+      const problem = remoteStreamOptionsError({ ...(maxWidth === undefined ? {} : { maxWidth }), ...(quality === undefined ? {} : { quality }) });
+      if (problem) throw refusal(problem);
+      const browser = browsers.get(threadId);
+      const tab = browser?.tabs.find(one => one.tabId === (tabId ?? browser.active));
+      if (!browser || !tab) throw refusal(tabId ? 'that browser tab is closed' : 'the agent has no browser tab open in this conversation');
+      const ticket = crypto.randomUUID().replaceAll('-', '');
+      tickets.set(ticket, { threadId, tabId: tab.tabId });
+      return { path: `${BROWSER_STREAM_ROUTE}/${ticket}` };
     },
     'browser.remoteInput': async ({ threadId, frameId, input }) => {
       watching(threadId);

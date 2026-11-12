@@ -109,8 +109,10 @@ tabs: the agent uses its own browser on the machine.
   on.
 - A download weighs at most 1 GiB. One the agent does not save is deleted an
   hour after it ends.
-- The live view is a series of pictures, a few per second while the page
-  moves, not a video stream.
+- The live view is a series of pictures, about twenty per second while the
+  page moves on a good connection, not a video stream, and it has no sound.
+- The agent's browser draws without the graphics card. A heavy 3D page runs
+  slowly there.
 
 ## Going further
 

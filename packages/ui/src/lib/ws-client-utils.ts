@@ -28,6 +28,16 @@ export function rpcUrl(coreUrl: string): string {
   return url.toString();
 }
 
+/** The websocket address of a path the core answered (`browser.remoteStream`), under the address its RPC socket is at: a relay's route included. */
+export function streamUrl(coreUrl: string, path: string): string {
+  const url = new URL(coreUrl);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  url.pathname = `${withoutTrailingSlashes(url.pathname)}${path}`;
+  url.search = '';
+  url.hash = '';
+  return url.toString();
+}
+
 /**
  * Silence on a remote socket before the client asks whether the core is still
  * there. A phone whose NAT mapping expired, or a core host that went to sleep,

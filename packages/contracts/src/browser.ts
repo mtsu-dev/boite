@@ -1,5 +1,5 @@
 import { RPC_MAX_FRAME_BYTES } from './attachment-limits';
-import type { RemoteBrowserFrame, RemoteBrowserInput, RemoteBrowserPicker, RemoteBrowserSelection, RemoteBrowserUnchanged, RemoteFrameOptions } from './browser-remote';
+import type { RemoteBrowserFrame, RemoteBrowserInput, RemoteBrowserPicker, RemoteBrowserSelection, RemoteBrowserStream, RemoteBrowserUnchanged, RemoteFrameOptions, RemoteStreamOptions } from './browser-remote';
 /**
  * The agent's browser runs on the machine that runs its conversation: the core
  * starts a headless Chromium there and drives it over the DevTools protocol.
@@ -279,6 +279,15 @@ export interface BrowserRpcMethods {
    * `tabId`. Any client subscribed to the conversation may watch it.
    */
   'browser.remoteFrame': { params: { threadId: string; tabId?: string } & RemoteFrameOptions; result: RemoteBrowserFrame | RemoteBrowserUnchanged };
+  /**
+   * The frames of one of the conversation's agent tabs, pushed on a websocket
+   * of this viewer's own (`BROWSER_STREAM_ROUTE`): answers the path to open
+   * within 30 seconds, once, under the address this connection reached the
+   * core at. The stream belongs to this connection: it is given to a client
+   * subscribed to the conversation, and ends with the connection, the
+   * subscription or the tab. A core that has it says so in `features.browserStream`.
+   */
+  'browser.remoteStream': { params: { threadId: string; tabId?: string } & RemoteStreamOptions; result: RemoteBrowserStream };
   /** Whether the conversation's agent has a browser open on this machine, and its tabs. */
   'browser.remoteStatus': { params: { threadId: string }; result: AgentBrowserStatus };
   /**

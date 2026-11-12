@@ -1493,6 +1493,46 @@ of base64 and the core's Chrome from 8 % to 0 % of a core; on a moving page the
 trip lost about 72 ms at the same four frames a second and the same Chrome CPU
 ([results](../../bench/results/2026-10-15-perf-browser.md)).
 
+## A remote browser view
+
+Since 2026-11-11 the agent's browser draws without the GPU at a device scale
+of 2, and a viewer is pushed its screencast on a socket of its own instead of
+asking for each frame ([the agent's browser](browser.md#watching-it)), the way
+T3 Code's browser does. Measured on 2026-11-11 with
+`bun bench/remote-browser-frames.ts --seconds 8 --rtt 0,80` and its `--still`,
+`--width 2400`, `--webgl` and `--webgl-heavy` variants, on `origin/main`
+(07124676) and on the branch, on a Windows 11 desktop (Ryzen 7 7800X3D,
+Radeon RX 6750 XT, Chrome 157), a page of 1200 × 1300 CSS pixels watched at
+780 px ([results](../../bench/results/2026-11-11-remote-browser-stream.md)):
+
+| Moving page | Pictures/s | KiB/s | Chrome CPU | Change shown after |
+| --- | --- | --- | --- | --- |
+| Before, polled | 4.0 | 433 | 29 to 40 % | 377 ms |
+| After, polled by an older client | 4.0 | 414 | 117 to 132 % | 372 ms |
+| After, pushed | 25.6 to 27.7 | 2444 to 2638 | 127 to 147 % | 39 to 64 ms |
+| After, pushed, 80 ms of latency | 12.4 | 1181 | 128 % | 107 ms |
+
+A still page sends nothing either way and Chrome stays under 3 % of a core. A
+viewer 2400 px wide was sent 1200 px stretched; it is now sent the 2400 px the
+page drew, 536 KiB a picture and 20 to 21.7 pictures a second.
+
+The cost is processor time and bytes. Chrome draws four times the pixels on
+the CPU: about four times the processor time on a plain animated page, and the
+page's own animation runs at 53 frames a second instead of 260. A push carries
+about six times the bytes of the four frames a second a poll took. WebGL has
+no GPU: on Windows Chrome uses Direct3D's software rasterizer, and a simple
+shader went from 44 % of a core to 300 to 400 % at 30 frames a second in the
+page, a heavy one (24 steps a pixel) from 46 % to twelve or thirteen cores at
+16 frames a second.
+
+On the Linux machine the agents run on (Ubuntu 24.04, Ryzen 7 8745HS, Radeon
+780M, Chrome 157, at work during the run), the same page went from 4.0
+pictures a second and 386 ms to 22.6 pushed and 71 ms, for 118 % of a core in
+Chrome instead of 21 %, and its own animation from 60 to 23 frames a second.
+WebGL runs on SwiftShader there: 26 % to 351 % of a core and 60 to 16 frames a
+second in the page for the simple shader, 25 % to 814 % and 60 to 8 for the
+heavy one, which the viewer then sees at 8 pictures a second.
+
 ## Browser tabs nobody uses
 
 The agent browser runs every tab as shown, focused and unthrottled, so a page
@@ -1790,12 +1830,17 @@ with `VACUUM INTO`; the copy's projects, accounts, sessions and network
 settings are pointed at the temporary directory first.
 
 `bench/remote-browser-frames.ts` starts a scratch core, opens a moving page in
-the core's own browser and has a paired phone client poll it on the viewer's
-schedule behind an added latency.
+the core's own browser and has a paired phone client watch it behind an added
+latency: polled on the viewer's schedule, then pushed on the stream's socket
+when the core has one. It reports pictures and bytes a second, the processor
+time of the core and of its Chrome (`/proc` on Linux, `Win32_Process` on
+Windows), what the page itself draws and how long a change takes to reach the
+viewer; `--webgl` and `--webgl-heavy` draw the page in a shader.
 
 Results: [bench/results/2026-10-15-perf-runtime.md](../../bench/results/2026-10-15-perf-runtime.md),
 [bench/results/2026-10-15-perf-drivers.md](../../bench/results/2026-10-15-perf-drivers.md),
 [bench/results/2026-10-05-rpc-actions.md](../../bench/results/2026-10-05-rpc-actions.md),
+[bench/results/2026-11-11-remote-browser-stream.md](../../bench/results/2026-11-11-remote-browser-stream.md),
 [bench/results/2026-10-05-remote-browser-frames.md](../../bench/results/2026-10-05-remote-browser-frames.md),
 [bench/results/2026-10-03-remote-browser-frames.md](../../bench/results/2026-10-03-remote-browser-frames.md),
 [bench/results/2026-09-19-wire-and-startup.md](../../bench/results/2026-09-19-wire-and-startup.md),

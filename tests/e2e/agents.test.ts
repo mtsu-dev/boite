@@ -63,7 +63,7 @@ async function framesAfter(target: string, rail: string) {
 }
 
 /** A frame of the agent's browser drawn on screen, in the tab shown. */
-const shownFrame = `[...document.querySelectorAll('${id('remote-browser-frame')}')].some(image => image.complete && image.naturalWidth > 100 && image.getBoundingClientRect().width > 100)`;
+const shownFrame = `[...document.querySelectorAll('${id('remote-browser-frame')}')].some(image => image.width > 100 && image.getBoundingClientRect().width > 100)`;
 
 /** Writes in the open conversation's composer and sends it. */
 async function send(text: string) {
