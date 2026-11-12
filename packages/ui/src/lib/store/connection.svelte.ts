@@ -470,8 +470,9 @@ export class Connection {
       if (!this.ctx.currentClient(client, generation)) return;
       this.core = core;
       this.clockOffset = client.clockOffset ?? 0;
+      // A client that reports its state had its folds read by the ready handler (events.ts).
       // Before the landing: a draft it opens unfolds its project over the restored folds.
-      this.ctx.projects.restoreFolds();
+      if (!observable(client)) this.ctx.projects.restoreFolds();
       if (this.localCore) noteThisComputer(core.hostname);
       this.connection = client.state;
       this.principal = client.principal;

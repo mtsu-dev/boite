@@ -396,7 +396,9 @@ its tile and name, folds it in both layouts, which share one fold. Folded, it
 keeps the summary mark of its conversations beside its name, and a search on a
 phone still lists the matches it holds. It stays folded after a restart, kept
 per core in localStorage (`boite.foldedProjects.v1`); storage that is full or
-refused keeps the folds for the session only. A draft opened in a folded
+refused keeps the folds for the session only. They are read each time a
+machine's connection becomes ready, including a machine whose first attempt
+failed and whose client connected on a later retry. A draft opened in a folded
 project, or a conversation moved into it, unfolds it.
 
 Recent flattens the list. Its All projects picker can limit conversations and

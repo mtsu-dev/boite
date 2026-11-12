@@ -58,6 +58,10 @@ export function listen(ctx: StoreContext, client: Client): void {
           models.effortAttempts.clear();
           s.error = null;
           s.core = client.core;
+          // The folds are kept per core, so they are read once the core says which it is: here, for
+          // every ready, as a client that failed its first hello reaches ready without Store.connect.
+          // Before the lists land and before the landing, so a draft it opens unfolds over them.
+          ctx.projects.restoreFolds();
           ctx.connection.clockOffset = client.clockOffset ?? 0;
           if (ctx.connection.localCore) noteThisComputer(s.core?.hostname);
           undo.discardExpired(s, s.core?.startedAt);
