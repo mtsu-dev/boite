@@ -38,6 +38,8 @@
       close();
       return;
     }
+    // Tab moves the focus on: the menu closes behind it rather than stay open out of reach.
+    if (event.key === 'Tab') { panel.hide(); return; }
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
     event.preventDefault();
     const rows = [...content.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];

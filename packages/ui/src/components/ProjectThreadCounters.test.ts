@@ -3,6 +3,7 @@ import { flushSync, mount, unmount } from 'svelte';
 import type { Project } from '@boite/contracts';
 import { Store } from '../lib/store.svelte';
 import ProjectThreadCounters from './ProjectThreadCounters.svelte';
+import countersSource from './ProjectThreadCounters.svelte?raw';
 
 let mounted: ReturnType<typeof mount> | undefined;
 afterEach(() => {
@@ -55,4 +56,26 @@ test('a head that counts only failures wears the failure\'s mark and colour; a m
   expect(word.textContent).toBe('Needs you');
   expect(counter.querySelector('.number')?.textContent).toBe('2');
   expect(counter.getAttribute('aria-label')).toBe('orbit: 1 need you, 1 failed');
+});
+
+test('offline, the last known working count drops the live accent for the header\'s grey', () => {
+  // The component's own rules, its two colours as sentinels: jsdom does not resolve var() in a border shorthand.
+  const style = document.createElement('style');
+  style.textContent = countersSource.match(/<style>([\s\S]*)<\/style>/)![1]!
+    .replaceAll('var(--color-accent)', 'rgb(1, 2, 3)').replaceAll('var(--color-muted-foreground)', 'rgb(4, 5, 6)');
+  document.head.append(style);
+  const project = { id: 'p1', name: 'orbit', path: '/src/orbit' } as Project;
+  const entry = { machine: { id: 'local', label: 'Local', store: new Store() }, project } as never;
+  const ring = (away: boolean) => {
+    mounted = mount(ProjectThreadCounters, { target: document.body, props: { entry, working: 2, controls: 'c', collapsed: true, away } });
+    flushSync();
+    const computed = getComputedStyle(document.querySelector<HTMLElement>('[data-testid=project-working-toggle] .work-ring')!);
+    const colours = { side: computed.borderRightColor, top: computed.borderTopColor };
+    unmount(mounted, { outro: false }); mounted = undefined;
+    return colours;
+  };
+  try {
+    expect(ring(false)).toEqual({ side: 'rgb(1, 2, 3)', top: 'rgba(0, 0, 0, 0)' });
+    expect(ring(true)).toEqual({ side: 'rgb(4, 5, 6)', top: 'rgba(0, 0, 0, 0)' });
+  } finally { style.remove(); }
 });

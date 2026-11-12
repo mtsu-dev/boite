@@ -113,25 +113,35 @@
 
 <style>
   /* Initials on a disc tinted by the id, a robot cropped to the same disc, two members stacked for a group. */
-  .agent-avatar { --size: 40px; --tint: var(--series-other); position: relative; width: var(--size); height: var(--size); flex: none; display: grid; place-items: center; border-radius: 50%; background: color-mix(in srgb, var(--tint) 28%, var(--color-surface-2)); color: color-mix(in srgb, var(--tint) 40%, var(--color-foreground)); font-size: calc(var(--size) * 0.38); font-weight: 600; line-height: 1; user-select: none; }
-  .agent-avatar.robot, .agent-avatar:has(.agent-avatar-stack) { background: none; }
+  .agent-avatar { --size: 40px; --tint: var(--series-other); position: relative; width: var(--size); height: var(--size); flex: none; display: grid; place-items: center; border-radius: 50%; --disc: color-mix(in srgb, var(--tint) 28%, var(--color-surface-2)); background: var(--disc); color: color-mix(in srgb, var(--tint) 40%, var(--color-foreground)); font-size: calc(var(--size) * 0.38); font-weight: 600; line-height: 1; user-select: none; }
+  .agent-avatar.robot, .agent-avatar:has(.agent-avatar-stack) { --disc: none; }
   /* Grey at rest, its colours when lit or under the pointer (the control that holds it, or the keyboard's row). */
-  .agent-avatar { filter: var(--avatar-rest); transition: filter var(--dur-2) var(--ease-out-quint); }
-  .agent-avatar[data-lit] { filter: none; }
+  .agent-avatar { --rest: var(--avatar-rest); }
+  .agent-avatar[data-lit] { --rest: none; }
   @media (hover: hover) {
-    :global(:is(button, a, label, [role='button'], [role='option'], [role='menuitem'], [role='link']):hover:not(:disabled)) .agent-avatar { filter: none; }
+    :global(:is(button, a, label, [role='button'], [role='option'], [role='menuitem'], [role='link']):hover:not(:disabled)) .agent-avatar { --rest: none; }
   }
-  :global(:is(button, a, [role='button'], [role='link']):focus-visible) .agent-avatar, :global([role='option'][aria-selected='true']) .agent-avatar { filter: none; }
-  @media (prefers-reduced-motion: reduce) { .agent-avatar { transition: none; } }
-  :global(html[data-motion='reduced']) .agent-avatar { transition: none; }
+  :global(:is(button, a, [role='button'], [role='link']):focus-visible) .agent-avatar, :global([role='option'][aria-selected='true']) .agent-avatar { --rest: none; }
+  /* A filter greys every descendant: a ringed picture greys its disc (drawn under it) and its content, never the
+     ring, whose hue says the mood. The content keeps the opacity a sleeping robot fades with. */
+  .agent-avatar:not([data-ring]), .agent-avatar[data-ring]::before { filter: var(--rest); transition: filter var(--dur-2) var(--ease-out-quint); }
+  .agent-avatar[data-ring] > :global(:not(.avatar-ring)) { filter: var(--rest); transition: filter var(--dur-2) var(--ease-out-quint), opacity var(--dur-3) var(--ease-out-quint); }
+  .agent-avatar[data-ring] { background: none; isolation: isolate; }
+  .agent-avatar[data-ring]::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--disc); }
+  @media (prefers-reduced-motion: reduce) {
+    .agent-avatar:not([data-ring]), .agent-avatar[data-ring]::before { transition: none; }
+    .agent-avatar[data-ring] > :global(:not(.avatar-ring)) { transition: opacity var(--dur-3) var(--ease-out-quint); }
+  }
+  :global(html[data-motion='reduced']) .agent-avatar:not([data-ring]), :global(html[data-motion='reduced']) .agent-avatar[data-ring]::before { transition: none; }
+  :global(html[data-motion='reduced']) .agent-avatar[data-ring] > :global(:not(.avatar-ring)) { transition: opacity var(--dur-3) var(--ease-out-quint); }
   .agent-avatar :global(svg.robot) { border-radius: 50%; overflow: hidden; transition: opacity var(--dur-3) var(--ease-out-quint); }
   /* An imported image fills the disc, cropped to it, whatever its shape. */
   .agent-picture { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; transition: opacity var(--dur-3) var(--ease-out-quint); }
   /* A squircle crops the robot or the picture to its corners, on the raised fill a robot leaves around its face. */
   .agent-avatar.squircle { border-radius: var(--avatar-radius); overflow: hidden; }
-  .agent-avatar.squircle.robot { background: var(--color-surface-3); }
+  .agent-avatar.squircle.robot { --disc: var(--color-surface-3); }
   .agent-avatar.squircle :global(svg.robot), .agent-avatar.squircle .agent-picture { border-radius: var(--avatar-radius); }
-  .agent-avatar[data-kind='mission'] { border-radius: var(--radius-md); background: var(--color-surface-3); color: var(--color-muted-foreground); }
+  .agent-avatar[data-kind='mission'] { border-radius: var(--radius-md); --disc: var(--color-surface-3); color: var(--color-muted-foreground); }
   .agent-avatar-stack { position: absolute; width: 62%; height: 62%; display: grid; place-items: center; border-radius: 50%; background: color-mix(in srgb, var(--tint) 28%, var(--color-surface-2)); color: color-mix(in srgb, var(--tint) 40%, var(--color-foreground)); font-size: calc(var(--size) * 0.26); box-shadow: 0 0 0 2px var(--ring, var(--color-surface)); }
   .agent-avatar-stack.robot { background: none; }
   .agent-avatar-stack[data-slot='0'] { top: 0; left: 0; }

@@ -72,3 +72,20 @@ test('a phone opens the "+" as a bottom sheet with its title', () => {
     expect(items()).toEqual(['composer-attach']);
   } finally { restore(); }
 });
+
+test('Tab out of the open "+" closes it: the focus moves on, the menu does not stay open behind it', async () => {
+  mounted = mount(ComposerOptions, { target: document.body, props: { worktree: false, canAttach: true, onattach() {}, onworktree() {} } });
+  flushSync();
+  const plus = document.querySelector<HTMLButtonElement>('[data-testid=composer-options]')!;
+  plus.click();
+  flushSync();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const row = document.activeElement as HTMLElement;
+  expect(row.dataset['testid']).toBe('composer-attach');
+  const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+  row.dispatchEvent(tab);
+  flushSync();
+  expect(plus.getAttribute('aria-expanded')).toBe('false');
+  // The browser still moves the focus: Tab is not swallowed.
+  expect(tab.defaultPrevented).toBe(false);
+});

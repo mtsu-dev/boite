@@ -14,8 +14,8 @@
   import MachineIcon from './MachineIcon.svelte';
 
   /**
-   * A done or archived conversation, drawn like a thread row and on its column: the provider,
-   * the title, when it was put away, and under it the pull request it ended
+   * A done or archived conversation, drawn like a thread row and on its column: the title
+   * (the agent only in its tooltip), when it was put away, and under it the pull request it ended
    * with, which opens on the forge. No menu button: a right click, or a long
    * press on a phone, opens the row's menu. Restoring stays one hover away.
    */
