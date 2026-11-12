@@ -4,9 +4,10 @@ import type { ThreadId, Timestamp } from './ids';
  * The council (`docs/internals/council.md`), after Theo Browne's council skill
  * (t3dotgg/tstack, MIT): delegated agents of different providers each answer
  * one request alone and read-only, with a score out of 10. They never read each
- * other: the thread that started it summarizes, corrects and asks a fresh review,
- * so the progress happens in the work. The owner follows it in a salon, a
- * projectless thread that runs no agent, and may write there.
+ * other's answers. Their answers return to the starting thread; its user's
+ * instructions determine how it uses them and whether another round runs.
+ * The owner follows it in a salon, a projectless thread that runs no agent,
+ * and may write there.
  */
 export const COUNCIL_LIMITS = {
   membersMin: 2,
