@@ -188,8 +188,7 @@
     if (!held) return;
     disclosure = held;
     let current = true;
-    loading = true;
-    void held.ready.catch(reason => { if (current) loadError = errorText(reason); }).finally(() => { if (current) loading = false; });
+    void held.ready.catch(reason => { if (current) loadError = errorText(reason); });
     return () => { current = false; disclosure = undefined; held.release(); };
   });
   $effect(() => {

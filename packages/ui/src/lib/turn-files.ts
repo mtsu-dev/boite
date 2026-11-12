@@ -112,6 +112,11 @@ export class TurnFileCache {
     const entry = { cwd, messages: [...messages], parts, sources, snapshots: sources.map(snapshotOf), data };
     this.#readers.set(data, entry);
     this.#entries.set(id, new WeakRef(entry));
+    if (this.#entries.size > TurnFileCache.SIZE) {
+      for (const [key, ref] of this.#entries) {
+        if (ref.deref() === undefined) this.#entries.delete(key);
+      }
+    }
     for (const oldest of this.#entries.keys()) {
       if (this.#entries.size <= TurnFileCache.SIZE) break;
       this.#entries.delete(oldest);

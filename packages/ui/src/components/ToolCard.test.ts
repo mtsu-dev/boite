@@ -131,6 +131,7 @@ test('closing keeps its output through the height transition, then unmounts and 
   running = mount(ToolCard, { target: document.body, props: { name: 'Read', input: LONG_INPUT, output: 'ok', status: 'done', acquireOutput } });
   flushSync();
   query<HTMLButtonElement>('[data-testid=tool-toggle]').click(); flushSync();
+  expect(document.querySelector('[data-testid=tool-output-loading]')).toBeNull();
   const fold = query<HTMLElement>('.disclosure-fold');
   fold.getAnimations = () => [{ } as Animation];
   const toggle = query<HTMLButtonElement>('[data-testid=tool-toggle]');
@@ -147,6 +148,7 @@ test('closing keeps its output through the height transition, then unmounts and 
   expect(release).toHaveBeenCalledTimes(1);
   toggle.click(); flushSync();
   expect(query('[data-testid=tool-output]').textContent).toBe('ok');
+  expect(document.querySelector('[data-testid=tool-output-loading]')).toBeNull();
   expect(acquireOutput).toHaveBeenCalledTimes(2);
 });
 

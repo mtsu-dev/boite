@@ -1,4 +1,4 @@
-import { describe, expect, it, test } from 'vitest';
+import { describe, expect, it, test, vi } from 'vitest';
 import type { Message, MessagePart, Turn } from '@boite/contracts';
 import { countsOf, relativeTo, showsTurnFiles, turnDiffs, turnFiles, turnFileTree, turnLineCounts, TurnFileCache, type TurnDiff } from './turn-files';
 
@@ -83,6 +83,27 @@ test('a turn end that scrolls back finds its entry; the least recently read turn
   read(TurnFileCache.SIZE);
   expect(read(0)).toBe(kept[0]);
   expect(read(1)).not.toBe(kept[1]);
+});
+
+test('collected turn entries do not evict a visible turn from the cache', () => {
+  const answers = Array.from({ length: TurnFileCache.SIZE + 1 }, (_, at) =>
+    ({ id: `m${at}`, role: 'assistant', turnId: `t${at}`, parts: [tool('Write', { file_path: `${at}.ts`, content: '' })] }) as Message);
+  const cache = new TurnFileCache();
+  const read = (at: number) => cache.read(`t${at}`, [answers[at]!], '/repo', false);
+  const kept = answers.slice(0, TurnFileCache.SIZE).map((_, at) => read(at));
+  // Model collection at the WeakRef boundary without depending on GC timing.
+  const collected = new Set(kept.slice(1));
+  const deref = WeakRef.prototype.deref;
+  const refs = vi.spyOn(WeakRef.prototype, 'deref').mockImplementation(function (this: WeakRef<{ data: unknown }>) {
+    const entry = deref.call(this);
+    return entry && collected.has(entry.data) ? undefined : entry;
+  });
+  try {
+    read(TurnFileCache.SIZE);
+    expect(read(0)).toBe(kept[0]);
+  } finally {
+    refs.mockRestore();
+  }
 });
 
 describe('turnFiles', () => {
