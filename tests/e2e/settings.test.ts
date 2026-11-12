@@ -65,7 +65,7 @@ test('provider settings show login controls, and quota monitoring lives on the L
   await page.evaluate(`document.querySelectorAll('${id('provider-details-toggle')}').forEach(button => button.click())`);
 }, 30_000);
 
-test('missing agents offer desktop setup while phone settings omit provider administration', async () => {
+test('missing agents offer desktop setup while phone settings show providers', async () => {
   await page.evaluate(`import('/src/lib/workspace.svelte.ts').then(({workspace}) => {
     workspace.active.providers = workspace.active.providers.map(p => ({...p, available: false, executable: null}));
     workspace.active.accounts = [];

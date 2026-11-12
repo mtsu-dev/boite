@@ -6,12 +6,14 @@ import { openUrl } from '../test/opener';
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
 
-/** The worktree switch is an item of the composer's "+": open it, then find the switch. */
-function worktreeSwitch(): HTMLButtonElement | null {
+/** The worktree switch is an item of the composer's "+": open it, then find the switch. Undefined while the
+ * sheet has not opened (its open is async), null once it is open without the switch: a missing "+" throws. */
+function worktreeSwitch(): HTMLButtonElement | null | undefined {
   if (!document.querySelector('[data-testid=composer-options-sheet]')) {
-    document.querySelector<HTMLElement>('[data-testid=composer-options]')?.click();
+    query<HTMLElement>('[data-testid=composer-options]').click();
     flushSync();
   }
+  if (!document.querySelector('[data-testid=composer-options-sheet]')) return undefined;
   return document.querySelector<HTMLButtonElement>('[data-testid=composer-worktree]');
 }
 
@@ -83,7 +85,7 @@ test('the draft worktree chip puts the first send on its own branch, and the hea
 
 test('a draft offers the worktree switch only on a folder where git was found', async ({ app: _app }) => {
   query<HTMLButtonElement>('[data-testid=new-thread]').click();
-  await waitFor(() => worktreeSwitch() !== null);
+  await waitFor(() => !!worktreeSwitch());
   const project = store.projects.find((one) => one.id === store.draft?.projectId);
   if (!project) throw new Error('the draft has no project');
   project.repository = false;
@@ -93,7 +95,7 @@ test('a draft offers the worktree switch only on a folder where git was found', 
   flushSync();
   expect(worktreeSwitch()).toBeNull();
   project.repository = true;
-  await waitFor(() => worktreeSwitch() !== null);
+  await waitFor(() => !!worktreeSwitch());
 });
 
 test('a machine with no AI shows one action, Connect an AI, and the draft opens on the AI it connected', async () => {

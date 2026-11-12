@@ -92,6 +92,7 @@ test('a permission reads whole under its row, its sub-agent\'s question is a row
   expect([skip.textContent?.trim(), skip.dataset.verb]).toEqual(['Skip', 'skip']);
   skip.click(); await settle();
   expect(answer).toHaveBeenCalledWith(child.id, 'q');
+  expect(store.openThread?.id).toBe(parent.id);
 });
 
 test('Deny settles the permission in place, with the request the row shows', async () => {

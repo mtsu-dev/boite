@@ -11,6 +11,20 @@ import { FIRST_MODELS } from '../lib/model-list';
 import { FakeClient } from '../lib/fake-client';
 import { phoneWidth } from '../test/phone-width';
 
+/** jsdom gets no component CSS from Vite: compile a component's own, under the scope class `node` renders with,
+ * so its computed sizes and positions are the component's and not jsdom's defaults. */
+async function styleOf(node: Element, file: string): Promise<void> {
+  const { compile } = await import('svelte/compiler');
+  const { readFileSync } = await import('node:fs');
+  // svelte.config.js names a scope `b` and the file's hash.
+  const scope = [...node.classList].find((name) => /^b[0-9a-z]{5,}$/.test(name));
+  if (!scope) throw new Error(`${file} renders no scope class on ${node.tagName}: ${node.className}`);
+  const source = readFileSync(`${import.meta.dirname}/${file}`, 'utf8');
+  const style = document.createElement('style');
+  style.textContent = compile(source, { filename: file, cssHash: () => scope }).css?.code ?? '';
+  document.head.append(style);
+}
+
 /** A provider with hundreds of models opens on its first rows; a query or the show-all row reaches the rest. */
 
 let running: Record<string, unknown> | null = null;
@@ -268,6 +282,12 @@ test('a provider with one model beside a long rail: the menu follows the list, t
   document.querySelector<HTMLButtonElement>('[data-testid=composer-picker]')!.click();
   await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null);
   const menu = document.querySelector<HTMLElement>('[data-testid=composer-picker-menu]')!;
+  await styleOf(menu, 'ModelPickerMenu.svelte');
+  // The menu opens on the current model's column: its fill is the entry's, so it runs under the star too.
+  const current = query<HTMLElement>('[data-testid=composer-picker-menu] [aria-current=true]');
+  expect(current.querySelector('.mark svg')).not.toBeNull();
+  expect(current.closest('.model-entry')!.classList.contains('current')).toBe(true);
+  expect(document.querySelectorAll('[data-testid=composer-picker-menu] .mark svg').length).toBe(1);
   // A fixed height left an empty band under a short list: the frame follows its content, the rail its floor.
   expect(getComputedStyle(menu).height).not.toMatch(/px|vh/);
   expect(getComputedStyle(menu).maxHeight).not.toBe('none');
@@ -288,13 +308,8 @@ test('a provider with one model beside a long rail: the menu follows the list, t
   tiles.scrollTop = 280;
   tiles.dispatchEvent(new Event('scroll'));
   await waitFor(() => tiles.classList.contains('hidden-start') && !tiles.classList.contains('hidden-end'));
-  const current = document.querySelector<HTMLElement>('[data-testid=composer-picker-menu] [aria-current=true]');
-  if (current) {
-    expect(current.querySelector('.mark svg')).not.toBeNull();
-    // The selected fill is the entry's, so it runs under the star too.
-    expect(current.closest('.model-entry')!.classList.contains('current')).toBe(true);
-  }
-  expect(document.querySelectorAll('[data-testid=composer-picker-menu] .mark svg').length).toBeLessThanOrEqual(1);
+  // The one-model column holds no current model, so no star either.
+  expect(document.querySelectorAll('[data-testid=composer-picker-menu] .mark svg').length).toBe(0);
 });
 
 test('a first probe shows a reading column, never the descriptor list it is about to replace', async () => {
@@ -457,6 +472,7 @@ test('a signed-in Claude seat is probed before its model and account are applied
     expect(head.contains(search)).toBe(true);
     expect(list.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(list.compareDocumentPosition(firstModel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await styleOf(list, 'AccountSeats.svelte');
     expect(getComputedStyle(list).position).not.toBe('absolute');
     const seat = document.querySelector<HTMLButtonElement>('[data-instance="claude::a-claude-side"]')!;
     expect(seat.disabled).toBe(false);

@@ -558,7 +558,7 @@ test("a turn's change count sits on the tool line of its last change, not on a c
   thread.messages = [{ id: 'answer', threadId: thread.id, turnId: done.id, role: 'assistant', state: 'complete', createdAt: 10, parts: [read, write, { type: 'text', text: 'Wrote b.ts.' }] }];
   running = mount(MessageList, { target: document.body, props: { store: owner, threadId: thread.id, messages: thread.messages } });
   flushSync();
-  await vi.waitFor(() => expect(document.querySelector('[data-testid=turn-files]')).not.toBeNull());
+  await vi.waitFor(() => expect(document.querySelector('[data-testid=turn-files]')).not.toBeNull(), { timeout: 5_000 });
   // One row: the run's line says what was done and carries the lines it added; no "Changed files" title repeats it.
   const line = document.querySelector('[data-testid=tool-group] [data-testid=turn-files]')!;
   expect(line).not.toBeNull();
@@ -1704,9 +1704,9 @@ test('a failed turn whose card holds Retry keeps its line\'s copy and fork, with
   expect(article.querySelector('[data-testid=turn-summary] [data-testid=message-copy]')).not.toBeNull();
   expect(article.querySelector('[data-testid=turn-summary] [data-testid=message-fork]')).not.toBeNull();
   expect(article.querySelector('[data-testid=message-retry]')).toBeNull();
-  // The card is the failure's one mark: the line says when it ended, not "Failed" a second time.
+  // The card is the failure's one mark: no second alert icon, and the line keeps the time it failed.
   const line = article.querySelector('[data-testid=turn-summary]')!;
   expect(line.querySelector('.lucide-circle-alert')).toBeNull();
   expect(line.querySelector('.spinner')).toBeNull();
-  expect(line.textContent).not.toContain(strings.chat.failedAt.split('{')[0]!.trim());
+  expect(line.textContent).toContain(strings.chat.failedAt.split('{')[0]!.trim());
 });

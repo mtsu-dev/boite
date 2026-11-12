@@ -116,7 +116,7 @@
   const memoryTitle = $derived(memory ? [fold.memory[memory.pass.status], ...(memory.pass.summary && memory.pass.status !== 'running' ? [memory.pass.summary] : [])].join(' · ') : '');
   /** A line that counts steps or carries a memory mark reads at rest: it is what the agent did, not a measurement. */
   const marked = $derived(!!steps || !!memory || compactions.length > 0);
-  const finishedLabel = $derived(turn.finishedAt === null ? '' : fill(turn.status === 'error' && !carded ? strings.chat.failedAt : strings.chat.finishedAt, { time: clockTime(turn.finishedAt) }));
+  const finishedLabel = $derived(turn.finishedAt === null ? '' : fill(turn.status === 'error' ? strings.chat.failedAt : strings.chat.finishedAt, { time: clockTime(turn.finishedAt) }));
   const tokensLabel = $derived(`${formatTokens(total)} ${strings.units.tokens}`);
   /** Where there is no pointer, a settled line says how long it worked at rest; when it ended and what it spent wait behind one "i". */
   const details = $derived([finishedLabel, total > 0 ? tokensLabel : ''].filter(Boolean).join(' · '));

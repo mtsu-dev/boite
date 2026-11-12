@@ -306,31 +306,38 @@ real('three agents in the rail; a phone shows the list, then the conversation fu
 // A rail with more bots than it holds pushed Settings and the machines off the window, with no scroll to reach them.
 real('a rail too short for its bots scrolls them, keeps its foot on screen and shows a name past its edge', async () => {
   await page.send('Emulation.setDeviceMetricsOverride', { ...DESKTOP, height: 300 });
-  await page.waitFor(`document.querySelectorAll('${id('app-rail')} ${id('rail-bot')}').length >= 3`);
-  await page.settleAnimations();
-  const rail = await page.evaluate<{ scrolls: boolean; inside: boolean; last: { x: number; y: number } }>(`(() => {
-    const bots = document.querySelector('${id('app-rail')} .bots');
-    bots.scrollTop = bots.scrollHeight;
-    const last = [...bots.querySelectorAll('${id('rail-bot')}')].at(-1).getBoundingClientRect();
-    const box = bots.getBoundingClientRect();
-    return { scrolls: bots.scrollHeight > bots.clientHeight, inside: last.top >= box.top && last.bottom <= box.bottom + 1,
-      last: { x: last.left + last.width / 2, y: last.top + last.height / 2 } };
-  })()`);
-  // Scrolled to its end, the last bot stands whole inside the list, not drawn over the buttons under it.
-  expect([rail.scrolls, rail.inside]).toEqual([true, true]);
-  // Every foot button whole inside the window.
-  expect(await page.evaluate(`[...document.querySelectorAll('${id('app-rail')} .foot button')].every(b => { const r = b.getBoundingClientRect(); return r.height > 0 && r.top >= 0 && r.bottom <= innerHeight; })`)).toBe(true);
-  // The last bot's name card shows whole, right of the rail, level with it: the scroller does not cut it.
-  await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: rail.last.x, y: rail.last.y });
-  await page.waitFor(`getComputedStyle([...document.querySelectorAll('${id('app-rail')} .bots .rail-name')].at(-1)).opacity === '1'`);
-  const name = await page.evaluate<{ left: number; middle: number; width: number }>(`(() => { const r = [...document.querySelectorAll('${id('app-rail')} .bots .rail-name')].at(-1).getBoundingClientRect(); return { left: r.left, middle: r.top + r.height / 2, width: r.width }; })()`);
-  const railRight = await page.evaluate<number>(`document.querySelector('${id('app-rail')}').getBoundingClientRect().right`);
-  expect(name.width).toBeGreaterThan(20);
-  expect(name.left).toBeGreaterThan(railRight);
-  expect(Math.abs(name.middle - rail.last.y)).toBeLessThan(2);
-  await capture('rail-short-desktop.png');
-  await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 900, y: 300 });
-  await page.send('Emulation.setDeviceMetricsOverride', DESKTOP);
+  try {
+    await page.waitFor(`document.querySelectorAll('${id('app-rail')} ${id('rail-bot')}').length >= 3`);
+    await page.settleAnimations();
+    const rail = await page.evaluate<{ scrolls: boolean; inside: boolean; last: { x: number; y: number } }>(`(() => {
+      const bots = document.querySelector('${id('app-rail')} .bots');
+      bots.scrollTop = bots.scrollHeight;
+      const last = [...bots.querySelectorAll('${id('rail-bot')}')].at(-1).getBoundingClientRect();
+      const box = bots.getBoundingClientRect();
+      return { scrolls: bots.scrollHeight > bots.clientHeight, inside: last.top >= box.top && last.bottom <= box.bottom + 1,
+        last: { x: last.left + last.width / 2, y: last.top + last.height / 2 } };
+    })()`);
+    // Scrolled to its end, the last bot stands whole inside the list, not drawn over the buttons under it.
+    expect([rail.scrolls, rail.inside]).toEqual([true, true]);
+    // Every foot button whole inside the window, and the foot has some.
+    const foot = await page.evaluate<{ count: number; inside: boolean }>(`(() => { const buttons = [...document.querySelectorAll('${id('app-rail')} .foot button')]; return { count: buttons.length, inside: buttons.every(b => { const r = b.getBoundingClientRect(); return r.height > 0 && r.top >= 0 && r.bottom <= innerHeight; }) }; })()`);
+    expect(foot.count).toBeGreaterThan(0);
+    expect(foot.inside).toBe(true);
+    // The last bot's name card shows whole, right of the rail, level with it: the scroller does not cut it.
+    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: rail.last.x, y: rail.last.y });
+    await page.waitFor(`getComputedStyle([...document.querySelectorAll('${id('app-rail')} .bots .rail-name')].at(-1)).opacity === '1'`);
+    const name = await page.evaluate<{ left: number; middle: number; width: number }>(`(() => { const r = [...document.querySelectorAll('${id('app-rail')} .bots .rail-name')].at(-1).getBoundingClientRect(); return { left: r.left, middle: r.top + r.height / 2, width: r.width }; })()`);
+    const railRight = await page.evaluate<number>(`document.querySelector('${id('app-rail')}').getBoundingClientRect().right`);
+    expect(name.width).toBeGreaterThan(20);
+    expect(name.left).toBeGreaterThan(railRight);
+    expect(Math.abs(name.middle - rail.last.y)).toBeLessThan(2);
+    await capture('rail-short-desktop.png');
+  } finally {
+    // A failure here must not leave the next test a 300 px window and a scrolled rail.
+    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 900, y: 300 });
+    await page.send('Emulation.setDeviceMetricsOverride', DESKTOP);
+    await page.evaluate(`(() => { const bots = document.querySelector('${id('app-rail')} .bots'); if (bots) bots.scrollTop = 0; })()`);
+  }
 }, 60_000);
 
 test('a bot\'s menu sits in its column on a desktop and on its row\'s long press on a phone: pin, rename, pause, edit, archive, copy', async () => {

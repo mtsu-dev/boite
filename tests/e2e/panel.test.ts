@@ -374,3 +374,26 @@ test('the tab strip keeps its chevrons still at every width down to the narrowes
   expect(flipping).toEqual([]);
   await onStore(`store.panel.closeAll();`);
 }, 60_000);
+
+test('under reduced motion the gutter number lands on the band in the task that moves them', async () => {
+  // Windows with animation effects off reports reduced motion, where app.css cuts every transition to 0.01ms:
+  // an element that names no transition would still move a frame late, and a slow runner reads it in that frame.
+  await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+  try {
+    await onStore(`store.panel.closeAll(); store.panel.openFile('src/lib/store.svelte.ts', 20);`);
+    await page.waitFor(`document.querySelector('${id('file-highlight')}')?.dataset.line === '20'`);
+    await page.settleAnimations();
+    const gap = await page.evaluate<number>(`import('/src/lib/store.svelte.ts').then(async ({ store }) => {
+      const landed = () => document.querySelector('${id('file-highlight')}')?.dataset.line === '64';
+      // Read in the microtask after the one that moved them, before any frame.
+      const moved = new Promise(resolve => { const watch = new MutationObserver(() => { if (landed()) { watch.disconnect(); resolve(); } }); watch.observe(document.body, { subtree: true, attributes: true, childList: true }); });
+      store.panel.openFile('src/lib/store.svelte.ts', 64);
+      if (!landed()) await moved;
+      return document.querySelector('${id('file-highlight')}').getBoundingClientRect().top - document.querySelector('${id('file-line')}[data-line="64"]').getBoundingClientRect().top;
+    })`);
+    expect(Math.abs(gap)).toBeLessThan(1.5);
+  } finally {
+    await page.send('Emulation.setEmulatedMedia', { features: [] });
+    await onStore(`store.panel.closeAll();`);
+  }
+});

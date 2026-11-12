@@ -387,7 +387,7 @@ test('an unreachable machine is said once: by the card head above, by its place,
   vi.spyOn(client, 'call').mockResolvedValue(null);
   const thread = store.threads.find(thread => thread.status === 'idle' && !thread.parentThreadId && thread.projectId)!;
   const project = store.projects.find(project => project.id === thread.projectId)!;
-  store.connection = 'disconnected' as typeof store.connection;
+  store.connection = 'closed';
   const machine = { id: 'laptop', label: 'Laptop', store };
   const show = async (props: Record<string, unknown>) => {
     if (mounted) await unmount(mounted);
