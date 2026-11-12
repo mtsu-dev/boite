@@ -12,7 +12,7 @@ import { PeerRefusal } from '../coordination-wire.ts';
 import type { Core } from '../core.ts';
 import { invalidParams, messageOf, refused } from '../errors.ts';
 import { newId } from '../ids.ts';
-import { contactsBot, tellBot } from './bot.ts';
+import { contactsBot, tellBot, withdrawOwnerCards } from './bot.ts';
 import { checkNormalizedRemote, gitRemoteOf } from './git-remote.ts';
 import type { ContactStore } from './store.ts';
 import { contactFace } from './face.ts';
@@ -155,6 +155,8 @@ export class ContactRequests {
 
   view(request: StoredRequest): ContactRequest {
     const { pendingSend: _send, remoteId: _remote, pendingHost: _host, pendingMember: _member, holder: _holder, pendingHolder: _held, holderAdmission: _admission, askedBy: _by, ...shown } = request;
+    // A bot may have gone since this request arrived, including before a restart.
+    if (shown.direction === 'in' && shown.status === 'pending' && (shown.stage === 'bot' || shown.stage === 'owner') && contactsBot(this.#core) === null) delete shown.stage;
     return shown;
   }
 
@@ -313,6 +315,22 @@ export class ContactRequests {
     this.save(requests);
     this.#store.changed();
     this.#store.flush(request.coreId);
+    return this.view(request);
+  }
+
+  /**
+   * The owner accepted a request the Contacts bot settles that asks for a
+   * thread, not a project: as `Let the bot handle it` on the bot's card, the
+   * bot may act on it now. It stays pending until the bot puts the threads in
+   * touch, since opening a project would answer it with no thread to write to.
+   */
+  approve(id: string): ContactRequest {
+    const { requests, request } = this.pending(id, 'in');
+    Object.assign(request, { stage: 'bot', approved: true });
+    this.save(requests);
+    this.#store.changed();
+    withdrawOwnerCards(this.#core, request.id);
+    tellBot(this.#core, `contacts-approved-${request.id}`, `The owner accepted request ${request.id} from ${request.contact}: settle it with boite contacts connect or start, without asking them again.`);
     return this.view(request);
   }
 

@@ -52,6 +52,9 @@ export const strings = {
       remote: 'Git remote',
       accept: 'Accept',
       acceptLabel: 'Accept: pick the project to share',
+      /** Accept on a request for a thread the Operator settles: no project is shared. */
+      approve: 'Let the Operator connect it',
+      approveTip: 'The Operator puts the asking thread in touch with one of yours. No project is shared.',
       refuse: 'Refuse',
       reason: 'Reason',
       reasonPlaceholder: 'Why, in a sentence the asking agent reads',
