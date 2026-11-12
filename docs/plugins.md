@@ -470,6 +470,11 @@ Every `add*` returns a function that takes the entry away. An `id` is letters,
 digits, `-` and `_`, at most 40, unique per plugin and kind; a `label` or
 `title` is 1 to 60 characters.
 
+The script runs as written, neither bundled nor transpiled, on every client,
+so it must run on the oldest browser the UI supports, Safari 15.4 and Chrome 111
+([Oldest browsers](phone.md#oldest-browsers)): `[...list].sort()` rather than
+`list.toSorted()`, and no regex lookbehind.
+
 The slots are the stable API. Boite's interface is Svelte, recompiled at every
 release: its markup, class names and CSS variables change without notice. A
 script may reach the DOM and a stylesheet may style anything, at the plugin's

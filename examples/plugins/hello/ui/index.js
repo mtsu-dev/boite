@@ -23,7 +23,7 @@ export default function hello(boite) {
       async function draw() {
         const threads = await boite.rpc.call('threads.list', {});
         if (stopped) return;
-        const latest = threads.toSorted((a, b) => b.updatedAt - a.updatedAt).slice(0, 5);
+        const latest = [...threads].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 5);
         list.replaceChildren(...latest.map((thread) => {
           const row = document.createElement('li');
           const title = document.createElement('span');

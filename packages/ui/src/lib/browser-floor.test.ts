@@ -26,6 +26,8 @@ test('the check names a lookbehind and a copying array method', () => {
 
 test('no UI source uses what Safari 15.4 cannot run', () => {
   const shared = resolve('../contracts/src');
-  const offenders = [...sources(SRC), ...sources(shared)].flatMap((file) => tooNewForFloor(readFileSync(file, 'utf8')).map((hit) => `${relative(SRC, file)}: ${hit}`));
+  // A plugin's interface script runs as written, unbundled, on every client, phones included.
+  const pluginUi = resolve('../../examples/plugins/hello/ui');
+  const offenders = [...sources(SRC), ...sources(shared), ...sources(pluginUi)].flatMap((file) => tooNewForFloor(readFileSync(file, 'utf8')).map((hit) => `${relative(SRC, file)}: ${hit}`));
   expect(offenders).toEqual([]);
 });
