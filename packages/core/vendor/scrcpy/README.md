@@ -19,7 +19,7 @@ you may not use this file except in compliance with the License.
 ```
 
 The Device panel's live stream pushes it to the Android device with adb and
-runs it there with `app_process` (docs/devices.md). To update it, download the
+runs it there with `app_process` (docs/internals/devices.md). To update it, download the
 new release's `scrcpy-server-v<version>` asset, check its SHA-256 against the
 release page, replace this file and change the version, hash and size in
 `scrcpy.ts` and here, then read the release notes for protocol changes.

@@ -3,7 +3,6 @@ import type { Channel, RpcEventName, RpcEvents, ThreadId } from '@boite/contract
 import { APP_ORIGIN, FILE_ROUTE, RPC_MAX_FRAME_BYTES, RPC_PATH, RpcCloseCode, VIEW_ROUTE, SUBSCRIBED_EVENTS, agentHearsEvent } from '@boite/contracts';
 import { timingSafeEqual } from 'node:crypto';
 import { existsSync, statSync } from 'node:fs';
-import { hostname, networkInterfaces } from 'node:os';
 import { dirname, join, normalize, resolve, sep } from 'node:path';
 import { eventThreadId, type EventPayload } from './bus.ts';
 import { mayReceiveEvent } from './access.ts';
@@ -16,6 +15,8 @@ import { LAZY_MCP_ROUTE } from './mcp/lazy.ts';
 import { tailnetAddress } from './group/addresses.ts';
 import { encryptedLink, hostName, isLoopbackAddress, isLoopbackHost, RELAYED_LINK_HEADER } from './server/peer.ts';
 import { parseRelayPath, RelayHub, type RelaySocketData } from './group/relay.ts';
+import { browserStreamMessage, browserStreamOpened, browserStreamRequest, type StreamSocketData } from './server/browser-stream.ts';
+import { isAllowedOrigin, SHELL_ORIGINS } from './server/origin.ts';
 import type { Connection } from './router.ts';
 import type { EventFrames, SocketData } from './server/connection.ts';
 import { OUTBOUND_MAX_BUFFERED_BYTES, ServerConnection } from './server/connection.ts';
@@ -29,6 +30,7 @@ import { extraNetwork } from './server/extra-listeners.ts';
 import { Refusals } from './server/refusals.ts';
 import { ticketedFile, viewPage } from './server/tickets.ts';
 export { ServerConnection } from './server/connection.ts';
+export { isAllowedOrigin } from './server/origin.ts';
 export { encryptedLink, isLoopbackAddress, isLoopbackHost } from './server/peer.ts';
 
 const DEFAULT_HELLO_TIMEOUT_MS = 5000;
@@ -74,8 +76,6 @@ export const UI_DIST = resolveUiDist();
 export const PLACEHOLDER_HTML =
   '<!doctype html><meta charset="utf-8"><title>Boite core</title><p>Boite core is running; the UI is not built</p>';
 
-const SHELL_ORIGINS = ['tauri://localhost', 'http://tauri.localhost', 'https://tauri.localhost'];
-
 /** The phone app's origin (`APP_ORIGIN`), or the one `BOITE_APP_ORIGIN` names: a page no core serves, accepted by all. */
 export function appOrigin(env: Record<string, string | undefined> = process.env): string {
   const named = env['BOITE_APP_ORIGIN']?.trim();
@@ -116,23 +116,6 @@ function envTimeout(): number | null {
   if (raw === undefined || raw === '') return null;
   const parsed = Number(raw);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-}
-
-export function isAllowedOrigin(origin: string | null, port: number, host: string): boolean {
-  if (origin === null) return true;
-  if (SHELL_ORIGINS.includes(origin)) return true;
-  try {
-    const url = new URL(origin);
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
-    if (url.origin !== origin || Number(url.port || (url.protocol === 'https:' ? 443 : 80)) !== port) return false;
-    const name = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
-    if (['127.0.0.1', 'localhost', '::1'].includes(name)) return true;
-    if (host !== '0.0.0.0' && host !== '::') return name === host.toLowerCase();
-    if (name === hostname().toLowerCase()) return true;
-    return Object.values(networkInterfaces()).some((entries) => entries?.some((entry) => entry.address === name));
-  } catch {
-    return false;
-  }
 }
 
 /** The socket came from a page whose origin names the host it asked for, outside loopback: this machine is served there. */
@@ -347,7 +330,7 @@ export function staticResponse(file: string, pathname: string, acceptEncoding: s
  */
 function mayReadTodos(core: Core, connection: Connection, projectId: string): boolean {
   const identity = connection.identity;
-  // A paired device reads every board as the owner does; a plugin hears todos.updated only with its `todos` permission.
+  // A paired device reads every board as the owner does; a plugin hears todos.updated only with `todos.read`, its shared cards left out below.
   if (identity.principal === 'owner' || identity.principal === 'session' || identity.principal === 'plugin') return true;
   if (identity.principal !== 'agent' || identity.threadId === null) return false;
   try {
@@ -487,7 +470,7 @@ export function startServer(options: ServerOptions): RunningServer {
 
   // One set of handlers for every address the core answers on: the sockets,
   // the hello bounds and the broadcast are the core's, not a listener's.
-  const serve = (hostname: string, bind: number) => Bun.serve<SocketData | RelaySocketData | ContactSocketData>({
+  const serve = (hostname: string, bind: number) => Bun.serve<SocketData | RelaySocketData | ContactSocketData | StreamSocketData>({
     hostname,
     port: bind,
     // HTTP only: the websocket block below keeps Bun's own 120 s and its pings.
@@ -576,6 +559,15 @@ export function startServer(options: ServerOptions): RunningServer {
             core.log('warn', `refused a relayed websocket from origin ${origin === null ? '(none)' : clientField(origin, 100)}`, { source: 'connections', event: 'connection.origin-refused' });
             return new Response('forbidden origin', { status: 403 });
           }
+          // A stream of browser frames: the other member checks its ticket, and no socket is upgraded for one it refuses.
+          if (relayed.rest !== RPC_PATH) {
+            return relays.stream(relayed).then((stream) => {
+              if (stream === null) return new Response('not found', { status: 404 });
+              if (self.upgrade(request, { data: { relay: stream } })) return undefined;
+              stream.close(1000);
+              return new Response('expected a websocket upgrade', { status: 400 });
+            });
+          }
           const peer = preauthPeer(self.requestIP(request)?.address ?? null, request.headers.get('host'));
           const refusal = peer === null ? null : preauthRefusal(waitingPeers(), peer);
           if (refusal !== null) {
@@ -590,6 +582,9 @@ export function startServer(options: ServerOptions): RunningServer {
         });
       }
 
+      // A viewer's browser frames, on a socket of their own (`server/browser-stream.ts`).
+      const stream = browserStreamRequest(core, url, request, allowedOrigin);
+      if (stream) return stream instanceof Response ? stream : self.upgrade(request, { data: stream }) ? undefined : new Response('expected a websocket upgrade', { status: 400 });
       if (url.pathname === RPC_PATH) {
         const origin = request.headers.get('origin');
         if (!allowedOrigin(origin)) {
@@ -653,6 +648,7 @@ export function startServer(options: ServerOptions): RunningServer {
           socket.data.relay.attach(socket as ServerWebSocket<RelaySocketData>);
           return;
         }
+        if ('stream' in socket.data) { browserStreamOpened(core, socket as ServerWebSocket<StreamSocketData>); return; }
         const connection = socket.data.connection;
         connection.attach(socket as ServerWebSocket<SocketData>);
         connections.add(connection);
@@ -675,6 +671,7 @@ export function startServer(options: ServerOptions): RunningServer {
           socket.data.relay.receive(raw);
           return;
         }
+        if ('stream' in socket.data) { browserStreamMessage(socket.data, raw); return; }
         const connection = socket.data.connection;
         if (!connection.authenticated && raw.length > PREAUTH_FRAME_MAX_BYTES) {
           connection.close(RpcCloseCode.Unauthorized, 'hello frame too large');
@@ -693,7 +690,7 @@ export function startServer(options: ServerOptions): RunningServer {
       },
 
       drain(socket) {
-        if ('contact' in socket.data) return;
+        if ('contact' in socket.data || 'stream' in socket.data) return;
         if ('relay' in socket.data) socket.data.relay.drained();
         else socket.data.connection.drain();
       },
@@ -707,6 +704,7 @@ export function startServer(options: ServerOptions): RunningServer {
           socket.data.relay.close(1000, 'client closed');
           return;
         }
+        if ('stream' in socket.data) { socket.data.stream.handle?.closed(); return; }
         logConnectionClosed(core, socket.data.connection, code, reason);
         core.procs.unwatchResources(socket.data.connection.id);
         core.coordination.bridge.disconnect(socket.data.connection.id);
@@ -825,7 +823,7 @@ export function startServer(options: ServerOptions): RunningServer {
     const frames: EventFrames = new Map();
     for (const connection of connections) {
       if (!connection.authenticated) continue;
-      if (!mayReceiveEvent(name, connection)) continue;
+      if (!mayReceiveEvent(name, connection, payload)) continue;
       if (connection.identity.principal === 'agent' && !agentHearsEvent(name, payload, connection.identity.threadId, id => core.journal.getThread(id)?.projectId ?? null)) continue;
       if (SUBSCRIBED_EVENTS.has(name) && !connection.subscriptions.has(threadId ?? '')) continue;
       if (scoped && !agentQuestion && (threadId === null || !(connection.subscriptions.has(threadId) || (parentId !== null && connection.subscriptions.has(parentId))))) continue;
@@ -833,11 +831,11 @@ export function startServer(options: ServerOptions): RunningServer {
       // that thread open; an agent socket still gets its own thread's.
       if (name === 'thread.activity' && connection.identity.principal !== 'agent' && (threadId === null || !connection.subscriptions.has(threadId))) continue;
       if (name === 'todos.updated' && !mayReadTodos(core, connection, (payload as RpcEvents['todos.updated']).projectId)) continue;
-      if (name === 'todos.updated' && connection.identity.principal === 'agent') {
+      if (name === 'todos.updated' && (connection.identity.principal === 'agent' || connection.identity.principal === 'plugin')) {
         const event = payload as RpcEvents['todos.updated'];
-        if (connection.identity.threadId === null) continue;
-        // Local cards stay readable when remote coordination/model policy closes the shared projection.
-        connection.sendEvent(name, {...event, todos: core.sharedBoard.visibleTodos(connection.identity.threadId, event.todos, connection)});
+        if (connection.identity.principal === 'agent' && connection.identity.threadId === null) continue;
+        // Local cards stay readable when remote coordination/model policy closes the shared projection; a plugin gets none of it.
+        connection.sendEvent(name, {...event, todos: core.sharedBoard.visibleTodos(connection.identity.threadId ?? '', event.todos, connection)});
         continue;
       }
       // A shell's bytes go to the windows that attached it. Its exit still goes to every owner window: one

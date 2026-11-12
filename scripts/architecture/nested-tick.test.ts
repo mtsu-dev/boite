@@ -68,7 +68,7 @@ test('check:architecture fails on a promise matcher, naming the nested tick and 
     const failed = check();
     expect(failed.exitCode).not.toBe(0);
     expect(failed.stderr.toString()).toContain('tests/sample.test.ts:1: a rejects or resolves matcher runs a nested event loop tick under bun test');
-    expect(failed.stderr.toString()).toContain('docs/development.md#promise-matchers-under-bun-test');
+    expect(failed.stderr.toString()).toContain('docs/internals/development.md#promise-matchers-under-bun-test');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

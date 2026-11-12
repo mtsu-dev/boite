@@ -4,7 +4,7 @@
  * files embedded, nothing remote), given the theme bootstrap, stored as an
  * artifact snapshot and loaded once in a headless browser. Whatever is wrong
  * with it goes back to the agent as the refusal's sentence, so the user is
- * only ever shown a page that loaded cleanly. docs/chat-files.md has the rest.
+ * only ever shown a page that loaded cleanly. docs/internals/chat-files.md has the rest.
  */
 import { mkdir, mkdtemp, rename, rm, unlink, writeFile } from 'node:fs/promises';
 import { closeSync, constants, fstatSync, openSync, readFileSync } from 'node:fs';

@@ -1,5 +1,5 @@
 /**
- * What goes between the machines of a team (`docs/teams.md`). The machine that
+ * What goes between the machines of a team (`docs/internals/teams.md`). The machine that
  * creates a team holds it and sends each member's machine the team's state and
  * the posts that machine may have (`team.sync`), from a per-machine mark that
  * moves only once a batch was taken. A member's machine posts, reads, reports

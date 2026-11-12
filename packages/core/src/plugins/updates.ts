@@ -29,6 +29,8 @@ export const CHECK_INTERVAL_MS = 6 * 60 * 60_000;
 export const RETRY_FIRST_MS = 15 * 60_000;
 /** A manual check this soon after the last one answers with that one. */
 export const MANUAL_FLOOR_MS = 10_000;
+/** How long an install waits on its update source before taking the newest version it already knows. */
+export const INSTALL_SOURCE_WAIT_MS = 15_000;
 
 /** Where an entry's newer manifests are published: a normalized https repository and a ref. */
 export interface UpdateSource {

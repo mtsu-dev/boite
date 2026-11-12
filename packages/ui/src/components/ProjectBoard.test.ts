@@ -57,6 +57,9 @@ test('the board puts each card in its column, starts a /goal2 for a card put in 
     expect(dark.querySelector('[data-testid=board-card-progress]')!.textContent).toContain('2/5');
     expect(dark.querySelector('[data-testid=board-card-agent]')!.textContent).toContain('claude-opus-5-5');
     expect(card('Phone chat scroll').querySelector('[data-testid=board-card-state]')!.textContent).toBe('Under review');
+    // A card a plugin added says which, and one the owner added says nothing.
+    expect(card('Export invoices as CSV').querySelector('[data-testid=board-card-plugin]')!.textContent).toBe('By plugin Standup');
+    expect(card('Keyboard shortcut to open the panel').querySelector('[data-testid=board-card-plugin]')).toBeNull();
     expect(card('Ship the changes surface').querySelector('[data-testid=board-card-state]')!.textContent).toBe('Awaiting you');
     // The checklist unfolds under the card's text.
     dark.querySelector<HTMLButtonElement>('[data-testid=board-card-text]')!.click();

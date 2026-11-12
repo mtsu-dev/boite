@@ -1,5 +1,5 @@
 /**
- * The admin policy (docs/enterprise.md): one test per key, each proving the
+ * The admin policy (docs/internals/enterprise.md): one test per key, each proving the
  * flow the key forbids is refused with the key named, or never reaches the
  * network, plus the file's own failures. Every core here reads a policy file
  * in a fresh temporary directory, never a machine path.

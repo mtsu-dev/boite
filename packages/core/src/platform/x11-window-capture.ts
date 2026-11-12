@@ -1,5 +1,5 @@
 /*
- * The X11 half of `boite window` (docs/windows.md): libX11, and libXcomposite
+ * The X11 half of `boite window` (docs/internals/windows.md): libX11, and libXcomposite
  * when present, through bun:ffi. `posix.ts` imports this file with the first
  * `boite window` on an X11 session, never at core startup.
  *

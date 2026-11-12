@@ -50,7 +50,7 @@ test('a page the agent opens shows the Agent browser covered, naming the machine
   await capture('agent-browser-cover-desktop.png');
 
   await page.click(id('agent-browser-show'));
-  await page.waitFor(`document.querySelector('${id('remote-browser-frame')}')?.complete && document.querySelector('${id('remote-browser-frame')}').naturalWidth > 100`);
+  await page.waitFor(`document.querySelector('${id('remote-browser-frame')}')?.width > 100`);
   expect(await page.evaluate<string>(`document.querySelector('${id('remote-browser-address')}').value`)).toBe('https://example.com/docs');
   // The page takes the size of the view by default: the frame fills it with no band around it.
   await page.waitFor(`(() => { const area = document.querySelector('.screen-area'), shown = document.querySelector('.screen'); return !!shown && Math.abs(shown.offsetWidth - area.clientWidth) <= 2 && Math.abs(shown.offsetHeight - area.clientHeight) <= 2; })()`);
@@ -60,7 +60,7 @@ test('a page the agent opens shows the Agent browser covered, naming the machine
   await Bun.sleep(1200);
   await capture('agent-browser-live-desktop.png');
   // The owner opens a tab from the strip, on a new tab page, and leaves it without opening anything.
-  const loaded = `document.querySelector('${id('remote-browser-frame')}')?.complete && document.querySelector('${id('remote-browser-frame')}').naturalWidth > 100`;
+  const loaded = `document.querySelector('${id('remote-browser-frame')}')?.width > 100`;
   for (const [width, height, name] of [[390, 844, 'phone'], [1280, 900, 'desktop']] as const) {
     await size(width, height);
     await page.click(id('agent-browser-new'));
@@ -87,7 +87,7 @@ test('a page the agent opens shows the Agent browser covered, naming the machine
   await page.waitFor(`document.querySelector('${id('agent-browser-show')}')?.getBoundingClientRect().width > 0`);
   await capture('agent-browser-cover-phone.png');
   await page.click(id('agent-browser-show'));
-  await page.waitFor(`document.querySelector('${id('remote-browser-frame')}')?.complete && document.querySelector('${id('remote-browser-frame')}').naturalWidth > 100`);
+  await page.waitFor(`document.querySelector('${id('remote-browser-frame')}')?.width > 100`);
   await tapFrame();
   await page.waitFor(`${store}.client.call('browser.command', { threadId: 't-trace', action: { kind: 'snapshot' } }).then(reply => reply.value.text.includes('Taps: 2'))`);
   expect(await pageText()).toContain('Taps: 2');
@@ -97,14 +97,14 @@ test('a page the agent opens shows the Agent browser covered, naming the machine
 }, 60_000);
 
 test('a tap on a list of the page opens its options over the frame, and a pick reaches the page', async () => {
-  const loaded = `document.querySelector('${id('remote-browser-frame')}')?.complete && document.querySelector('${id('remote-browser-frame')}').naturalWidth > 100`;
+  const loaded = `document.querySelector('${id('remote-browser-frame')}')?.width > 100`;
   for (const [width, height, name, label] of [[1280, 900, 'desktop', 'Large'], [390, 844, 'phone', 'Medium']] as const) {
     await size(width, height);
     await page.waitFor(loaded);
     // The fake page's list spans 40..280 × 396..460 CSS pixels of a page drawn at half size.
     await page.waitFor(`(() => { const r = document.querySelector('${id('remote-browser-frame')}').getBoundingClientRect(); return r.width > 200; })()`);
     await Bun.sleep(800);
-    const at = await page.evaluate<{ x: number; y: number }>(`(() => { const img = document.querySelector('${id('remote-browser-frame')}'), r = img.getBoundingClientRect(), scale = r.width / (img.naturalWidth * 2); return { x: r.x + 100 * scale, y: r.y + 420 * scale }; })()`);
+    const at = await page.evaluate<{ x: number; y: number }>(`(() => { const img = document.querySelector('${id('remote-browser-frame')}'), r = img.getBoundingClientRect(), scale = r.width / (img.width * 2); return { x: r.x + 100 * scale, y: r.y + 420 * scale }; })()`);
     for (const type of ['mousePressed', 'mouseReleased'] as const) await page.send('Input.dispatchMouseEvent', { type, ...at, button: 'left', clickCount: 1 });
     await page.waitFor(`document.querySelectorAll('${id('remote-browser-picker')} [role=option]').length === 4`);
     expect(await page.evaluate<string[]>(`[...document.querySelectorAll('${id('remote-browser-picker')} [role=option]')].map(row => row.textContent + (row.disabled ? ' (off)' : ''))`)).toEqual(['Small', 'Medium', 'Large', 'Huge (off)']);
@@ -182,7 +182,7 @@ test('a phone chooses between chat and the agent browser without closing its pag
   await page.click(id('phone-browser-toggle'));
   await page.waitFor(`document.querySelector('${id('agent-browser-cover')}')`);
   await page.click(id('agent-browser-show'));
-  await page.waitFor(`document.querySelector('${id('remote-browser-frame')}')?.naturalWidth > 100`);
+  await page.waitFor(`document.querySelector('${id('remote-browser-frame')}')?.width > 100`);
   expect(await page.text(id('panel-close'))).toBe('Discussion');
   expect(await page.evaluate(`(() => { const back = document.querySelector('${id('panel-close')}'), tabs = document.querySelector('${id('panel-tabs')}'); const b = back.getBoundingClientRect(), t = tabs.getBoundingClientRect(); return back.scrollWidth <= back.clientWidth && b.height >= 44 && b.left >= 0 && b.right <= t.left && t.right <= innerWidth; })()`)).toBe(true);
   await capture('agent-browser-return-phone.png');

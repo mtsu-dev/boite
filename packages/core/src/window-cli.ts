@@ -2,7 +2,7 @@
  * `boite window`: an agent's captures of the machine's desktop windows (a
  * Unity editor, a game, Blender) and the conversation's Window panel. The core
  * captures and writes the PNG; an app the project does not allow waits for the
- * owner's answer on a consent card. See docs/windows.md.
+ * owner's answer on a consent card. See docs/internals/windows.md.
  */
 import { resolve } from 'node:path';
 import { parseWindowCrop, WINDOW_CLIP_LIMITS, WINDOW_SHOT_MAX, type DesktopWindow, type WindowShot, type WindowTarget } from '@boite/contracts';

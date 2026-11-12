@@ -40,6 +40,7 @@ import { registerWorktreeMethods } from './worktree-sweep.ts';
 import { reveal } from './reveal.ts';
 import { updateEverything } from './update-everything.ts';
 import { mergeCommands, pluginSlashCommands } from './plugins/extensions.ts';
+import { logPluginChange } from './plugins/actor.ts';
 
 /** Adding a module is one file plus one line here. `hello` is the server's own. */
 export function registerModules(core: Core): void {
@@ -91,8 +92,10 @@ export function registerModules(core: Core): void {
   core.router.register('quotas.reset', (params) => core.quotas.resets.reset(params.accountId, params.confirmed));
   core.router.register('plugins.list', () => core.plugins.list());
   core.router.register('plugins.inspect', (params) => core.plugins.inspect(params));
-  core.router.register('plugins.add', (params) => core.plugins.add(params.previewId));
-  core.router.register('plugins.install', (params) => core.plugins.install(params.id));
+  core.router.register('plugins.add', (params) => core.plugins.add(params.previewId, params.grants));
+  core.router.register('plugins.install', (params) => core.plugins.install(params.id, params.grants));
+  core.router.pluginCall = (method, params, ctx) => logPluginChange(core, method, params, ctx);
+  core.router.register('plugins.setGrants', (params) => core.plugins.setGrants(params.id, params.grants));
   core.router.register('plugins.cancel', (params) => core.plugins.cancel(params.id));
   core.router.register('plugins.uninstall', (params) => core.plugins.uninstall(params.id));
   core.router.register('plugins.accounts', (params) => core.plugins.accounts(params.id, params.refresh));
@@ -102,7 +105,11 @@ export function registerModules(core: Core): void {
   core.router.register('plugins.gateway', (params) => core.plugins.gateway(params));
   core.router.register('plugins.command', (params, ctx) => core.plugins.command(params, ctx.connection.identity));
   core.router.register('plugins.dev', (params) => core.plugins.dev(params));
+  core.router.register('plugins.ui', () => core.plugins.interfaces.bundles());
   core.router.register('plugins.checkUpdates', (params) => core.plugins.checkUpdates(params));
+  core.router.register('plugins.setEnabled', (params) => core.plugins.setEnabled(params));
+  core.router.register('plugins.settings.get', (params) => core.plugins.settings(params));
+  core.router.register('plugins.settings.set', (params) => core.plugins.setSettings(params));
   core.router.register('ui.reveal', (params) => reveal(core, params));
   registerProjectMethods(core);
   registerProviderMethods(core);

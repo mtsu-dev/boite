@@ -4,7 +4,7 @@
  * window beside Boite. No `requestAnimationFrame` loop runs in the page, which
  * would itself make a frame every vsync; the figures are the CPU time Chrome's
  * renderer and GPU processes spent and the frames the page's compositor drew.
- * docs/performance.md, "What the UI costs at rest".
+ * docs/internals/performance.md, "What the UI costs at rest".
  *
  * Run: bun bench/ui-at-rest.ts [--working 16] [--seconds 6] [--runs 1]
  *        [--only "working,working blurred"] [--bundle <dir>] [--ui <checkout>/packages/ui]

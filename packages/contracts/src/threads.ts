@@ -4,6 +4,7 @@ import type { AccountId, MessageId, ProjectId, ProviderId, ThreadId, Timestamp, 
 import type { AgentShape } from './imports';
 import type { Attachment, Message, MoveNotice, PendingMove, PreviewReference } from './messages';
 import type { PermissionRequest } from './permissions';
+import type { PluginActor } from './plugins';
 import type { ThreadCapabilities } from './providers';
 import type { PullRequestWatch } from './pull-requests';
 import type { BackgroundTask, BackgroundTaskObservation, BackgroundWait, QuestionRequest } from './questions';
@@ -98,12 +99,10 @@ export interface ThreadProgress {
   providerAt?: Timestamp | null;
 }
 
-export interface ThreadArchiveReason {
-  type: 'pr-merged';
-  number: number;
-  url: string;
-  archivedAt: Timestamp;
-}
+/** A merged PR, or a plugin granted `threads.write` (`pluginName` as it was then, readable after an uninstall). */
+export type ThreadArchiveReason =
+  | { type: 'pr-merged'; number: number; url: string; archivedAt: Timestamp }
+  | ({ type: 'plugin'; archivedAt: Timestamp } & PluginActor);
 
 /**
  * The core removed the worktree this thread worked in while it was archived.
@@ -175,6 +174,8 @@ export interface ThreadSummary {
 
   /** Durable explanation for an automatic archive; absent for manual archives and restored conversations. */
   archiveReason?: ThreadArchiveReason;
+  /** The plugin that created the conversation (`threads.write`), its name as it was then; absent when anyone else did. */
+  createdBy?: PluginActor;
   /** Set once the core removed this thread's worktree, kept after a restore while `cwd` still names it. */
   worktreeRemoved?: ThreadWorktreeRemoval | null;
   /** Core-owned delegation relationship. Absent on ordinary conversations. */
@@ -190,9 +191,9 @@ export interface ThreadSummary {
   projectId: ProjectId | null;
   /** Only persistent agent sessions and team chats have no project. */
   agentSessionId?: string;
-  /** A team's chat (`docs/teams.md`): it runs no agent, a turn there is one post, and no agent reaches it as a coordination contact. */
+  /** A team's chat (`docs/internals/teams.md`): it runs no agent, a turn there is one post, and no agent reaches it as a coordination contact. */
   teamId?: string;
-  /** A council's salon (`docs/council.md`): it runs no agent and holds no message; the posts are read with council.get. */
+  /** A council's salon (`docs/internals/council.md`): it runs no agent and holds no message; the posts are read with council.get. */
   councilId?: string;
   /**
    * An incognito conversation of the drafts. It works in a folder of the
@@ -344,7 +345,7 @@ export interface ThreadWake {
 
 /**
  * An automatic retry the core planned after a provider refused a turn for
- * availability rather than for a fault of the request (docs/usage.md).
+ * availability rather than for a fault of the request (docs/internals/usage.md).
  * `capacity`: the model was at capacity; the same turn tries again at `at`,
  * the `attempt`th of `attempts` tries, and the thread stays running meanwhile.
  * `usage-limit`: the subscription window was spent and `autoResumeLimitedThreads`
@@ -352,7 +353,7 @@ export interface ThreadWake {
  * the plan survives a core restart. `auto-continue`: a turn stopped before its
  * answer (an error, a crash, a compaction, interrupted background work); a
  * new turn resumes the thread at `at`, the `attempt`th of `attempts` resumes
- * in a row (`docs/restart-handoff.md`). `turns.cancelRetry` or Stop cancels any.
+ * in a row (`docs/internals/restart-handoff.md`). `turns.cancelRetry` or Stop cancels any.
  */
 export interface ThreadRetry {
   kind: 'capacity' | 'usage-limit' | 'auto-continue';
@@ -476,7 +477,7 @@ export interface ThreadActivity {
    * `blocked`: the agent ended a goal turn with `[BOITE_GOAL_BLOCKED]` and
    * waits for the user. The goal is paused; the user's next message resumes it.
    * `auto`: the core started this reviewed goal by itself, from a long prompt
-   * or `boite goal track` (the `auto-goal` experiment, `docs/goals.md`).
+   * or `boite goal track` (the `auto-goal` experiment, `docs/internals/goals.md`).
    */
   goal: { objective: string; status: 'active' | 'paused' | 'complete'; iterations: number; error: string | null; dismissed?: boolean; blocked?: boolean; review?: GoalReview; checklist?: GoalChecklist; auto?: true } | null;
   loop: { prompt: string; intervalMs: number; maxIterations?: number | null; status: 'active' | 'paused' | 'complete'; iterations: number; nextRunAt: number | null; error: string | null; history?: ActivityIteration[] } | null;
@@ -674,7 +675,7 @@ export interface ThreadsRpcMethods {
        * core makes its folder.
        */
       incognito?: boolean;
-      /** Start without part of the user's setup, fixed for the thread's life ([context modes](../../docs/context-modes.md)). */
+      /** Start without part of the user's setup, fixed for the thread's life ([context modes](../../../docs/internals/context-modes.md)). */
       context?: ContextRequest | ContextPreset;
       /** Adopt this connection's compatible, prompt-free draft reservation. */
       preparationId?: string;
@@ -828,6 +829,8 @@ export interface ThreadsRpcMethods {
    * processes end once those turns have settled. Restoring restarts nothing.
    * `onlyIfIdle: true` marks done, recording its expiry date after refusing active work in the family.
    * Unsent drafts do not block this explicit action.
+   * A plugin (permission `threads.write`) always marks done, checked as an automatic pass; `pinned`
+   * and `archived: false` are refused, and `archiveReason` names it (docs/internals/plugins.md).
    */
   'threads.archive': { params: { threadId: ThreadId; archived?: boolean; onlyIfIdle?: boolean }; result: ThreadSummary };
   /**

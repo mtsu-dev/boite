@@ -1,6 +1,7 @@
 import type { ProjectId, ThreadId, Timestamp } from './ids';
 import type { GoalChecklist } from './threads';
 import type { SharedBoardCard } from './shared-projects';
+import type { PluginActor } from './plugins';
 
 /**
  * One card of a project's todo list, shared by every thread of the project.
@@ -13,6 +14,8 @@ export interface Todo {
   status: 'open' | 'claimed' | 'done';
   /** The thread that added or last moved it, null when the user did. */
   threadId: ThreadId | null;
+  /** The plugin that added or last changed it (`todos.write`); absent when the owner, a device or an agent did. */
+  plugin?: PluginActor;
   createdAt: Timestamp;
   updatedAt: Timestamp;
   /** The `/goal2` conversation the project board started for this card. Missing on older cores and on a card nobody started. */

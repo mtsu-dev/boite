@@ -187,7 +187,7 @@ describe('an update source', () => {
     const pinned = parseManifest(v2('1.0.0', ['threads.read']), 'recommended.json[0]');
     const verdict = (raw: Record<string, unknown>) => judge(JSON.stringify(raw), pinned, '1.0.0');
     expect(verdict(v2('1.0.1', ['threads.read'], { prompt: 'New words.' })).kind).toBe('offer');
-    expect(verdict(v2('1.0.1', ['threads.read', 'todos']))).toEqual({ kind: 'ignored', reason: '1.0.1 changes its permissions from [threads.read] to [threads.read, todos]; that change comes with a Boite update.' });
+    expect(verdict(v2('1.0.1', ['threads.read', 'todos']))).toEqual({ kind: 'ignored', reason: '1.0.1 changes its permissions from [threads.read] to [threads.read, todos.read, todos.write]; that change comes with a Boite update.' });
     expect(verdict(v2('1.0.1', ['threads.read'], { service: {} }))).toMatchObject({ kind: 'ignored', reason: expect.stringContaining('changes what Boite starts for it from [] to [service]') });
     expect(verdict(release('1.0.1', { id: 'standup', name: 'Standup', homepage: 'https://plugins.example.invalid/standup', executable: 'standup' }))).toMatchObject({ kind: 'ignored' });
   });

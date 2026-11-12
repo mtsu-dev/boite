@@ -8,10 +8,11 @@
  * allow waits for the owner's answer on a consent card. Pictures go only to
  * the file asked for, in the conversation's folder, its project or its
  * temporary folder, and to the card's thumbnail; never to a log. See
- * docs/windows.md.
+ * docs/internals/windows.md.
  */
 import {
   WINDOW_CAPTURE_EXCLUDED,
+  deviceBound,
   WINDOW_CLIP_LIMITS,
   WINDOW_CONSENT_ANSWERS,
   WINDOW_CONSENT_TIMEOUT_MS,
@@ -289,7 +290,7 @@ export class DesktopWindows {
   #thread(threadId: string, connection?: Connection, allowArchived = false): ThreadSummary {
     const thread = this.#core.threads.require(threadId);
     if (thread.archived && !allowArchived) throw refused('window capture needs an active conversation', { threadId });
-    if (connection?.identity.principal === 'session' && !connection.subscriptions.has(threadId)) {
+    if (connection && deviceBound(connection.identity.principal) && !connection.subscriptions.has(threadId)) {
       throw refused('subscribe to the conversation before using its Window panel', { threadId });
     }
     return thread;

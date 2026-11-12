@@ -6,6 +6,7 @@ import type { SpawnedChild } from '../../procs.ts';
 import { profileFor, resolveLaunch } from '../../providers/resolve.ts';
 import type { LiveTurnSettings, SessionContext, TurnContext } from '../types.ts';
 import { exitWithin } from '../exit.ts';
+import { stderrLines } from '../lines.ts';
 import {
   agentEnv,
   commandsOf,
@@ -525,15 +526,12 @@ export class PiSession {
     child.stdin.once('close', () => { if (this.#child === child) this.#closing = true; });
     let closed = (): void => undefined;
     this.#processClosed = new Promise<void>(resolve => { closed = resolve; });
-    child.stderr.setEncoding('utf8');
-    child.stderr.on('data', (chunk: string) => {
-      if (this.#child !== child) return;
-      for (const line of chunk.split(/\r?\n/)) {
-        const text = line.trim();
-        if (text.length === 0) continue;
-        this.#lastStderr = text.slice(0, STDERR_MAX);
-        ctx.log('warn', `pi agent: ${this.#lastStderr}`, { kind: 'provider-output', event: 'provider.output' });
-      }
+    // Whole lines, as every other driver reads stderr: a line cut across two
+    // chunks would otherwise be logged, and quoted on exit, as two fragments.
+    stderrLines(child.stderr, (text) => {
+      if (this.#child !== child || text.length === 0) return;
+      this.#lastStderr = text.slice(0, STDERR_MAX);
+      ctx.log('warn', `pi agent: ${this.#lastStderr}`, { kind: 'provider-output', event: 'provider.output' });
     });
     this.#exited = new Promise<number | null>((resolve) => {
       child.once('exit', (code) => {

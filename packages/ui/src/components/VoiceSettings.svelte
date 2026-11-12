@@ -187,7 +187,7 @@
     <section class="card status" data-testid="voice-status" data-state="unsupported">
       <div class="status-line">
         <AlertTriangle size={16} class="alert" />
-        <div class="text">{strings.speech.unsupported.replace('{machine}', machine)}<span class="hint">{strings.speech.unsupportedHint}</span></div>
+        <div class="text">{fill(strings.speech.unsupported, { machine })}<span class="hint">{strings.speech.unsupportedHint}</span></div>
       </div>
     </section>
   {:else if !store.owner || readOnly}

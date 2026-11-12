@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, statSync } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
-import { PROJECT_NAME_MAX, TECH_ICON_IDS, type Project, type ProjectIcon, type ProjectId, type TechIconId } from '@boite/contracts';
+import { PROJECT_NAME_MAX, TECH_ICON_IDS, deviceBound, type Project, type ProjectIcon, type ProjectId, type TechIconId } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { newId } from './ids.ts';
 import { folderGone, messageOf, notFound, refused } from './errors.ts';
@@ -610,8 +610,8 @@ export function registerProjectMethods(core: Core): void {
   core.router.register('projects.list', () => core.projects.listFresh());
   core.router.register('projects.add', (params, ctx) => {
     const { path, name } = folderToAdd(params);
-    // A device names any folder of this machine; the reads it is then allowed start from there.
-    if (ctx.connection.identity.principal === 'session') assertDeviceProjectFolder(core, resolve(path));
+    // A device or a plugin names any folder of this machine; the reads it is then allowed start from there.
+    if (deviceBound(ctx.connection.identity.principal)) assertDeviceProjectFolder(core, resolve(path));
     return core.projects.add(path, name);
   });
   core.router.register('projects.rename', (params) => core.projects.rename(params.projectId, params.name));

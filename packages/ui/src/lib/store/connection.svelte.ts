@@ -44,7 +44,7 @@ function askToFollowLink(url: string): Promise<boolean> {
     /* the raw text, then */
   }
   return confirm.ask({
-    title: strings.machines.linkTitle.replace('{host}', host),
+    title: fill(strings.machines.linkTitle, { host }),
     body: strings.machines.linkBody,
     confirmLabel: strings.machines.linkConfirm,
     cancelLabel: strings.common.cancel,
@@ -206,6 +206,7 @@ export class Connection {
             watchDemo: params.get('watch') === '1',
             windowsDemo: params.get('windows') === '1',
             councilDemo: params.get('council') === '1',
+            pluginArchiveDemo: params.get('pluginArchive') === '1',
             uninstalled: params.get('uninstalled') === '1',
             ...(params.get('principal') === 'session' ? { principal: 'session' as const } : {}),
             ...(params.get('missing') ? { missing: params.get('missing')!.split(',') } : {})

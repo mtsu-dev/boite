@@ -115,7 +115,9 @@ function parser(rich: boolean): MarkdownParser {
     const token = tokens[index]!;
     const link = linkHtml('', String(token.attrGet('href') ?? ''));
     const title = token.attrGet('title');
-    return link.slice(0, -4).replace(/>$/, `${title === null ? '' : ` title="${escapeHtml(String(title))}"`}>`);
+    // A function, not a string: a `$` pattern in the title stays text and never pastes the tag back into the attribute.
+    const end = `${title === null ? '' : ` title="${escapeHtml(String(title))}"`}>`;
+    return link.slice(0, -4).replace(/>$/, () => end);
   };
   md.renderer.rules.link_close = (_tokens, _index, _options, env = {}) => {
     env.inLink = false;

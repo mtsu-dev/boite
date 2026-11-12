@@ -1,5 +1,5 @@
 export const strings = {
-  /** A council (`docs/council.md`): its card in the thread that started it, and the salon where the owner follows it. */
+  /** A council (`docs/internals/council.md`): its card in the thread that started it, and the salon where the owner follows it. */
   council: {
     /** The salon's tab in the right panel. */
     salon: 'Council',

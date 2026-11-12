@@ -4,7 +4,7 @@ import type { RpcEventName, RpcMethodName } from './index';
 
 // ---------------------------------------------------------------------------
 // Plugins: one manifest format, `boite-plugin.json`. The recommended ones ship
-// inside the core; the owner adds others from a git URL. docs/plugins.md.
+// inside the core; the owner adds others from a git URL. docs/internals/plugins.md.
 // ---------------------------------------------------------------------------
 
 /** The file a plugin repository carries at its root. */
@@ -30,36 +30,250 @@ export type PluginRuntime = 'native' | 'bun';
 
 // ---------------------------------------------------------------------------
 // Permissions. A schema 2 plugin's processes get a token of their own that
-// reaches only what its manifest declares, shown to the owner before install.
-// A schema 1 desktop app keeps the owner token it always had.
+// reaches only what the owner granted of what its manifest asks for
+// (docs/internals/plugins.md, Permissions). A schema 1 desktop app keeps the owner token
+// it always had.
+//
+// Every method and event a paired device reaches (`DEVICE_METHODS` and
+// `DEVICE_EVENTS` in access.ts) sits in exactly one domain below or in
+// `PLUGIN_CLOSED`; core/test/plugin-permissions.test.ts fails on one
+// filed nowhere. A method added later joins its domain here and every plugin
+// granted that domain reaches it, with no change to the plugin.
 // ---------------------------------------------------------------------------
 
-export const PLUGIN_PERMISSION_NAMES = ['threads.read', 'threads.write', 'todos', 'ui.reveal'] as const;
+export const PLUGIN_PERMISSION_NAMES = [
+  'threads.read', 'threads.write', 'projects.read', 'projects.write', 'todos.read', 'todos.write',
+  'agents.read', 'agents.write', 'files.read', 'questions.write', 'screens.read', 'screens.write',
+  'status.read', 'ui.reveal', 'ui',
+] as const;
 export type PluginPermission = (typeof PLUGIN_PERMISSION_NAMES)[number];
+
+/**
+ * Names older manifests used, read as the permissions they stand for, so an
+ * installed manifest still loads. A manifest may name both forms.
+ */
+export const PLUGIN_PERMISSION_ALIASES: Readonly<Record<string, readonly PluginPermission[]>> = {
+  todos: ['todos.read', 'todos.write'],
+};
 
 /** What one permission opens: the methods a plugin token may call and the events it hears. */
 export interface PluginPermissionGrant {
   methods: readonly RpcMethodName[];
   events: readonly RpcEventName[];
+  /** Drawn in red at install: granting it hands the plugin the owner's own say. */
+  danger?: true;
 }
 
 /**
  * The whole of what a plugin token reaches. A method or an event in none of
- * these is refused to every plugin, whatever it declares.
+ * these is refused to every plugin, whatever it asks for. A plugin passes the
+ * same checks as a paired device on top (access.ts): the working tree's diff
+ * against HEAD only, the last quota reading only.
  */
 export const PLUGIN_PERMISSIONS: Readonly<Record<PluginPermission, PluginPermissionGrant>> = {
-  // Every conversation of every project, read only: rows, transcripts, the project list.
+  // Every conversation of every project, read only: rows, transcripts, cards waiting on the owner, the composer's drafts.
+  // `projects.list` too: a row names its project, and plugins asking for threads.read before the domains used it.
   'threads.read': {
-    methods: ['threads.list', 'threads.get', 'projects.list'],
-    events: ['thread.created', 'thread.updated', 'thread.removed', 'turn.started', 'turn.finished'],
+    methods: [
+      'projects.list', 'threads.list', 'threads.listChanges', 'threads.get', 'threads.capabilities', 'threads.stats', 'threads.subscribe', 'threads.unsubscribe',
+      'threads.pullRequest', 'threads.pullRequests', 'threads.pullRequestReview', 'threads.pullRequestFiles',
+      'messages.list', 'messages.toolOutput', 'messages.toolPart', 'messages.attachment', 'artifacts.read', 'artifacts.viewBlock',
+      'composer.list', 'composer.asset.get', 'permissions.list', 'questions.list',
+    ],
+    events: [
+      'thread.created', 'thread.updated', 'thread.removed', 'thread.commands', 'thread.background', 'thread.btw', 'thread.load', 'thread.activity',
+      'turn.started', 'turn.finished', 'turn.toolCompleted',
+      'message.started', 'message.delta', 'message.part', 'message.completed', 'message.truncated',
+      'permission.requested', 'permission.resolved', 'question.asked', 'question.answered',
+      'composer.updated', 'threads.pullRequestsChanged',
+    ],
   },
-  // Starts conversations and turns, and stops them: it spends the owner's agent quota.
-  'threads.write': { methods: ['threads.create', 'turns.start', 'turns.stop'], events: [] },
-  // The project boards: read, add and update cards.
-  todos: { methods: ['todos.list', 'todos.add', 'todos.update'], events: ['todos.updated'] },
+  // Starts, steers, stops, renames, moves, forks and archives conversations: it spends the owner's agent quota.
+  // `threads.archive` stays idle-only and never restores (threads/plugin-archive.ts, access.ts).
+  'threads.write': {
+    methods: [
+      'threads.create', 'threads.update', 'threads.retitle', 'threads.archive', 'threads.remove', 'threads.restore', 'threads.pin', 'threads.markRead',
+      'threads.move', 'threads.moveCancel', 'threads.fork', 'threads.rewind', 'threads.mergeBack', 'threads.compact',
+      'threads.btw', 'threads.btw.cancel', 'threads.btw.fork', 'threads.activity.set', 'threads.activity.control', 'threads.unwatchPullRequest',
+      'turns.start', 'turns.steer', 'turns.stop', 'turns.recover', 'turns.cancelRetry',
+      'composer.asset.put', 'drafts.prepare', 'drafts.release', 'attachments.upload', 'attachments.release',
+    ],
+    events: [],
+  },
+  // The projects' icons, file lists and changes, and the composer's skill menu (the list itself is threads.read's).
+  'projects.read': {
+    methods: ['projects.icon', 'projects.files', 'brain.commands'],
+    events: ['project.added', 'project.removed', 'project.updated'],
+  },
+  // Adds a folder as a project, renames or archives one.
+  'projects.write': { methods: ['projects.add', 'projects.archive', 'projects.rename', 'projects.drafts'], events: [] },
+  'todos.read': { methods: ['todos.list'], events: ['todos.updated'] },
+  // Adds, edits, moves and removes cards, a done one included, as the owner would.
+  'todos.write': { methods: ['todos.add', 'todos.update', 'todos.remove'], events: [] },
+  // Bots, delegated children, workflows, teams, councils and the coordination inbox, read only.
+  'agents.read': {
+    methods: [
+      'agents.snapshot', 'agents.runtime.get', 'agents.brain.get', 'agents.picture.get',
+      'delegation.get', 'delegation.result', 'delegation.wait', 'workflows.list', 'workflows.get', 'workflows.templates.list',
+      'teams.list', 'council.list', 'council.get', 'collaboration.get', 'collaboration.directory',
+    ],
+    events: ['agents.changed', 'delegation.changed', 'workflows.changed', 'collaboration.changed', 'teams.changed', 'council.changed'],
+  },
+  // Wakes a bot, writes to children and teams, pauses or stops their work.
+  'agents.write': {
+    methods: ['agents.open', 'agents.event', 'delegation.send', 'delegation.stop', 'workflows.control', 'teams.post', 'council.post', 'council.closeRound', 'council.stop'],
+    events: [],
+  },
+  // The working trees: changed files, their diffs, any file, and the folders of this machine.
+  'files.read': { methods: ['git.status', 'git.diff', 'files.list', 'files.read', 'projects.browse'], events: [] },
+  // Answers the cards agents raise, tool permissions included: what the agent then runs, the owner did not approve.
+  'questions.write': { methods: ['permissions.answer', 'questions.answer', 'questions.openPage', 'questions.skip'], events: [], danger: true },
+  // What an agent's browser, a phone emulator or a desktop window shows.
+  'screens.read': {
+    methods: ['browser.remoteFrame', 'browser.remoteStream', 'browser.remoteSelection', 'browser.remoteStatus', 'devices.list', 'devices.sessions', 'devices.frame', 'devices.screenshot', 'devices.stream', 'windows.list', 'windows.frame'],
+    events: ['browser.remoteChanged', 'devices.changed', 'windows.changed'],
+  },
+  // Taps, types and opens there, reads the emulator's clipboard, closes what is shown.
+  'screens.write': { methods: ['browser.remoteInput', 'devices.input', 'devices.open', 'devices.close', 'devices.clipboard', 'windows.close'], events: [] },
+  // This machine's load and usage, the quota readings, the agents installed, settings and shortcuts, read only.
+  'status.read': {
+    methods: ['resources.usage', 'resources.machine', 'scheduler.get', 'usage.get', 'usage.history', 'quotas.list', 'subscriptionProxy.quotas', 'providers.list', 'settings.get', 'keybindings.get'],
+    events: [
+      'scheduler.updated', 'quotas.updated', 'quotas.progress', 'quotas.alerted', 'subscriptionProxy.quotasUpdated',
+      'settings.updated', 'keybindings.updated', 'providers.updated', 'providers.installProgress', 'providers.probed',
+    ],
+  },
   // Brings a conversation, a bot or the app updates to the front of the owner's desktop window.
   'ui.reveal': { methods: ['ui.reveal'], events: [] },
+  // Its `provides.ui` script and style run inside Boite's window, on every client of this core.
+  // The token gains nothing: the code runs in the app and reaches what the app reaches. Danger.
+  ui: { methods: [], events: [], danger: true },
 };
+
+/**
+ * What no plugin reaches, whatever it asks for, and why. A name ending in
+ * `.` closes every method or event under it. Methods a paired device does
+ * not reach are the owner's and closed anyway; those are listed only when the
+ * reason is worth saying.
+ */
+export const PLUGIN_CLOSED: readonly { name: string; reason: string }[] = [
+  { name: 'accounts.', reason: 'the agents\' sign-ins and their settings are the owner\'s' },
+  { name: 'quotas.alert', reason: 'an account\'s alert thresholds are the owner\'s account settings' },
+  { name: 'providers.probe', reason: 'it starts an agent with the owner\'s login' },
+  { name: 'providers.install', reason: 'installing an agent runs its installer on this machine' },
+  { name: 'providers.update', reason: 'updating an agent runs its installer on this machine' },
+  { name: 'providers.uninstall', reason: 'removing an agent is the owner\'s' },
+  { name: 'subscriptionProxy.setEnabled', reason: 'it routes the owner\'s provider traffic' },
+  { name: 'secrets.', reason: 'secrets reach only the agent that asked for one' },
+  { name: 'secret.', reason: 'secrets reach only the agent that asked for one' },
+  { name: 'plugins.', reason: 'installing, removing, granting, turning off and setting up plugins is the owner\'s' },
+  { name: 'core.', reason: 'updating, restarting and stopping Boite and the app is the owner\'s' },
+  { name: 'policy.', reason: 'policies hold the owner\'s machines to an administrator\'s rules, which a plugin neither reads nor changes' },
+  { name: 'sessions.', reason: 'pairing a device is the owner\'s' },
+  { name: 'pairing.', reason: 'pairing a device is the owner\'s' },
+  { name: 'group.', reason: 'the machines of the group and their pairing are the owner\'s' },
+  { name: 'push.', reason: 'notifications belong to the device that subscribed' },
+  { name: 'client.', reason: 'each app\'s language and experiments are its own' },
+  { name: 'threads.focus', reason: 'which conversation the person is looking at decides their notifications' },
+  { name: 'speech.', reason: 'the microphone belongs to the person speaking to the app' },
+  { name: 'composer.put', reason: 'a queued line goes out as the owner\'s own; a plugin sends with turns.start or turns.steer, which name it' },
+  { name: 'diagnostics.report', reason: 'the app reports its own errors' },
+  { name: 'windows.consent', reason: 'only the owner lets an agent see a window' },
+  { name: 'contacts.', reason: 'a contact letter speaks as the owner to another person' },
+  { name: 'shared', reason: 'a shared project is open to the people it is shared with, not to plugins' },
+];
+
+/** Why no plugin reaches `name`, or null when a permission may open it. */
+export function pluginClosedReason(name: string): string | null {
+  return PLUGIN_CLOSED.find((entry) => entry.name.endsWith('.') ? name.startsWith(entry.name) : (entry.name === 'shared' ? /^shared[A-Z]/.test(name) : entry.name === name))?.reason ?? null;
+}
+
+/** The permission that opens `method`, or null when none does. */
+export function pluginPermissionFor(method: string): PluginPermission | null {
+  return (PLUGIN_PERMISSION_NAMES.find((permission) => (PLUGIN_PERMISSIONS[permission].methods as readonly string[]).includes(method))) ?? null;
+}
+
+/** Who did something a plugin asked for, recorded on what it changed: the name as it was then, so it still reads after an uninstall. */
+export interface PluginActor {
+  pluginId: string;
+  pluginName: string;
+}
+
+// ---------------------------------------------------------------------------
+// Settings. A schema 2 manifest declares them; Boite draws them in the same
+// dialog for every plugin, keeps the owner's values on the core, and the
+// plugin reads them (`plugins.settings.get`) and hears each change
+// (`plugin.settings.changed`) with no permission, for itself only.
+// ---------------------------------------------------------------------------
+
+export const PLUGIN_SETTING_TYPES = ['switch', 'number', 'slider', 'text', 'select'] as const;
+export type PluginSettingType = (typeof PLUGIN_SETTING_TYPES)[number];
+/** A setting's key: a letter, then letters, digits and `_`, at most 40 characters. */
+export const PLUGIN_SETTING_KEY_PATTERN = /^[A-Za-z][A-Za-z0-9_]{0,39}$/;
+/** How many settings one plugin may declare, and how long a text value or a select's list may be. */
+export const PLUGIN_SETTING_LIMITS = { settings: 30, text: 1000, options: 30 } as const;
+
+export type PluginSettingValue = boolean | number | string;
+/** Every declared key with its value: the owner's, or the declared default. */
+export type PluginSettingValues = Record<string, PluginSettingValue>;
+
+interface PluginSettingBase {
+  key: string;
+  /** One short line, the setting's name. */
+  label: string;
+  /** One line under the label. */
+  description?: string;
+}
+/** A number field; `min`, `max` and `step` bound what the owner may enter. */
+export interface PluginNumberSetting extends PluginSettingBase { type: 'number'; default: number; min?: number; max?: number; step?: number }
+/** A slider: `min` and `max` are required. */
+export interface PluginSliderSetting extends PluginSettingBase { type: 'slider'; default: number; min: number; max: number; step?: number }
+export interface PluginSelectOption { value: string; label: string }
+export type PluginSetting =
+  | (PluginSettingBase & { type: 'switch'; default: boolean })
+  | PluginNumberSetting
+  | PluginSliderSetting
+  | (PluginSettingBase & { type: 'text'; default: string })
+  | (PluginSettingBase & { type: 'select'; default: string; options: PluginSelectOption[] });
+
+/**
+ * Why `value` cannot be the setting's value, or null when it can. The core
+ * checks every default and every value the owner sets with it; the UI uses it
+ * to refuse a field before sending it.
+ */
+export function pluginSettingProblem(setting: PluginSetting, value: unknown): string | null {
+  switch (setting.type) {
+    case 'switch': return typeof value === 'boolean' ? null : 'true or false';
+    case 'text':
+      return typeof value === 'string' && value.length <= PLUGIN_SETTING_LIMITS.text && !/[\u0000-\u001f\u007f]/.test(value)
+        ? null : `a string of at most ${PLUGIN_SETTING_LIMITS.text} characters on one line`;
+    case 'select': {
+      const values = setting.options.map((option) => option.value);
+      return typeof value === 'string' && values.includes(value) ? null : `one of ${values.join(', ')}`;
+    }
+    default: {
+      const { min, max, step } = setting;
+      const range = [min === undefined ? '' : `at least ${min}`, max === undefined ? '' : `at most ${max}`, step === undefined ? '' : `a multiple of ${step}${min === undefined ? '' : ` from ${min}`}`].filter(Boolean).join(', ');
+      if (typeof value !== 'number' || !Number.isFinite(value)) return `a number${range ? `, ${range}` : ''}`;
+      if ((min !== undefined && value < min) || (max !== undefined && value > max) || (step !== undefined && !onStep(value, min ?? 0, step))) return `a number, ${range}`;
+      return null;
+    }
+  }
+}
+
+/** Whether `value` lands on a step from `base`, within float error. */
+function onStep(value: number, base: number, step: number): boolean {
+  const steps = (value - base) / step;
+  return Math.abs(steps - Math.round(steps)) < 1e-9;
+}
+
+/** The value of each declared setting: the stored one while it is still valid, the default otherwise. */
+export function pluginSettingValues(settings: readonly PluginSetting[], stored: Readonly<Record<string, unknown>>): PluginSettingValues {
+  return Object.fromEntries(settings.map((setting) => {
+    const value = stored[setting.key];
+    return [setting.key, value !== undefined && pluginSettingProblem(setting, value) === null ? value as PluginSettingValue : setting.default];
+  }));
+}
 
 // ---------------------------------------------------------------------------
 // What a schema 2 plugin adds to agents and to the composer. Each is plain
@@ -149,6 +363,54 @@ export interface PluginProvides {
   prompt?: string;
   /** Schema 2. Entries of the composer's `/` menu. */
   slashCommands?: PluginSlashCommand[];
+  /**
+   * Schema 2. A script and a stylesheet Boite's window loads: files of the
+   * plugin's repository, read at the commit the owner installed, or of its
+   * dev folder. Needs the `ui` permission. docs/plugins.md, Interface.
+   */
+  ui?: PluginUiFiles;
+}
+
+/** `provides.ui`: paths in the repository, relative to its root. At least one. */
+export interface PluginUiFiles {
+  /** An ES module whose default export Boite calls with the plugin API: `ui/index.js`. */
+  script?: string;
+  /** A stylesheet added to the page while the plugin is loaded: `ui/style.css`. */
+  style?: string;
+}
+
+/**
+ * What `provides.ui` may name: a path inside the repository, of letters,
+ * digits, `.`, `_`, `-` and `/`, with no `..`, a script ending in `.js` or
+ * `.mjs`, a style in `.css`.
+ */
+export const PLUGIN_UI_PATH_PATTERN = /^(?!.*(?:^|\/)\.\.?(?:\/|$))[A-Za-z0-9_][A-Za-z0-9._/-]{0,199}$/;
+/** Bytes each file may take: the window loads them at every start, a phone's included. */
+export const PLUGIN_UI_LIMITS = { script: 512 * 1024, style: 128 * 1024 } as const;
+
+/**
+ * One plugin's interface as `plugins.ui` hands it to a client: the files'
+ * text and what its script may call. Only plugins installed, enabled and
+ * granted `ui` are listed.
+ */
+export interface PluginUiBundle {
+  id: string;
+  name: string;
+  version: string;
+  /** Changes whenever the version or a file's bytes do: what a client compares to reload it. */
+  digest: string;
+  script: string | null;
+  style: string | null;
+  /** The permissions the owner granted: the script's RPC client reaches these and no more. */
+  permissions: PluginPermission[];
+  /**
+   * The values of the plugin's settings, as the owner set them. A change of
+   * these alone reaches the running script through `onSettingsChanged`, with
+   * no reload: `digest` does not cover them.
+   */
+  settings: Record<string, boolean | number | string>;
+  /** Why the files could not be read, a dev folder's missing file say. The bundle carries no code then. */
+  error: string | null;
 }
 
 /** Where a gateway plugin stands. Null on a plugin that provides no gateway. */
@@ -245,6 +507,8 @@ export interface PluginManifest {
   artifacts?: Partial<Record<PluginPlatform | typeof PLUGIN_ANY_PLATFORM, PluginArtifact>>;
   /** Schema 2: what the plugin's own token reaches. Absent means nothing. */
   permissions?: PluginPermission[];
+  /** Schema 2: the settings Boite draws for the owner, in this order. */
+  settings?: PluginSetting[];
   provides: PluginProvides;
 }
 
@@ -317,10 +581,30 @@ export interface PluginState {
    * from older cores, where every plugin does.
    */
   permissions?: PluginPermission[];
+  /**
+   * What the owner granted of `permissions`: all the plugin's token reaches.
+   * Absent with `permissions`. A permission the plugin asks for and the owner
+   * left out is refused by name (docs/internals/plugins.md, Permissions).
+   */
+  granted?: PluginPermission[];
+  /** What the version an install or an update brings asks for; the consent dialog lists it. Absent when that version is schema 1. */
+  requested?: PluginPermission[];
+  /** It runs a program of its own on this machine, with Boite's rights: an executable, which its app or service runs too. */
+  runsProgram?: boolean;
   /** What it adds to agents and to the composer, by name. Absent from older cores. */
   adds?: PluginAdds | null;
   /** The folder a `dev` plugin runs from. Absent or null otherwise. */
   devPath?: string | null;
+  /**
+   * False once the owner turned the plugin off (`plugins.setEnabled`): its
+   * processes stopped, its token revoked, what it adds gone, its files kept.
+   * Absent from older cores, where every installed plugin is on.
+   */
+  enabled?: boolean;
+  /** The settings its manifest declares, empty when none. Absent from older cores. */
+  settings?: PluginSetting[];
+  /** The current value of each declared setting. Absent from older cores. */
+  settingValues?: PluginSettingValues;
 }
 
 /** The agent commands, skills and slash commands a plugin adds, and whether it adds guide lines. */
@@ -329,6 +613,8 @@ export interface PluginAdds {
   skills: string[];
   slashCommands: string[];
   prompt: boolean;
+  /** Whether it loads a script or a style into Boite's window. Absent from older cores. */
+  ui?: boolean;
 }
 
 /** What `plugins.command` hands back: the command's exit code and its output. */
@@ -342,7 +628,7 @@ export interface PluginCommandResult {
 
 /**
  * A recommended plugin's update source and its last check. The source is the
- * reviewed list's, never the plugin's own: docs/plugins.md, Updating.
+ * reviewed list's, never the plugin's own: docs/internals/plugins.md, Updating.
  */
 export interface PluginUpdates {
   /** The https repository and the ref whose `boite-plugin.json` is read. */
@@ -389,10 +675,24 @@ export interface PluginsRpcMethods {
    * Downloads no artifact and runs nothing. https URLs only.
    */
   'plugins.inspect': { params: { url: string; ref?: string }; result: PluginPreview };
-  /** Installs exactly what a preview showed: that manifest, read at that commit. */
-  'plugins.add': { params: { previewId: string }; result: PluginState };
-  /** Installs a recommended plugin, or reinstalls one already added from a URL. */
-  'plugins.install': { params: { id: string }; result: PluginState };
+  /**
+   * Installs exactly what a preview showed: that manifest, read at that commit.
+   * `grants`: what the owner ticked of the manifest's permissions; all of them when absent.
+   */
+  'plugins.add': { params: { previewId: string; grants?: PluginPermission[] }; result: PluginState };
+  /**
+   * Installs a recommended plugin, or reinstalls or updates one already added
+   * from a URL. `grants`: what the owner ticked of the permissions that
+   * version asks for. Absent, a first install grants all of them and an
+   * update keeps what was granted, granting nothing new.
+   */
+  'plugins.install': { params: { id: string; grants?: PluginPermission[] }; result: PluginState };
+  /**
+   * Owner-only. What an installed schema 2 plugin's token reaches, among the
+   * permissions its manifest asks for. Its token is reissued, the sockets the
+   * old one opened close, and its app or service restarts with the new one.
+   */
+  'plugins.setGrants': { params: { id: string; grants: PluginPermission[] }; result: PluginState };
   'plugins.cancel': { params: { id: string }; result: PluginState };
   'plugins.uninstall': { params: { id: string }; result: PluginState };
   'plugins.accounts': { params: { id: string; refresh?: boolean }; result: PluginPool[] };
@@ -434,9 +734,36 @@ export interface PluginsRpcMethods {
    * the plugin's app or service.
    */
   'plugins.dev': { params: { path: string }; result: PluginState };
+  /**
+   * Owner-only. Turns an installed plugin off or on without uninstalling it.
+   * Off stops its desktop app, service and gateway, revokes its token and
+   * drops its commands, skills, guide lines and slash commands; on brings
+   * them back. Its files, data and settings stay either way.
+   */
+  'plugins.setEnabled': { params: { id: string; enabled: boolean }; result: PluginState };
+  /**
+   * The values of the plugin's declared settings, defaults filled in. Open to
+   * the plugin itself for its own id with no permission; any other id is the owner's.
+   */
+  'plugins.settings.get': { params: { id: string }; result: PluginSettingValues };
+  /**
+   * Owner-only. Sets some of the plugin's declared settings. Every key must be
+   * declared and every value valid, or nothing changes; the refusal names the key.
+   */
+  'plugins.settings.set': { params: { id: string; values: PluginSettingValues }; result: PluginState };
+  /**
+   * The interface of every installed plugin that provides one and holds the
+   * `ui` permission: what a client's window loads after it starts. Owner and
+   * paired devices alike, since a phone draws the same window.
+   */
+  'plugins.ui': { params: Record<string, never>; result: PluginUiBundle[] };
 }
 
 export interface PluginsRpcEvents {
   /** One plugin after any change. A `url` plugin that comes back `not-installed` is gone from the list. */
   'plugins.updated': PluginState;
+  /** A plugin's settings after the owner changed them: every value. Heard by the owner and by that plugin alone. */
+  'plugin.settings.changed': { id: string; values: PluginSettingValues };
+  /** The set of plugin interfaces changed: `digest` sums every bundle's, so a client reads `plugins.ui` again only when it differs. */
+  'plugins.uiUpdated': { digest: string };
 }

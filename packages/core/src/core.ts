@@ -211,9 +211,9 @@ export class Core {
   /** The desktop app's updater as this machine's own window reports it. */
   readonly desktopUpdates: DesktopUpdates;
   readonly coordination: Coordination;
-  /** Teams of bots (`docs/teams.md`). */
+  /** Teams of bots (`docs/internals/teams.md`). */
   readonly teams: TeamStore;
-  /** Models of several providers review one request alone (`docs/council.md`). */
+  /** Models of several providers review one request alone (`docs/internals/council.md`). */
   readonly council: CouncilStore;
   /** The machines this core trusts as one owner's, and what it hands their clients. */
   readonly group: GroupStore;
@@ -239,7 +239,7 @@ export class Core {
   /** Simulators and emulators open in conversations' Device panels. */
   readonly devices = new MobileDevices(this);
   readonly windows = new DesktopWindows(this);
-  /** Conversations' private X desktops for GUI apps (docs/desktop.md). */
+  /** Conversations' private X desktops for GUI apps (docs/internals/desktop.md). */
   readonly desktops = new VirtualDesktops(this);
   /** The user's stdio MCP servers, started when a conversation first calls one (`mcp/lazy.ts`). */
   readonly lazyMcp = new LazyMcp(this);
@@ -558,7 +558,7 @@ export class Core {
       version: this.version,
       ...(this.bundleHash ? { bundleHash: this.bundleHash } : {}),
       protocolVersion: PROTOCOL_VERSION,
-      features: { threadSnapshots: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, draftPreparation: true, attachmentUploads: true, composerPersistence: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, projectBoard: true, deviceProjects: true, settingsHome: true, botsHome: true, botMove: true, botMoveQueue: true, listChanges: true, streamChannels: true },
+      features: { threadSnapshots: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, draftPreparation: true, attachmentUploads: true, composerPersistence: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, pluginGrants: true, projectBoard: true, deviceProjects: true, settingsHome: true, botsHome: true, botMove: true, botMoveQueue: true, listChanges: true, streamChannels: true, browserStream: true },
       coreId: this.coordination.card().coreId,
       hostname: machineName(),
       os: currentOs(),

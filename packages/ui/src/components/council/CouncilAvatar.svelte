@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * A member's round face in a council's card and salon (`docs/council.md`):
+   * A member's round face in a council's card and salon (`docs/internals/council.md`):
    * the first letter of the model's name on its series colour, the same
    * colour for the same member everywhere. `me` is the owner, `mod` a post
    * no member wrote: the parent thread's changes, or an old debate's summary.

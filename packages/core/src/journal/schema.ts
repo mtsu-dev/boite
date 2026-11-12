@@ -478,13 +478,13 @@ export function migrate(db: Database, file: string): { from: number; to: number 
     createPendingQuestions(db, (row?.user_version ?? 0) > 0);
     version = 45;
   }
-  // Teams of bots (`docs/teams.md`): the teams, their posts, what each member saw and each delivery.
+  // Teams of bots (`docs/internals/teams.md`): the teams, their posts, what each member saw and each delivery.
   if (version < 46) {
     if (!hasColumn('threads', 'team_id')) db.exec('ALTER TABLE threads ADD COLUMN team_id TEXT');
     createTeams(db);
     version = 46;
   }
-  // Debates between AIs, today the council (`docs/council.md`): the rows, their posts and the children each one runs.
+  // Debates between AIs, today the council (`docs/internals/council.md`): the rows, their posts and the children each one runs.
   if (version < 47) {
     if (!hasColumn('threads', 'debate_id')) db.exec('ALTER TABLE threads ADD COLUMN debate_id TEXT');
     createCouncil(db);

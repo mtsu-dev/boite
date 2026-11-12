@@ -1,4 +1,4 @@
-import type { ActivityTurn, Attachment, ComposerChoice, PreviewReference, SentFrom, ThreadLink, Turn } from '@boite/contracts';
+import type { ActivityTurn, Attachment, ComposerChoice, PreviewReference, PluginActor, SentFrom, ThreadLink, Turn } from '@boite/contracts';
 import type { AutonomousSource } from '../agents/runtime.ts';
 
 /** What a turn opens with. `display` replaces the prompt in the conversation. */
@@ -25,13 +25,14 @@ interface Keyed { requestId?: string }
  * follow from the kind, never from the shape of the other arguments.
  */
 export type TurnOrigin =
-  | Keyed & { kind: 'user'; sentFrom?: SentFrom | null }
+  /** `plugin`: a plugin granted `threads.write` sent it; the message names it. */
+  | Keyed & { kind: 'user'; sentFrom?: SentFrom | null; plugin?: PluginActor }
   | Keyed & { kind: 'goal'; activity: ActivityTurn }
   | Keyed & { kind: 'spawned'; startedBy: ThreadLink }
   | Keyed & { kind: 'compact'; automatic: boolean }
   | Keyed & { kind: 'keepalive' }
   | Keyed & { kind: 'resume'; reason: ResumeReason }
-  /** `owner`: a team letter with the owner's post among its triggers, a wake no bot pause or budget holds (`docs/teams.md`). */
+  /** `owner`: a team letter with the owner's post among its triggers, a wake no bot pause or budget holds (`docs/internals/teams.md`). */
   | Keyed & { kind: 'coordination'; owner?: true }
   /** `followUp`: whoever delegated this thread's work writes to it again, as opposed to its own agents reporting or Boite running a step. */
   | Keyed & { kind: 'delegation'; followUp?: true }
@@ -44,7 +45,7 @@ export interface StartTurnOptions {
   persistAdmission?: () => (() => void);
   /** The agent selection the input was queued with, which the turn keeps. */
   choice?: ComposerChoice;
-  /** The prompt as typed, when it may start an automatic goal (`docs/goals.md`). */
+  /** The prompt as typed, when it may start an automatic goal (`docs/internals/goals.md`). */
   autoGoal?: string;
 }
 

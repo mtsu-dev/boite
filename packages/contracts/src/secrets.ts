@@ -4,7 +4,7 @@ import type { ProjectId, RequestId, ThreadId, Timestamp, TurnId } from './ids';
 // Secrets: an API key the user types on a card, which the agent then uses by
 // reference (`boite secret write|run|pipe`) without ever reading it. The value
 // never travels in an event, a part, a log or a result: only names and refs do.
-// See docs/secrets.md for the guarantees and their limits.
+// See docs/internals/secrets.md for the guarantees and their limits.
 // ---------------------------------------------------------------------------
 
 /** An environment-variable name: what the card shows as its title and `write` puts before `=`. */

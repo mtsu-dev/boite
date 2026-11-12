@@ -105,8 +105,11 @@ function reveal(id: string, options: { top?: boolean; near?: string } = {}): str
 
 /**
  * Brings the reader within the 400 px trigger of the top, waits for the page
- * above to land and be measured, and answers how far the row that was first on
- * the page moved on screen. Main moved it 850 px at 1280x900 on 2026-10-13.
+ * above to land and be measured, and answers how far the row the reader had at
+ * the top of the screen moved. Main moved it 850 px at 1280x900 on 2026-10-13.
+ * A row drawn above the screen is not followed: the list holds what is read,
+ * and a row between the two that takes its real height moves the one above
+ * (23 px on a 390x844 phone on 2026-11-12, the row on screen still).
  * Up to 1 px counts as still: the list puts its anchor back only past 1 px
  * (`pullOlder`, `restoreAnchor`), and rows of fractional height leave a
  * residue the whole-pixel scroll cannot take (0.78 px on a 390x844 CI phone
@@ -119,13 +122,14 @@ function landingDrift(): string {
     const count = ${STORE}.openThread.messages.length;
     // By row id: the window drops and draws the row again while the page lands.
     const top = (id) => timeline.querySelector('[data-mid="' + id + '"]')?.getBoundingClientRect().top - timeline.getBoundingClientRect().top;
+    const read = () => [...timeline.querySelectorAll('[data-mid]')].find((node) => node.getBoundingClientRect().bottom > timeline.getBoundingClientRect().top)?.dataset.mid;
     let head = '', before = 0;
-    // Up as a reader scrolls, until the step that sends the page: its first drawn row is the one held.
+    // Up as a reader scrolls, until the step that sends the page: the first row on screen is the one read.
     for (let step = 0; step < 400 && !${STORE}.loadingOlder && !${STORE}.loadingRange && ${STORE}.openThread.messages.length === count; step += 1) {
       timeline.scrollTop = Math.max(0, timeline.scrollTop - 200);
       timeline.dispatchEvent(new Event('scroll'));
       // A screen of rows still being read has no row to follow yet.
-      head = timeline.querySelector('[data-mid]')?.dataset.mid ?? head;
+      head = read() ?? head;
       before = head ? top(head) : before;
       await settle(60);
     }

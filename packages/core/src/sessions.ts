@@ -78,7 +78,7 @@ export interface Identity {
   threadId: ThreadId | null;
   /** Set on a plugin connection: the plugin the token was minted for. */
   pluginId?: string;
-  /** Set on a plugin connection: what its manifest declared, the whole of what it reaches. */
+  /** Set on a plugin connection: what the owner granted of what its manifest asks for, the whole of what it reaches. */
   permissions?: readonly PluginPermission[];
 }
 
@@ -250,7 +250,12 @@ export class SessionStore {
 // so a paired device is refused them by name.
 export function registerSessionMethods(core: Core): void {
   core.router.register('pairing.grant', (params) => core.sessions.grant(Date.now(), params?.role ?? 'device'));
-  core.router.register('sessions.list', (_params, ctx) => core.sessions.list(ctx.connection.identity.sessionId));
+  core.router.register('sessions.list', (_params, ctx) => {
+    const { principal, sessionId } = ctx.connection.identity;
+    const rows = core.sessions.list(sessionId);
+    // A paired device is allowed the list for its own row only (access.ts): the owner's other devices are not its to see.
+    return principal === 'owner' ? rows : rows.filter((row) => row.current);
+  });
   core.router.register('sessions.revoke', (params) => {
     core.sessions.revoke(params.sessionId);
     return { ok: true } as const;

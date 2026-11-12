@@ -1,7 +1,7 @@
 /*
  * The joining side of a group invitation: one sealed request to the member that
  * minted it, and its answer checked against the key the invitation names.
- * The member's side is `GroupStore.http` (docs/groups.md).
+ * The member's side is `GroupStore.http` (docs/internals/groups.md).
  */
 import { verify } from 'node:crypto';
 import { boundedBody, MAX_BODY } from '../coordination-wire.ts';

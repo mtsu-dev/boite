@@ -191,7 +191,7 @@ export class Coordination {
     // The owner's own choice, pause included, is never lifted by a later message.
     this.#core.journal.deleteSetting(`${AUTO_PAUSE_PREFIX}${threadId}`);
     this.#saveConfig(threadId, { mode: config.mode, resources: config.resources, remote: config.remote, paused: config.paused });
-    // Team letters answer to their team (`docs/teams.md`), not to this switch: their wakes and inbox stay.
+    // Team letters answer to their team (`docs/internals/teams.md`), not to this switch: their wakes and inbox stay.
     if (config.paused && !this.teamLetters.onlyQueued(threadId)) this.#core.threads.stopQueuedCoordination(threadId);
     if (config.mode === 'off' || !config.remote) {
       const queued = this.rows("thread_id = ? AND status = 'uncertain'", threadId).map(row => JSON.parse(row.data) as AgentLetter)

@@ -22,6 +22,16 @@ export interface StoredEnvironment {
   epoch?: number;
   /** This device's key opens it, signed for this machine id; `token` is empty. */
   signs?: string;
+  /**
+   * The owner typed `label`. Without it the label is only what the machine
+   * was called when last seen, and the name it reports now replaces it.
+   */
+  named?: true;
+}
+
+/** Carries the owner's naming mark onto a rewritten entry. */
+function namedOf(from: { named?: unknown }): { named?: true } {
+  return from.named === true ? { named: true } : {};
 }
 
 export const ENVIRONMENTS_STORAGE_KEY = 'boite.envs';
@@ -112,6 +122,7 @@ export function upsertEnvironment(entry: {
   groupId?: string;
   epoch?: number;
   signs?: string;
+  named?: true;
 }): StoredEnvironment[] {
   const url = withoutTrailingSlashes(entry.url);
   const list = readEnvironments();
@@ -121,7 +132,9 @@ export function upsertEnvironment(entry: {
     url, label, token: entry.token, paired: entry.paired,
     ...brought({ coreId: entry.coreId ?? list[at]?.coreId, groupId: entry.groupId ?? list[at]?.groupId, epoch: entry.epoch ?? list[at]?.epoch }),
     // A key written for that address replaces the device key's word; an empty one keeps it.
-    ...signsOf({ signs: entry.signs ?? (entry.token === '' ? list[at]?.signs : undefined) })
+    ...signsOf({ signs: entry.signs ?? (entry.token === '' ? list[at]?.signs : undefined) }),
+    // A name the owner typed stays theirs until they type another.
+    ...namedOf({ named: entry.named ?? list[at]?.named })
   };
   if (at === -1) {
     list.push(next);
@@ -135,7 +148,7 @@ export function upsertEnvironment(entry: {
 /** The machine was paired by hand since: it is no longer the group's to drop. */
 export function forgetGroupOf(url: string): StoredEnvironment[] {
   setDropped(url, null);
-  const list = readEnvironments().map((env) => (env.url === withoutTrailingSlashes(url) ? { url: env.url, label: env.label, token: env.token, paired: env.paired } : env));
+  const list = readEnvironments().map((env) => (env.url === withoutTrailingSlashes(url) ? { url: env.url, label: env.label, token: env.token, paired: env.paired, ...namedOf(env) } : env));
   storeEnvironments(list);
   return list;
 }
@@ -160,7 +173,7 @@ export function rememberSession(endpoint: Endpoint, token: string): StoredEnviro
  */
 export function rememberDevice(url: string, coreId: string): StoredEnvironment[] {
   setDropped(url, null);
-  const list = readEnvironments().map((env) => (env.url === withoutTrailingSlashes(url) ? { url: env.url, label: env.label, token: '', paired: true, signs: coreId } : env));
+  const list = readEnvironments().map((env) => (env.url === withoutTrailingSlashes(url) ? { url: env.url, label: env.label, token: '', paired: true, signs: coreId, ...namedOf(env) } : env));
   storeEnvironments(list);
   const updated = upsertEnvironment({ url, token: '', paired: true, signs: coreId });
   const stored = readStoredEndpoint();

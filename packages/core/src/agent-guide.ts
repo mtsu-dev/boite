@@ -8,7 +8,7 @@ import { REPORT_ISSUE_SKILL } from './builtin-skills.ts';
 export const SHORT_ANSWERS = 'Answer style: reduce text before or between tool calls. Make the final reply self-contained with the result and everything the user needs to know. Result first, in short plain sentences; no preamble, filler, hedging or courtesy lines. Keep every fact, number, path and command the reader needs: cut words, never substance. A list for parallel items, a table for a comparison.';
 
 /**
- * What chat draws by itself (docs/diagrams-and-formulas.md): the first choice
+ * What chat draws by itself (docs/internals/diagrams-and-formulas.md): the first choice
  * for a visual, since it costs the agent no command and no help to read. Each
  * Mermaid header named is one Pele draws. Pele's xychart lexer rejects a bare
  * label with an accent (`x-axis [Jan, Fév]`), the one slip a live run made.
@@ -46,7 +46,7 @@ export const BOT_GUIDE = [
   `- ${OWN_SETTINGS}`,
 ].join('\n');
 
-/** A bot's part in teams of bots (`docs/teams.md`), while the Teams experiment is on. */
+/** A bot's part in teams of bots (`docs/internals/teams.md`), while the Teams experiment is on. */
 export const TEAM_GUIDE = [
   '- Teams (`boite team help`): a team letter brings the posts meant for you; your final answer is posted where the letter says, so write it as your reply, and answer `[quiet]` when nothing needs saying.',
   '- Post in the group whatever the team should know: `boite team say <team> <text>`, where `@name` or `@tous` picks who wakes. Go private only for what concerns one member or the owner: `boite team dm <team> <member|owner> <text>`.',
@@ -70,7 +70,7 @@ export function agentGuide(asyncQuestions: boolean, logAccess = false, skills: r
       : `\`boite help\` lists commands; \`boite where\` shows cwd/project/branch. Stay in the checkout. \`boite browser|device help\`: agent-browser/emulators; batch browser steps: \`&&\` or \`boite browser run -\`. ${pullRequests}`,
     '`boite show <file>[:line]`, `boite diff [file]`, `boite browse <url>` open the panel. `boite preview <file.html>` previews HTML/assets; `boite attach <file>` sends files (512 MB max).',
     'Inline `path:line` opens this checkout\'s files. Use `boite attach` for media across machines.',
-    // Only Linux has a virtual desktop (docs/desktop.md): elsewhere the line would point at a refusal.
+    // Only Linux has a virtual desktop (docs/internals/desktop.md): elsewhere the line would point at a refusal.
     `\`boite window help\`: desktop windows (Unity, a game) as PNG; emulators: \`boite device\`${process.platform === 'linux' ? '; run and click GUI apps: `boite desktop help`' : ''}. A picture costs ~w×h/750 tokens: use \`--max\`/\`--crop\`.`,
     CHAT_VISUALS,
     VIEW_GUIDE_LINE,
@@ -80,7 +80,7 @@ export function agentGuide(asyncQuestions: boolean, logAccess = false, skills: r
     bot
       ? 'Task tracking is optional. Use it only when steps help you and the user. `boite task add <text>` / `boite task start|done <id>` track those steps.'
       : 'Task tracking is optional. Use it only when steps help you and the user. `boite task add <text>` / `boite task start|done <id>` track those steps. `boite todo list|add <text>|claim <id>` manages project todos; claim marks work done for user confirmation.',
-    // Only while the user has Automatic goals on (`docs/goals.md`).
+    // Only while the user has Automatic goals on (`docs/internals/goals.md`).
     ...(goalTrack ? ["When the user's prompt lists several distinct requests, run `boite goal track` first: it turns that prompt into a reviewed goal with a checklist."] : []),
     bot
       ? '`boite projects` lists projects. `boite thread new <project> <brief>` starts independent work in any of them, not a subagent; it lands on your desk, its answers come back as events and you drive it like the threads of your projects.'

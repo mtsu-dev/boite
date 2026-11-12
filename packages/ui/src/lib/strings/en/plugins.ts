@@ -6,7 +6,7 @@ export const strings = {
     /** A desktop app asked to show a thread or a bot on a machine this window does not have. */
     revealUnknownMachine: 'The thread or bot an app asked to show is on a machine this window is not connected to. Add it in Settings, Machines and updates.',
     revealMachineOffline: 'The thread or bot an app asked to show is on {machine}, which is not connected right now.',
-    intro: 'A plugin is a program that runs on the machine hosting your core, checked against the SHA-256 its manifest publishes.',
+    intro: 'Plugins add agent commands, skills, slash commands, desktop apps and gateways. The switch on a card turns one off without uninstalling it; the gear holds its settings and details. A program a plugin downloads is checked against the SHA-256 its manifest publishes.',
     installedHeading: 'Installed',
     recommendedHeading: 'Recommended',
     install: 'Install',
@@ -65,12 +65,47 @@ export const strings = {
     reaches: 'Reaches',
     reachesNothing: 'Nothing in Boite',
     reachesHint: 'What the plugin\'s own token can call in Boite. Boite never hands it the owner token, but its program runs as you and can read your files.',
+    /**
+     * One line per permission a plugin asks for: a short title (the chip on its
+     * row) and what granting it lets the plugin do. `ui` is the app code a
+     * plugin adds to Boite's window.
+     */
     permission: {
-      'threads.read': 'Reads threads',
-      'threads.write': 'Starts and stops turns',
-      todos: 'Project boards',
-      'ui.reveal': 'Shows a thread',
+      'threads.read': { title: 'Read your threads', line: 'Titles, messages, state, and the projects they sit in.' },
+      'threads.write': { title: 'Manage your threads', line: 'Create, archive, rename, start a turn. It spends your agents\' quota.' },
+      'projects.read': { title: 'See your projects', line: 'Icons, file lists and the skill menu.' },
+      'projects.write': { title: 'Manage your projects', line: 'Add, rename or archive a project.' },
+      'todos.read': { title: 'Read your boards', line: 'The cards of every project board.' },
+      'todos.write': { title: 'Change your boards', line: 'Add, edit, move and remove cards.' },
+      'agents.read': { title: 'See your agents', line: 'Bots, delegated work, workflows and teams.' },
+      'agents.write': { title: 'Direct your agents', line: 'Wake a bot, write to a child or a team, stop their work.' },
+      'files.read': { title: 'Read your files', line: 'Any file of your projects, their changes and this machine\'s folders.' },
+      'questions.write': { title: 'Answer for you', line: 'Approves the tools and answers the questions agents ask you.' },
+      'screens.read': { title: 'See your screens', line: 'What an agent\'s browser, an emulator or a window shows.' },
+      'screens.write': { title: 'Use your screens', line: 'Taps, types and opens there.' },
+      'status.read': { title: 'Read this machine\'s state', line: 'Load, usage, quotas, agents and settings.' },
+      'ui.reveal': { title: 'Show a thread', line: 'Brings a thread or a bot to the front in the app.' },
+      ui: { title: 'Change Boite\'s interface', line: 'Its code runs in the app: it can do anything you do.' },
     },
+    /** The dialog that asks the owner what a plugin may reach, before an install or an update, and later from its row. */
+    consent: {
+      title: '{name} wants to access your Boite',
+      editTitle: 'What {name} may reach',
+      source: '{url}, commit {commit}',
+      allow: 'Allow',
+      save: 'Save',
+      /** A permission the new version asks for that the installed one did not. */
+      added: 'New',
+      program: 'Runs a program on this machine',
+      programLine: 'It runs with Boite\'s rights. It cannot be unticked: the plugin does not work without it.',
+      ownerAccess: 'Reaches all of Boite',
+      ownerAccessLine: 'An older plugin: its program gets your own access, not a list of permissions.',
+      nothing: 'It asks for nothing in Boite.',
+      /** The row's button that opens the dialog on an installed plugin. */
+      edit: 'Permissions',
+    },
+    /** Marks what a plugin did in your name: a message it sent, a card it changed, a thread it started. */
+    byPlugin: 'By plugin {name}',
     appRunning: 'Running',
     appStarting: 'Starting again',
     appStopped: 'Stopped',
@@ -112,5 +147,37 @@ export const strings = {
     noticeUpdate: 'Update',
     noticeLater: 'Later',
     noticeLabel: 'Plugin update',
+    /** The page's top row: the search, the filter and the URL form's button. */
+    search: 'Search plugins',
+    filter: 'Show',
+    filterAll: 'All',
+    filterEnabled: 'On',
+    filterDisabled: 'Off',
+    fromUrl: 'From a URL',
+    noMatch: 'No plugin matches.',
+    /** Who publishes it, read from its repository's owner. */
+    byAuthor: 'by {author}',
+    /** The card's switch, said to a screen reader. */
+    turnOn: 'Turn {name} on',
+    turnOff: 'Turn {name} off',
+    /** What a card says when its plugin is off. */
+    stateOff: 'Off',
+    offHint: 'Off: nothing of it runs and agents no longer see what it adds. Its files, data and settings stay.',
+    /** The gear on a card, and the dialog it opens. */
+    openSettings: 'Settings of {name}',
+    settingsHeading: 'Settings',
+    settingsHint: 'The plugin declares these settings in its manifest. Boite draws them the same way for every plugin and keeps the values on this machine.',
+    settingInvalid: 'Must be {expected}.',
+    settingOffline: 'Not saved: this machine is not connected.',
+    authorizations: 'Authorizations',
+    authorizationsHint: 'What the plugin\'s own token can call in Boite. Edit takes one back or gives it again; the plugin gets a new token and its program restarts.',
+    authorizationsEdit: 'Edit',
+    authorizationsOwner: 'The owner token: everything this app can do',
+    details: 'Details',
+    /** Small chips on a card: what the plugin touches. */
+    chipRecommended: 'Recommended',
+    chipAccounts: 'Accounts',
+    chipProgram: 'Program',
+    chipText: 'Text only',
   }
 } as const;

@@ -1,6 +1,6 @@
 /**
  * Hidden desktops of the user's session, reached with `bun:ffi`: the Windows
- * half of `boite desktop` (docs/desktop.md). `CreateDesktopW` makes a desktop
+ * half of `boite desktop` (docs/internals/desktop.md). `CreateDesktopW` makes a desktop
  * in the interactive window station that no screen shows and no keyboard or
  * mouse reaches. A process lives on it when `STARTUPINFO.lpDesktop` names it,
  * and everything it starts inherits it, so the core runs every program of the

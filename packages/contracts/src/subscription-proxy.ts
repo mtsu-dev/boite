@@ -14,7 +14,7 @@ export interface SubscriptionProxy {
   /**
    * Where the gateway runs. Missing or `remote`: at the URLs above, which the
    * user typed. `local`: the Douane plugin this core runs (`provides.gateway`,
-   * docs/plugins.md); the kind is `douane` and the core writes both URLs from
+   * docs/internals/plugins.md); the kind is `douane` and the core writes both URLs from
    * the plugin's loopback port.
    */
   mode?: SubscriptionProxyMode;

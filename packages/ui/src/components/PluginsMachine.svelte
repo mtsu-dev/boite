@@ -4,18 +4,25 @@
   import { errorText } from '../lib/errors';
   import InfoTip from './InfoTip.svelte';
   import PolicyLock from './PolicyLock.svelte';
-  import { Download, ExternalLink, Play, Puzzle, RefreshCw, RotateCw, ShieldAlert, Square, TriangleAlert } from '@lucide/svelte';
-  import type { PluginAdds, PluginAppState, PluginGatewayState, PluginManifest, PluginPermission, PluginPool, PluginPreview, PluginRejected, PluginState, PluginUpdates, RpcParams } from '@boite/contracts';
-  import { PLUGIN_ADD_SECTION, gatewayDashboardReachable } from '@boite/contracts';
+  import { Download, ExternalLink, Play, Plus, Puzzle, RefreshCw, RotateCw, Search, ShieldAlert, Square, TriangleAlert } from '@lucide/svelte';
+  import type { PluginAdds, PluginAppState, PluginGatewayState, PluginManifest, PluginPermission, PluginPool, PluginPreview, PluginRejected, PluginSettingValue, PluginState, PluginUpdates, RpcParams } from '@boite/contracts';
+  import { PLUGIN_ADD_SECTION, PLUGIN_PERMISSIONS, gatewayDashboardReachable } from '@boite/contracts';
+  import { pluginUi } from '../lib/plugin-ui.svelte';
+  import { workspace } from '../lib/workspace.svelte';
   import { besideCore } from '../lib/gateway-dashboard';
   import { openExternal } from '../lib/links';
   import GatewayMoveDialog from './GatewayMoveDialog.svelte';
+  import PluginConsent, { type ConsentRequest } from './PluginConsent.svelte';
+  import { asGrants, consentForEdit, consentForInstall, consentForPreview, grantsEditable } from '../lib/plugin-consent';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
   import { relativeTime } from '../lib/format';
   import { confirm } from '../lib/confirm.svelte';
   import QuotaList from './QuotaList.svelte';
   import { SnapshotFeed } from '../lib/snapshot-feed';
+  import { hasFiles, isOn, permissionTitle, pluginMatches, type PluginFilter } from '../lib/plugin-card';
+  import PluginCard from './PluginCard.svelte';
+  import PluginDialog from './PluginDialog.svelte';
 
   /**
    * One machine's plugins. The page mounts a fresh one per machine, so an
@@ -34,6 +41,10 @@
   let error = $state('');
   /** The gateway plugin whose connections dialog is open. */
   let moving = $state(false);
+  /** The consent dialog's question, and who waits for its answer. A core without grants installs everything, as it always did. */
+  let consent = $state<ConsentRequest | null>(null);
+  let answerConsent: ((grants: string[] | null) => void) | null = null;
+  const asksGrants = $derived(store.core?.features?.pluginGrants === true);
 
   let url = $state('');
   let ref = $state('');
@@ -42,9 +53,26 @@
   let preview = $state<PluginPreview | null>(null);
   let inspectError = $state('');
 
-  /** Anything with files on disk, and every plugin added from a URL whatever its state. */
-  let installed = $derived(plugins.filter((plugin) => plugin.origin === 'url' || plugin.version !== null));
-  let recommended = $derived(plugins.filter((plugin) => plugin.origin === 'recommended' && plugin.version === null));
+  let loaded = $state(false);
+  let query = $state('');
+  let filter = $state<PluginFilter>('all');
+  /** The URL form, open from its button, a preview on screen, or a `boite plugin add` on its way. */
+  let addOpen = $state(false);
+  const addShown = $derived(addOpen || preview !== null || Boolean(store.pluginSource));
+  /** The plugin whose gear dialog is open. */
+  let openId = $state<string | null>(null);
+  const opened = $derived(openId === null ? null : plugins.find((plugin) => plugin.id === openId) ?? null);
+
+  const FILTERS: { id: PluginFilter; label: string }[] = [
+    { id: 'all', label: t.filterAll },
+    { id: 'enabled', label: t.filterEnabled },
+    { id: 'disabled', label: t.filterDisabled },
+  ];
+
+  /** One grid: what has files on disk first, then the recommended ones still to install. */
+  let installed = $derived(plugins.filter(hasFiles));
+  let recommended = $derived(plugins.filter((plugin) => !hasFiles(plugin)));
+  let shown = $derived([...installed, ...recommended].filter((plugin) => pluginMatches(plugin, query, filter)));
 
   const messageOf = (cause: unknown) => (errorText(cause));
   const short = (commit: string) => commit.slice(0, 7);
@@ -84,7 +112,43 @@
     }
   }
 
-  async function change(plugin: PluginState, method: 'plugins.install' | 'plugins.cancel' | 'plugins.uninstall') {
+  /** Opens the consent dialog; null when the owner cancels it. */
+  function ask(request: ConsentRequest): Promise<string[] | null> {
+    answerConsent?.(null);
+    return new Promise((resolve) => { answerConsent = resolve; consent = request; });
+  }
+  function answered(grants: string[] | null) {
+    const waiting = answerConsent;
+    answerConsent = null;
+    consent = null;
+    waiting?.(grants);
+  }
+
+  /** Install, update or retry once the owner ticked what the version may reach; a schema 1 plugin sends no grants. */
+  async function install(plugin: PluginState) {
+    if (!asksGrants) return change(plugin, 'plugins.install');
+    const request = consentForInstall(plugin);
+    const grants = await ask(request);
+    if (grants !== null) await change(plugin, 'plugins.install', request.requested === null ? undefined : asGrants(grants));
+  }
+
+  /** What an installed plugin's token reaches, from its row: the core reissues the token. */
+  async function editGrants(plugin: PluginState) {
+    const client = store.client;
+    const grants = await ask(consentForEdit(plugin));
+    if (!client || grants === null) return;
+    busy[plugin.id] = true;
+    try {
+      put(await client.call('plugins.setGrants', { id: plugin.id, grants: asGrants(grants) }));
+      delete errors[plugin.id];
+    } catch (cause) {
+      errors[plugin.id] = messageOf(cause);
+    } finally {
+      busy[plugin.id] = false;
+    }
+  }
+
+  async function change(plugin: PluginState, method: 'plugins.install' | 'plugins.cancel' | 'plugins.uninstall', grants?: PluginPermission[]) {
     const client = store.client;
     if (!client) return;
     if (method === 'plugins.uninstall' && !await confirm.ask({
@@ -93,8 +157,9 @@
     })) return;
     busy[plugin.id] = true;
     try {
-      put(await client.call(method, { id: plugin.id }));
+      put(await client.call(method, { id: plugin.id, ...(grants ? { grants } : {}) }));
       delete errors[plugin.id];
+      if (method === 'plugins.uninstall' && openId === plugin.id) openId = null;
     } catch (cause) {
       errors[plugin.id] = messageOf(cause);
     } finally {
@@ -131,6 +196,7 @@
     if (!asked || store.connection !== 'ready') return;
     untrack(() => {
       store.pluginSource = null;
+      addOpen = true;
       url = asked.url;
       ref = asked.ref ?? '';
       void inspect();
@@ -161,9 +227,12 @@
     const client = store.client;
     const previewId = preview?.previewId;
     if (!client || !previewId || adding) return;
+    const request = asksGrants && preview ? consentForPreview(preview) : null;
+    const grants = request ? await ask(request) : [];
+    if (grants === null || preview?.previewId !== previewId) return;
     adding = true;
     try {
-      put(await client.call('plugins.add', { previewId }));
+      put(await client.call('plugins.add', { previewId, ...(request?.requested ? { grants: asGrants(grants) } : {}) }));
       preview = null;
       url = '';
       ref = '';
@@ -172,6 +241,49 @@
       preview = null;
     } finally {
       adding = false;
+    }
+  }
+
+  /**
+   * The card's switch. Off stops what the plugin runs and takes back its token
+   * and what it adds to agents; on gives them back. Its files and settings stay.
+   */
+  async function setEnabled(plugin: PluginState, enabled: boolean) {
+    const client = store.client;
+    if (!client || busy[plugin.id]) return;
+    busy[plugin.id] = true;
+    let next: PluginState | null = null;
+    try {
+      next = await client.call('plugins.setEnabled', { id: plugin.id, enabled });
+      put(next);
+      delete errors[plugin.id];
+    } catch (cause) {
+      errors[plugin.id] = messageOf(cause);
+    } finally {
+      busy[plugin.id] = false;
+    }
+    if (next && enabled && next.status === 'installed' && next.pools.length > 0) void loadPools(next.id);
+  }
+
+  /** One declared setting from the gear dialog; the answer is the core's refusal, or null once it kept the value. */
+  async function saveSetting(plugin: PluginState, key: string, value: PluginSettingValue): Promise<string | null> {
+    const client = store.client;
+    if (!client) return strings.plugins.settingOffline;
+    try {
+      put(await client.call('plugins.settings.set', { id: plugin.id, values: { [key]: value } }));
+      return null;
+    } catch (cause) {
+      return messageOf(cause);
+    }
+  }
+
+  function toggleAdd() {
+    if (addShown) {
+      addOpen = false;
+      preview = null;
+      inspectError = '';
+    } else {
+      addOpen = true;
     }
   }
 
@@ -244,6 +356,7 @@
       ...adds.slashCommands.map((name) => `/${name}`),
       ...adds.skills,
       ...(adds.prompt ? [t.addsPrompt] : []),
+      ...(adds.ui ? [strings.pluginUi.adds] : []),
     ];
   }
 
@@ -254,6 +367,7 @@
       skills: (manifest.provides.skills ?? []).map((skill) => skill.name),
       slashCommands: (manifest.provides.slashCommands ?? []).map((command) => command.name),
       prompt: manifest.provides.prompt !== undefined,
+      ui: manifest.provides.ui !== undefined,
     };
   }
 
@@ -264,19 +378,6 @@
       case 'crashed': return app.exitCode === null ? t.appCrashedSignal : fill(t.appCrashed, { code: String(app.exitCode) });
       case 'unavailable': return t.appUnavailable;
       default: return app.enabled || app.autostart ? t.appStopped : t.appOff;
-    }
-  }
-
-  function stateLine(plugin: PluginState): string {
-    switch (plugin.status) {
-      case 'installed':
-        return plugin.availableVersion && plugin.availableVersion !== plugin.version
-          ? `${t.stateInstalled} · ${fill(t.updateAvailable, { version: `v${plugin.availableVersion}` })}` : t.stateInstalled;
-      case 'installing': return `${t.stateInstalling} · ${plugin.progress}%`;
-      case 'error': return t.stateError;
-      case 'rejected': return t.stateRejected;
-      // Not installed needs no word: the Install button says it.
-      default: return '';
     }
   }
 
@@ -320,6 +421,7 @@
     void feed.read(() => client.call('plugins.list', {}), (rows) => {
       plugins = rows;
       listed = true;
+      loaded = true;
     }).then(async () => {
       // The list as it stands once the updates held meanwhile are applied.
       if (disposed || !listed) return;
@@ -362,179 +464,155 @@
   {@const items = addsItems(adds)}
   {#if items.length > 0}
     <dt class="with-tip"><span class="ui-label">{t.adds}</span><InfoTip topic={t.adds} text={t.addsHint} /></dt>
-    <dd><ul class="chips">{#each items as item (item)}<li class="chip" class:mono={item !== t.addsPrompt} data-testid="plugin-adds-item">{item}</li>{/each}</ul></dd>
+    <dd><ul class="chips">{#each items as item (item)}<li class="chip" class:mono={item !== t.addsPrompt && item !== strings.pluginUi.adds} data-testid="plugin-adds-item">{item}</li>{/each}</ul></dd>
   {/if}
   {#if permissions.length > 0 || scoped}
     <dt class="with-tip"><span class="ui-label">{t.reaches}</span><InfoTip topic={t.reaches} text={t.reachesHint} /></dt>
     <dd>
       {#if permissions.length > 0}
-        <ul class="chips">{#each permissions as permission (permission)}<li class="chip" title={permission} data-testid="plugin-permission">{t.permission[permission]}</li>{/each}</ul>
+        <ul class="chips">{#each permissions as permission (permission)}<li class="chip" class:danger={PLUGIN_PERMISSIONS[permission]?.danger === true} title={PLUGIN_PERMISSIONS[permission]?.danger === true ? strings.pluginUi.danger : permission} data-testid="plugin-permission" data-permission={permission}>{permissionTitle(permission)}</li>{/each}</ul>
       {:else}<span class="subtle">{t.reachesNothing}</span>{/if}
     </dd>
   {/if}
 {/snippet}
 
-{#snippet row(plugin: PluginState)}
+<!-- What the gear dialog shows under the settings: where the plugin comes from, what it adds, its program and its accounts. -->
+{#snippet details(plugin: PluginState)}
   {@const working = busy[plugin.id] === true}
-  {@const state = stateLine(plugin)}
-  <div class="plugin" data-testid="plugin-row" data-plugin={plugin.id} data-status={plugin.status}>
-    <div class="line">
-      <span class="glyph" aria-hidden="true"><Puzzle size={16} strokeWidth={1.75} /></span>
-      <div class="who">
-        <h3>
-          <span class="name">{plugin.name}</span>
-          {#if plugin.version ?? plugin.availableVersion}<span class="version">v{plugin.version ?? plugin.availableVersion}</span>{/if}
-          {#if plugin.origin === 'dev'}<span class="dev-tag" data-testid="plugin-dev">{t.dev}</span>{/if}
-          {#if plugin.homepage && !plugin.source}
-            <a class="home" href={plugin.homepage} target="_blank" rel="noreferrer" title={t.source} aria-label={t.source} data-testid="plugin-home"><ExternalLink size={13} /></a>
-          {/if}
-        </h3>
-        {#if state}
-          <p class="state">
-            <span class="dot" class:ok={plugin.status === 'installed'} class:live={plugin.status === 'installing'}
-              class:bad={plugin.status === 'error' || plugin.status === 'rejected'}></span><span class="ui-label">{state}</span>
-          </p>
-        {/if}
-        {#if plugin.description}<p class="description">{plugin.description}</p>{/if}
-      </div>
-      <div class="act">
-        {#if plugin.status === 'installing'}
-          <button class="quiet small" data-testid="plugin-cancel" data-plugin={plugin.id} disabled={working} onclick={() => void change(plugin, 'plugins.cancel')}><span class="ui-label">{strings.common.cancel}</span></button>
-        {:else if plugin.status === 'not-installed'}
-          <button class="primary small" data-testid="plugin-install" data-plugin={plugin.id} disabled={working || plugin.artifact === null || installLocked} onclick={() => void change(plugin, 'plugins.install')}><Download size={14} /><span class="ui-label">{t.install}</span></button>
-        {:else}
-          {#if plugin.status === 'installed' && plugin.availableVersion && plugin.availableVersion !== plugin.version}
-            <button class="primary small" data-testid="plugin-update" data-plugin={plugin.id} disabled={working || installLocked} onclick={() => void change(plugin, 'plugins.install')}><span class="ui-label">{fill(t.update, { version: `v${plugin.availableVersion}` })}</span></button>
-          {/if}
-          {#if plugin.status === 'error' || (plugin.status === 'rejected' && plugin.origin === 'recommended')}
-            <button class="small" data-testid="plugin-retry" data-plugin={plugin.id} disabled={working || installLocked} onclick={() => void change(plugin, 'plugins.install')}><RefreshCw size={14} /><span class="ui-label">{plugin.status === 'error' ? strings.common.retry : t.reinstall}</span></button>
-          {/if}
-        {/if}
-        {#if plugin.updates && plugin.status !== 'installing'}
-          {@const looking = plugin.updates.checking || checking[plugin.id] === true}
-          <button class="ghost small icon" class:spinning={looking} data-testid="plugin-check-updates" data-plugin={plugin.id} title={t.checkUpdates} aria-label={t.checkUpdates}
-            disabled={working || looking} onclick={() => void checkUpdates(plugin)}><RefreshCw size={14} /></button>
-        {/if}
-        {#if plugin.status !== 'installing' && plugin.status !== 'not-installed'}
-          <button class="ghost small" data-testid="plugin-uninstall" data-plugin={plugin.id} disabled={working} onclick={() => void change(plugin, 'plugins.uninstall')}><span class="ui-label">{t.remove}</span></button>
-        {/if}
-      </div>
-    </div>
-    {#if plugin.status === 'installing'}
-      <div class="track" role="progressbar" aria-label={t.stateInstalling} aria-valuemin={0} aria-valuemax={100} aria-valuenow={plugin.progress} data-testid="plugin-progress" data-plugin={plugin.id}>
-        <span class="bar" style:width="{plugin.progress}%"></span>
-      </div>
-    {/if}
-    {#if plugin.source}
-      <p class="meta">
-        <a href={plugin.homepage ?? plugin.source.url} target="_blank" rel="noreferrer">{bare(plugin.source.url)}</a>
-        <span class="mono">{fill(t.atCommit, { ref: plugin.source.ref, commit: short(plugin.source.commit) })}</span>
-      </p>
-    {/if}
-    {#if plugin.origin === 'dev' && plugin.devPath}
-      <p class="meta" data-testid="plugin-dev-path"><span class="mono">{plugin.devPath}</span><InfoTip topic={t.dev} text={fill(t.devHint, { id: plugin.id })} /></p>
-    {/if}
-    {#if plugin.status === 'installed' && (addsItems(plugin.adds).length > 0 || (plugin.permissions?.length ?? 0) > 0)}
-      <dl class="facts extras" data-testid="plugin-extras">{@render extras(plugin.adds, plugin.permissions ?? [], false)}</dl>
-    {/if}
-    {#if plugin.updates}
-      {@const line = updatesLine(plugin.updates)}
-      {#if line}
-        <p class="hint" data-testid="plugin-updates" data-plugin={plugin.id} data-available={plugin.updates.available?.version ?? ''}><span data-testid="plugin-updates-line">{line}</span></p>
+  {@const on = isOn(plugin)}
+  {#if plugin.source}
+    <p class="meta">
+      <a href={plugin.homepage ?? plugin.source.url} target="_blank" rel="noreferrer">{bare(plugin.source.url)}</a>
+      <span class="mono">{fill(t.atCommit, { ref: plugin.source.ref, commit: short(plugin.source.commit) })}</span>
+    </p>
+  {:else if plugin.homepage}
+    <p class="meta"><a href={plugin.homepage} target="_blank" rel="noreferrer" data-testid="plugin-home">{bare(plugin.homepage)}</a></p>
+  {/if}
+  {#if plugin.origin === 'dev' && plugin.devPath}
+    <p class="meta" data-testid="plugin-dev-path"><span class="mono">{plugin.devPath}</span><InfoTip topic={t.dev} text={fill(t.devHint, { id: plugin.id })} /></p>
+  {/if}
+  {#if plugin.updates}
+    {@const line = updatesLine(plugin.updates)}
+    {@const looking = plugin.updates.checking || checking[plugin.id] === true}
+    <div class="updates">
+      {#if line}<p class="hint" data-testid="plugin-updates" data-plugin={plugin.id} data-available={plugin.updates.available?.version ?? ''}><span data-testid="plugin-updates-line">{line}</span></p>{/if}
+      {#if plugin.status !== 'installing'}
+        <button class="ghost small" class:spinning={looking} data-testid="plugin-check-updates" data-plugin={plugin.id}
+          disabled={working || looking} onclick={() => void checkUpdates(plugin)}><RefreshCw size={14} /><span class="ui-label">{t.checkUpdates}</span></button>
       {/if}
-    {/if}
-    {#if plugin.error}<p class="bad" role="alert">{plugin.error}</p>{/if}
-    {#if errors[plugin.id]}<p class="bad" role="alert">{errors[plugin.id]}</p>{/if}
-    {#if plugin.rejected}{@render refusal(plugin.rejected)}{/if}
-    {#if plugin.status === 'installed' && plugin.app}
-      {@const app = plugin.app}
-      {@const live = app.status === 'running' || app.status === 'starting'}
-      <div class="desktop-app" data-testid="plugin-app" data-plugin={plugin.id} data-app-status={app.status}>
-        <div class="app-head">
-          <p class="state" data-testid="plugin-app-state">
-            <span class="dot" class:ok={app.status === 'running'} class:live={app.status === 'starting'}
-              class:bad={app.status === 'crashed' || app.status === 'unavailable'}></span><span class="ui-label app-name">{app.kind === 'service' ? t.service : t.app}</span><span aria-hidden="true">·</span><span class="ui-label">{appLine(app)}</span>
-          </p>
-          <div class="act">
-            {#if live}
-              <button class="quiet small" data-testid="plugin-app-restart" data-plugin={plugin.id} disabled={working} onclick={() => void appAction(plugin, 'restart')}><RotateCw size={14} /><span class="ui-label">{t.appRestart}</span></button>
-              <button class="quiet small" data-testid="plugin-app-stop" data-plugin={plugin.id} disabled={working} onclick={() => void appAction(plugin, 'stop')}><Square size={14} /><span class="ui-label">{t.appStop}</span></button>
-            {:else}
-              <button class="small" data-testid="plugin-app-start" data-plugin={plugin.id} disabled={working || app.status === 'unavailable'} onclick={() => void appAction(plugin, 'start')}><Play size={14} /><span class="ui-label">{t.appStart}</span></button>
-            {/if}
-          </div>
+    </div>
+  {/if}
+  {#if hasFiles(plugin) && !on}<p class="hint" data-testid="plugin-off-hint">{t.offHint}</p>{/if}
+  {#if plugin.status === 'installed' && addsItems(plugin.adds).length > 0}
+    <dl class="facts extras" data-testid="plugin-extras">{@render extras(plugin.adds, [], false)}</dl>
+  {/if}
+  {#if plugin.error}<p class="bad" role="alert">{plugin.error}</p>{/if}
+  {#if store === workspace.primary && pluginUi.status[plugin.id]}
+    {@const ui = pluginUi.status[plugin.id]!}
+    <div class="ui-state" data-testid="plugin-ui-state" data-plugin={plugin.id} data-ui-state={ui.state}>
+      <p class="state">
+        <span class="dot" class:ok={ui.state === 'running'} class:live={ui.state === 'loading'} class:bad={ui.state === 'failed'}></span><span class="ui-label">{
+          ui.state === 'running' ? strings.pluginUi.running
+          : ui.state === 'loading' ? strings.pluginUi.loading
+          : ui.state === 'skipped' ? strings.pluginUi.skipped
+          : fill(strings.pluginUi.failed, { error: ui.error ?? '' })}</span>
+      </p>
+      {#if ui.state === 'failed' || ui.state === 'running'}
+        <button class="ghost small" data-testid="plugin-ui-reload" data-plugin={plugin.id} onclick={() => void pluginUi.reload(plugin.id)}><RotateCw size={14} /><span class="ui-label">{strings.pluginUi.reload}</span></button>
+      {/if}
+    </div>
+  {/if}
+  {#if errors[plugin.id]}<p class="bad" role="alert">{errors[plugin.id]}</p>{/if}
+  {#if plugin.rejected}{@render refusal(plugin.rejected)}{/if}
+  {#if plugin.status === 'installed' && on && plugin.app}
+    {@const app = plugin.app}
+    {@const live = app.status === 'running' || app.status === 'starting'}
+    <div class="desktop-app" data-testid="plugin-app" data-plugin={plugin.id} data-app-status={app.status}>
+      <div class="app-head">
+        <p class="state" data-testid="plugin-app-state">
+          <span class="dot" class:ok={app.status === 'running'} class:live={app.status === 'starting'}
+            class:bad={app.status === 'crashed' || app.status === 'unavailable'}></span><span class="ui-label app-name">{app.kind === 'service' ? t.service : t.app}</span><span aria-hidden="true">·</span><span class="ui-label">{appLine(app)}</span>
+        </p>
+        <div class="act">
+          {#if live}
+            <button class="quiet small" data-testid="plugin-app-restart" data-plugin={plugin.id} disabled={working} onclick={() => void appAction(plugin, 'restart')}><RotateCw size={14} /><span class="ui-label">{t.appRestart}</span></button>
+            <button class="quiet small" data-testid="plugin-app-stop" data-plugin={plugin.id} disabled={working} onclick={() => void appAction(plugin, 'stop')}><Square size={14} /><span class="ui-label">{t.appStop}</span></button>
+          {:else}
+            <button class="small" data-testid="plugin-app-start" data-plugin={plugin.id} disabled={working || app.status === 'unavailable'} onclick={() => void appAction(plugin, 'start')}><Play size={14} /><span class="ui-label">{t.appStart}</span></button>
+          {/if}
         </div>
-        {@render autostartSwitch(plugin, app.autostart)}
-        {#if app.error}<p class={app.status === 'crashed' ? 'bad' : 'hint'} data-testid="plugin-app-error">{app.error}</p>{/if}
       </div>
-    {/if}
-    {#if plugin.status === 'installed' && plugin.gateway}
-      {@const gateway = plugin.gateway}
-      {@const live = gateway.status !== 'stopped' && gateway.status !== 'crashed'}
-      {@const dashboard = gatewayDashboard(gateway)}
-      <div class="desktop-app" data-testid="plugin-gateway" data-plugin={plugin.id} data-gateway-status={gateway.status}>
-        <div class="app-head">
-          <p class="state" data-testid="plugin-gateway-state">
-            <span class="dot" class:ok={gateway.status === 'running'} class:live={gateway.status === 'starting' || gateway.status === 'updating'}
-              class:bad={gateway.status === 'crashed'}></span><span class="ui-label app-name">{t.gateway}</span><span aria-hidden="true">·</span><span class="ui-label gateway-line">{gatewayLine(gateway)}</span>
-            <InfoTip topic={t.gateway} text={fill(t.gatewayData, { dir: gateway.dataDir })} />
-          </p>
-          <div class="act">
-            {#if live}
-              <button class="quiet small" data-testid="plugin-gateway-restart" data-plugin={plugin.id} disabled={working} onclick={() => void gatewayAction(plugin, 'restart')}><RotateCw size={14} /><span class="ui-label">{t.appRestart}</span></button>
-              <button class="quiet small" data-testid="plugin-gateway-stop" data-plugin={plugin.id} disabled={working} onclick={() => void gatewayAction(plugin, 'stop')}><Square size={14} /><span class="ui-label">{t.appStop}</span></button>
-            {:else}
-              <button class="small" data-testid="plugin-gateway-start" data-plugin={plugin.id} disabled={working} onclick={() => void gatewayAction(plugin, 'start')}><Play size={14} /><span class="ui-label">{t.appStart}</span></button>
-            {/if}
-          </div>
+      {@render autostartSwitch(plugin, app.autostart)}
+      {#if app.error}<p class={app.status === 'crashed' ? 'bad' : 'hint'} data-testid="plugin-app-error">{app.error}</p>{/if}
+    </div>
+  {/if}
+  {#if plugin.status === 'installed' && on && plugin.gateway}
+    {@const gateway = plugin.gateway}
+    {@const live = gateway.status !== 'stopped' && gateway.status !== 'crashed'}
+    {@const dashboard = gatewayDashboard(gateway)}
+    <div class="desktop-app" data-testid="plugin-gateway" data-plugin={plugin.id} data-gateway-status={gateway.status}>
+      <div class="app-head">
+        <p class="state" data-testid="plugin-gateway-state">
+          <span class="dot" class:ok={gateway.status === 'running'} class:live={gateway.status === 'starting' || gateway.status === 'updating'}
+            class:bad={gateway.status === 'crashed'}></span><span class="ui-label app-name">{t.gateway}</span><span aria-hidden="true">·</span><span class="ui-label gateway-line">{gatewayLine(gateway)}</span>
+          <InfoTip topic={t.gateway} text={fill(t.gatewayData, { dir: gateway.dataDir })} />
+        </p>
+        <div class="act">
+          {#if live}
+            <button class="quiet small" data-testid="plugin-gateway-restart" data-plugin={plugin.id} disabled={working} onclick={() => void gatewayAction(plugin, 'restart')}><RotateCw size={14} /><span class="ui-label">{t.appRestart}</span></button>
+            <button class="quiet small" data-testid="plugin-gateway-stop" data-plugin={plugin.id} disabled={working} onclick={() => void gatewayAction(plugin, 'stop')}><Square size={14} /><span class="ui-label">{t.appStop}</span></button>
+          {:else}
+            <button class="small" data-testid="plugin-gateway-start" data-plugin={plugin.id} disabled={working} onclick={() => void gatewayAction(plugin, 'start')}><Play size={14} /><span class="ui-label">{t.appStart}</span></button>
+          {/if}
         </div>
-        {#if !plugin.app}{@render autostartSwitch(plugin, gateway.autostart)}{/if}
-        {#if gateway.error}<p class={gateway.status === 'crashed' ? 'bad' : 'hint'} data-testid="plugin-gateway-error">{gateway.error}</p>{/if}
-        {#if gateway.status === 'running' && (dashboard || plugin.id === 'douane')}
-          <div class="act gateway-act">
-            {#if dashboard}<button class="ghost small" data-testid="plugin-gateway-open" data-plugin={plugin.id} onclick={() => void openExternal(dashboard)}><ExternalLink size={14} /><span class="ui-label">{fill(strings.subscriptionProxy.openGateway, { name: plugin.name })}</span></button>{/if}
-            {#if plugin.id === 'douane' && store.core?.features?.gatewayMove === true}
-              <button class="ghost small" data-testid="plugin-gateway-move" data-plugin={plugin.id} onclick={() => { moving = true; }}><span class="ui-label">{strings.subscriptionProxy.move.open}</span></button>
-            {/if}
-          </div>
-        {/if}
       </div>
-    {/if}
-    {#if plugin.status === 'installed' && plugin.pools.length > 0}
-      <div class="pools">
-        <div class="pools-head">
-          <h4 class="section-label"><span class="ui-label">{t.pools}</span><InfoTip topic={t.pools} text={t.cliScope} /></h4>
-          <button class="quiet small" data-testid="plugin-refresh" data-plugin={plugin.id} disabled={working} onclick={() => void loadPools(plugin.id, true)}><RefreshCw size={14} /><span class="ui-label">{strings.common.refresh}</span></button>
+      {#if !plugin.app}{@render autostartSwitch(plugin, gateway.autostart)}{/if}
+      {#if gateway.error}<p class={gateway.status === 'crashed' ? 'bad' : 'hint'} data-testid="plugin-gateway-error">{gateway.error}</p>{/if}
+      {#if gateway.status === 'running' && (dashboard || plugin.id === 'douane')}
+        <div class="act gateway-act">
+          {#if dashboard}<button class="ghost small" data-testid="plugin-gateway-open" data-plugin={plugin.id} onclick={() => void openExternal(dashboard)}><ExternalLink size={14} /><span class="ui-label">{fill(strings.subscriptionProxy.openGateway, { name: plugin.name })}</span></button>{/if}
+          {#if plugin.id === 'douane' && store.core?.features?.gatewayMove === true}
+            <!-- The connections dialog takes the screen: the gear dialog steps aside so one Escape closes one dialog. -->
+            <button class="ghost small" data-testid="plugin-gateway-move" data-plugin={plugin.id} onclick={() => { openId = null; moving = true; }}><span class="ui-label">{strings.subscriptionProxy.move.open}</span></button>
+          {/if}
         </div>
-        {#each pools[plugin.id] ?? [] as pool (pool.provider)}
-          <div class="pool" data-testid="plugin-pool" data-plugin={plugin.id} data-provider={pool.provider}>
-            <div class="pool-head">
-              <h5><span class="ui-label">{providerName(pool.provider)}</span></h5>
-              <button class="quiet small" disabled={working} onclick={() => void accountAction(plugin, pool.provider, 'add')}><span class="ui-label">{t.add}</span></button>
-            </div>
-            {#if pool.accounts.length === 0}<p class="hint">{t.empty}</p>{/if}
-            {#each pool.accounts as account (account.email)}
-              <div class="saved-account" class:active={account.active} data-testid="plugin-account" data-email={account.email}>
-                <div class="account-head">
-                  <strong class="ui-label">{account.email}</strong>
-                  {#if account.active}<span class="tag ui-label-box" data-testid="plugin-account-active"><span class="ui-label">{t.active}</span></span>{/if}
-                  <span class="account-actions">
-                    {#if !account.active}
-                      <button class="quiet small" disabled={working} data-testid="plugin-switch" onclick={() => void accountAction(plugin, pool.provider, 'switch', account.email)}><span class="ui-label">{t.switch}</span></button>
-                    {/if}
-                    <button class="ghost small" disabled={working} onclick={() => void accountAction(plugin, pool.provider, 'remove', account.email)}><span class="ui-label">{t.forget}</span></button>
-                  </span>
-                </div>
-                <QuotaList rows={[{ accountId: account.email, providerId: pool.provider, providerName: account.email, label: '', enabled: true,
-                  status: account.checkedSecondsAgo === null ? 'unavailable' : 'ready', windows: account.windows,
-                  checkedAt: account.checkedSecondsAgo === null ? null : Date.now() - account.checkedSecondsAgo * 1000, error: null }]} />
+      {/if}
+    </div>
+  {/if}
+  {#if plugin.status === 'installed' && on && plugin.pools.length > 0}
+    <div class="pools">
+      <div class="pools-head">
+        <h4 class="section-label"><span class="ui-label">{t.pools}</span><InfoTip topic={t.pools} text={t.cliScope} /></h4>
+        <button class="quiet small" data-testid="plugin-refresh" data-plugin={plugin.id} disabled={working} onclick={() => void loadPools(plugin.id, true)}><RefreshCw size={14} /><span class="ui-label">{strings.common.refresh}</span></button>
+      </div>
+      {#each pools[plugin.id] ?? [] as pool (pool.provider)}
+        <div class="pool" data-testid="plugin-pool" data-plugin={plugin.id} data-provider={pool.provider}>
+          <div class="pool-head">
+            <h5><span class="ui-label">{providerName(pool.provider)}</span></h5>
+            <button class="quiet small" disabled={working} onclick={() => void accountAction(plugin, pool.provider, 'add')}><span class="ui-label">{t.add}</span></button>
+          </div>
+          {#if pool.accounts.length === 0}<p class="hint">{t.empty}</p>{/if}
+          {#each pool.accounts as account (account.email)}
+            <div class="saved-account" class:active={account.active} data-testid="plugin-account" data-email={account.email}>
+              <div class="account-head">
+                <strong class="ui-label">{account.email}</strong>
+                {#if account.active}<span class="tag ui-label-box" data-testid="plugin-account-active"><span class="ui-label">{t.active}</span></span>{/if}
+                <span class="account-actions">
+                  {#if !account.active}
+                    <button class="quiet small" disabled={working} data-testid="plugin-switch" onclick={() => void accountAction(plugin, pool.provider, 'switch', account.email)}><span class="ui-label">{t.switch}</span></button>
+                  {/if}
+                  <button class="ghost small" disabled={working} onclick={() => void accountAction(plugin, pool.provider, 'remove', account.email)}><span class="ui-label">{t.forget}</span></button>
+                </span>
               </div>
-            {/each}
-          </div>
-        {/each}
-      </div>
-    {/if}
-  </div>
+              <QuotaList rows={[{ accountId: account.email, providerId: pool.provider, providerName: account.email, label: '', enabled: true,
+                status: account.checkedSecondsAgo === null ? 'unavailable' : 'ready', windows: account.windows,
+                checkedAt: account.checkedSecondsAgo === null ? null : Date.now() - account.checkedSecondsAgo * 1000, error: null }]} />
+            </div>
+          {/each}
+        </div>
+      {/each}
+    </div>
+  {/if}
 {/snippet}
 
 <div class="page" data-testid="plugins-page">
@@ -543,30 +621,30 @@
   </header>
   {#if error}<p class="bad" role="alert">{error}</p>{/if}
 
-  {#if installed.length > 0}
-    <section aria-labelledby="plugins-installed" data-testid="plugins-installed">
-      <h2 id="plugins-installed" class="section-label"><span class="ui-label">{t.installedHeading}</span></h2>
-      <div class="card list">
-        {#each installed as plugin (plugin.id)}{@render row(plugin)}{/each}
-      </div>
-    </section>
-  {/if}
+  <div class="toolbar">
+    <label class="search">
+      <Search size={15} strokeWidth={1.75} />
+      <input type="search" bind:value={query} placeholder={t.search} aria-label={t.search} autocomplete="off" spellcheck="false" data-testid="plugins-search" />
+    </label>
+    <div class="segmented" role="group" aria-label={t.filter} data-testid="plugins-filter">
+      {#each FILTERS as entry (entry.id)}
+        <button type="button" class:on={filter === entry.id} aria-pressed={filter === entry.id} data-testid="plugins-filter-{entry.id}" onclick={() => { filter = entry.id; }}><span class="ui-label">{entry.label}</span></button>
+      {/each}
+    </div>
+    <span class="end">
+      <PolicyLock {store} keys={['plugins.install', 'plugins.recommended']} />
+      <button type="button" class="small from-url" class:on={addShown} aria-expanded={addShown} aria-controls="settings-{PLUGIN_ADD_SECTION}"
+        data-testid="plugins-from-url" onclick={toggleAdd}><Plus size={14} /><span class="ui-label">{t.fromUrl}</span></button>
+    </span>
+  </div>
 
-  {#if recommended.length > 0}
-    <section aria-labelledby="plugins-recommended" data-testid="plugins-recommended">
-      <h2 id="plugins-recommended" class="section-label"><span class="ui-label">{t.recommendedHeading}</span><PolicyLock {store} keys={['plugins.install', 'plugins.recommended']} /></h2>
-      <div class="card list">
-        {#each recommended as plugin (plugin.id)}{@render row(plugin)}{/each}
-      </div>
-    </section>
-  {/if}
-
-  <section id="settings-{PLUGIN_ADD_SECTION}" aria-labelledby="plugins-add" data-testid="plugins-add">
-    <h2 id="plugins-add" class="section-label"><span class="ui-label">{t.addHeading}</span><InfoTip topic={t.addHeading} text={t.addHint} /><PolicyLock {store} keys={['plugins.install']} /></h2>
-    <div class="card add">
+  {#if addShown}
+    <section id="settings-{PLUGIN_ADD_SECTION}" class="card add" aria-labelledby="plugins-add" data-testid="plugins-add">
+      <h2 id="plugins-add" class="section-label"><span class="ui-label">{t.addHeading}</span><InfoTip topic={t.addHeading} text={t.addHint} /><PolicyLock {store} keys={['plugins.install']} /></h2>
       <!-- Text, not url: owner/repo and a page copied without https are read by the core. -->
       <form onsubmit={submit}>
-        <input class="url" data-testid="plugin-url" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false"
+        <!-- svelte-ignore a11y_autofocus: the button that opens the form asks for the address next. -->
+        <input class="url" data-testid="plugin-url" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" autofocus={addOpen && !preview}
           aria-label={t.urlLabel} placeholder={t.urlPlaceholder} bind:value={url} disabled={installLocked} />
         <input class="ref" data-testid="plugin-ref" autocomplete="off" autocapitalize="off" spellcheck="false"
           aria-label={t.refLabel} title={t.refLabel} placeholder={t.refPlaceholder} bind:value={ref} disabled={installLocked} />
@@ -624,36 +702,58 @@
           </div>
         </div>
       {/if}
+    </section>
+  {/if}
+
+  {#if shown.length > 0}
+    <div class="grid" data-testid="plugins-grid">
+      {#each shown as plugin (plugin.id)}
+        <PluginCard {plugin} working={busy[plugin.id] === true} {installLocked} error={errors[plugin.id]}
+          onopen={() => { openId = plugin.id; }} ontoggle={(on) => void setEnabled(plugin, on)}
+          oninstall={() => void install(plugin)} oncancel={() => void change(plugin, 'plugins.cancel')} />
+      {/each}
     </div>
-  </section>
+  {:else if loaded}
+    <p class="empty" data-testid="plugins-empty">{t.noMatch}</p>
+  {/if}
 </div>
 
+<PluginDialog plugin={opened} working={openId !== null && busy[openId] === true} onclose={() => { openId = null; }}
+  onsave={saveSetting} onuninstall={(plugin) => void change(plugin, 'plugins.uninstall')}
+  onedit={opened && asksGrants && grantsEditable(opened) ? (plugin) => void editGrants(plugin) : null} {details} />
 <GatewayMoveDialog {store} open={moving} target="plugin" onclose={() => { moving = false; }} />
+<PluginConsent request={consent} onanswer={answered} />
 
 <style>
   .page { container-type: inline-size; }
-  section { max-width: var(--settings-width); margin-bottom: 24px; }
-  section > h2 { margin: 0 0 8px; display: flex; align-items: center; gap: 6px; }
   .hint { margin: 0; font-size: var(--text-sm); color: var(--color-muted-foreground); line-height: 1.5; }
   .bad { margin: 0; font-size: var(--text-sm); color: var(--color-danger); overflow-wrap: anywhere; }
 
-  /* One card per section, one row per plugin, like the Providers checklist. */
-  .page .list { padding: 0; overflow: hidden; }
-  .plugin { display: grid; gap: 8px; padding: 14px 16px; animation: rise var(--dur-3) var(--ease-out-quint); }
-  .plugin + .plugin { border-top: 1px solid var(--color-border); }
-  /* Everything under the head lines up with the name, not the glyph. */
-  .plugin > :not(.line) { margin-left: 44px; }
+  /* The search, the filter and the URL form's button on one line. */
+  .toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+  .search { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: var(--input); padding: 0 10px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); color: var(--color-muted-foreground); transition: border-color var(--dur-1) var(--ease-out-quint); }
+  .search:focus-within { border-color: var(--color-edge); }
+  .search input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: none; outline: none; box-shadow: none; }
+  .segmented { flex: none; display: flex; gap: 2px; padding: 3px; border-radius: var(--radius-md); background: var(--color-surface-2); }
+  .segmented button { height: var(--control-sm); padding: 0 10px; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--color-muted-foreground); font-size: var(--text-sm); }
+  .segmented button:hover:not(.on) { background: var(--color-surface-3); color: var(--color-foreground); }
+  .segmented button.on { background: var(--color-foreground); border-color: var(--color-foreground); color: var(--color-on-foreground); }
+  .end { flex: none; display: flex; align-items: center; gap: 6px; }
+  .from-url { gap: 6px; height: var(--input); }
+  .from-url.on { border-color: var(--color-edge); background: var(--color-active); }
+
+  /* Cards as wide as a name and two lines need; as many across as the column holds. */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+  .empty { margin: 24px 0; text-align: center; font-size: var(--text-sm); color: var(--color-muted-foreground); }
 
   .line { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
   .glyph { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: var(--radius-md); background: var(--color-surface-2); color: var(--color-muted-foreground); }
   .who { flex: 1; min-width: 0; display: grid; gap: 3px; padding-top: 1px; }
   h3 { margin: 0; display: flex; align-items: center; gap: 8px; min-width: 0; font-size: var(--text-base); font-weight: 600; overflow-wrap: anywhere; }
   .version { font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 400; color: var(--color-muted-foreground); }
-  .home { display: inline-grid; place-items: center; color: var(--color-muted-foreground); border-radius: var(--radius-sm); transition: color var(--dur-1) var(--ease-out-quint); }
-  .home:hover, .home:focus-visible { color: var(--color-foreground); }
   .state { margin: 0; display: flex; align-items: center; gap: 6px; font-size: var(--text-sm); color: var(--color-muted-foreground); font-variant-numeric: tabular-nums; }
 
-  /* Hue is for status only: green once installed, amber while downloading, red when refused. */
+  /* Hue is for status only: green once running, amber while starting, red when it failed. */
   .dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--color-subtle); }
   .dot.ok { background: var(--color-success); }
   .dot.live { background: var(--color-live); }
@@ -665,16 +765,13 @@
   .act.end { justify-content: flex-end; }
   .gateway-act { justify-content: flex-start; }
   .gateway-line { font-variant-numeric: tabular-nums; }
-  .act button, .pools button, .account-actions button { gap: 6px; }
+  .act button, .pools button, .account-actions button, .updates button { gap: 6px; }
 
-  .track { height: 2px; border-radius: 999px; background: var(--color-surface-3); overflow: hidden; }
-  .bar { display: block; height: 100%; background: var(--color-foreground); transition: width var(--dur-2) var(--ease-out-quint); }
-
-  .description { margin: 0; font-size: var(--text-sm); line-height: 1.5; color: var(--color-muted-foreground); }
-  .meta { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 8px; font-size: var(--text-sm); color: var(--color-muted-foreground); }
+  .meta { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: var(--text-sm); color: var(--color-muted-foreground); }
   .meta a { color: var(--color-muted-foreground); overflow-wrap: anywhere; }
   .meta a:hover { color: var(--color-foreground); }
   .meta .mono { font-size: var(--text-xs); }
+  .updates { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; }
 
   .refusal { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--color-danger) 35%, var(--color-border)); border-radius: var(--radius-md); background: color-mix(in srgb, var(--color-danger) 6%, transparent); }
   .refusal-title { margin: 0; display: flex; align-items: center; gap: 6px; font-size: var(--text-sm); font-weight: 600; color: var(--color-danger); }
@@ -690,7 +787,7 @@
   .pools { display: grid; gap: 10px; margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--color-border); }
   /* The desktop app's own strip: one line of what it is doing, and the buttons that change it. */
   .desktop-app { display: grid; gap: 6px; padding: 6px 6px 6px 12px; border-radius: var(--radius-md); background: var(--color-surface-2); }
-  .app-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .app-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
   .autostart { --switch-width: 32px; --switch-height: 20px; display: flex; align-items: center; gap: 8px; width: fit-content; font-size: var(--text-sm); color: var(--color-muted-foreground); cursor: pointer; }
   .app-name { color: var(--color-foreground); font-weight: 500; }
   .pools-head .section-label { display: flex; align-items: center; gap: 6px; }
@@ -702,16 +799,19 @@
   .saved-account { display: grid; gap: 10px; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-2); }
   .account-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .account-head strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); font-weight: 600; }
-  .dev-tag { flex: none; padding: 1px 6px; border-radius: var(--radius-sm); background: var(--color-accent-soft); color: var(--color-accent); font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 500; }
   .extras { align-items: baseline; }
   .with-tip { display: inline-flex; align-items: center; gap: 4px; }
   .chips { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 4px; }
+  .chip.danger { border-color: var(--color-danger); color: var(--color-danger); }
+  .ui-state { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
+  .ui-state .state { min-width: 0; overflow-wrap: anywhere; }
   .chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 1px 6px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); font-size: var(--text-xs); color: var(--color-foreground); }
   .tag { flex: none; padding: 1px 6px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--color-success) 16%, transparent); color: var(--color-success); font-size: var(--text-xs); font-weight: 500; }
   .account-actions { display: flex; margin-left: auto; gap: 4px; flex: none; }
 
-  /* The card sits inside a section, where the page's card padding does not reach. */
-  .add { display: grid; gap: 12px; padding: 12px; }
+  /* The URL form opens between the toolbar and the grid. */
+  .add { display: grid; gap: 12px; padding: 14px; margin-bottom: 14px; animation: rise var(--dur-3) var(--ease-out-quint); }
+  .add > h2 { margin: 0; display: flex; align-items: center; gap: 6px; }
   form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 160px) auto; align-items: center; gap: 8px; }
   form input { width: 100%; }
   /* The button lines up with the fields beside it. */
@@ -722,14 +822,16 @@
 
   /* The settings column, not the window: the page is as narrow in a split shell as on a phone. */
   @container (max-width: 560px) {
-    .line { flex-wrap: wrap; }
-    .line .act { width: 100%; justify-content: flex-start; padding-left: 44px; }
-    .plugin > :not(.line) { margin-left: 0; }
+    .toolbar { flex-wrap: wrap; }
+    .search { flex-basis: 100%; }
+    .segmented { flex: 1; }
+    .segmented button { flex: 1; min-width: 0; padding: 0 6px; }
+    .grid { grid-template-columns: minmax(0, 1fr); }
     form { grid-template-columns: minmax(0, 1fr); }
     form button { justify-self: start; }
     .facts { grid-template-columns: minmax(0, 1fr); gap: 2px; }
     .facts dd + dt { margin-top: 8px; }
     .pools-head { align-items: flex-start; }
   }
-  @media (prefers-reduced-motion: reduce) { .plugin, .preview, .spinning :global(svg) { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .add, .preview, .spinning :global(svg) { animation: none; } }
 </style>

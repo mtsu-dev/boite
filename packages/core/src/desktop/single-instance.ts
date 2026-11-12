@@ -1,5 +1,5 @@
 /*
- * Apps that keep one copy per user (docs/desktop.md#windows-and-macos). On a
+ * Apps that keep one copy per user (docs/internals/desktop.md#windows-and-macos). On a
  * Windows hidden desktop or among the user's macOS apps, launching Chrome while
  * the user's Chrome runs hands the request to the user's copy, which opens the
  * window on the user's screen. A browser gets a profile of its own in the

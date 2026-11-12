@@ -8,7 +8,7 @@
    * conversation alike: its actions and send time, then two ticks, received
    * and answered. Once both are in, the ticks wait for the pointer like the time.
    */
-  let { text, at, edit, accepted, responded, agent = false }: {
+  let { text, at, edit, accepted, responded, agent = false, plugin }: {
     text: string;
     at: number;
     edit?: () => void;
@@ -16,11 +16,13 @@
     responded: boolean;
     /** A prompt another agent wrote sits on the agents' side. */
     agent?: boolean;
+    /** The prompt plugin message actions act on. */
+    plugin?: { threadId: string; messageId: string; role: 'user' | 'assistant' };
   } = $props();
 </script>
 
 <div class="receipts" class:agent class:settled={accepted && responded} data-testid="message-receipts">
-  <MessageActions {text} {at} {edit} />
+  <MessageActions {text} {at} {edit} {plugin} />
   <span class="tick" data-testid="receipt-accepted" class:received={accepted} title={strings.chat.accepted} aria-label={strings.chat.accepted}><Check size={12} /></span>
   <span class="tick" data-testid="receipt-responded" class:received={responded} title={strings.chat.responseStarted} aria-label={strings.chat.responseStarted}><Check size={12} /></span>
 </div>

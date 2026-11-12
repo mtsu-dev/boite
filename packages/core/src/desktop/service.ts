@@ -9,10 +9,11 @@
  * session, and the CLI keeps agent-desktop on them (scope.ts).
  * agent-desktop itself runs from the agent's shell with the environment this
  * returns (desktop-cli.ts), from the pinned build Boite installs
- * (agent-desktop.ts). See docs/desktop.md.
+ * (agent-desktop.ts). See docs/internals/desktop.md.
  */
 import {
   VIRTUAL_DESKTOP_APPS_MAX,
+  deviceBound,
   VIRTUAL_DESKTOP_SIZE,
   virtualDesktopCommandError,
   virtualDesktopSizeError,
@@ -538,7 +539,7 @@ export class VirtualDesktops {
   #thread(threadId: string, connection?: Connection, allowArchived = false): ThreadSummary {
     const thread = this.#core.threads.require(threadId);
     if (thread.archived && !allowArchived) throw refused('a virtual desktop needs an active conversation', { threadId });
-    if (connection?.identity.principal === 'session' && !connection.subscriptions.has(threadId)) {
+    if (connection && deviceBound(connection.identity.principal) && !connection.subscriptions.has(threadId)) {
       throw refused('subscribe to the conversation before using its desktop', { threadId });
     }
     return thread;
@@ -565,11 +566,12 @@ export class VirtualDesktops {
   }
 
   async #session(thread: ThreadSummary, width?: number, height?: number): Promise<Session> {
-    const open = this.#sessions.get(thread.id);
-    if (open && !open.stopping) return open;
+    // Before an open desktop is reused: one started before the protection came on would run programs outside it.
     if (this.#core.procs.protection.policy(thread.id)) {
       throw refused('this conversation runs under execution protection: what its desktop starts would run outside it', { threadId: thread.id });
     }
+    const open = this.#sessions.get(thread.id);
+    if (open && !open.stopping) return open;
     if (this.#closed) throw refused('Boite is stopping', { threadId: thread.id });
     const pending = this.#starting.get(thread.id);
     if (pending) return pending.promise;

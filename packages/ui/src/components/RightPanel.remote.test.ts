@@ -31,7 +31,8 @@ afterEach(async () => {
 });
 
 async function phone(open = true): Promise<FakeClient> {
-  const client = new FakeClient({ delayMs: 0, principal: 'session' }); clients.push(client);
+  // A core from before `browser.remoteStream`: these tests follow the frames the viewer asks for.
+  const client = new FakeClient({ delayMs: 0, principal: 'session', missing: ['browser.remoteStream'] }); clients.push(client);
   store = new Store(); store.attach(client); await store.connect();
   if (open) await store.open('t-trace');
   store.panel.closeAll();
@@ -116,7 +117,7 @@ test('new agent pages leave a phone in chat or on its chosen surface, and hiding
 
 test('an open viewer follows a replacement client without reusing old frames or pointer gestures', async () => {
   const oldClient = await phone();
-  const nextClient = new FakeClient({ delayMs: 0, principal: 'session' }); clients.push(nextClient); await nextClient.connect();
+  const nextClient = new FakeClient({ delayMs: 0, principal: 'session', missing: ['browser.remoteStream'] }); clients.push(nextClient); await nextClient.connect();
   let resolveOld!: (value: RemoteBrowserFrame) => void;
   let captures = 0;
   const status = { live: true, available: true, tabs: [{ tabId: 'browser:tab', url: 'https://example.com/', title: 'Example', profile: 'default', active: true }] };

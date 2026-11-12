@@ -1,8 +1,8 @@
 # Working on boite
 
 boite has a Bun core, a Svelte UI and a Tauri desktop shell. Read
-[architecture](docs/architecture.md) for the runtime boundaries and
-[development](docs/development.md) for setup, tests and captures.
+[architecture](docs/internals/architecture.md) for the runtime boundaries and
+[development](docs/internals/development.md) for setup, tests and captures.
 
 ## Commands
 
@@ -17,9 +17,9 @@ bun run e2e
 ```
 
 `build:shell` builds the UI and stages the core. Follow
-[development](docs/development.md#rebuilding-the-shell-executable) for platform
+[development](docs/internals/development.md#rebuilding-the-shell-executable) for platform
 prerequisites, adjacent runtime files and shell E2E coverage.
-[CI](docs/ci.md) explains which checks run for each change.
+[CI](docs/internals/ci.md) explains which checks run for each change.
 
 ## Boundaries
 
@@ -31,7 +31,7 @@ prerequisites, adjacent runtime files and shell E2E coverage.
 - Change the contract before implementing an RPC method, event or shared type:
   the domain file in `packages/contracts/src/` (`threads.ts`, `providers.ts`),
   which `index.ts` re-exports. Update the real core and the in-memory client
-  together. Follow [Adding an RPC method](docs/development.md#adding-an-rpc-method);
+  together. Follow [Adding an RPC method](docs/internals/development.md#adding-an-rpc-method);
   a branch still editing the single `index.ts` runs
   `bun scripts/migrate/split-contracts.ts` after merging main.
 - Tests and benches use a fresh temporary `BOITE_DATA_DIR`. Real data directories
@@ -54,7 +54,7 @@ prerequisites, adjacent runtime files and shell E2E coverage.
 - UI colors, radii and durations come from `app.css`, strings from
   `lib/strings.ts`, which serves them in the language the app speaks. Write
   English in `lib/strings/en/<part>.ts` and mirror it in the same part of every translation
-  ([docs/language.md](docs/language.md)); a branch still editing the single
+  ([docs/internals/language.md](docs/internals/language.md)); a branch still editing the single
   `strings.en.ts` runs `bun scripts/migrate/split-catalogues.ts` after merging
   main. No native `<select>`,
   `window.confirm` or hard-coded hex.
@@ -65,7 +65,7 @@ prerequisites, adjacent runtime files and shell E2E coverage.
 
 - Desktop and phone. A right-click-only action is unavailable on a phone.
 - All affected protocols: Claude, ACP, Codex, Muse, pi and echo. Their
-  drivers own runtime behavior; [providers](docs/providers.md) documents the
+  drivers own runtime behavior; [providers](docs/internals/providers.md) documents the
   current protocol limits.
 - Both transports. The real core and `lib/fake-client.ts` share one contract.
 - Reverse actions. Create/archive, install/uninstall, subscribe/unsubscribe,
@@ -95,7 +95,7 @@ rerun only the failed jobs when the head is unchanged.
 A pull request runs the Linux checks, plus the Windows core suite for
 protection and shared toolchain inputs; the full Windows, macOS, desktop and
 E2E checks run in the merge queue
-([pull request runs](docs/ci.md#pull-request-runs)). A
+([pull request runs](docs/internals/ci.md#pull-request-runs)). A
 failure there removes the pull request: fix it like any CI failure, then merge
 again.
 
@@ -117,56 +117,60 @@ and assertions when making the suite faster.
 
 ## Documentation map
 
-- [Documentation index](docs/README.md): one page per subject.
-- [Architecture](docs/architecture.md): ownership, persistence and protocols.
-- [Providers](docs/providers.md) and [accounts](docs/accounts.md): descriptors,
+- [User guide](docs/README.md): short pages for people who use the app. No RPC
+  names, source paths or internal terms there; name buttons as the app does. A
+  user-visible change updates its guide page in the same pull request.
+- [Technical reference](docs/internals/README.md): one page per subject for
+  contributors and agents. Implementation detail goes there, never in the guide.
+- [Architecture](docs/internals/architecture.md): ownership, persistence and protocols.
+- [Providers](docs/internals/providers.md) and [accounts](docs/internals/accounts.md): descriptors,
   executable detection, isolation and login.
-- [Project icons](docs/project-icons.md): what a project's folder is searched
+- [Project icons](docs/internals/project-icons.md): what a project's folder is searched
   for, the bounds on it and how the image reaches a client.
-- [Hooks](docs/hooks.md): the user's hooks on isolated accounts, what each
+- [Hooks](docs/internals/hooks.md): the user's hooks on isolated accounts, what each
   driver reports and the Settings view.
-- [Secrets](docs/secrets.md): the card an agent asks for a key on, refs,
+- [Secrets](docs/internals/secrets.md): the card an agent asks for a key on, refs,
   the system vault per OS, erasure rules and masking limits.
-- [Agent updates](docs/agent-updates.md): version checks, the agent's own
+- [Agent updates](docs/internals/agent-updates.md): version checks, the agent's own
   updater and what a remote machine does by itself.
-- [Desktop updates](docs/updates.md): signed app updates and switching nightly channels.
-- [Restart handoff](docs/restart-handoff.md): the 30 second wait before an update
+- [Desktop updates](docs/internals/updates.md): signed app updates and switching nightly channels.
+- [Restart handoff](docs/internals/restart-handoff.md): the 30 second wait before an update
   stops a turn, and how the next core resumes it.
-- [Keeper](docs/keeper.md): the process that holds thread shells across a core
+- [Keeper](docs/internals/keeper.md): the process that holds thread shells across a core
   restart, its socket, what it buffers and when it exits.
-- [Workflows](docs/workflows.md): JSON plans of delegated steps and their graph.
-- [Council](docs/council.md): several models review one request alone and
+- [Workflows](docs/internals/workflows.md): JSON plans of delegated steps and their graph.
+- [Council](docs/internals/council.md): several models review one request alone and
   read-only behind an experiment, each with a score, and the salon the owner
   follows.
-- [Bots](docs/bots.md): Boite's persistent agents, each a thread with a name,
+- [Bots](docs/internals/bots.md): Boite's persistent agents, each a thread with a name,
   memory, routines and a desk, their `boite bot` commands and their guide.
-- [Teams](docs/teams.md): bots and the owner in one group, routing, delivery
+- [Teams](docs/internals/teams.md): bots and the owner in one group, routing, delivery
   through coordination letters, the reply envelope and `boite team`.
-- [Model switching](docs/model-switching.md) and [context](docs/context.md):
+- [Model switching](docs/internals/model-switching.md) and [context](docs/internals/context.md):
   session reuse, queued turns and compaction.
-- [Phone](docs/phone.md), [Android app](docs/android.md) and [server](docs/server.md):
+- [Phone](docs/internals/phone.md), [Android app](docs/internals/android.md) and [server](docs/internals/server.md):
   pairing, the APK and deployment.
-- [Android server](docs/android-server.md): the core and agents on a phone in
+- [Android server](docs/internals/android-server.md): the core and agents on a phone in
   Termux, driven by the Boite Server app.
-- [Machines](docs/machines.md): connections, browser origins and thread views.
-- [Groups](docs/groups.md): the roster of one owner's machines, invitations, tickets and the
+- [Machines](docs/internals/machines.md): connections, browser origins and thread views.
+- [Groups](docs/internals/groups.md): the roster of one owner's machines, invitations, tickets and the
   addresses a member gives.
-- [Contacts](docs/contacts.md): another owner's Boite linked over Tailscale, the
+- [Contacts](docs/internals/contacts.md): another owner's Boite linked over Tailscale, the
   projects each side opens and the requests between their agents.
-- [Trace](docs/trace.md): process events, resource caps and Windows guards.
-- [Performance](docs/performance.md): what a remote client is sent, startup
+- [Trace](docs/internals/trace.md): process events, resource caps and Windows guards.
+- [Performance](docs/internals/performance.md): what a remote client is sent, startup
   order and the benches behind every number.
-- [Panel](docs/panel.md) and [CLI](docs/cli.md): the surfaces beside the chat
+- [Panel](docs/internals/panel.md) and [CLI](docs/internals/cli.md): the surfaces beside the chat
   and the `boite` command an agent uses to reach them.
-- [Devices](docs/devices.md): SDK detection, `boite device` and the Device panel.
-- [Windows](docs/windows.md): `boite window` captures of desktop windows, consent,
+- [Devices](docs/internals/devices.md): SDK detection, `boite device` and the Device panel.
+- [Windows](docs/internals/windows.md): `boite window` captures of desktop windows, consent,
   exclusions, the Window panel and the backend on each OS.
-- [Virtual desktop](docs/desktop.md): `boite desktop`, a private Linux desktop
+- [Virtual desktop](docs/internals/desktop.md): `boite desktop`, a private Linux desktop
   in memory where agent-desktop drives GUI apps, its stack, security and lifetime.
-- [Admin policy](docs/enterprise.md) and [network flows](docs/network.md): the
+- [Admin policy](docs/internals/enterprise.md) and [network flows](docs/internals/network.md): the
   machine policy file, its keys and enforcement, and every outbound connection
   with the key that blocks it. A new outbound flow updates both.
-- [Releasing](docs/releasing.md): build artifacts, channels and installers.
+- [Releasing](docs/internals/releasing.md): build artifacts, channels and installers.
 
 Keep tracked documentation in this worktree and verify source paths before
 describing behavior. Commands, captures and reports must belong to the branch

@@ -158,7 +158,7 @@ export class ActivityStore {
   }
 
   /**
-   * An automatic goal (`auto-goal` experiment, `docs/goals.md`): the user's
+   * An automatic goal (`auto-goal` experiment, `docs/internals/goals.md`): the user's
    * message `messageId` becomes a reviewed goal's objective, verbatim, and
    * the project's board gets a card linked to it. False, and nothing changes,
    * when the conversation is a subthread or already holds a goal or a loop.

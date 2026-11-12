@@ -1,80 +1,63 @@
-# Documentation
+# Boite user guide
 
-## Getting started
+Boite runs your coding agents in one app, on your computers and your phone.
+These pages explain how to use it. Each one is short and starts with what the
+feature is for.
 
-- [Install and update the desktop app](updates.md): downloads, stable and nightly channels, and restarting.
-- [The tour](onboarding.md): first launch, language, appearance and workspace choices.
-- [Accounts](accounts.md): agent sign-ins and isolated accounts on the machine running them.
-- [Phone access](phone.md): pairing, mobile navigation, permissions and offline behavior.
-- [Android client app](android.md): the APK that opens the phone UI and connects to an existing core.
-- [Headless server](server.md): run a core with Docker or without the desktop app.
-- [Android server](android-server.md): host a core and agents on a phone with Termux and the separate Boite Server app.
-- [Experiments](experiments.md): switches for unfinished features. Bots and contacts remain experimental.
+## Start here
 
-## Everyday work
+- [Install Boite](install.md): downloads for Windows, macOS and Linux, and the two release channels.
+- [First steps](first-steps.md): the first launch, connecting an agent and sending a first message.
+- [Supported agents](supported-agents.md): the agents Boite runs and what each can do.
+- [Accounts](accounts.md): sign in to an agent and use several accounts.
 
-- [Drafts](drafts.md): conversations without a project, each with a folder in Documents/Boite.
-- [Model switching](model-switching.md): change models and providers in one conversation.
-- [Context](context.md): usage, compaction, queued prompts, goals, loops and side questions.
-- [Subagents](delegation.md): delegate to child conversations, steer them and follow their results.
-- [Workflows](workflows.md): plans of delegated steps, conditions, templates and the graph.
-- [The council](council.md): experimental read-only reviews by several models, each alone with a score, the salon and the table of rounds, in any project, with or without git.
-- [The right panel](panel.md): browser, changes, files, tasks and trace beside the chat.
-- [The agent's browser](browser.md): headless browser commands and watching a page from any device.
-- [Devices](devices.md): simulators, emulators and connected Android devices; live video is experimental.
-- [Windows](windows.md): desktop-window captures and the Window panel, with the owner's consent.
-- [Virtual desktop](desktop.md): a private Linux desktop in memory where an agent runs GUI apps and drives them through their accessibility tree.
-- [Chat files and previews](chat-files.md): attachments, file links, inline previews and pages drawn in an answer.
-- [Diagrams and formulas](diagrams-and-formulas.md): Mermaid and LaTeX in messages.
-- [Experimental view kit](view-kit.md): an opt-in composition prototype and remaining authoring, runtime and publication improvements.
-- [The thread terminal](terminal.md): shells under the chat and interactive sign-ins.
-- [Reviewed goals](goals.md): `/goal2`, its fresh reviewer and the checklist of the user's requests.
-- [The project board](board.md): todo columns and reviewed `/goal2` work.
-- [Usage](usage.md): tokens, API estimates, subscription limits and quota alerts.
-- [Prompt cache timer](prompt-cache.md): experimental cache-lifetime estimates and their limits.
-- [Voice dictation](voice.md): local Whisper, API transcription and microphone access.
-- [Secrets](secrets.md): key-request cards, project secrets, vault storage and masking limits.
-- [Keyboard shortcuts](keybindings.md): defaults and customization.
-- [Pointer interactions](interactions.md): edge scrollbars and loading a thread on press.
-- [Titles](titles.md): automatic and manual conversation titles.
-- [Session import](imports.md): experimental import of a Claude Code conversation.
-- [Agent updates](agent-updates.md): CLI update notices, automatic updates and remote machines.
-- [Diagnostics](diagnostics.md): logs, anonymized exports and problem reports.
+## Conversations
 
-## Machines and bots
+- [Projects and conversations](conversations.md): projects, drafts, worktrees, titles and imports.
+- [Models](models.md): change agent, model, effort and speed inside a conversation.
+- [Permissions](permissions.md): what an agent may do without asking.
+- [Context](context.md): context usage, compaction, queued prompts and loops.
+- [Goals and the board](goals.md): long tasks an agent finishes alone, and the project board.
+- [Usage](usage.md): tokens, cost, subscription limits and alerts.
+- [Voice dictation](voice.md): speak a prompt.
+- [Secrets](secrets.md): give an agent a key without pasting it in chat.
+- [Keyboard shortcuts](shortcuts.md): the defaults and how to change them.
 
-- [Machines](machines.md): connect cores, switch between them and keep each thread on its owning machine.
-- [Groups](groups.md): one owner's machines and devices, invitations, addresses and trust.
-- [Contacts](contacts.md): experimental collaboration with another owner on explicitly shared projects.
-- [Agent coordination](coordination.md): messages between threads and machines, discussions and permissions.
-- [Bots](bots.md): experimental persistent agents with their own identity, thread, memory, desk and routines.
-- [Teams](teams.md): experimental groups of bots and the owner, routing by name, group or private posts, `boite team`.
-- [Agent brain](brain.md): shared instructions, skill discovery and Git synchronization.
-- [Agent hooks](hooks.md): hooks on each account and what they blocked.
-- [Plugins](plugins.md): install recommended plugins or a Git URL, and write your own.
-- [Task manager](trace.md#agent-task-manager): CPU, GPU, memory and storage across connected machines.
-- [Restart handoff](restart-handoff.md): how an update stops running agents and resumes them.
-- [Keeper](keeper.md): thread shells that outlive a core restart or update, and agent sessions on its pipes with committed offsets, behind `BOITE_KEEPER=1`.
+## Beside the chat
 
-## Technical reference
+- [The right panel](panel.md): changes, files, tasks and pull requests.
+- [Files and previews](files-and-previews.md): attachments, previews, diagrams and formulas.
+- [The terminal](terminal.md): a shell under the chat.
+- [The agent's browser](browser.md): let an agent use a web page, and watch it.
+- [Devices and desktops](devices.md): emulators, phones, windows and a virtual desktop.
+- [Task manager](task-manager.md): what each agent uses on each machine.
 
-- [Contributing](../CONTRIBUTING.md): setup and checks before a pull request.
-- [Development](development.md): local runs, test fixtures and captures.
-- [Adding an RPC method](development.md#adding-an-rpc-method): contracts, permissions and real/fake parity.
-- [Architecture](architecture.md): the core, clients, journal and drivers.
-- [State machines](state-machines.md): every machine's states, invariants and transitions, and the invalid ones an audit found reachable.
-- [Providers](providers.md): descriptors, protocols and supported capabilities, including experimental providers.
-- [Context modes](context-modes.md): instruction, guide, hook and tool isolation, with provider-specific support.
-- [The `boite` CLI](cli.md): commands an agent uses to reach its thread and panel.
-- [Process tracing](trace.md): process ownership, resource protection and platform limits.
-- [Platform readiness](portability.md): Linux and macOS installation checks and remaining desktop gaps.
-- [Performance](performance.md): payloads, startup behavior and dated benchmark results.
-- [Project icons](project-icons.md): image discovery, bounds and delivery to clients.
-- [Language](language.md): translation catalogs and adding a language.
-- [Analytics](analytics.md): telemetry consent, collected fields and data controls.
-- [Admin policy](enterprise.md): the machine-wide file that locks updates, providers, analytics and network features.
-- [Network flows](network.md): every outbound connection, what it sends and the policy key that blocks it.
-- [CI](ci.md): checks, caches, nightly builds and image publication.
-- [Releasing](releasing.md): artifacts, signing, channels and versioning.
-- [Release reports](releases/2.0.0-beta.1.md): the first beta's historical scope and measurements.
-- [Repository rules](../AGENTS.md): boundaries contributors must preserve.
+## Agents working together
+
+- [Subagents](subagents.md): let an agent delegate part of its work.
+- [Workflows](workflows.md): plans of delegated steps.
+- [The council](council.md): several models review one request.
+- [Bots](bots.md): persistent agents with memory and routines.
+- [Coordination](coordination.md): messages between agents.
+- [The brain](brain.md): instructions and skills shared by every agent.
+- [Plugins](plugins.md): add features to Boite.
+
+## Phones, machines and servers
+
+- [Phone](phone.md): pair a phone and follow your work from it.
+- [Machines](machines.md): connect several computers into one group.
+- [Server](server.md): run Boite without the desktop app.
+- [Contacts](contacts.md): work with another person's Boite.
+
+## Keeping it running
+
+- [Updates](updates.md): app updates and agent updates.
+- [Experiments](experiments.md): unfinished features you can turn on.
+- [Privacy and network](privacy.md): what leaves your machine, and how to block it.
+- [Troubleshooting](troubleshooting.md): logs and problem reports.
+
+## For contributors
+
+The [technical reference](internals/README.md) describes the architecture,
+the providers, the CLI, CI and releases. Start with
+[contributing](../CONTRIBUTING.md).

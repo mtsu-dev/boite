@@ -413,9 +413,9 @@ export class ThreadStore {
     }
   }
 
-  archive(threadId: ThreadId, archived: boolean, onlyIfIdle = false): ThreadSummary {
+  archive(threadId: ThreadId, archived: boolean, onlyIfIdle = false, plugin?: { pluginId: string; pluginName: string }): ThreadSummary {
     this.require(threadId);
-    if (archived && onlyIfIdle) assertIdleFamily(this.#core, threadId, 'explicit');
+    if (archived && onlyIfIdle) assertIdleFamily(this.#core, threadId, plugin ? 'automatic' : 'explicit');
     if (!archived && this.#removing.has(threadId)) throw refused('threadId: this conversation is being deleted', { threadId, field: 'threadId', expected: 'a conversation not being deleted' });
     const thread = this.require(threadId);
     // A subagent reopened by hand is not put away again for the work it already finished.
@@ -427,7 +427,9 @@ export class ThreadStore {
         this.#core.journal.setSetting(archiveStateKey(threadId), { ...state, reason: undefined, generation: state.generation + 1, dismissed, restoredCheckout: { projectId: thread.projectId, cwd: thread.cwd, branch: thread.branch } });
       } else {
         const state = archiveState(this.#core.journal, threadId);
-        if (state.reason) this.#core.journal.setSetting(archiveStateKey(threadId), { ...state, reason: undefined, generation: state.generation + 1 });
+        // A plugin's archive (threads/plugin-archive.ts) names it; any other drops an automatic one's reason.
+        const reason = plugin ? { type: 'plugin' as const, ...plugin, archivedAt: Date.now() } : undefined;
+        if (state.reason || reason) this.#core.journal.setSetting(archiveStateKey(threadId), { ...state, reason, generation: state.generation + 1 });
       }
       // Keep deletion retryable until staging commits its tombstone and clears this date.
       const doneAt = archived && (onlyIfIdle || this.#removing.has(threadId)) ? thread.doneAt ?? (onlyIfIdle ? Date.now() : null) : null;
@@ -613,7 +615,7 @@ export class ThreadStore {
     const clientRequestId = origin.requestId;
     const activity = origin.kind === 'goal' ? origin.activity : undefined;
     const startedBy = origin.kind === 'spawned' ? origin.startedBy : undefined;
-    const sentFrom = origin.kind === 'user' ? origin.sentFrom ?? null : null;
+    const { sentFrom = null, plugin: byPlugin = undefined } = origin.kind === 'user' ? origin : {};
     if (this.#core.stopping) throw refused('the core is stopping; reconnect before sending another prompt');
     let thread = requireAgent(this, threadId);
     this.codeCheckpoints.assertAvailable(thread.cwd);
@@ -702,7 +704,7 @@ export class ThreadStore {
       turnId: turn.id,
       role: systemOperation(operation) || automatic ? 'system' : 'user',
       parts: [
-        { type: 'text', text: previewPrompt(prompt, previewReferences), ...(previewReferences.length ? { displayText: prompt, previewReferences } : {}), ...(systemOperation(operation) ? { displayText: displayText ?? SYSTEM_LABEL[operation] } : {}), ...(automatic ? { displayText } : {}), ...(activity ? { activity } : {}), ...(moved ? { moved } : {}), ...(startedBy ? { displayText: displayText ?? prompt, startedBy } : {}), ...(sentFrom && !operation ? { sentFrom } : {}) },
+        { type: 'text', text: previewPrompt(prompt, previewReferences), ...(previewReferences.length ? { displayText: prompt, previewReferences } : {}), ...(systemOperation(operation) ? { displayText: displayText ?? SYSTEM_LABEL[operation] } : {}), ...(automatic ? { displayText } : {}), ...(activity ? { activity } : {}), ...(moved ? { moved } : {}), ...(startedBy ? { displayText: displayText ?? prompt, startedBy } : {}), ...(sentFrom && !operation ? { sentFrom } : {}), ...(byPlugin && !operation ? { byPlugin } : {}) },
         ...attachments.map((attachment): MessagePart => attachment.kind === 'file' ? { type: 'file', mimeType: attachment.mimeType, data: attachment.data, name: attachment.name } : ({
           type: 'image',
           mimeType: attachment.mimeType,
@@ -744,7 +746,7 @@ export class ThreadStore {
       // His own message, a resume or a parent's message to its subagent puts the agent back to work,
       // so a pause the core left on Stop, a failure or a restart ends with it; the owner's stays.
       if (!activity && !startedBy && (!operation || operation === 'resume' || (operation === 'delegation' && thread.parentThreadId))) this.#core.coordination.resumeForUser(threadId);
-      // `autoGoal`, the prompt as typed, may start an automatic goal (`docs/goals.md`); otherwise a `/goal2`'s checklist reads what the user adds, drops or changes.
+      // `autoGoal`, the prompt as typed, may start an automatic goal (`docs/internals/goals.md`); otherwise a `/goal2`'s checklist reads what the user adds, drops or changes.
       if (!activity && !operation && !startedBy && !nativeCommandPrompt(prompt) && !(autoGoal !== undefined && this.#core.activity.autoGoal(threadId, turn.id, message.id, autoGoal, executionChoice))) this.#core.activity.userMessage(threadId, prompt);
     });
     this.autoCompact.cancel(threadId);

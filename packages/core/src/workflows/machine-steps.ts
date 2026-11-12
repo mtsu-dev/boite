@@ -114,9 +114,18 @@ export class MachineWorkflowSteps {
     return true;
   }
 
+  /** Kept until it ends; a failure left over, as a step that could not be saved failed, is logged: an unhandled one would end the core. */
   #track(work: Promise<unknown>): void {
     this.#pending.add(work);
-    void work.finally(() => this.#pending.delete(work));
+    void work
+      .catch(error => this.#core.log('warn', `workflow step on another machine: ${messageOf(error)}`))
+      .finally(() => this.#pending.delete(work));
+  }
+
+  /** The checkpoints read for a step that ended: none of its turns is read again. */
+  #forget(runId: string, key: string): void {
+    const prefix = `${runId}:${key}:`;
+    for (const mark of this.#checkpoints) if (mark.startsWith(prefix)) this.#checkpoints.delete(mark);
   }
 
   /** Stops that subagent there, at once or, when no answer or report named it yet, as soon as one does, a restart here included. */
@@ -132,6 +141,7 @@ export class MachineWorkflowSteps {
     if (inst.machine.childId === null) this.#halt(run.rootThreadId, requestId);
     Object.assign(inst, { status: 'failed', error: error.slice(0, 500), finishedAt: Date.now() });
     this.#hooks.save(run);
+    this.#forget(runId, key);
     this.#hooks.advance(runId);
   }
 
@@ -234,6 +244,7 @@ export class MachineWorkflowSteps {
     const { accepted: _taken, ...machine } = inst!.machine;
     Object.assign(inst!, { machine: { ...machine, turnId: accepted.turnId }, result: accepted.result, output: accepted.output, status: 'done', finishedAt: Date.now() });
     this.#hooks.save(run!);
+    this.#forget(runId, key);
     this.#hooks.advance(runId);
   }
 
@@ -282,6 +293,7 @@ export class MachineWorkflowSteps {
     } else if (turn.status === 'stopped') Object.assign(inst!, { status: 'stopped', error: 'Stopped', finishedAt: now });
     else Object.assign(inst!, { status: 'failed', error: turn.error ?? 'The turn failed', finishedAt: now });
     this.#hooks.save(run!);
+    this.#forget(runId, key);
     this.#hooks.advance(runId);
   }
 
@@ -306,7 +318,10 @@ export class MachineWorkflowSteps {
 
   /** The subagents of a stopped run stop there, once that machine takes the stop; one whose start answer has not come yet, once its answer or a report names it. */
   stop(run: WorkflowRun): void {
-    for (const node of run.nodes) for (const inst of node.instances) if ((inst.status === 'running' || inst.status === 'waiting') && inst.machine) this.#halt(run.rootThreadId, inst.machine.requestId);
+    for (const node of run.nodes) for (const inst of node.instances) {
+      this.#forget(run.id, inst.key);
+      if ((inst.status === 'running' || inst.status === 'waiting') && inst.machine) this.#halt(run.rootThreadId, inst.machine.requestId);
+    }
   }
 
   beginClose(): void { this.#closed = true; this.#off(); }
