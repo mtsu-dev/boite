@@ -153,12 +153,12 @@ test("a real shell draws ANSI colours and a full-screen program edge to edge, an
     expect(await page.evaluate("document.querySelectorAll('[data-testid=terminal-pane]').length")).toBe(1);
     await page.screenshot("tests/e2e/.artifacts/terminal-render-tabs-phone.png");
 
-    // Appearance picks the cursor's shape, and a running screen takes it.
+    // Advanced picks the cursor's shape on a desktop (the redesign moved it from Appearance), and a running screen takes it.
     await page.send("Emulation.clearDeviceMetricsOverride", {});
     // A hidden window never has the focus, and xterm draws an unfocused cursor as an outline.
     await page.send("Emulation.setFocusEmulationEnabled", { enabled: true });
     await page.click("[data-testid=nav-settings]");
-    await page.click("[data-testid=settings-tab-appearance]");
+    await page.click("[data-testid=settings-tab-advanced]");
     await page.click("[data-testid=terminal-cursor-block]");
     await page.click("[data-testid=settings-back]");
     await page.click("[data-testid=terminal-drawer] .xterm-screen");

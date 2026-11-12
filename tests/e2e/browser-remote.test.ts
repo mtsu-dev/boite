@@ -152,7 +152,8 @@ test('with the live stream on in Experiments, Show plays the device as video on 
   await page.evaluate(`document.querySelector('${id('device-stream-settings')}').scrollIntoView({ block: 'center' })`);
   await capture('device-stream-settings-desktop.png');
   await page.click('[data-testid=settings-back]');
-  await page.waitFor(`document.querySelector('[data-thread-id="t-trace"]')`);
+  // Back on the thread's chat: its row may be gone, the docked panel takes the list's column on a desktop.
+  await page.waitFor(`${store}.page === 'chat' && ${store}.openThread?.id === 't-trace' && !!document.querySelector('[data-testid=chat]')`);
   for (const [width, height, name] of [[1280, 900, 'desktop'], [390, 844, 'phone']] as const) {
     await size(width, height);
     await page.evaluate(`${store}.client.call('devices.list', { threadId: 't-trace' }).then(list => ${store}.client.call('devices.open', { threadId: 't-trace', deviceId: list.devices.find(device => device.platform === 'android').id }))`);

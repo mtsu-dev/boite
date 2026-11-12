@@ -874,6 +874,8 @@
     .composer { --composer-cap: 45dvh; border-radius: var(--radius-xl); max-height: var(--composer-cap); }
     /* A question keeps its own cap, half the conversation (ThreadDecision), and the field and chips stay whole under it. */
     .composer:has(> :global(.deck > .thread-decision)) { max-height: none; }
+    /* So does an image the user enlarged: under the cap it pushed the field and chips off the screen. */
+    .composer:has(> :global(.image-preview)) { max-height: none; }
     .composer > :global(*) { flex: none; }
     .composer > :global(.deck) { flex: 0 1 auto; min-height: 0; }
     /* The microphone and send stand at the field's end (ComposerBar): its text, mirror and dictation preview stop short of them. */

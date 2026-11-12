@@ -869,7 +869,8 @@ shellTest('window controls draw maximize and restore without a second status ind
   try {
     expect(await page?.evaluate(`document.querySelectorAll('[data-testid=titlebar] .state').length`)).toBe(0);
     expect(await page?.evaluate(`document.querySelector('[data-testid=titlebar]').contains(document.querySelector('[data-testid=thread-title]'))`)).toBe(true);
-    expect(await page?.evaluate(`document.querySelector('[data-testid=titlebar]').getBoundingClientRect().height`)).toBe(44);
+    // The redesign's bar is 46 px (--titlebar in app.css), up from 44.
+    expect(await page?.evaluate(`document.querySelector('[data-testid=titlebar]').getBoundingClientRect().height`)).toBe(46);
     await page?.evaluate(`document.querySelector('[data-testid=thread-header] .spacer').dispatchEvent(new MouseEvent('mousedown', { bubbles:true, button:0, detail:1 }))`);
     await page?.waitFor(`window.__headerDrags === 1`);
     await page?.evaluate(`document.querySelector('[data-testid=thread-title]').dispatchEvent(new MouseEvent('mousedown', {bubbles:true,button:0,detail:1}))`);
@@ -940,12 +941,16 @@ shellTest('the machine picker opens a folder on the selected core and reports a 
     await page?.click(testid('thread-row'));
     await page?.waitFor(`document.querySelector('[data-testid=thread-title]')?.textContent.includes('shell turn')`);
     await remote.stop();
-    await page?.waitFor(`document.querySelector('[data-testid=status-connection]')?.classList.contains('problem')`);
+    // The redesign marks a machine out of reach with the offline ring on the rail's monitor, no red class.
+    await page?.waitFor(`document.querySelector('[data-testid=status-connection] [data-testid=machine-offline]')`);
     expect(await page?.evaluate(`document.querySelector('[data-testid=machine-status]').getAttribute('aria-label')`)).toContain('1 need attention');
     await page?.screenshot(join(import.meta.dir, '.artifacts', 'shell-machine-disconnected.png'));
     await page?.click(testid('nav-settings'));
     await page?.click(testid('settings-tab-machines'));
-    await page?.evaluate(`document.querySelector('[data-machine-id="${remote.url}"] [data-testid=machine-remove]').click()`);
+    // Removal is the last item of the machine's row menu since the redesign.
+    await page?.click(`[data-testid="machine-card"][data-machine-id="${remote.url}"] [data-testid=machine-menu]`);
+    await page?.waitFor(`document.querySelector('[data-testid=machine-remove]')`);
+    await page?.click(testid('machine-remove'));
     await page?.waitFor(`document.querySelector('${testid('confirm-ok')}')`);
     await page?.click(testid('confirm-ok'));
     await page?.click(testid('settings-back'));

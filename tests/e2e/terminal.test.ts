@@ -20,6 +20,15 @@ async function chord(page: BrowserPage, key: string, code: string, keyCode: numb
   await page.send("Input.dispatchKeyEvent", { type: "keyUp", ...base });
 }
 
+/** The terminal is a row of the panel's launcher since the header lost its own button. */
+async function toggleTerminal(page: BrowserPage): Promise<void> {
+  if (!await page.evaluate<boolean>('!!document.querySelector("[data-testid=panel-add]")')) await page.click("[data-testid=panel-toggle]");
+  await page.waitFor('document.querySelector("[data-testid=panel-add]")');
+  await page.click("[data-testid=panel-add]");
+  await page.waitFor('document.querySelector("[data-testid=panel-add-menu] [data-value=terminal-toggle]")');
+  await page.click("[data-testid=panel-add-menu] [data-value=terminal-toggle]");
+}
+
 const phone = { width: 390, height: 844, deviceScaleFactor: 1, mobile: true };
 
 test("Ctrl+J opens a shell under the thread, typing reaches it, and OpenCode signs in from one", async () => {
@@ -32,7 +41,7 @@ test("Ctrl+J opens a shell under the thread, typing reaches it, and OpenCode sig
   try {
     // Exercise normal motion independently of the host preference; reduced motion is checked below.
     await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
-    await page.waitFor('document.querySelector("[data-testid=terminal-toggle]")');
+    await page.waitFor('document.querySelector("[data-testid=panel-toggle]")');
     await settled(page);
     await page.evaluate(`(() => {
       document.documentElement.style.setProperty('--motion-duration', '1s');
@@ -153,7 +162,7 @@ test("Ctrl+J opens a shell under the thread, typing reaches it, and OpenCode sig
     await page.evaluate('document.documentElement.dataset.motion = "reduced"');
     await page.click('[data-testid=terminal-hide]');
     await page.waitFor('!document.querySelector("[data-testid=terminal-drawer]")');
-    await page.click('[data-testid=terminal-toggle]');
+    await toggleTerminal(page);
     await page.waitFor('document.querySelector("[data-testid=terminal-drawer] .xterm-rows")?.textContent.includes("git status")');
     expect(await page.evaluate(`parseFloat(getComputedStyle(document.querySelector('[data-testid=terminal-drawer]')).transitionDuration)`)).toBeLessThan(.01);
     await page.evaluate('delete document.documentElement.dataset.motion');
@@ -206,7 +215,7 @@ test("switching Stores with colliding terminal ids restores the owning screen an
     // Both public fake machines retain the same thread id and keep their own shell.
     for (let owner = 0; owner < 2; owner++) {
       await page.evaluate(`globalThis.__boiteTest.workspace.select(globalThis.__terminalOwners[${owner}], 't-trace')`);
-      await page.click('[data-testid=terminal-toggle]');
+      await toggleTerminal(page);
       await page.waitFor('document.querySelector("[data-testid=terminal-drawer] .xterm-rows")?.textContent.includes("PS ")');
       await settled(page);
       await page.evaluate(`document.querySelector('[data-testid=terminal-drawer] .terminal-screen').dataset.owner = '${owner}'`);

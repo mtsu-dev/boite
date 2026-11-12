@@ -23,8 +23,11 @@ test('queued prompts sit above the activity dock attached to the input', async (
       ], paused: true, sending: false };
     })()`);
     await page.waitFor(`document.querySelector('[data-testid="composer-queued"]')`);
+    // Answers lost their bubbles in the redesign: at 850 px the history no longer fills the list,
+    // and the gap would measure the empty room under it, so the window is short enough to overflow.
+    const HISTORY_FULL = 640;
     for (const width of [1300, 390]) {
-      await page.send('Emulation.setDeviceMetricsOverride', { width, height: 850, deviceScaleFactor: 1, mobile: width === 390 });
+      await page.send('Emulation.setDeviceMetricsOverride', { width, height: HISTORY_FULL, deviceScaleFactor: 1, mobile: width === 390 });
       await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
       await page.evaluate(`(() => { const timeline = document.querySelector('[data-testid="timeline"]'); timeline.scrollTop = timeline.scrollHeight; })()`);
       const gap = await page.evaluate<number>(`(() => {
@@ -58,7 +61,7 @@ test('queued prompts sit above the activity dock attached to the input', async (
     await page.evaluate(`globalThis.__boiteTest.workspace.active.composerStates['t-trace'].sending = false`);
     await page.evaluate(`globalThis.__boiteTest.workspace.active.openThread.activity = { goal: null, loop: null, tasks: [{ id: 'work', text: 'Keep the latest answer visible', status: 'in_progress' }] }`);
     for (const width of [1300, 390]) {
-      await page.send('Emulation.setDeviceMetricsOverride', { width, height: 850, deviceScaleFactor: 1, mobile: width === 390 });
+      await page.send('Emulation.setDeviceMetricsOverride', { width, height: HISTORY_FULL, deviceScaleFactor: 1, mobile: width === 390 });
       // The dock is the composer card's top row: the queue above the card clears it without a lift of its own.
       await page.waitFor(`(() => { const dock = document.querySelector('[data-testid="thread-activity"]'); return dock?.offsetHeight > 0 && dock.closest('[data-testid="composer"]') !== null; })()`);
       await page.evaluate(`(() => { const timeline = document.querySelector('[data-testid="timeline"]'); timeline.scrollTop = timeline.scrollHeight; })()`);

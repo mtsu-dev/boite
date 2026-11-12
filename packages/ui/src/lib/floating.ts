@@ -79,7 +79,8 @@ export function floating(node: HTMLElement, options: { anchor: () => HTMLElement
     // margin under it let the tab labels show through.
     if (sheet) {
       node.style.width = `${width}px`;
-      node.style.maxHeight = `${Math.max(0, height - margin * 2) * .85}px`;
+      // Whole pixels: offsetHeight rounds, and a fractional cap left the sheet short of the bottom edge.
+      node.style.maxHeight = `${Math.floor(Math.max(0, height - margin * 2) * .85)}px`;
       node.style.top = `${Math.max(offset + margin, offset + height - node.offsetHeight)}px`;
       node.style.left = '0px';
       node.style.transformOrigin = 'bottom center';

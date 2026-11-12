@@ -40,7 +40,8 @@ test('silent work has no typing bubble, live text stays visible, and receipts fo
   await update(`const answer = window.__answer; answer.parts = [{type:'text',text:''}]; answer.state = 'streaming'; thread.messages.push(answer);`);
   await page.waitFor(`document.querySelector('[data-role="assistant"]')`);
   expect(await page.evaluate(`document.querySelector('[data-testid="typing-indicator"]') === null`)).toBe(true);
-  expect(await page.evaluate(`document.querySelector('.answer-bubble') === null`)).toBe(true);
+  // Answers wear no bubble since the redesign: an empty answer draws no text yet.
+  expect(await page.evaluate(`!document.querySelector('[data-role="assistant"] [data-testid="text-part"]')?.textContent.trim()`)).toBe(true);
   await update(`thread.messages.at(-1).parts[0].text = 'A complete answer.';`);
   await page.waitFor(`document.querySelectorAll('.receipts .received').length === 2`);
   expect(await page.evaluate(`document.querySelector('[data-testid="paragraph"]') === null`)).toBe(true);
@@ -54,14 +55,15 @@ test('silent work has no typing bubble, live text stays visible, and receipts fo
   await page.evaluate(`document.documentElement.dataset.motion = 'reduced'`);
   expect(await page.evaluate(`getComputedStyle(document.querySelector('[data-testid="typing-dot"]')).animationName`)).toBe('none');
   await page.evaluate(`delete document.documentElement.dataset.motion`);
-  await page.evaluate(`Object.defineProperty(document,'hidden',{value:true,configurable:true}); document.dispatchEvent(new Event('visibilitychange'));`);
+  // The rest watcher reads visibilityState, so the page hides through both.
+  await page.evaluate(`Object.defineProperty(document,'hidden',{value:true,configurable:true}); Object.defineProperty(document,'visibilityState',{value:'hidden',configurable:true}); document.dispatchEvent(new Event('visibilitychange'));`);
   await page.waitFor(`getComputedStyle(document.querySelector('[data-testid="typing-dot"]')).animationPlayState === 'paused'`);
-  await page.evaluate(`delete document.hidden; document.dispatchEvent(new Event('visibilitychange'));`);
+  await page.evaluate(`delete document.hidden; delete document.visibilityState; document.dispatchEvent(new Event('visibilitychange'));`);
 
   await page.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
   await page.send('Emulation.setTouchEmulationEnabled',{enabled:true});
   await capture('quiet-chat-live-text-phone');
-  expect(await page.evaluate(`(() => { const bubble = document.querySelector('.answer-bubble').getBoundingClientRect(), composer = document.querySelector('[data-testid="composer"]').getBoundingClientRect(); return bubble.left >= 0 && bubble.right <= innerWidth && bubble.bottom <= composer.top; })()`)).toBe(true);
+  expect(await page.evaluate(`(() => { const bubble = document.querySelector('[data-role="assistant"] [data-testid="text-part"]').getBoundingClientRect(), composer = document.querySelector('[data-testid="composer"]').getBoundingClientRect(); return bubble.left >= 0 && bubble.right <= innerWidth && bubble.bottom <= composer.top; })()`)).toBe(true);
   await page.send('Emulation.setDeviceMetricsOverride',{width:1300,height:850,deviceScaleFactor:1,mobile:false});
   await page.send('Emulation.setTouchEmulationEnabled',{enabled:false});
   await update(`thread.messages.at(-1).parts[0].text += '\\n\\nStill **writing';`);
@@ -75,7 +77,7 @@ test('silent work has no typing bubble, live text stays visible, and receipts fo
   expect(await page.evaluate(`document.querySelector('.reply-pending') === null`)).toBe(true);
   expect(await page.evaluate(`document.querySelector('[data-testid="paragraph-pending"]').textContent`)).toBe('Still **writing');
   await update(`thread.messages.pop();`);
-  await page.waitFor(`document.querySelector('.answer-bubble [data-testid="typing-indicator"]')`);
+  await page.waitFor(`document.querySelector('[data-role="assistant"] [data-testid="typing-indicator"]')`);
   await update(`thread.status = 'waiting';`);
   await page.waitFor(`!document.querySelector('[data-testid="typing-indicator"]')`);
   await update(`thread.status = 'running'; thread.messages.at(-1).parts.push({type:'tool',toolId:'typing-tool',name:'Read',input:{file_path:'src/app.css'},output:null,status:'running'});`);
@@ -118,12 +120,14 @@ test('silent work has no typing bubble, live text stays visible, and receipts fo
   await capture('quiet-chat-done');
 }, 30000);
 test('context opens on hover, shows exact segments, and compaction needs its own click', async () => {
-  await update(`thread.context = {tokens:31000,window:200000,at:Date.now(),breakdown:{input:18000,cache:10000,output:3000}}; thread.sessionId = 'test-session'; window.__compactCalls = 0; store.compact = async () => {window.__compactCalls++;};`);
+  // The composer shows the context only from 70% used since the redesign.
+  await update(`thread.context = {tokens:151000,window:200000,at:Date.now(),breakdown:{input:118000,cache:30000,output:3000}}; thread.sessionId = 'test-session'; window.__compactCalls = 0; store.compact = async () => {window.__compactCalls++;};`);
+  await page.waitFor(`document.querySelector('[data-testid="context-meter"]')`);
   await page.evaluate(`document.querySelector('[data-testid="context-meter"]').dispatchEvent(new MouseEvent('mouseenter'))`);
   await page.waitFor(`document.querySelector('[data-testid="context-popup"]')`);
   expect(await page.evaluate(`window.__compactCalls`)).toBe(0);
   expect(await page.evaluate(`document.querySelectorAll('[data-testid="context-popup"] .bar span').length`)).toBe(3);
-  expect(await page.evaluate(`document.querySelector('[data-testid="context-popup"]').textContent.includes((31000).toLocaleString())`)).toBe(true);
+  expect(await page.evaluate(`document.querySelector('[data-testid="context-popup"]').textContent.includes((151000).toLocaleString())`)).toBe(true);
   await capture('quiet-context-desktop');
   await page.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
   await capture('quiet-context-phone');
@@ -140,13 +144,14 @@ test('context meter uses the auto-compaction threshold on desktop and phone', as
   await page.send('Emulation.setTouchEmulationEnabled',{enabled:false});
   await page.evaluate(`document.documentElement.dataset.theme = 'dark'`);
   await update(`thread.context = {tokens:212569,window:1000000,at:Date.now()}; thread.sessionId = 'test-session'; store.settings = {...store.settings,autoCompact:null};`);
-  await page.click('[data-testid="context-trigger"]');
-  await page.waitFor(`document.querySelector('[data-testid="context-popup"]')`);
-  expect(await page.evaluate(`document.querySelector('[data-testid="context-meter"]').dataset.percent`)).toBe('21');
+  // 21% of the model's window: the redesigned composer keeps the reading hidden below 70%.
+  await page.waitFor(`document.querySelector('[data-testid="context-meter"]') === null`);
   await capture('auto-compact-context-before-desktop');
   await update(`store.settings = {...store.settings,autoCompact:{tokens:250000,moments:['turn-end']}};`);
-  await page.waitFor(`document.querySelector('[data-testid="context-meter"]').dataset.percent === '85'`);
-  expect(await page.evaluate(`document.querySelector('[data-testid="context-popup"] .total .mono').textContent`)).toBe('212,569 / 250,000');
+  await page.waitFor(`document.querySelector('[data-testid="context-meter"]')?.dataset.percent === '85'`);
+  await page.click('[data-testid="context-trigger"]');
+  await page.waitFor(`document.querySelector('[data-testid="context-popup"]')`);
+  expect(await page.evaluate(`document.querySelector('[data-testid="context-popup"] .total .num').textContent`)).toBe('212,569 / 250,000');
   expect(await page.evaluate(`document.querySelector('[data-testid="context-remaining"]').textContent`)).toBe('37,431 tokens before auto-compaction');
   expect(await page.evaluate(`document.querySelector('[data-testid="context-popup"] .reading-detail').hidden`)).toBe(true);
   await capture('auto-compact-context-desktop');
@@ -173,7 +178,7 @@ test('context meter uses the auto-compaction threshold on desktop and phone', as
   await update(`thread.context = {...thread.context,tokens:100000,window:128000};`);
   await page.waitFor(`document.querySelector('[data-testid="context-meter"]').dataset.percent === '78'`);
   expect(await page.evaluate(`document.querySelector('[data-testid="context-auto-compact"]') === null`)).toBe(true);
-  expect(await page.evaluate(`document.querySelector('[data-testid="context-popup"] .total .mono').textContent`)).toBe('100,000 / 128,000');
+  expect(await page.evaluate(`document.querySelector('[data-testid="context-popup"] .total .num').textContent`)).toBe('100,000 / 128,000');
   expect(await page.evaluate(`document.querySelector('[data-testid="context-remaining"]').textContent`)).toBe('28,000 tokens available');
   await capture('auto-compact-context-smaller-model-phone');
   await page.send('Emulation.setDeviceMetricsOverride',{width:1300,height:850,deviceScaleFactor:1,mobile:false});
@@ -181,7 +186,7 @@ test('context meter uses the auto-compaction threshold on desktop and phone', as
   await update(`thread.context = {...thread.context,tokens:212569,window:0};`);
   await page.waitFor(`document.querySelector('[data-testid="context-auto-compact"]')?.textContent === 'Auto-compaction threshold.'`);
   expect(await page.evaluate(`document.querySelector('[data-testid="context-meter"]').dataset.percent`)).toBe('85');
-  expect(await page.evaluate(`document.querySelector('[data-testid="context-popup"] .total .mono').textContent`)).toBe('212,569 / 250,000');
+  expect(await page.evaluate(`document.querySelector('[data-testid="context-popup"] .total .num').textContent`)).toBe('212,569 / 250,000');
   await capture('auto-compact-context-unknown-window-desktop');
   await update(`store.settings = {...store.settings,autoCompact:null};`);
   await page.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`);
@@ -207,6 +212,8 @@ test('compaction stays distinct on desktop and phone, then yields to normal work
     expect(await page.evaluate(`(() => {const r=document.querySelector('[data-testid="turn-summary"]').getBoundingClientRect(); return r.left>=0 && r.right<=innerWidth;})()`)).toBe(true);
     await capture(phone ? 'compaction-phone' : 'compaction-desktop');
   }
+  // A phone tucks a settled line under a message it has not revealed; the desktop draws it at rest.
+  await page.send('Emulation.setDeviceMetricsOverride', {width:1280,height:900,deviceScaleFactor:1,mobile:false});
   await update(`thread.turns[0].status='done'; thread.turns[0].finishedAt=thread.turns[0].startedAt+11000; thread.status='idle';`);
   await page.waitFor(`!document.querySelector('[data-testid="turn-summary"].compacting')`);
   expect(await page.evaluate(`document.querySelector('[data-testid="turn-elapsed"]').textContent`)).toBe('Compacted in 11s');
@@ -259,11 +266,12 @@ test('running edits group by default and expose successful files and diffs on de
     expect(await page.evaluate(`document.querySelector('[data-testid="turn-summary"]') === null`)).toBe(true);
     expect(await page.evaluate(`document.querySelector('[data-testid="tool-group-toggle"]').getAttribute('aria-expanded')`)).toBe('false');
     expect(await page.evaluate(`document.querySelector('[data-testid="turn-files-toggle"]').getAttribute('aria-expanded')`)).toBe('false');
-    expect(await page.evaluate(`document.querySelector('[data-testid="turn-files-toggle"] .count').textContent`)).toBe('2');
+    // On the tool line the toggle reads the lines alone; the file count moved to its title.
+    expect(await page.evaluate(`document.querySelector('[data-testid="turn-files-toggle"]').title`)).toBe('Changed files: 2 files, +3 −2');
     expect(await page.evaluate(`document.querySelector('[data-testid="turn-files-tree"], [data-testid="diff-view"]') === null`)).toBe(true);
     expect(await page.evaluate(`document.querySelector('[data-testid="turn-diff-toggle"]').getAttribute('aria-expanded')`)).toBe('false');
     expect(await page.evaluate(`document.querySelector('[data-testid="turn-files"] header .added').textContent`)).toBe('+3');
-    expect(await page.evaluate(`document.querySelector('[data-testid="turn-files"] header .removed').textContent`)).toBe('-2');
+    expect(await page.evaluate(`document.querySelector('[data-testid="turn-files"] header .removed').textContent`)).toBe('−2');
     await capture('running-edits-desktop');
     await page.send('Emulation.setDeviceMetricsOverride', {width:390,height:844,deviceScaleFactor:1,mobile:true});
     await capture('running-edits-phone');
@@ -278,7 +286,8 @@ test('running edits group by default and expose successful files and diffs on de
     await page.click('[data-testid="turn-files-toggle"]');
     await page.waitFor(`document.querySelectorAll('[data-testid="turn-file"]').length === 2`);
     expect(await page.evaluate(`Array.from(document.querySelectorAll('[data-testid="turn-file"] .name')).map(node => node.textContent)`)).toEqual(['a.ts', 'b.ts']);
-    expect(await page.evaluate(`Array.from(document.querySelectorAll('[data-testid="turn-files-tree"] .row')).map(node => [node.querySelector('.name').textContent,node.querySelector('.added').textContent,node.querySelector('.removed').textContent])`)).toEqual([['a.ts', '+2', '-2'], ['b.ts', '+1', '-0']]);
+    // The shared change count leaves a side with nothing on it out ("+1", never "+1 -0").
+    expect(await page.evaluate(`Array.from(document.querySelectorAll('[data-testid="turn-files-tree"] .row')).map(node => [node.querySelector('.name').textContent,node.querySelector('.lines').textContent])`)).toEqual([['a.ts', '+2 −2'], ['b.ts', '+1']]);
 
     await update(`const {setChatPref} = await import('/src/lib/chat-prefs.svelte.ts'); setChatPref('expandDiffs',true);`);
     await page.waitFor(`document.querySelectorAll('[data-testid="turn-diff"] [data-testid="diff-view"]').length === 3`);
@@ -298,7 +307,7 @@ test('running edits group by default and expose successful files and diffs on de
     await update(`thread.turns[0].status='done';thread.turns[0].finishedAt=Date.now();thread.status='idle';thread.messages.at(-1).state='complete';`);
     await page.waitFor(`document.querySelector('[data-testid="turn-summary"]').dataset.status === 'done'`);
     expect(await page.evaluate(`document.querySelectorAll('[data-testid="turn-files"]').length`)).toBe(1);
-    expect(await page.evaluate(`document.querySelector('[data-testid="turn-files-toggle"] .count').textContent`)).toBe('2');
+    expect(await page.evaluate(`document.querySelector('[data-testid="turn-files-toggle"]').title`)).toBe('Changed files: 2 files, +3 −2');
   } finally {
     await update(`const {setChatPref} = await import('/src/lib/chat-prefs.svelte.ts'); for (const [key,value] of Object.entries(window.__savedChatPrefs)) setChatPref(key,value);`);
   }

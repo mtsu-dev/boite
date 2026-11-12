@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp.ts';
 import { startUi } from './lib/ui.ts';
+import { railBot } from './lib/bots.ts';
 
 let page: BrowserPage;
 let server: { close(): Promise<void> };
@@ -47,6 +48,8 @@ test('an agent entrusted with a project shows on its threads, and opens its conv
     await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
     await page.waitFor(`!document.querySelector('${menu}')`);
   };
+  // The menu lists the bots the directory read when it opened: wait for its reread after the save, which draws the bot's rail pin.
+  await page.waitFor(`document.querySelector('${railBot(ids.agent)}')`, 10_000);
   await openGroup();
   // The row shows what it does, with the bot's name; the sentence stays in its tooltip.
   expect(await page.evaluate(`document.querySelector('${chip}').title`)).toBe(`Looked after by ${ids.name}`);

@@ -153,6 +153,9 @@ test.skipIf(process.platform !== 'win32' || !executable)('in the desktop app, th
     await command({ kind: 'evaluate', expression: 'globalThis.persistenceMarker = "same live page"' }, tabId);
     const original = await session.client.call('threads.get', { threadId: session.threadId });
     const other = await session.client.call('threads.create', { projectId: original.projectId!, providerId: original.providerId, accountId: original.accountId, title: 'Another conversation' });
+    // The docked browser panel takes the list's column on a desktop; the title bar's toggle lends it back.
+    await page.waitFor(`document.querySelector('[data-testid=sidebar-toggle]')`);
+    if (await page.evaluate<boolean>(`document.querySelector('[data-testid=sidebar-toggle]').getAttribute('aria-expanded') !== 'true'`)) await page.click('[data-testid=sidebar-toggle]');
     await page.waitFor(`document.querySelector('[data-testid=thread-row][data-thread-id="${other.id}"]')`);
     await page.click(`[data-testid=thread-row][data-thread-id="${other.id}"]`);
     await page.waitFor(`document.querySelector('[data-testid=thread-row][data-thread-id="${other.id}"]')?.closest('.thread')?.classList.contains('open')`);

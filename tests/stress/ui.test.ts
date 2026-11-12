@@ -33,6 +33,9 @@ async function exercise(revisit: boolean): Promise<void> {
     page = await BrowserPage.launch({ url: pairingUrlOf(core), windowSize: { width: 1440, height: 1000 } });
     await page.waitFor(`document.querySelector('[data-testid=status-connection]')?.dataset.state === 'ready'`, 30_000);
     await page.waitFor(`document.querySelector('[data-testid=thread-row]')`, 30_000);
+    // The project folds its quiet threads under one row; unfolded, all 1000 stay in the list's model.
+    await page.click('[data-testid=sidebar] [data-testid=project-more][aria-expanded=false]');
+    await page.waitFor(`document.querySelector('[data-testid=sidebar] [data-testid=project-more]')?.getAttribute('aria-expanded') === 'true'`);
     assert.equal((await client.call('threads.list', { projectId: project.id })).length, 1000);
     const mountedRows = await page.evaluate<number>(`document.querySelectorAll('[data-testid=thread-row]').length`);
     assert(mountedRows < 100, `mounted ${mountedRows} rows instead of a viewport`);
@@ -116,12 +119,18 @@ async function exercise(revisit: boolean): Promise<void> {
     assert.equal(await page.evaluate(`document.querySelector('[data-testid=composer-input]').value`), 'phone draft survives');
     await page.click('[data-testid=mobile-back]');
     await page.waitFor(`document.querySelector('[data-testid=mobile-list]')`);
+    // The phone folds the same quiet threads: unfold them so the count measures its virtual list.
+    await page.evaluate(`document.querySelector('[data-testid=mobile-list] [data-testid=project-more][aria-expanded=false]')?.click()`);
+    await page.waitFor(`!document.querySelector('[data-testid=mobile-list] [data-testid=project-more][aria-expanded=false]')`);
     assert((await page.evaluate<number>(`document.querySelectorAll('[data-testid^=mobile-thread-]:not([data-testid^=mobile-thread-menu-])').length`)) < 100);
+    // The magnifier opens the search field in the title's place.
+    await page.click('[data-testid=mobile-search-open]');
     await page.type('[data-testid=mobile-search]', 'foreground survives load');
     await page.click(`[data-testid=mobile-thread-${selected.id}]`);
     await page.waitFor(`document.querySelector('[data-testid=composer-input]')?.value === 'phone draft survives'`);
     await page.evaluate(`new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
-    await page.evaluate(`Promise.all(document.getAnimations().filter(a => a.effect?.getComputedTiming().iterations !== Infinity)
+    // Scroll-driven animations (the redesign's list edges) never finish: only time-based ones are awaited.
+    await page.evaluate(`Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getComputedTiming().iterations !== Infinity)
       .map(a => a.finished.catch(() => undefined)))`);
     await page.screenshot(join(artifacts, 'phone.png'));
     assert.equal((await client.call('threads.list', { projectId: project.id })).length, 1000);
