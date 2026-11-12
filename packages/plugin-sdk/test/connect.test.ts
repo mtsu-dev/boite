@@ -27,6 +27,13 @@ function fakeCore(options: { protocolVersion?: number; bigTitle?: number; eventB
           ws.send(JSON.stringify({ jsonrpc: '2.0', method: 'thread.created', params: { id: 'thr_new' } }));
           return;
         }
+        if (frame.method === 'plugins.settings.get') {
+          // As the core sends it: another plugin's change first (only an owner token hears those), then this one's.
+          ws.send(JSON.stringify({ jsonrpc: '2.0', method: 'plugin.settings.changed', params: { id: 'other', values: { tone: 'loud' } } }));
+          ws.send(JSON.stringify({ jsonrpc: '2.0', method: 'plugin.settings.changed', params: { id: 'standup', values: { tone: 'short' } } }));
+          answer({ result: { tone: 'short' } });
+          return;
+        }
         if (frame.method === 'threads.list') {
           if (options.eventBeforeList) ws.send(JSON.stringify({ jsonrpc: '2.0', method: 'thread.created', params: { id: 'thr_event' } }));
           answer({ result: [{ id: 'thr_1', title: 'x'.repeat(options.bigTitle ?? 1) }] });
@@ -110,6 +117,27 @@ describe('connect', () => {
       console.error = error;
       client.close();
     }
+  });
+
+  test('settings() reads the plugin\'s own id and onSettingsChanged hears only its own changes', async () => {
+    core = fakeCore();
+    const client = await connect({ env: { BOITE_CORE_URL: core.url, BOITE_TOKEN: 'tok', BOITE_PLUGIN_ID: 'standup' } });
+    const heard: unknown[] = [];
+    const stop = client.onSettingsChanged(values => heard.push(values));
+    expect(await client.settings()).toEqual({ tone: 'short' });
+    expect(core.frames[1]).toEqual({ jsonrpc: '2.0', id: 2, method: 'plugins.settings.get', params: { id: 'standup' } });
+    expect(heard).toEqual([{ tone: 'short' }]);
+    stop();
+    await client.settings();
+    expect(heard).toHaveLength(1);
+    client.close();
+  });
+
+  test('settings() outside a plugin\'s process says which id is missing', async () => {
+    core = fakeCore();
+    const client = await connect({ url: core.url, token: 'tok', env: {} });
+    expect(await failure(client.settings())).toContain('BOITE_PLUGIN_ID is not set');
+    client.close();
   });
 
   test('another protocol version is refused by name', async () => {

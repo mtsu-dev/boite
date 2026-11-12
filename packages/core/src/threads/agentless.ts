@@ -1,5 +1,5 @@
 /**
- * A team chat (`docs/teams.md`) and a council's salon (`docs/council.md`) run
+ * A team chat (`docs/internals/teams.md`) and a council's salon (`docs/internals/council.md`) run
  * no agent. Every call that would reach a provider on a thread takes it
  * through here: turns, steering, recovery, titles, compaction, rewind, fork,
  * move, side requests, selection and goals.

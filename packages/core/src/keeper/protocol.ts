@@ -137,19 +137,41 @@ export function keeperTokenPath(dataDir: string): string {
 /**
  * Splits a byte stream into lines. A frame cut between two reads waits for its
  * end; a line longer than `max`, whole or not, is refused rather than buffered forever.
+ *
+ * Each chunk is scanned once: the part of a line still waiting for its break is
+ * kept as pieces and joined once, when the break comes. Joining it to a held
+ * string and splitting that again on every read rescanned a long frame once per chunk.
  */
 export class LineReader {
-  #held = '';
+  #pieces: string[] = [];
+  #pending = 0;
   readonly #decoder = new TextDecoder();
 
   constructor(private readonly max = 64 * 1024 * 1024) {}
 
   push(chunk: Uint8Array): string[] {
-    this.#held += this.#decoder.decode(chunk, { stream: true });
-    const lines = this.#held.split('\n');
-    this.#held = lines.pop() ?? '';
-    if (this.#held.length > this.max || lines.some((line) => line.length > this.max)) throw new Error(`a keeper frame passed ${this.max} bytes without a line break`);
-    return lines.filter((line) => line.length > 0);
+    const text = this.#decoder.decode(chunk, { stream: true });
+    const lines: string[] = [];
+    let start = 0;
+    for (let at = text.indexOf('\n'); at >= 0; at = text.indexOf('\n', start)) {
+      const piece = text.slice(start, at);
+      this.#within(this.#pending + piece.length);
+      const line = this.#pieces.length === 0 ? piece : this.#pieces.join('') + piece;
+      this.#pieces = [];
+      this.#pending = 0;
+      if (line.length > 0) lines.push(line);
+      start = at + 1;
+    }
+    if (start < text.length) {
+      this.#pending += text.length - start;
+      this.#within(this.#pending);
+      this.#pieces.push(text.slice(start));
+    }
+    return lines;
+  }
+
+  #within(length: number): void {
+    if (length > this.max) throw new Error(`a keeper frame passed ${this.max} bytes without a line break`);
   }
 }
 

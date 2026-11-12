@@ -14,7 +14,7 @@
  * manual pairing link for everything else. A removal is known to each member
  * when it hears of it: until then that member still treats the removed machine
  * as one of the group, with everything that grants. Once a member has heard, a
- * removed machine comes back only through a new invitation (docs/groups.md).
+ * removed machine comes back only through a new invitation (docs/internals/groups.md).
  *
  * What members say to each other is signed and sealed to the recipient
  * (`group/seal.ts`), whatever network carries it. What a client says to a core

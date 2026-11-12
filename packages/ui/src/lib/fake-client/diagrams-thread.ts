@@ -5,7 +5,7 @@ import { T0 } from './shared';
  * A thread whose answer holds what `lib/rich-markdown.ts` draws: a flowchart,
  * a sequence diagram, formulas in the line and on their own, a diagram that
  * does not parse, a price that stays text and a ```view block's simulator.
- * `?fake=1&diagrams=1` seeds it for the captures of docs/diagrams-and-formulas.md.
+ * `?fake=1&diagrams=1` seeds it for the captures of docs/internals/diagrams-and-formulas.md.
  */
 export function diagramsThread(): Thread {
   const at = T0 + 1_200_000;

@@ -62,7 +62,7 @@ export function cliOptions(ctx: SessionContext, host: OptionsHost, lazyMcp: Reco
     // Subagents in Boite are Boite conversations (`boite delegate spawn`), so the user
     // can follow, steer and stop them; the CLI's own subagent tools never reach the model.
     disallowedTools: [...NATIVE_SUBAGENT_TOOLS],
-    // A context mode: what the conversation starts without (docs/context-modes.md).
+    // A context mode: what the conversation starts without (docs/internals/context-modes.md).
     ...(mode?.tools ? { tools: [...mode.tools] } : {}),
     ...(mode && !mode.mcp ? { strictMcpConfig: true, mcpServers: {} } : {}),
     // A server given here replaces the user's own of the same name, which then never starts.

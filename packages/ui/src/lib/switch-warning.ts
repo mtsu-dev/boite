@@ -20,7 +20,7 @@ export interface CacheKey {
 
 /**
  * Another account means a new native session, which receives bounded excerpts
- * of the conversation (`docs/model-switching.md`), not what the old one held.
+ * of the conversation (`docs/internals/model-switching.md`), not what the old one held.
  * On a long thread that is most of it, so the user is asked first.
  */
 export function switchDropsHistory(thread: Pick<ThreadSummary, 'accountId' | 'context'>, accountId: string): boolean {
@@ -31,7 +31,7 @@ export function switchDropsHistory(thread: Pick<ThreadSummary, 'accountId' | 'co
  * Within one account the session survives a change of model, effort or speed,
  * but the provider's prompt cache may not: measured on 2026-09-22, a model
  * change misses on Claude, and an effort change misses on Codex at every level
- * and on Claude Sonnet 5 (`docs/model-switching.md`). The next turn then sends
+ * and on Claude Sonnet 5 (`docs/internals/model-switching.md`). The next turn then sends
  * the whole thread uncached, so a long thread with a warm cache asks first.
  * Codex service tiers leave the prompt unchanged. Claude keeps its fast-mode
  * header when returning to standard; enabling it can add that header for the

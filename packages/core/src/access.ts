@@ -48,14 +48,17 @@
  * it lies; no RPC changes it, only an administrator editing the file.
  */
 
-import { AGENT_EVENTS, AGENT_METHODS, accessRefusal, DEVICE_EVENTS, DEVICE_METHODS, mayHearEvent, type RpcEventName, type RpcMethodName } from '@boite/contracts';
+import { AGENT_EVENTS, AGENT_METHODS, accessRefusal, DEVICE_EVENTS, DEVICE_METHODS, mayHearEvent, PLUGIN_SELF_EVENTS, type RpcEventName, type RpcMethodName } from '@boite/contracts';
 import { refused } from './errors.ts';
 import type { Connection } from './router.ts';
 
 export { AGENT_EVENTS, AGENT_METHODS, DEVICE_EVENTS, DEVICE_METHODS };
 
-export function mayReceiveEvent(name: RpcEventName, connection: Connection): boolean {
-  return mayHearEvent(name, connection.identity.principal, connection.identity.permissions);
+/** Whether the connection hears the event; a plugin hears its own settings change, never another plugin's. */
+export function mayReceiveEvent(name: RpcEventName, connection: Connection, payload?: unknown): boolean {
+  const { principal, permissions, pluginId } = connection.identity;
+  if (!mayHearEvent(name, principal, permissions)) return false;
+  return !(principal === 'plugin' && PLUGIN_SELF_EVENTS.has(name) && (payload as { id?: unknown } | null | undefined)?.id !== pluginId);
 }
 
 /** Throws unless the connection may call the method, naming the method. */

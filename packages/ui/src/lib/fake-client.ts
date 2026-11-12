@@ -36,7 +36,7 @@ import {
   type ThreadWorktreeRemoval,
   type TeamPostRef,
 } from '@boite/contracts';
-import { RpcFailure, type CallOptions, type ClientState, type EventHandler, type ObservableClient } from './client';
+import { RpcFailure, type CallOptions, type ClientState, type EventHandler, type FrameSocket, type ObservableClient } from './client';
 import { closedFailure } from './rpc-error';
 import { accountMethods } from './fake-client/accounts';
 import { activityMethods, pauseActivity } from './fake-client/activity';
@@ -128,7 +128,7 @@ export class FakeClient implements ObservableClient {
     this.#ctx = ctx;
     this.#methods = this.#answer(ctx);
     this.#missing = new Set(options.missing ?? []);
-    ctx.core.features = { ...ctx.core.features, composerPersistence: !this.#missing.has('composer.list'), listChanges: !this.#missing.has('threads.listChanges'), streamChannels: true };
+    ctx.core.features = { ...ctx.core.features, composerPersistence: !this.#missing.has('composer.list'), listChanges: !this.#missing.has('threads.listChanges'), streamChannels: true, browserStream: !this.#missing.has('browser.remoteStream') };
     this.#agentSettings = agentSettingMethods(ctx);
     registerCore(ctx);
     seed(ctx);
@@ -288,6 +288,11 @@ export class FakeClient implements ObservableClient {
       .finally(() => { this.#doneSweep = null; });
   }
 
+  /** The in-memory socket of a path `browser.remoteStream` answered. */
+  frames(path: string): FrameSocket {
+    return this.#ctx.browserFrames!.open(path);
+  }
+
   onState(handler: (state: ClientState) => void): () => void {
     return this.#ctx.bus.onState(handler);
   }
@@ -312,6 +317,7 @@ export class FakeClient implements ObservableClient {
     this.#stopWorking();
     closeSideQuestions(ctx);
     closeSecrets(ctx);
+    ctx.browserFrames?.close();
     this.#stopLoad();
     ctx.agents.close();
     unregisterCore(ctx);

@@ -182,6 +182,29 @@ test('a remote child whose first turn cannot start fails the step instead of wai
   expect(run(started.id).nodes[0]!.instances[0]).toMatchObject({ status: 'failed', machine: { childId: onPc()[0]!.id } });
 });
 
+test('a remote step whose failure cannot be saved is logged, and does not leave an unhandled rejection that would end the core', async () => {
+  scripted(() => 'ok');
+  const { desk, owner, threadId, machine } = await setup();
+  const unhandled: unknown[] = [];
+  const onUnhandled = (reason: unknown) => { unhandled.push(reason); };
+  process.on('unhandledRejection', onUnhandled);
+  restores.push(() => { process.off('unhandledRejection', onUnhandled); });
+  // The start fails there, then saving that failure here fails once.
+  let broken = false;
+  const spawn = spyOn(desk.core.delegation.remote, 'spawn').mockImplementation(async () => { broken = true; throw new Error('start refused'); });
+  const append = desk.core.journal.append.bind(desk.core.journal);
+  const write = spyOn(desk.core.journal, 'append').mockImplementation((event, apply) => {
+    if (broken && event.type === 'workflow.changed') { broken = false; throw new Error('disk full'); }
+    return append(event, apply);
+  });
+  const log = spyOn(desk.core, 'log');
+  restores.push(() => { spawn.mockRestore(); write.mockRestore(); log.mockRestore(); });
+  await owner.call('workflows.start', { threadId, requestId: 'unsaved-1', plan: { name: 'Unsaved', steps: [{ id: 'far', machine, project: 'notes', task: 'Read.' }] } });
+  await waitFor(() => log.mock.calls.some(([level, message]) => level === 'warn' && message.includes('disk full')));
+  await Bun.sleep(10);
+  expect(unhandled).toEqual([]);
+});
+
 for (const restart of [false, true]) test(`stopping the run${restart ? ' after a caller restart' : ''} stops its step on the other machine`, async () => {
   const { held } = scripted(prompt => (prompt.includes('step slow') ? null : 'ok'));
   const deskDir = restartable();

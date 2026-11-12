@@ -1,6 +1,6 @@
 /**
  * `boite team`: a bot posts in the teams it belongs to, reads them, and
- * proposes a team, an invitation or its leaving on a card (`docs/teams.md`).
+ * proposes a team, an invitation or its leaving on a card (`docs/internals/teams.md`).
  */
 import type { Team, TeamPost } from '@boite/contracts';
 import type { CoreClient } from './client.ts';

@@ -134,7 +134,7 @@ jobs:
         run: gh api "repos/$GITHUB_REPOSITORY/git/refs" --method POST -f "ref=refs/tags/$RELEASE_TAG" -f "sha=$NIGHTLY_SHA"
 
   # Signed for the phone app's own address, or the previous release's APK taken
-  # back when apps/android, the host and the key are unchanged (docs/android.md).
+  # back when apps/android, the host and the key are unchanged (docs/internals/android.md).
   # The app's version is its own, not this release's.
   android:
     name: Android
@@ -150,7 +150,7 @@ jobs:
 
   # Boite Server, signed with the same key, or the previous release's APK taken
   # back when apps/android-server outside termux/ and the key are unchanged
-  # (docs/android-server.md). Its version is its own too.
+  # (docs/internals/android-server.md). Its version is its own too.
   android-server:
     name: Android server
     needs: [ci, revision]

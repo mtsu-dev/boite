@@ -5,7 +5,7 @@
  * through the launcher onto the hidden desktop on Windows, and on macOS only
  * against the apps the conversation started (desktop/scope.ts).
  * The agent-desktop is the pinned build the core installs (desktop.tool), or
- * one on the agent's PATH when that install is refused. See docs/desktop.md.
+ * one on the agent's PATH when that install is refused. See docs/internals/desktop.md.
  */
 import { RpcErrorCode, VIRTUAL_DESKTOP_SIZE, type VirtualDesktopApp, type VirtualDesktopSession, type VirtualDesktopSupport } from '@boite/contracts';
 import type { CoreClient } from './client.ts';

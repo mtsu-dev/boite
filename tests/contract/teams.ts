@@ -1,4 +1,4 @@
-/** Teams of bots behind their experiment behave alike on the real core and the in-memory transport (`docs/teams.md`). */
+/** Teams of bots behind their experiment behave alike on the real core and the in-memory transport (`docs/internals/teams.md`). */
 import { RpcErrorCode, type AgentProfile } from '../../packages/contracts/src/index.ts';
 import type { ContractEnv, Scenario } from './scenarios.ts';
 

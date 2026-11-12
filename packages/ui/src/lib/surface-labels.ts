@@ -51,6 +51,7 @@ export function kindName(kind: SurfaceKind): string {
   if (kind === 'file') return strings.rightPanel.file;
   if (kind === 'tasks') return strings.rightPanel.tasks;
   if (kind === 'council') return strings.council.salon;
+  if (kind === 'plugin') return strings.pluginUi.tab;
   return strings.rightPanel.trace;
 }
 
@@ -61,7 +62,7 @@ export function kindName(kind: SurfaceKind): string {
  * the trace read what only the owner may ask for.
  */
 export function available(kind: SurfaceKind, inShell: boolean, owner: boolean): boolean {
-  if (kind === 'desk' || kind === 'agents' || kind === 'messages' || kind === 'changes' || kind === 'files' || kind === 'file' || kind === 'device' || kind === 'window' || kind === 'agent-browser' || kind === 'council') return true;
+  if (kind === 'desk' || kind === 'agents' || kind === 'messages' || kind === 'changes' || kind === 'files' || kind === 'file' || kind === 'device' || kind === 'window' || kind === 'agent-browser' || kind === 'council' || kind === 'plugin') return true;
   return kind === 'browser' ? inShell : owner;
 }
 
@@ -73,6 +74,8 @@ export function unavailable(): string {
 export function label(surface: Surface): string {
   // A file tab reads as its name; the whole path is its tooltip.
   if (surface.kind === 'file') return surface.path ? baseName(surface.path) : strings.rightPanel.file;
+  // A plugin tab reads as its script titled it, stored so it still reads so before the script loads.
+  if (surface.kind === 'plugin') return surface.title ?? strings.pluginUi.tab;
   if (surface.kind !== 'browser') return kindName(surface.kind);
   if (surface.title) return surface.title;
   if (surface.url) {

@@ -4,7 +4,7 @@ import { renderMarkdown } from './markdown';
 import { paragraphBlocks } from './message-display';
 
 // These replaced regex lookbehinds, which Safari before 16.4 cannot parse
-// (docs/phone.md). Each case is one the lookbehind decided.
+// (docs/internals/phone.md). Each case is one the lookbehind decided.
 
 test('lines keep their breaks and a trailing break adds no empty line', () => {
   expect(paragraphBlocks('', false)).toEqual([]);

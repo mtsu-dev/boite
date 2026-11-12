@@ -127,7 +127,7 @@ export function nestedTickViolations(sources: Map<string, string>): string[] {
   return nestedTickSites(sources).map(site =>
     `${site}: a rejects or resolves matcher runs a nested event loop tick under bun test, which drops socket events on macOS; ` +
     'await the promise, then match with thrown() or rejection() from packages/core/test/settle.ts ' +
-    '(docs/development.md#promise-matchers-under-bun-test)');
+    '(docs/internals/development.md#promise-matchers-under-bun-test)');
 }
 
 export function readBunTestSources(roots = BUN_TEST_ROOTS): Map<string, string> {

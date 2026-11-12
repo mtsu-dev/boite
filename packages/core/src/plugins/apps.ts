@@ -5,7 +5,7 @@
  * token for a schema 1 desktop app, the plugin's own (plugins/tokens.ts) for
  * schema 2. The core starts it, stops it and relaunches it when it crashes. A
  * service is the same process with no window, so it also runs on a core with
- * no desktop. docs/plugins.md describes the contract an app answers.
+ * no desktop. docs/internals/plugins.md describes the contract an app answers.
  *
  * Whether the owner wants the app running is `enabled`, kept in `app.json`
  * beside `installed.json`, and whether it starts with the core is

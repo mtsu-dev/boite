@@ -4,7 +4,7 @@ import { expect, test } from 'vitest';
 
 /**
  * Two costs a frame pays for as long as they are on screen, found the hard
- * way (docs/performance.md, "What a frame costs"): a backdrop blur is redrawn
+ * way (docs/internals/performance.md, "What a frame costs"): a backdrop blur is redrawn
  * whenever anything under it moves, so a window-wide one under a streaming
  * answer drew 11 fps instead of 58; and an endless animation of anything but
  * opacity or a transform repaints on every frame it runs.

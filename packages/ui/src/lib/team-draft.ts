@@ -1,5 +1,5 @@
 /*
- * A team written by hand (`docs/teams.md`, In the app): the bots the dialog
+ * A team written by hand (`docs/internals/teams.md`, In the app): the bots the dialog
  * offers, why one cannot join, the checks the core makes before it, and the
  * calls that create the team or bring an existing one to what was written.
  * The members are bots of the machine that holds the team and of the other

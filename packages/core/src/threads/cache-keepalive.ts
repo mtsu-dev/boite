@@ -25,7 +25,7 @@ interface Wait {
 }
 
 /**
- * The `cacheKeepalive` setting at work (`docs/prompt-cache.md`, "Keeping the
+ * The `cacheKeepalive` setting at work (`docs/internals/prompt-cache.md`, "Keeping the
  * cache warm"). A thread of the user's that finishes a turn while its
  * delegated agents or workflows still run starts a wait. Shortly before its
  * prompt cache lapses, a minimal automatic turn reads the cached prefix again

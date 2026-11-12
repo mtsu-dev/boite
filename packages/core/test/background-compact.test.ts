@@ -294,6 +294,9 @@ describe('background compaction', () => {
 
   test('a copy past its time is dropped at its deadline, and the success it reports later is thrown away', async () => {
     BACKGROUND_COMPACT.timeoutMs = 80;
+    // One failure is the thread's last here: a turn still under the limit 80 ms after its copy began,
+    // on a slow runner, would start the second copy the thread is otherwise allowed.
+    BACKGROUND_COMPACT.maxFailures = 1;
     const copy = heldCopy();
     const client = await h.connect();
     try {

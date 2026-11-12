@@ -1,5 +1,5 @@
 /**
- * Plays a device's live stream (`devices.stream`, docs/devices.md "Live
+ * Plays a device's live stream (`devices.stream`, docs/internals/devices.md "Live
  * stream") onto a canvas with WebCodecs. The core long-polls H.264 access
  * units; each key frame carries its SPS and PPS, so a decoder configured with
  * the codec string alone starts from any key frame. Whenever the stream cannot

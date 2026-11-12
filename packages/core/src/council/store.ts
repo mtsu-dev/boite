@@ -78,7 +78,7 @@ function fromRow(data: string): Stored {
 }
 
 /**
- * The council (`docs/council.md`). The core runs the rounds: each member is a
+ * The council (`docs/internals/council.md`). The core runs the rounds: each member is a
  * delegated child in a read-only permission mode, asked once per round, alone;
  * the salon is a thread that runs no agent and only draws the posts. A closed
  * round goes back to the parent as one message, and the members stay for the

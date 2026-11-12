@@ -343,7 +343,7 @@
     animation: appear var(--dur-2) ease-out;
   }
   /* Near opaque instead of a blur: a window-wide blur is redrawn on every
-     frame something moves under it (docs/performance.md, "What a frame costs"). */
+     frame something moves under it (docs/internals/performance.md, "What a frame costs"). */
   .shade { position: absolute; inset: 0; background: color-mix(in oklch, var(--color-background) 94%, transparent); }
   .toolbar { position: relative; flex: none; display: flex; align-items: center; gap: 4px; min-height: 56px; padding: 8px 12px; padding-top: max(8px, env(safe-area-inset-top)); border-bottom: 1px solid var(--color-border); background: var(--color-surface); }
   .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 12px; font-size: var(--text-sm); }

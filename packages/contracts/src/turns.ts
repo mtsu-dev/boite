@@ -17,7 +17,7 @@ export type TurnExecution = Pick<ThreadSummary,
    * `background`: the agent resumed on its own after background work it
    * started finished; the turn carries no prompt of the user's.
    * `resume`: the core restarted over a running turn and opened this one so
-   * the agent carries on (`docs/restart-handoff.md`).
+   * the agent carries on (`docs/internals/restart-handoff.md`).
    * `pull-request`: a pull request the agent watches needs a look; the turn
    * carries what changed (`threads.watchPullRequest`).
    * `keepalive`: a minimal turn the core sent so the prompt cache stays warm

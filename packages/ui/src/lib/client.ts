@@ -4,7 +4,7 @@ import type { ClientName, CoreInfo, DeviceHello, Principal, RpcEventName, RpcEve
 import type { RpcFailure } from './rpc-error';
 
 export { RpcFailure, droppedFailure, wasDropped, unansweredFailure, wasUnanswered } from './rpc-error';
-export { defaultBackoff, openDeadline, rpcUrl } from './ws-client-utils';
+export { defaultBackoff, openDeadline, rpcUrl, streamUrl } from './ws-client-utils';
 export { WsClient } from './ws-client';
 
 export type ClientState = 'idle' | 'connecting' | 'ready' | 'closed';
@@ -20,7 +20,21 @@ export interface CallOptions {
   onProgress?: (received: number, total: number) => void;
 }
 
+/**
+ * A socket of browser frames (`browser.remoteStream`): a text message of JSON
+ * for the page shown, a binary one for each JPEG. Both handlers are set before
+ * anything arrives. `onclose` is not called for a socket this side closed.
+ */
+export interface FrameSocket {
+  onmessage: ((data: string | ArrayBuffer) => void) | null;
+  onclose: ((code: number) => void) | null;
+  send(text: string): void;
+  close(): void;
+}
+
 export interface Client {
+  /** Opens the path `browser.remoteStream` answered, on the core this client talks to. Absent on a client that carries no such socket. */
+  frames?(path: string): FrameSocket;
   connect(): Promise<CoreInfo>;
   call<M extends RpcMethodName>(method: M, params: RpcParams<M>, options?: CallOptions): Promise<RpcResult<M>>;
   on<E extends RpcEventName>(event: E, handler: EventHandler<E>): () => void;

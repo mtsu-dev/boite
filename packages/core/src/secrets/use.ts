@@ -63,8 +63,8 @@ function envValue(value: Uint8Array): Uint8Array {
 }
 
 /**
- * Writes `KEY=<value>` into an env file the repository ignores, replacing the
- * key's line or adding one, every other line as it was.
+ * Writes `KEY=<value>` into an env file the repository ignores, setting it on
+ * every line that sets the key or adding one, every other line as it was.
  */
 export async function writeSecret(core: Core, threadId: ThreadId, cwd: string, use: SecretWriteUse, value: Uint8Array): Promise<SecretUseResult> {
   if (typeof use.key !== 'string' || !VARIABLE.test(use.key)) throw refused('key: expected an env variable name, letters, digits and _', { field: 'key', expected: VARIABLE.source });
@@ -89,19 +89,31 @@ export async function writeSecret(core: Core, threadId: ThreadId, cwd: string, u
     const lines = before.length === 0 ? [] : before.split(/\r?\n/);
     const trailing = lines.at(-1) === '';
     if (trailing) lines.pop();
-    const line = new RegExp(`^\\s*(export\\s+)?${use.key}\\s*=`);
-    const at = lines.findIndex(text => line.test(text));
-    const head = (at < 0 ? lines : lines.slice(0, at)).map(text => text + eol).join('');
-    const tail = at < 0 ? '' : lines.slice(at + 1).map(text => eol + text).join('') + (trailing ? eol : '');
-    quoted = envValue(value);
-    const prefix = encoder.encode(`${head}${at >= 0 && lines[at]!.trimStart().startsWith('export') ? 'export ' : ''}${use.key}=`);
-    const suffix = encoder.encode(at < 0 ? eol : tail);
+    const line = new RegExp(`^(\\s*)(export\\s+)?${use.key}\\s*=`);
+    // Every line that sets the key gets the value in place, its indent and `export` kept: dotenv reads the
+    // last one, and a shell branch (`if` / `else`) that set it keeps its body.
+    const parts: (string | null)[] = [];
+    let text = '';
+    lines.forEach((row, index) => {
+      const match = line.exec(row);
+      if (index > 0) text += eol;
+      if (!match) { text += row; return; }
+      parts.push(`${text}${match[1]}${match[2] === undefined ? '' : 'export '}${use.key}=`, null);
+      text = '';
+    });
+    const replaced = parts.length > 0;
+    if (!replaced) parts.push(lines.length > 0 ? `${text}${eol}${use.key}=` : `${use.key}=`, null);
+    parts.push(replaced ? `${text}${trailing ? eol : ''}` : eol);
+    const secret = quoted = envValue(value);
     // The mode applies only to a new file: an existing one readable by others is narrowed too.
     if (process.platform !== 'win32') fchmodSync(fd, 0o600);
     ftruncateSync(fd, 0);
     let offset = 0;
-    for (const bytes of [prefix, quoted, suffix]) offset += writeSync(fd, bytes, 0, bytes.length, offset);
-    return { action: 'write', path, replaced: at >= 0 };
+    for (const part of parts) {
+      const bytes = part === null ? secret : encoder.encode(part);
+      offset += writeSync(fd, bytes, 0, bytes.length, offset);
+    }
+    return { action: 'write', path, replaced };
   } finally {
     closeSync(fd);
     quoted?.fill(0);

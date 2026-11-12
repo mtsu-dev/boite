@@ -17,9 +17,10 @@ afterEach(async () => {
 
 /** What a phone shows for a route: the page a desktop shows for it, the card's own page, or Home where the phone has no such page. */
 const ROUTES: { owner: boolean; tab: SettingsTab; section?: string; shows: string }[] = [
-  // Installing, signing in and plugins stay on the desktop.
+  // Installing and signing in stay on the desktop; plugins, owner-only, have their page.
   { owner: true, tab: 'accounts', shows: 'mobile-settings-home' },
-  { owner: true, tab: 'plugins', shows: 'mobile-settings-home' },
+  { owner: true, tab: 'plugins', shows: 'plugins-page' },
+  { owner: false, tab: 'plugins', shows: 'mobile-settings-home' },
   { owner: true, tab: 'general', section: 'secrets', shows: 'secrets-card' },
   { owner: true, tab: 'keyboard', shows: 'mobile-settings-home' },
   { owner: false, tab: 'accounts', shows: 'mobile-settings-home' },

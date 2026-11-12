@@ -6,7 +6,7 @@ import type { Message, MessagePart, Thread, Turn } from '@boite/contracts';
  * narration between its calls and a compaction in the middle, an automatic
  * compaction, then the pull request's watch and a subagent's review waking
  * the agent the next day, and a last question today. The shape is the one the
- * user's own threads showed on 2026-10-31 ([development](../../../../../docs/development.md)).
+ * user's own threads showed on 2026-10-31 ([development](../../../../../docs/internals/development.md)).
  */
 const MINUTE = 60_000;
 

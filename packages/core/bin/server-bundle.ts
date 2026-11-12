@@ -26,7 +26,7 @@ export function androidBunPin(installer: string): { version: string; sha256: str
 /**
  * The Android server: Bun compiles no Android executable, so the core ships as
  * the scripts of `bun run build`, run by the Bun the bundle names, with the
- * controller that installs and supervises it in Termux (docs/android-server.md).
+ * controller that installs and supervises it in Termux (docs/internals/android-server.md).
  */
 export function androidServerBundle(dist: string, ui: string, termux: string, version: string): Uint8Array {
   if (!/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(version)) throw new Error('Server bundle version must be a semantic version');

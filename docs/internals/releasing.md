@@ -1,0 +1,508 @@
+# Releasing
+
+This guide owns release channels, artifact layout and signing. Run build
+commands from the repository root. [Development](development.md) owns local
+setup and test commands; [portability](portability.md) records platform limits.
+
+[CI and publication](ci.md) covers automated checks, draft releases, Docker
+images and the daily nightly schedule.
+
+## The order
+
+Run the [development checks](development.md#checks-and-tests) and
+`bun run check:translations` before packaging. Then:
+
+```bash
+bun run build:shell
+bun run apps/shell/scripts/stage-sidecar.ts
+bun run e2e
+```
+
+`build:shell` builds the UI and compiles the core through `stage:core`. The
+staging command after it copies that existing core beside the newly built shell;
+it does not compile again. The end-to-end suite refuses missing or stale artifacts.
+
+## What each step produces
+
+Linux CI also writes a signed `boite-server_<version>_<arch>.zip` for x64 and
+ARM64, containing the compiled core, CLI shim, UI and embedded release version.
+`scripts/ci/server-bundle.ts` creates it and Tauri's signer signs the payload
+with the desktop updater key and release version. Both stable and nightly
+publication require those signatures, include the archives in the checksums,
+and add separate server targets to `latest.json`. Docker images remain separate.
+The same x64 job writes `boite-server_<version>_android.zip` for phones: the
+core's scripts, the UI and the Termux controller, which run on Bun's Android
+build. It is signed and listed the same way, under the `android-aarch64-server`
+target ([Android server](android-server.md#releases-and-updates)).
+
+The nightly also attaches the signed Android app as
+`boite-android-<MAJOR.MINOR.PATCH>.apk`. That version belongs to the app, not
+to the release: `apps/android/VERSION` holds `MAJOR.MINOR`, raised by hand, and
+the patch grows by one only when the APK is rebuilt. A release with no change
+to the app attaches the previous APK under its original name.
+[Android](android.md#the-app-version) has the full rule. Boite Server, the app
+that runs a core on a phone, comes beside it as
+`boite-server-android-<MAJOR.MINOR.PATCH>.apk` under the same rule, counted from
+`apps/android-server/VERSION` ([Android server](android-server.md#publishing-the-app)).
+
+- `build:ui` writes `packages/ui/dist`. That directory is what the core serves at
+  `/`, with a `.br` and a `.gz` copy beside each text asset. The Tauri config
+  runs it as its own before-build command, so a shell build never ships a UI
+  older than the sources, then `apps/shell/scripts/stage-frontend.ts` copies it
+  to `apps/shell/dist` without those compressed copies. That copy is the
+  shell's `frontendDist`, embedded in the executable: the window never asks for
+  the `.br` and `.gz` files, which took 2 MB of it. The installed `ui/`
+  directory, which the core serves to phones, stays the complete dist.
+- `build:core` cleans and writes `packages/core/dist`: `main.js`, `jobs-worker.js`,
+  `guard-worker.js`, `artifact-retention-worker.js`, and hashed chunks for the main module and lazy drivers.
+  Keep every emitted file together when distributing this bundle. Lazy imports
+  keep the SDKs off the start path. `bun run core` and the shell both prefer this
+  bundle over the sources when it is there.
+- `build:core:exe` compiles `packages/core/dist/boite-core`, with `.exe` on Windows. On x64 it embeds
+  Bun's baseline runtime, which needs no AVX2. That runtime, and the other
+  architecture's in a cross build, is not the running Bun, and `bun build
+  --target` would fetch it from npm with no deadline. `packages/core/bin/bun-runtime.ts`
+  fetches it instead from the release of the running Bun, failing after 30 s
+  without data or 300 s in all, checks it against `SHASUMS256.txt`, keeps it under
+  `node_modules/.cache/boite-bun-runtime/<target>-v<version>` with the SHA-256
+  of the unpacked runtime, rechecked at each use (a copy that differs is fetched
+  again), and `compile.ts` passes it with `--compile-executable-path`; the compile itself
+  stops after 10 minutes. The jobs and guard workers remain
+  JavaScript files beside the core. `artifact-retention-worker.ts` is also a
+  compile entry point, so standalone signed server archives embed it and need
+  no separate retention worker file. Shell staging still ships all three
+  emitted worker files beside the sidecar.
+- On Windows the installed sidecar is not that executable. It is Bun's baseline
+  runtime of the version the build ran under, copied as `boite-core.exe`, with every file of the bundle
+  but the workers in a `core` directory beside it, and the shell starts it as
+  `boite-core.exe core/main.js`. The baseline build runs on x64 CPUs without
+  AVX2, where the default one stops at its first instruction. `stage-sidecar.ts`
+  downloads it once from the Bun release, checks the archive against the
+  release's `SHASUMS256.txt` and keeps it under `node_modules/.cache`, so the
+  first staging needs the network. The runtime carries its publisher's signature;
+  the [2026-09-19 Windows comparison](../../bench/results/2026-09-29-resources.md#runtime-and-bundle-measurements-2026-09-19-to-2026-09-29)
+  recorded about 650 ms of additional startup inspection for an unsigned core.
+  Because the checksum comes from the same release, staging also verifies the
+  signature: `stage-sidecar.ts` refuses a
+  runtime whose signature is not valid or whose signer is not Bun's publisher
+  (`O=Codeblog CORP`, `apps/shell/scripts/runtime-signature.ts`). It checks the
+  cached copy again at every staging and downloads it again when that copy
+  fails. It also refuses a Bun other than the `packageManager` pin, as do
+  `packages/core/bin/compile.ts` and `build:core:linux`, since each ships the
+  Bun it runs under. `BOITE_ALLOW_BUN_MISMATCH=1` allows another one for a build
+  that is not shipped. `apps/shell/scripts/tauri.ts` adds
+  `tauri.bundle.windows.conf.json`, which names the `core` directory as a
+  resource, to any Windows build that passes the bundle overlay.
+- `stage:core` builds the core with `apps/shell/scripts/build-core.ts`, then
+  stages it. On Windows that build is `build:core` alone: the sidecar is the
+  runtime, so the compiled `boite-core.exe` was a 105 MB write nothing read.
+  Elsewhere it is `build:core:exe`. It then puts the sidecar, all three workers and the two `boite` shims
+  (`packages/core/shims`, see [cli.md](cli.md)) where the two things that
+  run them look. The bundler wants
+  `apps/shell/src-tauri/binaries/boite-core-<target triple>`, with `.exe` on Windows, for
+  `bundle.externalBin`, plus the workers and the `boite` shims in that same directory for the resource
+  entries that land them beside the installed sidecar. The end to end suite wants
+  the same files beside `apps/shell/src-tauri/target/release/boite-shell`, with
+  `.exe` on Windows, so the script copies there whenever that executable exists.
+  The Windows shell refuses a sidecar missing any worker and names the missing file.
+- `build:shell` runs the Tauri build with the bundle overlay and produces the
+  NSIS installer on Windows, Debian and AppImage packages on Linux, or an
+  application bundle and DMG on macOS. Build on the target OS and architecture;
+  staging supports Windows x64 and Linux/macOS x64 and ARM64. On Apple Silicon,
+  `BOITE_TARGET=x86_64-apple-darwin` builds the Intel core, sidecar and bundle
+  instead, as CI does.
+
+A published shell is built with fat LTO over one codegen unit:
+`desktop.yml` sets `CARGO_PROFILE_RELEASE_LTO=fat` and
+`CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1` when `sign-updates` is on, and
+neither otherwise. Local builds and pull requests keep Cargo's release
+defaults, since that final step is serial ([CI](ci.md#build-cost)). `panic` stays `unwind`, which the update
+commands' `catch_unwind` needs, and nothing is stripped: the Windows symbols
+stay in the PDB beside the build, which a hang dump needs to name the frames.
+To reproduce the shipped executable locally:
+
+```powershell
+$env:CARGO_PROFILE_RELEASE_LTO = 'fat'
+$env:CARGO_PROFILE_RELEASE_CODEGEN_UNITS = '1'
+bun run --cwd apps/shell tauri build --no-bundle
+```
+
+Measured on 2026-10-17 with `bun run --cwd apps/shell tauri build --no-bundle`
+on the same base:
+
+| build | `boite-shell.exe` bytes | embedded `.br`/`.gz` names |
+| --- | ---: | ---: |
+| Cargo defaults, full `packages/ui/dist` | 20,631,552 | 246 |
+| thin LTO, filtered UI | 17,369,088 | 0 |
+| fat LTO, filtered UI | 16,665,088 | 0 |
+
+The thin and fat rows were built with those variables (`thin` for the first).
+
+The shell passes Tauri's resource directory to the core through `BOITE_UI_DIR`,
+so the installed core can serve the phone UI from the macOS application bundle
+and Linux package. Windows workers are required only by the Windows shell.
+Neither form of the sidecar needs a separately installed Bun runtime.
+Linux builds also need `xdg-utils`, alongside the WebKitGTK and appindicator
+development packages. The Debian package declares `xdg-utils` for opening links.
+Install `patchelf` too. The shell build wrapper selects it from PATH for
+linuxdeploy. On ARM64 it preserves the compiled Bun sidecar, whose ELF load
+segments break after an RPATH rewrite. The exception checks that the sidecar
+only needs glibc libraries; CI compares the packaged core with the original.
+The AppImage bundler downloads AppRun and linuxdeploy from GitHub releases on
+every run. CI retries the bundle up to three times when that download answers a
+5xx (a 500 failed the 2026-10-14 nightly); any other bundling error fails at once.
+
+Portable CI runs `scripts/ci/desktop-smoke.ts <installed-shell>` against the
+Debian package, extracted AppImage and macOS application bundle. Signing, notarization and testing
+on older operating systems remain release prerequisites; a local unsigned
+bundle is not a notarized download. Native notifications and Windows process
+guards are not implemented on Linux or macOS.
+The [architecture](architecture.md#closing-and-restart) describes resident-core
+shutdown. Installed smoke tests use a temporary home, run outside the checkout
+without Bun on PATH, and verify an echo turn executing `boite where`.
+[Platform readiness](portability.md) separates that coverage from native webview,
+notification, provider-login and older-OS checks.
+
+macOS requires 13.0 or newer and includes the JIT entitlements needed by the
+[compiled Bun runtime](https://bun.sh/docs/bundler/executables). CI starts an
+ad-hoc signed bundle when Developer ID/notarization credentials are absent.
+
+A shell executable with no installer, for a quick look at the window:
+
+```bash
+bun run --cwd apps/shell tauri build --no-bundle
+```
+
+## The bundle overlay
+
+`apps/shell/src-tauri/tauri.conf.json` is the base config without a sidecar.
+`tauri.bundle.conf.json` adds `bundle.externalBin` and the resource map for the
+core, Windows workers, CLI shims and built UI. The base can build before core
+compilation; distributable builds use the overlay.
+
+```json
+{
+  "bundle": {
+    "externalBin": ["binaries/boite-core"],
+    "resources": {
+      "binaries/jobs-worker.js": "jobs-worker.js",
+      "binaries/guard-worker.js": "guard-worker.js",
+      "binaries/artifact-retention-worker.js": "artifact-retention-worker.js",
+      "binaries/boite": "boite",
+      "binaries/boite.cmd": "boite.cmd",
+      "../../../packages/ui/dist": "ui"
+    }
+  }
+}
+```
+
+CLI `--config` paths resolve from `apps/shell`, while paths inside the configs
+resolve from `src-tauri`. A directory resource preserves its tree under the
+mapped name, giving `ui/index.html`; a glob would flatten it. Windows adds a
+separate resource overlay for the split `core/` JavaScript bundle and
+`boite.exe`.
+
+## Channels
+
+Boite and Boite Nightly are update tracks of the same installed application.
+They share `com.boite.two`, the Boite installer name and the `boite2` data
+directory. Nightly uses `icons-nightly/`, the white mark on violet and magenta, and
+displays boite (de nuit) in the window title and tray. The in-app channel selector downloads the selected
+track, including an older stable version when leaving nightly.
+[Desktop updates](updates.md) covers restart behavior and data compatibility.
+
+Boite Dev remains a separate development install. It uses `com.boite.two.dev`,
+the product name Boite Dev and `boite2-dev`, with no automatic app updates.
+
+The build commands:
+
+```bash
+bun run build:shell         # Boite, com.boite.two, boite2
+bun run build:shell:nightly # nightly overlay; CI stamps the nightly version
+bun run build:shell:dev     # Boite Dev, com.boite.two.dev, boite2-dev
+```
+
+The dev build passes a second overlay, `apps/shell/src-tauri/tauri.dev.conf.json`,
+after the bundle one. The Tauri CLI takes `--config` more than once and merges
+in the order given, so the dev overlay carries only what differs: the product
+name, the identifier, the main binary name and `bundle.icon` pointing at
+`icons/`, the black mark on white. The release uses `icons-dev/`, the white
+mark on black. These asset directory names are historical. Two identifiers
+mean two NSIS product codes, so the second installer installs beside the first
+instead of over it.
+
+Boite Dev's window is `boite-dev-shell.exe` (`mainBinaryName`), Boite's stays
+`boite-shell.exe`. Tauri renames the executable Cargo built (`boite-shell`)
+before bundling, so after `build:shell:dev` the Cargo target holds
+`boite-dev-shell.exe` and no `boite-shell.exe`: the end to end suite and
+`stage:core` never pick up a Dev shell. The installers close only the shell
+running from their own directory (see [Desktop updates](updates.md)), and a Boite Dev
+installed before the rename is updated in place: its `boite-shell.exe` is
+closed and deleted, and its links and login entry move to the new file.
+
+The shell derives its channel from the identifier's `.dev` suffix and passes
+`--channel dev` to its core. Shell and core must select the same directory:
+otherwise a development shell can adopt a stable core and journal. Stable and
+nightly share the regular WebView2 profile; Boite Dev has its own. Core adoption
+and version/hash checks belong to the [architecture](architecture.md).
+
+## Signed update artifacts
+
+Release and nightly callers enable `BOITE_SIGN_UPDATES=1` and provide
+`TAURI_SIGNING_PRIVATE_KEY` through the CI secret. The Tauri wrapper adds
+`tauri.updater.conf.json`, which enables `createUpdaterArtifacts`, and refuses
+signing without a key. Normal local builds and the Windows PR build remain
+unsigned. The Linux and macOS CI builds always sign: a PR or main push uses a
+throwaway key generated on the runner, so every run proves the payloads and
+signatures a release will need; only release callers use the real key.
+
+The public verification key is in `tauri.conf.json`. Keep the matching private
+key backed up outside the repository: replacing the public key strands clients
+that only trust the old one. No private key belongs in an artifact or Git.
+
+The Windows build uploads the installer and its `.sig`. Each Linux and macOS
+runner collects its packages with `scripts/ci/desktop-bundles.ts` into a
+`desktop-bundle-<platform>` artifact, such as `desktop-bundle-macos-x64`: the
+.deb and AppImage with their `.sig` on Linux, the DMG and the updater archive
+`Boite.app.tar.gz` with its `.sig` on macOS. That archive has the same name on both Mac architectures, so the script
+renames it after the DMG beside it (`Boite_<version>_aarch64.app.tar.gz`). It
+fails the runner when a payload or a signature is missing or when a file of
+another architecture is present. Publication gathers every artifact, and
+`scripts/ci/updater-manifest.ts` creates `latest.json` with the exact version,
+publication date, release notes, and one signature and immutable release
+download URL per updater target. It requires all nine targets: Windows x64,
+two macOS architectures, Linux .deb/AppImage on both architectures, and two
+standalone Linux server archives. Unknown release files are refused. DMGs are
+manual downloads. `SHA256SUMS.txt` covers desktop/server payloads; stable
+publication also includes tested-image provenance metadata. Stable releases
+remain drafts until reviewed; nightlies publish automatically. The desktop
+updater excludes drafts and unsigned older releases.
+
+Docker publication reuses the tested image digests. Version tags identify the
+release; the shared `sha-<full commit>` alias can change between stable and
+nightly builds of the same source. Use a version tag or digest to pin a build.
+Stable `latest` promotion runs separately under a repository-wide concurrency
+group and rechecks GitHub's current stable release before writing the alias.
+
+These are Tauri updater signatures, not Windows Authenticode signatures or
+Apple Developer ID signatures.
+
+A release or nightly signs the macOS application with a Developer ID and
+notarizes it when six repository secrets are set: `APPLE_CERTIFICATE` (the
+Developer ID Application `.p12`, base64), `APPLE_CERTIFICATE_PASSWORD`,
+`APPLE_SIGNING_IDENTITY`, and the App Store Connect API key used for
+notarization, `APPLE_API_ISSUER`, `APPLE_API_KEY_ID` and
+`APPLE_API_PRIVATE_KEY` (the `.p8` contents). The CI then checks the stapled
+ticket and Gatekeeper's verdict on the bundle. Without all six, and on every
+pull request, the bundle is signed ad hoc and Gatekeeper asks once before the
+first start ([installation notes](portability.md#installing-a-release)). Developer ID signing and notarization need the Apple
+Developer Program. Linux
+packages are built on Ubuntu 22.04, whose glibc 2.35 is the oldest a user can
+run them on.
+
+## What the installer holds
+
+The bundle target is NSIS, the identifier is `com.boite.two` and the product
+name is `Boite`. The install is per user and asks for no elevation.
+`%LOCALAPPDATA%\Boite` ends up holding:
+
+- `boite-shell.exe`, the window and the tray icon (`boite-dev-shell.exe` in
+  `%LOCALAPPDATA%\Boite Dev`).
+- `boite-core.exe`, the sidecar it starts: Bun's baseline runtime under the core's name.
+  Run by hand with no script it is `bun`, so a subcommand goes after the bundle:
+  `boite-core.exe core\main.js pair --owner`.
+- `core/`, the bundled core that runtime runs: `main.js` and its lazy chunks.
+- `jobs-worker.js`, beside the core because that is where the core looks for it.
+  Without it the trace reports `poll` instead of `events`.
+- `guard-worker.js`, the focus guard and the audio mute.
+- `artifact-retention-worker.js`, the background scan for unused deliverables.
+- `boite` and `boite.cmd`, the CLI shims the core puts on an agent's PATH; each
+  invokes the adjacent core's CLI entry ([cli.md](cli.md)).
+- `boite.exe`, the same CLI without cmd.exe, which Windows finds first; built
+  from `apps/shell/launcher` by `stage-sidecar.ts`. Once the core has stopped,
+  the installer moves aside a copy an agent's command still holds.
+- `ui/`, the same build a phone gets over the pairing link.
+
+`core/` and `ui/` hold only the current build. Their file names carry a hash,
+and the template only copies files and deletes the ones a build lists, so each
+update used to leave the previous build's chunks beside the new ones and an
+uninstall left them all: an install updated since 2026-09-28 held 3,614 files
+and 243 MB, about 108 MB of them stale. Once the core of that install has
+stopped, the installer hook moves both directories aside to `core.previous` and
+`ui.previous` before the copy, deletes them when the install completes and puts
+them back when it fails (a full disk halfway through), so the previous core
+still finds its chunks (`windows/hooks.nsh`). The uninstall hook removes both
+directories, once before the template's deletions and once after, since
+`RMDir /r` skips a file still held open without failing; what is still held
+then goes at the next restart where Windows allows it. Nothing else in the
+install directory is touched.
+
+The installer packs with zlib, not Tauri's default LZMA: it is 70 MB rather
+than 55 MB, and it writes the files in 2.3 seconds rather than 5.2 on the
+machine measured, which is time an in-app update spends with no window
+([app update restart](performance.md#app-update-restart)).
+
+The identifier is fresh, so Boite installs beside Boite Legacy rather than over
+it. To see the exact file list a build produced, read
+`apps/shell/src-tauri/target/release/nsis/x64/installer.nsi` before installing
+anything: it names every file and where it goes.
+
+## How the shell finds a core
+
+[Architecture](architecture.md#the-core-is-the-host-the-shell-is-a-client)
+owns core adoption and residency; [portability](portability.md) records shutdown
+limits. [Desktop updates](updates.md#download-and-restart) owns installer
+admission, running-core replacement and shortcut preservation.
+
+Core lookup order:
+
+1. `BOITE_CORE_COMMAND`, split on whitespace. This is the override the tests and
+   the bench use.
+2. `boite-core.exe` beside the shell executable, given `core/main.js` as its
+   script when that file is beside it too. This is the installed case, and
+   it is also what the end to end suite drives, which is why a stale staged
+   sidecar is refused rather than tolerated.
+3. `packages/core/dist/main.js` through bun, when a repository root is found
+   above the executable. The development case with a built bundle.
+4. `packages/core/src/main.ts` through bun. The development case without one.
+
+## Installed-shell diagnostics
+
+Close exits the shell by default; General settings can keep it in the tray.
+`<dataDir>/shell-settings.json` stores that choice. Tray Quit always exits; Show
+restores the main window. Hover/click opens a quota popup that polls only while
+visible and is destroyed 45 seconds after hiding. Hidden/minimized Windows
+pages and browser panels stop painting and see `document.hidden`.
+
+General settings can also start the shell at login with `--autostart`: a
+quoted `Run` value named after the product under
+`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, an XDG
+`<identifier>.desktop` (the `$APPIMAGE` file for an AppImage) or a LaunchAgent
+`<identifier>.plist`. That start runs the core and keeps the window in the tray;
+with no tray, or after an update restart, the window shows. On Windows the
+installer restarts the shell with its old arguments, `--autostart` included,
+and adds `--after-update`, which shows the window. The switch reads
+off when the entry names another executable or Task Manager disabled it, and
+switching it on rewrites both. The NSIS uninstaller deletes the `Run` value;
+updates keep it. Hidden test shells refuse to change it
+(`src/autostart.rs`, `src/platform/login.rs`).
+
+`shell.lock` permits one shell per data directory. A second launch uses the
+loopback port/token in `shell-wake` to show the existing window. Hidden test
+shells never request it. Setup failures and panics go to `shell-error.log`;
+visible setup failures name that file in a dialog. Missing WebView2 uses Tauri's
+dialog. A tray-creation failure leaves a usable window that exits on Close.
+
+The shell also writes `logs/shell.0.ndjson` to `shell.3.ndjson` under the data
+directory, 1 MiB each, in the core's record format with `origin: "shell"`
+(`src/shell_log.rs`). A background thread does the writing from a queue of 1024
+records; a full queue drops records and the next line counts them. Records
+cover startup phases with their duration, the OS build and WebView version,
+core attach, spawn, readiness, exits and restarts, window and tray actions,
+updater steps, panics and, on Windows, WebView2 `ProcessFailed` events. A
+command that holds the main thread over 250 ms is a `debug` line, over 2 s a
+`warn`. A watchdog posts a no-op to the main thread every second
+(`src/watchdog.rs`). When 5 s pass without an answer it writes one
+`shell.main-thread.blocked` error naming the running command or the last
+window event, plus `IsHungAppWindow` on Windows and the main thread's id. While
+the thread stays blocked it writes `shell.main-thread.still-blocked` errors at
+30 s, 2 min, 10 min and then every 30 min, with `blockedMs` counted from the
+episode's start and the same fields, so a shell Windows kills at shutdown still
+leaves how long it hung. On Windows each of these lines also lists the
+processes that own windows inside the main window (WebView2's browser process
+hosts the page there) and whether each one is hung: `foreignProcesses`,
+`foreignWindows`, `foreignHungWindows`. The first still-blocked line with the
+window reported hung starts a minidump of the shell, written from a thread of
+its own as `logs/shell-hang-<UTC time>.dmp` (thread info, handles, unloaded
+modules); the line names it in `dumpPath`, and `shell.main-thread.dumped` or
+`shell.main-thread.dump-failed` follows. One dump per run, and the two newest
+are kept. The stack of `mainThreadId` needs the PDB of the same build to show names.
+When the thread answers, one `shell.main-thread.recovered` warning gives the
+total blocked time.
+
+Resident cores append to `core-output.log`, truncated at startup above 8 MiB.
+`BOITE_CORE_RESIDENT=0` makes a Windows shell own its core through a
+`KILL_ON_JOB_CLOSE` Job Object. POSIX gives its owned core three seconds for
+SIGTERM before forcing exit. [Updates](updates.md) owns the installer hooks
+that close the shell before replacing its running core.
+
+## Icons
+
+The app icon source is `packages/ui/public/icons/icon.svg`. The light shell
+icon set and the two PWA pngs are rendered from it, the first through the Tauri CLI's
+own icon command from `apps/shell`. Nothing else draws the mark, and the UI's own
+copy of it is a Svelte component using `currentColor`.
+
+The release uses the inverted `packages/ui/public/icons/icon-dev.svg`, rendered
+into its own directory. Remove the Android/iOS outputs of the icon command,
+as for the light set:
+
+```bash
+bun run --cwd apps/shell tauri icon ../../packages/ui/public/icons/icon-dev.svg -o src-tauri/icons-dev
+```
+
+Nightly keeps the white mark on a ground lit from below, near-black violet at
+the top fading to magenta, with a faint halo around the mark.
+`packages/ui/public/icons/icon-nightly.svg` renders into `src-tauri/icons-nightly`
+with the same command and the same cleanup.
+
+## Version numbers
+
+The version lives in the root `package.json`, each workspace package,
+`apps/shell/src-tauri/Cargo.toml` and `apps/shell/src-tauri/tauri.conf.json`.
+Update them together and refresh the package entry in `Cargo.lock` in the same
+release commit.
+
+## Before handing a build to anyone
+
+Run `bun run e2e` on the staged build, not on the sources alone: it is the only
+thing that drives the real shell executable over its debugging port, hidden.
+Then run `bun run bench` and `bun run bench/idle-rss.ts` fresh, so the resource
+figures in the release notes come from the build being released and carry its
+date. The idle bench reports two points for each process: `fresh`, 4.5 s after
+the spawn, and `steady`, 75 s after it, once the first automatic update check
+has run. Quote both, with the working set, private bytes and thread count it
+prints. The bench starts its cores with `BOITE_HOST_AGENTS=0`, so by default
+the check finds no provider and the steady point measures an empty check. For
+the notes, a person runs it with `BOITE_BENCH_HOST_AGENTS=1`, so the update
+check reads the providers installed on the machine as a user's core would, and
+says which providers those were. An agent never sets it: the check runs each
+agent's `--version`, and an agent's own updater can open a console window.
+
+## Release notes
+
+The release and nightly workflows pass their downloaded artifact directories to
+`scripts/ci/changelog.ts`. The generated notes start with direct download links
+grouped by platform: Windows x64, macOS Apple Silicon/Intel, Linux x64/ARM64,
+and Android when its APKs are attached. Linux rows offer Debian/Ubuntu packages
+and AppImages. A separate headless-server table links the Linux and Termux
+archives. Signatures, the updater's macOS archives and `latest.json` stay out
+of these tables.
+
+Links use the exact attached filenames and the release tag, so a reused Android
+APK keeps its independent app version. An absent artifact never gets a link.
+Nightly notes open with an instability warning and a reminder to back up data.
+The tables precede the optional announcement and automatic changelog.
+
+Release notes come from Git commits, including commits without a pull request.
+Each subject links to its commit, and a comparison link opens the complete diff.
+Each line ends with its author and its `Co-authored-by` trailers: a GitHub
+noreply address becomes `@login`, which GitHub links and lists among the
+release's contributors; any other address shows the commit's name.
+Merge commits are excluded because the commits they merge are already listed.
+Subjects starting with `feat`, `fix` and `perf` get their own sections; every
+other subject goes under "Other changes". A list with no typed subject has no
+headings.
+
+For a stable release, the range starts at the previous published stable release
+reachable from that commit. A prerelease may start at a previous prerelease.
+Nightlies compare with the previous published nightly. Drafts and releases from
+unrelated branches never become the baseline. The first release includes the
+repository's history.
+
+The manual release and nightly forms accept an optional `announcement`. It
+appears below the downloads and above the generated changelog. Leave it empty
+for fully automatic notes. Retrying an existing draft refreshes its artifacts
+and generated notes, including download links; put an announcement in the input
+to retain it on retries. The workflow refuses to replace a published release
+or a tag pointing at another commit.
