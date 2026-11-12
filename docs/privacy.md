@@ -34,7 +34,7 @@ modes:
 
 | Mode | What is sent |
 | --- | --- |
-| Off | Nothing. |
+| Off | No usage data. Only the choice of Off itself is counted, as described below. |
 | Anonymous counters (the default in published builds) | Active installations under a hashed random ID, and launches, conversations and turn outcomes under IDs that change every day. No profile. |
 | Enhanced analytics (off by default) | Also the public models you pick, reasoning level, speed, permission modes, durations and token volumes, under a stable random ID. Private models count as "other". |
 
