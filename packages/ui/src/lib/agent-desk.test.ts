@@ -52,4 +52,6 @@ test('a memory reads as its list items, else its paragraphs, in plain words', ()
   ]);
   expect(memoryNotes('## Notes\nFirst paragraph.\n\n---\nSecond one.')).toEqual(['First paragraph.', 'Second one.']);
   expect(memoryNotes('  \n')).toEqual([]);
+  // An identifier keeps its underscores; only a word wrapped in them is emphasis.
+  expect(memoryNotes('- Deploy my_cool_project with _care_.')).toEqual(['Deploy my_cool_project with care.']);
 });

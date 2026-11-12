@@ -123,3 +123,24 @@ test('the waiting row is the command itself, its reason and the pair; out of vie
     vi.unstubAllGlobals();
   }
 });
+
+test('a pill answer that fails gives both buttons back, so the decision can be tried again', async () => {
+  const strip = document.body.appendChild(document.createElement('div'));
+  const request: PermissionRequest = { id: 'perm-fail', threadId: 'thread', turnId: 'turn', toolName: 'Bash', input: { command: 'git push' }, createdAt: 1 };
+  let tries = 0;
+  const pill = mount(DecisionPill, { target: strip, props: { permission: request, answer: async () => { tries++; throw new Error('offline'); } } });
+  decisionTail.count = 1;
+  decisionTail.away = true;
+  flushSync();
+  try {
+    const allow = strip.querySelector<HTMLButtonElement>('[data-testid=decision-pill-allow]')!;
+    allow.click();
+    await vi.waitFor(() => { flushSync(); expect(allow.disabled).toBe(false); });
+    allow.click();
+    await vi.waitFor(() => expect(tries).toBe(2));
+  } finally {
+    unmount(pill);
+    decisionTail.count = 0;
+    decisionTail.away = true;
+  }
+});

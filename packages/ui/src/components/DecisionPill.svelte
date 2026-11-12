@@ -35,7 +35,12 @@
     if (sending === permission.id) return;
     const id = permission.id;
     sending = id;
-    if ((await answer(choice)) === false && sending === id) sending = null;
+    // A refused or failed answer gives the buttons back, so the pill can try again.
+    try {
+      if ((await answer(choice)) === false && sending === id) sending = null;
+    } catch {
+      if (sending === id) sending = null;
+    }
   }
 </script>
 

@@ -88,7 +88,7 @@ export function memoryNotes(text: string): string[] {
 }
 
 function plain(line: string): string {
-  return line.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/(\*\*|__|\*|_|`)(.+?)\1/g, '$2').trim();
+  return line.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/(\*\*|__|\*|`)(.+?)\1/g, '$2').replace(/(^|\W)_([^_]+?)_(?!\w)/g, '$1$2').trim();
 }
 
 /** `12 Oct`, or `12 Oct 2025` in another year: the day a bot was made, on its desk. */
