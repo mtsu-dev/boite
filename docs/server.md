@@ -85,12 +85,15 @@ WantedBy=default.target
 ```
 
 `BOITE_MACHINE_NAME` is the name your devices see, else the host name. Data
-lives in `~/.local/share/boite2`. On the server, from that folder:
+lives in `~/.local/share/boite2`. On the server, run these with the path of
+the install folder, here `~/.local/lib/boite/`:
 
-- `boite-core pair --owner` prints a link for a desktop app's Add machine.
-- `boite-core group join` joins your [group](machines.md) instead, so every
-  desktop of the group drives it.
-- `boite-core tailscale on` serves it on its tailnet HTTPS address. Linux may
+- `~/.local/lib/boite/boite-core pair --owner` prints a link for a desktop
+  app's Add machine.
+- `~/.local/lib/boite/boite-core group join` joins your [group](machines.md)
+  instead, so every desktop of the group drives it. It reads the invitation
+  on standard input: paste it, then end the input.
+- `~/.local/lib/boite/boite-core tailscale on` serves it on its tailnet HTTPS address. Linux may
   first need `sudo tailscale set --operator=$USER`.
 
 Such a server, and the Android one below, update from Settings, Machines and

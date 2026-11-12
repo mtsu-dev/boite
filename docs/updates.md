@@ -38,8 +38,9 @@ tray. Otherwise it tries again at the next check. It does not touch agents.
 
 ### Switch between Release and Nightly
 
-1. Back up your Boite data. On Windows it is in `%LOCALAPPDATA%\boite2`; on
-   Linux, [install](install.md#install-on-linux) gives the folder.
+1. Back up your Boite data. On Windows it is in `%LOCALAPPDATA%\boite2`, on
+   macOS in `~/Library/Application Support/boite2`; on Linux,
+   [install](install.md#install-on-linux) gives the folder.
 2. In Settings, Machines and updates, change the Release channel.
 3. Boite checks that channel at once and offers its newest release.
 

@@ -70,8 +70,9 @@ its output, with Open conversation. Back to the graph returns to the run.
   runs the failed step again in its own conversation, with the previous error.
 - Stopping or archiving the conversation stops its runs too.
 - An update or a restart from the app hands the run over: the next start of
-  Boite runs the cut steps again. After a crash, running runs pause until you
-  or the agent resume them.
+  Boite runs the cut steps again. After a crash, or when Boite stayed stopped
+  for more than an hour, running runs pause until you or the agent resume
+  them.
 - A phone can follow a run and stop it. Pause is not offered there.
 
 ## Templates

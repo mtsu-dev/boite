@@ -33,7 +33,7 @@ to write one to three short lines, and to keep to messages tied to work.
 3. The tab lists every discussion of the conversation, most recent first.
    Letters this conversation received sit on the right in the accent color;
    its own sit on the left.
-4. Two checkmarks mark a letter that arrived. An Unconfirmed, Expired or
+4. Two checkmarks mark an outgoing letter that arrived. An Unconfirmed, Expired or
    Failed letter shows that state; tap it for the reason.
 
 The tag says who started whom: Started this thread, Started from here, Parent,
