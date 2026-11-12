@@ -170,6 +170,8 @@ test('first run opens a draft in the drafts, and the first send makes them', asy
   // A draft in the drafts has no repository to branch.
   expect(worktreeSwitch()).toBeNull();
 
+  // A prepared draft keeps the folder it was given before the prompt existed; name it from the prompt by sending without one.
+  store.core = { ...store.core!, features: { ...store.core!.features, draftPreparation: false } };
   const input = query<HTMLTextAreaElement>('[data-testid=composer-input]');
   input.value = 'Write a letter to the bank';
   input.dispatchEvent(new Event('input', { bubbles: true }));

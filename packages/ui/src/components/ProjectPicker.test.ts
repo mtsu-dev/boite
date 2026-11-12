@@ -105,3 +105,17 @@ test('a paired device picks the machine in the same menu and adds there; a machi
   expect(a.projects.some(project => project.path === '/srv/site')).toBe(false);
   expect(b.projectPickerOpen).toBe(false);
 });
+test('a path typed while the first folder loads stays when the listing arrives', async ({ createStore }) => {
+  const { store, client } = createStore();
+  store.attach(client); await store.connect();
+  workspace.machines = [{ id: 'machine-a', label: 'Machine A', store }]; workspace.active = store;
+  const listed = deferred<void>(), browse = store.browseProjects.bind(store);
+  vi.spyOn(store, 'browseProjects').mockImplementation(async (target) => { await listed.promise; return browse(target); });
+  store.projectPickerOpen = true;
+  component = mount(ProjectPicker, { target: document.body, props: { store } }); await settle();
+  const input = document.querySelector<HTMLInputElement>('[data-testid=project-path]')!;
+  input.value = 'D:\\work\\typed-first'; input.dispatchEvent(new Event('input', { bubbles: true })); await settle();
+  listed.resolve(); await settle();
+  await vi.waitFor(() => expect(document.querySelector<HTMLButtonElement>('[data-testid=project-add]')!.disabled).toBe(false));
+  expect(input.value).toBe('D:\\work\\typed-first');
+});

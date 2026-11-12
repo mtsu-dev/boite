@@ -62,13 +62,15 @@ test('the draft worktree chip puts the first send on its own branch, and the hea
     await waitFor(() => document.querySelector('[data-testid=thread-menu-trigger-menu] [data-value=more]') !== null);
     query<HTMLButtonElement>('[data-testid=thread-menu-trigger-menu] [data-value=more]').click();
     await waitFor(() => document.querySelector(item) !== null);
-    const read = { text: query(item).textContent?.trim(), title: query(item).title };
+    // The fake turn may already have renamed the branch while the menu opened: read both at once.
+    const read = { text: query(item).textContent?.trim(), title: query(item).title, branch: store.openThread!.branch! };
     query<HTMLButtonElement>('[data-testid=thread-menu-trigger]').click();
     return read;
   };
   const shown = await branchItem();
-  expect(shown.text).toBe(branch);
-  expect(shown.title).toContain(branch.slice(6));
+  expect([branch, 'boite/fix-the-login']).toContain(shown.branch);
+  expect(shown.text).toBe(shown.branch);
+  expect(shown.title).toContain(shown.branch.slice(6));
   // The chip went with the draft.
   expect(worktreeSwitch()).toBeNull();
   const cwd = store.openThread!.cwd;

@@ -48,9 +48,12 @@
     const current = () => request === revision && selected === owner && client === owner.client && clientGeneration === owner.clientGeneration && store.projectPickerOpen;
     busy = true;
     error = '';
+    const asked = path;
     try {
       const result = await owner.browseProjects(target);
       if (!current()) return;
+      // A path typed while the folder loaded is the user's: the listing does not overwrite it.
+      if (path !== asked) return;
       path = result.path; parent = result.parent; directories = result.directories;
     } catch (failure) {
       if (current()) error = errorText(failure);
