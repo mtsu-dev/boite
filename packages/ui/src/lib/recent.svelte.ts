@@ -47,7 +47,7 @@ export function groupWorkingThread(store: Store, thread: ThreadSummary): boolean
 }
 
 /** At work, its own turn, its delegated agents', what it left running or a pull request it watches: nothing for the user to do yet. */
-export function workingThread(store: Pick<Store, 'subagents'>, thread: ThreadSummary): boolean {
+export function workingThread(store: Pick<Store, 'subagents' | 'pendingQuestions' | 'pendingPermissions'>, thread: ThreadSummary): boolean {
   const state = threadState(thread, rowAsks(store, thread.id));
   return state === 'working' || state === 'queued' || state === 'delegating' || state === 'monitoring' || state === 'background' || state === 'watching';
 }

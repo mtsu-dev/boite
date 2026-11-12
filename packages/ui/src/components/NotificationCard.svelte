@@ -30,6 +30,7 @@
     max-height: min(40vh, 320px);
     overflow-y: auto;
     user-select: text;
+    overflow-wrap: anywhere;
   }
   .thread-title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 </style>

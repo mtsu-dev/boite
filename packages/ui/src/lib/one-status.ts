@@ -13,9 +13,14 @@ export function inStrip(store: Store, agent: DelegatedAgent): boolean {
   return threadBusy(agent.thread) && !upkeepOf(store).has(agent.thread.id);
 }
 
+/** A settings, agent setting or team card the agent stopped for keeps its own card; any other question docks. */
+function docks(ask: { async?: boolean; setting?: unknown; agentSetting?: unknown; team?: unknown }): boolean {
+  return ask.async === true || !(ask.setting || ask.agentSetting || ask.team);
+}
+
 /** The thread on screen has a question waiting at the top of its composer (`ThreadDecision`). */
 export function asksDocked(store: Store, threadId: string): boolean {
-  return store.openThread?.id === threadId && !!store.pendingQuestions?.some((ask) => ask.threadId === threadId);
+  return store.openThread?.id === threadId && !!store.pendingQuestions?.some((ask) => ask.threadId === threadId && docks(ask));
 }
 
 /**
@@ -25,7 +30,7 @@ export function asksDocked(store: Store, threadId: string): boolean {
  */
 export function questionDocked(store: Store, part: Extract<MessagePart, { type: 'question' }>): boolean {
   return (part.answer ?? null) === null && store.pendingQuestions.some((asked) => asked.id === part.questionId)
-    && (part.async === true || !(part.setting || part.agentSetting || part.team));
+    && docks(part);
 }
 
 /** A failed turn whose answer draws its error as a card: that card holds the turn's one Retry. */
