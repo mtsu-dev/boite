@@ -356,6 +356,12 @@ export interface ContactRequest {
   stage?: 'bot' | 'owner' | 'host';
   /** The owner said yes on the bot's card or with Accept in the app: the bot may now act on it. */
   approved?: boolean;
+  /**
+   * What the Contacts bot will do with a request of a contact the owner does
+   * not trust, shown to the owner with Accept and Refuse: their Accept does
+   * exactly this, with no further turn of the bot.
+   */
+  plan?: ContactRequestPlan;
   /** The thread the two Contacts bots put the asking thread in relation with, once accepted. */
   relation?: ContactRelation;
   /** The agent that asked; on an incoming request, as the contact's core attests it. */
@@ -375,6 +381,10 @@ export interface ContactRequest {
   /** When this core's Contacts bot sent an outgoing request on to its contact: where the bot's thread shows that forward. Absent from older cores. */
   forwardedAt?: Timestamp;
 }
+/** `connect`: the asking thread and `thread` here may write to each other. `start`: a new thread in `project` works on `brief`, in touch with the asking thread. */
+export type ContactRequestPlan =
+  | { kind: 'connect'; thread: { threadId: ThreadId; title: string }; project?: string }
+  | { kind: 'start'; project: { id: ProjectId; name: string }; brief: string; model?: string; effort?: string; worktree?: boolean };
 export const CONTACT_REQUEST_WANTS = ['talk', 'thread', 'share'] as const;
 export type ContactRequestWant = typeof CONTACT_REQUEST_WANTS[number];
 /**
@@ -632,9 +642,11 @@ export interface CoordinationRpcMethods {
   /**
    * Accept a request by opening `projectId`, or refuse it with a reason sent back to the asking agent. Owner only.
    * A talk or thread request at the Contacts bot (`stage` `bot` or `owner`) opens no project: Accept approves it for the
-   * bot, which stays pending until the bot puts the threads in touch, and `projectId` is ignored.
+   * bot, which stays pending until the bot puts the threads in touch, and `projectId` is ignored. With a `plan` on it,
+   * Accept runs that plan; with `threadId`, the owner's own pick, it puts the asking thread in touch with that thread
+   * here instead, whatever the plan says.
    */
-  'contacts.decide': { params: { id: string; accept: boolean; projectId?: ProjectId; reason?: string }; result: ContactRequest };
+  'contacts.decide': { params: { id: string; accept: boolean; projectId?: ProjectId; threadId?: ThreadId; reason?: string }; result: ContactRequest };
   /** Deliver a held contact letter (`ContactsState.mail`) to its thread, or refuse it: its sender reads it was refused. Owner only. */
   'contacts.decideMail': { params: { id: string; accept: boolean }; result: { ok: true } };
   'contacts.settings': { params: { settings: ContactSettings }; result: ContactSettings };
@@ -643,11 +655,12 @@ export interface CoordinationRpcMethods {
   /** The contacts this thread's agent may write to, with the projects each opened to this core. */
   'collaboration.contacts': { params: { threadId: ThreadId }; result: { name: string; coreId: string; projects: string[]; link: Contact['link'] }[] };
   /**
-   * A request to a contact, handed to this core's Contacts bot: it picks the
-   * contact (`contact` when given), forwards it, and the answer comes back to
-   * this thread as a message, with the thread it is put in relation with.
-   * `target` names a contact's thread exactly as `<contact>/<thread-id>`.
-   * Refused while this core has no Contacts bot.
+   * A request to a contact. Naming it (`contact`, or `target` as
+   * `<contact>/<thread-id>`), the request goes to that contact at once and
+   * its Contacts bot settles it. Naming none, it waits for this core's
+   * Contacts bot, which picks the contact and forwards it; refused then while
+   * this core has no Contacts bot. The answer comes back to this thread as a
+   * message, with the thread it is put in relation with.
    */
   'collaboration.ask': { params: { threadId: ThreadId; contact?: string; text: string; target?: string; want?: ContactRequestWant }; result: ContactRequest };
   /** What the Contacts bot reads: requests, relations, flags, contacts and projects. Its own thread only. */
@@ -660,8 +673,11 @@ export interface CoordinationRpcMethods {
   'contacts.bot.start': { params: { threadId: ThreadId; id: string; project: string; brief: string; model?: string; effort?: string; worktree?: boolean }; result: { request: ContactRequest; threadId: ThreadId } };
   /** A card asking the owner to open `project` to the request's contact; their Yes opens it and accepts the request. Always the owner's. */
   'contacts.bot.share': { params: { threadId: ThreadId; id: string; project: string; reason: string }; result: { questionId: RequestId } };
-  /** A card asking the owner whether the bot may act on a request of a contact not trusted, with what it proposes. Their No refuses it. */
-  'contacts.bot.askOwner': { params: { threadId: ThreadId; id: string; text: string }; result: { questionId: RequestId } };
+  /**
+   * A card showing the owner what the bot will do with a request of a contact not trusted: `connect` it to a thread here, or `start` one
+   * (`ContactRequest.plan`). Their Accept runs that plan as written; their No refuses the request. With `text` alone, their Accept only lets the bot act.
+   */
+  'contacts.bot.askOwner': { params: { threadId: ThreadId; id: string; text?: string; connect?: ThreadId; start?: { project: string; brief: string; model?: string; effort?: string; worktree?: boolean } }; result: { questionId: RequestId } };
   'contacts.bot.refuse': { params: { threadId: ThreadId; id: string; reason: string }; result: ContactRequest };
   /**
    * The bot cuts what a contact reaches here: one relation, one project, or

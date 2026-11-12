@@ -62,7 +62,7 @@ working on the code. To learn how to use Boite, read the [user guide](../README.
 
 ## Building and contributing
 
-- [Contributing](../../CONTRIBUTING.md): setup and checks before a pull request.
+- [Contributing](../../CONTRIBUTING.md): bug fixes only, the rules for a pull request and the checks.
 - [Development](development.md): local runs, test fixtures and captures.
 - [Adding an RPC method](development.md#adding-an-rpc-method): contracts, permissions and real/fake parity.
 - [Architecture](architecture.md): the core, clients, journal and drivers.

@@ -76,6 +76,11 @@
     if (!await row.view.decide(row.request.id, { accept: true, projectId })) return;
     for (const copy of same) if (copy.key !== row.key && copy.request) await copy.view.decide(copy.request.id, { accept: false, reason: labels.duplicate });
   }
+  /** What the Operator will do once the owner accepts, as the request's card words it. */
+  function operatorPlan(plan: NonNullable<ContactRequest['plan']>): string {
+    return plan.kind === 'start' ? fill(labels.plan.start, { project: plan.project.name })
+      : fill(plan.project ? labels.plan.connectIn : labels.plan.connect, { thread: plan.thread.title, project: plan.project ?? '' });
+  }
   /** A thread request the Contacts bot settles: the bot connects its newest ask, the copies before it are refused as copies. */
   async function approve(row: Row & { request: ContactRequest }, same: Row[]) {
     acted = row.key;
@@ -161,9 +166,11 @@
             {#if !settledByBot(request)}
               <button type="button" class="primary answer" disabled={busy || !chosen} title={tip} aria-label={tip}
                 onclick={() => chosen && void accept({ ...row, request }, same, chosen.id)} data-testid="activity-accept-{request.id}"><span class="ui-label">{labels.accept}</span></button>
-            {:else if request.approved === false}
-              <button type="button" class="primary answer" disabled={busy} title={labels.approveTip}
-                onclick={() => void approve({ ...row, request }, same)} data-testid="activity-approve-{request.id}"><span class="ui-label">{labels.approve}</span></button>
+            {:else if request.plan || request.approved === false}
+              <!-- Accept runs the Operator's choice and shares no project; the request's card offers the owner's own pick. -->
+              {@const approveTip = request.plan ? `${operatorPlan(request.plan)}. ${labels.plan.acceptTip}` : labels.approveTip}
+              <button type="button" class="primary answer" disabled={busy} title={approveTip} aria-label={approveTip}
+                onclick={() => void approve({ ...row, request }, same)} data-testid="activity-approve-{request.id}"><span class="ui-label">{labels.accept}</span></button>
             {/if}
           {:else}
             {@const letter = row.letter!}

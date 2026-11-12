@@ -29,8 +29,11 @@ export const CONTACTS_HELP = `Contacts bot (only its own thread):
                                  --worktree) in relation with the asking thread
   contacts share <request-id> <project> <reason>
                                  ask the owner to open a project to the contact
-  contacts ask-owner <request-id> <text>
-                                 ask the owner about a contact not trusted
+  contacts ask-owner <request-id> connect <thread-id> [note]
+  contacts ask-owner <request-id> start <project> <brief>
+                                 a contact not trusted: show the owner what you
+                                 will do; their Accept does it (--model,
+                                 --effort, --worktree for start)
   contacts refuse <request-id> <reason>
   contacts cut <contact>[/<relation-id>] <reason>
                                  end its relations, one, or with --project close
@@ -112,8 +115,15 @@ export async function contactsCommand(client: CoreClient, threadId: string, rest
     const result = await client.call('contacts.bot.share', { threadId, id: want(1, 'a request id'), project: want(2, 'a project'), reason: text(3, 'the reason the owner reads') });
     print([`card ${result.questionId} asks the owner; only the owner's Yes opens the project. The answer comes back to this thread.`], result);
   } else if (action === 'ask-owner') {
-    const result = await client.call('contacts.bot.askOwner', { threadId, id: want(1, 'a request id'), text: text(2, 'the question the owner reads') });
-    print([`card ${result.questionId} asks the owner. The answer comes back to this thread.`], result);
+    const id = want(1, 'a request id');
+    const kind = rest[2];
+    const note = rest.slice(4).join(' ').trim();
+    const plan = kind === 'connect' ? { connect: want(3, 'a thread id here'), ...(note ? { text: note } : {}) }
+      : kind === 'start' ? { start: { project: want(3, 'a project'), brief: text(4, 'a brief for the new thread'),
+        ...(options.model === undefined ? {} : { model: options.model }), ...(options.effort === undefined ? {} : { effort: options.effort }), ...(options.worktree ? { worktree: true } : {}) } }
+      : { text: text(2, 'connect <thread-id>, start <project> <brief>, or a question') };
+    const result = await client.call('contacts.bot.askOwner', { threadId, id, ...plan });
+    print(['connect' in plan || 'start' in plan ? `card ${result.questionId} shows the owner your plan. Their Accept runs it as written; you do nothing more.` : `card ${result.questionId} asks the owner. The answer comes back to this thread.`], result);
   } else if (action === 'refuse') {
     const request = await client.call('contacts.bot.refuse', { threadId, id: want(1, 'a request id'), reason: text(2, 'the reason the asking agent reads') });
     done(request, 'refused');

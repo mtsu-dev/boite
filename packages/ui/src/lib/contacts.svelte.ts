@@ -5,7 +5,7 @@
  * load it with the Contacts experiment.
  */
 
-import type { Contact, ContactInvite, ContactRequest, ContactSettings, ContactsState, ContactTailscale, ProjectId } from '@boite/contracts';
+import type { Contact, ContactInvite, ContactRequest, ContactSettings, ContactsState, ContactTailscale, ProjectId, ThreadId } from '@boite/contracts';
 import { untrack } from 'svelte';
 import { errorText } from './errors';
 import { RpcFailure } from './rpc-error';
@@ -148,7 +148,7 @@ export class ContactsView {
   }
 
   /** Accept without a project only on a request the bot settles (`settledByBot`): the bot may then act on it. */
-  async decide(id: string, decision: { accept: true; projectId?: ProjectId } | { accept: false; reason: string }): Promise<ContactRequest | null> {
+  async decide(id: string, decision: { accept: true; projectId?: ProjectId; threadId?: ThreadId } | { accept: false; reason: string }): Promise<ContactRequest | null> {
     const request = await this.#run(`decide:${id}`, () => this.#connected().call('contacts.decide', { id, ...decision }));
     if (request && this.state) this.state.requests = this.state.requests.map(entry => entry.id === id ? request : entry);
     return request;

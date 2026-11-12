@@ -573,21 +573,33 @@ sequenceDiagram
    thread, `--contact <name>` to name the contact, `--new` for a new thread
    on one of the contact's projects, `--share` to have a project opened to
    it. A target thread id may be a group member's thread at its Bots host,
-   `<thread>~<16 hex>`. The request waits for this core's bot (`stage:
-   'bot'`), which wakes on it, picks the contact and the words that let the
-   other bot find the thread, and forwards it (`contacts.bot.forward`). On a
-   group member without a bot, the Bots host's bot does it
-   ([Group to group](#group-to-group)). Without a Contacts bot on this core or
-   its group's Bots host the ask is refused with the way to create one.
-2. The contact's core keeps the request for its own bot. A contact marked
-   trusted is settled by the bot alone. For one that is not, the bot raises a
-   card for its owner (`contacts.bot.askOwner`), and only the owner's Accept,
-   never an agent's answer, lets it act; Refuse refuses the request. The
-   Requests card offers the same Accept (**Let the Operator connect it**) on a
-   `talk` or `thread` request that waits for the bot or the owner's card:
-   `contacts.decide` then approves it for the bot (`approved: true`, back to
-   `stage: 'bot'`), closes the bot's card for it and opens no project, so the
-   request stays pending until the bot connects it. A trusted contact's request has no Accept there.
+   `<thread>~<16 hex>`. A request that names its contact goes to that
+   contact at once, with no turn of this core's bot. One that names none
+   waits for this core's bot (`stage: 'bot'`), which wakes on it, picks the
+   contact and forwards it (`contacts.bot.forward`); without a Contacts bot
+   here or on the group's Bots host that ask is refused with the way to
+   create one. On a group member without a bot, the Bots host files the ask
+   ([Group to group](#group-to-group)).
+2. The contact's core keeps the request for its own bot, which decides what
+   fits: an existing thread, or a new one in a project. A contact marked
+   trusted is settled by the bot alone. For one that is not, the bot shows
+   its owner that decision (`contacts.bot.askOwner` with `connect` or
+   `start`): the request carries it as `plan`, the Requests card and the
+   bot's card show it with Accept and Refuse, and only the owner's Accept,
+   never an agent's answer, runs it, as written and with no further turn of
+   the bot (`runPlan`, `decidedBy: 'owner'`). A plan that no longer holds (its
+   thread archived) goes back to the bot, approved, with the reason. Refuse
+   refuses the request. The arrow beside Accept (`ThreadChoice.svelte`, the
+   project search over this machine's threads, the bot's own left out) sends
+   `contacts.decide` with `threadId`: the owner's pick is put in touch with
+   the asking thread whatever the plan says (`connectByOwner`), and the bot's
+   card closes. On a `talk` or `thread` request with no plan yet, Accept
+   leaves the choice to the bot: `contacts.decide`
+   then approves it for the bot (`approved: true`, back to `stage: 'bot'`),
+   closes the bot's card for it and opens no project, so the request stays
+   pending until the bot connects it. A trusted contact's request has no Accept there.
+   A core without a Contacts bot refuses a `talk` or `thread` request with the
+   reason: its owner could only open a project, which reaches no thread.
    If the local bot is gone, pending incoming bot or owner requests return to
    the owner: the client receives no bot stage, and Accept opens the chosen
    project. Host-stage requests keep their route through the Bots host.
