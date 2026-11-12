@@ -8,6 +8,7 @@ import { Store } from '../lib/store.svelte';
 import { workspace } from '../lib/workspace.svelte';
 import MobileNavigation from './MobileNavigation.svelte';
 import { activityReturn } from '../lib/activity-return.svelte';
+import { tabHeader } from '../lib/tab-header.svelte';
 
 let mounted: ReturnType<typeof mount> | undefined;
 let client: FakeClient;
@@ -501,4 +502,46 @@ test("a tap on a project's header folds it as the sidebar does, and the fold out
     expect(body().inert).toBe(false);
     expect(store.collapsedProjects).toEqual([]);
   } finally { projectView.order = order; }
+});
+
+test('a machine out of reach keeps its projects\' count of what needs the user, the count Activity\'s tab shows', async () => {
+  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
+    media, matches: true, onchange: null, addListener() {}, removeListener() {}
+  }));
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  const thread = store.threadsOf('p-boite').find(t => !t.parentThreadId)!;
+  store.threads = store.threads.map(t => t.id === thread.id ? { ...t, status: 'error' } : t);
+  workspace.machines = [{ id: 'local', label: 'Local', store }]; workspace.active = store;
+  workspace.setView('projects');
+  mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'threads' } });
+  await settle();
+  const counts = () => ({
+    card: Number(document.querySelector<HTMLElement>('[data-testid=mobile-project-group][data-project-id=p-boite] [data-testid=project-waiting-count]')?.dataset.count ?? 0),
+    tab: Number(document.querySelector('[data-testid=mobile-activity-waiting]')?.textContent ?? 0)
+  });
+  const reached = counts();
+  expect(reached.card).toBeGreaterThan(0);
+  store.connection = 'closed';
+  await settle();
+  expect(document.querySelector('[data-testid=mobile-project-group][data-project-id=p-boite]')).not.toBeNull();
+  expect(counts()).toEqual(reached);
+});
+
+test('the Bots search lent to the header carries no thread display options, though the thread list was the last screen', async () => {
+  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
+    media, matches: true, onchange: null, addListener() {}, removeListener() {}
+  }));
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  workspace.machines = [{ id: 'local', label: 'Local', store }]; workspace.active = store;
+  store.page = 'agents';
+  const release = tabHeader.lend({ searchLabel: 'Search bots', searchTestid: 'agents-search-toggle', create: null });
+  try {
+    mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'threads' } });
+    await settle();
+    document.querySelector<HTMLButtonElement>('[data-testid=agents-search-toggle]')!.click(); await settle();
+    expect(document.querySelector('[data-testid=mobile-search]')).not.toBeNull();
+    expect(document.querySelector('[data-testid=mobile-grouping-options]')).toBeNull();
+  } finally { release(); store.page = 'chat'; }
 });

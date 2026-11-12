@@ -138,15 +138,21 @@
    * the language the app speaks, whether dictation is ready on the machine
    * Voice shows (unknown, no word, on a machine that cannot say).
    */
-  const THEME_WORDS = { system: strings.settings.themeSystem, dark: strings.settings.themeDark, light: strings.settings.themeLight, grain: strings.settings.themeGrain };
-  let appearance = $derived.by(() => { void page; return `${THEME_WORDS[readTheme()]} · ${strings.settings.languageNames[activeLocale()]}`; });
+  let appearance = $derived.by(() => {
+    void page;
+    // Read through `strings` each time, so the theme word follows a language just picked.
+    const words = { system: strings.settings.themeSystem, dark: strings.settings.themeDark, light: strings.settings.themeLight, grain: strings.settings.themeGrain };
+    return `${words[readTheme()]} · ${strings.settings.languageNames[activeLocale()]}`;
+  });
   let connected = $derived(store.connection === 'ready' && !store.pairingRequired);
-  let voiceReady = $state<boolean | null>(null);
+  /** The last answer and the machine it came from: shown only while that machine is the one picked and in reach. */
+  let voice = $state.raw<{ of: Store; ready: boolean } | null>(null);
+  let voiceReady = $derived(voice && voice.of === target && target.connection === 'ready' ? voice.ready : null);
   $effect(() => {
-    const client = target.client;
+    const client = target.client, of = target;
     if (page !== 'home' || !client || target.connection !== 'ready') return;
     let live = true;
-    client.call('speech.status', {}).then((status) => { if (live) voiceReady = status.ready; }, () => { if (live) voiceReady = null; });
+    client.call('speech.status', {}).then((status) => { if (live) voice = { of, ready: status.ready }; }, () => { if (live) voice = null; });
     return () => { live = false; };
   });
   /** During a slide the screen it leaves stays drawn; the one on top comes last, so it paints over the other. */
@@ -342,7 +348,7 @@
         <div class="stack">
           <DiagnosticsPage store={target} {onopenthread} />
           <div class="merged" id="settings-resources"><ResourcesPage store={target} /></div>
-          <div class="merged" id="settings-task-manager"><TaskManagerLoader {store} {onopenthread} /></div>
+          <div class="merged" id="settings-task-manager"><TaskManagerLoader store={target} {onopenthread} /></div>
         </div>
       {:else if shown === 'worktrees'}
         <div class="page worktrees-page"><WorktreesCard store={target} /></div>

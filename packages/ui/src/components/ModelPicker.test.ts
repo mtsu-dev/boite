@@ -226,6 +226,40 @@ test('a short gateway catalog identifies each upstream provider, including after
   }
 });
 
+test('in the favorites, the refresh follows their reads, not the hidden column of the provider shown before', async () => {
+  const model: ModelInfo = { id: 'douane/opencode/solo', name: 'Solo' };
+  vi.spyOn(store, 'favorites', 'get').mockReturnValue([{ providerId: 'opencode', accountId: 'a-opencode', model, items: [] }]);
+  // A provider's probes hold while it is in `held`.
+  const held = new Set<string>();
+  const original = FakeClient.prototype.call;
+  vi.spyOn(FakeClient.prototype, 'call').mockImplementation(async function (this: FakeClient, method, params) {
+    if (method === 'providers.probe') await waitFor(() => !held.has((params as { providerId: string }).providerId));
+    return original.call(this, method, params) as never;
+  });
+  await mountAt('landing');
+  const refresh = () => query<HTMLButtonElement>('[data-testid=picker-refresh]');
+  const spins = () => refresh().querySelector('svg')!.classList.contains('spin');
+  document.querySelector<HTMLButtonElement>('[data-testid=composer-picker]')!.click();
+  await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null);
+  document.querySelector<HTMLButtonElement>('[data-testid=composer-picker-menu] [data-provider=claude]')!.click();
+  await waitFor(() => rows() > 0 && !refresh().disabled);
+  // Claude reads again, then the favorites open: their refresh is free.
+  held.add('claude');
+  refresh().click();
+  await waitFor(() => refresh().disabled);
+  document.querySelector<HTMLButtonElement>('[data-provider=favorites]')!.click();
+  await waitFor(() => document.querySelector('[data-testid=favorite-model]') !== null);
+  expect(refresh().disabled).toBe(false);
+  expect(spins()).toBe(false);
+  // While the favorites read, it spins and takes no second press.
+  held.add('opencode');
+  refresh().click();
+  await waitFor(() => refresh().disabled);
+  expect(spins()).toBe(true);
+  held.clear();
+  await waitFor(() => !refresh().disabled && !spins());
+});
+
 test('a provider with one model beside a long rail: the menu follows the list, the rail scrolls under a fade, the current fill spans its star', async () => {
   const models: ModelInfo[] = [{ id: 'douane/opencode/solo', name: 'Solo' }];
   await mountAt('landing');
@@ -438,6 +472,11 @@ test('a signed-in Claude seat is probed before its model and account are applied
     accountButton()!.click();
     await waitFor(() => document.querySelector('[data-instance="claude::a-claude-side"]') !== null);
     expect(document.querySelector<HTMLButtonElement>('[data-instance="claude::a-claude-side"]')!.disabled).toBe(true);
+    // Every model row waits with it, the older models' too: a click there would be dropped.
+    query<HTMLButtonElement>('[data-testid=picker-legacy]').click();
+    await waitFor(() => document.querySelectorAll('[data-testid=picker-legacy-menu] .row.model.legacy').length > 0);
+    expect([...document.querySelectorAll<HTMLButtonElement>('[data-testid=picker-legacy-menu] .row.model.legacy')].every((row) => row.disabled)).toBe(true);
+    expect([...document.querySelectorAll<HTMLButtonElement>('.main-models .row.model[data-model]')].every((row) => row.disabled)).toBe(true);
 
     gate.resolve();
     await waitFor(() => calls.some(({ method, params }) => method === 'threads.update' && (params as { accountId?: string }).accountId === 'a-claude-side') && store.openThread?.accountId === 'a-claude-side');

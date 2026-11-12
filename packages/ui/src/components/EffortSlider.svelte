@@ -142,9 +142,16 @@
     return last === 0 ? '50%' : `${(at / last) * 100}%`;
   }
 
-  /** The keyboard lands on the track the moment it is there, so the arrows work at once. */
+  /**
+   * The keyboard lands on the track the moment it is there, so the arrows work
+   * at once. A shut popover takes the track from under the pointer without a
+   * leave: the hovered dot goes with it, or a reopening previews it again.
+   */
   $effect(() => {
-    if (!popover.open) return;
+    if (!popover.open) {
+      hovered = null;
+      return;
+    }
     track?.focus({ preventScroll: true });
   });
 
@@ -171,6 +178,8 @@
     if (event.button !== 0) return;
     event.preventDefault();
     dragging = true;
+    // The drag ends where the pointer lets go: the dot it hovered before is no preview once it lands.
+    hovered = null;
     track?.focus({ preventScroll: true });
     track?.setPointerCapture(event.pointerId);
     preview = nearest(event.clientX);

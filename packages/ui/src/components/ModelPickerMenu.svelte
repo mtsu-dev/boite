@@ -147,15 +147,23 @@
   /** No answer yet for this instance: the descriptor's list would be replaced once it lands. */
   let pending = $derived(shown ? store.modelsPending(shown.id, shownAccountId) : false);
 
+  /** The favorites' instances are being read again, one after the other. */
+  let refreshingFavorites = $state(false);
+  /** The refresh reads the view on screen: the favorites', or the shown provider's column. */
+  let refreshing = $derived(favoritesOpen ? refreshingFavorites : probing);
+
   async function refreshModels() {
     if (favoritesOpen) {
-      const seen = new Set<string>();
-      for (const entry of favorites) {
-        const key = entry.providerId + '::' + entry.accountId;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        await store.probeModels(entry.providerId, entry.accountId, true);
-      }
+      refreshingFavorites = true;
+      try {
+        const seen = new Set<string>();
+        for (const entry of favorites) {
+          const key = entry.providerId + '::' + entry.accountId;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          await store.probeModels(entry.providerId, entry.accountId, true);
+        }
+      } finally { refreshingFavorites = false; }
     } else if (shown && shownAccountId) await store.probeModels(shown.id, shownAccountId, true);
   }
 
@@ -332,7 +340,7 @@
   {onkeydown}
 >
   {#snippet refresh()}
-    <button class="refresh" type="button" data-testid="picker-refresh" aria-label={strings.composer.refreshModels} title={strings.composer.refreshModels} disabled={disabled || probing || pickPending || needsInstall} onclick={() => void refreshModels()}><RefreshCw size={14} class={probing || pickPending ? 'spin' : ''} /></button>
+    <button class="refresh" type="button" data-testid="picker-refresh" aria-label={strings.composer.refreshModels} title={strings.composer.refreshModels} disabled={disabled || refreshing || pickPending || (!favoritesOpen && needsInstall)} onclick={() => void refreshModels()}><RefreshCw size={14} class={refreshing || pickPending ? 'spin' : ''} /></button>
   {/snippet}
   {#if single}
     {@render refresh()}
@@ -484,6 +492,7 @@
                 data-row={legacyOpen || undefined}
                 data-model={legacyOpen ? model.id : undefined}
                 title={model.id}
+                disabled={disabled || pickPending}
                 onclick={() => pickModel(model)}
               >
                 <span class="mark" aria-hidden="true">{#if isCurrentModel(model)}<Check size={14} />{/if}</span>

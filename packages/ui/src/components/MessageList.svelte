@@ -773,14 +773,14 @@
           {/if}
           {#if turn && closes}
             {#if !host}{@render changes(false)}{/if}
-            <!-- A failure's card holds its cause and its one Retry; a question at the composer's top is a running turn's status. -->
-            {#if !failureCarded(turn, messages) && !(asking && turn.status === 'running')}
-            <MessageTurnSummary {store} {threadId} {turn} turns={shownTurns} message={source ?? message} {messages} pointed={pointed === turn.id} tucked={!reveal.shows(message)}
+            {@const carded = failureCarded(turn, messages)}<!-- A failure's card holds its cause and its one Retry: the line keeps copy, fork and the background stop; a question at the composer's top is a running turn's status. -->
+            {#if !(asking && turn.status === 'running')}
+            <MessageTurnSummary {store} {threadId} {turn} {carded} turns={shownTurns} message={source ?? message} {messages} pointed={pointed === turn.id} tucked={!reveal.shows(message)}
               {...summaryMarks(shaped, turn.id, () => store.panel.open('desk'))}>
               {#snippet actions()}
                 <MessageActions
                   text={() => turnAnswer(messages, turn.id)}
-                  retry={atRest && store.openThread?.turns.at(-1)?.id === turn.id ? () => void retry(turn.id) : undefined}
+                  retry={atRest && !carded && store.openThread?.turns.at(-1)?.id === turn.id ? () => void retry(turn.id) : undefined}
                   fork={!narrow.current && forkable && !store.openThread?.incognito && source && source.state !== 'streaming' ? (worktree) => void store.fork(source.id, { worktree }) : undefined}
                   plugin={store === workspace.primary && source ? { threadId, messageId: source.id, role: 'assistant' } : undefined}
                 />

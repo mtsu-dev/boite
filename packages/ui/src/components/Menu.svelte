@@ -215,6 +215,7 @@
           class:radio={item.radio}
           class:submenu={item.submenu}
           class:glyphed={!switches && !!item.glyph}
+          class:iconed={switches && !!(item.icon || item.glyph)}
           class:clip={item.clip}
           role={item.checked === undefined ? 'menuitem' : item.radio ? 'menuitemradio' : 'menuitemcheckbox'}
           aria-checked={item.checked}
@@ -289,7 +290,9 @@
   .switches .item.radio .check { justify-self: center; }
   .switches .label { gap: 9px; }
   .switches .glyph { margin-right: 0; }
-  .switches .hint { padding-left: 23px; font-size: var(--text-xs); }
+  .switches .hint { font-size: var(--text-xs); }
+  /* Under the words, past the 14 px icon and its 9 px gap; a row with no icon starts its hint under its name. */
+  .switches .iconed > .hint { padding-left: 23px; }
   /* The shared switch (app.css), a little smaller in a menu row. */
   .switch { --switch-width: 36px; --switch-height: 22px; grid-column: 2; grid-row: 1 / span 2; align-self: center; }
   .status-dot { display: inline-block; width: 6px; height: 6px; flex: none; border-radius: 50%; margin-right: 8px; vertical-align: middle; background: var(--color-live); }

@@ -1117,6 +1117,19 @@ html[data-motion='reduced'] *:not([data-testid='onboarding-animation'] *)::after
   transition-duration: 0.01ms !important;
   transition-delay: 0s !important;
 }
+/* That cut is for transitions a component wrote. An element that wrote none
+   still has `transition-property: all`, and the duration above would give it
+   a transition on every property: a width, a height or a padding set by a
+   media query or a script would land one frame late, so a layout read in the
+   same task (a notice's place, the phone's columns, the composer over the
+   keyboard) saw the old box. Windows with animation effects off reports
+   reduced motion, so its CI met it on every phone switch. The weakest
+   selectors (`:where` takes no pseudo-element, so `::before` and `::after`
+   add one type's weight): any rule that names a transition wins. */
+@media (prefers-reduced-motion: reduce) {
+  :where(*), :where(*)::before, :where(*)::after { transition-property: none; }
+}
+:where(html[data-motion='reduced'] *), :where(html[data-motion='reduced'] *)::before, :where(html[data-motion='reduced'] *)::after { transition-property: none; }
 
 /* Every endless animation but a tour picture's plays `var(--loops)`
    (render-cost.test.ts): paused while the page is hidden, another application
@@ -1350,12 +1363,12 @@ button:disabled {
 }
 
 /* A primary that cannot act yet is drawn as an outline: a faded filled slab
-   read as heavy grey weight in the middle of a card. */
+   read as heavy grey weight in the middle of a card. It keeps the disabled fade,
+   or the outline would read as an enabled secondary button. */
 button.primary:disabled {
   background: transparent;
   border-color: var(--color-edge);
   color: var(--color-subtle);
-  opacity: 1;
 }
 
 /* A primary action is filled in the text colour: the accent is kept for the send button. */
@@ -1388,10 +1401,14 @@ button.primary.send {
    machine away) is a quiet disc of the same size and place: the accent
    lights only once a press would send. */
 button.primary.send:disabled {
+  /* Where color-mix is unknown (Safari 15.4 to 16.1) the mix drops and this one holds, never the accent. */
+  background: var(--color-active);
   background: color-mix(in oklab, var(--color-foreground) 8%, transparent);
   border-color: transparent;
   color: var(--color-subtle);
   box-shadow: var(--shadow-control);
+  /* Already quiet: the disabled fade of other buttons would hide the disc. */
+  opacity: 1;
 }
 
 button.quiet,

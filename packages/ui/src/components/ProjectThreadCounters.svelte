@@ -15,7 +15,8 @@
    * say it. The working count stands only where no row says it:
    * a folded card, or the fold of working threads (the display menu's grouping), whose toggle it is, so there it
    * stays beside Needs you. The archived ones live in the card's menu (lib/project-menu.ts).
-   * `away`: the machine is not connected; its last known working count stays, the counts that ask are not drawn.
+   * `away`: the machine is not connected; its last known counts stay, the working one without its live colour, the
+   * one that asks as Activity and the rail's badge count it.
    * The amber count stands alone in the header: with threads that need the user, the working fold's toggle moves
    * into the card, over the fold it opens (`place="fold"`, a row of its own with the same test id).
    */

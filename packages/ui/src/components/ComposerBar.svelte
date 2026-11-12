@@ -39,7 +39,8 @@
    * permission (an icon and a word), the same three on a thread, a bot and a
    * phone, the context's ring and "x% context left" once it matters, then dictation and one round
    * button that is Send, or Stop while a turn runs and nothing typed waits to go
-   * (not while it stands on a decision of the owner's). While the field
+   * (not while it stands on a decision of the owner's); with words typed the
+   * turn's Stop waits in the foot's line. While the field
    * answers a question the button is the words "Answer", the one commit of
    * the card's picks with the text and files: the primary once something is
    * picked or typed, disabled before with its reason in the tooltip. The
@@ -362,7 +363,7 @@
     {/key}
   {/key}
   {/if}
-  <!-- While a turn runs on an empty box, Stop takes Send's place; typing brings Send back (Escape still stops). -->
+  <!-- While a turn runs on an empty box, Stop takes Send's place; typing brings Send back, and the turn's Stop moves to the foot's line (Composer's `stopsTurn`). -->
   {#if stopShown}
     <button type="button" class="icon quiet stop" data-testid="composer-stop" title={strings.composer.stop} aria-label={strings.composer.stop} onmousedown={keepFocus} onclick={() => { if (target) target.stop?.(); else void store.stop(); }}>
       <Square size={12} strokeWidth={2.5} />

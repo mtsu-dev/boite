@@ -221,7 +221,7 @@
   /** The threads of a project that need the user, its heading's count, and how many of them failed, as on the desktop card. */
   function needsCount(entry: ProjectEntry): { count: number; failed: number } {
     const owner = entry.machine.store;
-    // Activity's own count over the project's threads: the card and the rail's badge never disagree.
+    // Activity's own count over the project's threads, a machine out of reach included as its last known state: the card and the rail's badge never disagree.
     return storeNeeds(owner, owner.threadsOf(entry.project.id));
   }
   /** A phone's row menu: the desktop's short first level, its named group opening in the same sheet (`Menu.svelte`). */
@@ -308,7 +308,7 @@
     <!-- The magnifier opened the field in the title's place; the display options close its row, as on the desktop list. -->
     <div class="search"><Search size={17} /><input type="search" bind:value={() => lent ? tabHeader.query : search, value => { if (lent) tabHeader.query = value; else search = value; }}
       aria-label={lent?.searchLabel ?? strings.mobile.search} placeholder={lent?.searchLabel ?? strings.mobile.search} data-testid="mobile-search" use:focusOnMount onkeydown={event => { if (event.key === 'Escape') closeSearch(); }} />
-      {#if listScreen === 'threads' && groups.length}<span class="display"><DisplayOptions entries={groups} target={undefined} owner={store} prefix="mobile-" compact filters={filters} {atWork} onaddproject={store.addsProjects ? addProject : undefined} /></span>{/if}
+      {#if store.page === 'chat' && listScreen === 'threads' && groups.length}<span class="display"><DisplayOptions entries={groups} target={undefined} owner={store} prefix="mobile-" compact filters={filters} {atWork} onaddproject={store.addsProjects ? addProject : undefined} /></span>{/if}
     </div>
     <button class="ghost icon" data-testid="mobile-search-close" aria-label={strings.mobile.clearSearch} onclick={closeSearch}><X size={20} /></button>
   {:else}
@@ -378,7 +378,7 @@
         {@const doneOpen = archiveCount(group.project, 'done') > 0 && doneFilter.shown}
         {@const archivedOpen = later && archiveCount(group.project, 'archived') > 0}
         {@const workingRows = groupRows.filter(row => workingThread(row.machine.store, row.thread))}
-        {@const needsHere = group.machine.store.connection === 'ready' ? needsCount(group) : { count: 0, failed: 0 }}
+        {@const needsHere = needsCount(group)}
         {@const waitingHere = needsHere.count}
         {@const attentionAll = query || !recentPreferences.groupWorking ? groupRows : groupRows.filter(row => workingOpen ? !workingThread(row.machine.store, row.thread) : !groupWorkingThread(group.machine.store, row.thread))}
         {@const fold = query ? { shown: attentionAll, folded: [] } : foldQuiet(attentionAll, row => row.thread.pinned === true || threadState(row.thread, rowAsks(row.machine.store, row.thread.id)) !== null)}

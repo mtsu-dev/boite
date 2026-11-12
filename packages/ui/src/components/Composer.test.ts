@@ -1055,6 +1055,34 @@ test('the permission waits on its command row in the timeline, the field says a 
   await waitFor(() => !store.busy);
 });
 
+test('a question in the field keeps Enter and Escape from a permission waiting beside it, and so does a machine out of reach', async ({ app: _app }) => {
+  await store.open('t-trace');
+  await send('check this [ask]');
+  await waitFor(() => document.querySelector('[data-testid=composer-reply]') !== null);
+  const ask = { id: 'perm-beside', threadId: 't-trace', turnId: store.openThread!.turns.at(-1)?.id ?? 'turn', toolName: 'Bash', input: { command: 'ls' }, description: null, createdAt: Date.now() };
+  store.pendingPermissions = [...store.pendingPermissions, ask];
+  flushSync();
+  const answer = vi.spyOn(store, 'answer').mockResolvedValue(undefined as never);
+  // The field answers the question: Enter is never the tool's Allow, nor Escape its Deny.
+  input().focus();
+  press('Enter');
+  press('Escape');
+  expect(answer).not.toHaveBeenCalled();
+  // No question, the machine gone: the decision cannot reach it, so the keys leave it alone.
+  query<HTMLButtonElement>('[data-testid=activity-question-toggle]').click();
+  await waitFor(() => document.querySelector('[data-testid=composer-reply]') === null);
+  (store.client as FakeClient).drop();
+  await waitFor(() => store.connection !== 'ready');
+  if (!store.pendingPermissions.some((request) => request.id === ask.id)) store.pendingPermissions = [...store.pendingPermissions, ask];
+  flushSync();
+  input().focus();
+  press('Enter');
+  press('Escape');
+  expect(answer).not.toHaveBeenCalled();
+  await (store.client as FakeClient).restore();
+  store.pendingPermissions = store.pendingPermissions.filter((request) => request.id !== ask.id);
+});
+
 test('a message sent while a permission waits declines it and redirects, and Send says so: the denial goes, and the message is the next turn', async ({ app: _app }) => {
   await store.open('t-trace');
   await type('Hold on [permission]');
@@ -1579,6 +1607,30 @@ test('while a question takes the field during a turn, its button is Answer alone
   await waitFor(() => call.mock.calls.some(([method]) => method === 'questions.answer'));
   expect(call.mock.calls.find(([method]) => method === 'questions.answer')?.[1]).toMatchObject({ text: 'port 4000' });
   expect(call.mock.calls.filter(([method]) => method === 'turns.start')).toHaveLength(0);
+});
+
+test('while a turn runs, typed words take the round button for Send and the turn\'s Stop waits on the foot\'s line', async ({ app: _app }) => {
+  await store.open('t-trace');
+  await waitFor(() => !store.busy);
+  store.openThread!.status = 'running';
+  flushSync();
+  // An empty field: the round button is Stop, and the foot has no line of its own.
+  await waitFor(() => document.querySelector('[data-testid=composer-stop]') !== null);
+  expect(document.querySelector('[data-testid=agent-dock-stop]')).toBeNull();
+  // A follow-up typed meanwhile: Send takes the button, and a finger still has a Stop.
+  await type('and then the tests');
+  await waitFor(() => document.querySelector('[data-testid=composer-stop]') === null);
+  await waitFor(() => document.querySelector('[data-testid=agent-dock-stop]') !== null);
+  expect(query('[data-testid=agent-dock-label]').dataset.text).toBe(strings.chat.working);
+  const stop = vi.spyOn(store, 'stop').mockResolvedValue(undefined as never);
+  query<HTMLButtonElement>('[data-testid=agent-dock-stop]').click();
+  await waitFor(() => stop.mock.calls.length === 1);
+  stop.mockRestore();
+  // Cleared, the field gives Stop back to the button and the line goes.
+  await type('');
+  await waitFor(() => document.querySelector('[data-testid=composer-stop]') !== null && document.querySelector('[data-testid=agent-dock-stop]') === null);
+  store.openThread!.status = 'idle';
+  flushSync();
 });
 
 test('an ignored async question stays docked while an ordinary message goes out as a turn', async ({ app: _app }) => {

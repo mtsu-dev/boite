@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, onTestFinished, vi } from 'vitest';
 import { test } from '../test/fake-client';
 import { flushSync, mount, unmount } from 'svelte';
 import { DEFAULT_DELEGATION_CONFIG, type AgentLetter, type Message } from '@boite/contracts';
+import { strings } from '../lib/strings';
 import MessageList from './MessageList.svelte';
 import JumpLatest from './JumpLatest.svelte';
 import { windowStats } from '../lib/message-window';
@@ -1682,4 +1683,29 @@ test('a thread over several days reads by day, its wakes on a line each, its com
   // The wakes fold their steps. The request's time adds each turn's own and the hour the delegated review ran, never the night the watch waited.
   expect(all('turn-steps').length).toBe(3);
   expect(all('turn-elapsed')).toEqual(['Worked for 22m 00s', 'Worked for 29m 00s', 'Worked for 30m 00s', 'Worked for 1h 38m', 'Worked for 1m 00s']);
+});
+
+test('a failed turn whose card holds Retry keeps its line\'s copy and fork, without a second Retry', async ({ ready }) => {
+  window.localStorage.clear();
+  const { store: live } = await ready({ delayMs: 0, long: true });
+  await live.open('t-long');
+  const thread = live.openThread!;
+  const messages = thread.messages;
+  const answer = messages.findLast((message) => message.role === 'assistant')!;
+  const turn = thread.turns.find((entry) => entry.id === answer.turnId)!;
+  turn.status = 'error';
+  answer.parts.push({ type: 'error', message: 'Stopped: the tests failed.' });
+  stubLayout(messages.length * ESTIMATE);
+  running = mount(MessageList, { target: document.body, props: { store: live, threadId: 't-long', messages } });
+  await settle();
+
+  const article = document.querySelector(`[data-mid="${answer.id}"]`)!.closest('article')!;
+  expect(article.querySelector('[data-testid=error-part]')).not.toBeNull();
+  expect(article.querySelector('[data-testid=turn-summary] [data-testid=message-copy]')).not.toBeNull();
+  expect(article.querySelector('[data-testid=turn-summary] [data-testid=message-fork]')).not.toBeNull();
+  expect(article.querySelector('[data-testid=message-retry]')).toBeNull();
+  // The card is the failure's one mark: the line says when it ended, not "Failed" a second time.
+  const line = article.querySelector('[data-testid=turn-summary]')!;
+  expect(line.querySelector('.lucide-circle-alert')).toBeNull();
+  expect(line.textContent).not.toContain(strings.chat.failedAt.split('{')[0]!.trim());
 });

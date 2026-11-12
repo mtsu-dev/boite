@@ -285,8 +285,11 @@ test('each machine says for itself whether the others may start threads on it, a
   await vi.waitFor(() => { flushSync(); expect(document.querySelectorAll('[data-testid="machine-menu"]')).toHaveLength(2); });
   const switches = ['source', 'target'].map(id => option(id, 'machine-group-threads-switch'));
   expect(switches.map(toggle => toggle.getAttribute('aria-checked'))).toEqual(['false', 'false']);
-  // Each switch is named in full in its row's menu, its explanation on hover.
-  expect([switches[0]!.textContent!.trim(), switches[0]!.title]).toEqual([strings.machines.groupThreads, strings.machines.groupThreadsHint]);
+  // Each switch is named in full in its row's menu, its explanation in sight under the name: a finger has no hover.
+  expect(switches.map(toggle => [toggle.querySelector('.label')!.textContent!.trim(), toggle.querySelector('.hint')?.textContent])).toEqual([
+    [strings.machines.groupThreads, strings.machines.groupThreadsHint], [strings.machines.groupThreads, strings.machines.groupThreadsHint]
+  ]);
+  expect(option('source', 'machine-group-bots-switch').querySelector('.hint')?.textContent).toBe(strings.machines.groupBotsHint);
 
   // The default machine, the one the others copy, accepts them: the machine that follows it keeps its own answer.
   option('source', 'machine-group-threads-switch').click();

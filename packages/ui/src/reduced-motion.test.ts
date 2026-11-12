@@ -20,9 +20,11 @@ test('every endless animation stops when the system asks for reduced motion', ()
   expect(unguarded.map((path) => path.slice(SRC.length + 1))).toEqual([]);
 });
 
-// app.css cuts every transition to 0.01ms under reduced motion, and an element with
-// no transition of its own takes `all`: Chrome paints a new transition's first frame
-// at the old value, so whatever a script places would trail a frame behind.
+// app.css cuts every transition to 0.01ms under reduced motion. It also takes
+// `transition-property` away from an element that names none, but a placed element
+// that inherited `transition: all` from a shared rule would still slide: Chrome paints
+// a new transition's first frame at the old value, so whatever a script places would
+// trail a frame behind.
 test('every element placed from script names its own transition, so reduced motion does not slide it', () => {
   const unnamed = svelteFiles(SRC).flatMap((path) => {
     const text = readFileSync(path, 'utf8');

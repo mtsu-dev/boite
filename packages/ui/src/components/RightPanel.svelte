@@ -695,7 +695,7 @@
 
   .solo { display: inline-flex; }
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-  /* Its close, a small cross on its corner, there under the pointer or the keyboard only. */
+  /* Its close, a small cross on its corner, under the pointer or a focused tab only; hidden, a tap there picks the tab. */
   .corner {
     position: absolute;
     /* Inside the square: the strip clips what leaves it. */
@@ -712,8 +712,9 @@
     background: var(--color-surface-3);
     color: var(--color-foreground);
     opacity: 0;
+    visibility: hidden; pointer-events: none;
   }
-  .tab:hover .corner, .tab:focus-visible .corner, .corner:focus-visible { opacity: 1; }
+  .tab:hover .corner, .tab:focus-within .corner { opacity: 1; visibility: visible; pointer-events: auto; }
   .corner:hover:not(:disabled) { background: var(--color-surface-2); }
 
   .chev {

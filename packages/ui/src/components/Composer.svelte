@@ -196,6 +196,9 @@
    */
   let stopped = $derived(!target && (!!thread?.worktreeRemoved || (store.openProject?.missing === true && !thread?.agentSessionId)
     || (!!thread?.contactHold && !thread.archived)));
+  /** The turn runs and the round button is Send (an answer, words typed, files to wait for): the turn's Stop goes to
+   *  the foot's line, so a finger, which has no Escape, can still end it. */
+  let stopsTurn = $derived(store.busy && thread?.status !== 'waiting' && (!!reply || sendWhenLoaded !== null || (sendable && !stopped && !accountGone)));
 
   // What Send does to the question at the top of the box (composerPlaceholder's `answer`) or to a waiting permission.
   let answer = $derived(reply ? (reply.options.length ? 'options' as const : 'text' as const) : docked && docked.threadId === thread?.id && !docked.async && store.busy ? 'after' as const : null);
@@ -732,7 +735,8 @@
       return;
     }
     // An empty field lends the keyboard to the permission on its command row; typing is never taken.
-    if (boxEmpty && permission && !composer?.editing && (event.key === 'Enter' && !event.shiftKey && !touchScreen() || event.key === 'Escape')) {
+    // Not while the field answers a question (its keys are the answer's), nor with the machine out of reach.
+    if (boxEmpty && permission && !reply && !offline && !composer?.editing && (event.key === 'Enter' && !event.shiftKey && !touchScreen() || event.key === 'Escape')) {
       event.preventDefault();
       void store.answer(permission.id, event.key === 'Enter' ? 'allow' : 'deny');
       return;
@@ -771,7 +775,7 @@
   {#if !target}<ComposerStrip />{/if}
   {#if away && !stopped}<ThreadOfflineNotice {store} machine={machineLabel} />{/if}
   {#if accountGone && !botGone}<AccountGoneNotice onpick={() => void toolbar?.openChip('composer-picker')} />{/if}
-  <ComposerFoot {store} {key} {thread} {composer} machine={machineLabel} {sendNow} alone={stopped} stopsTurn={!!reply && store.busy && thread?.status !== 'waiting'} blocked={text.length > 0 || attachments.length > 0 || previewReferences.length > 0} onrestore={restoreQueued} onsendnow={sendQueuedNow} />
+  <ComposerFoot {store} {key} {thread} {composer} machine={machineLabel} {sendNow} alone={stopped} {stopsTurn} blocked={text.length > 0 || attachments.length > 0 || previewReferences.length > 0} onrestore={restoreQueued} onsendnow={sendQueuedNow} />
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="composer" class:dictating class:keys={viaKeys} class:loading={loadingThread} data-testid="composer" tabindex="-1" bind:this={shell} hidden={stopped} {ondragover} {ondrop} onkeydown={(event) => {
     if (event.target !== event.currentTarget || event.key !== 'Escape') return;

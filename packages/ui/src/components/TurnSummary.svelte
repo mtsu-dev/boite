@@ -19,8 +19,10 @@
   import type { Snippet } from 'svelte';
   import InfoTip from './InfoTip.svelte';
   import Spinner from './Spinner.svelte';
-  let { turn, workedBefore = 0, clockOffset = 0, progress, waiting = false, activeTool = false, activeContent = false, background = [], stop, pointed = false, tucked = false, steps, memory, compactions = [], actions, heard = null }: {
+  let { turn, workedBefore = 0, clockOffset = 0, progress, waiting = false, activeTool = false, activeContent = false, background = [], stop, pointed = false, tucked = false, steps, memory, compactions = [], actions, heard = null, carded = false }: {
     turn: Turn;
+    /** The failure has its own card above (`failureCarded`): the card is its one mark, so the line drops its own. */
+    carded?: boolean;
     /**
      * What the user's request this turn belongs to worked before it, in ms,
      * when Boite opened it to carry that request on (`requestWork`). The
@@ -114,7 +116,7 @@
   const memoryTitle = $derived(memory ? [fold.memory[memory.pass.status], ...(memory.pass.summary && memory.pass.status !== 'running' ? [memory.pass.summary] : [])].join(' · ') : '');
   /** A line that counts steps or carries a memory mark reads at rest: it is what the agent did, not a measurement. */
   const marked = $derived(!!steps || !!memory || compactions.length > 0);
-  const finishedLabel = $derived(turn.finishedAt === null ? '' : fill(turn.status === 'error' ? strings.chat.failedAt : strings.chat.finishedAt, { time: clockTime(turn.finishedAt) }));
+  const finishedLabel = $derived(turn.finishedAt === null ? '' : fill(turn.status === 'error' && !carded ? strings.chat.failedAt : strings.chat.finishedAt, { time: clockTime(turn.finishedAt) }));
   const tokensLabel = $derived(`${formatTokens(total)} ${strings.units.tokens}`);
   /** Where there is no pointer, a settled line says how long it worked at rest; when it ended and what it spent wait behind one "i". */
   const details = $derived([finishedLabel, total > 0 ? tokensLabel : ''].filter(Boolean).join(' · '));
@@ -135,7 +137,7 @@
       </div>
     {:else}
     <!-- A finished turn needs no tick: its time and the answer above already say it ended; only a failure or a stop is marked. -->
-    {#if turn.status === 'error'}<CircleAlert size={14} />{:else if turn.status === 'stopped'}<Square size={12} />{:else if turn.status !== 'done' && !activeContent && !activeTool && !stale && !held}<Spinner size={12} paused={hidden || waiting} />{/if}
+    {#if turn.status === 'error' && !carded}<CircleAlert size={14} />{:else if turn.status === 'stopped'}<Square size={12} />{:else if turn.status !== 'done' && !activeContent && !activeTool && !stale && !held}<Spinner size={12} paused={hidden || waiting} />{/if}
     {#if stale}
       <span class="ui-label meta" data-testid="turn-last-update" title={exactTime(heard!)}>{lastUpdate}</span>
     {:else if spent !== null && !held}

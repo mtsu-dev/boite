@@ -251,7 +251,7 @@ fieldset.card { border: 0; padding: var(--settings-padding); }
   .agent-head-actions .menu .trigger.ghost, .agent-head > button.icon, .agent-head-actions > button.icon, .agents-detail-head > button.icon { width: var(--control-touch); height: var(--control-touch); }
   .agents-detail-head { gap: 2px; min-height: 56px; padding: 6px 8px 6px 4px; }
   .agents-body, .agent-sheet-body { padding: 16px 16px 32px; }
-  .agent-error { margin: 12px clamp(20px, 4vw, 48px) 0; }
+  .agent-error { margin: 12px 16px 0; }
   .agents-main .card { padding: 16px; }
   .agent-more > summary { padding: 14px 16px; }
   .agent-row-field { grid-template-columns: minmax(0, 1fr); gap: 6px; }
@@ -273,7 +273,6 @@ fieldset.card { border: 0; padding: var(--settings-padding); }
 .agent-brain-root-form .agent-inline input:not([type=checkbox]) { flex: 1 1 220px; min-width: 0; font-family: var(--font-mono); }
 .agent-brain-folders { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .agent-brain-folders > code { flex: 1 0 100%; font-size: var(--text-xs); color: var(--color-muted-foreground); overflow-wrap: anywhere; }
-.agent-brain-root ~ .agent-error { margin: 12px clamp(20px, 4vw, 48px) 0; }
 
 /*
  * The desk is the quiet side column beside the bot's chat: who the bot is on
@@ -356,7 +355,8 @@ fieldset.card { border: 0; padding: var(--settings-padding); }
 .desk-row-work { flex: none; box-sizing: border-box; width: 9px; height: 9px; border: 1.5px solid var(--color-accent); border-top-color: transparent; border-radius: 50%; transform: rotate(45deg); }
 .desk-row-mark[data-tone='danger'] { background: var(--color-danger); }
 .desk-card-when { flex: none; line-height: 20px; font-size: var(--text-xs); color: var(--color-subtle); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.desk-card-drop { position: absolute; top: 0; right: -4px; width: 20px; height: 20px; color: var(--color-subtle); opacity: 0; transition: opacity var(--dur-2) var(--ease-out-quint); }
+/* An icon button's 32 px floor (app.css `button.icon`) sets its box: centred on the time's 20 px line, its cross ends where the time does. */
+.desk-card-drop { position: absolute; top: -6px; right: -10px; width: 20px; height: 20px; color: var(--color-subtle); opacity: 0; transition: opacity var(--dur-2) var(--ease-out-quint); }
 .desk-row:hover .desk-card-drop, .desk-row:focus-within .desk-card-drop { opacity: 1; }
 .desk-row:is(:hover, :focus-within) .desk-card-when:has(+ .desk-card-drop) { visibility: hidden; }
 .desk-card-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; margin: 0; font-size: var(--text-xs); color: var(--color-subtle); line-height: 1.4; }

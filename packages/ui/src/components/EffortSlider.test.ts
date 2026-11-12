@@ -104,6 +104,40 @@ test('the heading keeps the picked level while a hovered dot gets a ring, its ow
   expect(onpick).not.toHaveBeenCalled();
 });
 
+test('a hovered dot previews nothing once the popover closes, nor after a drag', () => {
+  const onpick = vi.fn();
+  open('low', onpick);
+  const preview = () => document.querySelector('[data-testid=effort-preview]');
+  const hover = (clientX: number) => {
+    const line = query('[data-testid=effort-track] .line');
+    line.getBoundingClientRect = () => ({ left: 0, width: 200, top: 0, height: 4, right: 200, bottom: 4, x: 0, y: 0, toJSON() {} }) as DOMRect;
+    query('[data-testid=effort-track]').dispatchEvent(Object.assign(new MouseEvent('pointermove', { bubbles: true, clientX }), { pointerType: 'mouse' }));
+    flushSync();
+  };
+  hover(199);
+  expect(preview()?.textContent).toBe('High');
+  // Escape takes the track away under the pointer, which never leaves it: reopened, the line reads the pick.
+  query('[data-testid=effort-track]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  flushSync();
+  query<HTMLButtonElement>('[data-testid=composer-effort]').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+  flushSync();
+  expect(query('[data-testid=composer-effort-menu]')).not.toBeNull();
+  expect(preview()).toBeNull();
+  expect(query('[data-testid=effort-cost]').classList.contains('previewing')).toBe(false);
+  // A drag from a hovered dot to another: the dot it left previews nothing once it ends.
+  hover(199);
+  expect(preview()?.textContent).toBe('High');
+  const track = query<HTMLElement>('[data-testid=effort-track]');
+  track.setPointerCapture = () => {};
+  track.hasPointerCapture = () => false;
+  track.dispatchEvent(Object.assign(new MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 0 }), { pointerId: 1 }));
+  flushSync();
+  track.dispatchEvent(Object.assign(new MouseEvent('pointerup', { bubbles: true, clientX: 0 }), { pointerId: 1 }));
+  flushSync();
+  expect(onpick).toHaveBeenCalledWith('off');
+  expect(preview()).toBeNull();
+});
+
 test('the cost line follows the level by its name, not its place: High on a six-level scale is never the balanced middle', () => {
   const scale: EffortLevel[] = ['low', 'medium', 'high', 'xhigh', 'max', 'ultrathink'].map((id) => ({ id, label: id }));
   mounted = mount(EffortSlider, { target: document.body, props: { levels: scale, active: 'high', onpick() {} } });

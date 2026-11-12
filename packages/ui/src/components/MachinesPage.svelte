@@ -133,15 +133,16 @@
 
   /**
    * A machine's row menu: the two switches it holds for the group, each named
-   * in full with its explanation on hover, then its removal. One menu per row
-   * rather than a column of unnamed switches per machine.
+   * in full with its explanation under the name (a finger has no hover), then
+   * its removal. One menu per row rather than a column of unnamed switches per
+   * machine.
    */
   function optionsOf(machine: Machine, shared: boolean): MenuItem[] {
     const settings = machine.store.settings;
     const locked = lockedBy(machine.store.policy, 'network.groups') !== null;
     const items: MenuItem[] = shared ? [
-      { id: 'threads', label: strings.machines.groupThreads, title: strings.machines.groupThreadsHint, checked: settings?.groupThreads === true, disabled: locked, testid: 'machine-group-threads-switch' },
-      { id: 'bots', label: strings.machines.groupBots, title: strings.machines.groupBotsHint, checked: settings?.groupBots === true, disabled: locked, testid: 'machine-group-bots-switch' }
+      { id: 'threads', label: strings.machines.groupThreads, hint: strings.machines.groupThreadsHint, checked: settings?.groupThreads === true, disabled: locked, testid: 'machine-group-threads-switch' },
+      { id: 'bots', label: strings.machines.groupBots, hint: strings.machines.groupBotsHint, checked: settings?.groupBots === true, disabled: locked, testid: 'machine-group-bots-switch' }
     ] : [];
     if (machine.store !== primary) items.push(...(items.length ? [separator()] : []), { id: 'remove', label: strings.machines.remove, glyph: Trash2, danger: true, testid: 'machine-remove' });
     return items;

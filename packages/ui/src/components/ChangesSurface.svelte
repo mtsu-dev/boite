@@ -188,13 +188,17 @@
   $effect(() => {
     const id = threadId;
     const round = `${finished}:${asked}`;
-    const paths = new Set(Object.keys(wanted));
-    if (selected !== null) paths.add(selected);
+    // Another thread wants none of the last one's files, and its file asked for is still to be scrolled to.
     if (id !== diffThread) {
       diffThread = id;
       diffs = {};
       reads.clear();
+      wanted = {};
+      jumped = null;
+      pinned = null;
     }
+    const paths = new Set(Object.keys(wanted));
+    if (selected !== null) paths.add(selected);
     if (id === null) return;
     for (const path of paths) {
       const from = originOf(path);

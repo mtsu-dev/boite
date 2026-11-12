@@ -201,7 +201,7 @@
   /** The threads of a project that need the user, its header's count, and how many of them failed; a sub-agent's question counts for its parent. */
   function needsCount(entry: ProjectEntry): { count: number; failed: number } {
     const owner = entry.machine.store;
-    // Activity's own count over the project's threads: the card and the rail's badge never disagree.
+    // Activity's own count over the project's threads, a machine out of reach included as its last known state: the card and the rail's badge never disagree.
     return storeNeeds(owner, owner.threadsOf(entry.project.id));
   }
   const canAddProject = $derived(store.addsProjects && work.shows('sidebar.add-project'));
@@ -307,7 +307,7 @@
         {@const collapsed = owner.isCollapsed(project.id)}
         {@const listed = collapsed ? 0 : fold.shown.filter(thread => needsYou(threadState(thread, rowAsks(owner, thread.id)))).length}
         {@const away = owner.connection !== 'ready'}
-        {@const needs = away ? { count: 0, failed: 0 } : needsCount(entry)}
+        {@const needs = needsCount(entry)}
         {@const rollup = collapsed && !away ? projectRollup(owner.threadsOf(project.id), thread => rowAsks(owner, thread.id)) : null}
         {@const draftsHere = owner.draftEntries.filter(entry => entry.projectId === project.id)}
         {@const dropKey = threadDropKey(machine.id, project.id)}

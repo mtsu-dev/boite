@@ -6,7 +6,9 @@
   import { lastHeard, machineAway } from '../lib/machine-away';
   import type { CompactionPart } from '../lib/tool-groups';
 
-  let { store, threadId, turn, turns = [], message, messages, pointed = false, tucked = false, steps, memory, compactions, actions }: {
+  let { store, threadId, turn, turns = [], message, messages, pointed = false, tucked = false, steps, memory, compactions, actions, carded = false }: {
+    /** The failure has its own card: the line keeps its time and buttons, not a second failure mark. */
+    carded?: boolean;
     store: Store;
     threadId: string;
     turn: Turn;
@@ -40,6 +42,7 @@
 
 <TurnSummary
   {turn}
+  {carded}
   {workedBefore}
   clockOffset={store.clockOffset}
   progress={store.openThread?.id === threadId ? store.openThread.progress : undefined}

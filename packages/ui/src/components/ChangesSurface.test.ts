@@ -14,6 +14,8 @@ function gate(store: Store) {
   const held: { kind: 'status' | 'diff'; release: () => void }[] = [];
   /** The rename origin each diff request carried, in order. */
   const origins: (string | null | undefined)[] = [];
+  /** Each diff request's thread and file, in order. */
+  const diffs: { id: string; path: string }[] = [];
   /** Rewrites the next status answers, as a staged rename would. */
   let edit: (status: GitStatus) => GitStatus = (status) => status;
   const realStatus = store.gitStatus.bind(store);
@@ -22,10 +24,12 @@ function gate(store: Store) {
     new Promise<GitStatus | null>((resolve) => held.push({ kind: 'status', release: () => resolve(realStatus(id).then((status) => (status === null ? null : edit(status)))) }));
   store.gitDiff = (id, path, ref, oldPath) => {
     origins.push(oldPath);
+    diffs.push({ id, path });
     return new Promise<GitDiff | null>((resolve) => held.push({ kind: 'diff', release: () => resolve(realDiff(id, path, ref, oldPath)) }));
   };
   return {
     origins,
+    diffs,
     editStatus(next: (status: GitStatus) => GitStatus) { edit = next; },
     pending: () => held.map((one) => one.kind),
     async releaseAll() {
@@ -166,6 +170,13 @@ test('every changed file reads as one document, each diff read once it nears the
     flushSync();
     expect(headers[0]!.getAttribute('aria-expanded')).toBe('false');
     expect(headers[0]!.closest('[data-file]')!.querySelector('[data-testid=diff-view]')).toBeNull();
+
+    // Another thread reads only the file asked for: the files seen near the screen in the last one are not wanted here.
+    const before = reads.diffs.length;
+    await store.open('t-scheduler');
+    flushSync();
+    await reads.releaseAll();
+    expect(reads.diffs.slice(before)).toEqual([{ id: 't-scheduler', path: PATH }]);
   } finally {
     if (component) await unmount(component);
     store.detach(); client.close(); document.body.innerHTML = '';
