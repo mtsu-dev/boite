@@ -1,62 +1,66 @@
 # Contributing
 
-Read [AGENTS.md](AGENTS.md) for the code boundaries and
-[development.md](docs/internals/development.md) for the test setup.
+**Bug fixes only.** Pull requests from outside the maintainers must fix a bug.
+Anything else is closed without review.
 
-Use the Bun version in `package.json` and install with
-`bun install --frozen-lockfile`. Windows desktop builds also need Rust and the
-[Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
+The maintainers are the people with write access to this repository. They
+build the features and may open any pull request.
 
-## Features belong in plugins
+boite is built by a small team with a clear direction, and reviewing a pull
+request takes more time than writing one. We close these without review:
 
-A new feature that does not need a change to the core is built as a plugin:
-agent commands, skills, guide lines, slash commands and background services
-are all a plugin can add, with the permissions it declares
-([plugins](docs/internals/plugins.md)). Publish it from your own repository and share
-its link or `owner/repo`: anyone pastes it in Settings > Plugins, or asks their
-agent to add it, reads the preview and installs.
+- New features or new settings
+- UI redesigns
+- New providers, drivers or connection methods
+- Architecture changes and rewrites
+- Support for another platform
+- Refactors and cleanup with no bug behind them
 
-Pull requests are for:
+Want a feature? Build it as a [plugin](docs/internals/plugins.md) in your own
+repository. If a plugin cannot do it yet, open an issue with the feature form
+and describe what is missing. We decide what goes into boite and build it
+ourselves.
 
-- bug fixes;
-- performance;
-- documentation;
-- new extension points that plugins need. Describe the plugin that needs it
-  and what it cannot do today.
+## Rules for a pull request
 
-A pull request that adds a feature a plugin could provide is closed with a
-pointer to the [plugin docs](docs/internals/plugins.md).
+Every pull request from outside the maintainers follows these rules, drafts
+included. Maintainers follow the title rule and the checks too.
 
-## Pull requests
+- **Fix a bug.** A crash, a regression or a real performance problem is a bug.
+  A change to how boite behaves is a feature, even when the PR calls it a fix.
+  A larger fix links the issue that shows the bug. The only exception is a PR a
+  maintainer asked you to open: link the request.
+- **One problem per PR.** Include everything the fix needs (contract, core, UI,
+  tests, docs) and nothing else.
+- **Show that it works.** Say how you found the bug, how you checked the fix and
+  what you saw. "Tests pass" is not evidence. UI fixes need before and after
+  captures at desktop and phone widths, uploaded to the PR, not committed.
+- **Search first.** If an open PR already covers your bug, test it and comment
+  there instead of opening another one.
+- **Title.** It becomes the squash commit and the release notes line:
+  `type(scope): summary`, for example `fix(ui): keep the composer above the
+  keyboard`. Types are listed in [ci.md](docs/internals/ci.md).
 
-Keep a change focused on one problem. Explain what happens before and after it,
-and include the commands you ran. UI changes need desktop and phone captures.
-Do not include credentials, pairing links, personal paths or provider transcripts
-in reports or fixtures.
+A PR that follows the rules can still be closed. A PR that breaks one is closed
+with the rule named; fix it and open a new PR that links the old one.
 
-Every change reaches `main` through a pull request. Its title becomes the squash
-commit and the release notes line, so it reads `type(scope): summary`, for
-example `fix(ui): keep the composer above the keyboard`. The accepted types are
-listed in [ci.md](docs/internals/ci.md).
+Never put credentials, pairing links, personal paths or provider transcripts in
+an issue, a PR or a fixture. Report vulnerabilities privately as
+[SECURITY.md](SECURITY.md) describes. Participation follows the
+[code of conduct](CODE_OF_CONDUCT.md).
 
-Report vulnerabilities privately as [SECURITY.md](SECURITY.md) describes, never
-in a public issue. Participation follows the [code of conduct](CODE_OF_CONDUCT.md).
+## Setup and checks
 
-Before submitting:
+Code boundaries are in [AGENTS.md](AGENTS.md), setup in
+[development.md](docs/internals/development.md). Before you push:
 
 ```sh
+bun install --frozen-lockfile
 bun run check
 bun run test
 ```
 
-For integration or desktop changes, follow the build, staging and E2E procedure
-in [development](docs/internals/development.md#rebuilding-the-shell-executable). Native
-shell coverage depends on the host platform; see the
-[portability matrix](docs/internals/portability.md).
-
-Tests use temporary data directories and the echo provider. Live-provider tests
-are opt-in because they use real accounts and spend tokens. Never point a test
-at an existing installation's data directory.
-
-For server packaging, run the Docker smoke test described in
-[server.md](docs/internals/server.md). For CI and release behavior, see [ci.md](docs/internals/ci.md).
+A desktop or integration fix also follows the
+[shell build and E2E steps](docs/internals/development.md#rebuilding-the-shell-executable).
+Tests use temporary data directories and the echo provider; never point one at
+a real installation.
