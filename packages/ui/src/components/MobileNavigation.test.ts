@@ -270,3 +270,33 @@ test("a tap on a project's header folds it as the sidebar does, and the fold out
     expect(store.collapsedProjects).toEqual([]);
   } finally { projectView.order = order; }
 });
+
+test('grouped by tag, the phone lists a section per tag with a two-tag project under each, ids unique, and no reordering', async () => {
+  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
+    media, matches: true, onchange: null, addListener() {}, removeListener() {}
+  }));
+  const { projectView } = await import('../lib/project-view.svelte');
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  await store.setProjectTags('p-boite', ['Work', 'Client']);
+  workspace.machines = [{ id: 'local', label: 'Local', store }]; workspace.active = store;
+  workspace.setView('projects');
+  const order = projectView.order;
+  if (order !== 'manual') projectView.toggle([]);
+  projectView.setByTag(true);
+  try {
+    mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'threads' } });
+    await settle();
+    const sections = [...document.querySelectorAll<HTMLElement>('[data-testid=tag-section]')].map(section => [
+      section.dataset['tag'], [...section.querySelectorAll<HTMLElement>('[data-testid=mobile-project-group]')].map(group => group.dataset['projectId'])
+    ]);
+    expect(sections).toEqual([['client', ['p-boite']], ['work', ['p-boite']], ['', ['p-notes']]]);
+    const ids = [...document.querySelectorAll('[data-testid=mobile-list] [id]')].map(element => element.id);
+    expect(ids.length).toBe(new Set(ids).size);
+    expect(document.querySelector('[data-testid=mobile-project-order]')).toBeNull();
+    expect(document.querySelectorAll('[data-testid=mobile-project-menu]').length).toBe(3);
+  } finally {
+    projectView.setByTag(false);
+    if (order !== 'manual') projectView.toggle([]);
+  }
+});

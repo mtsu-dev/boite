@@ -133,6 +133,11 @@ provider, model and usage in `removed_turn_usage`, so
 [`usage.history`](usage.md#usagehistory) still counts them.
 A newer journal schema is refused before writing, with the file and both versions.
 
+A project's tags live in the `tags` column of `projects`, a JSON array or NULL,
+written by `projects.setTags` with a `project.tagsChanged` event. The column is
+added without a schema bump, so an older core still opens the journal; it does
+not write the column, and its rename or archive of a project clears the tags.
+
 `message.part` and `artifact.published` events are not written: the message row
 holds the content and nothing reads them back. Those already stored, from
 before schema 37, are kept 3 days; retention walks them forward from the

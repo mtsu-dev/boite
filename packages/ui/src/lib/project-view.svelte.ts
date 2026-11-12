@@ -1,4 +1,4 @@
-import type { Project } from '@boite/contracts';
+import { projectTagKey, type Project } from '@boite/contracts';
 import type { Machine } from './workspace.svelte';
 import { lastActivity } from './thread-order';
 
@@ -15,11 +15,19 @@ export function projectKey(entry: ProjectEntry): string {
   return JSON.stringify([machine, entry.project.id]);
 }
 const STORAGE = 'boite.project-view.v1';
+/** The prefix of a tag among the project filter's choices; a project's key is a JSON array, so the two never meet. */
+export const TAG_PICK = 'tag:';
 
 export class ProjectView {
   order = $state<'recent' | 'manual'>('recent');
   filter = $state<string | null>(null);
   keys = $state<string[]>([]);
+  /** The Projects view gathers projects under a section per tag. */
+  byTag = $state(false);
+  /** The tag the project filter shows, by its key without case; `filter` names one project instead. */
+  tag = $state<string | null>(null);
+  /** Tag sections folded on this device, by key: a tag is the same on every machine, so a machine view change keeps them. */
+  folded = $state<string[]>([]);
 
   constructor() {
     try {
@@ -27,11 +35,14 @@ export class ProjectView {
       if (saved.order === 'manual') this.order = 'manual';
       if (typeof saved.filter === 'string') this.filter = saved.filter;
       if (Array.isArray(saved.keys)) this.keys = saved.keys.filter((key: unknown) => typeof key === 'string');
+      if (saved.byTag === true) this.byTag = true;
+      if (typeof saved.tag === 'string' && saved.tag && this.filter === null) this.tag = saved.tag;
+      if (Array.isArray(saved.folded)) this.folded = saved.folded.filter((key: unknown) => typeof key === 'string');
     } catch { /* preferences remain available for this session */ }
   }
 
   #save(): void {
-    try { localStorage.setItem(STORAGE, JSON.stringify({ order: this.order, filter: this.filter, keys: this.keys })); }
+    try { localStorage.setItem(STORAGE, JSON.stringify({ order: this.order, filter: this.filter, keys: this.keys, byTag: this.byTag, tag: this.tag, folded: this.folded })); }
     catch { /* preferences remain available for this session */ }
   }
 
@@ -39,7 +50,30 @@ export class ProjectView {
     return entries.find(entry => projectKey(entry) === this.filter);
   }
 
-  pick(key: string): void { this.filter = key === 'all' ? null : key; this.#save(); }
+  /** The projects of the chosen tag, or null when no tag is chosen or none of `entries` carries it any more. */
+  tagged(entries: ProjectEntry[]): ProjectEntry[] | null {
+    const key = this.tag;
+    if (key === null) return null;
+    const found = entries.filter(entry => (entry.project.tags ?? []).some(tag => projectTagKey(tag) === key));
+    return found.length > 0 ? found : null;
+  }
+
+  /** `all`, a project's key, or `TAG_PICK` and a tag's key. */
+  pick(key: string): void {
+    const tag = key.startsWith(TAG_PICK) ? projectTagKey(key.slice(TAG_PICK.length)) : null;
+    this.tag = tag || null;
+    this.filter = key === 'all' || tag !== null ? null : key;
+    this.#save();
+  }
+
+  setByTag(on: boolean): void { this.byTag = on; this.#save(); }
+
+  tagOpen(key: string): boolean { return !this.folded.includes(key); }
+
+  toggleTag(key: string): void {
+    this.folded = this.folded.includes(key) ? this.folded.filter(folded => folded !== key) : [...this.folded, key];
+    this.#save();
+  }
 
   sorted(entries: ProjectEntry[]): ProjectEntry[] {
     const positions = new Map(this.keys.map((key, index) => [key, index]));

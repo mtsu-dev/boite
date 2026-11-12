@@ -93,6 +93,8 @@ export const DEVICE_METHODS: ReadonlySet<RpcMethodName> = new Set<RpcMethodName>
   // it. A device already starts agents that run commands in projects, so it reaches nothing it could not before.
   'projects.browse',
   'projects.add',
+  // Tags only gather listed projects in the sidebar, like a name; nothing on disk or in a thread changes.
+  'projects.setTags',
   // What a thread needs to name its agent.
   'providers.list',
   // Read or refresh the configured account's native catalog, including ACP

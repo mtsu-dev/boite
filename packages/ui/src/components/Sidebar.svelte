@@ -21,6 +21,8 @@
   import { projectDrag, startProjectDrag } from '../lib/project-drag.svelte';
   import { activeProject, archiveCount, projectListMap, projectSections, projectThreadView, type ArchiveKind, type ProjectSection } from '../lib/project-threads.svelte';
   import ProjectViews from './ProjectViews.svelte';
+  import TagSection from './TagSection.svelte';
+  import { groupedKey, tagGroups, type TagGroup } from '../lib/project-tags';
   import SharedProjectThreads from './shared/SharedProjectThreadsLoader.svelte';
   import RecentGroup from './RecentGroup.svelte';
   import RecentDone from './RecentDone.svelte';
@@ -62,8 +64,12 @@
   let all = $derived(visible.flatMap((machine) => machine.store.projects.map((project) => ({ machine, project }))));
   /** An archived project leaves the list for the fold under it; its threads keep running. */
   let groups = $derived(projectView.sorted(all.filter(({ project }) => project.archived !== true)));
+  /** Grouped by tag: a section per tag, then the untagged projects, every one a card. Working and idle grouping wait meanwhile. */
+  let tagSections = $derived(projectView.byTag ? tagGroups(groups) : null);
   /** At work on top when working grouping is on, open, then set aside; idle projects go to their fold. Each stays a card when its grouping is off. */
-  let sections = $derived(projectSections(groups, recentPreferences.groupOtherProjects, recentPreferences.groupWorking));
+  let sections: Record<ProjectSection, ProjectEntry[]> = $derived(tagSections ? { working: [], open: groups, later: [], idle: [] } : projectSections(groups, recentPreferences.groupOtherProjects, recentPreferences.groupWorking));
+  /** The cards Alt+digit counts, in drawn order: by tag, the open sections, each project once. */
+  let drawnGroups = $derived(tagSections ? [...new Map(tagSections.filter(group => projectView.tagOpen(group.key)).flatMap(group => group.entries).map(entry => [projectKey(entry), entry])).values()] : null);
   /** The cards in drawn order, the folded sections included: Alt+digit skips the rows a folded section hides. */
   let activeGroups = $derived([...sections.working, ...sections.open, ...sections.later]);
   /** A set-aside card shows its archived conversations as its body: their pill shows only while it is folded. */
@@ -93,7 +99,9 @@
   });
   let shelved = $derived(all.filter(({ project }) => project.archived === true));
   let selected = $derived(projectView.selected(groups));
-  let recentGroups = $derived(selected ? [selected] : groups);
+  /** The projects of the tag the filter chose, null when it chose none. */
+  let tagged = $derived(selected ? null : projectView.tagged(groups));
+  let recentGroups = $derived(selected ? [selected] : tagged ?? groups);
   let recent = $derived(
     recentGroups
       .flatMap(({ machine, project }) =>
@@ -128,7 +136,7 @@
   /** The rows of the listed projects in drawn order, read only as far as the ninth: projects below it cost nothing. */
   function projectRows(): { store: Store; threadId: ThreadId }[] {
     const rows: { store: Store; threadId: ThreadId }[] = [];
-    for (const entry of activeGroups) {
+    for (const entry of drawnGroups ?? activeGroups) {
       if (rows.length >= 9) break;
       if (entry.machine.store.isCollapsed(entry.project.id)) continue;
       const later = sections.later.includes(entry);
@@ -144,7 +152,7 @@
   $effect(() => {
     sidebarRows.list = (workspace.view === 'recent'
       ? [...attention, ...(workingOpen ? working : [])].map(({ machine, thread }) => ({ store: machine.store, threadId: thread.id })).concat(doneRows, archivedRows)
-      : projectRows().concat(idleRows)
+      : projectRows().concat(tagSections ? [] : idleRows)
     ).slice(0, 9);
   });
   function addProject() {
@@ -153,7 +161,8 @@
   /** `list` is the section the card sits in: a project moves among its neighbours there, as the sections place it themselves. */
   function openProjectMenu(event: MouseEvent, machine: Machine, project: Project, list: ProjectEntry[]) {
     const key = projectKey({ machine, project });
-    projectMenu(event, machine.store, project, projectView.order === 'manual' ? {
+    // Grouped by tag, a project can sit in two sections: it keeps its place in the custom order but does not move.
+    projectMenu(event, machine.store, project, projectView.order === 'manual' && !projectView.byTag ? {
       up: list[0] !== undefined && projectKey(list[0]) !== key,
       down: list.at(-1) !== undefined && projectKey(list.at(-1)!) !== key,
       move: direction => projectView.step(list, key, direction)
@@ -161,6 +170,7 @@
   }
   /** A project header dragged to a new place among the cards of its section, in the manual order; idle projects sit in their fold as rows. */
   function dragProject(event: PointerEvent, entry: ProjectEntry, list: ProjectEntry[]) {
+    if (projectView.byTag) return;
     const key = projectKey(entry);
     startProjectDrag(event, {
       key,
@@ -177,7 +187,7 @@
     {#if groups.length === 0}<p class="empty">{strings.sidebar.noProjects}</p>{/if}
     {#if workspace.view === 'recent'}
       {#each visible as machine (machine.id)}
-        {#each machine.store.draftEntries.filter(entry => !selected || (selected.machine.id === machine.id && selected.project.id === entry.projectId)) as entry (entry.id)}
+        {#each machine.store.draftEntries.filter(entry => (!selected && !tagged) || recentGroups.some(group => group.machine.id === machine.id && group.project.id === entry.projectId)) as entry (entry.id)}
           <DraftRow owner={machine.store} {entry} />
         {/each}
       {/each}
@@ -204,7 +214,7 @@
           <DraftRow owner={machine.store} {entry} />
         {/each}
       {/each}
-      {#snippet card(entry: ProjectEntry, list: ProjectEntry[], section: ProjectSection)}
+      {#snippet card(entry: ProjectEntry, list: ProjectEntry[], section: ProjectSection, tag?: TagGroup)}
         {@const { machine, project } = entry}
         {@const owner = machine.store}
         {@const workingOpen = projectThreadView.isOpen(entry, 'working')}
@@ -212,7 +222,7 @@
         {@const doneOpen = archiveCount(project, 'done') > 0 && projectThreadView.isOpen(entry, 'done')}
         {@const archivedOpen = archiveCount(project, 'archived') > 0 && (later || projectThreadView.isOpen(entry, 'archived'))}
         {@const { lists } = projectLists.get(projectKey(entry))!}
-        {@const controls = `sidebar-project-${encodeURIComponent(projectKey(entry))}`}
+        {@const controls = `sidebar-project-${encodeURIComponent(tag ? groupedKey(tag, entry) : projectKey(entry))}`}
         {@const collapsed = owner.isCollapsed(project.id)}
         {@const away = owner.connection !== 'ready'}
         {@const rollup = collapsed && !away ? projectRollup(owner.threadsOf(project.id), thread => owner.subagents(thread.id)) : null}
@@ -232,6 +242,7 @@
           data-project-id={project.id}
           data-machine-id={machine.id}
           data-project-key={key}
+          data-tag={tag?.key}
           data-project-name={projectName(project)}
           aria-label={threadDrag.over === dropKey ? fill(strings.threadMove.dropHere, { project: projectName(project) }) : undefined}
         >
@@ -239,7 +250,7 @@
           <div class="head" oncontextmenu={(e) => openProjectMenu(e, machine, project, list)}>
             <button
               class="ghost toggle"
-              class:grab={projectView.order === 'manual'}
+              class:grab={projectView.order === 'manual' && !projectView.byTag}
               data-testid="project-row"
               data-project-id={project.id}
               onpointerdown={(event) => dragProject(event, entry, list)}
@@ -249,7 +260,7 @@
               title={multi ? `${project.path} · ${machine.label}` : project.path}
               onclick={() => projectThreadView.toggleProject(entry, lists, draftsHere.length)}
             >
-              {#if projectView.order === 'manual'}<GripVertical size={12} />{/if}<span class="mark"><ProjectTile {project} store={owner} /><span class="fold-caret" class:open={!collapsed} aria-hidden="true"><ChevronRight size={16} /></span></span
+              {#if projectView.order === 'manual' && !projectView.byTag}<GripVertical size={12} />{/if}<span class="mark"><ProjectTile {project} store={owner} /><span class="fold-caret" class:open={!collapsed} aria-hidden="true"><ChevronRight size={16} /></span></span
               >{#if multi}<span class="host" data-testid="project-host" class:offline={owner.connection !== 'ready'}
                 title={`${machine.label} · ${strings.connection[owner.connection]}`} aria-label={machine.label}><MachineIcon icon={machine.icon} os={owner.core?.os} size={14} /></span>{/if}<span class="name ui-label" class:gone={project.missing === true}>{projectName(project)}</span
               >{#if project.missing === true}<span class="missing" data-testid="project-missing" title={strings.sidebar.projectMissing} aria-label={strings.sidebar.projectMissing}><FolderX size={13} aria-hidden="true" /></span>{/if}{#if rollup}<ProjectRollup {rollup} />{/if}
@@ -300,6 +311,15 @@
           </div>
         </section>
       {/snippet}
+      {#if tagSections}
+        <!-- One section per tag, sorted by name, untagged last; a project with two tags is a card in each. -->
+        {#each tagSections as group (group.key)}
+          <TagSection tag={group.key} label={group.label} count={group.entries.length}>
+            {#each group.entries as entry (projectKey(entry))}{@render card(entry, group.entries, 'open', group)}{/each}
+          </TagSection>
+        {/each}
+        <div class="project-folds"><ProjectShelf kind="archived" projects={shelved} {multi} {now} {scrollRoot} /></div>
+      {:else}
       <!-- Idle projects sit as compact rows in their fold below, so Alt+digit and reordering count only the cards. -->
       {#if sections.working.length > 0}
         <ProjectCardsSection kind="working" count={sections.working.length}>
@@ -317,6 +337,7 @@
         <ProjectShelf projects={sections.idle} {multi} {now} {scrollRoot} onrows={rows => idleRows = rows} />
         <ProjectShelf kind="archived" projects={shelved} {multi} {now} {scrollRoot} />
       </div>
+      {/if}
     {/if}
     {/if}
   {#snippet lead()}

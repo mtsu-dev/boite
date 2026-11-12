@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick, type Component } from 'svelte';
-  import { ArrowDownWideNarrow, Folder, FolderMinus, Folders, GitMerge, GripVertical, List, LoaderCircle } from '@lucide/svelte';
+  import { ArrowDownWideNarrow, Folder, FolderMinus, Folders, GitMerge, GripVertical, List, LoaderCircle, Tag } from '@lucide/svelte';
   import type { Closing } from '../lib/closing.svelte';
   import { floating } from '../lib/floating';
   import { workspace } from '../lib/workspace.svelte';
@@ -121,8 +121,10 @@
     {@render option('working', strings.sidebar.groupWorkingRow, recentPreferences.groupWorking, LoaderCircle, strings.settings.groupWorkingThreadsHint,
       () => recentPreferences.setGroupWorking(!recentPreferences.groupWorking))}
     {#if projects}
-      {@render option('other', strings.sidebar.groupIdleRow, recentPreferences.groupOtherProjects, Folders, strings.settings.groupOtherProjectsHint,
-        () => recentPreferences.setGroupOtherProjects(!recentPreferences.groupOtherProjects))}
+      {@render option('other', strings.sidebar.groupIdleRow, recentPreferences.groupOtherProjects && !projectView.byTag, Folders, strings.settings.groupOtherProjectsHint,
+        () => { if (!projectView.byTag) recentPreferences.setGroupOtherProjects(!recentPreferences.groupOtherProjects); }, projectView.byTag)}
+      {@render option('by-tag', strings.sidebar.tags.groupRow, projectView.byTag, Tag, strings.sidebar.tags.groupHint,
+        () => projectView.setByTag(!projectView.byTag))}
     {/if}
   </section>
   {#if merged}

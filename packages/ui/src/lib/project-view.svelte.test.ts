@@ -51,3 +51,27 @@ test('a saved order and filter survive a local core restarting on a different po
   expect(restored.selected(entries)?.project.id).toBe(selected);
   store.detach();
 });
+
+test('the filter picks a tag across machines in any case, a restart keeps it, and a tag nobody carries filters nothing', async () => {
+  const store = new Store();
+  store.attach(new FakeClient({ delayMs: 0 }));
+  await store.connect();
+  const pc = { id: 'pc', label: 'PC', store };
+  const laptop = { id: 'laptop', label: 'Laptop', store };
+  const [boite, notes] = store.projects;
+  const entries: ProjectEntry[] = [
+    { machine: pc, project: { ...boite!, tags: ['Client'] } },
+    { machine: laptop, project: { ...notes!, tags: ['client', 'Docs'] } },
+    // A core older than tags sends none.
+    { machine: laptop, project: { ...boite!, id: 'p-old', tags: undefined } },
+  ];
+  const view = new ProjectView();
+  view.pick('tag:CLIENT');
+  expect([view.tag, view.filter]).toEqual(['client', null]);
+  expect(view.tagged(entries)?.map(entry => `${entry.machine.id}/${entry.project.id}`)).toEqual(['pc/p-boite', 'laptop/p-notes']);
+  expect(new ProjectView().tagged(entries)?.length).toBe(2);
+  expect(view.tagged(entries.slice(2))).toBeNull();
+  view.pick('all');
+  expect([view.tag, view.tagged(entries)]).toEqual([null, null]);
+  store.detach();
+});

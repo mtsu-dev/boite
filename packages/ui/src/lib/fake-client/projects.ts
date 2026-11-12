@@ -1,5 +1,5 @@
 /** Projects, their files and the Claude Code sessions they can import. */
-import { PROJECT_NAME_MAX, RpcErrorCode, type ImportableSession, type Project, type Thread, type ThreadId, type Turn } from '@boite/contracts';
+import { PROJECT_NAME_MAX, RpcErrorCode, checkProjectTags, type ImportableSession, type Project, type Thread, type ThreadId, type Turn } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { missingFolder, pathKey } from './checks';
 import { FAKE_FILES, scoreFakeFile } from './files';
@@ -89,6 +89,21 @@ export function projectMethods(ctx: FakeContext) {
       }
       if (project.name !== name) {
         project.name = name;
+        ctx.emit('project.updated', describedProject(ctx, project));
+      }
+      return describedProject(ctx, project);
+    },
+    'projects.setTags': async (params) => {
+      const project = ctx.projects.find(p => p.id === params.projectId);
+      if (!project) throw ctx.notFound('project', params.projectId);
+      const checked = checkProjectTags(params.tags);
+      if (!checked.ok) {
+        throw new RpcFailure({ code: RpcErrorCode.Refused, message: checked.message, data: { field: checked.field, expected: checked.expected, ...(checked.index === undefined ? {} : { index: checked.index }) } });
+      }
+      const before = project.tags ?? [];
+      if (before.length !== checked.tags.length || before.some((tag, index) => tag !== checked.tags[index])) {
+        if (checked.tags.length > 0) project.tags = checked.tags;
+        else delete project.tags;
         ctx.emit('project.updated', describedProject(ctx, project));
       }
       return describedProject(ctx, project);

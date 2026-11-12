@@ -428,6 +428,22 @@ export class Projects {
     }
   }
 
+  /** Replaces a project's tags; false when the core refused them or the client changed meanwhile. */
+  async setProjectTags(projectId: ProjectId, tags: string[]): Promise<boolean> {
+    const client = this.ctx.client;
+    const generation = this.ctx.clientGeneration;
+    if (!client) return false;
+    try {
+      const project = await client.call('projects.setTags', { projectId, tags });
+      if (!this.ctx.currentClient(client, generation)) return false;
+      this.upsertProject(project);
+      return true;
+    } catch (error) {
+      if (this.ctx.currentClient(client, generation)) this.ctx.fail(error);
+      return false;
+    }
+  }
+
   async setProjectWorktreeDefault(projectId: ProjectId, enabled: boolean): Promise<void> {
     const client = this.ctx.client;
     const clientGeneration = this.ctx.clientGeneration;

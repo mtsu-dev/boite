@@ -146,6 +146,35 @@ too. Trimmed names must contain 1 to 1024 UTF-16 code units; the core rejects
 larger names before journaling or broadcasting. The system drafts project
 keeps its localized name.
 
+Edit tags, in the same menu on desktop and phone, opens a dialog listing the
+project's tags, a field for a new one and the tags already used on any project
+of every connected machine. Save sends the whole list through
+`projects.setTags`; paired devices may tag projects too, since tags only gather
+projects in the sidebar. `checkProjectTags` in `packages/contracts/src/projects.ts`
+is the rule the core and the in-memory client share: each tag is trimmed, its
+inner spaces collapse to one, empty tags and later spellings of the same tag
+without case are dropped, a tag holds 1 to 32 characters and a project at most
+12 tags. A refusal names `field: 'tags'`, the `expected` value and, for one tag,
+its `index`. The core stores the tags in the `tags` column of `projects` (a JSON
+array, NULL when none) and announces `project.updated`. Every `Project` from a
+current core carries `tags`, `[]` when there are none; a core older than the
+field omits it, and the menu then offers no Edit tags.
+
+The display options of the Projects view hold By tag (`projectView.byTag`, kept
+in `boite.project-view.v1` on the device). The sidebar and the phone's list then
+draw a section per tag, sorted by name, with the projects of every machine shown;
+tags compare without case, so `Work` on one machine and `work` on another share a
+section, spelt as first met. A project with two tags is a card in each section,
+its element ids keyed by tag and project. Untagged projects come last under No
+tag, and archived projects stay in their shelf. The idle and set-aside folds are
+off while grouped: every listed project is a card under its tags. Projects keep
+the custom order inside a section, but dragging them and Move up/down are off
+while grouped. Each section folds, and the folded tags are kept per device in the
+same storage key, so they survive a restart and a change of the machine shown.
+In the Recent view, the project filter lists the tags after the projects, with
+their number of projects; picking one shows the conversations of every project
+carrying it.
+
 The owner, and a paired device whose core has `deviceProjects`, open a folder
 through the project dialog by selecting its machine and browsing or typing an
 absolute path; `store.addsProjects` says which machines take one

@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, statSync } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
-import { PROJECT_NAME_MAX, TECH_ICON_IDS, deviceBound, type Project, type ProjectIcon, type ProjectId, type TechIconId } from '@boite/contracts';
+import { PROJECT_NAME_MAX, TECH_ICON_IDS, checkProjectTags, deviceBound, type Project, type ProjectIcon, type ProjectId, type TechIconId } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { newId } from './ids.ts';
 import { folderGone, messageOf, notFound, refused } from './errors.ts';
@@ -409,9 +409,27 @@ export class ProjectStore {
       throw refused('the drafts project cannot be archived: a thread with no folder lands in it', { field: 'projectId', projectId, expected: 'a project other than the drafts' });
     }
     if ((project.archived === true) === archived) return project;
-    const next: Project = { id: project.id, name: project.name, path: project.path, createdAt: project.createdAt, ...(archived ? { archived: true } : {}), ...(project.worktreeDefault ? { worktreeDefault: true } : {}) };
+    const next: Project = { id: project.id, name: project.name, path: project.path, createdAt: project.createdAt, ...(archived ? { archived: true } : {}), ...(project.worktreeDefault ? { worktreeDefault: true } : {}), ...(project.tags?.length ? { tags: project.tags } : {}) };
     this.#core.journal.append({ type: 'project.archived', threadId: null, version: 1, payload: { projectId, archived } }, () => {
       this.#core.journal.putProject(next);
+    });
+    return this.announce(projectId);
+  }
+
+  /**
+   * Replaces a project's tags with `tags` as `checkProjectTags` normalizes
+   * them. The same tags in the same order change nothing and announce nothing.
+   */
+  setTags(projectId: ProjectId, tags: unknown): Project {
+    const project = this.require(projectId);
+    const checked = checkProjectTags(tags);
+    if (!checked.ok) {
+      throw refused(checked.message, { field: checked.field, expected: checked.expected, ...(checked.index === undefined ? {} : { index: checked.index }) });
+    }
+    const before = project.tags ?? [];
+    if (before.length === checked.tags.length && before.every((tag, index) => tag === checked.tags[index])) return project;
+    this.#core.journal.append({ type: 'project.tagsChanged', threadId: null, version: 1, payload: { projectId, tags: checked.tags } }, () => {
+      this.#core.journal.putProject({ ...project, tags: checked.tags });
     });
     return this.announce(projectId);
   }
@@ -518,6 +536,8 @@ export class ProjectStore {
       ...project,
       autoArchiveMergedPr: this.#core.journal.getSetting(`project-auto-archive-merged-pr:${project.id}`) !== false,
       autoRemoveWorktrees: this.#core.journal.getSetting(autoRemoveWorktreesKey(project.id)) !== false,
+      // Always sent, empty when none: a client reads its absence as a core that cannot store tags.
+      tags: project.tags ?? [],
       ...(archivedThreads > 0 ? { archivedThreads } : {}),
       ...(doneThreads > 0 ? { doneThreads } : {}),
       ...(icon === undefined ? {} : { icon }),
@@ -615,6 +635,8 @@ export function registerProjectMethods(core: Core): void {
     return core.projects.add(path, name);
   });
   core.router.register('projects.rename', (params) => core.projects.rename(params.projectId, params.name));
+  // In DEVICE_METHODS like rename: tags only gather projects in the sidebar.
+  core.router.register('projects.setTags', (params) => core.projects.setTags(params.projectId, params.tags));
   core.router.register('projects.drafts', () => core.projects.drafts());
   core.router.register('projects.icon', (params) => core.projects.iconImage(params.projectId));
   core.router.register('projects.refreshIcon', (params) => core.projects.refreshIcon(params.projectId));

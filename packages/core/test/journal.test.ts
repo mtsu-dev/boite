@@ -201,6 +201,20 @@ describe('journal', () => {
     expect(journal.getProject('prj_default')?.worktreeDefault).toBe(true);
   });
 
+  test('a journal without the tags column gains it, reads no tags, then keeps tags and clears them', () => {
+    journal.putProject({ id: 'prj_tags', name: 'test', path: dir, createdAt: 1 });
+    journal.db.exec('ALTER TABLE projects DROP COLUMN tags');
+    journal.close();
+    journal = new Journal(file);
+    expect(journal.getProject('prj_tags')?.tags).toBeUndefined();
+    journal.putProject({ ...journal.getProject('prj_tags')!, tags: ['Work', 'client a'] });
+    journal.close();
+    journal = new Journal(file);
+    expect(journal.getProject('prj_tags')?.tags).toEqual(['Work', 'client a']);
+    journal.putProject({ ...journal.getProject('prj_tags')!, tags: [] });
+    expect(journal.db.query('SELECT tags FROM projects WHERE id = ?').get('prj_tags')).toEqual({ tags: null });
+  });
+
   test('an existing journal indexes newest process traces without sorting its whole history', () => {
     journal.db.exec('DROP INDEX IF EXISTS processes_by_started');
     journal.close();

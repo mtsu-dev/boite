@@ -6,6 +6,45 @@ import type { ProjectId, Timestamp } from './ids';
 
 /** Maximum UTF-16 code units in a renamed display name, keeping journal entries and broadcasts bounded. */
 export const PROJECT_NAME_MAX = 1024;
+/** Maximum characters (code points) in one project tag, after trimming. */
+export const PROJECT_TAG_MAX = 32;
+/** Maximum distinct tags on one project. */
+export const PROJECT_TAGS_MAX = 12;
+
+/** Two tags are the same tag when this key matches: tags compare without case, on every project and machine. */
+export function projectTagKey(tag: string): string {
+  return tag.toLowerCase();
+}
+
+export type ProjectTagsCheck =
+  | { ok: true; tags: string[] }
+  | { ok: false; field: 'tags'; index?: number; expected: string; message: string };
+
+/**
+ * The tags `projects.setTags` stores, read by the core and the in-memory client
+ * alike: each trimmed, its inner runs of spaces made one, empty ones dropped,
+ * the second spelling of a tag (without case) dropped, in the order given.
+ */
+export function checkProjectTags(value: unknown): ProjectTagsCheck {
+  const expected = `an array of at most ${PROJECT_TAGS_MAX} distinct strings of 1 to ${PROJECT_TAG_MAX} characters after trimming`;
+  if (!Array.isArray(value)) return { ok: false, field: 'tags', expected, message: `projects.setTags.tags must be ${expected}` };
+  const tags: string[] = [];
+  const seen = new Set<string>();
+  for (const [index, raw] of value.entries()) {
+    if (typeof raw !== 'string') return { ok: false, field: 'tags', index, expected, message: `projects.setTags.tags[${index}] must be a string` };
+    const tag = raw.trim().replace(/\s+/g, ' ');
+    if (!tag) continue;
+    if ([...tag].length > PROJECT_TAG_MAX) {
+      return { ok: false, field: 'tags', index, expected, message: `projects.setTags.tags[${index}] must hold 1 to ${PROJECT_TAG_MAX} characters after trimming` };
+    }
+    const key = projectTagKey(tag);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    tags.push(tag);
+  }
+  if (tags.length > PROJECT_TAGS_MAX) return { ok: false, field: 'tags', expected, message: `projects.setTags.tags must hold at most ${PROJECT_TAGS_MAX} distinct tags, not ${tags.length}` };
+  return { ok: true, tags };
+}
 
 export interface Project {
   id: ProjectId;
@@ -73,6 +112,14 @@ export interface Project {
    * from a core older than this field.
    */
   icon?: ProjectIcon;
+  /**
+   * The owner's labels gathering projects in the sidebar, set with
+   * `projects.setTags` and stored with the project, so every device sees
+   * them. At most `PROJECT_TAGS_MAX`, each 1 to `PROJECT_TAG_MAX` characters,
+   * distinct without case. An empty array when none; absent from a core older
+   * than this field, which a client reads as no tags it can change.
+   */
+  tags?: string[];
 }
 
 /**
@@ -120,6 +167,13 @@ export interface ProjectsRpcMethods {
    * Refused on the drafts project, which a thread with no folder lands in.
    */
   'projects.archive': { params: { projectId: ProjectId; archived?: boolean }; result: Project };
+  /**
+   * Replace a project's tags, normalized by `checkProjectTags`, and broadcast
+   * `project.updated`. A value it refuses names `field: 'tags'` and the
+   * `expected` value. Paired devices may set them too: tags change only how
+   * the sidebar gathers projects.
+   */
+  'projects.setTags': { params: { projectId: ProjectId; tags: string[] }; result: Project };
   /** Owner only. Persist a project's default for new drafts and broadcast project.updated. Enabling requires a Git repository. */
   'projects.setWorktreeDefault': { params: { projectId: ProjectId; enabled: boolean }; result: Project };
   /**
@@ -161,6 +215,6 @@ export interface ProjectsRpcEvents {
   'project.added': Project;
   /** A project `projects.remove` deleted, after the `thread.removed` of each of its threads. */
   'project.removed': { projectId: ProjectId };
-  /** A project renamed, archived or restored, one whose count of archived threads moved, or one whose icon changed. */
+  /** A project renamed, tagged, archived or restored, one whose count of archived threads moved, or one whose icon changed. */
   'project.updated': Project;
 }

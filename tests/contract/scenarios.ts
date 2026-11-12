@@ -16,6 +16,8 @@ import { COUNCIL_SCENARIOS } from './council.ts';
 import {
   GROUP_INVITE_PREFIX,
   PROJECT_NAME_MAX,
+  PROJECT_TAG_MAX,
+  PROJECT_TAGS_MAX,
   RpcErrorCode,
   VIEW_BLOCK_MAX_BYTES,
   type Account,
@@ -655,6 +657,39 @@ export const SCENARIOS: Record<string, Scenario> = {
     await refusedWith(env.call('projects.rename', { projectId: drafts.id, name: 'other' }), RpcErrorCode.Refused, ['field']);
     await refusedWith(env.call('projects.rename', { projectId: 'prj_missing', name: 'other' }), RpcErrorCode.NotFound);
     same((await env.call('projects.list', {})).find(p => p.id === project.id)?.name, 'before', 'the name after refusal');
+  },
+  'projects.setTags normalizes, broadcasts and keeps tags through rename and archive, and an empty list clears them': async (env) => {
+    const project = await env.call('projects.add', { path: await env.newFolder(), name: 'tagged' });
+    same(project.tags, [], 'the tags of a new project');
+    const updates = record(env, ['project.updated']);
+    try {
+      const longest = 'é'.repeat(PROJECT_TAG_MAX);
+      const tagged = await env.call('projects.setTags', { projectId: project.id, tags: ['  Work  ', 'work', '', ' client   a ', 'WORK', longest] });
+      same(tagged.tags, ['Work', 'client a', longest], 'trimmed, deduplicated without case, in order');
+      await until('the tagged project', () => updates.events.some(event => (event.payload as Project).id === project.id && (event.payload as Project).tags?.length === 3));
+      const count = updates.events.length;
+      same((await env.call('projects.setTags', { projectId: project.id, tags: ['Work', 'client a', longest] })).tags, ['Work', 'client a', longest], 'the same tags again');
+      same(updates.events.length, count, 'no broadcast for unchanged tags');
+      await env.call('projects.rename', { projectId: project.id, name: 'renamed' });
+      await env.call('projects.archive', { projectId: project.id });
+      await env.call('projects.archive', { projectId: project.id, archived: false });
+      same((await env.call('projects.list', {})).find(p => p.id === project.id)?.tags, ['Work', 'client a', longest], 'tags after rename, archive and restore');
+      const full = Array.from({ length: PROJECT_TAGS_MAX }, (_, index) => `tag ${index}`);
+      same((await env.call('projects.setTags', { projectId: project.id, tags: [...full, 'TAG 0'] })).tags, full, 'the most tags, a duplicate dropped');
+      same((await env.call('projects.setTags', { projectId: project.id, tags: [] })).tags, [], 'tags removed');
+      same((await env.call('projects.list', {})).find(p => p.id === project.id)?.tags, [], 'the listed tags once removed');
+    } finally { updates.stop(); }
+  },
+  'projects.setTags refuses bad values by field with the expected value, and missing projects': async (env) => {
+    const project = await env.call('projects.add', { path: await env.newFolder(), name: 'tagged' });
+    await env.call('projects.setTags', { projectId: project.id, tags: ['kept'] });
+    const bad: unknown[] = ['kept', [42], ['x'.repeat(PROJECT_TAG_MAX + 1)], Array.from({ length: PROJECT_TAGS_MAX + 1 }, (_, index) => `t${index}`)];
+    for (const tags of bad) {
+      const data = await refusedWith(env.call('projects.setTags', { projectId: project.id, tags: tags as string[] }), RpcErrorCode.Refused, ['field', 'expected']);
+      same(data.field, 'tags', 'the refused field');
+    }
+    await refusedWith(env.call('projects.setTags', { projectId: 'prj_missing', tags: [] }), RpcErrorCode.NotFound);
+    same((await env.call('projects.list', {})).find(p => p.id === project.id)?.tags, ['kept'], 'the tags after refusals');
   },
   'projects.refreshIcon answers the project, and projects.icon refuses one with no image by field': async (env) => {
     const project = await env.call('projects.add', { path: await env.newFolder() });

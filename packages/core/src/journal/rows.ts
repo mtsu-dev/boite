@@ -10,6 +10,8 @@ export interface ProjectRow {
   /** Absent from a row read before schema 21. */
   archived?: number;
   worktree_default?: number;
+  /** A JSON array of strings, NULL when the project has none. */
+  tags?: string | null;
 }
 
 /** A row of `project_icons` without its bytes. */
@@ -118,7 +120,12 @@ export function parseJson<T>(text: string, location: string): T {
 }
 
 export function toProject(row: ProjectRow): Project {
-  return { id: row.id, name: row.name, path: row.path, createdAt: row.created_at, ...(row.archived ? { archived: true } : {}), ...(row.worktree_default ? { worktreeDefault: true } : {}) };
+  const tags = row.tags ? parseJson<unknown>(row.tags, `projects.tags of ${row.id}`) : null;
+  return {
+    id: row.id, name: row.name, path: row.path, createdAt: row.created_at,
+    ...(row.archived ? { archived: true } : {}), ...(row.worktree_default ? { worktreeDefault: true } : {}),
+    ...(Array.isArray(tags) && tags.length > 0 ? { tags: tags.filter((tag): tag is string => typeof tag === 'string') } : {}),
+  };
 }
 
 export function toThread(row: ThreadRow): ThreadSummary {

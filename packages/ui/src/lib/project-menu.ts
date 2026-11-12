@@ -1,4 +1,4 @@
-import { AppWindow, Archive, ArrowDown, ArrowLeft, ArrowUp, Copy, FolderMinus, GitBranch, History, Import, KeyRound, PencilLine, Plus, RefreshCw, Settings, Trash2 } from '@lucide/svelte';
+import { AppWindow, Archive, ArrowDown, ArrowLeft, ArrowUp, Copy, FolderMinus, GitBranch, History, Import, KeyRound, PencilLine, Plus, RefreshCw, Settings, Tag, Trash2 } from '@lucide/svelte';
 import type { Project } from '@boite/contracts';
 import type { Store } from './store.svelte';
 import { workspace } from './workspace.svelte';
@@ -9,6 +9,24 @@ import { separator, type MenuItem } from './menu';
 import { fill, strings } from './strings';
 import { projectName } from './format';
 import { undo } from './undo.svelte';
+import { tagEditor } from './tag-editor.svelte';
+import { knownTags } from './project-tags';
+
+/**
+ * Opens the tag dialog on a project and stores what it answers. The tags it
+ * offers are the ones every connected machine's projects carry, archived ones
+ * included, so a tag picked on one machine is spelt the same on the next.
+ */
+export async function editProjectTags(owner: Store, project: Project): Promise<void> {
+  const client = owner.client;
+  const clientGeneration = owner.clientGeneration;
+  const current = owner.projects.find(p => p.id === project.id);
+  if (!current || current.tags === undefined) return;
+  const known = knownTags(workspace.machinesOr(owner).flatMap(machine => machine.store.projects));
+  const tags = await tagEditor.edit({ project: projectName(current), tags: current.tags, known });
+  // A menu opened on another client cannot write to this machine's colliding project id.
+  if (tags !== null && owner.client === client && owner.clientGeneration === clientGeneration) await owner.setProjectTags(project.id, tags);
+}
 
 /** Asks before a project leaves Boite, then removes it. Its folder, when there is one left, stays. */
 export async function confirmRemoveProject(owner: Store, project: Project): Promise<void> {
@@ -74,6 +92,8 @@ export function projectMenu(event: MouseEvent, owner: Store, project: Project, r
     { id: 'new', label: strings.sidebar.newThread, glyph: Plus, disabled: project.missing === true, ...(project.missing === true ? { title: strings.sidebar.projectMissing } : {}) },
     { id: 'copy', label: strings.sidebar.copyPath, title: project.path, glyph: Copy },
     ...(project.kind !== 'drafts' ? [{ id: 'rename', label: strings.common.rename, glyph: PencilLine }] : []),
+    // A core older than tags sends none at all: nothing it could store is offered.
+    ...(project.tags !== undefined ? [{ id: 'tags', label: strings.sidebar.tags.edit, glyph: Tag, ...(project.tags.length ? { hint: String(project.tags.length) } : {}) }] : []),
     { id: 'archived', label: strings.sidebar.viewArchivedThreads, glyph: History },
     ...(owner.owner || project.kind !== 'drafts' || reorder
       ? [separator(), { id: 'manage', label: strings.sidebar.manageProject, glyph: Settings, hint: '›', submenu: true }]
@@ -103,6 +123,7 @@ export function projectMenu(event: MouseEvent, owner: Store, project: Project, r
         });
         if (name !== null && owner.client === client && owner.clientGeneration === clientGeneration) await owner.renameProject(project.id, name);
       }
+      if (action === 'tags') await editProjectTags(owner, project);
       if (action === 'archived') {
         if (workspace.active !== owner) await workspace.select(owner);
         owner.showSettings('general', 'archived');

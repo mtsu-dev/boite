@@ -10,6 +10,7 @@
   import UndoToast from './components/UndoToast.svelte';
   import NotificationCard from './components/NotificationCard.svelte';
   import ChatView from './components/ChatView.svelte';
+  import { tagEditor } from './lib/tag-editor.svelte';
   import ConfirmDialog from './components/ConfirmDialog.svelte';
   import ContextMenu from './components/ContextMenu.svelte';
   import MoveProjectPicker from './components/MoveProjectPicker.svelte';
@@ -123,6 +124,7 @@
     CommandPalette: () => import('./components/CommandPalette.svelte'),
     ProjectPicker: () => import('./components/ProjectPicker.svelte'),
     ImportDialog: () => import('./components/ImportDialog.svelte'),
+    TagDialog: () => import('./components/TagDialog.svelte'),
     ConnectFlow: () => import('./components/ConnectFlow.svelte'),
     Onboarding: () => import('./components/Onboarding.svelte'),
     // The drawer, then xterm.js and its stylesheet: only once a terminal is asked for.
@@ -154,6 +156,7 @@
         else if (name === 'ImportDialog' && store.imports) store.closeImports();
         else if (name === 'ConnectFlow' && store.connectDialog) store.closeConnect();
         else if (name === 'CommandPalette' && store.paletteOpen) store.paletteOpen = false;
+        else if (name === 'TagDialog' && tagEditor.current) tagEditor.cancel();
         else return;
         store.error = strings.phone.dialogOffline;
       });
@@ -210,6 +213,7 @@
     if (store.paletteOpen) need('CommandPalette');
     if (store.projectPickerOpen) need('ProjectPicker');
     if (store.imports) need('ImportDialog');
+    if (tagEditor.current) need('TagDialog');
     if (store.connectDialog) need('ConnectFlow');
     if (tour) need('Onboarding');
   });
@@ -517,7 +521,7 @@
    * it. The tour counts once it is drawn: offline with a cold cache it never is,
    * and the keyboard must not stay held for it.
    */
-  let modal = $derived((tour && deferred.Onboarding !== undefined) || confirm.current !== null || store.imports !== null || store.projectPickerOpen || (store.connectDialog !== null && deferred.ConnectFlow !== undefined));
+  let modal = $derived((tour && deferred.Onboarding !== undefined) || confirm.current !== null || tagEditor.current !== null || store.imports !== null || store.projectPickerOpen || (store.connectDialog !== null && deferred.ConnectFlow !== undefined));
 
   /**
    * Every app chord goes through the keyboard table (`lib/keybindings.ts`,
@@ -689,7 +693,7 @@
 {#if tour && deferred.Onboarding}{@const Onboarding = deferred.Onboarding}<Onboarding {store} />{:else if deferred.PluginUpdateNotice}{@const PluginUpdateNotice = deferred.PluginUpdateNotice}<PluginUpdateNotice />{/if}
 {#if deferred.PluginUiHost}{@const PluginUiHost = deferred.PluginUiHost}<PluginUiHost />{/if}
 {#if deferred.ProjectPicker}{@const ProjectPicker = deferred.ProjectPicker}<ProjectPicker {store} />{/if}
-<ConfirmDialog />
+<ConfirmDialog />{#if deferred.TagDialog}{@const TagDialog = deferred.TagDialog}<TagDialog />{/if}
 {#if deferred.ImportDialog}{@const ImportDialog = deferred.ImportDialog}<ImportDialog {store} />{/if}
 {#if deferred.ConnectFlow}{@const ConnectFlow = deferred.ConnectFlow}<ConnectFlow {store} />{/if}
 {#if deferred.CommandPalette}{@const CommandPalette = deferred.CommandPalette}<CommandPalette {store} />{/if}

@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { ChevronDown, Folder, Plus, Search } from '@lucide/svelte';
+  import { ChevronDown, Folder, Plus, Search, Tag } from '@lucide/svelte';
   import { workspace } from '../lib/workspace.svelte';
   import { projectKey, projectView, type ProjectEntry } from '../lib/project-view.svelte';
   import { projectName } from '../lib/format';
+  import { tagFilterItems, tagLabel } from '../lib/project-tags';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import Menu from './Menu.svelte';
@@ -12,12 +13,15 @@
 
   let { entries, store, prefix = '' }: { entries: ProjectEntry[]; store: Store; prefix?: string } = $props();
   const selected = $derived(projectView.selected(entries));
+  /** The tag the filter chose, while one of `entries` still carries it. */
+  const tag = $derived(!selected && projectView.tagged(entries) ? projectView.tag : null);
   const target = $derived(workspace.view === 'recent' && selected ? selected.project : store.openProject ?? store.projects.find(p => !p.archived));
   const targetOwner = $derived(workspace.view === 'recent' && selected ? selected.machine.store : store);
   const newLabel = $derived(target ? fill(strings.sidebar.newThreadIn, { project: projectName(target) }) : strings.sidebar.newThread);
   const items = $derived([
-    { id: 'all', label: strings.sidebar.allProjects, active: !selected },
-    ...entries.map(entry => ({ id: projectKey(entry), label: projectName(entry.project), hint: workspace.machines.length > 1 ? entry.machine.label : entry.project.path, active: projectKey(entry) === projectView.filter, projectTile: { project: entry.project, store: entry.machine.store } }))
+    { id: 'all', label: strings.sidebar.allProjects, active: !selected && !tag },
+    ...entries.map(entry => ({ id: projectKey(entry), label: projectName(entry.project), hint: workspace.machines.length > 1 ? entry.machine.label : entry.project.path, active: projectKey(entry) === projectView.filter, projectTile: { project: entry.project, store: entry.machine.store } })),
+    ...tagFilterItems(entries, tag)
   ]);
   /** Always a new draft: one already written stays in the list, where it was. */
   async function create() {
@@ -31,7 +35,7 @@
     {#if workspace.view === 'recent' && entries.length}
       <div class="filter">
         <Menu {items} onpick={key => projectView.pick(key)} label={strings.sidebar.filterProject} placement="bottom" variant="text" testid={`${prefix}project-filter`}>
-          {#if selected}<ProjectTile project={selected.project} store={selected.machine.store} size={16} />{:else}<Folder size={13} />{/if}<span class="ui-label">{selected ? projectName(selected.project) : strings.sidebar.allProjects}</span>{#if selected && workspace.machines.length > 1}<span class="machine ui-label">{selected.machine.label}</span>{/if}<ChevronDown size={12} />
+          {#if selected}<ProjectTile project={selected.project} store={selected.machine.store} size={16} />{:else if tag}<Tag size={13} />{:else}<Folder size={13} />{/if}<span class="ui-label">{selected ? projectName(selected.project) : tag ? tagLabel(entries, tag) : strings.sidebar.allProjects}</span>{#if selected && workspace.machines.length > 1}<span class="machine ui-label">{selected.machine.label}</span>{/if}<ChevronDown size={12} />
         </Menu>
       </div>
     {/if}

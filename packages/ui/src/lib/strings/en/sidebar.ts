@@ -92,6 +92,25 @@ export const strings = {
     manageProject: 'Manage project',
     renameProject: 'Rename project',
     projectName: 'Project name',
+    /** Labels the owner puts on projects to gather them in the sidebar, on every device. */
+    tags: {
+      edit: 'Edit tags',
+      title: 'Tags of {project}',
+      current: 'Tags on this project',
+      none: 'No tag yet.',
+      inputLabel: 'New tag',
+      placeholder: 'Type a tag',
+      add: 'Add',
+      remove: 'Remove tag {tag}',
+      known: 'Tags on other projects',
+      limits: 'Up to {count} tags, {length} characters each.',
+      full: 'This project holds {count} tags, the most it can.',
+      tooLong: 'A tag holds {length} characters at most.',
+      /** The display option, its hint, and the section of projects without a tag. */
+      groupRow: 'By tag',
+      groupHint: 'One section per tag, sorted by name, with the projects of every machine shown. A project with several tags shows under each, and untagged projects come last. Projects keep their order inside a section but cannot be dragged while grouped, and idle or set-aside projects stay under their tag. This device only.',
+      untagged: 'No tag'
+    },
     worktreeDefault: 'Worktree by default',
     autoArchiveMergedPr: 'Hide merged PR conversations',
     autoRemoveWorktrees: 'Remove settled worktrees',

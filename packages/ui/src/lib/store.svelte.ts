@@ -531,6 +531,7 @@ export class Store {
   archiveProject(...args: Parameters<Projects['archiveProject']>) { return this.#ctx.projects.archiveProject(...args); }
   projectIconUrl(...args: Parameters<Projects['projectIconUrl']>) { return this.#ctx.projects.projectIconUrl(...args); }
   loadProjectIcon(...args: Parameters<Projects['loadProjectIcon']>) { return this.#ctx.projects.loadProjectIcon(...args); }
+  setProjectTags(...args: Parameters<Projects['setProjectTags']>) { return this.#ctx.projects.setProjectTags(...args); }
   setProjectWorktreeDefault(...args: Parameters<Projects['setProjectWorktreeDefault']>) { return this.#ctx.projects.setProjectWorktreeDefault(...args); }
   projectAutoArchiveMergedPrBusy(...args: Parameters<Projects['projectAutoArchiveMergedPrBusy']>) { return this.#ctx.projects.projectAutoArchiveMergedPrBusy(...args); }
   setProjectAutoArchiveMergedPr(...args: Parameters<Projects['setProjectAutoArchiveMergedPr']>) { return this.#ctx.projects.setProjectAutoArchiveMergedPr(...args); }

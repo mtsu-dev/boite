@@ -200,8 +200,9 @@ export class Journal {
 
   putProject(project: Project): void {
     this.db
-      .query('INSERT OR REPLACE INTO projects (id, name, path, created_at, archived, worktree_default) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(project.id, project.name, project.path, project.createdAt, project.archived === true ? 1 : 0, project.worktreeDefault === true ? 1 : 0);
+      .query('INSERT OR REPLACE INTO projects (id, name, path, created_at, archived, worktree_default, tags) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(project.id, project.name, project.path, project.createdAt, project.archived === true ? 1 : 0, project.worktreeDefault === true ? 1 : 0,
+        project.tags !== undefined && project.tags.length > 0 ? JSON.stringify(project.tags) : null);
   }
 
   /** Archived project threads, including work delegated by a bot, and how many are done. */

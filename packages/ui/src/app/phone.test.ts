@@ -70,7 +70,7 @@ test('a paired device is offered none of the affordances the core refuses it', a
   // A paired device's project menu: no Remove, and no transcript import behind it.
   query('[data-testid=project-row]').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
   await waitFor(() => document.querySelector('[data-testid=context-menu]') !== null);
-  expect(menuValues()).toEqual(['new', 'copy', 'rename', 'archived', 'manage']);
+  expect(menuValues()).toEqual(['new', 'copy', 'rename', 'tags', 'archived', 'manage']);
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=manage]').click();
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=archive-project]') !== null);
   expect(menuValues()).toEqual(['back', 'secrets', 'archive-project']);
@@ -105,7 +105,7 @@ test('the desktop still has every one of them', async ({ app: _app }) => {
 
   query('[data-testid=project-row]').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
   await waitFor(() => document.querySelector('[data-testid=context-menu]') !== null);
-  expect(menuValues()).toEqual(['new', 'copy', 'rename', 'archived', 'manage']);
+  expect(menuValues()).toEqual(['new', 'copy', 'rename', 'tags', 'archived', 'manage']);
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=manage]').click();
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=archive-project]') !== null);
   expect(menuValues()).toEqual(['back', 'worktree-default', 'worktrees', 'auto-archive-merged-pr', 'auto-remove-worktrees', 'windows', 'refresh-icon', 'secrets', 'archive-project', 'remove']);
@@ -152,7 +152,7 @@ test('the desktop still has every one of them', async ({ app: _app }) => {
   expect(preference.getAttribute('aria-checked')).toBe('false');
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=back]').click();
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=new]') !== null);
-  expect(menuValues()).toEqual(['new', 'copy', 'rename', 'archived', 'manage']);
+  expect(menuValues()).toEqual(['new', 'copy', 'rename', 'tags', 'archived', 'manage']);
   press('Escape');
   await waitFor(() => document.querySelector('[data-testid=context-menu]') === null);
   // The phone's own header manages no project at all.

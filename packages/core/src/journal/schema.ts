@@ -385,6 +385,8 @@ export function migrate(db: Database, file: string): { from: number; to: number 
     CREATE INDEX IF NOT EXISTS background_observations_live ON background_observations(thread_id, provider_id, session_generation, json_extract(payload, '$.state'));
     CREATE INDEX IF NOT EXISTS background_observations_recent ON background_observations(thread_id, json_extract(payload, '$.observedAt') DESC);`);
   if (!hasColumn('threads', 'fork_origin')) db.exec('ALTER TABLE threads ADD COLUMN fork_origin TEXT');
+  // A project's tags, a JSON array of strings; NULL when none. Additive, so an older core still reads the journal.
+  if (!hasColumn('projects', 'tags')) db.exec('ALTER TABLE projects ADD COLUMN tags TEXT');
   if (!hasColumn('turns', 'queue_hold')) db.exec('ALTER TABLE turns ADD COLUMN queue_hold TEXT');
   if (!hasColumn('threads', 'done_at')) db.exec('ALTER TABLE threads ADD COLUMN done_at INTEGER');
   db.exec('CREATE INDEX IF NOT EXISTS threads_done_expiry ON threads(done_at)');
