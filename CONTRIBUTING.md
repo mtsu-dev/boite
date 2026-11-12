@@ -1,9 +1,13 @@
 # Contributing
 
-boite is built by a small team with a clear direction. Reviewing a pull request
-takes more time than writing one, so we only take pull requests that fix bugs.
+**Bug fixes only.** Pull requests from outside the maintainers must fix a bug.
+Anything else is closed without review.
 
-We close these without review:
+The maintainers are the people with write access to this repository. They
+build the features and may open any pull request.
+
+boite is built by a small team with a clear direction, and reviewing a pull
+request takes more time than writing one. We close these without review:
 
 - New features or new settings
 - UI redesigns
@@ -19,10 +23,13 @@ ourselves.
 
 ## Rules for a pull request
 
+Every pull request from outside the maintainers follows these rules, drafts
+included. Maintainers follow the title rule and the checks too.
+
 - **Fix a bug.** A crash, a regression or a real performance problem is a bug.
   A change to how boite behaves is a feature, even when the PR calls it a fix.
   A larger fix links the issue that shows the bug. The only exception is a PR a
-  maintainer asked for: link the request.
+  maintainer asked you to open: link the request.
 - **One problem per PR.** Include everything the fix needs (contract, core, UI,
   tests, docs) and nothing else.
 - **Show that it works.** Say how you found the bug, how you checked the fix and
