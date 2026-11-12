@@ -78,6 +78,7 @@ type StartParams = { project: string; brief: string; model?: string; effort?: st
 function connectable(core: Core, bot: Bot, target: unknown, field: string) {
   const thread = typeof target === 'string' ? core.journal.getThread(target) : null;
   if (!thread || thread.archived || thread.id === bot.threadId) throw invalidParams(`${field}: expected a thread here that is not archived, other than this one`, { field: 'target' });
+  if (thread.teamId || thread.councilId) throw refused(`${field}: ${thread.id} is a team chat or a council, which takes no letter from a contact`, { field: 'target' });
   const config = core.coordination.config(thread.id);
   if (config.mode === 'off' || !config.remote) throw refused(`${field}: ${thread.id} takes no letter from other machines`, { field: 'target' });
   return thread;

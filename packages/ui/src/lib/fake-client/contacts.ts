@@ -410,6 +410,7 @@ export function contactMethods(ctx: FakeContext) {
   const connectable = (id: unknown): Thread => {
     const target = typeof id === 'string' ? ctx.threads.get(id) : undefined;
     if (!target || target.archived) throw invalid('target: expected an unarchived thread of this core', 'target');
+    if (target.teamId || target.councilId) throw invalid('target: expected a thread other than a team chat or a council', 'target');
     if (target.id === ctx.agents.builtinThread('contacts')) throw invalid('target: expected a thread other than the Operator\'s own', 'target');
     return target;
   };

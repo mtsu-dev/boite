@@ -7,6 +7,7 @@ import { agentsCommand } from '../src/agents-cli.ts';
 import type { AgentFact } from '../src/agents/runtime.ts';
 import type { CoreClient } from '../src/client.ts';
 import { contactsCommand } from '../src/contacts/cli.ts';
+import { makeAgent } from './agent-fixture.ts';
 import { contactsBotOf } from './contacts-fixture.ts';
 import { startTestCore, testProject, waitFor, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
@@ -216,6 +217,11 @@ test('an ask that names its contact reaches that contact\'s Operator with no tur
   const sixth = await ask('Someone on the other subject');
   const card = await hostClient.call('contacts.bot.askOwner', { threadId: hostBot.threadId, id: sixth.incoming.id, connect: hostThread });
   expect(await thrown(hostClient.call('contacts.decide', { id: sixth.incoming.id, accept: true, threadId: hostBot.threadId }))).toThrow('other than this one');
+  // A team chat takes no letter from a contact: picking it settles nothing.
+  await hostClient.call('client.preferences', { app: 'app-desktop-0001', language: 'en', experiments: ['teams'], labels: {} });
+  const team = host.core.teams.create({ name: 'Scheduler team', members: [(await makeAgent(host, hostClient, { name: 'Scheduler' })).agent.id] });
+  expect(await thrown(hostClient.call('contacts.decide', { id: sixth.incoming.id, accept: true, threadId: team.threadId }))).toThrow('team chat');
+  expect(here(sixth.incoming.id)).toMatchObject({ status: 'pending' });
   expect(await hostClient.call('contacts.decide', { id: sixth.incoming.id, accept: true, threadId: other })).toMatchObject({ status: 'accepted', decidedBy: 'owner', relation: { local: { threadId: other } } });
   expect(here(sixth.incoming.id).plan).toBeUndefined();
   expect(await thrown(hostClient.call('questions.answer', { threadId: hostBot.threadId, questionId: card.questionId, optionIds: ['accept'] }))).toThrow();
