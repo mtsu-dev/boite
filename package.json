@@ -2,7 +2,7 @@
   "name": "boite",
   "private": true,
   "license": "MIT",
-  "version": "2.0.0-beta.1",
+  "version": "0.1.0",
   "packageManager": "bun@1.4.4",
   "workspaces": [
     "packages/*",
