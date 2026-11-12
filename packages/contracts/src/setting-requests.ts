@@ -9,7 +9,7 @@ import { readPluginSource, sameRepository, type PluginSourceInput } from './plug
  * and the core settles the card when the value it asked about changes, from
  * the card or from the page. An experiment is a device's own switch: the app
  * reports which are on (`client.preferences`), the card flips it there, and
- * the core settles the card on the next report. See docs/cli.md.
+ * the core settles the card on the next report. See docs/internals/cli.md.
  */
 
 /**
@@ -23,7 +23,7 @@ export function isExperimentId(id: unknown): id is ExperimentId {
   return typeof id === 'string' && (EXPERIMENT_IDS as readonly string[]).includes(id);
 }
 
-/** The languages the app speaks (`docs/language.md`). */
+/** The languages the app speaks (`docs/internals/language.md`). */
 export const APP_LANGUAGES = ['en', 'fr'] as const;
 export type AppLanguage = (typeof APP_LANGUAGES)[number];
 

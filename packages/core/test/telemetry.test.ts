@@ -131,7 +131,7 @@ test('invalid consent fails closed with repair guidance and preserves the deleti
   for (const text of ['{"forget":[', JSON.stringify({ mode: 'invalid', forget: [crypto.randomUUID()] }), 'null']) {
     writeFileSync(file, text);
     expect(() => new Telemetry(f.host, 'https://relay.example', f.send)).toThrow('telemetry.json: cannot load consent');
-    expect(() => new Telemetry(f.host, 'https://relay.example', f.send)).toThrow('docs/analytics.md');
+    expect(() => new Telemetry(f.host, 'https://relay.example', f.send)).toThrow('docs/internals/analytics.md');
     expect(readFileSync(file, 'utf8')).toBe(text);
   }
   expect(f.requests).toEqual([]);

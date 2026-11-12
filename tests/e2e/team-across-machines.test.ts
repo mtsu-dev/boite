@@ -8,7 +8,7 @@ import { BrowserPage, freePort } from './lib/cdp.ts';
 import { startCore, type RunningCore } from './lib/core.ts';
 import { startUi } from './lib/ui.ts';
 
-/* A team across machines (`docs/teams.md`): two real core processes of one group, a bot on each, a machine cut off and back, and the app showing a member of the other machine. */
+/* A team across machines (`docs/internals/teams.md`): two real core processes of one group, a bot on each, a machine cut off and back, and the app showing a member of the other machine. */
 
 const ARTIFACTS = join(import.meta.dir, '.artifacts', 'team-across-machines');
 const WIDE = { width: 816, height: 900, deviceScaleFactor: 1, mobile: false };

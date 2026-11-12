@@ -104,3 +104,52 @@ test('a profile copied in is listed and opens by name, as on the core; a taken n
     expect((await client.call('browser.command', { threadId, action: { kind: 'open', url: 'https://example.com/', profile: 'compte b' } })).profile).toBe(added.id);
   } finally { client.close(); }
 });
+
+test('a stream pushes the page then its frames, one per acknowledgement, keeps the page good for input and ends with the tab', async () => {
+  const client = new FakeClient({ delayMs: 0 }), threadId = 't-trace';
+  try {
+    expect((await client.connect()).features?.browserStream).toBe(true);
+    await client.call('threads.subscribe', { threadId });
+    await expect(client.call('browser.remoteStream', { threadId })).rejects.toThrow('no browser tab');
+    const tabId = (await client.call('browser.command', { threadId, action: { kind: 'open', url: 'https://example.com/docs' } })).tabId!;
+    await expect(client.call('browser.remoteStream', { threadId, maxWidth: 10 })).rejects.toThrow('maxWidth');
+    const answer = await client.call('browser.remoteStream', { threadId, tabId });
+    if (!('path' in answer)) throw new Error('the demo core pushes every tab');
+    expect(answer.path).toMatch(/^\/browser-stream\/[A-Za-z0-9_-]+$/);
+    const socket = client.frames(answer.path), pages: RemoteBrowserFrame['id'][] = [], closes: number[] = [];
+    let pictures = 0;
+    socket.onmessage = (data) => { if (typeof data === 'string') pages.push((JSON.parse(data) as { page: { id: string } }).page.id); else pictures++; };
+    socket.onclose = (code) => closes.push(code);
+    const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+    await wait(20);
+    expect([pages.length, pictures]).toEqual([1, 1]);
+    // Nothing more leaves before the acknowledgement, however much the page moves.
+    await client.call('browser.remoteInput', { threadId, frameId: pages[0]!, input: { kind: 'scroll', x: 0, y: 300 } });
+    await wait(120);
+    expect(pictures).toBe(1);
+    socket.send(JSON.stringify({ type: 'ack' }));
+    await wait(120);
+    expect([pages.length, pictures]).toEqual([1, 2]);
+    socket.send(JSON.stringify({ type: 'ack' }));
+    // A ticket opens one socket.
+    const again = client.frames(answer.path), refused: number[] = [];
+    again.onclose = (code) => refused.push(code);
+    await wait(20);
+    expect(refused).toEqual([1008]);
+    await client.call('browser.command', { threadId, tabId, action: { kind: 'close' } });
+    await wait(120);
+    expect(closes).toEqual([4404]);
+  } finally { client.close(); }
+});
+
+test('a core from before the stream does not announce it and still answers frames', async () => {
+  const client = new FakeClient({ delayMs: 0, missing: ['browser.remoteStream'] }), threadId = 't-trace';
+  try {
+    expect((await client.connect()).features?.browserStream).toBe(false);
+    await client.call('threads.subscribe', { threadId });
+    const tabId = (await client.call('browser.command', { threadId, action: { kind: 'open', url: 'https://example.com/docs' } })).tabId!;
+    await expect(client.call('browser.remoteStream', { threadId, tabId })).rejects.toThrow();
+    const frame = await client.call('browser.remoteFrame', { threadId, tabId });
+    expect('base64' in frame && frame.base64.length > 0).toBe(true);
+  } finally { client.close(); }
+});

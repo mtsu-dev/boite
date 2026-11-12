@@ -1,6 +1,6 @@
 /**
  * The oldest browsers the UI runs on: Safari 15.4 (iOS 15.4) and Chromium 111
- * (docs/phone.md). The build target lowers syntax only, never a regex or a
+ * (docs/internals/phone.md). The build target lowers syntax only, never a regex or a
  * method, so what those engines lack is refused here instead, on every chunk
  * the build writes (`vite.config.ts`) and on the sources (`browser-floor.test.ts`).
  *

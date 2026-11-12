@@ -23,6 +23,8 @@
   import { speedControl } from '../lib/model-speeds';
   import type { ComposerTarget } from '../lib/composer-target';
   import { desktopSettings } from '../lib/settings-tabs';
+  import { workspace } from '../lib/workspace.svelte';
+  import PluginSlotButtons from './PluginSlotButtons.svelte';
 
   /**
    * The row under the composer's box: the model, effort, worktree and mode
@@ -308,6 +310,8 @@
       </Menu>
     {/if}
     </div>
+    <!-- Outside desktop-options: a phone keeps a plugin's buttons. -->
+    {#if store === workspace.primary}<PluginSlotButtons slot="composer" threadId={store.openThread?.id ?? null} compact />{/if}
   </div>
   {/if}
   {#if bound && showContext && !answering}

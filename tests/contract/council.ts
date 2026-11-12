@@ -1,4 +1,4 @@
-/** The council behind its experiment behaves alike on the real core and the in-memory transport (`docs/council.md`). */
+/** The council behind its experiment behaves alike on the real core and the in-memory transport (`docs/internals/council.md`). */
 import { RpcErrorCode } from '../../packages/contracts/src/index.ts';
 import type { ContractEnv, Scenario } from './scenarios.ts';
 

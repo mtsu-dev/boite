@@ -78,7 +78,7 @@ export interface GuardStatus {
 /** What the firewall's allow command exits with when nobody accepted the administrator prompt. */
 export const FIREWALL_PROMPT_REFUSED = 3;
 
-/** A top-level window a person sees on this machine's desktop (docs/windows.md). */
+/** A top-level window a person sees on this machine's desktop (docs/internals/windows.md). */
 export interface NativeWindow {
   /** The HWND or X11 window id, in decimal. */
   id: string;
@@ -244,7 +244,7 @@ export interface ProcessPlatform {
   runningSince(pid: number): number | null;
 }
 
-/** A desktop of the user's session that no screen shows (docs/desktop.md). */
+/** A desktop of the user's session that no screen shows (docs/internals/desktop.md). */
 export interface HiddenDesktop {
   name: string;
   /** What `STARTUPINFO.lpDesktop` takes: `WinSta0\<name>`. */

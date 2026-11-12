@@ -2,7 +2,7 @@
  * `boite delegate council`: models of different providers review one request
  * alone and read-only, each with a score out of 10; their answers come back to
  * this thread as one message, and `again` asks the same members for one more
- * round, from zero (`docs/council.md`).
+ * round, from zero (`docs/internals/council.md`).
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';

@@ -3,7 +3,7 @@
  * `packages/core/vendor/scrcpy` and no other: the arguments that start it, the
  * control messages the core writes and the video and device messages it reads.
  * Values are big-endian, as the server's DataInputStream reads them. See
- * docs/devices.md, "Live stream".
+ * docs/internals/devices.md, "Live stream".
  */
 
 export const SCRCPY_VERSION = '5.0.1';

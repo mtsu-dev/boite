@@ -44,7 +44,7 @@ function askToFollowLink(url: string): Promise<boolean> {
     /* the raw text, then */
   }
   return confirm.ask({
-    title: strings.machines.linkTitle.replace('{host}', host),
+    title: fill(strings.machines.linkTitle, { host }),
     body: strings.machines.linkBody,
     confirmLabel: strings.machines.linkConfirm,
     cancelLabel: strings.common.cancel,

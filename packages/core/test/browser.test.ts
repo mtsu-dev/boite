@@ -1,4 +1,4 @@
-import { expect } from 'bun:test';
+import { expect, spyOn } from 'bun:test';
 import type { BrowserAction } from '@boite/contracts';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -6,6 +6,7 @@ import { echoThread, startTestCore } from './harness.ts';
 import { createBrowserFixture, picture } from './browser/fixture.ts';
 import { traceBrowserCommands } from './browser/dialog-trace.ts';
 import { thrown } from './settle.ts';
+import { Cdp } from '../src/browser/cdp.ts';
 
 const browserFixture = createBrowserFixture();
 const { real, url, evaluate } = browserFixture;
@@ -44,8 +45,24 @@ real('an agent opens, reads and drives a page in the browser of its own machine'
   expect(await evaluate('matchMedia("(prefers-color-scheme: dark)").matches')).toBe(true);
   const shot = await agent.call('browser.command', { threadId, action: { kind: 'screenshot' } });
   expect(Buffer.from(shot.screenshot!.base64, 'base64').subarray(1, 4).toString()).toBe('PNG');
+  const pngSize = (base64: string) => {
+    const bytes = Buffer.from(base64, 'base64');
+    return [bytes.readUInt32BE(16), bytes.readUInt32BE(20)];
+  };
+  const cssSize = await evaluate('[innerWidth, innerHeight]') as [number, number];
+  expect(pngSize(shot.screenshot!.base64)).toEqual(cssSize);
+  // A page that cannot shrink in an isolated world still gives the agent CSS pixels.
+  const send = Cdp.prototype.send;
+  const shrinking = spyOn(Cdp.prototype, 'send').mockImplementation(function <T>(this: Cdp, method: string, params: Record<string, unknown> = {}, session?: string, timeoutMs?: number): Promise<T> {
+    if (method === 'Page.createIsolatedWorld' && params.worldName === 'boite-screenshot') return Promise.reject(new Error('isolated world unavailable'));
+    return send.call(this, method, params, session, timeoutMs) as Promise<T>;
+  });
+  try {
+    const fallback = await agent.call('browser.command', { threadId, action: { kind: 'screenshot' } });
+    expect(pngSize(fallback.screenshot!.base64)).toEqual(cssSize);
+  } finally { shrinking.mockRestore(); }
   const history = ((await agent.call('browser.command', { threadId, action: { kind: 'diagnostics' } })).value as { history: Array<{ action: string; ok: boolean }> }).history;
-  expect(history.map(entry => entry.action)).toEqual(['open', 'click', 'evaluate', 'type', 'evaluate', 'click', 'preset', 'evaluate', 'appearance', 'evaluate', 'screenshot']);
+  expect(history.map(entry => entry.action)).toEqual(['open', 'click', 'evaluate', 'type', 'evaluate', 'click', 'preset', 'evaluate', 'appearance', 'evaluate', 'screenshot', 'evaluate', 'screenshot']);
   expect(history[5]!.ok).toBe(false);
   // Its token reaches its own conversation only, and only http(s) pages open.
   expect(await thrown(agent.call('browser.command', { threadId: 'another-thread', action: { kind: 'status' } }))).toThrow('not thread');

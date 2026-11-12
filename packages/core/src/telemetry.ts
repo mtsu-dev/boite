@@ -169,7 +169,7 @@ export class Telemetry {
         this.#consent = saved;
       } catch {
         // Never overwrite an unreadable deletion ledger with fresh consent.
-        throw invalid('telemetry.json: cannot load consent; expected readable JSON with valid consent and UUID identifiers. Preserve this file and restore a valid backup or repair it while retaining forget and installId; see docs/analytics.md#repairing-consent-state.');
+        throw invalid('telemetry.json: cannot load consent; expected readable JSON with valid consent and UUID identifiers. Preserve this file and restore a valid backup or repair it while retaining forget and installId; see docs/internals/analytics.md#repairing-consent-state.');
       }
     }
     this.#unsubscribe = core.bus.onAny((name, payload) => {

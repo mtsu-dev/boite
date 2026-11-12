@@ -6,10 +6,10 @@
 
 import { createHash } from 'node:crypto';
 import { readFileSync, statSync } from 'node:fs';
-import { rm } from 'node:fs/promises';
+import { rename, rm, writeFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { PLUGIN_MANIFEST_FILE } from '@boite/contracts';
-import type { PluginManifest, PluginPool, PluginSource, PluginState } from '@boite/contracts';
+import type { PluginManifest, PluginPool, PluginRejected, PluginSource, PluginState } from '@boite/contracts';
 import { invalidParams, messageOf, refused } from '../errors.ts';
 import { ManifestRefused, authorityChange, isRecord, parseManifest, parseManifestText, refusal } from './manifest.ts';
 import { parseRecommendedEntry, type UpdateSource } from './updates.ts';
@@ -35,7 +35,7 @@ export function verifyPluginDownload(bytes: Uint8Array, digest: string, name = '
   }
 }
 
-/** One `list -<pool> -Json` answer, the account pool contract docs/plugins.md describes. */
+/** One `list -<pool> -Json` answer, the account pool contract docs/internals/plugins.md describes. */
 export function parsePluginPool(provider: string, text: string, name = 'plugin'): PluginPool {
   let raw: { accounts?: unknown };
   try { raw = JSON.parse(text) as { accounts?: unknown }; }
@@ -68,11 +68,60 @@ export interface Installed {
   binary: string | null;
   /** The folder a dev plugin runs from, or null. */
   devPath: string | null;
+  /**
+   * The SHA-256 of each `provides.ui` file an install wrote, saved as
+   * `ui/<sha256>.js` and `ui/<sha256>.css` beside the record. Null for a
+   * plugin with no interface and for a dev plugin, whose files are read from
+   * its folder.
+   */
+  ui: InstalledUi | null;
+}
+
+/** installed.json's `ui`: the digests of the files `provides.ui` named, as written at install. */
+export interface InstalledUi {
+  script?: string;
+  style?: string;
+}
+
+/** Writes installed.json whole: a reader sees the old record or the new one, never part of it. */
+export async function writeRecord(dir: string, text: string): Promise<void> {
+  const staged = join(dir, `${INSTALLED_FILE}.part`);
+  await writeFile(staged, text, { mode: 0o600 });
+  await rename(staged, join(dir, INSTALLED_FILE));
+}
+
+/** installed.json as an install writes it: `ui` only when the plugin brought an interface. */
+export function recordText(origin: Origin, source: PluginSource | null, manifest: PluginManifest, ui: InstalledUi | null): string {
+  return JSON.stringify({ schema: 1, origin, source, installedAt: Date.now(), manifest, ...(ui === null ? {} : { ui }) }, null, 2);
+}
+
+/** An installed plugin as the guide, the composer and the command runner read it. */
+export interface InstalledPlugin {
+  id: string;
+  manifest: PluginManifest;
+  /** Its directory under the data dir: where its skills are written. */
+  dir: string;
+}
+
+/** What a plugin's directory holds, as the store reads it. */
+export type OnDisk =
+  | { kind: 'none' }
+  | { kind: 'installed'; installed: Installed }
+  | { kind: 'error'; message: string }
+  | { kind: 'rejected'; rejected: PluginRejected };
+
+/** A download or text install under way. */
+export interface Job {
+  controller: AbortController;
+  progress: number;
+  promise: Promise<void>;
+  /** The install finished, or stopped the desktop app to replace its binary: start the app again after. */
+  relaunch: boolean;
 }
 
 /** installed.json as `plugins.add` and `plugins.install` write it. */
 export function readRecord(data: Record<string, unknown>, file: string, id: string, dir: string): Omit<Installed, 'binary'> {
-  const keys = ['schema', 'origin', 'source', 'installedAt', 'manifest', 'devPath'];
+  const keys = ['schema', 'origin', 'source', 'installedAt', 'manifest', 'devPath', 'ui'];
   for (const key of Object.keys(data)) if (!keys.includes(key)) throw refusal(file, key, `one of ${keys.join(', ')}`, key);
   if (data['schema'] !== 1) throw refusal(file, 'schema', '1', data['schema']);
   const origin = data['origin'];
@@ -99,7 +148,24 @@ export function readRecord(data: Record<string, unknown>, file: string, id: stri
   } else if (data['source'] !== null) {
     throw refusal(file, 'source', 'null for a recommended or dev plugin', data['source']);
   }
-  return { version: manifest.version, origin, source, manifest, devPath };
+  let ui: InstalledUi | null = null;
+  if (data['ui'] !== undefined) {
+    const raw = data['ui'];
+    const expected = 'an object of script and style digests, each 64 lowercase hexadecimal characters, matching provides.ui';
+    if (!isRecord(raw) || manifest.provides.ui === undefined || origin === 'dev') throw refusal(file, 'ui', expected, raw);
+    ui = {};
+    for (const key of ['script', 'style'] as const) {
+      const digest = raw[key];
+      if ((digest === undefined) !== (manifest.provides.ui[key] === undefined)) throw refusal(file, `ui.${key}`, expected, digest);
+      if (digest === undefined) continue;
+      if (typeof digest !== 'string' || !/^[0-9a-f]{64}$/.test(digest)) throw refusal(file, `ui.${key}`, expected, digest);
+      ui[key] = digest;
+    }
+    for (const key of Object.keys(raw)) if (key !== 'script' && key !== 'style') throw refusal(file, `ui.${key}`, expected, key);
+  } else if (manifest.provides.ui !== undefined && origin !== 'dev') {
+    throw refusal(file, 'ui', 'the digests of the provides.ui files the install wrote', undefined);
+  }
+  return { version: manifest.version, origin, source, manifest, devPath, ui };
 }
 
 /** Windows holds an executable a moment after its process exits. */

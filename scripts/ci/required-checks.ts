@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 // The check names a pull request run reports on its head, whether each job
-// runs or skips: the ruleset requires each of them (docs/ci.md#check-names).
+// runs or skips: the ruleset requires each of them (docs/internals/ci.md#check-names).
 // A name holds no expression: a skipped matrix job reports its unexpanded
 // template, so every required job is written out.
 
@@ -104,7 +104,7 @@ if (import.meta.main) {
     if (rules === undefined) process.exit(0);
     const { missing, unknown } = compareRuleset(names, rules);
     // Only main's ruleset job runs it: a branch that adds or renames a job
-    // diverges until the ruleset follows (docs/ci.md#check-names).
+    // diverges until the ruleset follows (docs/internals/ci.md#check-names).
     for (const name of missing) console.log(`::error::not required by the ruleset: ${name}`);
     for (const name of unknown) console.log(`::error::required by the ruleset, reported by no pull request: ${name}`);
     if (missing.length || unknown.length) process.exit(1);

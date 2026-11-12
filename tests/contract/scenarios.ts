@@ -360,6 +360,8 @@ export const SCENARIOS: Record<string, Scenario> = {
     await refusedWith(env.call('browser.command', { threadId, tabId: 'main', action: { kind: 'snapshot' } }), RpcErrorCode.Refused);
     await refusedWith(env.call('browser.remoteFrame', { threadId, maxWidth: 99 }), RpcErrorCode.Refused);
     await refusedWith(env.call('browser.remoteFrame', { threadId }), RpcErrorCode.Refused);
+    await refusedWith(env.call('browser.remoteStream', { threadId, maxWidth: 99 }), RpcErrorCode.Refused);
+    await refusedWith(env.call('browser.remoteStream', { threadId }), RpcErrorCode.Refused);
     await refusedWith(env.call('browser.remoteInput', { threadId, frameId: 'none', input: { kind: 'key', key: 'Enter' } }), RpcErrorCode.Refused);
   },
   'the virtual desktop refuses bad input before starting anything and has nothing to stop': async env => {
@@ -678,9 +680,22 @@ export const SCENARIOS: Record<string, Scenario> = {
     const command = await refusedWith(env.call('plugins.command', { name: 'no-such-command', args: [], cwd: await env.newFolder() }), RpcErrorCode.InvalidParams, ['field', 'expected']);
     same(command.field, 'name', 'the refused command field');
   },
+  'plugins.setEnabled and plugins.settings refuse a plugin no one has, by field': async (env) => {
+    for (const call of [
+      () => env.call('plugins.setEnabled', { id: 'no-such-plugin', enabled: false }),
+      () => env.call('plugins.settings.get', { id: 'no-such-plugin' }),
+      () => env.call('plugins.settings.set', { id: 'no-such-plugin', values: { on: true } }),
+    ]) {
+      const refused = await refusedWith(call(), RpcErrorCode.InvalidParams, ['field', 'expected']);
+      same(refused.field, 'id', 'the refused plugin field');
+    }
+  },
   'plugins.setGrants refuses a plugin no list has, by field': async (env) => {
     const unknown = await refusedWith(env.call('plugins.setGrants', { id: 'no-such-plugin', grants: [] }), RpcErrorCode.InvalidParams, ['field', 'expected']);
     same(unknown.field, 'id', 'the refused grants field');
+  },
+  'plugins.ui answers no interface while no plugin with one is installed': async (env) => {
+    same(await env.call('plugins.ui', {}), [], 'the interfaces of a machine with no interface plugin');
   },
   'a plugin card reads a shared repository page as the Plugins page does, once per thread': async (env) => {
     const setup = await echo(env);

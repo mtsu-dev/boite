@@ -1,6 +1,6 @@
 /*
  * Who a plugin's change is recorded as: the plugin, by id and by its name as
- * it is now, so the record still reads after an uninstall (docs/plugins.md,
+ * it is now, so the record still reads after an uninstall (docs/internals/plugins.md,
  * Permissions). Every other caller records nothing here.
  */
 

@@ -78,6 +78,35 @@ export interface RemoteBrowserUnchanged { unchanged: true; id: string; tabId: st
  */
 export interface RemoteFrameOptions { maxWidth?: number; quality?: number; after?: string }
 
+/**
+ * Where a viewer's frames arrive on a websocket of their own, as
+ * `BROWSER_STREAM_ROUTE/<ticket>` under the core's address: `browser.remoteStream`
+ * answers the path. The core pushes each JPEG as one binary message, never
+ * deflated, and a text message of JSON (`RemoteStreamMessage`) whenever the
+ * page those pictures show changes. The viewer answers every binary message
+ * with `{"type":"ack"}`: the core sends the next picture only then, so a slow
+ * link is shown fewer pictures, never late ones. The method is T3 Code's
+ * (https://github.com/pingdotgg/t3code, MIT License).
+ */
+export const BROWSER_STREAM_ROUTE = '/browser-stream';
+/** What a stream ticket looks like in the path. */
+export const BROWSER_STREAM_TICKET = /^[A-Za-z0-9_-]{16,128}$/;
+/** The stream's close codes a viewer acts on: the tab is gone, or the stream must be opened again. */
+export const BrowserStreamClose = { TabGone: 4404, Reconnect: 1012, Slow: 1013, Refused: 1008 } as const;
+/** What a viewer asks of its stream: no more pixels than it shows, and the JPEG quality of a page at rest. */
+export interface RemoteStreamOptions { maxWidth?: number; quality?: number }
+/**
+ * What `browser.remoteStream` answers: the path of the stream, or `pull` for a
+ * tab that has no stream (one the desktop app hosts): its viewer asks for
+ * frames with `browser.remoteFrame`.
+ */
+export type RemoteBrowserStream = { path: string } | { pull: true };
+/** The page the pictures that follow show: a frame without its picture. Input names its `id` as `frameId`. */
+export type RemoteStreamPage = Omit<RemoteBrowserFrame, 'base64' | 'waitedMs'>;
+/** What the core says on a stream beside the pictures. */
+export type RemoteStreamMessage = { type: 'page'; page: RemoteStreamPage };
+/** What a viewer says on its stream: a picture arrived, or the width it shows changed. */
+export type RemoteStreamReply = { type: 'ack' } | { type: 'size'; maxWidth: number };
 export const REMOTE_URL_MAX = 4096;
 /** One typed or pasted text. */
 export const REMOTE_TEXT_MAX = 20000;
@@ -103,6 +132,12 @@ export function remoteFrameOptionsError(options: RemoteFrameOptions): string | n
   if (options.maxWidth !== undefined && !(Number.isInteger(options.maxWidth) && options.maxWidth >= 160 && options.maxWidth <= 3840)) return 'remote frame maxWidth must be an integer from 160 to 3840';
   if (options.quality !== undefined && !(Number.isInteger(options.quality) && options.quality >= 20 && options.quality <= 80)) return 'remote frame quality must be an integer from 20 to 80';
   if (options.after !== undefined && !(typeof options.after === 'string' && options.after.length > 0 && options.after.length <= 100)) return 'remote frame after must be the id of a frame, 1 to 100 characters';
+  return null;
+}
+
+export function remoteStreamOptionsError(options: RemoteStreamOptions): string | null {
+  if (options.maxWidth !== undefined && !(Number.isInteger(options.maxWidth) && options.maxWidth >= 160 && options.maxWidth <= 3840)) return 'remote stream maxWidth must be an integer from 160 to 3840';
+  if (options.quality !== undefined && !(Number.isInteger(options.quality) && options.quality >= 20 && options.quality <= 100)) return 'remote stream quality must be an integer from 20 to 100';
   return null;
 }
 

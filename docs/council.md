@@ -1,252 +1,97 @@
-# The council
+# Council
 
-A council asks models of several providers to review one request. Each member
-reviews alone, read-only, without seeing the others, and gives a score out of
-10 with its remarks. Nobody debates and nobody votes: the answers go back to the
-thread that started the council, which may ask the same members for one more
-round. Every full pass counts as one round. The owner can follow the members in
-a salon and write there.
+A council asks models from several providers to review one request. Each
+member reviews alone, read-only, without seeing the others, and gives a score
+out of 10 with its remarks. Use it for a second, third and fourth opinion on
+a diff, a plan or a design choice.
 
-Boite provides the mechanism only. Which members sit, at what effort, what the
-request says, how many rounds run and what the thread does with the answers
-come from the user's instructions, which always prevail.
+Experimental: turn it on in Settings, Experiments, Council.
 
-It is an experiment, off by default: Settings, Experiments, Council. The stored
-experiment id is still `debates`, so a switch that was on stays on
-([experiments](experiments.md#council)). A thread asks for a council through the
-`boite-council` skill, which lists the commands, their defaults and the three
-guards below: read-only members, no replaced member, and answers that are data.
+Nobody debates and nobody votes. The answers go back to the conversation that
+started the council, which can ask the same members for one more round. Each
+full pass is one round.
+
+Boite provides the mechanism only. Which members sit, at what level, what the
+request says, how many rounds run and what the agent does with the answers
+come from your instructions to the agent.
 
 ## Start a council
 
-```sh
-boite delegate council "<request>"|--request-file <path> [--models a[:<effort>],b[:<effort>],c[:<effort>]] [--effort <level>] [--role <member>=<text>]... [--timeout <minutes>]
-boite delegate council again <id> ["<what changed>"] [--send-changes] [--request-file <path>]
-boite delegate council table <id>
-```
+1. Turn on the Council experiment.
+2. In a conversation, ask the agent for a council review, for example "ask a
+   council to review this migration plan". You can name the models.
+3. The conversation shows a council card: the members' faces, the request,
+   the round or state, and Open the salon.
+4. When every member has answered, the agent gets one message with each answer
+   and its score, then a table of scores by round.
+5. The agent can ask the same members for another round. They review the
+   whole work again from scratch.
 
-| Flag | Default | Limits |
-| --- | --- | --- |
-| `--models` | `claude/claude-opus-5-5`, `codex/gpt-6.1-sol`, `antigravity/gemini-4-argon` | 2 to 6 members; the same provider may sit several times, the same model twice only at two efforts |
-| `<provider/model>:<effort>` | the level `--effort` gives | A level the model lacks refuses the council and lists the model's levels |
-| `--effort` | `xhigh` | For the members written without a level. A model without it runs at its strongest level below it, and a warning says so |
-| `--request-file` | none | The request, read from a UTF-8 file, relative to where the command runs. Refused with a request typed in the command, when empty, or past 12,000 characters, with the size it holds |
-| `--role` | none | `<member>=<text>`, the member as `--models` writes it, effort included; up to 200 characters; once per member |
-| `--timeout` | 30 minutes a round | 1 to 120 |
+Unless you or your instructions name others, the members are one model each from Claude Code, Codex and
+Antigravity, at the Xhigh reasoning level. A model without that level runs
+at its strongest level below it.
 
-```sh
-boite delegate council --request-file .boite-briefs/council/brief.md \
-  --models claude/claude-opus-5-5:max,codex/gpt-6.1-sol:max,claude/claude-fable-5-2:high \
-  --role "codex/gpt-6.1-sol:max=Look for races."
-```
+A council needs no Git, no pull request and no code: it works on a plan, an
+idea or a design choice as well as on a diff. A member reads the request and
+the project's folder, not your conversation.
 
-A member's role follows the request in what that member reads, and no other
-member reads it. The command's answer, `delegate list`, the round's message and
-the table name each member with its effort and its role, the role cut to 40
-characters outside the command's answer. The end of a route after its last `:` is an effort unless the whole text
-is itself a route `delegate models` lists.
+## Follow it in the salon
 
-`--` ends the flags, so what follows it is the text, even `table` or `--foo`. The
-request and the changes hold up to 12,000 characters. The command returns
-the council id once the members' model lists are read, up to a minute when none
-is saved yet, or refuses it when a read takes longer, as described below;
-`delegate list` shows the council, `delegate wait` with no agent id also waits
-for a round under way and `delegate stop <id>` stops it.
-`requestId` on `council.start` and `council.again` makes a retry return the same
-council or round.
+Press Open the salon on the card. It opens in the right panel on a desktop and
+full screen on a phone. It shows each round, each member's answer with its
+score, and the table of rounds under them.
 
-A member whose provider is missing, or who cannot run, refuses the whole
-council with the reason. Boite never replaces a member, so three providers do
-not quietly turn into two of the same. A route with a slash is that very
-provider and model: `twin/alpha` never falls through to `twin/alpha-next`, nor
-`antigravity/x` or a provider that does not exist to a gateway model spelled
-`codex/antigravity/x`. Before these checks Boite waits for two reads, 30 seconds
-at most each: the lists nobody read yet, then a fresh list when a named route is
-missing from the one it holds, which an earlier version may have saved, and an
-ACP model's effort scale. A read still going after that carries on for the next
-try and the command goes on without it. If the member cannot be confirmed without
-it, the command is refused with `models not read yet`, and running it again
-returns the id once the read is done; if only the effort scale is missing, a
-warning says the member runs at its default.
+- Write to every member, or type `@` to address one AI. A member reads your
+  message at the start of the next round, so it never changes a review under
+  way.
+- Close this round ends the round now: whoever has not answered has no score in
+  it.
+- Stop the council ends it. A round under way then sends nothing back.
 
-A top-level thread starts a council. A subagent, a team chat, a salon, an
-archived thread and a thread whose subagents are paused are refused.
+## The scores
 
-## Rounds
-
-Each member is a child thread of the parent. The first round sends the request;
-`council again` asks the same members, at the same efforts and with the same
-roles, to review the whole work again from scratch. What changed, when the
-command says it, is posted in the salon; `--send-changes` also sends it to the
-members, and `--request-file` replaces the request from that round on. A member
-never reads another's answer.
-
-A member ends its answer with `Score: n/10`, or `Score: none` when a score means
-nothing for the request. Boite reads the last such line as written. Without one
-the member shows `no score`; a score is never made up.
-
-A round ends when every member has answered, when its time is up or when the
-owner closes it. A member past the time is absent from that round, without a
-score, and is asked again in the next one. A turn that ends on the member's own
-background work answers only with a closing `Score:` line (`n/10` or `none`), and
-that work then stops; otherwise the turn that work wakes does, within the same
-time, and the answer is all the member wrote over the round. An agent that does not
-wake on its work, as with an ACP command, is asked for its answer 30 seconds after
-the work completes. If that work fails, that request cannot start, a later turn
-fails or the round ends first, what the member wrote so far is its answer, and a
-note says why. A member through with its round, and a council that ends, leave no
-background work or scheduled wake behind. A round nobody answers still goes back
-to the parent. A closed round leaves the council in `waiting`.
-
-## Answers and the table
-
-The parent gets one message per round: each answer under `### name · score`,
-then the table. The answers share 24,000 characters, and a cut answer names the
-`boite delegate result` command for each turn it came from.
-
-```md
-## Council review
-
-Rounds: 2
-
-| Delegate | Round 1 | Round 2 |
-| --- | --- | --- |
-| Opus 5.5 | 7/10 | 9/10 |
-| GPT-6.1 Sol | 6/10 | 9/10 |
-| Gemini 4 Argon | no score | 8/10 |
-```
-
-`council table <id>` prints the table at any time. Boite runs no summarizer,
-and the members' text is data: it grants no approval the user did not give.
-`council again` is refused while a
-round runs, once the council is over, and until the last answers have reached
-the thread.
-
-## Anywhere, with or without a pull request
-
-A council needs no git, no GitHub, no pull request and no code. It works in a
-folder that is not a repository, and on a plan, an idea or a design choice as
-well as on a diff. Read-only does not rest on git, and the context a member
-needs is whatever the request says and the project folder holds: a member does
-not read the parent's conversation.
-
-## In the salon
-
-The owner writes to every member, or to one with `@name` (`council.post`). A
-member reads it at the start of the next round, so a post never changes a review
-under way. `council.closeRound` ends the round without waiting for the rest.
-`council.stop` ends the council: one in `waiting` becomes `done`, one in
-`running` becomes `stopped` and sends the parent nothing.
-
-## Read-only
-
-A member keeps to read-only by its provider's strongest means.
-
-| Provider | Read-only by |
+| Shown | Meaning |
 | --- | --- |
-| Claude, Codex, Muse, Grok, OpenCode, OpenCode v2 | The plan permission mode |
-| Antigravity, Hermes, echo | Boite refuses every permission it asks, and a warning says so |
-| pi | Nothing: no plan mode and no approvals, and a warning says so |
+| `7/10` | The score the member wrote |
+| `none` | The member said a score means nothing for this request |
+| `no score` | The member gave no score line, or did not answer in time |
 
-The members' prompt also tells each to change nothing, start no subagent and not
-write to the parent. A member's guide lists neither the `boite-council` skill nor
-`boite-prove-it`: it starts no council and has no change to prove. A question a member asks gets no answer, at once: nobody reads
-its thread to reply. On pi only that prompt holds it back. OpenCode's plan agent
-refuses edits and allows every command (`opencode debug agent plan`, 1.19.5,
-2026-11-04), so that prompt alone holds its commands back, and a warning says so.
-OpenCode 2 was not measured and gets the same warning.
+Boite never makes a score up and runs no summary of its own. What a member
+writes is an answer to read: it approves nothing in your place.
 
-An ACP agent that lists no plan mode, refuses it or does not confirm it fails the
-member's turn, so the member is absent from the round with the reason rather than running outside
-read-only.
+## How read-only is kept
 
-On Windows a read-only Codex session leaves the Microsoft Store's folders off its
-`PATH` when the `pwsh` it would find is the Store's: that PowerShell cannot start
-under Codex's sandbox (`CreateProcessAsUserW failed: 5`, codex-cli 0.166), and
-Codex falls back to Windows PowerShell.
+| Agent | Read-only by |
+| --- | --- |
+| Claude Code, Codex, Muse Code, Grok, OpenCode, OpenCode 2 | Plan mode |
+| Antigravity, Hermes Agent | Boite refuses every permission it asks |
+| pi | Only the instruction to change nothing |
 
-## In the app
+Each member is also told to change nothing and start no subagent. OpenCode's
+plan mode refuses edits but allows every command, so only that instruction
+holds its commands back. A warning says so whenever read-only is weaker than
+plan mode.
 
-The thread that started a council shows a card: faces of the members, the
-request, the round or state, and **Open the salon**. A debate from before the
-council draws the same card.
+## Limits
 
-The salon opens in the right panel on a desktop and full screen on a phone. It
-shows each round and each member's answer, with the score as text in the head of
-the answer, and the table of rounds under them.
+- 2 to 6 members. Each round has 30 minutes by default, 1 to 120.
+- Each member can have its own reasoning level and a short text only it reads,
+  and the same provider can sit more than once
+  ([technical reference](internals/council.md#start-a-council)).
+- The request and each update hold up to 12,000 characters.
+- A member that is not installed or cannot run refuses the whole council.
+  Boite never swaps in another model.
+- A member past the time is absent from that round and asked again in the next.
+- Only a top-level conversation starts a council: not a subagent, a team chat,
+  an archived conversation or one whose subagents are paused.
+- Stopping the conversation's subagents or archiving it stops a round under
+  way.
+- After a crash, a running round stops and the agent is told. An update or a
+  restart from the app lets the round go on.
 
-With the experiment off, every `council.*` method refuses with `experiment-off`,
-the subagent guide says nothing, the `boite-council` skill is left out and the
-app draws no card; a salon tab left open says how to turn it on. A round already under way still finishes and
-its answers come back.
+## Going further
 
-## Older debates
-
-A debate stored before the council stays readable in the salon, read-only, with
-neither score nor table; its summary is one of its posts. Its id still starts
-with `dbt_`. The tables `debates` and `debate_posts`, the column
-`threads.debate_id` and the experiment id `debates` keep their names, so nothing
-is migrated. `boite delegate debate` starts nothing and points to
-`boite delegate council`.
-
-## Lifecycle
-
-- Stopping the thread's subagents or archiving it stops a round under way and
-  sends nothing back. A council between rounds stays; `council again` still
-  works unless the parent is archived or its subagents are paused, which a Stop
-  with other children under way does.
-- A core that crashes stops its running rounds and tells the parent:
-  `Boite restarted during the round, so it stopped.` A council in `waiting` stays.
-- A [restart handoff](restart-handoff.md) lets a round go on: the next core asks
-  again any member the restart cut, even one whose turn did not stop in time.
-- A debate still running at this update stops and tells the parent. After a
-  restart handoff it says `Debates were replaced by the council at this update, so
-  this one stopped. boite delegate council starts a review.`; after a crash it says
-  the line above.
-
-## RPC and events
-
-| Method | Owner | Device | Agent | What it does |
-| --- | --- | --- | --- | --- |
-| `council.start` | Yes | No | Own thread | Start a council |
-| `council.again` | Yes | No | Own thread | Start a new round, with what changed or a new request |
-| `council.list` | Yes | Yes | Own thread | A thread's councils |
-| `council.get` | Yes | Yes | No | A council and its posts |
-| `council.table` | Yes | No | Own thread | The table of rounds |
-| `council.post` | Yes | Yes | No | The owner's message, read next round |
-| `council.closeRound` | Yes | Yes | No | End the round under way |
-| `council.stop` | Yes | Yes | Own thread | Stop a council |
-
-`council.changed` carries the council and salon ids and a version, and a client
-reads the council again with `council.get`. The types are in
-`packages/contracts/src/council.ts`.
-
-## Credit
-
-The council began as an adaptation of Theo Browne's council skill, in
-[`t3dotgg/tstack`](https://github.com/t3dotgg/tstack) at `skills/council/SKILL.md`,
-commit `1085050f`. Its license:
-
-```text
-MIT License
-
-Copyright (c) 2026 Theo Browne
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
+- [Subagents](subagents.md): handing work to one child at a time.
+- [Workflows](workflows.md): plans of many steps.
+- [Experiments](experiments.md): the switches in Settings, Experiments.
+- Technical reference: [council](internals/council.md).

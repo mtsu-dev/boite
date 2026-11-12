@@ -4,7 +4,7 @@
  * a loopback port, starts it with `--config <file>`, waits for `/health`, and
  * starts it again after a crash with the desktop apps' backoff. Its data lives
  * outside the plugin directory, so an uninstall keeps its sign-ins.
- * docs/plugins.md, Gateways, describes the contract.
+ * docs/internals/plugins.md, Gateways, describes the contract.
  *
  * Whether the owner wants it running is `enabled`, and whether it starts with
  * the core is `autostart`, both kept in `gateway.json` beside `installed.json`,
@@ -119,6 +119,8 @@ interface Entry {
   running: Running | null;
   crashes: number[];
   relaunch: unknown;
+  /** Bumped by `kill`: a start still waiting on an orphan sees it and spawns nothing. */
+  epoch: number;
 }
 
 export class PluginGateways {
@@ -140,7 +142,7 @@ export class PluginGateways {
   #entry(id: string): Entry {
     let entry = this.#entries.get(id);
     if (entry === undefined) {
-      entry = { status: 'stopped', pid: null, exitCode: null, error: null, startedAt: null, version: null, running: null, crashes: [], relaunch: null };
+      entry = { status: 'stopped', pid: null, exitCode: null, error: null, startedAt: null, version: null, running: null, crashes: [], relaunch: null, epoch: 0 };
       this.#entries.set(id, entry);
     }
     return entry;
@@ -298,6 +300,7 @@ export class PluginGateways {
     if (entry.running !== null) return entry.status === 'running';
     this.clock.clearTimeout(entry.relaunch);
     entry.relaunch = null;
+    const epoch = entry.epoch;
     const program = this.executable(id, candidate);
     if (program === null) {
       Object.assign(entry, { status: 'stopped', error: null });
@@ -306,7 +309,8 @@ export class PluginGateways {
     }
     const config = join(this.dataDir(id), `${program.executable}.toml`);
     await this.#stopOrphan(id, config);
-    if (this.#closing || entry.running !== null) return entry.status === 'running';
+    // Killed or turned off meanwhile: that stop wins over this start.
+    if (this.#closing || entry.running !== null || entry.epoch !== epoch || (candidate === undefined && this.#host.installed(id) === null)) return entry.status === 'running';
     const port = this.#choosePort(id);
     this.#writeConfig(id, program.executable, port, candidate?.replaces ?? null);
     const threadId = `plugin:${id}:gateway`;
@@ -398,6 +402,7 @@ export class PluginGateways {
     if (entry === undefined) return;
     this.clock.clearTimeout(entry.relaunch);
     entry.relaunch = null;
+    entry.epoch++;
     const running = entry.running;
     Object.assign(entry, { running: null, pid: null, startedAt: null, status: 'stopped', error: null, version: null });
     if (running !== null) {

@@ -224,6 +224,7 @@ const RULES: Partial<Record<RpcMethodName, Rule>> = {
   'browser.hostAttach': browserOff,
   'browser.hostReply': browserOff,
   'browser.remoteFrame': browserOff,
+  'browser.remoteStream': browserOff,
   'browser.remoteWatch': browserOff,
   'browser.remoteInput': browserOff,
   'browser.remoteSelection': browserOff,

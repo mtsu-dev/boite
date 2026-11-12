@@ -53,7 +53,7 @@ test('every job a needs chain runs through is in the list, so a skip after a fai
 });
 
 // A pull request runs the Linux checks and skips the rest, which passes the
-// ruleset; the merge group runs them for real (docs/ci.md#pull-request-runs).
+// ruleset; the merge group runs them for real (docs/internals/ci.md#pull-request-runs).
 // So only the plan may skip a job: a condition on the event or the draft flag
 // would let a group skip it too, and pass.
 test('only the plan decides which jobs run, the same way for a pull request and a merge group', () => {

@@ -1,5 +1,5 @@
 /*
- * The account pools a plugin manages (docs/plugins.md, "Account pools"): the
+ * The account pools a plugin manages (docs/internals/plugins.md, "Account pools"): the
  * listing `plugins.accounts` reads, cached a minute, and the login changes of
  * `plugins.accountAction`. While a change runs, `blocks` holds the scheduler
  * and the thread views off that provider's default account.

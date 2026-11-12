@@ -6,7 +6,7 @@ name: android
 # it, or takes the previous release's back when nothing that goes into it
 # changed (scripts/ci/android-apk.ts). The app carries its own version,
 # apps/android/VERSION plus a patch counted from the last published APK, apart
-# from Boite's release version. docs/android.md.
+# from Boite's release version. docs/internals/android.md.
 
 on:
   workflow_call:

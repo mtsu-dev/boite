@@ -1,5 +1,5 @@
 /*
- * `boite desktop` on Windows and macOS (docs/desktop.md#windows-and-macos):
+ * `boite desktop` on Windows and macOS (docs/internals/desktop.md#windows-and-macos):
  * the desktop shares the user's session, so only semantic input passes and, on
  * macOS, only toward the apps the conversation started.
  */

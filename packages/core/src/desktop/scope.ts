@@ -1,6 +1,6 @@
 /*
  * What agent-desktop may do where the desktop shares the user's session
- * (docs/desktop.md#windows-and-macos). A Windows desktop is hidden but its
+ * (docs/internals/desktop.md#windows-and-macos). A Windows desktop is hidden but its
  * clipboard, notifications and physical input are the user's; on macOS the
  * apps run among the user's own, so every command must also aim at an app the
  * conversation started. Linux has its own display and needs none of this.

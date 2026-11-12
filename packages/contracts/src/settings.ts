@@ -158,7 +158,7 @@ export interface Settings {
   /**
    * With the `auto-goal` experiment on in the sending app, a prompt of at
    * least this many characters that starts a turn also starts a reviewed goal
-   * with that prompt as its objective (`docs/goals.md`). Missing:
+   * with that prompt as its objective (`docs/internals/goals.md`). Missing:
    * `AUTO_GOAL_MIN_CHARS.default`.
    */
   autoGoalMinChars?: number;
@@ -172,7 +172,7 @@ export interface Settings {
    * Experimental: as a thread nears its `autoCompact` token limit, a forked
    * copy of its session compacts in the background while the conversation
    * goes on; at its first pause after the copy is done, the thread swaps to it
-   * and its next prompt carries the turns since the fork (docs/context.md, "Background
+   * and its next prompt carries the turns since the fork (docs/internals/context.md, "Background
    * compaction"). OpenCode V2 gets its own `experimental.background_compaction`.
    * Missing reads as off.
    */
@@ -184,7 +184,7 @@ export interface Settings {
   /**
    * Experimental: while a thread of the user's waits on its delegated agents
    * or workflows, the core sends a minimal turn before its prompt cache lapses
-   * so their result is read from the cache (`docs/prompt-cache.md`). Null or
+   * so their result is read from the cache (`docs/internals/prompt-cache.md`). Null or
    * missing: off. Missing on older cores.
    */
   cacheKeepalive?: CacheKeepalive | null;
@@ -197,20 +197,20 @@ export interface Settings {
   /**
    * A turn that failed on a subscription usage limit resumes by itself once
    * that limit's window resets: one new turn per window and thread, with a
-   * short continue prompt (docs/usage.md). Missing reads as off.
+   * short continue prompt (docs/internals/usage.md). Missing reads as off.
    */
   autoResumeLimitedThreads?: boolean;
   /**
    * The Device panel shows an Android device as live H.264 video and drives it
    * with real touches, Unicode text and the clipboard, through a scrcpy server
-   * the core pushes to the device (docs/devices.md, "Live stream"). Off, the
+   * the core pushes to the device (docs/internals/devices.md, "Live stream"). Off, the
    * panel polls screenshots and `adb shell input`. Missing reads as off.
    */
   deviceStream?: boolean;
   /**
    * Apps `boite window` never captures, beside `WINDOW_CAPTURE_EXCLUDED`:
    * executable names (`Signal.exe`) or full paths, matched without case
-   * (docs/windows.md). Missing reads as none.
+   * (docs/internals/windows.md). Missing reads as none.
    */
   windowCaptureExclusions?: string[];
   /**

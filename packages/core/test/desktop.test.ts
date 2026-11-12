@@ -108,6 +108,7 @@ test.skipIf(!posix)('a desktop the policy turned off takes no more commands, and
 function fakeStack() {
   const gate = () => { let open!: () => void; const opened = new Promise<void>(resolve => { open = resolve; }); return { opened, open }; };
   const thread = { id: 'thr_fake', archived: false };
+  let guarded: object | null = null;
   const spawned: { command: string; stopped: boolean; stopAsked: boolean }[] = [];
   const gates: { xvfb?: ReturnType<typeof gate>; openboxStop?: ReturnType<typeof gate> } = {};
   let pid = 4_000_000;
@@ -115,7 +116,7 @@ function fakeStack() {
     threads: { require: () => thread },
     logs: { info: () => {} },
     policy: { agentDesktopOff: () => false },
-    procs: { protection: { policy: () => null }, spawn: (_scope: string, command: string) => {
+    procs: { protection: { policy: () => guarded }, spawn: (_scope: string, command: string) => {
       let stdout!: ReadableStreamDefaultController<Uint8Array>, stderr!: ReadableStreamDefaultController<Uint8Array>, exit!: (code: number) => void;
       const exited = new Promise<number>(resolve => { exit = resolve; });
       const entry = { command, stopped: false, stopAsked: false };
@@ -140,7 +141,7 @@ function fakeStack() {
   const desktops = new VirtualDesktops(core as unknown as ConstructorParameters<typeof VirtualDesktops>[0], { tools: () => tools, agentDesktop });
   const live = () => spawned.filter(entry => !entry.stopped).length;
   const until = async (done: () => boolean) => { for (let at = 0; !done(); at += 1) { if (at > 2_000) throw new Error('timed out'); await Bun.sleep(1); } };
-  return { desktops, thread, spawned, live, until, holdXvfb: () => (gates.xvfb = gate()), holdOpenboxStop: () => (gates.openboxStop = gate()) };
+  return { desktops, thread, spawned, live, until, protect: () => { guarded = {}; }, holdXvfb: () => (gates.xvfb = gate()), holdOpenboxStop: () => (gates.openboxStop = gate()) };
 }
 
 test('the core stopping while a desktop starts stops it at once, without waiting for it to be ready', async () => {
@@ -156,6 +157,16 @@ test('the core stopping while a desktop starts stops it at once, without waiting
   expect(stack.live()).toBe(0);
   expect((await stack.desktops.status({ threadId: stack.thread.id })).session).toBeNull();
   expect(await thrown(stack.desktops.start({ threadId: stack.thread.id }))).toThrow('Boite is stopping');
+});
+
+test('a desktop opened before execution protection came on runs nothing more', async () => {
+  const stack = fakeStack();
+  await stack.desktops.start({ threadId: stack.thread.id });
+  const started = stack.spawned.length;
+  stack.protect();
+  expect(await thrown(stack.desktops.run({ threadId: stack.thread.id, command: ['xterm'], cwd: tmpdir() }))).toThrow('execution protection');
+  expect(stack.spawned.length).toBe(started);
+  await stack.desktops.stopAll();
 });
 
 test('a second stop waits for the first one to finish', async () => {

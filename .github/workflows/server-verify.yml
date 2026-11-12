@@ -23,7 +23,7 @@ permissions:
 
 jobs:
   # One job per architecture, not a matrix, so a skipped one reports its fixed
-  # name (docs/ci.md#check-names).
+  # name (docs/internals/ci.md#check-names).
   build-amd64:
     name: verify server (amd64)
     if: inputs.enabled

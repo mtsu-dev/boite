@@ -1,4 +1,4 @@
-/** The council methods (`docs/council.md`). Who may call which is in `access.ts`; each refuses while the experiment is off. */
+/** The council methods (`docs/internals/council.md`). Who may call which is in `access.ts`; each refuses while the experiment is off. */
 import { COUNCIL_DEFAULT_EFFORT } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { accountFor, catalog, PROBE_TIMEOUT_MS, providersNamed } from '../delegation/routes.ts';

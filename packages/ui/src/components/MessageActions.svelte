@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { Check, Copy, GitFork, Pencil, RotateCcw } from '@lucide/svelte';
+  import { Check, Copy, GitFork, Pencil, Puzzle, RotateCcw } from '@lucide/svelte';
+  import { pluginUi } from '../lib/plugin-ui.svelte';
   import { contextMenu } from '../lib/context-menu.svelte';
   import { clockTime, fullTime } from '../lib/format';
   import { fill, strings } from '../lib/strings';
@@ -14,7 +15,8 @@
     at,
     edit,
     fork,
-    retry
+    retry,
+    plugin
   }: {
     /**
      * What the copy button puts on the clipboard; empty hides it. A function is
@@ -29,6 +31,8 @@
     fork?: (worktree: boolean) => void;
     /** Sends the same prompt again in place of this answer. */
     retry?: () => void;
+    /** The message plugin actions act on; absent where plugins add none (another machine's thread). */
+    plugin?: { threadId: string; messageId: string; role: 'user' | 'assistant' };
   } = $props();
 
   let copied = $state(false);
@@ -54,11 +58,23 @@
     ], (id) => fork?.(id === 'worktree'));
   }
 
+  /** The actions plugin interfaces add, behind one button. */
+  function openPlugins(event: MouseEvent): void {
+    const target = plugin;
+    if (!target) return;
+    const entries = pluginUi.messageActions;
+    contextMenu.open(event, entries.map((entry) => ({ id: entry.key, label: entry.label, hint: pluginUi.name(entry.plugin) })), (key) => {
+      const entry = pluginUi.messageActions.find((one) => one.key === key);
+      entry?.run({ ...target, text: typeof text === 'function' ? text() : text });
+    });
+  }
+
   const actions = $derived([
     { id: 'copy', label: copied ? strings.chat.copied : strings.chat.copyMessage, icon: copied ? Check : Copy, run: text ? copy : undefined },
     { id: 'edit', label: strings.chat.editMessage, icon: Pencil, run: edit },
     { id: 'retry', label: strings.chat.retry, icon: RotateCcw, run: retry },
-    { id: 'fork', label: strings.chat.fork, icon: GitFork, run: fork ? openFork : undefined }
+    { id: 'fork', label: strings.chat.fork, icon: GitFork, run: fork ? openFork : undefined },
+    { id: 'plugins', label: strings.pluginUi.more, icon: Puzzle, run: plugin && pluginUi.messageActions.length > 0 ? openPlugins : undefined }
   ].filter(action => action.run));
 </script>
 
@@ -68,7 +84,7 @@
     <time class="stamp" data-testid="message-time" datetime={new Date(at).toISOString()} title={fill(strings.chat.sentAt, { time: full })}>{clockTime(at)}</time>
   {/if}
   {#each actions as action (action.id)}
-    <button type="button" class="act" data-testid={`message-${action.id}`} title={action.label} aria-label={action.label} aria-haspopup={action.id === 'fork' ? 'menu' : undefined} onclick={action.run}><action.icon size={13} /></button>
+    <button type="button" class="act" data-testid={`message-${action.id}`} title={action.label} aria-label={action.label} aria-haspopup={action.id === 'fork' || action.id === 'plugins' ? 'menu' : undefined} onclick={action.run}><action.icon size={13} /></button>
   {/each}
 </span>
 

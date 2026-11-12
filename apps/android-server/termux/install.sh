@@ -1,5 +1,5 @@
 #!/data/data/com.termux/files/usr/bin/bash
-# Installs Boite server in Termux (docs/android-server.md). The Boite Server
+# Installs Boite server in Termux (docs/internals/android-server.md). The Boite Server
 # app shows the command that runs it:
 #
 #   curl -fsSL https://raw.githubusercontent.com/mtsu-dev/boite/main/apps/android-server/termux/install.sh | bash -s -- --channel stable
