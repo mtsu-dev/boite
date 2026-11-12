@@ -28,6 +28,7 @@
   import ThreadPullRequestProbe from './ThreadPullRequestProbe.svelte';
   import { pullRequestLabel } from './ThreadHeadline.svelte';
   import { openExternal } from '../lib/links';
+  import PluginSlotButtons from './PluginSlotButtons.svelte';
   let { store }: { store: Store } = $props();
   let thread = $derived(store.openThread);
   const mobile = new MediaQuery('(max-width: 720px)');
@@ -298,6 +299,7 @@
         </span>
       {/if}
       <!-- The door to the side panel, on a phone too; with a panel open it names it and switches it. -->
+      {#if thread && store === workspace.primary}<PluginSlotButtons slot="thread-header" threadId={thread.id} />{/if}
       {#if thread}<PanelDoor {store} count={panelCount} ontoggle={() => store.togglePanel()} testid="panel-toggle" />{/if}
 </div>
 

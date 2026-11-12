@@ -241,6 +241,33 @@ test('a machine that does not answer is named unreachable, and its events reach 
   await waitFor(() => again.core.workforce.groupHost.outbox(deskId).length === 0);
 }, 30_000);
 
+test('a machine that stops while its bot events are on their way leaves no unhandled rejection, which would end its core', async () => {
+  answering();
+  const { pc, pcOwner, letter, cli, facts, pcId, ref } = await setup();
+  await pcOwner.call('settings.set', { groupBots: true });
+  await cli(['thread', 'send', ref, 'Draft it', '--request-id', 'draft-1']);
+  await waitFor(() => facts().some(fact => fact.key.startsWith(`remote:${pcId}:turn:`)));
+  const unhandled: unknown[] = [];
+  const onUnhandled = (reason: unknown) => { unhandled.push(reason); };
+  process.on('unhandledRejection', onUnhandled);
+  restores.push(() => { process.off('unhandledRejection', onUnhandled); });
+  // Its next events wait on an answer until pc has stopped and closed its journal.
+  const real = pc.core.coordination.request.bind(pc.core.coordination);
+  let answer!: () => void, sent = false;
+  const held = new Promise<void>(resolve => { answer = resolve; });
+  pc.core.coordination.request = (async (to: CoordinationPeer, operation: string, payload: unknown) => {
+    if (operation === 'bot.event') { sent = true; await held; return {}; }
+    return real(to, operation as never, payload);
+  }) as typeof real;
+  restores.push(() => { pc.core.coordination.request = real; answer(); });
+  await pcOwner.call('turns.start', { threadId: letter, prompt: 'Second pass' });
+  await waitFor(() => sent);
+  await pc.stop();
+  answer();
+  await Bun.sleep(20);
+  expect(unhandled).toEqual([]);
+});
+
 test('a setting card offers the projects of the other machines by machine, and the owner applying it entrusts one', async () => {
   answering();
   const { desk, owner, pc, pcOwner, pcId, deskId, notes, accounts, letter, grant, self, cli, agent, machine } = await setup(false);

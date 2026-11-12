@@ -1,4 +1,4 @@
-import type { PluginState } from '@boite/contracts';
+import { PLUGIN_PERMISSIONS, type PluginState } from '@boite/contracts';
 import { strings } from './strings';
 
 /** What the Plugins page's filter keeps. */
@@ -10,7 +10,8 @@ export interface PluginChip {
   label: string;
   /** Said on hover: a permission's name as the manifest writes it. */
   title?: string;
-  tone?: 'accent';
+  /** `danger`: a permission that hands the plugin the owner's own say, drawn in red as at install. */
+  tone?: 'accent' | 'danger';
   testid?: string;
 }
 
@@ -49,7 +50,7 @@ export function pluginChips(plugin: PluginState): PluginChip[] {
   const chips: PluginChip[] = [];
   if (plugin.origin === 'recommended' && plugin.version === null) chips.push({ id: 'recommended', label: t.chipRecommended, tone: 'accent' });
   if (plugin.origin === 'dev') chips.push({ id: 'dev', label: t.dev, tone: 'accent', testid: 'plugin-dev' });
-  for (const permission of plugin.granted ?? plugin.permissions ?? []) chips.push({ id: `permission-${permission}`, label: permissionTitle(permission), title: permission, testid: 'plugin-permission' });
+  for (const permission of plugin.granted ?? plugin.permissions ?? []) chips.push({ id: `permission-${permission}`, label: permissionTitle(permission), title: permission, testid: 'plugin-permission', ...(PLUGIN_PERMISSIONS[permission]?.danger ? { tone: 'danger' as const } : {}) });
   if (plugin.pools.length > 0) chips.push({ id: 'accounts', label: t.chipAccounts });
   if (plugin.app) chips.push({ id: 'app', label: plugin.app.kind === 'service' ? t.service : t.app });
   if (plugin.gateway) chips.push({ id: 'gateway', label: t.gateway });

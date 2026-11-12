@@ -40,6 +40,9 @@
   import TraceSurface from './TraceSurface.svelte';
   import AgentDesk from './agents/AgentDesk.svelte';
   import CouncilSalon from './council/CouncilSalon.svelte';
+  import PluginTabSurface from './PluginTabSurface.svelte';
+  import { pluginUi } from '../lib/plugin-ui.svelte';
+  import { workspace } from '../lib/workspace.svelte';
 
   let {
     store,
@@ -288,13 +291,19 @@
   }
 
 
+  const PLUGIN_TAB = 'plugin-tab:';
+  /** Plugin interfaces load from the window's own core, so their tabs are offered on its threads. */
+  const pluginTabsHere = $derived(store === workspace.primary);
+
   /** The panels this thread used live outside the runes: a use noted makes the list again. */
   let noted = $state(0);
   /** The launcher's list, every panel at once: the ones this thread used on top, then every panel by group (`lib/panel-choices.ts`). */
   let choices = $derived.by(() => {
     void noted;
     const thread = store.openThread?.id ?? null;
-    return panelChoices(store, store.openThread, { phone, available, showing: active?.kind, used: usedPanels(store, thread, active?.kind) });
+    // The tabs plugin interfaces add, on the machine that loaded them.
+    const plugins = pluginTabsHere ? pluginUi.tabs.map((tab) => ({ id: `${PLUGIN_TAB}${tab.key}`, label: tab.title, glyph: surfaceGlyph('plugin') })) : [];
+    return panelChoices(store, store.openThread, { phone, available, showing: active?.kind, used: usedPanels(store, thread, active?.kind), plugins });
   });
   function note(kind: string): void {
     const thread = store.openThread?.id;
@@ -350,6 +359,7 @@
     else if (id === HIDE) shut();
     else if (id === CLOSE_TAB) { if (active) void closeTabs(panel, 'close', active.id); }
     else if (id === CUSTOMIZE) store.showSettings('appearance', CONTROLS_SECTION);
+    else if (id.startsWith(PLUGIN_TAB)) { const tab = pluginUi.tab(id.slice(PLUGIN_TAB.length)); if (tab) panel.openPluginTab(tab.key, tab.title); }
     else if (id === 'terminal-toggle') store.toggleTerminal();
     else if (id === 'board-toggle' || id === 'coordination') {
       // A phone's sheet covers the chat the board and the dialog belong to.
@@ -546,6 +556,8 @@
     {:else if active?.kind === 'council' && active.councilId}
       <!-- One salon per debate: the tab moved to another debate starts its reading afresh. -->
       {#key active.councilId}<CouncilSalon {store} councilId={active.councilId} threadId={panel.threadId ?? undefined} />{/key}
+    {:else if active?.kind === 'plugin' && active.tab}
+      {#key active.tab}<PluginTabSurface tab={active.tab} threadId={pluginTabsHere ? (store.openThread?.id ?? null) : null} />{/key}
     {:else}
       <SurfaceLauncher
         {available}

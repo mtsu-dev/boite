@@ -6,6 +6,7 @@
   import { Closing } from '../lib/closing.svelte';
   import { minuteClock } from '../lib/clock.svelte';
   import { appCommands, runCommand } from '../lib/commands.svelte';
+  import { pluginUi } from '../lib/plugin-ui.svelte';
   import { focusComposer, focusedElement, restoreFocus } from '../lib/focus';
   import { projectName } from '../lib/format';
   import { PALETTE_LIMIT, RECENT_THREADS, rankItems, sectionRows, type PaletteItem } from '../lib/palette';
@@ -121,7 +122,14 @@
     return { items, places };
   });
 
-  let commandItems = $derived.by((): PaletteItem[] => appCommands(store, !desktopSettings(phoneWidth.current)));
+  /** Plugin interfaces run on the window's own core, so their commands join its palette alone. */
+  const PLUGIN_COMMAND = 'plugin-command:';
+  let commandItems = $derived.by((): PaletteItem[] => [
+    ...appCommands(store, !desktopSettings(phoneWidth.current)),
+    ...(store === workspace.primary
+      ? pluginUi.commands.map((command): PaletteItem => ({ id: `${PLUGIN_COMMAND}${command.key}`, kind: 'command', label: command.title, hint: pluginUi.name(command.plugin), keywords: 'plugin' }))
+      : []),
+  ]);
 
   const snapshot = { rows: [] as PaletteItem[] };
   /** The ranked rows, a project's threads, the projects and the commands mixed until `sections` cuts them. */
@@ -175,6 +183,11 @@
     }
     if (item.kind === 'project') {
       void newThreadIn(item.id);
+      return;
+    }
+    if (item.id.startsWith(PLUGIN_COMMAND)) {
+      const key = item.id.slice(PLUGIN_COMMAND.length);
+      pluginUi.commands.find((command) => command.key === key)?.run({ threadId: store.openThread?.id ?? null });
       return;
     }
     runCommand(store, item.id, inShell);

@@ -89,7 +89,7 @@
 
   {#if chips.length > 0}
     <ul class="chips">
-      {#each chips as chip (chip.id)}<li class="ui-chip" class:accent={chip.tone === 'accent'} title={chip.title} data-testid={chip.testid}>{chip.label}</li>{/each}
+      {#each chips as chip (chip.id)}<li class="ui-chip" class:accent={chip.tone === 'accent'} class:danger={chip.tone === 'danger'} title={chip.title} data-testid={chip.testid}>{chip.label}</li>{/each}
     </ul>
   {/if}
 
@@ -158,6 +158,7 @@
   .chips { margin: auto 0 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 4px; }
   .chips .ui-chip { height: auto; padding: 1px 6px; font-size: var(--text-xs); max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
   .chips .ui-chip.accent { border-color: transparent; background: var(--color-accent-soft); color: var(--color-accent); }
+  .chips .ui-chip.danger { color: var(--color-danger); border-color: color-mix(in srgb, var(--color-danger) 40%, transparent); }
 
   .act { display: flex; flex-wrap: wrap; gap: 4px; }
   .act button { gap: 6px; }

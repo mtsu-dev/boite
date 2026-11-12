@@ -137,7 +137,9 @@
     BoardDrawer: () => import('./components/BoardDrawer.svelte'),
     PluginUpdateNotice: () => import('./components/PluginUpdateNotice.svelte'),
     // A memory stop's corner card: only once a thread is open.
-    MemoryCorner: () => import('./components/MemoryCorner.svelte')
+    MemoryCorner: () => import('./components/MemoryCorner.svelte'),
+    // Plugin interfaces load after startup, on any link: what they add is part of the app.
+    PluginUiHost: () => import('./components/PluginUiHost.svelte')
   };
   type Deferred = { [K in keyof typeof deferredLoaders]?: Awaited<ReturnType<(typeof deferredLoaders)[K]>>['default'] };
   let deferred = $state.raw<Deferred>({});
@@ -171,7 +173,7 @@
   // link that can spare the bytes (lib/prefetch.ts). The plugin update notice reads its own list, so it loads on any link.
   $effect(() => {
     if (!store.booted) return;
-    return whenIdle(() => { if (!prefetchAllowed()) return need('PluginUpdateNotice'); needAll(); prefetchParts(); warmPages(store, experimentOn('resident-agents')); });
+    return whenIdle(() => { need('PluginUiHost'); if (!prefetchAllowed()) return need('PluginUpdateNotice'); needAll(); prefetchParts(); warmPages(store, experimentOn('resident-agents')); });
   });
   // With the first open thread, so the corner is there before a stop lands in it.
   $effect(() => { if (store.openThread) need('MemoryCorner'); });
@@ -672,6 +674,7 @@
 <MoveProjectPicker />
 <DragGhost />
 {#if tour && deferred.Onboarding}{@const Onboarding = deferred.Onboarding}<Onboarding {store} />{:else if deferred.PluginUpdateNotice}{@const PluginUpdateNotice = deferred.PluginUpdateNotice}<PluginUpdateNotice />{/if}
+{#if deferred.PluginUiHost}{@const PluginUiHost = deferred.PluginUiHost}<PluginUiHost />{/if}
 {#if deferred.ProjectPicker}{@const ProjectPicker = deferred.ProjectPicker}<ProjectPicker {store} />{/if}
 <ConfirmDialog />
 {#if deferred.ImportDialog}{@const ImportDialog = deferred.ImportDialog}<ImportDialog {store} />{/if}

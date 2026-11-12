@@ -8,10 +8,11 @@
 
 import {
   PLUGIN_ANY_PLATFORM, PLUGIN_EXECUTABLE_PATTERN, PLUGIN_MANIFEST_SCHEMAS, PLUGIN_NAME_PATTERN, PLUGIN_PERMISSION_ALIASES, PLUGIN_PERMISSION_NAMES, PLUGIN_PLATFORMS,
+  PLUGIN_UI_PATH_PATTERN,
   PLUGIN_SETTING_KEY_PATTERN, PLUGIN_SETTING_LIMITS, PLUGIN_SETTING_TYPES, pluginSettingProblem,
 } from '@boite/contracts';
 import type {
-  PluginAdds, PluginArtifact, PluginCommand, PluginManifest, PluginPermission, PluginPlatform, PluginRejected, PluginSetting, PluginSkill, PluginSlashCommand, ProviderId,
+  PluginAdds, PluginArtifact, PluginCommand, PluginManifest, PluginPermission, PluginPlatform, PluginRejected, PluginSetting, PluginSkill, PluginSlashCommand, PluginUiFiles, ProviderId,
 } from '@boite/contracts';
 import { BUILTIN_COMMANDS } from '../cli-commands.ts';
 import { RETIRED_PROVIDERS } from '../providers/retired.ts';
@@ -26,7 +27,7 @@ export const MANIFEST_V1_MAX_BYTES = 64 * 1024;
 const FIELDS_V1 = ['schema', 'id', 'name', 'version', 'description', 'homepage', 'executable', 'artifacts', 'provides'] as const;
 const FIELDS_V2 = [...FIELDS_V1, 'runtime', 'permissions', 'settings'] as const;
 const FEATURES_V1 = ['accountPools', 'desktopApp', 'gateway'] as const;
-const FEATURES_V2 = [...FEATURES_V1, 'service', 'commands', 'skills', 'prompt', 'slashCommands'] as const;
+const FEATURES_V2 = [...FEATURES_V1, 'service', 'commands', 'skills', 'prompt', 'slashCommands', 'ui'] as const;
 /** The features that run the executable; a plugin providing none of them has no executable to ship. */
 const RUNNING_FEATURES = ['accountPools', 'desktopApp', 'gateway', 'service', 'commands'] as const;
 
@@ -302,6 +303,25 @@ class Reader {
     });
   }
 
+  /** `provides.ui`: a script, a style or both, each a path inside the repository. */
+  ui(value: unknown): PluginUiFiles {
+    if (!isRecord(value) || (value['script'] === undefined && value['style'] === undefined)) this.refuse('provides.ui', 'an object with script, style or both', value);
+    this.keys(value, 'provides.ui.', ['script', 'style']);
+    const path = (key: 'script' | 'style', extension: RegExp, words: string): string | undefined => {
+      const raw = value[key];
+      if (raw === undefined) return undefined;
+      const expected = `a path inside the repository ending in ${words}: letters, digits, ., _, - and /, no .. and no leading /`;
+      if (typeof raw !== 'string' || !PLUGIN_UI_PATH_PATTERN.test(raw) || raw.includes('//') || !extension.test(raw)) this.refuse(`provides.ui.${key}`, expected, raw);
+      return raw;
+    };
+    const ui: PluginUiFiles = {};
+    const script = path('script', /\.m?js$/, '.js or .mjs');
+    const style = path('style', /\.css$/, '.css');
+    if (script !== undefined) ui.script = script;
+    if (style !== undefined) ui.style = style;
+    return ui;
+  }
+
   provides(value: unknown, schema: 1 | 2): PluginManifest['provides'] {
     const features = schema === 1 ? FEATURES_V1 : FEATURES_V2;
     if (!isRecord(value) || Object.keys(value).length === 0) {
@@ -313,6 +333,7 @@ class Reader {
     if (value['commands'] !== undefined) provides.commands = this.commands(value['commands']);
     if (value['skills'] !== undefined) provides.skills = this.skills(value['skills']);
     if (value['slashCommands'] !== undefined) provides.slashCommands = this.slashCommands(value['slashCommands']);
+    if (value['ui'] !== undefined) provides.ui = this.ui(value['ui']);
     if (value['prompt'] !== undefined) {
       const prompt = this.body(value['prompt'], 'provides.prompt', PLUGIN_LIMITS.prompt * 4);
       if (prompt.length > PLUGIN_LIMITS.prompt) this.refuse('provides.prompt', `at most ${PLUGIN_LIMITS.prompt} characters`, prompt);
@@ -378,13 +399,15 @@ export function parseManifest(raw: unknown, file: string, prefix = '', dev = fal
   if (raw['runtime'] !== undefined) manifest.runtime = runtime;
   if (raw['permissions'] !== undefined) manifest.permissions = read.permissions(raw['permissions']);
   if (raw['settings'] !== undefined) manifest.settings = read.settings(raw['settings']);
+  // Code in the owner's window is the widest thing a plugin asks for: the owner reads it in the list, never implied.
+  if (provides.ui !== undefined && !permissionsOf(manifest).includes('ui')) read.refuse('permissions', 'a list holding ui: provides.ui loads code into Boite\'s window', raw['permissions']);
   if (RUNNING_FEATURES.some((feature) => provides[feature] !== undefined)) {
     manifest.executable = executable(runtime === 'bun' ? 'a file name of letters, digits, _ and -, no extension (Boite adds .js)' : native);
     if (!dev || raw['artifacts'] !== undefined) manifest.artifacts = read.artifacts(raw['artifacts'], runtime);
   } else {
     // Skills, a prompt and slash commands are text: nothing to download, nothing to run.
     for (const field of ['executable', 'artifacts', 'runtime'] as const) {
-      if (raw[field] !== undefined) read.refuse(field, `absent: a plugin that provides only skills, a prompt or slash commands runs nothing (one of ${RUNNING_FEATURES.join(', ')} needs ${field})`, raw[field]);
+      if (raw[field] !== undefined) read.refuse(field, `absent: a plugin that provides only skills, a prompt, slash commands or an interface runs no executable (one of ${RUNNING_FEATURES.join(', ')} needs ${field})`, raw[field]);
     }
   }
   return manifest;
@@ -463,7 +486,12 @@ export function addsOf(manifest: PluginManifest): PluginAdds {
     skills: (manifest.provides.skills ?? []).map((skill) => skill.name),
     slashCommands: (manifest.provides.slashCommands ?? []).map((command) => command.name),
     prompt: manifest.provides.prompt !== undefined,
+    ui: manifest.provides.ui !== undefined,
   };
+}
+
+export function providesUi(manifest: PluginManifest): boolean {
+  return manifest.provides.ui !== undefined;
 }
 
 export function poolsOf(manifest: PluginManifest): ProviderId[] {

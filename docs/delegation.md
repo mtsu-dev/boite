@@ -482,10 +482,34 @@ children ask the parent when another worker is needed.
 A child that opened a pull request waits on it with `boite pr watch`, never a
 polling loop (`sleep`, `gh pr checks`, a monitor that expires): its subagent
 note says so. Each wake (`docs/cli.md`, "Watching a pull request") opens the
-child's next turn, and that turn's answer goes to the parent as a result, so
-the parent hears only what the child made of a CI verdict or a review. The
-child's watches end when it is stopped, by its own Stop, `delegate stop` or a
-failed turn, and when its parent stops, is archived or is removed.
+child's next turn. The child's watches end when it is stopped, by its own
+Stop, `delegate stop` or a failed turn, and when its parent stops, is archived
+or is removed.
+
+#### A child that owns a pull request
+
+A parent can hand a whole pull request to a child: push, CI, reviews and
+merge, while the parent's agent sleeps. So a child's answer to its pull
+request's news, and to its own background work, is quiet while it still
+watches a pull request at the end of that turn (`AgentLetter.quiet`): the
+result shows in the parent's conversation, already delivered, and opens no
+turn of the parent. A CI verdict the child handles alone costs the parent
+nothing. The parent's agent still wakes for:
+
+- what the child writes to it with `delegate send` (a decision, a question,
+  handing the pull request back); the wake text tells the child so;
+- the answer to a turn its parent's letter or the user opened;
+- a result once the child watches nothing: it unwatched, someone else merged
+  or closed the pull request (that wake is the child's turn), or a failed or
+  stopped turn ended its watches;
+- the child merging or closing the pull request itself between two turns:
+  the core reads that the pull request closed, ends the watch without a wake
+  and sends the child's last quiet result again, this time to the parent's
+  agent (`resendQuietResult` in `delegation/results.ts`).
+
+A child whose parent is on another machine reports every turn as before:
+quiet results stay on one core. Archiving the parent still ends the child's
+watches, so the parent stays open until the pull request is over.
 
 ### Finished children are put away
 

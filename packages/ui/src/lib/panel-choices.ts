@@ -97,7 +97,7 @@ const ROLES: Record<string, () => string> = {
  * `board-toggle`) and `coordination`. The panel showing is checked; a kind
  * this device cannot show stays listed, greyed with why.
  */
-export function panelChoices(store: Store, thread: ThreadSummary | null, options: { phone?: boolean; available?: (kind: SurfaceKind) => boolean; showing?: SurfaceKind; used?: readonly string[] } = {}): MenuItem[] {
+export function panelChoices(store: Store, thread: ThreadSummary | null, options: { phone?: boolean; available?: (kind: SurfaceKind) => boolean; showing?: SurfaceKind; used?: readonly string[]; plugins?: readonly MenuItem[] } = {}): MenuItem[] {
   const inShell = typeof window !== 'undefined' && window.__TAURI_INTERNALS__ !== undefined;
   const can = options.available ?? ((kind: SurfaceKind) => availableTo(kind, inShell, store.owner));
   const showing = 'showing' in options ? options.showing : store.panelOpen ? store.panel.active?.kind : undefined;
@@ -138,6 +138,8 @@ export function panelChoices(store: Store, thread: ThreadSummary | null, options
   ];
   return [
     ...groups.filter((group) => group.ids.length > 0).flatMap((group) => [{ ...separator(`sep-${group.ids[0]}`), label: group.name }, ...group.ids.map((id) => rows.get(id)!)]),
+    // The tabs plugin interfaces add, after the panels and before the way to customize.
+    ...(options.plugins?.length ? [separator('sep-plugins'), ...options.plugins] : []),
     separator('sep-customize'),
     { id: CUSTOMIZE, label: strings.controls.customize, title: FORMERLY[CUSTOMIZE]!(), hint: ROLES[CUSTOMIZE]!() }
   ];

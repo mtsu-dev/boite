@@ -18,7 +18,7 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import { readdir, rm, stat } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
-import { PLUGIN_MANIFEST_FILE, readPluginSource } from '@boite/contracts';
+import { PLUGIN_MANIFEST_FILE, PLUGIN_UI_LIMITS, PLUGIN_UI_PATH_PATTERN, readPluginSource } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { invalidParams, messageOf, refused } from '../errors.ts';
 import { newId } from '../ids.ts';
@@ -116,10 +116,34 @@ export function refOfPath(path: string, listed: string): string | null {
   return /^[0-9a-f]{7,64}$/.test(parts[0]!) ? parts[0]! : null;
 }
 
+/** A file `provides.ui` names, as read at the fetched commit: its text, or null with its size (-1 when the commit has no such file). */
+export interface FetchedFile {
+  text: string | null;
+  bytes: number;
+}
+
+/**
+ * The paths a manifest's `provides.ui` names, read loosely: the manifest
+ * reader judges the rest, this only picks which blobs to read beside it.
+ */
+export function uiPathsOf(text: string): { path: string; max: number }[] {
+  let raw: unknown;
+  try { raw = JSON.parse(text); } catch { return []; }
+  const ui = (raw as { provides?: { ui?: Record<string, unknown> } } | null)?.provides?.ui;
+  if (typeof ui !== 'object' || ui === null) return [];
+  const out: { path: string; max: number }[] = [];
+  for (const key of ['script', 'style'] as const) {
+    const path = ui[key];
+    if (typeof path === 'string' && PLUGIN_UI_PATH_PATTERN.test(path) && !path.includes('//')) out.push({ path, max: PLUGIN_UI_LIMITS[key] });
+  }
+  return out;
+}
+
 /**
  * Fetches `ref` of `url` and returns the ref fetched, the commit it resolved
  * to and the text of the manifest at that commit, null when the commit has no
- * such file. With `pagePath`, `ref` came from a file or folder page and may
+ * such file. The files its `provides.ui` names come with it, read at the same
+ * commit, so the interface installed is the one the preview showed. With `pagePath`, `ref` came from a file or folder page and may
  * be `<ref>/<path>`: the repository's branches and tags decide where it ends.
  * Without it, the ref is fetched exactly as given.
  */
@@ -128,7 +152,7 @@ export async function fetchManifest(
   url: string,
   ref: string,
   options: { allowLocal?: boolean; signal?: AbortSignal; pagePath?: boolean } = {},
-): Promise<{ ref: string; commit: string; text: string | null }> {
+): Promise<{ ref: string; commit: string; text: string | null; files: Record<string, FetchedFile> }> {
   const allowLocal = options.allowLocal === true;
   const root = resolve(core.dataDir, 'plugins');
   mkdirSync(root, { recursive: true });
@@ -210,14 +234,24 @@ export async function fetchManifest(
     if (parsed.code !== 0 || !/^[0-9a-f]{40,64}$/.test(commit)) throw refused(`${ref} of ${url} does not name a commit`, { url, ref });
     const blob = `${commit}:${PLUGIN_MANIFEST_FILE}`;
     const sized = await git(['--git-dir', dir, 'cat-file', '-s', blob]);
-    if (sized.code !== 0) return { ref, commit, text: null };
+    if (sized.code !== 0) return { ref, commit, text: null, files: {} };
     const size = Number(sized.stdout.trim());
     if (!Number.isFinite(size) || size > MANIFEST_MAX_BYTES) {
       throw refused(`${PLUGIN_MANIFEST_FILE} at ${commit.slice(0, 7)} is ${size} bytes, past the ${MANIFEST_MAX_BYTES} a manifest may take`, { url, commit });
     }
     const read = await git(['--git-dir', dir, 'cat-file', 'blob', blob]);
     if (read.code !== 0) throw refused(`git could not read ${PLUGIN_MANIFEST_FILE} at ${commit.slice(0, 7)}: ${firstLine(read.stderr) || `exit ${read.code}`}`, { url, commit });
-    return { ref, commit, text: read.stdout };
+    const files: Record<string, FetchedFile> = {};
+    for (const { path, max } of uiPathsOf(read.stdout)) {
+      const at = `${commit}:${path}`;
+      const fileSize = await git(['--git-dir', dir, 'cat-file', '-s', at]);
+      const bytes = fileSize.code === 0 ? Number(fileSize.stdout.trim()) : -1;
+      if (!Number.isFinite(bytes) || bytes < 0 || bytes > max) { files[path] = { text: null, bytes: Number.isFinite(bytes) ? bytes : -1 }; continue; }
+      const blob = await git(['--git-dir', dir, 'cat-file', 'blob', at]);
+      if (blob.code !== 0) throw refused(`git could not read ${path} at ${commit.slice(0, 7)}: ${firstLine(blob.stderr) || `exit ${blob.code}`}`, { url, commit });
+      files[path] = { text: blob.stdout, bytes };
+    }
+    return { ref, commit, text: read.stdout, files };
   } finally {
     options.signal?.removeEventListener('abort', stop);
     // A helper git left behind (git-remote-https) goes with the job before the directory does.

@@ -30,6 +30,7 @@
   import MoveMarker from './MoveMarker.svelte';
   import SpawnMarker from './SpawnMarker.svelte';
   import MessageActions from './MessageActions.svelte';
+  import { workspace } from '../lib/workspace.svelte';
   import { movedBy, pendingMoveOf, startedFrom, turnAnswer } from '../lib/message-display';
   import { focusComposer } from '../lib/focus';
   import { isSending } from '../lib/composer-queue';
@@ -37,12 +38,11 @@
   import { TurnProgress } from '../lib/turn-progress.svelte';
   import { GAP, OVERSCAN, SlotTotals, WINDOW_FROM, atOrBefore, estimateSlot, gapChanged, keepOnly, measurable, reaches, sameView, slotGap, windowStats, type WindowView } from '../lib/message-window';
   import { TimelineRows, rowEstimate, rowIndexOf, seam, type TimelineRow } from '../lib/timeline-rows';
-  import { timelineEndRoom } from '../lib/timeline-follow';
   import { GapRows, NO_GAPS, READ_AHEAD, RangeAsk, gapHeight, heldNear, loadKeepingReader, wantedRange } from '../lib/history-gaps';
   import TimelineGap from './TimelineGap.svelte';
   import { latest } from '../lib/latest.svelte';
   import { glides } from '../lib/motion';
-  import { BottomEdge, BottomGlide, PointerHold, keysUp, pointedTurn, typingKey, watchWheel, wheelsUp } from '../lib/timeline-follow';
+  import { BottomEdge, BottomGlide, PointerHold, keysUp, pointedTurn, timelineEndRoom, typingKey, watchWheel, wheelsUp } from '../lib/timeline-follow';
   import { selectionClicks } from '../lib/selection-clicks';
   import { editWhole, fillShort, pullNewer, pullOlder } from '../lib/reading-window';
   import { ReadingAnchor, type RowAnchor } from '../lib/reading-anchor';
@@ -782,6 +782,7 @@
                   text={() => turnAnswer(messages, turn.id)}
                   retry={atRest && store.openThread?.turns.at(-1)?.id === turn.id ? () => void retry(turn.id) : undefined}
                   fork={!narrow.current && forkable && !store.openThread?.incognito && source && source.state !== 'streaming' ? (worktree) => void store.fork(source.id, { worktree }) : undefined}
+                  plugin={store === workspace.primary && source ? { threadId, messageId: source.id, role: 'assistant' } : undefined}
                 />
               {/snippet}
             </MessageTurnSummary>

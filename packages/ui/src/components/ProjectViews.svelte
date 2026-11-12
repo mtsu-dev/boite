@@ -8,6 +8,7 @@
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import DisplayOptions from './DisplayOptions.svelte';
+  import PluginSlotButtons from './PluginSlotButtons.svelte';
   import ViewSwitch from './ViewSwitch.svelte';
   import FilterChips from './FilterChips.svelte';
   import { inbox } from '../lib/inbox.svelte';
@@ -46,6 +47,8 @@
   <h2 class="title" data-testid="list-view-name"><ViewSwitch label={strings.sidebar.displayView} current={workspace.view} onpick={view => workspace.setView(view as 'projects' | 'recent')}
     options={[{ id: 'projects', label: strings.sidebar.projectsView }, { id: 'recent', label: strings.sidebar.recentView }]} testid="view-switch" /></h2>
   <div class="actions">
+    <!-- The buttons plugin interfaces put in the sidebar, on the machine that loaded them. -->
+    {#if store === workspace.primary}<PluginSlotButtons slot="sidebar" threadId={store.openThread?.id ?? null} compact />{/if}
     <DisplayOptions {entries} {target} owner={targetOwner} {filters} word onaddproject={addProject} />
     {#if entries.length}
       <button class="ghost icon small" title={`${strings.sidebar.search}${store.keyHint('palette')}`} aria-label={strings.sidebar.search} data-testid="sidebar-search-open" onclick={() => store.paletteOpen = true}><Search size={16} /></button>

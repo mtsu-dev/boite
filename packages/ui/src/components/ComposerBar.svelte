@@ -29,6 +29,8 @@
   import { repliesOf } from '../lib/question-reply.svelte';
   /** The context's reading shows in the row from this percent used. */
   const CONTEXT_SHOWN_FROM = 70;
+  import { workspace } from '../lib/workspace.svelte';
+  import PluginSlotButtons from './PluginSlotButtons.svelte';
 
   /**
    * The row under the composer's box, the same in every state: one "+" for
@@ -328,6 +330,8 @@
       <div class="context-control" oncontextmenu={(event) => controlMenu(event, store, 'header.context')}><ContextControl {store} /></div>
     {/if}
     </div>
+    <!-- Outside desktop-options: a phone keeps a plugin's buttons. -->
+    {#if store === workspace.primary}<PluginSlotButtons slot="composer" threadId={store.openThread?.id ?? null} compact />{/if}
   </div>
   {/if}
   {#if canAttach}

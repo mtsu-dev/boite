@@ -91,6 +91,7 @@ import { fr as harnessUpdates } from './strings/fr/harnessUpdates';
 import { fr as providerSettings } from './strings/fr/providerSettings';
 import { fr as localAcp } from './strings/fr/localAcp';
 import { fr as plugins } from './strings/fr/plugins';
+import { fr as pluginUi } from './strings/fr/pluginUi';
 import { fr as time } from './strings/fr/time';
 import { fr as errors } from './strings/fr/errors';
 import { fr as units } from './strings/fr/units';
@@ -191,6 +192,7 @@ export const fr: Translation = {
   ...providerSettings,
   ...localAcp,
   ...plugins,
+  ...pluginUi,
   ...time,
   ...errors,
   ...units,
