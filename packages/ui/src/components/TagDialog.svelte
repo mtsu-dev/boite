@@ -196,9 +196,10 @@
   .none { color: var(--color-muted-foreground); font-size: var(--text-sm); }
 
   .field-label { display: block; margin-bottom: 6px; font-size: var(--text-sm); color: var(--color-muted-foreground); }
-  .entry { display: flex; gap: 6px; }
+  .entry { display: flex; align-items: center; gap: 6px; }
   .entry input { flex: 1; min-width: 0; }
-  .entry button { flex: none; gap: 4px; }
+  /* The field's height, not a button's: the two sit side by side as one control. */
+  .entry button { flex: none; gap: 4px; height: var(--input); }
   .note { margin: 6px 0 0; font-size: var(--text-xs); color: var(--color-subtle); }
   .note.warn { color: var(--color-danger); }
 
