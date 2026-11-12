@@ -587,8 +587,12 @@ sequenceDiagram
    never an agent's answer, runs it, as written and with no further turn of
    the bot (`runPlan`, `decidedBy: 'owner'`). A plan that no longer holds (its
    thread archived) goes back to the bot, approved, with the reason. Refuse
-   refuses the request. On a `talk` or `thread` request with no plan yet, the
-   Requests card offers **Let the Operator connect it**: `contacts.decide`
+   refuses the request. The arrow beside Accept (`ThreadChoice.svelte`, the
+   project search over this machine's threads, the bot's own left out) sends
+   `contacts.decide` with `threadId`: the owner's pick is put in touch with
+   the asking thread whatever the plan says (`connectByOwner`), and the bot's
+   card closes. On a `talk` or `thread` request with no plan yet, Accept
+   leaves the choice to the bot: `contacts.decide`
    then approves it for the bot (`approved: true`, back to `stage: 'bot'`),
    closes the bot's card for it and opens no project, so the request stays
    pending until the bot connects it. A trusted contact's request has no Accept there.

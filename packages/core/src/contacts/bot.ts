@@ -121,6 +121,16 @@ function planLine(request: ContactRequest, plan: ContactRequestPlan): string {
  * written, with no further turn of the bot. A plan that no longer holds (its
  * thread archived, its project gone) goes back to the bot, approved, with why.
  */
+/** The owner picked the thread here themselves: the asking thread is put in touch with it, whatever the bot planned. */
+export function connectByOwner(core: Core, id: string, threadId: unknown): ContactRequest {
+  const { request } = core.contacts.requests.pending(id, 'in');
+  const bot = contactsBot(core);
+  if (bot === null || request.want === undefined || request.want === 'share') throw invalidParams('contacts.decide.threadId: expected a request for a thread, on a core with a Contacts bot', { field: 'threadId' });
+  const settled = connectThreads(core, bot, request, core.contacts.find(request.coreId)?.name ?? request.contact, threadId, 'owner');
+  withdrawOwnerCards(core, id);
+  return settled;
+}
+
 export async function runPlan(core: Core, id: string): Promise<ContactRequest> {
   const { request } = core.contacts.requests.pending(id, 'in');
   const bot = contactsBot(core);

@@ -7,6 +7,7 @@
   import type { MenuItem } from '../../lib/menu';
   import { fill, strings } from '../../lib/strings';
   import Menu from '../Menu.svelte';
+  import ThreadChoice from './ThreadChoice.svelte';
 
   /**
    * One request between contacts, a row of a Requests card. Waiting on this
@@ -59,7 +60,7 @@
     </header>
     <p class="text">{request.text}</p>
     <p class="from">{sender}</p>
-    {#if request.stage}<p class="stage" data-stage={request.stage} data-testid="contact-request-stage">{labels.stage[request.stage]}</p>{/if}
+    {#if request.stage && !(mine && request.stage === 'owner')}<p class="stage" data-stage={request.stage} data-testid="contact-request-stage">{labels.stage[request.stage]}</p>{/if}
     {#if plan && mine}<p class="plan" data-testid="contact-request-plan" title={request.plan?.kind === 'start' ? request.plan.brief : undefined}><Waypoints size={14} strokeWidth={2} aria-hidden="true" /><span>{plan}</span></p>{/if}
     {#if request.gitRemote}<p class="remote" title={labels.remote}><GitBranch size={13} strokeWidth={2} aria-hidden="true" /><span>{request.gitRemote}</span></p>{/if}
     {#if mine}
@@ -80,10 +81,12 @@
                 <Check size={14} strokeWidth={2.25} /><span class="ui-label">{labels.accept}</span><ChevronDown size={13} />
               </Menu>
             </span>
-          {:else if plan}
-            <button type="button" class="approve" disabled={busy} title={labels.plan.acceptTip} onclick={() => void view.decide(request.id, { accept: true })} data-testid="contact-approve-{request.id}"><Check size={14} strokeWidth={2.25} /><span class="ui-label">{labels.accept}</span></button>
-          {:else if request.approved === false}
-            <button type="button" class="approve" disabled={busy} title={labels.approveTip} onclick={() => void view.decide(request.id, { accept: true })} data-testid="contact-approve-{request.id}"><Check size={14} strokeWidth={2.25} /><span class="ui-label">{labels.approve}</span></button>
+          {:else if plan || request.approved === false}
+            <!-- One Accept: the Operator's choice. Its arrow opens the search, for the owner's own pick. -->
+            <span class="split">
+              <button type="button" class="approve" disabled={busy} title={plan ? labels.plan.acceptTip : labels.approveTip} onclick={() => void view.decide(request.id, { accept: true })} data-testid="contact-approve-{request.id}"><Check size={14} strokeWidth={2.25} /><span class="ui-label">{labels.accept}</span></button>
+              <ThreadChoice store={view.store} testid="contact-pick-{request.id}" label={labels.pick.label} skip={view.state?.bot?.threadId} disabled={busy} onpick={threadId => void view.decide(request.id, { accept: true, threadId })}><ChevronDown size={14} /></ThreadChoice>
+            </span>
           {/if}
           <button type="button" class="ghost" disabled={busy} onclick={() => void openRefusal()} data-testid="contact-refuse-{request.id}"><X size={14} /><span class="ui-label">{labels.refuse}</span></button>
         </div>
@@ -120,8 +123,13 @@
   .remote { display: flex; align-items: center; gap: 6px; margin: 0; min-width: 0; color: var(--color-subtle); font-family: var(--font-mono); font-size: var(--text-xs); }
   .remote span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .remote :global(svg) { flex: none; }
-  .plan { display: flex; align-items: flex-start; gap: 8px; margin: 2px 0 0; padding: 8px 10px; border-radius: var(--radius-md); background: var(--color-accent-soft); color: var(--color-foreground); font-size: var(--text-sm); font-weight: 600; overflow-wrap: anywhere; }
-  .plan :global(svg) { flex: none; margin-top: 2px; color: var(--color-accent); }
+  .plan { display: flex; align-items: flex-start; gap: 6px; margin: 0; color: var(--color-accent); font-size: var(--text-sm); font-weight: 600; overflow-wrap: anywhere; }
+  .plan :global(svg) { flex: none; margin-top: 3px; }
+  /* Accept and its arrow read as one control: the arrow keeps the fill behind a hairline. */
+  .split { display: inline-flex; }
+  .split .approve { border-radius: var(--radius-md) 0 0 var(--radius-md); }
+  .split :global(.arrow) { height: var(--control); padding: 0 8px; border: 1px solid var(--color-accent); border-left-color: color-mix(in srgb, var(--color-accent-ink) 30%, transparent); border-radius: 0 var(--radius-md) var(--radius-md) 0; background: var(--color-accent); color: var(--color-accent-ink); }
+  .split :global(.arrow:hover:not(:disabled)), .split :global(.arrow[aria-expanded='true']) { background: var(--color-control-primary-hover); }
   .buttons { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 2px; }
   .accept :global(.trigger), .approve { height: var(--control); padding: 0 12px; border-color: var(--color-accent); background: var(--color-accent); color: var(--color-accent-ink); font-weight: 600; }
   .accept :global(.trigger:hover), .approve:hover:not(:disabled) { background: var(--color-control-primary-hover); }

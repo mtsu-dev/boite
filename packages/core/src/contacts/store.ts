@@ -24,7 +24,7 @@ import type { Core } from '../core.ts';
 import { invalidParams, messageOf, refused, RpcFailure, unavailable } from '../errors.ts';
 import { tailnetAddress } from '../group/addresses.ts';
 import { seal, type Sealing } from '../group/seal.ts';
-import { contactsBot, runPlan } from './bot.ts';
+import { contactsBot, connectByOwner, runPlan } from './bot.ts';
 import { ContactFlags } from './flags.ts';
 import { ContactFunnel } from './funnel.ts';
 import { ContactMembers, type LinkedContacts } from './members.ts';
@@ -553,6 +553,7 @@ export class ContactStore implements LinkedContacts {
     if (typeof params.accept !== 'boolean') throw invalidParams('accept: expected a boolean', { field: 'accept' });
     if (params.accept) {
       // A talk or a new thread the bot settles: the owner's Accept lets the bot act; a project would close it with no thread in touch.
+      if (params.threadId !== undefined) return connectByOwner(this.#core, params.id, params.threadId);
       const { request } = this.requests.pending(params.id, 'in');
       // The Operator's plan, as the owner read it, runs now.
       if (request.plan && contactsBot(this.#core) !== null) return runPlan(this.#core, request.id);

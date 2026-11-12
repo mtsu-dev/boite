@@ -410,7 +410,7 @@ export function contactMethods(ctx: FakeContext) {
   const connectable = (id: unknown): Thread => {
     const target = typeof id === 'string' ? ctx.threads.get(id) : undefined;
     if (!target || target.archived) throw invalid('target: expected an unarchived thread of this core', 'target');
-    if (target.id === ctx.agents.builtinThread('contacts') || target.agentSessionId) throw invalid('target: expected a working thread, not a bot\'s own', 'target');
+    if (target.id === ctx.agents.builtinThread('contacts')) throw invalid('target: expected a thread other than the Operator\'s own', 'target');
     return target;
   };
   const projectNamed = (value: unknown) => {
@@ -603,6 +603,13 @@ export function contactMethods(ctx: FakeContext) {
       const state = contactState(ctx);
       const request = state.requests.find(entry => entry.id === params.id && entry.direction === 'in');
       if (!request || request.status !== 'pending') throw invalid('id: expected a pending request from a contact', 'id');
+      if (params.accept && params.threadId !== undefined) {
+        // Like the core: the owner's own pick, whatever the Operator planned.
+        if (botOf(ctx) === null || request.want === undefined || request.want === 'share') throw invalid('threadId: expected a request for a thread, on a core with a Contacts bot', 'threadId');
+        relate(request, connectable(params.threadId), 'owner');
+        changed();
+        return structuredClone(request);
+      }
       if (params.accept && request.plan && botOf(ctx) !== null) {
         // Like the core: the Operator's plan, as the owner read it, runs now.
         const plan = request.plan;

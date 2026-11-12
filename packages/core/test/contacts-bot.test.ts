@@ -212,6 +212,15 @@ test('an ask that names its contact reaches that contact\'s Operator with no tur
   expect(hostFacts.find(fact => fact.key.startsWith(`contacts-plan-${fourth.incoming.id}`))?.text).toContain('your plan did not run');
   await hostClient.call('contacts.bot.connect', { threadId: hostBot.threadId, id: fourth.incoming.id, target: hostThread });
 
+  // The owner picks the thread themselves: it wins over the Operator's plan, whose card closes.
+  const sixth = await ask('Someone on the other subject');
+  const card = await hostClient.call('contacts.bot.askOwner', { threadId: hostBot.threadId, id: sixth.incoming.id, connect: hostThread });
+  expect(await thrown(hostClient.call('contacts.decide', { id: sixth.incoming.id, accept: true, threadId: hostBot.threadId }))).toThrow('other than this one');
+  expect(await hostClient.call('contacts.decide', { id: sixth.incoming.id, accept: true, threadId: other })).toMatchObject({ status: 'accepted', decidedBy: 'owner', relation: { local: { threadId: other } } });
+  expect(here(sixth.incoming.id).plan).toBeUndefined();
+  expect(await thrown(hostClient.call('questions.answer', { threadId: hostBot.threadId, questionId: card.questionId, optionIds: ['accept'] }))).toThrow();
+  await waitFor(() => mine(sixth.asked.id).relation?.remote.threadId === other, 10000);
+
   // Trusted: nothing waits for the owner, the Operator settles the request by itself.
   await hostClient.call('contacts.update', { coreId: guestId, trusted: true });
   const fifth = await ask('Where is the changelog kept?');

@@ -201,6 +201,23 @@ test('a thread request the Operator settles waits on it, not on the owner: no no
       expect([request.status, request.decidedBy, request.relation?.local.threadId, request.project, request.plan]).toEqual(['accepted', 'owner', 't-trace', undefined, undefined]);
     });
 
+    // The arrow beside Accept: the owner searches their conversations and picks another than the Operator's choice.
+    const picked = await ask('Someone on the scheduler');
+    const operator = (await contacts(store)).bot!.threadId;
+    await client.call('contacts.bot.askOwner', { threadId: operator, id: picked, connect: 't-trace' });
+    await vi.waitFor(() => { flushSync(); expect(one(`contact-pick-${picked}`)).not.toBeNull(); });
+    one<HTMLButtonElement>(`contact-pick-${picked}`)!.click();
+    await vi.waitFor(() => { flushSync(); expect(one(`contact-pick-${picked}-search`)).not.toBeNull(); });
+    const rows = [...document.querySelectorAll<HTMLButtonElement>(`[data-testid="contact-pick-${picked}-list"] [data-row]`)];
+    // The Operator's own thread is no choice.
+    expect(rows.some(row => row.dataset.value === operator)).toBe(false);
+    const other = rows.find(row => row.dataset.value !== 't-trace')!;
+    other.click();
+    await vi.waitFor(async () => {
+      const request = (await contacts(store)).requests.find(entry => entry.id === picked)!;
+      expect([request.status, request.decidedBy, request.relation?.local.threadId, request.plan]).toEqual(['accepted', 'owner', other.dataset.value, undefined]);
+    });
+
     // Trusted: the Operator settles it alone, so nothing asks the owner.
     await client.call('contacts.update', { coreId: 'core-sam', trusted: true });
     const trusted = await ask('A thread that runs the fuzzer');

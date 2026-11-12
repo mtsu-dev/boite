@@ -88,6 +88,19 @@ test('a request shows the plan the Operator wrote on desktop and phone, and Acce
     expect(await page.evaluate(`(() => { const box = document.querySelector('${card}').getBoundingClientRect(); return box.left >= 0 && box.right <= innerWidth; })()`)).toBe(true);
     await page.screenshot(join(import.meta.dir, '.artifacts/contact-plan-phone.png'));
 
+    // The arrow opens the search over this machine's conversations; it stays inside a phone's width.
+    await page.click(`${card} ${id('contact-pick-creq-plan')}`);
+    await page.waitFor(`document.querySelector('${id('contact-pick-creq-plan-search')}')`);
+    await page.settleAnimations();
+    expect(await page.evaluate(`document.querySelectorAll('${id('contact-pick-creq-plan-list')} [data-row]').length > 1`)).toBe(true);
+    expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
+    await page.screenshot(join(import.meta.dir, '.artifacts/contact-pick-phone.png'));
+    await page.send('Emulation.clearDeviceMetricsOverride', {});
+    await page.settleAnimations();
+    await page.screenshot(join(import.meta.dir, '.artifacts/contact-pick-desktop.png'));
+    await page.evaluate(`document.querySelector('${id('contact-pick-creq-plan-search')}').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+    await page.waitFor(`!document.querySelector('${id('contact-pick-creq-plan-search')}')`);
+
     await page.click(`${card} ${id('contact-approve-creq-plan')}`);
     await page.waitFor(`!document.querySelector('${card} ${id('contact-approve-creq-plan')}')`);
     const settled = await page.evaluate<{ status: string; decidedBy?: string; relation?: { local: { title: string } }; project?: unknown }>(`globalThis.__boiteTest.workspace.active.client.call('contacts.get', {}).then(view => view.requests.find(request => request.id === 'creq-plan'))`);

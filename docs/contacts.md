@@ -63,9 +63,10 @@ stays hidden.
 2. Their Operator decides what fits: an existing thread on that work, or a
    new thread in the right project.
 3. If their owner marked you Trusted, it does so at once. If not, their owner
-   sees that decision on the request ("put it in touch with ...", "start a
-   new thread in ...") with Accept and Refuse. Accept does exactly what is
-   written. Opening a project always asks the owner, trusted or not.
+   sees that choice on the request with Accept and Refuse. Accept does what
+   the Operator chose. The arrow beside Accept opens a search over their
+   conversations and bots, to pick another one themselves. Opening a project
+   always asks the owner, trusted or not.
 4. The two threads then write to each other, each in its own checkout. The
    contact's page lists them under In touch, with End.
 

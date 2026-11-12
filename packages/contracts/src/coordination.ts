@@ -642,9 +642,11 @@ export interface CoordinationRpcMethods {
   /**
    * Accept a request by opening `projectId`, or refuse it with a reason sent back to the asking agent. Owner only.
    * A talk or thread request at the Contacts bot (`stage` `bot` or `owner`) opens no project: Accept approves it for the
-   * bot, which stays pending until the bot puts the threads in touch, and `projectId` is ignored.
+   * bot, which stays pending until the bot puts the threads in touch, and `projectId` is ignored. With a `plan` on it,
+   * Accept runs that plan; with `threadId`, the owner's own pick, it puts the asking thread in touch with that thread
+   * here instead, whatever the plan says.
    */
-  'contacts.decide': { params: { id: string; accept: boolean; projectId?: ProjectId; reason?: string }; result: ContactRequest };
+  'contacts.decide': { params: { id: string; accept: boolean; projectId?: ProjectId; threadId?: ThreadId; reason?: string }; result: ContactRequest };
   /** Deliver a held contact letter (`ContactsState.mail`) to its thread, or refuse it: its sender reads it was refused. Owner only. */
   'contacts.decideMail': { params: { id: string; accept: boolean }; result: { ok: true } };
   'contacts.settings': { params: { settings: ContactSettings }; result: ContactSettings };
