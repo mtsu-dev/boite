@@ -255,6 +255,7 @@ export async function agentsCommand(client: CoreClient, threadId: string, rest: 
     const lines = [`request ${request.id}${request.contact ? ` for ${request.contact}` : ''}: ${request.status}${request.gitRemote ? ` (sent with your git remote ${request.gitRemote})` : ''}`,
       request.stage === 'host' ? "The group's Bots host, where the Contacts bot lives, has not taken it yet: it waits here and is offered again for 7 days."
         : request.stage === 'bot' ? 'It names no contact: the Contacts bot here picks one and sends it on.'
+        : wanted === 'share' ? `Sent to ${request.contact}'s Operator, which asks its owner to open a project; opening a project always waits for their Accept.`
         : `Sent to ${request.contact}'s Operator, which finds the thread or starts one; when ${request.contact} does not trust this owner yet, it waits for their Accept.`];
     if (wait || options.wait) lines.push(...await waitFor(undefined, (await view()).self, timeout ?? options.timeout));
     else lines.push('The answer comes back to this thread as a message: the thread to write to with threads send, or the reason for a refusal.');

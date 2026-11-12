@@ -2,7 +2,8 @@ import { afterEach, expect, spyOn, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { AgentLetter } from '@boite/contracts';
+import type { AgentLetter, ContactRequest } from '@boite/contracts';
+import { agentsCommand } from '../src/agents-cli.ts';
 import type { AgentFact } from '../src/agents/runtime.ts';
 import type { CoreClient } from '../src/client.ts';
 import { contactsCommand } from '../src/contacts/cli.ts';
@@ -299,8 +300,14 @@ test('the owner\'s Accept on a talk request the bot settles lets the bot act ins
   await waitFor(() => lettersOf(host, hostThread).some(letter => letter.id === sent.id), 10000);
 
   // A project opened in answer: with a Contacts bot, the asking thread reaches its threads only through a relation, and the answer says so.
-  const share = await guestClient.call('collaboration.ask', { threadId: guestThread, contact: hostName, want: 'share', text: 'Open the docs project to us' });
+  await hostClient.call('contacts.update', { coreId: guest.core.coordination.card().coreId, trusted: true });
+  let share!: ContactRequest;
+  const printed: string[] = [];
+  await agentsCommand(guestClient, guestThread, ['ask', '--contact', hostName, '--share', 'Open the docs project to us'], { wait: false }, (lines, value) => { printed.push(...lines); share = value as ContactRequest; });
+  expect(printed.join('\n')).toContain('opening a project always waits for their Accept');
+  expect(printed.join('\n')).not.toContain('finds the thread or starts one');
   await waitFor(() => incomingOf(host, share.id) !== undefined, 10000);
+  expect(incomingOf(host, share.id)).toMatchObject({ status: 'pending', want: 'share' });
   await hostClient.call('contacts.decide', { id: incomingOf(host, share.id)!.id, accept: true, projectId: project.id });
   await waitFor(() => lettersOf(guest, guestThread).some(letter => letter.origin === 'contact' && letter.text.includes('opened its project')), 10000);
   const answer = lettersOf(guest, guestThread).find(letter => letter.origin === 'contact' && letter.text.includes('opened its project'))!;
