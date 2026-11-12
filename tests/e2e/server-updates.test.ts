@@ -83,8 +83,10 @@ test('a server release shows in the footer and in Machines, and actions target t
 
 test('an Android server offers and cancels its update on desktop and phone', async () => {
   for (const [width, label] of [[1400, 'desktop'], [390, 'phone']] as const) {
-    await size(width);
+    // Load first, then resize: narrowing a page that shows Settings moves its overlay through history asynchronously,
+    // and a navigation issued meanwhile is taken back to the previous page.
     await page.navigate(`${base}/?fake=1&machines=1&open=recent&serverMode=android&serverUpdate=idle`);
+    await size(width);
     await page.waitFor(`window.__boiteTest?.workspace.machines.length === 2`);
     await page.evaluate(`window.__boiteTest.workspace.active.showSettings('machines')`);
     await page.waitFor(`document.querySelector('${id('app-updates-card')}') && document.querySelector('${row}')`);

@@ -20,10 +20,10 @@ function worktreeSwitch(): HTMLButtonElement | null | undefined {
 test('the draft worktree chip puts the first send on its own branch, and the header names it', async ({ app: _app }) => {
 
   // A thread keeps its directory: no chip while one is open.
-  expect(worktreeSwitch()).toBeNull();
+  await waitFor(() => worktreeSwitch() === null);
 
   query<HTMLButtonElement>('[data-testid=new-thread]').click();
-  await waitFor(() => store.draft !== null);
+  await waitFor(() => store.draft !== null && !!worktreeSwitch());
   const chip = worktreeSwitch()!;
   expect(chip.getAttribute('aria-checked')).toBe('false');
   chip.click();
@@ -75,7 +75,7 @@ test('the draft worktree chip puts the first send on its own branch, and the hea
   expect(shown.text).toBe(shown.branch);
   expect(shown.title).toContain(shown.branch.slice(6));
   // The chip went with the draft.
-  expect(worktreeSwitch()).toBeNull();
+  await waitFor(() => worktreeSwitch() === null);
   const cwd = store.openThread!.cwd;
   await waitFor(() => store.openThread?.turns.some(turn => turn.status === 'done') === true);
   await waitFor(() => store.openThread?.branch === 'boite/fix-the-login');

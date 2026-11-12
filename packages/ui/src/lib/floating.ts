@@ -128,6 +128,11 @@ export function floating(node: HTMLElement, options: { anchor: () => HTMLElement
   const observer = new ResizeObserver(place);
   // The border box: a sheet's padding changes its height without touching its content box.
   observer.observe(node, { box: 'border-box' });
+  // Rows or a title added after the first place (Menu.svelte titles a sheet once it sees it is one) move the
+  // sheet in the same task: the size observer waits for the next frame, and a read before it saw the sheet
+  // standing on its old height, past the bottom edge.
+  const content = new MutationObserver(place);
+  content.observe(node, { childList: true, subtree: true, characterData: true });
   const anchor = options.anchor();
   if (anchor) observer.observe(anchor);
   anchor?.addEventListener('animationend', place);
@@ -136,5 +141,5 @@ export function floating(node: HTMLElement, options: { anchor: () => HTMLElement
   window.addEventListener('scroll', place, true);
   window.visualViewport?.addEventListener('resize', place);
   window.visualViewport?.addEventListener('scroll', place);
-  return { destroy() { setSheet(false); observer.disconnect(); anchor?.removeEventListener('animationend', place); window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true); window.visualViewport?.removeEventListener('resize', place); window.visualViewport?.removeEventListener('scroll', place); } };
+  return { destroy() { setSheet(false); observer.disconnect(); content.disconnect(); anchor?.removeEventListener('animationend', place); window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true); window.visualViewport?.removeEventListener('resize', place); window.visualViewport?.removeEventListener('scroll', place); } };
 }

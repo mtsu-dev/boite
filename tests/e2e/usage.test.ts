@@ -340,7 +340,9 @@ test('quotas expose banked resets, a confirmed budget and Codex credit balances 
   await capture('codex-credits-phone.png');
   await leavePhoneDetail();
   await viewport(1280, 800);
-  await page.waitFor(`document.querySelector('[data-testid=settings-tab-limits]')`);
+  // The desktop width unmounts the phone's Settings screen, which pops its entry with an asynchronous
+  // history.back(): let it land, or it takes the navigation below back to this page.
+  await page.waitFor(`document.querySelector('[data-testid=settings-tab-limits]') && !history.state?.boiteOverlay`);
   await viewport(320, 560, true);
   await page.navigate(`${origin}/?fake=1&quotaExtras=1&view=quotas`);
   await page.waitFor(`document.querySelector('[data-testid=quota-popup] [data-testid=quota-credits]')`);
