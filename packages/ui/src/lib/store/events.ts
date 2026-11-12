@@ -21,6 +21,7 @@ import type { StoreContext } from './context';
 import { probeKey } from './models.svelte';
 import { sameProcess } from './workbench.svelte';
 import { networkChanged } from '../network-change';
+import { appendText } from '../text-revisions';
 
 /**
  * Every event the core pushes, applied to the Store that owns `client`. The
@@ -42,6 +43,7 @@ export function listen(ctx: StoreContext, client: Client): void {
         if (!current()) return;
         if (state !== 'ready') {
           ctx.connection.invalidateReads();
+          ctx.workflows.disconnected();
           ctx.draftStartup.reset();
           models.probeRequests.clear();
         }
@@ -67,6 +69,7 @@ export function listen(ctx: StoreContext, client: Client): void {
           ctx.serverUpdater.reset();
           if (s.owner && !s.localCore) { void ctx.serverUpdater.freshen(); void ctx.serverUpdater.loadDesktop(); }
           void s.reload();
+          if (s.openThread) void s.loadWorkflows(s.openThread.id);
           // A reconnect also hydrates after a first hello that never reached connect()'s startup path.
           void ctx.connection.syncComposer(client, generation).catch(error => { if (current()) ctx.fail(error); });
           ctx.shared.reconnected();
@@ -151,10 +154,7 @@ export function listen(ctx: StoreContext, client: Client): void {
   on('collaboration.changed', ({ threadId }) => {
     if (s.openThread?.id === threadId) void s.loadCoordination(threadId, false);
   });
-  on('workflows.changed', ({ threadId }) => {
-    const open = s.openThread;
-    if (open && (threadId === open.id || threadId === open.parentThreadId)) void s.loadWorkflows(open.id);
-  });
+  on('workflows.changed', event => ctx.workflows.changed(event));
   on('delegation.changed', ({ threadId }) => {
     const open = s.openThread;
     const view = s.delegation;
@@ -230,7 +230,7 @@ export function listen(ctx: StoreContext, client: Client): void {
     for (const message of threads.messages(threadId, messageId)) {
       const part = message.parts[partIndex];
       // A delta appends to whatever kind of text part sits there: text or thinking.
-      if (part && (part.type === 'text' || part.type === 'thinking')) part.text += text;
+      if (part && (part.type === 'text' || part.type === 'thinking')) appendText(part, text);
       // On a tool part it is the input's JSON, still being typed by the model.
       else if (part && part.type === 'tool') part.inputText = (part.inputText ?? '') + text;
       else if (!part) message.parts[partIndex] = { type: 'text', text };

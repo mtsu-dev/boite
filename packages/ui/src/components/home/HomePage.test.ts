@@ -10,6 +10,7 @@ import { RpcFailure } from '../../lib/rpc-error';
 import { FAKE_CONTACT_INVITE } from '../../lib/fake-client/contacts';
 import { Store, store as primary } from '../../lib/store.svelte';
 import { fill, strings } from '../../lib/strings';
+import { inbox } from '../../lib/inbox.svelte';
 import { workspace } from '../../lib/workspace.svelte';
 import HomePage from './HomePage.svelte';
 import SidebarContacts from './SidebarContacts.svelte';
@@ -169,6 +170,68 @@ test('a message from a contact outside a shared project pops up to be read: Deli
     await vi.waitFor(async () => expect(await status(third.id)).toBe('delivered'));
     await vi.waitFor(() => { flushSync(); expect(one('contact-mail')).toBeNull(); });
     expect((await client.call('contacts.get', {})).mail).toEqual([]);
+  } finally {
+    sam.close();
+  }
+});
+
+test('a thread request the Operator settles waits on it, not on the owner: no notice, and Accept lets the Operator connect it instead of opening a project', async () => {
+  const store = await draw();
+  const sam = new FakeClient({ delayMs: 0, coreId: 'core-sam', coreName: 'Sam' });
+  await sam.connect();
+  try {
+    const client = store.client!;
+    await client.call('contacts.join', { link: (await sam.call('contacts.invite', { share: false })).link });
+    for (const each of [client, sam]) await each.call('contacts.settings', { settings: { minTier: 2 } });
+    await client.call('agents.builtin.ensure', { kind: 'contacts' });
+    await sam.call('agents.builtin.ensure', { kind: 'contacts' });
+    const samBot = (await sam.call('contacts.get', {})).bot!.threadId;
+    const home = (await sam.call('contacts.get', {})).contacts.find(entry => entry.coreId !== 'core-chris')!.coreId;
+    const ask = async (text: string) => {
+      const waiting = await sam.call('collaboration.ask', { threadId: 't-trace', contact: home, want: 'thread', text });
+      const asked = await sam.call('contacts.bot.forward', { threadId: samBot, id: waiting.id, contact: home });
+      await vi.waitFor(async () => expect((await contacts(store)).requests.some(entry => entry.id === asked.id)).toBe(true));
+      return asked.id;
+    };
+    // Chris's request, with no bot behind it, is the owner's: the notice shows and the rail's Activity counts it, then both go once it is answered.
+    components.push(mount(AppRail, { target: document.body, props: { store } }));
+    await vi.waitFor(() => { flushSync(); expect(one('contact-request-notice')).not.toBeNull(); });
+    expect(inbox.contacts).toBe(1);
+    await client.call('contacts.decide', { id: 'creq-pending', accept: false, reason: 'Not now' });
+    await vi.waitFor(() => { flushSync(); expect(inbox.contacts).toBe(0); });
+
+    // Not trusted: the Operator holds it until the owner says yes; the card offers that yes, not a project.
+    const held = await ask('A thread that knows the descriptor loader');
+    await vi.waitFor(() => { flushSync(); expect(one(`contact-request-${held}`)).not.toBeNull(); });
+    expect(one('contact-request-notice')).toBeNull();
+    expect(inbox.contacts).toBe(0);
+    expect(one(`contact-accept-${held}`)).toBeNull();
+    one<HTMLButtonElement>(`contact-approve-${held}`)!.click();
+    await vi.waitFor(async () => {
+      const request = (await contacts(store)).requests.find(entry => entry.id === held)!;
+      expect([request.status, request.stage, request.approved, request.project]).toEqual(['pending', 'bot', true, undefined]);
+    });
+    await vi.waitFor(() => { flushSync(); expect(one(`contact-approve-${held}`)).toBeNull(); });
+
+    // Trusted: the Operator settles it alone, so nothing asks the owner.
+    await client.call('contacts.update', { coreId: 'core-sam', trusted: true });
+    const trusted = await ask('A thread that runs the fuzzer');
+    await vi.waitFor(() => { flushSync(); expect(one(`contact-request-${trusted}`)).not.toBeNull(); });
+    expect(one('contact-request-notice')).toBeNull();
+    expect(inbox.contacts).toBe(0);
+    expect(one(`contact-accept-${trusted}`)).toBeNull();
+    expect(one(`contact-approve-${trusted}`)).toBeNull();
+    expect(one(`contact-refuse-${trusted}`)).not.toBeNull();
+
+    // Without the Operator, pending incoming requests belong to the owner again.
+    const localBot = (await contacts(store)).bot!.threadId;
+    await client.call('threads.archive', { threadId: localBot });
+    const withoutBot = await contacts(store);
+    expect(withoutBot.bot).toBeNull();
+    expect(withoutBot.requests.find(request => request.id === trusted)?.stage).toBeUndefined();
+    const project = store.projects.find(entry => entry.kind !== 'drafts' && !entry.archived)!;
+    const opened = await client.call('contacts.decide', { id: trusted, accept: true, projectId: project.id });
+    expect(opened).toMatchObject({ status: 'accepted', decidedBy: 'owner', project: { id: project.id } });
   } finally {
     sam.close();
   }

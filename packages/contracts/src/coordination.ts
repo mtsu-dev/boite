@@ -354,7 +354,7 @@ export interface ContactRequest {
    * 7 days. Missing: the contact.
    */
   stage?: 'bot' | 'owner' | 'host';
-  /** The owner said yes on the bot's card: the bot may now act on it. */
+  /** The owner said yes on the bot's card or with Accept in the app: the bot may now act on it. */
   approved?: boolean;
   /** The thread the two Contacts bots put the asking thread in relation with, once accepted. */
   relation?: ContactRelation;
@@ -629,7 +629,11 @@ export interface CoordinationRpcMethods {
   'contacts.revoke': { params: { coreId: string; projectId: ProjectId; machine?: string }; result: Contact };
   /** Forget a contact: every grant ends, pending letters are rejected and the link closes. Owner only. */
   'contacts.remove': { params: { coreId: string }; result: { ok: true } };
-  /** Accept a request by opening `projectId`, or refuse it with a reason sent back to the asking agent. Owner only. */
+  /**
+   * Accept a request by opening `projectId`, or refuse it with a reason sent back to the asking agent. Owner only.
+   * A talk or thread request at the Contacts bot (`stage` `bot` or `owner`) opens no project: Accept approves it for the
+   * bot, which stays pending until the bot puts the threads in touch, and `projectId` is ignored.
+   */
   'contacts.decide': { params: { id: string; accept: boolean; projectId?: ProjectId; reason?: string }; result: ContactRequest };
   /** Deliver a held contact letter (`ContactsState.mail`) to its thread, or refuse it: its sender reads it was refused. Owner only. */
   'contacts.decideMail': { params: { id: string; accept: boolean }; result: { ok: true } };

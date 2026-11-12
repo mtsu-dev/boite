@@ -4,7 +4,7 @@
   import type { ContactRequest, HeldContactLetter, Project } from '@boite/contracts';
   import { minuteClock } from '../../lib/clock.svelte';
   import { contactsShown } from '../../lib/contacts-rail.svelte';
-  import { openContact, watchContacts, type ContactsView } from '../../lib/contacts.svelte';
+  import { openContact, settledByBot, waitsForOwner, watchContacts, type ContactsView } from '../../lib/contacts.svelte';
   import { ago, projectName } from '../../lib/format';
   import { acceptItems, acceptProject } from '../../lib/contact-accept';
   import type { Store } from '../../lib/store.svelte';
@@ -32,14 +32,16 @@
    * Refuse outlined, Accept or Deliver solid. Identical asks are one request received more than once
    * (lib/contact-inbox.ts): one row titled as one ask ("Chris asks"), its copies folded into one quiet line under
    * the text ("Sent 2 times: on Builder Sep 5, on studio 3h"), which opens on each copy's line (the contact's thread
-   * it came from, where and when); Accept and Refuse settle every copy.
+   * it came from, where and when); Accept and Refuse settle every copy. Only what waits for the owner shows
+   * (lib/contacts.svelte.ts `waitsForOwner`), as on the toast that counts it; on a request for a thread the
+   * Contacts bot settles, Accept lets the bot put the threads in touch, shares no project and has no project menu.
    */
   let { store }: { store: Store } = $props();
   type Row = { machine: Machine; view: ContactsView; key: string; createdAt: number }
     & ({ request: ContactRequest; letter?: undefined } | { letter: HeldContactLetter; request?: undefined });
   const watched = watchContacts(() => workspace.machinesOr(store).filter(machine => contactsShown(machine.store)));
   const rows = $derived(watched().flatMap(({ machine, view }): Row[] => machine.store.connection !== 'ready' ? [] : [
-    ...(view.state?.requests ?? []).filter(request => request.direction === 'in' && request.status === 'pending')
+    ...(view.state?.requests ?? []).filter(waitsForOwner)
       .map(request => ({ machine, view, key: `${machine.id}:${request.id}`, createdAt: request.createdAt, request })),
     ...(view.state?.mail ?? []).map(letter => ({ machine, view, key: `${machine.id}:mail:${letter.id}`, createdAt: letter.createdAt, letter }))
   ]));
@@ -72,6 +74,12 @@
   async function accept(row: Row & { request: ContactRequest }, same: Row[], projectId: Project['id']) {
     acted = row.key;
     if (!await row.view.decide(row.request.id, { accept: true, projectId })) return;
+    for (const copy of same) if (copy !== row && copy.request) await copy.view.decide(copy.request.id, { accept: false, reason: labels.duplicate });
+  }
+  /** A thread request the Contacts bot settles: the bot connects its newest ask, the copies before it are refused as copies. */
+  async function approve(row: Row & { request: ContactRequest }, same: Row[]) {
+    acted = row.key;
+    if (!await row.view.decide(row.request.id, { accept: true })) return;
     for (const copy of same) if (copy !== row && copy.request) await copy.view.decide(copy.request.id, { accept: false, reason: labels.duplicate });
   }
 
@@ -150,8 +158,13 @@
             {@const chosen = acceptProject(row.view.store, request)}
             {@const tip = chosen ? fill(labels.acceptInto, { project: projectName(chosen) }) : labels.accept}
             <button type="button" class="secondary" disabled={busy} onclick={() => void openRefusal(row)} data-testid="activity-refuse-{request.id}"><span class="ui-label">{labels.refuse}</span></button>
-            <button type="button" class="primary answer" disabled={busy || !chosen} title={tip} aria-label={tip}
-              onclick={() => chosen && void accept({ ...row, request }, same, chosen.id)} data-testid="activity-accept-{request.id}"><span class="ui-label">{labels.accept}</span></button>
+            {#if !settledByBot(request)}
+              <button type="button" class="primary answer" disabled={busy || !chosen} title={tip} aria-label={tip}
+                onclick={() => chosen && void accept({ ...row, request }, same, chosen.id)} data-testid="activity-accept-{request.id}"><span class="ui-label">{labels.accept}</span></button>
+            {:else if request.approved === false}
+              <button type="button" class="primary answer" disabled={busy} title={labels.approveTip}
+                onclick={() => void approve({ ...row, request }, same)} data-testid="activity-approve-{request.id}"><span class="ui-label">{labels.approve}</span></button>
+            {/if}
           {:else}
             {@const letter = row.letter!}
             <button type="button" class="secondary" disabled={busy} title={strings.contacts.mail.refuseTip} onclick={() => answerMail(row, same, false)} data-testid="activity-mail-refuse-{letter.id}"><span class="ui-label">{strings.contacts.mail.refuse}</span></button>
@@ -161,8 +174,9 @@
         </DecisionActions>
       </div>
     {/if}
-    <!-- The kind line's end, the menu under the pointer: another project to accept into. -->
-    {#if row.request}
+    <!-- The kind line's end, the menu under the pointer: another project to accept into. A request the Contacts bot
+         settles shares no project, so it has none. -->
+    {#if row.request && !settledByBot(row.request)}
       {@const request = row.request}
       {@const chosen = acceptProject(row.view.store, request)}
       <div class="side">

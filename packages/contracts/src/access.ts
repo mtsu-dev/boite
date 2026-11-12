@@ -253,7 +253,7 @@ export const DEVICE_EVENTS: ReadonlySet<RpcEventName> = new Set<RpcEventName>([
   'agents.changed', // Invalidation only; agents.snapshot applies the device read policy.
   // Team invalidation contains only the subscribed root ID; delegation.get enforces its read scope.
   'delegation.changed',
-  // Invalidation naming the subscribed root; workflows.list applies the read scope.
+  // Runs follow the subscribed root; template writes invalidate the project's library. Read methods enforce their scope.
   'workflows.changed',
   'collaboration.changed', 'thread.activity',
   'todos.updated', // The whole list todos.list already answers the device.

@@ -1,4 +1,4 @@
-import { describe, expect, it, test } from 'vitest';
+import { describe, expect, it, test, vi } from 'vitest';
 import type { Message, MessagePart, Turn } from '@boite/contracts';
 import { countsOf, relativeTo, showsTurnFiles, turnDiffs, turnFiles, turnFileTree, turnLineCounts, TurnFileCache, type TurnDiff } from './turn-files';
 
@@ -35,7 +35,7 @@ test('active file summaries ignore unfinished calls, reuse diffs across text del
   expect(read().diffs[0]?.newText).toBe('whole');
 });
 
-test('a finished turn reads its calls again only when a part is replaced or a deferred call is filled in', () => {
+test('a finished turn refreshes hydrated and restored fields while text deltas keep its identity', () => {
   const edit = tool('Edit', { file_path: 'a.ts' }, { documentsDeferred: true,
     documents: [{ kind: 'diff', path: 'a.ts', oldText: '', newText: '' }] }) as Extract<MessagePart, { type: 'tool' }>;
   const answer = { id: 'answer', role: 'assistant', turnId: 'turn', parts: [edit, tool('Write', { file_path: 'b.ts', content: 'b' })] } as Message;
@@ -50,8 +50,27 @@ test('a finished turn reads its calls again only when a part is replaced or a de
   expect(loaded).not.toBe(first);
   expect(loaded.diffs.map(diff => diff.path)).toEqual(['a.ts', 'b.ts']);
   expect(cache.read('turn', [answer], '/repo', false)).toBe(loaded);
+  edit.documents = [{ kind: 'diff', path: 'a.ts', oldText: '', newText: '' }];
+  edit.documentsDeferred = true;
+  const restored = cache.read('turn', [answer], '/repo', false);
+  expect(restored).not.toBe(loaded);
+  expect(restored.deferred).toEqual([{ messageId: 'answer', toolId: edit.toolId }]);
+  expect(restored.diffs.map(diff => diff.path)).toEqual(['b.ts']);
   answer.parts[1] = tool('Write', { file_path: 'c.ts', content: 'c' });
   expect(cache.read('turn', [answer], '/repo', false).files.map(file => file.path)).toEqual(['a.ts', 'c.ts']);
+});
+
+test('a cached inferred diff releases full input after it becomes deferred again', () => {
+  const edit = tool('Write', { file_path: 'large.ts', content: 'full input body' }) as Extract<MessagePart, { type: 'tool' }>;
+  const answer = { id: 'answer', role: 'assistant', turnId: 'turn', parts: [edit] } as Message;
+  const cache = new TurnFileCache();
+  const full = cache.read('turn', [answer], '/repo', false);
+  expect(full.diffs[0]?.newText).toBe('full input body');
+  edit.input = { file_path: 'large.ts' }; edit.inputDeferred = true;
+  const compact = cache.read('turn', [answer], '/repo', false);
+  expect(compact.diffs).toEqual([]);
+  expect(compact.files.map(file => file.path)).toEqual(['large.ts']);
+  expect(compact.deferred).toEqual([{ messageId: 'answer', toolId: edit.toolId }]);
 });
 
 test('a turn end that scrolls back finds its entry; the least recently read turn goes first', () => {
@@ -64,6 +83,27 @@ test('a turn end that scrolls back finds its entry; the least recently read turn
   read(TurnFileCache.SIZE);
   expect(read(0)).toBe(kept[0]);
   expect(read(1)).not.toBe(kept[1]);
+});
+
+test('collected turn entries do not evict a visible turn from the cache', () => {
+  const answers = Array.from({ length: TurnFileCache.SIZE + 1 }, (_, at) =>
+    ({ id: `m${at}`, role: 'assistant', turnId: `t${at}`, parts: [tool('Write', { file_path: `${at}.ts`, content: '' })] }) as Message);
+  const cache = new TurnFileCache();
+  const read = (at: number) => cache.read(`t${at}`, [answers[at]!], '/repo', false);
+  const kept = answers.slice(0, TurnFileCache.SIZE).map((_, at) => read(at));
+  // Model collection at the WeakRef boundary without depending on GC timing.
+  const collected = new Set(kept.slice(1));
+  const deref = WeakRef.prototype.deref;
+  const refs = vi.spyOn(WeakRef.prototype, 'deref').mockImplementation(function (this: WeakRef<{ data: unknown }>) {
+    const entry = deref.call(this);
+    return entry && collected.has(entry.data) ? undefined : entry;
+  });
+  try {
+    read(TurnFileCache.SIZE);
+    expect(read(0)).toBe(kept[0]);
+  } finally {
+    refs.mockRestore();
+  }
 });
 
 describe('turnFiles', () => {

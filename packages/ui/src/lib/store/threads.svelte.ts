@@ -491,8 +491,7 @@ export class Threads {
   #showHeld(held: Thread, navigate: boolean): Thread {
     this.#show(held, navigate);
     const shown = this.openThread;
-    // Identity on purpose: a proxy of `held` is another object. `Object.is` says so without the dev warning `===` gives.
-    if (!shown || Object.is(shown, held) || shown.id !== held.id) return held;
+    if (!shown || Object.is(shown, held) || shown.id !== held.id) return held; // Object.is: a proxy of `held` is another object, without `===`'s dev warning.
     this.readingThreads.replace(held.id, held, shown);
     return shown;
   }
@@ -609,6 +608,7 @@ export class Threads {
 
   /** Hydrate only a card the reader opened (`store/deferred-parts.ts`). */
   loadToolOutput(threadId: ThreadId, messageId: MessageId, toolId: string): Promise<void> { return this.parts.toolOutput(threadId, messageId, toolId); }
+  acquireToolOutput(threadId: ThreadId, messageId: MessageId, toolId: string, load = true) { return this.parts.acquireToolOutput(threadId, messageId, toolId, load); }
   loadMessageAttachment(threadId: ThreadId, messageId: string, partIndex: number): Promise<string | null> { return this.parts.attachment(threadId, messageId, partIndex); }
 
   async createThread(input: {

@@ -2,7 +2,7 @@
   import { tick } from 'svelte';
   import { ArrowDownLeft, ArrowUpRight, Check, Ellipsis, GitBranch, X } from '@lucide/svelte';
   import type { ContactRequest } from '@boite/contracts';
-  import type { ContactsView } from '../../lib/contacts.svelte';
+  import { settledByBot, type ContactsView } from '../../lib/contacts.svelte';
   import { ago, projectName } from '../../lib/format';
   import { acceptItems, acceptProject } from '../../lib/contact-accept';
   import { fill, strings } from '../../lib/strings';
@@ -13,8 +13,11 @@
    * One request between contacts, a row of a Requests card. Waiting on this
    * owner, it carries Accept, which shares the project it points at
    * (lib/contact-accept.ts), Refuse, which asks for the reason the asking
-   * agent will read, and a menu to share another project instead. Decided, it
-   * folds to one line with what came of it and who decided.
+   * agent will read, and a menu to share another project instead. On a
+   * request for a thread the Contacts bot settles, Accept instead lets the bot
+   * put the threads in touch and shares no project (a trusted contact's needs
+   * no Accept), with no project menu. Decided, it folds to one line with what
+   * came of it and who decided.
    */
   let { view, request, now }: { view: ContactsView; request: ContactRequest; now: number } = $props();
   const labels = $derived(strings.contacts.requests);
@@ -22,6 +25,7 @@
   const pending = $derived(request.status === 'pending');
   const mine = $derived(request.direction === 'in');
   const busy = $derived(view.isBusy(`decide:${request.id}`));
+  const byBot = $derived(settledByBot(request));
   const chosen = $derived(acceptProject(view.store, request));
   const items = $derived(acceptItems(view.store, chosen));
   const acceptTip = $derived(chosen ? fill(labels.acceptInto, { project: projectName(chosen) }) : labels.accept);
@@ -72,14 +76,20 @@
         <!-- The app's one decision pair (DecisionActions.svelte): Refuse in outline, then the solid Accept. -->
         <DecisionActions>
           <button type="button" class="secondary" disabled={busy} onclick={() => void openRefusal()} data-testid="contact-refuse-{request.id}"><span class="ui-label">{labels.refuse}</span></button>
-          <button type="button" class="primary" disabled={busy || !chosen} title={acceptTip} aria-label={acceptTip}
-            onclick={() => chosen && void view.decide(request.id, { accept: true, projectId: chosen.id })} data-testid="contact-accept-{request.id}"><span class="ui-label">{labels.accept}</span></button>
-          <!-- The project choice behind the row's menu: Accept itself takes the one the request points at. -->
-          <span class="more">
-            <Menu {items} onpick={id => void view.decide(request.id, { accept: true, projectId: id })} label={labels.acceptOther} placement="bottom" align="end" variant="ghost" disabled={busy} testid="contact-accept-into-{request.id}">
-              <Ellipsis size={15} />
-            </Menu>
-          </span>
+          {#if !byBot}
+            <button type="button" class="primary" disabled={busy || !chosen} title={acceptTip} aria-label={acceptTip}
+              onclick={() => chosen && void view.decide(request.id, { accept: true, projectId: chosen.id })} data-testid="contact-accept-{request.id}"><span class="ui-label">{labels.accept}</span></button>
+            <!-- The project choice behind the row's menu: Accept itself takes the one the request points at. -->
+            <span class="more">
+              <Menu {items} onpick={id => void view.decide(request.id, { accept: true, projectId: id })} label={labels.acceptOther} placement="bottom" align="end" variant="ghost" disabled={busy} testid="contact-accept-into-{request.id}">
+                <Ellipsis size={15} />
+              </Menu>
+            </span>
+          {:else if request.approved === false}
+            <!-- A thread request the bot settles: Accept shares no project, so no project menu. -->
+            <button type="button" class="primary" disabled={busy} title={labels.approveTip}
+              onclick={() => void view.decide(request.id, { accept: true })} data-testid="contact-approve-{request.id}"><span class="ui-label">{labels.approve}</span></button>
+          {/if}
         </DecisionActions>
       {/if}
     {/if}

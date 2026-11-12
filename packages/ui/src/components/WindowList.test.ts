@@ -117,7 +117,11 @@ test('many small project lists leave offscreen groups as spacers and remain reac
   }
   await settle(); expect(root.querySelectorAll('button').length).toBeLessThanOrEqual(100);
   expect(root.querySelector('[data-row-id="0:0"]')).not.toBeNull();
+  await new Promise(resolve => requestAnimationFrame(resolve));
+  const rectangles = vi.mocked(HTMLElement.prototype.getBoundingClientRect);
+  rectangles.mockClear();
   root.scrollTop = 100_000; root.dispatchEvent(new Event('scroll')); await settle();
+  expect(rectangles.mock.contexts.filter(node => node === root)).toHaveLength(1);
   expect(root.querySelector('[data-row-id="50:0"]')).not.toBeNull();
   expect(root.querySelectorAll('button').length).toBeLessThanOrEqual(100);
   root.scrollTop = 199_600; root.dispatchEvent(new Event('scroll')); await settle();

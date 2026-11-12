@@ -14,6 +14,8 @@
   import type { Store } from '../lib/store.svelte';
   import { lastHeard, machineAway } from '../lib/machine-away';
   import type { Snippet } from 'svelte';
+  import type { ToolDisclosure } from '../lib/store/deferred-parts';
+  import { textRevision } from '../lib/text-revisions';
 
   /*
    * A run of activity with no answer between it: calls and the reasoning around
@@ -34,6 +36,7 @@
     thinkingLive = false,
     isBackground,
     loadOutput,
+    acquireOutput,
     permissionRequest = () => null,
     answerPermission = () => false,
     store,
@@ -49,6 +52,7 @@
     /** Whether the work a call started still runs in the background. */
     isBackground: (toolId: string) => boolean;
     loadOutput?: (toolId: string) => Promise<void>;
+    acquireOutput?: (toolId: string) => ToolDisclosure;
     /** What a permission asked, for its card: null once the record is gone. */
     permissionRequest?: (requestId: RequestId) => PermissionRequest | null;
     /** Sends the user's answer to a permission; false gives its buttons back. */
@@ -120,7 +124,7 @@
   {#if part.type === 'permission'}
     {@render ask(part)}
   {:else if part.type === 'thinking'}
-    <ThinkingPart text={part.text} live={isLive(index)} startedAt={part.startedAt ?? null} finishedAt={part.finishedAt ?? null} {store} {threadId} />
+    <ThinkingPart text={part.text} revision={textRevision(part)} live={isLive(index)} startedAt={part.startedAt ?? null} finishedAt={part.finishedAt ?? null} {store} {threadId} />
   {:else}
     <ToolCard
       name={part.name}
@@ -131,6 +135,7 @@
       inputDeferred={part.inputDeferred ?? false}
       documentsDeferred={part.documentsDeferred ?? false}
       loadOutput={loadOutput ? () => loadOutput!(part.toolId) : undefined}
+      acquireOutput={acquireOutput ? () => acquireOutput!(part.toolId) : undefined}
       status={part.status}
       exitCode={part.exitCode}
       documents={part.documents ?? []}

@@ -258,9 +258,9 @@ structured output, commands and recovery.
 
 A [council](council.md), behind the Council experiment, asks several models to
 review one request over read-only child threads, each alone, with a score. Their
-answers return to the parent in one message, and the parent summarizes, fixes
-and asks again. `boite delegate council` starts one, `delegate list` shows it
-and `delegate stop <cnl_id>` stops it.
+answers return to the parent in one message, and `council again` asks the same
+members for one more round. `boite delegate council` starts one, `delegate list`
+shows it and `delegate stop <cnl_id>` stops it.
 
 ## On another machine of the group
 

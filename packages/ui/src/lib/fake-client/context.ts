@@ -503,7 +503,10 @@ export class FakeContext {
         workflowAnswer(there, threadId, text, ok);
         return there.thread(threadId).turns.at(-1)?.id ?? null;
       },
-      changed: (rootId, runId) => this.emitToThread(rootId, 'workflows.changed', { threadId: rootId, runId }),
+      changed: (rootId, runId, templatesProjectId) => {
+        if (templatesProjectId !== undefined) this.emit('workflows.changed', { threadId: rootId, runId, templatesProjectId });
+        else this.emitToThread(rootId, 'workflows.changed', { threadId: rootId, runId });
+      },
       // The wall clock, as the team demo uses: a running step's elapsed time counts from it.
       now: () => Date.now() + this.workflowLag,
       delayMs: () => this.delayMs,

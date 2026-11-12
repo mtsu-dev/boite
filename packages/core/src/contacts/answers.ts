@@ -14,9 +14,14 @@ export function contactAnswer(core: Core, request: ContactRequest, name: string,
   const list = threads.slice(0, 20).map(entry => `${JSON.stringify(entry.title)} (${entry.machine.replace(/\s+/g, '-')}/${entry.threadId}${entry.status === 'idle' ? '' : `, ${entry.status}`})`);
   const responder = request.decidedBy === 'owner' ? name : request.decidedBy === 'bot' ? `${name}'s Operator` : `${name}'s Boite${request.decidedBy === 'match' || request.decidedBy === 'concierge' ? ' automatically' : ''}`;
   const peer = request.relation?.remote, at = peer ? `${name.replace(/\s+/g, '-')}/${peer.threadId}` : '';
+  // With a Contacts bot, an ordinary thread reaches a contact's thread only once the bots put them in touch (`reach.ts`), opened project or not.
+  const bot = core.workforce.builtin('contacts') === null ? null : core.workforce.builtinThread('contacts');
+  const throughBot = bot !== null && bot !== request.from.threadId;
+  const reach = throughBot ? `To write to one, ask for it: boite threads ask --to ${name.replace(/\s+/g, '-')}/<thread-id> <what you need>; the Contacts bots put you in touch.`
+    : 'Write to one with boite threads send <contact>/<thread-id> <text>; boite threads shows them.';
   const body = request.status !== 'accepted' ? `${responder} refused your request: ${request.reason ?? 'no reason given'}`
     : peer ? `${responder} put you in touch with ${JSON.stringify(peer.title)} (${at}). Write to it with boite threads send ${at} <text>.`
-    : `${responder} opened its project ${JSON.stringify(request.project?.name ?? '')} to you. ${list.length ? `Its threads: ${list.join('; ')}.` : 'No thread of it can be reached yet.'} Write to one with boite threads send <contact>/<thread-id> <text>; boite threads shows them.`;
+    : `${responder} opened its project ${JSON.stringify(request.project?.name ?? '')} to you. ${list.length ? `Its threads: ${list.join('; ')}.` : 'No thread of it can be reached yet.'} ${reach}`;
   if (core.coordination.mailboxes.answer(request, name, body.slice(0, 4000))) return;
   contactNotice(core, request.coreId, name, request.id, request.from.threadId, `Answer to your request to ${name}`, body);
 }

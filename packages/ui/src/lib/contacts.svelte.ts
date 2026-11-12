@@ -147,7 +147,8 @@ export class ContactsView {
     if (done && this.state) this.state.contacts = this.state.contacts.filter(entry => entry.coreId !== coreId);
   }
 
-  async decide(id: string, decision: { accept: true; projectId: ProjectId } | { accept: false; reason: string }): Promise<ContactRequest | null> {
+  /** Accept without a project only on a request the bot settles (`settledByBot`): the bot may then act on it. */
+  async decide(id: string, decision: { accept: true; projectId?: ProjectId } | { accept: false; reason: string }): Promise<ContactRequest | null> {
     const request = await this.#run(`decide:${id}`, () => this.#connected().call('contacts.decide', { id, ...decision }));
     if (request && this.state) this.state.requests = this.state.requests.map(entry => entry.id === id ? request : entry);
     return request;
@@ -301,7 +302,7 @@ export function contactRows(views: readonly MachineContacts[]): ContactRow[] {
     if (!state) continue;
     const group = machine.store.group;
     for (const contact of state.contacts) {
-      const waiting = state.requests.filter(request => request.coreId === contact.coreId && request.direction === 'in' && request.status === 'pending').length
+      const waiting = state.requests.filter(request => request.coreId === contact.coreId && waitsForOwner(request)).length
         + (state.mail ?? []).filter(letter => letter.coreId === contact.coreId).length;
       const key = `${group ? `group:${group.id}` : `machine:${machine.id}`}:${contact.coreId}`;
       const seen = rows.get(key);
@@ -320,6 +321,23 @@ export type InviteReach = 'tailnet' | 'share' | 'internet';
 export async function openContact(owner: Store, coreId: string | null): Promise<void> {
   if (workspace.active !== owner) await workspace.select(owner);
   owner.showHome(coreId);
+}
+
+/**
+ * A contact's request the owner must answer: one with no Contacts bot, or one
+ * the bot put on the owner's card. A request with the bot, or on its way to the
+ * Bots machine, is settled there, a trusted contact's on its own.
+ */
+export function waitsForOwner(request: ContactRequest): boolean {
+  return request.direction === 'in' && request.status === 'pending' && (request.stage === undefined || request.stage === 'owner');
+}
+
+/**
+ * A request the Contacts bot settles that asks for a thread, not a project: the
+ * owner's Accept lets the bot put the threads in touch, and shares no project.
+ */
+export function settledByBot(request: ContactRequest): boolean {
+  return (request.stage === 'bot' || request.stage === 'owner') && request.want !== undefined && request.want !== 'share';
 }
 
 /** Pending requests first, newest first within each half. */

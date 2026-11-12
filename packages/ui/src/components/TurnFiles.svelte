@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { onDestroy, untrack } from 'svelte';
+  import type { ToolDisclosure } from '../lib/store/deferred-parts';
   // The files one finished answer made or changed, at its end. A row opens the
   // file in the side panel, which already reads text, shows pictures and offers
   // a download for the rest. "Show in folder" hands the path to the system file
@@ -20,8 +22,13 @@
    * the whole thread changed is the working tree against its last commit: the
    * Changes panel, one click away for whoever can read the repository.
    */
-  let { store, files, diffs = [], cwd, deferred = [], loadDiffs, inline = false }: {
-    store: Store; files: TurnFile[]; diffs?: TurnDiff[]; /** The directory `files` were read against. */ cwd: string; deferred?: { messageId: string; toolId: string }[]; loadDiffs?: () => Promise<void>;
+  type Source = { messageId: string; toolId: string };
+  let { store, files, diffs = [], cwd, deferred = [], sources = [], acquireDiff, loadDiffs, inline = false }: {
+    store: Store; files: TurnFile[]; diffs?: TurnDiff[];
+    /** The directory `files` were read against. */ cwd: string;
+    deferred?: Source[]; sources?: Source[];
+    acquireDiff?: (source: Source) => ToolDisclosure;
+    loadDiffs?: () => Promise<void>;
     /** On the tool line of the turn's last change (ToolGroup), which already names the files: the lines it adds, no title or card of its own. */
     inline?: boolean;
   } = $props();
@@ -40,13 +47,44 @@
   let loadError = $state<string | null>(null);
   let attempt = $state(0);
   let attempted = '';
+  const held = new Map<string, ToolDisclosure>();
+  let loadVersion = 0;
+  const sourceKey = (source: Source) => JSON.stringify([source.messageId, source.toolId]);
+  function releaseDiffs(): void {
+    loadVersion++;
+    for (const owner of held.values()) owner.release();
+    held.clear();
+  }
+  $effect(() => {
+    const visible = showDiff;
+    const wanted = visible ? sources.map(source => ({ source, key: sourceKey(source) })) : [];
+    untrack(() => {
+      if (!visible) { releaseDiffs(); loading = false; return; }
+      const keys = new Set(wanted.map(({ key }) => key));
+      for (const [key, owner] of held) if (!keys.has(key)) { owner.release(); held.delete(key); }
+      if (!acquireDiff) return;
+      for (const { key, source } of wanted) if (!held.has(key)) {
+        const owner = acquireDiff(source);
+        held.set(key, owner);
+        // The load effect reports errors and retries for the deferred subset.
+        void owner.ready.catch(() => {});
+      }
+    });
+  });
+  onDestroy(releaseDiffs);
   $effect(() => {
     const key = `${attempt}:${deferred.map(source => `${source.messageId}/${source.toolId}`).join(',')}`;
-    if (!showDiff || !deferred.length || !loadDiffs || loading || attempted === key) return;
+    if (!deferred.length) { attempted = ''; return; }
+    if (!showDiff || loading || attempted === key) return;
+    const load = untrack(() => acquireDiff
+      ? () => Promise.all(deferred.map(source => held.get(sourceKey(source))?.refresh())).then(() => {})
+      : loadDiffs);
+    if (!load) return;
     attempted = key;
     loadError = null;
     loading = true;
-    void loadDiffs().catch(reason => { loadError = errorText(reason); }).finally(() => { loading = false; });
+    const version = ++loadVersion;
+    void load().catch(reason => { if (loadVersion === version) loadError = errorText(reason); }).finally(() => { if (loadVersion === version) loading = false; });
   });
 
   function toggleAll(): void {

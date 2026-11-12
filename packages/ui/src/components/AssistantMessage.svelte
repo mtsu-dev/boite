@@ -33,6 +33,7 @@
   import { experimentOn } from '../lib/experiments.svelte';
   import { asksDocked, cardedCall, failedCall, questionDocked } from '../lib/one-status';
   import { machineAway } from '../lib/machine-away';
+  import { textRevision } from '../lib/text-revisions';
 
   /**
    * An assistant or system message in the timeline: the model that wrote it,
@@ -166,6 +167,7 @@
       <div class="part" data-kind={activity.every((part) => part.type === 'thinking') ? 'thinking' : 'tool'}>
         <ToolGroup parts={activity} {compactions} {thinkingLive} {isBackground} {store} {threadId} {carded} changes={hosted}
           loadOutput={toolId => store.loadToolOutput(threadId, message.id, toolId)}
+          acquireOutput={toolId => store.acquireToolOutput(threadId, message.id, toolId)}
           permissionRequest={requestId => store.permissionRequests[requestId] ?? null}
           answerPermission={(requestId, decision) => store.answer(requestId, decision)} />
       </div>
@@ -190,7 +192,7 @@
         {:else if writtenPlan(shownText) && !(index === caretAt && part.complete !== true)}
           {@render plan(shownText)}
         {:else}
-        <Prose text={shownText} live={index === caretAt && part.complete !== true}
+        <Prose text={shownText} revision={textRevision(part)} live={index === caretAt && part.complete !== true}
           typing={!compacting && latestInTurn && !toolRunning && message.role === 'assistant' && store.connection === 'ready' && store.openThread?.status === 'running' && index === message.parts.length - 1 && index === caretAt && part.complete !== true} {store} {threadId}
           views={message.role === 'assistant' ? views : undefined} />
         {/if}

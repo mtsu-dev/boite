@@ -43,6 +43,17 @@ export function oneTurn(db: Database, which: keyof typeof ONE_TURN, ...params: s
   return row === null ? null : toTurn(row);
 }
 
+/** Primary-key page lookups plus the small active-turn index, in journal order. */
+export function pageTurns(db: Database, threadId: string, turnIds: Iterable<string>): Turn[] {
+  // CROSS JOIN starts with the requested ids instead of scanning the thread's
+  // history. UNION deduplicates an active turn also referenced by the page.
+  const rows = db.query(`SELECT * FROM turns WHERE rowid IN (
+    SELECT t.rowid FROM json_each(?2) ids CROSS JOIN turns t ON t.id = ids.value WHERE t.thread_id = ?1
+    UNION SELECT rowid FROM turns WHERE thread_id = ?1 AND status IN ('running', 'queued')
+  ) ORDER BY rowid`).all(threadId, JSON.stringify([...turnIds])) as TurnRow[];
+  return rows.map(toTurn);
+}
+
 /**
  * What one agent session already used, for an agent that restores its own
  * totals on resume: the last `agentTotals` a turn of the thread in session

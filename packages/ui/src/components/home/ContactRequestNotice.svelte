@@ -4,7 +4,7 @@
   import { ArrowRight, Bell, Check, Mail, X } from '@lucide/svelte';
   import { Closing } from '../../lib/closing.svelte';
   import { contactsShown } from '../../lib/contacts-rail.svelte';
-  import { openContact, watchContacts, type ContactsView } from '../../lib/contacts.svelte';
+  import { openContact, waitsForOwner, watchContacts, type ContactsView } from '../../lib/contacts.svelte';
   import { count } from '../../lib/format';
   import type { Store } from '../../lib/store.svelte';
   import { fill, strings } from '../../lib/strings';
@@ -17,7 +17,8 @@
   /**
    * What waits for the owner from contacts, on every listed machine, oldest
    * first: a request opens its contact's page; a message outside a shared
-   * project is read here and delivered, refused or opened on that page.
+   * project is read here and delivered, refused or opened on that page. A
+   * request the Contacts bot settles waits on the bot, not here.
    * Activity lists them too (ContactInboxRows.svelte); its count comes from here.
    */
   let { store }: { store: Store } = $props();
@@ -25,7 +26,7 @@
     & ({ request: ContactRequest; letter?: undefined } | { letter: HeldContactLetter; request?: undefined });
   const watched = watchContacts(() => workspace.machinesOr(store).filter(machine => contactsShown(machine.store)));
   const waiting = $derived(watched().flatMap(({ machine, view }): Row[] => [
-    ...(view.state?.requests ?? []).filter(request => request.direction === 'in' && request.status === 'pending')
+    ...(view.state?.requests ?? []).filter(waitsForOwner)
       .map(request => ({ machine, view, key: `${machine.id}:${request.id}`, createdAt: request.createdAt, request })),
     ...(view.state?.mail ?? []).map(letter => ({ machine, view, key: `${machine.id}:mail:${letter.id}`, createdAt: letter.createdAt, letter }))
   ]).sort((a, b) => a.createdAt - b.createdAt));

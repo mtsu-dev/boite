@@ -738,7 +738,7 @@
         <!-- The turn's change count, on the tool line of its last change (`inline`) or at its end. -->
         {#snippet changes(inline: boolean)}
           {@const files = turn ? turnChanges.filesOf(turn) : null}
-          {#if files}<TurnFiles {store} {...files} {inline} loadDiffs={() => Promise.all(files.deferred.map(source => store.loadToolOutput(threadId, source.messageId, source.toolId))).then(() => {})} />{/if}
+          {#if files}<TurnFiles {store} {...files} {inline} acquireDiff={source => store.acquireToolOutput(threadId, source.messageId, source.toolId, false)} />{/if}
         {/snippet}
         <article
           use:track={{ row, joined }}
