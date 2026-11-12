@@ -36,9 +36,9 @@ install a release without a click ([installing by itself](#installing-by-itself)
 
 ## Update everything
 
-An update button sits in the sidebar's foot, beside the limits and Settings,
+An update button sits at the foot of the app rail, beside the limits and Settings,
 whenever something can update: this desktop app, Boite on a machine connected
-with full control, or an agent there. Its card opens above the foot, bottom
+with full control, or an agent there. Its card opens beside the rail, bottom
 left, and lists each machine with what it would install, the running version
 beside the new one. A dot on the button marks a release not yet put off.
 

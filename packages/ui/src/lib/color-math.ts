@@ -83,10 +83,10 @@ export function colorTools() {
     return hex(channels.map(c => (c + m) * 255));
   }
   function accentHex(hue: number): string {
-    const angle = hue * Math.PI / 180, a = .19 * Math.cos(angle), b = .19 * Math.sin(angle);
-    const l = (.68 + .3963377774 * a + .2158037573 * b) ** 3;
-    const m = (.68 - .1055613458 * a - .0638541728 * b) ** 3;
-    const s = (.68 - .0894841775 * a - 1.291485548 * b) ** 3;
+    const angle = hue * Math.PI / 180, a = .141 * Math.cos(angle), b = .141 * Math.sin(angle);
+    const l = (.755 + .3963377774 * a + .2158037573 * b) ** 3;
+    const m = (.755 - .1055613458 * a - .0638541728 * b) ** 3;
+    const s = (.755 - .0894841775 * a - 1.291485548 * b) ** 3;
     return hex([4.0767416621 * l - 3.3077115913 * m + .2309699292 * s, -1.2684380046 * l + 2.6097574011 * m - .3413193965 * s, -.0041960863 * l - .7034186147 * m + 1.707614701 * s].map(c => (c <= .0031308 ? 12.92 * c : 1.055 * Math.max(c, 0) ** (1 / 2.4) - .055) * 255));
   }
   function accentHue(color: string): number {

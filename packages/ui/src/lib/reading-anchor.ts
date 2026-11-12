@@ -17,6 +17,13 @@ export class ReadingAnchor {
   current: RowAnchor | undefined;
   /** A saved place is still being put back: nothing reads a new one until the reader moves. */
   restoring: boolean;
+  /**
+   * A page landed around the reader, who keeps the row read as it landed, to
+   * the fraction of a pixel. The browser snaps every scroll to a whole pixel,
+   * its own anchoring too: an anchor read again after each correction took
+   * each snap's remainder in, and a landing moved the text 1.23 px on a phone.
+   */
+  held = false;
   /** The rows on the page by id, kept by the list as it mounts them: an anchor is found without searching every node of the thread. */
   readonly nodes = new Map<string, HTMLElement>();
 
@@ -27,7 +34,7 @@ export class ReadingAnchor {
 
   /** Reads the anchor: the first row of `column`, whose children the rows are, that reaches the viewport. */
   remember(viewport: HTMLElement | undefined, column: HTMLElement | undefined): void {
-    if (!viewport?.isConnected || !viewport.clientHeight || this.restoring || !column) return;
+    if (!viewport?.isConnected || !viewport.clientHeight || this.restoring || this.held || !column) return;
     const top = viewport.getBoundingClientRect().top;
     for (let node = column.firstElementChild as HTMLElement | null; node; node = node.nextElementSibling as HTMLElement | null) {
       const id = node.dataset['mid'];
@@ -37,6 +44,19 @@ export class ReadingAnchor {
       this.current = { id, offset: box.top - top, message: node.dataset['message'] ?? id };
       return;
     }
+  }
+
+  /** Keeps `anchor` until the reader moves it (`release`). */
+  hold(anchor: RowAnchor): void {
+    this.current = anchor;
+    this.held = true;
+  }
+
+  /** A scroll that took the held row more than 2 px away, or off the page, is the reader's: the anchor is read again. */
+  release(viewport: HTMLElement): void {
+    if (!this.held) return;
+    const drift = this.current ? this.drift(viewport, this.current) : null;
+    if (drift === null || Math.abs(drift) > 2) this.held = false;
   }
 
   /** How far `anchor`'s row sits from where it was read, null when it is not on the page. */

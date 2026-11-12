@@ -7,6 +7,12 @@ import { OWNER_ONLY_COMMANDS, OWNER_ONLY_IN_ADVANCED, OWNER_ONLY_IN_SETTINGS, me
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
 
+
+async function openDisplayMenu(): Promise<void> {
+  query<HTMLButtonElement>('[data-testid=grouping-options]').click();
+  await waitFor(() => document.querySelector('[data-testid=grouping-options-menu]') !== null);
+}
+
 test('a dialog waiting for an answer holds the window chords', async ({ app: _app }) => {
   const open = store.openThread?.id;
   const page = store.page;
@@ -56,8 +62,10 @@ test('a paired device is offered none of the affordances the core refuses it', a
   expect(store.error).toBeNull();
   expect(store.threads.length).toBe(4);
 
-  // Its core lets it add a project (deviceProjects): the same form the desktop opens, checked by that core.
+  // Its core lets it add a project (deviceProjects): Add a project sits in the thread list's display menu, the same form the desktop opens, checked by that core.
+  await openDisplayMenu();
   expect(document.querySelector('[data-testid=add-project]')).not.toBeNull();
+  query<HTMLButtonElement>('[data-testid=grouping-options]').click();
 
   store.paletteOpen = true;
   await waitFor(() => document.querySelector('[data-testid=palette]') !== null);
@@ -95,7 +103,9 @@ test('the desktop still has every one of them', async ({ app: _app }) => {
   expect(store.principal).toBe('owner');
   expect(store.owner).toBe(true);
 
+  await openDisplayMenu();
   expect(document.querySelector('[data-testid=add-project]')).not.toBeNull();
+  query<HTMLButtonElement>('[data-testid=grouping-options]').click();
 
   store.paletteOpen = true;
   await waitFor(() => document.querySelector('[data-testid=palette]') !== null);
@@ -165,8 +175,10 @@ test('the desktop still has every one of them', async ({ app: _app }) => {
   store.showSettings('advanced', 'phone');
   await waitFor(() => document.querySelector('[data-testid=phone-settings]') !== null);
   for (const selector of OWNER_ONLY_IN_ADVANCED) expect(document.querySelector(selector)).not.toBeNull();
-  store.showSettings('resources');
-  await waitFor(() => document.querySelector('[data-testid=resources-page]') !== null);
+  // The windows-and-sound card moved from Resources to General: the old link still opens it.
+  store.showSettings('resources', 'quiet');
+  await waitFor(() => document.querySelector('[data-testid=setting-focus-guard]') !== null);
+  expect(store.settingsTab).toBe('general');
   for (const id of ['setting-focus-guard', 'setting-mute-agents']) {
     const input = query(`[data-testid=${id}]`) as HTMLInputElement;
     expect(input.checked).toBe(true);
@@ -175,10 +187,11 @@ test('the desktop still has every one of them', async ({ app: _app }) => {
   }
   expect(store.settings?.focusGuard).toBe(false);
   expect(store.settings?.muteAgents).toBe(false);
-  store.showSettings('general');
-  await waitFor(() => document.querySelector('[data-testid=settings-page]') !== null);
-  expect(document.querySelector('[data-testid=setting-focus-guard]')).toBeNull();
+  // Memory and processes no longer holds them; General keeps what was saved.
   store.showSettings('resources');
+  await waitFor(() => document.querySelector('[data-testid=resources-page]') !== null);
+  expect(document.querySelector('[data-testid=setting-focus-guard]')).toBeNull();
+  store.showSettings('general');
   await waitFor(() => document.querySelector('[data-testid=setting-focus-guard]') !== null);
   expect((query('[data-testid=setting-focus-guard]') as HTMLInputElement).checked).toBe(false);
 

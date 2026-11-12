@@ -1,22 +1,31 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
-  import { ArrowLeft, Bot } from '@lucide/svelte';
+  import { ArrowLeft, CircleAlert, WifiOff } from '@lucide/svelte';
+  import Notice from '../Notice.svelte';
+  import EmptyState from '../EmptyState.svelte';
   import type { Team } from '@boite/contracts';
-  import { AgentsView, agentOfThread, agentRows, agentsFilter, firstDeskVisit, lastOpenedAgent, openAgent, rememberAgent, statusOf, type AgentFocus } from '../../lib/agents.svelte';
+  import { AgentsView, agentOfThread, agentRows, firstDeskVisit, lastOpenedAgent, openAgent, rememberAgent, statusOf, type AgentFocus } from '../../lib/agents.svelte';
   import { agentDirectory } from '../../lib/agent-directory.svelte';
+  import { agentsIntent, takeAgentsIntent } from '../../lib/agents-view.svelte';
   import { experimentOn } from '../../lib/experiments.svelte';
   import { mobileOverlay } from '../../lib/mobile-history';
   import { mobileChrome } from '../../lib/mobile-chrome.svelte';
+  import { titleSlot } from '../../lib/title-slot.svelte';
   import type { AgentPane } from '../../lib/store/layout.svelte';
   import type { Store } from '../../lib/store.svelte';
   import { fill, strings } from '../../lib/strings';
   import { teamsOf } from '../../lib/teams.svelte';
   import { workspace, type Machine } from '../../lib/workspace.svelte';
   import ChatView from '../ChatView.svelte';
+  import { awaitsFirstTask } from '../../lib/bot-first-task';
+  import { focusComposer } from '../../lib/focus';
+  import AgentAvatar from './AgentAvatar.svelte';
+  import { avatarLit } from '../../lib/avatar-lit';
   import AgentsRail from './AgentsRail.svelte';
   import AgentHeader from './AgentHeader.svelte';
   import AgentSheet from './AgentSheet.svelte';
+  import AgentProblem from './AgentProblem.svelte';
   import AgentEditor from './AgentEditor.svelte';
   import AgentEngineSettings from './AgentEngineSettings.svelte';
   import TeamDialog from '../teams/TeamDialog.svelte';
@@ -48,13 +57,11 @@
   /**
    * The list shows every connected machine's agents, the way the thread list
    * shows every machine's threads. The page itself works on one machine at a
-   * time: a row of another opens that machine. A filter holds only while the
-   * page is on the machine it names.
+   * time: a row of another opens that machine.
    */
   const machines = $derived(workspace.machinesOr(store));
   const here = $derived(machines.find(m => m.store === store) ?? null);
-  const filter = $derived(here && agentsFilter.machine === here.id ? here.id : null);
-  const others = $derived(filter ? [] : machines.filter(m => m.store !== store).map(machine => ({ machine, view: AgentsView.of(machine.store) })));
+  const others = $derived(machines.filter(m => m.store !== store).map(machine => ({ machine, view: AgentsView.of(machine.store) })));
   const lists = $derived([...(here ? [{ machine: here, view }] : []), ...others]);
   const snapshot = $derived(view.snapshot);
   const rows = $derived(agentRows(snapshot));
@@ -76,6 +83,8 @@
   /** The conversation of an archived agent reads, and takes nothing more. */
   const locked = $derived(agent?.status === 'archived' ? labels.archivedNotice : null);
   const detail = $derived(!!focus || (!!(thread || teamThread) && !listShown));
+  /** A bot with nothing yet: its first task is the page's one prompt, centred over the empty conversation. */
+  const firstTask = $derived(!!agent && !locked && awaitsFirstTask(store, view, agent.id));
 
   onMount(() => { view.start(); return () => view.pause(); });
   // The other machines' snapshots load while their rows are listed.
@@ -112,6 +121,16 @@
     const id = agentId;
     if (!id || !threadId || narrow.current) return;
     untrack(() => { if (!store.panel.isOpen && store.panel.surfaces.length === 0 && firstDeskVisit(id)) store.panel.open('desk'); });
+  });
+  // The window's rail asks for a new bot, a new team or the engine settings: the page owns those forms.
+  $effect(() => {
+    void agentsIntent.request;
+    untrack(() => {
+      const kind = takeAgentsIntent(store);
+      if (kind === 'new-bot') focus = { kind: 'new' };
+      else if (kind === 'engine') focus = { kind: 'engine' };
+      else if (kind === 'new-team' && experimentOn('teams') && store.owner) creatingTeam = true;
+    });
   });
   /** The desktop's default agent was opened, or gave way to one named on the way in. */
   let tried = false;
@@ -162,6 +181,13 @@
     return () => { mobileChrome.detail = false; };
   });
 
+  // On a desktop the bot's name and buttons stand in the window's top bar, not in the card.
+  $effect(() => {
+    if (narrow.current || focus || !thread || !agent) return;
+    titleSlot.current = barHead;
+    return () => { if (titleSlot.current === barHead) titleSlot.current = null; };
+  });
+
   /** Opens an agent from the list, with one of its panes when named (its row's Edit opens its settings). */
   function open(machine: Machine, agentId: string, next?: AgentPane) {
     // Read now: the page, and the row's values with it, is drawn again for the other machine.
@@ -187,8 +213,16 @@
   }
 </script>
 
-<AgentsRail {view} {lists} {filter} active={focus ? null : agent?.id ?? null} activeTeam={focus ? null : teamThread?.id ?? null} engine={focus?.kind === 'engine'}
-  onopen={open} onteam={openTeam} oncreate={() => { focus = { kind: 'new' }; }} onnewteam={() => { creatingTeam = true; }} onengine={() => { focus = focus?.kind === 'engine' ? null : { kind: 'engine' }; }} />
+{#snippet barHead()}
+  {#if thread && agent}
+    <AgentHeader {store} {view} {agent} {status} {thread} onpane={next => { pane = pane === next ? null : next; }} />
+  {/if}
+{/snippet}
+
+<AgentsRail {view} {lists} active={focus ? null : agent?.id ?? null} activeTeam={focus ? null : teamThread?.id ?? null}
+  agent={thread ? agent : null} {status} {thread} team={teamThread ? team : null} conversation={!focus && !pane && !!(thread || teamThread)}
+  onopen={open} onteam={openTeam} oncreate={() => { focus = { kind: 'new' }; }} onnewteam={() => { creatingTeam = true; }} onengine={() => { focus = focus?.kind === 'engine' ? null : { kind: 'engine' }; }}
+  onpane={next => { focus = null; pane = pane === next ? null : next; }} />
 
 {#if creatingTeam}
   <TeamDialog {view} {others} onclose={() => { creatingTeam = false; }} ondone={created => { if (here) openTeam(here, created); }} />
@@ -197,9 +231,11 @@
 <main class="agents-main" class:open={detail} data-testid="agents-page">
   <div class="agents-card framed" class:chat={!focus && !!(thread || teamThread)}>
     {#if view.error || view.loadError}
-      <div class="agent-error" role="alert">{view.error || view.loadError}<button type="button" class="ghost small" onclick={() => { view.error = ''; void view.refresh(); }}>{labels.retry}</button></div>
+      <div class="agent-error"><Notice icon={CircleAlert} tone="danger" role="alert" detail={view.error || view.loadError}>
+        {#snippet actions()}<button type="button" class="small" onclick={() => { view.error = ''; void view.refresh(); }}>{labels.retry}</button>{/snippet}
+      </Notice></div>
     {/if}
-    {#if snapshot && store.connection !== 'ready'}<p class="agent-error" role="status">{labels.stale}</p>{/if}
+    {#if snapshot && store.connection !== 'ready'}<div class="agent-error"><Notice icon={WifiOff} detail={labels.stale} /></div>{/if}
 
     {#if focus}
       <header class="agents-detail-head">
@@ -214,9 +250,19 @@
         {/if}
       </div>
     {:else if thread && agent}
-      <AgentHeader {store} {view} {agent} {status} {thread} onpane={next => { pane = pane === next ? null : next; }} onback={narrow.current ? back : undefined} />
+      {#if narrow.current}<AgentHeader {store} {view} {agent} {status} {thread} onpane={next => { pane = pane === next ? null : next; }} onback={back} />{/if}
+      {#if status?.problem && agent.status !== 'archived'}
+        <AgentProblem {view} {agent} problem={status.problem} onfix={() => { pane = 'settings'; }} />
+      {/if}
       <div class="agents-chat">
         <ChatView {store} {locked} />
+        {#if firstTask && agent}
+          <div class="agent-first-task" data-testid="bot-first-task">
+            <AgentAvatar kind="profile" id={agent.id} name={agent.name} avatar={agent.avatar} size={40} lit={avatarLit({ open: true })} />
+            <p>{labels.deskPanel.workEmpty}</p>
+            {#if store.owner}<button type="button" class="small" data-testid="desk-work-start" onclick={() => focusComposer({ typing: true })}><span class="ui-label">{labels.deskPanel.workStart}</span></button>{/if}
+          </div>
+        {/if}
       </div>
       <AgentSheet {view} {agent} {pane} onclose={() => { pane = null; }} />
     {:else if thread}
@@ -228,14 +274,17 @@
     {:else if !snapshot}
       <p class="agent-empty">{view.loadError ? labels.offline : strings.app.loading}</p>
     {:else if !rows.length}
-      <div class="agent-welcome" data-testid="agents-empty">
-        <Bot size={32} strokeWidth={1.5} />
-        <p>{elsewhere && here ? fill(labels.noAgentsOn, { machine: here.label }) : labels.noAgents}</p>
-        <p class="hint">{labels.welcomeHint}</p>
-        {#if store.owner}<button type="button" class="primary" onclick={() => { focus = { kind: 'new' }; }} data-testid="agents-first">{labels.createAgent}</button>{/if}
-      </div>
+      <!-- The app's one empty view: the house bot, the line, then what a bot is for and the way to make one. -->
+      <EmptyState line={elsewhere && here ? fill(labels.noAgentsOn, { machine: here.label }) : labels.noAgents} testid="agents-empty">
+        {#snippet action()}
+          <p>{labels.welcomeHint}</p>
+          {#if store.owner}<button type="button" class="primary" onclick={() => { focus = { kind: 'new' }; }} data-testid="agents-first"><span class="ui-label">{labels.createAgent}</span></button>{/if}
+        {/snippet}
+      </EmptyState>
     {:else if openFailed}
-      <div class="agent-error" role="alert">{labels.openFailed}<button type="button" class="ghost small" onclick={openDefault} data-testid="agents-open-retry">{labels.retry}</button></div>
+      <div class="agent-error"><Notice icon={CircleAlert} tone="danger" role="alert" detail={labels.openFailed}>
+        {#snippet actions()}<button type="button" class="small" onclick={openDefault} data-testid="agents-open-retry">{labels.retry}</button>{/snippet}
+      </Notice></div>
     {:else}
       <p class="agent-empty">{strings.app.loading}</p>
     {/if}

@@ -18,7 +18,7 @@ async function size(phone: boolean) {
   await page.waitFor(`innerWidth === ${phone ? 390 : 1280} && innerHeight === ${phone ? 844 : 900}`);
 }
 async function capture(name: string) {
-  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
   expect(await page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')).toBe(true);
   await page.screenshot(join(import.meta.dir, '.artifacts', `${name}.png`));
 }

@@ -3,18 +3,18 @@
   import { MediaQuery } from 'svelte/reactivity';
   import { experimentOn } from '../lib/experiments.svelte';
   import { pinnedQuotas, PINNED_QUOTA_WIDTH } from '../lib/pinned-quotas.svelte';
-  import Deferred, { parts } from './Deferred.svelte';
+  import Deferred from './Deferred.svelte';
+  import { parts } from '../lib/deferred-parts';
   import { ChevronDown, FolderOpen, VenetianMask } from '@lucide/svelte';
-  import { fill, strings } from '../lib/strings';
+  import { strings } from '../lib/strings';
   import { modePhrase } from '../lib/permission-modes';
-  import { effortName, projectName } from '../lib/format';
+  import { projectName } from '../lib/format';
   import type { Store } from '../lib/store.svelte';
   import { DRAFT_STASH_KEY } from '../lib/prefs';
   import { lastIndexById } from '../lib/thread-rows';
   import { slideFrom } from '../lib/motion';
   import Composer from './Composer.svelte';
   import FolderGoneNotice from './FolderGoneNotice.svelte';
-  import AgentDock from './AgentDock.svelte';
   import ProjectChoice from './ProjectChoice.svelte';
   import MessageList from './MessageList.svelte';
   import ThreadLoading from './ThreadLoading.svelte';
@@ -22,11 +22,13 @@
   import ThreadRetry from './ThreadRetry.svelte';
   import ForkReturn from './ForkReturn.svelte';
   import ProjectTile from './ProjectTile.svelte';
-  import MachineIcon from './MachineIcon.svelte';
   import { workspace } from '../lib/workspace.svelte';
   import DoneThreadNotice from './DoneThreadNotice.svelte';
   import WorktreeGoneNotice from './WorktreeGoneNotice.svelte';
   import ContactHoldNotice from './ContactHoldNotice.svelte';
+  import { firstRunScreen, needsAnAI } from '../lib/first-run';
+  import { closingLine } from '../lib/closing-line';
+  import { HOUSE_BOT } from '../lib/robots';
 
   /** `locked`: the conversation reads but takes nothing more, said in place of the composer (an archived agent's). */
   let { store, locked = null }: { store: Store; locked?: string | null } = $props();
@@ -39,8 +41,6 @@
     && !(pinnedQuotas.wantsDock(store) && dockAvailable));
   let discussion = $state<HTMLElement>();
   let quotaRoom = $state<HTMLElement>();
-  /** How tall the subagent bar stands over the composer: the band of tasks floats above it, not over it. */
-  let agentDockRoom = $state(0);
   $effect(() => {
     const box = discussion, column = quotaRoom, owner = store;
     if (!box || !column || !experimentOn('pinned-quotas') || !pinnedQuotas.current.pinned) return;
@@ -74,6 +74,9 @@
     return at < 0 ? held : held.slice(0, at);
   });
   let messages = $derived(sending ? [...kept, sending] : kept);
+  /** A finished thread's quiet last word: done, how long it worked, what its last turn changed. */
+  let closing = $derived(thread && !thread.archived && !locked && !sending && store.rewinding[thread.id] === undefined && thread.status !== 'running' && thread.status !== 'waiting' && store.loadingThreadId !== thread.id
+    ? closingLine(thread.turns, kept, thread.cwd) : null);
   // The timeline still needs agent messages after reload, even with settings hidden.
   let threadId = $derived(thread?.id);
   let agentSession = $derived(!!thread?.agentSessionId);
@@ -97,11 +100,7 @@
   });
   let project = $derived(store.openProject);
   let draftChoice = $derived(store.defaultChoice());
-  let draftModel = $derived(store.modelOf(draftChoice));
   let draftProvider = $derived(draftChoice ? store.providerOf(draftChoice.providerId) : null);
-  let draftEffort = $derived(draftChoice?.effort ?? draftModel?.effort?.default ?? null);
-  let effortLabel = $derived(draftEffort ? effortName(draftModel, draftEffort) : null);
-  let modelLabel = $derived(draftModel?.name ?? draftChoice?.model ?? draftProvider?.name ?? '');
   /** The machine the draft's project is on: the heading ends with it, one machine or several. */
   let machine = $derived(workspace.machinesOr(store).find((entry) => entry.store === store) ?? null);
 
@@ -130,13 +129,16 @@
   </div>
 {:else if thread?.teamId}
   {#if TeamChat}{#key thread.id}<TeamChat {store} {thread} />{/key}{/if}
+{:else if !thread && !sending && needsAnAI(store)}
+  <!-- Nothing to start a thread on yet: one action first, the folder and the composer after it. -->
+  <Deferred part={firstRunScreen}>{#snippet children(FirstRun)}<FirstRun {store} />{/snippet}</Deferred>
 {:else if thread?.councilId}
   {#if CouncilSalon}{#key thread.id}<div class="salon-page"><CouncilSalon {store} councilId={thread.councilId} threadId={thread.id} /></div>{/key}{/if}
 {:else}
   <!-- The draft's roomier composer belongs to the middle of the column: once
      the prompt is on its way the composer is at the bottom, at its thread size,
      or it shrinks a second time when the thread opens. -->
-  <section class="chat" class:drafting={!thread && !sending} bind:this={chat} data-testid="chat" style:--agent-dock-room={thread ? `${agentDockRoom}px` : undefined}>
+  <section class="chat" class:drafting={!thread && !sending} bind:this={chat} data-testid="chat">
     {#if thread?.forkOrigin}{#key thread.id}<ForkReturn {store} {thread} />{/key}{/if}
     <div class="discussion" class:draft-body={!thread && !sending} bind:this={discussion} data-testid={!thread && !sending ? 'draft-empty' : undefined}>
     {#if experimentOn('pinned-quotas') && pinnedQuotas.current.pinned}<div class="quota-room" bind:this={quotaRoom} aria-hidden="true"></div>{/if}
@@ -148,7 +150,7 @@
         {#if store.loadingThreadId === thread.id && messages.length === 0}
           <ThreadLoading progress={store.loadingBytes?.threadId === thread.id ? store.loadingBytes : null} />
         {:else}
-          <MessageList {store} threadId={thread.id} {messages} />
+          <MessageList {store} threadId={thread.id} {messages} {closing} />
         {/if}
       {/key}
     {:else if sending}
@@ -160,12 +162,14 @@
           <p>{strings.mobile.draftHint}</p>
           <span class="mobile-place">
             <span class="project-choice"><ProjectChoice {store} testid="mobile-draft-project" phone>{#if project}<ProjectTile {project} {store} />{:else}<FolderOpen size={15} />{/if}<span class="project-label ui-label">{project ? projectName(project) : strings.drafts.name}</span><ChevronDown size={14} /></ProjectChoice></span>
-            {#if machine}<span class="ui-label">{strings.thread.onMachine}</span><span class="machine" data-testid="mobile-draft-machine"><MachineIcon icon={machine.icon} os={store.core?.os} size={15} /><span class="ui-label">{machine.label}</span></span>{/if}
+            {#if machine}<span class="ui-label">{strings.thread.onMachine}</span><span class="machine" data-testid="mobile-draft-machine"><span class="ui-label">{machine.label}</span></span>{/if}
           </span>
           {#if draftChoice}<small>{modePhrase(draftChoice.permissionMode, draftProvider)}</small>{/if}
           {#if store.draft?.worktree}<small>{strings.thread.inWorktree}</small>{/if}
         </div>
         <div class="draft-heading" data-testid="draft-sentence">
+          <!-- The house bot greets the most seen empty screen, as first run does: the cluster's one focal point. -->
+          <span class="start-mark" aria-hidden="true"><Deferred part={parts.RobotFace} quiet>{#snippet children(RobotFace)}<RobotFace robot={HOUSE_BOT} />{/snippet}</Deferred></span>
           <h1 class="start">
             <span class="ui-label">{strings.thread.start}</span>
             <span class="ui-label">{strings.thread.inProject}</span>
@@ -178,19 +182,13 @@
             </ProjectChoice></span>
             {#if machine}
               <span class="ui-label">{strings.thread.onMachine}</span>
-              <span class="machine" data-testid="draft-machine"><MachineIcon icon={machine.icon} os={store.core?.os} size={20} /><span class="ui-label">{machine.label}</span></span>
+              <!-- Plain words, not a picker's look: the machine follows the project, so nothing here changes it. -->
+              <span class="machine" data-testid="draft-machine"><span class="ui-label">{machine.label}</span></span>
             {/if}
           </h1>
-          {#if draftChoice || store.draft?.worktree}
-            <p class="draft-details">
-              {#if store.draft?.worktree}<span>{strings.thread.inWorktree}</span>{/if}
-              {#if draftChoice}
-                <span>{modePhrase(draftChoice.permissionMode, draftProvider)}</span>
-                <span>{strings.thread.using} {modelLabel}</span>
-                {#if effortLabel}<span>{fill(strings.thread.onEffort, { effort: effortLabel })}</span>{/if}
-              {/if}
-            </p>
-          {/if}
+          <!-- The one thing the composer does not say: the folder the agent works in, whole, as a path. Without a
+               project there is no folder to name, and the composer's placeholder already says what to type. -->
+          {#if project}<p class="start-hint" data-testid="draft-hint">{strings.thread.startIn} <code class="path">{project.path}</code></p>{/if}
         </div>
     {/if}
 
@@ -200,13 +198,17 @@
     {#if pinnedHere && pinnedQuotas.crowded.get(store) && (thread || sending)}<Deferred part={parts.PinnedQuota} quiet>{#snippet children(PinnedQuota)}<PinnedQuota {store} inline area={discussion} />{/snippet}</Deferred>{/if}
 
     {#if thread}<ThreadRecovery {store} /><ThreadRetry {store} />{/if}
-    {#if store.openProject?.missing === true && !thread?.agentSessionId}<FolderGoneNotice {store} project={store.openProject} />{/if}
-    {#if thread?.worktreeRemoved}<WorktreeGoneNotice removal={thread.worktreeRemoved} archived={thread.archived} />{/if}
-    {#if thread?.contactHold && !thread.archived}<ContactHoldNotice {store} threadId={thread.id} contacts={thread.contactHold.contacts} />{/if}
-    <!-- Right on the composer, so the band of tasks rises by this bar's height alone, whatever notice stands above. -->
-    {#if thread}<div bind:offsetHeight={agentDockRoom}><AgentDock {store} threadId={thread.id} /></div>{/if}
+    <!-- What stops the core here stands in the box's own slot, under its strip; a done thread says it all in one notice. -->
+    {#snippet stopNotice()}
+      {#if store.openProject?.missing === true && !thread?.agentSessionId}<FolderGoneNotice {store} project={store.openProject} />{/if}
+      {#if thread?.worktreeRemoved}<WorktreeGoneNotice {store} projectId={thread.projectId ?? null} removal={thread.worktreeRemoved} />{/if}
+      {#if thread?.contactHold && !thread.archived}<ContactHoldNotice {store} threadId={thread.id} contacts={thread.contactHold.contacts} />{/if}
+    {/snippet}
     {#if locked}<p class="locked" data-testid="chat-locked">{locked}</p>
-    {:else if thread?.archived}<DoneThreadNotice {store} threadId={thread.id} />{:else}<Composer {store} centered={!thread && !sending} />{/if}
+    {:else if thread?.archived}
+      {#if store.openProject?.missing === true && !thread.agentSessionId}<FolderGoneNotice {store} project={store.openProject} replaces={false} />{/if}
+      <DoneThreadNotice {store} threadId={thread.id} removal={thread.worktreeRemoved ?? null} />
+    {:else}<Composer {store} centered={!thread && !sending} notice={stopNotice} />{/if}
 
     <!-- The draft's heading and composer are one block in the middle of the
          column: the body above and this tail below share the free space. -->
@@ -235,27 +237,28 @@
 
 <style>
   .salon-page { display: flex; flex-direction: column; width: 100%; max-width: var(--content); height: 100%; min-height: 0; margin: 0 auto; }
-  .project-choice { display: inline-flex; max-width: 100%; border: 1px dashed var(--color-muted-foreground); border-radius: var(--radius-md); }
-  .project-choice:hover, .project-choice:focus-within { border-color: var(--color-accent); }
+  /* The quiet chip every picker wears (app.css .ui-chip, the model chip): a raised
+     fill and a hairline, brighter on hover. A dashed outline was used nowhere else. */
+  .project-choice { display: inline-flex; max-width: 100%; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-2); transition: background var(--dur-2) var(--ease-out-quint), border-color var(--dur-2) var(--ease-out-quint); }
+  .project-choice:hover, .project-choice:focus-within { border-color: var(--color-edge); background: var(--control-glaze) var(--color-control-hover); }
   .project-choice :global(.choice) { min-width: 0; max-width: 100%; }
   .project-choice :global(.trigger) { min-height: var(--row); height: auto; max-width: 100%; padding: 7px 12px; gap: 8px; }
   .project-label { min-width: 0; overflow-wrap: anywhere; }
   .mobile-welcome { display: none; }
   /* The machine reads as part of the sentence: no outline, since nothing opens from it. */
   .machine { display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
-  .machine :global(svg) { flex: none; color: var(--color-muted-foreground); }
   .machine .ui-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .locked {
     width: min(calc(100% - 40px), var(--content));
     margin: 0 auto 16px;
     padding: 12px 14px;
-    border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
     background: var(--color-surface);
     color: var(--color-muted-foreground);
     font-size: var(--text-sm);
     text-align: center;
   }
+
 
   .none {
     margin: auto;
@@ -288,21 +291,23 @@
     --composer-bar-padding: 8px 16px 16px;
   }
 
-  /* Zero basis on both halves, so the heading sits exactly as far below the
-     top as the composer sits above the bottom: one centred block. */
+  /* The heading, its place and the composer are one block on the column's
+     optical centre: the free space splits 3 above to 4 below, so the block
+     rides a little above the middle, about 3% of the column's height at
+     1280 to 1920, and the lower half never reads as the empty one. */
   .draft-body {
-    flex: 1 1 0;
+    flex: 3 1 auto;
     min-height: auto;
     display: flex;
     flex-direction: row;
     align-items: flex-end;
     justify-content: center;
-    padding: 24px 20px 32px;
+    padding: 24px 20px 20px;
     animation: rise var(--dur-3) var(--ease-out-quint);
   }
 
   .draft-tail {
-    flex: 1 1 0;
+    flex: 4 1 0;
     min-height: 0;
     display: flex;
     justify-content: center;
@@ -335,16 +340,9 @@
     text-align: center;
   }
 
-  /* One sentence cut in phrases that wrap whole: the gap between two is a word space, not 6 px. */
-  .draft-details {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 4px 0.28em;
-    color: var(--color-muted-foreground);
-    font-size: var(--text-base);
-    line-height: 1.6;
-  }
+  /* Small: a greeting over the headline, not a hero; the group reads as headline, place and composer. */
+  .start-mark { display: block; width: 40px; height: 40px; margin-bottom: -2px; }
+  .start-mark :global(svg.robot) { display: block; width: 100%; height: 100%; border-radius: 50%; }
 
   .start {
     display: flex;
@@ -360,6 +358,18 @@
     text-align: center;
     line-height: 1.6;
   }
+
+  .start-hint {
+    max-width: 64ch;
+    overflow-wrap: anywhere;
+    margin: 0;
+    color: var(--color-subtle);
+    font-size: var(--text-sm);
+    line-height: 1.5;
+    text-align: center;
+  }
+  /* The folder in the path's own face, muted: read as where, not as words to act on. */
+  .start-hint .path { padding: 0; background: none; color: var(--color-muted-foreground); font-family: var(--font-mono); font-size: var(--text-xs); }
 
   @media (max-width: 720px) {
     .chat.drafting {

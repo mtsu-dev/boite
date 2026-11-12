@@ -7,14 +7,18 @@ import { fill, strings } from './strings';
  * day get a divider above them. The first message held opens one too unless
  * it is from today, so an older thread says when it began and a fresh one
  * stays clean. Returns the ids of those messages and the day each opens.
+ * The days only move forward: a message stamped before the one above it (an
+ * answer carried by an older turn) joins the day already shown, so a
+ * "Yesterday" never follows a "Today".
  */
 export function dayBreaks(timeline: readonly Pick<Message, 'id' | 'createdAt'>[], now = Date.now()): Map<string, number> {
   const breaks = new Map<string, number>();
-  let day = dayOf(now);
+  const today = dayOf(now);
+  let day = 0;
   timeline.forEach((message, index) => {
     const next = dayOf(message.createdAt);
-    if (next !== day || index === 0 && next !== dayOf(now)) breaks.set(message.id, message.createdAt);
-    day = next;
+    if (index === 0 ? next !== today : next > day) breaks.set(message.id, message.createdAt);
+    day = Math.max(day, next);
   });
   return breaks;
 }

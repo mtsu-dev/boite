@@ -21,8 +21,18 @@ beforeAll(async () => {
 }, 60000);
 afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);
 
+/**
+ * The metrics land in the renderer after the call returns: on a loaded runner the next read still saw the old
+ * width's layout. A read waits for the new viewport and a frame drawn at it.
+ */
+async function resize(metrics: typeof DESKTOP) {
+  await page.send('Emulation.setDeviceMetricsOverride', metrics);
+  await page.waitFor(`innerWidth === ${metrics.width} && innerHeight === ${metrics.height}`);
+  await page.evaluate(`new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
+}
+
 async function capture(name: string) {
-  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
   await page.screenshot(join(ARTIFACTS, name));
 }
 
@@ -33,19 +43,21 @@ async function bothWidths(selector: string, name: string) {
   await page.evaluate(`document.querySelector('${selector}').scrollIntoView({ block: 'center' })`);
   await capture(`${name}-desktop.png`);
   await page.evaluate(`window.__boiteTest.setLocaleSetting('fr')`);
-  await page.send('Emulation.setDeviceMetricsOverride', PHONE);
+  await resize(PHONE);
   await page.waitFor(`document.querySelector('${selector}')?.getBoundingClientRect().width > 0`);
   await page.evaluate(`document.querySelector('${selector}').scrollIntoView({ block: 'center' })`);
   expect(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true);
   expect(await page.evaluate(`(() => { const box = document.querySelector('${selector}').getBoundingClientRect(); return box.left >= 0 && box.right <= innerWidth; })()`)).toBe(true);
   await capture(`${name}-phone.png`);
   await page.evaluate(`window.__boiteTest.setLocaleSetting('en')`);
-  await page.send('Emulation.setDeviceMetricsOverride', DESKTOP);
+  await resize(DESKTOP);
   await page.waitFor(`document.querySelector('${selector}')?.getBoundingClientRect().width > 0`);
 }
 
 /** The request belongs to the composer, so reading old output cannot move it away. */
 async function staysDocked() {
+  // Measured from rest: a width change still sliding the composer or the dock is not the scroll this checks.
+  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
   const before = await page.evaluate<number>(`document.querySelector('${PENDING}').getBoundingClientRect().top`);
   await page.evaluate(`(() => {
     const timeline = document.querySelector('[data-testid="timeline"]');
@@ -75,7 +87,7 @@ function ask(params: Record<string, unknown>) {
 }
 
 test('Secret Drop takes a masked one-use key, opens a fresh card each time and explains memory-only storage', async () => {
-  await page.send('Emulation.setDeviceMetricsOverride', DESKTOP);
+  await resize(DESKTOP);
   await page.evaluate(`(async () => {
     const store = window.__boiteTest.workspace.active;
     const thread = await store.client.call('threads.create', { projectId: 'p-boite', providerId: 'echo', accountId: 'a-echo' });
@@ -91,13 +103,13 @@ test('Secret Drop takes a masked one-use key, opens a fresh card each time and e
   await page.waitFor(`document.querySelector('${PENDING} [data-testid="secret-field"]') != null`);
   expect(await page.evaluate(`document.querySelector('[data-testid="secret-keep"]') === null`)).toBe(true);
   expect(await page.text(`${PENDING} [data-testid="secret-transit"]`)).toContain('10 minutes');
-  expect(await page.evaluate(`document.querySelector('${PENDING}')?.closest('[data-testid="thread-activity"]') != null`)).toBe(true);
+  expect(await page.evaluate(`document.querySelector('${PENDING}')?.closest('[data-testid="thread-decision"]') != null`)).toBe(true);
   expect((await page.text('[data-testid="activity-question-toggle"]')).trim()).toBe('OPENAI_API_KEY');
   await bothWidths(PENDING, 'open');
   await staysDocked();
-  await page.send('Emulation.setDeviceMetricsOverride', PHONE);
+  await resize(PHONE);
   await staysDocked();
-  await page.send('Emulation.setDeviceMetricsOverride', DESKTOP);
+  await resize(DESKTOP);
 
   // Typed through the real keyboard path: masked on screen, and no character reaches the composer.
   await page.evaluate(`document.querySelector('${PENDING} [data-testid="secret-field"]').focus()`);

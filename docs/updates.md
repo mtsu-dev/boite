@@ -8,8 +8,8 @@ an agent that is running when an update starts.
 
 The desktop app checks for a new release 8 seconds after it starts, then
 every six hours, and again when you bring the window back after more than 15
-minutes. When something can update, an update button appears in the sidebar's
-foot, beside Settings.
+minutes. When something can update, an update button appears at the foot of
+the app rail, beside Settings.
 
 1. Press the update button. Its card lists each machine with the version it
    runs and the new one.
@@ -75,7 +75,7 @@ for that machine and find the Agent updates card:
 - An agent whose newest version Boite cannot read shows Checks by itself and
   Run its updater.
 
-The sidebar's update card and Update all include agent updates too.
+The app rail's update card and Update all include agent updates too.
 
 ## What happens to running agents
 

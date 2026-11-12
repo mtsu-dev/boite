@@ -3,6 +3,7 @@
   import { BROWSER_PROFILES_MAX, checkSettingsPatch, DEFAULT_BROWSER_PROFILE, type BrowserProfile } from '@boite/contracts';
   import { tick } from 'svelte';
   import InfoTip from './InfoTip.svelte';
+  import CardScope from './CardScope.svelte';
   import BrowserUserAgent from './BrowserUserAgent.svelte';
   import Menu from './Menu.svelte';
   import { canCopySignIns, copySignIns } from '../lib/browser-cookies';
@@ -125,7 +126,7 @@
 </script>
 
 <section class="card" id="settings-browser-profiles" data-testid="browser-profiles-card">
-  <h2>{s.card}</h2>
+  <h2><span class="ui-label">{s.card}</span><CardScope /></h2>
   <h3 class="ui-label-box"><span class="ui-label">{s.heading}</span><InfoTip topic={s.heading} text={s.hint} /></h3>
   <ul>
     {#each rows as profile (profile.id)}

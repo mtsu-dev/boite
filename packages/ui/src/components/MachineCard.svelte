@@ -124,7 +124,7 @@
   /* A button for the keyboard and screen readers, a card to the eye: none of a control's fixed height, centring or single line. */
   .machine { display: grid; align-content: start; justify-content: stretch; gap: 12px; min-width: 0; height: auto; padding: 12px; text-align: left; color: inherit; font: inherit; font-weight: 400; white-space: normal; cursor: pointer; transition: border-color var(--dur-2) var(--ease-out-quint); }
   .machine:hover:not(:disabled) { border-color: var(--color-edge); background: var(--color-surface); }
-  .machine.selected { border-color: var(--color-accent); }
+  .machine.selected { border-color: var(--color-muted-foreground); }
   .machine:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
   .head { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .icon { display: flex; flex: none; color: var(--color-muted-foreground); }
@@ -134,10 +134,11 @@
   .name small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .count { flex: none; }
   .metric { display: grid; gap: 4px; min-width: 0; }
-  .line { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
+  /* A label and its value share a line while both fit whole; on a narrow card the value wraps under it, at the right, instead of cutting the label's share. */
+  .line { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 8px; min-width: 0; }
   .line > span { display: flex; gap: 6px; min-width: 0; overflow: hidden; white-space: nowrap; }
   .line small { overflow: hidden; text-overflow: ellipsis; }
-  .line b { flex: none; font-size: var(--text-sm); font-weight: 500; font-variant-numeric: tabular-nums; }
+  .line b { flex: none; margin-left: auto; font-size: var(--text-sm); font-weight: 500; font-variant-numeric: tabular-nums; }
   .none { color: var(--color-subtle); }
   .spark { display: block; width: 100%; height: 24px; }
   .spark path { fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }

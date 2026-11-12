@@ -18,7 +18,7 @@
   ].join('\n'));
 </script>
 
-<span class="chip context-mode" class:compact data-testid={testid} data-mode={mode.label} title={detail} aria-label={detail}>
+<span class="ui-chip context-mode" class:compact data-testid={testid} data-mode={mode.label} title={detail} aria-label={detail}>
   <Icon size={compact ? 11 : 13} strokeWidth={1.75} />
   <span class="label ui-label">{label}{#if mode.rules}<span class="rules">{` + ${strings.contextMode.rules}`}</span>{/if}</span>
 </span>
@@ -27,15 +27,15 @@
   .context-mode {
     gap: 4px;
     flex: none;
-    border-color: color-mix(in oklch, var(--color-accent) 40%, transparent);
+    border-color: var(--color-edge);
     background: var(--color-accent-soft);
-    color: var(--color-accent);
+    color: var(--color-muted-foreground);
     font-size: var(--text-xs);
     font-weight: 600;
     white-space: nowrap;
   }
   /* In a list row it sits beside the reasoning level and takes its size. */
   .context-mode.compact { height: auto; padding: 2px 6px 2px 5px; gap: 3px; }
-  .rules { font-weight: 500; opacity: 0.85; }
+  .rules { font-weight: 500; color: var(--color-subtle); }
   .context-mode :global(svg) { flex: none; }
 </style>

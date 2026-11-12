@@ -9,6 +9,8 @@
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import AgentAvatar from './agents/AgentAvatar.svelte';
+  import { avatarLit } from '../lib/avatar-lit';
+  import DecisionActions from './DecisionActions.svelte';
 
   /**
    * A card asking the user to change one setting of a persistent agent
@@ -146,9 +148,9 @@
         <span class="name">{agentSettingLabel(setting.key)}</span>
         {#if setting.key === 'avatar'}
           <span class="values">
-            <span class="picture old" data-testid="agent-setting-previous"><AgentAvatar kind="profile" id={setting.agentId} name={setting.agentName} avatar={String(setting.previous ?? '')} size={28} /></span>
+            <span class="picture old" data-testid="agent-setting-previous"><AgentAvatar kind="profile" id={setting.agentId} name={setting.agentName} avatar={String(setting.previous ?? '')} size={28} lit={avatarLit({ attention: pending })} /></span>
             <ArrowRight size={14} strokeWidth={1.75} aria-label={words.to} />
-            <span class="picture" data-testid="agent-setting-proposed"><AgentAvatar kind="profile" id={setting.agentId} name={setting.agentName} avatar={String(setting.value ?? '')} size={28} /></span>
+            <span class="picture" data-testid="agent-setting-proposed"><AgentAvatar kind="profile" id={setting.agentId} name={setting.agentName} avatar={String(setting.value ?? '')} size={28} lit={avatarLit({ attention: pending })} /></span>
           </span>
         {:else}
           <span class="values">
@@ -169,25 +171,23 @@
       <p class="hint" data-testid="agent-setting-guest-hint">{words.guestHint}</p>
     {/if}
 
-    <div class="actions">
+    <!-- The app's one decision pair (DecisionActions.svelte): outlines first, the solid primary last. -->
+    <DecisionActions>
+      <button type="button" class="secondary" data-testid="agent-setting-refuse" disabled={busy} onmousedown={keepFocus} onclick={refuse}><span class="ui-label">{words.refuse}</span></button>
+      {#if canShow}
+        <button type="button" class="secondary" data-testid="agent-setting-show" onmousedown={keepFocus} onclick={show}><span class="ui-label">{words.show}</span></button>
+      {/if}
       {#if store.owner}
         <button type="button" class="primary" data-testid="agent-setting-apply" disabled={busy || unchanged} onmousedown={keepFocus} onclick={apply}><span class="ui-label">{words.apply}</span></button>
       {/if}
-      {#if canShow}
-        <button type="button" class="ghost" data-testid="agent-setting-show" onmousedown={keepFocus} onclick={show}><span class="ui-label">{words.show}</span></button>
-      {/if}
-      <button type="button" class="ghost" data-testid="agent-setting-refuse" disabled={busy} onmousedown={keepFocus} onclick={refuse}><span class="ui-label">{words.refuse}</span></button>
-    </div>
+    </DecisionActions>
   </div>
 {/if}
 
 <style>
   .agent-setting-card {
-    border: 1px solid var(--color-edge);
-    border-left-style: dashed;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     background: var(--color-surface);
-    box-shadow: var(--shadow-e1);
     padding: 8px 12px 10px;
     display: flex;
     flex-direction: column;
@@ -204,7 +204,7 @@
 
   .head { display: flex; align-items: center; gap: 6px; min-width: 0; }
   .head .muted { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-  .glyph { display: inline-flex; flex: none; color: var(--color-accent); }
+  .glyph { display: inline-flex; flex: none; color: var(--color-muted-foreground); }
 
   .reason { margin: 0; font-weight: 500; white-space: pre-wrap; overflow-wrap: anywhere; }
 
@@ -223,7 +223,7 @@
   .name { min-width: 0; overflow-wrap: anywhere; }
   .values { display: inline-flex; align-items: center; gap: 8px; color: var(--color-subtle); min-width: 0; }
   .old { color: var(--color-muted-foreground); text-decoration: line-through; overflow-wrap: anywhere; }
-  .new { color: var(--color-accent); font-weight: 600; overflow-wrap: anywhere; }
+  .new { color: var(--color-foreground); font-weight: 600; overflow-wrap: anywhere; }
 
   .picture { display: inline-flex; }
   .picture.old { opacity: 0.55; }
@@ -251,14 +251,13 @@
   }
   .row input { flex: none; margin: 0; }
   .action { flex: none; color: var(--color-subtle); }
-  .project { min-width: 0; color: var(--color-accent); font-weight: 600; overflow-wrap: anywhere; }
+  .project { min-width: 0; color: var(--color-foreground); font-weight: 600; overflow-wrap: anywhere; }
   .row.removal .project { color: var(--color-danger); }
   .row:has(input:not(:checked)) .project { color: var(--color-muted-foreground); font-weight: 400; text-decoration: line-through; }
 
   .place { margin: 0; font-size: var(--text-xs); color: var(--color-subtle); }
   .hint { margin: 0; font-size: var(--text-sm); color: var(--color-muted-foreground); }
 
-  .actions { display: flex; flex-wrap: wrap; gap: 6px; }
 
   /* Closed: one quiet row in the timeline, like an answered question. */
   .agent-setting-card.resolved {

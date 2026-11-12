@@ -1,5 +1,6 @@
 export const strings = {
   subscriptionProxy: {
+    offLine: 'Sends Claude and Codex through one gateway, such as Douane, instead of the accounts signed in here.',
     heading: 'Subscription proxy',
     enable: 'Use a subscription proxy',
     hint: 'Claude and Codex use this machine\'s gateway, Grok does too behind Douane, and OpenCode 2 adds its other models to its own. Limits opens its dashboard inside Boite. Other agents keep their own configuration.',

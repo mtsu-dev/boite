@@ -1,7 +1,7 @@
 <script lang="ts">
   import ContextModeBadge from './ContextModeBadge.svelte';
   import MachineIcon from './MachineIcon.svelte';
-  import { Pause, Play, Plus, RotateCcw, Settings, Square, Trash2, UsersRound, Workflow } from '@lucide/svelte';
+  import { Pause, Play, Plus, RotateCcw, Settings, Square, Trash2, Workflow } from '@lucide/svelte';
   import { DEFAULT_DELEGATION_CONFIG, threadActive, threadBusy, type DelegationConfig, type DelegationProfile } from '@boite/contracts';
   import type { BoundPanel, Surface } from '../lib/right-panel.svelte';
   import { fill, strings } from '../lib/strings';
@@ -14,10 +14,11 @@
   import ModelPicker from './ModelPicker.svelte';
   import ProviderLogo from './ProviderLogo.svelte';
   import StatusMark from './StatusMark.svelte';
-  import { threadTone, workflowTone } from '../lib/thread-state';
+  import { threadTone, workflowTone } from '../lib/status-tone';
   import Elapsed from './Elapsed.svelte';
   import NativeAgents from './NativeAgents.svelte';
   import WorkflowRunPane from './WorkflowRunPane.svelte';
+  import SurfaceHead from './SurfaceHead.svelte';
   import { agentProgress } from '../lib/delegation-progress';
   import { machineName, workspace, type Machine } from '../lib/workspace.svelte';
 
@@ -43,6 +44,12 @@
   let doneAgents = $derived(agents.filter(agent => !agentProgress(agent).active).sort((a, b) => endOf(b) - endOf(a)));
   let liveRuns = $derived(runs.filter(isLive));
   let doneRuns = $derived(runs.filter(entry => !isLive(entry)));
+  /** "2 at work, 3 done": the head's words, the panel's own name being on its door. */
+  let headline = $derived.by(() => {
+    const live = liveAgents.length + liveRuns.length, done = doneAgents.length + doneRuns.length;
+    const parts = [live && fill(strings.delegation.headLive, { count: String(live) }), done && fill(strings.delegation.headDone, { count: String(done) })].filter(Boolean);
+    return parts.length ? parts.join(', ') : strings.delegation.headNone;
+  });
   let busy = $derived(agents.some(agent => threadBusy(agent.thread)) || runs.some(isLive));
   /** The interrupted subagents a Resume was just sent to: the button stays off until the core answers. */
   let resuming = $state(new Set<string>());
@@ -228,8 +235,9 @@
   {#if run}
     <WorkflowRunPane {store} {run} onback={() => showRun(undefined)} />
   {:else}
-    <header class="surface-head">
-      <h2><UsersRound size={17} strokeWidth={1.75} /><span class="ui-label">{strings.delegation.heading}</span></h2>
+    <!-- Its head says what it holds (the door already names the panel), then its one set of actions. -->
+    <SurfaceHead>
+      <h2 class="ui-label" data-testid="delegation-head">{headline}</h2>
       {#if view && (!config.enabled || config.paused)}<span class="state ui-label-box" data-testid="delegation-state"><span class="ui-label">{config.enabled ? strings.delegation.paused : strings.delegation.off}</span></span>{/if}
       <span class="spacer"></span>
       {#if busy}
@@ -238,7 +246,7 @@
       {#if store.owner && view}
         <button type="button" class="ghost small icon" class:on={settings} aria-label={strings.delegation.configure} title={strings.delegation.configure} aria-pressed={settings} data-testid="delegation-settings-toggle" onclick={() => (settings = !settings)}><Settings size={15} strokeWidth={1.75} /></button>
       {/if}
-    </header>
+    </SurfaceHead>
 
     {#if settings && view && store.owner}
       <div class="settings" data-testid="delegation-settings">
@@ -310,14 +318,13 @@
 
 <style>
   .delegation { container-type: inline-size; height: 100%; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; }
-  .surface-head { flex: none; min-height: 44px; padding: 6px 10px 6px 16px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--color-border); }
-  .surface-head h2 { display: flex; align-items: center; gap: 7px; font-size: var(--text-md); }
-  .surface-head .on { background: var(--color-active); color: var(--color-foreground); }
+  h2 { min-width: 0; margin: 0; color: var(--color-foreground); font-size: inherit; font-weight: 500; }
+  .on { background: var(--color-active); color: var(--color-foreground); }
   .state { padding: 1px 7px; border-radius: 999px; background: var(--color-surface-3); color: var(--color-muted-foreground); font-size: var(--text-xs); }
   .spacer { flex: 1; }
   .settings { flex: none; padding: 4px 16px 14px; }
   .profiles-head { margin-top: 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-  .error { margin: 12px 16px; color: var(--color-danger); font-size: var(--text-sm); }
+  .error { margin: 12px 16px; }
   .switch-row { min-height: var(--control-lg); padding: 6px 0; display: flex; align-items: center; gap: 14px; }
   .switch-row > span, .profiles-head > span { flex: 1; min-width: 0; }
   .switch-row small, .profiles-head small { display: block; margin-top: 2px; color: var(--color-muted-foreground); font-size: var(--text-xs); line-height: 1.4; font-weight: normal; }
@@ -330,10 +337,11 @@
   .members { min-height: 0; padding: 4px 8px 10px; overflow-y: auto; }
   .group + .group { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--color-border); }
   .group-head { padding: 10px 9px 6px; display: flex; align-items: center; gap: 6px; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; }
-  .group-head .count { padding: 1px 6px; border-radius: 999px; background: var(--color-surface-3); font-variant-numeric: tabular-nums; font-weight: 500; }
-  .member { width: 100%; height: auto; padding: 10px 9px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 0 10px; border: 1px solid transparent; border-radius: var(--radius-md); background: transparent; text-align: left; }
+  .group-head .count { color: var(--color-subtle); font-variant-numeric: tabular-nums; font-weight: 500; }
+  /* The panels' one row form (the changes list's): a quiet fill on hover, no frame. */
+  .member { width: 100%; height: auto; padding: 8px 9px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 0 10px; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; text-align: left; }
   .member + .member { margin-top: 2px; }
-  .member:hover { background: var(--color-hover); border-color: var(--color-border); }
+  .member:hover { background: var(--color-hover); }
   /* On a machine this window is not connected to: it reads, it does not open. */
   .member.away { cursor: default; }
   .member.away:hover { background: transparent; border-color: transparent; }
@@ -352,9 +360,9 @@
   .meta { display: grid; justify-items: end; gap: 6px; padding-top: 2px; color: var(--color-muted-foreground); font-size: var(--text-xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .outcome { font-weight: 500; }
   .outcome[data-status='error'], .outcome[data-status='failed'], .outcome[data-status='interrupted'] { color: var(--color-danger); }
-  .outcome[data-status='background'] { color: var(--color-accent); }
+  .outcome[data-status='background'] { color: var(--color-muted-foreground); }
   /* What a subagent at rest waits on, or what ended without waking it. */
-  .note { grid-column: 2 / -1; margin-top: 8px; display: flex; align-items: baseline; gap: 6px; min-width: 0; color: var(--color-accent); font-size: var(--text-xs); }
+  .note { grid-column: 2 / -1; margin-top: 8px; display: flex; align-items: baseline; gap: 6px; min-width: 0; color: var(--color-muted-foreground); font-size: var(--text-xs); }
   .note > .ui-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .note.interrupted { color: var(--color-danger); }
   .note.interrupted > .ui-label { white-space: normal; }
@@ -363,7 +371,7 @@
   .note.away-note > .ui-label { white-space: normal; }
   @media (max-width: 720px), (hover: none) { .note.away-note { display: flex; } }
   .resume-row { padding: 0 9px 6px 49px; }
-  .result { grid-column: 2 / -1; margin-top: 8px; padding: 6px 9px; border-radius: var(--radius-sm); background: var(--color-surface-2); color: color-mix(in srgb, var(--color-foreground) 82%, transparent); font-size: var(--text-xs); line-height: 1.45; }
+  .result { grid-column: 2 / -1; margin-top: 8px; padding: 6px 9px; border-radius: var(--radius-sm); background: var(--color-surface-2); color: var(--color-subtle); font-size: var(--text-xs); line-height: 1.45; }
   .result > span { display: -webkit-box; -webkit-box-orient: vertical; line-clamp: 3; -webkit-line-clamp: 3; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; }
   @container (max-width: 520px) {
     .profile { grid-template-columns: minmax(0, 1fr) auto; }

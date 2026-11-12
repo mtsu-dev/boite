@@ -8,8 +8,18 @@
   import { floating } from '../lib/floating';
   import { fill, strings } from '../lib/strings';
 
-  /** `icon` replaces the "i" where the mark itself says more, as the lock of a control the policy holds. */
-  let { text, topic, testid, icon: Icon = Info }: { text: string; topic: string; testid?: string; icon?: typeof Info } = $props();
+  /**
+   * `icon` replaces the "i" where the mark itself says more, as the lock of a control the policy holds.
+   * `gather`: the one "i" of a section, beside its title. It also says what every
+   * other "i" of its card says, and those step aside (app.css), so a section
+   * carries one "i" rather than one a row. The "i" beside a settings card's
+   * title gathers on its own.
+   */
+  let { text, topic, testid, icon: Icon = Info, gather = false }: { text: string; topic: string; testid?: string; icon?: typeof Info; gather?: boolean } = $props();
+  let titled = $state(false);
+  let gathering = $derived(gather || titled);
+  /** A plain "i" its section's tip may gather: a lock or another mark stays on its row. */
+  let plain = $derived(Icon === Info && !gathering);
 
   const tip = new Closing();
   const id = `info-${Math.random().toString(36).slice(2, 10)}`;
@@ -17,6 +27,25 @@
   let bubble = $state<HTMLElement>();
   /** Opened by a click or a tap: a pointer leaving does not close it. */
   let pinned = $state(false);
+
+  /** The rows' tips of the section, read again when the bubble opens: the rows a page shows can change. */
+  let rows = $state<{ topic: string; text: string }[]>([]);
+  function gathered(): { topic: string; text: string }[] {
+    const scope = trigger?.closest('.card');
+    return scope ? [...scope.querySelectorAll<HTMLElement>('.info-tip[data-tip-text]')]
+      .map((row) => ({ topic: row.dataset.tipTopic ?? '', text: row.dataset.tipText ?? '' }))
+      .filter((row) => row.text) : [];
+  }
+  $effect(() => {
+    titled = Icon === Info && trigger?.closest('.settings .card > h2, .settings .card > header > h2') != null;
+  });
+  $effect(() => {
+    if (gathering) rows = gathered();
+  });
+  function open(): void {
+    if (gathering) rows = gathered();
+    tip.show();
+  }
 
   function close(): void {
     pinned = false;
@@ -29,12 +58,12 @@
     if (pinned) close();
     else {
       pinned = true;
-      tip.show();
+      open();
     }
   }
 
   function onpointerenter(event: PointerEvent): void {
-    if (event.pointerType === 'mouse') tip.show();
+    if (event.pointerType === 'mouse') open();
   }
 
   function onpointerleave(event: PointerEvent): void {
@@ -70,11 +99,15 @@
   aria-expanded={tip.open}
   aria-describedby={tip.shown ? id : undefined}
   data-testid={testid ?? 'info-tip'}
+  data-tip-topic={plain ? topic : undefined}
+  data-tip-text={plain ? text : undefined}
+  data-gather={gathering ? '' : undefined}
+  hidden={gathering && !text && rows.length === 0}
   bind:this={trigger}
   {onclick}
   {onpointerenter}
   {onpointerleave}
-  onfocus={(event) => { if (event.currentTarget.matches(':focus-visible')) tip.show(); }}
+  onfocus={(event) => { if (event.currentTarget.matches(':focus-visible')) open(); }}
   onblur={() => { if (!pinned) tip.hide(); }}
 >
   <Icon size={14} strokeWidth={1.75} />
@@ -90,19 +123,22 @@
     use:tip.attach
     use:floating={{ anchor: () => trigger ?? null, dismiss: close }}
     onanimationend={tip.end}
-  >{text}</span>
+  >{#if gathering}{#if text}<span class="lead">{text}</span>{/if}{#each rows as row, index (index)}<span class="gathered"><strong>{row.topic}</strong> {row.text}</span>{/each}{:else}{text}{/if}</span>
 {/if}
 
 <style>
+  /* A 24 px target around the 14 px mark; the negative margin keeps the line's height. */
   .info-tip {
-    width: 22px;
-    height: 22px;
-    margin: -2px 0 -2px 4px;
+    width: 24px;
+    height: 24px;
+    margin: -4px -2px -4px 2px;
     padding: 0;
     border-radius: 50%;
     vertical-align: middle;
     color: var(--color-muted-foreground);
   }
+
+  .info-tip[hidden] { display: none; }
 
   .info-tip[aria-expanded='true'] {
     color: var(--color-foreground);
@@ -115,10 +151,11 @@
     display: block;
     max-width: min(340px, calc(100vw - 24px));
     padding: 8px 10px;
-    border: 1px solid var(--color-edge);
-    border-radius: var(--radius-md);
-    background: var(--color-surface-2);
-    box-shadow: var(--shadow-e2);
+    /* The overlay card every menu and popover wears (app.css). */
+    border: 1px solid var(--overlay-edge);
+    border-radius: var(--radius-overlay);
+    background: var(--overlay-surface);
+    box-shadow: var(--shadow-overlay);
     color: var(--color-foreground);
     font-size: var(--text-sm);
     font-weight: 400;
@@ -126,11 +163,17 @@
     letter-spacing: normal;
     text-transform: none;
     white-space: normal;
-    animation: pop var(--dur-2) var(--ease-out-quint);
+    animation: pop var(--motion-duration) var(--motion-curve);
   }
 
+  /* A section's tip: its rows' tips one after another, each led by the row it explains. */
+  .info-bubble:has(.gathered) { max-width: min(420px, calc(100vw - 24px)); max-height: min(60vh, 520px); overflow-y: auto; }
+  .lead, .gathered { display: block; }
+  .lead + .gathered, .gathered + .gathered { margin-top: var(--space-2); }
+  .gathered strong { font-weight: 600; }
+
   .info-bubble.closing {
-    animation-name: pop-out;
+    animation: pop-out var(--motion-duration) var(--motion-curve);
   }
 
   /* A phone gets it as a sheet, where there is room to read. */
@@ -144,6 +187,6 @@
      the open state shows in the icon alone: a filled disc that size is loud. */
   @media (max-width: 720px) {
     .info-tip { width: 30px; height: 30px; margin: -8px -6px -8px -2px; }
-    .info-tip[aria-expanded='true'] { background: transparent; color: var(--color-accent); }
+    .info-tip[aria-expanded='true'] { background: transparent; color: var(--color-foreground); }
   }
 </style>

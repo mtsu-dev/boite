@@ -30,10 +30,16 @@
 <style>
   .receipts { display: flex; align-items: center; gap: 1px; margin: 4px 2px 0; color: var(--color-muted-foreground); }
   .receipts .tick { display: flex; opacity: .45; }
-  .receipts .received { color: var(--color-accent); opacity: 1; }
+  .receipts .received { color: var(--color-foreground); opacity: 1; }
   /* Delivered and answered: the ticks wait for the pointer like the time beside them. A pending one stays. */
   .receipts.settled .tick { opacity: 0; transition: opacity var(--dur-2); }
   :global(.message:hover) .receipts.settled .tick, .receipts.settled:focus-within .tick, .receipts.settled:not(:has(button)) .tick { opacity: 1; }
-  @media (hover: none) { .receipts.settled .tick { opacity: 1; } }
+  /* A finger has no pointer to bring them up: settled ticks stay away, the turn's "i" holds its times. */
+  @media (hover: none) { .receipts.settled .tick { display: none; } }
   .receipts.agent { align-self: flex-start; }
+  /* On a pointer device the row sits inside the gap under the bubble, one row
+     tall, instead of opening a band between the prompt and its answer. */
+  @media (hover: hover) {
+    .receipts { height: var(--chat-message-gap); margin: 0 2px calc(-1 * var(--chat-message-gap)); }
+  }
 </style>

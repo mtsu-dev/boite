@@ -31,8 +31,8 @@
   .track, .reset { grid-column: 1 / -1; }
   .track { display: block; height: var(--quota-bar, 5px); border-radius: var(--radius-sm); background: var(--color-surface-3); overflow: hidden; filter: saturate(1); transition: filter var(--dur-3) var(--ease-out-quint); }
   .fill { display: block; height: 100%; border-radius: var(--radius-sm); background: var(--color-success); transition: width var(--dur-3) var(--ease-out-quint), background-color var(--dur-3) var(--ease-out-quint); }
-  [data-tone='low'] .window-left { color: var(--color-live); }
-  [data-tone='low'] .fill { background: var(--color-live); }
+  [data-tone='low'] .window-left { color: var(--color-caution); }
+  [data-tone='low'] .fill { background: var(--color-caution); }
   [data-tone='out'] .window-left { color: var(--color-danger); }
   [data-tone='out'] .track { background: color-mix(in srgb, var(--color-danger) 15%, var(--color-surface-3)); }
   .reset { display: flex; align-items: center; gap: 5px; color: var(--color-muted-foreground); font-size: var(--text-xs); }

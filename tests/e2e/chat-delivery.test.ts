@@ -10,7 +10,7 @@ async function update(code: string) {
   await page.evaluate(`(async () => { const store = globalThis.__boiteTest.workspace.active; const thread = store.openThread; ${code} })()`);
 }
 async function capture(name: string) {
-  await page.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
+  await page.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
   await page.screenshot(join(import.meta.dir, '.artifacts', `${name}.png`));
 }
 beforeAll(async () => {
@@ -88,7 +88,9 @@ test('answering the docked question shows a queued user bubble, then one sent me
   for (const width of [1300, 390]) {
     await page.send('Emulation.setDeviceMetricsOverride', { width, height: 850, deviceScaleFactor: 1, mobile: width < 720 });
     expect(await page.text(id('question-queued'))).toContain('> Which file should be checked first?\n\nParser');
-    expect(await page.evaluate(`document.querySelector('${id('question-queued')} .queued-bubble').disabled`)).toBe(true);
+    // A held answer is a row of the strip over the composer: its words are text, with no press or Edit that brings it
+    // back to the box (its "i" says why it waits).
+    expect(await page.evaluate(`document.querySelector('${id('question-queued')} ${id('composer-queued-item')}') !== null && document.querySelector('${id('question-queued')} :is(button${id('composer-queued-text')}, ${id('composer-queued-edit')}, ${id('composer-queued-remove')})') === null`)).toBe(true);
     expect(await page.evaluate(`document.querySelector('${id('question-queued')} ${id('composer-send-now')}') === null`)).toBe(true);
     await capture(`chat-delivery-answer-${width < 720 ? 'phone' : 'desktop'}`);
     expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);

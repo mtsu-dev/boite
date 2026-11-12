@@ -10,12 +10,20 @@ export const strings = {
     filesUnavailable: 'The messages were rewound, but this edit has no complete file backup. The code could not be restored.',
     filesBusy: 'The messages were rewound. Another agent is still working in this folder, so the files were left as they are.',
     editingCancel: 'Stop editing (Esc)',
-    /** A question waits for a written answer: the box writes it, the row above names the question. */
-    replying: 'Answering: {question}',
-    replyPlaceholder: 'Write your answer',
-    replySend: 'Send the answer',
-    replyIgnore: 'Write a message',
-    replyIgnoreHint: 'Leave the question waiting and write an ordinary message',
+    /** The box while the agent works: what is written answers. One line on a 360 px phone. */
+    replyPlaceholder: 'Reply to {name}',
+    /** The box while a question at its top takes a written answer beside its options, or alone: Send reads Answer and answers it. */
+    answerPlaceholder: 'Or type your own answer',
+    answerTextPlaceholder: 'Type your answer',
+    /** The box while a question at its top takes no text: a message is queued until the answer. */
+    afterAnswerPlaceholder: 'A message waits until you answer',
+    /** The box while a permission waits on its command row in view, beside its Deny and Allow once. One line on a 360 px phone. */
+    permissionPlaceholder: 'Or tell {name} what to do instead',
+    /** Send while a permission waits and the box holds text: it denies the permission, stops the turn and sends the message as the next one. */
+    declineSend: 'Decline and send',
+    /** Its tooltip, the permission named by its title ("Push orbit/csv-import"). */
+    declineSendHint: 'Declines {title}, then sends your message',
+    declineSendHintFallback: 'Declines this request, then sends your message',
     switchTitle: 'Switch a {tokens} token thread to {provider}?',
     switchBody: '{provider} starts a new session and receives excerpts of the opening and of the most recent exchanges, about 20k tokens. The rest is lost to it. Compacting first changes nothing.',
     switchConfirm: 'Switch',
@@ -24,24 +32,55 @@ export const strings = {
     cacheBody: 'This change may make the provider process the whole conversation again uncached on the next turn, using more quota. Changing a model or reasoning effort can affect the cache, as can enabling Claude Fast mode for the first time.',
     cacheConfirm: 'Change',
     cacheCancel: 'Keep as is',
-    options: 'Message options',
-    placeholder: 'Message {provider} in {project}',
-    placeholderBot: 'Message {name}',
-    placeholderNoProject: 'Message the agent',
-    /** A new conversation, before anything is sent. */
-    placeholderNew: 'What do you want to do?',
+    options: 'Add to the message',
+    mentionFile: 'Mention a file',
+    commands: 'Commands',
+    /** A bot's model, effort and permission chips: read at rest, changed in its settings. */
+    botSettings: "Set in {name}'s settings",
+    /** The same chips while the bot's account is gone: the banner above holds the remedy. */
+    botAccountGone: "{name}'s account was removed. Pick another account to continue.",
+    /** The box at rest, on a new conversation or one under way: who reads the message. */
+    placeholder: 'Message {name}',
+    /** `{name}` in the two placeholders when the provider is unknown. */
+    placeholderAgent: 'the agent',
+    /** The field while the account behind the box is removed: it stays locked until another is picked. */
+    placeholderPickAccount: 'Pick another account to send',
     placeholderOffline: '{machine} is offline: messages wait here and go out when it reconnects',
     placeholderOfflineDraft: '{machine} is offline: the conversation starts when it reconnects',
+    /** The field under that notice: what Send does, the notice having said offline. */
+    placeholderAway: 'Sends when {machine} is back',
+    /** The notice over the box of a thread whose machine is out of reach, with Reconnect. */
+    machineOffline: '{machine} is offline',
+    machineOfflineHint: 'Messages sent now wait on this device and go out in order once {machine} answers again.',
+    /** The foot's row while a permission waits out of view: what waits, by its title, and the way back to it. */
+    footDecision: 'Waiting for approval:',
+    footDecisions: '{count} decisions waiting:',
+    footShowHint: 'Scroll to the command that asks',
+    /** The strip over the composer, the same on every screen: what this conversation waits on (`delegation.waiting`), then what waits to be sent; a press unfolds them. */
+    stripQueued: '· {count} queued',
+    stripQueuedAlone: '{count} queued',
+    stripOpen: 'Show each one',
+    stripClose: 'Fold into one line',
+    /** The strip's Stop, worded by what it stops, its tooltip saying the rest. */
+    stopAgent: 'Stop agent',
+    stopAgentHint: 'Stops the agent\'s turn',
+    stopAll: 'Stop all',
+    stopAllHint: 'Stops the agent\'s turn and everything it waits on',
+    stopSubagents: 'Stop subagents',
+    stopSubagentsHint: 'Stops the work this conversation sent and waits on. The agent itself is not stopped.',
+    stopWorkflows: 'Stop workflows',
+    stopWorkflowsHint: 'Stops the workflows this conversation waits on. The agent itself is not stopped.',
+    stopSent: 'Stop all',
+    stopSentHint: 'Stops the subagents and workflows this conversation waits on. The agent itself is not stopped.',
     send: 'Send',
     sendWhenLoaded: 'Sends once the files are ready',
     stop: 'Stop',
     queued: 'Sent after the next tool, or when the turn ends',
+    /** The word before a queued prompt's text: it goes after the running turn. */
+    queuedLabel: 'Queued',
     /** A refused send held the pending messages until the user sends again. */
     queuedPaused: 'Held after a refused send',
     sendNow: 'Send now',
-    queueWaitForEnd: 'Goals and loops wait for the current turn to finish. Your command remains queued.',
-    queueTurnNotReady: 'The running turn has not reached this client yet. Your message remains queued.',
-    queueNotAccepted: 'This turn did not accept the queued input. It remains queued and will be sent when the turn ends.',
     sendNowHint: 'Stops the current turn and sends pending messages. Enter in the empty composer does the same.',
     retryQueuedHint: 'Sends all pending messages together again. Enter in the empty composer does the same.',
     /** The outbox: messages written while the machine was away, kept on this device. */
@@ -49,11 +88,13 @@ export const strings = {
     outboxStarts: 'Kept on this device: the conversation starts once {machine} is back',
     outboxWaiting: 'Waiting for {machine}',
     outboxNext: 'Goes out when the thread is free',
-    outboxSending: 'Sending…',
+    outboxSending: 'Sending',
     outboxFailed: 'Not sent: {reason}',
     outboxRetry: 'Send again',
     outboxSettings: 'The model and effort it was written with could not be set again.',
-    removeQueued: 'Remove this pending message',
+    queuedEdit: 'Edit',
+    queuedRemove: 'Delete',
+    removeQueued: 'Delete this pending message',
     picker: 'Provider and model',
     models: 'Models',
     searchModels: 'Search models',
@@ -65,7 +106,14 @@ export const strings = {
     probing: "Reading the agent's models",
     notInstalled: 'Not installed on this machine',
     installInSettings: 'Install in Settings',
-    effortTitle: 'Reasoning effort',
+    /** The effort chip and its slider: one short word, the levels say the rest. */
+    effortTitle: 'Effort',
+    /** The slider's line under the level: what the level gives and what it costs, from the lowest to the highest. */
+    /** The trade-off of one level, by its id (EffortSlider); a level of another name reads its place on the scale. */
+    effortCost: { off: 'Answers at once, no extra thinking', low: 'Quick answers, light on your limits', middle: 'Balanced depth and speed', deeper: 'Thinks it through, a little slower', high: 'Thinks longer, uses more of your limits', top: 'Deepest thinking, slowest and costliest', extended: 'Extended thinking for the hardest problems' },
+    // With a fast tier on, the line keeps the level's depth and lets the tier speak for speed, so it never says slower and faster at once.
+    effortDepth: { off: 'No extra thinking', low: 'Light thinking', middle: 'Balanced thinking', deeper: 'Thinks it through', high: 'Thinks longer', top: 'Deepest thinking', extended: 'Extended thinking' },
+    effortWithFast: '{depth}, with {fast} replying sooner for more of your limits',
     speed: 'Response speed',
     /** The reasoning chip of a model whose agent keeps its own level until one is picked. */
     effortDefault: 'Default',
@@ -82,7 +130,10 @@ export const strings = {
     compactNoSession: 'Send a message before compacting',
     newBadge: 'new',
     lockedHint: 'A thread keeps its provider and account',
-    mode: 'Permissions',
+    /** The model menu's provider name when it has several accounts: the button that lists them. */
+    switchAccount: 'Switch account',
+    /** The permission chip's name; on a phone, the "+" row that reads the mode beside it. */
+    mode: 'Permission',
     model: 'Model',
     unavailable: 'not installed',
     noAccount: 'no account',

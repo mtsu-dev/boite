@@ -1,10 +1,13 @@
-import { afterEach, expect } from 'vitest';
+import { afterEach, beforeAll, expect } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import { test } from '../test/fake-client';
 import ContextControl from './ContextControl.svelte';
+import { contextPopup } from '../lib/idle-parts';
 import { fill, strings } from '../lib/strings';
 
 let view: ReturnType<typeof mount> | undefined;
+// The details are their own chunk: here before the first click, as the idle prefetch has it in the app.
+beforeAll(async () => { await contextPopup.load(); });
 afterEach(() => {
   if (view) unmount(view, { outro: false });
   view = undefined;

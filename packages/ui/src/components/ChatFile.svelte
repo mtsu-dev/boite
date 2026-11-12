@@ -13,7 +13,8 @@
   import { galleryFrom, media, viewerHost, type Gallery, type MediaItem } from '../lib/media-gallery';
   import { videoPlayable } from '../lib/video-support';
   import { mediaKey, rememberedSize, rememberSize, type MediaSize } from '../lib/media-size';
-  import Deferred, { parts } from './Deferred.svelte';
+  import Deferred from './Deferred.svelte';
+  import { parts } from '../lib/deferred-parts';
 
   let { file, store, threadId, messageId, partIndex, path, line, onclose }: {
     file?: Extract<MessagePart, { type: 'file' | 'artifact' }>; store?: Store; threadId?: string; messageId?: string;
@@ -341,7 +342,7 @@
 {#if viewing}{@const view = viewing}<Deferred part={parts.ImageViewer} floating>{#snippet children(ImageViewer)}<ImageViewer items={view.items} index={view.index} onclose={() => viewing = null} />{/snippet}</Deferred>{/if}
 
 <style>
-  .chat-file { margin-block: 10px; max-width: 100%; min-width: 0; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); overflow: hidden; display: flex; flex-direction: column; }
+  .chat-file { margin-block: 10px; max-width: 100%; min-width: 0; border-radius: var(--radius-lg); background: var(--color-surface); overflow: hidden; display: flex; flex-direction: column; }
   .inline-media { width: fit-content; min-width: min(240px, 100%); max-width: min(560px, 100%); }
   .file-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; min-width: 0; order: 0; }
   .inline-media .file-row { order: 1; }

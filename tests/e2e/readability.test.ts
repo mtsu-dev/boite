@@ -2,7 +2,7 @@ import { mobileAction } from './lib/mobile.ts';
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp';
-import { showThreadView } from './lib/views.ts';
+import { closeDisplayOptions, openProjectFilter, showThreadView } from './lib/views.ts';
 import { startDevUi } from './lib/ui.ts';
 let server: { close(): Promise<void> };
 let page: BrowserPage;
@@ -39,9 +39,17 @@ test('connecting another machine keeps thread rows at their single-machine heigh
   expect(await height()).toBeCloseTo(single, 1);
   // In Projects the header names the machine; a row repeating it would only take room from the title.
   expect(await page.evaluate(`Array.from(document.querySelectorAll('${id('thread-row')}')).every(e => !e.querySelector('.machine'))`)).toBe(true);
-  expect(await page.evaluate(`Array.from(document.querySelectorAll('${id('project-row')}')).every(e => e.querySelector('${id('project-host')}[title][aria-label]'))`)).toBe(true);
+  // The machine reads as a place, "on Builder", in words of its own (no aria-label needed); this machine's own projects go unnamed.
+  expect(await page.evaluate(`(() => {
+    const rows = Array.from(document.querySelectorAll('${id('project-row')}'));
+    const builder = rows.filter(e => e.title.endsWith(' · Builder'));
+    return builder.length > 0 && builder.length < rows.length && rows.every(e => {
+      const host = e.querySelector('${id('project-host')}[title]');
+      return builder.includes(e) ? !!host && host.textContent.includes('Builder') : !host;
+    });
+  })()`)).toBe(true);
   // The project's tile leads its header, the machine after it; under the keyboard (or a mouse) the tile gives way to the fold chevron.
-  expect(await page.evaluate(`Array.from(document.querySelectorAll('${id('project-row')}')).every(e => !!(e.querySelector('${id('project-tile')}').compareDocumentPosition(e.querySelector('${id('project-host')}')) & Node.DOCUMENT_POSITION_FOLLOWING))`)).toBe(true);
+  expect(await page.evaluate(`Array.from(document.querySelectorAll('${id('project-row')}')).filter(e => e.querySelector('${id('project-host')}')).every(e => !!(e.querySelector('${id('project-tile')}').compareDocumentPosition(e.querySelector('${id('project-host')}')) & Node.DOCUMENT_POSITION_FOLLOWING))`)).toBe(true);
   const swapped = (tile: string, caret: string) => `(() => { const r = document.querySelector('${id('project-row')}'); return getComputedStyle(r.querySelector('${id('project-tile')}')).opacity === '${tile}' && getComputedStyle(r.querySelector('.fold-caret')).opacity === '${caret}'; })()`;
   expect(await page.evaluate<boolean>(swapped('1', '0'))).toBe(true);
   // A key first, so the focus that follows reads as the keyboard's.
@@ -52,14 +60,22 @@ test('connecting another machine keeps thread rows at their single-machine heigh
   await page.evaluate(`document.querySelector('${id('project-row')}').blur()`);
   await page.waitFor(swapped('1', '0'));
   await showThreadView(page, 'recent');
-  await page.waitFor(`Array.from(document.querySelectorAll('${id('thread-row')}')).every(e => e.querySelector('.headline .machine[title][aria-label]'))`);
-  await page.click(id('project-filter'));
-  await page.evaluate(`Array.from(document.querySelectorAll('${id('project-filter-menu')} [data-value]')).find(e => e.dataset.value === JSON.stringify(['http://builder.test', 'p-notes'])).click()`);
+  // Recent's rows are compact: where a row lives is said once, by the project's tile leading it or by its place line
+  // in words (project, then the machine among several), never both, and the row repeats no machine tag.
+  await page.waitFor(`Array.from(document.querySelectorAll('${id('thread-row')}')).every(e => {
+    const tile = !!e.querySelector('.headline ${id('project-tile')}');
+    const where = e.querySelector('${id('thread-where')}');
+    return tile !== !!where?.textContent.trim() && !e.querySelector('.machine') && e.querySelectorAll('.machine-place').length <= 1;
+  })`);
+  await openProjectFilter(page);
+  await page.evaluate(`Array.from(document.querySelectorAll('${id('project-filter-menu')} [data-value]')).find(e => { if (e.dataset.value === 'all') return false; const [machine, project] = JSON.parse(e.dataset.value); return JSON.stringify(machine).includes('Builder') && project === 'p-notes'; }).click()`);
   await page.waitFor(`document.querySelectorAll('${id('thread-row')}').length === 1`);
+  await closeDisplayOptions(page);
   expect(await height()).toBeCloseTo(single, 1);
   await capture('readability-thread-filtered');
-  await page.click(id('project-filter'));
+  await openProjectFilter(page);
   await page.click(`${id('project-filter-menu')} [data-value=all]`);
+  await closeDisplayOptions(page);
   await showThreadView(page, 'projects');
   await page.evaluate(`globalThis.__boiteTest.workspace.active.setSidebarWidth(208)`);
   await page.waitFor(`document.querySelector('${id('sidebar')}').getBoundingClientRect().width <= 210`);
@@ -80,11 +96,14 @@ test('thread metadata, message identity and expandable trace fit a narrow panel'
   await page.waitFor(`document.querySelectorAll('${id('thread-pr')}').length === 2`);
   expect(await page.evaluate(`document.querySelector('${id('usage-pill')}') === null`)).toBe(true);
   expect(await page.evaluate(`Array.from(document.querySelectorAll('.metadata')).every(e => !e.textContent.includes('No PR') && !e.textContent.includes('My computer') && !e.textContent.includes('Builder'))`)).toBe(true);
-  expect(await page.evaluate(`Array.from(document.querySelectorAll('${id('thread-pr')}')).every(e => (e.closest('.thread').querySelector('.machine') || e.closest('${id('project')}')?.querySelector('${id('project-host')}')) && getComputedStyle(e).textDecorationLine.includes('underline'))`)).toBe(true);
+  // A row's pull request is a named mark in the row's quiet ink, its machine named once by the card (another machine's only), never by the row.
+  // No link nests in the row's button: a click on the mark opens the pull request it names.
+  expect(await page.evaluate(`Array.from(document.querySelectorAll('${id('thread-pr')}')).every(e => !e.closest('.thread').querySelector('.machine, .machine-place') && !e.closest('a') && !!e.getAttribute('aria-label') && /^#\\d+$/.test(e.textContent.trim()))`)).toBe(true);
   await page.evaluate(`window.__openedPr = null; window.open = (url) => { window.__openedPr = url; return null; }`);
-  const prUrl = await page.evaluate<string>(`document.querySelector('${id('thread-pr')}').href`);
+  const prNumber = (await page.text(id('thread-pr'))).trim().slice(1);
   await page.click(id('thread-pr'));
-  expect(await page.evaluate(`window.__openedPr`)).toBe(prUrl);
+  await page.waitFor('window.__openedPr !== null');
+  expect(await page.evaluate<string>(`window.__openedPr`)).toEndWith(`/pull/${prNumber}`);
   await page.click(id('panel-toggle'));
   await page.waitFor(`document.querySelector('${id('launch-trace')}') || document.querySelector('${id('trace-panel')}')`);
   await page.evaluate(`document.querySelector('${id('launch-trace')}')?.click()`);
@@ -98,8 +117,10 @@ test('thread metadata, message identity and expandable trace fit a narrow panel'
   await capture('readability-trace-phone');
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
   await page.send('Emulation.setDeviceMetricsOverride',{width:1300,height:850,deviceScaleFactor:1,mobile:false});
-  await page.click(id('panel-toggle'));
-});
+  // An open panel is closed from its own head; the header's door stands for opening one.
+  await page.click(id('panel-close'));
+  await page.waitFor(`!document.querySelector('${id('right-panel')}')`);
+}, 30_000);
 
 test('live paragraphs stay visible and preserve completed nodes; reasoning steps keep their place and duration', async () => {
   await update(`const turn = thread.turns[0]; turn.status = 'running'; turn.usage = null; turn.finishedAt = null; turn.startedAt = Date.now(); thread.status = 'running'; thread.memoryEvents = []; const m = thread.messages.at(-1); m.state = 'streaming'; m.parts = [{type:'thinking',text:'**Inspecting files**',startedAt:Date.now()-7000,finishedAt:Date.now()-3000}, {type:'text',text:'First complete paragraph.\\n\\nAn unfinished'}];`);
@@ -135,7 +156,8 @@ test('goal prompts and markers stay readable and recognized commands are accente
   await page.waitFor(`document.querySelector('.user-text .command')?.textContent === '/goal'`);
   // A conversation is read and written in one size: the answer, the sent prompt and the composer.
   const reading = () => page.evaluate<string[]>(`['.prose', '.user-text', '${id('composer-input')}'].map(selector => { const style = getComputedStyle(document.querySelector(selector)); return style.fontSize + '/' + style.lineHeight; })`);
-  expect(await reading()).toEqual(['15px/24px', '15px/24px', '15px/24px']);
+  // The reading size of the redesign (`--text-reading`, `--leading-reading` in app.css): 16 px on 1.65.
+  expect(await reading()).toEqual(['16px/26.4px', '16px/26.4px', '16px/26.4px']);
   expect(await page.evaluate(`document.querySelector('${id('timeline')}').textContent.includes('Internal instructions')`)).toBe(false);
   expect(await page.evaluate(`document.querySelector('${id('timeline')}').textContent.includes('[BOITE_GOAL_COMPLETE]')`)).toBe(false);
   for (const command of ['/goal', '/loop', '/model', '/effort']) {
@@ -168,7 +190,8 @@ test('goal prompts and markers stay readable and recognized commands are accente
     return { inputFont: typography(input), mirrorFont: typography(mirror), inputHeight: input.scrollHeight, mirrorHeight: mirror.scrollHeight };
   })()`);
   expect(phoneText.mirrorFont).toEqual(phoneText.inputFont);
-  expect(await reading()).toEqual(['16px/25.6px', '16px/25.6px', '16px/25.6px']);
+  // A phone reads at the same size as a desktop.
+  expect(await reading()).toEqual(['16px/26.4px', '16px/26.4px', '16px/26.4px']);
   expect(Math.abs(phoneText.mirrorHeight - phoneText.inputHeight)).toBeLessThan(2);
   await capture('readability-composer-phone');
   await page.evaluate(`document.documentElement.dataset.theme = 'light'`);
@@ -284,22 +307,41 @@ test('PR links appear during work without remounting and disappear after a move 
       await store.client.call('threads.create', { projectId: thread.projectId, providerId: thread.providerId, accountId: thread.accountId, model: thread.model, title });
     }
   `);
+  // Quiet conversations fold under the card's "Show N more": unfolded, the two new ones are rows of their own.
+  await page.click(`${id('sidebar')} section${id('project')}[data-project-id="p-boite"] ${id('project-more')}`);
   await page.waitFor(`Array.from(document.querySelectorAll('${id('thread-row')}')).filter(row => row.textContent.includes('shared-folder conversation')).length === 2`);
   const sharedRowsHaveNoPr = `Array.from(document.querySelectorAll('${id('thread-row')}')).filter(row => row.textContent.includes('shared-folder conversation')).every(row => !row.closest('.thread').querySelector('${id('thread-pr')}'))`;
-  const prBeforeBranch = (scope: string) => page.evaluate(`(() => {
-    const links = Array.from(document.querySelectorAll('${scope} ${id('thread-pr')}'));
-    return links.length > 0 && links.every(pr => {
-      const branch = pr.nextElementSibling;
-      return branch?.matches('${id('thread-branch')}') && pr.getBoundingClientRect().right < branch.getBoundingClientRect().left;
-    });
-  })()`);
+  // The title wins at rest: a row shows its pull request under the pointer, after the title, the thread's live branch under its label.
+  const prNamesBranch = async (scope: string) => {
+    const threads = await page.evaluate<string[]>(`Array.from(document.querySelectorAll('${scope} ${id('thread-pr')}')).map(pr => pr.closest('[data-thread-id]').dataset.threadId)`);
+    if (threads.length === 0) return false;
+    let named = true;
+    for (const threadId of threads) {
+      const row = `${scope} [data-thread-id="${threadId}"]`;
+      const point = await page.evaluate<{ x: number; y: number }>(`(() => { const row = document.querySelector('${row}'); row.scrollIntoView({block:'nearest'}); const r = row.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+      await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point });
+      named &&= await page.evaluate<boolean>(`(() => {
+        const pr = document.querySelector('${row} ${id('thread-pr')}');
+        const branch = globalThis.__boiteTest.workspace.active.threads.find(thread => thread.id === ${JSON.stringify(threadId)})?.branch;
+        const title = pr?.closest('.headline')?.querySelector('.title');
+        const box = pr?.getBoundingClientRect();
+        return !!branch && !!box && box.width > 0 && pr.title.split('\\n').at(-1) === branch && !!title && title.getBoundingClientRect().right <= box.left;
+      })()`);
+    }
+    // The pointer leaves the list, so the rows come back to rest.
+    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 900, y: 600 });
+    return named;
+  };
   expect(await page.evaluate(sharedRowsHaveNoPr)).toBe(true);
-  expect(await prBeforeBranch(id('sidebar'))).toBe(true);
+  expect(await prNamesBranch(id('sidebar'))).toBe(true);
   await capture('pr-links-desktop');
   await showThreadView(page, 'recent');
-  await page.waitFor(`document.querySelector('${id('sidebar')} ${id('thread-project')}')`);
-  expect(await prBeforeBranch(id('sidebar'))).toBe(true);
+  // Recent lists compact rows without the project cards: a tile, the title and one marker; at rest no pull request shows.
+  await page.waitFor(`!document.querySelector('${id('sidebar')} section${id('project')}') && document.querySelector('${id('sidebar')} ${id('thread-row')}') && !Array.from(document.querySelectorAll('${id('sidebar')} ${id('thread-pr')}')).some(pr => pr.getClientRects().length > 0)`);
   await capture('pr-links-recent');
+  // The cards carry the pull request: the live one is followed there.
+  await showThreadView(page, 'projects');
+  await page.waitFor(`document.querySelector('${id('sidebar')} section${id('project')} ${id('thread-pr')}')`);
   await page.evaluate(`(() => {
     const store = globalThis.__boiteTest.workspace.active, client = store.client;
     window.__prOriginal = client.call.bind(client);
@@ -316,16 +358,17 @@ test('PR links appear during work without remounting and disappear after a move 
   await page.waitFor(`document.querySelector('${livePr}')?.textContent.includes('#185')`, 25_000);
   expect(await page.evaluate(`document.querySelector('[data-thread-id="t-trace"]') === window.__prRow`)).toBe(true);
   expect(await page.evaluate(`document.querySelector('[data-thread-id="t-trace"]').dataset.status`)).toBe('running');
-  expect(await prBeforeBranch(id('sidebar'))).toBe(true);
+  expect(await prNamesBranch(id('sidebar'))).toBe(true);
   await capture('pr-live-desktop');
   await showThreadView(page, 'projects');
   await page.send('Emulation.setDeviceMetricsOverride', { width:390, height:844, deviceScaleFactor:1, mobile:true });
   await mobileAction(page, 'mobile-conversations');
+  await page.click(`${id('mobile-list')} ${id('mobile-project-group')}[data-project-id="p-boite"] ${id('project-more')}`);
   await page.waitFor(`Array.from(document.querySelectorAll('${id('mobile-list')} .thread')).filter(row => row.textContent.includes('shared-folder conversation')).length === 2`);
-  const phonePr = `${id('mobile-list')} [data-thread-id="t-trace"] ${id('thread-pr')}`;
-  await page.waitFor(`document.querySelector('${phonePr}')?.textContent.includes('#185')`);
-  expect(await page.evaluate(`document.querySelector('${phonePr}').getAttribute('href')`)).toBe('https://github.com/example/repo/pull/185');
-  expect(await page.evaluate(`Array.from(document.querySelectorAll('${id('mobile-list')} .thread')).filter(row => row.textContent.includes('shared-folder conversation')).every(row => !row.closest('.row').querySelector('${id('thread-pr')}'))`)).toBe(true);
+  // A phone's row leaves the pull request to the thread (MobileThreadRow.svelte): no mark on any row, the live branch in the row's name.
+  const phoneRow = `${id('mobile-list')} ${id('mobile-thread-t-trace')}`;
+  await page.waitFor(`document.querySelector('${phoneRow}')?.title.split('\\n').includes('boite/publish-live-pr')`);
+  expect(await page.evaluate(`!document.querySelector('${id('mobile-list')} ${id('thread-pr')}')`)).toBe(true);
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
   await capture('pr-links-phone');
   await page.send('Emulation.setDeviceMetricsOverride', { width:1300, height:850, deviceScaleFactor:1, mobile:false });
@@ -400,7 +443,8 @@ test('a run of calls reads as the agent\'s own summaries, and a step of reasonin
 
 test('multiple-choice questions show checkboxes and single-choice questions keep round indicators', async () => {
   await page.evaluate(`document.documentElement.dataset.theme = 'dark'`);
-  const card = `${id('message')} ${id('question-card')}`;
+  // A waiting question is written once, at the top of the composer card; the message keeps a quiet line.
+  const card = `${id('thread-decision')} ${id('question-card')}`;
   const option = (index: number) => `${card} ${id('question-option')}:nth-child(${index})`;
   for (const multiple of [true, false]) {
     await update(`
@@ -427,7 +471,8 @@ test('multiple-choice questions show checkboxes and single-choice questions keep
       await page.click(option(2));
       expect(await page.evaluate(`document.querySelector('${option(1)}').getAttribute('aria-checked')`)).toBe(String(multiple));
       expect(await page.evaluate(`document.querySelector('${option(2)}').getAttribute('aria-checked')`)).toBe('true');
-      expect(await page.evaluate(`document.querySelectorAll('${card} .box svg').length`)).toBe(multiple ? 2 : 0);
+      // Docked in the composer, a picked choice wears a solid check in its ring or square: two picks, or the one a radio keeps.
+      expect(await page.evaluate(`document.querySelectorAll('${card} .box svg').length`)).toBe(multiple ? 2 : 1);
       await capture(`question-${multiple ? 'checkboxes' : 'radios'}-${width}`);
       await page.click(option(2));
       expect(await page.evaluate(`document.querySelector('${option(2)} .box svg') === null`)).toBe(true);

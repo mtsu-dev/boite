@@ -6,6 +6,7 @@ import { confirm } from '../../lib/confirm.svelte';
 import { setExperiment } from '../../lib/experiments';
 import { strings } from '../../lib/strings';
 import AgentsPage from './AgentsPage.svelte';
+import TitleBar from '../TitleBar.svelte';
 
 const one = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector);
 
@@ -17,6 +18,7 @@ const one = <T extends HTMLElement>(selector: string) => document.querySelector<
 test('a built-in bot carries its badge, locks its texts and resets after the app asks', async ({ ready }) => {
   setExperiment('resident-agents', true);
   let page: ReturnType<typeof mount> | null = null;
+  let bar: ReturnType<typeof mount> | null = null;
   try {
     const { store, client } = await ready({ delayMs: 0, agentsDemo: true });
     const made = await client.call('agents.builtin.ensure', { kind: 'contacts', name: strings.agents.builtin.name.contacts });
@@ -27,10 +29,12 @@ test('a built-in bot carries its badge, locks its texts and resets after the app
     await view.refresh();
     store.showAgents(made.id, 'settings');
     page = mount(AgentsPage, { target: document.body, props: { store } });
+    // The header stands in the window's top bar on a desktop.
+    bar = mount(TitleBar, { target: document.body, props: { store } });
     await vi.waitFor(() => { flushSync(); expect(one('[data-testid="agent-sheet"] [data-testid="agent-editor"]')).not.toBeNull(); });
 
-    // The badge in its rail row and in its header; an owner's bot has none.
-    expect(one(`[data-testid="agent-entry-${made.id}"] [data-testid="agent-builtin-badge"]`)?.getAttribute('title')).toBe(strings.agents.builtin.badgeTip);
+    // The badge in its column's head and in its header; an owner's bot has none.
+    expect(one('[data-testid="bot-column-head"] [data-testid="agent-builtin-badge"]')?.getAttribute('title')).toBe(strings.agents.builtin.badgeTip);
     expect(one('[data-testid="agent-header"] [data-testid="agent-builtin-badge"]')?.textContent).toContain(strings.agents.builtin.badge);
     expect(document.querySelectorAll('[data-testid="agent-builtin-badge"]')).toHaveLength(2);
 
@@ -70,6 +74,7 @@ test('a built-in bot carries its badge, locks its texts and resets after the app
     expect(after).not.toBe(before);
     expect((await client.call('threads.get', { threadId: before })).archived).toBe(true);
   } finally {
+    if (bar) await unmount(bar);
     if (page) await unmount(page);
     confirm.answer(false);
     setExperiment('resident-agents', false);

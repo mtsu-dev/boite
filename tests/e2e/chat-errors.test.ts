@@ -36,7 +36,7 @@ beforeAll(async () => {
 afterAll(async () => { await page?.close(); await server?.close(); }, 30000);
 
 async function capture(name: string) {
-  await page.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
+  await page.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
   await page.screenshot(join(import.meta.dir, '.artifacts', `chat-errors-${name}.png`));
 }
 
@@ -107,7 +107,7 @@ test('failed automatic turns share one folded group and retain every wake-up, ti
   const limited = 'exceeded retry limit, last status: 429 Too Many Requests';
   await page.evaluate(`__boiteTest.workspace.active.openThread.messages.at(-1).parts[0].message = ${JSON.stringify(limited)}`);
   await page.waitFor(`document.querySelector('[data-testid="error-title"]')?.textContent === 'Rate limit reached'`);
-  expect(await page.evaluate(`document.querySelector('[data-testid="error-part"] .code')?.textContent`)).toBe('429');
+  expect(await page.evaluate(`document.querySelector('[data-testid="error-code"]')?.textContent`)).toBe('429');
   await capture('rate-limit-phone');
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
   await capture('rate-limit-desktop');

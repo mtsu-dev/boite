@@ -6,6 +6,7 @@
   import { fill, strings } from '../lib/strings';
   import { promptText } from '../lib/message-display';
   import ErrorCard from './ErrorCard.svelte';
+  import { failedCall } from '../lib/one-status';
   import Prose from './Prose.svelte';
   import TurnSummary from './TurnSummary.svelte';
   import MessageActions from './MessageActions.svelte';
@@ -27,7 +28,7 @@
 </script>
 
 <div data-testid="failed-attempts">
-  <ErrorCard message={errors(attempts.at(-1)!)} reconnect={account ? reconnect : undefined}>
+  <ErrorCard message={errors(attempts.at(-1)!)} call={failedCall(attempts.at(-1)!)} reconnect={account ? reconnect : undefined}>
     {#snippet history()}
       <details bind:open={expanded} data-testid="failed-attempts-history" ontoggle={event => { if (!event.currentTarget.open) oninspect(false); }}>
         <summary data-testid="failed-attempts-toggle" onclick={() => { if (!expanded) oninspect(true); }}>
@@ -59,7 +60,8 @@
 </div>
 
 <style>
-  details { margin-top: 6px; }
+  /* In the card's action row: the fold takes the rest of it, its time range at the end. */
+  details { flex: 1 1 auto; }
   summary { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-height: var(--control-sm); border-radius: var(--radius-sm); color: var(--color-muted-foreground); font-size: var(--text-xs); cursor: pointer; list-style: none; }
   summary::-webkit-details-marker { display: none; }
   summary:hover { color: var(--color-foreground); }

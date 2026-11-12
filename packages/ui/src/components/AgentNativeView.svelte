@@ -61,7 +61,7 @@
 
 <style>
   .native { flex: 1; min-height: 0; height: 100%; display: flex; flex-direction: column; position: relative; overflow-x: clip; }
-  .error { margin: 0; padding: 6px 12px; font-size: var(--text-sm); color: var(--color-danger); border-bottom: 1px solid var(--color-border); overflow-wrap: anywhere; }
+  .error { margin: 0; padding: 6px 12px; border-bottom: 1px solid var(--color-border); }
   .slot { position: relative; flex: 1; min-height: 0; background: var(--color-background); }
   .overlay-preview { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
 </style>

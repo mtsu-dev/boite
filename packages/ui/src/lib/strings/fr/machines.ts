@@ -2,7 +2,9 @@ import type { Translation } from '../../i18n.svelte';
 
 export const fr: Translation = {
   machines: {
-    heading: 'Machines', local: 'Ce PC', projects: 'Projets', recent: 'Récent',
+    /** Where a page's settings apply: a machine page under its title, the windows cards at the foot of Machines. */
+    scopeOn: 'Sur {machine}',
+    heading: 'Machines', local: 'Cet ordinateur', projects: 'Projets', recent: 'Récent',
     intro: 'Chaque machine exécute ses propres agents sur ses propres fichiers.',
     details: 'Détails', address: 'Adresse', updateFailed: 'Mise à jour échouée',
     label: 'Nom de la machine', icon: 'Icône de la machine', icons: { desktop: 'Ordinateur fixe', laptop: 'Portable', phone: 'Téléphone', tablet: 'Tablette', apple: 'Mac', server: 'Serveur', rack: 'Baie', nas: 'NAS', database: 'Base de données', cloud: 'Cloud', cpu: 'Processeur', router: 'Routeur', terminal: 'Terminal', bot: 'Bot', gamepad: 'Console', tv: 'Télé', house: 'Maison' }, link: "Lien d'une autre machine", add: 'Ajouter une machine', adding: 'Connexion', connect: 'Connecter',
@@ -24,6 +26,8 @@ export const fr: Translation = {
     duplicate: 'Cette machine est déjà connectée.', refreshPr: 'Actualiser la pull request',
     manual: 'Connecter avec une URL et un jeton',
     filter: 'Filtrer les machines', all: 'Toutes les machines',
+    filterHint: 'cliquer pour filtrer',
+    state: '{name} : {state}',
     main: 'Machine principale', mainLast: 'La dernière utilisée',
     mainHint: "Boite s'ouvre sur cette machine. Si elle est éteinte, Boite s'ouvre sur une autre.",
     mainLastHint: "Boite s'ouvre sur la dernière machine utilisée.",
@@ -35,11 +39,12 @@ export const fr: Translation = {
     browserOriginsHint: "Les machines du groupe, et les adresses où elles sont servies, sont autorisées toutes seules. N'ajoutez ici qu'une page servie par quelque chose hors du groupe. Une origine http(s) exacte par ligne.",
     you: '{machine} (vous)', youTag: '(vous)',
     groupThreads: 'Conversations des autres machines',
+    options: 'Options de {machine}',
     groupThreadsHint: "Les agents des autres machines du groupe peuvent lancer des conversations sur cette machine, dans ses projets, avec leur propre agent (boite thread new --machine), et ajouter ses dossiers comme projets (boite projects add --machine). Désactivé par défaut.",
     groupBots: 'Bots des autres machines',
     groupBotsHint: "Un bot d'une autre machine du groupe peut s'occuper des projets de cette machine que leur propriétaire lui a confiés : lister, lire et piloter leurs conversations et répondre à leurs questions. Il ne peut ni gérer les autorisations d'outils, ni supprimer des conversations, ni modifier les réglages de cette machine. Désactiver ce réglage coupe immédiatement son accès. Désactivé par défaut.",
     pick: 'Machine dont ce sont les réglages',
-    home: 'Paramètres', homeNone: 'Aucune', homeBadge: 'Paramètres',
+    home: 'Paramètres', homeNone: 'Non partagés', homeBadge: 'Paramètres',
     homeHint: 'Les autres machines suivent les réglages de celle-ci : conversations, ressources, clavier et options du brain. Un réglage changé sur une autre machine y reste et prend une étoile.',
     homeOlder: 'Mettez à jour Boite sur {machines} pour suivre la machine des paramètres.',
     bots: 'Bots', botsBadge: 'Bots',
@@ -52,6 +57,8 @@ export const fr: Translation = {
     syncStopped: 'La copie s’est arrêtée sur {stage} : {error}. Ce qui précède reste copié.',
     syncStages: { settings: 'les réglages', keybindings: 'les raccourcis clavier', brain: 'les options du brain' },
     threadFailed: 'Une conversation a échoué ici : {thread}',
+    offlineLine: '{machine} est hors ligne',
+    connectingLine: 'Connexion à {machine}',
     agentLinkAddressRequired: 'Mettez les deux machines à jour pour utiliser le relais de l’app, ou définissez une adresse HTTPS joignable pour {machine} dans les réglages généraux.',
   }
 };

@@ -1,13 +1,33 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import { flushSync, mount, unmount } from 'svelte';
+import { createRawSnippet, flushSync, mount, unmount } from 'svelte';
 import { SvelteMap } from 'svelte/reactivity';
 import type { UsageHistory } from '@boite/contracts';
 import type { Store } from '../lib/store.svelte';
 import UsagePage from './UsagePage.svelte';
+import TitleBar from './TitleBar.svelte';
+import { Store as RealStore } from '../lib/store.svelte';
+import { phoneWidth } from '../test/phone-width';
+import { titleSlot } from '../lib/title-slot.svelte';
 import { workspace } from '../lib/workspace.svelte';
 
 let mounted: ReturnType<typeof mount> | undefined;
-afterEach(async () => { if (mounted) await unmount(mounted); mounted = undefined; document.body.innerHTML = ''; });
+let band: ReturnType<typeof mount> | undefined;
+afterEach(async () => {
+  if (mounted) await unmount(mounted);
+  if (band) await unmount(band);
+  mounted = band = undefined;
+  titleSlot.current = null;
+  document.body.innerHTML = '';
+});
+
+/** The page under the band that Settings draws above it on a desktop, the title set as SettingsShell sets it. */
+function page(props: { store: Store }) {
+  const bar = new RealStore();
+  bar.page = 'settings';
+  titleSlot.current = createRawSnippet(() => ({ render: () => '<span>Usage and limits</span>' }));
+  band = mount(TitleBar, { target: document.body, props: { store: bar } });
+  return mount(UsagePage, { target: document.body, props });
+}
 
 const settle = async () => { for (let i = 0; i < 20; i++) { await Promise.resolve(); flushSync(); } };
 const click = (selector: string) => document.querySelector<HTMLButtonElement>(selector)!.click();
@@ -20,7 +40,7 @@ const store = (call: unknown) => ({ client: { call, on: () => () => {} }, provid
 test('a failed initial read stops loading, can be retried and distinguishes missing reports from zero', async () => {
   const call = vi.fn(async (_method: string, params: { edges: number[] }) => history(params.edges, 'removed-provider'));
   call.mockRejectedValueOnce(new Error('History unavailable'));
-  mounted = mount(UsagePage, { target: document.body, props: { store: store(call) } });
+  mounted = page({ store: store(call) });
   await settle();
   expect(document.querySelector('[role=alert]')?.textContent).toContain('History unavailable');
   expect(document.querySelector('[aria-busy]')?.getAttribute('aria-busy')).toBe('false');
@@ -35,26 +55,58 @@ test('a failed initial read stops loading, can be retried and distinguishes miss
   expect(document.querySelector('[data-testid=usage-total]')?.textContent).toBe('No price');
 });
 
-test('a coverage line breaks only between its pieces, each label staying beside its count', async () => {
-  mounted = mount(UsagePage, { target: document.body, props: { store: store(vi.fn(async (_method: string, params: { edges: number[] }) => history(params.edges, 'claude'))) } });
+test('a provider line says in plain words what was counted over the range, then what the measure misses', async () => {
+  const partial = (edges: number[]): UsageHistory => {
+    const read = history(edges, 'claude');
+    read.rows[0] = { ...read.rows[0]!, turns: 3, reported: 2, priced: 1, usage: { ...read.rows[0]!.usage, inputTokens: 10, costUsdEquivalent: 0.5 } };
+    return read;
+  };
+  mounted = page({ store: store(vi.fn(async (_method: string, params: { edges: number[] }) => partial(params.edges))) });
   await settle();
+  // A line breaks only between its pieces, each count staying beside its words.
   const pieces = (selector: string) => [...document.querySelectorAll(`${selector} .pair`)].map((piece) => piece.textContent);
-  expect(pieces('[data-testid=usage-coverage]')).toEqual(['Tokens 0/2 turns ·', 'Cost 0/2']);
-  expect(pieces('[data-provider=claude] .provider small')).toEqual(['Tokens 0/2 turns ·', 'Cost 0/2']);
-  expect(document.querySelector('[data-testid=usage-coverage]')!.textContent).toBe('Tokens 0/2 turns · Cost 0/2');
+  expect(pieces('[data-provider=claude] .provider small')).toEqual(['3 turns in 30 days ·', '1 with no token count']);
+  expect(document.querySelector('[data-testid=usage-coverage]')!.textContent).toBe('1 turn reported no token count and counts as a turn only');
+  expect(document.querySelector('[data-testid=usage-partial-cost]')).toBeNull();
+  click('[data-testid=usage-metric-cost]');
+  await settle();
+  expect(pieces('[data-provider=claude] .provider small')).toEqual(['3 turns in 30 days ·', '2 with no price']);
+  expect(document.querySelector('[data-testid=usage-partial-cost]')!.textContent).toBe('2 turns have no price and are left out of the estimate');
+  click('[data-testid=usage-metric-turns]');
+  await settle();
+  expect(pieces('[data-provider=claude] .provider small')).toEqual(['3 turns in 30 days']);
+  expect(document.querySelector('[data-testid=usage-coverage]')).toBeNull();
+  expect(document.body.textContent).not.toMatch(/\d+\/\d+/);
 });
 
-test('the refresh sits on the title line, not on a row of its own under the filters', async () => {
-  mounted = mount(UsagePage, { target: document.body, props: { store: store(vi.fn(async (_method: string, params: { edges: number[] }) => history(params.edges, 'claude'))) } });
+test('the refresh stands in the band beside the title on a desktop, and on the title line on a phone', async () => {
+  const read = () => store(vi.fn(async (_method: string, params: { edges: number[] }) => history(params.edges, 'claude')));
+  mounted = page({ store: read() });
   await settle();
-  expect(document.querySelector('[data-testid=usage-page] > header [data-testid=usage-refresh]')).not.toBeNull();
-  expect(document.querySelector('.filters [data-testid=usage-refresh]')).toBeNull();
+  expect(document.querySelectorAll('[data-testid=usage-refresh]')).toHaveLength(1);
+  expect(document.querySelector('[data-testid=titlebar] [data-testid=usage-refresh]')).not.toBeNull();
+  expect(document.querySelector('[data-testid=usage-page] [data-testid=usage-refresh]')).toBeNull();
+  await unmount(mounted);
+  mounted = undefined;
+  flushSync();
+  // The page that set the band's actions takes them back when it leaves.
+  expect(titleSlot.actions).toBeNull();
+  expect(document.querySelector('[data-testid=usage-refresh]')).toBeNull();
+
+  const restore = phoneWidth();
+  try {
+    mounted = mount(UsagePage, { target: document.body, props: { store: read() } });
+    await settle();
+    expect(document.querySelector('[data-testid=usage-page] > header [data-testid=usage-refresh]')).not.toBeNull();
+    expect(document.querySelector('.filters [data-testid=usage-refresh]')).toBeNull();
+    expect(titleSlot.actions).toBeNull();
+  } finally { restore(); }
 });
 
 test('changing the range invalidates an older read before it can overwrite the latest history', async () => {
   const pending: { edges: number[]; resolve: (result: UsageHistory) => void }[] = [];
   const call = vi.fn(async (_method: string, params: { edges: number[] }) => new Promise<UsageHistory>((resolve) => pending.push({ edges: params.edges, resolve })));
-  mounted = mount(UsagePage, { target: document.body, props: { store: store(call) } });
+  mounted = page({ store: store(call) });
   await settle();
   click('[data-testid=usage-range-7]');
   await settle();
@@ -76,7 +128,7 @@ test('switching machines drops the old provider list and ignores a late refresh 
     return history(params.edges, 'old-only');
   });
   const owners = new SvelteMap([['current', store(oldCall)]]);
-  mounted = mount(UsagePage, { target: document.body, props: { get store() { return owners.get('current')!; } } });
+  mounted = page({ get store() { return owners.get('current')!; } });
   await settle();
   expect(document.querySelector('[data-provider=old-only]')).not.toBeNull();
   oldCall.mockImplementationOnce(async () => new Promise<UsageHistory>((resolve) => { answer = resolve; }));
@@ -92,7 +144,7 @@ test('switching machines drops the old provider list and ignores a late refresh 
 });
 
 test('legacy turns without a provider keep their totals without duplicating the all-providers menu option', async () => {
-  mounted = mount(UsagePage, { target: document.body, props: { store: store(vi.fn(async (_method: string, params: { edges: number[] }) => history(params.edges, ''))) } });
+  mounted = page({ store: store(vi.fn(async (_method: string, params: { edges: number[] }) => history(params.edges, ''))) });
   await settle();
   expect(document.querySelector('[data-testid=usage-overview]')?.textContent).toContain('Unknown provider');
   click('[data-testid=usage-provider-filter]');
@@ -102,7 +154,7 @@ test('legacy turns without a provider keep their totals without duplicating the 
 
 test('an older core with unfiltered rows or thread identities is reported instead of displaying them as filtered', async () => {
   const call = vi.fn(async (_method: string, params: { edges: number[] }) => history(params.edges, 'selected-provider'));
-  mounted = mount(UsagePage, { target: document.body, props: { store: store(call) } });
+  mounted = page({ store: store(call) });
   await settle();
   call.mockImplementationOnce(async (_method, params) => history(params.edges, 'another-provider'));
   click('[data-testid=usage-provider-filter]');
@@ -144,7 +196,7 @@ test('the machine menu reads one machine or adds every connected one, and names 
   Object.assign(gone.store, { client: null });
   workspace.machines = [here, builder, asleep, gone];
   try {
-    mounted = mount(UsagePage, { target: document.body, props: { store: here.store } });
+    mounted = page({ store: here.store });
     await settle();
     expect(document.querySelector('[data-testid=usage-machine-filter]')?.textContent).toContain('Here');
     expect(document.querySelector('[data-testid=usage-total]')?.textContent).toBe('Not reported');

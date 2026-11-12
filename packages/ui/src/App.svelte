@@ -8,8 +8,11 @@
   import { watchWindows } from './lib/window-watch';
   import { browserProfiles } from './lib/browser-profiles.svelte';
   import UndoToast from './components/UndoToast.svelte';
-  import NotificationCard from './components/NotificationCard.svelte';
+  import ErrorToast from './components/ErrorToast.svelte';
   import ChatView from './components/ChatView.svelte';
+  import Deferred from './components/Deferred.svelte';
+  import { inbox } from './lib/inbox.svelte';
+  import { activityPage } from './lib/activity-page';
   import ConfirmDialog from './components/ConfirmDialog.svelte';
   import ContextMenu from './components/ContextMenu.svelte';
   import MoveProjectPicker from './components/MoveProjectPicker.svelte';
@@ -18,6 +21,7 @@
 
   import Sidebar from './components/Sidebar.svelte';
   import TitleBar from './components/TitleBar.svelte';
+  import AppRail from './components/AppRail.svelte';
   import { Closing } from './lib/closing.svelte';
   import { focusComposer } from './lib/focus';
   import { handleAppKey } from './lib/app-keys';
@@ -36,9 +40,10 @@
   import { installWhipEscape } from './lib/whip.svelte';
   import { rightPanel } from './lib/right-panel.svelte';
   import { workspace } from './lib/workspace.svelte';
+  import { listAbsent } from './lib/list-absent';
   import { hostLocalAgentBrowser } from './lib/agent-browser-host.svelte';
-  import type { Store } from './lib/store.svelte';
   import { tourRequested, tourSeen } from './lib/onboarding.svelte';
+  import { needsAnAI } from './lib/first-run';
   import { whenIdle } from './lib/idle';
   import { prefetchAllowed, prefetchNames, warmPages } from './lib/prefetch';
   import { parts, prefetchParts } from './lib/deferred-parts';
@@ -131,6 +136,8 @@
     // The project board, in the same drawer: only once it is asked for.
     BoardDrawer: () => import('./components/BoardDrawer.svelte'),
     PluginUpdateNotice: () => import('./components/PluginUpdateNotice.svelte'),
+    // A memory stop's corner card: only once a thread is open.
+    MemoryCorner: () => import('./components/MemoryCorner.svelte'),
     // Plugin interfaces load after startup, on any link: what they add is part of the app.
     PluginUiHost: () => import('./components/PluginUiHost.svelte')
   };
@@ -168,6 +175,8 @@
     if (!store.booted) return;
     return whenIdle(() => { need('PluginUiHost'); if (!prefetchAllowed()) return need('PluginUpdateNotice'); needAll(); prefetchParts(); warmPages(store, experimentOn('resident-agents')); });
   });
+  // With the first open thread, so the corner is there before a stop lands in it.
+  $effect(() => { if (store.openThread) need('MemoryCorner'); });
   let WhipOverlay = $state<typeof import('./components/WhipOverlay.svelte').default>();
   $effect(() => {
     if (!store.booted || !experimentOn('whip') || WhipOverlay) return;
@@ -268,31 +277,12 @@
     };
   });
 
-  // The three overlays of this file leave the way they arrived: one `--dur-2`
+  // The overlays of this file leave the way they arrived: one `--dur-2`
   // playing the reverse animation, then out of the DOM on `animationend`.
-  const toast = new Closing();
   const scrim = new Closing();
   const panelSlot = new Closing();
   const terminalSlot = new Closing();
   const boardSlot = new Closing();
-  /** The error is cleared the moment Dismiss is pressed, so the exit plays on a copy. */
-  let toastText = $state('');
-  let toastThreadId = $state<string | null>(null);
-  let toastStore = $state<Store | null>(null);
-
-  function dismissError(): void {
-    if (toastStore) toastStore.error = null;
-  }
-
-  function openErrorThread(): void {
-    const owner = toastStore;
-    const threadId = toastThreadId;
-    if (!owner || !threadId) return;
-    owner.error = null;
-    void workspace.select(owner, threadId);
-    mobileScreen = 'chat';
-  }
-
   // Ctrl+Q quits the shell after a hold or a double press, never on one slip:
   // the hint shows for as long as the key is down. Only the shell has a
   // process to quit; a browser tab keeps its own Ctrl+Q.
@@ -312,37 +302,6 @@
     : null;
 
   $effect(() => {
-    const owner = store;
-    const error = owner.error;
-    // Missing/revoked phone credentials have a persistent recovery screen.
-    // Keep other errors (including a failed pairing attempt) visible.
-    const pairingNotice = !inShell && (narrow.current || wideRecovery) && store.pairingRequired
-      && (error === strings.errors.unpaired || error === strings.errors.revoked);
-    // A machine that may still give way to one that answers has nothing to report yet.
-    const held = workspace.waiting && owner === workspace.primary;
-    // Chrome refuses every socket until "Local network" is allowed: the recovery screen says so, and "socket error" says nothing more.
-    const blocked = mobileRecovery && localNetwork.state === 'denied';
-    if (!error || owner.errorOffline || pairingNotice || held || blocked) {
-      toast.hide();
-      return;
-    }
-    toastText = error;
-    toastThreadId = store.errorThreadId;
-    toastStore = store;
-    toast.show();
-  });
-
-  $effect(() => {
-    const owner = store;
-    const error = owner.error;
-    if (!error || owner.errorSeverity !== 'minor' || owner.errorThreadId) return;
-    const timer = setTimeout(() => {
-      if (owner.error === error && owner.errorSeverity === 'minor') owner.error = null;
-    }, 5_000);
-    return () => clearTimeout(timer);
-  });
-
-  $effect(() => {
     if (store.sidebarOpen) scrim.show();
     else scrim.hide();
   });
@@ -356,6 +315,33 @@
   $effect(() => {
     if (store.panelOpen && panelThread) panelSlot.show();
     else panelSlot.hide();
+  });
+  /**
+   * A docked side panel takes the thread list's column on a desktop chat, so
+   * the window keeps three zones (rail, chat, panel) instead of squeezing four.
+   * The fold is lent, not saved: the list comes back when the panel closes,
+   * and its own button brings it back sooner. A bot's Desk card lends the
+   * bot column the same way on the Bots page.
+   */
+  let listLentBy: typeof store | null = null;
+  $effect(() => {
+    const lends = store.page === 'chat' || (store.page === 'agents' && store.panel.active?.kind === 'desk');
+    const take = !narrow.current && lends && store.panelOpen && panelThread !== null && !rightPanel.floating;
+    untrack(() => {
+      if (listLentBy && (listLentBy !== store || !take)) {
+        if (listLentBy.sidebarCollapsed) listLentBy.sidebarCollapsed = false;
+        listLentBy = null;
+      }
+      if (take && !listLentBy && !store.sidebarCollapsed) {
+        store.sidebarCollapsed = true;
+        listLentBy = store;
+      }
+    });
+  });
+  // Unmounted with the list lent, the store would keep it folded for good.
+  $effect(() => () => {
+    if (listLentBy?.sidebarCollapsed) listLentBy.sidebarCollapsed = false;
+    listLentBy = null;
   });
   $effect(() => {
     // The drawer opens once its chunk is here, so its opening animation plays whole.
@@ -509,8 +495,20 @@
    * that selector made every node a streaming answer or a scroll mounted
    * anywhere below restyle the body, right before the list read its layout.
    */
-  let sidebarFolded = $derived(store.sidebarCollapsed && store.booted && ((store.connection === 'closed' && !store.core) || store.page !== 'settings'));
-  let tour = $derived(store.booted && store.connection === 'ready' && (tourRequested() || !tourSeen()));
+  /**
+   * The desktop's left edge: the app rail on every page, then the list column
+   * (threads, bots, or the Settings pages, which never fold). Both reach the
+   * window's top, so the main column's bar starts right of them.
+   */
+  let railShown = $derived(booted && !wideRecovery);
+  // Before the first project the desktop draws no list column (lib/list-absent.ts): it counts as folded, with no toggle.
+  let listGone = $derived(store.page !== 'settings' && !(store.page === 'agents' && experimentOn('resident-agents'))
+    && listAbsent(workspace.machinesOr(store).map((machine) => machine.store), narrow.current));
+  let listFolded = $derived((store.sidebarCollapsed || listGone) && store.page !== 'settings');
+  let barLeft = $derived(!railShown ? '0px' : listFolded ? 'var(--frame-gap)' : `calc(${store.sidebarWidth}px + var(--frame-gap))`);
+  let sidebarFolded = $derived(listFolded && store.booted);
+  // A machine with no AI shows its one action first: the tour waits for something to show.
+  let tour = $derived(store.booted && store.connection === 'ready' && (tourRequested() || (!tourSeen() && !needsAnAI(store))));
 
   /**
    * Whether something modal is up, waiting on the user: no app chord fires under
@@ -540,7 +538,8 @@
   <ThreadPreparation {store} visible={documentVisible && (inShell || mobileScreen === 'chat')} />
 {/if}
 
-<div class="app" class:shell={inShell} class:ready={booted} class:phone-chat={!inShell && !mobileRecovery && store.page === 'chat' && mobileScreen === 'chat'} class:off-chat={!inShell && store.page !== 'chat'} class:tabbed={!inShell && mobileTabs} class:quitting bind:this={appRoot}>
+<div class="app" class:shell={inShell} class:ready={booted} class:phone-chat={!inShell && !mobileRecovery && store.page === 'chat' && mobileScreen === 'chat'} class:off-chat={!inShell && store.page !== 'chat'} class:tabbed={!inShell && mobileTabs} class:railed={railShown} class:quitting style:--bar-left={barLeft} bind:this={appRoot}>
+  {#if railShown}<AppRail {store} />{/if}
   {#if !inShell && booted}
     {#if mobileNavigation.current}
       {@const MobileNavigation = mobileNavigation.current}
@@ -552,32 +551,27 @@
       </p>
     {/if}
   {/if}
-  <TitleBar {store} />
+  <TitleBar {store} edge={!railShown} listless={listGone} />
 
   <div class="body" class:mobile-covered={!inShell && store.page === 'chat' && (mobileScreen !== 'chat' || mobileRecovery)} class:panel-maximized={(store.page === 'chat' || store.page === 'agents') && rightPanel.maximized && !rightPanel.floating && store.panelOpen} class:sidebar-folded={sidebarFolded}>
     {#if !booted}
       <p class="empty boot" class:long={compacting}>{compacting ? strings.app.compacting : strings.app.loading}</p>
     {:else if wideRecovery}
       <div class="wide-recovery" data-testid="wide-recovery"><MobileConnect {store} onpaired={() => {}} /></div>
+    {:else if store.page === 'settings'}
+      <!-- Its pages' list takes the thread list's column, connected or not. -->
+      {#if SettingsShell}<SettingsShell {store} onopenthread={() => { mobileScreen = 'chat'; }} />{:else}<p class="empty">{settingsLoadError || strings.app.loading}</p>{/if}
     {:else if store.connection === 'closed' && !store.core}
       <Sidebar {store} />
-      <!-- The notice gives way to Settings: the two cards side by side left
-           Settings too narrow for its nav and its page. -->
-      {#if store.page === 'settings'}
-        {#if SettingsShell}<SettingsShell {store} onopenthread={() => { mobileScreen = 'chat'; }} />{:else}<p class="empty">{settingsLoadError || strings.app.loading}</p>{/if}
-      {:else}
-        <div class="notice framed">
-          <h1>{strings.app.noEndpointTitle}</h1>
-          <p class="muted">{strings.app.noEndpointBody}</p>
-          <button type="button" class="primary" data-preload-view="settings" onclick={() => store.showSettings()}>
-            {strings.app.openSettings}
-          </button>
-        </div>
-      {/if}
+      <div class="notice framed">
+        <h1>{strings.app.noEndpointTitle}</h1>
+        <p class="muted">{strings.app.noEndpointBody}</p>
+        <button type="button" class="primary" data-preload-view="settings" onclick={() => store.showSettings()}>
+          {strings.app.openSettings}
+        </button>
+      </div>
     {:else if store.page === 'agents' && experimentOn('resident-agents')}
       <AgentsLayout {store} panel={panelSlot} showPanel={panelSlot.shown && panelThread !== null} RightPanel={deferred.RightPanel} />
-    {:else if store.page === 'settings'}
-      {#if SettingsShell}<SettingsShell {store} onopenthread={() => { mobileScreen = 'chat'; }} />{:else}<p class="empty">{settingsLoadError || strings.app.loading}</p>{/if}
     {:else}
       <Sidebar {store} />
       {#if scrim.shown}
@@ -592,16 +586,21 @@
         ></button>
       {/if}
       {#if store.page === 'home' && contactsShown(store)}
-        <!-- Contacts take the chat's card; the thread list stays beside them. -->
+        <!-- Contacts take the chat's card; the list column turns to its Contacts side (Sidebar.svelte). -->
         <main><div class="thread-chat framed">
           {#if contacts.HomePage}{#key store}<contacts.HomePage {store} />{/key}{:else}<p class="empty">{contacts.homeError || strings.app.loading}</p>{/if}
         </div></main>
       {:else}
       <main>
         <div class="thread-chat framed">
-          {#key store}
-            <ChatView {store} />
-          {/key}
+          <!-- Desktop Activity is the card's page while the rail has it on (lib/inbox.svelte.ts). -->
+          {#if inbox.open && !narrow.current}
+            <Deferred part={activityPage}>{#snippet children(ActivityPage)}<ActivityPage {store} />{/snippet}</Deferred>
+          {:else}
+            {#key store}
+              <ChatView {store} />
+            {/key}
+          {/if}
         </div>
         {#if terminalSlot.shown && store.openThread && deferred.TerminalDrawer}
           {@const TerminalDrawer = deferred.TerminalDrawer}
@@ -635,8 +634,9 @@
         {/key}
       {/if}
       {/if}
-      <!-- Not keyed on the machine: the column lists every machine's contacts, and a new one would slide in again. -->
-      {#if contacts.ContactsRail && contactsShown(store) && !narrow.current}<contacts.ContactsRail {store} />{/if}
+      <!-- Not keyed on the machine: the column lists every machine's contacts, and a new one would slide in again.
+           Not on the Contacts page: the list column's Contacts side holds the same rows there. -->
+      {#if contacts.ContactsRail && contactsShown(store) && !narrow.current && store.page !== 'home'}<contacts.ContactsRail {store} />{/if}
     {/if}
   </div>
 
@@ -660,24 +660,11 @@
     </div>
   {/if}
 
-  {#if toast.shown}
-    <div
-      class="toast"
-      class:closing={toast.closing}
-      role="alert"
-      use:toast.attach
-      onanimationend={toast.end}
-      data-testid="error-toast"
-    >
-      <NotificationCard
-        title={toastThreadId ? strings.notify.failed : strings.errors.prefix}
-        message={toastText}
-        dismiss={dismissError}
-        action={toastThreadId ? { label: strings.notify.openThread, run: openErrorThread } : undefined}
-      />
-    </div>
-  {/if}
+  <!-- A missing or revoked phone pairing has its own recovery screen; Chrome refuses every socket until "Local network" is allowed, which that screen says too. -->
+  <ErrorToast {store} pairingScreen={!inShell && (narrow.current || wideRecovery) && store.pairingRequired}
+    blocked={mobileRecovery && localNetwork.state === 'denied'} onopen={() => { mobileScreen = 'chat'; }} />
   <UndoToast onerror={(error) => (store.error = errorText(error))} />
+  {#if store.page === 'chat' && deferred.MemoryCorner}{@const MemoryCorner = deferred.MemoryCorner}<MemoryCorner {store} />{/if}
   {#if store.booted && experimentOn('whip') && WhipOverlay}
     <WhipOverlay onerror={(error) => (store.error = errorText(error))} />
   {/if}
@@ -734,10 +721,16 @@
      only a folded column (RailFrame) leaves the chat or Agents card a left gap
      to keep itself. */
   @media (min-width: 721px) {
+    .app.railed { padding-left: var(--app-rail); }
+
     .body {
       gap: var(--frame-gap);
       padding: 0 var(--frame-gap) var(--frame-gap) 0;
     }
+
+    /* The list column climbs over the bar's band to the window's top; the bar
+       starts right of it (`--bar-left`). */
+    .body > :global(.rail) { margin-top: calc(-1 * var(--titlebar)); }
 
     .body.sidebar-folded {
       padding-left: var(--frame-gap);
@@ -777,22 +770,6 @@
     display: none;
   }
 
-  .toast {
-    position: absolute;
-    right: max(16px, env(safe-area-inset-right));
-    top: calc(16px + env(safe-area-inset-top, 0px));
-    z-index: 80;
-    width: min(380px, calc(100vw - 32px));
-    animation: rise var(--dur-3) var(--ease-out-quint);
-  }
-
-  .shell .toast { top: calc(var(--titlebar) + 16px); }
-
-  .toast.closing {
-    animation: fade-out var(--dur-2) var(--ease-out-quint);
-    pointer-events: none;
-  }
-
   /* The quit hint: a card at the top centre with a bar that fills over the
      hold, so the eye reads how long is left before the window goes. */
   .quit-hint {
@@ -806,10 +783,10 @@
     align-items: baseline;
     gap: 6px 8px;
     padding: 8px 12px 10px;
-    background: var(--color-surface-2);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-e2);
+    background: var(--overlay-surface);
+    border: 1px solid var(--overlay-edge);
+    border-radius: var(--radius-overlay);
+    box-shadow: var(--shadow-overlay);
     animation: pop var(--dur-2) var(--ease-out-quint);
     pointer-events: none;
   }
@@ -865,6 +842,8 @@
     .app:not(.shell) { position: fixed; left: 0; right: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; grid-template-columns: minmax(0, 1fr); height: var(--app-height, 100dvh); top: var(--app-top, 0px); overflow: hidden; }
     .app:not(.shell) :global(.titlebar) { display: none; grid-row: 2; grid-column: 1; }
     .app:not(.shell) .body { grid-row: 2; grid-column: 1; }
+    /* A settings page brings its own header, with the way back: one header a screen, never two stacked. */
+    .app:not(.shell):has(:global(.mobile-settings[data-detail])) > :global(.mobile-header) { display: none; }
     /* The header owns the top safe area; pages keep clear of the home indicator, unless the bottom bar (tabbed) does. */
     .app.off-chat:not(.tabbed) .body { padding-bottom: env(safe-area-inset-bottom, 0px); box-sizing: border-box; }
     /* Skips layout and paint of the chat streaming behind the list; its DOM, state and scroll stay as they were.

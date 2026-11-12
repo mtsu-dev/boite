@@ -30,10 +30,11 @@
 
 <div class="agent-routines" class:compact data-testid="agent-routines">
   {#if compact}
-    <header class="desk-head">
-      <h3>{labels.planned}</h3>
-      {#if view.store.owner && !showForm}<button type="button" class="ghost small icon" title={labels.when.newRoutine} aria-label={labels.when.newRoutine} onclick={() => { adding = true; }} data-testid="routine-add"><Plus size={14} strokeWidth={1.75} /></button>{/if}
-    </header>
+    <p class="desk-label">
+      <CalendarClock size={13} strokeWidth={1.75} /><span>{labels.planned}</span>
+      <span class="desk-label-value"></span>
+      {#if view.store.owner && !showForm && routines.length}<button type="button" class="ghost small icon" title={labels.when.newRoutine} aria-label={labels.when.newRoutine} onclick={() => { adding = true; }} data-testid="routine-add"><Plus size={14} strokeWidth={1.75} /></button>{/if}
+    </p>
   {:else}
     <div class="agent-card-head agent-pane-head">
       <div>
@@ -51,7 +52,13 @@
       {#each routines as routine (routine.id)}
         <RoutineCard {view} {routine} compact />
       {:else}
-        {#if !showForm}<p class="desk-empty">{labels.routineHint}</p>{/if}
+        {#if !showForm}
+          <!-- One line and its one action; how routines run sits behind the line's tooltip. -->
+          <p class="desk-empty desk-empty-row" title={labels.routineHint}>
+            <span>{labels.deskPanel.routinesEmpty}</span>
+            {#if view.store.owner}<button type="button" class="small" onclick={() => { adding = true; }} data-testid="routine-add"><Plus size={13} strokeWidth={1.75} /><span class="ui-label">{labels.when.newRoutine}</span></button>{/if}
+          </p>
+        {/if}
       {/each}
     </div>
   {:else}

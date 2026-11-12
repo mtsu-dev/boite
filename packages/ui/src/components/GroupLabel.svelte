@@ -31,7 +31,7 @@
     border-top: 1px solid var(--color-border);
   }
   .glyph { display: inline-flex; flex: none; }
-  .working .glyph { color: var(--color-accent); }
+  .working .glyph { color: var(--color-muted-foreground); }
   .done .glyph { color: var(--color-success); }
   .count { margin-left: auto; font-variant-numeric: tabular-nums; }
   @media (max-width: 720px) { .group-label { padding: 8px 12px; } }

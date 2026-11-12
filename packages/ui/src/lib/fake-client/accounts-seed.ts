@@ -273,7 +273,7 @@ export function seedAccounts() {
     {
       id: 'a-claude-main',
       providerId: 'claude',
-      label: 'Default login',
+      label: 'Default',
       isolationDir: null,
       status: 'ok',
       identity: 'you@example.com',

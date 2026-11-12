@@ -17,8 +17,8 @@ other projects, your machines, your devices or your other contacts.
 
 ## Link with someone
 
-1. Open Contacts (the title bar's Show contacts, or the Contacts tab on a
-   phone) and press Add a contact.
+1. Open Contacts (the Contacts button in the app rail, or the contacts
+   section under the projects on a phone) and press Add a contact.
 2. Under Invite someone, pick where the other person is:
 
    | Button | When |

@@ -1,5 +1,5 @@
 import type { Component } from 'svelte';
-import { Bot, FilePen, ShieldCheck } from '@lucide/svelte';
+import { Ban, FilePen, Hand, ListChecks, LockOpen, Play } from '@lucide/svelte';
 import type { PermissionMode, ProviderSummary } from '@boite/contracts';
 import { strings } from './strings';
 
@@ -10,7 +10,7 @@ const OFFERED: PermissionMode[] = ['yolo', 'bypassPermissions', 'acceptEdits', '
  * The modes worth offering for this agent. Codex gives `acceptEdits` the same
  * sandbox and approval pair as `default` (`drivers/codex.ts`, `MODE_POLICY`),
  * so a second entry would promise a difference that does not exist. YOLO also
- * disables configured hooks, which Auto retains. An agent that never asks
+ * approves what a hook asks. An agent that never asks
  * (`capabilities.approvals` false, pi today) gets no choice at all: every
  * entry would describe something it does not do.
  */
@@ -32,10 +32,19 @@ export function shownMode(mode: PermissionMode, provider: ProviderSummary | null
   return 'default';
 }
 
-/** The chip's word for the mode, as this agent actually applies it. */
+/** The plain line under the mode's word in its menu, as this agent actually applies it. */
 export function modeLabel(mode: PermissionMode, provider: ProviderSummary | null | undefined): string {
   if (mode === 'default' && provider?.protocol === 'codex-appserver') return strings.permissionModeCodex.default;
-  return strings.permissionMode[mode];
+  return strings.permissionModeLine[mode];
+}
+
+/**
+ * The chip's one word for the mode at rest ("Ask"): the same word on every
+ * agent, so a chip reads as a permission everywhere. What an agent's mode
+ * actually allows (Codex's folder) is the line under it, `modeLabel`.
+ */
+export function modeWord(mode: PermissionMode, _provider?: ProviderSummary | null): string {
+  return strings.permissionModeShort[mode];
 }
 
 /** The one sentence saying what the mode lets the agent do without asking. */
@@ -49,9 +58,16 @@ export function modePhrase(mode: PermissionMode, provider: ProviderSummary | nul
   return strings.thread.draftMode[shownMode(mode, provider)];
 }
 
-/** One icon per mode, shared by the chip and the menu row. */
-export function modeIcon(mode: PermissionMode): Component<{ size?: number; strokeWidth?: number }> {
-  if (mode === 'bypassPermissions' || mode === 'yolo') return Bot as Component<{ size?: number; strokeWidth?: number }>;
-  if (mode === 'acceptEdits') return FilePen as Component<{ size?: number; strokeWidth?: number }>;
-  return ShieldCheck as Component<{ size?: number; strokeWidth?: number }>;
+/** One glyph per mode, shared by the chip and the menu row: four distinct ones, so the level reads from the icon alone. */
+type ModeGlyph = Component<{ size?: number; strokeWidth?: number }>;
+const GLYPHS: Record<PermissionMode, ModeGlyph> = {
+  yolo: LockOpen as ModeGlyph,
+  bypassPermissions: Play as ModeGlyph,
+  acceptEdits: FilePen as ModeGlyph,
+  default: Hand as ModeGlyph,
+  plan: ListChecks as ModeGlyph,
+  dontAsk: Ban as ModeGlyph
+};
+export function modeIcon(mode: PermissionMode): ModeGlyph {
+  return GLYPHS[mode] ?? GLYPHS.default;
 }

@@ -1,7 +1,7 @@
 /*
  * The contacts column on the window's right edge: whether it is folded, kept
- * on this device, and what waits in it, so the title bar's button can say so
- * while the column is folded. The column itself loads with its experiment.
+ * on this device. The column itself loads with its experiment; the Contacts
+ * side of the list column holds its fold (Sidebar.svelte).
  */
 
 import { experimentOn } from './experiments.svelte';
@@ -18,15 +18,13 @@ export function contactsShown(store: { owner: boolean }): boolean {
 export const CONTACTS_RAIL_WIDTH = 240;
 const FOLDED = 'boite.contacts-rail-folded';
 
-/** Folded until the owner unfolds it: the title bar's button says when something waits. */
+/** Folded until the owner unfolds it: what waits is counted in Activity meanwhile. */
 function readFolded(): boolean {
   try { return localStorage.getItem(FOLDED) !== '0'; } catch { return true; }
 }
 
 class ContactsRail {
   folded = $state(readFolded());
-  /** Requests waiting on every listed machine, counted by the column while it is drawn. */
-  waiting = $state(0);
 
   /** Unfolded for this machine's owner; App draws it only on a desktop-wide window. */
   shown(store: { owner: boolean }): boolean {

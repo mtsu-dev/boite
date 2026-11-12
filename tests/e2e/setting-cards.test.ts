@@ -22,7 +22,7 @@ beforeAll(async () => {
 afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);
 
 async function capture(name: string) {
-  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
   await page.screenshot(join(ARTIFACTS, name));
 }
 
@@ -60,7 +60,7 @@ test('an agent reads the app\'s language and experiments, and its card turns an 
   await page.waitFor(`document.querySelector('[data-testid="setting-card"][data-outcome="applied"]')`);
   expect(await page.evaluate(`JSON.parse(localStorage.getItem('boite.experiments'))`)).toEqual(['resident-agents']);
   await page.waitFor(`window.__boiteTest.workspace.active.openThread?.messages.some(m => m.role === 'user' && m.parts.some(p => p.type === 'text' && p.text.includes('applied: experiment.resident-agents is now true')))`);
-  await page.waitFor(`document.querySelector('[data-testid="view-agents"]')`);
+  await page.waitFor(`document.querySelector('[data-testid="rail-add"], [data-testid="mobile-agents"]')`);
   await capture('experiment-applied-desktop.png');
 
   // A sensitive switch shows in the card too, beside its warning, once the agent has read the card's report.

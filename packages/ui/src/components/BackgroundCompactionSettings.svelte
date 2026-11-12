@@ -35,8 +35,9 @@
     <label for="{uid}-on" class="master">
       <span class="words">
         <h2 class="ui-label-box"><span class="ui-label" id="{uid}-on-name">{strings.settings.backgroundCompaction}</span><InfoTip topic={strings.settings.backgroundCompaction} text={strings.settings.backgroundCompactionHint} /></h2>
+        <span class="effect" id="{uid}-on-effect">{strings.settings.effects.backgroundCompaction}</span>
       </span>
-      <input id="{uid}-on" aria-labelledby="{uid}-on-name" type="checkbox" role="switch" data-testid="background-compaction-on"
+      <input id="{uid}-on" aria-labelledby="{uid}-on-name" aria-describedby="{uid}-on-effect" type="checkbox" role="switch" data-testid="background-compaction-on"
         checked={compactionPolicy(store.settings, target).backgroundCompaction} disabled={!store.settings || saving} onchange={(event) => void save(event.currentTarget)} />
     </label>
   </section>
@@ -45,5 +46,6 @@
 <style>
   .master { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; cursor: pointer; }
   .master .words { display: grid; gap: 6px; flex: 1; min-width: 0; }
+  .effect { color: var(--color-muted-foreground); font-size: var(--text-sm); line-height: 1.5; }
   .master h2 { margin: 0; }
 </style>

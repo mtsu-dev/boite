@@ -15,6 +15,9 @@ export const strings = {
     retryContinueTitle: 'Stopped before its answer',
     retryContinueBody: 'Resumes by itself in {time}, resume {attempt} of {attempts}.',
     contextDetails: 'Context',
+    /** The composer's context reading at rest, beside its ring. */
+    contextLeft: (percent: string) => `${percent}% context left`,
+    contextLeftNamed: (percent: string) => `Context: ${percent}% left`,
     contextInput: 'Input',
     contextCache: 'Cached input',
     contextOutput: 'Output',
@@ -49,8 +52,21 @@ export const strings = {
     trace: 'Trace',
     /** The header's button: it shows or hides the panel, whatever surface is in it. */
     panel: 'Panel',
-    panelHint: 'Browser, files and tools beside this conversation',
-    panelMenu: 'Browser, files and tools',
+    /** The closed door's tooltip: what a panel is, before its key. */
+    panelHint: "Panels: this thread's changes, files, browser and tools, beside the chat",
+    panelMenu: 'Panels',
+    /** The open door, which names the panel and switches it. */
+    panelSwitch: '{name}: switch or close the panel',
+    /** A thread menu's second level, named by what a user does there: the bot rows, then the folder (branch, move, path, pull request). The new title sits by Rename. */
+    manage: 'Move to a project or a bot',
+    /** The same with no bot row (bots off, none to give it to). */
+    manageNoBot: 'Move to a project',
+    /** The same with no move row (a phone that cannot move it, a thread that cannot move). */
+    manageNoFolder: 'Give to a bot',
+    /** The same with neither: the folder's branch, path and pull request. */
+    manageTitle: 'Folder and branch',
+    /** A desktop header's project crumb: back to the thread list, at this thread. */
+    backToList: 'Back to the {project} threads',
     terminalHint: "Terminal in this thread's folder",
     cwd: 'Working directory',
     model: 'Model',
@@ -62,8 +78,8 @@ export const strings = {
     inProject: 'in',
     /** Before the machine the draft's project is on, which ends the heading. */
     onMachine: 'on',
-    using: 'using',
-    onEffort: 'on {effort} effort',
+    /** Under a desktop draft's heading, before the folder's whole path: where the agent works. The box says the rest. */
+    startIn: 'in',
     draftMode: {
       default: 'with approval requests',
       acceptEdits: 'with edits allowed',
@@ -77,6 +93,6 @@ export const strings = {
     searchProjects: 'Search projects',
     noProjectMatch: 'No project matches "{query}"',
     /** The header badge of a thread working in its own worktree; the title says where. */
-    branchHint: 'Working in a worktree on this branch',
+    branchHint: 'Working on this branch in its own folder',
   }
 } as const;

@@ -6,18 +6,29 @@ import { openUrl } from '../test/opener';
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
 
+/** The worktree switch is an item of the composer's "+": open it, then find the switch. Undefined while the
+ * sheet has not opened (its open is async), null once it is open without the switch: a missing "+" throws. */
+function worktreeSwitch(): HTMLButtonElement | null | undefined {
+  if (!document.querySelector('[data-testid=composer-options-sheet]')) {
+    query<HTMLElement>('[data-testid=composer-options]').click();
+    flushSync();
+  }
+  if (!document.querySelector('[data-testid=composer-options-sheet]')) return undefined;
+  return document.querySelector<HTMLButtonElement>('[data-testid=composer-worktree]');
+}
+
 test('the draft worktree chip puts the first send on its own branch, and the header names it', async ({ app: _app }) => {
 
   // A thread keeps its directory: no chip while one is open.
-  expect(document.querySelector('[data-testid=composer-worktree]')).toBeNull();
+  await waitFor(() => worktreeSwitch() === null);
 
   query<HTMLButtonElement>('[data-testid=new-thread]').click();
-  await waitFor(() => store.draft !== null);
-  const chip = query<HTMLButtonElement>('[data-testid=composer-worktree]');
-  expect(chip.getAttribute('aria-pressed')).toBe('false');
+  await waitFor(() => store.draft !== null && !!worktreeSwitch());
+  const chip = worktreeSwitch()!;
+  expect(chip.getAttribute('aria-checked')).toBe('false');
   chip.click();
   await waitFor(() => store.draft?.worktree === true);
-  expect(query<HTMLButtonElement>('[data-testid=composer-worktree]').getAttribute('aria-pressed')).toBe('true');
+  expect(worktreeSwitch()!.getAttribute('aria-checked')).toBe('true');
 
   // A worktree belongs to the project even before a provider is configured.
   const providers = store.providers;
@@ -27,7 +38,9 @@ test('the draft worktree chip puts the first send on its own branch, and the hea
     store.draftChoice = null;
     flushSync();
     expect(store.defaultChoice()).toBeNull();
-    expect(query('[data-testid=draft-sentence]').textContent).toContain('in a worktree');
+    // The chip says it; the heading no longer repeats the chips' facts.
+    expect(worktreeSwitch()!.getAttribute('aria-checked')).toBe('true');
+    expect(query('[data-testid=draft-sentence]').textContent).not.toContain('in a worktree');
   } finally {
     store.providers = providers;
     store.draftChoice = draftChoice;
@@ -44,41 +57,58 @@ test('the draft worktree chip puts the first send on its own branch, and the hea
   const branch = store.openThread!.branch!;
   expect(branch).toMatch(/^boite\/wt-[a-z0-9]{8}$/);
   expect(store.openThread?.cwd).toBe(`C:\\src\\notes\\.boite\\worktrees\\${branch.slice(6)}`);
-  await waitFor(() => document.querySelector('[data-testid=thread-branch]') !== null);
-  expect(query('[data-testid=thread-branch]').textContent?.trim()).toBe(branch);
-  expect(query('[data-testid=thread-branch]').title).toContain(branch.slice(6));
+  // The branch is a line of the title menu's named group, under the chip's id.
+  const branchItem = async () => {
+    const item = '[data-testid=thread-menu-trigger-menu] [data-value=thread-branch]';
+    // The group opens through the shared context menu with the rows of the moment it was picked, so a
+    // rename by the fake turn after that stays out of the open menu: reopen until the row and the store agree.
+    for (let attempt = 0; ; attempt++) {
+      query<HTMLButtonElement>('[data-testid=thread-menu-trigger]').click();
+      await waitFor(() => document.querySelector('[data-testid=thread-menu-trigger-menu] [data-value=more]') !== null);
+      query<HTMLButtonElement>('[data-testid=thread-menu-trigger-menu] [data-value=more]').click();
+      await waitFor(() => document.querySelector(item) !== null);
+      const read = { text: query(item).textContent?.trim(), title: query(item).title, branch: store.openThread!.branch! };
+      query<HTMLButtonElement>('[data-testid=thread-menu-trigger]').click();
+      await waitFor(() => document.querySelector(item) === null);
+      if (read.text === read.branch || attempt === 4) return read;
+    }
+  };
+  const shown = await branchItem();
+  expect([branch, 'boite/fix-the-login']).toContain(shown.branch);
+  expect(shown.text).toBe(shown.branch);
+  expect(shown.title).toContain(shown.branch.slice(6));
   // The chip went with the draft.
-  expect(document.querySelector('[data-testid=composer-worktree]')).toBeNull();
+  await waitFor(() => worktreeSwitch() === null);
   const cwd = store.openThread!.cwd;
   await waitFor(() => store.openThread?.turns.some(turn => turn.status === 'done') === true);
-  await waitFor(() => query('[data-testid=thread-branch]').textContent?.trim() === 'boite/fix-the-login');
+  await waitFor(() => store.openThread?.branch === 'boite/fix-the-login');
+  expect((await branchItem()).text).toBe('boite/fix-the-login');
   expect(store.openThread?.cwd).toBe(cwd);
 });
 
 test('a draft offers the worktree switch only on a folder where git was found', async ({ app: _app }) => {
   query<HTMLButtonElement>('[data-testid=new-thread]').click();
-  await waitFor(() => document.querySelector('[data-testid=composer-worktree]') !== null);
+  await waitFor(() => !!worktreeSwitch());
   const project = store.projects.find((one) => one.id === store.draft?.projectId);
   if (!project) throw new Error('the draft has no project');
   project.repository = false;
-  await waitFor(() => document.querySelector('[data-testid=composer-worktree]') === null);
+  await waitFor(() => worktreeSwitch() === null);
   // No answer yet, or a core older than the field: no `.git` was found, so no switch either.
   delete project.repository;
   flushSync();
-  expect(document.querySelector('[data-testid=composer-worktree]')).toBeNull();
+  expect(worktreeSwitch()).toBeNull();
   project.repository = true;
-  await waitFor(() => document.querySelector('[data-testid=composer-worktree]') !== null);
+  await waitFor(() => !!worktreeSwitch());
 });
 
-test('a machine with no AI offers to connect one, and the composer keeps its text and lands on it', async () => {
+test('a machine with no AI shows one action, Connect an AI, and the draft opens on the AI it connected', async () => {
   await mountOnFake('/?fake=1&uninstalled=1');
   if (!store.draft) query<HTMLButtonElement>('[data-testid=new-thread]').click();
-  await waitFor(() => document.querySelector('[data-testid=composer-connect]') !== null);
-  const input = query<HTMLTextAreaElement>('[data-testid=composer-input]');
-  input.value = 'Sort my holiday photos';
-  input.dispatchEvent(new Event('input', { bubbles: true }));
+  await waitFor(() => document.querySelector('[data-testid=first-run-connect]') !== null);
+  // One action: the folder, the drafts and the composer come after it.
+  for (const id of ['composer', 'draft-project', 'draft-open-folder']) expect(document.querySelector(`[data-testid=${id}]`)).toBeNull();
 
-  query<HTMLButtonElement>('[data-testid=composer-connect]').click();
+  query<HTMLButtonElement>('[data-testid=first-run-connect]').click();
   await waitFor(() => document.querySelector('[data-testid=connect-dialog]') !== null);
   // The two services most people already pay for come first, each saying which plan it uses.
   const services = Array.from(document.querySelectorAll('[data-testid=connect-service]')).map((row) => row.getAttribute('data-provider'));
@@ -111,16 +141,33 @@ test('a machine with no AI offers to connect one, and the composer keeps its tex
   query<HTMLButtonElement>('[data-testid=connect-use]').click();
 
   await waitFor(() => document.querySelector('[data-testid=connect-dialog]') === null);
-  await waitFor(() => document.querySelector('[data-testid=composer-connect]') === null);
+  await waitFor(() => document.querySelector('[data-testid=first-run]') === null && document.querySelector('[data-testid=composer-input]') !== null);
+  expect(document.querySelector('[data-testid=composer-connect]')).toBeNull();
   expect(query('[data-testid=composer-picker]').textContent).not.toContain('No AI connected');
-  expect(query<HTMLTextAreaElement>('[data-testid=composer-input]').value).toBe('Sort my holiday photos');
+  expect(document.querySelector('[data-testid=draft-project]')).not.toBeNull();
+});
+
+test('a first launch draws no list column on a desktop: no fold toggle, the card on the rail, and the list back with the first project', async () => {
+  await mountOnFake('/?fake=1&uninstalled=1');
+  expect(store.projects).toHaveLength(0);
+  const body = query('.body');
+  // Folded with nothing to unfold: the main card starts one frame gap right of the rail.
+  await waitFor(() => body.classList.contains('sidebar-folded'));
+  expect(document.querySelector('[data-testid=sidebar-toggle]')).toBeNull();
+  expect(query('.app').style.getPropertyValue('--bar-left')).toBe('var(--frame-gap)');
+  expect(store.sidebarCollapsed).toBe(false);
+
+  await store.addProject('C:/Dev/First', { navigate: false });
+  await waitFor(() => !body.classList.contains('sidebar-folded'));
+  expect(document.querySelector('[data-testid=sidebar-toggle]')).not.toBeNull();
+  expect(query('.app').style.getPropertyValue('--bar-left')).not.toBe('var(--frame-gap)');
 });
 
 test('the keyboard stays in the connect dialog while its steps replace the button it pressed', async () => {
   await mountOnFake('/?fake=1&uninstalled=1');
   if (!store.draft) query<HTMLButtonElement>('[data-testid=new-thread]').click();
-  await waitFor(() => document.querySelector('[data-testid=composer-connect]') !== null);
-  query<HTMLButtonElement>('[data-testid=composer-connect]').click();
+  await waitFor(() => document.querySelector('[data-testid=first-run-connect]') !== null);
+  query<HTMLButtonElement>('[data-testid=first-run-connect]').click();
   await waitFor(() => document.querySelector('[data-testid=connect-service]') !== null);
   query<HTMLButtonElement>('[data-testid=connect-service][data-provider=claude]').click();
   await waitFor(() => document.querySelector('[data-testid=connect-install]') !== null);
@@ -178,8 +225,14 @@ test('a draft names its project in the heading and the dropdown moves it to anot
   await waitFor(() => store.draft !== null);
 
   const heading = query('[data-testid=draft-sentence]');
-  expect(heading.querySelector('p')?.textContent).toContain('with approval requests');
+  // The mode, the model and the effort are the chips' to say, once.
+  expect(heading.textContent).not.toContain('with approval requests');
   expect(heading.querySelector('h1')?.textContent).toContain('notes');
+  // Where it runs, in full over the composer: the folder's whole path and the machine, which is plain words, not a picker.
+  const notesPath = store.projects.find((project) => project.id === 'p-notes')!.path;
+  expect(query('[data-testid=draft-hint]').textContent).toContain(notesPath);
+  const machine = document.querySelector('[data-testid=draft-machine]');
+  if (machine) expect([machine.querySelector('svg'), machine.closest('button')]).toEqual([null, null]);
   // The heading says the project, so the header chip no longer repeats it.
   expect(query('[data-testid=thread-header]').textContent).not.toContain('notes');
 

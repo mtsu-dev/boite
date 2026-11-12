@@ -14,7 +14,7 @@ beforeAll(async () => {
 afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);
 
 async function capture(name: string) {
-  await page.evaluate(`Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`);
+  await page.evaluate(`Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`);
   await page.screenshot(join(import.meta.dir, '.artifacts', `${name}.png`));
 }
 /** The dialog inside the viewport and every tool row inside the dialog. */
@@ -36,6 +36,9 @@ test('a Claude thread shows what its last request carried, at desktop and phone 
   })()`);
   await page.waitFor(`document.querySelector('[data-thread-id="' + window.__shapeThread + '"]')`);
   await page.waitFor(`(async () => { const { workspace } = await import('/src/lib/workspace.svelte.ts'); return workspace.active.openThread?.status === 'idle'; })()`);
+  // The row draws the meter once the context matters (from 70% used): this thread's is made 75% used.
+  await page.evaluate(`(async () => { const { workspace } = await import('/src/lib/workspace.svelte.ts'); workspace.active.openThread.context = { tokens: 150000, window: 200000, at: Date.now() }; })()`);
+  await page.waitFor(`document.querySelector('[data-testid="context-trigger"]')`);
   await page.evaluate(`document.querySelector('[data-testid="context-trigger"]').click()`);
   await page.waitFor(`document.querySelector('[data-testid="context-agent-shape"]')`);
   await capture('agent-shape-entry');

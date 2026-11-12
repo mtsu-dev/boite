@@ -9,6 +9,13 @@ import { mountOnFake, query, test, type, waitFor } from '../test/app';
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
 
 test('a floating panel can dock after leaving or closing its browser tab and changing threads', async ({ app: _app }) => {
+  // Dock is a row of the panel switcher on the header's door: the head holds the tabs and the close only.
+  const dockRow = () => {
+    // A launcher playing its exit holds the rows it opened with: the next open reads them again.
+    const open = '[data-testid=panel-add-menu]:not(.closing)';
+    if (!document.querySelector(open)) { document.querySelector<HTMLButtonElement>('[data-testid=panel-add]')?.click(); flushSync(); }
+    return document.querySelector<HTMLButtonElement>(`${open} [data-testid=panel-dock]`);
+  };
   await waitFor(() => document.querySelector('[data-thread-id="t-trace"]') !== null);
   query<HTMLButtonElement>('[data-thread-id="t-trace"]').click();
   await waitFor(() => store.openThread?.id === 't-trace');
@@ -16,50 +23,58 @@ test('a floating panel can dock after leaving or closing its browser tab and cha
   const browser = store.panel.active!.id;
   rightPanel.floating = true;
   store.panel.openTasks();
-  await waitFor(() => document.querySelector('[data-testid=panel-dock]') !== null);
+  await waitFor(() => document.querySelector('[data-testid=panel-add]') !== null);
+  expect(document.querySelector('[data-testid=panel-titlebar] > [data-testid=panel-dock]')).toBeNull();
   store.panel.close(browser);
   flushSync();
   expect(document.querySelector('[data-testid=browser-slot]')).toBeNull();
-  query<HTMLButtonElement>('[data-testid=panel-dock]').click();
+  dockRow()!.click();
   flushSync();
   expect(rightPanel.floating).toBe(false);
-  expect(document.querySelector('[data-testid=panel-dock]')).toBeNull();
+  expect(dockRow()).toBeNull();
   rightPanel.floating = true;
   const other = store.threads.find(thread => thread.id !== 't-trace' && !thread.archived)!;
   await store.open(other.id);
   store.panel.openTasks();
-  await waitFor(() => document.querySelector('[data-testid=panel-dock]') !== null);
+  await waitFor(() => dockRow() !== null);
   rightPanel.maximized = true;
-  query<HTMLButtonElement>('[data-testid=panel-dock]').click();
+  dockRow()!.click();
   expect(rightPanel.floating).toBe(false);
   expect(rightPanel.maximized).toBe(false);
 });
 
-test("a header button's right click hides it, and the Appearance page brings it back", async () => {
+test("the panel selector lists the terminal, and a control's right click leads to the Appearance page that hides it and brings it back", async () => {
   work.showPreset('developer');
   // With a team on the thread, since Team shows only where there is one.
   await mountOnFake('/?fake=1&team=1');
   await waitFor(() => document.querySelector('[data-thread-id="t-trace"]') !== null);
   query<HTMLButtonElement>('[data-thread-id="t-trace"]').click();
-  await waitFor(() => document.querySelector('[data-testid=terminal-toggle]') !== null);
+  // The terminal moved from its own header button into the panel selector, under the button's id.
+  await waitFor(() => document.querySelector('[data-testid=panel-toggle]') !== null);
+  const wasOpen = store.panelOpen;
+  if (!wasOpen) query<HTMLButtonElement>('[data-testid=panel-toggle]').click();
+  await waitFor(() => document.querySelector('[data-testid=panel-add]') !== null);
+  query<HTMLButtonElement>('[data-testid=panel-add]').click();
+  // A hidden terminal is listed by name with every other panel, behind no door.
+  await waitFor(() => document.querySelector('[data-testid=panel-add-menu] [data-value=terminal-toggle]') !== null);
+  query<HTMLButtonElement>('[data-testid=panel-add]').click();
+  // Open, the door is the switcher: the head's close shuts the panel.
+  if (!wasOpen) query<HTMLButtonElement>('[data-testid=panel-close]').click();
 
-  query('[data-testid=terminal-toggle]').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 30 }));
-  await waitFor(() => document.querySelector('[data-testid=context-menu]') !== null);
-  query<HTMLButtonElement>('[data-testid=context-menu] [data-value=hide]').click();
-  await waitFor(() => document.querySelector('[data-testid=terminal-toggle]') === null);
-  expect(work.current.hidden).toEqual(['header.terminal']);
-
-  // The same menu, on another button, leads to the page that lists them all.
+  // The context's number sits beside the model chip once the context matters (ComposerBar's CONTEXT_SHOWN_FROM).
+  store.openThread!.context = { tokens: 150_000, window: 200_000, at: Date.now() };
   await waitFor(() => document.querySelector('.context-control') !== null);
   query('.context-control').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 30 }));
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=customize]') !== null);
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=customize]').click();
   await waitFor(() => document.querySelector('[data-testid=settings-buttons]') !== null);
   expect(store.settingsTab).toBe('appearance');
+  query<HTMLInputElement>('[data-testid="control-header.terminal"]').click();
+  expect(work.current.hidden).toEqual(['header.terminal']);
   const terminal = query<HTMLInputElement>('[data-testid="control-header.terminal"]');
   expect(terminal.checked).toBe(false);
   // Neither preset is lit once the buttons are the device's own.
-  expect(query('[data-testid=controls-preset-developer]').getAttribute('aria-pressed')).toBe('false');
+  await waitFor(() => query('[data-testid=controls-preset-developer]').getAttribute('aria-pressed') === 'false');
   terminal.click();
   expect(work.current.hidden).toEqual([]);
   await waitFor(() => query('[data-testid=controls-preset-developer]').getAttribute('aria-pressed') === 'true');
@@ -79,7 +94,10 @@ test('the header button opens the panel on its launcher, which opens the changes
   query<HTMLButtonElement>('[data-testid=panel-toggle]').click();
   // An empty panel opens on its cards rather than forcing one surface.
   await waitFor(() => document.querySelector('[data-testid=panel-launcher]') !== null);
-  expect(query('[data-testid=panel-toggle]').getAttribute('aria-pressed')).toBe('true');
+  // Open, the door turns into the switcher, named Panels while no panel shows.
+  await waitFor(() => document.querySelector('[data-testid=panel-add]') !== null);
+  expect(query('[data-testid=panel-add]').textContent?.trim()).toBe('Panels');
+  expect(document.querySelector('[data-testid=panel-toggle]')).toBeNull();
   expect(document.querySelector('[data-testid=trace-panel]')).toBeNull();
   for (const kind of ['agent-browser', 'changes', 'files', 'tasks', 'trace']) {
     expect(document.querySelector(`[data-testid=launch-${kind}]`)).not.toBeNull();
@@ -93,8 +111,10 @@ test('the header button opens the panel on its launcher, which opens the changes
     Array.from(document.querySelectorAll('[data-testid=changes-row]')).map((row) => row.getAttribute('data-status'))
   ).toEqual(['modified', 'added', 'deleted', 'renamed', 'copied', 'untracked', 'conflict']);
 
-  // A row selects, and the selection rides the tab rather than the component.
-  query<HTMLButtonElement>('[data-testid=changes-row][data-path="src/components/RightPanel.svelte"]').click();
+  // A pick in the file chip selects, and the selection rides the tab rather than the component.
+  query<HTMLButtonElement>('[data-testid=changes-pager]').click();
+  await waitFor(() => document.querySelector('[data-testid=changes-outline-file][data-value="src/components/RightPanel.svelte"]') !== null);
+  query<HTMLButtonElement>('[data-testid=changes-outline-file][data-value="src/components/RightPanel.svelte"]').click();
   await waitFor(() => store.panel.active?.path === 'src/components/RightPanel.svelte');
   await waitFor(() => document.querySelector('[data-testid=diff-view]') !== null);
 
@@ -112,7 +132,7 @@ test('the header button opens the panel on its launcher, which opens the changes
   await waitFor(() => document.querySelectorAll('[data-testid=panel-tab]').length === 1);
   expect(store.panel.active?.kind).toBe('changes');
 
-  query<HTMLButtonElement>('[data-testid=panel-toggle]').click();
+  query<HTMLButtonElement>('[data-testid=panel-close]').click();
   await waitFor(() => !store.panelOpen);
   // The panel plays its exit before it unmounts, so the button is what answers here.
   expect(query('[data-testid=panel-toggle]').getAttribute('aria-pressed')).toBe('false');
@@ -190,6 +210,8 @@ test('what the agent asks for through panel.open opens on the thread it named', 
   });
   await waitFor(() => document.querySelector('[data-testid=file-panel]') !== null);
   expect(store.panel.active?.line).toBe(42);
+  // Showing, its name is on the header's door, the switcher, which carries the path.
+  expect(query('[data-testid=panel-add]').getAttribute('title')).toContain('src/lib/store.svelte.ts');
+  expect(query('[data-testid=panel-door-name]').textContent).toBe('store.svelte.ts');
   expect(query('[data-testid=panel-tab][data-kind=file]').getAttribute('title')).toBe('src/lib/store.svelte.ts');
-  expect(query('[data-testid=panel-tab][data-kind=file] .name').textContent).toBe('store.svelte.ts');
 });

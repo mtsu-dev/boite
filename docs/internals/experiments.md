@@ -51,11 +51,11 @@ compaction does nothing for a thread on a server.
 
 ## Whip
 
-A small Whip icon sits beside the other controls in the sidebar footer and
-phone navigation. Throw it to pick up the animated rope from Boite Legacy:
+A small Whip icon sits beside the other controls at the foot of the app rail
+and in the phone navigation. Throw it to pick up the animated rope from Boite Legacy:
 it follows the pointer, cracks on a fast flick, and falls off screen on a click.
 On a phone, drag the rope with a finger and release to drop it. Escape also drops it.
-The footer control remains available to drop or rethrow while the previous rope falls.
+The rail's control remains available to drop or rethrow while the previous rope falls.
 After release, Escape resumes its usual app action.
 The opening arc uses unstretched links and fits the available side of the screen.
 The physics and canvas load only when the experiment is enabled; the animation
@@ -73,8 +73,8 @@ settings, with the Windows path. It comes back as soon as the setting changes.
 ## Bots
 
 The Bots page ([bots](bots.md)) and every button that leads there: the
-Threads and Bots switch at the top of the sidebar, the phone's Bots tab, the command palette row and the link from a bot's
-own thread. Turning
+bots' pictures and `+` in the app rail, the phone's Bots tab, the command
+palette row and the link from a bot's own thread. Turning
 the switch off closes the page if it is open. It hides the page only: bots
 already made keep their threads and routines on the core, which knows nothing
 of a client's experiments.
@@ -118,8 +118,8 @@ desktop window the contacts stand in a column on the right edge, the thread
 list keeping the left one: one row per contact with its link and what it asks.
 Its title, with a house, opens the Contacts page with no contact picked, and
 Add beside it the same page. A row opens that contact's page in the chat's
-card, between the two lists. The column starts folded: the Contacts button at
-the right end of the title bar unfolds and folds it, remembered on the device,
+card, between the two lists. The column starts folded: the Contacts button in
+the app rail unfolds and folds it, remembered on the device,
 and shows a dot while a folded column hides a request. It slides in when
 unfolded, not when the app starts or another machine is picked. The right panel leaves the column its width. A phone
 has no right edge: its list shows the contacts as a section under the

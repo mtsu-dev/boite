@@ -9,16 +9,29 @@ let page: BrowserPage;
 const onStore = (code: string) => page.evaluate(`import('/src/lib/store.svelte.ts').then(async ({ store }) => { ${code} })`);
 async function capture(name: string) {
   await page.evaluate('document.querySelector("[data-testid=delegation-surface]")?.scrollTo(0, 0)');
-  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
   await page.screenshot(join(import.meta.dir, '.artifacts', name));
+}
+/** Subagents are a panel, desktop and phone: the header's Panels door opens it, on its launcher or on the surface it last showed. */
+async function openAgents(): Promise<void> {
+  await page.click('[data-testid=panel-toggle]');
+  await page.waitFor('!!document.querySelector("[data-testid=launch-agents], [data-testid=delegation-surface]")');
+  if (!await page.evaluate('!!document.querySelector("[data-testid=delegation-surface]")')) await page.click('[data-testid=launch-agents]');
+  await page.waitFor('!!document.querySelector("[data-testid=delegation-surface]")');
+}
+/** A project card folds its quiet threads under "Show N more": unfold the cards until the row shows. */
+async function unfoldFor(row: string): Promise<void> {
+  await page.waitFor(`!!document.querySelector('${row}') || !!document.querySelector('[data-testid=project-more][aria-expanded=false]')`);
+  await page.evaluate(`document.querySelector('${row}') || document.querySelectorAll('[data-testid=project-more][aria-expanded=false]').forEach(button => button.click())`);
+  await page.waitFor(`!!document.querySelector('${row}')`);
 }
 beforeAll(async () => {
   const port = await freePort();
   server = await startDevUi(port);
   page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1&team=1`, windowSize: { width: 1310, height: 820 } });
+  await unfoldFor('[data-testid="thread-row"][data-thread-id="t-native"]');
   await page.click('[data-testid="thread-row"][data-thread-id="t-native"]');
-  await page.click('[data-testid=thread-menu-trigger]');
-  await page.click('[data-testid=thread-menu-trigger-menu] [data-value=agents]');
+  await openAgents();
   await page.waitFor('!!document.querySelector("[data-testid=native-agents]")');
 }, 60_000);
 afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);
@@ -33,8 +46,7 @@ test('native agents remain visible beside Boite subagents on desktop and phone',
   expect(await page.text('[data-testid="native-agents"]')).toContain('fake-smart');
   // Only native agents exist, so the tab must stay reachable after the panel closes.
   await page.click('[data-testid="panel-close"]');
-  await page.click('[data-testid=thread-menu-trigger]');
-  await page.click('[data-testid=thread-menu-trigger-menu] [data-value=agents]');
+  await openAgents();
   await page.waitFor('document.querySelectorAll("[data-testid=native-agent]").length === 2');
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   await page.waitFor('innerWidth === 390');
@@ -43,38 +55,35 @@ test('native agents remain visible beside Boite subagents on desktop and phone',
   expect(await page.evaluate('(e => e.scrollWidth <= e.clientWidth)(document.querySelector("[data-testid=delegation-surface]"))')).toBe(true);
   await page.reload();
   await mobileAction(page, 'mobile-conversations');
+  await unfoldFor('[data-testid="mobile-thread-t-native"]');
   await page.click('[data-testid="mobile-thread-t-native"]');
-  await page.click('[data-testid=thread-menu-trigger]');
-  await page.click('[data-testid=thread-menu-trigger-menu] [data-value=agents]');
+  await openAgents();
   await page.waitFor('document.querySelectorAll("[data-testid=native-agent]").length === 2');
   expect(page.errors()).toEqual([]);
 }, 40_000);
 
 test('running native agents contribute to one count without becoming Boite subagents', async () => {
   await onStore('store.delegation.nativeAgents[1].status = "running";');
-  await page.waitFor('!!document.querySelector("[data-testid=active-subagents]")');
-  expect(await page.text('[data-testid="active-subagents"]')).toContain('1 active subagent');
+  await page.waitFor('document.querySelector("[data-testid=agent-dock]")?.dataset.count === "1"');
   await onStore('store.delegation.nativeAgents[0].status = "running";');
-  await page.waitFor('document.querySelector("[data-testid=active-subagents]")?.textContent.includes("2 active subagents")');
-  expect(await page.evaluate('document.querySelectorAll("[data-testid=agent-dock] button").length')).toBe(1);
-  await page.click('[data-testid="panel-close"]');
-  await page.click('[data-testid="active-subagents"]');
-  await page.waitFor('!!document.querySelector("[data-testid=native-agents]")');
+  // Two count on the one waiting line, by name; the team still lists them, never as Boite subagents.
+  await page.waitFor('document.querySelector("[data-testid=agent-dock-label]")?.textContent === "Waiting on 2 subagents"');
+  // The names may be cut at a word on screen; the tooltip holds them whole.
+  expect(await page.evaluate('document.querySelector("[data-testid=agent-dock-names]").title.split(", ").length')).toBe(2);
   expect(await page.evaluate('document.querySelectorAll("[data-testid=delegation-member]").length')).toBe(0);
 }, 15_000);
 
-test('a detached CLI agent keeps the count and timer visible until its own exit on desktop and phone', async () => {
+test('a detached CLI agent keeps the waiting line until its own exit on desktop and phone', async () => {
   await page.evaluate('globalThis.__boiteTest.setTheme("dark")');
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1310, height: 820, deviceScaleFactor: 1, mobile: false });
   await page.click('[data-testid="panel-close"]');
   await onStore('await store.open("t-cli");');
-  await page.waitFor('!!document.querySelector("[data-testid=active-subagents]")');
-  expect(await page.text('[data-testid="active-subagents"]')).toContain('1 active subagent');
-  expect(await page.text('[data-testid="active-subagents"]')).not.toContain('claude-opus-5-5');
-  const elapsed = await page.text('[data-testid="active-subagents"] [data-testid="agent-elapsed"]');
-  await page.waitFor(`document.querySelector('[data-testid=active-subagents] [data-testid=agent-elapsed]')?.textContent !== ${JSON.stringify(elapsed)}`);
+  await page.waitFor('document.querySelector("[data-testid=agent-dock]")?.dataset.count === "1"');
+  expect(await page.text('[data-testid="agent-dock"]')).not.toContain('claude-opus-5-5');
+  // Stop never kills a command's own process: the line offers none for it.
+  expect(await page.evaluate('!!document.querySelector("[data-testid=agent-dock-stop]")')).toBe(false);
   await capture('cli-agent-dock-desktop.png');
-  await page.click('[data-testid="active-subagents"]');
+  await openAgents();
   await page.waitFor('!!document.querySelector("[data-testid=process-agents]")');
   await page.click('[data-testid="process-agent"] > summary');
   expect(await page.text('[data-testid="process-agents"]')).toContain('Started from a command');
@@ -96,9 +105,8 @@ test('a detached CLI agent keeps the count and timer visible until its own exit 
   await page.click('[data-testid="panel-close"]');
   await capture('cli-agent-dock-phone.png');
   await onStore('await store.client.call("resources.killTree", { threadId: "t-cli" });');
-  await page.waitFor('!document.querySelector("[data-testid=active-subagents]")');
-  await page.click('[data-testid=thread-menu-trigger]');
-  await page.click('[data-testid=thread-menu-trigger-menu] [data-value=agents]');
+  await page.waitFor('!document.querySelector("[data-testid=agent-dock]")');
+  await openAgents();
   await page.waitFor('document.querySelector("[data-testid=process-agent] [data-status=error]") !== null');
   expect(page.errors()).toEqual([]);
 }, 25_000);

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Notice from './Notice.svelte';
   /**
    * Pictures and videos over the whole window, one at a time, with the others
    * of the thread a swipe or an arrow away (`lib/media-gallery.ts`). A picture
@@ -10,7 +11,7 @@
    * what held it. The node moves under `<body>` so no scrolling list clips it.
    */
   import { onMount } from 'svelte';
-  import { ChevronLeft, ChevronRight, Download, Maximize2, Minus, Plus, Share, X } from '@lucide/svelte';
+  import { ChevronLeft, ChevronRight, Download, Maximize2, Minus, Plus, Share, X, Info } from '@lucide/svelte';
   import { focusedElement, restoreFocus } from '../lib/focus';
   import { mobileOverlay } from '../lib/mobile-history';
   import { canShareFiles, mediaFile, saveMedia, type MediaItem } from '../lib/media-gallery';
@@ -330,7 +331,7 @@
       <button type="button" class="nav next" onclick={() => show(index + 1)} disabled={index === items.length - 1} aria-label={strings.media.next} title={strings.media.next} data-testid="image-viewer-next"><ChevronRight size={22} /></button>
     {/if}
   </div>
-  {#if notice}<p class="notice" role="status" data-testid="image-viewer-notice">{notice}</p>{/if}
+  {#if notice}<div class="notice"><Notice icon={Info} floating testid="image-viewer-notice" detail={notice} /></div>{/if}
 </div>
 
 <style>
@@ -361,7 +362,7 @@
   .nav:disabled { opacity: 0; pointer-events: none; }
   .previous { left: 12px; }
   .next { right: 12px; }
-  .notice { position: absolute; left: 50%; bottom: max(16px, env(safe-area-inset-bottom)); translate: -50% 0; max-width: calc(100% - 32px); margin: 0; padding: 8px 12px; border-radius: var(--radius-md); background: var(--color-surface); box-shadow: var(--shadow-e2); font-size: var(--text-sm); }
+  .notice { position: absolute; left: 50%; bottom: max(16px, env(safe-area-inset-bottom)); translate: -50% 0; max-width: calc(100% - 32px); }
   @keyframes appear { from { opacity: 0; } }
   @media (max-width: 720px) {
     .toolbar { flex-wrap: wrap; padding: 8px; padding-top: max(8px, env(safe-area-inset-top)); }

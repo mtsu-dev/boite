@@ -21,9 +21,9 @@
     gap: 4px;
     max-width: 16ch;
     padding: 0 6px;
-    border: 1px dashed color-mix(in oklch, var(--color-accent) 60%, transparent);
+    border: 1px dashed var(--color-edge);
     border-radius: var(--radius-full);
-    color: var(--color-accent);
+    color: var(--color-muted-foreground);
     font-size: var(--text-xs);
     font-weight: 600;
     line-height: 16px;

@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { readSettings, settledSetting, type RequestableKey, type Settings, type SettingAsk } from '@boite/contracts';
+import { REQUESTABLE_SETTINGS, readSettings, settledSetting, type RequestableKey, type Settings, type SettingAsk } from '@boite/contracts';
 import { retiredHint, settingLabel, settingsReachable, settingValueText } from './setting-requests';
 
 const open = (page: SettingAsk['page'], section: string | null): SettingAsk => ({ kind: 'open', page, section });
@@ -14,10 +14,17 @@ test('Show and Open are offered only where this client draws the target card', (
   expect(settingsReachable(open('experiments', 'device-stream'), { owner: true, phone: true })).toBe(true);
   // A phone browser lacks the desktop's General, Advanced and pairing cards.
   expect(settingsReachable(open('resources', 'limits'), { owner: true, phone: true })).toBe(true);
-  expect(settingsReachable(open('general', 'conversations'), { owner: true, phone: true })).toBe(false);
+  expect(settingsReachable(open('general', 'conversations'), { owner: true, phone: true })).toBe(true);
   expect(settingsReachable(open('advanced', 'origins'), { owner: true, phone: true })).toBe(false);
   expect(settingsReachable(open('machines', 'devices'), { owner: true, phone: true })).toBe(false);
   expect(settingsReachable(open('advanced', 'origins'), { owner: true, phone: false })).toBe(true);
+  // Windows and sound sit on General, the owner's only, a page of its own on a phone too.
+  expect(REQUESTABLE_SETTINGS.focusGuard).toMatchObject({ page: 'general', section: 'quiet' });
+  expect(REQUESTABLE_SETTINGS.muteAgents).toMatchObject({ page: 'general', section: 'quiet' });
+  expect(settingsReachable(open('general', 'quiet'), { owner: true, phone: true })).toBe(true);
+  expect(settingsReachable(open('general', 'quiet'), { owner: true, phone: false })).toBe(true);
+  expect(settingsReachable(open('general', 'quiet'), { owner: false, phone: false })).toBe(false);
+  expect(settingsReachable(open('resources', 'quiet'), { owner: true, phone: true })).toBe(false);
 });
 
 test('an automatic compaction change that only adds a moment reads differently from the current one', () => {
@@ -43,7 +50,7 @@ test('a card about a graduated experiment is never settled by a core setting mov
 });
 
 test('a graduated experiment keeps its name, and one with no switch left says it is always on', () => {
-  expect(settingLabel('experiment.edge-scrollbars' as RequestableKey)).toBe('Edge scrollbars');
+  expect(settingLabel('experiment.edge-scrollbars' as RequestableKey)).toBe('Hide scrollbars until the pointer is near');
   expect(settingLabel('experiment.press-preload' as RequestableKey)).toBe('Load on press');
   expect(retiredHint('experiment.press-preload')).toBe('This experiment is now always on.');
   expect(retiredHint('experiment.preview-comments')).toBe('This experiment has its own switch in Settings now.');

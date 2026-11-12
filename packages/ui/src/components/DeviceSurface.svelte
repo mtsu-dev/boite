@@ -384,18 +384,18 @@
     <div class="toolbar">
       <div class="tabs" role="tablist">
         {#each sessions as one (one.deviceId)}
-          <button type="button" role="tab" class="chip" aria-selected={one.deviceId === session?.deviceId} data-testid="device-tab" onclick={() => { selected = one.deviceId; picking = false; }}>
+          <button type="button" role="tab" class="ui-chip" aria-selected={one.deviceId === session?.deviceId} data-testid="device-tab" onclick={() => { selected = one.deviceId; picking = false; }}>
             <span class="dot" class:ready={one.state === 'ready'} class:failed={one.state === 'failed'}></span><span class="ui-label">{one.name}</span>
           </button>
         {/each}
-        <button type="button" class="chip" aria-label={strings.devicePanel.add} title={strings.devicePanel.add} aria-pressed={picking} data-testid="device-add" onclick={() => { picking = !picking; if (picking) void refresh(); }}><Plus size={16} /></button>
+        <button type="button" class="ui-chip" aria-label={strings.devicePanel.add} title={strings.devicePanel.add} aria-pressed={picking} data-testid="device-add" onclick={() => { picking = !picking; if (picking) void refresh(); }}><Plus size={16} /></button>
       </div>
       <div class="actions">
-        {#if showing}<button type="button" class="chip" data-testid="device-hide" aria-label={strings.devicePanel.hideHint} title={strings.devicePanel.hideHint} onclick={hide}><EyeOff size={15} /><span class="ui-label">{strings.devicePanel.hide}</span></button>{/if}
-        <button type="button" class="chip" disabled={!showing} aria-label={paused ? strings.remoteBrowser.resume : strings.remoteBrowser.pause} title={paused ? strings.remoteBrowser.resume : strings.remoteBrowser.pause} onclick={() => { paused = !paused; }}>{#if paused}<Play size={15} />{:else}<Pause size={15} />{/if}</button>
-        <button type="button" class="chip" disabled={!showing || busy} aria-label={strings.devicePanel.screenshot} title={strings.devicePanel.screenshot} data-testid="device-screenshot" onclick={() => void screenshot()}><Camera size={16} /></button>
-        <button type="button" class="chip" disabled={!session || busy || session.state === 'booting'} aria-label={strings.devicePanel.shutdown} title={strings.devicePanel.shutdown} data-testid="device-shutdown" onclick={() => void close(true)}><Power size={16} /></button>
-        <button type="button" class="chip" disabled={!session || busy} aria-label={session ? fill(strings.devicePanel.close, { name: session.name }) : ''} title={session ? fill(strings.devicePanel.close, { name: session.name }) : ''} data-testid="device-close" onclick={() => void close(false)}><X size={16} /></button>
+        {#if showing}<button type="button" class="ui-chip" data-testid="device-hide" aria-label={strings.devicePanel.hideHint} title={strings.devicePanel.hideHint} onclick={hide}><EyeOff size={15} /><span class="ui-label">{strings.devicePanel.hide}</span></button>{/if}
+        <button type="button" class="ui-chip" disabled={!showing} aria-label={paused ? strings.remoteBrowser.resume : strings.remoteBrowser.pause} title={paused ? strings.remoteBrowser.resume : strings.remoteBrowser.pause} onclick={() => { paused = !paused; }}>{#if paused}<Play size={15} />{:else}<Pause size={15} />{/if}</button>
+        <button type="button" class="ui-chip" disabled={!showing || busy} aria-label={strings.devicePanel.screenshot} title={strings.devicePanel.screenshot} data-testid="device-screenshot" onclick={() => void screenshot()}><Camera size={16} /></button>
+        <button type="button" class="ui-chip" disabled={!session || busy || session.state === 'booting'} aria-label={strings.devicePanel.shutdown} title={strings.devicePanel.shutdown} data-testid="device-shutdown" onclick={() => void close(true)}><Power size={16} /></button>
+        <button type="button" class="ui-chip" disabled={!session || busy} aria-label={session ? fill(strings.devicePanel.close, { name: session.name }) : ''} title={session ? fill(strings.devicePanel.close, { name: session.name }) : ''} data-testid="device-close" onclick={() => void close(false)}><X size={16} /></button>
       </div>
     </div>
   {/if}
@@ -405,7 +405,7 @@
     <div class="picker" data-testid="device-picker">
       {#if sessions.length === 0}<p class="muted">{strings.devicePanel.empty}</p>{/if}
       <div class="heading"><span class="section-label">{strings.devicePanel.onMachine}</span>
-        <button type="button" class="chip" disabled={loading} onclick={() => void refresh()}><RefreshCw size={14} /><span class="ui-label">{strings.common.refresh}</span></button></div>
+        <button type="button" class="ui-chip" disabled={loading} onclick={() => void refresh()}><RefreshCw size={14} /><span class="ui-label">{strings.common.refresh}</span></button></div>
       {#if list}
         {#each list.hosts as host (host.id)}
           {#each host.platforms.filter(one => one.reason) as platform (platform.platform)}
@@ -418,7 +418,7 @@
             {@const shown = sessions.some(one => one.deviceId === device.id)}
             <li>
               <span class="name">{device.name}<small>{device.platform === 'ios' ? 'iOS' : 'Android'}{device.runtime ? ` · ${device.runtime}` : ''} · {stateLabel(device.state)}</small></span>
-              <button type="button" class="chip" disabled={busy || shown} data-testid="device-open" onclick={() => void open(device.id)}><span class="ui-label">{strings.common.open}</span></button>
+              <button type="button" class="ui-chip" disabled={busy || shown} data-testid="device-open" onclick={() => void open(device.id)}><span class="ui-label">{strings.common.open}</span></button>
             </li>
           {/each}
         </ul>
@@ -456,22 +456,22 @@
       <footer>
         {#if showing.input}
           <div class="keys">
-            <button type="button" class="chip" disabled={!usable} aria-label={strings.devicePanel.back} title={strings.devicePanel.back} onclick={() => void input({ kind: 'key', key: 'back' })}><Triangle size={14} style="transform: rotate(-90deg)" /></button>
-            <button type="button" class="chip" disabled={!usable} aria-label={strings.devicePanel.home} title={strings.devicePanel.home} onclick={() => void input({ kind: 'key', key: 'home' })}><Circle size={15} /></button>
-            <button type="button" class="chip" disabled={!usable} aria-label={strings.devicePanel.recents} title={strings.devicePanel.recents} onclick={() => void input({ kind: 'key', key: 'recents' })}><Square size={14} /></button>
-            <button type="button" class="chip" disabled={!usable} aria-label={strings.devicePanel.rotate} title={strings.devicePanel.rotate} onclick={() => void input({ kind: 'key', key: 'rotate' })}><RotateCw size={15} /></button>
-            <button type="button" class="chip" disabled={!usable} aria-label={strings.devicePanel.power} title={strings.devicePanel.power} onclick={() => void input({ kind: 'key', key: 'power' })}><Power size={15} /></button>
+            <button type="button" class="ui-chip" disabled={!usable} aria-label={strings.devicePanel.back} title={strings.devicePanel.back} onclick={() => void input({ kind: 'key', key: 'back' })}><Triangle size={14} style="transform: rotate(-90deg)" /></button>
+            <button type="button" class="ui-chip" disabled={!usable} aria-label={strings.devicePanel.home} title={strings.devicePanel.home} onclick={() => void input({ kind: 'key', key: 'home' })}><Circle size={15} /></button>
+            <button type="button" class="ui-chip" disabled={!usable} aria-label={strings.devicePanel.recents} title={strings.devicePanel.recents} onclick={() => void input({ kind: 'key', key: 'recents' })}><Square size={14} /></button>
+            <button type="button" class="ui-chip" disabled={!usable} aria-label={strings.devicePanel.rotate} title={strings.devicePanel.rotate} onclick={() => void input({ kind: 'key', key: 'rotate' })}><RotateCw size={15} /></button>
+            <button type="button" class="ui-chip" disabled={!usable} aria-label={strings.devicePanel.power} title={strings.devicePanel.power} onclick={() => void input({ kind: 'key', key: 'power' })}><Power size={15} /></button>
             {#if !desk}
-            <button type="button" class="chip" disabled={!usable} aria-label={strings.devicePanel.enter} title={strings.devicePanel.enter} onclick={() => void input({ kind: 'key', key: 'enter' })}><CornerDownLeft size={15} /></button>
-            <button type="button" class="chip" disabled={!usable} aria-label={strings.devicePanel.backspace} title={strings.devicePanel.backspace} onclick={() => void input({ kind: 'key', key: 'backspace' })}><Delete size={15} /></button>
-            {#if live}<button type="button" class="chip" disabled={!usable} aria-label={strings.devicePanel.copy} title={strings.devicePanel.copy} data-testid="device-copy"
+            <button type="button" class="ui-chip" disabled={!usable} aria-label={strings.devicePanel.enter} title={strings.devicePanel.enter} onclick={() => void input({ kind: 'key', key: 'enter' })}><CornerDownLeft size={15} /></button>
+            <button type="button" class="ui-chip" disabled={!usable} aria-label={strings.devicePanel.backspace} title={strings.devicePanel.backspace} onclick={() => void input({ kind: 'key', key: 'backspace' })}><Delete size={15} /></button>
+            {#if live}<button type="button" class="ui-chip" disabled={!usable} aria-label={strings.devicePanel.copy} title={strings.devicePanel.copy} data-testid="device-copy"
               onclick={() => void writeClipboardLater(deviceCopy(false)).catch(cause => { error = errorText(cause); })}><Copy size={15} /></button>{/if}
             {/if}
           </div>
           {#if desk}<small data-testid="device-desk-hint">{live ? strings.devicePanel.deskHintLive : strings.devicePanel.deskHint}</small>{:else}
           <form onsubmit={e => { e.preventDefault(); void sendText(false); }}>
             <input bind:value={text} data-testid="device-text" maxlength="500" enterkeyhint="send" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label={strings.devicePanel.text} placeholder={strings.devicePanel.text} onkeydown={textKey} />
-            <button type="submit" class="chip" disabled={!usable || !text} aria-label={strings.devicePanel.send}><Send size={16} /></button>
+            <button type="submit" class="ui-chip" disabled={!usable || !text} aria-label={strings.devicePanel.send}><Send size={16} /></button>
           </form>
           <small>{strings.devicePanel.gesture}</small>
           {/if}
@@ -487,21 +487,21 @@
   .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 16px; flex-wrap: wrap; }
   .tabs, .actions, .keys { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
   /* A desktop panel's controls are its size; a finger gets the touch target (the rule at the end of this block). */
-  .chip { min-height: var(--control); min-width: var(--control); justify-content: center; }
-  .tabs [aria-selected=true], .chip[aria-pressed=true] { color: var(--color-accent); border-color: var(--color-accent); }
+  .ui-chip { min-height: var(--control); min-width: var(--control); justify-content: center; }
+  .tabs [aria-selected=true], .ui-chip[aria-pressed=true] { color: var(--color-foreground); border-color: var(--color-muted-foreground); }
   .dot { width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--color-muted-foreground); flex: none; }
-  .dot.ready { background: var(--color-accent); } .dot.failed { background: var(--color-danger); }
+  .dot.ready { background: var(--color-success); } .dot.failed { background: var(--color-danger); }
   .muted, small { color: var(--color-muted-foreground); font-size: var(--text-sm); }
-  .error { margin: 0; padding: 0 16px 8px; font-size: var(--text-sm); color: var(--color-danger); overflow-wrap: anywhere; max-height: 90px; overflow: auto; }
+  .error { margin: 0; padding: 0 16px 8px; max-height: 90px; overflow: auto; }
   .picker { padding: 8px 16px 16px; display: grid; gap: 8px; align-content: start; overflow: auto; }
   .picker p { margin: 0; } .heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .reason { overflow-wrap: anywhere; }
   ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-  li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface-2); }
+  li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border-radius: var(--radius-lg); background: var(--color-surface-2); }
   .name { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
   .viewer { position: relative; flex: 1; min-height: 80px; display: flex; overflow: hidden; background: var(--color-background); }
   .cover { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; }
-  .card { display: flex; flex-direction: column; align-items: center; gap: 10px; max-width: 360px; width: 100%; padding: 20px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface-2); box-shadow: var(--shadow-e2); }
+  .card { display: flex; flex-direction: column; align-items: center; gap: 10px; max-width: 360px; width: 100%; padding: 20px; border-radius: var(--radius-lg); background: var(--color-surface-2); }
   .card p { margin: 0; overflow-wrap: anywhere; } .card .heading { font-weight: 600; } .card button { min-height: var(--control); min-width: 120px; justify-content: center; }
   .center { margin: auto; padding: 24px; text-align: center; } .center .error { padding: 0; } .detail { margin: 8px 0 0; overflow-wrap: anywhere; }
   .screen { position: relative; flex: 1; height: auto; min-width: 0; padding: 0; border: 0; border-radius: 0; background: transparent; touch-action: none; cursor: crosshair; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
@@ -513,5 +513,5 @@
   form { display: flex; gap: 8px; } input { min-width: 0; flex: 1; font-size: 16px; min-height: var(--control); }
   @media (max-width: 720px) { footer small { display: none; } .toolbar, footer, .picker { padding-inline: 12px; } }
   /* Last, so it outranks the desktop sizes of the same weight above. */
-  @media (pointer: coarse) { .chip { min-height: var(--touch-target); min-width: var(--touch-target); } .card button, input { min-height: var(--touch-target); } }
+  @media (pointer: coarse) { .ui-chip { min-height: var(--touch-target); min-width: var(--touch-target); } .card button, input { min-height: var(--touch-target); } }
 </style>

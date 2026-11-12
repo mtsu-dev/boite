@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { CircleAlert } from '@lucide/svelte';
+  import Notice from './Notice.svelte';
   import type { ComponentProps } from 'svelte';
   import { strings } from '../lib/strings';
   import type AgentSettingCard from './AgentSettingCard.svelte';
@@ -17,13 +19,11 @@
 {:then module}
   <module.default {...props} />
 {:catch}
-  <div class="notice" role="status" data-testid="agent-setting-card-failed">
-    <span>{strings.agentSettingRequest.loadFailed}</span>
-    <button class="quiet" onclick={() => (loading = import('./AgentSettingCard.svelte'))}><span class="ui-label">{strings.common.refresh}</span></button>
-  </div>
+  <Notice icon={CircleAlert} tone="danger" testid="agent-setting-card-failed" detail={strings.agentSettingRequest.loadFailed}>
+    {#snippet actions()}<button type="button" class="small" onclick={() => (loading = import('./AgentSettingCard.svelte'))}><span class="ui-label">{strings.common.refresh}</span></button>{/snippet}
+  </Notice>
 {/await}
 
 <style>
   .hint { margin: 0; padding: var(--activity-padding); font-size: var(--text-sm); color: var(--color-muted-foreground); }
-  .notice { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: var(--activity-padding); font-size: var(--text-sm); color: var(--color-muted-foreground); }
 </style>

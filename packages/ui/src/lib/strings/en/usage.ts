@@ -23,8 +23,15 @@ export const strings = {
     filterUnsupported: 'This machine did not filter usage by provider. Update Boite on it and retry.',
     noActivity: 'No turns',
     noUsage: 'Not reported',
-    coverage: 'Tokens {reported}/{turns} turns · Cost {priced}/{turns}',
-    partialCost: '{count} turns have no price and are left out of the estimate.',
+    /** A provider's line: what was counted, over what period. */
+    counted: { one: '{turns} turn in {days} days', many: '{turns} turns in {days} days' },
+    /** The turns the measure on screen misses, after a provider's line. */
+    gaps: { tokens: '{count} with no token count', cost: '{count} with no price' },
+    /** The same under the total, with what it changes. */
+    gapsTotal: {
+      tokens: { one: '{count} turn reported no token count and counts as a turn only', many: '{count} turns reported no token count and count as turns only' },
+      cost: { one: '{count} turn has no price and is left out of the estimate', many: '{count} turns have no price and are left out of the estimate' },
+    },
     rates: 'Public API rates of {model}, per million tokens: input {input}, output {output}, cache read {cacheRead}, cache write {cacheWrite}.',
     cacheSplit: 'Cache: {read} read, {write} written.',
     cacheSplitCost: 'Cache: {read} read ({readCost}), {write} written ({writeCost}).',
@@ -64,7 +71,6 @@ export const strings = {
     archived: 'Archived',
     emptyRange: 'No turn finished in the last {days} days.',
     unpriced: 'No price for {providers}: no public rate and no reported cost.',
-    unreported: '{count} turns reported no usage. They count as turns only.',
     limits: 'Limits',
     refresh: 'Refresh usage',
     loading: 'Reading usage',

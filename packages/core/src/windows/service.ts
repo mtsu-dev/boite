@@ -216,7 +216,7 @@ export class DesktopWindows {
       throw refused(`${watch.process} is no longer allowed in this project`, { windowId });
     }
     if (this.#excluded(watch)) {
-      this.#close(threadId, 'its app was added to Never capture');
+      this.#close(threadId, 'its app was added to Windows agents never see');
       throw refused(`${watch.process} is excluded from capture`, { windowId });
     }
     const backend = await this.#load();

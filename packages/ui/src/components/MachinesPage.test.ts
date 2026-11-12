@@ -50,6 +50,15 @@ function query<T extends HTMLElement>(selector: string): T {
   if (!element) throw new Error(`missing ${selector}`);
   return element;
 }
+/** A row's option, from its menu: the menu opens first when the row does not show it yet. */
+function option(machine: string, id: string): HTMLButtonElement {
+  const scope = `[data-machine-id="${machine}"]`;
+  if (!document.querySelector(`${scope} [data-testid="${id}"]`)) {
+    query<HTMLButtonElement>(`${scope} [data-testid="machine-menu"]`).click();
+    flushSync();
+  }
+  return query<HTMLButtonElement>(`${scope} [data-testid="${id}"]`);
+}
 function input(selector: string, value: string) {
   const field = query<HTMLInputElement>(selector);
   field.value = value;
@@ -159,6 +168,12 @@ test('each row says where its updates stand and one button checks every machine'
   const said = (id: string) => query(`[data-machine-id="${id}"] [data-testid="machine-updates-state"]`);
   expect([said('target').dataset.state, said('target').textContent]).toEqual(['available', strings.harnessUpdates.availableShort]);
   expect([said('source').dataset.state, said('source').textContent]).toEqual(['current', strings.serverUpdate.current]);
+  // A version is read once: the card heads with this machine's, so a row repeats it only where it differs.
+  const version = (id: string) => document.querySelector(`[data-machine-id="${id}"] [data-testid="machine-version"]`)?.textContent ?? null;
+  expect([version('source'), version('target')]).toEqual([null, null]);
+  target.store.core = { ...target.store.core!, version: '0.9.0' };
+  flushSync();
+  expect([version('source'), version('target')]).toEqual([null, '0.9.0']);
 
   const checks = [source, target].map(machine => vi.spyOn(machine.store, 'loadHarnessUpdates').mockResolvedValue());
   const server = vi.spyOn(target.store.serverUpdater, 'load').mockResolvedValue();
@@ -172,7 +187,10 @@ test('a machine that does not answer is grey and offers only its name, its icon 
   const { target } = await setup();
   const card = () => query('[data-machine-id="target"]');
   const has = (id: string) => card().querySelector(`[data-testid="${id}"]`) !== null;
-  expect([has('machine-open'), has('machine-remove'), card().dataset.away]).toEqual([true, true, undefined]);
+  expect([has('machine-open'), has('machine-menu'), card().dataset.away]).toEqual([true, true, undefined]);
+  // Online, its menu holds the group's two switches before its removal.
+  option('target', 'machine-remove');
+  expect([has('machine-group-threads-switch'), has('machine-group-bots-switch')]).toEqual([true, true]);
   // The screenshot's case: the first attempt timed out and the client keeps retrying behind the card.
   target.store.threads = target.store.threads.map(thread => ({ ...thread, status: 'idle' }));
   target.store.connection = 'connecting';
@@ -180,17 +198,24 @@ test('a machine that does not answer is grey and offers only its name, its icon 
   target.store.error = 'connection did not answer within 10 seconds';
   flushSync();
   expect(card().dataset.away).toBe('offline');
-  expect(query('[data-machine-id="target"] [data-testid="machine-card-status"]').textContent).toBe(strings.connection.offline);
-  expect([has('machine-open'), has('machine-rename'), has('machine-customize'), has('machine-remove')]).toEqual([false, true, true, true]);
+  // The words a project card's head says, beside the same Reconnect.
+  expect(query('[data-machine-id="target"] [data-testid="machine-card-status"]').textContent).toBe(fill(strings.machines.offlineLine, { machine: query<HTMLInputElement>('[data-machine-id="target"] [data-testid="machine-rename"]').value }));
+  // Away, the menu keeps only the removal: the switches need the machine.
+  expect([has('machine-open'), has('machine-rename'), has('machine-customize'), has('machine-remove'), has('machine-group-threads-switch')]).toEqual([false, true, true, true, false]);
   expect(card().querySelector('.error')).toBeNull();
-  query<HTMLButtonElement>('[data-machine-id="target"] [data-testid="machine-remove"]').click();
+  // The remedy sits beside the state, in words: one press tries now instead of at the next deadline.
+  expect([has('machine-reconnect'), query('[data-machine-id="target"] [data-testid="machine-reconnect"]').textContent]).toEqual([true, strings.connection.reconnect]);
+  const retry = vi.spyOn(target.store, 'connect').mockResolvedValue();
+  query<HTMLButtonElement>('[data-machine-id="target"] [data-testid="machine-reconnect"]').click();
+  await vi.waitFor(() => expect(retry).toHaveBeenCalled());
+  option('target', 'machine-remove').click();
   await vi.waitFor(() => expect(confirm.current?.title).toContain(target.label));
   confirm.answer(false);
   // A machine with a turn still running when it went away stays a warning, with its error.
   target.store.threads = target.store.threads.map((thread, index) => index === 0 ? { ...thread, status: 'running' } : thread);
   flushSync();
   expect([card().dataset.away, card().querySelector('.error')?.textContent]).toEqual(['lost', 'connection did not answer within 10 seconds']);
-  expect([has('machine-open'), has('machine-remove')]).toEqual([false, true]);
+  expect([has('machine-open'), has('machine-menu')]).toEqual([false, true]);
   // A call that found it away only repeats "Offline": the card stays quiet, and anywhere else it names the machine.
   target.store.reportError(closedFailure());
   flushSync();
@@ -198,7 +223,7 @@ test('a machine that does not answer is grey and offers only its name, its icon 
   // Back online, the card is whole again without a click.
   target.store.connection = 'ready';
   flushSync();
-  expect([has('machine-open'), has('machine-remove'), card().dataset.away]).toEqual([true, true, undefined]);
+  expect([has('machine-open'), has('machine-menu'), card().dataset.away, has('machine-reconnect')]).toEqual([true, true, undefined, false]);
 });
 
 test('a thread that failed on a machine reads as that thread, and its button opens it', async () => {
@@ -216,7 +241,7 @@ test('removing a connected row removes the group member and keeps the current co
   const { source, target } = await setup();
   await source.store.open('t-trace');
   const thread = source.store.openThread;
-  query<HTMLButtonElement>('[data-machine-id="target"] [data-testid="machine-remove"]').click();
+  option('target', 'machine-remove').click();
   await vi.waitFor(() => expect(confirm.current?.title).toContain(target.label));
   confirm.answer(true);
   await vi.waitFor(() => expect(workspace.machines).toHaveLength(1));
@@ -237,7 +262,7 @@ test('existing separate groups keep their own actions and removing their row lea
   query('[data-testid="group-rename"]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
   await vi.waitFor(() => expect(target.store.group?.name).toBe('Work'));
   expect(source.store.group?.name).toBe('Home');
-  query<HTMLButtonElement>('[data-machine-id="target"] [data-testid="machine-remove"]').click();
+  option('target', 'machine-remove').click();
   await vi.waitFor(() => expect(confirm.current).not.toBeNull());
   confirm.answer(true);
   await vi.waitFor(() => expect(workspace.machines).toHaveLength(1));
@@ -257,20 +282,24 @@ test('each machine says for itself whether the others may start threads on it, a
   const { source, target } = await setup();
   await source.store.client!.call('group.settingsHome', { coreId: 'source' });
   await vi.waitFor(() => expect(target.store.group?.settingsHome).toBe('source'));
-  await vi.waitFor(() => { flushSync(); expect(document.querySelectorAll('[data-testid="machine-group-threads-switch"]')).toHaveLength(2); });
-  const switches = [...document.querySelectorAll<HTMLInputElement>('[data-testid="machine-group-threads-switch"]')];
-  expect(switches.map(toggle => toggle.checked)).toEqual([false, false]);
-  expect(query('[data-testid="machine-group-threads"]').textContent).toContain(strings.machines.groupThreads);
+  await vi.waitFor(() => { flushSync(); expect(document.querySelectorAll('[data-testid="machine-menu"]')).toHaveLength(2); });
+  const switches = ['source', 'target'].map(id => option(id, 'machine-group-threads-switch'));
+  expect(switches.map(toggle => toggle.getAttribute('aria-checked'))).toEqual(['false', 'false']);
+  // Each switch is named in full in its row's menu, its explanation in sight under the name: a finger has no hover.
+  expect(switches.map(toggle => [toggle.querySelector('.label')!.textContent!.trim(), toggle.querySelector('.hint')?.textContent])).toEqual([
+    [strings.machines.groupThreads, strings.machines.groupThreadsHint], [strings.machines.groupThreads, strings.machines.groupThreadsHint]
+  ]);
+  expect(option('source', 'machine-group-bots-switch').querySelector('.hint')?.textContent).toBe(strings.machines.groupBotsHint);
 
   // The default machine, the one the others copy, accepts them: the machine that follows it keeps its own answer.
-  query<HTMLInputElement>('[data-machine-id="source"] [data-testid="machine-group-threads-switch"]').click();
+  option('source', 'machine-group-threads-switch').click();
   await vi.waitFor(() => expect(source.store.settings?.groupThreads).toBe(true));
   await source.store.client!.call('settings.set', { asyncQuestions: false });
   await vi.waitFor(() => expect(target.store.settings?.asyncQuestions).toBe(false));
   expect(target.store.settings?.groupThreads ?? false).toBe(false);
   expect(target.store.settings?.syncOverrides ?? []).not.toContain('groupThreads');
   // Its own switch changes that machine alone.
-  query<HTMLInputElement>('[data-machine-id="target"] [data-testid="machine-group-threads-switch"]').click();
+  option('target', 'machine-group-threads-switch').click();
   await vi.waitFor(() => expect(target.store.settings?.groupThreads).toBe(true));
   await target.store.saveSettings({ groupThreads: false });
   expect([source.store.settings?.groupThreads, target.store.settings?.groupThreads]).toEqual([true, false]);

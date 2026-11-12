@@ -117,7 +117,7 @@ function middleOps(a: string[], b: string[]): Op[] {
     // The hot loop, with comesDown and get written out: diagonal k is entry i
     // of row d, and in row d - 1, k - 1 is entry i - 1 and k + 1 is entry i.
     for (let k = -d, i = 0; k <= d; k += 2, i += 1) {
-      // Round 0 starts at x = 0; off either edge of row d - 1 there is no entry.
+      // The first round, d = 0, starts at x = 0; off either edge of row d - 1 there is no entry.
       const fromAbove = d === 0 ? 0 : k === d ? -1 : (cells[previous + i] ?? 0);
       const fromLeft = k === -d ? -1 : (cells[previous + i - 1] ?? 0);
       let x = k === -d || (k !== d && fromLeft < fromAbove) ? fromAbove : fromLeft + 1;
@@ -142,7 +142,7 @@ function middleOps(a: string[], b: string[]): Op[] {
     const k = x - y;
     const down = rounds.comesDown(d, k);
     const fromK = down ? k + 1 : k - 1;
-    // Round 0 starts from the empty row, as if one step above the top left.
+    // The first round starts from the empty row, as if one step above the top left.
     const fromX = rounds.get(d - 1, fromK);
     const fromY = fromX - fromK;
     // The run of equal lines this round ended on starts right after its edit.

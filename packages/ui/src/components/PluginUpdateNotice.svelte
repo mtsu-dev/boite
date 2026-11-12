@@ -4,6 +4,8 @@
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
   import { workspace } from '../lib/workspace.svelte';
+  import { notifyCorner } from '../lib/notify-corner';
+  import NoticeBox from './Notice.svelte';
   import { answerPluginUpdate, pluginUpdateOffer, readPluginUpdateAnswers } from '../lib/plugin-update-notice';
 
   interface Host { id: string; label: string; store: Store }
@@ -64,98 +66,42 @@
 </script>
 
 {#if notices.length > 0}
-  <div class="update-notices" class:off-chat={offChat} data-testid="plugin-update-notices" role="region" aria-label={t.noticeLabel}>
+  <div class="update-notices notify-corner" class:off-chat={offChat} use:notifyCorner data-testid="plugin-update-notices" role="region" aria-label={t.noticeLabel}>
     {#each notices as notice (notice.key)}
-      <article class="notice" data-testid="plugin-update-notice" data-plugin={notice.plugin.id} data-version={notice.version}>
-        <span class="logo" aria-hidden="true"><Puzzle size={18} strokeWidth={1.75} /></span>
-        <div class="lines">
-          <span class="heading">{fill(t.noticeTitle, { name: notice.plugin.name, version: notice.version })}</span>
-          <p>{t.noticeBody}{#if several}<span class="sep" aria-hidden="true"> · </span>{notice.host.label}{/if}</p>
-        </div>
-        <div class="actions">
-          <button type="button" class="quiet small" data-testid="plugin-update-later" onclick={() => answer(notice, false)}>{t.noticeLater}</button>
-          <button type="button" class="primary small" data-testid="plugin-update-run" onclick={() => answer(notice, true)}>{t.noticeUpdate}</button>
-        </div>
-      </article>
+      <div class="notice" data-testid="plugin-update-notice" data-plugin={notice.plugin.id} data-version={notice.version}>
+        <NoticeBox icon={Puzzle} floating title={fill(t.noticeTitle, { name: notice.plugin.name, version: notice.version })} detail={several ? `${t.noticeBody} · ${notice.host.label}` : t.noticeBody}>
+          {#snippet actions()}
+            <button type="button" class="small" data-testid="plugin-update-run" onclick={() => answer(notice, true)}>{t.noticeUpdate}</button>
+            <button type="button" class="ghost small" data-testid="plugin-update-later" onclick={() => answer(notice, false)}>{t.noticeLater}</button>
+          {/snippet}
+        </NoticeBox>
+      </div>
     {/each}
   </div>
 {/if}
 
 <style>
-  /* The notice the agent updates used: pinned under the title bar, never
-     auto-dismissed, leaving only on an answer. The top right corner is the one
-     the composer, the sidebar and a phone's tab bar all leave alone. App mounts
-     it beside its root, under the dialogs (60) and the image viewer (55). */
+  /* The notice the agent updates used, in the notification corner: never
+     auto-dismissed, leaving only on an answer. App mounts it beside its root,
+     under the dialogs (60) and the image viewer (55). */
   .update-notices {
-    position: fixed;
-    right: max(16px, env(safe-area-inset-right));
-    top: calc(var(--titlebar, 44px) + 12px + env(safe-area-inset-top, 0px));
     z-index: 54;
     display: flex;
-    flex-direction: column;
+    flex-direction: column-reverse;
     gap: 8px;
-    width: min(400px, calc(100vw - 32px));
-    pointer-events: none;
   }
 
-  .notice {
-    pointer-events: auto;
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 12px;
-    padding: 10px 12px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    background: var(--color-surface-2);
-    box-shadow: var(--shadow-e3);
-    overflow: hidden;
-    animation: rise var(--dur-3) var(--ease-out-quint);
-  }
+  .notice { animation: rise var(--dur-3) var(--ease-out-quint); }
 
-  .logo {
-    display: grid;
-    place-items: center;
-    width: var(--control);
-    height: var(--control);
-    border-radius: var(--radius-md);
-    background: var(--color-surface-3);
-    color: var(--color-muted-foreground);
-  }
-
-  .lines { min-width: 0; }
-  .heading { display: block; font-size: var(--text-sm); font-weight: 600; overflow-wrap: anywhere; }
-
-  p {
-    margin: 2px 0 0;
-    color: var(--color-muted-foreground);
-    font-size: var(--text-xs);
-    line-height: 1.5;
-    overflow-wrap: anywhere;
-  }
-
-  .actions { display: flex; align-items: center; gap: 6px; }
-
+  /* Settings would hide their own rows under it, and the Plugins page shows the same update. */
   .update-notices.off-chat { display: none; }
 
   @media (prefers-reduced-motion: reduce) {
     .notice { animation: none; }
   }
 
-  /* A phone shows one at a time, under its own header. */
+  /* A phone shows one at a time. */
   @media (max-width: 720px) {
-    .update-notices {
-      top: calc(56px + env(safe-area-inset-top, 0px));
-      left: 16px;
-      right: 16px;
-      width: auto;
-    }
-    :global(.app.phone-chat) ~ .update-notices { top: calc(56px + var(--titlebar, 44px) + 8px + env(safe-area-inset-top, 0px)); }
     .notice:nth-child(n + 2) { display: none; }
-  }
-  /* Too narrow for the buttons beside the text: they go under it. */
-  @media (max-width: 420px) {
-    .notice { grid-template-columns: auto minmax(0, 1fr); }
-    .actions { grid-column: 1 / -1; justify-content: flex-end; }
   }
 </style>

@@ -993,7 +993,7 @@ are inert. Settings pages use `--settings-width`, `--settings-padding` and
 reserved for current errors, counts or missing steps.
 
 The terminal, the right panel and the sidebar make their room as they arrive,
-on `--dur-slide` and `--ease-slide`: the terminal grows its slot, the panel and
+on `--motion-duration` and `--motion-curve`: the terminal grows its slot, the panel and
 the sidebar slide in from their window edge behind a negative margin that
 shrinks to zero. The chat gives way over the whole movement instead of jumping
 in one frame. The panel and the sidebar keep their final size while they
@@ -1002,7 +1002,9 @@ it only fades out. A panel tab opened or picked after the panel is in fades
 its surface in. Captures and pointer aims wait on `page.settleAnimations()`
 from `tests/e2e/lib/cdp.ts`, which leaves out animations inside a folded
 `content-visibility` section: Chrome never updates those, so their `finished`
-promise stays pending.
+promise stays pending. It also leaves out scroll-linked animations
+(`animation-timeline: scroll()`), which never finish: a test that waits on
+`document.getAnimations()` itself keeps only `a.timeline === document.timeline`.
 
 For text beside icons, put `ui-label` on the text leaf inside the flex or grid
 row. The shared rule in `app.css` centres the font's cap height and alphabetic

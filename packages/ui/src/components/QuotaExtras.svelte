@@ -48,8 +48,8 @@
   .extras { gap: 12px; font-size: var(--text-sm); }
   .reset-line { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
   .reserve { display: inline-flex; align-items: center; gap: 6px; justify-self: start; padding: 5px 9px; border-radius: var(--radius-md); background: var(--color-accent-soft); color: var(--color-foreground); font-weight: 550; }
-  .reserve :global(svg) { flex: none; color: var(--color-accent); }
-  .credits { padding: 12px; border: 1px solid color-mix(in srgb, var(--color-success) 20%, var(--color-border)); border-radius: var(--radius-md); background: color-mix(in srgb, var(--color-success) 5%, var(--color-surface-2)); gap: 10px; }
+  .reserve :global(svg) { flex: none; color: var(--color-muted-foreground); }
+  .credits { padding: 12px; border-radius: var(--radius-lg); background: color-mix(in srgb, var(--color-success) 5%, var(--color-surface-2)); gap: 10px; }
   .legend { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
   .heading { display: flex; align-items: center; gap: 7px; min-width: 0; color: var(--color-muted-foreground); font-size: var(--text-xs); }
   .heading :global(svg) { flex: none; color: var(--color-success); }

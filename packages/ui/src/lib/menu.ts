@@ -14,23 +14,49 @@ export interface MenuItem {
   live?: boolean;
   /** A project's tile before the label: its logo, its stack's mark or its initial, read through the Store that owns it. */
   projectTile?: { project: Project; store: Store };
-  status?: { tone: 'success' | 'warning' | 'danger' | 'neutral'; label: string };
+  status?: { tone: 'success' | 'warning' | 'danger' | 'neutral' | 'offline'; label: string };
+  /** The chosen row of a list that is not a toggle: drawn with the same check as `checked`. */
   active?: boolean;
   /** A persistent toggle, announced and drawn as a checkbox in the context menu. */
   checked?: boolean;
   /** With `checked`: one choice of several, marked with a check instead of a switch. */
   radio?: boolean;
-  hideActiveMark?: boolean;
+  /** One line cut with an ellipsis, the whole in `title`: a branch or a path, which would wrap into a column of words. */
+  clip?: boolean;
+  /** A row that took over a button keeps that button's test id. */
+  testid?: string;
   icon?: 'settings';
   danger?: boolean;
   disabled?: boolean;
   separator?: boolean;
   /** Opens another list in the same menu: ArrowRight picks it, as Enter does. */
   submenu?: boolean;
+  /** With `submenu`: the rows it opens, which `Menu.svelte` swaps in itself; without, the caller does. */
+  items?: MenuItem[];
   /** Goes back to the list a submenu came from: ArrowLeft picks it from anywhere in that submenu. */
   back?: boolean;
 }
 
 export function separator(id = 'sep'): MenuItem {
   return { id, label: '', separator: true };
+}
+
+/**
+ * One order for every menu and sheet: a destructive row comes last, behind a
+ * rule, wherever its caller listed it, so a thumb running down a list meets
+ * it only at the end. A list already ending on it comes back as it was.
+ */
+export function dangerLast(items: MenuItem[]): MenuItem[] {
+  const last = items.findLastIndex((item) => !item.separator && !item.danger);
+  if (!items.some((item, at) => item.danger && !item.separator && at < last)) return items;
+  // The rules the moved rows sat between would open the menu on a rule or show two in a row.
+  // A titled rule heads its section and stays; a bare one goes when nothing precedes it or a rule follows.
+  const head: MenuItem[] = [];
+  for (const item of items) {
+    if (item.danger) continue;
+    if (item.separator && item.label === '' && (!head.length || head.at(-1)!.separator)) continue;
+    head.push(item);
+  }
+  while (head.at(-1)?.separator) head.pop();
+  return [...head, separator('sep-danger'), ...items.filter((item) => item.danger && !item.separator)];
 }

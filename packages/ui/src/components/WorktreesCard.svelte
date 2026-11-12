@@ -209,7 +209,7 @@
     color: var(--color-subtle);
   }
   .flag.warn {
-    color: var(--color-live);
+    color: var(--color-caution);
   }
   li button {
     flex: none;

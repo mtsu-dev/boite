@@ -4,6 +4,7 @@
   import { watchStatus } from '../lib/pull-request-watch';
   import InfoTip from './InfoTip.svelte';
   import GoalChecklist from './GoalChecklistLoader.svelte';
+  import SurfaceHead from './SurfaceHead.svelte';
   import { time } from '../lib/format';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
@@ -29,6 +30,15 @@
   /** A `/goal2`'s reviews, newest first, with what each reviewer found: the bar keeps only their dots. */
   let verdicts = $derived([...(activity?.goal?.review?.verdicts ?? [])].reverse());
   let todos = $derived(thread?.projectId ? (store.todos[thread.projectId] ?? []) : []);
+  /** The head says what the board holds, by state, so its name on the door is not repeated. */
+  let headline = $derived.by(() => {
+    const count = (status: Todo['status']) => todos.filter((todo) => todo.status === status).length;
+    const parts = ([['open', strings.tasks.headOpen], ['claimed', strings.tasks.headWaiting], ['done', strings.tasks.headDone]] as const)
+      .map(([status, text]) => [count(status), text] as const)
+      .filter(([n]) => n > 0)
+      .map(([n, text]) => fill(text, { count: String(n) }));
+    return parts.length ? parts.join(', ') : strings.tasks.noTodos;
+  });
 
   // The project's list is the same for every thread of it, so it is read once
   // when the surface shows and again whenever the thread changes project.
@@ -52,6 +62,7 @@
   }
 </script>
 
+<SurfaceHead><h2 class="ui-label head-line" data-testid="tasks-head">{headline}</h2></SurfaceHead>
 <div class="tasks-surface" data-testid="tasks-panel">
   <section>
     <button
@@ -349,6 +360,7 @@
 </div>
 
 <style>
+  .head-line { min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-foreground); font-size: var(--text-sm); font-weight: 500; }
   .tasks-surface {
     display: flex;
     flex-direction: column;
@@ -387,7 +399,7 @@
   }
 
   [data-verdict='pass'] { --verdict: var(--color-success); }
-  [data-verdict='partial'] { --verdict: var(--color-live); }
+  [data-verdict='partial'] { --verdict: var(--color-caution); }
   [data-verdict='fail'], [data-verdict='missing'] { --verdict: var(--color-danger); }
 
   .open-review {
@@ -443,7 +455,7 @@
   }
 
   .meta-text.paused {
-    color: var(--color-live);
+    color: var(--color-caution);
   }
 
   .watch + .watch { border-top: 1px solid var(--color-border); }
@@ -611,7 +623,11 @@
     color: var(--color-success);
   }
 
-  .mark[data-status='in_progress'],
+  /* Working wears the accent; a claimed card waits on the user, so it keeps the amber. */
+  .mark[data-status='in_progress'] {
+    color: var(--color-accent);
+  }
+
   .mark[data-status='claimed'] {
     color: var(--color-live);
   }

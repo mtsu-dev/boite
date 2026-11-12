@@ -11,11 +11,18 @@ const id = (name: string) => `[data-testid="${name}"]`;
  * padding of `button.small` once won over `button.icon`'s and left a 26 px
  * icon button 8 px for its glyph: the panel's maximize and close came out at
  * 6 px and every row menu at 8, which no unit test can see without a layout.
+ * A control's own glyph takes the one size app.css gives its height
+ * (`--button-icon`, whatever size the caller drew), so that size is the one it
+ * must keep; any other icon keeps the size it was drawn at.
  */
 const SQUEEZED = `(() => Array.from(document.querySelectorAll('button svg[width]')).flatMap((svg) => {
   const box = svg.getBoundingClientRect();
   if (box.width === 0 && box.height === 0) return [];
-  const drawn = Number(svg.getAttribute('width'));
+  let drawn = Number(svg.getAttribute('width'));
+  if (svg.matches('button:is(.primary, .secondary, .small, .ghost, .quiet, .text, .danger, .icon, .icon-button):not(.row) > svg.lucide')) {
+    const sized = parseFloat(getComputedStyle(svg.parentElement).getPropertyValue('--button-icon'));
+    if (sized > 0) drawn = sized;
+  }
   if (!(drawn > 0) || box.width >= drawn - 0.5) return [];
   const button = svg.closest('button');
   const name = button.dataset.testid || button.getAttribute('aria-label') || button.className;
@@ -23,7 +30,7 @@ const SQUEEZED = `(() => Array.from(document.querySelectorAll('button svg[width]
 }))()`;
 
 async function settled() {
-  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
 }
 
 async function squeezed(where: string): Promise<string[]> {

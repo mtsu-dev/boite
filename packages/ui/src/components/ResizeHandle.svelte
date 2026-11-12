@@ -4,7 +4,7 @@
   /**
    * The edge a drag resizes, shared by the thread list, the right panel and
    * the terminal drawer. Invisible at rest; a short hover draws a thin line
-   * with a grip in its middle, a drag turns both to the accent. While it
+   * with a grip in its middle, a drag draws both at full ink. While it
    * drags, the whole document keeps the resize cursor, selects no text and
    * lets no frame under the pointer take it.
    *
@@ -191,12 +191,12 @@
       box-shadow var(--dur-2) var(--ease-out-quint);
   }
 
-  .line { background: color-mix(in oklch, var(--color-accent) 30%, var(--color-edge)); }
+  .line { background: var(--color-edge); }
   .vertical .line { width: 2px; height: 100%; transform: scaleY(0.4); }
   .horizontal .line { height: 2px; width: 100%; transform: scaleX(0.4); }
 
   .grip {
-    background: color-mix(in oklch, var(--color-accent) 45%, var(--color-foreground));
+    background: var(--color-muted-foreground);
     box-shadow: 0 0 0 2px var(--color-background);
   }
   .vertical .grip { width: 4px; height: 28px; transform: scale(0.5, 0.3); }
@@ -214,10 +214,10 @@
 
   .resize:hover:not(.dragging) :is(.line, .grip) { transition-delay: var(--reveal); }
 
-  .resize.dragging .line { background: var(--color-accent); }
+  .resize.dragging .line { background: var(--color-foreground); }
   .resize.dragging .grip {
-    background: var(--color-accent);
-    box-shadow: 0 0 0 2px var(--color-background), 0 0 12px 1px color-mix(in oklch, var(--color-accent) 65%, transparent);
+    background: var(--color-foreground);
+    box-shadow: 0 0 0 2px var(--color-background);
   }
   .resize.dragging.vertical .grip { transform: scaleY(1.3); }
   .resize.dragging.horizontal .grip { transform: scaleX(1.3); }

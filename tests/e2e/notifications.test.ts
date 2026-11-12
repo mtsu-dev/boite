@@ -47,10 +47,14 @@ test('notification stays readable and can be dismissed', async () => {
   await page.settleAnimations();
   await page.screenshot(join(import.meta.dir,'.artifacts/notification-desktop.png'));
   expect(await page.evaluate(`document.querySelector('[data-testid="error-toast"]').textContent`)).toContain('conversation is saved');
-  expect(await page.evaluate(`(() => {const p = document.querySelector('.notification-card p'); return p.scrollHeight <= p.clientHeight && getComputedStyle(p).whiteSpace === 'pre-wrap';})()`)).toBe(true);
+  expect(await page.evaluate(`(() => {const p = document.querySelector('[data-testid="error-toast"] .message'); return p.scrollHeight <= p.clientHeight && getComputedStyle(p).whiteSpace === 'pre-wrap';})()`)).toBe(true);
   await page.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
   await page.screenshot(join(import.meta.dir,'.artifacts/notification-phone.png'));
-  expect(await page.evaluate(`(() => {const r = document.querySelector('[data-testid="error-toast"]').getBoundingClientRect();return r.left >= 0 && r.right <= innerWidth && r.bottom < innerHeight / 2;})()`)).toBe(true);
+  // On the phone too it stays whole on screen, right above what owns the bottom edge (the composer or the tab bar), covering none of it.
+  await page.settleAnimations();
+  expect(await page.evaluate(`(() => {const r = document.querySelector('[data-testid="error-toast"]').getBoundingClientRect();
+    const floor = [...document.querySelectorAll('[data-testid=composer],[data-testid=mobile-tabs]')].find(el => el.getClientRects().length > 0)?.getBoundingClientRect();
+    return r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight && (!floor || r.bottom <= floor.top + 1);})()`)).toBe(true);
   await page.evaluate(`document.documentElement.dataset.theme = 'light'`);
   await page.screenshot(join(import.meta.dir,'.artifacts/notification-light.png'));
   await page.click('[data-testid="error-toast"] button');
@@ -79,6 +83,9 @@ test('older cores do not flood sidebar errors and manual lookup explains the mis
   expect(await page.evaluate(`document.querySelector('[data-testid="error-toast"]') === null`)).toBe(true);
   await page.evaluate(`document.querySelector('[data-thread-id="t-trace"]').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:100,clientY:100}))`);
   await page.waitFor(`document.querySelector('[role="menuitem"]')`);
+  // Refresh pull request sits in the menu's named group with the thread's folder rows, when there is one.
+  if (await page.evaluate(`!Array.from(document.querySelectorAll('[role="menuitem"]')).some(e => e.textContent.includes('Refresh pull request'))`)) await page.click('[role="menuitem"][data-value="more"]');
+  await page.waitFor(`Array.from(document.querySelectorAll('[role="menuitem"]')).some(e => e.textContent.includes('Refresh pull request'))`);
   await page.evaluate(`Array.from(document.querySelectorAll('[role="menuitem"]')).find(e => e.textContent.includes('Refresh pull request')).click()`);
   await page.waitFor(`document.querySelector('[data-testid="error-toast"]')?.textContent.includes('Update Boite')`);
   expect(await page.evaluate(`window.__prCalls`)).toBe(1);

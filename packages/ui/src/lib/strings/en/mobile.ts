@@ -27,15 +27,18 @@ export const strings = {
     emptyTitle: 'Start a conversation',
     emptyBody: 'Send a task to an agent. Your conversations will appear here.',
     emptyActivity: 'All caught up',
+    /** Activity's head when only updates are left: nothing waits on the user. */
+    nothingNeedsYou: 'Nothing needs you',
     computer: 'Connected computer',
     pairAgain: 'Add again',
-    settingsDevice: 'This phone',
     settingsPhone: 'Notifications',
-    settingsPrivacy: 'Privacy',
-    settingsMachine: 'Machine',
+    /** Settings' arrow on a phone: back to the place it was opened from. */
+    settingsLeave: 'Back',
     settingsBack: 'Back to settings',
-    navigation: 'Navigation', threads: 'Conversations', activity: 'Activity', project: 'Choose project',
+    /** Activity's second line: why the thread is listed. `updates` heads what the user reads, under what needs them. */
+    feed: { run: 'Wants to run:', helperAsks: '{title} needs you', updates: 'Updates', verb: { answer: 'Answer', review: 'Review', deny: 'Deny', skip: 'Skip' } },
+    navigation: 'Navigation', activity: 'Activity',
     waitingElsewhere: '{count} waiting for you',
-    search: 'Find a conversation', noActivity: 'No agents need your attention.', noThreads: 'No matching conversations.'
+    search: 'Find a conversation', noThreads: 'No matching conversations.'
   }
 } as const;

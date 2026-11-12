@@ -3,8 +3,6 @@ import type { Translation } from '../../i18n.svelte';
 export const fr: Translation = {
 
   board: {
-    tab: 'Tableau',
-    terminalTab: 'Terminal',
     tabs: 'Tiroir',
     open: 'Tableau du projet',
     hide: 'Masquer le tableau',

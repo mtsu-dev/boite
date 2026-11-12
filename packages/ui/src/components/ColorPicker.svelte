@@ -68,7 +68,9 @@
 <style>
   .picker { display: grid; gap: 12px; min-width: 0; }
   .plane { position: relative; height: 126px; border-radius: var(--radius-md); background: linear-gradient(to top, var(--picker-black), transparent), linear-gradient(to right, var(--picker-white), transparent), var(--picker-hue); touch-action: none; cursor: crosshair; border: 1px solid var(--color-edge); }
-  .cursor { position: absolute; width: 12px; height: 12px; border: 2px solid var(--picker-white); box-shadow: 0 0 0 1px var(--picker-black); border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; }
+  .cursor { position: absolute; width: 12px; height: 12px; border: 2px solid var(--picker-white); box-shadow: 0 0 0 1px var(--picker-black); border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none;
+    /* Follows the pointer: reduced motion's blanket transition would paint each step a frame late. */
+    transition-property: none; }
   .hue-row, .hex-row { display: flex; align-items: center; gap: 12px; }
   label { flex: none; width: 44px; font-size: var(--text-sm); color: var(--color-muted-foreground); }
   .hue { appearance: none; flex: 1; min-width: 0; min-height: 0; height: 10px; padding: 0; border: none; border-radius: var(--radius-lg); background: var(--picker-hues); cursor: pointer; }
@@ -76,6 +78,5 @@
   .hue::-moz-range-thumb { width: 12px; height: 12px; background: var(--color-foreground); border: 2px solid var(--color-background); border-radius: 50%; }
   .hex { min-width: 0; width: 100%; font-family: var(--font-mono); font-size: var(--text-sm); }
   .sample { width: var(--control); height: var(--control); flex: none; border-radius: var(--radius-sm); border: 1px solid var(--color-edge); }
-  .error { color: var(--color-danger); font-size: var(--text-sm); }
   @media (max-width: 720px) { .hue-row { min-height: var(--touch-target); } .hue { height: 14px; } }
 </style>

@@ -39,7 +39,7 @@ test('the starting thread shows the thread it started and the answer that came b
   await page.click('[data-testid=panel-close]');
   await page.waitFor(`!document.querySelector('[data-testid=right-panel]')`);
   expect(await page.text('[data-testid=spawn-marker][data-direction=to]')).toContain('Website');
-  await page.waitFor('document.getAnimations().every(animation => animation.playState !== "running" || animation.effect?.getTiming().iterations === Infinity)');
+  await page.waitFor('document.getAnimations().every(animation => animation.playState !== "running" || animation.effect?.getTiming().iterations === Infinity || animation.timeline !== document.timeline)');
   await page.evaluate('document.querySelector("[data-testid=spawn-marker][data-direction=to]").scrollIntoView({ block: "start" })');
   await page.screenshot(join(import.meta.dir, '.artifacts/thread-spawn-caller-desktop.png'));
   expect(page.errors()).toEqual([]);
@@ -51,14 +51,14 @@ test('the started thread lives in its own project and says who started it, on de
   expect(await page.text('[data-testid=spawn-marker][data-direction=from]')).toContain('Release desk');
   expect(await page.evaluate(`!!document.querySelector('[data-testid="thread-row"][data-thread-id="${startedId}"]')`)).toBe(true);
   expect(await page.text('[data-testid=spawn-marker][data-direction=from] ~ .bubble, [data-testid=text-part]')).toContain('Publish the 2.4 announcement on the blog');
-  await page.waitFor('document.getAnimations().every(animation => animation.playState !== "running" || animation.effect?.getTiming().iterations === Infinity)');
+  await page.waitFor('document.getAnimations().every(animation => animation.playState !== "running" || animation.effect?.getTiming().iterations === Infinity || animation.timeline !== document.timeline)');
   await page.evaluate('document.querySelector("[data-testid=spawn-marker][data-direction=from]").scrollIntoView({ block: "start" })');
   await page.screenshot(join(import.meta.dir, '.artifacts/thread-spawn-started-desktop.png'));
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   await page.waitFor('document.querySelector("[data-testid=spawn-marker][data-direction=from]")?.getBoundingClientRect().width > 0');
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
   expect(await page.evaluate('(() => { const label = document.querySelector("[data-testid=spawn-marker-open]").getBoundingClientRect(); return label.left >= 0 && label.right <= innerWidth; })()')).toBe(true);
-  await page.waitFor('document.getAnimations().every(animation => animation.playState !== "running" || animation.effect?.getTiming().iterations === Infinity)');
+  await page.waitFor('document.getAnimations().every(animation => animation.playState !== "running" || animation.effect?.getTiming().iterations === Infinity || animation.timeline !== document.timeline)');
   await page.evaluate('document.querySelector("[data-testid=spawn-marker][data-direction=from]").scrollIntoView({ block: "start" })');
   await page.screenshot(join(import.meta.dir, '.artifacts/thread-spawn-started-phone.png'));
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });

@@ -38,6 +38,9 @@ async function pick(model: string) {
   await settle();
   document.querySelector<HTMLButtonElement>('[data-testid=agent-runtime] [data-testid=composer-picker]')!.click();
   await settle();
+  // The rail's Claude tile shows its column.
+  document.querySelector<HTMLButtonElement>('[data-testid=composer-picker-menu] .tile[data-provider="claude"]')?.click();
+  await settle();
   document.querySelector<HTMLButtonElement>(`[data-model="${model}"]`)!.click();
   // A pick first asks the core for the account's models.
   await idle();

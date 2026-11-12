@@ -37,6 +37,8 @@ test('the tab lists one discussion per conversation, opens its back and forth li
   const rows = () => [...document.querySelectorAll<HTMLElement>('[data-testid=agent-discussion]')];
   // The most recent discussion first; the thread this one started carries its tag, the remote one its project and machine.
   expect(rows().map(row => row.dataset.peer)).toEqual(['here/t-notes', 'remote-core/same-thread-id']);
+  // Its head names what the list holds, never the panel's name (alone, as here, it is the body's first line).
+  expect(document.querySelector('[data-testid=agent-messages-head]')?.textContent).toBe('2 discussions');
   expect(rows()[0]!.querySelector('.tag')?.textContent).toBe('Started from here');
   expect(rows()[0]!.textContent).toContain('Draft ready.');
   expect(rows()[1]!.querySelector('.where')?.textContent).toBe('Release tools · Build PC');

@@ -10,7 +10,7 @@ export const fr: Translation = {
     retry: 'Réessayer',
     stale: 'Cette machine est déconnectée : ce qui s\'affiche peut être dépassé.',
     add: 'Ajouter un contact',
-    rail: { show: 'Afficher les contacts', hide: 'Masquer les contacts', home: 'Accueil des contacts' },
+    rail: { show: 'Afficher les contacts à côté des conversations', hide: 'Masquer les contacts à côté des conversations', home: 'Accueil des contacts' },
     waiting: '{count} en attente',
     link: { connected: 'Connecté', connecting: 'Connexion', offline: 'Hors ligne' },
     lastSeen: 'Vu {time}',
@@ -43,14 +43,19 @@ export const fr: Translation = {
     removeTitle: 'Retirer {name} ?',
     removeBody: 'Chaque projet que vous lui partagez se ferme, les lettres en attente dans les deux sens sont rejetées et le lien se ferme. Le partage Tailscale reste jusqu\'à ce que vous le retiriez dans la console d\'administration.',
     requests: {
+      sentTimes: 'Envoyé {count} fois',
+      duplicate: 'Même demande qu\'une autre déjà acceptée',
       title: 'Demandes',
       review: 'Voir la demande du contact',
-      pending: '{count} demandes de contacts en attente',
-      asks: '{contact} demande',
+      asks: '{contact} demande un projet',
+      from: '{thread} dans {project}',
+      copies: 'Envoyée {count} fois : {list}',
       asked: 'Vous avez demandé à {contact}',
       remote: 'Remote git',
       accept: 'Accepter',
-      acceptLabel: 'Accepter : choisir le projet à partager',
+      acceptInto: 'Accepter : partager {project}',
+      acceptOther: 'Accepter dans un autre projet',
+      actions: 'Plus d\'actions',
       approveTip: 'La Standardiste choisit laquelle de vos conversations mettre en relation. Aucun projet n\'est partagé.',
       refuse: 'Refuser',
       reason: 'Raison',
@@ -65,7 +70,7 @@ export const fr: Translation = {
       stage: { bot: 'Chez la Standardiste', owner: 'Vous attend', host: 'En route vers la machine Bots' },
       plan: { connect: 'La Standardiste choisit {thread}', connectIn: 'La Standardiste choisit {thread}, dans {project}', start: 'La Standardiste démarre une conversation dans {project}', acceptTip: 'Fait ce que la Standardiste a choisi. Aucun projet n\'est partagé.' },
       pick: { label: 'Choisir la conversation vous-même', search: 'Chercher une conversation ou un bot', empty: 'Aucune conversation ici pour l\'instant', none: 'Aucune conversation ne correspond à « {query} »' },
-            inTouch: 'En relation avec {thread}'
+      inTouch: 'En relation avec {thread}'
     },
     bot: {
       tip: 'Le bot intégré de Boite. Chaque demande entre vos agents et vos contacts passe par lui : il trouve la bonne conversation, met les deux en relation et retient les lettres qui semblent dangereuses.',
@@ -93,8 +98,7 @@ export const fr: Translation = {
       deliverTip: 'L\'agent de {thread} le lit tel quel.',
       refuse: 'Refuser',
       refuseTip: 'L\'expéditeur lit que vous l\'avez refusé.',
-      details: 'Détails',
-      pending: '{count} messages de contacts en attente'
+      details: 'Détails'
     },
     invite: {
       title: 'Inviter quelqu\'un',

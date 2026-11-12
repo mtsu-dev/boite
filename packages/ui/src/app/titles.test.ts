@@ -14,6 +14,11 @@ test('Regenerate title in the thread menu waits on the agent, then the row and t
   const row = query<HTMLButtonElement>('[data-thread-id="t-trace"]');
   row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 60 }));
   await waitFor(() => document.querySelector('[data-testid=context-menu]') !== null);
+  // The row's menu holds it at its top level, beside Rename.
+  const manage = async () => {
+    await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=retitle]') !== null);
+  };
+  await manage();
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=retitle]').click();
   await waitFor(() => document.querySelector('[data-testid=context-menu]') === null);
 
@@ -21,6 +26,7 @@ test('Regenerate title in the thread menu waits on the agent, then the row and t
   expect(store.retitling).toEqual(['t-trace']);
   row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 60 }));
   await waitFor(() => document.querySelector('[data-testid=context-menu]') !== null);
+  await manage();
   const waiting = query<HTMLButtonElement>('[data-testid=context-menu] [data-value=retitle]');
   expect(waiting.textContent?.trim()).toBe('Writing a title');
   expect(waiting.disabled).toBe(true);
@@ -48,9 +54,16 @@ test('the chat header keeps the title alone, and the rows say what each agent is
   expect(query('[data-testid=thread-header]').getAttribute('data-status')).toBe('idle');
   expect(query('[data-testid=thread-title]').textContent?.trim()).toBe(store.openThread?.title);
 
-  // No dot on any row; a thread waiting on the user says so in words.
-  expect(document.querySelector('[data-testid=thread-row] .mark')).toBeNull();
+  // A desktop row marks the user's turn with an amber dot and its word, which gives way on a narrow list (`fit`):
+  // "Needs you" is also its tooltip and its accessible name, and only a waiting row draws the dot.
   const waiting = query('[data-testid=thread-row][data-thread-id=t-scheduler] [data-testid=thread-state]');
   expect(waiting.dataset['state']).toBe('waiting');
-  expect(waiting.textContent?.trim()).toBe('Needs you');
+  expect(waiting.querySelector('.needs-dot')).not.toBeNull();
+  expect(waiting.classList.contains('fit')).toBe(true);
+  expect(waiting.querySelector('.word')?.textContent).toBe('Needs you');
+  expect([waiting.getAttribute('role'), waiting.getAttribute('aria-label'), waiting.title]).toEqual(['img', 'Needs you', 'Needs you']);
+  const dotted = Array.from(document.querySelectorAll('[data-testid=thread-row] .needs-dot'))
+    .map(dot => dot.closest<HTMLElement>('[data-testid=thread-state]')?.dataset['state']);
+  expect(dotted.length).toBeGreaterThan(0);
+  expect(dotted.every(state => state === 'waiting')).toBe(true);
 });

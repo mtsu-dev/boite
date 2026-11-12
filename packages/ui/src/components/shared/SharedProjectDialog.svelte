@@ -90,10 +90,9 @@
   .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: var(--text-sm); padding-block: 12px; }
   .tabs { display: flex; gap: 4px; padding: 4px; background: var(--color-surface-2); border-radius: var(--radius-md); }
   .tabs button { flex: 1; min-width: 0; display: flex; justify-content: center; align-items: center; gap: 6px; padding: 8px; border: 0; border-radius: var(--radius-sm); background: none; color: var(--color-muted-foreground); font-size: var(--text-sm); }
-  .tabs button[aria-selected='true'] { color: var(--color-accent); background: var(--color-accent-soft); }
+  .tabs button[aria-selected='true'] { color: var(--color-foreground); background: var(--color-active); }
   .panel { padding-top: 12px; }
   footer { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--color-border); }
-  .error { color: var(--color-danger); font-size: var(--text-sm); overflow-wrap: anywhere; }
   .revoke { padding: 12px; background: var(--color-surface-2); border-radius: var(--radius-md); font-size: var(--text-sm); }
   .actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
   @media (max-width: 720px) { button { min-height: var(--touch-target); } }

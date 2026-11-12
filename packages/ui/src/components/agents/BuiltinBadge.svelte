@@ -16,6 +16,6 @@
 </span>
 
 <style>
-  .builtin-badge { display: inline-flex; flex: none; align-items: center; gap: 4px; height: 18px; padding: 0 5px; border-radius: var(--radius-full); background: var(--color-accent-soft); color: var(--color-accent); font-size: var(--text-xs); font-weight: 600; line-height: 1; }
+  .builtin-badge { display: inline-flex; flex: none; align-items: center; gap: 4px; height: 18px; padding: 0 5px; border-radius: var(--radius-full); background: var(--color-active); color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; line-height: 1; }
   .builtin-badge.word { padding: 0 7px 0 6px; }
 </style>

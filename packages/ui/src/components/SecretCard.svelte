@@ -5,7 +5,7 @@
   import { keepFocus } from '../lib/focus';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
-  import { showDockedQuestion } from '../lib/question-dock.svelte';
+  import { showDecision } from '../lib/decision-tail.svelte';
 
   /**
    * A key the agent asked for with `boite secret ask`. The value goes from this
@@ -112,7 +112,7 @@
 </script>
 
 {#if open && !docked}
-  <button type="button" class="ghost pending-row" data-testid="secret-docked" title={s.cardLabel} onclick={() => showDockedQuestion(part.requestId)}>
+  <button type="button" class="ghost pending-row" data-testid="secret-docked" title={s.cardLabel} onclick={() => showDecision(part.requestId)}>
     <KeyRound size={15} strokeWidth={1.75} />
     <span class="name ui-label" data-testid="secret-name">{part.name}</span>
     <span class="open-glyph" aria-hidden="true"><ChevronRight size={13} /></span>

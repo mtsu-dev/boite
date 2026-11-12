@@ -13,9 +13,10 @@ test('summary instructions keep their label above a full-width editor on desktop
     await page.click('[data-testid=settings-tab-advanced]');
     for (const [width, height, mobile] of [[1400, 1000, false], [390, 844, true]] as const) {
       await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile });
-      if (mobile) await page.evaluate(`[...document.querySelectorAll('button')].find(button => button.textContent.trim() === 'Automatic compaction').click()`);
+      // The phone's Advanced page carries the compaction card itself, with no row to open first.
+      if (mobile) await page.waitFor('document.querySelector("[data-testid=mobile-settings-advanced] [data-testid=compaction-summary]")');
       await page.waitFor('document.querySelector("[data-testid=compaction-summary]")');
-      await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+      await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
       const layout = await page.evaluate<{ labelAbove: boolean; fullWidth: boolean; fits: boolean }>(`(() => {
         const editor = document.querySelector('[data-testid=compaction-summary]');
         const box = editor.getBoundingClientRect();

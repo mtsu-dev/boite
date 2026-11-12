@@ -53,6 +53,76 @@ test('a silent running turn reports work without implying an answer is being wri
   expect(document.querySelector('[data-testid=turn-summary] .spinner')).not.toBeNull();
 });
 
+test('while an approval or a question waits on the user, the turn says no "Working for": the card that asks is the one status', () => {
+  const message = { id: 'prompt', role: 'user', turnId: 'turn-1', parts: [{ type: 'text', text: 'Push the branch' }] } as Message;
+  const show = (status: string) => {
+    if (running) unmount(running, { outro: false });
+    running = mount(MessageTurnSummary, { target: document.body, props: {
+      store: { connection: 'ready', openThread: { id: 't-1', status, turns: [] } } as unknown as Store,
+      threadId: 't-1', turn: turn({ status: 'running', finishedAt: null, usage: null }), message, messages: [message],
+    } });
+    flushSync();
+  };
+  show('waiting');
+  expect(document.querySelector('[data-testid=turn-summary]')).toBeNull();
+  expect(document.body.textContent).not.toContain('Working');
+  // Answered, the turn works again and says so with its time.
+  show('running');
+  expect(text('turn-elapsed')).toMatch(/^Working for /);
+});
+
+test('a running turn on a machine out of reach says how old its last update is, with no spinner, no running clock and no Stop', () => {
+  const now = Date.now();
+  const tasks: BackgroundTask[] = [{ id: 'bash-1', kind: 'shell', description: 'render', toolId: 'tool-1', startedAt: now - 1_700_000 }];
+  const message = { id: 'prompt', role: 'user', turnId: 'turn-1', parts: [{ type: 'text', text: 'Render the frames' }] } as Message;
+  const progress = { turnId: 'turn-1', phase: 'tool', detail: 'Bash', at: now - 28 * 60_000 - 5_000 };
+  running = mount(MessageTurnSummary, { target: document.body, props: {
+    store: { connection: 'closed', booted: true, clockOffset: 0, openThread: { id: 't-1', status: 'running', updatedAt: now - 40 * 60_000, turns: [{ id: 'turn-1' }], progress, background: tasks } } as unknown as Store,
+    threadId: 't-1', turn: turn({ status: 'running', startedAt: now - 30 * 60_000, finishedAt: null, usage: null }), message, messages: [message],
+  } });
+  flushSync();
+  expect(text('turn-last-update')).toBe('Last update 28m ago');
+  expect(document.querySelector('[data-testid=turn-elapsed]')).toBeNull();
+  expect(document.querySelector('[data-testid=turn-progress]')).toBeNull();
+  expect(document.querySelector('[data-testid=turn-summary] .spinner')).toBeNull();
+  // Nothing reaches the machine: its background work is named, not offered to stop.
+  expect(text('turn-background')).toBe('1 shell still running');
+  expect(document.querySelector('[data-testid=turn-background-stop]')).toBeNull();
+});
+
+test('a stale estimate stays quiet: offline, the last update line comes first in its message, and what the turn said follows in the secondary tier', async () => {
+  const { readFileSync } = await import('node:fs');
+  // jsdom lays nothing out: read the rules from each component's own style block.
+  const style = (file: string) => readFileSync(`${import.meta.dirname}/${file}`, 'utf8').split('<style>')[1] ?? '';
+  const now = Date.now();
+  const message = { id: 'answer', role: 'assistant', turnId: 'turn-1', parts: [{ type: 'text', text: 'Frames 1 to 1312 are done. About 40 minutes left.' }] } as Message;
+  running = mount(MessageTurnSummary, { target: document.body, props: {
+    store: { connection: 'closed', booted: true, clockOffset: 0, openThread: { id: 't-1', status: 'running', updatedAt: now - 8 * 60_000, turns: [{ id: 'turn-1' }], background: [] } } as unknown as Store,
+    threadId: 't-1', turn: turn({ status: 'running', startedAt: now - 20 * 60_000, finishedAt: null, usage: null }), message, messages: [message],
+  } });
+  flushSync();
+  const line = document.querySelector<HTMLElement>('[data-testid=turn-summary]')!;
+  expect(text('turn-last-update')).toBe('Last update 8m ago');
+  expect(line.classList.contains('stale')).toBe(true);
+  // The message is a flex column (MessageList): the stale line goes ahead of the words it dates, in the reading ink.
+  const summary = style('TurnSummary.svelte').match(/\.summary\.stale \{([^}]*)\}/)?.[1] ?? '';
+  expect(summary).toContain('order: -1');
+  expect(summary).toContain('color: var(--color-foreground)');
+  expect(style('MessageList.svelte').match(/\n {2}\.message \{([^}]*)\}/)?.[1]).toMatch(/display: flex;[\s\S]*flex-direction: column/);
+  // What the turn said (the estimate) reads after it, smaller and muted: history, not the current state.
+  const words = style('AssistantMessage.svelte');
+  expect(words).toMatch(/\.stale \.part\[data-kind='text'\] \{[^}]*color: var\(--color-muted-foreground\)/);
+  expect(words).toMatch(/\.stale \.part\[data-kind='text'\] :global\(\.prose\) \{[^}]*font-size: var\(--text-sm\)/);
+  // Back online, the line is the turn's clock again, under its words.
+  unmount(running, { outro: false });
+  running = mount(MessageTurnSummary, { target: document.body, props: {
+    store: { connection: 'ready', booted: true, clockOffset: 0, openThread: { id: 't-1', status: 'running', updatedAt: now, turns: [{ id: 'turn-1' }], background: [] } } as unknown as Store,
+    threadId: 't-1', turn: turn({ status: 'running', startedAt: now - 20 * 60_000, finishedAt: null, usage: null }), message, messages: [message],
+  } });
+  flushSync();
+  expect(document.querySelector('[data-testid=turn-summary]')!.classList.contains('stale')).toBe(false);
+});
+
 test('a finished turn reads how long it worked, when it was done and what it spent', () => {
   running = mount(TurnSummary, { target: document.body, props: { turn: turn() } });
   flushSync();
@@ -60,6 +130,8 @@ test('a finished turn reads how long it worked, when it was done and what it spe
   expect(text('turn-finished-at')).toBe(`done ${clockTime(STARTED + 281_000)}`);
   expect(text('turn-tokens')).toContain('tokens');
   expect(document.querySelector('[data-testid=turn-background]')).toBeNull();
+  // Settled: no working mark, and no tick either, the time already says it ended.
+  expect(document.querySelector('[data-testid=turn-summary] :is(.spinner, svg.lucide-check)')).toBeNull();
 });
 
 test('a failed turn keeps its duration and timestamps without claiming it completed successfully', () => {
@@ -163,7 +235,8 @@ test('a silent running phase shows the last real activity age without a trace ac
   flushSync();
   expect(text('turn-progress')).toBe('Retrying request: 2/5');
   expect(text('turn-last-activity')).toBe('No new activity for 1m 15s');
-  expect(document.querySelector('[data-testid=turn-summary] button')).toBeNull();
+  // The one button is the "i" that holds those facts.
+  expect([...document.querySelectorAll<HTMLButtonElement>('[data-testid=turn-summary] button')].map((button) => button.dataset.testid)).toEqual(['turn-activity']);
 });
 
 test.each(['old-turn', null])('an older turn or old core (%s) supplies no inferred activity', id => {
@@ -194,7 +267,14 @@ test('provider signals do not imply new execution progress or text', () => {
   flushSync();
   expect(text('turn-progress')).toBe('Waiting for provider');
   expect(text('turn-last-activity')).toBe('No new activity for 1m 15s');
-  expect(text('turn-provider-signal')).toBe('Provider signal 0s ago');
+  expect(text('turn-provider-signal')).toBe('The provider last answered 0s ago');
+  // The line itself says one fact, the time; the rest opens from its "i".
+  const shown = [...document.querySelectorAll('[data-testid=turn-summary] .ui-label')].map((label) => label.textContent);
+  expect(shown).toHaveLength(1);
+  expect(shown[0]).toMatch(/^Working for 2m/);
+  document.querySelector<HTMLButtonElement>('[data-testid=turn-activity]')!.click();
+  flushSync();
+  expect(text('turn-activity-text')).toBe('Waiting for provider · No new activity for 1m 15s · The provider last answered 0s ago');
 });
 
 test('a compaction turn identifies maintenance even before provider progress arrives', () => {
@@ -258,7 +338,7 @@ test('a device whose clock runs behind its core still counts a compaction from i
 });
 
 test.each([
-  ['done', 'Context compacted', 'Compacted in 4m 41s'],
+  ['done', 'Older messages summarized to make room', 'Compacted in 4m 41s'],
   ['error', 'Compaction failed', 'Elapsed: 4m 41s'],
   ['stopped', 'Compaction stopped', 'Elapsed: 4m 41s'],
 ] as const)('a %s compaction reports its outcome without calling it work', (status, label, elapsed) => {
@@ -267,4 +347,45 @@ test.each([
   expect(document.querySelector('[data-testid=turn-summary]')?.getAttribute('aria-label')).toBe(label);
   expect(text('turn-elapsed')).toBe(elapsed);
   if (status !== 'done') expect(text('compaction-result')).toBe(label);
+});
+
+test('at rest, a line that opens on its step count keeps the count whole: the hidden dot still holds the room the clip takes', async () => {
+  running = mount(TurnSummary, { target: document.body, props: { turn: turn(), steps: { count: 2, words: 'Ran 2 commands', open: false, toggle: () => {} } } });
+  flushSync();
+  // The steps read in words, never a bare count.
+  expect(text('turn-steps')).toBe('Ran 2 commands');
+  // jsdom gets no component CSS from Vite: compile this file's own, under the scope class the render carries.
+  const { compile } = await import('svelte/compiler');
+  const { readFileSync } = await import('node:fs');
+  const dot = document.querySelector<HTMLElement>('.marks > .dot')!;
+  const scope = [...dot.classList].find((name) => !['dot', 'ui-label'].includes(name))!;
+  const source = readFileSync(`${import.meta.dirname}/TurnSummary.svelte`, 'utf8').replace(/<script lang="ts">[\s\S]*?<\/script>/, '<script></script>');
+  const style = document.createElement('style');
+  style.textContent = compile(source, { filename: 'TurnSummary.svelte', cssHash: () => scope }).css?.code ?? '';
+  document.head.append(style);
+  try {
+    // The line is clipped --lead in from its left edge, where a dot sits. With its
+    // dot taken out, the count started under the clip and read "commands".
+    expect(getComputedStyle(dot).display).not.toBe('none');
+    expect(getComputedStyle(dot).visibility).toBe('hidden');
+  } finally { style.remove(); }
+});
+
+test('on a phone, a settled answer whose buttons wait for a tap draws no empty row under it, and one with steps keeps them', async () => {
+  const { createRawSnippet } = await import('svelte');
+  const actions = createRawSnippet(() => ({ render: () => '<span data-testid="message-actions"><button data-testid="message-copy"></button></span>' }));
+  running = mount(TurnSummary, { target: document.body, props: { turn: turn(), tucked: true, actions } });
+  flushSync();
+  expect(document.querySelector('[data-testid=turn-summary]')).toBeNull();
+  expect(document.querySelector('[data-testid=message-copy]')).toBeNull();
+  unmount(running, { outro: false });
+  // Tapped or latest, the row holds how long it worked beside the buttons.
+  running = mount(TurnSummary, { target: document.body, props: { turn: turn(), tucked: false, actions } });
+  flushSync();
+  expect(text('turn-elapsed')).toBe('Worked for 4m 41s');
+  expect(document.querySelector('[data-testid=turn-summary] [data-testid=message-copy]')).not.toBeNull();
+  unmount(running, { outro: false });
+  running = mount(TurnSummary, { target: document.body, props: { turn: turn(), tucked: true, steps: { count: 2, words: 'Ran 2 commands', open: false, toggle: () => {} } } });
+  flushSync();
+  expect(text('turn-steps')).toBe('Ran 2 commands');
 });

@@ -269,7 +269,7 @@ may add any bot of the group the card names, whose own machine still answers for
 it (`team.bot`), and may take out only a bot of its own.
 
 The app draws a bot's card (`boite team propose`, `invite` or `leave`) in
-the dock above the bot's composer, with the core's only option, Refuse, and
+its own card in the bot's conversation, where the bot asked, with the core's only option, Refuse, and
 an Apply button: Create the team, Add to the team or Remove from the team.
 Apply calls the matching method with the card, so the members are the bot ids
 the card stored. The settled card stays in the conversation as one row: team

@@ -3,7 +3,6 @@ export const strings = {
     enabled: 'Voice dictation',
     enabledHint: 'Enable dictation on this device. Turning it off removes the microphone from the message bar, including when a model is installed.',
     microphone: 'Microphone',
-    microphoneHint: 'The input used for dictation on this device.',
     defaultMicrophone: 'System default',
     microphoneNumber: 'Microphone {number}',
     microphoneUnavailable: 'The selected microphone is unavailable. Choose another input.',

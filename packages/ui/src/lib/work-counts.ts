@@ -1,68 +1,14 @@
-import { threadBusy, type ThreadId, type ThreadSummary } from '@boite/contracts';
+import type { ThreadSummary } from '@boite/contracts';
 import type { Store } from './store.svelte';
 import { agentDirectory } from './agent-directory.svelte';
-import { needsUser, threadState } from './thread-state';
+import { threadState } from './thread-state';
 import { workingThread } from './recent.svelte';
+import { rowAsks } from './status-order';
 
-/** How much is at work behind one side of the Threads and Agents switch, and whether any of it waits on the user. */
+/** How many bots are at work, for the phone's Bots tab, and whether one of them waits on the user. */
 export interface WorkCount {
   count: number;
   waiting: boolean;
-}
-
-/** The threads at work behind the Threads side: `count` rows of the list, and `subagents` delegated agents under them, which are not rows. */
-export interface ThreadWork extends WorkCount {
-  subagents: number;
-}
-
-/**
- * The conversations the thread list draws that are at work: a turn under way,
- * queued, waiting on its delegated agents or on something it left running, or
- * asking the user, and apart from them every delegated agent under them at
- * work or asking, at any depth: seven sub-agents are seven agents running, but
- * the badge's number stays the rows the user can see ("ça m'annonce 8 threads
- * alors que j'en vois que 2").
- * Archived projects and archived threads are out of the list, so they are out
- * of the count, and so is a machine that is not connected: a laptop gone to
- * sleep mid-turn would otherwise count as at work for hours.
- */
-export function workingThreads(stores: readonly Store[]): ThreadWork {
-  let count = 0;
-  let subagents = 0;
-  let waiting = false;
-  for (const store of stores) {
-    if (store.connection !== 'ready') continue;
-    const children = new Map<ThreadId, ThreadSummary[]>();
-    for (const thread of store.threads) {
-      if (!thread.parentThreadId || thread.archived) continue;
-      const held = children.get(thread.parentThreadId);
-      if (held) held.push(thread);
-      else children.set(thread.parentThreadId, [thread]);
-    }
-    const seen = new Set<ThreadId>();
-    const descend = (parent: ThreadId) => {
-      for (const child of children.get(parent) ?? []) {
-        if (seen.has(child.id)) continue;
-        seen.add(child.id);
-        const asks = needsUser(child);
-        if (asks || threadBusy(child)) subagents++;
-        // A grandchild's question never reaches its grandparent's row state: the badge reads it here.
-        waiting ||= asks;
-        descend(child.id);
-      }
-    };
-    for (const project of store.projects) {
-      if (project.archived) continue;
-      for (const thread of store.threadsOf(project.id)) {
-        if (thread.archived) continue;
-        const asks = threadState(thread, store.subagents(thread.id)) === 'waiting';
-        if (asks || workingThread(store, thread)) count++;
-        waiting ||= asks;
-        descend(thread.id);
-      }
-    }
-  }
-  return { count, subagents, waiting };
 }
 
 /**
@@ -83,13 +29,15 @@ export function agentsAtWork(stores: readonly Store[]): WorkCount {
       waiting ||= asks;
     };
     const directory = agentDirectory(store);
-    for (const { thread, waiting: asks } of directory.atWork) add(thread, asks || needsUser(thread));
-    const busy = (thread: ThreadSummary) => needsUser(thread) || workingThread(store, thread);
+    // The user's turn as the rows read it: a question or permission the machine holds counts before the summary does.
+    const asking = (thread: ThreadSummary) => threadState(thread, rowAsks(store, thread.id)) === 'waiting';
+    for (const { thread, waiting: asks } of directory.atWork) add(thread, asks || asking(thread));
+    const busy = (thread: ThreadSummary) => asking(thread) || workingThread(store, thread);
     // An agent's own thread at rest can still ask the user (`boite ask`) or keep work in the background.
     for (const thread of store.threads) {
-      if (!thread.archived && thread.agentSessionId && busy(thread) && directory.ownerOf(thread)) add(thread, needsUser(thread));
+      if (!thread.archived && thread.agentSessionId && busy(thread) && directory.ownerOf(thread)) add(thread, asking(thread));
     }
-    for (const { thread } of directory.entrusted) if (busy(thread)) add(thread, needsUser(thread));
+    for (const { thread } of directory.entrusted) if (busy(thread)) add(thread, asking(thread));
   }
   return { count, waiting };
 }

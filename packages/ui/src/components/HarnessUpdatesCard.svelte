@@ -82,8 +82,8 @@
     {/each}
   </div>
   <label class="auto" for="{uid}-auto-update">
-    <span class="ui-label-box"><span class="ui-label">{strings.providerSettings.autoUpdate}</span><InfoTip topic={strings.providerSettings.autoUpdate} text={strings.harnessUpdates.autoHint} /><PolicyLock {store} keys={['updates.agents']} /></span>
-    <input id="{uid}-auto-update" type="checkbox" role="switch" data-testid="setting-auto-update-harnesses"
+    <span class="words"><span class="ui-label-box"><span class="ui-label">{strings.providerSettings.autoUpdate}</span><InfoTip topic={strings.providerSettings.autoUpdate} text={strings.harnessUpdates.autoHint} /><PolicyLock {store} keys={['updates.agents']} /></span><span class="effect" id="{uid}-auto-update-effect">{strings.settings.effects.harnessAutoUpdate}</span></span>
+    <input id="{uid}-auto-update" aria-describedby="{uid}-auto-update-effect" type="checkbox" role="switch" data-testid="setting-auto-update-harnesses"
       checked={store.settings?.autoUpdateHarnesses ?? false} disabled={!connected || !store.settings || agentsPolicy !== null}
       onchange={(event) => void toggleAuto(event.currentTarget)} />
   </label>
@@ -93,22 +93,31 @@
   .agent-updates { font-size: var(--text-sm); }
   header, .agent-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
   .agent-updates h2 { display: inline-flex; align-items: center; margin: 0; }
-  .agents { display: grid; gap: 12px; margin-top: 16px; }
+  /* The card's row line runs over the list (app.css): the first agent keeps the same air under it as between two agents. */
+  .agents { display: grid; gap: 12px; margin-top: 16px; padding-top: 12px; }
   .agent-row { justify-content: flex-start; }
   .name { display: inline-flex; flex: 1; align-items: center; gap: 8px; min-width: 140px; }
   .name :global(svg) { flex: none; }
   .progress, .empty-agents { color: var(--color-muted-foreground); }
   .empty-agents { margin: 0; }
-  .error { color: var(--color-danger); overflow-wrap: anywhere; margin: 6px 0 0; }
+  .error { margin: 6px 0 0; }
   .track { height: 3px; margin-top: 8px; background: var(--color-surface-3); border-radius: var(--radius-sm); overflow: hidden; }
   .track span { display: block; height: 100%; background: var(--color-foreground); }
   .auto { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; color: var(--color-muted-foreground); }
-  .auto > span { display: inline-flex; align-items: center; }
+  .auto > .words { display: grid; gap: 2px; min-width: 0; }
+  .auto .ui-label-box { display: inline-flex; align-items: center; }
+  .effect { color: var(--color-muted-foreground); font-size: var(--text-sm); line-height: 1.4; }
   .auto input { flex: 0 0 40px; width: 40px; }
   @media (max-width: 720px) {
     header button { min-height: var(--touch-target); }
-    .agent-row { align-items: flex-start; }
-    .name { flex-basis: 100%; }
+    /* The version stays at the end of its agent's line, in one column with the others: the
+       version's actions (Update, Skip, Run its updater) join the row and start a line of their own. */
+    .agent-row { align-items: center; }
+    .name { flex: 1 1 auto; min-width: 0; }
+    .agent-row :global(.update) { display: contents; }
+    .agent-row :global(.update > .version) { order: 1; margin-left: auto; }
+    .agent-row :global(.update > :not(.version)), .agent-row > .progress, .agent-row > button { order: 3; }
+    .agent-row:has(:global(.update > :not(.version)), > .progress, > button)::after { content: ''; order: 2; flex-basis: 100%; }
     .auto { min-height: var(--touch-target); }
   }
 </style>

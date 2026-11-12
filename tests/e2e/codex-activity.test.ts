@@ -8,7 +8,7 @@ import { startUi } from './lib/ui.ts';
 
 async function capture(page: BrowserPage, name: string): Promise<void> {
   await page.evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
-  await page.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(animation => animation.effect?.getTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {}))])');
+  await page.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(animation => animation.timeline === document.timeline && animation.effect?.getTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {}))])');
   await page.screenshot(join(import.meta.dir, '.artifacts', name));
 }
 
@@ -36,13 +36,14 @@ test('silent Codex reasoning and completed stored tools remain visible after rec
     await page.waitFor('globalThis.__boiteTest.workspace.active.openThread?.progress?.phase === "thinking"');
     await page.waitFor('document.querySelector("[data-testid=turn-progress]")?.textContent === "Thinking"');
     expect(await page.evaluate('document.querySelector("[data-testid=turn-last-activity], [data-testid=typing-indicator], .reply-pending") === null')).toBe(true);
-    expect(await page.evaluate('document.querySelector(".answer-bubble")?.textContent')).toBe('Message already stored.');
+    // Answers read as free text, not bubbles: the stored answer is its text part.
+    expect(await page.evaluate('document.querySelector("[data-role=assistant] [data-kind=text]:not([data-testid=narration])")?.textContent?.trim()')).toBe('Message already stored.');
     expect(await page.evaluate('globalThis.__boiteTest.workspace.active.openThread.messages.filter(message => message.role === "assistant").flatMap(message => message.parts).filter(part => part.type === "thinking").length')).toBe(0);
     await capture(page, 'codex-silent-thinking-desktop.png');
     await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
     expect(await page.evaluate('document.querySelector("[data-testid=turn-progress]")?.textContent')).toBe('Thinking');
     expect(await page.evaluate('document.querySelector("[data-testid=typing-indicator], .reply-pending") === null')).toBe(true);
-    expect(await page.evaluate('document.querySelector(".answer-bubble")?.textContent')).toBe('Message already stored.');
+    expect(await page.evaluate('document.querySelector("[data-role=assistant] [data-kind=text]:not([data-testid=narration])")?.textContent?.trim()')).toBe('Message already stored.');
     await capture(page, 'codex-silent-thinking-phone.png');
     await page.waitFor('globalThis.__boiteTest.workspace.active.openThread?.progress?.phase === "waiting"');
     const before = await client.call('threads.get', { threadId: thread.id });

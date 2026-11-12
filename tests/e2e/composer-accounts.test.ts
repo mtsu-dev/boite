@@ -24,9 +24,13 @@ test('queued prompts keep their thread, and browser project and account actions 
     await page.waitFor('document.querySelector("[data-testid=status-connection]")?.dataset.state === "ready"');
     await page.click(`[data-thread-id="${a.id}"]`);
     await page.waitFor('document.querySelector("[data-testid=thread-title]")?.textContent.trim() === "Thread A"');
-    await page.type(selector('composer-input'), 'hold here [permission]');
+    // A message sent while a permission waits declines it, so the turn holds on a sleep instead: what is typed meanwhile queues.
+    let firstTurn: string | undefined;
+    const firstDone = client.next('turn.finished', (turn) => { if (turn.threadId !== a.id) return false; firstTurn ??= turn.id; return true; }, 60_000);
+    const queuedDone = client.next('turn.finished', (turn) => turn.threadId === a.id && firstTurn !== undefined && turn.id !== firstTurn, 60_000);
+    await page.type(selector('composer-input'), 'hold here [sleep:15000]');
     await page.click(selector('composer-send'));
-    await page.waitFor('document.querySelector("[data-testid=permission-card]")');
+    await page.waitFor('document.querySelector("[data-testid=thread-header][data-status]")?.dataset.status === "running"');
     await page.type(selector('composer-input'), 'queued only for A');
     await page.evaluate('document.querySelector("[data-testid=composer-input]").dispatchEvent(new KeyboardEvent("keydown", {key:"Enter", bubbles:true}))');
     await page.waitFor('document.querySelector("[data-testid=composer-queued]")');
@@ -34,15 +38,13 @@ test('queued prompts keep their thread, and browser project and account actions 
       await page.type(selector('composer-input'), prompt);
       await page.waitFor(`document.querySelector('[data-testid="composer-input"]').value === ${JSON.stringify(prompt)}`);
       await page.evaluate('document.querySelector("[data-testid=composer-input]").dispatchEvent(new KeyboardEvent("keydown", {key:"Enter", bubbles:true}))');
-      await page.waitFor(`document.querySelectorAll('[data-testid="composer-queued"] .queued-bubble').length === ${index + 2}`);
+      // Each queued prompt is its own row of the queue.
+      await page.waitFor(`document.querySelectorAll('[data-testid="composer-queued"] [data-testid="composer-queued-item"]').length === ${index + 2}`);
     }
     await page.screenshot(join(artifacts, 'composer-queued.png'));
     await page.click(`[data-thread-id="${b.id}"]`);
     await page.waitFor('document.querySelector("[data-testid=thread-title]")?.textContent.trim() === "Thread B"');
-    const permission = (await client.call('permissions.list', { threadId: a.id }))[0]!;
-    const firstDone = client.next('turn.finished', (turn) => turn.threadId === a.id);
-    const queuedDone = client.next('turn.finished', (turn) => turn.threadId === a.id && turn.id !== permission.turnId);
-    await client.call('permissions.answer', { requestId: permission.id, decision: 'allow' });
+    expect((await client.call('threads.get', { threadId: a.id })).messages.filter(message => message.role === 'user')).toHaveLength(1);
     await firstDone;
     await queuedDone;
     expect(await page.evaluate('document.querySelector("[data-testid=thread-title]")?.textContent.trim()')).toBe('Thread B');
@@ -55,7 +57,7 @@ test('queued prompts keep their thread, and browser project and account actions 
     // The page says hello as the web app in a desktop browser, and each prompt keeps that origin for the agent.
     const sentFrom = { client: 'pwa', device: 'browser', language: 'en' } as const;
     expect(userMessages.map(message => message.parts)).toEqual([
-      [{ type: 'text', text: 'hold here [permission]', sentFrom }],
+      [{ type: 'text', text: 'hold here [sleep:15000]', sentFrom }],
       [{ type: 'text', text: 'queued only for A\n\nsecond queued for A\n\nthird queued for A', sentFrom }]
     ]);
     await page.screenshot(join(artifacts, 'composer-queued-batch.png'));
@@ -63,15 +65,18 @@ test('queued prompts keep their thread, and browser project and account actions 
 
     await page.send('Emulation.setDeviceMetricsOverride', { width: 420, height: 860, deviceScaleFactor: 1, mobile: true });
     await mobileAction(page, 'mobile-conversations');
-    await page.click(selector('mobile-project'));
-    await page.click('[data-value="add-project"]');
+    // Adding a project sits in the thread list's display menu, the header's one menu beside the search.
+    await page.click(selector('mobile-grouping-options'));
+    await page.waitFor('document.querySelector("[data-testid=mobile-grouping-options-menu] [data-testid=add-project]")');
+    await page.click('[data-testid=mobile-grouping-options-menu] [data-testid=add-project]');
     await page.waitFor('document.querySelector("[data-testid=project-path]")');
     await page.screenshot(join(artifacts, 'phone-add-project.png'));
     const directory = join(core.dataDir, 'second-project');
     mkdirSync(directory);
     await page.type(selector('project-path'), directory);
     await page.click(selector('project-add'));
-    await page.waitFor('document.querySelector("[data-testid=thread-title]")?.textContent.trim() === "New thread"');
+    // The phone opens a new draft in it: a draft has no title in its header, its empty screen names the project.
+    await page.waitFor('document.querySelector("[data-testid=draft-empty]") && !document.querySelector("[data-testid=thread-title]")');
     await page.waitFor('document.querySelector("[data-testid=mobile-draft-project]")?.textContent.includes("second-project")');
     expect(await page.text('[data-testid=mobile-draft-project]')).toContain("second-project");
     expect(await page.evaluate('getComputedStyle(document.querySelector("[data-testid=composer-input]")).visibility')).toBe("visible");

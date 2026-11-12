@@ -1,15 +1,17 @@
 <script lang="ts">
   import { Activity, Bot, FishingHook, MessageCircleQuestionMark, Settings2, Users } from '@lucide/svelte';
-  import { showDockedQuestion } from '../lib/question-dock.svelte';
+  import { showDecision } from '../lib/decision-tail.svelte';
   import { replyOf, repliesOf, sendAnswer, writeAnswer } from '../lib/question-reply.svelte';
-  import { COUNCIL_EXPERIMENT, type Account, type MemoryEvent, type Message } from '@boite/contracts';
+  import { COUNCIL_EXPERIMENT, type Account, type Message } from '@boite/contracts';
   import { fill, strings } from '../lib/strings';
+  import type { Snippet } from 'svelte';
   import type { Store } from '../lib/store.svelte';
   import { count, formatTokens, providerName } from '../lib/format';
   import { isNamedModel } from '../lib/model-order';
   import { planOf } from '../lib/plan';
-  import PlanCard from './PlanCard.svelte';
-  import Deferred, { parts } from './Deferred.svelte';
+  import Deferred from './Deferred.svelte';
+  import { parts } from '../lib/deferred-parts';
+  import { planPart } from '../lib/plan-part';
   import { openQuestionPage } from '../lib/question-page';
   import SettingRequestCard from './SettingRequestCardLoader.svelte';
   import AgentSettingCard from './AgentSettingCardLoader.svelte';
@@ -21,13 +23,16 @@
   import { MessageRuns } from '../lib/memory-timeline';
   import { chatPrefs } from '../lib/chat-prefs.svelte';
   import { shownText as shownTextOf } from '../lib/timeline-rows';
-  import MemoryRow from './MemoryRow.svelte';
   import KeepaliveMarker from './KeepaliveMarker.svelte';
   import ErrorCard from './ErrorCard.svelte';
+  import { retryTurn } from '../lib/composer-edit';
   import WindowCard from './WindowCardLoader.svelte';
   import { keepaliveRun } from '../lib/message-order';
   import { AgentsView, agentOfThread } from '../lib/agents.svelte';
+  import AgentAvatar from './agents/AgentAvatar.svelte';
   import { experimentOn } from '../lib/experiments.svelte';
+  import { asksDocked, cardedCall, failedCall, questionDocked } from '../lib/one-status';
+  import { machineAway } from '../lib/machine-away';
   import { textRevision } from '../lib/text-revisions';
 
   /**
@@ -37,6 +42,8 @@
    * carry the way back in. `from` and `to` name the parts to draw when the
    * timeline cut a long message in several rows (lib/timeline-rows.ts).
    * `views` are the pages its turn published, for its answer to place.
+   * `changes` is its turn's change count, drawn on the line of the run that
+   * holds part `at`.
    */
   let {
     store,
@@ -47,8 +54,8 @@
     signedOut,
     showModel,
     latestInTurn = true,
-    memoryEvents = [],
-    views
+    views,
+    changes
   }: {
     store: Store;
     threadId: string;
@@ -58,36 +65,56 @@
     signedOut: Account | null;
     showModel: boolean;
     latestInTurn?: boolean;
-    memoryEvents?: MemoryEvent[];
     views?: readonly Message[];
+    changes?: { at: number; line: Snippet<[inline: boolean]> };
   } = $props();
 
-  /** Longer than this, a text before a step is a report of its own and keeps its bubble. */
+  /** Longer than this, a text before a step is a report of its own and reads in full ink. */
   const NARRATION_MAX = 320;
 
   function lastTextIndex(message: Message): number {
     return message.parts.findLastIndex(part => part.type === 'text');
   }
 
-  const execution = $derived(store.openThread?.turns.find((turn) => turn.id === message.turnId)?.execution);
+  const turn = $derived(store.openThread?.turns.find((turn) => turn.id === message.turnId));
+  const execution = $derived(turn?.execution);
+  /** The failed call the error card already says: its line drops its exit code (`cardedCall`). */
+  const carded = $derived(cardedCall(turn, store.openThread?.messages ?? [], message));
+  /** A question at the top of the composer is its one copy: the stream draws no line for it meanwhile (`lib/one-status.ts`). */
+  const asking = $derived(asksDocked(store, threadId));
   /** The persistent agent whose own thread this is: its answers carry its name. */
-  const agentName = $derived(store.openThread?.id === threadId && store.openThread.agentSessionId ? agentOfThread(AgentsView.of(store).snapshot, threadId)?.name ?? null : null);
+  const agent = $derived(store.openThread?.id === threadId && store.openThread.agentSessionId ? agentOfThread(AgentsView.of(store).snapshot, threadId) : null);
+  const agentName = $derived(agent?.name ?? null);
   /** Boite's ping of the prompt cache: one line in place of its message (`quietKeepalives`). */
-  const ping = $derived(execution?.operation === 'keepalive' ? store.openThread?.turns.find((turn) => turn.id === message.turnId) : undefined);
+  const ping = $derived(execution?.operation === 'keepalive' ? turn : undefined);
   const compacting = $derived(execution?.operation === 'compact' ||
     store.openThread?.progress?.turnId === message.turnId && store.openThread.progress.phase === 'compacting');
   const caretAt = $derived(message.state === 'streaming' ? lastTextIndex(message) : -1);
   /**
    * The agent's last step in this message. A short text before it is
-   * narration between calls ("Now the tests"), drawn muted without a bubble:
+   * narration between calls ("Now the tests"), drawn muted and smaller:
    * only what it says after its last step reads as an answer.
    */
   const lastStepAt = $derived(message.role === 'assistant' ? message.parts.findLastIndex(part => part.type === 'tool' || part.type === 'thinking') : -1);
   const narrates = (index: number, text: string) => index < lastStepAt && text.length <= NARRATION_MAX;
+  /** An answer headed "Plan" is a plan written out rather than handed over: once said, it reads in the plan's outline. */
+  const writtenPlan = (text: string) => message.role === 'assistant' && /^\s*#{1,6}\s+plan\s*\n/i.test(text);
+  /**
+   * An error that ended the thread's last turn, at rest, can be answered in
+   * place: the same prompt sent again (`retryTurn`, the turn's own Retry).
+   */
+  const retryable = $derived(store.openThread?.id === threadId && !store.busy && store.openThread.turns.at(-1)?.id === message.turnId
+    && !store.composerStates[threadId]?.sending && (store.composerStates[threadId]?.queued.length ?? 0) === 0);
   const end = $derived(to ?? message.parts.length);
+  /**
+   * A running turn whose machine is out of reach: what it said is its last known
+   * state, an estimate in it as old as the turn's "Last update" line, which
+   * comes first (`TurnSummary`); its words read in the secondary tier, as history.
+   */
+  const stale = $derived(message.role === 'assistant' && turn?.status === 'running' && store.openThread?.id === threadId && machineAway(store));
   // A run over the same parts stays the same object, so a new part does not redraw the groups above it.
   const runList = new MessageRuns();
-  const runs = $derived(ping ? [] : runList.build(message.parts, memoryEvents, from, end, chatPrefs.groupChanges));
+  const runs = $derived(ping ? [] : runList.build(message.parts, [], from, end, chatPrefs.groupChanges));
   const toolRunning = $derived(message.parts.some(part => part.type === 'tool' && part.status === 'running') ||
     latestInTurn && store.openThread?.messages.some(current => current.turnId === message.turnId && current.role === 'assistant' && current.parts.some(part => part.type === 'tool' && part.status === 'running')));
   const isBackground = (toolId: string) => store.openThread?.background?.some((task) => task.toolId === toolId) ?? false;
@@ -100,11 +127,20 @@
   });
 </script>
 
+<!-- A plan's card is its own chunk: until it lands the plan reads as plain text in its place. -->
+{#snippet plan(text: string)}
+  <Deferred part={planPart}>
+    {#snippet children(PlanCard)}<PlanCard {store} {threadId} plan={text} />{/snippet}
+    {#snippet pending()}<Prose {text} {store} {threadId} />{/snippet}
+  </Deferred>
+{/snippet}
+
 {#if showModel && message.role === 'assistant' && execution}
   {@const model = store.modelsOf(execution.providerId, execution.accountId).find((model) => model.id === execution.model)}
   {@const engine = execution.model && isNamedModel(model ?? { id: execution.model, name: execution.model }) ? model?.name ?? execution.model : providerName(store, execution.providerId)}
-  <!-- A persistent agent's answers are signed with its name; the model it ran on is the tooltip. -->
-  <div class="model-attribution" data-testid="message-model" title={agentName ? engine : undefined}>{agentName ?? engine}</div>
+  <!-- A persistent agent's answers are signed with its face, grey at rest (lib/avatar-lit.ts), and its name, at rest
+       too, so a bot's words read as its own; the model it ran on is the tooltip. -->
+  <div class="model-attribution" class:bot={agent} data-testid="message-model" title={agentName ? engine : undefined}>{#if agent}<span class="face" data-testid="message-bot"><AgentAvatar kind="profile" id={agent.id} name={agent.name} avatar={agent.avatar} size={18} /></span>{/if}{agentName ?? engine}</div>
 {/if}
 {#if ping}
   {#if from === 0}<KeepaliveMarker turn={ping} count={keepaliveRun(store.openThread?.turns ?? [], ping.id)} />{/if}
@@ -116,19 +152,20 @@
     <span class="rule"></span>
   </div>
 {/snippet}
-<div class="parts">
+<div class="parts" class:stale data-stale={stale || undefined}>
   {#each runs as run (run.kind === 'memory' ? run.key : runKey(run))}
     {#if run.kind === 'memory'}
-      <MemoryRow event={run.events[0]!} events={run.events} onconfigure={store.owner ? () => store.showSettings('resources', 'limits') : undefined} />
+      <!-- Never built here (no events go in): a memory stop is machine news for the corner. -->
     {:else if run.kind === 'activity'}
       {@const activity = run.indices.map((at) => message.parts[at]).filter((part): part is ActivityPart => part?.type === 'tool' || part?.type === 'thinking' || part?.type === 'permission')}
       {@const compactions = run.indices.map((at) => message.parts[at]).filter((part): part is CompactionPart => part?.type === 'compaction')}
       {@const lastAt = run.indices.at(-1) ?? -1}
       {@const tail = message.parts[lastAt]}
       {@const thinkingLive = message.state === 'streaming' && lastAt === message.parts.length - 1 && tail?.type === 'thinking' && tail.finishedAt == null}
+      {@const hosted = changes && run.indices.includes(changes.at) ? changes.line : undefined}
       {#if activityShown(activity, thinkingLive)}
       <div class="part" data-kind={activity.every((part) => part.type === 'thinking') ? 'thinking' : 'tool'}>
-        <ToolGroup parts={activity} {compactions} {thinkingLive} {isBackground} {store} {threadId}
+        <ToolGroup parts={activity} {compactions} {thinkingLive} {isBackground} {store} {threadId} {carded} changes={hosted}
           loadOutput={toolId => store.loadToolOutput(threadId, message.id, toolId)}
           acquireOutput={toolId => store.acquireToolOutput(threadId, message.id, toolId)}
           permissionRequest={requestId => store.permissionRequests[requestId] ?? null}
@@ -136,13 +173,14 @@
       </div>
       {:else}
         {#each compactions as part, at (at)}<div class="part" data-kind="compaction">{@render compaction(part)}</div>{/each}
+        {#if hosted}<div class="part" data-kind="tool">{@render hosted(false)}</div>{/if}
       {/if}
     {:else if message.parts[run.index]}
     {@const index = run.index}
     {@const part = message.parts[run.index]!}
     {@const shownText = part.type === 'text' ? shownTextOf(message, part) : ''}
     {@const narrated = part.type === 'text' && message.role === 'assistant' && narrates(index, shownText.trim())}
-    {#if (part.type !== 'text' || shownText.trim().length > 0) && ((part.type !== 'council' && part.type !== 'debate') || experimentOn(COUNCIL_EXPERIMENT))}
+    {#if (part.type !== 'text' || shownText.trim().length > 0) && ((part.type !== 'council' && part.type !== 'debate') || experimentOn(COUNCIL_EXPERIMENT)) && !(asking && part.type === 'question' && questionDocked(store, part))}
     <!-- Narration is a class, not another branch: the paragraphs already drawn stay the same nodes when a step arrives after them. -->
     <div class="part" class:narration={narrated} data-kind={part.type} data-testid={narrated ? 'narration' : undefined}>
       {#if part.type === 'text'}
@@ -151,8 +189,10 @@
             <Activity size={14} strokeWidth={1.75} aria-hidden="true" />
             <div class="system-copy"><Prose text={shownText} {store} {threadId} /></div>
           </div>
+        {:else if writtenPlan(shownText) && !(index === caretAt && part.complete !== true)}
+          {@render plan(shownText)}
         {:else}
-        <Prose text={shownText} revision={textRevision(part)} live={index === caretAt && part.complete !== true} bubble={message.role === 'assistant' && !narrated}
+        <Prose text={shownText} revision={textRevision(part)} live={index === caretAt && part.complete !== true}
           typing={!compacting && latestInTurn && !toolRunning && message.role === 'assistant' && store.connection === 'ready' && store.openThread?.status === 'running' && index === message.parts.length - 1 && index === caretAt && part.complete !== true} {store} {threadId}
           views={message.role === 'assistant' ? views : undefined} />
         {/if}
@@ -163,13 +203,13 @@
       {:else if part.type === 'file' || part.type === 'artifact'}
         <ChatFile file={part} {store} {threadId} messageId={message.id} partIndex={index} />
       {:else if part.type === 'tool' && planOf(part.name, part.input) !== null}
-        <PlanCard {store} {threadId} plan={planOf(part.name, part.input) ?? ''} />
+        {@render plan(planOf(part.name, part.input) ?? '')}
       {:else if part.type === 'question' && part.async === true && (part.answer ?? null) === null && store.pendingQuestions.some((q) => q.id === part.questionId)}
-        <!-- Waiting in the dock above the composer: here only a line that brings it up. -->
-        <button type="button" class="ghost docked-question" data-testid="question-docked" title={strings.chat.questionOpen} onclick={() => showDockedQuestion(part.questionId)}>
+        <!-- Waiting at the top of the composer: here only a line that brings it up. -->
+        <button type="button" class="ghost docked-question" data-testid="question-docked" title={strings.chat.questionOpen} onclick={() => showDecision(part.questionId)}>
           {#if part.setting}<Settings2 size={15} strokeWidth={1.75} />{:else if part.agentSetting}<Bot size={15} strokeWidth={1.75} />{:else if part.team}<Users size={15} strokeWidth={1.75} />{:else}<MessageCircleQuestionMark size={15} strokeWidth={1.75} />{/if}
-          <span class="docked-text ui-label">{part.text}</span>
-          <span class="docked-hint ui-label">{strings.chat.questionDocked}</span>
+          <span class="docked-text ui-label">{strings.chat.questionHeading}</span>
+          <span class="waiting-mark" role="img" aria-label={strings.chat.questionDocked}></span>
         </button>
       {:else if part.type === 'question' && part.agentSetting}
         <AgentSettingCard
@@ -243,7 +283,9 @@
         <WindowCard {store} threadId={message.threadId} agent={agentName ?? (execution ? providerName(store, execution.providerId) : strings.windows.consent.anAgent)} {part} />
       {:else if part.type === 'error'}
         {@const account = store.owner ? signedOut : null}
-        <ErrorCard message={part.message} reconnect={account ? () => store.openConnect(account.providerId, account.id) : undefined} />
+        {@const prompt = !account && retryable ? store.openThread?.messages.find(entry => entry.turnId === message.turnId && entry.role === 'user') : undefined}
+        <ErrorCard message={part.message} call={failedCall(message)} reconnect={account ? () => store.openConnect(account.providerId, account.id) : undefined}
+          retry={prompt ? () => void retryTurn(store, threadId, prompt) : undefined} />
       {/if}
     </div>
     {/if}
@@ -253,41 +295,34 @@
 
 <style>
   /* On the same 4 px rest as the parts it names. */
-  .model-attribution { color: var(--color-muted-foreground); font-size: var(--text-xs); margin-bottom: 8px; padding-left: var(--activity-padding); opacity: 0; transition: opacity var(--dur-2); }
+  .model-attribution { color: var(--instrument-meta); font-size: var(--instrument-meta-size); margin-bottom: calc(var(--chat-block-gap) - var(--chat-part-gap)); padding-left: var(--activity-padding); opacity: 0; transition: opacity var(--dur-2); }
   /* Read on demand, as a message's time and buttons are. */
   :global(.message:hover) .model-attribution, :global(.message:focus-within) .model-attribution { opacity: 1; }
+  .model-attribution.bot { display: flex; align-items: center; gap: 8px; opacity: 1; color: var(--instrument-ink); }
+  .face { display: inline-flex; flex: none; }
   @media (hover: none) { .model-attribution { opacity: 1; } }
-  /* Narration between calls: the agent thinking aloud, quieter than an answer. */
+  /* Narration between calls: the agent thinking aloud, read at the answer's size and quieter only by its colour. */
   .part.narration { padding: 0 2px; color: var(--color-muted-foreground); }
-  .part.narration :global(.prose) { font-size: var(--text-sm); line-height: 1.55; }
+  .stale .part[data-kind='text'] { color: var(--color-muted-foreground); }
+  .stale .part[data-kind='text'] :global(.prose) { font-size: var(--text-sm); line-height: 1.5; }
   .system-event { display: flex; align-items: flex-start; gap: 8px; color: var(--color-muted-foreground); }
   .system-event > :global(svg) { flex: none; margin-top: 3px; color: var(--color-subtle); }
   .system-copy { min-width: 0; }
-  .system-copy :global(.prose) { font-size: var(--text-sm); line-height: 1.6; }
+  .system-copy :global(.prose) { font-size: var(--text-sm); line-height: 1.5; }
 
   /* A 4 px rest on the left so an answer does not kiss the column's edge. */
+  /* Text, a tool run, its result and a decision are blocks of one answer: one
+     gap between any two of them, so no pair reads as closer than another. */
   .parts {
     display: flex;
     flex-direction: column;
-    gap: var(--chat-part-gap);
+    gap: var(--chat-block-gap);
     padding-left: var(--activity-padding);
     max-width: 100%;
   }
 
   .part {
     min-width: 0;
-  }
-
-  /* Consecutive cards stack as one block at the flex gap; text on either side
-     of a card, or two text blocks in a row, get the full 12 px instead. */
-  .part[data-kind='text'] + .part,
-  .part[data-kind='thinking'] + .part,
-  .part[data-kind='error'] + .part,
-  .part + .part[data-kind='text'],
-  .part + .part[data-kind='thinking'],
-  .part + .part[data-kind='error'],
-  .part + .part[data-kind='hook'] {
-    margin-top: calc(var(--chat-block-gap) - var(--chat-part-gap));
   }
 
   /* An answer is read at its own measure; cards keep the whole column. */
@@ -301,26 +336,29 @@
   }
 
 
-  .omitted { margin-top: 4px; font-size: var(--text-xs); color: var(--color-muted-foreground); }
+  .omitted { margin-top: 4px; font-size: var(--text-sm); color: var(--color-muted-foreground); }
 
   /* A compaction is a divider between what the agent still holds and what it let go. */
   .compaction {
     display: flex;
     align-items: center;
     gap: 10px;
-    margin: 6px 0;
-    font-size: var(--text-xs);
+    font-size: var(--text-sm);
     color: var(--color-muted-foreground);
   }
 
   .compaction .rule {
     flex: 1;
+    min-width: 12px;
     height: 1px;
     background: var(--color-border);
   }
 
+  /* On a narrow column the line wraps between its rules rather than push the timeline sideways. */
   .compaction .label {
-    flex: none;
+    flex: 0 1 auto;
+    min-width: 0;
+    text-align: center;
   }
 
   /* A question waiting in the dock: one line like a tool call, the live colour on its mark. */
@@ -328,7 +366,7 @@
   .docked-question:hover:not(:disabled) { background: var(--color-surface-2); color: var(--color-foreground); }
   .docked-question :global(svg) { flex: none; width: var(--activity-glyph); color: var(--color-live); }
   .docked-text { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--color-foreground); }
-  .docked-hint { flex: 0 10 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--text-xs); color: var(--color-subtle); }
+  .waiting-mark { flex: none; width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--color-live); }
 
   /* One muted line, the words wrapping under their own start, the event name last and quieter. */
   .hook {
@@ -358,7 +396,7 @@
 
   .hook .event {
     flex: none;
-    font-size: var(--text-xs);
-    color: var(--color-subtle);
+    font-size: var(--text-sm);
+    color: var(--color-muted-foreground);
   }
 </style>

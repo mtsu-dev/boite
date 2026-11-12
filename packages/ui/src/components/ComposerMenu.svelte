@@ -111,8 +111,8 @@
 {/if}
 
 <style>
-  /* Above the composer, on the picker's surface: same ground, same radius,
-     same shadow, same entrance. Eight rows fit, the rest scrolls; a shorter
+  /* Above the composer, in the overlay card every menu wears (app.css), with
+     the same entrance. Eight rows fit, the rest scrolls; a shorter
      window gets a shorter list, or the list under the box when that side has
      more room (`lib/menu-fit.ts`). */
   .menu {
@@ -125,11 +125,11 @@
     gap: 1px;
     width: min(420px, 100%);
     overflow: auto;
-    padding: 6px;
-    background: var(--color-surface-2);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-e2);
+    padding: var(--overlay-pad);
+    background: var(--overlay-surface);
+    border: 1px solid var(--overlay-edge);
+    border-radius: var(--radius-overlay);
+    box-shadow: var(--shadow-overlay);
     animation: pop var(--dur-2) var(--ease-out-quint);
     transform-origin: bottom left;
   }
@@ -139,21 +139,25 @@
     pointer-events: none;
   }
 
+  /* The overlay's head form, as Menu's headings. */
   .section-label {
-    padding: 8px 8px 4px;
+    padding: var(--space-2) var(--overlay-row-pad) var(--space-1);
+    color: var(--color-subtle);
   }
 
   .row {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
+    justify-content: center;
     gap: 1px;
     width: 100%;
     height: auto;
+    min-height: var(--overlay-row);
     flex: none;
-    padding: 5px 8px;
+    padding: var(--space-1) var(--overlay-row-pad);
     border: none;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-overlay-row);
     background: transparent;
     color: var(--color-foreground);
     text-align: left;
@@ -211,7 +215,7 @@
 
   .empty,
   .footer {
-    padding: 8px;
+    padding: var(--space-2) var(--overlay-row-pad);
     font-size: var(--text-sm);
   }
 

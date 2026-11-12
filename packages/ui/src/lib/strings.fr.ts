@@ -52,9 +52,10 @@ import { fr as slash } from './strings/fr/slash';
 import { fr as activity } from './strings/fr/activity';
 import { fr as mention } from './strings/fr/mention';
 import { fr as notify } from './strings/fr/notify';
-import { fr as permissionMode } from './strings/fr/permissionMode';
+import { fr as permissionModeLine } from './strings/fr/permissionModeLine';
 import { fr as permissionModeLong } from './strings/fr/permissionModeLong';
 import { fr as permissionModeCodex } from './strings/fr/permissionModeCodex';
+import { fr as permissionModeShort } from './strings/fr/permissionModeShort';
 import { fr as thread } from './strings/fr/thread';
 import { fr as chat } from './strings/fr/chat';
 import { fr as agentMessages } from './strings/fr/agentMessages';
@@ -152,9 +153,10 @@ export const fr: Translation = {
   ...activity,
   ...mention,
   ...notify,
-  ...permissionMode,
+  ...permissionModeLine,
   ...permissionModeLong,
   ...permissionModeCodex,
+  ...permissionModeShort,
   ...thread,
   ...chat,
   ...agentMessages,

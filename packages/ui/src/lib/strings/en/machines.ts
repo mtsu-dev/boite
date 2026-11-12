@@ -1,6 +1,8 @@
 export const strings = {
   machines: {
-    heading: 'Machines', local: 'This PC', projects: 'Projects', recent: 'Recent',
+    /** Where a page's settings apply: a machine page under its title, the windows cards at the foot of Machines. */
+    scopeOn: 'On {machine}',
+    heading: 'Machines', local: 'This computer', projects: 'Projects', recent: 'Recent',
     intro: 'Each machine runs its own agents on its own files.',
     details: 'Details', address: 'Address', updateFailed: 'Update failed',
     label: 'Machine name', icon: 'Machine icon', icons: { desktop: 'Desktop', laptop: 'Laptop', phone: 'Phone', tablet: 'Tablet', apple: 'Mac', server: 'Server', rack: 'Server rack', nas: 'NAS', database: 'Database', cloud: 'Cloud', cpu: 'Processor', router: 'Router', terminal: 'Terminal', bot: 'Bot', gamepad: 'Game console', tv: 'TV', house: 'Home' }, link: 'Link from another machine', add: 'Add machine', adding: 'Connecting', connect: 'Connect',
@@ -22,6 +24,10 @@ export const strings = {
     duplicate: 'This machine is already connected.', refreshPr: 'Refresh pull request',
     manual: 'Connect with URL and token',
     filter: 'Filter machines', all: 'All machines',
+    /** The rail's machine card, after its title (`heading`): what a click on the button does. */
+    filterHint: 'click to filter',
+    /** The rail's machine button names each machine and its state in its card. */
+    state: '{name}: {state}',
     main: 'Main machine', mainLast: 'Last one used',
     mainHint: 'Boite opens on this machine. When it is off, Boite opens on another one.',
     mainLastHint: 'Boite opens on the machine you used last.',
@@ -33,7 +39,7 @@ export const strings = {
     browserOriginsHint: 'Machines of the group, and the addresses they are served at, are allowed on their own. Add here only a page served by something outside the group. One exact http(s) origin per line.',
     you: '{machine} (you)', youTag: '(you)',
     pick: 'Machine whose settings these are',
-    home: 'Settings', homeNone: 'None', homeBadge: 'Settings',
+    home: 'Settings', homeNone: 'Not shared', homeBadge: 'Settings',
     homeHint: 'The other machines follow the settings of this one: conversations, resources, keyboard and brain switches. A setting changed on another machine stays there and gets a star.',
     homeOlder: 'Update Boite on {machines} to follow the settings machine.',
     bots: 'Bots', botsBadge: 'Bots',
@@ -47,9 +53,14 @@ export const strings = {
     syncStages: { settings: 'the settings', keybindings: 'the keybindings', brain: 'the brain switches' },
     threadFailed: 'A thread failed here: {thread}',
     groupThreads: 'Threads from the other machines',
+    /** A machine row's menu: the group switches it holds and its removal. */
+    options: 'Options for {machine}',
     groupThreadsHint: 'Agents on the other machines of the group may start threads on this machine, in its projects, on their own agent (boite thread new --machine), and add its folders as projects (boite projects add --machine). Off by default.',
     groupBots: 'Bots from the other machines',
     groupBotsHint: 'A bot of another machine of the group may look after the projects of this machine its owner entrusted to it: list, read and steer their threads and answer their questions. Never tool permissions, deleting threads or this machine\'s settings. Turning it off cuts them off at once. Off by default.',
+    /** A project card's head and a Machines row while the machine is out of reach, beside Reconnect. */
+    offlineLine: '{machine} is offline',
+    connectingLine: 'Connecting to {machine}',
     agentLinkAddressRequired: 'Update both machines to relay through the app, or set a reachable HTTPS address for {machine} in General settings.',
   }
 } as const;

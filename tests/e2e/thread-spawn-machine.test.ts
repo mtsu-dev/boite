@@ -101,21 +101,40 @@ test('a thread on one machine asks the other to accept threads, the card flips i
     await page.evaluate(`document.querySelector('${marker}').scrollIntoView({ block: 'center' })`);
     await capture('started-desktop.png');
 
-    // Settings, Machines and updates: each machine's row carries its own switch.
+    // Settings, Machines and updates: each machine's row menu carries its own switches, named in full.
     await page.click(id('nav-settings'));
     await page.click(id('settings-tab-machines'));
-    const switches = id('machine-group-threads-switch');
-    await page.waitFor(`document.querySelectorAll('${switches}').length === 2`, 15_000);
-    expect(await page.evaluate(`[...document.querySelectorAll('${switches}')].map(input => input.checked).sort()`)).toEqual([false, true]);
+    const triggers = `${id('machine-card')} ${id('machine-menu')}`;
+    const menu = `${id('machine-menu-menu')}:not(.closing)`;
+    await page.waitFor(`document.querySelectorAll('${triggers}').length === 2`, 15_000);
+    const switchesOf = async (row: number) => {
+      await page.evaluate(`document.querySelectorAll('${triggers}')[${row}].click()`);
+      await page.waitFor(`document.querySelector('${menu} ${id('machine-group-threads-switch')}')`);
+      const read = (name: string) => page.evaluate<string>(`document.querySelector('${menu} ${id(name)}').getAttribute('aria-checked')`);
+      return { threads: await read('machine-group-threads-switch'), bots: await read('machine-group-bots-switch') };
+    };
+    const closeMenu = async () => {
+      await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+      await page.waitFor(`!document.querySelector('${menu}')`);
+    };
+    const rows = [await switchesOf(0)];
+    await closeMenu();
+    rows.push(await switchesOf(1));
+    expect(rows.map((row) => row.threads).sort()).toEqual(['false', 'true']);
     // Bots of the other machines are a switch of their own, off on both until the owner turns it on.
-    expect(await page.evaluate(`[...document.querySelectorAll('${id('machine-group-bots-switch')}')].map(input => input.checked)`)).toEqual([false, false]);
-    await page.evaluate(`document.querySelector('${id('machine-group-threads')}').closest('${id('machine-card')}').scrollIntoView({ block: 'center' })`);
+    expect(rows.map((row) => row.bots)).toEqual(['false', 'false']);
     await capture('machines-desktop.png');
+    await closeMenu();
     await page.send('Emulation.setDeviceMetricsOverride', PHONE);
-    await page.waitFor(`document.querySelector('${id('machine-group-threads')}')?.getBoundingClientRect().width > 0`);
-    await page.evaluate(`document.querySelector('${id('machine-group-threads')}').closest('${id('machine-card')}').scrollIntoView({ block: 'center' })`);
+    await page.waitFor(`document.querySelector('${triggers}')?.getBoundingClientRect().width > 0`);
+    await page.evaluate(`document.querySelector('${triggers}').closest('${id('machine-card')}').scrollIntoView({ block: 'center' })`);
     expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
+    // The row's menu holds the same switches on a phone, inside the screen.
+    expect(await switchesOf(0)).toMatchObject({ bots: 'false' });
+    await page.settleAnimations();
+    expect(await page.evaluate(`(() => { const r = document.querySelector('${menu}').getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth; })()`)).toBe(true);
     await capture('machines-phone.png');
+    await closeMenu();
     await page.send('Emulation.setDeviceMetricsOverride', DESKTOP);
     expect(page.errors()).toEqual([]);
   } finally {

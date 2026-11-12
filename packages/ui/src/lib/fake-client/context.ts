@@ -175,6 +175,8 @@ export interface FakeClientOptions {
   /** The admin policy this core enforces; `?fake=1&policy=managed`, `broken` or `closed` picks a fixture (`policy.ts`). */
   policy?: PolicyState;
   coreName?: string;
+  /** The computer's name the core reports, as a real core does (`studio` by default); `null` reports none, the fallback a test may check. */
+  hostname?: string | null;
   publicUrl?: string;
   /** Windows Defender Firewall in front of this core; `?firewall=` picks it (`lan.ts`). */
   firewall?: FakeFirewall;
@@ -527,7 +529,7 @@ export class FakeContext {
     this.agentThreadId = options.agentThreadId ?? null;
     this.identity = {
       coreId,
-      name: options.coreName ?? 'This PC',
+      name: options.coreName ?? 'This computer',
       url: options.publicUrl ?? 'http://127.0.0.1:8777',
       publicKey: `fake-public-key-${coreId}`
     };
@@ -553,7 +555,9 @@ export class FakeContext {
       this.settings.subscriptionProxy = { enabled: false, kind: gateway, baseUrl: 'https://gateway.example.test/v1',
         dashboardUrl: gateway === 'douane' ? 'https://gateway.example.test/admin/#quotas' : 'https://gateway.example.test/management.html#/quota' };
     }
+    const hostname = options.hostname === undefined ? options.coreName ?? 'studio' : options.hostname;
     this.core = {
+      ...(hostname ? { hostname } : {}),
       version: '2.0.0-beta.1',
       coreId,
       protocolVersion: PROTOCOL_VERSION,

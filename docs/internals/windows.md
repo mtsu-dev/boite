@@ -66,9 +66,9 @@ The checks run in this order. The first one that fails refuses the capture:
    - the Windows sign-in, lock and elevation screens (`LogonUI.exe`,
      `LockApp.exe`, `CredentialUIBroker.exe`, `consent.exe`);
    - any name or full executable path listed in the
-     `windowCaptureExclusions` setting (Settings, General, Never capture).
-     An app added there while the panel shows it closes the panel on the next
-     frame.
+     `windowCaptureExclusions` setting (Settings, Machines, Windows agents
+     never see). An app added there while the panel shows it closes the panel
+     on the next frame.
 
    `WINDOW_CAPTURE_EXCLUDED` in `packages/contracts/src/windows.ts` holds the
    built-in list.

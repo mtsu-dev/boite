@@ -1,16 +1,18 @@
 <script lang="ts">
+  import Notice from './Notice.svelte';
   // One file per tab: a text editor with a gutter and a save, a picture with
   // zoom and pan, the native player for a sound or a video, and a download for
   // anything else. Everything reaches the disk through the core, never through
   // the browser's own file system.
   import { tick, untrack } from 'svelte';
-  import { Download, Maximize2, Minus, Plus, Save, Scan } from '@lucide/svelte';
+  import { Download, Maximize2, Minus, Plus, Save, Scan, CircleAlert } from '@lucide/svelte';
   import type { FileContent } from '@boite/contracts';
   import { bytes } from '../lib/format';
   import { baseName } from '../lib/right-panel.svelte';
   import type { BoundPanel, Surface } from '../lib/right-panel.svelte';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
+  import SurfaceHead from './SurfaceHead.svelte';
   import { codeLanguage, codeRow, highlightCode } from '../lib/code-highlight';
 
   let { store, surface, panel }: { store: Store; surface: Surface; panel: BoundPanel } = $props();
@@ -285,7 +287,7 @@
 
 
 <div class="file-surface" data-testid="file-panel" data-path={path ?? ''} data-kind={content?.kind ?? ''}>
-  <div class="bar">
+  <SurfaceHead>
     <span class="path" title={path ?? ''} data-testid="file-path">
       <span class="dir">{directory(path ?? '')}</span><span class="base">{baseName(path ?? '')}</span>
     </span>
@@ -373,10 +375,10 @@
         <span class="ui-label">{saving ? strings.files.saving : strings.common.save}</span>
       </button>
     {/if}
-  </div>
+  </SurfaceHead>
 
   {#if problem !== null}
-    <p class="notice bad" data-testid="file-error">{problem}</p>
+    <div class="problem"><Notice icon={CircleAlert} tone="danger" testid="file-error" detail={problem} /></div>
   {:else if path === null}
     <p class="notice">{strings.files.noFile}</p>
   {:else if content === null}
@@ -493,17 +495,6 @@
     height: 100%;
   }
 
-  .bar {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    height: var(--row);
-    padding: 0 6px 0 12px;
-    flex: none;
-    font-size: var(--text-xs);
-    color: var(--color-muted-foreground);
-  }
-
   .path {
     min-width: 0;
     flex: 0 1 auto;
@@ -554,7 +545,7 @@
     text-align: center;
   }
 
-  .bar button.small {
+  button.small {
     gap: 4px;
     display: inline-flex;
     align-items: center;
@@ -569,8 +560,9 @@
     color: var(--color-muted-foreground);
   }
 
-  .notice.bad {
-    color: var(--color-danger);
+  .problem {
+    flex: none;
+    padding: 6px 8px;
   }
 
   /* -------------------------------------------------------------- the editor */
@@ -607,7 +599,7 @@
   }
 
   .num.on {
-    color: var(--color-accent);
+    color: var(--color-foreground);
     font-weight: 600;
   }
 
@@ -618,8 +610,8 @@
     left: 44px;
     right: 0;
     height: var(--line);
-    background: color-mix(in srgb, var(--color-accent) 16%, transparent);
-    border-left: 2px solid var(--color-accent);
+    background: var(--color-selection);
+    border-left: 2px solid var(--color-muted-foreground);
     pointer-events: none;
     z-index: 0;
   }
@@ -651,8 +643,10 @@
   .paint { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
   .paint pre { margin: 0; padding: var(--pad) 10px; width: max-content; min-width: 100%;
     font: inherit; line-height: inherit; white-space: pre; tab-size: 2; }
+  /* Follows the editor's scroll: reduced motion's blanket transition would paint each step a frame late. */
+  .code-syntax { transition-property: none; }
   .colored .text { color: transparent; caret-color: var(--color-foreground); }
-  .colored .text::selection { color: transparent; background: color-mix(in srgb, var(--color-accent) 25%, transparent); }
+  .colored .text::selection { color: transparent; background: var(--color-selection); }
 
   .text:focus-visible {
     outline: none;
@@ -680,8 +674,8 @@
   }
 
   .line.on {
-    background: color-mix(in srgb, var(--color-accent) 16%, transparent);
-    box-shadow: inset 2px 0 0 var(--color-accent);
+    background: var(--color-selection);
+    box-shadow: inset 2px 0 0 var(--color-muted-foreground);
   }
 
   .line-number {
@@ -694,7 +688,7 @@
     user-select: none;
   }
 
-  .line.on .line-number { color: var(--color-accent); font-weight: 600; }
+  .line.on .line-number { color: var(--color-foreground); font-weight: 600; }
 
   .line-text {
     flex: 1;

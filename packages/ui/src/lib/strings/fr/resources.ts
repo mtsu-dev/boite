@@ -10,9 +10,8 @@ export const fr: Translation = {
     unknown: 'Indisponible',
     state: 'État de la protection',
     states: { ok: 'Mémoire suffisante', critical: 'Limite de mémoire dépassée' },
-    killTitle: 'Processus arrêté pour libérer de la mémoire',
-    killCount: (count: number) => `${count} processus arrêtés pour libérer de la mémoire`,
-    stoppedProcesses: (count: number) => `Voir les ${count} processus arrêtés`,
+    killTitle: 'Un processus a été arrêté pour libérer de la mémoire',
+    killCount: (count: number) => `${count} processus ont été arrêtés pour libérer de la mémoire`,
     memorySettings: 'Réglages mémoire',
     protectionOff: 'Protection mémoire désactivée',
     killReason: {

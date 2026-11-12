@@ -1,11 +1,11 @@
 export const strings = {
 
   workflow: {
-    activeOne: '1 workflow',
-    activeMany: '{count} workflows',
     status: { running: 'Running', paused: 'Paused', done: 'Done', failed: 'Failed', stopped: 'Stopped' },
     stepStatus: { waiting: 'Waiting', running: 'Running', done: 'Done', failed: 'Failed', skipped: 'Skipped', stopped: 'Stopped' },
-    steps: '{done}/{total} steps',
+    steps: '{done} of {total} done',
+    /** Under a failed run's row in the chat: the step that failed and the first line of its error. */
+    stepFailed: '{step}: {error}',
     phase: 'Phase {n}',
     pause: 'Pause',
     resume: 'Resume',
@@ -25,12 +25,11 @@ export const strings = {
     result: 'Result',
     output: 'Output',
     items: 'Executions',
-    openThread: 'Open conversation',
+    openThread: 'Open thread',
     back: 'Back to the graph',
     close: 'Close details',
     notStarted: 'Not started yet.',
     skipped: 'Skipped: its condition did not hold.',
-    card: 'Workflow',
     show: 'Show the workflow',
     tokens: '{tokens} tokens',
     tokensHelp: 'Reported usage from completed turns, including cache reads, cache writes and retries.'

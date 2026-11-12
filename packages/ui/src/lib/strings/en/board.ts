@@ -2,8 +2,6 @@ export const strings = {
 
   /** The project board in the drawer under the chat: the project's todos in four columns, tied to `/goal2`. */
   board: {
-    tab: 'Board',
-    terminalTab: 'Terminal',
     tabs: 'Drawer',
     open: 'Project board',
     hide: 'Hide the board',

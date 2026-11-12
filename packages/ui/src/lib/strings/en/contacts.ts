@@ -11,7 +11,7 @@ export const strings = {
     /** The column's button and its empty row. */
     add: 'Add a contact',
     /** The title bar's button that folds the column on the right. */
-    rail: { show: 'Show contacts', hide: 'Hide contacts', home: 'Contacts home' },
+    rail: { show: 'Show contacts beside the threads', hide: 'Hide contacts beside the threads', home: 'Contacts home' },
     waiting: '{count} waiting',
     link: { connected: 'Connected', connecting: 'Connecting', offline: 'Offline' },
     lastSeen: 'Seen {time}',
@@ -44,14 +44,26 @@ export const strings = {
     removeTitle: 'Remove {name}?',
     removeBody: 'Every project you share with it closes, letters waiting both ways are rejected and the link closes. The Tailscale share stays until you remove it in the admin console.',
     requests: {
+      /** The same ask received more than once, merged into one Activity row: how many times, then the reason the
+          copies get once one is accepted. */
+      sentTimes: 'Sent {count} times',
+      duplicate: 'Same request as one already accepted',
       title: 'Requests',
       review: 'Review the contact request',
-      pending: '{count} contact requests waiting',
-      asks: '{contact} asks',
+      asks: '{contact} asks for a project',
+      /** A merged ask's sub-row: the contact's thread it came from, then where it arrived and when. */
+      from: '{thread} in {project}',
+      /** A merged ask's copies folded into one line under its text: how many times, then where each arrived (among
+          several machines) and when. Its Accept and Refuse settle every copy. */
+      copies: 'Sent {count} times: {list}',
       asked: 'You asked {contact}',
       remote: 'Git remote',
       accept: 'Accept',
-      acceptLabel: 'Accept: pick the project to share',
+      /** Accept's tooltip, naming the project it shares; the row's menu picks another. */
+      acceptInto: 'Accept: share {project}',
+      acceptOther: 'Accept into another project',
+      /** The row's menu: another project, or Refuse. */
+      actions: 'More actions',
       /** Accept on a request for a thread the Operator settles: no project is shared. */
       approveTip: 'The Operator picks which of your conversations to put it in touch with. No project is shared.',
       refuse: 'Refuse',
@@ -101,8 +113,7 @@ export const strings = {
       deliverTip: 'The agent of {thread} reads it as written.',
       refuse: 'Refuse',
       refuseTip: 'The sender reads that you refused it.',
-      details: 'Details',
-      pending: '{count} contact messages waiting'
+      details: 'Details'
     },
     invite: {
       title: 'Invite someone',

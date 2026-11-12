@@ -20,7 +20,7 @@ interface BootLifecycle {
   addFakeMachine(): Promise<void>;
 }
 
-/** What a machine that has not answered yet is called: its address, never "This PC". */
+/** What a machine that has not answered yet is called: its address, never "This computer". */
 export function hostOf(url: string | null): string | undefined {
   try { return url === null ? undefined : new URL(url).host; } catch { return undefined; }
 }

@@ -50,16 +50,20 @@ test('contact requests appear above desktop and phone pages and open the request
     expect(await page.evaluate(`document.querySelector('${id('contact-request-notice')}').getBoundingClientRect().width > 0`)).toBe(true);
     await page.screenshot(join(import.meta.dir, '.artifacts/contact-request-desktop.png'));
 
+    // Activity is the one inbox now: no bell in the phone header. The phone draws its own corner notice (the rail's is
+    // hidden with the rail), and its Open leads to the request.
+    const shownNotice = `[...document.querySelectorAll('${id('contact-request-notice')}')].find(notice => notice.getBoundingClientRect().width > 0)`;
     await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-    await page.waitFor(`document.querySelector('${id('mobile-header')} ${id('contact-request-open')}')`);
+    await page.waitFor(`!!${shownNotice}?.querySelector('${id('contact-request-review')}')`);
     await page.settleAnimations();
-    expect(await page.evaluate(`document.querySelector('${id('contact-request-notice')}').getBoundingClientRect().width > 0`)).toBe(true);
+    expect(await page.evaluate(`!!${shownNotice}`)).toBe(true);
     expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
     await page.screenshot(join(import.meta.dir, '.artifacts/contact-request-phone.png'));
-    await page.click(id('contact-request-review'));
+    await page.evaluate(`${shownNotice}.querySelector('${id('contact-request-review')}').click()`);
     await page.waitFor(`document.querySelector('${id('contact-requests')} ${id('contact-request-creq-pending')}')`);
     await page.evaluate(`globalThis.__boiteTest.workspace.active.client.call('contacts.decide', { id: 'creq-pending', accept: false, reason: 'The shared work is finished.' })`);
-    await page.waitFor(`!document.querySelector('${id('contact-request-open')}')`);
+    // Answered, it leaves the contact's page and no notice brings it back.
+    await page.waitFor(`!document.querySelector('${id('contact-requests')} ${id('contact-request-creq-pending')}') && !${shownNotice}`);
     expect(page.errors()).toEqual([]);
   } finally { await page.close(); }
 }, 30_000);

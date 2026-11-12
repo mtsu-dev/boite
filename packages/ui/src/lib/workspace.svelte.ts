@@ -54,11 +54,11 @@ export function isThisPC(machine: Machine): boolean {
 }
 
 /**
- * A machine's name on screen. This computer under the default name goes by
- * its own: in a group every PC is "this PC" to itself, which tells nobody apart.
+ * A machine's name on screen. One under the default name goes by its own: in a group every PC is "this PC" to itself,
+ * which tells nobody apart, and a phone or a browser that reaches a computer is not that computer.
  */
 export function machineName(machine: Machine): string {
-  return isThisPC(machine) && localDefault(machine.label) && machine.store.core?.hostname ? machine.store.core.hostname : machine.label;
+  return localDefault(machine.label) && machine.store.core?.hostname ? machine.store.core.hostname : machine.label;
 }
 
 /**
@@ -67,7 +67,7 @@ export function machineName(machine: Machine): string {
  * out rather than read: its catalogue loads only once the app speaks French.
  */
 function localDefault(label: string): boolean {
-  return label === strings.machines.local || ['This PC', 'Ce PC', 'My computer', 'This computer'].includes(label);
+  return label === strings.machines.local || ['This computer', 'Cet ordinateur', 'This PC', 'Ce PC', 'My computer'].includes(label);
 }
 
 /** A machine in a list of machines: this computer by its name and "(you)", once it has a name of its own. */
@@ -319,7 +319,7 @@ export class Workspace {
     const name = profileName(saved, !isThisPC(machine) && namedByUser(readEnvironments().find((e) => e.url === machine.id)));
     if (name) machine.label = name;
     if (saved?.icon && machineIcons.includes(saved.icon)) machine.icon = saved.icon;
-    if (isThisPC(machine) && ['My computer', 'This computer'].includes(machine.label)) machine.label = strings.machines.local;
+    if (isThisPC(machine) && localDefault(machine.label)) machine.label = strings.machines.local; // A default saved in another language, or an older one, speaks the app's now.
   }
 
   /**

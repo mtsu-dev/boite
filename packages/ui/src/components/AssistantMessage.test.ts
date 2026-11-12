@@ -70,7 +70,7 @@ test('a compaction a background copy made says so beside its counts', async () =
     const message: Message = { ...last, id: 'm-background', role: 'system', parts: [{ type: 'compaction', trigger: 'auto', preTokens: 184_000, postTokens: 31_000, background: true }] };
     mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, signedOut: null, showModel: false } });
     flushSync();
-    expect(document.querySelector('[data-testid=compaction-part]')?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Context compacted, 184K to 31K tokens (in the background)');
+    expect(document.querySelector('[data-testid=compaction-part]')?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Older messages summarized to make room, 184K to 31K tokens (in the background)');
   } finally { store.detach(); client.close(); }
 });
 
@@ -242,6 +242,8 @@ test('a permission is one element with its call: the card stands for the call wh
     const shield = document.querySelector('[data-testid=tool-card] [data-testid=tool-permission]');
     expect(shield?.getAttribute('data-decision')).toBe('allow');
     expect(shield?.getAttribute('title')).toBe('Allowed by you');
+    // The verdict reads in words beside the shield, as the receipt line words it.
+    expect(shield?.textContent?.trim()).toBe('Allowed');
   } finally { store.detach(); client.close(); }
 });
 
@@ -279,8 +281,8 @@ test('a compaction between calls rides on their line instead of taking a row', a
     expect(document.querySelector('[data-testid=compaction-part]')).toBeNull();
     expect(document.querySelectorAll('[data-testid=tool-group]')).toHaveLength(1);
     const mark = document.querySelector('[data-testid=tool-group-compaction]');
-    expect(mark?.textContent?.trim()).toBe('compacted 201.2K → 13.4K');
-    expect(mark?.getAttribute('title')).toBe('Context compacted, 201.2K to 13.4K tokens');
+    expect(mark?.textContent?.trim()).toBe('summarized 201.2K → 13.4K');
+    expect(mark?.getAttribute('title')).toBe('Older messages summarized to make room, 201.2K to 13.4K tokens');
   } finally { store.detach(); client.close(); }
 });
 
@@ -296,6 +298,67 @@ test('a short text between calls reads as narration, what follows the last call 
     mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, signedOut: null, showModel: false } });
     flushSync();
     expect([...document.querySelectorAll('[data-testid=narration]')].map(node => node.textContent?.trim())).toEqual(['Now the tests.']);
-    expect([...document.querySelectorAll('.answer-bubble')].map(node => node.textContent?.trim().slice(0, 6))).toEqual(['A long', 'Fixed.']);
+    // Only the user's messages are bubbles: the answers are free text in full ink.
+    expect(document.querySelector('.answer-bubble')).toBeNull();
+    expect([...document.querySelectorAll('[data-kind=text]:not([data-testid=narration])')].map(node => node.textContent?.trim().slice(0, 6))).toEqual(['A long', 'Fixed.']);
+  } finally { store.detach(); client.close(); }
+});
+
+test('a paragraph still being written shows its closed code spans as code, never raw backticks', async () => {
+  const client = new FakeClient({ delayMs: 0 });
+  const store = new Store(); store.attach(client);
+  try {
+    await store.connect(); await store.open('t-trace');
+    const message = store.openThread!.messages.at(-1)!;
+    message.state = 'streaming';
+    message.parts = [{ type: 'text', text: 'Reading `src/app.ts` then `lib' }];
+    mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, signedOut: null, showModel: false } });
+    flushSync();
+    const pending = document.querySelector('[data-testid=paragraph-pending]')!;
+    expect(pending.querySelector('code')?.textContent).toBe('src/app.ts');
+    expect(pending.textContent).toBe('Reading src/app.ts then `lib');
+  } finally { store.detach(); client.close(); }
+});
+
+test('a run that stopped on a failed command says the stop once: the exit code sits in the error card fold, not on the call', async () => {
+  const client = new FakeClient({ delayMs: 0 });
+  const store = new Store(); store.attach(client);
+  try {
+    await store.connect(); await store.open('t-trace');
+    const message = store.openThread!.messages.at(-1)!;
+    const turn = store.openThread!.turns.find((entry) => entry.id === message.turnId)!;
+    turn.status = 'error';
+    message.parts = [
+      { type: 'tool', toolId: 'ok', name: 'Bash', input: { command: 'ls' }, output: 'a', status: 'done', exitCode: 0 },
+      { type: 'tool', toolId: 'stop', name: 'Bash', input: { command: 'bun test' }, output: 'boom', status: 'error', exitCode: 2 },
+      { type: 'error', message: 'Stopped: the tests failed.' }
+    ];
+    mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, signedOut: null, showModel: false } });
+    flushSync();
+    expect(document.querySelector('[data-testid=tool-exit-code]')).toBeNull();
+    expect(document.querySelector('[data-testid=tool-group-issues]')).toBeNull();
+    expect(document.querySelector('[data-testid=error-diagnostic]')?.textContent).toContain('Exit code 2\nboom');
+  } finally { store.detach(); client.close(); }
+});
+
+test('a running turn on a machine out of reach marks its words stale; back in reach they read as the answer again', async () => {
+  const client = new FakeClient({ delayMs: 0 });
+  const store = new Store(); store.attach(client);
+  try {
+    await store.connect(); await store.open('t-trace');
+    const message = store.openThread!.messages.at(-1)!;
+    const turn = store.openThread!.turns.find((entry) => entry.id === message.turnId)!;
+    turn.status = 'running';
+    message.parts = [{ type: 'text', text: 'Frames 1 to 1312 are done. About 40 minutes left.' }];
+    mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, signedOut: null, showModel: false } });
+    flushSync();
+    const parts = () => document.querySelector<HTMLElement>('.parts')!;
+    expect(parts().dataset.stale).toBeUndefined();
+    store.connection = 'closed';
+    flushSync();
+    expect(parts().dataset.stale).toBe('true');
+    store.connection = 'ready';
+    flushSync();
+    expect(parts().dataset.stale).toBeUndefined();
   } finally { store.detach(); client.close(); }
 });

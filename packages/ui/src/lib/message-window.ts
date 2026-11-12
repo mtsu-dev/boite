@@ -20,18 +20,20 @@ export const OVERSCAN = 4;
 export const ESTIMATE = 80;
 /** The column's --chat-message-gap in app.css, included in each measured slot. */
 export const GAP = 20;
-/** --chat-block-gap in app.css: what a row that continues a cut message keeps above it instead. */
+/**
+ * --chat-block-gap in app.css: what a row that continues a cut message, or a
+ * message that carries on its turn, keeps above it instead. One gap between
+ * message, tool run, result and decision.
+ */
 export const BLOCK_GAP = 12;
-/** --chat-part-gap in app.css: what a message that carries on its turn keeps above it between runs of work. */
-export const PART_GAP = 4;
 
 /**
- * The gap a measured row keeps above it, part of its slot: the column's, a cut
- * message's paragraph, or the seam of a message carrying on its turn (`seam`
- * in timeline-rows).
+ * The gap a measured row keeps above it, part of its slot: the column's, or the
+ * block gap of a row joined to the one above (`seam` in timeline-rows, or a cut
+ * message's rest).
  */
 export function slotGap(seam: string | null | undefined, rest: boolean): number {
-  return seam === 'part' ? PART_GAP : seam === 'block' || rest ? BLOCK_GAP : GAP;
+  return seam || rest ? BLOCK_GAP : GAP;
 }
 
 /**

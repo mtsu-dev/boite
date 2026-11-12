@@ -22,9 +22,12 @@ test('the theme setting stamps the light palette and remembers the choice', asyn
   expect(window.localStorage.getItem('boite.theme')).toBe('dark');
   expect(query('[data-testid=theme-dark]').getAttribute('aria-pressed')).toBe('true');
 
-  // The store is one module-level singleton: leave the next test on the chat.
+  // The store is one module-level singleton: leave the next test on the chat,
+  // through the settings column's title, which leads back to the threads as the bots column's does.
+  expect(query('[data-testid=settings-back]').textContent?.trim()).toBe('Settings');
   query<HTMLButtonElement>('[data-testid=settings-back]').click();
   await waitFor(() => document.querySelector('[data-testid=settings]') === null);
+  expect(store.page).toBe('chat');
 });
 
 test('the keybindings file moves a chord, takes one away, and the Keyboard page says so', async ({ app: _app }) => {
@@ -40,12 +43,20 @@ test('the keybindings file moves a chord, takes one away, and the Keyboard page 
   expect(document.body.dispatchEvent(panel)).toBe(true);
   expect(store.panelOpen).toBe(false);
 
-  // A default still stands, and the tooltip and the palette hint read the table too.
-  expect(query<HTMLButtonElement>('[data-testid=nav-settings]').title).toBe('Settings (Ctrl+,)');
+  // A default still stands, and the rail's name card, the button's description and the palette hint read the table too.
+  const gear = query<HTMLButtonElement>('[data-testid=nav-settings]');
+  expect(gear.getAttribute('aria-label')).toBe('Settings');
+  expect(gear.title).toBe('');
+  const card = gear.parentElement!.querySelector('.rail-name')!;
+  expect(card.textContent).toBe('SettingsCtrl+,');
+  expect(document.getElementById(gear.getAttribute('aria-describedby')!)?.textContent).toBe('Ctrl+,');
   const settings = new KeyboardEvent('keydown', { key: ',', ctrlKey: true, bubbles: true, cancelable: true });
   expect(document.body.dispatchEvent(settings)).toBe(false);
-  await waitFor(() => document.querySelector('[data-testid=settings-tab-keyboard]') !== null);
+  await waitFor(() => document.querySelector('[data-testid=settings-tab-general]') !== null);
 
+  // Keyboard is a page of General: the nav names the group, the card's tabs its pages.
+  query<HTMLButtonElement>('[data-testid=settings-tab-general]').click();
+  await waitFor(() => document.querySelector('[data-testid=settings-tab-keyboard]') !== null);
   query<HTMLButtonElement>('[data-testid=settings-tab-keyboard]').click();
   await waitFor(() => document.querySelector('[data-testid=keyboard-page]') !== null);
   const keyOf = (id: string) =>
@@ -58,7 +69,7 @@ test('the keybindings file moves a chord, takes one away, and the Keyboard page 
   expect(query('[data-testid=keybindings-path]').textContent).toBe('C:\\Users\\you\\AppData\\Local\\boite2\\keybindings.json');
   expect(query('[data-testid=keybinding-error]').textContent).toContain('"trace": "t" has no modifier');
 
-  query<HTMLButtonElement>('[data-testid=settings-back]').click();
+  query<HTMLButtonElement>('[data-testid=view-threads]').click();
   await waitFor(() => document.querySelector('[data-testid=settings]') === null);
 });
 
@@ -107,15 +118,88 @@ test('a shortcut is recorded from the keys pressed, a taken one asks first, and 
   expect(store.bindings.pin.text).toBe(null);
 });
 
-test('the checklist model sits with the conversation settings on General, with no experiment on', async ({ app: _app }) => {
+test('the checklist model sits with how agents answer on General, with no experiment on', async ({ app: _app }) => {
   expect(window.localStorage.getItem('boite.experiments')).toBeNull();
   query<HTMLButtonElement>('[data-testid=nav-settings]').click();
   await waitFor(() => document.querySelector('[data-testid=settings-tab-general]') !== null);
   query<HTMLButtonElement>('[data-testid=settings-tab-general]').click();
   await waitFor(() => document.querySelector('[data-testid=goal-tracker]') !== null);
   const tracker = query('[data-testid=goal-tracker]');
-  expect(tracker.closest('#settings-conversations')?.querySelector('[data-testid=setting-title-model]')).not.toBeNull();
+  expect(tracker.closest('#settings-agent-replies')?.querySelector('[data-testid=setting-title-model]')).not.toBeNull();
+  // This device's switches are said once under the title; the machine's card says its own at its head.
+  expect(query('[data-testid=settings-scope]').dataset.scope).toBe('device');
+  expect(document.querySelector('#settings-conversations > h2 [data-testid=card-scope]')).toBeNull();
+  expect(query('#settings-agent-replies > h2 [data-testid=card-scope]').dataset.kind).toBe('machine');
+  expect(document.querySelector('#settings-conversations [data-testid=setting-async-questions]')).toBeNull();
+  // One card per topic: how the list groups, what a conversation shows, what reaches you, in that order.
+  const topics = [...document.querySelectorAll<HTMLElement>('[data-testid^=settings-card-]')];
+  expect(topics.map((card) => [card.id, card.querySelector('h2 .ui-label')?.textContent])).toEqual([
+    ['settings-thread-list', 'Thread list'], ['settings-conversations', 'In the conversation'], ['settings-notifications', 'Notifications']
+  ]);
+  expect(query('#settings-thread-list [data-testid=setting-group-working-threads]')).toBeTruthy();
+  expect(query('#settings-conversations [data-testid=chat-expand-diffs]')).toBeTruthy();
+  expect(document.querySelector('#settings-conversations [data-testid=setting-group-working-threads]')).toBeNull();
+  expect(query('#settings-notifications [data-testid=setting-notifications]')).toBeTruthy();
+  expect(document.querySelector('#settings-conversations [data-testid=setting-notifications]')).toBeNull();
   expect(query('[data-testid=goal-tracker-model]').textContent).toContain('Automatic');
+  query<HTMLButtonElement>('[data-testid=view-threads]').click();
+  await waitFor(() => document.querySelector('[data-testid=settings]') === null);
+});
+
+test('a desktop has two levels: the gear opens the nav, its search and the first page, a typed word lists its results in the page and Enter opens one', async ({ app: _app }) => {
+  query<HTMLButtonElement>('[data-testid=nav-settings]').click();
+  await waitFor(() => document.querySelector('[data-testid=settings-search]') !== null);
+  // No grid of tiles between the nav and a page: Home shows General beside the nav, the search heads the nav.
+  expect(query('[data-testid=settings-home]').closest('nav')).not.toBeNull();
+  expect(document.querySelector('[data-testid^=settings-home-]')).toBeNull();
+  await waitFor(() => document.querySelector('[data-testid=settings-tab-general]')?.getAttribute('aria-current') === 'page');
+  expect(query('[data-testid=settings-crumb] h1').textContent?.trim()).toBe('General');
+  // The entries stand under four family heads, Advanced named like the others.
+  expect([...document.querySelectorAll<HTMLElement>('nav [data-testid=settings-family]')].map((family) => [family.dataset.family, family.querySelector('.family-head')?.textContent ?? null])).toEqual([
+    ['app', 'App'], ['agents', 'Agents'], ['connections', 'Connections'], ['advanced', 'Advanced']
+  ]);
+  expect(query('[data-family=connections] [data-testid=settings-tab-browser]')).toBeTruthy();
+  // Every page is a peer in its family, none indented under another: Keyboard is one click from anywhere.
+  expect(query('[data-family=app] [data-testid=settings-tab-keyboard]')).toBeTruthy();
+  expect(document.querySelector('nav [data-testid^=settings-tab-].sub')).toBeNull();
+  expect(document.querySelector('[data-testid=settings-pages]')).toBeNull();
+
+  const field = query<HTMLInputElement>('[data-testid=settings-search]');
+  // A word that is also its section's name lists once: "updates" broke the list with two results of one key.
+  field.value = 'updates';
+  field.dispatchEvent(new Event('input', { bubbles: true }));
+  await waitFor(() => document.querySelector('[data-testid=settings-search-results]') !== null);
+  const updates = [...document.querySelectorAll('[data-testid=settings-search-result] .label')].map((label) => label.textContent).filter((label) => label === 'Updates');
+  expect(updates).toHaveLength(1);
+  // A family's name finds its entries: "connections" lists the browser's page.
+  field.value = 'connections';
+  field.dispatchEvent(new Event('input', { bubbles: true }));
+  await waitFor(() => [...document.querySelectorAll('[data-testid=settings-search-result]')].some((result) => result.textContent?.includes('Browser profiles')));
+  field.value = 'font';
+  field.dispatchEvent(new Event('input', { bubbles: true }));
+  await waitFor(() => document.querySelector('[data-testid=settings-search-results]') !== null);
+  expect(document.querySelector('[data-testid=settings-crumb]')).toBeNull();
+  field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  await waitFor(() => store.settingsTab === 'appearance');
+  await waitFor(() => document.querySelector('[data-testid=settings-search-results]') === null);
+  expect(field.value).toBe('');
+  expect(query('[data-testid=settings-tab-appearance]').getAttribute('aria-current')).toBe('page');
+
+  query<HTMLButtonElement>('[data-testid=settings-back]').click();
+  await waitFor(() => document.querySelector('[data-testid=settings]') === null);
+});
+
+test('Voice is a peer of General in the App family on a desktop: its nav entry opens its own page and lights', async ({ app: _app }) => {
+  query<HTMLButtonElement>('[data-testid=nav-settings]').click();
+  await waitFor(() => document.querySelector('[data-testid=settings-tab-voice]') !== null);
+  expect(query('[data-family=app] [data-testid=settings-tab-voice]')).toBeTruthy();
+  query<HTMLButtonElement>('[data-testid=settings-tab-voice]').click();
+  await waitFor(() => document.querySelector('[data-testid=voice-settings]') !== null);
+  // Its own page: the crumb names it, General's cards stay on General.
+  expect(query('[data-testid=settings-crumb] h1').textContent?.trim()).toBe('Voice');
+  expect(document.querySelector('#settings-conversations')).toBeNull();
+  expect(query('[data-testid=settings-tab-voice]').getAttribute('aria-current')).toBe('page');
+  expect(query('[data-testid=settings-tab-general]').getAttribute('aria-current')).toBeNull();
   query<HTMLButtonElement>('[data-testid=settings-back]').click();
   await waitFor(() => document.querySelector('[data-testid=settings]') === null);
 });

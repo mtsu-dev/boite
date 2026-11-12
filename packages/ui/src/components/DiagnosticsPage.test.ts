@@ -86,5 +86,19 @@ test('a problem says when it was last seen in one sentence, the relative time ca
   running = mount(DiagnosticsPage, { target: document.body, props: { store } });
   await settle();
   const when = document.querySelector('[data-testid=diagnostics-problem] .when')!.textContent!;
-  expect(when).toMatch(/^last seen 40 min\.? ago$/);
+  expect(when).toBe('last seen 40m ago');
+});
+
+test('a count of one takes the singular word: "1 detail", never "1 details"', async () => {
+  const environment = { version: '2.4.0', channel: 'stable', platform: 'linux', osRelease: '6.8', arch: 'x64', uptimeMs: 60_000 };
+  const call = vi.fn(async (method: string) => {
+    if (method === 'diagnostics.summary') return { generatedAt: Date.now(), environment, problems: [], threads: [], logFiles: [], counts: { debug: 1, info: 4, warn: 1, error: 2 }, since: Date.now() - 86_400_000 };
+    if (method === 'core.logs') return [];
+    return new Promise(() => {});
+  });
+  const store = { client: { call }, owner: true, connection: 'ready', threads: [], settings: null } as unknown as Store;
+  running = mount(DiagnosticsPage, { target: document.body, props: { store } });
+  await settle();
+  const counts = Array.from(document.querySelectorAll('[data-testid=diagnostics-counts] .count')).map(el => el.textContent?.replace(/\s+/g, ' ').trim());
+  expect(counts).toEqual(['2 errors', '1 warning', '4 info', '1 detail']);
 });

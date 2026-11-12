@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { onMount, untrack } from 'svelte';
-  import { ArrowLeft, ArrowRightToLine, ChevronLeft, ChevronRight, ListX, Maximize2, Minimize2, Plus, SquareX, X, GripHorizontal, PanelsTopLeft } from '@lucide/svelte';
+  import { onMount, tick, untrack } from 'svelte';
+  import { ArrowLeft, ArrowRightToLine, ChevronLeft, ChevronRight, ListX, Maximize2, Minimize2, PanelRightClose, SquareX, X, GripHorizontal, PanelsTopLeft } from '@lucide/svelte';
   import { floatingPanel, RESIZE_DIRECTIONS } from '../lib/floating-panel';
   import { browserBridge } from '../lib/browser-bridge';
   import { stripOverflows } from '../lib/strip-overflow';
@@ -8,14 +8,20 @@
   import { longPress } from '../lib/long-press';
   import { controlMenu, CONTROLS_SECTION } from '../lib/controls';
   import type { ControlId } from '../lib/work-prefs.svelte';
-  import { separator } from '../lib/menu';
+  import { separator, type MenuItem } from '../lib/menu';
   import { closeTabs } from '../lib/panel-close';
   import { innerWidth } from 'svelte/reactivity/window';
   import { clampPanel, panelSibling, rightPanel } from '../lib/right-panel.svelte';
   import type { BoundPanel, Surface, SurfaceKind } from '../lib/right-panel.svelte';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
-  import { offeredCards, available as availableTo, kindName, label, tooltip, unavailable } from '../lib/surface-labels';
+  import { offeredCards, available as availableTo, label, tooltip } from '../lib/surface-labels';
+  import { CUSTOMIZE, notePanelUse, panelChoices, panelPlace, usedPanels } from '../lib/panel-choices';
+  import { panelSwitch } from '../lib/panel-switch.svelte';
+  import { surfaceGlyph } from '../lib/surface-glyphs';
+  import { openCoordination } from '../lib/coordination-request.svelte';
+  import { arriveSurface } from '../lib/surface-swap';
+  import { providePanelTools } from '../lib/panel-tools.svelte';
   import BrowserSurface from './BrowserSurface.svelte';
   import AgentBrowserSurface from './AgentBrowserSurface.svelte';
   import DelegationSurface from './DelegationSurface.svelte';
@@ -25,10 +31,10 @@
   import WindowSurface from './WindowSurface.svelte';
   import FileSurface from './FileSurface.svelte';
   import FilesSurface from './FilesSurface.svelte';
-  import Menu from './Menu.svelte';
+  import PanelDoor from './PanelDoor.svelte';
+  import PanelSwitcher from './PanelSwitcher.svelte';
   import PanelResizeHandle from './PanelResizeHandle.svelte';
   import SurfaceIcon from './SurfaceIcon.svelte';
-  import { surfaceGlyph } from '../lib/surface-glyphs';
   import SurfaceLauncher from './SurfaceLauncher.svelte';
   import TasksSurface from './TasksSurface.svelte';
   import TraceSurface from './TraceSurface.svelte';
@@ -54,6 +60,8 @@
   } = $props();
 
   const inShell = window.__TAURI_INTERNALS__ !== undefined;
+  /** The showing surface's way back, which a phone's head arrow takes first (`lib/panel-tools.svelte.ts`). */
+  const tools = providePanelTools();
   const phone = $derived((innerWidth.current ?? window.innerWidth) <= 720);
   /**
    * The docked width: the one asked for, within the room the chat keeps once
@@ -61,8 +69,6 @@
    * stored for when the room comes back.
    */
   const docked = $derived(clampPanel(rightPanel.width, innerWidth.current ?? window.innerWidth, panelSibling(store, innerWidth.current ?? window.innerWidth)));
-  /** The new-surface menu's last row, which no surface kind can be called. */
-  const CUSTOMIZE = 'customize';
 
   let tabs = $state<HTMLDivElement | undefined>(undefined);
   let root = $state<HTMLElement | undefined>(undefined);
@@ -97,18 +103,30 @@
   });
 
   /**
-   * `use:` on a tab or a surface: one created once the panel is in plays its
-   * entrance. Decided at creation, so the panel landing does not replay the
-   * entrance of what came in with it. An attribute, since Svelte rewrites the
-   * class list whenever `class:active` changes.
+   * A surface a tab switch brings: there in the frame the old one leaves,
+   * one fade from a high opacity and a few pixels from the side of its place
+   * in the launcher (`lib/surface-swap.ts`). Only once the panel is in, so the
+   * panel landing plays no second entrance. The strip above stays still.
    */
-  function arrive(node: HTMLElement): void {
-    if (untrack(() => entered)) node.dataset.arriving = '';
+  let shownKind: string | null = null;
+  function arriveAfter(node: HTMLElement): void {
+    const kind = untrack(() => active?.kind) ?? null, before = shownKind;
+    shownKind = kind;
+    if (!untrack(() => entered)) return;
+    // A browser's native view would not follow a transform: it only fades.
+    const still = !kind || !before || kind === 'browser' || kind === 'agent-browser';
+    arriveSurface(node, undefined, still ? 0 : panelPlace(kind) - panelPlace(before));
   }
 
+  /** What a phone's head keeps beside the panel's door: the thread, or the bot whose desk this is. */
+  let threadTitle = $derived(store.openThread?.title ?? null);
   let surfaces = $derived(panel.surfaces);
   let active = $derived(panel.active);
   let empty = $derived(surfaces.length === 0);
+  /** A bot's desk alone keeps the side card's form, at a column's width. */
+  let deskOnly = $derived(!phone && !rightPanel.floating && surfaces.length === 1 && surfaces[0]!.kind === 'desk');
+  /** A bot's desk alone stays a side column at any panel width: the chat beside it is the page. */
+  const DESK_MAX = 380;
 
   /** The user's own browser needs the shell's webview, or the iframe a test page paints. */
   function available(kind: SurfaceKind): boolean {
@@ -171,10 +189,13 @@
     tab?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
   });
 
-  /** The X shuts the panel and hands the keys to the title bar's toggle that opens it again; clicked, it left them on the page. */
+  /** The X shuts the panel and hands the keys to the header's door that opens it again; clicked, it left them on the page. */
   function shut(): void {
+    // A phone's one back arrow steps back inside the surface first (a file to its list), then leaves the panel.
+    if (phone && tools.back) { tools.back.run(); return; }
     panel.hide();
-    if (!phone) document.querySelector<HTMLElement>('[data-testid="panel-toggle"]')?.focus({ preventScroll: true });
+    // The door turns back from the switcher into the "Panels" button once the panel is gone.
+    if (!phone) void tick().then(() => document.querySelector<HTMLElement>('[data-testid="panel-toggle"]')?.focus({ preventScroll: true }));
   }
 
   function scrollBy(direction: -1 | 1): void {
@@ -223,6 +244,8 @@
   }
 
   function onTabKey(event: KeyboardEvent, surface: Surface): void {
+    // The tab's own key only: Enter on its close button does what that control says.
+    if (event.target !== event.currentTarget) return;
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
       panel.activate(surface.id);
@@ -272,30 +295,83 @@
   /** Plugin interfaces load from the window's own core, so their tabs are offered on its threads. */
   const pluginTabsHere = $derived(store === workspace.primary);
 
-  /** A persistent agent's own thread has a desk, offered first. */
-  const agentThread = $derived(!!store.openThread?.agentSessionId);
-  let menuItems = $derived([
-    ...(agentThread ? [{ id: 'desk', label: kindName('desk'), glyph: surfaceGlyph('desk') }] : []),
-    ...offeredCards().map((card) => ({
-      id: card.kind,
-      label: kindName(card.kind),
-      glyph: surfaceGlyph(card.kind),
-      disabled: !available(card.kind),
-      ...(available(card.kind) ? {} : { hint: unavailable() })
-    })),
+  /** The panels this thread used live outside the runes: a use noted makes the list again. */
+  let noted = $state(0);
+  /** The launcher's list, every panel at once: the ones this thread used on top, then every panel by group (`lib/panel-choices.ts`). */
+  let choices = $derived.by(() => {
+    void noted;
+    const thread = store.openThread?.id ?? null;
     // The tabs plugin interfaces add, on the machine that loaded them.
-    ...(pluginTabsHere ? pluginUi.tabs.map((tab) => ({ id: `${PLUGIN_TAB}${tab.key}`, label: tab.title, glyph: surfaceGlyph('plugin') })) : []),
-    // The way back to a kind this device put away.
-    separator('sep-customize'),
-    { id: CUSTOMIZE, label: strings.controls.customize }
+    const plugins = pluginTabsHere ? pluginUi.tabs.map((tab) => ({ id: `${PLUGIN_TAB}${tab.key}`, label: tab.title, glyph: surfaceGlyph('plugin') })) : [];
+    return panelChoices(store, store.openThread, { phone, available, showing: active?.kind, used: usedPanels(store, thread, active?.kind), plugins });
+  });
+  function note(kind: string): void {
+    const thread = store.openThread?.id;
+    if (!thread) return;
+    notePanelUse(store, thread, kind);
+    noted++;
+  }
+  /** The switcher's closing rows: a desktop's door no longer shuts the panel on a click, a phone's tab has no glyph to close it by. */
+  const HIDE = 'panel-hide';
+  const CLOSE_TAB = 'close-tab';
+  /** The panel's own window rows, in its switcher since the head holds the tabs and the close only. They keep the buttons' test ids. */
+  const MAXIMIZE = 'panel-maximize';
+  const DOCK = 'panel-dock';
+  /**
+   * The door's list: which panel, then what the panel's window does (a
+   * desktop's expand, a floating panel's dock), then the way out, last as
+   * every menu's closing action is.
+   */
+  let headChoices = $derived<MenuItem[]>([
+    ...choices,
+    ...(phone ? [] : [
+      separator('sep-window'),
+      { id: MAXIMIZE, label: rightPanel.maximized ? strings.rightPanel.restore : strings.rightPanel.maximize, glyph: rightPanel.maximized ? Minimize2 : Maximize2, testid: MAXIMIZE },
+      ...(rightPanel.floating ? [{ id: DOCK, label: strings.browser.dock, glyph: PanelsTopLeft, testid: DOCK }] : []),
+      { id: HIDE, label: strings.rightPanel.closePanel, glyph: PanelRightClose, testid: HIDE, hint: store.keyLabel('panel') || undefined }
+    ]),
+    ...(phone && active ? [separator('sep-close'), { id: CLOSE_TAB, label: fill(strings.rightPanel.closeTab, { title: label(active) }), glyph: X }] : [])
   ]);
 
-  function pickNew(id: string): void {
-    if (id.startsWith(PLUGIN_TAB)) {
-      const tab = pluginUi.tab(id.slice(PLUGIN_TAB.length));
-      if (tab) panel.openPluginTab(tab.key, tab.title);
-    } else if (id === CUSTOMIZE) store.showSettings('appearance', CONTROLS_SECTION);
-    else launch(id as SurfaceKind);
+  // The door names the showing panel and switches it: the panel tells it what to say while it is here.
+  $effect(() => {
+    panelSwitch.store = store;
+    panelSwitch.name = active ? label(active) : strings.thread.panelMenu;
+    panelSwitch.title = active ? tooltip(active) : '';
+    panelSwitch.glyph = active ? surfaceGlyph(active.kind) : null;
+    panelSwitch.items = () => headChoices;
+    panelSwitch.pick = pickPanel;
+    panelSwitch.door = PanelSwitcher;
+    return () => { if (panelSwitch.store === store) panelSwitch.store = null; };
+  });
+
+  // The panel showing is the one this thread used last: the launcher lists it first.
+  $effect(() => {
+    const kind = active?.kind;
+    if (kind && store.openThread) untrack(() => note(kind));
+  });
+
+  function pickPanel(id: string): void {
+    const thread = store.openThread;
+    if (id === 'terminal-toggle' || id === 'board-toggle' || id === 'coordination') note(id);
+    if (id === MAXIMIZE) rightPanel.maximized = !rightPanel.maximized;
+    else if (id === DOCK) { rightPanel.floating = false; rightPanel.maximized = false; }
+    else if (id === HIDE) shut();
+    else if (id === CLOSE_TAB) { if (active) void closeTabs(panel, 'close', active.id); }
+    else if (id === CUSTOMIZE) store.showSettings('appearance', CONTROLS_SECTION);
+    else if (id.startsWith(PLUGIN_TAB)) { const tab = pluginUi.tab(id.slice(PLUGIN_TAB.length)); if (tab) panel.openPluginTab(tab.key, tab.title); }
+    else if (id === 'terminal-toggle') store.toggleTerminal();
+    else if (id === 'board-toggle' || id === 'coordination') {
+      // A phone's sheet covers the chat the board and the dialog belong to.
+      if (phone) panel.hide();
+      if (id === 'board-toggle') store.toggleBoard();
+      else if (thread) openCoordination(store, thread.id);
+    } else {
+      // A kind already open is gone back to, not opened twice.
+      const open = surfaces.find((surface) => surface.kind === id);
+      if (open) panel.activate(open.id);
+      else launch(id as SurfaceKind);
+    }
   }
 </script>
 
@@ -317,7 +393,7 @@
   class:dragging
   class:closing
   class:entered
-  style="--panel-width: {docked}px"
+  style="--panel-width: {deskOnly ? Math.min(docked, DESK_MAX) : docked}px"
   data-testid="right-panel"
   bind:this={root}
   use:attach
@@ -367,7 +443,6 @@
       {#each surfaces as surface (surface.id)}
         <div
           class="tab"
-          use:arrive
           class:active={surface.id === panel.activeSurfaceId}
           role="tab"
           tabindex="0"
@@ -382,22 +457,20 @@
           oncontextmenu={(event) => openTabMenu(event, surface)}
           use:longPress
         >
+          <!-- Every open panel is its glyph alone, named in its tooltip and on the header's door: one title in any frame.
+               The showing one is filled. Its close is a corner cross under the pointer. -->
+          <span class="glyph solo" aria-hidden="true"><SurfaceIcon kind={surface.kind} size={14} /></span>
+          <span class="name ui-label sr-only">{label(surface)}</span>
           <button
             type="button"
-            class="closer"
+            class="corner"
             aria-label={fill(strings.rightPanel.closeTab, { title: label(surface) })}
             data-testid="panel-tab-close"
             onclick={(event) => {
               event.stopPropagation();
               void closeTabs(panel, 'close', surface.id);
             }}
-          >
-            <span class="glyph">
-              <SurfaceIcon kind={surface.kind} size={14} />
-            </span>
-            <span class="cross"><X size={14} strokeWidth={2} /></span>
-          </button>
-          <span class="name ui-label">{label(surface)}</span>
+          ><X size={10} strokeWidth={2.5} /></button>
         </div>
       {/each}
     </div>
@@ -415,55 +488,25 @@
       </button>
     {/if}
 
-    {#if !empty}
-      <Menu
-        items={menuItems}
-        onpick={pickNew}
-        placement="bottom"
-        align="end"
-        variant="ghost"
-        label={strings.rightPanel.newSurface}
-        testid="panel-add"
-      >
-        <Plus size={14} strokeWidth={1.75} />
-      </Menu>
-    {/if}
+    <!-- The showing surface's head goes here (SurfaceHead.svelte): one head, named on the door. A phone's strip holds the thread and the door. -->
+    {#if phone}<span class="spacer"></span>{:else}<div class="surface-head" data-testid="panel-surface-head" bind:this={tools.slot}></div>{/if}
 
-    <span class="spacer"></span>
-
-    {#if rightPanel.floating}
-      <button type="button" class="ghost small icon" data-testid="panel-dock"
-        title={strings.browser.dock} aria-label={strings.browser.dock}
-        onclick={() => { rightPanel.floating = false; rightPanel.maximized = false; }}>
-        <PanelsTopLeft size={14} strokeWidth={1.75} />
-      </button>
+    {#if phone}
+      <!-- A phone's panel covers the thread: its title stays on top, and the door beside it names the panel and switches it. -->
+      {#if threadTitle}<span class="thread-line ui-label" data-testid="panel-thread-title">{threadTitle}</span>{/if}
+      <PanelDoor {store} testid="panel-toggle" inPanel />
     {/if}
 
     <button
       type="button"
-      class="ghost small icon maximize"
-      title={rightPanel.maximized ? strings.rightPanel.restore : strings.rightPanel.maximize}
-      aria-label={rightPanel.maximized ? strings.rightPanel.restore : strings.rightPanel.maximize}
-      aria-pressed={rightPanel.maximized}
-      data-testid="panel-maximize"
-      onclick={() => (rightPanel.maximized = !rightPanel.maximized)}
-    >
-      {#if rightPanel.maximized}
-        <Minimize2 size={14} strokeWidth={1.75} />
-      {:else}
-        <Maximize2 size={14} strokeWidth={1.75} />
-      {/if}
-    </button>
-    <button
-      type="button"
-      class="ghost small icon panel-close"
-      title={phone ? strings.rightPanel.backToChat : strings.common.close}
-      aria-label={phone ? strings.rightPanel.backToChat : strings.common.close}
+      class="icon-button panel-close"
+      title={phone ? (tools.back?.label ?? strings.rightPanel.backToChat) : strings.common.close}
+      aria-label={phone ? (tools.back?.label ?? strings.rightPanel.backToChat) : strings.common.close}
       data-testid="panel-close"
       onclick={shut}
     >
       {#if phone}
-        <ArrowLeft size={16} strokeWidth={1.75} /><span class="ui-label">{strings.rightPanel.chat}</span>
+        <ArrowLeft size={20} strokeWidth={1.75} />
       {:else}
         <X size={14} strokeWidth={1.75} />
       {/if}
@@ -471,10 +514,10 @@
   </header>
 
   <div class="body">
-    <!-- Keyed on the tab, so picking another one fades its surface in rather
-         than swapping it in one frame, the way a settings page arrives. -->
+    <!-- Keyed on the tab: the old surface leaves at once and the new one is
+         there in the same frame, settling in. -->
     {#key active?.id}
-    <div class="surface" use:arrive>
+    <div class="surface" use:arriveAfter>
     {#if active?.kind === 'desk'}
       {#if store.openThread?.agentSessionId}
         {#key store.threadKey(store.openThread.id)}<AgentDesk {store} />{/key}
@@ -549,11 +592,11 @@
     /* It comes in from the window's right edge and the chat narrows with it,
        at its own width all along, so nothing inside rewraps on the way. */
     --slide-room: calc(var(--panel-width) + var(--frame-gap));
-    animation: slide-left var(--dur-slide) var(--ease-slide);
+    animation: slide-left var(--motion-duration) var(--motion-curve);
   }
 
   .panel.closing {
-    animation: slide-right-out var(--dur-slide-out) var(--ease-slide);
+    animation: slide-right-out var(--motion-duration) var(--motion-curve);
     pointer-events: none;
   }
 
@@ -582,17 +625,23 @@
     min-width: 0;
   }
 
-  /* The strip's controls are as tall as its tabs. */
-  .strip button.small.icon,
-  .strip :global(.trigger.ghost) {
-    height: var(--control-sm);
-    width: var(--control-sm);
+  /* The strip's controls are as tall as its tabs: a target of 28 px at least. */
+  .strip button.small.icon {
+    height: var(--control);
+    width: var(--control);
   }
+  /* The close and the head's refresh are app.css's icon button, their box as large as their 32 px target. */
+  .panel-close, .surface-head :global(button.icon-button) { flex: none; margin: calc((var(--icon-button-target) - var(--icon-button)) / 2); }
+  /* The tabs scroll, so they clip: a keyboard ring drawn outside a tab or its close would be cut, it goes inside. */
+  .tabs :global(:focus-visible) { outline-offset: -2px; }
 
   /* Only the tabs give way. A control that shrank too took part of the room the
      chevrons cost, so the tabs lost less than `measure` counted and the
      chevrons went and came back on every frame at the panel's narrowest. */
-  .strip > :not(.tabs, .spacer) {
+  .surface-head { flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; padding-left: 8px; overflow: hidden; color: var(--color-muted-foreground); font-size: var(--text-sm); }
+  /* Its actions are the strip's targets: 32 px, each named by its tooltip. */
+  .surface-head :global(button.small.icon) { width: var(--control-head); height: var(--control-head); }
+  .strip > :not(.tabs, .spacer, .thread-line, .surface-head) {
     flex: none;
   }
 
@@ -617,34 +666,21 @@
   .tabs.hidden-end { mask-image: linear-gradient(to left, transparent, black 24px); }
   .tabs.hidden-start.hidden-end { mask-image: linear-gradient(to right, transparent, black 24px, black calc(100% - 24px), transparent); }
 
+  /* An open panel: a square as tall as the strip's targets, its glyph centred. */
   .tab {
+    position: relative;
     display: flex;
     align-items: center;
-    gap: 2px;
-    height: var(--control-sm);
-    max-width: 144px;
+    justify-content: center;
+    width: var(--control);
+    height: var(--control);
     flex: none;
-    padding: 0 8px 0 5px;
+    padding: 0;
     border-radius: var(--radius-md);
     color: var(--color-muted-foreground);
-    font-size: var(--text-xs);
     cursor: pointer;
     user-select: none;
-    transition:
-      background var(--dur-2) var(--ease-out-quint),
-      color var(--dur-2) var(--ease-out-quint);
-  }
-
-  /* A new tab opens from its left edge into the strip, the way the strip reads. */
-  .tab:global([data-arriving]) {
-    animation: tab-in var(--dur-3) var(--ease-out-quint);
-  }
-
-  @keyframes tab-in {
-    from {
-      opacity: 0;
-      transform: translateX(-6px);
-    }
+    /* No transition: the strip stays still while the body changes under it, the picked tab lit in the same frame. */
   }
 
   .tab:hover {
@@ -657,63 +693,29 @@
     color: var(--color-foreground);
   }
 
-  .name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .closer {
+  .solo { display: inline-flex; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  /* Its close, a small cross on its corner, under the pointer or a focused tab only; hidden, a tap there picks the tab. */
+  .corner {
+    position: absolute;
+    /* Inside the square: the strip clips what leaves it. */
+    top: 0;
+    right: 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
     padding: 0;
-    flex: none;
-    border: none;
-    border-radius: var(--radius-sm);
-    background: transparent;
-    color: inherit;
+    border: 1px solid var(--color-edge);
+    border-radius: var(--radius-full);
+    background: var(--color-surface-3);
+    color: var(--color-foreground);
+    opacity: 0;
+    visibility: hidden; pointer-events: none;
   }
-
-  .closer:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--color-foreground) 12%, transparent);
-  }
-
-  .closer:active:not(:disabled) {
-    transform: none;
-    background: color-mix(in srgb, var(--color-foreground) 22%, transparent);
-  }
-
-  .cross {
-    display: none;
-  }
-
-  /* Flex, not inline: an inline span set the icon on the text's baseline, 2.5 px above the label's centre. */
-  .glyph {
-    display: inline-flex;
-  }
-
-  .glyph,
-  .cross {
-    align-items: center;
-    justify-content: center;
-  }
-
-  /* The surface's own icon is the close target: it turns into an X under the
-     pointer, and under the keyboard too as soon as the tab holds the focus. */
-  .tab:hover .glyph,
-  .tab:focus-within .glyph,
-  .closer:focus-visible .glyph {
-    display: none;
-  }
-
-  .tab:hover .cross,
-  .tab:focus-within .cross,
-  .closer:focus-visible .cross {
-    display: inline-flex;
-  }
+  .tab:hover .corner, .tab:focus-within .corner { opacity: 1; visibility: visible; pointer-events: auto; }
+  .corner:hover:not(:disabled) { background: var(--color-surface-2); }
 
   .chev {
     flex: none;
@@ -723,6 +725,9 @@
     flex: 1;
     min-width: 4px;
   }
+
+  /* The bot's info alone: the strip leaves the flow without its tabs; add,
+     expand and close show under the pointer, or always without one. */
 
   .body {
     flex: 1;
@@ -738,11 +743,18 @@
     flex-direction: column;
   }
 
-  /* Opacity only: a browser tab's page is a native view laid over this box,
-     and a moving box would drag it along. */
+  /* A panel switch changes the body only: it fades in and slides a few pixels
+     from its side while the strip stays still, so the eye keeps its place. The
+     old body has left in the same frame (keyed), so no frame holds two. Filled
+     backwards only: a transform left on after the end would hold the surface's
+     fixed children. */
   .surface:global([data-arriving]) {
-    animation: fade var(--dur-3) var(--ease-out-quint);
+    animation: surface-fade var(--motion-duration) var(--motion-curve) backwards;
   }
+  @keyframes surface-fade { from { opacity: 0.4; transform: translateX(var(--arrive-x, 0px)); } }
+  /* A cut under reduced motion, whatever the duration tokens say. */
+  @media (prefers-reduced-motion: reduce) { .surface:global([data-arriving]) { animation: none; } }
+  :global(html[data-motion='reduced']) .surface:global([data-arriving]) { animation: none; }
 
   @media (min-width: 721px) {
     .body {
@@ -767,15 +779,15 @@
       width: min(42vw, 448px);
       min-width: 320px;
       flex: none;
-      box-shadow: var(--shadow-e3);
+      box-shadow: var(--shadow-overlay);
       /* Over the chat it takes no room: it slides across from the right edge. */
       --slide-room: calc(100% + var(--frame-gap));
-      animation: slide-over-left var(--dur-slide) var(--ease-slide);
+      animation: slide-over-left var(--motion-duration) var(--motion-curve);
     }
 
     .panel.closing,
     .panel.maximized.closing {
-      animation: slide-over-right-out var(--dur-slide-out) var(--ease-slide);
+      animation: slide-over-right-out var(--motion-duration) var(--motion-curve);
     }
 
     .sheet-scrim {
@@ -788,17 +800,23 @@
       border: none;
       border-radius: 0;
       background: var(--color-scrim);
-      animation: fade var(--dur-slide) var(--ease-slide);
+      animation: fade var(--motion-duration) var(--motion-curve);
     }
 
     .sheet-scrim.closing {
-      animation: fade-out var(--dur-slide-out) var(--ease-slide);
+      animation: fade-out var(--motion-duration) var(--motion-curve);
       pointer-events: none;
     }
   }
 
   @media (max-width: 720px) {
-    .strip button.small.icon.panel-close { order: -1; width: auto; padding: 0 8px; gap: 6px; }
+    /* One back arrow, the thread's title, then the door that names the panel and switches it. */
+    .panel-close { order: -1; margin-left: -2px; }
+    .tabs, .chev, .spacer { display: none; }
+    .strip { gap: 6px; }
+    .strip :global(.panel-door) { margin-left: auto; }
+    /* Two lines at most, as every phone title. */
+    .thread-line { flex: 1; min-width: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; font-size: var(--text-base); font-weight: 600; line-height: 1.2; color: var(--color-foreground); margin-block: 0; padding-block: 0; text-box: normal; }
 
     .panel,
     .panel.maximized {
@@ -812,32 +830,18 @@
       box-sizing: border-box;
       padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
       /* A screen of its own: it slides in over the conversation and back out, opaque all the way, as the conversation does over the list. */
-      animation: screen-in var(--dur-3) var(--ease-slide);
+      animation: screen-in var(--dur-3) var(--motion-curve);
     }
 
     .panel.closing,
     .panel.maximized.closing {
-      animation: screen-out var(--dur-3) var(--ease-slide);
+      animation: screen-out var(--dur-3) var(--motion-curve);
     }
 
     .sheet-scrim {
       display: none;
     }
 
-    /* The tab's icon is its close button: a finger needs the whole height of the tab. */
-    .tab {
-      padding-left: 0;
-    }
-
-    .closer {
-      width: var(--touch-target);
-      height: var(--touch-target);
-    }
-
-    /* The sheet already fills the screen. */
-    .maximize {
-      display: none;
-    }
   }
 
   .panel.floating {
@@ -851,7 +855,7 @@
     flex: none;
     z-index: 34;
     background: var(--color-surface);
-    box-shadow: var(--shadow-e3);
+    box-shadow: var(--shadow-overlay);
   }
   /* A floating panel appears where it was left and fades away from there. */
   .panel.floating:not(.closing) { animation: none; }
@@ -886,7 +890,7 @@
   .float-resize[data-panel-resize='sw'] { left: -6px; bottom: -6px; cursor: nesw-resize; }
   .float-resize[data-panel-resize='se'] { right: -6px; bottom: -6px; cursor: nwse-resize; }
   .float-resize:focus-visible {
-    outline: 2px solid var(--color-foreground); outline-offset: 0;
+    outline: var(--focus-ring); outline-offset: 0;
   }
   .float-resize:active { transform: none; }
   .float-resize:hover:not(:disabled), .float-resize:active { background: transparent; box-shadow: none; }

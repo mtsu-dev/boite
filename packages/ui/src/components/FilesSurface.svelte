@@ -1,25 +1,16 @@
 <script lang="ts">
+  import Notice from './Notice.svelte';
   // The working directory as a tree. One `files.list` per directory, on the
   // expand and never before: a repository with ten thousand files costs the
   // same as a small one until someone opens a folder.
   import { tick, untrack } from 'svelte';
-  import {
-    ChevronRight,
-    File,
-    FileAudio,
-    FileImage,
-    FileText,
-    FileVideo,
-    Folder,
-    FolderOpen,
-    FolderTree,
-    RefreshCw
-  } from '@lucide/svelte';
+  import { ChevronRight, File, FileAudio, FileImage, FileText, FileVideo, Folder, FolderOpen, FolderTree, RefreshCw, CircleAlert } from '@lucide/svelte';
   import { FILES_LIST_MAX, type FileEntry } from '@boite/contracts';
   import { bytes } from '../lib/format';
   import type { BoundPanel, Surface } from '../lib/right-panel.svelte';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
+  import SurfaceHead from './SurfaceHead.svelte';
 
   let { store, surface, panel }: { store: Store; surface: Surface; panel: BoundPanel } = $props();
 
@@ -31,6 +22,12 @@
   let problem = $state<string | null>(null);
   let filter = $state('');
   let cursor = $state(0);
+  /**
+   * The tree is still opening on the path it was asked for: no row is marked
+   * until that one is, so the mark lands once instead of moving from the
+   * first row while the panel fades in.
+   */
+  let placing = $state(0);
   let list = $state<HTMLDivElement | undefined>(undefined);
   /** The thread whose directories `loaded` holds. */
   let shownFor: string | null = null;
@@ -108,6 +105,11 @@
 
   /** The root, then every ancestor of the directory the tab was opened on. */
   async function openAt(path: string): Promise<void> {
+    placing += 1;
+    try { await place(path); } finally { placing -= 1; }
+  }
+
+  async function place(path: string): Promise<void> {
     await read('');
     if (path === '') return;
     let at = '';
@@ -211,7 +213,7 @@
 </script>
 
 <div class="files-surface" data-testid="files-panel" data-path={surface.path ?? ''}>
-  <div class="panel-toolbar">
+  <SurfaceHead>
     <span class="root" title={store.openThread?.cwd ?? ''} data-testid="files-root">
       <FolderTree size={13} strokeWidth={1.75} />
       <span class="ui-label">{rootName}</span>
@@ -227,19 +229,19 @@
     />
     <button
       type="button"
-      class="ghost small icon"
+      class="icon-button"
       title={strings.common.refresh}
       aria-label={strings.common.refresh}
       data-testid="files-refresh"
       disabled={reading > 0}
       onclick={refresh}
     >
-      <RefreshCw size={13} strokeWidth={1.75} />
+      <RefreshCw size={14} strokeWidth={1.75} />
     </button>
-  </div>
+  </SurfaceHead>
 
   {#if problem !== null}
-    <p class="notice" data-testid="files-error">{fill(strings.files.failed, { reason: problem })}</p>
+    <div class="problem"><Notice icon={CircleAlert} tone="danger" testid="files-error" detail={fill(strings.files.failed, { reason: problem })} /></div>
   {/if}
 
   <div
@@ -254,7 +256,7 @@
       <button
         type="button"
         class="row"
-        class:on={index === cursor}
+        class:on={placing === 0 && index === cursor}
         role="treeitem"
         aria-level={row.depth + 1}
         aria-selected={index === cursor}
@@ -378,6 +380,8 @@
     font-size: var(--text-sm);
     font-weight: 400;
     text-align: left;
+    /* The mark and the hover land at once: a fading fill read as a second thing moving beside the panel's own fade. */
+    transition: color var(--dur-2) var(--ease-out-quint);
   }
 
   .row:hover:not(:disabled),
@@ -407,7 +411,7 @@
   }
 
   .glyph[data-file-kind='dir'] {
-    color: var(--color-accent);
+    color: var(--color-muted-foreground);
   }
 
   .glyph[data-file-kind='image'],
@@ -435,7 +439,6 @@
   }
 
   .empty,
-  .notice,
   .footer {
     margin: 0;
     font-size: var(--text-sm);
@@ -446,9 +449,8 @@
     padding: 10px 6px;
   }
 
-  .notice {
-    padding: 4px 12px 6px;
-    color: var(--color-danger);
+  .problem {
+    padding: 4px 8px 6px;
   }
 
   .footer {

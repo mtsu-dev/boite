@@ -164,10 +164,10 @@
     max-height: min(70vh, 520px);
     display: flex;
     flex-direction: column;
-    background: var(--color-surface);
-    border: 1px solid var(--color-edge);
-    border-radius: var(--radius-xl);
-    box-shadow: var(--shadow-e3);
+    background: var(--overlay-surface);
+    border: 1px solid var(--overlay-edge);
+    border-radius: var(--radius-overlay);
+    box-shadow: var(--shadow-overlay);
     overflow: hidden;
     animation: pop var(--dur-2) var(--ease-out-quint);
   }
@@ -211,7 +211,6 @@
   .row:hover:not(:disabled),
   .row:focus-visible {
     background: var(--color-active);
-    outline: none;
   }
 
   .row:active:not(:disabled) {

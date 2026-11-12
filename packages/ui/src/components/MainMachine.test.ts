@@ -22,7 +22,16 @@ afterEach(async () => {
 
 const settle = async () => { for (let i = 0; i < 20; i++) { await Promise.resolve(); flushSync(); } };
 const trigger = () => document.querySelector<HTMLButtonElement>('[data-testid="main-machine-pick"]');
-const hint = () => document.querySelector('[data-testid="main-machine"] .hint')?.textContent;
+/** The row's explanation, behind its "i": opened to read, then put away. */
+async function hint() {
+  const tip = document.querySelector<HTMLButtonElement>('[data-testid="main-machine-info"]')!;
+  tip.click();
+  await settle();
+  const text = document.querySelector('[data-testid="main-machine-info-text"]')?.textContent;
+  tip.click();
+  await settle();
+  return text;
+}
 
 async function pick(label: string) {
   trigger()!.click();
@@ -51,12 +60,12 @@ test('a device picks the machine it opens on among the ones it reaches, and goes
   workspace.machines = machines;
   await settle();
   expect(trigger()!.textContent).toContain(strings.machines.mainLast);
-  expect(hint()).toBe(strings.machines.mainLastHint);
+  expect(await hint()).toBe(strings.machines.mainLastHint);
 
   expect(await pick('Server')).toEqual([strings.machines.mainLast, 'Laptop', 'Server']);
   expect(readMainMachine()).toEqual({ url: 'https://server.test' });
   expect(trigger()!.textContent).toContain('Server');
-  expect(hint()).toBe(strings.machines.mainHint);
+  expect(await hint()).toBe(strings.machines.mainHint);
 
   await pick(strings.machines.mainLast);
   expect(readMainMachine()).toBeNull();

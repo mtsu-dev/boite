@@ -38,8 +38,11 @@
     z-index: 1;
     margin: 0 -6px 4px;
     padding: 6px 6px 4px;
-    background: var(--color-surface-2);
+    background: var(--overlay-surface);
   }
+
+  /* On a phone sheet the bar paints the sheet's own fill as it sticks. */
+  :global([data-mobile-sheet='true']) .search-bar { background: var(--color-sheet); }
 
   .search {
     display: flex;
@@ -74,7 +77,10 @@
     outline: none;
   }
 
+  /* A phone's field is a 44 px target end to end: the hairline is drawn
+     inside, so the input fills the whole height a finger lands on. */
   @media (max-width: 720px) {
-    .search { height: var(--control-touch); }
+    .search { height: var(--touch-target); border: 0; box-shadow: inset 0 0 0 1px var(--color-border); }
+    .search:focus-within { box-shadow: inset 0 0 0 1px var(--color-edge); }
   }
 </style>

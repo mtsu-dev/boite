@@ -25,7 +25,7 @@ disappear, so each one has a switch in Settings, Experiments.
 | Grain theme | A grainy Grain theme in Settings, Appearance | This device |
 | Claude Code session import | Turn a session started in the terminal into a thread, from the project menu and the palette | This device |
 | Prompt cache timer | A clock beside the context meter counting down how long the provider keeps the conversation cached | This device |
-| Bots | Persistent agents with their own brain, memory and routines, from the sidebar | This device |
+| Bots | Persistent agents with their own brain, memory and routines, from the app rail | This device |
 | Whip | An animated whip that follows your pointer or finger; flick to crack it, click or tap to drop it | This device |
 | Show actions in recordings | Click markers and navigation keys in browser recordings, never typed text or passwords | This device |
 | Contacts | Link your Boite with another owner's through Tailscale; needs Bots | This device |

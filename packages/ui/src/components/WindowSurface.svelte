@@ -1,13 +1,14 @@
 <script lang="ts">
   import { errorText } from '../lib/errors';
   import { onMount, untrack } from 'svelte';
-  import { AppWindow, EyeOff, X } from '@lucide/svelte';
+  import { AppWindow, EyeOff } from '@lucide/svelte';
   import type { WindowFrame, WindowWatch } from '@boite/contracts';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
   import { FRAME_INTERVAL, frameMaxWidth, frameQuality, nextPollDelay, type PollState } from '../lib/remote-browser-view';
   import { liveViews, machineName } from '../lib/live-view.svelte';
   import { SnapshotFeed } from '../lib/snapshot-feed';
+  import SurfaceHead from './SurfaceHead.svelte';
   /**
    * The desktop window an agent opened in this conversation with
    * `boite window watch` (docs/internals/windows.md), read-only. Like the Device panel,
@@ -110,17 +111,18 @@
 
 <section class="window" data-testid="window-surface" aria-label={strings.rightPanel.window}>
   {#if watch}
-    <div class="toolbar">
+    <SurfaceHead>
       <div class="what">
         <AppWindow size={16} />
         <span class="process ui-label" data-testid="window-process">{watch.process}</span>
         {#if watch.title}<span class="title" title={watch.title} data-testid="window-title">{watch.title}</span>{/if}
       </div>
       <div class="actions">
-        {#if showing}<button type="button" class="chip" data-testid="window-hide" aria-label={s.hideHint} title={s.hideHint} onclick={hide}><EyeOff size={15} /><span class="ui-label">{s.hide}</span></button>{/if}
-        <button type="button" class="chip" disabled={busy} aria-label={s.closeHint} title={s.closeHint} data-testid="window-close" onclick={() => void close()}><X size={16} /></button>
+        {#if showing}<button type="button" class="ui-chip" data-testid="window-hide" aria-label={s.hideHint} title={s.hideHint} onclick={hide}><EyeOff size={15} /><span class="ui-label">{s.hide}</span></button>{/if}
+        <!-- In words, not an X: on a desktop it sits in the strip beside the panel's own close, and this one also ends the watch. -->
+        <button type="button" class="ui-chip" disabled={busy} title={s.closeHint} data-testid="window-close" onclick={() => void close()}><span class="ui-label">{s.close}</span></button>
       </div>
-    </div>
+    </SurfaceHead>
   {/if}
   {#if error}<p class="error" role="status" data-testid="window-error">{error}</p>{/if}
 
@@ -153,25 +155,25 @@
 
 <style>
   .window { flex: 1; min-height: 0; height: 100%; display: flex; flex-direction: column; }
-  .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 16px; }
   .what { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--color-muted-foreground); }
   .process { color: var(--color-foreground); font-weight: 600; flex: none; }
   .title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); }
+  .what { flex: 1; }
   .actions { display: flex; gap: 6px; align-items: center; flex: none; }
   /* A desktop panel's controls are its size; a finger gets the touch target (the rule at the end of this block). */
-  .chip { min-height: var(--control); min-width: var(--control); justify-content: center; }
+  .ui-chip { min-height: var(--control); min-width: var(--control); justify-content: center; }
   .muted, small { color: var(--color-muted-foreground); font-size: var(--text-sm); }
-  .error { margin: 0; padding: 0 16px 8px; font-size: var(--text-sm); color: var(--color-danger); overflow-wrap: anywhere; max-height: 90px; overflow: auto; }
+  .error { margin: 0; padding: 0 16px 8px; max-height: 90px; overflow: auto; }
   .viewer { position: relative; flex: 1; min-height: 80px; display: flex; overflow: hidden; background: var(--color-background); }
   .cover { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; }
-  .card { display: flex; flex-direction: column; align-items: center; gap: 10px; max-width: 360px; width: 100%; padding: 20px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface-2); box-shadow: var(--shadow-e2); }
+  .card { display: flex; flex-direction: column; align-items: center; gap: 10px; max-width: 360px; width: 100%; padding: 20px; border-radius: var(--radius-lg); background: var(--color-surface-2); }
   .card p { margin: 0; overflow-wrap: anywhere; } .card .heading { font-weight: 600; } .card button { min-height: var(--control); min-width: 120px; justify-content: center; }
   .center { margin: auto; padding: 24px; text-align: center; }
   .screen { position: relative; flex: 1; min-width: 0; -webkit-user-select: none; user-select: none; }
   .screen.stale { opacity: .55; }
   img { position: absolute; inset: 8px; width: calc(100% - 16px); height: calc(100% - 16px); object-fit: contain; pointer-events: none; -webkit-user-select: none; user-select: none; }
   footer { padding: 10px 16px max(12px, env(safe-area-inset-bottom)); }
-  @media (max-width: 720px) { .toolbar, footer { padding-inline: 12px; } }
+  @media (max-width: 720px) { footer { padding-inline: 12px; } }
   /* Last, so it outranks the desktop sizes of the same weight above. */
-  @media (pointer: coarse) { .chip { min-height: var(--touch-target); min-width: var(--touch-target); } .card button { min-height: var(--touch-target); } }
+  @media (pointer: coarse) { .ui-chip { min-height: var(--touch-target); min-width: var(--touch-target); } .card button { min-height: var(--touch-target); } }
 </style>

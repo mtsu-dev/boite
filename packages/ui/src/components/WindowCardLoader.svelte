@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { CircleAlert } from '@lucide/svelte';
+  import Notice from './Notice.svelte';
   import type { Component, ComponentProps } from 'svelte';
   import { strings } from '../lib/strings';
   import type WindowCaptureCard from './WindowCaptureCard.svelte';
@@ -20,13 +22,11 @@
   {@const Card = module.default as unknown as Component<typeof props>}
   <Card {...props} />
 {:catch}
-  <div class="notice" role="status" data-testid="window-card-failed">
-    <span>{strings.parts.failed}</span>
-    <button class="quiet" onclick={() => (loading = load())}><span class="ui-label">{strings.common.refresh}</span></button>
-  </div>
+  <Notice icon={CircleAlert} tone="danger" testid="window-card-failed" detail={strings.parts.failed}>
+    {#snippet actions()}<button type="button" class="small" onclick={() => (loading = load())}><span class="ui-label">{strings.common.refresh}</span></button>{/snippet}
+  </Notice>
 {/await}
 
 <style>
   .hint { margin: 0; padding: var(--activity-padding); font-size: var(--text-sm); color: var(--color-muted-foreground); }
-  .notice { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: var(--activity-padding); font-size: var(--text-sm); color: var(--color-muted-foreground); }
 </style>

@@ -3,9 +3,10 @@ import type { Translation } from '../../i18n.svelte';
 export const fr: Translation = {
 
   agentMessages: {
-    heading: 'Discussions',
-    open: 'Ouvrir la discussion', back: 'Toutes les discussions', openThread: 'Ouvrir cette conversation',
-    empty: 'Aucune discussion avec un autre agent pour le moment.',
+    heading: 'Messages',
+    headOne: '1 discussion', headMany: '{count} discussions',
+    open: 'Ouvrir les messages', back: 'Tous les messages', openThread: 'Ouvrir cette conversation',
+    empty: 'Aucun message avec un autre agent pour le moment.',
     sentReceived: '{sent} envoyés, {received} reçus',
     mine: 'Cet agent',
     you: 'Vous',

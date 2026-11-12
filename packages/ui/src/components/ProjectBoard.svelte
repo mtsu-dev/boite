@@ -336,7 +336,7 @@
     padding: 0 12px;
   }
 
-  .column.over { box-shadow: inset 0 0 0 1px var(--color-accent); }
+  .column.over { box-shadow: inset 0 0 0 1px var(--color-muted-foreground); }
 
   /* One height with or without the "i", so every column's first card starts on the same line. */
   .column-head {
@@ -376,8 +376,7 @@
     gap: 6px;
     flex: none;
     padding: 8px 6px 8px 10px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-md);
     background: var(--color-surface-2);
     font-size: var(--text-sm);
     line-height: 1.4;
@@ -493,8 +492,8 @@
   }
 
   .state { font-size: var(--text-xs); font-weight: 500; }
-  /* Under review in the accent, as the goal bar's review; waiting on the user in the sidebar's "needs you". */
-  .state.review { color: var(--color-accent); }
+  /* Under review at full ink; waiting on the user in the sidebar's "needs you". */
+  .state.review { color: var(--color-foreground); }
   .state.awaiting { color: var(--color-live); }
   .state.muted { color: var(--color-muted-foreground); }
 

@@ -24,7 +24,7 @@
 </dialog>
 
 <style>
-  dialog { width: min(680px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); margin: auto; padding: 0; color: var(--color-foreground); background: var(--color-surface); border: 1px solid var(--color-edge); border-radius: var(--radius-xl); box-shadow: var(--shadow-e3); overflow: hidden; }
+  dialog { width: min(680px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); margin: auto; padding: 0; color: var(--color-foreground); background: var(--overlay-surface); border: 1px solid var(--overlay-edge); border-radius: var(--radius-overlay); box-shadow: var(--shadow-overlay); overflow: hidden; }
   dialog[open] { display: flex; flex-direction: column; }
   dialog.compact { width: min(560px, calc(100vw - 32px)); }
   dialog::backdrop { background: var(--color-scrim); }

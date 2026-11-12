@@ -6,6 +6,7 @@ import { echoThread, quietAgent, startTestCore, waitFor, type TestCore } from '.
 import { setDriver } from '../../packages/core/src/drivers/index.ts';
 import { BrowserPage } from './lib/cdp.ts';
 import { ensureProductionUi } from './lib/prod-ui.ts';
+import { openRailBot } from './lib/bots.ts';
 
 /** `boite <args>` from a bot's thread, with its agent token, as the bot runs it. */
 async function boiteAs(harness: TestCore, threadId: string, args: string[]) {
@@ -40,9 +41,8 @@ test('a bot\'s boite team propose card offers Create the team in French, and acc
     await waitFor(() => harness.core.journal.listTurns(threadId).some(turn => turn.status === 'done'), 10_000);
     page = await BrowserPage.launch({ url: `${harness.url}/?token=${harness.token}`, experiments: ['resident-agents', 'teams'], locale: 'fr', windowSize: { width: 1440, height: 900 } });
     await page.waitFor(`document.documentElement.lang === 'fr'`);
-    await page.click('[data-testid=view-agents]');
-    await page.click(`[data-testid="agent-entry-${huginn.id}"]`);
-    await page.waitFor('document.querySelector(".agents-main [data-testid=agent-header]")?.textContent.includes("Huginn")');
+    await openRailBot(page, huginn.id, 30_000);
+    await page.waitFor('[...document.querySelectorAll("[data-testid=agent-header]")].some(head => head.textContent.includes("Huginn"))');
 
     const pending = '.agents-main [data-testid=team-card][data-state=pending]';
     for (const [phone, name] of [[false, 'Skollheim'], [true, 'Skollheim Mobile']] as const) {

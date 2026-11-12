@@ -11,6 +11,7 @@
   import AgentAvatar from './AgentAvatar.svelte';
   import RemoteChip from './RemoteChip.svelte';
   import AgentDiscussion from './AgentDiscussion.svelte';
+  import SurfaceHead from './SurfaceHead.svelte';
 
   /**
    * The conversations this thread's agent talked with, one row each, the most
@@ -54,6 +55,7 @@
 </script>
 
 <section class="mail" data-testid="agent-messages-surface">
+{#if discussions.length > 0}<SurfaceHead><h2 class="ui-label head-line" data-testid="agent-messages-head">{discussions.length === 1 ? strings.agentMessages.headOne : fill(strings.agentMessages.headMany, { count: count(discussions.length) })}</h2></SurfaceHead>{/if}
 <div class="split" class:detail={current !== undefined}>
   <div class="discussions" data-testid="agent-discussions" bind:this={rows}>
     {#if discussions.length === 0}
@@ -66,7 +68,7 @@
         <button type="button" class="row" class:selected={discussion === current} class:resident={discussion.resident}
           data-testid="agent-discussion" data-peer={discussion.key} aria-current={discussion === current ? 'true' : undefined}
           onclick={() => choose(discussion.key)}>
-          <AgentAvatar title={discussion.title} providerId={discussion.providerId} status={discussion.status} resident={discussion.resident} agent={discussion.agent} size={34} />
+          <AgentAvatar title={discussion.title} providerId={discussion.providerId} status={discussion.status} resident={discussion.resident} agent={discussion.agent} size={34} open={discussion === current} />
           <span class="main">
             <span class="line">
               <strong>{discussion.title}</strong>
@@ -98,6 +100,7 @@
 </section>
 
 <style>
+  .head-line { min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-foreground); font-size: var(--text-sm); font-weight: 500; }
   .mail { container: messages / inline-size; flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .split { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
   .split.detail { grid-template-columns: minmax(220px, 0.42fr) minmax(0, 1fr); }
@@ -111,12 +114,12 @@
   .line { min-width: 0; display: flex; align-items: center; gap: 6px; }
   .line strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-foreground); font-size: var(--text-sm); font-weight: 600; }
   time { flex: none; font-variant-numeric: tabular-nums; }
-  .tag { flex: none; padding: 1px 6px; border-radius: var(--radius-full); background: var(--color-accent-soft); color: var(--color-accent); font-weight: 500; }
+  .tag { flex: none; padding: 1px 6px; border-radius: var(--radius-full); background: var(--color-active); color: var(--color-muted-foreground); font-weight: 500; }
   .resident .tag { background: var(--color-resident-soft); color: var(--color-resident); }
   .where { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .preview .text { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; }
   .preview .text :global(svg) { flex: none; }
-  .preview .text > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: color-mix(in srgb, var(--color-foreground) 78%, transparent); }
+  .preview .text > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-subtle); }
   .count { flex: none; min-width: 20px; padding: 1px 6px; border-radius: var(--radius-full); background: var(--color-surface-3); text-align: center; font-variant-numeric: tabular-nums; }
   .no-mail { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; color: var(--color-muted-foreground); text-align: center; font-size: var(--text-sm); }
   @container messages (max-width: 640px) {

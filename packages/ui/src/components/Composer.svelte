@@ -1,46 +1,53 @@
 <script lang="ts">
-  import { tick, untrack } from 'svelte';
+  import { tick, untrack, type Snippet } from 'svelte';
   import { supportsSideQuestions, type Attachment, type PreviewReference } from '@boite/contracts';
   import { restorePreviewMentions } from '../lib/preview-mentions';
   import { runCommand } from '../lib/commands.svelte';
   import { agentSlashItems, boiteSlashItems, skillSlashItems, slashCompletion, listKey, mentionQueryOf, slashQueryOf, type ChipCommand } from '../lib/composer-menus';
   import { AgentsView, agentOfThread } from '../lib/agents.svelte';
+  import { routeGone } from '../lib/agent-route';
   import { composerPlaceholder } from '../lib/composer-placeholder';
   import { readyToSend, receiveDroppedFiles, takeFiles } from '../lib/composer-attachments';
   import { rewindComposerEdit } from '../lib/composer-edit';
   import { editWhole } from '../lib/reading-window';
   import { fitHeight, selfSizing } from '../lib/composer-size';
-  import { editComposerInput, insertImageReference, removeImageReferences, sameSend, sendShape, touchesImageReference, trackImageSend, type SendShape } from '../lib/composer-images';
+  import { editComposerInput, removeImageReferences, sameSend, sendShape, touchesImageReference, trackImageSend, type SendShape } from '../lib/composer-images';
   import { checkpoint, editKind, recordEdit, resetHistory, settled } from '../lib/composer-history';
   import { boxSelection, closeDraftUndo, copySelection, offerDraftUndo, pasteImages, travel, type EditingHost } from '../lib/composer-editing';
   import { ComposerMentions } from '../lib/composer-mentions.svelte';
   import { isLoading, unresolvedAssetId } from '../lib/draft-attachments';
   import { focusInitial, focusWithin } from '../lib/focus';
   import { touchScreen } from '../lib/device';
-  import { ignoreQuestions, noteTyping, repliesOf, replyTarget, sendAnswer } from '../lib/question-reply.svelte';
-  import { emptyBox, returnPrompt, sentPrompts, textEntries, type ComposerState, type SentPrompt } from '../lib/composer-queue';
+  import { noteTyping, pickOption, repliesOf, replyTarget, sendAnswer } from '../lib/question-reply.svelte';
+  import { emptyBox, returnPrompt, sendNowAction, sentPrompts, type ComposerState, type SentPrompt } from '../lib/composer-queue';
   import { rankItems, type PaletteItem } from '../lib/palette';
   import { clearStash, DRAFT_STASH_KEY, readStash, writeStash } from '../lib/prefs';
   import { claudeKeywords, promptSegments } from '../lib/message-display';
-  import { strings } from '../lib/strings';
+  import { fill, strings } from '../lib/strings';
   import type { Choice, Store } from '../lib/store.svelte';
   import { machineName, workspace } from '../lib/workspace.svelte';
   import ComposerAttachments from './ComposerAttachments.svelte';
-  import ComposerImageReferences from './ComposerImageReferences.svelte';
+  import AccountGoneNotice from './AccountGoneNotice.svelte';
   import ComposerBar from './ComposerBar.svelte';
   import ComposerIntent from './ComposerIntent.svelte';
-  import ComposerQueue from './ComposerQueue.svelte';
+  import ComposerFoot from './ComposerFoot.svelte';
+  import ComposerStrip from './ComposerStrip.svelte';
+  import ThreadOfflineNotice from './ThreadOfflineNotice.svelte';
+  import ComposerDeck from './ComposerDeck.svelte';
+  import ComposerField from './ComposerField.svelte';
   import ComposerSpeechPreview from './ComposerSpeechPreview.svelte';
   import MentionMenu from './MentionMenu.svelte';
   import SlashMenu from './SlashMenu.svelte';
-  import ThreadActivity from './ThreadActivity.svelte';
   import SideAnswer from './SideAnswer.svelte';
+  import { permissionRedirect } from '../lib/permission-redirect.svelte';
   import { ComposerSide } from '../lib/composer-side.svelte';
-  import PreviewReferences from './PreviewReferences.svelte';
   import { chipChoice, queuedChoice, sendToTarget, type ComposerTarget } from '../lib/composer-target';
 
-  /** A centred draft drops the bottom padding so its heading and input form one block. A `target` makes it an agent's box. */
-  let { store, centered = false, target = null }: { store: Store; centered?: boolean; target?: ComposerTarget | null } = $props();
+  /**
+   * A centred draft drops the bottom padding so its heading and input form one block. A `target` makes it an agent's box.
+   * `notice` is what stands in the box's slot, under the strip, while the core runs nothing here (`stopped`).
+   */
+  let { store, centered = false, target = null, notice }: { store: Store; centered?: boolean; target?: ComposerTarget | null; notice?: Snippet } = $props();
 
   const MAX_LINES = 8, sizesItself = selfSizing();
   const side = new ComposerSide();
@@ -50,9 +57,7 @@
   /** The thread this box sends to: none when it speaks to an agent, whatever thread is open behind it. */
   let thread = $derived(target ? null : store.openThread);
   let composer = $derived(store.composerStates[key]);
-  let hasQueue = $derived(!!(composer?.queued.length || thread?.pendingAnswers?.length));
-  let activityRoom = $state(0);
-  const answerEntries = textEntries();
+  /** How tall the strip above the box stands: the band of tasks floats above it, not over it. */
   let text = $derived(composer?.text ?? '');
   let attachments = $derived<Attachment[]>(composer?.attachments ?? []);
   let previewReferences = $derived(composer?.previewReferences ?? []);
@@ -68,6 +73,7 @@
   let inputGutter = $state(0), measuredWidth = 0; // The box's scrollbar, which the paint layer leaves out; the width the last fit was for.
   let inputScroll = $state(0);
   let toolbar = $state<ReturnType<typeof ComposerBar> | undefined>(undefined);
+  let shell = $state<HTMLDivElement | undefined>(undefined);
   let attachmentStrip = $state<ReturnType<typeof ComposerAttachments> | undefined>();
   let highlightedImage = $state<Attachment | null>(null);
   /** Where ArrowUp stands in this thread's sent prompts, or null outside recall. */
@@ -76,6 +82,13 @@
   $effect(() => { if (recall === null) recallRead = null; });
   /** The box has the keyboard: one of the two things that open the slash menu. */
   let focused = $state(false);
+  /**
+   * The last press came from keys, not a pointer. A touch screen focuses the
+   * card itself so no keyboard opens, and the browser counted that script
+   * focus as a keyboard one: the accent ring lit at every tap. It shows only
+   * after a key now.
+   */
+  let viaKeys = $state(false);
   /** Escape shuts the menu on text it keeps, until that text changes again. */
   let slashDismissed = $state(false);
   /** The row the keyboard is on in the slash menu. */
@@ -131,6 +144,8 @@
    * incognito draft is never kept on the device, so it waits for the machine.
    */
   let offline = $derived(!target && store.connection !== 'ready' && (thread !== null ? !store.draft : !!store.draft && !store.draft.incognito));
+  /** Out of reach past its first hello: the notice over the box says so once, with Reconnect. */
+  let away = $derived(offline && !!thread && (store.connection === 'closed' || store.booted));
   let machineLabel = $derived.by(() => { const found = workspace.machines.find((machine) => machine.store === store); return found ? machineName(found) : strings.machines.local; });
   /**
    * A question waiting for a written answer makes the box its free field: Send
@@ -138,6 +153,8 @@
    * (`lib/question-reply.svelte.ts`). Editing a sent message takes precedence.
    */
   let reply = $derived(target ? null : replyTarget(store));
+  /** The open thread's first page is still on its way: the field says so and Send waits (ChatView draws the shapes meanwhile). */
+  let loadingThread = $derived(!!thread && store.loadingThreadId === thread.id && thread.messages.length === 0);
   // An answer counts the card's picks, needs no model and cannot wait in the outbox.
   let sendable = $derived(
     (text.trim().length > 0 || attachments.length > 0 || (reply ? !!repliesOf(store).picks[reply.id]?.length : previewReferences.length > 0)) &&
@@ -145,8 +162,7 @@
       !attachments.some(unresolvedAssetId) &&
       (reply !== null || choice !== null || target !== null) &&
       (store.connection === 'ready' || (offline && !reply)) &&
-      !picking &&
-      !dictating &&
+      !picking && !dictating && !loadingThread &&
       // A prompt on its way holds back an edit, an answer and a draft's second prompt; on a thread the next one queues.
       !(composer?.sending && (composer.editing || reply !== null || !thread))
   );
@@ -159,10 +175,34 @@
   $effect(() => { void key; void store; untrack(() => { sendWhenLoaded = null; }); });
 
   /** A persistent agent's own thread: the box is addressed to it by name, and its model, effort and mode live in its settings, not on chips. */
-  const bot = $derived(thread?.agentSessionId ? agentOfThread(AgentsView.of(store).snapshot, thread.id)?.name ?? null : null);
+  const botProfile = $derived(thread?.agentSessionId ? agentOfThread(AgentsView.of(store).snapshot, thread.id) : null);
+  const bot = $derived(botProfile?.name ?? null);
+  /** The bot's account is gone: its chips point at the banner's remedy (`agents/AgentProblem.svelte`). */
+  const botGone = $derived(!!botProfile && routeGone(store, botProfile.selection));
+  /** The account behind the box is gone with no other to move to: the box locks, its placeholder the remedy (the banner's or the model chip's). */
+  let accountGone = $derived(!target && (botGone || (!!thread && store.accounts.length > 0 && store.accountOf(thread.accountId) === null
+    && store.usableAccountOf(thread.providerId, thread.accountId) === null)));
 
-  let placeholder = $derived(composerPlaceholder({ target, replying: !!reply, bot, offline, onThread: !!thread, draft: !!store.draft,
-    machine: machineLabel, project: store.openProject?.name ?? null, provider: provider?.name ?? null }));
+  /** The thread's oldest ask to run a tool, on its command row in the timeline; a message sent meanwhile declines it and redirects (`redirect`). */
+  let permission = $derived(target || !thread ? null : store.pendingPermissions.find((request) => request.threadId === thread.id) ?? null);
+  /** The question on screen at the top of the box, whose options 1 to 9 pick while the field is empty. */
+  let docked = $derived(target ? undefined : store.pendingQuestions.find((question) => question.id === repliesOf(store).docked && question.threadId === thread?.id));
+
+  /**
+   * The core runs nothing here: the thread's folder or worktree is gone, or
+   * contact mail holds it. Its notice takes the box's place with the way out,
+   * so the box is not drawn under it; it stays mounted, keeping what was
+   * written for when the thread runs again.
+   */
+  let stopped = $derived(!target && (!!thread?.worktreeRemoved || (store.openProject?.missing === true && !thread?.agentSessionId)
+    || (!!thread?.contactHold && !thread.archived)));
+  /** The turn runs and the round button is Send (an answer, words typed, files to wait for): the turn's Stop goes to
+   *  the foot's line, so a finger, which has no Escape, can still end it. */
+  let stopsTurn = $derived(store.busy && thread?.status !== 'waiting' && (!!reply || sendWhenLoaded !== null || (sendable && !stopped && !accountGone)));
+
+  // What Send does to the question at the top of the box (composerPlaceholder's `answer`) or to a waiting permission.
+  let answer = $derived(reply ? (reply.options.length ? 'options' as const : 'text' as const) : docked && docked.threadId === thread?.id && !docked.async && store.busy ? 'after' as const : null);
+  let placeholder = $derived(composerPlaceholder({ target, replying: !!thread && store.busy, answer, permission: !reply ? permission : null, bot, offline, away, accountGone, onThread: !!thread, machine: machineLabel, provider: provider?.name ?? null }));
 
   // -- the slash menu -----------------------------------------------------------
   // `/` on an empty box, then the word being typed: nothing else opens it, and a
@@ -315,6 +355,20 @@
     if (state && (state.selection?.start !== start || state.selection?.end !== end)) state.selection = { start, end };
   }
 
+  /** The "+" menu's file mention: an `@` at the caret, a space before it when a word ends there. */
+  function startMention() {
+    const value = stateForInput().text, at = Math.min(caret, value.length);
+    const before = value.slice(0, at), lead = before === '' || /\s$/.test(before) ? '' : ' ';
+    put(before + lead + '@' + value.slice(at), at + lead.length + 1);
+    box?.focus();
+  }
+
+  /** The "+" menu's commands: the slash menu opens on an empty box only, the same way a typed `/` does. */
+  function startCommand() {
+    put('/');
+    box?.focus();
+  }
+
   /** Writes a recalled or restored prompt in, caret at its end. One undo step, with whatever else the caller changes. */
   function put(value: string, at = value.length) {
     checkpoint(stateForInput());
@@ -356,6 +410,7 @@
   }
 
   async function submit(nextDraft = false) {
+    if (stopped) return;
     if (attachments.some(unresolvedAssetId)) { store.error = strings.errors.draftAttachment; return; }
     if (loadingFiles) { if (sendable) sendWhenLoaded = { store, key, state: stateForInput(), shape: sendShape(text, attachments), nextDraft }; return; }
     if (reply) {
@@ -389,6 +444,7 @@
       if (!inputStore.queuePrompt(inputKey, { text: prompt, attachments: images, afterBoundary: store.inputBoundaries[key]?.boundary, choice: kept, ...(references.length ? { previewReferences: references } : {}) },
         offline ? { choice: { ...kept } } : undefined)) return;
       if (state.queued[0]?.request?.failed !== undefined) inputStore.retryQueued(inputKey, 0);
+      if (!offline && inputStore === store && inputKey === key && permission) void redirect(inputStore, inputKey);
       state.editing = null;
       emptyBox(state);
       resetHistory(state);
@@ -482,16 +538,11 @@
   /** Nothing in the box and nothing on its way into it: what a second Enter needs. */
   let boxEmpty = $derived(text.trim().length === 0 && attachments.length === 0 && previewReferences.length === 0 && !dictating);
 
-  /**
-   * What Send now does to the queue: interrupt the running turn, resume it
-   * after a refusal held it, or nothing while a pending prompt is going out.
-   */
-  let sendNow = $derived<'steer' | 'resume' | null>(
-    !composer?.queued.length || composer.sending || store.connection !== 'ready' || !thread ? null
-      // A refused outbox prompt has its own Send again; one written offline is a turn of its own, not steering.
-      : composer.queued[0]!.request?.failed !== undefined ? null
-      : thread.status === 'running' ? (composer.queued[0]!.request ? null : 'steer') : store.busy ? null : composer.paused ? 'resume' : null
-  );
+  /** What Send now does to the queue: interrupt the running turn, resume a held one, or nothing. */
+  let sendNow = $derived(sendNowAction(composer, thread, store));
+
+  /** A message sent while a permission waits declines it and redirects the agent (`permissionRedirect`). */
+  const redirect = permissionRedirect(() => ({ store, key, queued: composer?.queued.length ?? 0, sendNow, busy: store.busy }), () => sendQueuedNow());
 
   /**
    * Send now interrupts the active turn before submitting queued prompts. A queue held after a refusal is resumed too.
@@ -683,15 +734,25 @@
       event.preventDefault();
       return;
     }
+    // An empty field lends the keyboard to the permission on its command row; typing is never taken.
+    // Not while the field answers a question (its keys are the answer's), nor with the machine out of reach.
+    if (boxEmpty && permission && !reply && !offline && !composer?.editing && (event.key === 'Enter' && !event.shiftKey && !touchScreen() || event.key === 'Escape')) {
+      event.preventDefault();
+      void store.answer(permission.id, event.key === 'Enter' ? 'allow' : 'deny');
+      return;
+    }
+    if (boxEmpty && docked && !event.shiftKey && pickOption(store, docked, event.key)) { event.preventDefault(); return; }
     if (event.key === 'Enter' && !event.shiftKey && !touchScreen()) {
       event.preventDefault();
       if (boxEmpty && sendNow && !reply) sendQueuedNow();
+      // A question the box does not answer goes with its picks.
+      else if (boxEmpty && docked && docked.id !== reply?.id && repliesOf(store).picks[docked.id]?.length) void sendAnswer(store, docked);
       else void submit();
     } else if (event.key === 'ArrowUp' && !event.shiftKey) {
       if (older()) event.preventDefault();
     } else if (event.key === 'ArrowDown' && !event.shiftKey) {
       if (newer()) event.preventDefault();
-    } else if (event.key === 'Escape' && !reply && (target ? target.busy && !!target.stop : store.busy || thread?.activity?.goal?.status === 'active' || thread?.activity?.loop?.status === 'active')) {
+    } else if (event.key === 'Escape' && !reply && (target ? target.busy && !!target.stop : !away && (store.busy || thread?.activity?.goal?.status === 'active' || thread?.activity?.loop?.status === 'active'))) {
       // Not while the box answers a question: a thread waiting on one opens
       // with the focus there, and an Escape pressed out of habit threw the
       // question away with the turn. Skip and the stop button still end it.
@@ -704,100 +765,53 @@
   }
 </script>
 
+<svelte:window onkeydowncapture={() => { viaKeys = true; }} onpointerdowncapture={() => { viaKeys = false; }} />
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="composer-wrap" class:centered onkeydowncapture={(event) => {
+<div class="composer-wrap" class:centered class:stopped onkeydowncapture={(event) => {
   if (!event.isComposing && event.key === 'Escape' && !mentionOpen && !slashOpen && attachmentStrip?.closePreview()) {
     event.preventDefault(); event.stopPropagation();
   }
 }}>
-  <div class="queue-region" style:padding-bottom={hasQueue ? `${activityRoom}px` : undefined}>
-    {#if thread?.pendingAnswers?.length}
-      <div data-testid="question-queued">
-        <ComposerQueue queued={answerEntries(thread.pendingAnswers)} disabled={true} paused={false} sendNow={null} onrestore={() => {}} onsendnow={() => {}} />
-      </div>
-    {/if}
-    {#if composer && composer.queued.length > 0}
-      <ComposerQueue queued={composer.queued}
-        disabled={composer.sending || text.length > 0 || attachments.length > 0 || previewReferences.length > 0}
-        paused={composer.paused} sending={composer.sending} outgoing={composer.outgoing ?? 0} connected={store.connection === 'ready'} machine={machineLabel} starts={!thread}
-        {sendNow}
-        onrestore={restoreQueued} onremove={(at) => store.removeQueued(key, at)} onretry={(at) => store.retryQueued(key, at)}
-        onsendnow={sendQueuedNow} />
-    {/if}
-  </div>
+  {#if !target}<ComposerStrip />{/if}
+  {#if away && !stopped}<ThreadOfflineNotice {store} machine={machineLabel} />{/if}
+  {#if accountGone && !botGone}<AccountGoneNotice onpick={() => void toolbar?.openChip('composer-picker')} />{/if}
+  <ComposerFoot {store} {key} {thread} {composer} machine={machineLabel} {sendNow} alone={stopped} {stopsTurn} blocked={text.length > 0 || attachments.length > 0 || previewReferences.length > 0} onrestore={restoreQueued} onsendnow={sendQueuedNow} />
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="composer" class:dictating data-testid="composer" tabindex="-1" {ondragover} {ondrop} onkeydown={(event) => {
+  <div class="composer" class:dictating class:keys={viaKeys} class:loading={loadingThread} data-testid="composer" tabindex="-1" bind:this={shell} hidden={stopped} {ondragover} {ondrop} onkeydown={(event) => {
     if (event.target !== event.currentTarget || event.key !== 'Escape') return;
     // The touch focus target shares the box's Escape handling, including pending questions.
     onkeydown(event);
     event.stopPropagation();
   }}>
-    {#if !target}<ThreadActivity {store} reserveInComposer={hasQueue} onroom={(height) => (activityRoom = height)} />{/if}
-    <ComposerIntent editing={!!composer?.editing} reply={reply?.async && reply.id === repliesOf(store).docked ? null : reply} oncancel={cancelEdit} onignore={() => ignoreQuestions(store)} />
+    <ComposerDeck {store} {thread} agentBox={!!target} />
+    <ComposerIntent editing={!!composer?.editing} oncancel={cancelEdit} />
 
     {#if side.current && side.current.threadId === thread?.id}<SideAnswer {...side.current} {store} onclose={() => { side.clear(); focusInitial(box, box?.closest<HTMLElement>('[data-testid=composer]')); }} />{/if}
     {#if attachments.length > 0}
       {#key composer}<ComposerAttachments bind:this={attachmentStrip} {attachments} highlighted={highlightedImage} onremove={removeAttachment} onfocus={() => focusInitial(box, box?.closest<HTMLElement>('[data-testid=composer]'))} />{/key}
     {/if}
 
-    <div class="input-wrap">
-    {#if highlighted}
-      <div class="input-highlight" aria-hidden={previewReferences.length || attachments.length ? undefined : true} data-testid="composer-highlight" style:right={`${inputGutter}px`}>
-        <div class="input-paint input-mirror" style:transform={`translateY(${-inputScroll}px)`}><PreviewReferences {text} references={previewReferences} {store} threadId={key} editing {keywords} command={commandToken || undefined} onreference={(reference) => {
-          if (box && reference.mention) { box.focus({ preventScroll: true }); box.setSelectionRange(reference.mention.end, reference.mention.end); track(); }
-        }}>{#snippet paint(parts)}<ComposerImageReferences segments={parts} {attachments} onopen={(attachment) => attachmentStrip?.open(attachment)} onhover={(attachment) => highlightedImage = attachment} />{/snippet}</PreviewReferences>{'\n'}</div>
-      </div>
-    {/if}
-    <textarea
-      class:highlighted
-      bind:this={box}
-      value={text}
+    <ComposerField bind:box {store} {key} {text} {highlighted} {keywords} command={commandToken} references={previewReferences} {attachments}
+      gutter={inputGutter} scroll={inputScroll} {placeholder} disabled={stopped || accountGone}
+      onreference={(reference) => { if (box && reference.mention) { box.focus({ preventScroll: true }); box.setSelectionRange(reference.mention.end, reference.mention.end); track(); } }}
+      onopenimage={(attachment) => attachmentStrip?.open(attachment)} onhoverimage={(attachment) => highlightedImage = attachment}
       onbeforeinput={(event) => {
         if (event.inputType === 'historyUndo' || event.inputType === 'historyRedo') { event.preventDefault(); travel(editing(), event.inputType === 'historyUndo'); return; }
         pendingEdit = boxSelection(box);
       }}
-      oncopy={(event) => copySelection(editing(), event, false)}
-      oncut={(event) => copySelection(editing(), event, true)}
-      {oninput}
-      {onkeydown}
-      {onpaste}
-      onkeyup={track}
-      onscroll={syncInput}
-      onclick={track}
-      onselect={track}
-      onfocus={() => {
-        focused = true;
-        track();
-      }}
-      onblur={() => { track(); focused = false; }}
-      rows="1"
-      {placeholder}
-      aria-label={placeholder}
-      data-testid="composer-input"
-      spellcheck={!commandToken}
-    ></textarea>
-    </div>
+      oncopy={(event) => copySelection(editing(), event, false)} oncut={(event) => copySelection(editing(), event, true)}
+      {oninput} {onkeydown} {onpaste} ontrack={track} onscroll={syncInput}
+      onfocus={() => { focused = true; track(); }} onblur={() => { track(); focused = false; }} />
 
-    <SlashMenu
-      open={slashOpen}
-      items={slashItems}
-      selected={slashAt}
-      onpick={pickSlash}
-      onhover={(index) => (slashAt = index)}
-    />
-
-    <MentionMenu
-      open={mentionOpen}
-      items={mentions.items}
-      selected={mentions.at}
-      more={mentions.more}
-      onpick={pickMention}
-      onhover={(index) => (mentions.at = index)}
-    />
+    <SlashMenu open={slashOpen} items={slashItems} selected={slashAt} onpick={pickSlash} onhover={(index) => (slashAt = index)} />
+    <MentionMenu open={mentionOpen} items={mentions.items} selected={mentions.at} more={mentions.more} onpick={pickMention} onhover={(index) => (mentions.at = index)} />
 
     <ComposerSpeechPreview status={speechStatus} preview={speechPreview} error={speechError} />
+    <!-- A bot's gone account said once, to a screen reader: the placeholder and its banner (AgentProblem) show it. -->
+    {#if botGone}<span class="visually-hidden" role="status" data-testid="composer-bot-gone">{bot ? fill(strings.composer.botAccountGone, { name: bot }) : strings.accounts.removedHint}</span>{/if}
 
-    <ComposerBar bind:this={toolbar} {store} {key} {target} {bot} {provider} canSend={sendable} waiting={sendWhenLoaded !== null} answering={!!reply} sendLabel={reply ? strings.composer.replySend : undefined} bind:choice bind:picking bind:dictating
+    <ComposerBar bind:this={toolbar} {store} {key} {target} {bot} {botGone} {provider} canSend={sendable && !stopped && !accountGone} typed={!reply || text.trim().length > 0 || attachments.length > 0} waiting={sendWhenLoaded !== null} answering={reply} declining={!reply && !offline ? permission : null}
+      onmention={!target && !reply && mentionProject !== null ? startMention : undefined} oncommand={!target && !reply && text.trim() === '' ? startCommand : undefined} bind:choice bind:picking bind:dictating
       onsubmit={() => void submit()}
       onfiles={(files) => void take(files)}
       onpreview={(text, status, error) => { speechPreview = text; speechStatus = status; speechError = error; }}
@@ -806,6 +820,7 @@
         put(current + (current && !/\s$/.test(current) ? ' ' : '') + transcript);
       }} />
   </div>
+  {#if stopped}{@render notice?.()}{/if}
 </div>
 
 <style>
@@ -821,7 +836,13 @@
     padding: 0 20px;
   }
 
-  /* A translucent surface with a top reflection. Focus lights its edge and lays a bloom under it: app.css, beside its themes. */
+  /* The notice in the box's place keeps the bottom gap; only the strip stays here. */
+  .composer-wrap.stopped { padding-bottom: 0; }
+  .composer[hidden] { display: none; }
+  /* The foot stands on the card's top edge (ComposerFoot): the card squares its top corners under it. */
+  .composer-wrap:has(> :global(.foot .foot-row)) > .composer { border-top-left-radius: 0; border-top-right-radius: 0; }
+
+  /* A raised neutral surface with a hairline and a faint top light. Focus brightens the hairline: app.css, beside its themes. */
   .composer {
     position: relative;
     display: flex;
@@ -829,67 +850,49 @@
     width: 100%;
     max-width: var(--content);
     margin: 0 auto;
-    background: var(--composer-glaze) var(--color-composer-surface);
-    backdrop-filter: blur(16px) saturate(1.2);
-    -webkit-backdrop-filter: blur(16px) saturate(1.2);
-    border: 1px solid var(--color-border);
-    border-top-color: var(--color-edge);
-    border-radius: var(--radius-xl);
+    background: var(--color-composer-surface);
+    border: 1px solid var(--color-composer-edge);
+    border-radius: var(--radius-composer);
     /* The bar's chips read the composer's own width: the side panel narrows it on a wide window. */
     container: composer / inline-size;
     --composer-rest: var(--shadow-composer);
+    /* Only the translucent themes see through it (app.css sets their surface). */
+    --composer-blur: none;
+    backdrop-filter: var(--composer-blur);
+    -webkit-backdrop-filter: var(--composer-blur);
     box-shadow: var(--composer-rest);
-    transition: border-color var(--dur-3) var(--ease-out-quint), box-shadow var(--dur-3) var(--ease-out-quint);
+    transition: border-color var(--motion-duration) var(--motion-curve), box-shadow var(--motion-duration) var(--motion-curve);
   }
 
-  /* The bottom gap sits under the box: a textarea scrolls its text through its own padding, up to the bar. */
-  .input-wrap { position: relative; margin-bottom: var(--composer-input-gap, 6px); }
+  /* The first page on its way is said by the conversation's centre: the box keeps its words at full ink and takes typing. */
 
-  .input-highlight {
-    position: absolute;
-    inset: 0; /* Stretched by CSS: clientWidth is rounded, and 0.4 px off broke lines a word apart, the caret trailing the paint. */
-    overflow: hidden;
-    pointer-events: none;
-    z-index: 1;
-  }
+  /* A card the script focused for a touch screen shows no ring: only a key lights it. */
+  .composer:not(.keys):focus-visible { outline: none; }
 
-  .input-paint {
-    white-space: pre-wrap;
-    overflow-wrap: break-word;
-    color: var(--color-foreground);
-  }
-
-  textarea.highlighted { color: transparent; caret-color: var(--color-accent); }
-  textarea.highlighted::selection { background: var(--color-accent-soft); }
-
-  textarea, .input-paint {
-    /* A textarea's own text-rendering: auto drops kerning on Android, and the caret drifted from the painted letters. */
-    text-rendering: optimizeLegibility; font-kerning: normal; font-variant-ligatures: normal; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; width: 100%;
-    min-height: calc(var(--composer-input-height, 44px) - var(--composer-input-gap, 6px));
-    max-height: 200px;
-    padding: var(--composer-input-padding, 12px 14px 0);
-    border: none;
-    background: transparent;
-    font-size: var(--text-reading);
-    line-height: var(--leading-reading);
-  }
-
-  textarea { display: block; }
-  .input-paint { max-height: none; }
-  @supports (field-sizing: content) { textarea { field-sizing: content; max-height: min(200px, calc(8lh + 16px)); } }
-
-  textarea:focus {
-    outline: none;
-    border: none;
-  }
-
+  /* The gap between the card's blocks (ComposerDeck), and the row form of a question in it (ThreadDecision): height, icon box, type. */
+  .composer-wrap { --deck-gap: 6px; --dock-row: 28px; --dock-icon: 16px; --dock-type: var(--text-meta); }
   @media (max-width: 720px) {
-    .composer { --composer-rest: var(--shadow-e1); border-radius: var(--radius-xl); }
-    textarea, .input-mirror { font-size: var(--text-md); }
+    /* A phone keeps the conversation: the whole card, rows, chips and
+       field, stays under 45% of the screen. The deck gives way first. */
+    .composer-wrap { --dock-row: 30px; }
+    .composer { --composer-cap: 45dvh; border-radius: var(--radius-xl); max-height: var(--composer-cap); }
+    /* A question keeps its own cap, half the conversation (ThreadDecision), and the field and chips stay whole under it. */
+    .composer:has(> :global(.deck > .thread-decision)) { max-height: none; }
+    /* So does an image the user enlarged: under the cap it pushed the field and chips off the screen. */
+    .composer:has(> :global(.image-preview)) { max-height: none; }
+    .composer > :global(*) { flex: none; }
+    .composer > :global(.deck) { flex: 0 1 auto; min-height: 0; }
+    /* The microphone and send stand at the field's end (ComposerBar): its text, mirror and dictation preview stop short of them. */
+    .composer { --composer-tools: var(--touch-target); }
+    .composer:has(:global(.bar .tools[data-count='2'])) { --composer-tools: calc(var(--touch-target) * 2); }
+    .composer :global(.speech-preview) { padding-right: calc(var(--composer-tools) + 8px); }
     .composer-wrap, .composer-wrap.centered {
       padding: 8px 12px max(10px, env(safe-area-inset-bottom));
     }
+    .composer-wrap.stopped { padding-bottom: 0; }
 
     :global(html[data-keyboard='open']) .composer-wrap { padding-bottom: 8px; }
   }
+  /* A 390 or 360 px phone gives the card's side margins to the chips' words. */
+  @media (max-width: 400px) { .composer-wrap, .composer-wrap.centered { padding-inline: 8px; } }
 </style>

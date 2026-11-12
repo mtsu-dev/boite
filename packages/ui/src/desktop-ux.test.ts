@@ -2,7 +2,7 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import App from './App.svelte';
 import { store } from './lib/store.svelte';
-import { workspace } from './lib/workspace.svelte';
+import { machineName, workspace } from './lib/workspace.svelte';
 import { writeExperiments } from './lib/experiments';
 import { closeTour } from './lib/onboarding.svelte';
 import { work } from './lib/work-prefs.svelte';
@@ -10,9 +10,10 @@ import { archiveThread } from './lib/archive';
 import { runCommand } from './lib/commands.svelte';
 import { undo } from './lib/undo.svelte';
 import { confirm } from './lib/confirm.svelte';
-import { strings } from './lib/strings';
+import { fill, strings } from './lib/strings';
 import { clampPanel, rightPanel } from './lib/right-panel.svelte';
 import { contactsRail } from './lib/contacts-rail.svelte';
+import { AgentsView, openAgent } from './lib/agents.svelte';
 
 /**
  * The desktop behaviours the UX audit found broken, on the whole app over the
@@ -35,6 +36,8 @@ afterEach(() => {
   document.body.innerHTML = '';
   writeExperiments([]);
   window.localStorage.clear();
+  // A panel a test opened stays in memory: the next test starts with none, its thread list in place.
+  rightPanel.threads = {};
   work.load();
   workspace.view = 'projects';
   undo.dismiss();
@@ -58,46 +61,61 @@ test('a maximized panel stays with its thread: the Contacts page beside the list
   }
 });
 
-test('contacts stand in their own column on the right, folded until the bar unfolds it: the title opens the Contacts page, a row a contact\'s, between the lists', async () => {
-  writeExperiments(['contacts']);
+test('contacts are the Bots column\'s other side: its head folds the column on the right, a row opens a contact, and with Bots off the rail keeps their place', async () => {
+  writeExperiments(['resident-agents', 'contacts']);
   await mountOnFake();
   try {
-    // A first start finds the column folded: the bar's button alone says Chris asks something.
-    await waitFor(() => document.querySelector('[data-testid=contacts-toggle-waiting]') !== null);
-    const rail = query('[data-testid=contacts-rail]');
-    expect(rail.classList.contains('collapsed')).toBe(true);
-    expect(query('[data-testid=contacts-toggle]').getAttribute('aria-expanded')).toBe('false');
-    expect(query('main').compareDocumentPosition(rail) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(document.querySelector('[data-testid=sidebar] [data-testid=sidebar-contacts]')).toBeNull();
+    // A first start finds the column folded, and no contacts button on the rail: Activity counts what they ask.
+    // The Bots page draws no such column: read it afresh each time.
+    const rail = () => query('[data-testid=contacts-rail]');
+    expect(rail().classList.contains('collapsed')).toBe(true);
+    expect(query('main').compareDocumentPosition(rail()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(document.querySelector('[data-testid=rail-contacts]')).toBeNull();
+    expect(document.querySelector('[data-testid=contacts-toggle]')).toBeNull();
 
-    query<HTMLButtonElement>('[data-testid=contacts-toggle]').click();
-    flushSync();
-    expect(rail.classList.contains('collapsed')).toBe(false);
-    expect(window.localStorage.getItem('boite.contacts-rail-folded')).toBe('0');
-    await waitFor(() => document.querySelector('[data-testid=rail-contact]') !== null);
-
-    // The title is the way home: requests, adding a contact and Tailscale.
-    query<HTMLButtonElement>('[data-testid=contacts-rail-home]').click();
+    // The Bots column's switch turns it to Contacts, the Contacts page in the main card.
+    workspace.showAgents(store);
+    await waitFor(() => document.querySelector('[data-testid=side-contacts]') !== null);
+    query<HTMLButtonElement>('[data-testid=side-contacts]').click();
     await waitFor(() => document.querySelector('[data-testid=home-add]') !== null);
     expect([store.page, store.contact]).toEqual(['home', null]);
-    flushSync();
-    expect(query('[data-testid=contacts-rail-home]').getAttribute('aria-current')).toBe('page');
+    await waitFor(() => document.querySelector('[data-testid=sidebar] [data-testid=rail-contact]') !== null);
+    expect(query('[data-testid=sidebar] [data-testid=side-switch]').dataset['view']).toBe('home');
 
-    query<HTMLButtonElement>('[data-testid=rail-contact]').click();
-    await waitFor(() => document.querySelector('[data-testid=contact-remove]') !== null);
-    expect([store.page, store.contact]).toEqual(['home', 'core-chris']);
-    expect(document.querySelector('[data-testid=sidebar]')).not.toBeNull();
-    flushSync();
-    expect(query('[data-testid=rail-contact]').getAttribute('aria-current')).toBe('page');
-    expect(query('[data-testid=contacts-rail-home]').getAttribute('aria-current')).toBeNull();
-
-    // Folded again, the next start finds it folded.
+    // Its head folds the right column, which is not drawn while this side lists the same rows.
     query<HTMLButtonElement>('[data-testid=contacts-toggle]').click();
     flushSync();
-    expect(rail.classList.contains('collapsed')).toBe(true);
-    expect(window.localStorage.getItem('boite.contacts-rail-folded')).toBe('1');
+    expect(query('[data-testid=contacts-toggle]').getAttribute('aria-expanded')).toBe('true');
+    expect(window.localStorage.getItem('boite.contacts-rail-folded')).toBe('0');
+    expect(document.querySelector('[data-testid=contacts-rail]')).toBeNull();
+    query<HTMLButtonElement>('[data-testid=sidebar] [data-testid=rail-contact]').click();
+    await waitFor(() => document.querySelector('[data-testid=contact-remove]') !== null);
+    expect([store.page, store.contact]).toEqual(['home', 'core-chris']);
+    flushSync();
+    expect(query('[data-testid=sidebar] [data-testid=rail-contact]').getAttribute('aria-current')).toBe('page');
+
+    // The title leads back to the threads, the column unfolded beside them; its own title opens the Contacts page.
+    query<HTMLButtonElement>('[data-testid=side-back]').click();
+    flushSync();
+    expect(store.page).toBe('chat');
+    expect(rail().classList.contains('collapsed')).toBe(false);
+    await waitFor(() => document.querySelector('[data-testid=contacts-rail] [data-testid=rail-contact]') !== null);
+    query<HTMLButtonElement>('[data-testid=contacts-rail-home]').click();
+    await waitFor(() => store.page === 'home');
+
+    // With Bots off there is no switch: the rail holds Contacts' place and the side's title alone leads back.
+    writeExperiments(['contacts']);
+    await waitFor(() => document.querySelector('[data-testid=rail-contacts]') !== null);
+    expect(query('[data-testid=rail-contacts]').getAttribute('aria-current')).toBe('page');
+    expect(document.querySelector('[data-testid=side-switch]')).toBeNull();
+    query<HTMLButtonElement>('[data-testid=side-back]').click();
+    flushSync();
+    expect(store.page).toBe('chat');
+    query<HTMLButtonElement>('[data-testid=rail-contacts]').click();
+    await waitFor(() => store.page === 'home');
   } finally {
     if (!contactsRail.folded) contactsRail.toggle();
+    store.showChat();
   }
 });
 
@@ -114,7 +132,8 @@ test('a panel widened while the contacts column was folded gives the chat its ro
     const list = store.sidebarCollapsed ? 0 : store.sidebarWidth;
     const folded = clampPanel(700, window.innerWidth, list);
     expect(width()).toBe(`${folded}px`);
-    query<HTMLButtonElement>('[data-testid=contacts-toggle]').click();
+    // The Contacts side's head unfolds it (the test above); the room is the same either way.
+    contactsRail.toggle();
     flushSync();
     const unfolded = clampPanel(700, window.innerWidth, list + 240);
     expect(unfolded).toBeLessThan(folded);
@@ -124,6 +143,47 @@ test('a panel widened while the contacts column was folded gives the chat its ro
   } finally {
     if (!contactsRail.folded) contactsRail.toggle();
     rightPanel.width = stored;
+  }
+});
+
+test('a docked side panel lends the list column: the thread list beside a chat panel, the bot column beside a Desk card, each back when it closes', async () => {
+  writeExperiments(['resident-agents']);
+  await mountOnFake('/?fake=1&agents=1');
+  const folded = () => query('.body').classList.contains('sidebar-folded');
+  try {
+    await waitFor(() => store.openThread !== null);
+    expect(store.sidebarCollapsed).toBe(false);
+    // A chat: three zones, rail, chat and panel.
+    store.togglePanel();
+    await waitFor(() => store.sidebarCollapsed && folded());
+    store.togglePanel();
+    await waitFor(() => !store.sidebarCollapsed && !folded());
+
+    // The Bots page: the Desk card folds the bot column the same lent way.
+    workspace.showAgents(store);
+    const view = AgentsView.of(store);
+    await view.refresh();
+    await openAgent(store, view.snapshot!.profiles[0]!.id);
+    await waitFor(() => store.page === 'agents' && !!store.openThread?.agentSessionId);
+    store.panel.closeAll();
+    flushSync();
+    await waitFor(() => !store.sidebarCollapsed);
+    store.panel.open('desk');
+    await waitFor(() => store.sidebarCollapsed && folded());
+    // Its own button brings the column back sooner, and the open desk does not fold it again.
+    store.sidebarCollapsed = false;
+    flushSync();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(store.sidebarCollapsed).toBe(false);
+    store.panel.closeAll();
+    flushSync();
+    // Closing the desk gives the column back; opening it again lends it again.
+    store.panel.open('desk');
+    await waitFor(() => store.sidebarCollapsed);
+    store.panel.closeAll();
+    await waitFor(() => !store.sidebarCollapsed && !folded());
+  } finally {
+    store.showChat();
   }
 });
 
@@ -158,6 +218,13 @@ test('typed confirmation supports Enter and cancellation restores focus', async 
   press(field, 'Enter');
   expect(await deletion).toBe(true);
 });
+
+/** No question or permission open in the project: a row's state is then its status alone. */
+function quiet(projectId: string) {
+  const ids = new Set(store.threadsOf(projectId).map((thread) => thread.id));
+  store.pendingQuestions = store.pendingQuestions.filter((request) => !ids.has(request.threadId));
+  store.pendingPermissions = store.pendingPermissions.filter((request) => !ids.has(request.threadId));
+}
 
 async function waitFor(check: () => boolean, attempts = 2000): Promise<void> {
   for (let attempt = 0; attempt < attempts; attempt++) {
@@ -196,6 +263,8 @@ async function mountOnFake(search = '/?fake=1'): Promise<void> {
 
 test('Escape on an open context popover closes it and leaves a busy turn running', async () => {
   await mountOnFake();
+  // From its threshold the context is an item of the composer's row.
+  store.openThread!.context = { tokens: 150_000, window: 200_000, at: Date.now() };
   await waitFor(() => document.querySelector('[data-testid=context-trigger]') !== null);
   query<HTMLButtonElement>('[data-testid=context-trigger]').click();
   await waitFor(() => document.querySelector('[data-testid=context-popup]') !== null);
@@ -204,7 +273,7 @@ test('Escape on an open context popover closes it and leaves a busy turn running
   press(document.body, 'Escape');
   flushSync();
   expect(stop).not.toHaveBeenCalled();
-  await waitFor(() => query('[data-testid=context-trigger]').getAttribute('aria-expanded') === 'false');
+  await waitFor(() => document.querySelector('[data-testid=context-popup]') === null);
 });
 
 test('leaving a header rename with Escape hands the focus back to the title, not the page', async () => {
@@ -276,7 +345,10 @@ test('the palette and the project menu reach the archive, its list already read'
   query<HTMLButtonElement>('[data-testid=project-menu]').click();
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=archived]') !== null);
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=archived]').click();
-  await waitFor(() => store.page === 'settings' && document.querySelector('[data-testid=archived-list]') !== null);
+  // A card's menu opens the archive on its project; All projects widens it back to every one.
+  await waitFor(() => store.page === 'settings' && document.querySelector('[data-testid=archived-focus]') !== null);
+  query<HTMLButtonElement>('[data-testid=archived-all]').click();
+  await waitFor(() => document.querySelector('[data-testid=archived-list]')?.textContent?.includes('Finish the trace tab') === true);
 });
 
 test('Ctrl+Shift+T brings back the thread archived last on the machine, from this window or another, and opens it', async () => {
@@ -350,48 +422,61 @@ test('removing a machine asks first, and cancel keeps its card', async () => {
   await waitFor(() => workspace.machines.length === 2);
   store.showSettings('machines');
   await waitFor(() => document.querySelectorAll('[data-testid=machine-card]').length === 2);
-  const remove = query<HTMLButtonElement>('[data-testid=machine-remove]');
-  remove.focus();
-  remove.click();
+  // The removal sits in the machine's menu: cancelling gives the keyboard back to that menu's button.
+  const remote = workspace.machines.find(machine => machine.store !== store)!;
+  const menu = query<HTMLButtonElement>(`[data-machine-id="${remote.id}"] [data-testid=machine-menu]`);
+  menu.focus();
+  menu.click();
+  await waitFor(() => document.querySelector('[data-testid=machine-remove]') !== null);
+  query<HTMLButtonElement>('[data-testid=machine-remove]').click();
   await waitFor(() => document.activeElement?.getAttribute('data-testid') === 'confirm-cancel');
   query<HTMLButtonElement>('[data-testid=confirm-cancel]').click();
-  await waitFor(() => document.activeElement === remove);
+  await waitFor(() => document.activeElement === menu);
   expect(workspace.machines).toHaveLength(2);
   expect(document.querySelectorAll('[data-testid=machine-card]')).toHaveLength(2);
 });
 
-test('the sidebar floats a thread that waits on the user, in both views, and names the project only in Recent', async () => {
+test('the project cards float a thread that waits on the user, Recent keeps strict time order with its mark, and each row to one line', async () => {
   await mountOnFake();
   workspace.view = 'projects';
   await waitFor(() => document.querySelectorAll('[data-testid=thread-row]').length >= 2);
   const rows = () => Array.from(document.querySelectorAll('[data-testid=thread-row]')).map((row) => row.getAttribute('data-thread-id'));
   const project = store.projects.find((p) => store.threadsOf(p.id).length >= 2)!;
   const rowsOf = () => rows().filter((id) => store.threads.find((t) => t.id === id)?.projectId === project.id);
-  // The fake seeds threads that already wait on a question; start from a quiet project.
+  // The fake seeds threads that already wait on a question; start from a quiet project. An open question
+  // says Needs you by itself, whatever the status, so the questions go too.
   for (const thread of store.threadsOf(project.id)) thread.status = 'idle';
+  quiet(project.id);
   await waitFor(() => rowsOf().length >= 2);
   const last = rowsOf().at(-1)!;
   expect(rowsOf()[0]).not.toBe(last);
   store.threads.find((t) => t.id === last)!.status = 'waiting';
   await waitFor(() => rowsOf()[0] === last);
   expect(document.querySelector('[data-testid=thread-project]')).toBeNull();
-  // Every row names its provider; a branch waits for a second line, which a project row lacks without a PR.
+  // One line per row: no provider glyph and no branch line; the branch rides in the row's tooltip.
   const branched = store.threadsOf(project.id).find((t) => !t.pullRequest)!;
   branched.branch = 'boite/port-the-scheduler';
-  const providers = () => Array.from(document.querySelectorAll('[data-testid=thread-provider]'));
-  await waitFor(() => providers().length === document.querySelectorAll('[data-testid=thread-row]').length);
-  const provider = document.querySelector(`[data-thread-id="${branched.id}"] [data-testid=thread-provider]`)!;
-  expect(provider.getAttribute('title')).toContain(store.providers.find((p) => p.id === branched.providerId)!.name);
-  const card = () => document.querySelector(`[data-thread-id="${branched.id}"]`)!.closest('.thread')!;
-  expect(card().querySelector('[data-testid=thread-pr]')).toBeNull();
-  expect(card().querySelector('[data-testid=thread-branch]')).toBeNull();
-  // The seeded trace thread has a PR, so its second line carries its branch too.
-  for (const branch of document.querySelectorAll('[data-testid=thread-branch]')) expect(branch.closest('.thread')!.querySelector('[data-testid=thread-pr]')).not.toBeNull();
+  const row = () => document.querySelector<HTMLElement>(`[data-testid=thread-row][data-thread-id="${branched.id}"]`)!;
+  await waitFor(() => { const lines = row()?.title.split('\n') ?? []; return lines[0] === branched.title && lines.includes('boite/port-the-scheduler'); });
+  expect(document.querySelectorAll('[data-testid=thread-provider], [data-testid=thread-branch]')).toHaveLength(0);
+  expect(row().closest('.thread')!.querySelector('[data-testid=thread-pr]')).toBeNull();
+  // Only a thread with a pull request shows the mark, its number at the row's end.
+  for (const mark of document.querySelectorAll('[data-testid=thread-pr]')) expect(mark.textContent).toMatch(/^#\d+$/);
 
   workspace.view = 'recent';
-  await waitFor(() => rows()[0] === last);
-  expect(document.querySelectorAll('[data-testid=thread-project]').length).toBe(rows().length);
-  await waitFor(() => card().querySelector('[data-testid=thread-branch]')?.textContent === 'boite/port-the-scheduler');
+  // Recent is a history: under its pins, strictly newest first; the waiting thread keeps its place by
+  // time and says it needs the user by its mark, so no row sits out of time order.
+  const time = (id: string | null) => { const t = store.threads.find((thread) => thread.id === id)!; return t.lastUserMessageAt ?? t.createdAt; };
+  await waitFor(() => rowsOf().includes(last) && document.querySelector('[data-testid=thread-row] [data-testid=thread-where]') !== null);
+  const unpinned = rowsOf().filter((id) => !store.threads.find((t) => t.id === id)?.pinned);
+  expect(unpinned.map(time)).toEqual(unpinned.map(time).sort((a, b) => b - a));
+  // Recent: each row says its project once, the name in words under the title or else the tile before it, never
+  // both, with no provider glyph or branch.
+  await waitFor(() => Array.from(document.querySelectorAll('[data-testid=thread-row]')).every((row) =>
+    (row.querySelector('[data-testid=project-tile]') === null) !== (row.querySelector('[data-testid=thread-where]') === null)));
+  expect(document.querySelector('[data-testid=thread-row] [data-testid=thread-where]')).not.toBeNull();
+  expect(document.querySelectorAll('[data-testid=thread-provider], [data-testid=thread-branch]')).toHaveLength(0);
+  expect(document.querySelector(`[data-thread-id="${last}"] [data-testid=thread-state]`)?.getAttribute('data-state')).toBe('waiting');
 });
 
 test('an archive offers its way back for a moment: the toast button, or Ctrl+Z outside a field', async () => {
@@ -438,6 +523,7 @@ test('a folded project keeps saying what its hidden threads do, and the mark goe
   workspace.view = 'projects';
   const project = store.projects.find((p) => store.threadsOf(p.id).length >= 2)!;
   for (const thread of store.threadsOf(project.id)) { thread.status = 'idle'; thread.unread = false; }
+  quiet(project.id);
   const head = () => query(`[data-testid=project-row][data-project-id="${project.id}"]`);
   await waitFor(() => document.querySelector(`[data-testid=project-row][data-project-id="${project.id}"]`) !== null);
   if (!store.isCollapsed(project.id)) store.toggleProject(project.id);
@@ -446,10 +532,27 @@ test('a folded project keeps saying what its hidden threads do, and the mark goe
   const [first, second] = store.threadsOf(project.id);
   first!.status = 'running';
   second!.status = 'waiting';
-  await waitFor(() => head().querySelector('[data-testid=project-rollup]')?.getAttribute('data-state') === 'waiting');
-  expect(head().querySelector('[data-testid=project-rollup]')!.getAttribute('title')).toBe('1 thread: Needs you');
+  // Needs you is the header's own count, folded or not, so the rollup gives way to it; folded, no row says it, so the head says it in words.
+  await waitFor(() => head().parentElement!.querySelector('[data-testid=project-waiting-count]')?.getAttribute('data-count') === '1');
+  expect(head().querySelector('[data-testid=project-rollup]')).toBeNull();
+  expect(head().parentElement!.querySelector('[data-testid=project-waiting-count] .word')!.classList.contains('spare')).toBe(false);
+  // One count per header: Needs you stands alone while the working thread waits its turn to be counted.
+  expect(head().parentElement!.querySelector('[data-testid=project-working-toggle]')).toBeNull();
+  second!.status = 'idle';
+  await waitFor(() => head().parentElement!.querySelector('[data-testid=project-working-toggle]')?.getAttribute('data-count') === '1');
+  expect(head().parentElement!.querySelector('[data-testid=project-waiting-count]')).toBeNull();
+  // The working count already says it: the folded header draws no second mark for the same thread.
+  expect(head().querySelector('[data-testid=project-rollup]')).toBeNull();
   store.toggleProject(project.id);
   await waitFor(() => head().querySelector('[data-testid=project-rollup]') === null);
+  // Open, the rows show their own work: the header counts only what needs the user, and counts nothing else.
+  flushSync();
+  expect(head().parentElement!.querySelector('[data-testid=project-working-toggle]')).toBeNull();
+  second!.status = 'waiting';
+  await waitFor(() => head().parentElement!.querySelector('[data-testid=project-waiting-count]')?.getAttribute('data-count') === '1');
+  expect(head().parentElement!.querySelector('[data-testid=project-working-toggle]')).toBeNull();
+  // Open, the row that needs the user says it: the head keeps its dot and count, the words only in its name.
+  expect(head().parentElement!.querySelector('[data-testid=project-waiting-count] .word')!.classList.contains('spare')).toBe(true);
 });
 
 async function openIdleThread(): Promise<string> {
@@ -600,16 +703,20 @@ test('the settings bar picks the machine a page changes without moving the windo
   await waitFor(() => workspace.machines.length === 2 && workspace.machines.every((machine) => machine.store.connection === 'ready'));
   const remote = workspace.machines.find((machine) => machine.store !== store)!;
   store.localCore = true;
-  store.core = { ...store.core!, hostname: 'DESK-PC' };
   await workspace.select(remote.store);
   const thread = remote.store.openThread;
   // Plugins run where they were installed: the page opens on this PC, not on the machine the chat is on.
   remote.store.showSettings('plugins');
   await waitFor(() => document.querySelector('[data-testid=settings-machine]') !== null && document.querySelector('[data-testid=plugins-page]') !== null);
-  expect(query('[data-testid=settings-machine]').textContent).toContain('DESK-PC (you)');
-  // Every other page opens on the window's machine.
-  remote.store.showSettings('resources');
-  await waitFor(() => query('[data-testid=settings-machine]').textContent?.includes(remote.label) === true);
+  expect(query('[data-testid=settings-machine]').textContent).toContain(`${store.core!.hostname} (you)`);
+  // The picker is the machine's name in the title's scope line.
+  expect(query('[data-testid=settings-scope]').contains(query('[data-testid=settings-machine]'))).toBe(true);
+  expect(query('[data-testid=settings-scope]').textContent).toContain(strings.settings.scopeMachine.split('{machine}')[0]!.trim());
+  expect(document.querySelectorAll('[data-testid=settings-machine]')).toHaveLength(1);
+  // Every other page opens on the window's machine. General is mostly this device's cards:
+  // the line under its title says so once, and its machine card's phrase holds the picker.
+  remote.store.showSettings('general', 'quiet');
+  await waitFor(() => query('[data-testid=settings-machine]').textContent?.includes(remote.label) === true && document.querySelector('[data-testid=setting-mute-agents]') !== null);
   await remote.store.client!.call('settings.set', { muteAgents: true });
   await store.client!.call('settings.set', { muteAgents: true });
   query<HTMLButtonElement>('[data-testid=settings-machine]').click();
@@ -620,5 +727,39 @@ test('the settings bar picks the machine a page changes without moving the windo
   await waitFor(() => store.settings?.muteAgents === false);
   expect(remote.store.settings?.muteAgents).toBe(true);
   // The window never moved: same machine, same conversation, still on the page it showed.
-  expect([workspace.active, remote.store.openThread, remote.store.settingsTab]).toEqual([remote.store, thread, 'resources']);
+  expect([workspace.active, remote.store.openThread, remote.store.settingsTab]).toEqual([remote.store, thread, 'general']);
+  expect(query('[data-testid=settings-scope]').dataset.scope).toBe('device');
+  expect(query('#settings-agent-replies [data-testid=card-scope]').contains(query('[data-testid=settings-machine]'))).toBe(true);
+  expect(document.querySelectorAll('[data-testid=settings-machine]')).toHaveLength(1);
+  // A page of this device says so once under its title, with no picker; the group's Machines page shows its title alone.
+  remote.store.showSettings('appearance');
+  await waitFor(() => remote.store.settingsTab === 'appearance' && document.querySelector('[data-testid=settings-machine]') === null);
+  expect(query('[data-testid=settings-scope]').textContent?.trim()).toBe(strings.settings.scopeDevice);
+  remote.store.showSettings('machines');
+  await waitFor(() => remote.store.settingsTab === 'machines' && document.querySelector('[data-testid=settings-scope]') === null);
+});
+
+test('a page says where it applies once: one line for most of its cards, a tag only on a card that differs', async () => {
+  await mountOnFake('/?fake=1');
+  await waitFor(() => workspace.machines.length === 1 && store.connection === 'ready');
+  const machine = workspace.machines[0]!;
+  // General is mostly this device's switches and two machine cards: the line says "this device" once, each machine card its own.
+  store.showSettings('general');
+  await waitFor(() => document.querySelector('#settings-agent-replies [data-testid=card-scope]') !== null);
+  expect(query('[data-testid=settings-scope]').textContent?.trim()).toBe(strings.settings.scopeDevice);
+  expect([...document.querySelectorAll<HTMLElement>('[data-testid=card-scope]')].map((tag) => tag.dataset.kind)).toEqual(['machine', 'machine']);
+  expect(document.body.textContent?.split(strings.settings.cardDevice)).toHaveLength(1);
+  expect(query('#settings-agent-replies [data-testid=card-scope]').textContent?.trim()).toBe(fill(strings.settings.cardMachine, { machine: machineName(machine) }));
+  // Browser holds this device's settings alone: its card carries no tag, the line under the title says it once.
+  store.showSettings('browser');
+  await waitFor(() => document.querySelector('[data-testid=browser-profiles-card]') !== null && document.querySelector('[data-testid=settings-scope]') !== null);
+  expect(query('[data-testid=settings-scope]').dataset.scope).toBe('device');
+  expect(query('[data-testid=settings-scope]').textContent?.trim()).toBe(strings.settings.scopeDevice);
+  expect(document.querySelectorAll('[data-testid=card-scope]')).toHaveLength(0);
+  // A page of the machine's agent settings: "Agent settings apply on studio", the name plain text with nothing to pick.
+  store.showSettings('voice');
+  await waitFor(() => document.querySelector('[data-testid=settings-scope][data-scope=machine]') !== null);
+  expect(query('[data-testid=settings-scope]').textContent?.trim()).toBe(fill(strings.settings.scopeMachine, { machine: machineName(machine) }));
+  expect(document.querySelector('[data-testid=settings-scope] [data-testid=settings-machine]')).toBeNull();
+  expect(document.querySelectorAll('[data-testid=card-scope]')).toHaveLength(0);
 });

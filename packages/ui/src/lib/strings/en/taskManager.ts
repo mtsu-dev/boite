@@ -12,7 +12,7 @@ export const strings = {
     diskHint: 'Storage reads and writes observed while this view is open. Brief processes can be missed. This is activity, not folder size.',
     tcpHint: 'TCP downloads and uploads observed while this view is open. Brief connections and UDP traffic can be missed.',
     gpuHint: 'How busy this agent keeps the GPU engine it uses most, measured by Windows.',
-    stop: 'Stop processes', stopConfirm: 'Stop every process in this conversation?', stopping: 'Stopping processes',
+    stop: 'Stop processes', stopConfirm: 'Stop every process in this thread?', stopping: 'Stopping processes',
     machines: 'Machines', online: (online: number, total: number) => `${online} of ${total} online`, memoryInUse: 'Memory in use',
     agentsOn: (machine: string) => `Agents on ${machine}`,
     machine: {

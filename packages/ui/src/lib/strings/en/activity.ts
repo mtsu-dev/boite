@@ -3,15 +3,17 @@ export const strings = {
   activity: {
     goal: 'Goal',
     /** An agent's question it did not stop for (`boite ask`), docked above the composer like a goal. */
-    question: 'Question',
-    questionOf: '{index} of {total}',
+    question: 'Needs you',
+    /** The pager of several questions waiting at the top of the composer. */
+    questionOf: 'Question {index} of {total}',
     questionPrev: 'Previous question',
     questionNext: 'Next question',
     questionFold: 'Fold the question',
     questionUnfold: 'Open the question',
-    /** A sub-agent's question or permission, docked in its parent: whose it is, and the way into its conversation. */
+    /** The fold of the question the box answers: folding sets it aside, and the box writes an ordinary message. */
+    questionSetAside: 'Fold the question and write a message',
+    /** A sub-agent's question at the top of its parent's composer: whose it is, and the way into its conversation. */
     subagentAsks: 'Asked by {title}',
-    subagentPermission: '{title} waits for your permission',
     openSubagent: 'Open',
     openSubagentHint: 'Open {title}',
     loop: 'Loop',
@@ -84,6 +86,11 @@ export const strings = {
     error: 'Failed',
     pending: 'Pending',
     in_progress: 'In progress',
-    completed: 'Completed'
+    completed: 'Completed',
+    /** The first line of each Activity card: what kind of decision it is, so its verbs are expected, or what happened (an update). */
+    kind: { permission: 'Permission', question: 'Question', request: 'Contact request', mail: 'Held message', failed: 'Failed', stopped: 'Stopped', done: 'Finished' },
+    /** Under a text cut at four lines in Activity: it unfolds in place, then folds back. */
+    textAll: 'Show all',
+    textLess: 'Show less'
   }
 } as const;

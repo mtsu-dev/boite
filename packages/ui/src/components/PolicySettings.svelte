@@ -92,7 +92,7 @@
     padding: 5px;
     border-radius: var(--radius-sm);
     background: var(--color-accent-soft);
-    color: var(--color-accent);
+    color: var(--color-muted-foreground);
   }
   .title { min-width: 0; }
   .title :global(button) { vertical-align: middle; }
@@ -105,12 +105,12 @@
     background: var(--color-surface-2);
     color: var(--color-muted-foreground);
     font-size: var(--text-xs);
-    font-weight: 500;
+    font-weight: 400;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
   .closed { display: flex; align-items: flex-start; gap: 8px; margin: -6px 0 16px; color: var(--color-foreground); font-size: var(--text-sm); line-height: 1.5; }
-  .closed :global(svg) { flex: none; margin-top: 0.2em; color: var(--color-live); }
+  .closed :global(svg) { flex: none; margin-top: 0.2em; color: var(--color-caution); }
   .hint { color: var(--color-muted-foreground); font-size: var(--text-sm); line-height: 1.5; margin: 0 0 8px; }
   /* Two columns where the card has the room, one on a phone; a group never splits across them. */
   .groups { columns: 2 260px; column-gap: 32px; }
@@ -127,7 +127,7 @@
   }
   .row + .row { border-top: 1px solid var(--color-border); }
   dt { min-width: 0; color: var(--color-foreground); font-size: var(--text-sm); }
-  dd { min-width: 0; margin: 0 0 0 auto; color: var(--color-foreground); font-size: var(--text-sm); font-weight: 500; text-align: right; overflow-wrap: anywhere; }
+  dd { min-width: 0; margin: 0 0 0 auto; color: var(--color-foreground); font-size: var(--text-sm); font-weight: 400; text-align: right; overflow-wrap: anywhere; }
   dd.off { color: var(--color-subtle); font-weight: 400; }
   .source {
     display: flex;

@@ -38,7 +38,7 @@ test('goals and loops accept pasted images in existing threads and drafts on des
       if (kind === 'loop') expect(parts[1]).toHaveLength(0);
       await page.waitFor('Array.from(document.querySelectorAll("[data-testid=image-part]")).some(img => img.naturalWidth === 240)');
       await page.evaluate('Array.from(document.querySelectorAll("[data-testid=image-part]")).at(-1).closest(".bubble").scrollIntoView({block:"start"})');
-      await page.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
+      await page.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
       await page.screenshot(join(import.meta.dir, '.artifacts', `image-${kind}-${phone ? 'phone' : 'desktop'}.png`));
     }
   } finally { await page?.close(); await server.close(); }
@@ -73,7 +73,7 @@ test('pasted images have linked references and a preview that leaves the compose
       await page.waitFor(`document.querySelectorAll('[data-testid=composer-attachment]:not([data-loading])').length === ${title === 'Checkout settings' ? 1 : 2}`);
     }
     const capture = async (name: string) => {
-      await page!.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
+      await page!.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
       await page!.screenshot(join(import.meta.dir, '.artifacts', name));
     };
     expect(await page.evaluate('document.querySelector("[data-testid=composer-input]").value')).toContain('[Image 1]');
@@ -301,7 +301,7 @@ test('a full attachment strip stays one row and folds the rest behind a +N tile'
     const tiles = '[data-testid=composer-attachment], [data-testid=composer-attachments-more], [data-testid=composer-attachments-less]';
     const rows = `new Set(Array.from(document.querySelectorAll('${tiles}'), el => el.offsetTop)).size`;
     const capture = async (name: string) => {
-      await page!.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
+      await page!.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
       await page!.screenshot(join(import.meta.dir, '.artifacts', name));
     };
     await page.waitFor('document.querySelectorAll("[data-testid=composer-attachment]").length === 8');
@@ -415,7 +415,7 @@ test('fifty pasted screenshots fit one turn, shown on desktop and phone', async 
       await page.waitFor('document.querySelectorAll("[data-testid=composer-attachment]").length === 50');
       // Opened, fifty tiles scroll in the strip: the box and the bar stay on screen.
       expect(await page.evaluate<boolean>('document.querySelector("[data-testid=composer-send]").getBoundingClientRect().bottom <= innerHeight')).toBe(true);
-      await page.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
+      await page.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
       await page.screenshot(join(import.meta.dir, '.artifacts', `fifty-images-${phone ? 'phone' : 'desktop'}.png`));
     }
     expect(page.errors()).toEqual([]);

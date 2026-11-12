@@ -12,6 +12,7 @@ import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { AGENT_ENV } from '../../packages/contracts/src/index.ts';
 import { connect } from '../../packages/core/src/client.ts';
 import { BrowserPage } from './lib/cdp.ts';
+import { clickAddProject } from './lib/views.ts';
 import { pairingUrlOf, removeDirectory, startCore, type RunningCore } from './lib/core.ts';
 import { ensureProductionUi } from './lib/prod-ui.ts';
 
@@ -57,7 +58,7 @@ function boite(...args: string[]): { code: number; out: string; err: string } {
 }
 
 async function capture(name: string): Promise<void> {
-  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
   await page.screenshot(join(ARTIFACTS, name));
 }
 
@@ -77,7 +78,7 @@ beforeAll(async () => {
   await page.waitFor(`document.querySelector('[data-testid=status-connection]')?.dataset.state === 'ready'`, 30_000);
 
   // A project and one echo thread, made the way the user makes them.
-  await page.click(testid('add-project'));
+  await clickAddProject(page);
   await page.waitFor(`document.querySelector('[data-testid=project-path]') && !document.querySelector('[data-testid=project-add]').disabled`);
   await page.type(testid('project-path'), projectDir);
   await page.waitFor(`!document.querySelector('${testid('project-add')}').disabled`);

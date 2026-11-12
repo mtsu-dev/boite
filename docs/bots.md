@@ -5,13 +5,15 @@ works on its own, wakes on a schedule or when something happens in its
 projects, and tells you what matters. Teams put a few bots and you in one
 chat.
 
-Experimental: turn it on in Settings, Experiments, Bots. The desktop sidebar
-then shows a Threads and Bots switch at the top, and the phone a Bots tab in
-its bottom bar. Bots you made keep running while the switch is off.
+Experimental: turn it on in Settings, Experiments, Bots. On the desktop, each
+bot then shows as a picture in the app rail, the column down the window's
+left edge, and the phone shows a Bots tab in its bottom bar. Bots you made
+keep running while the switch is off.
 
 ## Create a bot
 
-1. Open Bots and press New bot.
+1. On the desktop, press the `+` under the bots in the app rail and pick a
+   new bot. On a phone, open Bots and press New bot.
 2. Give it a name and, under What it does, its standing instructions, for
    example "every morning, read the new issues and sum them up in five lines".
 3. Its robot, model and projects come filled in; change them if you like. It
@@ -20,16 +22,20 @@ its bottom bar. Bots you made keep running while the switch is off.
 4. Press Create. Its conversation opens: it introduces itself, reads its
    instructions, sets up the routines they call for and tells you its plan.
 
-You talk to a bot in its conversation like in any thread. Its header shows
-what it does right now, what it waits on, or its next routine. The header menu
-holds Settings, Brain, Pause or Resume, and Archive. Archive asks you to type
-the bot's exact name; its conversation stays readable.
+You talk to a bot in its conversation like in any thread. On the desktop,
+clicking its picture in the app rail opens it, with the bot's column in place
+of the thread list. The head of that column shows what it does right now,
+what it waits on, an error, or its next wake. Its more menu holds Edit,
+Pause or Resume, Archive and the rest of the bot's menu, plus Brain and the
+bot engine. Archive asks you to type the bot's exact name; its conversation
+stays readable.
 
 ## Routines and wakes
 
-- Add a routine from the desk's Routines tab, or ask the bot to plan one. A
-  routine runs Once, Every day, Some days, Monthly, Yearly or Repeatedly.
-  Run now starts one at once. A bot holds up to 50 routines.
+- Add a routine with the `+` beside its routines in the info panel, or ask
+  the bot to plan one. A routine runs Once, Every day, Some days, Monthly,
+  Yearly or Repeatedly. Run now starts one at once. A bot holds up to 50
+  routines.
 - A bot also wakes on its own when a turn ends in a thread on its desk, when
   that thread fails, asks you something, waits on a permission or stays
   silent for 20 minutes, and when a pull request there is merged or its
@@ -38,18 +44,20 @@ the bot's exact name; its conversation stays readable.
   notification.
 - After downtime, at most one missed occurrence of a routine runs.
 
-## The desk
+## The info panel
 
-The desk button in the header opens the bot's desk in the right panel: what it
-does now, then three tabs.
+The info button in the window's top bar opens the bot's info panel on the
+right, in one column with no tabs: its picture, name and description with its
+model, machine and age; while it works, a Now card with the step, a timer and
+its last steps; its routines; and its memory, with the note count and the
+first three notes. A warning mark there means a memory update failed; its
+tooltip holds the error.
 
-| Tab | What it shows |
-| --- | --- |
-| Work | The threads it started, was entrusted or follows, with their state, pull request and checks. A Needs you row lets you answer its question in place |
-| Routines | Its scheduled work, with the last run of each |
-| Memory | Its notes, their last update and its Ways of working |
+The threads it started, was entrusted or follows sit in the bot's column,
+with their state, pull request and checks. A Needs you row lets you answer its
+question in place.
 
-Today's turns, wakes and spend sit in a summary on the desk.
+You set its daily budget in the bot's settings.
 
 ## Memory and brain
 
@@ -91,8 +99,8 @@ public rates. A model with no known price that reports no cost adds nothing.
 
 ## Move it to another machine
 
-On the desktop, pick Move to a machine in its row's menu, or use the Machine
-row of its settings.
+On the desktop, pick Move to a machine in the more menu at the head of its
+column, or use the Machine row of its settings.
 Its memory, notes, routines and the end of its conversation go along; the old
 conversation stays archived where it was. A bot at work moves once its turn
 and the threads it started are done. Its `skills/` folder stays behind.
@@ -101,7 +109,7 @@ and the threads it started are done. Its `skills/` folder stays behind.
 
 Experimental: turn it on in Settings, Experiments, Teams. It needs Bots.
 
-1. On the Bots page, press New team above the bots.
+1. Press the `+` under the bots in the app rail and pick a new team.
 2. Give it a name, an optional brief that every member reads, and its members:
    up to 12 bots, at least one of this machine.
 3. Press Create the team. Its chat opens.

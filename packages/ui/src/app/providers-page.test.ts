@@ -10,6 +10,7 @@ test('a provider Boite installs waits in Settings, one tile away, and joins the 
   await waitFor(() => store.draft !== null);
   query<HTMLButtonElement>('[data-testid=composer-picker]').click();
   await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null);
+  await waitFor(() => document.querySelector('[data-testid=picker-more-providers]') !== null);
 
   // Nothing is on the machine yet, so the rail leaves it out and its last
   // tile goes where it is installed and signed into.
@@ -26,6 +27,7 @@ test('a provider Boite installs waits in Settings, one tile away, and joins the 
   await waitFor(() => document.querySelector('[data-testid=composer-picker]') !== null);
   query<HTMLButtonElement>('[data-testid=composer-picker]').click();
   await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null);
+  await waitFor(() => document.querySelector('[data-testid=picker-more-providers]') !== null);
   expect(document.querySelector('[data-testid=composer-picker-menu] [data-provider=antigravity]')).toBeNull();
 
   // Signed in, it is one tile like any other, in the open rail too.
@@ -93,6 +95,6 @@ test('Providers keeps installation details and updates the managed copy that run
   expect(document.querySelector('[data-testid=install-update]')).toBeNull();
 
   // The store is one module-level singleton: leave the next test on the chat.
-  query<HTMLButtonElement>('[data-testid=settings-back]').click();
+  query<HTMLButtonElement>('[data-testid=view-threads]').click();
   await waitFor(() => store.page === 'chat');
 });

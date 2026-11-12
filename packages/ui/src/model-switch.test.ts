@@ -52,6 +52,8 @@ test('the existing thread picker switches providers and back without losing the 
   await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') === null);
   click('[data-testid=composer-picker]');
   await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null);
+  // The popover is a chunk of its own: its rail is there once it has loaded.
+  await waitFor(() => document.querySelector(`[data-testid=composer-picker-menu] [data-provider="${original.providerId}"]`) !== null);
   click(`[data-testid=composer-picker-menu] [data-provider="${original.providerId}"]`);
   await waitFor(() => document.querySelector(`[data-model="${original.model}"]`) !== null);
   click(`[data-model="${original.model}"]`);

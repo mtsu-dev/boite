@@ -5,9 +5,11 @@
   import { isAgentPicture } from '@boite/contracts';
   import { avatarText, robotColor, robotOf, seededRobot, tintOf } from '../../lib/robots';
   import { agentPictures } from '../../lib/agent-pictures.svelte';
-  import { threadTone } from '../../lib/thread-state';
+  import { threadTone } from '../../lib/status-tone';
+  import { avatarLit, moodFacts } from '../../lib/avatar-lit';
   import StatusMark from '../StatusMark.svelte';
-  import Deferred, { parts } from '../Deferred.svelte';
+  import Deferred from '../Deferred.svelte';
+  import { parts } from '../../lib/deferred-parts';
   import type { RobotState } from './RobotFace.svelte';
 
   /**
@@ -17,15 +19,24 @@
    * target. An imported image leaves the disc empty while it
    * loads, and draws the robot its id picks when no machine holds it.
    *
-   * `ring` draws a ring around the disc that says the agent's `mood`: an arc
-   * of the accent turning while it works, the waiting colour pulsing while it
+   * `ring` draws a ring around the disc that says the agent's `mood`: a still
+   * accent ring while it works in a list, as a thread row's mark (colour is kept
+   * for asks and failures), an arc of the accent turning where
+   * it is the open bot (`live`), the one place the eye follows its work; the waiting colour pulsing while it
    * needs the user, danger after a failure, a full accent ring over answers not
    * read, a dashed one while it is queued or asleep, a hairline in the
    * robot's own colour at rest. The robot's face moves with it. Without a ring
    * the corner dot says whether it works or waits, for a picture too small to
    * read a face, and for text avatars.
+   *
+   * `squircle` rounds the corners instead of drawing a disc, about a third of
+   * the side: the selected bot's picture in its column and on its desk.
+   *
+   * The picture is grey until `lit` (`lib/avatar-lit.ts`: the open bot, one
+   * that waits on the owner, failed or has news, which its own mood also
+   * says) or the pointer is over the control that holds it.
    */
-  let { kind, id, name, avatar = '', members = [], status = 'idle', mood, size = 40, ring = false }: {
+  let { kind, id, name, avatar = '', members = [], status = 'idle', mood, size = 40, ring = false, squircle = false, live = false, lit = false }: {
     kind: 'profile' | 'group' | 'team' | 'mission';
     id: string;
     name: string;
@@ -36,6 +47,9 @@
     mood?: AgentMood;
     size?: number;
     ring?: boolean;
+    squircle?: boolean;
+    live?: boolean;
+    lit?: boolean;
   } = $props();
 
   const grouped = $derived(kind === 'group' || kind === 'team');
@@ -55,6 +69,7 @@
     return agentPictures.missing[own.trim()] !== undefined && !agentPictures.url(own) ? seededRobot(seed) : null;
   }
   const standing = $derived<AgentMood>(mood ?? (status === 'running' ? 'working' : status === 'waiting' ? 'waiting' : 'idle'));
+  const colored = $derived(lit || avatarLit(moodFacts(standing)));
   const face = $derived<RobotState>(size < 24 ? 'still' : standing === 'working' || standing === 'waiting' || standing === 'error' || standing === 'asleep' ? standing : 'idle');
   /** The ring's resting colour: the robot's body, else the disc's tint. */
   const ringTint = $derived(robot ? robotColor(robot) : tintOf(id));
@@ -68,11 +83,11 @@
   {#if image}<img class="agent-picture" src={image} alt="" draggable="false" />{:else if own}<Deferred part={parts.RobotFace} quiet>{#snippet children(RobotFace)}<RobotFace robot={own} {state} />{/snippet}</Deferred>{:else if !isAgentPicture(member.avatar)}<span class="ui-label">{avatarText(member.name, member.avatar)}</span>{/if}
 {/snippet}
 
-<span class="agent-avatar" class:robot={!!robot} class:pictured data-kind={kind} data-ring={ring ? standing : null} style:--size="{size}px" style:--tint={kind === 'mission' ? null : tintOf(id)} style:--ring-tint={ring ? ringTint : null} aria-hidden="true">
+<span class="agent-avatar" class:robot={!!robot} class:pictured class:squircle style:--avatar-radius={squircle ? `${Math.round(size * 0.32)}px` : null} data-kind={kind} data-ring={ring ? standing : null} data-live={live || null} data-lit={colored || null} style:--size="{size}px" style:--tint={kind === 'mission' ? null : tintOf(id)} style:--ring-tint={ring ? ringTint : null} aria-hidden="true">
   {#if ring}
     <svg class="avatar-ring" aria-hidden="true">
       <circle class="track" cx="50%" cy="50%" r={radius} pathLength="100" />
-      {#if standing === 'working'}<circle class="arc" cx="50%" cy="50%" r={radius} pathLength="100" />{/if}
+      {#if standing === 'working' && live}<circle class="arc" cx="50%" cy="50%" r={radius} pathLength="100" />{/if}
     </svg>
   {/if}
   {#if grouped && members.length >= 2}
@@ -98,12 +113,35 @@
 
 <style>
   /* Initials on a disc tinted by the id, a robot cropped to the same disc, two members stacked for a group. */
-  .agent-avatar { --size: 40px; --tint: var(--series-other); position: relative; width: var(--size); height: var(--size); flex: none; display: grid; place-items: center; border-radius: 50%; background: color-mix(in srgb, var(--tint) 28%, var(--color-surface-2)); color: color-mix(in srgb, var(--tint) 40%, var(--color-foreground)); font-size: calc(var(--size) * 0.38); font-weight: 600; line-height: 1; user-select: none; }
-  .agent-avatar.robot, .agent-avatar:has(.agent-avatar-stack) { background: none; }
+  .agent-avatar { --size: 40px; --tint: var(--series-other); position: relative; width: var(--size); height: var(--size); flex: none; display: grid; place-items: center; border-radius: 50%; --disc: color-mix(in srgb, var(--tint) 28%, var(--color-surface-2)); background: var(--disc); color: color-mix(in srgb, var(--tint) 40%, var(--color-foreground)); font-size: calc(var(--size) * 0.38); font-weight: 600; line-height: 1; user-select: none; }
+  .agent-avatar.robot, .agent-avatar:has(.agent-avatar-stack) { --disc: none; }
+  /* Grey at rest, its colours when lit or under the pointer (the control that holds it, or the keyboard's row). */
+  .agent-avatar { --rest: var(--avatar-rest); }
+  .agent-avatar[data-lit] { --rest: none; }
+  @media (hover: hover) {
+    :global(:is(button, a, label, [role='button'], [role='option'], [role='menuitem'], [role='link']):hover:not(:disabled)) .agent-avatar { --rest: none; }
+  }
+  :global(:is(button, a, [role='button'], [role='link']):focus-visible) .agent-avatar, :global([role='option'][aria-selected='true']) .agent-avatar { --rest: none; }
+  /* A filter greys every descendant: a ringed picture greys its disc (drawn under it) and its content, never the
+     ring, whose hue says the mood. The content keeps the opacity a sleeping robot fades with. */
+  .agent-avatar:not([data-ring]), .agent-avatar[data-ring]::before { filter: var(--rest); transition: filter var(--dur-2) var(--ease-out-quint); }
+  .agent-avatar[data-ring] > :global(:not(.avatar-ring)) { filter: var(--rest); transition: filter var(--dur-2) var(--ease-out-quint), opacity var(--dur-3) var(--ease-out-quint); }
+  .agent-avatar[data-ring] { background: none; isolation: isolate; }
+  .agent-avatar[data-ring]::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--disc); }
+  @media (prefers-reduced-motion: reduce) {
+    .agent-avatar:not([data-ring]), .agent-avatar[data-ring]::before { transition: none; }
+    .agent-avatar[data-ring] > :global(:not(.avatar-ring)) { transition: opacity var(--dur-3) var(--ease-out-quint); }
+  }
+  :global(html[data-motion='reduced']) .agent-avatar:not([data-ring]), :global(html[data-motion='reduced']) .agent-avatar[data-ring]::before { transition: none; }
+  :global(html[data-motion='reduced']) .agent-avatar[data-ring] > :global(:not(.avatar-ring)) { transition: opacity var(--dur-3) var(--ease-out-quint); }
   .agent-avatar :global(svg.robot) { border-radius: 50%; overflow: hidden; transition: opacity var(--dur-3) var(--ease-out-quint); }
   /* An imported image fills the disc, cropped to it, whatever its shape. */
   .agent-picture { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; transition: opacity var(--dur-3) var(--ease-out-quint); }
-  .agent-avatar[data-kind='mission'] { border-radius: var(--radius-md); background: var(--color-surface-3); color: var(--color-muted-foreground); }
+  /* A squircle crops the robot or the picture to its corners, on the raised fill a robot leaves around its face. */
+  .agent-avatar.squircle { border-radius: var(--avatar-radius); overflow: hidden; }
+  .agent-avatar.squircle.robot { --disc: var(--color-surface-3); }
+  .agent-avatar.squircle :global(svg.robot), .agent-avatar.squircle .agent-picture { border-radius: var(--avatar-radius); }
+  .agent-avatar[data-kind='mission'] { border-radius: var(--radius-md); --disc: var(--color-surface-3); color: var(--color-muted-foreground); }
   .agent-avatar-stack { position: absolute; width: 62%; height: 62%; display: grid; place-items: center; border-radius: 50%; background: color-mix(in srgb, var(--tint) 28%, var(--color-surface-2)); color: color-mix(in srgb, var(--tint) 40%, var(--color-foreground)); font-size: calc(var(--size) * 0.26); box-shadow: 0 0 0 2px var(--ring, var(--color-surface)); }
   .agent-avatar-stack.robot { background: none; }
   .agent-avatar-stack[data-slot='0'] { top: 0; left: 0; }
@@ -126,14 +164,15 @@
   /* Every track keeps the 1.5 px hairline: a whole-pixel width snaps off-centre at fractional zoom (tests/e2e/avatar-rings.test.ts). */
   .avatar-ring circle { fill: none; stroke-width: 1.5px; transition: stroke var(--dur-3) var(--ease-out-quint); }
   .track { stroke: color-mix(in srgb, var(--ring-tint) 50%, transparent); }
-  [data-ring='working'] .track { stroke: color-mix(in srgb, var(--color-accent) 28%, transparent); }
-  /* At work: an arc of the accent turns around the disc. */
+  /* At work in a list: a still accent ring, the thread rows' work mark (StatusMark.svelte). The open bot's turns an accent spinner around a quiet track. */
+  [data-ring='working'] .track { stroke: var(--color-accent); }
+  [data-ring='working'][data-live] .track { stroke: var(--color-edge); }
   .avatar-ring .arc { stroke: var(--color-accent); stroke-linecap: round; stroke-width: 2.5px; stroke-dasharray: 30 70; transform-box: fill-box; transform-origin: center; animation: spin 1.2s steps(72) infinite var(--loops); }
-  [data-ring='queued'] .track { stroke: var(--color-accent); stroke-dasharray: 4 6; opacity: 0.7; }
+  [data-ring='queued'] .track { stroke: var(--color-muted-foreground); stroke-dasharray: 4 6; opacity: 0.7; }
   /* Needs the user: the waiting colour, pulsing. */
   [data-ring='waiting'] .track { stroke: var(--color-live); animation: pulse 1.6s var(--loop-ease-in-out-48) infinite var(--loops); }
   [data-ring='error'] .track { stroke: var(--color-danger); }
-  [data-ring='unread'] .track { stroke: var(--color-accent); }
+  [data-ring='unread'] .track { stroke: var(--color-foreground); }
   [data-ring='asleep'] .track { stroke: var(--color-edge); stroke-dasharray: 2 5; stroke-linecap: round; }
   [data-ring='asleep'] :is(:global(svg.robot), .agent-picture) { opacity: 0.7; }
   @media (prefers-reduced-motion: reduce) { .agent-avatar .avatar-ring :is(.arc, .track) { animation: none; } }

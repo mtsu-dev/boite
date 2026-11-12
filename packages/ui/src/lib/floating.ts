@@ -1,6 +1,20 @@
 import { mobileOverlay } from './mobile-history';
 import { strings } from './strings';
 import type { MenuFit } from './menu-fit';
+/**
+ * The menu's height to the fraction, without its transform (every box is border-box, app.css).
+ * offsetHeight rounds: rows that add up to a half pixel, as Windows fonts give, left a sheet half
+ * a pixel short of the bottom edge and a menu opened upward half a pixel off its chip.
+ */
+function usedHeight(node: HTMLElement): number {
+  const style = getComputedStyle(node);
+  const height = Number.parseFloat(style.height);
+  if (!height) return node.offsetHeight;
+  if (style.boxSizing === 'border-box') return height;
+  const px = (name: string) => Number.parseFloat(style.getPropertyValue(name)) || 0;
+  return height + px('padding-top') + px('padding-bottom') + px('border-top-width') + px('border-bottom-width');
+}
+
 /** Position desktop popovers at their anchor and phone menus above the keyboard. */
 export function floating(node: HTMLElement, options: { anchor: () => HTMLElement | null; side?: 'right'; placement?: 'top' | 'bottom'; align?: 'start' | 'end'; sheet?: boolean; matchWidth?: boolean; cap?: number; fit?: (anchor: DOMRect, height: number, topInset: number, cap: number) => MenuFit; dismiss?: () => void }) {
   let backdrop: HTMLButtonElement | null = null;
@@ -29,9 +43,18 @@ export function floating(node: HTMLElement, options: { anchor: () => HTMLElement
       node.hidePopover?.();
       node.showPopover?.();
       focused?.focus({ preventScroll: true });
-      backdropMotion = new MutationObserver(() => backdrop?.classList.toggle('closing', node.classList.contains('closing')));
+      const dismiss = options.dismiss;
+      let held = true;
+      backdropMotion = new MutationObserver(() => {
+        const closing = node.classList.contains('closing');
+        backdrop?.classList.toggle('closing', closing);
+        // A sheet playing its exit gives Back to what lies under it at once: a Back during that exit closes the
+        // panel or screen below, not the sheet already leaving. Reopened inside the exit, it takes an entry again.
+        if (closing && held) { held = false; closeHistory(); closeHistory = () => {}; }
+        else if (!closing && !held) { held = true; closeHistory = mobileOverlay(dismiss); }
+      });
       backdropMotion.observe(node, { attributes: true, attributeFilter: ['class'] });
-      closeHistory = mobileOverlay(options.dismiss);
+      closeHistory = mobileOverlay(dismiss);
     } else {
       closeHistory();
       closeHistory = () => {};
@@ -51,6 +74,9 @@ export function floating(node: HTMLElement, options: { anchor: () => HTMLElement
   node.style.position = 'fixed';
   node.style.margin = '0';
   node.style.inset = 'auto';
+  // Placement is set, never animated: a stylesheet's `transition: all` (reduced
+  // motion's 0.01ms included) would let the first measure read the old padding.
+  node.style.transitionProperty = 'none';
   node.showPopover?.();
   const gap = 6;
   const margin = 12;
@@ -63,11 +89,14 @@ export function floating(node: HTMLElement, options: { anchor: () => HTMLElement
     const viewport = window.visualViewport;
     const height = viewport?.height ?? window.innerHeight;
     const offset = viewport?.offsetTop ?? 0;
+    // A phone sheet docks to the bottom edge, full width, over the tab bar: a
+    // margin under it let the tab labels show through.
     if (sheet) {
-      node.style.width = `${width - margin * 2}px`;
-      node.style.maxHeight = `${Math.max(0, height - margin * 2) * .75}px`;
-      node.style.top = `${Math.max(offset + margin, offset + height - node.offsetHeight - margin)}px`;
-      node.style.left = `${margin}px`;
+      node.style.width = `${width}px`;
+      // Whole pixels: offsetHeight rounds, and a fractional cap left the sheet short of the bottom edge.
+      node.style.maxHeight = `${Math.floor(Math.max(0, height - margin * 2) * .85)}px`;
+      node.style.top = `${Math.max(offset + margin, offset + height - usedHeight(node))}px`;
+      node.style.left = '0px';
       node.style.transformOrigin = 'bottom center';
       return;
     }
@@ -88,7 +117,7 @@ export function floating(node: HTMLElement, options: { anchor: () => HTMLElement
       const fit = options.fit?.(box, height, document.querySelector('.titlebar')?.getBoundingClientRect().bottom ?? 0, cap);
       const up = fit ? !fit.below : options.placement === 'top' ? above >= ideal || above > below : below < ideal && above > below;
       node.style.maxHeight = `${fit?.maxHeight ?? Math.max(0, Math.min(cap, up ? above : below))}px`;
-      top = up ? box.top - gap - node.offsetHeight : box.bottom + gap;
+      top = up ? box.top - gap - usedHeight(node) : box.bottom + gap;
       left = options.align === 'end' ? box.right - node.offsetWidth : box.left;
       node.dataset.direction = up ? 'up' : 'down';
       node.style.transformOrigin = up ? 'bottom left' : 'top left';
@@ -97,7 +126,13 @@ export function floating(node: HTMLElement, options: { anchor: () => HTMLElement
     node.style.left = `${Math.max(margin, Math.min(left, width - node.offsetWidth - margin))}px`;
   }
   const observer = new ResizeObserver(place);
-  observer.observe(node);
+  // The border box: a sheet's padding changes its height without touching its content box.
+  observer.observe(node, { box: 'border-box' });
+  // Rows or a title added after the first place (Menu.svelte titles a sheet once it sees it is one) move the
+  // sheet in the same task: the size observer waits for the next frame, and a read before it saw the sheet
+  // standing on its old height, past the bottom edge.
+  const content = new MutationObserver(place);
+  content.observe(node, { childList: true, subtree: true, characterData: true });
   const anchor = options.anchor();
   if (anchor) observer.observe(anchor);
   anchor?.addEventListener('animationend', place);
@@ -106,5 +141,5 @@ export function floating(node: HTMLElement, options: { anchor: () => HTMLElement
   window.addEventListener('scroll', place, true);
   window.visualViewport?.addEventListener('resize', place);
   window.visualViewport?.addEventListener('scroll', place);
-  return { destroy() { setSheet(false); observer.disconnect(); anchor?.removeEventListener('animationend', place); window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true); window.visualViewport?.removeEventListener('resize', place); window.visualViewport?.removeEventListener('scroll', place); } };
+  return { destroy() { setSheet(false); observer.disconnect(); content.disconnect(); anchor?.removeEventListener('animationend', place); window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true); window.visualViewport?.removeEventListener('resize', place); window.visualViewport?.removeEventListener('scroll', place); } };
 }

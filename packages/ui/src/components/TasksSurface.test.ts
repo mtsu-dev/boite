@@ -149,3 +149,28 @@ test('a reviewed goal\'s checklist lists what is left under the goal, folds drop
     document.body.innerHTML = '';
   }
 });
+
+test('the board\'s head counts the project todos by state and follows a todo that moves', async () => {
+  const client = new FakeClient({ delayMs: 0 });
+  const store = new Store();
+  store.attach(client);
+  await store.connect();
+  await store.open('t-trace');
+  const component = mount(TasksSurface, { target: document.body, props: { store } });
+  const head = () => document.querySelector('[data-testid=tasks-head]')?.textContent;
+  try {
+    await settle();
+    const before = head();
+    await store.addTodo('t-trace', 'Count me in the head');
+    await settle();
+    expect(head()).not.toBe(before);
+    expect(head()).toMatch(/\d+ to do/);
+    const todo = store.todos[store.openThread!.projectId!]!.find(item => item.text === 'Count me in the head')!;
+    await store.updateTodo('t-trace', todo.id, { status: 'done' });
+    await settle();
+    expect(head()).toMatch(/\d+ done/);
+  } finally {
+    await unmount(component);
+    store.detach(); client.close(); document.body.innerHTML = ''; window.localStorage.clear();
+  }
+});

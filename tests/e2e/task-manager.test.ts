@@ -27,7 +27,8 @@ test('the real task manager reads owned processes on desktop and a paired phone'
     console.log(JSON.stringify({ scenario: 'Task manager', renderer }));
     await desktop.waitFor(`document.querySelector('[data-testid=status-connection]')?.dataset.state === 'ready'`);
     await desktop.click('[data-testid=nav-settings]');
-    await desktop.click('[data-testid=settings-tab-task-manager]');
+    // The task manager is the last section of Diagnostics.
+    await desktop.click('[data-testid=settings-tab-diagnostics]');
     const selector = `[data-testid=task-manager-agent][data-thread-id="${threadId}"]`;
     await desktop.waitFor(`document.querySelector('${selector}')`);
     if (process.platform === 'linux') {
@@ -53,16 +54,18 @@ test('the real task manager reads owned processes on desktop and a paired phone'
     await desktop.waitFor(`!document.querySelector('[data-testid=task-manager]') && document.querySelector('[data-testid=composer-input]')`);
     expect(await desktop.evaluate(`document.querySelector('[data-testid=thread-title]')?.textContent`)).toBe(history.title);
     await desktop.click('[data-testid=nav-settings]');
-    await desktop.click('[data-testid=settings-tab-task-manager]');
+    await desktop.click('[data-testid=settings-tab-diagnostics]');
     await desktop.waitFor(`document.querySelector('${selector}')`);
 
     const { url } = await owner.call('pairing.grant', {});
     phone = await BrowserPage.launch({ url, windowSize: { width: 390, height: 844 } });
     await phone.waitFor(`document.querySelector('[data-testid=status-connection]')?.dataset.state === 'ready'`);
-    // The task manager is the desktop's: a paired phone's settings list keeps to its essentials.
+    // A paired phone may not read the logs: its settings list has no Diagnostics,
+    // and the task manager it may read stands alone in their place.
     await mobileAction(phone, 'mobile-settings');
     await phone.waitFor(`document.querySelector('[data-testid=mobile-settings-home]')`);
-    expect(await phone.evaluate(`document.querySelector('[data-testid=settings-tab-task-manager]') === null`)).toBe(true);
+    expect(await phone.evaluate(`document.querySelector('[data-testid=settings-tab-diagnostics]') === null`)).toBe(true);
+    expect(await phone.evaluate(`document.querySelector('[data-testid=mobile-settings-home] [data-testid=settings-tab-task-manager]') !== null`)).toBe(true);
     // A card in a conversation still leads the phone there, the way an agent sends it: it asks inside a turn.
     await owner.call('turns.start', { threadId, prompt: 'Which processes does this conversation run?' });
     const finished = Date.now() + 15_000;

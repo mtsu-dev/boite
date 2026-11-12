@@ -31,15 +31,15 @@
 
 <!-- Rows of General's App card, not a card of their own: two switches do not need a frame. -->
 <label for="{uid}-close-to-tray" class="switch-row" data-testid="shell-settings">
-  <span class="text ui-label-box"><span class="ui-label" id="{uid}-close-to-tray-name">{strings.settings.closeToTray}</span><InfoTip topic={strings.settings.closeToTray} text={strings.settings.closeToTrayHint} /></span>
-  <input id="{uid}-close-to-tray" aria-labelledby="{uid}-close-to-tray-name" type="checkbox" role="switch" data-testid="close-to-tray" checked={tray.state.enabled} disabled={!tray.state.ready} onchange={(event) => void tray.update(event.currentTarget.checked, event.currentTarget)} />
+  <span class="text"><span class="ui-label" id="{uid}-close-to-tray-name">{strings.settings.closeToTray}</span><span class="hint" id="{uid}-close-to-tray-effect">{strings.settings.closeToTrayHint}</span></span>
+  <input id="{uid}-close-to-tray" aria-labelledby="{uid}-close-to-tray-name" aria-describedby="{uid}-close-to-tray-effect" type="checkbox" role="switch" data-testid="close-to-tray" checked={tray.state.enabled} disabled={!tray.state.ready} onchange={(event) => void tray.update(event.currentTarget.checked, event.currentTarget)} />
 </label>
 {#if tray.state.error}<p class="error" role="alert">{tray.state.error}</p>{/if}
 <label for="{uid}-launch-at-login" class="switch-row">
-  <span class="text ui-label-box"><span class="ui-label" id="{uid}-launch-at-login-name">{strings.settings.launchAtLogin}</span><InfoTip topic={strings.settings.launchAtLogin} text={strings.settings.launchAtLoginHint} /></span>
-  <input id="{uid}-launch-at-login" aria-labelledby="{uid}-launch-at-login-name" type="checkbox" role="switch" data-testid="launch-at-login" checked={login.state.enabled} disabled={!login.state.ready} onchange={(event) => void login.update(event.currentTarget.checked, event.currentTarget)} />
+  <span class="text"><span class="ui-label-box"><span class="ui-label" id="{uid}-launch-at-login-name">{strings.settings.launchAtLogin}</span><InfoTip topic={strings.settings.launchAtLogin} text={strings.settings.launchAtLoginHint} /></span><span class="hint" id="{uid}-launch-at-login-effect">{strings.settings.effects.launchAtLogin}</span></span>
+  <input id="{uid}-launch-at-login" aria-labelledby="{uid}-launch-at-login-name" aria-describedby="{uid}-launch-at-login-effect" type="checkbox" role="switch" data-testid="launch-at-login" checked={login.state.enabled} disabled={!login.state.ready} onchange={(event) => void login.update(event.currentTarget.checked, event.currentTarget)} />
 </label>
 {#if login.state.error}<p class="error" role="alert">{login.state.error}</p>{/if}
 <style>
-  .error { margin: 0 0 12px; color: var(--color-danger); font-size: var(--text-sm); }
+  .error { margin: 0 0 12px; }
 </style>

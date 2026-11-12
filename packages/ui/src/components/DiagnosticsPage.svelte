@@ -12,6 +12,7 @@
   import { bytes, count, exactTime, millis, relativeTime, time } from '../lib/format';
   import { errorText, olderCore } from '../lib/errors';
   import { fill, strings } from '../lib/strings';
+  import { activeLocale } from '../lib/i18n.svelte';
   import type { Store } from '../lib/store.svelte';
 
   /**
@@ -241,6 +242,10 @@
 
   let environment = $derived(summary?.environment ?? null);
   let errorsFirst = $derived(summary ? summary.problems.slice().sort((a, b) => (b.level === 'error' ? 1 : 0) - (a.level === 'error' ? 1 : 0) || b.lastAt - a.lastAt) : []);
+  /** A level's word by its count: "1 error", "2 errors", in the app's language. */
+  function levelWord(level: CoreLogLevel, value: number): string {
+    return new Intl.PluralRules(activeLocale()).select(value) === 'one' ? s.levelOne[level] : s.levels[level];
+  }
 </script>
 
 {#if store.owner}
@@ -254,7 +259,7 @@
   {#if failure}<p class="hint alert" role="alert">{failure}</p>{/if}
 
   <section class="card" id="settings-diagnostics-status" data-testid="diagnostics-status">
-    <h2>{s.status}</h2>
+    <h2 class="ui-label-box"><span class="ui-label">{s.status}</span><InfoTip gather topic={s.status} text="" testid="section-info" /></h2>
     {#if environment && summary}
       <dl class="facts">
         <div><dt>{s.version}</dt><dd>{environment.version} · {environment.channel}</dd></div>
@@ -264,7 +269,7 @@
           <dt>{s.lastDay}</dt>
           <dd class="counts" data-testid="diagnostics-counts">
             {#each [...LOG_LEVELS].reverse() as level (level)}
-              <span class="count" data-level={level}><strong>{count(summary.counts[level])}</strong> {s.levels[level]}</span>
+              <span class="count" data-level={level}><strong>{count(summary.counts[level])}</strong> {levelWord(level, summary.counts[level])}</span>
             {/each}
           </dd>
         </div>
@@ -399,8 +404,8 @@
 
   <section class="card" id="settings-diagnostics-agents">
     <label for="{uid}-agents" class="switch-row">
-      <span class="text ui-label-box"><span class="ui-label" id="{uid}-agents-name">{s.agentAccess}</span><InfoTip topic={s.agentAccess} text={s.agentAccessHint} /></span>
-      <input id="{uid}-agents" aria-labelledby="{uid}-agents-name" type="checkbox" role="switch" data-testid="setting-agent-log-access"
+      <span class="text"><span class="ui-label" id="{uid}-agents-name">{s.agentAccess}</span><span class="hint" id="{uid}-agents-effect">{strings.settings.effects.agentAccess}</span></span>
+      <input id="{uid}-agents" aria-labelledby="{uid}-agents-name" aria-describedby="{uid}-agents-effect" type="checkbox" role="switch" data-testid="setting-agent-log-access"
         checked={store.settings?.agentLogAccess ?? true} disabled={!store.settings} onchange={event => void toggleAgents(event.currentTarget)} />
     </label>
   </section>
@@ -411,11 +416,14 @@
 
 <style>
   .alert { color: var(--color-danger); max-width: var(--settings-width); margin-bottom: 16px; overflow-wrap: anywhere; }
-  .facts { display: grid; gap: 12px; margin: 0; }
-  .facts > div { display: grid; grid-template-columns: 160px 1fr; gap: 12px; align-items: baseline; }
+  /* The settings row grammar: the name at the start, its value at the end, a hairline between rows. */
+  .facts { display: grid; margin: 0; }
+  .facts > div { display: grid; grid-template-columns: 160px 1fr; gap: 12px; align-items: baseline; padding: 7px 0; }
+  .facts > div + div { border-top: 1px solid var(--color-border); }
   dt { color: var(--color-muted-foreground); font-size: var(--text-sm); }
   dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
-  .counts { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+  .facts dd { text-align: end; }
+  .counts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px 16px; }
   .count { color: var(--color-muted-foreground); font-size: var(--text-sm); }
   .count strong { color: var(--color-foreground); font-weight: 600; font-variant-numeric: tabular-nums; }
   .count[data-level='error'] strong { color: var(--color-danger); }
@@ -441,7 +449,9 @@
   .muted { color: var(--color-muted-foreground); font-size: var(--text-sm); }
   .link { height: auto; padding: 0; gap: 6px; color: var(--color-foreground); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--color-edge); }
 
-  .level { flex: none; display: inline-block; min-width: 44px; font-family: var(--font-mono); font-size: var(--text-xs); text-transform: uppercase; color: var(--color-muted-foreground); }
+  /* A level is a word, in sentence case like every label (no small capitals). */
+  .level { flex: none; display: inline-block; min-width: 44px; font-size: var(--text-xs); color: var(--color-muted-foreground); }
+  .level::first-letter { text-transform: uppercase; }
   .level[data-level='error'] { color: var(--color-danger); font-weight: 600; }
   .level[data-level='warn'] { color: color-mix(in srgb, var(--color-danger) 55%, var(--color-muted-foreground)); font-weight: 600; }
   .level[data-level='debug'] { color: var(--color-subtle); }
@@ -475,6 +485,8 @@
 
   @media (max-width: 720px) {
     .facts > div, .detail > div { grid-template-columns: 1fr; gap: 2px; }
+    .facts dd { text-align: start; }
+    .counts { justify-content: flex-start; }
     .problem { display: grid; grid-template-columns: auto auto minmax(0, 1fr); grid-template-areas: 'chevron level name' '. . meta'; column-gap: 8px; row-gap: 2px; }
     .problem > :global(svg) { grid-area: chevron; }
     .problem .level { grid-area: level; min-width: 0; }

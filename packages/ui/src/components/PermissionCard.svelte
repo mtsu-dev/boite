@@ -1,10 +1,18 @@
 <script lang="ts">
-  import { ShieldCheck, ShieldQuestion, ShieldX } from '@lucide/svelte';
+  import { Bot, FilePen, FileText, Globe, Search, ShieldCheck, ShieldX, SquareTerminal, Wrench } from '@lucide/svelte';
   import type { PermissionRequest } from '@boite/contracts';
   import { json } from '../lib/format';
   import { strings } from '../lib/strings';
-  import { describeTool, permissionSentence } from '../lib/tool-summary';
-  import Deferred, { parts } from './Deferred.svelte';
+  import { decisionTitle } from '../lib/decision-title';
+  import { describeTool } from '../lib/tool-summary';
+  import { watchDecision } from '../lib/decision-tail.svelte';
+  import CodeText from './CodeText.svelte';
+  import CommandWords from './CommandWords.svelte';
+  import Deferred from './Deferred.svelte';
+  import { parts } from '../lib/deferred-parts';
+  import InfoTip from './InfoTip.svelte';
+  import DecisionActions from './DecisionActions.svelte';
+  import { arrive } from '../lib/arrival';
 
   let {
     toolName,
@@ -21,7 +29,7 @@
 
   /**
    * The decision out to the core: both buttons stay down until it lands, so a
-   * second tap sends nothing and the card shows its answer was taken.
+   * second tap sends nothing and the row shows its answer was taken.
    */
   let sending = $state<'allow' | 'deny' | null>(null);
 
@@ -31,167 +39,133 @@
     if ((await answer(choice)) === false) sending = null;
   }
 
+  const ICONS = { command: SquareTerminal, read: FileText, edit: FilePen, write: FilePen, search: Search, fetch: Globe, web: Globe, agent: Bot, other: Wrench };
+
   /**
-   * One sentence says what the agent wants to do; under it, the thing itself
-   * (the command, the change as a diff, the address) and the agent's reason.
-   * The raw input stays one click away for whoever wants it. The state reads
-   * from the shield: a question while it waits, a check or a cross once answered.
+   * While it waits, the ask is the command row of the call that asked, in
+   * the timeline where the call stands: the command itself in mono (or the
+   * sentence for a change, its diff under it), the agent's reason in one
+   * muted line, "Waiting for approval" by the live dot, and Deny then Allow
+   * once at the row's end (under it on a phone). The raw input stays behind
+   * an "i". Once answered, one quiet line: the verdict, then what it was about.
    */
   let described = $derived(describeTool(toolName, request?.input ?? null));
-  let sentence = $derived(permissionSentence(toolName, request?.input ?? null));
+  let sentence = $derived(decisionTitle(toolName, request?.input ?? null));
+  let Family = $derived(ICONS[described.family]);
   let subjectBlock = $derived(
     described.change === null && (described.family === 'command' || described.family === 'fetch' || described.family === 'search' || described.family === 'web')
       ? described.subject
       : ''
   );
+  /** The agent's reason, when it says more than the subject shown. */
+  let why = $derived(request?.description && request.description !== subjectBlock ? request.description : '');
   // A change is approved on what it shows: Allow waits for the diff's chunk, which says
   // it is loading or offers a retry meanwhile (Deferred.svelte). Deny never waits.
   let previewMissing = $derived(described.change !== null && parts.DiffView.current === undefined);
+
+  /** With the row itself focused, Enter allows and Escape denies, as the buttons' titles say. */
+  function keys(node: HTMLElement): () => void {
+    const onkey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); void choose('deny'); }
+      else if (event.key === 'Enter' && event.target === node) { event.preventDefault(); void choose('allow'); }
+    };
+    node.addEventListener('keydown', onkey);
+    return () => node.removeEventListener('keydown', onkey);
+  }
 </script>
 
-<div
-  class="permission"
-  class:resolved={decision !== null}
-  data-testid="permission-card"
-  data-decision={decision ?? 'pending'}
-  data-family={described.family}
->
-  <div class="head">
-    <span class="glyph" class:denied={decision === 'deny'} class:allowed={decision === 'allow'}>
-      {#if decision === 'allow'}<ShieldCheck size={15} strokeWidth={1.75} />{:else if decision === 'deny'}<ShieldX size={15} strokeWidth={1.75} />{:else}<ShieldQuestion size={15} strokeWidth={1.75} />{/if}
-    </span>
-    <span class="sentence ui-label" data-testid="permission-sentence" title={described.subject || toolName}>{sentence}</span>
-    {#if decision !== null}
-      <span class="verdict ui-label" class:denied={decision === 'deny'} data-testid="permission-verdict">
-        {decision === 'allow' ? strings.chat.allowed : strings.chat.denied}
-      </span>
-    {/if}
-  </div>
-
-  {#if decision === null}
+{#if decision === null}
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+<div class="permission" data-testid="permission-card" data-decision="pending" data-family={described.family} role="group" aria-label={sentence} tabindex="-1"
+  {@attach keys} {@attach watchDecision} {@attach arrive}>
+  <span class="glyph" aria-hidden="true"><Family size={15} strokeWidth={1.75} /></span>
+  <div class="body">
     {#if subjectBlock}
-      <pre class="mono subject" data-testid="permission-subject">{subjectBlock}</pre>
+      <p class="mono command" data-testid="permission-subject" title={subjectBlock}><CommandWords text={subjectBlock} /></p>
+    {:else}
+      <p class="sentence" data-testid="permission-sentence" title={described.subject || toolName}>{sentence}</p>
     {/if}
+    {#if why}<p class="why ui-label" data-testid="permission-why" title={why}><CodeText text={why} /></p>{/if}
     {#if described.change}
       {@const change = described.change}
-      <Deferred part={parts.DiffView}>{#snippet children(DiffView)}<DiffView path={change.path} oldText={change.oldText} newText={change.newText} doc={change} />{/snippet}</Deferred>
+      <div class="change"><Deferred part={parts.DiffView}>{#snippet children(DiffView)}<DiffView path={change.path} oldText={change.oldText} newText={change.newText} doc={change} />{/snippet}</Deferred></div>
     {/if}
-    {#if request?.description && request.description !== subjectBlock}
-      <p class="muted description">{request.description}</p>
-    {/if}
-  {/if}
-  {#if request}
-    <details class="technical disclosure">
-      <summary><span class="ui-label">{strings.chat.permissionTechnical}</span></summary>
-      <p class="tool mono">{toolName}</p>
-      <pre class="mono" data-testid="permission-input">{json(request.input)}</pre>
-    </details>
-  {/if}
-
-  {#if decision === null}
-    <div class="actions" aria-busy={sending !== null}>
-      <button type="button" class="primary" data-testid="permission-allow" disabled={sending !== null || previewMissing} onclick={() => void choose('allow')}>
-        <span class="ui-label">{strings.chat.allow}</span>
-      </button>
-      <button type="button" class="danger" data-testid="permission-deny" disabled={sending !== null} onclick={() => void choose('deny')}>
+    <p class="state" data-testid="permission-status">
+      <span class="dot" aria-hidden="true"></span><span class="ui-label">{strings.chat.permissionWaiting}</span>
+      {#if request}<InfoTip text={`${toolName}\n${json(request.input)}`} topic={sentence} testid="permission-input" />{/if}
+    </p>
+  </div>
+  <div class="choices" aria-busy={sending !== null}>
+    <DecisionActions>
+      <button type="button" class="secondary" data-testid="permission-deny" title={strings.chat.denyKey} disabled={sending !== null} onclick={() => void choose('deny')}>
         <span class="ui-label">{strings.chat.deny}</span>
       </button>
-    </div>
-  {/if}
+      <!-- An answer covers this one call: the button says so, the agent asks again next time. -->
+      <button type="button" class="primary" data-testid="permission-allow" title={strings.chat.allowOnceKey} disabled={sending !== null || previewMissing} onclick={() => void choose('allow')}>
+        <span class="ui-label">{strings.chat.allowOnce}</span>
+      </button>
+    </DecisionActions>
+  </div>
 </div>
+{:else}
+{@const receipt = (decision === 'allow' ? strings.chat.allowedReceipt : strings.chat.deniedReceipt).split('{subject}')}
+<div class="permission resolved" data-testid="permission-card" data-decision={decision} data-family={described.family}>
+  <span class="glyph" class:denied={decision === 'deny'} class:allowed={decision === 'allow'}>
+    {#if decision === 'allow'}<ShieldCheck size={15} strokeWidth={1.75} />{:else}<ShieldX size={15} strokeWidth={1.75} />{/if}
+  </span>
+  <!-- The receipt: the verdict, then what it was about, on one quiet line. -->
+  <span class="sentence receipt ui-label" data-testid="permission-sentence" title={described.subject || sentence}><span class="verdict" data-testid="permission-verdict">{receipt[0]}</span>{described.subject || sentence}{receipt[1] ?? ''}</span>
+</div>
+{/if}
 
 <style>
+  /* A tool row of the run (ToolGroup's geometry): the family's mark, then
+     the ask's lines, then the pair at the row's end. */
   .permission {
-    border: 1px solid var(--color-edge);
-    border-radius: var(--radius-md);
-    background: var(--color-surface);
-    box-shadow: var(--shadow-e1);
-    padding: 10px 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+    display: grid;
+    grid-template-columns: var(--activity-glyph) minmax(0, 1fr) auto;
+    align-items: start;
+    column-gap: var(--activity-gap);
+    padding: var(--activity-padding);
+    border-radius: var(--radius-sm);
+    outline: none;
+  }
+  .permission:focus-visible { box-shadow: inset 0 0 0 2px var(--color-accent); }
+  .glyph { display: inline-flex; justify-content: center; align-items: center; height: 22px; color: var(--instrument-ink); }
+  .body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .body > p { margin: 0; }
+  /* The command whole, one line until it is long, then wrapped at its spaces (CommandWords); a word wider than the row scrolls. */
+  .command { color: var(--color-foreground); font-size: var(--text-meta); line-height: 22px; white-space: pre-wrap; overflow-x: auto; scrollbar-width: none; }
+  .sentence { color: var(--color-foreground); font-size: var(--instrument-size); line-height: 22px; overflow-wrap: anywhere; }
+  /* The agent's own words for the call: one muted line, the rest in its title. */
+  .why { color: var(--color-muted-foreground); font-size: var(--text-sm); line-height: 20px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .change { margin-block: 4px; min-width: 0; }
+  .state { display: flex; align-items: center; gap: 6px; min-height: 20px; color: var(--color-muted-foreground); font-size: var(--text-sm); }
+  /* Amber says "needs you", as on the pill over the composer. */
+  .dot { flex: none; width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--color-live); }
+  .state :global(.info-tip) { flex: none; }
+  .state :global(.info-bubble) { font-family: var(--font-mono); font-size: var(--text-xs); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 50vh; overflow: auto; }
+  .choices { align-self: center; min-width: 0; }
+  @media (max-width: 720px) {
+    /* The pair takes a row under the ask, at its end, so the command keeps the width. */
+    .permission { grid-template-columns: var(--activity-glyph) minmax(0, 1fr); row-gap: 6px; }
+    .choices { grid-column: 2; }
   }
 
-  /* Answered with no call to carry it, it reads as one more line of the run:
-     a call's geometry, no frame. A call that has one carries the shield instead. */
+  /* Answered: one more line of the run, the shield in the verdict's colour. */
   .permission.resolved {
-    border-color: transparent;
-    background: transparent;
-    box-shadow: none;
-    padding: var(--activity-padding);
+    grid-template-columns: var(--activity-glyph) minmax(0, 1fr);
+    align-items: center;
     min-height: var(--control);
-    justify-content: center;
-    gap: 2px;
     color: var(--color-muted-foreground);
     font-size: var(--text-sm);
   }
-
-  .resolved .head { gap: var(--activity-gap); }
-  .resolved .glyph { width: var(--activity-glyph); justify-content: center; }
-
-  .head {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-  }
-
-  .glyph {
-    display: inline-flex;
-    flex: none;
-    color: var(--color-live);
-  }
-
+  .resolved .glyph { height: auto; }
   .glyph.allowed { color: var(--color-success); }
   .glyph.denied { color: var(--color-danger); }
-
-  .sentence {
-    min-width: 0;
-    font-weight: 600;
-    overflow-wrap: anywhere;
-  }
-
-  .resolved .sentence { font-weight: 500; }
-
-  .verdict {
-    margin-left: auto;
-    flex: none;
-    font-size: var(--text-xs);
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--color-success);
-  }
-
-  .verdict.denied { color: var(--color-danger); }
-
-  .description { font-size: var(--text-sm); }
-
-  pre {
-    margin: 0;
-    padding: 8px 10px;
-    background: var(--color-surface-2);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    max-height: 200px;
-    overflow: auto;
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
-
-  .subject { color: var(--color-foreground); }
-
-  /* The shared disclosure, at the size of the card's small print. */
-  .technical summary { gap: 4px; min-height: 0; font-size: var(--text-xs); font-weight: 400; color: var(--color-subtle); }
-  .technical summary::before { width: 12px; height: 12px; }
-  .technical .tool { margin: 6px 0 4px; font-size: var(--text-xs); color: var(--color-muted-foreground); }
-  .resolved .technical { display: none; }
-  @media (max-width: 720px) {
-    .technical summary { min-height: var(--touch-target); }
-  }
-
-  .actions {
-    display: flex;
-    gap: 6px;
-  }
+  .resolved .sentence { font-size: var(--text-sm); font-weight: 500; color: inherit; }
+  /* One line however long the subject: its whole text is in the title. */
+  .receipt { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .verdict { color: var(--color-foreground); }
 </style>

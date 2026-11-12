@@ -7,6 +7,26 @@ import { fill, strings } from '../strings';
 import { work, type Profile } from '../work-prefs.svelte';
 import type { Choice } from '../store.svelte';
 import type { StoreContext } from './context';
+import { SvelteMap } from 'svelte/reactivity';
+
+/**
+ * Every model a probe listed on any machine of this client, keyed by provider
+ * and native id. An account whose own list was never read here (its machine
+ * went out of reach before the picker opened) still names its thread's model
+ * and its effort scale from what another account of the same agent answered.
+ */
+const seenModels = new SvelteMap<string, ModelInfo>();
+const seenKey = (providerId: string, model: string) => `${providerId}::${nativeModelId(model)}`;
+function remember(probed: Record<string, ModelInfo[]>): void {
+  for (const [key, models] of Object.entries(probed)) {
+    const providerId = key.slice(0, key.indexOf('::'));
+    for (const model of models) {
+      const id = seenKey(providerId, model.id);
+      const held = seenModels.get(id);
+      if (held !== model && !(held && sameJson(model, held))) seenModels.set(id, model);
+    }
+  }
+}
 
 /** One probe answer per provider and account, the key the core uses too. */
 export function probeKey(providerId: ProviderId, accountId: string): string {
@@ -61,7 +81,9 @@ export class Models {
    * is what bounds it: the pairs exist on the machine, they do not arrive with
    * time, and an account that changes drops its own key.
    */
-  probedModels = $state<Record<string, ModelInfo[]>>({});
+  #probed = $state<Record<string, ModelInfo[]>>({});
+  get probedModels(): Record<string, ModelInfo[]> { return this.#probed; }
+  set probedModels(value: Record<string, ModelInfo[]>) { this.#probed = value; remember(value); }
   probeAttempts = new Set<string>();
   /**
    * The keys whose list came from the connected core itself, by a probe answer
@@ -201,7 +223,14 @@ export class Models {
     const preferred = this.#configured(choice.providerId, choice.accountId) ?? INITIAL_MODEL_DEFAULTS[choice.providerId];
     // Display the configured target before probing, with the built-in effort
     // scale when it is the built-in model. It never joins modelsOf's selectable list.
-    if (!choice.model || choice.model !== preferred?.model) return null;
+    if (!choice.model) return null;
+    if (choice.model !== preferred?.model) {
+      // An account never read here does not refuse its model: its thread keeps the
+      // name and effort scale it was started with, as any probe of that agent lists them.
+      if (this.probedModels[probeKey(choice.providerId, choice.accountId)]) return null;
+      const named = DEFAULT_MODEL_NAMES[nativeModelId(choice.model)];
+      return seenModels.get(seenKey(choice.providerId, choice.model)) ?? (named ? { id: choice.model, name: named } : null);
+    }
     const builtIn = BUILT_IN_MODELS[choice.providerId];
     return builtIn?.id === nativeModelId(choice.model) ? builtIn : { id: choice.model, name: DEFAULT_MODEL_NAMES[choice.model] ?? choice.model };
   }

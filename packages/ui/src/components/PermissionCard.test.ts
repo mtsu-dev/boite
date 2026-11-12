@@ -1,6 +1,9 @@
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
+import type { PermissionRequest } from '@boite/contracts';
+import { decisionTail } from '../lib/decision-tail.svelte';
 import PermissionCard from './PermissionCard.svelte';
+import DecisionPill from './DecisionPill.svelte';
 
 let running: Record<string, unknown> | null = null;
 
@@ -47,4 +50,97 @@ test('both buttons hold while an answer is out, and come back when it fails', as
   expect(button('permission-allow').disabled).toBe(false);
   button('permission-deny').click();
   expect(sent).toEqual(['allow', 'deny']);
+});
+
+test('Allow says its scope, one call, and the keys live in the titles, not as keycaps', () => {
+  running = mount(PermissionCard, {
+    target: document.body,
+    props: { toolName: 'Bash', decision: null, request: { id: 'r1', toolName: 'Bash', input: { command: 'git push' } } as never, answer: () => undefined }
+  });
+  flushSync();
+  expect(button('permission-allow').textContent?.trim()).toBe('Allow once');
+  expect(button('permission-allow').title).toBe('Lets this one call run (Enter)');
+  expect(button('permission-deny').textContent?.trim()).toBe('Deny');
+  expect(button('permission-deny').title).toBe('Deny (Esc)');
+  expect(document.querySelector('[data-testid=permission-card] kbd')).toBeNull();
+  // The decision pair: Deny outlined then Allow once solid, the same pair as a question's Skip and Answer.
+  const pair = [...document.querySelectorAll<HTMLButtonElement>('.decision-actions > button')];
+  expect(pair.map((entry) => entry.dataset.testid)).toEqual(['permission-deny', 'permission-allow']);
+  expect(button('permission-deny').classList.contains('secondary')).toBe(true);
+  expect(button('permission-allow').classList.contains('primary')).toBe(true);
+});
+
+test('the waiting row is the command itself, its reason and the pair; out of view the foot row names it, and once allowed one receipt line', async () => {
+  let seen: ((entries: Partial<IntersectionObserverEntry>[]) => void) | null = null;
+  vi.stubGlobal('IntersectionObserver', class { constructor(callback: typeof seen) { seen = callback; } observe() {} disconnect() {} });
+  const scroll = vi.fn();
+  Element.prototype.scrollIntoView = scroll;
+  const root = document.body.appendChild(document.createElement('div'));
+  root.setAttribute('data-scroll-root', '');
+  Object.defineProperty(root, 'clientHeight', { value: 400 });
+  const strip = document.body.appendChild(document.createElement('div'));
+  const sent: string[] = [];
+  const request: PermissionRequest = { id: 'perm', threadId: 'thread', turnId: 'turn', toolName: 'Bash', input: { command: 'git push origin main' }, description: 'Publish the branch', createdAt: 1 };
+  const answer = (decision: 'allow' | 'deny') => { sent.push(decision); };
+  running = mount(PermissionCard, { target: root, props: { toolName: 'Bash', decision: null, request, answer } });
+  const pill = mount(DecisionPill, { target: strip, props: { permission: request, answer } });
+  decisionTail.count = 1;
+  flushSync();
+  const away = (ratio: number) => { flushSync(() => seen!([{ intersectionRatio: ratio, intersectionRect: { height: ratio * 100 } as DOMRectReadOnly }])); };
+  try {
+    const row = document.querySelector<HTMLElement>('[data-testid=permission-card][data-decision=pending]')!;
+    expect(row.querySelector('[data-testid=permission-subject]')?.classList.contains('mono')).toBe(true);
+    expect(row.querySelector('[data-testid=permission-subject]')?.textContent).toContain('git push origin main');
+    expect(row.querySelector('[data-testid=permission-why]')?.textContent).toBe('Publish the branch');
+    expect(row.querySelector('[data-testid=permission-status]')?.textContent).toContain('Waiting for approval');
+    expect([...row.querySelectorAll('.decision-actions > button')].map((entry) => entry.textContent?.trim())).toEqual(['Deny', 'Allow once']);
+    // In view, no foot row; scrolled away, its title leads back to the row and focuses it.
+    away(1);
+    expect(strip.querySelector('[data-testid=decision-pill]')).toBeNull();
+    away(0);
+    expect(strip.querySelector('[data-testid=decision-pill]')?.textContent).toContain('Waiting for approval:');
+    const back = strip.querySelector<HTMLButtonElement>('[data-testid=decision-pill-show]')!;
+    expect(strip.querySelector('[data-testid=permission-allow]')).toBeNull();
+    back.click();
+    expect(scroll.mock.contexts.at(-1)).toBe(row);
+    // The row focused, Escape denies and Enter allows, the keys its titles name.
+    row.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    expect(sent).toEqual(['deny']);
+    // Answered, one quiet line says what was allowed.
+    unmount(running, { outro: false });
+    running = mount(PermissionCard, { target: root, props: { toolName: 'Bash', decision: 'allow', request, answer } });
+    flushSync();
+    expect(document.querySelector('[data-testid=permission-card]')?.getAttribute('data-decision')).toBe('allow');
+    expect(document.querySelector('[data-testid=permission-sentence]')?.textContent).toBe('Allowed: git push origin main');
+    expect(document.querySelector('[data-testid=permission-allow]')).toBeNull();
+    // The row gone, nothing is in view: the strip keeps the pill only while one still waits.
+    decisionTail.count = 0;
+    flushSync();
+    expect(strip.querySelector('[data-testid=decision-pill]')).toBeNull();
+  } finally {
+    unmount(pill);
+    decisionTail.count = 0;
+    vi.unstubAllGlobals();
+  }
+});
+
+test('a pill answer that fails gives both buttons back, so the decision can be tried again', async () => {
+  const strip = document.body.appendChild(document.createElement('div'));
+  const request: PermissionRequest = { id: 'perm-fail', threadId: 'thread', turnId: 'turn', toolName: 'Bash', input: { command: 'git push' }, description: 'Publish', createdAt: 1 };
+  let tries = 0;
+  const pill = mount(DecisionPill, { target: strip, props: { permission: request, answer: async () => { tries++; throw new Error('offline'); } } });
+  decisionTail.count = 1;
+  decisionTail.away = true;
+  flushSync();
+  try {
+    const allow = strip.querySelector<HTMLButtonElement>('[data-testid=decision-pill-allow]')!;
+    allow.click();
+    await vi.waitFor(() => { flushSync(); expect(allow.disabled).toBe(false); });
+    allow.click();
+    await vi.waitFor(() => expect(tries).toBe(2));
+  } finally {
+    unmount(pill);
+    decisionTail.count = 0;
+    decisionTail.away = true;
+  }
 });

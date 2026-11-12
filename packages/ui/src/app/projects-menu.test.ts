@@ -42,10 +42,21 @@ test('project menus keep Mark done separate from Archive, which can stop pending
   row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 60 }));
   await waitFor(() => document.querySelector('[data-testid=context-menu]') !== null);
   const labels = Array.from(document.querySelectorAll('[data-testid=context-menu] [data-row]')).map((el) => el.textContent?.trim());
-  expect(labels).toEqual(['Open', 'Pin', 'Mark done', 'Archive', 'Rename', 'Regenerate title', 'Move to project', 'Copy path', 'Delete']);
+  // The row's menu by intention: Open, then what it is called (typed or made again) and pinned, where it stands, the
+  // move behind a door named after what it holds, Delete apart. t-bench still works, so Mark done is off and says why.
+  expect(labels).toEqual(['Open', 'Rename', 'Regenerate title', 'Pin', 'Mark done Still working', 'Archive', 'Move to a project ›', 'Delete']);
+  const groups = () => Array.from(query('[data-testid=context-menu]').querySelectorAll('[data-row], [role=separator]'))
+    .map(el => el.getAttribute('role') === 'separator' ? '|' : el.textContent?.trim()).join(',');
+  expect(groups()).toBe('Open,|,Rename,Regenerate title,Pin,|,Mark done Still working,Archive,|,Move to a project ›,|,Delete');
+  // The group opens its list in place, no panel in it (the panel selector has them), and Back returns.
+  query<HTMLButtonElement>('[data-testid=context-menu] [data-value=more]').click();
+  await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=copy]') !== null);
+  expect(groups()).toMatch(/^Move to a project,\|,Move to project,Copy path$/);
   expect(query('[data-testid=context-menu] [data-value=copy]').getAttribute('title')).toBe('C:\\src\\boite');
   // t-bench waits on a permission: its turn still runs, and a move would wait for it to end.
   expect(query<HTMLButtonElement>('[data-testid=context-menu] [data-value=move]').disabled).toBe(false);
+  query<HTMLButtonElement>('[data-testid=context-menu] [data-value=back]').click();
+  await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=archive]') !== null);
   expect(query<HTMLButtonElement>('[data-testid=context-menu] [data-value=done]').disabled).toBe(true);
   expect(query<HTMLButtonElement>('[data-testid=context-menu] [data-value=archive]').disabled).toBe(false);
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=archive]').click();
@@ -53,6 +64,8 @@ test('project menus keep Mark done separate from Archive, which can stop pending
   await waitFor(() => document.querySelector('[data-thread-id="t-bench"]') === null);
   expect(store.pendingPermissions.some(p => p.threadId === 't-bench')).toBe(false);
   expect(document.querySelector('[data-testid=confirm-dialog]')).toBeNull();
+  // The undo toast follows the row's collapse (row-collapse.ts), not the archive call.
+  await waitFor(() => document.querySelector('[data-testid=undo-action]') !== null);
   query<HTMLButtonElement>('[data-testid=undo-action]').click();
   await waitFor(() => document.querySelector('[data-thread-id="t-bench"]') !== null);
   query<HTMLButtonElement>('[data-thread-id="t-bench"]').click();
@@ -76,6 +89,11 @@ test('removing a project asks first, and Cancel keeps it', async ({ app: _app })
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=manage]') !== null);
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=manage]').click();
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=remove]') !== null);
+  // The second level opens on its name and one rule under it, as the thread's does: no "Back" and no doubled line.
+  const back = query('[data-testid=context-menu] [data-value=back]');
+  expect(back.textContent?.trim()).toBe('Manage project');
+  expect(back.nextElementSibling?.classList.contains('back-rule')).toBe(true);
+  expect(back.nextElementSibling?.nextElementSibling?.getAttribute('role')).not.toBe('separator');
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=remove]').click();
   await waitFor(() => document.querySelector('[data-testid=confirm-dialog]') !== null);
   expect(document.querySelector('[data-testid=confirm-dialog]')?.textContent).toContain('notes');

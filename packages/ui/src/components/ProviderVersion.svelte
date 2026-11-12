@@ -93,6 +93,7 @@
   .update { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
   .version { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--color-muted-foreground); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
   .note-inline { font-size: var(--text-sm); color: var(--color-muted-foreground); }
-  .note-inline.live { color: var(--color-live); }
+  /* Work under way, not a warning: the full ink, amber stays for what needs you. */
+  .note-inline.live { color: var(--color-foreground); }
   @media (max-width: 720px) { button { min-height: var(--touch-target); } }
 </style>

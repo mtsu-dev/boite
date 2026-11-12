@@ -8,8 +8,9 @@ let server: { close(): Promise<void> };
 let uiUrl: string;
 let page: BrowserPage;
 const id = (name: string) => `[data-testid="${name}"]`;
+// The shared settle: it skips an animation on a screen nothing draws (a phone list under a page), which never finishes.
 async function settled() {
-  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+  await page.settleAnimations();
 }
 async function capture(name: string) { await settled(); await page.screenshot(join(import.meta.dir, '.artifacts', name)); }
 beforeAll(async () => {
@@ -32,8 +33,10 @@ test('model picker account tooltips keep emails private on desktop and phone', a
     await page.click(id('composer-picker'));
     await page.waitFor(`document.querySelector('[data-testid="composer-picker-menu"] [data-provider="claude"]')`);
     await page.click('[data-testid="composer-picker-menu"] [data-provider="claude"]');
+    // Claude has several accounts: they open from the dropdown on its name.
+    await page.click(id('picker-account'));
     await page.waitFor(`document.querySelector('[data-instance="claude::a-claude-main"]')`);
-    expect(await page.evaluate(`document.querySelector('[data-instance="claude::a-claude-main"]').title`)).toBe('Default login');
+    expect(await page.evaluate(`document.querySelector('[data-instance="claude::a-claude-main"]').title`)).toBe('Default');
     expect(await page.evaluate(`document.querySelector('[data-testid="composer-picker-menu"]').textContent.includes('you@example.com')`)).toBe(false);
     const point = await page.evaluate<{ x: number; y: number }>(`(() => { const r = document.querySelector('[data-instance="claude::a-claude-main"]').getBoundingClientRect(); return {x: r.x + r.width / 2, y: r.y + r.height / 2}; })()`);
     await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point });
@@ -62,7 +65,7 @@ test('provider settings show login controls, and quota monitoring lives on the L
   await page.evaluate(`document.querySelectorAll('${id('provider-details-toggle')}').forEach(button => button.click())`);
 }, 30_000);
 
-test('missing agents offer desktop setup while phone settings omit provider administration', async () => {
+test('missing agents offer desktop setup while phone settings show providers', async () => {
   await page.evaluate(`import('/src/lib/workspace.svelte.ts').then(({workspace}) => {
     workspace.active.providers = workspace.active.providers.map(p => ({...p, available: false, executable: null}));
     workspace.active.accounts = [];
@@ -72,8 +75,9 @@ test('missing agents offer desktop setup while phone settings omit provider admi
   expect(await page.evaluate(`!!document.querySelector('[data-provider-id="antigravity"] [data-testid="install-start"]')`)).toBe(true);
   await capture('providers-missing-desktop.png');
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-  await page.waitFor(`document.querySelector('[data-testid=mobile-settings-home]')`);
-  expect(await page.evaluate(`document.querySelector('[data-testid=accounts-page]') === null`)).toBe(true);
+  // A phone lists the providers on a page of its phone settings, under its own header, and the page fits.
+  await page.waitFor(`document.querySelector('.mobile-settings [data-testid=mobile-settings-header]') && document.querySelector('.mobile-settings [data-testid=accounts-page]')`);
+  expect(await page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')).toBe(true);
   await capture('providers-missing-phone.png');
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
   await page.click(id('providers-refresh'));
@@ -101,7 +105,8 @@ test('installing a missing agent goes on to its sign-in without a second click o
   expect(await page.evaluate(`document.querySelector('[data-testid="account-login-row"] a').href`)).toContain('https://');
   await capture('connect-login.png');
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-  await page.waitFor(`document.querySelector('[data-testid=mobile-settings-home]')`);
+  // The phone's Providers page shows the sign-in under way, not a second account row.
+  await page.waitFor(`document.querySelector('.mobile-settings [data-testid=accounts-page] [data-provider-id="claude"]')`);
   expect(await page.evaluate(`document.querySelector('[data-testid="account-row"]') === null`)).toBe(true);
   await capture('connect-login-phone.png');
   expect(await page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')).toBe(true);
@@ -172,35 +177,36 @@ test('Short answers starts on and saves when flipped', async () => {
   await page.waitFor(`globalThis.__boiteTest.workspace.active.settings?.shortAnswers === true`);
 }, 30_000);
 
-test('the experiment adds the Threads and Agents switch on the desktop and Agents in the phone menu', async () => {
+test('the experiment adds the bots to the app rail on the desktop and Agents in the phone menu', async () => {
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
   await page.waitFor(`!document.querySelector('${id('mobile-settings-detail')}') && !history.state?.boiteOverlay`);
-  await page.navigate(`${uiUrl}/?fake=1&open=recent`);
+  // The agents fixture, so the rail has bots to draw once the experiment is on.
+  await page.navigate(`${uiUrl}/?fake=1&open=recent&agents=1`);
   await page.waitFor(`document.querySelector('${id('nav-settings')}')`);
-  // Off, there is one place to be: no switch at all.
-  expect(await page.evaluate(`document.querySelector('${id('view-agents')}') === null && document.querySelector('${id('view-threads')}') === null`)).toBe(true);
+  // Off, the rail holds the threads alone: no bot and no way to add one.
+  expect(await page.evaluate(`document.querySelector('${id('app-rail')} ${id('view-threads')}') !== null && document.querySelector('${id('rail-bot')}') === null && document.querySelector('${id('rail-add')}') === null`)).toBe(true);
   expect(await page.evaluate(`document.querySelector('${id('mobile-agents')}') === null`)).toBe(true);
   await capture('agents-launcher-disabled-desktop.png');
   await page.click(id('nav-settings')); await page.click(id('settings-tab-experiments'));
   await page.click(id('experiment-resident-agents'));
   await page.click(id('settings-back'));
-  await page.waitFor(`document.querySelector('${id('sidebar')} ${id('view-agents')}')`);
-  expect(await page.evaluate(`document.querySelector('${id('sidebar')} ${id('view-threads')}').getAttribute('aria-pressed')`)).toBe('true');
+  await page.waitFor(`document.querySelector('${id('app-rail')} ${id('rail-bot')}') && document.querySelector('${id('app-rail')} ${id('rail-add')}')`);
+  expect(await page.evaluate(`document.querySelector('${id('app-rail')} ${id('view-threads')}').getAttribute('aria-current')`)).toBe('page');
   await capture('agents-launcher-enabled-desktop.png');
-  await page.click(id('view-agents'));
-  await page.waitFor(`document.querySelector('${id('agents-page')}') && document.querySelector('.agents-rail ${id('view-agents')}')?.getAttribute('aria-pressed') === 'true'`);
+  await page.click(id('rail-bot'));
+  await page.waitFor(`document.querySelector('${id('agents-page')}') && document.querySelector('${id('rail-bot')}[aria-current="page"]') && !document.querySelector('${id('view-threads')}[aria-current]')`);
   await capture('agents-switch-agents-desktop.png');
-  // The same switch leads back to the threads.
+  // The rail's Threads button leads back to the threads.
   await page.click(id('view-threads'));
-  await page.waitFor(`!document.querySelector('${id('agents-page')}') && document.querySelector('${id('sidebar')} ${id('view-agents')}')`);
-  await page.click(id('view-agents'));
+  await page.waitFor(`!document.querySelector('${id('agents-page')}') && document.querySelector('${id('view-threads')}')?.getAttribute('aria-current') === 'page'`);
+  await page.click(id('rail-bot'));
   await page.waitFor(`document.querySelector('${id('agents-page')}')`);
   // Switched off while it is open, the page closes with it.
   await page.evaluate(`import('/src/lib/experiments.ts').then(({ setExperiment }) => setExperiment('resident-agents', false))`);
-  await page.waitFor(`!document.querySelector('${id('agents-page')}') && document.querySelector('${id('nav-settings')}') && !document.querySelector('${id('view-agents')}')`);
+  await page.waitFor(`!document.querySelector('${id('agents-page')}') && document.querySelector('${id('nav-settings')}') && !document.querySelector('${id('rail-add')}') && !document.querySelector('${id('rail-bot')}')`);
   // Switched on again, the chat stays where it is: nobody navigated to the page.
   await page.evaluate(`import('/src/lib/experiments.ts').then(({ setExperiment }) => setExperiment('resident-agents', true))`);
-  await page.waitFor(`document.querySelector('${id('view-agents')}')`);
+  await page.waitFor(`document.querySelector('${id('rail-add')}')`);
   expect(await page.evaluate(`document.querySelector('${id('agents-page')}') === null`)).toBe(true);
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   await toMobileList(page);
@@ -320,6 +326,8 @@ test('machines list each execution host and disconnect only the selected host', 
   await page.click(id('settings-tab-machines'));
   await page.waitFor(`document.querySelectorAll('[data-testid="machine-card"]').length === 2`);
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
+  // Removal is the last item of the machine's row menu, which only a machine other than this one offers.
+  await page.click(`[data-testid="machine-card"][data-machine-id="http://builder.test"] ${id('machine-menu')}`);
   await page.click(id('machine-remove'));
   await page.waitFor(`document.querySelector('${id('confirm-ok')}')`);
   await page.click(id('confirm-ok'));
@@ -331,6 +339,7 @@ test('composer and buttons keep solid fallback fills without color-mix', async (
   await page.waitFor(`document.querySelector('${id('composer-picker')}')`);
   const opacity = await page.evaluate<number[][]>(`(async () => {
     const removed = [];
+    let chip;
     const root = document.documentElement;
     const theme = root.dataset.theme, glass = root.dataset.glass;
     try {
@@ -344,13 +353,19 @@ test('composer and buttons keep solid fallback fills without color-mix', async (
           }
         }
       }
+      // The composer's own chips are quiet, unfilled at rest by design: the app's filled chip button stands for the buttons.
+      chip = document.createElement('button');
+      chip.className = 'ui-chip';
+      chip.dataset.testid = 'fallback-chip';
+      chip.textContent = 'Chip';
+      document.body.append(chip);
       const context = new OffscreenCanvas(1, 1).getContext('2d');
       const result = [];
       for (const mode of ['dark', 'light', 'grain', 'glass']) {
         root.dataset.theme = mode === 'glass' ? 'dark' : mode;
         if (mode === 'glass') root.dataset.glass = 'acrylic'; else delete root.dataset.glass;
-        await Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})));
-        result.push(['composer', 'composer-picker'].map(name => {
+        await Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})));
+        result.push(['composer', 'fallback-chip'].map(name => {
           context.clearRect(0, 0, 1, 1);
           context.fillStyle = getComputedStyle(document.querySelector('[data-testid="' + name + '"]')).backgroundColor;
           context.fillRect(0, 0, 1, 1);
@@ -359,6 +374,7 @@ test('composer and buttons keep solid fallback fills without color-mix', async (
       }
       return result;
     } finally {
+      chip?.remove();
       for (const item of removed.reverse()) item.sheet.insertRule(item.text, item.index);
       if (theme === undefined) delete root.dataset.theme; else root.dataset.theme = theme;
       if (glass === undefined) delete root.dataset.glass; else root.dataset.glass = glass;

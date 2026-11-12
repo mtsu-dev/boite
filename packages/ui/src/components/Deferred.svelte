@@ -1,7 +1,3 @@
-<script lang="ts" module>
-  export { parts } from '../lib/deferred-parts';
-</script>
-
 <script lang="ts" generics="T">
   import type { Snippet } from 'svelte';
   import type { LazyComponent } from '../lib/lazy-component.svelte';
@@ -62,7 +58,7 @@
 
 <style>
   .deferred { display: flex; align-items: center; gap: 10px; margin: 0; min-height: var(--control-sm); color: var(--color-muted-foreground); }
-  .deferred.floating { position: fixed; left: 50%; bottom: 24px; z-index: 50; transform: translateX(-50%); padding: 8px 14px; background: var(--color-surface-2); border: 1px solid var(--color-border); border-radius: var(--radius-lg); }
+  .deferred.floating { position: fixed; left: 50%; bottom: 24px; z-index: 50; transform: translateX(-50%); padding: 8px 14px; background: var(--overlay-surface); border: 1px solid var(--overlay-edge); border-radius: var(--radius-overlay); box-shadow: var(--shadow-overlay); }
   .deferred[role=alert] span { color: var(--color-danger); }
   .deferred button { flex: none; min-height: var(--control-sm); padding: 0 10px; border-radius: var(--radius-md); }
 </style>

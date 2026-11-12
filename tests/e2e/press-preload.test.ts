@@ -17,7 +17,7 @@ async function load(): Promise<void> {
   await page.navigate(url);
   await page.waitFor('document.querySelector("[data-testid=thread-row]") && globalThis.__boiteTest?.workspace.active.loadingThreadId === null', 30_000);
   // The sidebar slides in on load: a row is pressed where it comes to rest.
-  await page.evaluate(`Promise.all(document.getAnimations().map(animation => animation.finished.catch(() => {})))`);
+  await page.evaluate(`Promise.all(document.getAnimations().filter(animation => animation.timeline === document.timeline).map(animation => animation.finished.catch(() => {})))`);
   await page.waitFor(`[...document.querySelectorAll('[data-testid=thread-row]')].every(row => row.getBoundingClientRect().left >= 0)`);
   await page.evaluate(`(() => {
     const client = globalThis.__boiteTest.workspace.active.client;

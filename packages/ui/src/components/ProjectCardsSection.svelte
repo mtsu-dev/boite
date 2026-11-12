@@ -31,8 +31,9 @@
   /* At work on top, under a line that sets it apart from the open projects; set aside above the folds below. */
   .working { margin-bottom: 10px; border-bottom: 1px solid var(--color-border); }
   .later { border-top: 1px solid var(--color-border); }
-  .cards { padding-top: 2px; }
+  /* Clipped for the fold without being a scroll box: a card's head inside sticks to the list's scroll, not to this. */
+  .cards { padding-top: 2px; overflow: clip; }
   .glyph { display: inline-flex; flex: none; }
-  .working .glyph { color: var(--color-accent); }
+  .working .glyph { color: var(--color-muted-foreground); }
   @media (max-width: 720px) { .working { margin-bottom: 12px; } }
 </style>

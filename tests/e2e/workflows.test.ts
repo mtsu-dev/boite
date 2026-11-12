@@ -12,7 +12,7 @@ const id = (name: string) => `[data-testid="${name}"]`;
 async function capture(name: string) {
   await page.evaluate(`document.fonts.ready`);
   // The panel fades in: wait for the finite animations, not the live dots that pulse forever.
-  await page.waitFor(`document.getAnimations().every(a => a.playState !== 'running' || a.effect?.getTiming().iterations === Infinity)`);
+  await page.waitFor(`document.getAnimations().every(a => a.playState !== 'running' || a.effect?.getTiming().iterations === Infinity || a.timeline !== document.timeline)`);
   await page.screenshot(join(import.meta.dir, '.artifacts', name));
 }
 beforeAll(async () => {
@@ -26,10 +26,11 @@ afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);
 test('the chat card opens the run top to bottom, an arrow per dependency, in the panel at its default width', async () => {
   await page.click(`${id('thread-row')}[data-thread-id="t-trace"]`);
   await page.waitFor(`document.querySelector('${id('workflow-activity')}')`);
-  expect(await page.text(id('workflow-activity'))).toContain('1/5 steps');
-  await page.waitFor(`document.querySelector('${id('active-subagents')}')?.textContent.includes('1 workflow')`);
-  // The running subagent, and the one at rest on its own background work.
-  expect(await page.text(id('active-subagents'))).toContain('2 active subagents');
+  expect(await page.text(id('workflow-activity'))).toContain('1 of 5 done');
+  await page.waitFor(`document.querySelector('${id('agent-dock')}')?.dataset.runs === '1'`);
+  // The running subagent, the one at rest on its own background work and the run, on one waiting line.
+  expect(await page.evaluate(`document.querySelector('${id('agent-dock')}').dataset.count`)).toBe('2');
+  expect(await page.text(id('agent-dock-label'))).toBe('Waiting on 3 subagents and workflows');
   await capture('workflow-card.png');
   await page.click(id('workflow-activity'));
   await page.waitFor(`document.querySelector('${id('workflow-graph')}')?.dataset.layout === 'rows'`);
@@ -58,7 +59,10 @@ test('the chat card opens the run top to bottom, an arrow per dependency, in the
 }, 40_000);
 
 test('on a phone the same run keeps its rows and arrows without scrolling sideways', async () => {
-  // Opened here too, so the test holds when it runs alone.
+  // Opened here too, so the test holds when it runs alone. An open panel takes the list's column: close it first.
+  if (await page.evaluate(`!document.querySelector('${id('thread-row')}[data-thread-id="t-trace"]') && !!document.querySelector('${id('panel-close')}')`)) {
+    await page.click(id('panel-close'));
+  }
   await page.click(`${id('thread-row')}[data-thread-id="t-trace"]`);
   await page.waitFor(`document.querySelector('${id('workflow-activity')}')`);
   await page.click(id('workflow-activity'));

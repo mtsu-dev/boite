@@ -59,7 +59,8 @@ test('the title model lists each provider that writes titles, its small model fi
   await settle();
   // OpenCode cannot write titles and Pi is not installed; the default and legacy entries stay out.
   expect(rows()).toEqual([
-    "Automatic | The thread's agent, small model",
+    // The "i" beside the setting explains Automatic; its row carries no description.
+    'Automatic | ',
     '---',
     'Haiku 4.5 | Claude · small',
     'Opus 5 | Claude',

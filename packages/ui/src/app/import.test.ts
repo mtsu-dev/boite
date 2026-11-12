@@ -86,7 +86,7 @@ test('a shared transcript asks for its account, supports menu keys, and imports 
     expect(imported).not.toHaveBeenCalled();
     await waitFor(() => document.querySelector('[data-testid=context-menu]') !== null);
     const menu = query<HTMLElement>('[data-testid=context-menu]');
-    expect(Array.from(menu.querySelectorAll('[role=menuitem]')).map(item => item.textContent?.trim())).toEqual(['Default login', 'Alternative login']);
+    expect(Array.from(menu.querySelectorAll('[role=menuitem]')).map(item => item.textContent?.trim())).toEqual(['Default', 'Alternative login']);
     query<HTMLButtonElement>('[data-testid=context-menu] [role=menuitem]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
     await waitFor(() => document.querySelector('[data-testid=context-menu]') === null);
     expect(store.imports).not.toBeNull();

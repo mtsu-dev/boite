@@ -4,7 +4,8 @@
   import { clockTime, fullTime } from '../lib/format';
   import { galleryFrom, media, viewerHost, type Gallery, type MediaItem } from '../lib/media-gallery';
   import { fill, strings } from '../lib/strings';
-  import Deferred, { parts } from './Deferred.svelte';
+  import Deferred from './Deferred.svelte';
+  import { parts } from '../lib/deferred-parts';
 
   /**
    * A window an agent captured with `boite window`, or whose live view a viewer
@@ -61,10 +62,8 @@
     gap: 12px;
     min-width: 0;
     padding: 8px 12px;
-    border: 1px solid var(--color-edge);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     background: var(--color-surface);
-    box-shadow: var(--shadow-e1);
   }
   .thumb {
     flex: none;
@@ -84,7 +83,7 @@
   .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .about { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
   .line { display: flex; align-items: center; gap: 6px; min-width: 0; }
-  .glyph { display: inline-flex; flex: none; color: var(--color-accent); }
+  .glyph { display: inline-flex; flex: none; color: var(--color-muted-foreground); }
   .process { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .kind { flex: none; font-size: var(--text-sm); color: var(--color-muted-foreground); }
   .meta { display: flex; gap: 10px; font-size: var(--text-xs); color: var(--color-subtle); }

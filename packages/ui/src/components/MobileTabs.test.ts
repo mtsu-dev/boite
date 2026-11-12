@@ -13,43 +13,44 @@ beforeEach(async () => {
 afterEach(async () => { setExperiment('contacts', false); if (app) await unmount(app); app = undefined; store.detach(); client.close(); vi.restoreAllMocks(); document.body.innerHTML = ''; localStorage.clear(); });
 const tab = (id: string) => document.querySelector<HTMLButtonElement>(`[data-testid="${id}"]`);
 
-test('the bar reaches every place, marks the current one and starts a conversation from the middle', async () => {
-  const navigate = vi.fn(), onnew = vi.fn();
-  app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 0, navigate, onnew } }); await settle();
+test('the bar holds only places and marks the current one; a new conversation and Settings are the header\'s', async () => {
+  const navigate = vi.fn();
+  app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 0, navigate } }); await settle();
+  expect(tab('mobile-conversations')!.textContent).toBe('Threads');
+  expect(tab('mobile-new')).toBeNull();
   expect(tab('mobile-conversations')!.getAttribute('aria-current')).toBe('page');
   for (const [id, destination] of [['mobile-conversations', 'threads'], ['mobile-activity', 'activity']]) {
     tab(id!)!.click(); await settle();
     expect(navigate).toHaveBeenLastCalledWith(destination);
   }
-  tab('mobile-new')!.click();
-  expect(onnew).toHaveBeenCalledOnce();
-  tab('mobile-settings')!.click(); await settle();
-  expect(store.page).toBe('settings');
-  expect(tab('mobile-settings')!.getAttribute('aria-current')).toBe('page');
-  expect(tab('mobile-conversations')!.hasAttribute('aria-current')).toBe(false);
+  // Settings is the header's gear, not a tab: with the bots off, two places.
+  expect(document.querySelectorAll('.mobile-tabs .tab')).toHaveLength(2);
+  expect(tab('mobile-settings')).toBeNull();
 });
 
 test('Activity carries the count of conversations waiting on the user, capped so the badge stays round', async () => {
-  app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 0, navigate: () => {}, onnew: () => {} } }); await settle();
+  app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 0, navigate: () => {} } }); await settle();
   expect(tab('mobile-activity-waiting')).toBeNull();
   await unmount(app);
-  app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 140, navigate: () => {}, onnew: () => {} } }); await settle();
+  app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 140, navigate: () => {} } }); await settle();
   expect(tab('mobile-activity-waiting')!.textContent).toBe('99+');
   expect(tab('mobile-activity')!.getAttribute('aria-label')).toContain('140');
 });
 
-test('Bots carries the count of bots at work, in the waiting colour once one asks the user', async () => {
+test('Bots carries a dot while bots work, in the waiting colour once one asks the user; the count is in its name only', async () => {
   setExperiment('resident-agents', true);
   onTestFinished(() => setExperiment('resident-agents', false));
   const { agentDirectory } = await import('../lib/agent-directory.svelte');
-  app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 0, navigate: () => {}, onnew: () => {} } }); await settle();
+  app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 0, navigate: () => {} } }); await settle();
   const rest = { status: 'idle', openQuestions: 0, backgroundWork: null, unread: false } as const;
   store.threads = store.threads.map(thread => ({ ...thread, ...rest, ...(thread.id === 't-trace' ? { agentSessionId: 'session-1' } : {}) }));
   agentDirectory(store).snapshot = { profiles: [{ id: 'agent-1', name: 'Mira', status: 'active' }], sessions: [{ id: 'session-1', agentId: 'agent-1' }], work: [], runs: [], entrusted: [] } as never;
   await settle();
   expect(tab('mobile-agents-at-work')).toBeNull();
   store.threads = store.threads.map(thread => thread.id === 't-trace' ? { ...thread, status: 'running' } : thread); await settle();
-  expect(tab('mobile-agents-at-work')!.textContent).toBe('1');
+  // A dot, no number: the count on the bar is Activity's alone.
+  expect(tab('mobile-agents-at-work')!.textContent).toBe('');
+  expect(tab('mobile-agents')!.getAttribute('aria-label')).toBe('Bots, 1 at work');
   expect(tab('mobile-agents-at-work')!.dataset.waiting).toBe('false');
   store.threads = store.threads.map(thread => thread.id === 't-trace' ? { ...thread, status: 'idle', openQuestions: 1 } : thread); await settle();
   expect(tab('mobile-agents-at-work')!.dataset.waiting).toBe('true');
@@ -58,12 +59,24 @@ test('Bots carries the count of bots at work, in the waiting colour once one ask
 
 test('a paired device, which may call no contacts method, is offered no way into Contacts; the owner is', async () => {
   setExperiment('contacts', true);
-  app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 0, navigate: () => {}, onnew: () => {} } }); await settle();
+  app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 0, navigate: () => {} } }); await settle();
   expect(tab('mobile-contacts')).toBeNull();
   await unmount(app); app = undefined; store.detach(); client.close();
 
   client = new FakeClient({ delayMs: 0 }); store = new Store(); store.attach(client); await store.connect();
-  app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 0, navigate: () => {}, onnew: () => {} } }); await settle();
+  app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 0, navigate: () => {} } }); await settle();
   tab('mobile-contacts')!.click(); await settle();
   expect(store.page).toBe('home');
+});
+
+test('with the bots on, the bar keeps three places: Contacts is the Bots tab\'s other side, which stays marked on it', async () => {
+  setExperiment('contacts', true); setExperiment('resident-agents', true);
+  onTestFinished(() => setExperiment('resident-agents', false));
+  client.close(); store.detach();
+  client = new FakeClient({ delayMs: 0 }); store = new Store(); store.attach(client); await store.connect();
+  app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 0, navigate: () => {} } }); await settle();
+  expect(document.querySelectorAll('.mobile-tabs .tab')).toHaveLength(3);
+  expect(tab('mobile-contacts')).toBeNull();
+  store.showHome(); await settle();
+  expect(tab('mobile-agents')!.getAttribute('aria-current')).toBe('page');
 });

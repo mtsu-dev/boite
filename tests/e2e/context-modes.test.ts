@@ -12,7 +12,7 @@ let page: BrowserPage;
 let owner: CoreClient;
 let threadId: string;
 
-const settledAnimations = 'document.getAnimations().every(a => a.playState !== "running" || a.effect?.getTiming().iterations === Infinity)';
+const settledAnimations = 'document.getAnimations().every(a => a.playState !== "running" || a.effect?.getTiming().iterations === Infinity || a.timeline !== document.timeline)';
 
 beforeAll(async () => {
   core = await startCore(); owner = await connect(core.url, core.token);
@@ -25,6 +25,16 @@ beforeAll(async () => {
   await page.click(`[data-testid="thread-row"][data-thread-id="${threadId}"]`);
 }, 60_000);
 afterAll(async () => { await page?.close(); owner?.close(); await core?.stop(); }, 30_000);
+
+/** The Subagents panel through the header's panel door, then its switcher (the door names the open panel). */
+async function openSubagents(): Promise<void> {
+  if (!await page.evaluate(`!!document.querySelector('[data-testid=panel-add]')`)) await page.click('[data-testid=panel-toggle]');
+  await page.waitFor(`document.querySelector('[data-testid=panel-add]')`);
+  if (await page.evaluate(`!!document.querySelector('[data-testid=delegation-member]')`)) return;
+  await page.click('[data-testid=panel-add]');
+  await page.waitFor(`document.querySelector('[data-testid=panel-add-menu] [data-value=agents]')`);
+  await page.click('[data-testid=panel-add-menu] [data-value=agents]');
+}
 
 test('an agent starts a light child with rules through the CLI, and the list and its conversation say so', async () => {
   // The parent's agent runs the real `boite` command, the way a model would from its shell.
@@ -51,8 +61,7 @@ test('an agent starts a light child with rules through the CLI, and the list and
   const plainText = (await owner.call('threads.get', { threadId: plain.thread.id })).messages.filter(m => m.role === 'assistant').flatMap(m => m.parts).map(p => p.type === 'text' ? p.text : '').join('');
   expect(plainText).toContain('You are a Boite subagent of');
 
-  await page.click('[data-testid=thread-menu-trigger]');
-  await page.click('[data-testid=thread-menu-trigger-menu] [data-value=agents]');
+  await openSubagents();
   await page.waitFor('document.querySelectorAll("[data-testid=delegation-member]").length === 2');
   const badges = await page.evaluate(`[...document.querySelectorAll('[data-testid=delegation-member]')].map(row => [row.querySelector('.title')?.textContent.trim(), row.querySelector('[data-testid=delegation-member-context]')?.dataset.mode ?? null, row.querySelector('[data-testid=delegation-member-context]')?.textContent.trim() ?? null])`) as [string, string | null, string | null][];
   expect(badges).toContainEqual(['Light-count', 'light', 'Light + rules']);
@@ -64,7 +73,8 @@ test('an agent starts a light child with rules through the CLI, and the list and
   // A row opens the subagent in the chat, whose header reads "parent / subagent" and carries the same badge.
   await page.evaluate(`[...document.querySelectorAll('[data-testid=delegation-member]')].find(row => row.textContent.includes('Light-count')).click()`);
   await page.waitFor('!!document.querySelector("[data-testid=thread-context-mode]")');
-  expect(await page.text('[data-testid=delegation-back-parent]')).toBe('Benchmark the parser');
+  // The desktop's crumb in the header; the phone's back arrow (hidden here) carries the same testid.
+  expect(await page.text('[data-testid=thread-header] [data-testid=delegation-back-parent]')).toBe('Benchmark the parser');
   expect(await page.text('[data-testid=thread-title]')).toBe('Light-count');
   expect(await page.evaluate('document.querySelector("[data-testid=thread-context-mode]").dataset.mode')).toBe('light');
   expect(await page.evaluate('document.querySelector("[data-testid=thread-context-mode]").title')).toContain(`Its rules: ${RULES}`);
@@ -83,9 +93,10 @@ test('the phone shows the badge in the child header and the Subagents list witho
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
   await page.waitFor(settledAnimations);
   await page.screenshot(join(import.meta.dir, '.artifacts/context-mode-thread-phone.png'));
-  await page.evaluate(`document.querySelector('[data-testid=delegation-back-parent]').click()`);
+  // A phone goes back to the parent with the header's one arrow.
+  await page.evaluate(`document.querySelector('[data-testid=mobile-header] [data-testid=delegation-back-parent]').click()`);
   await page.waitFor(`!document.querySelector("[data-testid=thread-context-mode]")`);
-  await page.click('[data-testid="delegation-activity"]');
+  await openSubagents();
   await page.waitFor('!!document.querySelector("[data-testid=delegation-member-context]")');
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
   await page.waitFor(settledAnimations);

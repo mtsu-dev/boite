@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { StatusMarkProps } from '../lib/thread-state';
+  import type { StatusMarkProps } from '../lib/status-tone';
 
   /**
    * The ring every status wears: threads, agents, workflow runs and steps.
@@ -17,6 +17,7 @@
 
 <style>
   .mark {
+    box-sizing: border-box;
     display: inline-block;
     width: var(--mark-size, 8px);
     height: var(--mark-size, 8px);
@@ -27,18 +28,17 @@
     transition: background var(--dur-2) var(--ease-out-quint);
   }
   .mark.unread { background: var(--color-foreground); border-color: var(--color-foreground); }
-  /* Working is the accent everywhere, the sidebar's rows included; yellow is for the user's turn. */
-  .mark.running {
-    background: var(--color-accent);
+  /* One shape per state, as the thread rows draw them (ThreadState.svelte): work is a still accent arc, a spinner
+     at rest, the user's turn a filled amber dot, so the two never read alike at a glance; amber is kept for asks,
+     red for failures, and a queued or paused step waits in grey. */
+  .mark.running, .mark.queued {
     border-color: var(--color-accent);
-    animation: pulse 1.6s var(--loop-ease-in-out-48) infinite var(--loops);
+    border-top-color: transparent;
+    transform: rotate(45deg);
   }
-  .mark.waiting {
-    border-color: var(--color-live);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-live) 35%, transparent);
-  }
-  .mark.paused { border-color: var(--color-live); }
-  .mark.queued { border-color: var(--color-muted-foreground); border-style: dashed; }
+  .mark.queued { border-color: var(--color-muted-foreground); border-top-color: transparent; }
+  .mark.waiting { background: var(--color-live); border-color: var(--color-live); }
+  .mark.paused { border-color: var(--color-muted-foreground); }
   .mark.skipped { border-color: var(--color-subtle); border-style: dashed; }
   .mark.error { background: var(--color-danger); border-color: var(--color-danger); }
   .mark.done { background: var(--color-success); border-color: var(--color-success); }
@@ -55,7 +55,4 @@
     background: var(--ring, var(--color-surface));
   }
 
-  /* An endless loop stops under reduced motion; the static mark keeps its colour. */
-  @media (prefers-reduced-motion: reduce) { .mark.running { animation: none; } }
-  :global(html[data-motion='reduced']) .mark.running { animation: none; }
 </style>

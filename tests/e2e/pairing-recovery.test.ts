@@ -1,4 +1,4 @@
-import { mobileAction } from './lib/mobile.ts';
+import { mobileAction, screensSettled } from './lib/mobile.ts';
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { BrowserPage } from './lib/cdp.ts';
@@ -30,9 +30,9 @@ afterAll(async () => {
 
 test('a phone with no key is added again from Machines with a pasted link and sees its threads', async () => {
   await page.waitFor(`document.querySelector('${id('mobile-header')}')`);
-  await mobileAction(page, 'mobile-settings');
-  await page.waitFor(`document.querySelector('${id('mobile-settings-home')}')`);
-  await page.click(id('mobile-settings-connection'));
+  // No key, so no Settings gear: the recovery screen's machine button opens Machines.
+  await page.waitFor(`document.querySelector('${id('mobile-connection')}')`);
+  await page.click(id('mobile-connection'));
   await page.waitFor(`document.querySelector('${id('machine-card')}')`);
   // Refused, and named by its address: it is not this phone, and it never answered.
   await page.waitFor(`document.querySelector('${id('machine-card')} .status')?.textContent === 'Add this app to your group'`);
@@ -58,6 +58,10 @@ test('a phone with no key is added again from Machines with a pasted link and se
   await page.screenshot(join(import.meta.dir, '.artifacts', 'pairing-recovery-paired-phone.png'));
 
   await page.click(id('mobile-settings-back'));
+  // Paired, Back leaves Machines for Settings. Its arrow leads to the phone's home, a new draft, whose own Back opens the list.
+  await page.waitFor(`!document.querySelector('${id('machines-page')}') && !!document.querySelector('${id('mobile-settings-leave')}') && ${screensSettled}`);
+  await page.click(id('mobile-settings-leave'));
+  await page.waitFor(`!document.querySelector('${id('mobile-settings-leave')}') && !!document.querySelector('${id('mobile-tabs')}, ${id('mobile-back')}') && ${screensSettled}`);
   await mobileAction(page, 'mobile-conversations');
   await page.waitFor(`[...document.querySelectorAll('${id('mobile-list')} .thread')].some(row => row.textContent.includes('Seen once paired'))`);
   await page.screenshot(join(import.meta.dir, '.artifacts', 'pairing-recovery-threads-phone.png'));

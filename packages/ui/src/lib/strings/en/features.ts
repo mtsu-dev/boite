@@ -6,8 +6,8 @@ export const strings = {
     openChatLinks: { title: 'Open chat links in their apps', hint: 'On this desktop, clicking a local file or folder opens its default app, including shortcuts and files outside the project. Only links from this computer are opened.' },
     previewComments: { title: 'Preview comments', hint: 'Select an element in the integrated browser and add feedback to the conversation draft' },
     edgeScrollbars: {
-      title: 'Edge scrollbars',
-      hint: 'Scrollbars take no room. Each one fades in as the pointer nears the edge of its area and can still be dragged. Mouse and pen only'
+      title: 'Hide scrollbars until the pointer is near',
+      hint: 'They take no room and can still be dragged. Mouse and pen only'
     },
   }
 } as const;

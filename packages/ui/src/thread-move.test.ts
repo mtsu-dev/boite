@@ -85,6 +85,9 @@ const key = (target: Element, name: string) => target.dispatchEvent(new Keyboard
 /** The row menu of a thread, then its "Move to project". */
 async function openPicker(threadId: string): Promise<void> {
   query(`[data-thread-id="${threadId}"]`).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 60 }));
+  // The row's menu keeps the move under All tools.
+  await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=more]') !== null);
+  query<HTMLButtonElement>('[data-testid=context-menu] [data-value=more]').click();
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=move]') !== null);
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=move]').click();
   await waitFor(() => document.querySelector(picker) !== null && document.querySelector('[data-testid=context-menu]') === null);
@@ -281,6 +284,8 @@ test('a running thread stays draggable; its move asks first, waits for the turn,
   expect(query('[data-testid=thread-header] [data-testid=thread-pending]').getAttribute('title')).toBe('Moves to notes after this turn');
 
   query('[data-thread-id="t-bench"]').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 60 }));
+  await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=more]') !== null);
+  query<HTMLButtonElement>('[data-testid=context-menu] [data-value=more]').click();
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=move-cancel]') !== null);
   expect(query<HTMLButtonElement>('[data-testid=context-menu] [data-value=move]').disabled).toBe(false);
   expect(query('[data-testid=context-menu] [data-value=move-cancel]').textContent?.trim()).toBe('Cancel move');

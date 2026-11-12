@@ -1,55 +1,105 @@
 <script lang="ts">
-  import { ChevronDown, Folder, Plus, Search } from '@lucide/svelte';
+  import { Plus, Search } from '@lucide/svelte';
   import { workspace } from '../lib/workspace.svelte';
-  import { projectKey, projectView, type ProjectEntry } from '../lib/project-view.svelte';
+  import { projectView, type ProjectEntry } from '../lib/project-view.svelte';
+  import { machineFilter } from '../lib/machine-filter.svelte';
+  import { work } from '../lib/work-prefs.svelte';
   import { projectName } from '../lib/format';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
-  import Menu from './Menu.svelte';
-  import ProjectTile from './ProjectTile.svelte';
-  import RailHead from './RailHead.svelte';
   import DisplayOptions from './DisplayOptions.svelte';
+  import PluginSlotButtons from './PluginSlotButtons.svelte';
+  import ViewSwitch from './ViewSwitch.svelte';
+  import FilterChips from './FilterChips.svelte';
+  import { inbox } from '../lib/inbox.svelte';
 
-  let { entries, store, prefix = '' }: { entries: ProjectEntry[]; store: Store; prefix?: string } = $props();
+  /**
+   * The thread list's head, one row: its two views, Projects and Recent, as a
+   * segmented switch with the side on raised, then the display menu named
+   * "Filter" and search; under it "New thread" in words, with its key.
+   * Recent's project filter and the machine filter live in the display menu,
+   * which dots its button while one of them hides threads; each one on is a
+   * chip in words on the line under the head, removed with a press.
+   */
+  /** `quiet`: the first run, no AI and no project yet: the head stays empty, its height kept, so nothing points at an empty list. */
+  let { entries, store, quiet = false }: { entries: ProjectEntry[]; store: Store; quiet?: boolean } = $props();
   const selected = $derived(projectView.selected(entries));
   const target = $derived(workspace.view === 'recent' && selected ? selected.project : store.openProject ?? store.projects.find(p => !p.archived));
   const targetOwner = $derived(workspace.view === 'recent' && selected ? selected.machine.store : store);
+  /** The key that starts one, at the row's end where it has one. */
+  const newKey = $derived(store.keyLabel('new-thread'));
   const newLabel = $derived(target ? fill(strings.sidebar.newThreadIn, { project: projectName(target) }) : strings.sidebar.newThread);
-  const items = $derived([
-    { id: 'all', label: strings.sidebar.allProjects, active: !selected },
-    ...entries.map(entry => ({ id: projectKey(entry), label: projectName(entry.project), hint: workspace.machines.length > 1 ? entry.machine.label : entry.project.path, active: projectKey(entry) === projectView.filter, projectTile: { project: entry.project, store: entry.machine.store } }))
-  ]);
+  /** The filters that hide threads, counted on the display button: the project Recent lists, the machine. */
+  const filters = $derived(Number(workspace.view === 'recent' && selected !== undefined) + Number(machineFilter.shown(workspace.machinesOr(store)) !== null));
+  const addProject = $derived(store.addsProjects && work.shows('sidebar.add-project') ? () => { store.projectPickerOpen = true; } : undefined);
   /** Always a new draft: one already written stays in the list, where it was. */
   async function create() {
+    inbox.open = false;
     if (workspace.view === 'recent' && selected) await workspace.select(selected.machine.store, undefined, selected.project.id, { fresh: true });
     else store.startDraft(undefined, { fresh: true });
   }
 </script>
 
-<RailHead {store} current="threads" {prefix}>
-  {#snippet lead()}
-    {#if workspace.view === 'recent' && entries.length}
-      <div class="filter">
-        <Menu {items} onpick={key => projectView.pick(key)} label={strings.sidebar.filterProject} placement="bottom" variant="text" testid={`${prefix}project-filter`}>
-          {#if selected}<ProjectTile project={selected.project} store={selected.machine.store} size={16} />{:else}<Folder size={13} />{/if}<span class="ui-label">{selected ? projectName(selected.project) : strings.sidebar.allProjects}</span>{#if selected && workspace.machines.length > 1}<span class="machine ui-label">{selected.machine.label}</span>{/if}<ChevronDown size={12} />
-        </Menu>
-      </div>
-    {/if}
-  {/snippet}
-  {#snippet actions()}
+{#if quiet}
+<div class="list-head" data-testid="list-first-run" aria-hidden="true"></div>
+{:else}
+<div class="list-head">
+  <h2 class="title" data-testid="list-view-name"><ViewSwitch label={strings.sidebar.displayView} current={workspace.view} onpick={view => workspace.setView(view as 'projects' | 'recent')}
+    options={[{ id: 'projects', label: strings.sidebar.projectsView }, { id: 'recent', label: strings.sidebar.recentView }]} testid="view-switch" /></h2>
+  <div class="actions">
+    <!-- The buttons plugin interfaces put in the sidebar, on the machine that loaded them. -->
+    {#if store === workspace.primary}<PluginSlotButtons slot="sidebar" threadId={store.openThread?.id ?? null} compact />{/if}
+    <DisplayOptions {entries} {target} owner={targetOwner} {filters} word onaddproject={addProject} />
     {#if entries.length}
-      <DisplayOptions {entries} {target} owner={targetOwner} {prefix} />
-      <button class="ghost icon small" title={`${strings.sidebar.search}${store.keyHint('palette')}`} aria-label={strings.sidebar.search} data-testid={`${prefix}sidebar-search-open`} onclick={() => store.paletteOpen = true}><Search size={16} /></button>
-      {#if !prefix}<button class="ghost icon small" title={`${newLabel}${store.keyHint('new-thread')}`} aria-label={newLabel} data-testid="new-thread" onclick={create}><Plus size={16} /></button>{/if}
+      <button class="ghost icon small" title={`${strings.sidebar.search}${store.keyHint('palette')}`} aria-label={strings.sidebar.search} data-testid="sidebar-search-open" onclick={() => store.paletteOpen = true}><Search size={16} /></button>
     {/if}
-  {/snippet}
-</RailHead>
+  </div>
+</div>
+<FilterChips {entries} owner={store} />
+{#if entries.length}
+  <!-- The list's main action in words, over the rows: a head of one row has no room for "New thread" beside
+       both views, Filter and search at the column's default width. -->
+  <button class="ghost new" title={`${newLabel}${store.keyHint('new-thread')}`} aria-label={newLabel} data-testid="new-thread" onclick={create}>
+    <Plus size={16} aria-hidden="true" /><span class="ui-label">{strings.sidebar.newThread}</span>{#if newKey}<span class="kbd">{newKey}</span>{/if}
+  </button>
+{/if}
+{/if}
 
 <style>
-  .filter { flex: 1; min-width: 0; }
-  .filter :global(.menu) { display: flex; min-width: 0; }
-  .filter :global(.trigger) { min-width: 0; width: 100%; height: var(--control-sm); justify-content: flex-start; font-size: var(--text-sm); gap: 6px; }
-  .filter span { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .filter .machine { flex: 0 1 auto; max-width: 40%; font-size: var(--text-xs); color: var(--color-muted-foreground); }
-  .filter :global(svg) { flex: none; }
+  /* No rule under it: the rows fade out beneath it instead (RailFrame.svelte). The switch starts on the cards' edge. */
+  /* The switch keeps its width and 4 px clear of Filter: shrunk, its segment ran under Filter's focus ring. */
+  .list-head { display: flex; align-items: center; gap: 4px; min-width: 0; height: 36px; margin-top: 10px; padding: 0; }
+  .title { display: flex; flex: 1 0 auto; min-width: 0; margin: 0; font-size: var(--text-sm); font-weight: 500; color: var(--color-foreground); }
+  .actions { display: flex; align-items: center; gap: 2px; flex: none; }
+  /* A pointer's full 32 px target each. */
+  .actions :global(button.icon) { flex: none; width: 32px; height: 32px; border-radius: var(--radius-md); color: var(--color-muted-foreground); }
+  .actions :global(button.icon:hover) { color: var(--color-foreground); }
+  /* Filter: its glyph and its word, 32 px high as the glyphs beside it. */
+  .actions :global(button.worded) { flex: none; display: inline-flex; align-items: center; gap: 5px; height: 32px; padding: 0 8px 0 6px; border-radius: var(--radius-md);
+    font-size: var(--text-sm); font-weight: 500; color: var(--color-muted-foreground); white-space: nowrap; }
+  .actions :global(button.worded:hover) { color: var(--color-foreground); }
+  /* Its ring inside its own edge, as a row's: the 4 px beside the switch stay clear. */
+  .actions :global(button.worded:focus-visible) { outline-offset: -2px; }
+  /* Too narrow for the word: the glyph alone, the word kept for screen readers. */
+  @container sidebar (max-width: 279px) {
+    .actions :global(button.worded) { width: 32px; padding: 0; justify-content: center; }
+    .actions :global(button.worded .word) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  }
+  /* The narrowest column: the views' words keep 4 px sides, so French's "Projets" and "Récent" leave Filter and
+     search inside the head at 208 px. */
+  @container sidebar (max-width: 239px) {
+    .list-head .title :global(.side) { padding: 0 4px; }
+  }
+  /* A row on the cards' edges, as tall as a thread row: the glyph where a row's text starts, the key at its end. */
+  .new { display: flex; align-items: center; gap: 8px; width: 100%; height: 32px; margin: 2px 0 6px; padding: 0 8px 0 7px; border-radius: var(--radius-md);
+    background: var(--color-surface-2); color: var(--color-foreground); font-size: var(--text-body); font-weight: 500; }
+  .new:hover:not(:disabled) { background: var(--color-surface-3); }
+  .new > :global(svg) { flex: none; color: var(--color-muted-foreground); }
+  .new .ui-label { flex: 1; min-width: 0; text-align: start; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .new .kbd { flex: none; }
+  @media (max-width: 720px) {
+    /* `button.icon` grows to the touch target on a phone. */
+    .actions :global(button.icon) { width: var(--touch-target); height: var(--touch-target); }
+    .new { height: var(--touch-target); }
+  }
 </style>

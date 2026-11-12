@@ -4,7 +4,7 @@ export const fr: Translation = {
 
   connection: {
     machine: 'Machine',
-    local: 'Ce PC',
+    local: 'Cet ordinateur',
     current: 'Machine actuelle',
     machines: 'machines connectées',
     issues: 'à vérifier',
@@ -20,6 +20,11 @@ export const fr: Translation = {
     ready: 'Connecté',
     closed: 'Déconnecté',
     offline: 'Hors ligne',
+    /** The remedy beside an offline machine (MachinesPage.svelte): it tries now. */
+    reconnect: 'Reconnecter',
+    /** A machine named as a place, after a project or a thread (MachinePlace.svelte). */
+    onMachine: 'sur {name}',
+    nameOffline: '{name} hors ligne',
     label: 'Connexion'
   }
 };

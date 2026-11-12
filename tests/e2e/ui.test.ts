@@ -8,6 +8,7 @@ import { connect } from '../../packages/core/src/client.ts';
 import { claudeProjectFolder } from '../../packages/core/src/imports/claude.ts';
 import { claudeSessionFixture, FIXTURE_SESSION_ID } from '../../packages/core/test/fixtures/claude-session.ts';
 import { BrowserPage } from './lib/cdp.ts';
+import { clickAddProject } from './lib/views.ts';
 import { mintPairing, pairingUrlOf, removeDirectory, startCore, type RunningCore } from './lib/core.ts';
 import { developmentMarkers, ensureProductionUi, UI_DIST } from './lib/prod-ui.ts';
 
@@ -69,6 +70,16 @@ afterAll(async () => {
   if (worktreesDir !== undefined) await removeDirectory(worktreesDir);
 }, 30_000);
 
+
+/** The permission's tool input: the card's "i" (InfoTip) holds it in its bubble, read once opened, then closed again. */
+async function permissionInput(): Promise<string> {
+  await page.click(testid('permission-input'));
+  await page.waitFor(`document.querySelector('${testid('permission-input-text')}')`, 30_000);
+  const text = await page.text(testid('permission-input-text'));
+  await page.click(testid('permission-input'));
+  await page.waitFor(`!document.querySelector('${testid('permission-input-text')}')`, 30_000);
+  return text;
+}
 test('the core serves the production bundle: no fake client, no Svelte dev runtime', async () => {
   const index = await (await fetch(`${core.url}/`)).text();
   const scripts = [...index.matchAll(/src="(?:\.\/|\/)(assets\/[^"]+\.js)"/g)].map((match) => match[1] ?? '');
@@ -94,7 +105,7 @@ test(
 test(
   'opening a folder makes a project and a draft thread, and the first send creates the thread',
   async () => {
-    await page.click(testid('add-project'));
+    await clickAddProject(page);
     await page.waitFor(`document.querySelector('[data-testid=project-path]') && !document.querySelector('[data-testid=project-add]').disabled`);
     await page.type(testid('project-path'), projectDir);
     await clickWhenEnabled(testid('project-add'));
@@ -124,7 +135,7 @@ test(
   'the turn streams, the permission is allowed inline, and the thread goes back to idle',
   async () => {
     await page.waitFor(`document.querySelector('${testid('permission-card')}')`, 30_000);
-    expect(await page.text(testid('permission-input'))).toContain('echo');
+    expect(await permissionInput()).toContain('echo');
 
     await page.click(testid('permission-allow'));
     await page.waitFor(
@@ -148,7 +159,8 @@ test(
       percent = Math.min(100, Math.round(thread!.context!.tokens / thread!.context!.window! * 100));
     } finally { client.close(); }
     await page.waitFor(`document.querySelector('${testid('context-meter')}')?.dataset.percent === '${percent}'`);
-    expect((await page.text(testid('context-trigger'))).trim()).toBe('');
+    // The ring says the share left in words beside it once most of the window is used (ContextControl.svelte).
+    expect((await page.text(testid('context-trigger'))).trim()).toBe(`${100 - percent}% context left`);
 
     await page.screenshot(SCREENSHOT);
     expect(existsSync(SCREENSHOT)).toBe(true);
@@ -314,8 +326,8 @@ test(
     await page.waitFor(`document.querySelector('${testid('tool-diff-counts')}')`, 30_000);
     await page.waitFor(`document.querySelector('${testid('thread-header')}[data-status]').dataset.status === 'idle'`, 30_000);
 
-    // The edit's line counts what it changed without expanding its preview.
-    expect((await page.text(testid('tool-diff-counts'))).replace(/\s+/g, ' ').trim()).toBe('+2 -1');
+    // The edit's line counts what it changed without expanding its preview; the removed count wears a true minus sign.
+    expect((await page.text(testid('tool-diff-counts'))).replace(/\s+/g, ' ').trim()).toBe('+2 \u22121');
     expect(await page.evaluate(`document.querySelector('${testid('diff-view')}') === null`)).toBe(true);
     await page.click(`${testid('tool-card')}[data-family=edit] ${testid('tool-toggle')}`);
     await page.waitFor(`document.querySelector('${testid('tool-document')}[data-kind=diff]')`);
@@ -351,10 +363,12 @@ test(
     await clickWhenEnabled(testid('composer-send'));
     await page.waitFor(`document.querySelector('${testid('question-card')}')`, 30_000);
     expect(await page.text(testid('question-text'))).toContain('Which shape');
-    // Nothing picked yet, so there is nothing to send.
+    // The composer answers it: its Send reads Answer, waits with nothing picked or typed and says why in its tooltip.
+    await page.waitFor(`document.querySelector('${testid('composer-send')}[data-answers]')`, 30_000);
     expect(
-      await page.evaluate<boolean>(`document.querySelector('${testid('question-submit')}').disabled`),
-    ).toBe(true);
+      await page.evaluate<[boolean, string, boolean]>(`(() => { const send = document.querySelector('${testid('composer-send')}'); return [send.disabled, send.title, !!document.querySelector('${testid('question-submit')}')]; })()`),
+    ).toEqual([true, 'Pick an option or type your answer', false]);
+    expect(await page.evaluate<string>(`document.querySelector('${testid('question-card')}').dataset.state`)).toBe('pending');
 
     await page.click(`${testid('question-option')}[data-option=short]`);
     // The composer is the question's free field: Enter there sends the pick with the text.
@@ -508,19 +522,24 @@ test(
 test(
   'the trace panel lists what the turn launched, or says it launched nothing',
   async () => {
-    // The header button opens the panel itself; the trace is one card of its
-    // launcher, or the tab that is already there.
-    await page.click(testid('panel-toggle'));
-    await page.waitFor(
-      `document.querySelector('${testid('launch-trace')}') || document.querySelector('${testid('trace-panel')}')`,
-    );
-    await page.evaluate(`document.querySelector('${testid('launch-trace')}')?.click()`);
+    // The header's Panels door opens the panel; open, the door is the panel
+    // switcher, whose list holds the trace ("Processes") and the way to close.
+    const switcher = `${testid('panel-add-menu')}:not(.closing)`;
+    const pickPanel = async (value: string) => {
+      await page.click(testid('panel-add'));
+      await page.waitFor(`document.querySelector('${switcher} [data-value="${value}"]')`);
+      await page.click(`${switcher} [data-value="${value}"]`);
+    };
+    if (await page.evaluate<boolean>(`!!document.querySelector('${testid('panel-toggle')}')`)) await page.click(testid('panel-toggle'));
+    await page.waitFor(`document.querySelector('${testid('panel-add')}')`);
+    if (!await page.evaluate<boolean>(`!!document.querySelector('${testid('trace-panel')}')`)) await pickPanel('trace');
     await page.waitFor(`document.querySelector('${testid('trace-panel')}')`);
     await page.waitFor(
       `document.querySelector('${testid('trace-row')}') || document.querySelector('${testid('trace-empty')}')`,
     );
-    await page.click(testid('panel-toggle'));
+    await pickPanel('panel-hide');
     await page.waitFor(`!document.querySelector('${testid('trace-panel')}')`);
+    await page.waitFor(`document.querySelector('${testid('panel-toggle')}')`);
   },
   TIMEOUT,
 );
@@ -542,16 +561,42 @@ test(
     }
 
     await page.click(testid('new-thread'));
+    // The worktree switch is a checkable row of the composer's options menu (its "+").
+    await page.waitFor(`document.querySelector('${testid('composer-options')}')`);
+    await page.click(testid('composer-options'));
     await page.waitFor(`document.querySelector('${testid('composer-worktree')}')`);
-    expect(await page.evaluate<string>(`document.querySelector('${testid('composer-worktree')}').getAttribute('aria-pressed')`)).toBe('false');
+    expect(await page.evaluate<string>(`document.querySelector('${testid('composer-worktree')}').getAttribute('aria-checked')`)).toBe('false');
     await page.click(testid('composer-worktree'));
-    await page.waitFor(`document.querySelector('${testid('composer-worktree')}').getAttribute('aria-pressed') === 'true'`);
+    await page.waitFor(`document.querySelector('${testid('composer-worktree')}')?.getAttribute('aria-checked') === 'true'`);
+    if (await page.evaluate<boolean>(`!!document.querySelector('${testid('composer-options-sheet')}')`)) {
+      await page.click(testid('composer-options'));
+      await page.waitFor(`!document.querySelector('${testid('composer-options-sheet')}')`);
+    }
     await page.waitFor(`document.querySelector('[data-testid=composer-picker] .label')?.textContent.trim() === 'Echo'`);
     await page.type(testid('composer-input'), 'worktree thread');
     await clickWhenEnabled(testid('composer-send'));
 
-    await page.waitFor(`${textOf('thread-branch')} === 'boite/worktree-thread'`, 30_000);
-    await page.waitFor(`${textOf('thread-title')} === 'Echo: worktree thread'`);
+    await page.waitFor(`${textOf('thread-title')} === 'Echo: worktree thread'`, 30_000);
+    // The header's branch is a row of its menu's folder group, its path in the row's title.
+    const menu = '[role=menu]:not(.closing)';
+    const branchRow = `${menu} [data-value=thread-branch]`;
+    const closeMenu = async () => {
+      await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+      await page.waitFor(`!document.querySelector('${menu}')`);
+    };
+    // The row comes with the branch the core reports once git made the worktree: the menu is opened again until it is there.
+    const deadline = Date.now() + 30_000;
+    for (;;) {
+      await page.click(testid('thread-menu-trigger'));
+      await page.waitFor(`document.querySelector('${branchRow}, ${menu} [data-value=more]')`);
+      if (!await page.evaluate<boolean>(`!!document.querySelector('${branchRow}')`)) await page.click(`${menu} [data-value=more]`);
+      await page.settleAnimations();
+      if (await page.evaluate<boolean>(`!!document.querySelector('${branchRow}')`)) break;
+      await closeMenu();
+      if (Date.now() > deadline) throw new Error('the thread menu never named the worktree branch');
+      await Bun.sleep(250);
+    }
+    expect(await page.evaluate<string>(`document.querySelector('${branchRow} .ui-label').textContent.trim()`)).toBe('boite/worktree-thread');
     const client = await connect(core.url, core.token);
     try {
       const threads = await client.call('threads.list', {});
@@ -563,10 +608,15 @@ test(
       expect(worktree).toBe(join(worktreesDir, basename(worktree)));
       expect(existsSync(join(worktree, '.git'))).toBe(true);
       expect(existsSync(join(worktree, 'src', 'lib', 'store.ts'))).toBe(true);
-      expect(await page.evaluate<string>(`document.querySelector('${testid('thread-branch')}').title`)).toContain(worktree);
+      expect(await page.evaluate<string>(`document.querySelector('${branchRow}').title`)).toContain(worktree);
       await page.screenshot(WORKTREE_SCREENSHOT);
-      // The chip is a draft's: the thread has no such choice left.
+      await closeMenu();
+      // The switch is a draft's: the thread's options menu has no such choice left.
+      await page.click(testid('composer-options'));
+      await page.waitFor(`document.querySelector('${testid('composer-options-sheet')}')`);
       expect(await page.evaluate<boolean>(`!!document.querySelector('${testid('composer-worktree')}')`)).toBe(false);
+      await page.click(testid('composer-options'));
+      await page.waitFor(`!document.querySelector('${testid('composer-options-sheet')}')`);
       // Restore the first thread for the following scenarios.
       await client.call('threads.archive', { threadId: created.id, archived: true });
     } finally {
@@ -625,9 +675,12 @@ test(
     expect(await page.evaluate<string>(textOf('settings-endpoint'))).toBe(`127.0.0.1:${core.port}`);
     expect(await page.evaluate<string>(textOf('settings-version'))).toBe(corePackage.version);
     await page.click(testid('settings-tab-machines'));
-    await page.waitFor(`document.querySelector('${testid('machine-card')} ${testid('machine-version')}')`);
-    // Its row names the machine and the version of the core it runs; the address stays under Advanced.
-    expect(await page.evaluate<string>(textOf('machine-version'))).toBe(corePackage.version);
+    // The updates card heads the page with the version of the core it runs; the machine's row repeats a version
+    // only where it differs, so this one names the machine alone. The address stays under Advanced.
+    await page.waitFor(`document.querySelector('${testid('updates-version')} .number')`);
+    expect(await page.evaluate<string>(`document.querySelector('${testid('updates-version')} .number').textContent.trim()`)).toBe(corePackage.version);
+    await page.waitFor(`document.querySelector('${testid('machine-card')}')`);
+    expect(await page.evaluate<boolean>(`!!document.querySelector('${testid('machine-card')} ${testid('machine-version')}')`)).toBe(false);
     expect(await page.evaluate<string>(textOf('machine-card-status'))).toBe('Connected');
     expect(await page.evaluate<string>(`document.querySelector('${testid('machine-rename')}').value`)).not.toBe('');
 
@@ -680,7 +733,7 @@ test(
       await page.waitFor(`${textOf('thread-title')} === 'Echo: reloaded'`, 30_000);
       await page.waitFor(`document.querySelector('${testid('permission-card')}')`, 30_000);
       await page.waitFor(`document.querySelector('${testid('permission-input')}')`, 30_000);
-      expect(await page.text(testid('permission-input'))).toContain('echo');
+      expect(await permissionInput()).toContain('echo');
       await page.screenshot(RELOAD_SCREENSHOT);
 
       await page.click(testid('permission-allow'));
@@ -714,12 +767,15 @@ test(
       expect(await phone.evaluate<string>('location.search')).toBe('');
       await phone.waitFor(`document.querySelector('[data-testid=mobile-header]')`);
       await mobileAction(phone, 'mobile-settings');
+      // The phone's own settings are a row of General.
+      await phone.click('[data-testid=settings-tab-general]');
+      await phone.waitFor(`document.querySelector('[data-testid=mobile-settings-phone]')`);
       await phone.click('[data-testid=mobile-settings-phone]');
       await phone.waitFor(`document.querySelector('[data-testid=phone-settings]')`);
       expect(await phone.evaluate(`document.querySelector('[data-testid=phone-public-url]') === null`)).toBe(true);
       await phone.waitFor(`navigator.serviceWorker.controller !== null`, RECONNECT_TIMEOUT_MS);
       await phone.waitFor(`Array.from(document.querySelectorAll('[data-testid=phone-settings] button')).some(button => button.textContent.includes('Enable notifications') && !button.disabled)`);
-      await phone.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(animation => animation.effect?.getTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {}))])`);
+      await phone.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(animation => animation.timeline === document.timeline && animation.effect?.getTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {}))])`);
       await phone.screenshot(join(import.meta.dir, '.artifacts', 'mobile-paired-settings.png'));
       await mobileAction(phone, 'mobile-conversations');
       await phone.waitFor(`document.querySelector('[data-testid=status-connection]')?.dataset.state === 'ready'`);
@@ -814,7 +870,7 @@ test('inline code stays literal at desktop and phone widths', async () => {
   try {
     for (const [name, width, height] of [['desktop', 1280, 900], ['phone', 390, 844]] as const) {
       await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: name === 'phone' });
-      await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+      await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
       await page.screenshot(join(import.meta.dir, '.artifacts', `markdown-${name}.png`));
     }
   } finally {

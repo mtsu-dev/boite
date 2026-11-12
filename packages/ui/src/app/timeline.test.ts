@@ -43,54 +43,58 @@ test('a thinking part is folded, opens on its toggle, and a new turn shows it be
   expect(document.querySelectorAll('[data-testid=thinking-part]').length).toBe(2);
 });
 
-test('an async question waits in the dock above the composer, stacked, and the timeline keeps a line to it', async ({ app: _app }) => {
+test('an async question waits at the top of the composer card, stacked, and its turn draws no second copy', async ({ app: _app }) => {
   query<HTMLButtonElement>('[data-testid=new-thread]').click();
   await waitFor(() => store.draft !== null);
 
   await sendPrompt('[ask] one');
   await waitFor(() => document.querySelectorAll('[data-testid=activity-question]').length === 1);
   await waitFor(() => store.openThread?.status === 'idle');
-  // The composer answers the docked question until it is set aside for an ordinary prompt.
-  query<HTMLButtonElement>('[data-testid=composer-reply-ignore]').click();
-  await waitFor(() => document.querySelector('[data-testid=composer-reply]') === null);
+  // The composer answers the waiting question until its fold sets it aside for an ordinary prompt.
+  expect(document.querySelector('[data-testid=composer-reply]')).not.toBeNull();
   query<HTMLButtonElement>('[data-testid=activity-question-toggle]').click();
-  await waitFor(() => query('[data-testid=activity-question-toggle]').getAttribute('aria-expanded') === 'false');
+  await waitFor(() => document.querySelector('[data-testid=composer-reply]') === null);
+  expect(query('[data-testid=activity-question-toggle]').getAttribute('aria-expanded')).toBe('false');
   await sendPrompt('[ask] two');
   await waitFor(() => document.querySelectorAll('[data-testid=activity-question]').length === 2);
   expect(query('[data-testid=activity-question-toggle]').getAttribute('aria-expanded')).toBe('false');
   query<HTMLButtonElement>('[data-testid=activity-question-toggle]').click();
   await waitFor(() => query('[data-testid=activity-question-toggle]').getAttribute('aria-expanded') === 'true');
 
-  // New arrivals leave the oldest up; the timeline holds a line per question, no card.
-  expect(query('[data-testid=activity-question-index]').textContent).toBe('1 of 2');
-  expect(document.querySelectorAll('[data-testid=question-docked]').length).toBe(2);
+  // New arrivals leave the oldest up; the top of the composer card is their one copy, never the timeline.
+  expect(query('[data-testid=activity-question-index]').textContent).toBe('Question 1 of 2');
+  expect(document.querySelectorAll('[data-testid=question-docked]').length).toBe(0);
+  const cards = Array.from(document.querySelectorAll('[data-testid=composer] [data-testid=question-card]'));
+  expect(cards.length).toBe(2);
+  expect(cards.every((card) => card.closest('[data-testid=thread-decision]'))).toBe(true);
   expect(document.querySelector('[data-testid=timeline] [data-testid=question-card]')).toBeNull();
   const visible = () => Array.from(document.querySelectorAll<HTMLElement>('[data-testid=activity-question]')).filter((el) => !el.hidden);
   expect(visible().length).toBe(1);
   const oldest = visible()[0]?.dataset.question;
   query<HTMLButtonElement>('[data-testid=activity-question-next]').click();
-  await waitFor(() => query('[data-testid=activity-question-index]').textContent === '2 of 2');
+  await waitFor(() => query('[data-testid=activity-question-index]').textContent === 'Question 2 of 2');
   expect(visible()[0]?.dataset.question).not.toBe(oldest);
   query<HTMLButtonElement>('[data-testid=activity-question-prev]').click();
-  await waitFor(() => query('[data-testid=activity-question-index]').textContent === '1 of 2');
+  await waitFor(() => query('[data-testid=activity-question-index]').textContent === 'Question 1 of 2');
   expect(visible()[0]?.dataset.question).toBe(oldest);
 
-  // Answered from the dock, it leaves it and folds to its answer in the timeline.
+  // Answered from the card, it leaves it and folds to its answer in its turn.
   const first = visible()[0]!;
   first.querySelector<HTMLButtonElement>('[data-testid=question-option]')?.click();
   await waitFor(() => !first.querySelector<HTMLButtonElement>('[data-testid=question-submit]')?.disabled);
   first.querySelector<HTMLButtonElement>('[data-testid=question-submit]')?.click();
   await waitFor(() => document.querySelectorAll('[data-testid=activity-question]').length === 1);
   expect(document.querySelector('[data-testid=activity-question-index]')).toBeNull();
-  await waitFor(() => document.querySelectorAll('[data-testid=question-docked]').length === 1);
+  await waitFor(() => document.querySelectorAll('[data-testid=timeline] [data-testid=question-verdict]').length === 1);
+  expect(document.querySelector('[data-testid=question-docked]')).toBeNull();
 
-  // Folded, a click on its line in the timeline opens it again.
+  // Folded, its toggle opens it again.
   query<HTMLButtonElement>('[data-testid=activity-question-toggle]').click();
   await waitFor(() => query('[data-testid=activity-question-toggle]').getAttribute('aria-expanded') === 'false');
-  query<HTMLButtonElement>('[data-testid=question-docked]').click();
+  query<HTMLButtonElement>('[data-testid=activity-question-toggle]').click();
   await waitFor(() => query('[data-testid=activity-question-toggle]').getAttribute('aria-expanded') === 'true');
 
-  // Passing the remaining question removes the dock without sending another prompt.
+  // Passing the remaining question removes the decision card without sending another prompt.
   await waitFor(() => store.openThread?.status === 'idle');
   const beforeSkip = await store.client!.call('threads.get', { threadId: store.openThread!.id });
   query<HTMLButtonElement>('[data-testid=question-skip]').click();
@@ -142,10 +146,10 @@ test('a finished answer lists the files it changed, and a row opens one in the p
   query<HTMLButtonElement>('[data-testid=composer-send]').click();
 
   await waitFor(() => document.querySelector('[data-testid=turn-files]') !== null);
-  // Folded: the count and the lines added and removed, the list on a click.
+  // Folded: the one count of changes, files then lines added and removed, the list on a click.
   const toggle = query<HTMLButtonElement>('[data-testid=turn-files-toggle]');
   expect(toggle.getAttribute('aria-expanded')).toBe('false');
-  expect(toggle.querySelector('[data-testid=turn-lines]')?.textContent).toBe('+2-1');
+  expect(toggle.querySelector('[data-testid=turn-lines]')?.textContent).toBe('1 file, +2 −1');
   expect(document.querySelector('[data-testid=turn-file-folder]')).toBeNull();
   toggle.click();
   await waitFor(() => document.querySelector('[data-testid=turn-file-folder]') !== null);
@@ -206,7 +210,8 @@ test('a tool card shows the diff, the markdown and the image it produced', async
   expect(
     Array.from(document.querySelectorAll('[data-testid=tool-document-chip]')).map((el) => el.textContent)
   ).toEqual(['1 doc', '1 doc']);
-  expect(query('[data-testid=tool-diff-counts]').textContent?.replace(/\s+/g, ' ').trim()).toBe('+2 -1');
+  // A real minus sign, as in every change count (`lib/change-count.ts`).
+  expect(query('[data-testid=tool-diff-counts]').textContent?.replace(/\s+/g, ' ').trim()).toBe('+2 −1');
   expect(query('[data-testid=tool-card][data-family=edit] [data-testid=tool-toggle]').getAttribute('aria-expanded')).toBe('false');
   query<HTMLButtonElement>('[data-testid=tool-card][data-family=edit] [data-testid=tool-toggle]').click();
   flushSync();
@@ -242,4 +247,19 @@ test('a tool card shows the diff, the markdown and the image it produced', async
   const image = query<HTMLImageElement>('[data-testid=tool-document][data-kind=image] img');
   expect(image.getAttribute('src')?.startsWith('data:image/png;base64,iVBORw0KGgo')).toBe(true);
   expect(image.alt).toBe('one pixel');
+});
+
+test('a finished thread ends on its closing line under the last message, inside the timeline', async ({ app: _app }) => {
+  await waitFor(() => document.querySelector('[data-thread-id="t-trace"]') !== null);
+  query<HTMLButtonElement>('[data-thread-id="t-trace"]').click();
+  await waitFor(() => store.openThread?.id === 't-trace');
+  await sendPrompt('one more look');
+  await waitFor(() => store.openThread?.turns.at(-1)?.status === 'done');
+  await waitFor(() => document.querySelector('[data-testid=thread-closing]') !== null);
+  const closing = query('[data-testid=thread-closing]');
+  expect(closing.textContent).toMatch(/^Done · Worked for /);
+  // It scrolls with the conversation, never stands above the composer.
+  expect(closing.closest('[data-testid=timeline]')).not.toBeNull();
+  const last = Array.from(document.querySelectorAll('[data-testid=timeline] article')).at(-1)!;
+  expect(last.compareDocumentPosition(closing) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });

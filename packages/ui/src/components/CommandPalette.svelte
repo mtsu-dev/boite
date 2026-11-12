@@ -1,7 +1,8 @@
 <script lang="ts">
+  import { rowAsks } from '../lib/status-order';
   import { tick, untrack } from 'svelte';
-  import { CornerDownLeft, Search } from '@lucide/svelte';
-  import type { Project, ProjectId, ThreadSummary } from '@boite/contracts';
+  import { CornerDownRight, Search } from '@lucide/svelte';
+  import type { AgentProfile, Project, ProjectId, ThreadSummary } from '@boite/contracts';
   import { Closing } from '../lib/closing.svelte';
   import { minuteClock } from '../lib/clock.svelte';
   import { appCommands, runCommand } from '../lib/commands.svelte';
@@ -14,17 +15,21 @@
   import { MediaQuery } from 'svelte/reactivity';
   import { desktopSettings } from '../lib/settings-tabs';
   import { workspace, type Machine } from '../lib/workspace.svelte';
-  import MachineIcon from './MachineIcon.svelte';
+  import MachinePlace from './MachinePlace.svelte';
   import ProjectTile from './ProjectTile.svelte';
-  import StatusMark from './StatusMark.svelte';
   import ThreadState from './ThreadState.svelte';
-  import { threadTone } from '../lib/thread-state';
+  import AgentAvatar from './agents/AgentAvatar.svelte';
+  import { agentDirectory } from '../lib/agent-directory.svelte';
+  import { inbox } from '../lib/inbox.svelte';
+  import { hostMark, hostName } from '../lib/machine-host';
 
   let { store }: { store: Store } = $props();
 
   const overlay = new Closing();
   let query = $state('');
   let selected = $state(0);
+  /** The selection moved by the keys: the row then draws the focus ring, as a row reached by Tab does anywhere else. */
+  let keyed = $state(false);
   let input = $state<HTMLInputElement | undefined>(undefined);
   let list = $state<HTMLDivElement | undefined>(undefined);
   let dialog = $state<HTMLDivElement | undefined>(undefined);
@@ -49,6 +54,7 @@
     untrack(() => (previous = focusedElement()));
     query = '';
     selected = 0;
+    keyed = false;
     overlay.show();
     void tick().then(() => input?.focus({ preventScroll: true }));
   });
@@ -58,11 +64,19 @@
     machine: Machine;
     project: Project | null;
     thread: ThreadSummary | null;
+    /** A bot's thread: its picture leads the row. */
+    bot?: Pick<AgentProfile, 'id' | 'name' | 'avatar'> | null;
+    /** A subagent's parent thread title: the row says whose helper it is. */
+    parent?: string | null;
   }
+  /** Bots and team chats have no project: they gather under one heading of their own, never under Drafts. */
+  const BOTS = 'bots';
 
   let machines = $derived(workspace.machinesOr(store));
   /** One machine names no machine. */
   let several = $derived(workspace.machines.length > 1);
+  /** A heading names its machine as a project card does (lib/machine-host.ts): this app's own goes unsaid. */
+  const home = $derived(machines.find(machine => machine.store === workspace.primary)?.id);
 
   /** Every live thread, most recent first; the list cuts it to the recents until something is typed. */
   let threadData = $derived.by(() => {
@@ -73,15 +87,19 @@
         if (thread.archived || thread.incognito) continue;
         const project = machine.store.projects.find(p => p.id === thread.projectId) ?? null;
         const id = `thread:${machine.store.threadKey(thread.id)}`;
-        const section = `in:${machine.id}:${thread.projectId}`;
-        places.set(id, { machine, project, thread });
-        if (!places.has(section)) places.set(section, { machine, project, thread: null });
+        const bot = project ? null : agentDirectory(machine.store).ownerOf(thread);
+        const botThread = !project && (bot !== null || !!thread.agentSessionId || !!thread.teamId);
+        const section = botThread ? BOTS : `in:${machine.id}:${thread.projectId}`;
+        const parent = thread.parentThreadId ? machine.store.threads.find(one => one.id === thread.parentThreadId)?.title ?? null : null;
+        places.set(id, { machine, project, thread, bot, parent });
+        if (!botThread && !places.has(section)) places.set(section, { machine, project, thread: null });
         entries.push({ at: thread.lastUserMessageAt ?? thread.createdAt, item: {
           id,
           kind: 'thread',
-          label: thread.title,
+          // A bot's own conversation goes by the bot's name; its helpers keep their titles.
+          label: bot && thread.agentSessionId ? bot.name : thread.title,
           // What a query may also land on: the project and the machine, never drawn on the row.
-          hint: [project ? projectName(project) : '', several ? machine.label : ''].filter(Boolean).join(' '),
+          hint: [project ? projectName(project) : '', bot ? `${bot.name} ${thread.title}` : '', parent ?? '', several ? machine.label : ''].filter(Boolean).join(' '),
           keywords: thread.status,
           section
         } });
@@ -133,7 +151,7 @@
   // the selection cannot jump back to the top under his fingers.
   $effect(() => {
     void query;
-    untrack(() => (selected = 0));
+    untrack(() => { selected = 0; keyed = false; });
   });
 
   /** A shorter list keeps the keyboard on a row that is still there. */
@@ -157,6 +175,8 @@
 
   function pick(item: PaletteItem) {
     close();
+    // A thread or a new one takes the main card back from desktop Activity.
+    if (item.kind !== 'command' || item.id === 'new-thread') inbox.open = false;
     if (item.kind === 'thread') {
       if (workspace.machines.length) void workspace.openNotification(item.id.slice('thread:'.length));
       else { store.showChat(); void store.open(item.id.slice('thread:'.length)); }
@@ -214,6 +234,7 @@
     else if (event.key === 'Home') selected = 0;
     else if (event.key === 'End') selected = rows.length - 1;
     else return;
+    keyed = true;
     event.preventDefault();
   }
 
@@ -258,16 +279,16 @@
       <div class="list" role="listbox" bind:this={list} data-testid="palette-list">
         {#each sections as section, at (section.id)}
           {@const first = offset(at)}
-          {@const heading = section.kind === 'thread' ? placeOf(section.id) : null}
+          {@const heading = section.kind === 'thread' && section.id !== BOTS ? placeOf(section.id) : null}
           <div class="section" data-testid="palette-section" data-section={section.id}>
             {#if heading}
               <div class="section-label project-label" data-testid="palette-project">
                 {#if heading.project}<ProjectTile project={heading.project} store={heading.machine.store} size={16} />{/if}
                 <span class="name ui-label">{heading.project ? projectName(heading.project) : strings.drafts.name}</span>
-                {#if several}<span class="machine ui-label"><MachineIcon icon={heading.machine.icon} os={heading.machine.store.core?.os} size={12} />{heading.machine.label}</span>{/if}
+                {#if hostName(heading.machine, machines, home)}<MachinePlace host={hostName(heading.machine, machines, home)!} />{/if}
               </div>
             {:else}
-              <div class="section-label">{section.kind === 'project' ? strings.palette.projects : strings.palette.commands}</div>
+              <div class="section-label">{section.id === BOTS ? strings.agents.heading : section.kind === 'project' ? strings.palette.projects : strings.palette.commands}</div>
             {/if}
             {#each section.items as item, n (item.id)}
               {@const index = first + n}
@@ -276,28 +297,32 @@
                 type="button"
                 class="row"
                 class:selected={index === selected}
+                class:keyed={keyed && index === selected}
                 role="option"
                 tabindex="-1"
                 aria-selected={index === selected}
                 data-index={index}
                 data-testid="palette-row"
                 data-palette-id={item.id}
-                onmousemove={() => (selected = index)}
+                onmousemove={() => { selected = index; keyed = false; }}
                 onclick={() => pick(item)}
               >
+                <!-- A thread's slot stays empty, its title under its project's name; a bot's holds its picture. The state reads at the right. -->
                 <span class="mark-slot">
-                  {#if place?.thread}<StatusMark {...threadTone(place.thread.status, place.thread.unread)} />
-                  {:else if item.kind === 'project' && place?.project}<ProjectTile project={place.project} store={place.machine.store} size={16} />{/if}
+                  {#if place?.bot}<AgentAvatar kind="profile" id={place.bot.id} name={place.bot.name} avatar={place.bot.avatar} size={16} />
+                  {:else if place?.thread?.teamId}<AgentAvatar kind="team" id={place.thread.teamId} name={place.thread.title} size={16} />
+                  {:else if !place?.thread && item.kind === 'project' && place?.project}<ProjectTile project={place.project} store={place.machine.store} size={16} />
+                  {:else if place?.parent}<span class="sub-mark" aria-hidden="true"><CornerDownRight size={14} /></span>{/if}
                 </span>
-                <span class="label ui-label">{item.label}</span>
+                <span class="label ui-label" class:sub={!!place?.parent}>{item.label}</span>
+                {#if place?.parent}{@const [before, after = ''] = strings.palette.subagentOf.split('{parent}')}<span class="parent ui-label" data-testid="palette-parent"><span class="joint">{before}</span><span class="parent-title">{place.parent}</span>{#if after}<span class="joint">{after}</span>{/if}</span>{/if}
                 {#if place?.thread}
-                  <span class="state"><ThreadState thread={place.thread} {now} subagents={place.machine.store.subagents(place.thread.id)} away={place.machine.store.connection !== 'ready'} /></span>
+                  <span class="state"><ThreadState thread={place.thread} {now} subagents={rowAsks(place.machine.store, place.thread.id)} away={place.machine.store.connection !== 'ready'} mark /></span>
                 {:else if item.kind === 'project' && place}
-                  <span class="meta ui-label">{#if several}<MachineIcon icon={place.machine.icon} os={place.machine.store.core?.os} size={12} />{place.machine.label}{' · '}{/if}{strings.palette.newThread}</span>
+                  <span class="meta">{#if several}<MachinePlace host={hostMark(place.machine.label, place.machine.store.connection)} />{/if}<span class="ui-label">{strings.palette.newThread}</span></span>
                 {:else if item.hint}
                   <span class="kbd ui-label-box"><span class="ui-label">{item.hint}</span></span>
                 {/if}
-                <span class="enter" aria-hidden="true"><CornerDownLeft size={13} strokeWidth={2} /></span>
               </button>
             {/each}
           </div>
@@ -306,8 +331,6 @@
           <p class="empty subtle">{strings.palette.empty}</p>
         {/if}
       </div>
-      <!-- With nothing to open, Enter does nothing: the foot names only the way out. -->
-      <div class="foot subtle">{rows.length === 0 ? strings.palette.hintEmpty : strings.palette.hint}</div>
     </div>
   </div>
 {/if}
@@ -335,10 +358,11 @@
     max-height: min(70vh, 520px);
     display: flex;
     flex-direction: column;
-    background: var(--color-surface);
-    border: 1px solid var(--color-edge);
-    border-radius: var(--radius-xl);
-    box-shadow: var(--shadow-e3);
+    /* The overlay card every menu, sheet and dialog wears (app.css). */
+    background: var(--overlay-surface);
+    border: 1px solid var(--overlay-edge);
+    border-radius: var(--radius-overlay);
+    box-shadow: var(--shadow-overlay);
     overflow: hidden;
     animation: pop var(--dur-2) var(--ease-out-quint);
   }
@@ -347,9 +371,8 @@
     animation-name: pop-out;
   }
 
-  /* The list scrolls, the field and the foot keep their height. */
-  .field,
-  .foot {
+  /* The list scrolls, the field keeps its height. */
+  .field {
     flex: none;
   }
 
@@ -358,7 +381,11 @@
     align-items: center;
     gap: 10px;
     height: 48px;
-    padding: 0 14px;
+    /* The rows' text edges on both sides: the list's padding plus a row's, and the same scrollbar gutter, so the Esc
+       key and every row's state end on one right edge whether the list scrolls or not. */
+    padding: 0 calc(var(--overlay-pad) + var(--overlay-row-pad));
+    overflow: hidden;
+    scrollbar-gutter: stable;
     border-bottom: 1px solid var(--color-border);
     color: var(--color-subtle);
   }
@@ -378,19 +405,27 @@
     outline: none;
   }
 
+  /* A row the list's end cuts fades out at the card's edge, so it reads as more
+     below, and the end padding is as tall as the fade: scrolled down, the last
+     row sits whole above it. */
   .list {
     flex: 1;
     min-height: 0;
     overflow: auto;
-    padding: 6px;
+    scrollbar-gutter: stable;
+    padding: var(--overlay-pad) var(--overlay-pad) var(--space-6);
+    scroll-padding-block: var(--overlay-pad) var(--space-6);
+    mask-image: linear-gradient(to bottom, black calc(100% - var(--space-6)), transparent);
   }
 
   .section + .section {
     margin-top: 4px;
   }
 
+  /* The overlay's head form, as Menu's headings. */
   .section-label {
-    padding: 8px 10px 4px;
+    padding: var(--space-2) var(--overlay-row-pad) var(--space-1);
+    color: var(--color-subtle);
   }
 
   /* A project heading reads like the sidebar's: tile, name, then its machine. */
@@ -412,24 +447,18 @@
     white-space: nowrap;
   }
 
-  .machine {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    flex: none;
-    font-weight: 400;
-    color: var(--color-muted-foreground);
-  }
+  /* The heading's machine stays whole after the name, as on the list's cards. */
+  .project-label :global(.machine-place) { flex: none; }
 
   .row {
     width: 100%;
     display: flex;
     align-items: center;
     gap: 10px;
-    height: var(--row);
-    padding: 0 10px;
+    height: var(--overlay-row);
+    padding: 0 var(--overlay-row-pad);
     border: none;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-overlay-row);
     background: transparent;
     color: var(--color-foreground);
     text-align: left;
@@ -440,23 +469,15 @@
     background: transparent;
   }
 
-  /* The row Enter takes: the accent's wash, a bar on its edge and the Enter glyph, readable in both themes. */
+  /* The row Enter takes: the selection wash and a bar on its edge, readable in both themes. No Enter glyph: it
+     would push the state column off the right edge the field's Esc and every other row end on. */
   .row.selected {
     background: var(--color-accent-soft);
-    box-shadow: inset 2px 0 0 var(--color-accent);
+    box-shadow: inset 2px 0 0 var(--color-muted-foreground);
   }
+  /* The field keeps the keys, so no row is focused: the one the arrows reached draws the ring itself, inside it. */
+  .row.keyed { outline: var(--focus-ring); outline-offset: -2px; }
 
-  .enter {
-    display: inline-flex;
-    flex: none;
-    width: 13px;
-    color: var(--color-accent);
-    opacity: 0;
-  }
-
-  .row.selected .enter {
-    opacity: 1;
-  }
 
   .row:active:not(:disabled) {
     transform: none;
@@ -478,12 +499,20 @@
     font-weight: 400;
   }
 
+  /* A subagent's title gives its room to the parent's name only past its own width. */
+  .label.sub { flex: 0 1 auto; }
+  /* "in" stays whole; only the parent's title, the user's words, ends in an ellipsis when the row is short. */
+  .parent { flex: 1 1 0; display: flex; min-width: 0; white-space: nowrap; font-size: var(--text-sm); color: var(--color-muted-foreground); }
+  .parent .joint { flex: none; white-space: pre; }
+  .parent-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .sub-mark { display: inline-flex; color: var(--color-subtle); }
+
   .state,
   .meta {
     flex: none;
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: 8px;
     font-size: var(--text-sm);
     color: var(--color-muted-foreground);
   }
@@ -492,15 +521,15 @@
     flex: none;
   }
 
+  /* The list's grammar: at rest a thread shows its state only when it asks for the user or failed; the row Enter takes shows the rest. */
+  .row:not(.selected) .state :global(.when:not(.waiting, .error, .interrupted)) {
+    display: none;
+  }
+
   .empty {
     padding: 14px 10px;
     text-align: center;
     font-size: var(--text-sm);
   }
 
-  .foot {
-    padding: 6px 14px 8px;
-    border-top: 1px solid var(--color-border);
-    font-size: var(--text-xs);
-  }
 </style>

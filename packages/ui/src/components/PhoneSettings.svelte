@@ -147,15 +147,16 @@
 </script>
 
 <section class="card" id="settings-phone" data-testid="phone-settings">
-  <h2>{strings.phone.heading}<SaveStatus save={urlSave} /></h2>
+  <h2 class="ui-label-box"><span class="ui-label">{strings.phone.heading}</span><InfoTip gather topic={strings.phone.heading} text="" testid="section-info" /><SaveStatus save={urlSave} /></h2>
   {#if store.owner && showServerSettings}
     <div class="block"><TailscaleAccess {store} /></div>
     <div class="block">
       <label for="{uid}-listen-on-lan" class="switch-row">
-        <span class="text ui-label-box">
-          <span class="ui-label" id="{uid}-listen-on-lan-name">{strings.settings.listenOnLan}</span><InfoTip topic={strings.settings.listenOnLan} text={strings.settings.listenOnLanHint} /><PolicyLock {store} keys={['network.lan']} />
+        <span class="text">
+          <span class="ui-label-box"><span class="ui-label" id="{uid}-listen-on-lan-name">{strings.settings.listenOnLan}</span><InfoTip topic={strings.settings.listenOnLan} text={strings.settings.listenOnLanHint} /><PolicyLock {store} keys={['network.lan']} /></span>
+          <span class="hint" id="{uid}-listen-on-lan-effect">{strings.settings.effects.listenOnLan}</span>
         </span>
-        <input id="{uid}-listen-on-lan" aria-labelledby="{uid}-listen-on-lan-name" type="checkbox" role="switch" data-testid="setting-listen-on-lan"
+        <input id="{uid}-listen-on-lan" aria-labelledby="{uid}-listen-on-lan-name" aria-describedby="{uid}-listen-on-lan-effect" type="checkbox" role="switch" data-testid="setting-listen-on-lan"
           checked={store.settings?.listenOnLan ?? false} disabled={!store.settings || restarting || lanLocked}
           onchange={(event) => void toggleLan(event.currentTarget)} />
       </label>

@@ -16,13 +16,15 @@ beforeAll(async () => {
   port = await freePort();
   server = await startUi(port);
   page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1`, experiments: ['resident-agents'] });
-  await page.waitFor(`document.querySelector('[data-testid="view-agents"]')`);
+  await page.waitFor(`document.querySelector('[data-testid="rail-add"], [data-testid="mobile-agents"]')`);
 }, 60000);
 afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);
 
 
 async function capture(name: string) {
-  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+  // Not a bare wait on every animation's `finished`: one left in a part the phone covered settles only on a frame
+  // that part never draws, and the wait hung until the call timed out (settleAnimations pumps frames and skips it).
+  await page.settleAnimations();
   await page.screenshot(join(ARTIFACTS, name));
 }
 
@@ -78,7 +80,7 @@ test('a thread asks to entrust a project to an agent; Apply entrusts it and the 
 test('a persistent agent\'s card stands in its conversation', async () => {
   await page.navigate(`http://127.0.0.1:${port}/?fake=1&agents=1`);
   await page.send('Emulation.setDeviceMetricsOverride', DESKTOP);
-  await page.waitFor(`document.querySelector('[data-testid="view-agents"]')`);
+  await page.waitFor(`document.querySelector('[data-testid="rail-add"], [data-testid="mobile-agents"]')`);
   // Mira, at rest in the demo, asks from its own thread for a project it lacks.
   const ids = await page.evaluate<{ agent: string; project: string }>(`(async () => {
     const store = window.__boiteTest.workspace.active;
@@ -113,7 +115,7 @@ test('a persistent agent\'s card stands in its conversation', async () => {
 test('a bot asks to change its name, picture and instructions; Apply renames it', async () => {
   await page.navigate(`http://127.0.0.1:${port}/?fake=1&agents=1`);
   await page.send('Emulation.setDeviceMetricsOverride', DESKTOP);
-  await page.waitFor(`document.querySelector('[data-testid="view-agents"]')`);
+  await page.waitFor(`document.querySelector('[data-testid="rail-add"], [data-testid="mobile-agents"]')`);
   const agent = await page.evaluate<string>(`(async () => {
     const store = window.__boiteTest.workspace.active;
     const snapshot = await store.client.call('agents.snapshot', {});
@@ -163,7 +165,7 @@ test('a bot asks to change its name, picture and instructions; Apply renames it'
 
 test('a native event wake setting card works at desktop and phone widths', async () => {
   await page.navigate(`http://127.0.0.1:${port}/?fake=1`);
-  await page.waitFor(`document.querySelector('[data-testid="view-agents"]')`);
+  await page.waitFor(`document.querySelector('[data-testid="rail-add"], [data-testid="mobile-agents"]')`);
   await page.send('Emulation.setDeviceMetricsOverride', DESKTOP);
   const agentId = await page.evaluate(`(async () => {
     const store = window.__boiteTest.workspace.active;

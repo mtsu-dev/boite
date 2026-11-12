@@ -12,20 +12,22 @@
   import { readTheme, setTheme, THEME_STORAGE_KEY, type Theme } from '../lib/theme';
   import { COLORS_EVENT } from '../lib/theme-colors';
   import { readChatWidth, setChatWidth, type ChatWidth } from '../lib/chat-width';
-  import { readTerminalCursor, readTerminalGpu, setTerminalCursor, setTerminalGpu, type TerminalCursor } from '../lib/terminal-cursor';
-  import { matchingPreset, work, type PanelStart, type Profile, type StartIn } from '../lib/work-prefs.svelte';
+  import { matchingPreset, work, type Profile } from '../lib/work-prefs.svelte';
   import ThemeColors from './ThemeColors.svelte';
+  import ChoiceSelect from './ChoiceSelect.svelte';
   import { controlGroups } from '../lib/control-groups';
   import type { Store } from '../lib/store.svelte';
   import SurfaceIcon from './SurfaceIcon.svelte';
-  import { chatPrefs, setChatPref } from '../lib/chat-prefs.svelte';
-  import { featureOn } from '../lib/features.svelte';
-  import { setFeature } from '../lib/features';
 
   /**
-   * `phone`: what a phone reads and looks like. The column width, the terminal,
-   * the workspace and the header's buttons are the desktop's; the chat's files
-   * and previews switch, on the desktop's General page, joins the display here.
+   * Visual choices only: language, theme, colours, widths, faces, zoom and the
+   * buttons shown. What the app does (how a turn's changes show, where a window
+   * starts, the terminal's renderer) lives under General, and the terminal's
+   * cursor and the edge scrollbars under Advanced. `phone`: what a phone reads
+   * and looks like; the column width and the header's buttons are the desktop's.
+   * A short choice (language, theme, width) is a segmented control and the
+   * palettes are their pictures, every option in sight; only a face, a longer
+   * list, is one row in its own face that opens the others (`ChoiceSelect`).
    */
   let { store, phone = false }: { store: Store; phone?: boolean } = $props();
   const uid = $props.id();
@@ -85,15 +87,6 @@
 
   // `readTheme` answers `system` for a grain that lost its experiment, which is
   // the fallback the segmented control has to show.
-  let starts = $derived<{ id: StartIn; label: string }[]>([
-    { id: 'drafts', label: strings.settings.startDrafts },
-    { id: 'project', label: strings.settings.startProject }
-  ]);
-  let panels = $derived<{ id: PanelStart; label: string }[]>([
-    { id: 'launcher', label: strings.settings.panelLauncher },
-    { id: 'files', label: strings.settings.panelFiles },
-    { id: 'changes', label: strings.settings.panelChanges }
-  ]);
   let theme = $state<Theme>(untrack(() => readTheme()));
 
   let chatWidth = $state<ChatWidth>(untrack(() => readChatWidth()));
@@ -106,18 +99,9 @@
     chatWidth = next;
     setChatWidth(next);
   }
-
-  let terminalCursor = $state<TerminalCursor>(untrack(() => readTerminalCursor()));
-  let terminalGpu = $state(untrack(() => readTerminalGpu()));
-  let cursors = $derived<{ id: TerminalCursor; label: string }[]>([
-    { id: 'bar', label: strings.settings.terminalCursorBar },
-    { id: 'block', label: strings.settings.terminalCursorBlock },
-    { id: 'underline', label: strings.settings.terminalCursorUnderline }
-  ]);
-  function pickTerminalCursor(next: TerminalCursor) {
-    terminalCursor = next;
-    setTerminalCursor(next);
-  }
+  // A width pointed at or focused shows in the sample before it is picked; leaving it shows the one in use.
+  let pointedWidth = $state<ChatWidth | null>(null);
+  let sampleWidth = $derived(pointedWidth ?? chatWidth);
 
   function pickTheme(next: Theme) {
     theme = next;
@@ -136,7 +120,8 @@
     ] satisfies { id: Glass; label: string }[]).filter((option) => offered.includes(option.id))
   );
 
-  let locale = $state<LocaleSetting>(untrack(() => localeSetting()));
+  // Follows the language set anywhere (another window, a script); a pick lights at once, before its catalogue loads.
+  let locale = $derived<LocaleSetting>(localeSetting());
   function pickLocale(next: LocaleSetting) {
     locale = next;
     setLocaleSetting(next);
@@ -182,10 +167,11 @@
   </header>
 
   <section class="card" id="settings-theme">
-    <h2>{strings.settings.display}</h2>
+    <h2 class="ui-label-box"><span class="ui-label">{strings.settings.display}</span><InfoTip gather topic={strings.settings.display} text="" testid="section-info" /></h2>
+    <!-- Two to four options show every one of them, in place, on a phone as on a desktop: the value in use is the one lit. -->
     <div class="switch-row">
       <span class="text ui-label">{strings.settings.language}</span>
-      <div class="segmented" role="group" aria-label={strings.settings.language}>
+      <div class="segmented" role="group" aria-label={strings.settings.language} data-testid="locale-current">
         <button type="button" class:on={locale === 'system'} aria-pressed={locale === 'system'} data-testid="locale-system" onclick={() => pickLocale('system')}>
           <span class="ui-label">{strings.settings.languageSystem}</span>
         </button>
@@ -196,9 +182,10 @@
         {/each}
       </div>
     </div>
+    <!-- Each theme carries a swatch of its own ground, and the row says what the chosen one does. -->
     <div class="switch-row">
-      <span class="text ui-label">{strings.settings.theme}</span>
-      <div class="segmented" role="group" aria-label={strings.settings.theme}>
+      <span class="text"><span class="ui-label">{strings.settings.theme}</span><span class="hint" data-testid="theme-result">{strings.settings.themeResult[theme]}</span></span>
+      <div class="segmented" role="group" aria-label={strings.settings.theme} data-testid="theme-current">
         {#each themes as option (option.id)}
           <button
             type="button"
@@ -207,67 +194,30 @@
             data-testid="theme-{option.id}"
             onclick={() => pickTheme(option.id)}
           >
-            <span class="ui-label">{option.label}</span>
+            <span class="swatch {option.id}" aria-hidden="true"></span><span class="ui-label">{option.label}</span>
           </button>
         {/each}
       </div>
     </div>
+    <!-- The palettes as their pictures, on a phone too: each in its own colours, the one in use checked. -->
     <ThemeColors />
     {#if !phone}
     <div class="switch-row">
-      <span class="text ui-label">{strings.settings.chatWidth}</span>
+      <span class="text"><span class="ui-label">{strings.settings.chatWidth}</span><span class="hint">{strings.settings.chatWidthResult[chatWidth]}</span></span>
       <div class="segmented" role="group" aria-label={strings.settings.chatWidth}>
         {#each widths as option (option.id)}
-          <button type="button" class:on={chatWidth === option.id} aria-pressed={chatWidth === option.id} data-testid="chat-width-{option.id}" onclick={() => pickChatWidth(option.id)}><span class="ui-label">{option.label}</span></button>
+          <button type="button" class:on={chatWidth === option.id} aria-pressed={chatWidth === option.id} data-testid="chat-width-{option.id}" onclick={() => pickChatWidth(option.id)} onpointerenter={() => { pointedWidth = option.id; }} onpointerleave={() => { pointedWidth = null; }} onfocus={() => { pointedWidth = option.id; }} onblur={() => { pointedWidth = null; }}><span class="glyph width {option.id}" aria-hidden="true"><i></i></span><span class="ui-label">{option.label}</span></button>
         {/each}
       </div>
     </div>
-    <div class="switch-row">
-      <span class="text ui-label">{strings.settings.terminalCursor}</span>
-      <div class="segmented" role="group" aria-label={strings.settings.terminalCursor}>
-        {#each cursors as option (option.id)}
-          <button type="button" class:on={terminalCursor === option.id} aria-pressed={terminalCursor === option.id} data-testid="terminal-cursor-{option.id}" onclick={() => pickTerminalCursor(option.id)}><span class="ui-label">{option.label}</span></button>
-        {/each}
-      </div>
+    <!-- A small window under the row: a question and its reply set at the width in use, or at the one pointed at. -->
+    <div class="width-sample" data-testid="chat-width-sample" data-width={sampleWidth} aria-hidden="true">
+      <div class="sample-chat"><p class="sample-ask">{strings.settings.chatWidthAsk}</p><p class="sample-reply">{strings.settings.chatWidthSample}</p></div>
     </div>
-    <label class="switch-row">
-      <span class="text ui-label" title={strings.settings.terminalGpuHint}>{strings.settings.terminalGpu}</span>
-      <input type="checkbox" role="switch" checked={terminalGpu} data-testid="terminal-gpu"
-        onchange={(event) => { terminalGpu = event.currentTarget.checked; setTerminalGpu(terminalGpu); }} />
-    </label>
-    {/if}
-    <label class="switch-row">
-      <span class="text ui-label">{strings.settings.groupChanges}</span>
-      <input type="checkbox" role="switch" checked={chatPrefs.groupChanges} data-testid="chat-group-changes" onchange={event => setChatPref('groupChanges', event.currentTarget.checked)} />
-    </label>
-    <label class="switch-row">
-      <span class="text ui-label">{strings.settings.expandDiffs}</span>
-      <input type="checkbox" role="switch" checked={chatPrefs.expandDiffs} data-testid="chat-expand-diffs" onchange={event => setChatPref('expandDiffs', event.currentTarget.checked)} />
-    </label>
-    {#if !phone}
-      <label class="switch-row" for="{uid}-edge-scrollbars">
-        <span class="text ui-label-box"><span class="ui-label" id="{uid}-edge-scrollbars-name">{strings.features.edgeScrollbars.title}</span><InfoTip topic={strings.features.edgeScrollbars.title} text={strings.features.edgeScrollbars.hint} /></span>
-        <input id="{uid}-edge-scrollbars" aria-labelledby="{uid}-edge-scrollbars-name" type="checkbox" role="switch" checked={featureOn('edge-scrollbars')} data-testid="setting-edge-scrollbars"
-          onchange={event => setFeature('edge-scrollbars', event.currentTarget.checked)} />
-      </label>
-    {/if}
-    {#if phone}
-      <label class="switch-row" for="{uid}-chat-artifacts">
-        <span class="text ui-label-box"><span class="ui-label" id="{uid}-chat-artifacts-name">{strings.features.chatArtifacts.title}</span><InfoTip topic={strings.features.chatArtifacts.title} text={strings.features.chatArtifacts.hint} /></span>
-        <input id="{uid}-chat-artifacts" aria-labelledby="{uid}-chat-artifacts-name" type="checkbox" role="switch" checked={featureOn('chat-artifacts')} data-testid="setting-chat-artifacts"
-          onchange={event => setFeature('chat-artifacts', event.currentTarget.checked)} />
-      </label>
-      <label class="switch-row" for="{uid}-preview-comments">
-        <span class="text ui-label-box"><span class="ui-label" id="{uid}-preview-comments-name">{strings.features.previewComments.title}</span><InfoTip topic={strings.features.previewComments.title} text={strings.features.previewComments.hint} /></span>
-        <input id="{uid}-preview-comments" aria-labelledby="{uid}-preview-comments-name" type="checkbox" role="switch" checked={featureOn('preview-comments')} data-testid="setting-preview-comments"
-          onchange={event => setFeature('preview-comments', event.currentTarget.checked)} />
-      </label>
     {/if}
     {#if hasMaterial}
       <div class="switch-row">
-        <span class="text ui-label">
-          {strings.settings.material}
-        </span>
+        <span class="text"><span class="ui-label">{strings.settings.material}</span><span class="hint">{strings.settings.materialResult[glass]}</span></span>
         <div class="segmented" role="group" aria-label={strings.settings.material}>
           {#each materials as option (option.id)}
             <button
@@ -277,7 +227,7 @@
               data-testid="glass-{option.id}"
               onclick={() => pickMaterial(option.id)}
             >
-              <span class="ui-label">{option.label}</span>
+              <span class="glyph material {option.id}" aria-hidden="true"><i></i></span><span class="ui-label">{option.label}</span>
             </button>
           {/each}
         </div>
@@ -286,25 +236,18 @@
   </section>
 
   <section class="card" id="settings-reading">
-    <h2>{strings.settings.reading}</h2>
-    <div class="switch-row faces-row">
+    <h2 class="ui-label-box"><span class="ui-label">{strings.settings.reading}</span><InfoTip gather topic={strings.settings.reading} text="" testid="section-info" /></h2>
+    <!-- Each face's name is drawn in that face in its list, and a line under the row shows the one in use
+         at the size it is read at: a reply's for the text, a code block's for the code. -->
+    <div class="switch-row choice-row sampled" class:value={phone}>
       <span class="text ui-label-box"><span class="ui-label">{strings.settings.font}</span><InfoTip topic={strings.settings.font} text={strings.settings.fontHint} /></span>
-      <div class="faces" role="group" aria-label={strings.settings.font}>
-        {#each faces as face (face.id)}
-          <button type="button" class="face" style:font-family="var(--face-{face.id})" aria-pressed={font === face.id} data-testid="font-{face.id}" onclick={() => pickFont(face.id)}>
-            <span class="face-name ui-label">{face.name}</span>
-            <span class="face-sample ui-label">{strings.settings.fontSample}</span>
-          </button>
-        {/each}
-      </div>
+      <ChoiceSelect label={strings.settings.font} options={faces} value={font} onpick={pickFont} face={(id) => `var(--face-${id})`} testid="font-current" optionTestid={(id) => `font-${id}`} row={phone} />
+      <span class="sample prose" style:font-family="var(--face-{font})" data-testid="font-sample" aria-hidden="true">{strings.settings.fontSample}</span>
     </div>
-    <div class="switch-row">
+    <div class="switch-row choice-row sampled" class:value={phone}>
       <span class="text ui-label">{strings.settings.monoFont}</span>
-      <div class="segmented monos" role="group" aria-label={strings.settings.monoFont}>
-        {#each monos as option (option.id)}
-          <button type="button" class:on={mono === option.id} style:font-family="var(--face-mono-{option.id})" aria-pressed={mono === option.id} data-testid="font-mono-{option.id}" onclick={() => pickMono(option.id)}><span class="ui-label">{option.name}</span></button>
-        {/each}
-      </div>
+      <ChoiceSelect label={strings.settings.monoFont} options={monos} value={mono} onpick={pickMono} face={(id) => `var(--face-mono-${id})`} testid="font-mono-current" optionTestid={(id) => `font-mono-${id}`} row={phone} />
+      <span class="sample code" style:font-family="var(--face-mono-{mono})" data-testid="font-mono-sample" aria-hidden="true">{strings.settings.monoSample}</span>
     </div>
     {#if zoomable}
       <div class="switch-row">
@@ -320,165 +263,105 @@
   </section>
 
   {#if !phone}
-  <!-- What the tour's question set, each piece on its own. -->
-  <section class="card" id="settings-workspace">
-    <h2>{strings.settings.workspace}</h2>
-    <div class="switch-row">
-      <span class="text ui-label">{strings.settings.startIn}</span>
-      <div class="segmented" role="group" aria-label={strings.settings.startIn}>
-        {#each starts as option (option.id)}
-          <button type="button" class:on={work.current.startIn === option.id} aria-pressed={work.current.startIn === option.id} data-testid="start-in-{option.id}" onclick={() => work.setStartIn(option.id)}><span class="ui-label">{option.label}</span></button>
-        {/each}
-      </div>
-    </div>
-    <div class="switch-row">
-      <span class="text ui-label">{strings.settings.panelStart}</span>
-      <div class="segmented" role="group" aria-label={strings.settings.panelStart}>
-        {#each panels as option (option.id)}
-          <button type="button" class:on={work.current.panel === option.id} aria-pressed={work.current.panel === option.id} data-testid="panel-start-{option.id}" onclick={() => work.setPanel(option.id)}><span class="ui-label">{option.label}</span></button>
-        {/each}
-      </div>
-    </div>
-  </section>
-
-  <!-- Every optional button in one place, grouped by where it sits. A button's
-       own right click hides it and leads here; this is the only way back. -->
-  <section class="card" id="settings-buttons" data-testid="settings-buttons">
-    <div class="card-head">
-      <h2 class="ui-label-box"><span class="ui-label">{strings.controls.heading}</span><InfoTip topic={strings.controls.heading} text={strings.controls.headingHint} /></h2>
-      <div class="segmented" role="group" aria-label={strings.controls.preset}>
-        {#each presets as option (option.id)}
-          <button type="button" class:on={preset === option.id} aria-pressed={preset === option.id} data-testid="controls-preset-{option.id}" onclick={() => work.showPreset(option.id)}><span class="ui-label">{option.label}</span></button>
-        {/each}
-      </div>
-    </div>
-    {#each groups as group (group.id)}
-      <div class="control-group" role="group" aria-labelledby="{uid}-{group.id}">
-        <p class="section-label" id="{uid}-{group.id}">{group.label}</p>
-        <div class="toggles">
-          {#each group.entries as entry (entry.id)}
-            {@const shown = work.shows(entry.id)}
-            <label class="toggle" class:off={!shown}>
-              <span class="glyph" aria-hidden="true">
-                {#if entry.kind}
-                  <SurfaceIcon kind={entry.kind} size={15} />
-                {:else if entry.icon}
-                  {@const Icon = entry.icon}
-                  <Icon size={15} strokeWidth={1.75} />
-                {/if}
-              </span>
-              <span class="name ui-label">{entry.label}</span>
-              <input type="checkbox" role="switch" checked={shown} data-testid="control-{entry.id}" onchange={(event) => work.show(entry.id, event.currentTarget.checked)} />
-            </label>
+  <!-- Every optional button in one place, grouped by where it sits: the presets,
+       then one card a place, titled by it. A button's own right click hides it and
+       leads here; this is the only way back. -->
+  <div class="settings-stack" id="settings-buttons" data-testid="settings-buttons">
+    <section class="card">
+      <h2 class="ui-label-box"><span class="ui-label">{strings.controls.heading}</span><InfoTip gather topic={strings.controls.heading} text={strings.controls.headingHint} testid="section-info" /></h2>
+      <!-- The two presets as a row like the others, the "i" saying what each keeps. -->
+      <div class="switch-row">
+        <span class="text"><span class="ui-label">{strings.controls.preset}</span>{#if preset}<span class="hint">{strings.controls.presetResult[preset]}</span>{/if}</span>
+        <div class="segmented" role="group" aria-label={strings.controls.preset}>
+          {#each presets as option (option.id)}
+            <button type="button" class:on={preset === option.id} aria-pressed={preset === option.id} data-testid="controls-preset-{option.id}" onclick={() => work.showPreset(option.id)}><span class="glyph buttons" aria-hidden="true">{#each { length: option.id === 'developer' ? 5 : 2 } as _, index (index)}<i></i>{/each}</span><span class="ui-label">{option.label}</span></button>
           {/each}
         </div>
       </div>
+    </section>
+    {#each groups as group (group.id)}
+      <section class="card control-group" role="group" aria-labelledby="{uid}-{group.id}">
+        <h2 id="{uid}-{group.id}"><span class="ui-label">{group.label}</span></h2>
+        <!-- One plain row a button, its icon and name as the button wears them, its switch at the row's end. -->
+        {#each group.entries as entry (entry.id)}
+          <label class="switch-row">
+            <span class="text ui-label-box">
+              {#if entry.kind}
+                <SurfaceIcon kind={entry.kind} size={15} />
+              {:else if entry.icon}
+                {@const Icon = entry.icon}
+                <Icon size={15} strokeWidth={1.75} />
+              {/if}
+              <span class="ui-label">{entry.label}</span>
+            </span>
+            <input type="checkbox" role="switch" checked={work.shows(entry.id)} data-testid="control-{entry.id}" onchange={(event) => work.show(entry.id, event.currentTarget.checked)} />
+          </label>
+        {/each}
+      </section>
     {/each}
-  </section>
+  </div>
   {/if}
 </div>
 
 <style>
-  /* The text font's choices are tiles, each drawn in the face it picks, so the
-     choice is made by reading rather than by name. */
-  :global(.settings .page) .faces-row { flex-direction: column; align-items: stretch; gap: 12px; }
-  /* Five faces: one row on a desktop card, none left alone on a second one. */
-  .faces { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
-  .face {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
-    height: auto;
-    min-height: 0;
-    padding: 10px 12px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-surface-2);
-    color: var(--color-foreground);
-    text-align: left;
-    white-space: normal;
-  }
-  .face:hover:not([aria-pressed='true']) { background: var(--color-surface-3); }
-  .face[aria-pressed='true'] { border-color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-foreground); }
-  .face-name { font-size: var(--text-sm); font-weight: 600; }
-  .face-sample { font-size: var(--text-base); line-height: 1.45; color: var(--color-muted-foreground); }
+  /* A theme's own ground in its button, the way the palettes show theirs: dark, light, and both for System. */
+  .segmented .swatch { flex: none; width: 12px; height: 12px; border-radius: calc(var(--radius-sm) / 2); box-shadow: inset 0 0 0 1px var(--color-edge); }
+  .swatch.dark { background: var(--palette-dark-default-background); }
+  .swatch.light { background: var(--palette-light-default-background); }
+  .swatch.system { background: linear-gradient(135deg, var(--palette-light-default-background) 50%, var(--palette-dark-default-background) 50%); }
+  .swatch.grain { background: linear-gradient(135deg, var(--palette-light-default-frame), var(--palette-dark-default-frame)); }
+  .segmented button:has(.swatch, .glyph) { gap: 6px; }
+  /* A choice's picture beside its word: the column inside the window for a width,
+     the bar's buttons for a preset, drawn in the button's own ink so the lit one reads as lit. */
+  .glyph { flex: none; display: inline-flex; align-items: center; width: 20px; height: 13px; padding: 2px; border-radius: calc(var(--radius-sm) / 2); box-shadow: inset 0 0 0 1px currentColor; opacity: 0.85; }
+  .glyph.width { justify-content: center; }
+  .glyph.width i { height: 100%; border-radius: 1px; background: currentColor; opacity: 0.55; }
+  .glyph.width.comfortable i { width: 45%; }
+  .glyph.width.wide i { width: 70%; }
+  .glyph.width.full i { width: 100%; }
+  .glyph.buttons { gap: 1.5px; justify-content: flex-end; }
+  /* A material by its look: the desktop blurred through, a wallpaper's tint, one flat fill. */
+  .glyph.material i { width: 100%; height: 100%; border-radius: 1px; background: currentColor; }
+  .glyph.material.acrylic i { opacity: 0.35; background: radial-gradient(circle at 30% 40%, currentColor 0 22%, transparent 60%), radial-gradient(circle at 75% 65%, currentColor 0 18%, transparent 55%); filter: blur(0.6px); }
+  .glyph.material.mica i { opacity: 0.5; background: linear-gradient(135deg, currentColor, transparent); }
+  .glyph.material.solid i { opacity: 0.55; }
+  /* A face's sample: the whole row's width under its label and choice, at the size it is read at. */
+  :global(.settings .page) .switch-row.sampled { flex-wrap: wrap; row-gap: var(--space-1); }
+  .sample { flex: 1 0 100%; min-width: 0; color: var(--color-muted-foreground); overflow-wrap: anywhere; }
+  .sample.prose { font-size: var(--text-reading); line-height: var(--leading-reading); }
+  .sample.code { font-size: var(--text-body); line-height: 1.5; }
+  /* The chat width's sample: the window as a well, the paragraph at the column's share of a 1440 px window. */
+  /* The conversation in small: the card stands for the window, so each width keeps its proportion to it. */
+  .width-sample { margin: 0 0 var(--space-2); padding: var(--space-3); border-radius: var(--radius-md); background: var(--color-background); }
+  .sample-chat { display: flex; flex-direction: column; gap: var(--space-2); margin: 0 auto; max-width: 50%; transition: max-width var(--dur-3) var(--ease-out-quint); }
+  .width-sample[data-width='wide'] .sample-chat { max-width: 72%; }
+  .width-sample[data-width='full'] .sample-chat { max-width: 100%; }
+  .sample-chat p { margin: 0; font-size: var(--text-meta); line-height: 1.5; }
+  .sample-ask { align-self: flex-end; max-width: 85%; padding: 3px 10px; border-radius: var(--radius-md); background: var(--color-surface-3); color: var(--color-foreground); }
+  .sample-reply { color: var(--color-muted-foreground); }
+  .glyph.buttons i { width: 2.5px; height: 2.5px; border-radius: 50%; background: currentColor; }
   .zoom button { display: inline-flex; align-items: center; justify-content: center; padding: 0 8px; }
   .zoom-error { margin: 0; color: var(--color-danger); font-size: var(--text-xs); overflow-wrap: anywhere; }
   .zoom .zoom-value { min-width: 56px; font-variant-numeric: tabular-nums; color: var(--color-foreground); }
-  /* The title on the left, the presets on the right, the groups under them. */
-  .card-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
-  .card-head h2 { margin-bottom: 0; }
-  .control-group + .control-group { margin-top: 20px; }
-  .control-group .section-label { margin-bottom: 8px; }
-  /* Each button as a tile that reads like the button itself: its icon and its
-     name, dimmed while it is hidden, with the switch that brings it back. */
-  .toggles { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px; }
-  .toggle {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-height: 44px;
-    padding: 0 10px 0 12px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-surface-2);
-    color: var(--color-foreground);
-    font-size: var(--text-sm);
-    font-weight: 500;
-    cursor: pointer;
-    transition: background var(--dur-2), border-color var(--dur-2);
+  .control-group .switch-row :global(svg) { flex: none; color: var(--color-muted-foreground); }
+  .control-group .switch-row .ui-label-box { gap: var(--space-3); }
+  /* Where the column is wide, the button groups pair up: a few short switch rows each, one under the other
+     they left the column's right half empty. The presets keep the whole width above them. */
+  @media (min-width: 1100px) {
+    .page .settings-stack { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: var(--space-4); align-items: start; max-width: var(--settings-width); }
+    .page .settings-stack > .card { margin-bottom: 0; }
+    .page .settings-stack > .card:first-child { grid-column: 1 / -1; }
   }
-  .toggle:hover { border-color: var(--color-edge); background: var(--color-surface-3); }
-  .toggle .glyph { display: inline-flex; flex: none; color: var(--color-muted-foreground); transition: opacity var(--dur-2); }
-  .toggle .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: opacity var(--dur-2); }
-  .toggle.off .glyph, .toggle.off .name { opacity: 0.5; }
-  .toggle.off { background: transparent; border-style: dashed; }
   /* Scoped under the page so it outranks the shared row, which centres its children.
      On a phone a label sits above its choices: side by side, a French label was
      squeezed to one word a line and ran under the three-option control. */
   @media (max-width: 720px) {
     :global(.settings .page) .switch-row:has(.segmented) { flex-direction: column; align-items: stretch; }
     :global(.settings .page) .segmented { display: flex; }
-    .faces { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .face:last-child:nth-child(odd) { grid-column: 1 / -1; }
+    :global(.settings .page) .choice-row:not(.value) { flex-direction: column; align-items: stretch; gap: var(--space-3); }
     /* Each option grows from its own word: equal thirds cut "Soulignement"
        and "Modifications" past their button's edge. */
     .segmented button { flex: 1 1 auto; min-width: 0; padding: 0 6px; }
     .segmented button .ui-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    /* A code face runs wide: each name takes the room it needs, a step smaller. */
-    .monos button { flex: 1 1 auto; min-width: auto; padding: 0 6px; font-size: var(--text-xs); }
-    .card-head .segmented { flex: 1 1 100%; }
-  }
-  /* The options in one track, the chosen one filled like a primary button. */
-  .segmented {
-    display: inline-flex;
-    flex: none;
-    gap: 2px;
-    padding: 2px;
-    border: 1px solid var(--color-edge);
-    border-radius: var(--radius-md);
-    background: var(--color-surface-2);
-  }
-
-  .segmented button {
-    height: var(--control-sm);
-    padding: 0 10px;
-    border: 1px solid transparent;
-    border-radius: var(--radius-sm);
-    background: transparent;
-    color: var(--color-muted-foreground);
-    font-size: var(--text-sm);
-  }
-
-  .segmented button:hover:not(.on) {
-    background: var(--color-surface-3);
-    color: var(--color-foreground);
-  }
-
-  .segmented button.on {
-    background: var(--color-foreground);
-    border-color: var(--color-foreground);
-    color: var(--color-on-foreground);
   }
 </style>

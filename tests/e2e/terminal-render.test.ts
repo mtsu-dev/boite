@@ -13,7 +13,7 @@ async function settled(page: BrowserPage): Promise<void> {
   await page.evaluate("document.fonts.ready");
   await page.evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
   await page.evaluate(
-    `Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`,
+    `Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`,
   );
   // The resize RPC follows the fit by 80 ms, and the program redraws after it.
   await new Promise((resolve) => setTimeout(resolve, 400));
@@ -153,12 +153,12 @@ test("a real shell draws ANSI colours and a full-screen program edge to edge, an
     expect(await page.evaluate("document.querySelectorAll('[data-testid=terminal-pane]').length")).toBe(1);
     await page.screenshot("tests/e2e/.artifacts/terminal-render-tabs-phone.png");
 
-    // Appearance picks the cursor's shape, and a running screen takes it.
+    // Advanced picks the cursor's shape on a desktop (the redesign moved it from Appearance), and a running screen takes it.
     await page.send("Emulation.clearDeviceMetricsOverride", {});
     // A hidden window never has the focus, and xterm draws an unfocused cursor as an outline.
     await page.send("Emulation.setFocusEmulationEnabled", { enabled: true });
     await page.click("[data-testid=nav-settings]");
-    await page.click("[data-testid=settings-tab-appearance]");
+    await page.click("[data-testid=settings-tab-advanced]");
     await page.click("[data-testid=terminal-cursor-block]");
     await page.click("[data-testid=settings-back]");
     await page.click("[data-testid=terminal-drawer] .xterm-screen");

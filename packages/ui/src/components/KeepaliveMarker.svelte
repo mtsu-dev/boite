@@ -23,8 +23,7 @@
     justify-content: center;
     gap: 6px;
     margin: 2px 0;
-    color: var(--color-muted-foreground);
+    color: var(--color-subtle);
     font-size: var(--text-xs);
-    opacity: 0.8;
   }
 </style>

@@ -76,8 +76,12 @@ test('signed agent mail opens from a compact summary and survives reload in its 
     await checkBubble();
     await page.click('[data-testid=panel-close]');
     await page.waitFor('!document.querySelector("[data-testid=right-panel]")');
-    await page.click('[data-testid=thread-menu-trigger]');
-    await page.click('[data-value=coordination]');
+    // Coordination is a row of the Panels door's list: the door opens the panel, whose switcher lists it.
+    await page.click('[data-testid=panel-toggle]');
+    await page.waitFor('document.querySelector("[data-testid=panel-add]")');
+    await page.click('[data-testid=panel-add]');
+    await page.waitFor('document.querySelector("[data-testid=panel-add-menu] [data-value=coordination]")');
+    await page.click('[data-testid=panel-add-menu] [data-value=coordination]');
     await page.waitFor('document.querySelector("[data-testid=coordination-mode-on]").getAttribute("aria-checked") === "true"');
     await page.waitFor('document.querySelector("[data-testid=coordination-dialog]").open');
     await page.click('[data-testid=coordination-close]');

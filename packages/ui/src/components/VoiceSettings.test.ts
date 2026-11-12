@@ -4,6 +4,7 @@ import { RpcErrorCode, SPEECH_CATALOGUE, type SpeechConfig, type SpeechStatus } 
 import { RpcFailure } from '../lib/client';
 import type { Store } from '../lib/store.svelte';
 import VoiceSettings from './VoiceSettings.svelte';
+import { phoneWidth } from '../test/phone-width';
 
 let mounted: ReturnType<typeof mount> | undefined;
 afterEach(async () => { if (mounted) await unmount(mounted); mounted = undefined; document.body.innerHTML = ''; });
@@ -67,6 +68,28 @@ test('an engine that is not there yet is one click away, and choices apply witho
   await settle();
   expect(call).toHaveBeenLastCalledWith('speech.configure', expect.objectContaining({ engine: 'api', groqKey: 'gsk-fixture' }));
   expect(call.mock.calls.at(-1)![1]).not.toHaveProperty('openrouterKey');
+});
+
+test('on a phone the engine is a label and its value, the row opening a sheet whose pick applies at once', async () => {
+  const restore = phoneWidth();
+  try {
+    const call = vi.fn(async (method: string, params?: unknown) => {
+      if (method === 'speech.status') return status();
+      if (method === 'speech.config') return config;
+      if (method === 'speech.configure') return status({ engine: (params as SpeechConfig).engine });
+      throw new Error(method);
+    });
+    show(call);
+    await settle();
+    // No segmented pair: the value sits at the row's end.
+    expect(document.querySelector('[data-testid="voice-local"]')).toBeNull();
+    expect(text('voice-engine-current')).toContain('Local');
+    click('voice-engine-current');
+    await settle();
+    click('voice-api');
+    await settle();
+    expect(call).toHaveBeenCalledWith('speech.configure', expect.objectContaining({ engine: 'api' }));
+  } finally { restore(); }
 });
 
 test('a model already here is used at once, one that is not downloads, and a link goes to the core as typed', async () => {

@@ -38,8 +38,7 @@
 
 {#if store.owner}
   <section class="card" id="settings-window-exclusions" data-testid="window-exclusions">
-    <h2 class="ui-label-box"><span class="ui-label">{s.exclusionsHeading}</span><InfoTip topic={s.exclusionsHeading} text={s.exclusionsIntro} /></h2>
-    <p class="muted" data-testid="window-exclusions-always">{fill(s.always, { list: always })}</p>
+    <h2 class="ui-label-box"><span class="ui-label">{s.exclusionsHeading}</span><InfoTip topic={s.exclusionsHeading} text={`${s.exclusionsIntro} ${fill(s.always, { list: always })}`} testid="window-exclusions-always" /></h2>
     {#if saved.length === 0}
       <p class="muted" data-testid="window-exclusions-none">{s.none}</p>
     {:else}
@@ -76,6 +75,6 @@
   .add { display: flex; gap: 8px; margin-top: 8px; }
   .add input { flex: 1; min-width: 0; }
   .add button { flex: none; }
-  .error { margin: 4px 0 0; font-size: var(--text-sm); color: var(--color-danger); }
+  .error { margin: 4px 0 0; }
   @media (pointer: coarse) { .icon { min-width: var(--touch-target); min-height: var(--touch-target); } }
 </style>

@@ -2,6 +2,8 @@ export const strings = {
 
   accounts: {
     heading: 'Providers',
+    /** The model menu's head over a provider's unfolded accounts. */
+    pickerSection: 'Account',
     login: 'Sign in',
     loginStarting: 'Starting the sign-in',
     loginOpen: 'Open the sign-in page',
@@ -18,7 +20,7 @@ export const strings = {
     removeThread: '1 conversation still uses this account. Its next message moves it to another signed-in account of the same agent, which reloads its whole context.',
     removeThreads: '{count} conversations still use this account. The next message in each moves it to another signed-in account of the same agent, which reloads its whole context.',
     removed: 'Account removed',
-    removedHint: 'The account of this conversation was removed. Choose a model on another account to continue.',
+    removedHint: 'The account of this conversation was removed. Pick another account to continue.',
     status: {
       unknown: 'unknown',
       ok: 'ok',

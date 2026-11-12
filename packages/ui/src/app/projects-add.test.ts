@@ -8,10 +8,17 @@ import { mountOnFake, query, showMobileThreads, test, type, waitFor } from '../t
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
 
+/** Add a project is the display menu's last row: open the menu, then press it. */
+async function openAddProject(): Promise<void> {
+  query<HTMLButtonElement>('[data-testid=grouping-options]').click();
+  await waitFor(() => document.querySelector('[data-testid=add-project]') !== null);
+  query<HTMLButtonElement>('[data-testid=add-project]').click();
+}
+
 test('browser Add project opens a path form and starts a draft in the added folder', async ({ app: _app }) => {
   const before = store.projects.length;
   store.sidebarOpen = true;
-  query<HTMLButtonElement>('[data-testid=add-project]').click();
+  await openAddProject();
   // The form is loaded on demand: the first test of a file pays that import.
   await waitFor(() => document.querySelector('[data-testid=add-project-form]') !== null);
   expect(store.page).toBe('chat');
@@ -25,8 +32,7 @@ test('browser Add project opens a path form and starts a draft in the added fold
 });
 
 test('browser Add project keeps refused paths and Escape returns to its button', async ({ app: _app }) => {
-  query<HTMLButtonElement>('[data-testid=add-project]').focus();
-  query<HTMLButtonElement>('[data-testid=add-project]').click();
+  await openAddProject();
   await waitFor(() => document.querySelector('[data-testid=project-path]') !== null);
   const field = query<HTMLInputElement>('[data-testid=project-path]');
   await waitFor(() => document.activeElement === field);
@@ -43,7 +49,8 @@ test('browser Add project keeps refused paths and Escape returns to its button',
     expect(field.value).toBe('D:\\missing-project');
     field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
     await waitFor(() => document.querySelector('[data-testid=add-project-form]') === null);
-    expect(document.activeElement).toBe(query('[data-testid=add-project]'));
+    // Its button went with the display menu, so focus lands on the menu's button.
+    expect(document.activeElement).toBe(query('[data-testid=grouping-options]'));
     expect(store.page).toBe('chat');
   } finally {
     spy.mockRestore();
@@ -55,7 +62,7 @@ test('a paired device adds a project through the same form, and its core checks 
   expect([store.owner, store.addsProjects]).toEqual([false, true]);
   const before = store.projects.length;
   store.sidebarOpen = true;
-  query<HTMLButtonElement>('[data-testid=add-project]').click();
+  await openAddProject();
   await waitFor(() => document.querySelector('[data-testid=add-project-form]') !== null);
   const field = query<HTMLInputElement>('[data-testid=project-path]');
   // Boite's own data folder is never a device's project: the core says why, and the path stays.
@@ -73,16 +80,18 @@ test('a paired device adds a project through the same form, and its core checks 
   await waitFor(() => document.querySelector('[data-testid=add-project-form]') === null);
 });
 
-test('the phone list header holds the project picker, the bottom bar the new thread, and neither manages a project', async ({ app: _app }) => {
+test('the phone list header holds the search and the new thread, its display options add a project, and nothing there manages one', async ({ app: _app }) => {
   store.startDraft('p-boite');
   await showMobileThreads();
-  await waitFor(() => query('[data-testid=mobile-project]').getAttribute('aria-label')?.includes('boite') === true);
-  expect(document.querySelector('[data-testid=mobile-tabs] [data-testid=mobile-new]')).not.toBeNull();
+  expect(document.querySelector('[data-testid=mobile-header] [data-testid=mobile-new]')).not.toBeNull();
+  expect(document.querySelector('[data-testid=mobile-tabs] [data-testid=mobile-new]')).toBeNull();
   expect(document.querySelector('[data-testid=mobile-project-actions]')).toBeNull();
-  // Adding a project is the picker's last row.
-  query<HTMLButtonElement>('[data-testid=mobile-project]').click();
-  await waitFor(() => document.querySelector('[data-value=add-project]') !== null);
-  query<HTMLButtonElement>('[data-value=add-project]').click();
+  // Adding a project is the display options' last row, beside the search the magnifier opens.
+  query<HTMLButtonElement>('[data-testid=mobile-search-open]').click();
+  await waitFor(() => document.querySelector('[data-testid=mobile-grouping-options]') !== null);
+  query<HTMLButtonElement>('[data-testid=mobile-grouping-options]').click();
+  await waitFor(() => document.querySelector('[data-testid=add-project]') !== null);
+  query<HTMLButtonElement>('[data-testid=add-project]').click();
   await waitFor(() => store.projectPickerOpen);
 });
 

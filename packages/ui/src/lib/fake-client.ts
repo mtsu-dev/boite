@@ -52,7 +52,7 @@ import { seedAgentsDemo } from './fake-client/agents-demo';
 import { agentSettingMethods } from './fake-client/agent-settings';
 import type { AgentSettingMethod } from './fake-agents';
 import { groupMethods } from './fake-client/group';
-import { contactMethods } from './fake-client/contacts';
+import { contactMethods, contactState } from './fake-client/contacts';
 import { pairingMethods } from './fake-client/pairing';
 import { projectMethods } from './fake-client/projects';
 import { pathKey } from './fake-client/checks';
@@ -170,6 +170,10 @@ export class FakeClient implements ObservableClient {
       ctx.usage.clear();
       ctx.usageSeeded = false;
       ctx.scheduler = { ...ctx.scheduler, running: [], queued: [] };
+      // Nobody linked yet either: no request waits on a first launch.
+      const contacts = contactState(ctx);
+      contacts.contacts = [];
+      contacts.requests = [];
     }
     // Again once the seeds and a first launch have set the providers the policy marks.
     applyPolicy(ctx);

@@ -116,7 +116,9 @@ test("another machine's update is listed under the app's, starts with the same b
   const row = one('updates-other')!;
   expect(row.textContent).toContain('builder');
   expect(row.textContent).toContain('2.0.0-beta.2');
-  expect(one('app-update-status')!.textContent).toContain(strings.serverUpdate.current);
+  // One state: the app is current but builder is not, so the card offers the update and never says "Up to date" beside its button.
+  expect(one('app-update-status')!.textContent).toContain(strings.harnessUpdates.availableShort);
+  expect(one('app-update-status')!.textContent).not.toContain(strings.serverUpdate.current);
   one<HTMLButtonElement>('updates-run-all')!.click();
   await vi.waitFor(() => expect(call).toHaveBeenCalledWith('core.updateEverything', expect.objectContaining({ server: '2.0.0-beta.2' })));
   expect(otherCall).not.toHaveBeenCalledWith('core.updateEverything', expect.anything());
@@ -125,13 +127,25 @@ test("another machine's update is listed under the app's, starts with the same b
   await vi.waitFor(() => expect(server.store.serverUpdater.snapshot?.phase).toBe('available'));
 });
 
+test("a failed app check keeps its error look while another machine's update is offered", async () => {
+  const { updater } = await app({ ...nightly('error'), error: 'signature mismatch' });
+  await machine('builder', true);
+  view = mount(UpdatesCard, { target: document.body, props: { updater, native: true } });
+  await vi.waitFor(() => { flushSync(); expect(one('updates-other')).not.toBeNull(); });
+  const status = one('app-update-status')!;
+  expect(status.textContent).toContain('signature mismatch');
+  // `.offer` paints the first line in the foreground color over the error's danger color.
+  expect([status.classList.contains('error'), status.classList.contains('offer')]).toEqual([true, false]);
+});
+
 test('a browser has no app updater: it shows the version of the machine it is on and no channel', async () => {
   await machine('builder', false);
   view = mount(UpdatesCard, { target: document.body, props: { native: false } });
   flushSync();
   expect(one('updates-version')!.textContent).toContain(workspace.active.core!.version);
   expect(one('app-update-nightly')).toBeNull();
-  expect(one<HTMLButtonElement>('updates-run-all')!.disabled).toBe(true);
+  // Nothing to start: no Update button at all, rather than a grey one beside "Up to date".
+  expect(one('updates-run-all')).toBeNull();
 });
 
 test('an Android controller check failure explains why and retries the check without an offered version', async () => {

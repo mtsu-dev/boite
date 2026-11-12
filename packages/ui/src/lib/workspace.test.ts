@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import { machineHealth, PRIMARY_PATIENCE_MS, SETTLE_WAIT_MS, Workspace } from './workspace.svelte';
+import { listedName, machineHealth, machineName, PRIMARY_PATIENCE_MS, SETTLE_WAIT_MS, Workspace } from './workspace.svelte';
 import { reveal } from './reveal';
 import { primaryMachine } from './workspace-boot';
 import { Store, store as primary } from './store.svelte';
@@ -21,16 +21,27 @@ afterEach(() => {
   localStorage.clear();
 });
 
-test('old local labels become This PC while custom names stay intact', async () => {
+test('old local labels become This computer while custom names stay intact', async () => {
   const { w, a } = await setup();
   a.localCore = false;
   a.endpointUrl = 'http://127.0.0.1:41000';
   const machine = { id: a.endpointUrl, label: 'My computer', store: a };
   w.restoreProfile(machine);
-  expect(machine.label).toBe('This PC');
+  expect(machine.label).toBe('This computer');
   machine.label = 'Studio';
   w.restoreProfile(machine);
   expect(machine.label).toBe('Studio');
+});
+
+test('"This computer" is never what a device that reaches another machine calls it: the machine says its own name', () => {
+  const remote = { connection: 'ready', localCore: false, endpointUrl: 'https://studio.tail.test', core: { hostname: 'studio' } } as unknown as Store;
+  // A phone or a browser holds the computer's default name: it is not that computer.
+  expect(machineName({ id: 'https://studio.tail.test', label: 'This computer', store: remote })).toBe('studio');
+  expect(listedName({ id: 'https://studio.tail.test', label: 'This computer', store: remote })).toBe('studio');
+  // A name the user gave stays, and a core that says nothing keeps the label it has.
+  expect(machineName({ id: 'https://studio.tail.test', label: 'Desk', store: remote })).toBe('Desk');
+  const silent = { ...remote, core: null } as unknown as Store;
+  expect(machineName({ id: 'local', label: 'This computer', store: silent })).toBe('This computer');
 });
 
 test('restoring a remote selection also connects the shell local core', async () => {
@@ -42,7 +53,7 @@ test('restoring a remote selection also connects the shell local core', async ()
   vi.spyOn(endpoints, 'fromTauri').mockResolvedValue({ url: 'http://127.0.0.1:41000', token: 'test', local: true });
   const add = vi.spyOn(w, 'add').mockResolvedValue(true);
   await w.boot();
-  expect(add).toHaveBeenCalledWith({ url: 'http://127.0.0.1:41000', token: 'test', local: true }, 'This PC');
+  expect(add).toHaveBeenCalledWith({ url: 'http://127.0.0.1:41000', token: 'test', local: true }, 'This computer');
 });
 
 test('closing while the shell endpoint loads does not add a machine afterward', async () => {
@@ -486,7 +497,8 @@ async function phoneOfTwo() {
   a.localCore = false;
   a.endpointUrl = 'https://laptop.test';
   b.endpointUrl = 'https://server.test';
-  upsertEnvironment({ url: 'https://laptop.test', token: 'laptop-key', paired: true, label: 'Laptop' });
+  // Named by the owner: the fake core reports its own name, which would take an untyped one's place.
+  upsertEnvironment({ url: 'https://laptop.test', token: 'laptop-key', paired: true, label: 'Laptop', named: true });
   upsertEnvironment({ url: 'https://server.test', token: 'server-key', paired: true, label: 'Server' });
   endpoints.storeEndpoint({ url: 'https://laptop.test', token: 'laptop-key', paired: true });
   let answer!: (connected: boolean) => void;
@@ -950,12 +962,12 @@ test('thread links prefer their owner and preserve explicit machine identity', a
   await w.openThreadLink(a, id, 'm2', other);
   expect(w.active).toBe(b);
   expect(b.openThread?.id).toBe(id);
-  expect(a.error).toBe('No connected machine has this conversation.');
+  expect(a.error).toBe('No connected machine has this thread.');
   a.error = null;
   await w.select(a, id);
   await w.openThreadLink(a, id, null, 'thr_nowhere0000000000');
   expect(w.active).toBe(a);
-  expect(a.error).toBe('No connected machine has this conversation.');
+  expect(a.error).toBe('No connected machine has this thread.');
   // `here` is the reader's machine only, even when another one lists the id.
   await w.openThreadLink(a, id, 'here', other);
   expect(w.active).toBe(a);

@@ -56,7 +56,13 @@
     if (!local || !await local.saveSettings({ autoInstallUpdates: input.checked })) input.checked = local?.settings?.autoInstallUpdates === true;
   }
 
+  /*
+   * One state in words and buttons: "Up to date" never sits beside an Update
+   * it cannot start, and another machine's pending update reads as
+   * one available here, where its button is.
+   */
   function status(): string {
+    if (othersStartable && (!app || !app.supported || app.phase === 'current' || app.phase === 'idle')) return strings.harnessUpdates.availableShort;
     if (!app) return strings.serverUpdate.current;
     if (!app.supported) return strings.appUpdate.unsupported;
     switch (app.phase) {
@@ -121,7 +127,7 @@
       {#if found}<ArrowRight size={13} aria-hidden="true" /><span class="number target" data-testid="updates-found">{found}</span>{/if}
     </p>
     {#if supported}
-      <div class="channel" role="group" aria-label={strings.appUpdate.channel}>
+      <div class="segmented channel" role="group" aria-label={strings.appUpdate.channel}>
         <button type="button" class:on={app!.channel === 'nightly'} aria-pressed={app!.channel === 'nightly'} data-testid="app-update-nightly"
           disabled={app!.phase === 'waiting' || app!.phase === 'installing'} onclick={() => choose('nightly')}><span class="ui-label">{strings.appUpdate.nightlyShort}</span></button>
         <button type="button" class:on={app!.channel === 'stable'} aria-pressed={app!.channel === 'stable'} data-testid="app-update-stable"
@@ -130,8 +136,10 @@
       </div>
     {/if}
   </div>
+  <!-- A channel that cannot be picked says why in the card, not only on hover a phone has not. -->
+  {#if supported && !RELEASE_PUBLISHED}<p class="why" data-testid="app-update-no-release">{strings.appUpdate.noRelease}</p>{/if}
   <div class="line">
-    <p class="status" class:offer={app?.phase === 'available' || app?.phase === 'ready'} class:error={app?.phase === 'error'} role="status" aria-live="polite" data-testid="app-update-status">
+    <p class="status" class:offer={app?.phase !== 'error' && (app?.phase === 'available' || app?.phase === 'ready' || othersStartable)} class:error={app?.phase === 'error'} role="status" aria-live="polite" data-testid="app-update-status">
       <span>{status()}</span>
       {#if appPolicy === 'off'}<PolicyLock store={local!} keys={['updates.app']} />{/if}
       {#if supported && updater.lastCheckedAt !== null && app!.phase !== 'checking'}<span class="subtle">{fill(strings.appUpdate.lastChecked, { time: time(updater.lastCheckedAt) })}</span>{/if}
@@ -145,7 +153,7 @@
         <button type="button" class="small" data-testid="app-update-cancel" disabled={updater.cancelling} aria-busy={updater.cancelling} onclick={() => void updater.cancelInstall()}>
           <span class="ui-label">{strings.common.cancel}</span>
         </button>
-      {:else}
+      {:else if canUpdate || busy}
         <button type="button" class="primary small" data-testid="updates-run-all" disabled={!canUpdate} aria-busy={busy} onclick={update}>
           {#if restarts}<RotateCw size={13} />{:else}<CircleArrowDown size={13} />{/if}
           <span class="ui-label">{busy ? strings.updateAll.busy : restarts ? strings.updateAll.restart : strings.appUpdate.readyAction}</span>
@@ -161,8 +169,8 @@
   {/if}
   {#if autoShown}
     <label class="auto" for="{uid}-auto-install" data-testid="app-update-auto">
-      <span class="ui-label-box"><span class="ui-label">{strings.appUpdate.autoInstall}</span><InfoTip topic={strings.appUpdate.autoInstall} text={strings.appUpdate.autoInstallHint} /><PolicyLock store={local!} keys={['updates.app']} /></span>
-      <input id="{uid}-auto-install" type="checkbox" role="switch" data-testid="app-update-auto-switch"
+      <span class="words"><span class="ui-label-box"><span class="ui-label">{strings.appUpdate.autoInstall}</span><InfoTip topic={strings.appUpdate.autoInstall} text={strings.appUpdate.autoInstallHint} /><PolicyLock store={local!} keys={['updates.app']} /></span><span class="effect" id="{uid}-auto-install-effect">{strings.settings.effects.appAutoInstall}</span></span>
+      <input id="{uid}-auto-install" aria-describedby="{uid}-auto-install-effect" type="checkbox" role="switch" data-testid="app-update-auto-switch"
         checked={local!.settings?.autoInstallUpdates === true} disabled={local!.connection !== 'ready' || appPolicy !== null}
         onchange={(event) => void toggleAuto(event.currentTarget)} />
     </label>
@@ -201,19 +209,17 @@
   p { margin: 0; }
   .version { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; color: var(--color-muted-foreground); }
   .name { color: var(--color-foreground); font-weight: 600; font-size: var(--text-md); }
-  .number { font-family: var(--font-mono); font-size: var(--text-sm); overflow-wrap: anywhere; }
-  .target { color: var(--color-accent); }
+  /* A version is a label here, not code: the UI face, with figures that line up. */
+  .number { font-size: var(--text-sm); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .target { color: var(--color-foreground); }
   .status { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; color: var(--color-muted-foreground); font-size: var(--text-sm); overflow-wrap: anywhere; }
-  .status.offer > span:first-child { color: var(--color-accent); }
+  .status.offer > span:first-child { color: var(--color-foreground); }
   .status.error { color: var(--color-danger); }
+  .why { margin: 0; color: var(--color-subtle); font-size: var(--text-meta); text-align: right; }
   .subtle { color: var(--color-subtle); font-size: var(--text-xs); }
   .changelog { display: inline-flex; align-items: center; gap: 5px; color: var(--color-muted-foreground); text-decoration: none; }
   .changelog:hover { color: var(--color-foreground); text-decoration: underline; }
   .actions { display: flex; flex: none; gap: 6px; }
-  .channel { display: flex; flex: none; gap: 2px; padding: 2px; border: 1px solid var(--color-border); border-radius: var(--radius-md); }
-  .channel button { height: var(--control-sm); padding: 0 12px; border-color: transparent; background: transparent; color: var(--color-muted-foreground); }
-  .channel button.on { background: var(--color-active); color: var(--color-foreground); }
-  .channel button:disabled:not(.on) { opacity: 0.45; }
   .track { height: 3px; overflow: hidden; border-radius: var(--radius-sm); background: var(--color-surface-3); }
   .track span { display: block; height: 100%; border-radius: inherit; background: var(--color-accent); transition: width var(--dur-2) var(--ease-out-quint); }
   .track.indeterminate span { opacity: 0.4; }
@@ -223,7 +229,9 @@
   .where { color: var(--color-foreground); font-weight: 500; }
   .note { color: var(--color-subtle); font-size: var(--text-xs); }
   .auto { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--color-muted-foreground); font-size: var(--text-sm); }
-  .auto > span { display: inline-flex; align-items: center; }
+  .auto > .words { display: grid; gap: 2px; min-width: 0; }
+  .auto .ui-label-box { display: inline-flex; align-items: center; }
+  .effect { color: var(--color-muted-foreground); font-size: var(--text-sm); line-height: 1.4; }
   .auto input { flex: 0 0 40px; width: 40px; }
   .note.error { color: var(--color-danger); }
   .cancel { margin-left: auto; }

@@ -14,6 +14,8 @@ function gate(store: Store) {
   const held: { kind: 'status' | 'diff'; release: () => void }[] = [];
   /** The rename origin each diff request carried, in order. */
   const origins: (string | null | undefined)[] = [];
+  /** Each diff request's thread and file, in order. */
+  const diffs: { id: string; path: string }[] = [];
   /** Rewrites the next status answers, as a staged rename would. */
   let edit: (status: GitStatus) => GitStatus = (status) => status;
   const realStatus = store.gitStatus.bind(store);
@@ -22,10 +24,12 @@ function gate(store: Store) {
     new Promise<GitStatus | null>((resolve) => held.push({ kind: 'status', release: () => resolve(realStatus(id).then((status) => (status === null ? null : edit(status)))) }));
   store.gitDiff = (id, path, ref, oldPath) => {
     origins.push(oldPath);
+    diffs.push({ id, path });
     return new Promise<GitDiff | null>((resolve) => held.push({ kind: 'diff', release: () => resolve(realDiff(id, path, ref, oldPath)) }));
   };
   return {
     origins,
+    diffs,
     editStatus(next: (status: GitStatus) => GitStatus) { edit = next; },
     pending: () => held.map((one) => one.kind),
     async releaseAll() {
@@ -95,5 +99,90 @@ test('a refresh reads the diff beside the status and keeps the old diff on scree
   } finally {
     if (component) await unmount(component);
     store.detach(); client.close(); document.body.innerHTML = '';
+  }
+});
+
+test('the open file counts the lines its diff draws, not a figure from another read', async () => {
+  const client = new FakeClient({ delayMs: 0 });
+  const store = new Store();
+  store.attach(client);
+  let component;
+  try {
+    await store.connect();
+    await store.open('t-trace');
+    const reads = gate(store);
+    // git's own figure for the file disagrees with the texts the diff is drawn from.
+    reads.editStatus((status) => ({ ...status, changes: status.changes.map((change) => (change.path === PATH ? { ...change, additions: 99, deletions: 98 } : change)) }));
+    const surface: Surface = { id: 'changes', kind: 'changes', path: PATH };
+    const panel = { update() {} } as unknown as BoundPanel;
+    component = mount(ChangesSurface, { target: document.body, props: { store, surface, panel } });
+    flushSync();
+    await reads.releaseAll();
+    const added = document.querySelectorAll('[data-testid=diff-row][data-kind=add]').length;
+    const removed = document.querySelectorAll('[data-testid=diff-row][data-kind=remove]').length;
+    expect(added + removed).toBeGreaterThan(0);
+    const row = document.querySelector(`[data-testid=changes-row][data-path="${PATH}"]`)!;
+    expect(row.querySelector('.count.added')?.textContent).toBe(added ? `+${added}` : '');
+    expect(row.querySelector('.count.removed')?.textContent).toBe(removed ? `−${removed}` : '');
+    expect(row.textContent).not.toContain('+99');
+  } finally {
+    if (component) await unmount(component);
+    store.detach(); client.close(); document.body.innerHTML = '';
+  }
+});
+
+test('every changed file reads as one document, each diff read once it nears the screen', async () => {
+  const native = globalThis.IntersectionObserver;
+  const observed: Element[] = [];
+  let fire: IntersectionObserverCallback | null = null;
+  globalThis.IntersectionObserver = class {
+    constructor(callback: IntersectionObserverCallback) { fire = callback; }
+    observe(node: Element) { observed.push(node); }
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof IntersectionObserver;
+  const client = new FakeClient({ delayMs: 0 });
+  const store = new Store();
+  store.attach(client);
+  let component;
+  try {
+    await store.connect();
+    await store.open('t-trace');
+    const reads = gate(store);
+    const surface: Surface = { id: 'changes', kind: 'changes', path: PATH };
+    const panel = { update() {} } as unknown as BoundPanel;
+    component = mount(ChangesSurface, { target: document.body, props: { store, surface, panel } });
+    flushSync();
+    await reads.releaseAll();
+    const headers = [...document.querySelectorAll<HTMLElement>('[data-testid=changes-row]')];
+    expect(headers.length).toBeGreaterThan(1);
+    // Before any file nears the screen, only the one asked for is read.
+    expect([...document.querySelectorAll('[data-testid=diff-view]')].map((view) => view.getAttribute('data-path'))).toEqual([PATH]);
+    fire!(observed.map((target) => ({ target, isIntersecting: true }) as IntersectionObserverEntry), {} as IntersectionObserver);
+    flushSync();
+    await reads.releaseAll();
+    // Each file under its own header, in the list's order, in one scroll.
+    const drawn = [...document.querySelectorAll('[data-file]')].filter((file) => file.querySelector('[data-testid=diff-view]')).map((file) => file.getAttribute('data-file'));
+    expect(drawn.length).toBeGreaterThan(1);
+    // Every file is read: a diff under its header, or the binary note for one that has no text.
+    const binary = [...document.querySelectorAll('[data-file]')].filter((file) => file.querySelector('[data-testid=changes-binary]')).map((file) => file.getAttribute('data-file'));
+    expect(drawn.length + binary.length).toBe(headers.length);
+    expect(drawn).toEqual(headers.map((header) => header.dataset['path']).filter((path) => !binary.includes(path!)));
+    // A header folds its file away.
+    headers[0]!.click();
+    flushSync();
+    expect(headers[0]!.getAttribute('aria-expanded')).toBe('false');
+    expect(headers[0]!.closest('[data-file]')!.querySelector('[data-testid=diff-view]')).toBeNull();
+
+    // Another thread reads only the file asked for: the files seen near the screen in the last one are not wanted here.
+    const before = reads.diffs.length;
+    await store.open('t-scheduler');
+    flushSync();
+    await reads.releaseAll();
+    expect(reads.diffs.slice(before)).toEqual([{ id: 't-scheduler', path: PATH }]);
+  } finally {
+    if (component) await unmount(component);
+    store.detach(); client.close(); document.body.innerHTML = '';
+    globalThis.IntersectionObserver = native;
   }
 });

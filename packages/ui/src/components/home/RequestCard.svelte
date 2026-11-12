@@ -1,20 +1,24 @@
 <script lang="ts">
   import { tick } from 'svelte';
-  import { ArrowDownLeft, ArrowUpRight, Check, ChevronDown, GitBranch, Waypoints, X } from '@lucide/svelte';
+  import { ArrowDownLeft, ArrowUpRight, Check, ChevronDown, Ellipsis, GitBranch, Waypoints, X } from '@lucide/svelte';
   import type { ContactRequest } from '@boite/contracts';
   import { settledByBot, type ContactsView } from '../../lib/contacts.svelte';
   import { ago, projectName } from '../../lib/format';
-  import type { MenuItem } from '../../lib/menu';
+  import { acceptItems, acceptProject } from '../../lib/contact-accept';
   import { fill, strings } from '../../lib/strings';
   import Menu from '../Menu.svelte';
+  import DecisionActions from '../DecisionActions.svelte';
   import ThreadChoice from './ThreadChoice.svelte';
 
   /**
    * One request between contacts, a row of a Requests card. Waiting on this
-   * owner, it carries Accept, which shares a project picked in the app's menu,
-   * or, on a request for a thread the Contacts bot settles, lets the bot put the
-   * threads in touch (a trusted contact's needs no Accept), and Refuse, which asks for the reason the asking agent will read. Decided, it folds to one line with
-   * what came of it and who decided.
+   * owner, it carries Accept, which shares the project it points at
+   * (lib/contact-accept.ts), Refuse, which asks for the reason the asking
+   * agent will read, and a menu to share another project instead. On a
+   * request for a thread the Contacts bot settles, Accept instead lets the bot
+   * put the threads in touch and shares no project (a trusted contact's needs
+   * no Accept), with no project menu. Decided, it folds to one line with what
+   * came of it and who decided.
    */
   let { view, request, now }: { view: ContactsView; request: ContactRequest; now: number } = $props();
   const labels = $derived(strings.contacts.requests);
@@ -23,9 +27,9 @@
   const mine = $derived(request.direction === 'in');
   const busy = $derived(view.isBusy(`decide:${request.id}`));
   const byBot = $derived(settledByBot(request));
-  const items = $derived<MenuItem[]>(view.store.projects
-    .filter(project => project.kind !== 'drafts' && !project.archived)
-    .map(project => ({ id: project.id, label: projectName(project), projectTile: { project, store: view.store } })));
+  const chosen = $derived(acceptProject(view.store, request));
+  const items = $derived(acceptItems(view.store, chosen));
+  const acceptTip = $derived(chosen ? fill(labels.acceptInto, { project: projectName(chosen) }) : labels.accept);
   /** What came of it: the project shared, or the thread put in touch with the asking one. */
   const outcome = $derived(request.status !== 'accepted' ? labels.refused
     : request.relation && !request.project ? fill(labels.inTouch, { thread: mine ? request.relation.local.title : request.relation.remote.title })
@@ -74,22 +78,26 @@
           </div>
         </form>
       {:else}
-        <div class="buttons">
+        <!-- The app's one decision pair (DecisionActions.svelte): Refuse in outline, then the solid Accept. -->
+        <DecisionActions>
+          <button type="button" class="secondary" disabled={busy} onclick={() => void openRefusal()} data-testid="contact-refuse-{request.id}"><span class="ui-label">{labels.refuse}</span></button>
           {#if !byBot}
-            <span class="accept">
-              <Menu {items} onpick={id => void view.decide(request.id, { accept: true, projectId: id })} label={labels.acceptLabel} placement="bottom" variant="chip" testid="contact-accept-{request.id}">
-                <Check size={14} strokeWidth={2.25} /><span class="ui-label">{labels.accept}</span><ChevronDown size={13} />
+            <button type="button" class="primary" disabled={busy || !chosen} title={acceptTip} aria-label={acceptTip}
+              onclick={() => chosen && void view.decide(request.id, { accept: true, projectId: chosen.id })} data-testid="contact-accept-{request.id}"><span class="ui-label">{labels.accept}</span></button>
+            <!-- The project choice behind the row's menu: Accept itself takes the one the request points at. -->
+            <span class="more">
+              <Menu {items} onpick={id => void view.decide(request.id, { accept: true, projectId: id })} label={labels.acceptOther} placement="bottom" align="end" variant="ghost" disabled={busy} testid="contact-accept-into-{request.id}">
+                <Ellipsis size={15} />
               </Menu>
             </span>
           {:else if plan || request.approved === false}
-            <!-- One Accept: the Operator's choice. Its arrow opens the search, for the owner's own pick. -->
+            <!-- One Accept: the Operator's choice, sharing no project. Its arrow opens the search, for the owner's own pick. -->
             <span class="split">
-              <button type="button" class="approve" disabled={busy} title={plan ? labels.plan.acceptTip : labels.approveTip} onclick={() => void view.decide(request.id, { accept: true })} data-testid="contact-approve-{request.id}"><Check size={14} strokeWidth={2.25} /><span class="ui-label">{labels.accept}</span></button>
+              <button type="button" class="primary approve" disabled={busy} title={plan ? labels.plan.acceptTip : labels.approveTip} onclick={() => void view.decide(request.id, { accept: true })} data-testid="contact-approve-{request.id}"><span class="ui-label">{labels.accept}</span></button>
               <ThreadChoice store={view.store} testid="contact-pick-{request.id}" label={labels.pick.label} skip={view.state?.bot?.threadId} disabled={busy} onpick={threadId => void view.decide(request.id, { accept: true, threadId })}><ChevronDown size={14} /></ThreadChoice>
             </span>
           {/if}
-          <button type="button" class="ghost" disabled={busy} onclick={() => void openRefusal()} data-testid="contact-refuse-{request.id}"><X size={14} /><span class="ui-label">{labels.refuse}</span></button>
-        </div>
+        </DecisionActions>
       {/if}
     {/if}
   </article>
@@ -114,7 +122,7 @@
   }
   :global(.request) + .request { border-top: 1px solid var(--color-border); }
   :global(h2) + .request { padding-top: 0; }
-  .kicker { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--color-accent); font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+  .kicker { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; }
   .request:not(.incoming) .kicker { color: var(--color-muted-foreground); }
   .kicker .ui-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .age { margin-left: auto; flex: none; color: var(--color-subtle); font-weight: 500; text-transform: none; letter-spacing: 0; }
@@ -126,13 +134,13 @@
   .plan { display: flex; align-items: flex-start; gap: 6px; margin: 0; color: var(--color-accent); font-size: var(--text-sm); font-weight: 600; overflow-wrap: anywhere; }
   .plan :global(svg) { flex: none; margin-top: 3px; }
   /* Accept and its arrow read as one control: the arrow keeps the fill behind a hairline. */
-  .split { display: inline-flex; }
-  .split .approve { border-radius: var(--radius-md) 0 0 var(--radius-md); }
-  .split :global(.arrow) { height: var(--control); padding: 0 8px; border: 1px solid var(--color-accent); border-left-color: color-mix(in srgb, var(--color-accent-ink) 30%, transparent); border-radius: 0 var(--radius-md) var(--radius-md) 0; background: var(--color-accent); color: var(--color-accent-ink); }
-  .split :global(.arrow:hover:not(:disabled)), .split :global(.arrow[aria-expanded='true']) { background: var(--color-control-primary-hover); }
+  .split { display: inline-flex; flex: none; }
+  .split .approve { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+  /* Accept and its arrow read as one solid control: the arrow wears the primary fill behind a hairline. */
+  .split :global(.arrow) { height: var(--control); padding: 0 8px; border: 1px solid var(--primary-fill); border-left-color: color-mix(in srgb, var(--primary-ink) 30%, transparent); border-radius: 0 var(--radius-md) var(--radius-md) 0; background: var(--primary-fill); color: var(--primary-ink); }
+  .split :global(.arrow:hover:not(:disabled)), .split :global(.arrow[aria-expanded='true']) { background: var(--primary-hover); border-color: var(--primary-hover); }
   .buttons { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 2px; }
-  .accept :global(.trigger), .approve { height: var(--control); padding: 0 12px; border-color: var(--color-accent); background: var(--color-accent); color: var(--color-accent-ink); font-weight: 600; }
-  .accept :global(.trigger:hover), .approve:hover:not(:disabled) { background: var(--color-control-primary-hover); }
+  .buttons > button { gap: 6px; }
   .refusal { display: grid; gap: 8px; }
   .refusal input { width: 100%; min-width: 0; }
   .decided { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--radius-md); }
@@ -143,12 +151,12 @@
   .sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-muted-foreground); font-size: var(--text-xs); }
   .by { padding: 2px 8px; border-radius: var(--radius-full); background: var(--color-surface-3); color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; }
   .stage { justify-self: start; margin: 0; padding: 1px 8px; border-radius: var(--radius-full); background: var(--color-surface-3); color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; }
-  .stage[data-stage='owner'] { background: var(--color-accent-soft); color: var(--color-accent); }
-  .by[data-by='bot'], .by[data-by='concierge'] { background: var(--color-accent-soft); color: var(--color-accent); }
+  .stage[data-stage='owner'] { background: var(--color-active); color: var(--color-foreground); }
+  .by[data-by='bot'], .by[data-by='concierge'] { background: var(--color-active); color: var(--color-foreground); }
   .by[data-by='match'] { background: color-mix(in oklch, var(--color-success) 14%, transparent); color: var(--color-success); }
   @media (prefers-reduced-motion: reduce) { .request { animation: none; } }
   :global(html[data-motion='reduced']) .request { animation: none; }
   @media (max-width: 720px) {
-    .buttons > button, .accept :global(.trigger) { min-height: var(--touch-target); }
+    .buttons > button, .more :global(.trigger) { min-height: var(--touch-target); min-width: var(--touch-target); }
   }
 </style>

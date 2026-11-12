@@ -26,8 +26,9 @@
     <label for="{uid}-on" class="master">
       <span class="words">
         <h2 class="ui-label-box"><span class="ui-label" id="{uid}-on-name">{strings.settings.deviceStream}</span><InfoTip topic={strings.settings.deviceStream} text={strings.settings.deviceStreamHint} /></h2>
+        <span class="effect" id="{uid}-on-effect">{strings.settings.effects.deviceStream}</span>
       </span>
-      <input id="{uid}-on" aria-labelledby="{uid}-on-name" type="checkbox" role="switch" data-testid="device-stream-on"
+      <input id="{uid}-on" aria-labelledby="{uid}-on-name" aria-describedby="{uid}-on-effect" type="checkbox" role="switch" data-testid="device-stream-on"
         checked={store.settings?.deviceStream === true} disabled={!store.settings || saving} onchange={(event) => void save(event.currentTarget)} />
     </label>
   </section>
@@ -36,5 +37,6 @@
 <style>
   .master { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; cursor: pointer; }
   .master .words { display: grid; gap: 6px; flex: 1; min-width: 0; }
+  .effect { color: var(--color-muted-foreground); font-size: var(--text-sm); line-height: 1.5; }
   .card .master h2 { margin: 0; }
 </style>

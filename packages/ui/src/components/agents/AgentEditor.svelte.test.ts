@@ -225,6 +225,9 @@ test('an agent\'s identity and model, edited side by side in its Settings tab, b
   // The runtime card moves the revision; the next identity edit still saves on top of it.
   document.querySelector<HTMLButtonElement>('[data-testid=agent-runtime] [data-testid=composer-picker]')!.click();
   await settle();
+  // The rail's Claude tile shows its column.
+  document.querySelector<HTMLButtonElement>('[data-testid=composer-picker-menu] .tile[data-provider="claude"]')?.click();
+  await settle();
   document.querySelector<HTMLButtonElement>('[data-model="claude-sonnet-5-5"]')!.click();
   await idle();
   const domain = document.querySelector<HTMLInputElement>('[data-testid=agent-editor] input[maxlength="500"]')!;
@@ -266,7 +269,7 @@ test('a new bot is free to act: it is created with full access unless the owner 
   const editor = mount(AgentEditor, { target: document.body, props: { view, ondone: (agent: AgentProfile) => { created = agent; }, oncancel: () => {} } });
   cleanup = async () => { await unmount(editor); view.close(); store.detach(); client.close(); };
   await idle();
-  expect(document.querySelector('[data-testid=agent-runtime]')?.textContent).toContain('Full access');
+  expect(document.querySelector('[data-testid=agent-runtime]')?.textContent).toContain('Auto');
   const name = document.querySelector<HTMLInputElement>('[data-testid=agent-name]')!;
   name.value = 'Nova';
   name.dispatchEvent(new Event('input', { bubbles: true }));

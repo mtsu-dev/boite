@@ -273,7 +273,7 @@ test('the refused plugin\'s gear names the file, the field and what was expected
   await open();
   const box = await gear('pool-legacy');
   const refused = box.querySelector('[data-testid="plugin-rejected"]');
-  expect(refused?.getAttribute('data-field')).toBe('manifest.schema');
+  expect(refused?.getAttribute('data-kind')).toBe('manifest.schema');
   expect(refused?.textContent).toContain('installed.json');
   expect(box.querySelector('[data-testid="plugin-uninstall"]')).not.toBeNull();
   expect(box.querySelector('[data-testid="plugin-app"]')).toBeNull();
@@ -465,7 +465,7 @@ test('a refused manifest shows the file, the field and what was expected, with n
   await vi.waitFor(() => expect(q('[data-testid="plugin-preview"]')).not.toBeNull());
   expect(q('[data-testid="plugin-preview"]')?.getAttribute('data-rejected')).toBe('true');
   const refused = q('[data-testid="plugin-preview"] [data-testid="plugin-rejected"]');
-  expect(refused?.getAttribute('data-field')).toBe('artifacts.win32-x64.sha256');
+  expect(refused?.getAttribute('data-kind')).toBe('artifacts.win32-x64.sha256');
   expect(refused?.textContent).toContain('boite-plugin.json');
   expect(refused?.textContent).toContain('64 lowercase hexadecimal characters');
   expect(q('[data-testid="plugin-add"]')).toBeNull();
@@ -517,7 +517,7 @@ test('a recommended plugin with an update source says what it last found, and a 
   const bots = () => row('bots')!;
   const box = await gear('bots');
   const line = () => box.querySelector('[data-testid="plugin-updates-line"]')?.textContent ?? '';
-  expect(line()).toBe('Up to date · checked 3 hr. ago');
+  expect(line()).toBe('Up to date · checked 3h ago');
   expect(bots().querySelector('[data-testid="plugin-update"]')).toBeNull();
 
   box.querySelector<HTMLElement>('[data-testid="plugin-check-updates"]')!.click();

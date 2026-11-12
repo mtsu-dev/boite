@@ -89,5 +89,4 @@
   label { display: block; font-size: var(--text-sm); margin: 12px 0 6px; }
   .directory { display: flex; gap: 8px; }
   input { flex: 1; min-width: 0; width: 100%; font-family: var(--font-mono); }
-  .error { color: var(--color-danger); overflow-wrap: anywhere; }
 </style>

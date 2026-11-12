@@ -52,40 +52,34 @@
 
 {#if store.owner}
   <section class="card" id="settings-privacy" data-testid="telemetry-settings">
-    <h2 class="ui-label-box"><span class="ui-label">{strings.telemetry.heading}</span><InfoTip topic={strings.telemetry.heading} text={strings.telemetry.description} /></h2>
+    <h2 class="ui-label-box"><span class="ui-label">{strings.telemetry.heading}</span><InfoTip topic={strings.telemetry.heading} text={`${strings.telemetry.description} ${strings.telemetry.choiceNotice}`} testid="telemetry-choice-notice" /></h2>
     {#if consent}
       {#if !consent.configured}<p class="hint">{strings.telemetry.unconfigured}</p>{/if}
-      {#if consent.configured}<p class="hint" data-testid="telemetry-choice-notice">{strings.telemetry.choiceNotice}</p>{/if}
       <label for="{uid}-basic" class="switch-row">
-        <span class="text ui-label-box"><span class="ui-label" id="{uid}-basic-name">{strings.telemetry.basic}</span><InfoTip topic={strings.telemetry.basic} text={strings.telemetry.basicHint} />{#if ceiling === 'off'}<PolicyLock {store} keys={['analytics']} />{/if}</span>
-        <input id="{uid}-basic" aria-labelledby="{uid}-basic-name" type="checkbox" role="switch" data-testid="telemetry-basic" checked={consent.mode !== 'off'} disabled={busy || ceiling === 'off'}
+        <span class="text"><span class="ui-label-box"><span class="ui-label" id="{uid}-basic-name">{strings.telemetry.basic}</span><InfoTip topic={strings.telemetry.basic} text={strings.telemetry.basicHint} />{#if ceiling === 'off'}<PolicyLock {store} keys={['analytics']} />{/if}</span><span class="hint" id="{uid}-basic-effect">{strings.settings.effects.telemetryBasic}</span></span>
+        <input id="{uid}-basic" aria-labelledby="{uid}-basic-name" aria-describedby="{uid}-basic-effect" type="checkbox" role="switch" data-testid="telemetry-basic" checked={consent.mode !== 'off'} disabled={busy || ceiling === 'off'}
           onchange={event => void change(event.currentTarget.checked ? 'basic' : 'off')} />
       </label>
       <label for="{uid}-enhanced" class="switch-row">
-        <span class="text ui-label-box"><span class="ui-label" id="{uid}-enhanced-name">{strings.telemetry.enhanced}</span><InfoTip topic={strings.telemetry.enhanced} text={strings.telemetry.enhancedHint} /><PolicyLock {store} keys={['analytics']} /></span>
-        <input id="{uid}-enhanced" aria-labelledby="{uid}-enhanced-name" type="checkbox" role="switch" data-testid="telemetry-enhanced" checked={consent.mode === 'enhanced'} disabled={busy || ceiling !== null}
+        <span class="text"><span class="ui-label-box"><span class="ui-label" id="{uid}-enhanced-name">{strings.telemetry.enhanced}</span><InfoTip topic={strings.telemetry.enhanced} text={strings.telemetry.enhancedHint} /><PolicyLock {store} keys={['analytics']} /></span><span class="hint" id="{uid}-enhanced-effect">{strings.settings.effects.telemetryEnhanced}</span></span>
+        <input id="{uid}-enhanced" aria-labelledby="{uid}-enhanced-name" aria-describedby="{uid}-enhanced-effect" type="checkbox" role="switch" data-testid="telemetry-enhanced" checked={consent.mode === 'enhanced'} disabled={busy || ceiling !== null}
           onchange={event => void change(event.currentTarget.checked ? 'enhanced' : 'basic')} />
       </label>
       {#if consent.pendingDeletion}<p class="hint">{strings.telemetry.pending}</p>{/if}
-      <div class="actions">
+      {#if consent.mode === 'enhanced' || consent.pendingDeletion}<div class="actions">
         {#if consent.mode === 'enhanced'}<button disabled={busy} onclick={() => void dataAction('export')}><span class="ui-label">{strings.telemetry.export}</span></button>{/if}
         {#if consent.pendingDeletion}<button disabled={busy || ceiling === 'off'} onclick={() => void dataAction('retryForget')}><span class="ui-label">{strings.telemetry.retry}</span></button>{/if}
-      </div>
+      </div>{/if}
     {/if}
     {#if error}<p role="alert">{error}</p>{/if}
   </section>
 {/if}
 
 <style>
-  .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 16px 0; }
+  .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 12px 0; }
   .switch-row + .switch-row { border-top: 1px solid var(--color-border); }
   .text { color: var(--color-foreground); font-size: var(--text-base); margin: 0; }
   .hint { display: block; color: var(--color-muted-foreground); font-size: var(--text-sm); line-height: 1.5; margin-top: 4px; }
-  input[type=checkbox] { appearance: none; position: relative; flex: 0 0 40px; width: 40px; height: 24px; padding: 0; margin: 0; border: 1px solid var(--color-edge); border-radius: 999px; background: var(--color-surface-3); cursor: pointer; }
-  input::after { content: ''; position: absolute; width: 16px; height: 16px; top: 3px; left: 3px; border-radius: 50%; background: var(--color-muted-foreground); transition: transform var(--dur-2) var(--ease-out-quint); }
-  input:checked { background: var(--color-foreground); }
-  input:checked::after { background: var(--color-background); transform: translateX(16px); }
-  input:focus-visible { outline-offset: 3px; }
   .actions { display: flex; gap: 8px; flex-wrap: wrap; }
   [role=alert] { color: var(--color-danger); overflow-wrap: anywhere; }
 </style>

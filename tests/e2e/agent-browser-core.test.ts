@@ -14,6 +14,14 @@ import { ensureProductionUi } from './lib/prod-ui.ts';
 // frame reaches the real page. Returning to chat leaves the agent's page alive.
 const id = (name: string) => `[data-testid="${name}"]`;
 const artifacts = join(import.meta.dir, '.artifacts');
+
+/** A phone reaches the agent browser through the header's Panels door, then the panel's own switcher. */
+async function openPhoneBrowser(page: BrowserPage) {
+  await page.click(id('panel-toggle'));
+  await page.click(id('panel-add'));
+  await page.click(`${id('panel-add-menu')} [data-value="agent-browser"]`);
+}
+
 const real = findChromium().path ? test : test.skip;
 
 const PAGE = `<!doctype html><title>Counter</title><style>body{margin:0;font:28px sans-serif;background:#eef}
@@ -88,7 +96,7 @@ real('the core runs the agent browser; desktop and phone show it covered, then l
         // its own deferred fit, so neither can overwrite the later preset.
         await pages[0]!.waitFor(`document.querySelectorAll('${id('agent-browser-tab')}').length === 2`);
         await pages[0]!.waitFor(frameShown(), 20_000);
-        await page.click(id('phone-browser-toggle'));
+        await openPhoneBrowser(page);
       }
       await page.waitFor(`document.querySelector('${id('agent-browser-cover-text')}')?.getBoundingClientRect().width > 0`, 20_000);
       expect(await page.text(id('agent-browser-cover-text'))).toMatch(/^This agent controls a browser on .+/);
@@ -137,7 +145,7 @@ real('the core runs the agent browser; desktop and phone show it covered, then l
         // its own. A tap between those two resizes targets an obsolete frame.
         await pages[0]!.waitFor(`document.querySelectorAll('${id('agent-browser-tab')}').length === 3`);
         await pages[0]!.waitFor(frameShown(), 20_000);
-        await page.click(id('phone-browser-toggle'));
+        await openPhoneBrowser(page);
         await page.waitFor(`document.querySelectorAll('${id('agent-browser-tab')}').length === 3`);
         await page.waitFor(frameShown(), 20_000);
         const nextBefore = await button();

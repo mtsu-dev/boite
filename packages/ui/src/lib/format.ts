@@ -1,4 +1,4 @@
-import { formatLocale, strings } from './i18n.svelte';
+import { fill, formatLocale, strings } from './i18n.svelte';
 
 /*
  * Numbers, sizes and clocks, in the language the app is speaking.
@@ -9,13 +9,10 @@ import { formatLocale, strings } from './i18n.svelte';
  * row drawn after that reads the new one.
  */
 interface Formatters {
-  relative: Intl.RelativeTimeFormat;
   clock: Intl.DateTimeFormat;
   dayClock: Intl.DateTimeFormat;
   calendar: Intl.DateTimeFormat;
   longDay: Intl.DateTimeFormat;
-  /** `22 min` in both languages: French's narrow relative form reads `-22 min`. */
-  minutes: Intl.NumberFormat;
   counter: Intl.NumberFormat;
   plain: Intl.NumberFormat;
   /** One digit after the decimal sign, always: `38.0 s`, `38,0 s`. */
@@ -38,12 +35,10 @@ function formatters(): Formatters {
   const known = sets.get(tag);
   if (known) return known;
   const made: Formatters = {
-    relative: new Intl.RelativeTimeFormat(tag, { style: 'short', numeric: 'always' }),
     clock: new Intl.DateTimeFormat(tag, { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
     dayClock: new Intl.DateTimeFormat(tag, { hour: '2-digit', minute: '2-digit' }),
     calendar: new Intl.DateTimeFormat(tag, { day: 'numeric', month: 'short' }),
     longDay: new Intl.DateTimeFormat(tag, { weekday: 'long', day: 'numeric', month: 'long' }),
-    minutes: new Intl.NumberFormat(tag, { style: 'unit', unit: 'minute', unitDisplay: 'short' }),
     counter: new Intl.NumberFormat(tag, { notation: 'compact', maximumFractionDigits: 1 }),
     plain: new Intl.NumberFormat(tag),
     tenths: new Intl.NumberFormat(tag, { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
@@ -81,20 +76,29 @@ export function transferBytes(value: number): string {
   return `${tenths.format(value / (1024 * 1024))} ${units.megabytes}`;
 }
 
+/**
+ * A measured span: milliseconds under a second, where a process or a call is
+ * told apart by them, then the one duration style the app uses (`elapsed`).
+ */
 export function millis(value: number | null | undefined): string {
-  const units = strings.units;
   if (value === null || value === undefined) return strings.common.none;
-  const { tenths } = formatters();
-  if (value < 1000) return `${Math.round(value)} ${units.milliseconds}`;
-  if (value < 60_000) return `${tenths.format(value / 1000)} ${units.seconds}`;
-  if (value < 3_600_000) return `${tenths.format(value / 60_000)} ${units.minutes}`;
-  return `${tenths.format(value / 3_600_000)} ${units.hours}`;
+  if (value < 1000) return `${Math.round(value)} ${strings.units.milliseconds}`;
+  return elapsed(value);
 }
 
 /** An effort or speed level in the app's language, by the id providers share; another id keeps the provider's word. */
 export function levelName(level: { id: string; label: string }): string {
   const name: unknown = (strings.effortLevels as unknown as Record<string, unknown>)[level.id];
   return typeof name === 'string' ? name : level.label;
+}
+
+/** Levels whose name here is a plainer word than the one the agent knows them by. */
+const PLAINED = new Set(['xhigh', 'ultrathink']);
+
+/** A level's tooltip: what it does, and the agent's own word when the name shown is a plainer one. */
+export function levelTitle(level: { id: string; description?: string }): string | undefined {
+  if (!PLAINED.has(level.id)) return level.description;
+  return level.description ? `${level.description} (${level.id})` : level.id;
 }
 
 /** A model's effort level `id` in the app's language; an id the model does not list stays as it is. */
@@ -113,6 +117,16 @@ export function quotaWindowName(label: string): string {
   return label.split(' · ').map(quotaPeriod).join(' · ');
 }
 
+/** A window as the words before "limit": `weekly`, `5-hour` (`de 5 heures`), for a line that reads as a sentence. */
+export function quotaLimitName(label: string): string {
+  return label.split(' · ').map((part) => {
+    const hours = /^(\d+(?:\.\d+)?) hours$/.exec(part)?.[1];
+    if (hours !== undefined) return strings.quotas.limitHours.replace('{hours}', formatters().plain.format(Number(hours)));
+    // A model or group name the core joins keeps its capitals; only a period reads as a word of the sentence.
+    return ['Weekly', 'Monthly', 'Credits'].includes(part) ? quotaPeriod(part).toLocaleLowerCase() : part;
+  }).join(' · ');
+}
+
 function quotaPeriod(part: string): string {
   if (part === 'Weekly') return strings.quotas.windowWeekly;
   if (part === 'Monthly') return strings.quotas.windowMonthly;
@@ -127,7 +141,7 @@ export function tenth(value: number): string {
 }
 
 export function duration(startedAt: number, endedAt: number | null): string {
-  return millis((endedAt ?? Date.now()) - startedAt);
+  return elapsed((endedAt ?? Date.now()) - startedAt);
 }
 
 /**
@@ -168,7 +182,7 @@ export function clockTime(value: number, now = Date.now()): string {
   return `${set.calendar.format(then)} ${set.dayClock.format(then)}`;
 }
 
-/** `12s`, `4m 41s`, `1h 02m`: a stopwatch, the way a turn's footer reads it. */
+/** `12s`, `4m 41s`, `1h 02m`: the one duration style, a turn's footer, a tool, a subagent and a trace alike. */
 export function elapsed(ms: number): string {
   const seconds = Math.max(0, Math.floor(ms / 1000));
   if (seconds < 60) return `${seconds}s`;
@@ -226,33 +240,31 @@ export function percent(value: number): string {
   return `${Math.round(value)}%`;
 }
 
-/** "now", "5 min", "14:02", "3 Sep": what a sidebar row needs and nothing more. */
+/**
+ * The one rule for when something happened, on every row and line: "now"
+ * under a minute, "4m" and "2h" under a day, then the date ("Sep 3"), with
+ * its year once it is another year's.
+ */
 export function ago(value: number, now = Date.now()): string {
   const delta = now - value;
-  if (delta < 45_000) return strings.time.now;
-  const set = formatters();
-  if (delta < 3_600_000) return set.minutes.format(Math.round(delta / 60_000));
-  const then = new Date(value);
-  const today = new Date(now);
-  const sameDay =
-    then.getFullYear() === today.getFullYear() &&
-    then.getMonth() === today.getMonth() &&
-    then.getDate() === today.getDate();
-  return sameDay ? set.dayClock.format(then) : set.calendar.format(then);
+  if (delta < 60_000) return strings.time.now;
+  if (delta < 3_600_000) return fill(strings.time.minutes, { n: String(Math.floor(delta / 60_000)) });
+  if (delta < 86_400_000) return fill(strings.time.hours, { n: String(Math.floor(delta / 3_600_000)) });
+  return calendarDay(value, now);
 }
 
-const relativeUnits: readonly [Intl.RelativeTimeFormatUnit, number][] = [
-  ['year', 31_536_000_000], ['month', 2_592_000_000], ['week', 604_800_000],
-  ['day', 86_400_000], ['hour', 3_600_000], ['minute', 60_000]
-];
-
-/** An elapsed age, kept relative even for mail from another day. */
+/** The same rule inside a sentence: "4m ago", "2h ago", then the date alone. */
 export function relativeTime(value: number, now = Date.now()): string {
   const delta = Math.max(0, now - value);
-  for (const [unit, size] of relativeUnits) {
-    if (delta >= size) return formatters().relative.format(-Math.floor(delta / size), unit);
-  }
-  return strings.time.now;
+  if (delta < 60_000) return strings.time.now;
+  if (delta < 3_600_000) return fill(strings.time.minutesAgo, { n: String(Math.floor(delta / 60_000)) });
+  if (delta < 86_400_000) return fill(strings.time.hoursAgo, { n: String(Math.floor(delta / 3_600_000)) });
+  return calendarDay(value, now);
+}
+
+function calendarDay(value: number, now: number): string {
+  const set = formatters();
+  return new Date(value).getFullYear() === new Date(now).getFullYear() ? set.calendar.format(value) : set.quotaYear.format(value);
 }
 
 /** The first line of a prompt, cut for a sidebar row. */

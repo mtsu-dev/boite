@@ -121,7 +121,9 @@ export function settingsSectionLabel(section: string, providers: readonly Provid
   if (section.startsWith('provider-')) return providers.find((provider) => provider.id === section.slice('provider-'.length))?.name ?? null;
   const settings = strings.settings;
   const labels: Record<string, string> = {
-    conversations: settings.conversations,
+    'thread-list': settings.threadList,
+    conversations: settings.inConversation,
+    notifications: settings.notificationsHeading,
     archived: settings.archived.heading,
     worktrees: settings.worktrees.heading,
     app: settings.app,
@@ -151,17 +153,17 @@ export function settingsSectionLabel(section: string, providers: readonly Provid
 /** Pages a paired device's Settings leaves out: `OWNER_TABS` in `SettingsShell.svelte`. */
 const OWNER_PAGES: readonly SettingsPage[] = ['accounts', 'plugins', 'resources', 'brain'];
 /** Cards of the shared pages that only the owner's Settings draws there. */
-const OWNER_SECTIONS: readonly string[] = ['worktrees', 'privacy', 'execution', 'origins', 'auto-compact', 'device-stream', 'background-compaction'];
+const OWNER_SECTIONS: readonly string[] = ['quiet', 'worktrees', 'privacy', 'execution', 'origins', 'auto-compact', 'device-stream', 'background-compaction'];
 /**
  * What a phone browser's Settings (`MobileSettings.svelte`) draws: the pages
  * it opens whole, then the cards it has of the others. Keep it in step with
  * that component's `page`.
  */
-const PHONE_PAGES: readonly SettingsPage[] = ['appearance', 'voice', 'usage', 'limits', 'task-manager', 'experiments', 'brain'];
+const PHONE_PAGES: readonly SettingsPage[] = ['appearance', 'accounts', 'voice', 'usage', 'limits', 'task-manager', 'experiments', 'brain'];
 const PHONE_CARDS: Partial<Record<SettingsPage, readonly string[]>> = {
-  resources: ['quiet', 'limits', 'tasks'],
+  resources: ['limits', 'tasks'],
   machines: ['machines', 'group'],
-  general: ['archived', 'worktrees'],
+  general: ['archived', 'worktrees', 'conversations', 'quiet'],
   advanced: ['auto-compact'],
 };
 

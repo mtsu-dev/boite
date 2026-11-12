@@ -47,6 +47,6 @@
 <style>
   .agent-leaving { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
   /* The accent, as on its row and on a thread waiting to move. */
-  .pending { display: inline-flex; align-items: center; gap: 5px; min-width: 0; color: var(--color-accent); font-size: var(--text-sm); }
+  .pending { display: inline-flex; align-items: center; gap: 5px; min-width: 0; color: var(--color-muted-foreground); font-size: var(--text-sm); }
   .pending :global(svg) { flex: none; }
 </style>

@@ -165,3 +165,18 @@ export class BottomGlide {
 export function pointedTurn(event: Event): string | null {
   return (event.target as Element | null)?.closest?.('article.message:not(.user)')?.getAttribute('data-turn') ?? null;
 }
+
+/**
+ * What lies under the last row inside the viewport: its bottom padding and
+ * the fade at its end, which takes its own room in the flow (MessageList's
+ * styles). Read from the styles, which give it 18 px where scroll timelines
+ * exist and 20 px elsewhere: a fixed 20 left a sent prompt 2 px under its
+ * inset. Null with no layout to read (a test DOM).
+ */
+export function timelineEndRoom(box: HTMLElement): number | null {
+  const padding = parseFloat(getComputedStyle(box).paddingBottom);
+  if (!Number.isFinite(padding)) return null;
+  const fade = getComputedStyle(box, '::after');
+  const inFlow = fade.content !== 'none' && fade.position !== 'absolute' && fade.position !== 'fixed';
+  return padding + (inFlow ? (parseFloat(fade.height) || 0) + (parseFloat(fade.marginTop) || 0) : 0);
+}

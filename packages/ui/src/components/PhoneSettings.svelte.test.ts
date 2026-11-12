@@ -68,10 +68,10 @@ test('the phone screen turns notifications and each kind on and off, and a devic
     expect(kind('finished').checked).toBe(false);
     expect(JSON.parse(localStorage.getItem('boite.notifications.muted')!)).toEqual(['finished']);
     expect(calls.at(-1)).toEqual({ kinds: ['approvals', 'questions', 'errors', 'limits'] });
-    // The main switch off dims the kinds and stops the pushes too.
+    // The main switch off hides the kinds and stops the pushes too.
     document.querySelector<HTMLInputElement>('[data-testid=phone-notifications]')!.click();
     flushSync();
-    expect(kind('approvals').disabled).toBe(true);
+    expect(kind('approvals')).toBeNull();
     expect(calls.at(-1)).toEqual({ kinds: [] });
   } finally {
     localStorage.clear();

@@ -1,8 +1,10 @@
-import { afterEach, expect, onTestFinished, vi } from 'vitest';
+import { afterEach, beforeEach, expect, onTestFinished, vi } from 'vitest';
 import { test } from '../test/fake-client';
 import { flushSync, mount, unmount } from 'svelte';
 import { DEFAULT_DELEGATION_CONFIG, type AgentLetter, type Message } from '@boite/contracts';
+import { strings } from '../lib/strings';
 import MessageList from './MessageList.svelte';
+import JumpLatest from './JumpLatest.svelte';
 import { windowStats } from '../lib/message-window';
 import { TurnFileCache } from '../lib/turn-files';
 import { turnProgressStats } from '../lib/turn-progress.svelte';
@@ -76,7 +78,7 @@ function restoreLayout(): void {
 
 let running: Record<string, unknown> | null = null;
 
-test('the parent timeline retains one team row, updates completion counts and opens the whole team', async ({ createStore }) => {
+test('the parent timeline keeps one grouped row per launch, its counts live, that unfolds on its subagents and opens one', async ({ createStore }) => {
   const { store: owner, client } = createStore({ delayMs: 0, delegationDemo: true });
   owner.attach(client);
   await owner.connect();
@@ -84,39 +86,61 @@ test('the parent timeline retains one team row, updates completion counts and op
   await owner.loadDelegation();
   running = mount(MessageList, { target: document.body, props: { store: owner, threadId: 't-trace', messages: owner.openThread!.messages } });
   flushSync();
-  const row = document.querySelector<HTMLButtonElement>('[data-testid=delegation-activity]')!;
-  expect(row.textContent).toContain('Started 4 subagents');
-  // The one waiting on its own background work is not completed; the interrupted one says so.
-  expect(row.textContent).toContain('1/4 completed');
-  expect(row.textContent).toContain('1 interrupted');
-  await owner.selectDelegatedAgent('t-team-running');
-  // A workflow graph left open in the agents tab gives way to the team, the way the dock opens it.
-  const graph = owner.panel.openWorkflow('run-left-open');
+  // One row where they started, at work or not: three marks, "+1", how many and where they stand.
+  const rows = document.querySelectorAll<HTMLButtonElement>('[data-testid=delegation-activity]');
+  expect(rows).toHaveLength(1);
+  const row = rows[0]!;
+  expect(row.dataset.count).toBe('4');
+  expect(row.querySelector('.heading')?.textContent).toBe('4 subagents');
+  expect(row.querySelectorAll('.stack > .logo')).toHaveLength(3);
+  expect(row.querySelector('.more')?.textContent).toBe('+1');
+  // The one waiting on its background run still works; the interrupted one stopped, the word Activity uses.
+  expect(row.querySelector('[data-testid=delegation-progress]')?.textContent).toBe('2 working, 1 done, 1 stopped');
+  const settle = (id: string) => {
+    const agent = owner.delegation!.agents.find(agent => agent.thread.id === id)!;
+    agent.thread.status = 'idle';
+    agent.thread.backgroundWait = null;
+    agent.lastTurn!.status = 'done';
+    agent.lastTurn!.finishedAt = agent.thread.createdAt + 60_000;
+  };
+  settle('t-team-waiting');
+  settle('t-team-running');
+  flushSync();
+  expect(row.querySelector('[data-testid=delegation-progress]')?.textContent).toBe('3 done, 1 stopped');
+  // A click unfolds it in place, one row per subagent with its state, and opens no panel.
+  expect(row.getAttribute('aria-expanded')).toBe('false');
   row.click();
   flushSync();
-  expect(owner.panel.isOpen).toBe(true);
-  expect(owner.delegationSelectedAgentId).toBeNull();
-  expect(owner.panel.state.surfaces.find(surface => surface.id === graph.id)?.runId).toBeUndefined();
-  const agent = owner.delegation!.agents.find(agent => agent.thread.id === 't-team-running')!;
-  agent.thread.status = 'idle';
-  agent.lastTurn!.status = 'done';
-  agent.lastTurn!.finishedAt = agent.thread.createdAt + 60_000;
-  flushSync();
-  expect(document.querySelectorAll('[data-testid=delegation-activity]')).toHaveLength(1);
-  expect(row.textContent).toContain('2/4 completed');
-  expect(row.querySelector('[data-testid=agent-elapsed]')?.textContent).toContain('1');
+  expect(row.getAttribute('aria-expanded')).toBe('true');
+  expect(owner.panel.isOpen).toBe(false);
+  const agents = [...document.querySelectorAll<HTMLButtonElement>('[data-testid=delegation-agent]')];
+  expect(agents.map(agent => agent.dataset.state).sort()).toEqual(['done', 'done', 'done', 'stopped']);
+  // A subagent's row opens its own conversation.
+  const child = agents.find(agent => agent.title === owner.delegation!.agents.find(agent => agent.thread.id === 't-team-done')!.thread.title)!;
+  child.click();
+  await vi.waitFor(() => expect(owner.openThread?.id).toBe('t-team-done'));
   // A child transcript must not claim that it launched its siblings.
   await unmount(running); running = null;
-  await owner.open('t-team-done');
   await owner.loadDelegation();
   running = mount(MessageList, { target: document.body, props: { store: owner, threadId: 't-team-done', messages: owner.openThread!.messages } });
   flushSync();
   expect(document.querySelector('[data-testid=delegation-activity]')).toBeNull();
 });
 
+// The way back to the latest message lives in the strip above the composer;
+// the list only says when it is needed.
+let jumpHost: ReturnType<typeof mount> | null = null;
+beforeEach(() => {
+  const target = document.createElement('div');
+  document.body.appendChild(target);
+  jumpHost = mount(JumpLatest, { target });
+});
+
 afterEach(async () => {
   if (running) await unmount(running, { outro: false });
   running = null;
+  if (jumpHost) await unmount(jumpHost, { outro: false });
+  jumpHost = null;
   restoreLayout();
   document.body.innerHTML = '';
 });
@@ -166,10 +190,16 @@ const store = {
   loadingOlder: false,
   loadOlder: async () => 0,
   releaseOlder: () => 0,
-  workflowsOf: () => []
+  workflowsOf: () => [],
+  // What the timeline's decision card counts: nothing waits here.
+  threads: [],
+  pendingQuestions: [],
+  pendingPermissions: [],
+  pendingSecrets: [],
+  subagentQuestions: () => []
 } as unknown as Store;
 
-test('a workflow the thread started is one card that opens its graph, and a step shows none', async ({ createStore }) => {
+test('a workflow the thread started is one grouped row from its start, that says where it stands and opens its graph, and a step shows none', async ({ createStore }) => {
   const { store: owner, client } = createStore({ delayMs: 0, delegationDemo: true });
   owner.attach(client);
   try {
@@ -178,11 +208,16 @@ test('a workflow the thread started is one card that opens its graph, and a step
     await owner.loadWorkflows('t-trace');
     running = mount(MessageList, { target: document.body, props: { store: owner, threadId: 't-trace', messages: owner.openThread!.messages } });
     flushSync();
+    const run = owner.workflowsOf('t-trace')[0]!;
+    expect(run.status).toBe('running');
+    // Running, it already has its row, where it began.
     const cards = document.querySelectorAll<HTMLButtonElement>('[data-testid=workflow-activity]');
     expect(cards).toHaveLength(1);
-    const run = owner.workflowsOf('t-trace')[0]!;
-    expect(cards[0]!.textContent).toContain('Review the parser');
-    expect(cards[0]!.textContent).toContain('1/5 steps');
+    expect(cards[0]!.querySelector('.heading')?.textContent).toBe('Review the parser');
+    expect(cards[0]!.textContent).toContain('Running · 1 of 5 done');
+    run.status = 'failed';
+    flushSync();
+    expect(cards[0]!.textContent).toContain('Failed · 1 of 5 done');
     expect(cards[0]!.querySelectorAll('.phases i')).toHaveLength(4);
     cards[0]!.click();
     flushSync();
@@ -248,9 +283,9 @@ test('an agent thread folds a finished turn\'s steps behind the count on its sum
   const folds = () => [...document.querySelectorAll<HTMLElement>('[data-testid="turn-fold"]')];
   // Its evening routines had nothing to report: one line each, its opening and its calls folded inside.
   const quiet = folds().find(fold => fold.dataset.kind === 'quiet' && fold.textContent?.includes('4 issues'))!;
-  expect(quiet.textContent).toContain('Checked: 4 issues, 2 pull requests, nothing new · 2 steps');
+  expect(quiet.textContent).toContain('Checked: 4 issues, 2 pull requests, nothing new · Ran 2 commands');
   // The automatic compaction after each is a mark on its line, not a row of its own.
-  expect(folds().filter(fold => fold.dataset.kind === 'quiet').map(fold => fold.querySelector('[data-testid="turn-fold-compaction"]')?.textContent)).toEqual(['compacted 51.1K → 10.8K', 'compacted 48.9K → 11.2K']);
+  expect(folds().filter(fold => fold.dataset.kind === 'quiet').map(fold => fold.querySelector('[data-testid="turn-fold-compaction"]')?.textContent)).toEqual(['summarized 51.1K → 10.8K', 'summarized 48.9K → 11.2K']);
   expect(document.querySelector('[data-testid="compaction-part"]')).toBeNull();
   expect(timeline()).not.toContain('Automatic compaction');
   expect(document.querySelector('[data-testid="wake-marker"]')).toBeNull();
@@ -274,13 +309,16 @@ test('an agent thread folds a finished turn\'s steps behind the count on its sum
   await openAgent(owner, nova.id);
   running = mount(MessageList, { target: document.body, props: { store: owner, threadId: owner.openThread!.id, messages: owner.openThread!.messages } });
   flushSync();
-  // No row above the answer: the summary line under it counts the steps, with the time it worked and when it finished.
+  // No row above the answer: the summary line under it says the steps in words, with the time it worked and when it finished.
   expect(folds().filter(fold => fold.dataset.kind === 'worked')).toHaveLength(0);
   const worked = [...document.querySelectorAll<HTMLElement>('[data-testid="turn-steps"]')];
   // Its answers are signed with its name, not the provider's.
   expect([...document.querySelectorAll('[data-testid="message-model"]')].map(node => node.textContent?.trim())).toContain('Nova');
+  // With its face beside the name, grey at rest by the owner's rule: no colour until the pointer or a notice lights it.
+  const signed = [...document.querySelectorAll('[data-testid="message-model"]')].find(node => node.textContent?.trim() === 'Nova')!;
+  expect(signed.querySelector('[data-testid="message-bot"] .agent-avatar')?.hasAttribute('data-lit')).toBe(false);
   expect(timeline()).not.toMatch(/^Echo|\bEcho\b/);
-  expect(worked.map(button => button.textContent?.trim())).toEqual(['2 steps', '4 steps']);
+  expect(worked.map(button => button.textContent?.trim())).toEqual(['Ran 2 commands', 'Ran 3 commands and read 1 file']);
   expect(worked[1]!.closest('[data-testid="turn-summary"]')?.textContent).toMatch(/Worked for 2m 0\ds.*done/);
   expect(timeline()).toContain('The login fix opened PR #482');
   expect(timeline()).not.toContain('The e2e job fails; its log names the redirect test.');
@@ -498,12 +536,36 @@ test('a call finished in the running turn rereads only that turn files, never a 
   ];
   running = mount(MessageList, { target: document.body, props: { store: owner, threadId: thread.id, messages: thread.messages } });
   flushSync();
-  await vi.waitFor(() => expect(document.querySelectorAll('[data-testid=turn-files]')).toHaveLength(2));
+  // The files line loads on demand (TurnFilesLoader.svelte): a busy runner can take past the default second to import it.
+  await vi.waitFor(() => expect(document.querySelectorAll('[data-testid=turn-files]')).toHaveLength(2), { timeout: 5_000 });
   const read = vi.spyOn(TurnFileCache.prototype, 'read');
   onTestFinished(() => read.mockRestore());
   thread.messages[1]!.parts.push(write('c.ts'));
   flushSync();
   expect(read.mock.calls.map(call => call[0])).toEqual([live.id]);
+});
+
+test("a turn's change count sits on the tool line of its last change, not on a card of its own under the answer", async ({ createStore }) => {
+  window.localStorage.clear();
+  const { store: owner, client } = createStore({ delayMs: 0 });
+  owner.attach(client); await owner.connect(); await owner.open('t-trace');
+  const thread = owner.openThread!;
+  const done = { ...thread.turns[0]!, startedAt: 1, finishedAt: 15, status: 'done' as const };
+  const read = { type: 'tool' as const, toolId: 'read', name: 'Read', input: { file_path: 'a.ts' }, output: 'x', status: 'done' as const };
+  const write = { type: 'tool' as const, toolId: 'write', name: 'Write', input: { file_path: 'b.ts', content: 'one\ntwo' }, output: null, status: 'done' as const };
+  thread.memoryEvents = [];
+  thread.turns = [done];
+  thread.messages = [{ id: 'answer', threadId: thread.id, turnId: done.id, role: 'assistant', state: 'complete', createdAt: 10, parts: [read, write, { type: 'text', text: 'Wrote b.ts.' }] }];
+  running = mount(MessageList, { target: document.body, props: { store: owner, threadId: thread.id, messages: thread.messages } });
+  flushSync();
+  await vi.waitFor(() => expect(document.querySelector('[data-testid=turn-files]')).not.toBeNull(), { timeout: 5_000 });
+  // One row: the run's line says what was done and carries the lines it added; no "Changed files" title repeats it.
+  const line = document.querySelector('[data-testid=tool-group] [data-testid=turn-files]')!;
+  expect(line).not.toBeNull();
+  expect(document.querySelectorAll('[data-testid=turn-files]')).toHaveLength(1);
+  expect(document.querySelector('[data-testid=tool-group-label]')?.textContent).toBe('Read 1 file and changed 1 file');
+  expect(line.querySelector('[data-testid=turn-files-toggle]')?.textContent?.trim()).toBe('+2');
+  expect(line.querySelector<HTMLElement>('[data-testid=turn-files-toggle]')?.title).toBe('Changed files: 1 file, +2');
 });
 
 test('delegation mail opens its messages tab with local family identity, without duplicating coordination mail', async () => {
@@ -616,6 +678,7 @@ function pagedStore(overrides: Partial<Record<string, unknown>> = {}): {
   // The real store flips `loadingOlder` for the length of the call and never
   // starts a second one; a page that never resolves is what holds it open here.
   const paged: Record<string, unknown> = {
+    threads: [], pendingQuestions: [], pendingPermissions: [], pendingSecrets: [], subagentQuestions: () => [],
     permissionRequests: {},
     answer: async () => {},
     messagesBefore: 'm-before',
@@ -837,7 +900,7 @@ test('a viewport clamp keeps the list pinned but a reader scroll during growth r
   expect(timeline.scrollTop).toBe(1080);
 });
 
-test('a window opened around the reader pages down as they reach its bottom, and "Jump to latest" reads the last page', async ({ ready }) => {
+test('a window opened around the reader pages down as they reach its bottom, and "Latest" reads the last page', async ({ ready }) => {
   window.localStorage.clear();
   const { store: live } = await ready({ delayMs: 0, long: true });
   live.readingPositions.set('t-long', { top: 0, pinned: false, heights: new Map(), anchor: { id: 'm-long-100', offset: 0 } });
@@ -879,7 +942,7 @@ test('what arrives while the reader is scrolled up is counted on the way back, a
   timeline.dispatchEvent(new Event('scroll'));
   await settle();
   const jumpButton = () => document.querySelector<HTMLButtonElement>('[data-testid=jump-to-latest]');
-  expect(jumpButton()?.textContent?.trim()).toBe('Jump to latest');
+  expect(jumpButton()?.textContent?.trim()).toBe('Jump to newest');
 
   const last = messages.at(-1)!;
   messages.push({ ...JSON.parse(JSON.stringify(last)), id: 'm-new-1' }, { ...JSON.parse(JSON.stringify(last)), id: 'm-new-2' });
@@ -902,7 +965,7 @@ test('a thread reopened where the reader left it, above the bottom, counts what 
   running = mount(MessageList, { target: document.body, props: { store: live, threadId: 't-long', messages } });
   await settle();
   const jumpButton = () => document.querySelector<HTMLButtonElement>('[data-testid=jump-to-latest]');
-  expect(jumpButton()?.textContent?.trim()).toBe('Jump to latest');
+  expect(jumpButton()?.textContent?.trim()).toBe('Jump to newest');
 
   messages.push({ ...JSON.parse(JSON.stringify(messages.at(-1)!)), id: 'm-new-1' });
   scrollHeight = messages.length * ESTIMATE;
@@ -1613,11 +1676,37 @@ test('a thread over several days reads by day, its wakes on a line each, its com
   expect(document.querySelector('[data-testid="message-system"]')).toBeNull();
   // Neither compaction takes a row: the mid-turn one rides on its run, the automatic one on the line of the turn before.
   expect(document.querySelector('[data-testid="compaction-part"]')).toBeNull();
-  expect(all('tool-group-compaction')).toEqual(['compacted 201.2K → 13.4K']);
-  expect(all('turn-compaction')).toEqual(['compacted 76K → 9.7K']);
+  expect(all('tool-group-compaction')).toEqual(['summarized 201.2K → 13.4K']);
+  expect(all('turn-compaction')).toEqual(['summarized 76K → 9.7K']);
   // The narration between calls is not an answer.
   expect(all('narration')).toContain('Tests pass. Sol reviews it before I open the pull request.');
   // The wakes fold their steps. The request's time adds each turn's own and the hour the delegated review ran, never the night the watch waited.
   expect(all('turn-steps').length).toBe(3);
   expect(all('turn-elapsed')).toEqual(['Worked for 22m 00s', 'Worked for 29m 00s', 'Worked for 30m 00s', 'Worked for 1h 38m', 'Worked for 1m 00s']);
+});
+
+test('a failed turn whose card holds Retry keeps its line\'s copy and fork, without a second Retry', async ({ ready }) => {
+  window.localStorage.clear();
+  const { store: live } = await ready({ delayMs: 0, long: true });
+  await live.open('t-long');
+  const thread = live.openThread!;
+  const messages = thread.messages;
+  const answer = messages.findLast((message) => message.role === 'assistant')!;
+  const turn = thread.turns.find((entry) => entry.id === answer.turnId)!;
+  turn.status = 'error';
+  answer.parts.push({ type: 'error', message: 'Stopped: the tests failed.' });
+  stubLayout(messages.length * ESTIMATE);
+  running = mount(MessageList, { target: document.body, props: { store: live, threadId: 't-long', messages } });
+  await settle();
+
+  const article = document.querySelector(`[data-mid="${answer.id}"]`)!.closest('article')!;
+  expect(article.querySelector('[data-testid=error-part]')).not.toBeNull();
+  expect(article.querySelector('[data-testid=turn-summary] [data-testid=message-copy]')).not.toBeNull();
+  expect(article.querySelector('[data-testid=turn-summary] [data-testid=message-fork]')).not.toBeNull();
+  expect(article.querySelector('[data-testid=message-retry]')).toBeNull();
+  // The card is the failure's one mark: no second alert icon, and the line keeps the time it failed.
+  const line = article.querySelector('[data-testid=turn-summary]')!;
+  expect(line.querySelector('.lucide-circle-alert')).toBeNull();
+  expect(line.querySelector('.spinner')).toBeNull();
+  expect(line.textContent).toContain(strings.chat.failedAt.split('{')[0]!.trim());
 });

@@ -172,7 +172,7 @@ test.skip('browser profiles keep their own cookies across a restart until one is
     await page!.waitFor(`document.querySelector('[data-testid=browser-profile-row][data-profile=${pro.id}] [data-testid=browser-profile-delete]')`);
     await page!.click(`[data-testid=browser-profile-row][data-profile=${pro.id}] [data-testid=browser-profile-delete]`);
     await page!.waitFor("document.querySelector('[data-testid=confirm-ok]')");
-    await page!.waitFor("document.getAnimations().every(animation => animation.playState !== 'running')");
+    await page!.waitFor("document.getAnimations().every(animation => animation.playState !== 'running' || animation.timeline !== document.timeline)");
     await page!.screenshot(join(captures, 'browser-profiles-delete-desktop.png'));
     await page!.click('[data-testid=confirm-ok]');
     for (let i = 0; i < 300; i++) {

@@ -3,11 +3,10 @@ import type { Translation } from '../../i18n.svelte';
 export const fr: Translation = {
 
   workflow: {
-    activeOne: '1 workflow',
-    activeMany: '{count} workflows',
     status: { running: 'En cours', paused: 'En pause', done: 'Terminé', failed: 'En échec', stopped: 'Arrêté' },
     stepStatus: { waiting: 'En attente', running: 'En cours', done: 'Terminée', failed: 'En échec', skipped: 'Sautée', stopped: 'Arrêtée' },
-    steps: '{done}/{total} étapes',
+    steps: '{done} sur {total} faites',
+    stepFailed: '{step} : {error}',
     phase: 'Phase {n}',
     pause: 'Pause',
     resume: 'Reprendre',
@@ -32,7 +31,6 @@ export const fr: Translation = {
     close: 'Fermer le détail',
     notStarted: 'Pas encore démarrée.',
     skipped: "Sautée : sa condition n'était pas remplie.",
-    card: 'Workflow',
     show: 'Voir le workflow',
     tokens: '{tokens} jetons',
     tokensHelp: 'Usage transmis par les tours terminés, lectures et écritures du cache et nouvelles tentatives comprises.'

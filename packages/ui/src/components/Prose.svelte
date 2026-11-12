@@ -20,7 +20,8 @@
   import InlineView from './InlineView.svelte';
   import { richMarkdown, type RichMarkdownOptions } from '../lib/rich-markdown';
   import { viewerHost, type Gallery, type MediaItem } from '../lib/media-gallery';
-  import Deferred, { parts } from './Deferred.svelte';
+  import Deferred from './Deferred.svelte';
+  import { parts } from '../lib/deferred-parts';
 
   /**
    * `views` are the pages the answer's turn published (`turnViews`): a line
@@ -138,6 +139,12 @@
     return views?.length && !draft.drawing && /^ {0,3}!\[[^\n]*$/.test(draft.text) ? { text: '', drawing: false } : draft;
   });
   const hasPending = $derived(drafting.text.length > 0 || drafting.drawing);
+  /**
+   * The paragraph still being written, cut at its closed `code` spans (odd
+   * pieces): those show as code at once, rather than as raw backticks until
+   * the paragraph ends. An open span stays text until its backtick closes it.
+   */
+  const draftingPieces = $derived(drafting.text.split(/(`[^`\n]+`)/));
 
   let host = $state<HTMLDivElement>();
 
@@ -213,7 +220,7 @@
   }
 </script>
 
-{#snippet writing()}{#if drafting.text}<p class="pending" data-testid="paragraph-pending">{drafting.text}</p>{/if}{#if drafting.drawing}<div class="drawing-pending" role="status" aria-label={strings.chat.drawingPending} data-testid="drawing-pending"></div>{/if}{#if typing && text.trim().length > 0}<TypingIndicator />{/if}{/snippet}
+{#snippet writing()}{#if drafting.text}<p class="pending" data-testid="paragraph-pending">{#each draftingPieces as piece, index (index)}{#if index % 2}<code>{piece.slice(1, -1)}</code>{:else}{piece}{/if}{/each}</p>{/if}{#if drafting.drawing}<div class="drawing-pending" role="status" aria-label={strings.chat.drawingPending} data-testid="drawing-pending"></div>{/if}{#if typing && text.trim().length > 0}<TypingIndicator />{/if}{/snippet}
 
 {#if groups && store && threadId}
   {@const end = groups.at(-1)}
@@ -251,6 +258,8 @@
 {#if viewing}{@const view = viewing}<Deferred part={parts.ImageViewer} floating>{#snippet children(ImageViewer)}<ImageViewer items={view.items} index={view.index} onclose={closeViewer} />{/snippet}</Deferred>{/if}
 
 <style>
+  /* The answer is the content: it reads one clear step above the tool rows and
+     meta around it, at the size the composer types (app.css). */
   .prose {
     word-break: break-word;
     font-size: var(--text-reading);
@@ -272,7 +281,7 @@
   .prose :global(p) {
     white-space: pre-wrap;
     text-wrap: pretty;
-    margin: 0 0 12px;
+    margin: 0 0 var(--chat-block-gap);
   }
 
   .prose :global(p:last-child) {
@@ -292,8 +301,11 @@
     margin: 22px 0 8px;
   }
 
+  /* The smallest heading still stands one step over the text it heads, in the titles' weight. */
+  .prose :global(:is(h3, h4, h5, h6)) { font-weight: var(--weight-title); }
   .prose :global(h3) { font-size: 1.3em; letter-spacing: -0.015em; }
   .prose :global(h4) { font-size: 1.15em; letter-spacing: -0.01em; }
+  .prose :global(:is(h5, h6)) { font-size: 1.075em; }
   .prose :global(h6) { color: var(--color-muted-foreground); }
 
   /* A heading alone in its block: its own bottom margin replaces the block gap under it. */
@@ -302,7 +314,7 @@
 
   .prose :global(ul),
   .prose :global(ol) {
-    margin: 0 0 12px;
+    margin: 0 0 var(--chat-block-gap);
     padding-left: 24px;
   }
 
@@ -324,7 +336,7 @@
   }
 
   .prose :global(pre) {
-    margin: 6px 0 10px;
+    margin: 0 0 var(--chat-block-gap);
     padding: 12px 14px;
     font-size: var(--text-sm);
     line-height: 1.6;
@@ -371,6 +383,9 @@
   }
 
   .prose :global(a:hover) { text-decoration-color: currentColor; }
+  /* A path in a code chip opens the file, yet the chip stays neutral like every
+     other one: its underline says it is a link, not the accent. */
+  .prose :global(code a) { color: inherit; }
   /* A long press opens the link's own menu, not the phone's preview of `#file`. */
   .prose :global(a[data-file-path]), .prose :global(a[data-thread-address]) { -webkit-touch-callout: none; }
 
@@ -397,7 +412,7 @@
   }
 
   .prose :global(blockquote) {
-    margin: 0 0 12px;
+    margin: 0 0 var(--chat-block-gap);
     padding: 2px 0 2px 12px;
     border-left: 2px solid var(--color-edge);
     color: var(--color-muted-foreground);
@@ -417,8 +432,8 @@
     color: var(--color-muted-foreground);
   }
 
-  /* A table is a code well's cousin: the surface-2 ground, hairlines, the head one step up.
-     It takes its content's width up to the column's and its cells wrap their text
+  /* A table sits in the text flow: no box or ground, a hairline under each row, its first
+     column on the text's left edge. It takes its content's width up to the column's and its cells wrap their text
      to stay inside it. Only what cannot break, a long path or too many columns,
      scrolls inside the table: a table box ignores overflow, so it is a block here,
      or a wide one pans the whole conversation on a phone. */
@@ -428,12 +443,9 @@
     max-width: 100%;
     overflow-x: auto;
     overscroll-behavior-x: contain;
-    margin: 6px 0 12px;
+    margin: 0 0 var(--chat-block-gap);
     border-collapse: separate;
     border-spacing: 0;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-surface-2);
     font-size: var(--text-sm);
     line-height: 1.5;
   }
@@ -452,9 +464,10 @@
     word-break: normal;
   }
 
+  .prose :global(:is(th, td):first-child) { padding-left: 0; }
+
   .prose :global(th) {
     font-weight: 600;
-    background: var(--color-surface-3);
     color: var(--color-muted-foreground);
   }
 
@@ -462,7 +475,7 @@
     border-bottom: none;
   }
 
-  .paragraph + .paragraph { margin-top: 12px; }
+  .paragraph + .paragraph { margin-top: var(--chat-block-gap); }
   /* Only a paragraph the answer is writing now eases in. One mounted from the
      history, as a scroll brings its message back into the window, is already
      there: animating it made every scroll restyle each paragraph it reached. */
