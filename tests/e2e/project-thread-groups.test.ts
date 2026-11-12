@@ -234,7 +234,8 @@ for (const width of [1280, 390]) {
         expect(await page.evaluate(`globalThis.__boiteTest.workspace.machines[0].store.isCollapsed('p-boite')`)).toBe(false);
         expect(await page.evaluate(`document.querySelector('${first} ${id('project-working-toggle')}').getAttribute('aria-expanded')`)).toBe('true');
         expect(await page.evaluate(`document.querySelector('${first} ${id('project-archived')}').hidden`)).toBe(true);
-        await page.waitFor(`document.querySelector('${row(first, 't-scheduler')}')`);
+        // The unfold grows the card below its header: its working list can land under the screen, where the list draws no row.
+        await page.waitFor(`(() => { document.querySelector('${first} ${id('project-working')}')?.scrollIntoView({block:'center'}); return !!document.querySelector('${row(first, 't-scheduler')}'); })()`);
         // A folded card whose only rows work counts them in its head, and that counter unfolds it onto its list, as the sidebar's does.
         await counterUnfolds(project(main, busy), busy);
       }
