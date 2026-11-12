@@ -73,7 +73,7 @@ bun run dev:ui
 ```
 
 Open the local URL with `?fake=1` to try it without agent calls.
-[Contributing](CONTRIBUTING.md) covers checks;
+[Contributing](CONTRIBUTING.md) covers what we accept and the checks;
 [development](docs/internals/development.md) covers the real core and desktop builds.
 
 ## Thanks
