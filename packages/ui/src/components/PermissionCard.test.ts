@@ -126,7 +126,7 @@ test('the waiting row is the command itself, its reason and the pair; out of vie
 
 test('a pill answer that fails gives both buttons back, so the decision can be tried again', async () => {
   const strip = document.body.appendChild(document.createElement('div'));
-  const request: PermissionRequest = { id: 'perm-fail', threadId: 'thread', turnId: 'turn', toolName: 'Bash', input: { command: 'git push' }, createdAt: 1 };
+  const request: PermissionRequest = { id: 'perm-fail', threadId: 'thread', turnId: 'turn', toolName: 'Bash', input: { command: 'git push' }, description: 'Publish', createdAt: 1 };
   let tries = 0;
   const pill = mount(DecisionPill, { target: strip, props: { permission: request, answer: async () => { tries++; throw new Error('offline'); } } });
   decisionTail.count = 1;
