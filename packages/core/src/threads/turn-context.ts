@@ -1,5 +1,5 @@
 import { COUNCIL_EXPERIMENT } from '@boite/contracts';
-import { builtinSkills, COUNCIL_SKILL } from '../builtin-skills.ts';
+import { builtinSkills, COUNCIL_SKILL, PROVE_IT_SKILL } from '../builtin-skills.ts';
 import type {
   Account,
   AgentCommand,
@@ -86,7 +86,11 @@ export class TurnContexts {
     const experiments = this.#core.clients.desktopExperiments() ?? this.#core.clients.current()?.experiments ?? [];
     const goalTrack = !thread.parentThreadId && !thread.agentSessionId && experiments.includes('auto-goal');
     // The council skill names a command the core refuses while its experiment is off.
-    const skills = written.filter(skill => skill.name !== COUNCIL_SKILL.name || experiments.includes(COUNCIL_EXPERIMENT));
+    // A council's member reviews read-only and starts no council: neither that skill nor the one about proving a change is for it.
+    const member = !!thread.parentThreadId && this.#core.council?.owns(thread.id) === true;
+    const skills = written.filter(skill => member
+      ? skill.name !== COUNCIL_SKILL.name && skill.name !== PROVE_IT_SKILL.name
+      : skill.name !== COUNCIL_SKILL.name || experiments.includes(COUNCIL_EXPERIMENT));
     const plugins = pluginGuideLines(this.#core.plugins.installedPlugins(), message => { try { this.#core.logs.warn(message, { source: 'plugins', event: 'plugins.skill-write-failed' }); } catch { /* The guide is built without that skill. */ } });
     return agentGuide(provider.protocol !== 'echo' && settings.asyncQuestions !== false, logAccess, skills, !!thread.agentSessionId, goalTrack, experiments.includes('teams'), plugins);
   }

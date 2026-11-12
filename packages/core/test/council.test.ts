@@ -118,6 +118,22 @@ test('the council is refused with a reason, and left out of the agent guide, whi
   expect(d.runs[0]!.prompt).not.toContain('boite-council');
 });
 
+test('a member\'s guide lists neither the council skill nor the one about proving a change; its parent\'s lists both', async () => {
+  const d = driver(() => 'Fine.\nScore: 8/10');
+  const { h, owner, threadId, start } = await setup();
+  await owner.call('brain.configure', { path: null, enabled: false, boiteGuide: true });
+  h.core.threads.startTurn(threadId, 'First');
+  await waitFor(() => d.runs.some(run => run.status === 'done'));
+  for (const skill of ['boite-council: ', 'boite-prove-it: ', 'boite-visual: ']) expect(d.runs[0]!.prompt).toContain(skill);
+  await start();
+  await waitFor(() => d.round(1).length === 3);
+  for (const run of d.round(1)) {
+    expect(run.prompt).toContain('boite-visual: ');
+    expect(run.prompt).not.toContain('boite-council');
+    expect(run.prompt).not.toContain('boite-prove-it');
+  }
+});
+
 test('boite delegate debate starts nothing and points to the council, with the experiment on or off', async () => {
   driver();
   for (const experiment of [true, false]) {

@@ -7,9 +7,13 @@ a diff, a plan or a design choice.
 
 Experimental: turn it on in Settings, Experiments, Council.
 
-Nobody debates and nobody votes. The conversation that started the council
-reads the answers, sums them up, fixes what it accepts and asks for a fresh
-review. Each full pass is one round.
+Nobody debates and nobody votes. The answers go back to the conversation that
+started the council, which can ask the same members for one more round. Each
+full pass is one round.
+
+Boite provides the mechanism only. Which members sit, at what level, what the
+request says, how many rounds run and what the agent does with the answers
+come from your instructions to the agent.
 
 ## Start a council
 
@@ -20,17 +24,16 @@ review. Each full pass is one round.
    the round or state, and Open the salon.
 4. When every member has answered, the agent gets one message with each answer
    and its score, then a table of scores by round.
-5. The agent fixes what it accepts and asks the same members for another
-   round. They review the whole work again from scratch.
+5. The agent can ask the same members for another round. They review the
+   whole work again from scratch.
 
-By default the members are one model each from Claude Code, Codex and
+Unless you or your instructions name others, the members are one model each from Claude Code, Codex and
 Antigravity, at the Xhigh reasoning level. A model without that level runs
 at its strongest level below it.
 
 A council needs no Git, no pull request and no code: it works on a plan, an
-idea or a design choice as well as on a diff. With a pull request, the agent
-puts the table and its summary in the pull request's description; without
-one, in its final answer.
+idea or a design choice as well as on a diff. A member reads the request and
+the project's folder, not your conversation.
 
 ## Follow it in the salon
 
@@ -53,8 +56,8 @@ score, and the table of rounds under them.
 | `none` | The member said a score means nothing for this request |
 | `no score` | The member gave no score line, or did not answer in time |
 
-Boite never makes a score up and runs no summary of its own: the agent writes
-the summary.
+Boite never makes a score up and runs no summary of its own. What a member
+writes is an answer to read: it approves nothing in your place.
 
 ## How read-only is kept
 

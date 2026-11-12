@@ -1,8 +1,8 @@
 /**
  * `boite delegate council`: models of different providers review one request
  * alone and read-only, each with a score out of 10; their answers come back to
- * this thread as one message, and `again` asks the same members for a fresh
- * review after the fixes (`docs/internals/council.md`).
+ * this thread as one message, and `again` asks the same members for one more
+ * round, from zero (`docs/internals/council.md`).
  */
 import { COUNCIL_LIMITS, type Council, type RpcParams } from '@boite/contracts';
 import type { CoreClient } from '../client.ts';
@@ -88,6 +88,6 @@ export async function councilCommand(client: CoreClient, threadId: string, words
     `members: ${council.members.map(member => `${member.name} (${member.providerId}/${member.model}${member.effort ? `, ${member.effort}` : ''})`).join(', ')}`,
     `round: ${council.round}, ${council.timeoutMinutes} minutes at most`,
     ...council.warnings.map(warning => `note: ${warning}`),
-    `${ROUND_NOTE} Then summarize them, fix what you accept and ask a fresh review with boite delegate council again ${council.id} "<what changed>". boite delegate stop ${council.id} ends it.`,
+    `${ROUND_NOTE} boite delegate council again ${council.id} "<what changed>" starts one more round; boite delegate stop ${council.id} ends the council.`,
   ], council);
 }
