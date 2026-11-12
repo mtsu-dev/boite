@@ -381,6 +381,10 @@ test('a shared worker cannot read historical secrets by asking for an ordinary G
 test('checked shared file tickets reject file and parent swaps instead of reading their replacement', async () => {
   const {b, worker, agent} = await fixture();
   try {
+    // Wait for the initial checkpoint before creating directories to swap;
+    // Git still enumerating them can prevent the rename on Windows.
+    const turn = b.h.core.journal.lastTurn(worker.id)!;
+    await waitFor(() => [...b.h.core.journal.walkTurnMessages(worker.id, turn.id)].some(message => message.role === 'assistant'));
     mkdirSync(join(worker.cwd, 'assets'));
     writeFileSync(join(worker.cwd, 'assets', 'okay.png'), 'ordinary image');
     writeFileSync(join(worker.cwd, '.env'), 'TOKEN=swap-secret-canary');
