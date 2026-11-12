@@ -20,16 +20,31 @@ guards below: read-only members, no replaced member, and answers that are data.
 ## Start a council
 
 ```sh
-boite delegate council "<request>" [--models a,b,c] [--effort <level>] [--timeout <minutes>]
-boite delegate council again <id> "<what changed>"
+boite delegate council "<request>"|--request-file <path> [--models a[:<effort>],b[:<effort>],c[:<effort>]] [--effort <level>] [--role <member>=<text>]... [--timeout <minutes>]
+boite delegate council again <id> ["<what changed>"] [--send-changes] [--request-file <path>]
 boite delegate council table <id>
 ```
 
 | Flag | Default | Limits |
 | --- | --- | --- |
-| `--models` | `claude/claude-opus-5-5`, `codex/gpt-6.1-sol`, `antigravity/gemini-4-argon` | 2 to 6 members |
-| `--effort` | `xhigh` | A model without that level runs at its strongest level below it, and a warning says so |
+| `--models` | `claude/claude-opus-5-5`, `codex/gpt-6.1-sol`, `antigravity/gemini-4-argon` | 2 to 6 members; the same provider may sit several times, the same model twice only at two efforts |
+| `<provider/model>:<effort>` | the level `--effort` gives | A level the model lacks refuses the council and lists the model's levels |
+| `--effort` | `xhigh` | For the members written without a level. A model without it runs at its strongest level below it, and a warning says so |
+| `--request-file` | none | The request, read from a UTF-8 file, relative to where the command runs. Refused with a request typed in the command, when empty, or past 12,000 characters, with the size it holds |
+| `--role` | none | `<member>=<text>`, the member as `--models` writes it, effort included; up to 200 characters; once per member |
 | `--timeout` | 30 minutes a round | 1 to 120 |
+
+```sh
+boite delegate council --request-file .boite-briefs/council/brief.md \
+  --models claude/claude-opus-5-5:max,codex/gpt-6.1-sol:max,claude/claude-fable-5-2:high \
+  --role "codex/gpt-6.1-sol:max=Look for races."
+```
+
+A member's role follows the request in what that member reads, and no other
+member reads it. The command's answer, `delegate list`, the round's message and
+the table name each member with its effort and its role, the role cut to 40
+characters outside the command's answer. The end of a route after its last `:` is an effort unless the whole text
+is itself a route `delegate models` lists.
 
 `--` ends the flags, so what follows it is the text, even `table` or `--foo`. The
 request and the changes hold up to 12,000 characters. The command returns
@@ -60,8 +75,11 @@ archived thread and a thread whose subagents are paused are refused.
 ## Rounds
 
 Each member is a child thread of the parent. The first round sends the request;
-`council again` sends the same members what changed and asks them to review the
-whole work again from scratch. A member never reads another's answer.
+`council again` asks the same members, at the same efforts and with the same
+roles, to review the whole work again from scratch. What changed, when the
+command says it, is posted in the salon; `--send-changes` also sends it to the
+members, and `--request-file` replaces the request from that round on. A member
+never reads another's answer.
 
 A member ends its answer with `Score: n/10`, or `Score: none` when a score means
 nothing for the request. Boite reads the last such line as written. Without one
@@ -191,7 +209,7 @@ is migrated. `boite delegate debate` starts nothing and points to
 | Method | Owner | Device | Agent | What it does |
 | --- | --- | --- | --- | --- |
 | `council.start` | Yes | No | Own thread | Start a council |
-| `council.again` | Yes | No | Own thread | Start a new round with what changed |
+| `council.again` | Yes | No | Own thread | Start a new round, with what changed or a new request |
 | `council.list` | Yes | Yes | Own thread | A thread's councils |
 | `council.get` | Yes | Yes | No | A council and its posts |
 | `council.table` | Yes | No | Own thread | The table of rounds |

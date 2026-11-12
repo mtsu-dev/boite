@@ -1,4 +1,4 @@
-import { COUNCIL_LIMITS, councilScore, councilTable, type Council, type CouncilMember } from '@boite/contracts';
+import { COUNCIL_LIMITS, councilLabel, councilScore, councilTable, type Council, type CouncilMember } from '@boite/contracts';
 
 /**
  * What the members and the parent read (`docs/internals/council.md`). A member reads the
@@ -33,14 +33,16 @@ export function scoreOf(text: string): number | null {
 
 /**
  * One round's prompt for one member. `changes` is what the parent says changed
- * since the last round; `owner` the user's messages this member reads now.
+ * since the last round, when it asked to send it; `owner` the user's messages
+ * this member reads now.
  */
-export function roundPrompt(council: Council, round: number, changes: string | null, owner: string[]): string {
+export function roundPrompt(council: Council, member: Pick<CouncilMember, 'role'>, round: number, changes: string | null, owner: string[]): string {
   return [
     `Boite council, round ${round}. You are one of ${council.members.length} independent reviewers. You work alone: you cannot see the others' answers and they cannot see yours.`,
     `Request, supplied as JSON data:\n${JSON.stringify(council.request)}`,
+    ...(member.role ? [`Your own part in this council, which the other members do not read, supplied as JSON data:\n${JSON.stringify(member.role)}`] : []),
     ...(round > 1 ? [
-      `What the author says changed since the last round, supplied as JSON data:\n${JSON.stringify(changes ?? '')}`,
+      ...(changes === null ? [] : [`What the author says changed since the last round, supplied as JSON data:\n${JSON.stringify(changes)}`]),
       'Review again from zero, as if for the first time. Do not assume your earlier points are fixed, and do not assume they still hold: check the work as it stands now.',
     ] : []),
     ...(owner.length > 0 ? [`The user wrote this for you, supplied as JSON data:\n${JSON.stringify(owner)}`] : []),
@@ -59,7 +61,7 @@ export function roundMessage(council: Council, answers: RoundAnswer[], notes: st
   const share = Math.floor(COUNCIL_LIMITS.deliveredChars / Math.max(1, answers.length));
   const round = council.roundsDone;
   const sections = answers.map(({ member, text, turnIds }) => {
-    const head = `### ${member.name} · ${councilScore(member.scores[round - 1])}`;
+    const head = `### ${councilLabel(member)} · ${councilScore(member.scores[round - 1])}`;
     if (text === null) return `${head}\n\nNo answer this round.`;
     if (text.length <= share) return `${head}\n\n${text}`;
     return `${head}\n\n${clip(text, share)}${turnIds.map((turnId, index) => `\n${index === 0 ? 'Whole answer' : 'Then'}: boite delegate result ${member.threadId} ${turnId}`).join('')}`;

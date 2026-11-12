@@ -223,11 +223,16 @@ ${PLUGIN_HELP}
   delegate council <request>     with the Council experiment: several models answer it
                                  alone, read-only, each with a score out of 10, on code
                                  or anything else, with or without git; the answers
-                                 come back as one message (--models <a>,<b>[,...]
-                                 from delegate models, --effort <level> (xhigh),
+                                 come back as one message (--models <a>[:<effort>],
+                                 <b>[:<effort>][,...] from delegate models, --effort
+                                 <level> (xhigh) for members without one,
+                                 --request-file <path> instead of the text,
+                                 --role <member>=<text> for one member, repeatable,
                                  --timeout <minutes per round> (30))
-  delegate council again <id> <what changed>
-                                 one more round: the same members, from zero
+  delegate council again <id> [<what changed>]
+                                 one more round: the same members, efforts and roles,
+                                 from zero (--send-changes sends them what changed,
+                                 --request-file <path> replaces the request)
   delegate council table <id>    the "Council review" section with every round's scores
   delegate send <thread-id> <text>
                                  steer or reuse a subagent, or ask the parent;
@@ -495,6 +500,7 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
         ...(parsed.effort === undefined ? {} : { effort: parsed.effort }), ...(parsed.speed === undefined ? {} : { speed: parsed.speed }), ...(parsed.profile === undefined ? {} : { profile: parsed.profile }),
         ...(parsed.worktree === true ? { worktree: true } : {}), ...(parsed.machine === undefined ? {} : { machine: parsed.machine }),
         ...(parsed.context === undefined ? {} : { context: contextRequest(parsed, readRules) }),
+        cwd: io.cwd,
       }, print);
     },
     // `threads` alone or `threads list` lists (control-cli.ts); the rest talks to other threads.

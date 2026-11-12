@@ -28,6 +28,8 @@ export interface DelegateOptions {
   machine?: string;
   /** What `contextRequest` built from the context flags; the core checks it. */
   context?: Record<string, unknown>;
+  /** Where the command runs: `council --request-file` is read from there. */
+  cwd?: string;
 }
 
 export const DELEGATE_ACTIONS = 'models, spawn, council, list, send, stop, resume, wait, result or profiles';
@@ -169,7 +171,7 @@ export async function delegateCommand(client: CoreClient, threadId: string, rest
     case 'debate':
       throw new Usage('boite delegate debate was replaced by boite delegate council: ' + COUNCIL_USAGE);
     case 'council':
-      await councilCommand(client, threadId, rest.slice(1), print);
+      await councilCommand(client, threadId, rest.slice(1), print, options.cwd);
       return;
     case 'spawn': {
       let profileId = options.profile;

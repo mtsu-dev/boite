@@ -75,6 +75,9 @@ plan mode.
 ## Limits
 
 - 2 to 6 members. Each round has 30 minutes by default, 1 to 120.
+- Each member can have its own reasoning level and a short text only it reads,
+  and the same provider can sit more than once
+  ([technical reference](internals/council.md#start-a-council)).
 - The request and each update hold up to 12,000 characters.
 - A member that is not installed or cannot run refuses the whole council.
   Boite never swaps in another model.
