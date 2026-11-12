@@ -282,3 +282,25 @@ test('a subagent row names the thread that started it, and the parent title find
   // The parent's name finds its helpers too.
   expect(rows().some((id) => id.endsWith('t-sub-explore'))).toBe(true);
 });
+
+// The keyboard's ring marked the first row after a new query or a reopen, though no key had moved there.
+test('the keyboard ring leaves with a new query and with a reopen', async () => {
+  const ringed = () => document.querySelectorAll('[data-testid=palette-row].keyed').length;
+  store.paletteOpen = true;
+  flushSync();
+  await tick();
+  key('ArrowDown');
+  expect(ringed()).toBe(1);
+  await type('trace');
+  expect(ringed()).toBe(0);
+
+  key('ArrowDown');
+  expect(ringed()).toBe(1);
+  store.paletteOpen = false;
+  flushSync();
+  await tick();
+  store.paletteOpen = true;
+  flushSync();
+  await tick();
+  expect(ringed()).toBe(0);
+});

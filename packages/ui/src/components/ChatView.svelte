@@ -75,7 +75,7 @@
   });
   let messages = $derived(sending ? [...kept, sending] : kept);
   /** A finished thread's quiet last word: done, how long it worked, what its last turn changed. */
-  let closing = $derived(thread && !thread.archived && !locked && !sending && thread.status !== 'running' && thread.status !== 'waiting' && store.loadingThreadId !== thread.id
+  let closing = $derived(thread && !thread.archived && !locked && !sending && store.rewinding[thread.id] === undefined && thread.status !== 'running' && thread.status !== 'waiting' && store.loadingThreadId !== thread.id
     ? closingLine(thread.turns, kept, thread.cwd) : null);
   // The timeline still needs agent messages after reload, even with settings hidden.
   let threadId = $derived(thread?.id);

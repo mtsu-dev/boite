@@ -745,7 +745,7 @@
   .secondary-list { background: transparent; }
 
   /* Turned off: still listed, read as set aside. The switch keeps its full weight, it is the way back. */
-  .provider.off .summary, .provider.off .summary :global(*), .member.off .member-line > :not(.act), .member.off .member-line > :not(.act) :global(*), .member.off .account { color: var(--color-subtle); }
+  .provider.off .summary, .provider.off .summary :global(*), .member.off .member-line > :not(.act), .member.off .member-line > :not(.act) :global(*), .member.off .account, .member.off .account :global(*) { color: var(--color-subtle); }
   .name, .member-name { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
   .badge { padding: 1px 7px; border-radius: var(--radius-sm); background: var(--color-surface-3); color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; white-space: nowrap; }
 

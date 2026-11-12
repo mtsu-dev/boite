@@ -137,6 +137,23 @@
     machineFilter.set(id);
   }
 
+  /**
+   * The bots scroll when there are more than the rail holds, and a scroller clips what passes its edge: their name
+   * cards stand fixed in the window instead, placed against their slot when the pointer, the keyboard or a scroll
+   * brings one up.
+   */
+  function placeName(slot: Element | null) {
+    const name = slot?.querySelector<HTMLElement>(':scope > .rail-name');
+    if (!slot || !name) return;
+    const box = slot.getBoundingClientRect();
+    name.style.setProperty('--name-x', `${box.right + 4}px`);
+    name.style.setProperty('--name-y', `${box.top + box.height / 2}px`);
+  }
+  const slotOf = (event: Event) => (event.target as Element | null)?.closest('.bots > .slot') ?? null;
+  function placeShownNames(event: Event) {
+    for (const slot of (event.currentTarget as HTMLElement).querySelectorAll(':scope > .slot:hover, :scope > .slot:focus-within')) placeName(slot);
+  }
+
   /** Settings' shortcut, from the keybindings table: its name card shows it and the button's description reads it. */
   const settingsKey = $derived(store.keyLabel('settings'));
 
@@ -188,7 +205,7 @@
 
   {#if botsOn}
     <span class="separator" aria-hidden="true"></span>
-    <div class="bots" role="list" aria-label={strings.app.rail.bots}>
+    <div class="bots" role="list" aria-label={strings.app.rail.bots} onpointerover={(event) => placeName(slotOf(event))} onfocusin={(event) => placeName(slotOf(event))} onscroll={placeShownNames}>
       {#each bots as bot (`${bot.machine.id}:${bot.row.profile.id}`)}
         {@const state = stateOf(bot)}
         {@const selected = bot.machine.store === store && openBot === bot.row.profile.id}
@@ -373,7 +390,9 @@
   .slot:has(:global([aria-expanded='true'])) .rail-name { opacity: 0; transition-delay: 0ms; }
   .slot:hover .rail-name.machines-name, .slot:has(:global(:focus-visible)) .rail-name.machines-name { transform: none; }
   .separator { flex: none; width: 28px; height: 1px; background: var(--color-edge); }
-  .bots { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; min-height: 0; }
+  .bots { display: flex; flex: 0 1 auto; flex-direction: column; align-items: center; gap: 8px; width: 100%; min-height: 0; overflow-y: auto; scrollbar-width: none; }
+  /* Fixed against the window, so the scroller does not clip it (placeName). `--bar-left` as for every other card. */
+  .bots .rail-name { position: fixed; left: calc(var(--name-x, var(--app-rail)) + var(--bar-left, 0px)); top: var(--name-y, 0px); }
 
   /* Activity's count in a small pill on the inbox glyph's lower right corner: a neutral raised ground with the
      digit in the amber ink (amber is a dot or a count, never a filled badge), ringed in the tile's own ground so

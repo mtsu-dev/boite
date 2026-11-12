@@ -54,6 +54,7 @@
     untrack(() => (previous = focusedElement()));
     query = '';
     selected = 0;
+    keyed = false;
     overlay.show();
     void tick().then(() => input?.focus({ preventScroll: true }));
   });
@@ -150,7 +151,7 @@
   // the selection cannot jump back to the top under his fingers.
   $effect(() => {
     void query;
-    untrack(() => (selected = 0));
+    untrack(() => { selected = 0; keyed = false; });
   });
 
   /** A shorter list keeps the keyboard on a row that is still there. */
