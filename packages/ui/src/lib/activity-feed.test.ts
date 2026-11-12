@@ -9,7 +9,8 @@ function thread(id: string, fields: Partial<ThreadSummary>): ThreadSummary {
 }
 
 test('Activity lists what needs the user, failures included, then the updates, each with its reason; sub-agents sit under their parent', () => {
-  const questions = [{ id: 'q', threadId: 'asks', text: 'Which retry policy?\nThe second line stays out.', options: [], createdAt: NOW - 5 * 60_000 }] as unknown as QuestionRequest[];
+  // The question opens on a blank line: its first written line is still the reason.
+  const questions = [{ id: 'q', threadId: 'asks', text: '\n  Which retry policy?\nThe second line stays out.', options: [], createdAt: NOW - 5 * 60_000 }] as unknown as QuestionRequest[];
   const permissions = [{ id: 'p', threadId: 'push', toolName: 'Bash', input: { command: 'git push' }, description: null, createdAt: NOW - 60_000 }] as unknown as PermissionRequest[];
   const threads = [
     thread('done', { unread: true, updatedAt: NOW - 1_000 }),

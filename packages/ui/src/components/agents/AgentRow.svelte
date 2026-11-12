@@ -75,6 +75,8 @@
   /** The one coloured mark a state wears; rest and sleep wear none. */
   const mark = $derived(tone === 'working' ? 'running' as const : tone === 'waiting' || tone === 'error' ? tone : null);
   const markLabel = $derived(tone === 'working' ? strings.agents.state.working : tone === 'waiting' ? strings.agents.state.waiting : strings.agents.state.error);
+  /** Its machine is out of reach and named on the row: the place stands where a time would. */
+  const placed = $derived(away && !!machine);
   const spent = $derived(tone === 'working' && since !== null ? elapsed(Math.max(secondClock.now, now) - since) : null);
 
   let row = $state<HTMLButtonElement>();
@@ -114,10 +116,11 @@
       {:else}
         {#if pinned}<span class="pin" data-testid="agent-pinned"><Pin size={12} /></span>{/if}
         {#if wake}<span class="visually-hidden" data-testid="agent-row-wake">{wakeText}</span>{/if}
-        {#if away && machine}<span class="offline-name" data-testid="agent-row-away"><MachinePlace host={hostMark(machine.label, machine.store.connection === 'ready' ? 'offline' : machine.store.connection)} /></span>
-        {:else if spent !== null}<span class="spent" data-testid="agent-row-spent">{spent}</span>
+        <!-- An offline machine's place replaces the times, never the missed answers: they still wait for the owner. -->
+        {#if placed && machine}<span class="offline-name" data-testid="agent-row-away"><MachinePlace host={hostMark(machine.label, machine.store.connection === 'ready' ? 'offline' : machine.store.connection)} /></span>{/if}
+        {#if !placed && spent !== null}<span class="spent" data-testid="agent-row-spent">{spent}</span>
         {:else if unread > 0}<span class="unread-count" role="img" title={missed} aria-label={missed} data-testid="agent-unread-count">{unread}</span>
-        {:else if at > 0}<time class="when" datetime={new Date(at).toISOString()} title={exactTime(at)}>{ago(at, now)}</time>{/if}
+        {:else if !placed && at > 0}<time class="when" datetime={new Date(at).toISOString()} title={exactTime(at)}>{ago(at, now)}</time>{/if}
         {#if marked}<StatusMark tone="unread" label={strings.sidebar.unread} />{/if}
       {/if}
     </span>

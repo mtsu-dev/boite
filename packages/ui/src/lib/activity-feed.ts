@@ -84,7 +84,7 @@ export function feedQuestion(owner: Pick<Requests, 'pendingQuestions'>, threadId
 /** Why the thread waits on the user, in a few words, and since when; null when its request is not known here. */
 export function waitingReason(owner: Requests, thread: ThreadSummary): { text: string; since: number } | null {
   const question = owner.pendingQuestions.find(q => q.threadId === thread.id);
-  if (question) return { text: question.text.split('\n')[0]!.trim(), since: question.createdAt };
+  if (question) return { text: question.text.trim().split('\n')[0]!.trim(), since: question.createdAt };
   const permission = owner.pendingPermissions.find(p => p.threadId === thread.id);
   if (permission) {
     // A command reads whole under its row (`feedOperation`); the line only says what is asked.

@@ -139,7 +139,7 @@
   <!-- A channel that cannot be picked says why in the card, not only on hover a phone has not. -->
   {#if supported && !RELEASE_PUBLISHED}<p class="why" data-testid="app-update-no-release">{strings.appUpdate.noRelease}</p>{/if}
   <div class="line">
-    <p class="status" class:offer={app?.phase === 'available' || app?.phase === 'ready' || othersStartable} class:error={app?.phase === 'error'} role="status" aria-live="polite" data-testid="app-update-status">
+    <p class="status" class:offer={app?.phase !== 'error' && (app?.phase === 'available' || app?.phase === 'ready' || othersStartable)} class:error={app?.phase === 'error'} role="status" aria-live="polite" data-testid="app-update-status">
       <span>{status()}</span>
       {#if appPolicy === 'off'}<PolicyLock store={local!} keys={['updates.app']} />{/if}
       {#if supported && updater.lastCheckedAt !== null && app!.phase !== 'checking'}<span class="subtle">{fill(strings.appUpdate.lastChecked, { time: time(updater.lastCheckedAt) })}</span>{/if}

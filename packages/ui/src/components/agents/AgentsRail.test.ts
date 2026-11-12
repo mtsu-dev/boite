@@ -31,3 +31,31 @@ test("a bot row's picture is grey at rest and lit while the bot needs the owner"
     restore();
   }
 });
+
+test("an offline machine's bot keeps its missed answers count beside the machine's place", async ({ ready }) => {
+  const restore = phoneWidth();
+  let rail: ReturnType<typeof mount> | null = null;
+  try {
+    const here = await ready({ delayMs: 0 });
+    const { store } = await ready({ delayMs: 0, agentsDemo: true });
+    workspace.machines = [{ id: 'here', label: 'Here', store: here.store }, { id: 'builder', label: 'Builder', store }];
+    const view = AgentsView.of(store);
+    await view.refresh();
+    const machine = workspace.machines[1]!;
+    const noop = () => {};
+    rail = mount(AgentsRail, { target: document.body, props: { view, lists: [{ machine, view }], active: null, onopen: noop, onteam: noop, oncreate: noop, onengine: noop, onpane: noop } });
+    flushSync();
+    const mira = agentRows(view.snapshot).find(row => row.profile.name === 'Mira')!;
+    const row = () => document.querySelector(`[data-testid="agent-entry-${mira.profile.id}"]`)?.closest('.agent-row');
+    await vi.waitFor(() => expect(row()?.querySelector('[data-testid="agent-unread-count"]')).toBeTruthy());
+    // Its machine drops: the row names the machine as offline and still counts the answers Mira gave that nobody read.
+    store.connection = 'closed';
+    flushSync();
+    expect(row()!.querySelector('[data-testid="agent-row-away"]')).toBeTruthy();
+    expect(row()!.querySelector('[data-testid="agent-unread-count"]')?.textContent).toBe(String(mira.status!.unread));
+  } finally {
+    if (rail) unmount(rail);
+    workspace.machines = [];
+    restore();
+  }
+});

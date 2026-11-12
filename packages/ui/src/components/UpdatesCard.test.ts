@@ -127,6 +127,17 @@ test("another machine's update is listed under the app's, starts with the same b
   await vi.waitFor(() => expect(server.store.serverUpdater.snapshot?.phase).toBe('available'));
 });
 
+test("a failed app check keeps its error look while another machine's update is offered", async () => {
+  const { updater } = await app({ ...nightly('error'), error: 'signature mismatch' });
+  await machine('builder', true);
+  view = mount(UpdatesCard, { target: document.body, props: { updater, native: true } });
+  await vi.waitFor(() => { flushSync(); expect(one('updates-other')).not.toBeNull(); });
+  const status = one('app-update-status')!;
+  expect(status.textContent).toContain('signature mismatch');
+  // `.offer` paints the first line in the foreground color over the error's danger color.
+  expect([status.classList.contains('error'), status.classList.contains('offer')]).toEqual([true, false]);
+});
+
 test('a browser has no app updater: it shows the version of the machine it is on and no channel', async () => {
   await machine('builder', false);
   view = mount(UpdatesCard, { target: document.body, props: { native: false } });
