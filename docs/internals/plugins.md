@@ -33,8 +33,9 @@ description or author) and a filter: All, On or Off.
 - The gear opens the plugin's dialog: its [settings](#settings), what its
   token may call (Authorizations, whose Edit opens the grant editor of
   [Consent and grants](#consent-and-grants)), where it comes from, its updates, its pools,
-  its desktop app or gateway with Start, Stop and Restart, and Uninstall. On a
-  phone it is a bottom sheet.
+  its interface state with Reload interface ([Interface](#interface)), its desktop
+  app or gateway with Start, Stop and Restart, and Uninstall. On a phone it is a
+  bottom sheet.
 
 A plugin installed as recommended that a later Boite no longer lists, such as
 kebacc-switcher before 2026-10-16, stays in the grid with its pools until the
@@ -42,16 +43,17 @@ owner uninstalls it; it no longer receives updates.
 
 Plugins are administration of the machine that hosts the core, so every
 `plugins.*` method is owner only, except `plugins.command`, which an agent
-calls to run a plugin's command ([Agent commands](#agent-commands)), and
-`plugins.settings.get`, which a plugin calls for its own settings. The owner's
-phone has the same page under Settings > Plugins; a paired device has none.
+calls to run a plugin's command ([Agent commands](#agent-commands)),
+`plugins.settings.get`, which a plugin calls for its own settings, and
+`plugins.ui`, which every client reads to draw the interfaces ([Interface](#interface)).
+The owner's phone has the same page under Settings > Plugins; a paired device has none.
 
 ### Turning a plugin off
 
 The switch on a card turns an installed plugin off without uninstalling it
 (`plugins.setEnabled`). Off stops its desktop app, service and gateway, revokes
-its token (its sockets close), and drops its commands, skills, guide lines and
-slash commands. Its files, data directory and settings stay. On starts again
+its token (its sockets close), unloads its interface, and drops its commands,
+skills, guide lines and slash commands. Its files, data directory and settings stay. On starts again
 what it runs. The core keeps the choice across restarts. `PluginState.enabled` is `false` while
 it is off; an older core leaves the field out, and every installed plugin is on.
 
@@ -159,7 +161,7 @@ and the slash command `/recap`. Start from a copy of it.
 | `artifacts` | `native`: keyed by platform as in schema 1. `bun`: exactly one key, `any`, `{ "url", "sha256" }`. Absent exactly when `executable` is. |
 | `permissions` | A list of distinct permission names ([Permissions](#permissions)), `todos` standing for `todos.read` and `todos.write`. Absent means none. |
 | `settings` | Up to 30 settings Boite draws for the owner ([Settings](#settings)). Absent means none. |
-| `provides` | At least one of `accountPools`, `desktopApp`, `gateway` (as in schema 1), `service`, `commands`, `skills`, `prompt` and `slashCommands`. |
+| `provides` | At least one of `accountPools`, `desktopApp`, `gateway` (as in schema 1), `service`, `commands`, `skills`, `prompt`, `slashCommands` and `ui` ([Interface](#interface)). |
 
 Unknown fields at any depth are refused, as in schema 1, and the manifest file
 may be 256 KB. Every limit is under [Limits](#limits).
@@ -208,6 +210,7 @@ plugins granted that domain reach it with no change of their own.
 | `screens.write` | Types and clicks in them, opens and closes them, reads the emulator's clipboard. |
 | `status.read` | Machine usage, quotas, providers, settings, the scheduler and key bindings, read only. |
 | `ui.reveal` | Brings a conversation, a bot or the app updates to the front of the owner's desktop window ([Showing Boite](#showing-boite)). |
+| `ui` | Runs its `provides.ui` script and style inside Boite's window, on every client of this core ([Interface](#interface)). The token gains nothing, but that code can do anything you can in the app: shown in red at install. |
 
 The table is `PLUGIN_PERMISSIONS` in `packages/contracts/src/plugins.ts`, with
 each domain's methods and events; `packages/core/test/plugin-permissions.test.ts`
@@ -405,6 +408,95 @@ A service is how a plugin watches the core: it connects with its token, listens
 to the events its permissions grant and acts on them. With the SDK, pass
 `service` to `runCommands`, which runs it when the arguments are empty.
 
+### Interface
+
+`provides.ui` is `{ "script"?: <path>, "style"?: <path> }`, at least one of
+the two, each a file of the plugin's repository: a JavaScript module and a
+stylesheet that run inside Boite's window. It needs the `ui` permission, which
+the install preview and the plugin's card show in red.
+
+```json
+"permissions": ["threads.read", "ui"],
+"provides": { "ui": { "script": "ui/index.js", "style": "ui/style.css" } }
+```
+
+How the files get to the window:
+
+- At install and update the core reads them out of the same commit as the
+  manifest, from git, as blobs: the install preview refuses a missing file or
+  one past its limit, naming `provides.ui.script` or `provides.ui.style`.
+  It saves them under the plugin's directory as `ui/<sha-256>.js` and
+  `.css` and writes their digests in `installed.json`. A file whose bytes no
+  longer match is not served: its gear says the files are missing or altered
+  and to reinstall. A recommended entry has no repository, so it cannot bring
+  an interface.
+- Every client reads them with `plugins.ui`, an RPC rather than an HTTP route
+  so that it reaches the desktop app, a browser and a paired phone over the
+  connection each already has. It answers the plugins that are installed,
+  turned on and granted `ui`, with their files, the permissions granted and
+  the settings' values. The core sends `plugins.uiUpdated` with a digest when
+  that answer changes: an install, an update, an uninstall, turning it off or
+  on, a grant taken back or given, or a setting.
+- The window loads them once it has started, never before its first screen:
+  the style goes in a `<style>` element, the script is imported as a module
+  from a `blob:` URL.
+
+The script's default export (or an export named `activate`) is called once
+with the plugin's API, and may return a cleanup function:
+
+```js
+export default function hello(boite) {
+  boite.ui.addButton({ id: 'recent', slot: 'thread-header', label: 'Recent', icon: '👋', onClick: () => boite.ui.openPanelTab('recent') });
+  boite.ui.addPanelTab({ id: 'recent', title: 'Recent', mount(element, { threadId }) {
+    element.textContent = 'Hello';
+    return () => element.replaceChildren();
+  } });
+}
+```
+
+| Part | What it does |
+| --- | --- |
+| `ui.addButton({ id, slot, label, icon?, onClick })` | A button in `thread-header` (the conversation's header), `composer` (the composer's toolbar, kept on a phone) or `sidebar` (the sidebar's foot). `icon` is a few characters, an emoji say, or SVG markup; absent, the label's first letter. `onClick({ threadId })`. |
+| `ui.addMessageAction({ id, label, onClick })` | An entry in a message's plugin menu, the puzzle button beside copy. `onClick({ threadId, messageId, role, text })`. |
+| `ui.addPanelTab({ id, title, icon?, mount })` | A tab of the right panel, offered in its "+" menu. `mount(element, { threadId })` draws into the element and may return a cleanup, run when the tab closes. |
+| `ui.addCommand({ id, title, onRun })` | A row of the command palette. |
+| `ui.openPanelTab(id)` | Opens one of the plugin's own tabs in the open conversation's panel. |
+| `rpc.call(method, params)`, `rpc.on(event, handler)` | The window's own connection, limited to the methods and events of the permissions the plugin was granted ([Permissions](#permissions)); anything else is refused with the permission it needs. On a paired phone the core also refuses what a phone may not call. |
+| `settings.get()`, `settings.onChange(fn)` | The plugin's settings; a change reaches `onChange` without reloading the script. |
+| `onCleanup(fn)` | Runs when the plugin is disabled, updated, uninstalled or fails. |
+| `id`, `name`, `version`, `permissions` | Who it is. |
+
+Every `add*` returns a function that takes the entry away. An `id` is letters,
+digits, `-` and `_`, at most 40, unique per plugin and kind; a `label` or
+`title` is 1 to 60 characters.
+
+The script runs as written, neither bundled nor transpiled, on every client,
+so it must run on the oldest browser the UI supports, Safari 15.4 and Chrome 111
+([Oldest browsers](phone.md#oldest-browsers)): `[...list].sort()` rather than
+`list.toSorted()`, and no regex lookbehind.
+
+The slots are the stable API. Boite's interface is Svelte, recompiled at every
+release: its markup, class names and CSS variables change without notice. A
+script may reach the DOM and a stylesheet may style anything, at the plugin's
+own risk; what goes through the slots keeps working across releases.
+
+A script that throws while loading, or later in a function it handed Boite (a
+click, a tab's mount, an event handler, an unhandled error from its own
+module), stops that plugin only: its entries leave, its cleanups run, its
+stylesheet goes and its card in Settings > Plugins shows the error with a
+Reload interface button. The same files are not run again until they change
+or that button is pressed.
+
+Safe mode starts a window with no plugin script or style:
+
+- add `?safe=1` to the address, or
+- the window starts in safe mode by itself when the previous start died while
+  scripts were loading (the window closed or crashed within 1.5 seconds of
+  running them).
+
+A notice says so, with a button to load them anyway. Cards show
+"Interface not loaded: safe mode".
+
 ### Dev mode
 
 `boite plugin dev <folder>` runs a plugin from a folder on the core's machine,
@@ -414,7 +506,9 @@ executable file: `<executable>.js` for `bun`, `<executable>` or
 present they are ignored.
 
 - Commands, skills, the prompt and slash commands are read from the folder on
-  each use, so an edit applies at once.
+  each use, so an edit applies at once. The interface files are read on each
+  `plugins.ui` read with no digest to match: after an edit, press Reload
+  interface on the plugin's card.
 - The schema, the permissions and what Boite starts for it (a desktop app, a
   service, a gateway, account pools) stay those of the last
   `boite plugin dev`. An edit that changes one turns the card to an error
@@ -494,6 +588,9 @@ The core refuses a schema 2 manifest past any of these:
 | `prompt` | 1,000 characters |
 | A slash command's `prompt` | 8 KB |
 | Entries | 20 commands, 20 skills, 20 slash commands |
+| `provides.ui.script` | 512 KB, a path ending in `.js` or `.mjs` |
+| `provides.ui.style` | 128 KB, a path ending in `.css` |
+| A `provides.ui` path | 200 characters of letters, digits, `.`, `_`, `/` and `-`, relative, with no `.` or `..` segment |
 
 ### Schema 1 desktop apps
 
@@ -1041,8 +1138,10 @@ Uninstall.
 
 Plugins run with the core user's permissions. Manifest validation and SHA-256
 checks establish which bytes run; they do not sandbox the executable. The
-preview states this before installation. Every `plugins.*` method is owner-only;
-a paired device receives `plugins.list is for the owner only`.
+preview states this before installation. Every `plugins.*` method but
+`plugins.ui` is owner-only; a paired device receives
+`plugins.list is for the owner only`. `plugins.ui` is the device's too: a
+phone draws the interfaces the owner installed.
 
 Reading the repository:
 
@@ -1095,8 +1194,16 @@ executable does on the machine: it still runs as the core's user, like any
 program you install, and can read that user's files, Boite's data directory
 and the owner token in its `core.json` included. Permissions keep a plugin
 that follows its manifest within it; they do not contain a program written to
-get out, and the preview says so beside the list. A plugin with no executable runs nothing; its skills,
-prompt and slash commands are text agents read.
+get out, and the preview says so beside the list. A plugin with no executable runs nothing on the
+machine; its skills, prompt and slash commands are text agents read.
+
+A plugin granted `ui` runs code in every window of the core, the owner's
+desktop app and paired phones included. That script is not limited by the
+plugin's token: it runs in the page, as the person using it, and can call
+anything that window can, read what it shows and change what it draws. The
+`rpc` client it is handed is limited to its permissions so that a script that
+follows its manifest stays within it, not to contain one that does not. Grant
+`ui` only to a publisher you trust, as you would a browser extension.
 
 A schema 1 desktop app holds the owner token. With it the app can do anything the owner
 can: read every thread, start turns, change settings, install other plugins.

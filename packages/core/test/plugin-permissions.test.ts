@@ -56,7 +56,8 @@ describe('the plugin permission table', () => {
     expect([...filed.keys()].filter((name) => pluginClosedReason(name) !== null)).toEqual([]);
     // Nothing past what a device reaches, but the plugin's own ui.reveal.
     expect([...filed.keys()].filter((name) => !DEVICE_METHODS.has(name as never) && !DEVICE_EVENTS.has(name as never))).toEqual(['ui.reveal']);
-    expect(PLUGIN_PERMISSION_NAMES.length).toBeLessThanOrEqual(14);
+    // Fourteen domains, plus ui, which opens no method: its code runs in the app.
+    expect(PLUGIN_PERMISSION_NAMES.length).toBeLessThanOrEqual(15);
     expect(PLUGIN_CLOSED.filter((entry) => entry.reason.trim().length === 0)).toEqual([]);
   });
 

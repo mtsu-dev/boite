@@ -10,6 +10,7 @@ import {
   type PluginPool,
   type PluginPreview,
   type PluginState,
+  type PluginUiBundle,
   type RpcEventName,
   type RpcEvents,
   type RpcMethodName,
@@ -19,12 +20,13 @@ import {
 import { RpcFailure } from '../client';
 import { appCommands, FAKE_RELEASES, fakePluginPools, fakePlugins, PLUGIN_STEPS, poolCommands, runningGateway } from './plugins-seed';
 import { INSTALL_STEP_MS } from './providers';
+import { FAKE_UI, HELLO_MANIFEST, fakeDigest } from './plugins-ui-seed';
 
 type PluginMethod = Extract<RpcMethodName, `plugins.${string}`>;
 type Handlers = { [M in PluginMethod]: (params: RpcParams<M>) => RpcResult<M> | Promise<RpcResult<M>> };
 
 interface PluginHost {
-  emit<E extends Extract<RpcEventName, 'plugins.updated' | 'plugin.settings.changed'>>(event: E, payload: RpcEvents[E]): void;
+  emit<E extends Extract<RpcEventName, 'plugins.updated' | 'plugin.settings.changed' | 'plugins.uiUpdated'>>(event: E, payload: RpcEvents[E]): void;
   now(): number;
   nextId(): number;
   delayMs(): number;
@@ -32,7 +34,18 @@ interface PluginHost {
 
 /** Owns plugin state and installation cancellation for one in-memory client. */
 export class FakePlugins {
-  constructor(private readonly host: PluginHost) {}
+  private readonly host: PluginHost;
+  /** The interfaces' digest the clients were last told, as the core's `#uiDigest`. */
+  #uiDigest: string | null = null;
+
+  constructor(host: PluginHost) {
+    // Every plugin change may change what `plugins.ui` serves: tell the clients when it did.
+    this.host = { ...host, emit: (event, payload) => {
+      host.emit(event, payload);
+      if (event === 'plugins.updated' || event === 'plugin.settings.changed') this.#uiChanged();
+    } };
+    this.#uiDigest = this.#uiSetDigest();
+  }
   close(): void { for (const [id, run] of this.#pluginRuns) this.#pluginRuns.set(id, run + 1); }
   handles(method: RpcMethodName): method is PluginMethod { return Object.hasOwn(this.handlers, method); }
   async call(method: PluginMethod, params: unknown): Promise<unknown> { return this.handlers[method](params as never); }
@@ -98,7 +111,10 @@ export class FakePlugins {
       return structuredClone(this.#pluginPools[plugin.id] ?? []);
     },
     'plugins.accountAction': (params) => {
-      const pools = this.#pluginPools[this.#requirePlugin(params.id).id] ?? [];
+      const plugin = this.#requirePlugin(params.id);
+      if (plugin.status !== 'installed') throw new RpcFailure({ code: RpcErrorCode.Refused, message: `Install ${plugin.id} first.` });
+      if (plugin.enabled === false) throw new RpcFailure({ code: RpcErrorCode.Refused, message: `${plugin.id} is turned off. Turn it on in Settings > Plugins first.`, data: { id: plugin.id, enabled: false } });
+      const pools = this.#pluginPools[plugin.id] ?? [];
       const pool = pools.find((pool) => pool.provider === params.provider);
       if (pool && params.action === 'switch') for (const account of pool.accounts) account.active = account.email === params.email;
       if (pool && params.action === 'remove') pool.accounts = pool.accounts.filter((a) => a.email !== params.email);
@@ -142,6 +158,7 @@ export class FakePlugins {
       this.host.emit('plugins.updated', structuredClone(plugin));
       return structuredClone(plugin);
     },
+    'plugins.ui': () => this.#uiBundles(),
     'plugins.checkUpdates': (params) => { return this.#checkUpdates(params?.id); },
     'plugins.command': (params) => {
       const known = this.#plugins.flatMap((plugin) => plugin.status === 'installed' && plugin.enabled !== false ? plugin.adds?.commands ?? [] : []);
@@ -233,6 +250,29 @@ export class FakePlugins {
   }
 
   #plugins: PluginState[] = fakePlugins();
+
+  /** What the core's `plugins.ui` serves: the installed plugins left on, with an interface and the `ui` grant. */
+  #uiBundles(): PluginUiBundle[] {
+    const granted = (plugin: PluginState) => plugin.granted ?? plugin.permissions ?? [];
+    return this.#plugins.filter((plugin) => plugin.status === 'installed' && plugin.enabled !== false && plugin.adds?.ui === true && granted(plugin).includes('ui')).map((plugin) => {
+      const files = FAKE_UI[plugin.id] ?? { script: null, style: null };
+      const permissions = [...granted(plugin)];
+      const error = FAKE_UI[plugin.id] ? null : `The interface files of ${plugin.name} ${plugin.version ?? ''} are missing or altered. Reinstall ${plugin.name}.`;
+      const digest = fakeDigest(JSON.stringify([plugin.version, permissions, error, files.script, files.style]));
+      return { id: plugin.id, name: plugin.name, version: plugin.version ?? '', digest, script: files.script, style: files.style, permissions, settings: { ...plugin.settingValues }, error };
+    });
+  }
+
+  #uiSetDigest(): string {
+    return fakeDigest(JSON.stringify(this.#uiBundles().map((bundle) => [bundle.id, bundle.digest, bundle.settings])));
+  }
+
+  #uiChanged(): void {
+    const digest = this.#uiSetDigest();
+    if (digest === this.#uiDigest) return;
+    this.#uiDigest = digest;
+    this.host.emit('plugins.uiUpdated', { digest });
+  }
 
   #pluginPools: Record<string, PluginPool[]> = fakePluginPools();
 
@@ -332,6 +372,10 @@ export class FakePlugins {
         provides: { desktopApp: {} },
       });
     }
+    if (slug === 'hello') {
+      // The repository's example plugin, its manifest and interface as they are in examples/plugins/hello.
+      Object.assign(manifest, structuredClone(HELLO_MANIFEST));
+    }
     if (text.includes('text-only')) {
       // Skills, a prompt and slash commands: nothing to download, nothing that runs.
       delete manifest.executable; delete manifest.artifacts;
@@ -385,6 +429,7 @@ export class FakePlugins {
       adds: {
         commands: (manifest.provides.commands ?? []).map((command) => command.name), skills: (manifest.provides.skills ?? []).map((skill) => skill.name),
         slashCommands: (manifest.provides.slashCommands ?? []).map((command) => command.name), prompt: manifest.provides.prompt !== undefined,
+        ...(manifest.provides.ui === undefined ? {} : { ui: true }),
       },
     };
     if (existing !== undefined) Object.assign(existing, plugin);

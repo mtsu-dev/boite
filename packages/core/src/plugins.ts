@@ -22,7 +22,7 @@
  */
 
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
-import { chmod, rename, rm, writeFile } from 'node:fs/promises';
+import { chmod, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { PLUGIN_MANIFEST_FILE, sameRepository } from '@boite/contracts';
 import type { PluginArtifact, PluginCommandResult, PluginManifest, PluginPermission, PluginPool, PluginPreview, PluginRejected, PluginSetting, PluginSettingValues, PluginSource, PluginState, RpcParams } from '@boite/contracts';
@@ -51,25 +51,19 @@ import {
 import { PluginApps, appEnv, type AppProgram } from './plugins/apps.ts';
 import { PluginRuns, commandOwner, commandRequest, nameClash } from './plugins/runs.ts';
 import { PluginAccounts } from './plugins/accounts.ts';
-import { INSTALLED_FILE, devManifest, readDevFolder, readRecord, recommendedPlugins, recommendedUpdates, removeTree, verifyPluginDownload, type Installed, type InstalledPlugin, type Job, type OnDisk, type Origin } from './plugins/record.ts';
+import { INSTALLED_FILE, devManifest, readDevFolder, readRecord, recommendedPlugins, recommendedUpdates, recordText, removeTree, writeRecord, verifyPluginDownload, type Installed, type InstalledPlugin, type Job, type OnDisk, type Origin } from './plugins/record.ts';
 import { PluginTokens } from './plugins/tokens.ts';
 import { PREVIEW_TTL_MS, PluginPreviews, type Previewed } from './plugins/previews.ts';
 import { PluginGrants, carriedGrant, checkGrants } from './plugins/grants.ts';
 import { DOUANE_PLUGIN, PluginGateways } from './plugins/gateway.ts';
 import { prepareLocalProxyKey } from './subscription-proxy-auth.ts';
 import { recoverActivation, switchRelease, type Activation } from './plugins/activation.ts';
-import { fetchArtifact } from './plugins/download.ts';
+import { DOWNLOAD_IDLE_MS, fetchArtifact } from './plugins/download.ts';
 import { PluginLanes } from './plugins/lanes.ts';
 import { PluginPreferences } from './plugins/preferences.ts';
 import { fetchManifest, readSource } from './plugins/source.ts';
-import { PluginUpdateChecks, compareVersions, type UpdateSource } from './plugins/updates.ts';
-
-/** A download that receives nothing for this long stops; one still receiving goes on, up to its ceiling (`plugins/download.ts`). */
-const DOWNLOAD_IDLE_MS = 30_000;
-/** How long an install waits on its update source before taking the newest version it already knows. */
-const INSTALL_SOURCE_WAIT_MS = 15_000;
-
-type Pending = Previewed;
+import { PluginInterfaces, checkDevUi, commitWithUi, previewUi, uiAtCommit, type UiTexts } from './plugins/ui.ts';
+import { INSTALL_SOURCE_WAIT_MS, PluginUpdateChecks, compareVersions, type UpdateSource } from './plugins/updates.ts';
 
 export { parsePluginPool, recommendedPlugins, recommendedUpdates, verifyPluginDownload, type InstalledPlugin } from './plugins/record.ts';
 
@@ -92,7 +86,7 @@ export class PluginStore {
 
   #jobs = new Map<string, Job>();
   #failures = new Map<string, string>();
-  #pending = new Map<string, Pending>();
+  #pending = new Map<string, Previewed>();
   /** Dev plugins being loaded: their command names are taken before they are on disk. */
   #claims = new Set<PluginManifest>();
   #previews = new PluginPreviews();
@@ -107,6 +101,8 @@ export class PluginStore {
 
   /** The desktop apps plugins provide: started, stopped and relaunched here. */
   readonly apps: PluginApps;
+  /** The interfaces clients load (`plugins.ui`), announced when they move. */
+  readonly interfaces: PluginInterfaces;
   /** The gateways plugins provide: run in the background on a loopback port. */
   readonly gateways: PluginGateways;
   /** Newer releases of recommended plugins, read from the update sources the list names. */
@@ -125,6 +121,11 @@ export class PluginStore {
     this.preferences = new PluginPreferences(core.journal);
     this.grants = new PluginGrants(core.journal);
     this.#runs = new PluginRuns(core);
+    this.interfaces = new PluginInterfaces(core, { ids: () => this.#ids(), onDisk: (id) => this.#onDisk(id), directory: (id) => this.#directory(id) }, {
+      enabled: (id) => !this.preferences.isOff(id),
+      granted: (id, manifest) => this.grants.effective(id, permissionsOf(manifest)),
+      settings: (id, manifest) => this.preferences.values(id, manifest.settings ?? []),
+    });
     this.accountPools = new PluginAccounts({
       core, lanes: this.#lanes,
       known: (id) => this.#known(id),
@@ -376,7 +377,7 @@ export class PluginStore {
       return this.#start(id, target(), null, 'recommended', grants, latest);
     }
     const pending = this.#pending.get(id);
-    if (pending !== undefined) return this.#start(id, pending.manifest, pending.source, 'url', grants);
+    if (pending !== undefined) return this.#start(id, pending.manifest, pending.source, 'url', grants, undefined, pending.ui);
     const disk = this.#onDisk(id);
     if (disk.kind === 'installed' && disk.installed.source !== null) return this.#start(id, disk.installed.manifest, disk.installed.source, 'url', grants);
     if (disk.kind === 'rejected') throw refused(`${id} was refused (${disk.rejected.message}). Remove it, then add it again from its URL.`, disk.rejected);
@@ -384,7 +385,7 @@ export class PluginStore {
   }
 
   /** `latest` may swap `manifest` for a newer one; of what it asks, only `grants` (checked against `manifest`, which the owner saw) or what `carriedGrant` keeps is granted. */
-  #start(id: string, manifest: PluginManifest, source: PluginSource | null, origin: Origin, grants?: unknown, latest?: (signal: AbortSignal) => Promise<PluginManifest>): PluginState {
+  #start(id: string, manifest: PluginManifest, source: PluginSource | null, origin: Origin, grants?: unknown, latest?: (signal: AbortSignal) => Promise<PluginManifest>, ui: UiTexts | null = null): PluginState {
     if (this.#closing) throw refused('Boite is shutting down.');
     if (this.#lanes.busy(id)) throw refused('Wait for the current plugin operation before installing.');
     const artifact = artifactFor(manifest);
@@ -399,10 +400,11 @@ export class PluginStore {
     const job: Job = { controller, progress: 0, promise: Promise.resolve(), relaunch: false };
     this.#jobs.set(id, job);
     job.promise = this.#lanes.alone(id, 'install', () => (latest === undefined ? Promise.resolve(manifest) : latest(controller.signal))
-      .then((target) => {
+      .then(async (target) => {
         const found = target === manifest ? artifact : artifactFor(target);
         if (found === null && runsExecutable(target)) throw new Error(`${id} ${target.version} has no binary for ${platformKey()}`);
-        return (found === null ? this.#installText(id, target, source, origin, job) : this.#download(id, target, source, origin, found, job)).then(() => target);
+        const texts = await uiAtCommit(this.#core, id, target, source, target === manifest ? ui : null, { allowLocal: this.allowLocalSources, signal: AbortSignal.any([controller.signal, this.#shutdown.signal]) });
+        return (found === null ? this.#installText(id, target, source, origin, texts, job) : this.#download(id, target, source, origin, found, texts, job)).then(() => target);
       })
       .then((target) => { const asks = permissionsOf(target); this.grants.set(id, ticked === null ? carriedGrant(this.grants.stored(id), before, asks) : asks.filter((name) => ticked.includes(name))); this.#pending.delete(id); job.relaunch = true; })
       .catch(async (error: unknown) => {
@@ -422,7 +424,7 @@ export class PluginStore {
   }
 
   /** A plugin that runs nothing: its record is the whole install. One that ran before stops and its binary goes. */
-  async #installText(id: string, manifest: PluginManifest, source: PluginSource | null, origin: Origin, job: Job): Promise<void> {
+  async #installText(id: string, manifest: PluginManifest, source: PluginSource | null, origin: Origin, ui: UiTexts | null, job: Job): Promise<void> {
     const dir = this.#directory(id);
     mkdirSync(dir, { recursive: true });
     const previous = this.#onDisk(id);
@@ -430,14 +432,12 @@ export class PluginStore {
     if (installed !== null && (providesApp(installed.manifest) || providesService(installed.manifest))) await this.apps.forget(id);
     if (installed !== null && providesGateway(installed.manifest)) await this.gateways.forget(id);
     job.controller.signal.throwIfAborted();
-    const staged = join(dir, `${INSTALLED_FILE}.part`);
-    await writeFile(staged, JSON.stringify({ schema: 1, origin, source, installedAt: Date.now(), manifest }, null, 2), { mode: 0o600 });
-    await rename(staged, join(dir, INSTALLED_FILE));
+    await commitWithUi(dir, ui, installed?.ui ?? null, (written) => writeRecord(dir, recordText(origin, source, manifest, written)));
     if (installed?.binary) await rm(installed.binary, { force: true }).catch(() => undefined);
     job.progress = 100;
   }
 
-  async #download(id: string, manifest: PluginManifest, source: PluginSource | null, origin: Origin, artifact: PluginArtifact, job: Job): Promise<void> {
+  async #download(id: string, manifest: PluginManifest, source: PluginSource | null, origin: Origin, artifact: PluginArtifact, ui: UiTexts | null, job: Job): Promise<void> {
     const signal = job.controller.signal;
     const dir = this.#directory(id);
     mkdirSync(dir, { recursive: true });
@@ -461,7 +461,7 @@ export class PluginStore {
       }
       // A gateway still serving would be cut off: it waits for its requests like an update, then stops.
       const ran = installed !== null && providesGateway(installed.manifest) && await this.gateways.drainForUpdate(id, manifest.version);
-      await this.#activate(id, dir, installed, manifest, temporary, ran, JSON.stringify({ schema: 1, origin, source, installedAt: Date.now(), manifest }, null, 2));
+      await commitWithUi(dir, ui, installed?.ui ?? null, (written) => this.#activate(id, dir, installed, manifest, temporary, ran, recordText(origin, source, manifest, written)));
       job.progress = 100;
     } finally {
       await rm(temporary, { force: true });
@@ -528,13 +528,15 @@ export class PluginStore {
       throw error;
     }
     const read: PluginPreview = { ...preview, manifest, artifact: artifactFor(manifest), commands: commandsOf(manifest) };
+    const { ui, rejected } = previewUi(manifest, fetched.files);
+    if (rejected !== null) return { ...read, rejected };
     const conflict = this.#conflict(manifest, url);
     if (conflict !== null) return { ...read, rejected: conflict };
     if (read.artifact === null && runsExecutable(manifest)) {
       const published = Object.keys(manifest.artifacts ?? {}).join(', ');
       return { ...read, rejected: refusal(PLUGIN_MANIFEST_FILE, 'artifacts', `an artifact for ${platformKey()}, this machine`, published).rejected };
     }
-    const previewId = this.#previews.put({ manifest, source }, preview.expiresAt);
+    const previewId = this.#previews.put({ manifest, source, ui }, preview.expiresAt);
     const disk = this.#onDisk(manifest.id);
     return { ...read, previewId, replaces: disk.kind === 'installed' ? disk.installed.version : null };
   }
@@ -573,14 +575,14 @@ export class PluginStore {
 
   /** Installs what one preview showed, at the commit it showed. A preview is used once. `grants`: plugins.add's. */
   add(previewId: unknown, grants?: unknown): PluginState {
-    const { manifest, source } = this.#previews.take(previewId);
+    const { manifest, source, ui } = this.#previews.take(previewId);
     const conflict = this.#conflict(manifest, source.url);
     if (conflict !== null) throw refused(conflict.message, conflict);
     if (this.#lanes.busy(manifest.id)) throw refused('Wait for the current plugin operation before installing.');
     const before = this.#pending.get(manifest.id);
-    this.#pending.set(manifest.id, { manifest, source });
+    this.#pending.set(manifest.id, { manifest, source, ui });
     try {
-      return this.#start(manifest.id, manifest, source, 'url', grants);
+      return this.#start(manifest.id, manifest, source, 'url', grants, undefined, ui);
     } catch (error) {
       if (before === undefined) this.#pending.delete(manifest.id);
       else this.#pending.set(manifest.id, before);
@@ -786,6 +788,7 @@ export class PluginStore {
     if (binary !== null && !existsSync(binary)) {
       throw refused(`${binary} is missing: ${manifest.runtime === 'bun' ? 'build the plugin to that file' : 'build the executable'} first.`);
     }
+    checkDevUi(path, manifest);
     const before = this.#onDisk(id);
     if (before.kind === 'installed' && before.installed.devPath === null) throw refused(`${id} is installed${before.installed.source ? ` from ${before.installed.source.url}` : ''}; remove it before running it from a folder.`);
     const clash = this.#nameClash(manifest);
@@ -796,9 +799,7 @@ export class PluginStore {
     await (async () => this.#lanes.alone(id, 'install', async () => {
       const dir = this.#directory(id);
       mkdirSync(dir, { recursive: true });
-      const staged = join(dir, `${INSTALLED_FILE}.part`);
-      await writeFile(staged, JSON.stringify({ schema: 1, origin: 'dev', source: null, devPath: path, installedAt: Date.now(), manifest }, null, 2), { mode: 0o600 });
-      await rename(staged, join(dir, INSTALLED_FILE));
+      await writeRecord(dir, JSON.stringify({ schema: 1, origin: 'dev', source: null, devPath: path, installedAt: Date.now(), manifest }, null, 2));
       this.#failures.delete(id);
       this.accountPools.forget(id);
       // The owner loads the folder after reading what it asks for: it gets all of it, until plugins.setGrants narrows it.

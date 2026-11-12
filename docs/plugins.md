@@ -2,7 +2,8 @@
 
 A plugin adds to Boite without a change to the app. It can give your agents
 new `boite` commands, skills and guide lines, add slash commands to the
-message box, run a background service, or start a desktop app beside Boite.
+message box, run a background service, start a desktop app beside Boite, or
+put its own buttons, panel tabs and commands in Boite's window.
 
 A plugin is a program that runs on the machine hosting your core. Boite checks
 the download against the SHA-256 its manifest publishes, but does not sandbox
@@ -53,6 +54,7 @@ the plugin should not get, then press Allow.
 | Use your screens | Taps, types and opens there |
 | Read this machine's state | Load, usage, quotas, agents and settings |
 | Show a thread | Brings a thread or a bot to the front in the app |
+| Change Boite's interface | Its code runs in the app: it can do anything you do. Shown in red |
 
 - A plugin with a program also shows Runs a program on this machine, which
   you cannot untick.
@@ -93,6 +95,29 @@ crash within five minutes leaves it Crashed until you start it.
 
 On Linux without a display, a desktop app does not start, and its card says so.
 A service runs anywhere, a headless server included.
+
+## Plugins that change the interface
+
+A plugin granted Change Boite's interface can add:
+
+- buttons in a conversation's header, in the message box toolbar and at the
+  foot of the sidebar;
+- entries in a message's plugin menu, the puzzle button beside copy;
+- tabs in the right panel, offered in its "+" menu;
+- rows in the command palette.
+
+They appear in every window of that core, the desktop app and your phones
+included. That code runs as you: grant it only to a publisher you trust, as
+you would a browser extension.
+
+- When a plugin's interface fails, only that plugin's additions leave. Its
+  card shows "Its interface stopped" with the error; Reload interface, behind
+  its gear, tries again.
+- Safe mode opens a window with no plugin interface: add `?safe=1` to the
+  address. Boite also starts in Safe mode by itself when it closed while
+  plugin interfaces were loading the time before. A notice says so, with a
+  Load them button.
+- A recommended plugin cannot bring an interface.
 
 ## Account pools
 
