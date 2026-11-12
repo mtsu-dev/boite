@@ -234,6 +234,8 @@ export class ContactsBotMethods {
     }
     const note = params.text === undefined || params.text === '' ? '' : text(params.text, 'text', 1000).trim();
     if (!plan && !note) throw invalidParams('contacts.bot.askOwner: expected connect, start or text', { field: 'text' });
+    // One card per request: an earlier one shows a plan this call replaces, and its Accept must not run the new one.
+    withdrawOwnerCards(this.#core, request.id);
     this.#core.contacts.requests.mark(request.id, { plan });
     const body = `${name} asks: ${request.text.slice(0, 500)}\n\n${plan ? `If you accept, ${planLine(request, plan)}.${note ? `\n${note}` : ''}` : note}`;
     return this.#card(bot.threadId, { kind: 'owner', requestId: request.id }, body, [{ id: 'accept', label: plan ? 'Accept' : 'Let the bot handle it' }, { id: 'refuse', label: 'Refuse' }]);

@@ -162,7 +162,12 @@ test('an ask that names its contact reaches that contact\'s Operator with no tur
   expect(await thrown(hostClient.call('contacts.bot.connect', { threadId: hostBot.threadId, id: first.incoming.id, target: hostThread }))).toThrow('not trusted');
   expect(await thrown(hostClient.call('contacts.bot.askOwner', { threadId: hostBot.threadId, id: first.incoming.id, connect: hostBot.threadId }))).toThrow('other than this one');
   expect(await thrown(hostClient.call('contacts.bot.askOwner', { threadId: hostBot.threadId, id: first.incoming.id }))).toThrow('expected connect, start or text');
+  // A second proposal replaces the first, card included: the owner can only accept the plan they read.
+  const other = await thread(host, hostClient, host.core.journal.getThread(hostThread)!.projectId!, 'Other subject');
+  const stale = await hostClient.call('contacts.bot.askOwner', { threadId: hostBot.threadId, id: first.incoming.id, connect: other });
   await hostClient.call('contacts.bot.askOwner', { threadId: hostBot.threadId, id: first.incoming.id, connect: hostThread });
+  expect(await thrown(hostClient.call('questions.answer', { threadId: hostBot.threadId, questionId: stale.questionId, optionIds: ['accept'] }))).toThrow();
+  expect(here(first.incoming.id)).toMatchObject({ status: 'pending', stage: 'owner', plan: { thread: { threadId: hostThread } } });
   const project = host.core.journal.getProject(host.core.journal.getThread(hostThread)!.projectId!)!;
   // The owner reads the plan on the request, in the app and on the bot's card.
   const shown = (await hostClient.call('contacts.get', {})).requests.find(request => request.id === first.incoming.id)!;
