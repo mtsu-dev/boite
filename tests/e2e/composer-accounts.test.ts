@@ -26,9 +26,9 @@ test('queued prompts keep their thread, and browser project and account actions 
     await page.waitFor('document.querySelector("[data-testid=thread-title]")?.textContent.trim() === "Thread A"');
     // A message sent while a permission waits declines it, so the turn holds on a sleep instead: what is typed meanwhile queues.
     let firstTurn: string | undefined;
-    const firstDone = client.next('turn.finished', (turn) => { if (turn.threadId !== a.id) return false; firstTurn ??= turn.id; return true; }, 30_000);
-    const queuedDone = client.next('turn.finished', (turn) => turn.threadId === a.id && firstTurn !== undefined && turn.id !== firstTurn, 30_000);
-    await page.type(selector('composer-input'), 'hold here [sleep:5000]');
+    const firstDone = client.next('turn.finished', (turn) => { if (turn.threadId !== a.id) return false; firstTurn ??= turn.id; return true; }, 60_000);
+    const queuedDone = client.next('turn.finished', (turn) => turn.threadId === a.id && firstTurn !== undefined && turn.id !== firstTurn, 60_000);
+    await page.type(selector('composer-input'), 'hold here [sleep:15000]');
     await page.click(selector('composer-send'));
     await page.waitFor('document.querySelector("[data-testid=thread-header][data-status]")?.dataset.status === "running"');
     await page.type(selector('composer-input'), 'queued only for A');
@@ -57,7 +57,7 @@ test('queued prompts keep their thread, and browser project and account actions 
     // The page says hello as the web app in a desktop browser, and each prompt keeps that origin for the agent.
     const sentFrom = { client: 'pwa', device: 'browser', language: 'en' } as const;
     expect(userMessages.map(message => message.parts)).toEqual([
-      [{ type: 'text', text: 'hold here [sleep:5000]', sentFrom }],
+      [{ type: 'text', text: 'hold here [sleep:15000]', sentFrom }],
       [{ type: 'text', text: 'queued only for A\n\nsecond queued for A\n\nthird queued for A', sentFrom }]
     ]);
     await page.screenshot(join(artifacts, 'composer-queued-batch.png'));

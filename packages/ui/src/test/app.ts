@@ -238,9 +238,10 @@ export async function showMobileThreads(): Promise<void> {
   await waitFor(() => document.querySelector('[data-testid=mobile-search-open]') !== null);
 }
 
-/** Everything owner-only on the settings nav and its Machines page. Plugins is a section of Providers, so the nav's Providers entry stands for it. */
+/** Everything owner-only on the settings nav and its Machines page. */
 export const OWNER_ONLY_IN_SETTINGS = [
   '[data-testid=settings-tab-accounts]',
+  '[data-testid=settings-tab-plugins]',
   '[data-testid=settings-tab-brain]',
   '[data-testid=group-add-device]'
 ];

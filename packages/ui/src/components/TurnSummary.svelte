@@ -137,7 +137,7 @@
       </div>
     {:else}
     <!-- A finished turn needs no tick: its time and the answer above already say it ended; only a failure or a stop is marked. -->
-    {#if turn.status === 'error' && !carded}<CircleAlert size={14} />{:else if turn.status === 'stopped'}<Square size={12} />{:else if turn.status !== 'done' && !activeContent && !activeTool && !stale && !held}<Spinner size={12} paused={hidden || waiting} />{/if}
+    {#if turn.status === 'error'}{#if !carded}<CircleAlert size={14} />{/if}{:else if turn.status === 'stopped'}<Square size={12} />{:else if turn.status !== 'done' && !activeContent && !activeTool && !stale && !held}<Spinner size={12} paused={hidden || waiting} />{/if}
     {#if stale}
       <span class="ui-label meta" data-testid="turn-last-update" title={exactTime(heard!)}>{lastUpdate}</span>
     {:else if spent !== null && !held}

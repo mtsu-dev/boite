@@ -164,7 +164,10 @@ test('every changed file reads as one document, each diff read once it nears the
     // Each file under its own header, in the list's order, in one scroll.
     const drawn = [...document.querySelectorAll('[data-file]')].filter((file) => file.querySelector('[data-testid=diff-view]')).map((file) => file.getAttribute('data-file'));
     expect(drawn.length).toBeGreaterThan(1);
-    expect(drawn).toEqual(headers.map((header) => header.dataset['path']).filter((path) => drawn.includes(path!)));
+    // Every file is read: a diff under its header, or the binary note for one that has no text.
+    const binary = [...document.querySelectorAll('[data-file]')].filter((file) => file.querySelector('[data-testid=changes-binary]')).map((file) => file.getAttribute('data-file'));
+    expect(drawn.length + binary.length).toBe(headers.length);
+    expect(drawn).toEqual(headers.map((header) => header.dataset['path']).filter((path) => !binary.includes(path!)));
     // A header folds its file away.
     headers[0]!.click();
     flushSync();

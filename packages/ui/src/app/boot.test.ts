@@ -11,9 +11,10 @@ vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
 /** The worktree switch is an item of the composer's "+": open it, then find the switch. */
 function worktreeSwitch(): HTMLButtonElement | null {
   if (!document.querySelector('[data-testid=composer-options-sheet]')) {
-    document.querySelector<HTMLElement>('[data-testid=composer-options]')?.click();
+    query<HTMLElement>('[data-testid=composer-options]').click();
     flushSync();
   }
+  query('[data-testid=composer-options-sheet]');
   return document.querySelector<HTMLButtonElement>('[data-testid=composer-worktree]');
 }
 

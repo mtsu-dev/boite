@@ -1707,5 +1707,6 @@ test('a failed turn whose card holds Retry keeps its line\'s copy and fork, with
   // The card is the failure's one mark: the line says when it ended, not "Failed" a second time.
   const line = article.querySelector('[data-testid=turn-summary]')!;
   expect(line.querySelector('.lucide-circle-alert')).toBeNull();
+  expect(line.querySelector('.spinner')).toBeNull();
   expect(line.textContent).not.toContain(strings.chat.failedAt.split('{')[0]!.trim());
 });
