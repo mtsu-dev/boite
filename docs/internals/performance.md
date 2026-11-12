@@ -6,7 +6,7 @@ a fresh run of the bench that covers it, with the command and the date.
 
 ## Concurrent-agent resource use
 
-The [2026-09-29 audit](../bench/results/2026-09-29-resources.md) records paired
+The [2026-09-29 audit](../../bench/results/2026-09-29-resources.md) records paired
 Linux measurements against `606bc56d`, workload limits and remaining candidates.
 Its subsystem results exclude provider memory and do not establish a whole-app
 CPU or RAM reduction.
@@ -84,7 +84,7 @@ keeps the list under 14,000 bytes.
 ## Long threads in the journal
 
 Measured on 2026-10-05 with `bench/rpc-actions.ts --journal` on a copy of a
-1.7 GB journal ([results](../bench/results/2026-10-05-rpc-actions.md)). A turn
+1.7 GB journal ([results](../../bench/results/2026-10-05-rpc-actions.md)). A turn
 that reads screenshots back keeps each PNG as base64 in its tool output; one
 message held 33.5 MiB. Large values now live in `part_blobs`
 ([architecture](architecture.md)), so a streaming message rewrites only the
@@ -92,7 +92,7 @@ parts that changed: 20 s of text on top of 93 stored screenshots spent 396 ms
 in writes instead of 3,838 ms. Between whole-row writes, a streaming message
 writes only its changed parts to `streaming_parts`: 60 s of text on a row of
 100 tool parts wrote 4.2 MiB of WAL instead of 95.7 MiB
-([results](../bench/results/2026-10-15-perf-journal.md)). WAL checkpoints run
+([results](../../bench/results/2026-10-15-perf-journal.md)). WAL checkpoints run
 in a Worker instead of inside whichever commit crossed 1,000 pages, and the
 statement cache holds 128 statements instead of Bun's 20. `delegation.get` reads the messages that
 `native_agent_messages` names instead of every part of the thread: 30 ms
@@ -108,7 +108,7 @@ in `command_lines`, cuts every thread past 2,500 trace rows back to what it
 keeps, and stops writing `message.part` and `artifact.published` events
 ([architecture](architecture.md)). Measured on 2026-10-18 with
 `bun bench/journal-compact.ts --journal <copy> --runs 3 --gap 250` on a copy of a
-4,176 MiB schema 35 journal ([results](../bench/results/2026-10-17-journal-compact.md)):
+4,176 MiB schema 35 journal ([results](../../bench/results/2026-10-17-journal-compact.md)):
 `processes` went from 1,149 to 519 MiB, `events` from 748 to 188 MiB,
 `part_blobs` from 1,864 to 1,452 MiB and `messages` from 393 to 238 MiB. The
 passes did 86 s of work in ticks 250 ms apart, with a p99 event loop block of
@@ -129,7 +129,7 @@ sends. Files keep their reference line per thread, so a later fresh session
 checks each copy with one `lstat` instead of hashing and reading it again.
 On 2026-10-15, `bench/continuation.ts` took 345 ms to 29 ms with 100 tool
 outputs of 1 MiB and 25 files of 1.1 MB, and 83 ms to 4.6 ms with 200 of
-200 KiB ([results](../bench/results/2026-10-15-perf-runtime.md)).
+200 KiB ([results](../../bench/results/2026-10-15-perf-runtime.md)).
 
 Held turns cost one pass over the queue each time a turn ends anywhere. The
 scheduler keeps each queued turn's parent from enqueue and reads a team's
@@ -143,7 +143,7 @@ which never expire, nor tries to deliver mail of a paused or disabled team.
 
 Measured on 2026-10-15 with `bench/claude-turn-heap.ts`, a scripted turn of 20
 Write calls with 1 MiB results and a 5 MiB image on a warm session
-([results](../bench/results/2026-10-15-perf-drivers.md)). Once the turn ended,
+([results](../../bench/results/2026-10-15-perf-drivers.md)). Once the turn ended,
 the core's heap stayed 33.7 MiB above its start: the session's query loop and
 its context kept the first turn, its tool outputs and the image. It now keeps
 1.8 MiB. A finished call's input and output live only in the stored part, and a
@@ -157,7 +157,7 @@ characters of its output; the completed item still carries all of it. Each
 redraw is a journal write and a `message.part` frame per client. For a 6 s
 command printing a line every 5 ms, `bench/codex-live-output.ts` measured 25
 redraws carrying 381,400 characters before, 7 carrying 28,000 now
-([results](../bench/results/2026-10-15-perf-drivers.md)).
+([results](../../bench/results/2026-10-15-perf-drivers.md)).
 
 ## Concurrent agent stress
 
@@ -274,7 +274,7 @@ Proofs share one `git remote -v` and one page of PRs per repository with the
 sidebar badges, and a thread without a merged PR waits 5 minutes, then up to
 an hour, before its next proof. Four unmerged worktree threads cost 2 processes
 on the first pass and none on the next ones, against 12 and then 8 a minute
-before ([bench/results/2026-10-15-perf-git.md](../bench/results/2026-10-15-perf-git.md)).
+before ([bench/results/2026-10-15-perf-git.md](../../bench/results/2026-10-15-perf-git.md)).
 Those counts hold for a repository with fewer than 100 PRs, whose page is
 complete. On a full page, a thread whose branch the page does not show also
 walks its checkout's status and reads its branch alone before a proof.
@@ -287,7 +287,7 @@ three gits: 24.2 to 5.9 ms on a 500-file repository. `worktrees.list`
 describes four worktrees at once and resolves only the threads of the project
 and of its folders: 50 worktrees list in 279 ms instead of 606 ms.
 
-The [dated stress report](../bench/results/2026-09-29-resources.md#stress-measurements-2026-09-29-and-2026-09-30)
+The [dated stress report](../../bench/results/2026-09-29-resources.md#stress-measurements-2026-09-29-and-2026-09-30)
 preserves the Windows Bun 1.4.2 runs, tables and failed 1,000-start attempts from
 2026-09-29 and 2026-09-30. These fixtures do not establish a supported real-agent
 count, provider quota, native shell performance or physical-phone behavior.
@@ -481,7 +481,7 @@ characters, then a short answer, a remote phone received 51,108 bytes after
 deflate with every channel and 28,731 without `liveOutput` (44 % less), its
 `message.part` frames carrying 85,677 bytes of JSON against 2,159
 (`bun run bench/live-output-channels.ts`,
-[results](../bench/results/2026-11-07-live-output-channels.md)). The rest is
+[results](../../bench/results/2026-11-07-live-output-channels.md)). The rest is
 the turn's other events, which no channel holds back.
 
 ## What the UI asks for
@@ -766,7 +766,7 @@ bundle with 400 messages and delayed thread RPC replies. Use `--phone --cpu 4`
 for a 390 px viewport and slower CPU, or `--ui <checkout>/packages/ui` for a
 baseline checkout. `--cached 16` first reads 16 more threads of 400 messages
 to the top, then reports the synchronous leave time of each click and the JS
-heap after a forced collection. The [2026-10-02 measurements](../bench/results/2026-10-02-thread-switching.md)
+heap after a forced collection. The [2026-10-02 measurements](../../bench/results/2026-10-02-thread-switching.md)
 record samples, reading-position drift and the subsequent t3code comparison.
 `tests/e2e/thread-switch.test.ts` separately exercises the production UI with
 a real temporary core, a 750 ms snapshot delay and a large folded tool output.
@@ -777,8 +777,8 @@ eighth prompt, a picture every 25th, 30 tool outputs per answer, 48.9 MB
 of parts) and times `threads.get` on loopback and through a 150 ms relay, then
 the click to the first message in headless Chrome, plain and throttled. `--base`
 skips the parameters an older core does not take, `--rpc-only` the browser. The
-[2026-10-05 report](../bench/results/2026-10-05-thread-open.md) has the numbers,
-and the [2026-10-13 report](../bench/results/2026-10-13-thread-open.md) the
+[2026-10-05 report](../../bench/results/2026-10-05-thread-open.md) has the numbers,
+and the [2026-10-13 report](../../bench/results/2026-10-13-thread-open.md) the
 screen page against main: 1,305 KB to 129 KB, and 1,902 ms to 297 ms from click
 to first message on a throttled link;
 `tests/e2e/thread-open.test.ts` captures the bar at both widths and checks
@@ -792,7 +792,7 @@ latest".
 protocols through a paced TCP relay on the same temporary core. It counts actual
 compressed WebSocket bytes in each direction and cold and quiet-return RPC
 latency. `--attachment-kib 0` measures text alone. The
-[2026-10-03 report](../bench/results/2026-10-03-thread-traffic.md) records both
+[2026-10-03 report](../../bench/results/2026-10-03-thread-traffic.md) records both
 fixtures and limits. `tests/e2e/thread-loading.test.ts` checks compact first
 reads, unchanged returns and byte-exact downloads in the production desktop
 and paired-phone browser UI.
@@ -809,7 +809,7 @@ so revalidating the shell, `sw.js` or the manifest is a 304 without a body.
 Fonts and icons are fresh for a day: a phone on plain http has no service
 worker and would otherwise fetch the two default faces, 118 KB, on every load.
 A view is gzipped once when it is published and sent compressed to a client
-that reads gzip. The [2026-10-15 report](../bench/results/2026-10-15-perf-media.md)
+that reads gzip. The [2026-10-15 report](../../bench/results/2026-10-15-perf-media.md)
 has the bytes before and after.
 
 The command palette, the project picker, the import dialog and the right panel
@@ -835,7 +835,7 @@ Day labels and clock times in an agent conversation reuse one
 did: `toLocaleString` with a locale builds a new formatter per call.
 
 Every catalogue and the quota window are chunks of their own too, so a page
-downloads and parses only the language it speaks (`docs/language.md`). Nine
+downloads and parses only the language it speaks (`docs/internals/language.md`). Nine
 components the first frame does not draw load the same way
 (`lib/deferred-parts.ts`, the terminal drawer and, outside the shell, the
 phone's navigation, which the boot screen waits for): the image viewer, the
@@ -1008,7 +1008,7 @@ An `npm` candidate's script and a managed install's release record are kept
 the same way: on 2026-10-15 a listing took 378 us instead of 486, and a
 listing plus pi's and OpenCode's summaries 40 file syscalls instead of 95
 (`bench/provider-list.ts`,
-[results](../bench/results/2026-10-15-perf-drivers.md)). Focusing a thread
+[results](../../bench/results/2026-10-15-perf-drivers.md)). Focusing a thread
 and preparing a draft resolve their one provider, not the list.
 `packages/core/test/providers-which.test.ts` counts the lookups.
 
@@ -1177,12 +1177,12 @@ main-thread CPU per three seconds, with 3,271 nodes under the scroller down to
 849; six jumps across the thread from 825 to 56 ms of long tasks; a flick from
 435 ms of long tasks to none, covering 47,000 px of its gesture instead of
 26,000. The ordinary 400-message thread measured 878 then 870 ms.
-[Heavy-thread report](../bench/results/2026-10-07-heavy-thread.md).
+[Heavy-thread report](../../bench/results/2026-10-07-heavy-thread.md).
 
 `packages/ui/src/render-cost.test.ts` rejects unbounded blur, forbidden endless
 animation properties, outer-container `:has()` and outline width transitions.
-The [frame report](../bench/results/2026-09-30-ui-frames.md) and
-[typing/scroll report](../bench/results/2026-09-30-typing-and-scroll.md) retain
+The [frame report](../../bench/results/2026-09-30-ui-frames.md) and
+[typing/scroll report](../../bench/results/2026-09-30-typing-and-scroll.md) retain
 2026-09-30 measurements and the streaming-fixture correction. They use software
 compositing and mobile emulation, with uncontrolled background load.
 
@@ -1229,7 +1229,7 @@ agent writes a token every 16 ms, about 2,000 characters a second, and its
 layout, not the loops, sets the cost. Headless Chrome follows no monitor, so
 its frame rate stands for a fast one; at 60 Hz the staircases save little in
 front and the rest still saves the whole cost. Not measured in WebView2.
-[Report](../bench/results/2026-10-17-ui-at-rest.md).
+[Report](../../bench/results/2026-10-17-ui-at-rest.md).
 
 ### What a page left running holds
 
@@ -1473,7 +1473,7 @@ instead of q90 before shrinking it to the phone's width: the frame sent is the
 same size, and the capture to shrink is a third smaller. Through a scratch core
 on 2026-10-03, a moving page went from 2.0 to 4.0 frames a second with 80 ms
 of added latency, and from 1.6 to 3.3 with 200 ms
-([results](../bench/results/2026-10-03-remote-browser-frames.md)). The
+([results](../../bench/results/2026-10-03-remote-browser-frames.md)). The
 desktop's capture and shrink take 100 to 140 ms a frame. The phone decodes each
 frame before showing it, so a frame never appears half loaded; that decoding
 was not measured on an iPhone.
@@ -1483,7 +1483,7 @@ conversation ([the agent's browser](browser.md)). Through a scratch core on the
 Linux container `boite`, a moving page gave 4.0 frames a second with no added
 latency, 3.4 with 80 ms and 2.5 with 200 ms; the capture in the core's browser
 takes about 200 ms a frame for that page
-([results](../bench/results/2026-10-05-remote-browser-frames.md)).
+([results](../../bench/results/2026-10-05-remote-browser-frames.md)).
 
 Since 2026-10-15 the frames come from a screencast of the tab on its own
 DevTools session ([the agent's browser](browser.md#watching-it)). Chrome sends a picture
@@ -1491,7 +1491,7 @@ only when the page draws, and a viewer naming the frame it shows gets
 `unchanged` on a still page. On a still page a viewer went from 163 to 15 KiB/s
 of base64 and the core's Chrome from 8 % to 0 % of a core; on a moving page the
 trip lost about 72 ms at the same four frames a second and the same Chrome CPU
-([results](../bench/results/2026-10-15-perf-browser.md)).
+([results](../../bench/results/2026-10-15-perf-browser.md)).
 
 ## A remote browser view
 
@@ -1503,7 +1503,7 @@ T3 Code's browser does. Measured on 2026-11-11 with
 `--width 2400`, `--webgl` and `--webgl-heavy` variants, on `origin/main`
 (07124676) and on the branch, on a Windows 11 desktop (Ryzen 7 7800X3D,
 Radeon RX 6750 XT, Chrome 157), a page of 1200 × 1300 CSS pixels watched at
-780 px ([results](../bench/results/2026-11-11-remote-browser-stream.md)):
+780 px ([results](../../bench/results/2026-11-11-remote-browser-stream.md)):
 
 | Moving page | Pictures/s | KiB/s | Chrome CPU | Change shown after |
 | --- | --- | --- | --- | --- |
@@ -1662,7 +1662,7 @@ Chrome encodes about one picture per slot of the take. Its helper page decodes e
 `Uint8Array.fromBase64`: 0.2 ms instead of 18 ms for a 1920 × 1080 frame. On
 2026-10-15, a 10 s 30 fps take of a moving 1920 × 1080 page went from 19.7 to
 29.4 frames a second by ffprobe, and the core's Chrome from 453 % to 339 % of
-a core ([results](../bench/results/2026-10-15-perf-browser.md)), with a
+a core ([results](../../bench/results/2026-10-15-perf-browser.md)), with a
 version that asked every second frame; the late acknowledgement that replaced
 it has not been measured.
 
@@ -1680,7 +1680,7 @@ bytes, then the hash check of the rewind.
 
 `bun run bench/checkpoint-store.ts --source <checkpoints>` on a copy of that
 folder, 2026-10-17, Windows 11
-([results](../bench/results/2026-10-17-checkpoint-store.md)):
+([results](../../bench/results/2026-10-17-checkpoint-store.md)):
 
 | | Files (inodes) | Bytes | Manifest bytes |
 |---|---:|---:|---:|
@@ -1837,16 +1837,16 @@ time of the core and of its Chrome (`/proc` on Linux, `Win32_Process` on
 Windows), what the page itself draws and how long a change takes to reach the
 viewer; `--webgl` and `--webgl-heavy` draw the page in a shader.
 
-Results: [bench/results/2026-10-15-perf-runtime.md](../bench/results/2026-10-15-perf-runtime.md),
-[bench/results/2026-10-15-perf-drivers.md](../bench/results/2026-10-15-perf-drivers.md),
-[bench/results/2026-10-05-rpc-actions.md](../bench/results/2026-10-05-rpc-actions.md),
-[bench/results/2026-11-11-remote-browser-stream.md](../bench/results/2026-11-11-remote-browser-stream.md),
-[bench/results/2026-10-05-remote-browser-frames.md](../bench/results/2026-10-05-remote-browser-frames.md),
-[bench/results/2026-10-03-remote-browser-frames.md](../bench/results/2026-10-03-remote-browser-frames.md),
-[bench/results/2026-09-19-wire-and-startup.md](../bench/results/2026-09-19-wire-and-startup.md),
-[bench/results/2026-09-30-ui-frames.md](../bench/results/2026-09-30-ui-frames.md),
-[bench/results/2026-09-30-typing-and-scroll.md](../bench/results/2026-09-30-typing-and-scroll.md),
-[bench/results/2026-10-07-heavy-thread.md](../bench/results/2026-10-07-heavy-thread.md).
+Results: [bench/results/2026-10-15-perf-runtime.md](../../bench/results/2026-10-15-perf-runtime.md),
+[bench/results/2026-10-15-perf-drivers.md](../../bench/results/2026-10-15-perf-drivers.md),
+[bench/results/2026-10-05-rpc-actions.md](../../bench/results/2026-10-05-rpc-actions.md),
+[bench/results/2026-11-11-remote-browser-stream.md](../../bench/results/2026-11-11-remote-browser-stream.md),
+[bench/results/2026-10-05-remote-browser-frames.md](../../bench/results/2026-10-05-remote-browser-frames.md),
+[bench/results/2026-10-03-remote-browser-frames.md](../../bench/results/2026-10-03-remote-browser-frames.md),
+[bench/results/2026-09-19-wire-and-startup.md](../../bench/results/2026-09-19-wire-and-startup.md),
+[bench/results/2026-09-30-ui-frames.md](../../bench/results/2026-09-30-ui-frames.md),
+[bench/results/2026-09-30-typing-and-scroll.md](../../bench/results/2026-09-30-typing-and-scroll.md),
+[bench/results/2026-10-07-heavy-thread.md](../../bench/results/2026-10-07-heavy-thread.md).
 
 ## The Windows sidecar is the signed runtime
 
@@ -1856,7 +1856,7 @@ Linux/macOS sidecars and x64 server builds keep their platform packaging.
 [Releasing](releasing.md#what-each-step-produces) owns runtime download,
 checksum/signature validation and bundle layout.
 
-The [dated runtime measurements](../bench/results/2026-09-29-resources.md#runtime-and-bundle-measurements-2026-09-19-to-2026-09-29)
+The [dated runtime measurements](../../bench/results/2026-09-29-resources.md#runtime-and-bundle-measurements-2026-09-19-to-2026-09-29)
 retain the Windows compiled-versus-signed startup results, baseline comparison
 and account-change bundle sizes. No corresponding Linux/macOS startup gain
 was measured. Current emitted-size checks live in

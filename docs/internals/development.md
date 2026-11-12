@@ -3,7 +3,7 @@
 Run commands from the repository root after `bun install --frozen-lockfile`.
 Use the Bun version in `package.json`. Desktop builds also need Rust and the
 [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
-[AGENTS.md](../AGENTS.md) defines code boundaries;
+[AGENTS.md](../../AGENTS.md) defines code boundaries;
 [CI](ci.md) defines automated check selection and
 [portability](portability.md) records platform coverage and gaps.
 

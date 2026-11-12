@@ -1,5 +1,5 @@
 /**
- * The admin policy (`docs/enterprise.md`): one machine-wide JSON file, written
+ * The admin policy (`docs/internals/enterprise.md`): one machine-wide JSON file, written
  * by an administrator, that locks behaviours of Boite. Every key is optional;
  * an absent key leaves the user's choice, and a machine with no file sees no
  * change at all.

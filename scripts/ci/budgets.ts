@@ -3,7 +3,7 @@
  * copies, the core entry and all emitted core JavaScript. Sizes are
  * deterministic for a commit, unlike timings on a shared runner, so they can
  * fail a pull request. No file in the repository holds a limit
- * (docs/ci.md#bundle-growth):
+ * (docs/internals/ci.md#bundle-growth):
  *
  * - a pull request is measured against the main commit its merge ref sits on
  *   (comparisonBase), which bundle-size.yml

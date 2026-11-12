@@ -8,7 +8,7 @@
  * allow waits for the owner's answer on a consent card. Pictures go only to
  * the file asked for, in the conversation's folder, its project or its
  * temporary folder, and to the card's thumbnail; never to a log. See
- * docs/windows.md.
+ * docs/internals/windows.md.
  */
 import {
   WINDOW_CAPTURE_EXCLUDED,

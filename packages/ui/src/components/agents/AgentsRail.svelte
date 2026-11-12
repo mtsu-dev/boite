@@ -42,7 +42,7 @@
    * a long press. A bot waiting to move once its turn ends says where it goes.
    *
    * With the Teams experiment on, the owner's teams come first, in their own
-   * card under their own heading (`docs/teams.md`): one row per team, its
+   * card under their own heading (`docs/internals/teams.md`): one row per team, its
    * members' pictures, its name, who is in it, the time of its last post and
    * the dot of a chat not read. A row opens the team's chat in the card beside.
    * The heading stays while there is no team yet, with its New team button and

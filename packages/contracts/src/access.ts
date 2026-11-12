@@ -19,7 +19,7 @@ import { PLUGIN_PERMISSIONS, pluginClosedReason, pluginPermissionFor, type Plugi
  * working tree, except in the Add a project form: the folders it browses to
  * and the one it adds, a project the owner sees appear and can remove.
  * Reserved shared-project methods stay owner-only until their handlers and
- * association scope checks are installed; see docs/contacts.md for permissions.
+ * association scope checks are installed; see docs/internals/contacts.md for permissions.
  */
 export const DEVICE_METHODS: ReadonlySet<RpcMethodName> = new Set<RpcMethodName>([
   // Paired apps share the owner's composer and its validated, content-addressed attachments.
@@ -175,12 +175,12 @@ export const DEVICE_METHODS: ReadonlySet<RpcMethodName> = new Set<RpcMethodName>
   'turns.start',
   // Paired phones can send the same user follow-ups as the owner's composer.
   'turns.steer',
-  // The owner's team chats on a phone (docs/teams.md). The list names the teams and their members,
+  // The owner's team chats on a phone (docs/internals/teams.md). The list names the teams and their members,
   // whose chats the device already reads as threads; a post is the owner's, as `turns.start` is,
   // and wakes only the bots the core's routing picks. Creating, pausing, archiving and membership stay the owner's.
   'teams.list',
   'teams.post',
-  // The owner's councils on a phone (docs/council.md): the salon is a thread the device already reads; a post, Close the round
+  // The owner's councils on a phone (docs/internals/council.md): the salon is a thread the device already reads; a post, Close the round
   // and Stop act as the owner's salon buttons do. Starting a council or a new round stays the owner's or an agent's.
   'council.list',
   'council.get',
@@ -321,13 +321,13 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
   ['delegation.stop', 'stop its own children or itself, never unrelated work'],
   ['delegation.resume', "continue its own stopped children and lift its team's pause when it set it or a restart did, or after a Stop once the owner wrote again; never the owner's Settings pause"],
   ['workflows.list', 'the runs of its own thread, or of its parent for a step'],
-  // The council (docs/council.md): members are delegated children on the routes delegation.spawn already allows.
+  // The council (docs/internals/council.md): members are delegated children on the routes delegation.spawn already allows.
   ['council.start', 'read-only reviews by delegated children on routes delegation.spawn allows it; the answers come back to its own thread'],
   ['council.again', 'a new round, with the same members, of a council its own thread started'],
   ['council.list', 'the councils its own thread started'],
   ['council.table', 'the scores of a council its own thread started'],
   ['council.stop', 'stop a council its own thread started, never another'],
-  // Teams (docs/teams.md): a bot reaches the teams it is a member of, filtered to the posts it may see.
+  // Teams (docs/internals/teams.md): a bot reaches the teams it is a member of, filtered to the posts it may see.
   ['teams.list', 'the teams its own bot is a member of, with their members'],
   ['teams.read', 'the posts of a team of its own bot that it may see: group posts and its own private ones'],
   ['teams.say', 'a group post in a team of its own bot, as that bot; wakes only the members it names'],

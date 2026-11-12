@@ -10,7 +10,7 @@ export function composerActivity(text: string) {
 
 /**
  * Whether a prompt that starts a turn also starts an automatic reviewed goal
- * (the `auto-goal` experiment, `docs/goals.md`): the sending app had it on and
+ * (the `auto-goal` experiment, `docs/internals/goals.md`): the sending app had it on and
  * the prompt, no command, holds at least `minChars` characters. Decided from
  * the experiments the prompt was sent or queued with, so a restart or another
  * device's switch never changes what a queued prompt means.

@@ -11,7 +11,7 @@
 
   /**
    * The apps whose windows each project's agents capture without asking
-   * (docs/windows.md). An app joins a project's list when the owner answers
+   * (docs/internals/windows.md). An app joins a project's list when the owner answers
    * Always for this project on a capture card; this is where it leaves it.
    */
   let { store }: { store: Store } = $props();

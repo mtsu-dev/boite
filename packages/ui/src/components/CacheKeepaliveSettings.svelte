@@ -10,7 +10,7 @@
   /**
    * The `cacheKeepalive` setting: while a conversation waits on its agents,
    * the core pings its prompt cache for at most so many hours
-   * (`docs/prompt-cache.md`, "Keeping the cache warm").
+   * (`docs/internals/prompt-cache.md`, "Keeping the cache warm").
    */
   let { store }: { store: Store } = $props();
   const uid = $props.id();

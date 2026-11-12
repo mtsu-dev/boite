@@ -1,7 +1,7 @@
 import type { ThreadId, Timestamp } from './ids';
 
 /**
- * The council (`docs/council.md`), after Theo Browne's council skill
+ * The council (`docs/internals/council.md`), after Theo Browne's council skill
  * (t3dotgg/tstack, MIT): delegated agents of different providers each answer
  * one request alone and read-only, with a score out of 10. They never read each
  * other: the thread that started it summarizes, corrects and asks a fresh review,

@@ -17,7 +17,7 @@
   import InfoTip from '../InfoTip.svelte';
 
   /**
-   * A team written by hand (`docs/teams.md`, In the app): its name, its brief
+   * A team written by hand (`docs/internals/teams.md`, In the app): its name, its brief
    * and its members, picked among the bots of the page's machine and of the
    * other machines of its group, each of those with its machine's name. A bot
    * of a machine outside the group, and a bot on its way to another machine,

@@ -6,7 +6,7 @@
   import type { Store } from '../lib/store.svelte';
 
   /**
-   * Apps no agent captures, even with the owner's permission (docs/windows.md):
+   * Apps no agent captures, even with the owner's permission (docs/internals/windows.md):
    * the built-in password managers and sign-in screen, then the owner's own
    * list (`windowCaptureExclusions`), saved as soon as it changes.
    */

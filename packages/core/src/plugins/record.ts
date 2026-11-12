@@ -35,7 +35,7 @@ export function verifyPluginDownload(bytes: Uint8Array, digest: string, name = '
   }
 }
 
-/** One `list -<pool> -Json` answer, the account pool contract docs/plugins.md describes. */
+/** One `list -<pool> -Json` answer, the account pool contract docs/internals/plugins.md describes. */
 export function parsePluginPool(provider: string, text: string, name = 'plugin'): PluginPool {
   let raw: { accounts?: unknown };
   try { raw = JSON.parse(text) as { accounts?: unknown }; }

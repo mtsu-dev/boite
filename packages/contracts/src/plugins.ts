@@ -4,7 +4,7 @@ import type { RpcEventName, RpcMethodName } from './index';
 
 // ---------------------------------------------------------------------------
 // Plugins: one manifest format, `boite-plugin.json`. The recommended ones ship
-// inside the core; the owner adds others from a git URL. docs/plugins.md.
+// inside the core; the owner adds others from a git URL. docs/internals/plugins.md.
 // ---------------------------------------------------------------------------
 
 /** The file a plugin repository carries at its root. */
@@ -31,7 +31,7 @@ export type PluginRuntime = 'native' | 'bun';
 // ---------------------------------------------------------------------------
 // Permissions. A schema 2 plugin's processes get a token of their own that
 // reaches only what the owner granted of what its manifest asks for
-// (docs/plugins.md, Permissions). A schema 1 desktop app keeps the owner token
+// (docs/internals/plugins.md, Permissions). A schema 1 desktop app keeps the owner token
 // it always had.
 //
 // Every method and event a paired device reaches (`DEVICE_METHODS` and
@@ -584,7 +584,7 @@ export interface PluginState {
   /**
    * What the owner granted of `permissions`: all the plugin's token reaches.
    * Absent with `permissions`. A permission the plugin asks for and the owner
-   * left out is refused by name (docs/plugins.md, Permissions).
+   * left out is refused by name (docs/internals/plugins.md, Permissions).
    */
   granted?: PluginPermission[];
   /** What the version an install or an update brings asks for; the consent dialog lists it. Absent when that version is schema 1. */
@@ -628,7 +628,7 @@ export interface PluginCommandResult {
 
 /**
  * A recommended plugin's update source and its last check. The source is the
- * reviewed list's, never the plugin's own: docs/plugins.md, Updating.
+ * reviewed list's, never the plugin's own: docs/internals/plugins.md, Updating.
  */
 export interface PluginUpdates {
   /** The https repository and the ref whose `boite-plugin.json` is read. */

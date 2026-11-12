@@ -538,7 +538,7 @@ In the recorded Windows build, `bun build --compile` wrote an 86 MB executable w
 first line of script, 5 ms of it inside the process, and a compiled hello-world
 costs the same. The Bun runtime carries its publisher's signature and skips
 that. So the Windows installer ships the runtime as `boite-core.exe` with the
-bundled core in `core/` beside it ([release layout](../../docs/releasing.md)). Renaming the
+bundled core in `core/` beside it ([release layout](../../docs/internals/releasing.md)). Renaming the
 runtime changes nothing: the signature is in the file.
 
 Core alone, spawn to `/health`, medians of 7, 2026-09-19. The parent is a

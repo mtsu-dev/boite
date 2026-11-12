@@ -4,7 +4,7 @@
  * stopped a few seconds after the last viewer goes. The core pushes the
  * vendored server with adb, starts it with app_process and accepts its video
  * and control sockets through `adb reverse`. control.ts loads this module on
- * the first stream. See docs/devices.md, "Live stream".
+ * the first stream. See docs/internals/devices.md, "Live stream".
  */
 /// <reference path="../text.d.ts" />
 import type { LogData, MobileDeviceInput, MobileDeviceStream, MobileDeviceStreamChunk } from '@boite/contracts';

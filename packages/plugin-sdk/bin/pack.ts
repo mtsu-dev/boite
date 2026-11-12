@@ -3,7 +3,7 @@
  * Packs a `bun` runtime plugin: bundles its entry into the one JavaScript file
  * the manifest's `executable` names, writes that file's SHA-256 into
  * `artifacts.any`, and copies each `skills/<name>.md` into the body of the
- * skill of that name. docs/plugins.md, Pack and publish.
+ * skill of that name. docs/internals/plugins.md, Pack and publish.
  *
  *   bun packages/plugin-sdk/bin/pack.ts --entry src/main.ts [--dir .] [--url https://...]
  */

@@ -47,7 +47,7 @@
     if (!team) return [];
     const guest = !store.owner;
     const off = (item: MenuItem): MenuItem => guest ? { ...item, disabled: true, title: labels.onComputer } : item;
-    // An archived team still takes out a member whose bot is gone; restoring it no longer waits for that (`docs/teams.md`).
+    // An archived team still takes out a member whose bot is gone; restoring it no longer waits for that (`docs/internals/teams.md`).
     if (team.archived) return [
       off({ id: 'edit', label: labels.edit, glyph: PenLine, ...(guest ? { hint: labels.onComputer } : {}) }),
       off({ id: 'restore', label: labels.restore, glyph: ArchiveRestore }),

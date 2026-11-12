@@ -17,7 +17,7 @@
   import SurfaceHead from '../SurfaceHead.svelte';
 
   /**
-   * A council's salon (`docs/council.md`): who reviews; the answers round by
+   * A council's salon (`docs/internals/council.md`): who reviews; the answers round by
    * round, each with its score, then the table of scores; the owner's controls
    * and composer under them. It reads the council with `council.get` and again
    * on each change, so the answers arrive as the members give them. `@` names

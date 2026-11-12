@@ -14,7 +14,7 @@
  * An installed plugin is `<dataDir>/plugins/<id>/`: the executable and
  * `installed.json`, which records the manifest it came from, the commit a URL
  * resolved to and when. That directory is all an install writes, so uninstall
- * deletes it and nothing else. docs/plugins.md is the authoring guide.
+ * deletes it and nothing else. docs/internals/plugins.md is the authoring guide.
  *
  * A recommended entry may name an update source; plugins/updates.ts reads it
  * and the newest of the pinned entry, the release found there and the install
@@ -741,7 +741,7 @@ export class PluginStore {
     return this.#lanes.shared(id, () => { this.#usable(id); return this.#runs.command(id, binary, [name, ...args], cwd, this.#env(id, installed.manifest, threadId) ?? {}); });
   }
 
-  /** A schema 2 plugin's environment (docs/plugins.md, "Environment"); a schema 1 pool inherits the core's. */
+  /** A schema 2 plugin's environment (docs/internals/plugins.md, "Environment"); a schema 1 pool inherits the core's. */
   #env(id: string, manifest: PluginManifest, callerThreadId: string | null = null): Record<string, string | undefined> | undefined {
     if (manifest.schema === 1) return undefined;
     const { token, dataDir } = this.#access(id, manifest);

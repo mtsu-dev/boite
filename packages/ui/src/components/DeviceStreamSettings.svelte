@@ -5,7 +5,7 @@
 
   /**
    * The `deviceStream` setting: the Device panel plays a plugged-in Android
-   * phone through scrcpy instead of screenshots (`docs/devices.md`, "Live stream").
+   * phone through scrcpy instead of screenshots (`docs/internals/devices.md`, "Live stream").
    * It stays on its machine: the group's settings do not carry it.
    */
   let { store }: { store: Store } = $props();

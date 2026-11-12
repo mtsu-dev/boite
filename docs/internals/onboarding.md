@@ -74,7 +74,7 @@ width and 80% in height, kept between 1200 x 720 and 1600 x 1000 and centred
 floor the window takes 92% of the work area. The 720 floor holds the panel, the
 scrim's margins and the 44 px title bar.
 
-The scrim uses a flat tint. [Frame measurements](../bench/results/2026-09-30-ui-frames.md)
+The scrim uses a flat tint. [Frame measurements](../../bench/results/2026-09-30-ui-frames.md)
 record the cost of window-wide blur in the animated scenes.
 
 Escape leaves, the cross leaves, Tab stays inside. The dots at the bottom walk

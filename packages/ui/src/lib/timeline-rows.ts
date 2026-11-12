@@ -10,7 +10,7 @@ import { failedRun } from './failed-attempts';
  * was near the viewport, tens of thousands of pixels of it, and each scroll
  * across its edge built or tore down every part at once. Such a message is
  * cut into rows of about `ROW_PARTS` parts, each one measured and windowed
- * like a message of its own (docs/performance.md, "A long turn is many rows").
+ * like a message of its own (docs/internals/performance.md, "A long turn is many rows").
  *
  * A cut falls only in front of a paragraph the page draws. An activity run
  * never spans it, so the rows draw exactly what the whole message drew, and

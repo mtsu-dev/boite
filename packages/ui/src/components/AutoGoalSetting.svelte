@@ -8,7 +8,7 @@
 
   /**
    * The `autoGoalMinChars` setting under the Automatic goals switch: how long
-   * a prompt must be before it starts a reviewed goal (`docs/goals.md`).
+   * a prompt must be before it starts a reviewed goal (`docs/internals/goals.md`).
    */
   let { store }: { store: Store } = $props();
   const uid = $props.id();

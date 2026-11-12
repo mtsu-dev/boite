@@ -69,10 +69,10 @@
 
   /** The agent thread on screen: an ordinary thread left open from the chat is not drawn here. */
   const thread = $derived(store.openThread?.agentSessionId ? store.openThread : null);
-  /** A team's chat on screen, while Teams is on (`docs/teams.md`): the rail lists the teams above the bots. */
+  /** A team's chat on screen, while Teams is on (`docs/internals/teams.md`): the rail lists the teams above the bots. */
   const teamThread = $derived(!thread && store.openThread?.teamId && experimentOn('teams') ? store.openThread : null);
   const team = $derived(teamThread ? teamsOf(store).ofThread(teamThread.id) : null);
-  /** The dialog that creates a team by hand is open (`docs/teams.md`, In the app). */
+  /** The dialog that creates a team by hand is open (`docs/internals/teams.md`, In the app). */
   let creatingTeam = $state(false);
   const directory = $derived(agentDirectory(store));
   const threadId = $derived(thread?.id ?? teamThread?.id ?? null);

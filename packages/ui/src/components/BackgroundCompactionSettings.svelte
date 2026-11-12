@@ -8,7 +8,7 @@
   /**
    * The `backgroundCompaction` setting: near the automatic compaction's token
    * limit, a copy of the session compacts while the thread goes on, and the
-   * thread takes it at the next pause (`docs/context.md`, "Background compaction").
+   * thread takes it at the next pause (`docs/internals/context.md`, "Background compaction").
    * Common background compaction stays local; per-type policies follow the
    * group's compaction defaults when the machine inherits its settings.
    */

@@ -2,7 +2,7 @@
  * The prompt cache timer, behind the `prompt-cache` experiment. The core
  * stamps `ThreadSummary.promptCache` at the end of every turn whose provider
  * lifetime is known; this module turns it and the clock into what the header
- * shows. `docs/prompt-cache.md` has the lifetimes and their sources.
+ * shows. `docs/internals/prompt-cache.md` has the lifetimes and their sources.
  */
 
 import type { PromptCache, ThreadSummary } from '@boite/contracts';

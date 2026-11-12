@@ -1,5 +1,5 @@
 /**
- * What a team letter reads and what its turn answers (`docs/teams.md`). Every
+ * What a team letter reads and what its turn answers (`docs/internals/teams.md`). Every
  * delivery path of `Coordination` asks these, inside its own transaction: the
  * snapshot of posts a letter freezes, released when it never arrives, and the
  * final answer posted where the letter's envelope says.

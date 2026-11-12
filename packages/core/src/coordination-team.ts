@@ -1,5 +1,5 @@
 /**
- * Team letters on the coordination transport (`docs/teams.md`): a bot's
+ * Team letters on the coordination transport (`docs/internals/teams.md`): a bot's
  * inbox letter that carries the seqs of team posts, joined while it waits,
  * rendered from the posts at delivery and left alone by the bot's own
  * coordination switch. `Coordination` owns the transport; this owns what

@@ -37,7 +37,7 @@
     const linked = entry.view.state?.contacts.find(candidate => candidate.coreId === contact.coreId);
     return linked ? [{ ...entry, contact: linked }] : [];
   }));
-  /** A machine of a linked machine's group: the linked one answers the contact for its projects (`docs/contacts.md`). */
+  /** A machine of a linked machine's group: the linked one answers the contact for its projects (`docs/internals/contacts.md`). */
   function linkFor(machine: Machine): (typeof links)[number] | undefined {
     const direct = links.find(entry => entry.machine.store === machine.store);
     if (direct) return direct;

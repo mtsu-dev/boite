@@ -22,7 +22,7 @@ export class LinuxExecutionBoundary implements NativeExecutionBoundary {
       throw new Error('execution.credentialPaths: credential files cannot overlap the public system toolchain; use an isolated toolchain');
     }
     const candidate = this.executable();
-    if (!candidate) throw new Error('execution.linux.bwrap: bubblewrap >= 0.13.1 is required; install the userspace helper described in docs/contacts.md');
+    if (!candidate) throw new Error('execution.linux.bwrap: bubblewrap >= 0.13.1 is required; install the userspace helper described in docs/internals/contacts.md');
     const bwrap = realpathSync(candidate), binary = lstatSync(bwrap);
     if (!isAbsolute(bwrap) || !binary.isFile() || !(binary.mode & 0o111) || binary.mode & 0o6000) throw new Error('execution.linux.bwrap: expected an executable without setuid/setgid permissions');
     const identity = executionFileIdentity(bwrap);

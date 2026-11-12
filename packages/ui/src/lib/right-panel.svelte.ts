@@ -23,7 +23,7 @@ import { FileDocuments, type FileDocument, type FileSaved, type FileWrite } from
  * on the machine that runs it, from any client. `desk` is a persistent
  * agent's desk, beside its own thread: what it does now, its work, routines,
  * memory and day. `council` is the salon of a council the thread started
- * (`docs/council.md`), opened from its card. `plugin` is a tab a plugin's
+ * (`docs/internals/council.md`), opened from its card. `plugin` is a tab a plugin's
  * interface script draws (`lib/plugin-ui.svelte.ts`), one per plugin tab.
  */
 export type SurfaceKind = 'desk' | 'agents' | 'messages' | 'trace' | 'browser' | 'agent-browser' | 'changes' | 'files' | 'file' | 'tasks' | 'device' | 'window' | 'council' | 'plugin';

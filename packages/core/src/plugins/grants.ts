@@ -1,6 +1,6 @@
 /*
  * What the owner granted each schema 2 plugin of the permissions its manifest
- * asks for (docs/plugins.md, Permissions). Kept apart from the manifest, in
+ * asks for (docs/internals/plugins.md, Permissions). Kept apart from the manifest, in
  * the journal's settings, so an update that asks for more brings nothing
  * the owner did not tick. The plugin's token reaches the granted permissions
  * the installed manifest still asks for, nothing else (`tokens.ts`).

@@ -1,7 +1,7 @@
 /*
  * A tab nobody drives or watches sleeps: its page is frozen, so its timers,
  * animation frames and tasks stop and its renderer costs nothing. It wakes
- * before anything reads or drives it. See docs/browser.md.
+ * before anything reads or drives it. See docs/internals/browser.md.
  */
 
 /**

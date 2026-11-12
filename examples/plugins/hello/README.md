@@ -41,4 +41,4 @@ points and push the folder to a public git repository. Share its link or
 `boite plugin add <link> --why <reason>`. The URL in this manifest is a
 placeholder.
 
-The plugin format and the SDK: [docs/plugins.md](../../../docs/plugins.md).
+The plugin format and the SDK: [docs/internals/plugins.md](../../../docs/internals/plugins.md).

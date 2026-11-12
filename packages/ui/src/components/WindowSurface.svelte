@@ -11,7 +11,7 @@
   import SurfaceHead from './SurfaceHead.svelte';
   /**
    * The desktop window an agent opened in this conversation with
-   * `boite window watch` (docs/windows.md), read-only. Like the Device panel,
+   * `boite window watch` (docs/internals/windows.md), read-only. Like the Device panel,
    * nothing is captured until the user shows it: a card covers the view and
    * names the machine. Shown, it polls JPEG frames a few times a second, passing
    * the last frame's id so a still window answers `unchanged` without a picture.

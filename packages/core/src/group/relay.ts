@@ -27,7 +27,7 @@
  *
  * What this machine sees: everything the client says to the other member and
  * hears back, its key for that member included. A member of a group already
- * has full control of every other (docs/groups.md), so this gives it nothing
+ * has full control of every other (docs/internals/groups.md), so this gives it nothing
  * it did not have. The hop between the two members carries client traffic,
  * so it is held to the client's rule: the other member's HTTPS address when
  * it has one, otherwise one written as numbers, never a name over plain HTTP.

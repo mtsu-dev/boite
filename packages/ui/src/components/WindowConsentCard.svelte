@@ -9,7 +9,7 @@
   import DecisionActions from './DecisionActions.svelte';
 
   /**
-   * An agent asked to capture an app its project does not allow (docs/windows.md):
+   * An agent asked to capture an app its project does not allow (docs/internals/windows.md):
    * Allow once, Always for this project or Refuse, from any of the owner's
    * devices. The core holds the capture until `expiresAt`; past it, or once
    * answered, the card shrinks to one quiet row like an answered question.

@@ -13,7 +13,7 @@
   import TeamComposer, { type TeamReply } from './TeamComposer.svelte';
 
   /**
-   * A team's chat (`docs/teams.md`): the members over the posts, each post
+   * A team's chat (`docs/internals/teams.md`): the members over the posts, each post
    * with its author, its time, whether it was private and to whom, the post it
    * answers and who it woke; the owner's composer under them. The posts are
    * the thread's messages, so they arrive live, page like a thread's, and the

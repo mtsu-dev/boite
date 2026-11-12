@@ -20,7 +20,7 @@ readable English `message`, optional thread, turn and request ids, the
 thread's agent (`providerId`, `model`, `parentThreadId`), `durationMs`, and
 `data`, at most 16 scalar values. Credentials and sensitive fields are removed
 before a record is written. The shared helpers are in
-[`packages/contracts/src/diagnostics.ts`](../packages/contracts/src/diagnostics.ts).
+[`packages/contracts/src/diagnostics.ts`](../../packages/contracts/src/diagnostics.ts).
 
 ## Anonymization
 
@@ -34,7 +34,7 @@ so one conversation can be followed through the whole timeline.
 ## Settings > Diagnostics
 
 The page is for the owner, on the desktop and on a phone connected as owner
-([`DiagnosticsPage.svelte`](../packages/ui/src/components/DiagnosticsPage.svelte)).
+([`DiagnosticsPage.svelte`](../../packages/ui/src/components/DiagnosticsPage.svelte)).
 
 - Status: Boite's version and channel, the system, how long the core has run,
   the records of the last 24 hours by level, and the log files with their
@@ -70,7 +70,7 @@ The page is for the owner, on the desktop and on a phone connected as owner
 ## What a client reports
 
 Each window reports to every machine it is connected to
-([`diagnostics-report.ts`](../packages/ui/src/lib/diagnostics-report.ts)),
+([`diagnostics-report.ts`](../../packages/ui/src/lib/diagnostics-report.ts)),
 through `diagnostics.report`, which the owner and paired devices may call:
 
 - a call the core answered with an internal error, or that got no answer

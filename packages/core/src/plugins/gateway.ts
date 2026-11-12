@@ -4,7 +4,7 @@
  * a loopback port, starts it with `--config <file>`, waits for `/health`, and
  * starts it again after a crash with the desktop apps' backoff. Its data lives
  * outside the plugin directory, so an uninstall keeps its sign-ins.
- * docs/plugins.md, Gateways, describes the contract.
+ * docs/internals/plugins.md, Gateways, describes the contract.
  *
  * Whether the owner wants it running is `enabled`, and whether it starts with
  * the core is `autostart`, both kept in `gateway.json` beside `installed.json`,
