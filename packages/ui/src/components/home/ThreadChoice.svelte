@@ -29,7 +29,7 @@
   const groups = $derived.by<ProjectGroup[]>(() => {
     const rows = store.threads
       .filter(thread => !thread.archived && !thread.incognito && !thread.parentThreadId && !thread.teamId && !thread.councilId && thread.id !== skip)
-      .toSorted((a, b) => b.updatedAt - a.updatedAt)
+      .sort((a, b) => b.updatedAt - a.updatedAt)
       .map(thread => {
         const project = store.projects.find(entry => entry.id === thread.projectId) ?? null;
         const place = project ? projectName(project) : '';
