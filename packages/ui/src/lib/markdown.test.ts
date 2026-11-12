@@ -7,6 +7,8 @@ describe('renderMarkdown', () => {
     expect(html).toBe('<p>Claude uses <strong>its own directory: <a href="https://example.test/directory" target="_blank" rel="noopener noreferrer">Anthropic Directory</a></strong>.</p>');
     for (const rich of [false, true]) {
       expect(renderMarkdown('[**bold** and *italic*](https://example.test/a_(b) "Docs")', rich)).toBe('<p><a href="https://example.test/a_(b)" target="_blank" rel="noopener noreferrer" title="Docs"><strong>bold</strong> and <em>italic</em></a></p>');
+      // `$` patterns in a title are text: one would paste the tag, quotes and all, into the attribute.
+      expect(renderMarkdown('[x](https://example.test/a "$` $& $\'")', rich)).toBe('<p><a href="https://example.test/a" target="_blank" rel="noopener noreferrer" title="$` $&amp; $\'">x</a></p>');
     }
     expect(renderMarkdown('**Read [source](src/main.ts:4) and `docs/a.md`**', true)).toBe('<p><strong>Read <a href="#file" data-file-path="src/main.ts" data-file-line="4">source</a> and <code><a href="#file" data-file-path="docs/a.md">docs/a.md</a></code></strong></p>');
   });
