@@ -46,7 +46,8 @@
   }
 
   function onkeydown(event: KeyboardEvent) {
-    if (!tagEditor.current) return;
+    // Escape during an IME composition cancels the composition, not the dialog.
+    if (!tagEditor.current || event.isComposing) return;
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();

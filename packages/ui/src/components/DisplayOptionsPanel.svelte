@@ -121,7 +121,7 @@
     {@render option('working', strings.sidebar.groupWorkingRow, recentPreferences.groupWorking, LoaderCircle, strings.settings.groupWorkingThreadsHint,
       () => recentPreferences.setGroupWorking(!recentPreferences.groupWorking))}
     {#if projects}
-      {@render option('other', strings.sidebar.groupIdleRow, recentPreferences.groupOtherProjects && !projectView.byTag, Folders, strings.settings.groupOtherProjectsHint,
+      {@render option('other', strings.sidebar.groupIdleRow, recentPreferences.groupOtherProjects, Folders, strings.settings.groupOtherProjectsHint,
         () => { if (!projectView.byTag) recentPreferences.setGroupOtherProjects(!recentPreferences.groupOtherProjects); }, projectView.byTag)}
       {@render option('by-tag', strings.sidebar.tags.groupRow, projectView.byTag, Tag, strings.sidebar.tags.groupHint,
         () => projectView.setByTag(!projectView.byTag))}

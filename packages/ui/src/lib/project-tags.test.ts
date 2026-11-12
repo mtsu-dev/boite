@@ -22,3 +22,20 @@ test('tag sections sort by name, merge spellings across machines, list a project
   expect(new Set(keys).size).toBe(keys.length);
   expect(tagGroups([entry('pc', 'a', ['x'])]).map(group => group.key)).toEqual(['x']);
 });
+
+test('a full tag list saves with a held tag still typed, and refuses a new one', async () => {
+  const { tagEditor } = await import('./tag-editor.svelte');
+  const { PROJECT_TAGS_MAX } = await import('@boite/contracts');
+  const full = Array.from({ length: PROJECT_TAGS_MAX }, (_, index) => `t${index}`);
+  const saved = tagEditor.edit({ project: 'p', tags: full, known: [] });
+  tagEditor.typed = 'T0';
+  tagEditor.save();
+  expect(await saved).toEqual(full);
+
+  const refused = tagEditor.edit({ project: 'p', tags: full, known: [] });
+  tagEditor.typed = 'new';
+  tagEditor.save();
+  expect(tagEditor.current).not.toBeNull();
+  tagEditor.cancel();
+  expect(await refused).toBeNull();
+});

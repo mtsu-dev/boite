@@ -60,7 +60,10 @@ class TagEditor {
   /** Saves the list, with a tag still typed in the field added first. */
   save(): void {
     if (this.typed.trim()) {
-      if (this.tooLong || this.full) return;
+      if (this.tooLong) return;
+      // A full list still saves when what is typed is a tag it holds: adding it changes nothing.
+      const held = new Set(this.tags.map(projectTagKey));
+      if (this.full && !held.has(projectTagKey(this.typed.trim()))) return;
       this.add();
     }
     this.#settle([...this.tags]);

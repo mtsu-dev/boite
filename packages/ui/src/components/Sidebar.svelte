@@ -86,7 +86,8 @@
     previousLeaders = now.map(next => next && { key: next.key, activity: next.activity });
     // Follow a new prompt in the selected project; removing rows keeps the reading position. Leading the list, it brings
     // the list to its top; leading the open cards under a Working section, its card comes into view, wherever that is.
-    if (promoted && workspace.view === 'projects' && projectView.order === 'recent'
+    // Grouped by tag, the drawn order is the sections', not this list's: no card leads it, so nothing is followed.
+    if (promoted && workspace.view === 'projects' && projectView.order === 'recent' && !projectView.byTag
       && untrack(() => promoted.entry.machine.store === workspace.active && promoted.entry.project.id === store.openProject?.id)) {
       const first = now[0]?.key === promoted.key;
       if (first) savedScroll = 0;

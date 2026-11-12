@@ -27,6 +27,10 @@ test('the project menu button edits tags with known tags offered, and grouping b
   expect(known()).toEqual(['Docs', 'work']);
   const input = query<HTMLInputElement>('[data-testid=tag-dialog-input]');
   await type(input, '  Client  ');
+  // Escape that ends an IME composition leaves the dialog open with what it holds.
+  input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', isComposing: true, bubbles: true }));
+  flushSync();
+  expect(document.querySelector('[data-testid=tag-dialog]')).not.toBeNull();
   input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
   flushSync();
   // A known tag picked in another case is the same tag: it is offered once, and taken as offered.
