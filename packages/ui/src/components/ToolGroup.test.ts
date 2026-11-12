@@ -131,3 +131,21 @@ test.each([false, true])('a real Store disclosure releases after closing and reo
     expect(part.outputDeferred).toBe(true);
   } finally { if (component) { await unmount(component); component = null; } client.close(); store.detach(); }
 });
+
+test('a live thought whose machine goes away freezes the run clock at the last word heard, as a running call does', () => {
+  // Out of reach since 9 s into the run: the clock holds there instead of falling back to the last finished call.
+  const store = { connection: 'closed', booted: true, openThread: { updatedAt: 9_000, progress: null } } as unknown as Store;
+  const elapsed = () => document.querySelector('[data-testid=tool-group-elapsed]')?.textContent ?? '';
+  const thought = { type: 'thinking', text: 'Weighing the options', startedAt: 3_000, finishedAt: null } as const;
+  const call: ToolPart = { type: 'tool', toolId: 'c', name: 'Bash', input: { command: 'ls' }, output: '', status: 'done', exitCode: 0, startedAt: 1_000, finishedAt: 3_000 };
+  // Thinking after a call: 8 s, not the call's 2 s.
+  component = mount(ToolGroup, { target: document.body, props: { parts: [call, thought], thinkingLive: true, isBackground: () => false, store } });
+  flushSync();
+  const afterCall = elapsed();
+  unmount(component, { outro: false });
+  // Thoughts alone, none stamped finished: 6 s, not nothing.
+  const next = { type: 'thinking', text: 'Then the tests', startedAt: 4_000, finishedAt: null } as const;
+  component = mount(ToolGroup, { target: document.body, props: { parts: [thought, next], thinkingLive: true, isBackground: () => false, store } });
+  flushSync();
+  expect([afterCall, elapsed()]).toEqual(['8s', '6s']);
+});

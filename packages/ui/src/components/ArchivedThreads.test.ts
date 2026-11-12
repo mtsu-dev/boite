@@ -1,4 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest';
+import archivedSource from './ArchivedThreads.svelte?raw';
 import { flushSync, mount, tick, unmount } from 'svelte';
 import type { ThreadSummary } from '@boite/contracts';
 import ArchivedThreads from './ArchivedThreads.svelte';
@@ -232,6 +233,17 @@ test('an archived row restores as its one action and keeps Delete behind its men
   await vi.waitFor(() => expect(row()).toBeNull());
 });
 
+test('a touch screen shows the row menu at any width, not only a phone\'s', () => {
+  const css = archivedSource.replace(/\/\*[\s\S]*?\*\//g, '');
+  // Hidden until the pointer comes at rest; a wide touch screen (a tablet) has no pointer, so its query shows it.
+  expect(css).toMatch(/li:not\(:hover, :focus-within\) \.actions :global\(\.trigger\) \{ opacity: 0; \}/);
+  const touch = css.match(/@media [^{]*\(hover: none\)[^{]*\{([\s\S]*?)\n  \}/)?.[1] ?? '';
+  expect(touch).toContain('.archived li:not(:hover, :focus-within) .actions :global(.trigger) { opacity: 1; }');
+  // Always shown, it leaves the time's place on the first line for the second line's end, as on a phone.
+  expect(touch).toContain('.actions { grid-row: 2;');
+  expect(touch).toMatch(/:focus-within\):not\(\.back\) \.at \{ visibility: visible; \}/);
+});
+
 test('opened from a project card, the archive shows that project alone until All projects', async () => {
   const { store } = await ready();
   await store.archive('t-descriptors');
@@ -247,6 +259,17 @@ test('opened from a project card, the archive shows that project alone until All
   await settle();
   expect(rows()).toEqual(['t-descriptors', 't-parser']);
   expect(document.querySelector('[data-testid=archived-focus]')).toBeNull();
+  // The focused project removed while the archive is open: the list falls back to every project, never an empty
+  // list with no All projects to leave it.
+  archivedFocus.store = store;
+  archivedFocus.projectId = focus;
+  await settle();
+  expect(rows()).toEqual(['t-descriptors']);
+  await store.removeProject(focus as never);
+  await settle();
+  expect(store.projects.some(p => p.id === focus)).toBe(false);
+  expect(document.querySelector('[data-testid=archived-focus]')).toBeNull();
+  expect(rows()).toContain('t-parser');
 });
 
 test('a thread a plugin marked done names the plugin and when', async () => {

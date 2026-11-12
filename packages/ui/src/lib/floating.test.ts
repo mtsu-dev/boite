@@ -55,4 +55,25 @@ describe('floating', () => {
     expect(releases[0]).toHaveBeenCalledTimes(1);
     expect(releases[1]).toHaveBeenCalledTimes(1);
   });
+
+  // A phone sheet docks its whole border box to the bottom edge: a box measured without its padding
+  // and hairline would stop that far short of it, and a fractional height must not be rounded.
+  it('docks a sheet by its full fractional height, padding and border included in either box model', () => {
+    vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
+    vi.stubGlobal('matchMedia', (query: string) => ({ matches: query.includes('max-width'), media: query, addEventListener() {}, removeEventListener() {} }));
+    vi.stubGlobal('innerHeight', 900);
+    vi.mocked(mobileOverlay).mockReset().mockReturnValue(() => {});
+    const anchor = document.createElement('button');
+    document.body.append(anchor);
+    const tops = (['border-box', 'content-box'] as const).map((sizing) => {
+      const node = document.createElement('div');
+      node.style.cssText = `box-sizing: ${sizing}; height: ${sizing === 'border-box' ? 403.5 : 371.5}px; padding: 15px 0; border-top: 1px solid; border-bottom: 1px solid`;
+      document.body.append(node);
+      const handle = floating(node, { anchor: () => anchor });
+      const top = node.style.top;
+      handle.destroy();
+      return top;
+    });
+    expect(tops).toEqual(['496.5px', '496.5px']);
+  });
 });

@@ -260,3 +260,33 @@ test('a row with its own rows opens them in place, its way back and a close both
   query<HTMLButtonElement>('[data-value=move]').click(); await settle();
   expect(picked).toEqual(['move']);
 });
+
+test('a menu closed from its rows\' rows leaves on them, and says it closed once it is gone, never on mount', async () => {
+  Element.prototype.getAnimations = () => [{} as Animation];
+  let closed = 0;
+  running = mount(Menu, {
+    target: document.body,
+    props: {
+      items: [{ id: 'rename', label: 'Rename' }, { id: 'more', label: 'Manage', submenu: true, items: [{ id: 'back', label: 'Back', back: true }, { id: 'move', label: 'Move' }] }],
+      onpick: () => {},
+      onclose: () => { closed += 1; },
+      label: 'Thread actions',
+      testid: 'mode',
+      children: createRawSnippet(() => ({ render: () => '<span>Menu</span>' }))
+    }
+  });
+  await settle();
+  // Never opened, so never closed.
+  expect(closed).toBe(0);
+  const ids = () => items().map(item => item.dataset['value']);
+  query<HTMLButtonElement>('[data-testid=mode]').click(); await settle();
+  query<HTMLButtonElement>('[data-value=more]').click(); await settle();
+  press('Escape'); await settle();
+  // The exit plays with the rows it closed on, not the first level swapped in under it.
+  expect(query<HTMLElement>('[data-testid=mode-menu]').classList.contains('closing')).toBe(true);
+  expect([ids(), closed]).toEqual([['back', 'move'], 0]);
+  query<HTMLElement>('[data-testid=mode-menu]').dispatchEvent(new Event('animationend')); await settle();
+  expect(closed).toBe(1);
+  query<HTMLButtonElement>('[data-testid=mode]').click(); await settle();
+  expect(ids()).toEqual(['rename', 'more']);
+});

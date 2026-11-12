@@ -20,9 +20,10 @@
   let everything = $state(false);
   let grid = $state<HTMLElement>();
 
-  /** The rest opens where "All themes" stood, the first of them in focus. */
+  /** The rest opens where "All themes" stood, the first of them in focus: the grid then follows the list's order,
+      so it is the first palette the front left out, wherever the one in use sat. */
   async function openAll() {
-    const at = front.length;
+    const at = Math.max(0, choices.findIndex((choice) => !front.some((shown) => shown.id === choice.id)));
     everything = true;
     await tick();
     grid?.querySelectorAll<HTMLElement>('.palette')[at]?.focus();

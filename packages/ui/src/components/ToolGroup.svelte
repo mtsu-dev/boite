@@ -108,7 +108,7 @@
   let took = $derived.by(() => {
     const span = runSpan(parts);
     if (!span) return '';
-    const ms = (live ? secondClock.now : running && away ? lastHeard(store?.openThread) ?? span.end : span.end) - span.start;
+    const ms = (live ? secondClock.now : (running || thinking) && away ? lastHeard(store?.openThread) ?? span.end : span.end) - span.start;
     return live || ms >= 1000 ? elapsed(ms) : '';
   });
 

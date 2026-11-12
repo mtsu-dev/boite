@@ -7,6 +7,9 @@ import type { Store } from '../lib/store.svelte';
 import { chatPrefs, readChatPrefs } from '../lib/chat-prefs.svelte';
 import { phoneWidth } from '../test/phone-width';
 import { setLocaleSetting } from '../lib/i18n.svelte';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { presetPalette, setPalette } from '../lib/theme-colors';
 
 let running: Record<string, unknown> | null = null;
 
@@ -92,6 +95,25 @@ for (const phone of [false, true]) {
     } finally { restore(); }
   });
 }
+
+test('with the palette in use past the first row, "All themes" focuses the first palette it revealed', async () => {
+  // The real palette tokens, which jsdom cannot load from app.css, so each preset is its own colors.
+  for (const match of readFileSync(resolve('src/app.css'), 'utf8').matchAll(/(--palette-[\w-]+):\s*(#[0-9a-f]{6});/gi)) {
+    document.documentElement.style.setProperty(match[1]!, match[2]!.replace(/^#(.)\1(.)\2(.)\3$/i, '#$1$2$3'));
+  }
+  try {
+    setPalette('dark', presetPalette('amethyst', 'dark'));
+    running = mount(AppearancePage, { target: document.body, props: { store: { owner: true } as Store } });
+    flushSync();
+    const shown = () => [...document.querySelectorAll('[data-testid=palette-current] [aria-pressed]')].map((tile) => tile.getAttribute('data-testid'));
+    expect(shown()).toEqual(['palette-default', 'palette-oled', 'palette-catppuccin', 'palette-amethyst']);
+    document.querySelector<HTMLButtonElement>('[data-testid=palette-all]')!.click();
+    flushSync();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // Tokyo Night was the first one hidden, though the grid now has Amethyst back in its place at the end.
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('palette-tokyo-night');
+  } finally { document.documentElement.removeAttribute('style'); }
+});
 
 for (const phone of [false, true]) {
   test(`a face reads the same on a ${phone ? 'phone' : 'desktop'}: the one in use as a row, its name drawn in it, the list each by its own face`, () => {

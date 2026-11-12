@@ -130,7 +130,11 @@
   }
 
   /** Opened from a project card's menu: that project's threads, until All projects or the archive closes. */
-  const focusId = $derived(archivedFocus.store === store ? archivedFocus.projectId : null);
+  const focusId = $derived.by(() => {
+    const id = archivedFocus.store === store ? archivedFocus.projectId : null;
+    // A project removed while the archive is open lets go of the focus: every project shows, not an empty list.
+    return id && store.projects.some(p => p.id === id) ? id : null;
+  });
   const focusName = $derived.by(() => {
     const project = focusId ? store.projects.find(p => p.id === focusId) : undefined;
     return project ? projectName(project) : '';
@@ -316,9 +320,9 @@
      row's Open stays. */
   .archived li:not(.back):not(:hover, :focus-within) .main,
   .archived li:not(:hover, :focus-within) .actions :global(.trigger) { opacity: 0; }
-  /* A phone has no pointer to wait for: a tap on the row restores, its menu (Restore, Delete) always shows. The
-     rows line up with the settings card's edge there. */
-  @media (max-width: 720px) {
+  /* A phone or a touch screen of any width has no pointer to wait for: a tap on the row restores, its menu
+     (Restore, Delete) always shows. */
+  @media (max-width: 720px), (hover: none) {
     .archived li:not(:hover, :focus-within) .actions :global(.trigger) { opacity: 1; }
     /* The menu always shows there, so it takes the second line's end and the time keeps the first's; its target
        overhangs the 18 px place line rather than growing it (44 less 2 x 13), so the rows keep the live list's
@@ -327,9 +331,12 @@
     /* The tap on the row restores there, so its unseen Restore word gives its width back to the title; its box
        still covers the row, since that box belongs to the row, not to the button. */
     .archived li:not(.back) .main { width: 0; min-width: 0; padding: 0; border: 0; margin: 0; overflow: hidden; }
+    .archived li:is(:hover, :focus-within):not(.back) .at { visibility: visible; }
+  }
+  /* The rows line up with the settings card's edge on a phone. */
+  @media (max-width: 720px) {
     .archived li { padding-block: 10px; row-gap: 4px; }
     .title { font-size: var(--text-reading); line-height: 22px; }
-    .archived li:is(:hover, :focus-within):not(.back) .at { visibility: visible; }
     .archived li { padding-inline: 0; }
     /* Brought into view (Settings opened at the archive), the phone page's machine bar above stays whole rather than
        cut. An id: the settings cards' own margin (app.css) is more specific than a class. */

@@ -1,5 +1,6 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
+import { ContactsView } from '../../lib/contacts.svelte';
 import { setExperiment } from '../../lib/experiments';
 import { FakeClient } from '../../lib/fake-client';
 import { Store, store as primary } from '../../lib/store.svelte';
@@ -102,8 +103,18 @@ test('one request sent twice reads as one request: "Chris asks for a project", "
   const accept = one<HTMLButtonElement>('activity-accept-creq-pending')!;
   expect([one('activity-refuse-creq-pending')!.textContent, accept.textContent]).toEqual(['Refuse', 'Accept']);
   // Accept answers every copy: no row is left waiting on the other machine.
+  const decide = ContactsView.prototype.decide;
+  const calls: [string | null, string, boolean][] = [];
+  vi.spyOn(ContactsView.prototype, 'decide').mockImplementation(function (this: ContactsView, id, decision) {
+    calls.push([this.store.machineId, id, decision.accept]);
+    return decide.call(this, id, decision);
+  });
   accept.click();
   await vi.waitFor(() => { flushSync(); expect(one('activity-contact')).toBeNull(); });
+  // The newest copy is accepted once, the other refused as a copy; the accepted one is never decided again.
+  expect(calls.length).toBe(2);
+  expect(calls[0]![2]).toBe(true);
+  expect([calls[1]![2], calls[1]![0] === calls[0]![0]]).toEqual([false, false]);
 });
 
 test('identical copies fold into one quiet line under the text, where and when each arrived, which opens on each copy', async () => {

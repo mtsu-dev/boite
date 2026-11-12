@@ -56,10 +56,19 @@
   /** The list opened as a phone sheet (lib/floating.ts marks it), which shows a title. */
   let sheet = $state(false);
 
+  /** The list was open since its last close: what puts the first level back waits for the exit to end. */
+  let wasOpen = false;
   /** The keyboard lands on the first item the moment the list is there. A phone
-      sheet holds the focus on itself instead: no row, Delete included, opens lit. */
+      sheet holds the focus on itself instead: no row, Delete included, opens lit.
+      The way out plays with the rows it closed on; only once gone does the list
+      go back to its first level and tell the caller. */
   $effect(() => {
-    if (!popover.open) { sheet = false; nested = null; onclose?.(); return; }
+    if (!popover.open) {
+      if (popover.shown || !wasOpen) return;
+      wasOpen = false; sheet = false; nested = null; onclose?.();
+      return;
+    }
+    wasOpen = true;
     void tick().then(() => {
       const list = root?.querySelector<HTMLElement>('[role=menu]');
       sheet = !!list?.dataset['mobileSheet'];

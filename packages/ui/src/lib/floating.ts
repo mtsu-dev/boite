@@ -7,7 +7,12 @@ import type { MenuFit } from './menu-fit';
  * a pixel short of the bottom edge and a menu opened upward half a pixel off its chip.
  */
 function usedHeight(node: HTMLElement): number {
-  return Number.parseFloat(getComputedStyle(node).height) || node.offsetHeight;
+  const style = getComputedStyle(node);
+  const height = Number.parseFloat(style.height);
+  if (!height) return node.offsetHeight;
+  if (style.boxSizing === 'border-box') return height;
+  const px = (name: string) => Number.parseFloat(style.getPropertyValue(name)) || 0;
+  return height + px('padding-top') + px('padding-bottom') + px('border-top-width') + px('border-bottom-width');
 }
 
 /** Position desktop popovers at their anchor and phone menus above the keyboard. */

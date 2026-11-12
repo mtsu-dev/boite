@@ -74,13 +74,13 @@
   async function accept(row: Row & { request: ContactRequest }, same: Row[], projectId: Project['id']) {
     acted = row.key;
     if (!await row.view.decide(row.request.id, { accept: true, projectId })) return;
-    for (const copy of same) if (copy !== row && copy.request) await copy.view.decide(copy.request.id, { accept: false, reason: labels.duplicate });
+    for (const copy of same) if (copy.key !== row.key && copy.request) await copy.view.decide(copy.request.id, { accept: false, reason: labels.duplicate });
   }
   /** A thread request the Contacts bot settles: the bot connects its newest ask, the copies before it are refused as copies. */
   async function approve(row: Row & { request: ContactRequest }, same: Row[]) {
     acted = row.key;
     if (!await row.view.decide(row.request.id, { accept: true })) return;
-    for (const copy of same) if (copy !== row && copy.request) await copy.view.decide(copy.request.id, { accept: false, reason: labels.duplicate });
+    for (const copy of same) if (copy.key !== row.key && copy.request) await copy.view.decide(copy.request.id, { accept: false, reason: labels.duplicate });
   }
 
   async function openRefusal(row: Row) {
