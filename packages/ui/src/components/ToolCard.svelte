@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
+  import { Closing } from '../lib/closing.svelte';
+  import type { ToolDisclosure } from '../lib/store/deferred-parts';
   import { errorText } from '../lib/errors';
   import { secondClock } from '../lib/clock.svelte';
   import { Bot, ChevronRight, FilePen, FileText, Globe, Search, ShieldCheck, ShieldX, SquareTerminal, Wrench, X } from '@lucide/svelte';
@@ -31,6 +34,7 @@
     inputDeferred = false,
     documentsDeferred = false,
     loadOutput,
+    acquireOutput,
     status,
     exitCode = null,
     documents = [],
@@ -54,6 +58,7 @@
     documentsDeferred?: boolean;
     /** Fetches what the page left on the core: output, input and documents. */
     loadOutput?: () => Promise<void>;
+    acquireOutput?: () => ToolDisclosure;
     status: ToolStatus;
     exitCode?: number | null;
     documents?: ToolDocument[];
@@ -64,7 +69,7 @@
     background?: boolean;
     /** Inside an expanded group, show the individual command rather than another summary. */
     nested?: boolean;
-    /** Its group is folded: the card stays built but nobody sees it. */
+    /** Its group is folded: keep the lightweight disclosure state. */
     folded?: boolean;
     /** What the user answered when the agent asked to make this call, null when it did not ask. */
     permission?: 'allow' | 'deny' | null;
@@ -154,30 +159,50 @@
   let watched = $derived(status === 'running' && !!store && !!threadId);
   let deferred = $derived((outputDeferred && !watched) || inputDeferred || documentsDeferred);
 
-  let inputJson = $derived(streaming ? '' : json(input));
+  // A cached derived string would keep a second full input after its <pre>
+  // unmounts. Clear the formatted copy along with the disclosure's body.
+  let inputJson = $state('');
   /**
    * A parsed input past six lines opens cut, with one ghost button under it. A
    * streaming one is never cut: the block cursor rides its last line.
    */
   let clamped = $derived(!streaming && !showAll && inputJson.split('\n').length > CLAMP_LINES);
 
-  // The body is built on the first open and folds from then on, so a timeline of
-  // closed cards costs nothing and an open one animates its height both ways.
-  let built = $state(false);
+  // Keep the body and its fetched data through the closing height transition.
+  const body = new Closing();
+  let bodyShown = $derived(body.shown);
+  $effect(() => { inputJson = bodyShown && !streaming ? json(input) : ''; });
   let attempted = false;
   let loading = $state(false);
   let loadError = $state<string | null>(null);
+  let disclosure: ToolDisclosure | undefined;
+  $effect(() => {
+    if (shown && !folded) body.show();
+    else body.hide();
+  });
+  $effect(() => {
+    if (!bodyShown) return;
+    // Hydration changes the message and its renderer callbacks. Only the
+    // disclosure lifetime owns this lease, not a reactive input replacement.
+    const held = untrack(() => acquireOutput?.());
+    if (!held) return;
+    disclosure = held;
+    let current = true;
+    void held.ready.catch(reason => { if (current) loadError = errorText(reason); });
+    return () => { current = false; disclosure = undefined; held.release(); };
+  });
   $effect(() => {
     if (!shown || folded || !watched || !store || !threadId) return;
     return store.watchLiveOutput(threadId);
   });
   $effect(() => {
     if (!deferred) attempted = false;
-    if (shown) built = true;
-    if (!shown || !deferred || !loadOutput || attempted) return;
+    if (!bodyShown || !shown || folded || !deferred || attempted) return;
+    const load = untrack(() => acquireOutput ? disclosure?.refresh : loadOutput);
+    if (!load) return;
     attempted = true;
     loading = true;
-    void loadOutput().catch(reason => { loadError = errorText(reason); }).finally(() => { loading = false; });
+    void load().catch(reason => { loadError = errorText(reason); }).finally(() => { loading = false; });
   });
 </script>
 
@@ -224,9 +249,9 @@
     <span class="fold-caret" class:open={shown} aria-hidden="true"><ChevronRight size={12} /></span>
   </button>
 
-  <div class="disclosure-fold" class:open={shown} inert={!shown}>
+  <div class="disclosure-fold" class:open={shown && !folded} inert={!shown || folded} use:body.attach ontransitionend={(event) => { if (event.propertyName === 'grid-template-rows' || !event.propertyName) body.end(event); }}>
     <div>
-      {#if built}
+      {#if bodyShown}
         <div class="body">
           {#if loading}<p data-testid="tool-output-loading">{strings.app.loading}</p>{/if}
           {#if loadError}<p class="error-preview" role="alert">{loadError}</p>{/if}

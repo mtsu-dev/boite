@@ -2,7 +2,7 @@
   import { tick } from 'svelte';
   import { ArrowDownLeft, ArrowUpRight, Check, ChevronDown, GitBranch, X } from '@lucide/svelte';
   import type { ContactRequest } from '@boite/contracts';
-  import type { ContactsView } from '../../lib/contacts.svelte';
+  import { settledByBot, type ContactsView } from '../../lib/contacts.svelte';
   import { ago, projectName } from '../../lib/format';
   import type { MenuItem } from '../../lib/menu';
   import { fill, strings } from '../../lib/strings';
@@ -11,7 +11,8 @@
   /**
    * One request between contacts, a row of a Requests card. Waiting on this
    * owner, it carries Accept, which shares a project picked in the app's menu,
-   * and Refuse, which asks for the reason the asking agent will read. Decided, it folds to one line with
+   * or, on a request for a thread the Contacts bot settles, lets the bot put the
+   * threads in touch (a trusted contact's needs no Accept), and Refuse, which asks for the reason the asking agent will read. Decided, it folds to one line with
    * what came of it and who decided.
    */
   let { view, request, now }: { view: ContactsView; request: ContactRequest; now: number } = $props();
@@ -20,6 +21,7 @@
   const pending = $derived(request.status === 'pending');
   const mine = $derived(request.direction === 'in');
   const busy = $derived(view.isBusy(`decide:${request.id}`));
+  const byBot = $derived(settledByBot(request));
   const items = $derived<MenuItem[]>(view.store.projects
     .filter(project => project.kind !== 'drafts' && !project.archived)
     .map(project => ({ id: project.id, label: projectName(project), projectTile: { project, store: view.store } })));
@@ -68,11 +70,15 @@
         </form>
       {:else}
         <div class="buttons">
-          <span class="accept">
-            <Menu {items} onpick={id => void view.decide(request.id, { accept: true, projectId: id })} label={labels.acceptLabel} placement="bottom" variant="chip" testid="contact-accept-{request.id}">
-              <Check size={14} strokeWidth={2.25} /><span class="ui-label">{labels.accept}</span><ChevronDown size={13} />
-            </Menu>
-          </span>
+          {#if !byBot}
+            <span class="accept">
+              <Menu {items} onpick={id => void view.decide(request.id, { accept: true, projectId: id })} label={labels.acceptLabel} placement="bottom" variant="chip" testid="contact-accept-{request.id}">
+                <Check size={14} strokeWidth={2.25} /><span class="ui-label">{labels.accept}</span><ChevronDown size={13} />
+              </Menu>
+            </span>
+          {:else if request.approved === false}
+            <button type="button" class="approve" disabled={busy} title={labels.approveTip} onclick={() => void view.decide(request.id, { accept: true })} data-testid="contact-approve-{request.id}"><Check size={14} strokeWidth={2.25} /><span class="ui-label">{labels.approve}</span></button>
+          {/if}
           <button type="button" class="ghost" disabled={busy} onclick={() => void openRefusal()} data-testid="contact-refuse-{request.id}"><X size={14} /><span class="ui-label">{labels.refuse}</span></button>
         </div>
       {/if}
@@ -109,8 +115,8 @@
   .remote span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .remote :global(svg) { flex: none; }
   .buttons { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 2px; }
-  .accept :global(.trigger) { height: var(--control); padding: 0 12px; border-color: var(--color-accent); background: var(--color-accent); color: var(--color-accent-ink); font-weight: 600; }
-  .accept :global(.trigger:hover) { background: var(--color-control-primary-hover); }
+  .accept :global(.trigger), .approve { height: var(--control); padding: 0 12px; border-color: var(--color-accent); background: var(--color-accent); color: var(--color-accent-ink); font-weight: 600; }
+  .accept :global(.trigger:hover), .approve:hover:not(:disabled) { background: var(--color-control-primary-hover); }
   .refusal { display: grid; gap: 8px; }
   .refusal input { width: 100%; min-width: 0; }
   .decided { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--radius-md); }

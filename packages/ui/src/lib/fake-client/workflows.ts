@@ -62,7 +62,7 @@ export interface WorkflowHost {
   there(root: Thread, profile: ChildRoute, step: WorkflowStepPlan, title: string, task: string): { machine: SettingMachine; childId: ThreadId; providerId: string; model: string | null; effort: string | null; worktree: DelegationWorktree | null };
   /** As `answer`, for the subagent on that machine; null while the page does not reach it. Answers the turn it ended. */
   answerThere(coreId: string, threadId: ThreadId, text: string, ok: boolean): string | null;
-  changed(rootId: ThreadId, runId: string): void;
+  changed(rootId: ThreadId, runId: string, templatesProjectId?: string | null): void;
   now(): number;
   delayMs(): number;
   principal(): Principal;
@@ -236,7 +236,7 @@ export class FakeWorkflows {
       const now = this.host.now();
       const template: WorkflowTemplate = { id: previous?.id ?? `wft_${++this.#seq}`, projectId: root.projectId, name, plan: { ...plan, name }, createdAt: previous?.createdAt ?? now, updatedAt: now };
       this.#templates.set(template.id, template);
-      this.host.changed(root.id, '');
+      this.host.changed(root.id, '', root.projectId);
       return structuredClone(template);
     },
     'workflows.templates.remove': ({ threadId, templateId }) => {
@@ -244,7 +244,7 @@ export class FakeWorkflows {
       const found = this.#templates.get(templateId);
       const removed = found !== undefined && found.projectId === root.projectId;
       if (removed) this.#templates.delete(templateId);
-      this.host.changed(root.id, '');
+      this.host.changed(root.id, '', root.projectId);
       return { removed };
     },
   };

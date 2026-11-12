@@ -28,6 +28,7 @@
   import { keepaliveRun } from '../lib/message-order';
   import { AgentsView, agentOfThread } from '../lib/agents.svelte';
   import { experimentOn } from '../lib/experiments.svelte';
+  import { textRevision } from '../lib/text-revisions';
 
   /**
    * An assistant or system message in the timeline: the model that wrote it,
@@ -129,6 +130,7 @@
       <div class="part" data-kind={activity.every((part) => part.type === 'thinking') ? 'thinking' : 'tool'}>
         <ToolGroup parts={activity} {compactions} {thinkingLive} {isBackground} {store} {threadId}
           loadOutput={toolId => store.loadToolOutput(threadId, message.id, toolId)}
+          acquireOutput={toolId => store.acquireToolOutput(threadId, message.id, toolId)}
           permissionRequest={requestId => store.permissionRequests[requestId] ?? null}
           answerPermission={(requestId, decision) => store.answer(requestId, decision)} />
       </div>
@@ -150,7 +152,7 @@
             <div class="system-copy"><Prose text={shownText} {store} {threadId} /></div>
           </div>
         {:else}
-        <Prose text={shownText} live={index === caretAt && part.complete !== true} bubble={message.role === 'assistant' && !narrated}
+        <Prose text={shownText} revision={textRevision(part)} live={index === caretAt && part.complete !== true} bubble={message.role === 'assistant' && !narrated}
           typing={!compacting && latestInTurn && !toolRunning && message.role === 'assistant' && store.connection === 'ready' && store.openThread?.status === 'running' && index === message.parts.length - 1 && index === caretAt && part.complete !== true} {store} {threadId}
           views={message.role === 'assistant' ? views : undefined} />
         {/if}

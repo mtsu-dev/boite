@@ -51,6 +51,8 @@ export const fr: Translation = {
       remote: 'Remote git',
       accept: 'Accepter',
       acceptLabel: 'Accepter : choisir le projet à partager',
+      approve: 'Confier à la Standardiste',
+      approveTip: 'La Standardiste met la conversation qui demande en relation avec une des vôtres. Aucun projet n\'est partagé.',
       refuse: 'Refuser',
       reason: 'Raison',
       reasonPlaceholder: 'Pourquoi, en une phrase que l\'agent lira',

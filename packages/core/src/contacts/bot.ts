@@ -25,6 +25,17 @@ export function contactsBot(core: Core): { agentId: string; threadId: string; na
   return agent === null || threadId === null ? null : { agentId: agent.id, threadId, name: agent.name };
 }
 
+/** The owner answered request `requestId` in the app: the bot's approval cards for it close unanswered. */
+export function withdrawOwnerCards(core: Core, requestId: string): void {
+  const cards = (core.journal.getSetting(CARDS) as Record<string, Card> | undefined) ?? {};
+  const bot = contactsBot(core);
+  for (const [questionId, card] of Object.entries(cards)) {
+    if (card.kind !== 'owner' || card.requestId !== requestId) continue;
+    // Its `question.answered` (no answer) drops the card and hands the request back to the bot.
+    if (bot !== null) core.threads.cards.withdrawQuestion(bot.threadId, questionId);
+  }
+}
+
 /** Wakes the bot with one event; nothing happens without a bot. `key` is unique per event. */
 export function tellBot(core: Core, key: string, body: string): boolean {
   const bot = contactsBot(core);

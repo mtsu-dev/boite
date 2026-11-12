@@ -248,6 +248,11 @@ export interface WorkflowsRpcMethods {
 }
 
 export interface WorkflowsRpcEvents {
-  /** Subscribed root threads only; clients refetch `workflows.list`. */
-  'workflows.changed': { threadId: ThreadId; runId: string };
+  /** Run changes target subscribed threads; template changes invalidate the project's library on every client. */
+  'workflows.changed': {
+    threadId: ThreadId;
+    runId: string;
+    /** Present only for a template save/remove. Null is the projectless library; absent on older cores. */
+    templatesProjectId?: ProjectId | null;
+  };
 }
