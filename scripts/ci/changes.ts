@@ -100,7 +100,7 @@ export const CORE_ALL: CoreRunner[] = [...CORE_QUEUE, { os: 'macos-15-intel', na
 // is a release or a manual run. Main runs the extra portable architectures,
 // the Intel Mac core suite, and refreshes caches. `pr`, a pull request draft
 // or ready, normally runs the Linux checks; protection inputs add native
-// Windows. The queue runs the rest on top of main (docs/ci.md#pull-request-runs).
+// Windows. The queue runs the rest on top of main (docs/internals/ci.md#pull-request-runs).
 // A push event alone provides no proof that its tree passed PR tests, so every
 // mode runs the affected suites. A main push compares with the last main commit
 // whose CI passed, not the previous push: a cancelled or failed run's changes

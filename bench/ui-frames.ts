@@ -2,7 +2,7 @@
  * Frame rate and main-thread cost of the UI on the in-memory fake client, in
  * headless Chrome with software compositing only: no GPU and no SwiftShader,
  * the worst case a WebView2 without acceleration meets, where a cost that a
- * GPU hides shows. docs/performance.md, "What a frame costs".
+ * GPU hides shows. docs/internals/performance.md, "What a frame costs".
  *
  * Run: bun bench/ui-frames.ts [--cpu 4] [--size 1920x1080@1.5] [--runs 2]
  *        [--only "palette over stream,long thread scroll"] [--noblur] [--css "<rules>"]

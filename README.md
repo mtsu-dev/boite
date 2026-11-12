@@ -11,7 +11,7 @@
 <a href="https://mtsu.dev"><img align="right" src="https://mtsu.dev/press/mtsu-icon-1024.png" width="48" alt="MTSU"></a>
 
 boite is a desktop app and self-hosted server for coding agents. Run Claude Code,
-Codex or [another supported agent](docs/providers.md) with your existing accounts.
+Codex or [another supported agent](docs/supported-agents.md) with your existing accounts.
 Keep your projects, conversations and agents together, across your computers and phone.
 
 <picture>
@@ -51,17 +51,16 @@ New release notes put the download links under each platform, above the changelo
 2. Install and sign in to your agents, then connect them in Settings, Providers.
 3. Open a project, choose a model and start a conversation.
 
-See [installation and platform notes](docs/portability.md), [phone pairing](docs/phone.md)
-or [the Android app](docs/android.md). To run agents on another machine, use the
-[self-hosting guide](docs/server.md) or [Android server setup](docs/android-server.md).
-[Desktop updates](docs/updates.md) explains channels and installing updates.
+See [installation](docs/install.md), [first steps](docs/first-steps.md),
+[phone pairing](docs/phone.md) and [updates](docs/updates.md). To run agents on
+another machine, use the [server guide](docs/server.md).
 
 ## Documentation
 
-The [documentation index](docs/README.md) groups guides by task. Start with
-[accounts and agent setup](docs/accounts.md), [projects and machines](docs/machines.md)
-or [bots](docs/bots.md). [Architecture](docs/architecture.md) and
-[development](docs/development.md) cover the implementation.
+The [user guide](docs/README.md) has one short page per feature. Start with
+[supported agents](docs/supported-agents.md), [accounts](docs/accounts.md),
+[machines](docs/machines.md) or [bots](docs/bots.md). The
+[technical reference](docs/internals/README.md) covers the implementation.
 
 ## Development
 
@@ -75,7 +74,7 @@ bun run dev:ui
 
 Open the local URL with `?fake=1` to try it without agent calls.
 [Contributing](CONTRIBUTING.md) covers checks;
-[development](docs/development.md) covers the real core and desktop builds.
+[development](docs/internals/development.md) covers the real core and desktop builds.
 
 ## Thanks
 

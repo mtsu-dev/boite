@@ -3,7 +3,7 @@ import type { ProjectId } from './ids';
 /**
  * Native desktop windows of the machine that runs the core: an editor, a game,
  * an installer. An agent captures them with `boite window`, the owner watches
- * one in a conversation's Window panel (docs/windows.md). Read-only: no input
+ * one in a conversation's Window panel (docs/internals/windows.md). Read-only: no input
  * ever reaches a window, and none is restored, raised or focused.
  */
 export interface DesktopWindow {

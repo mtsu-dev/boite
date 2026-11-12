@@ -11,9 +11,9 @@ boite view check examples/view-kit/example.html --script examples/view-kit/check
 boite view examples/view-kit/example.html
 ```
 
-The [example](../examples/view-kit/example.html) includes its
-[script](../examples/view-kit/view-kit.js) and
-[styles](../examples/view-kit/view-kit.css) through relative paths. The existing
+The [example](../../examples/view-kit/example.html) includes its
+[script](../../examples/view-kit/view-kit.js) and
+[styles](../../examples/view-kit/view-kit.css) through relative paths. The existing
 view command embeds them and the local media in the published snapshot. To
 reuse the prototype in another project, copy the script and styles alongside
 the authored page and include them explicitly. Ordinary HTML, CSS, SVG and

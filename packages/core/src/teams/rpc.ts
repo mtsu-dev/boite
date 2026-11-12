@@ -1,5 +1,5 @@
 /**
- * The team methods (`docs/teams.md`). Who may call which is in `access.ts`; the
+ * The team methods (`docs/internals/teams.md`). Who may call which is in `access.ts`; the
  * machine holding a team refuses them while its `teams` experiment is off. A
  * method that may have to reach another machine goes through `TeamPeers`.
  */

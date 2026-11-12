@@ -490,7 +490,7 @@
     const observer = new ResizeObserver(entries => {
       for (const entry of entries) pending.set(entry.target, entry);
       // Pinned, the list follows what grows at its bottom in this same frame: the observer runs
-      // after layout, so the new line is painted already in view (docs/performance.md).
+      // after layout, so the new line is painted already in view (docs/internals/performance.md).
       if (following()) edge.follow(box);
       if (frame) return;
       // Applying slot heights inside ResizeObserver can resize that same batch.

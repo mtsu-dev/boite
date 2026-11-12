@@ -11,7 +11,7 @@
   import { liveViews, machineName } from '../lib/live-view.svelte';
   import { SnapshotFeed } from '../lib/snapshot-feed';
   /**
-   * The simulators and emulators open in this conversation, live (docs/devices.md).
+   * The simulators and emulators open in this conversation, live (docs/internals/devices.md).
    * The core captures their screen; this polls JPEG frames the way the phone's
    * browser view does, so it works the same on the desktop and on a paired phone.
    * No frame is asked for until the user shows the device: a card covers it

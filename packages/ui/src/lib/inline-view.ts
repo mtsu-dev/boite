@@ -2,7 +2,7 @@
  * What the timeline and the frame of an inline view share: where a view sits
  * among the messages of its turn, and what the app hands a page so it looks
  * like the answer around it (theme tokens, the reader's motion setting, the
- * app's own font faces). docs/chat-files.md has the whole feature.
+ * app's own font faces). docs/internals/chat-files.md has the whole feature.
  */
 import { VIEW_TOKENS, type InlineView, type Message, type MessagePart, type Turn, type ViewHostMessage, type ViewTheme } from '@boite/contracts';
 import { glides } from './motion';

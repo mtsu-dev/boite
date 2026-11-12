@@ -4,7 +4,7 @@ name: app
 # as static files by GitHub Pages under the repository's custom domain, with
 # /.well-known/assetlinks.json at its root for the Android app. It is the same
 # build every core serves, and no core is behind it: the page reaches the
-# machines of the group a phone was added to (docs/phone.md).
+# machines of the group a phone was added to (docs/internals/phone.md).
 
 on:
   push:

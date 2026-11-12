@@ -92,7 +92,7 @@ test('shared inputs and unknown files fail open to every check', () => {
 });
 
 test('docs-only changes keep the cheap check path', () => {
-  expect(needsCodeChecks(['README.md', 'docs/server.md', 'LICENSE'])).toBe(false);
+  expect(needsCodeChecks(['README.md', 'docs/internals/server.md', 'LICENSE'])).toBe(false);
   expect(needsCodeChecks(['SECURITY.md', 'CODE_OF_CONDUCT.md', '.github/CODEOWNERS', '.github/labeler.yml'])).toBe(false);
 });
 
@@ -111,7 +111,7 @@ test('native Windows proof follows protection code and shared toolchain inputs',
     expect(JSON.parse(pr.coreRunners).map((runner: { os: string }) => runner.os)).toEqual(['ubuntu-24.04', 'windows-2025']);
     expect(pr.desktop).toBe(false);
   }
-  for (const file of ['docs/ci.md', 'packages/ui/src/App.svelte', 'packages/core/src/cli.ts', 'Dockerfile']) {
+  for (const file of ['docs/internals/ci.md', 'packages/ui/src/App.svelte', 'packages/core/src/cli.ts', 'Dockerfile']) {
     expect(needsNativeWindows([file]), file).toBe(false);
     expect(plan(affectedChecks([file]), 'pr', needsNativeWindows([file])).coreRunners).toBe(plan(affectedChecks([file]), 'pr').coreRunners);
   }

@@ -1,6 +1,6 @@
 /**
  * Compare the complete E2E suite sequentially and with the CI partition.
- * Build and stage the shell first, then warm the fake UI (docs/ci.md).
+ * Build and stage the shell first, then warm the fake UI (docs/internals/ci.md).
  * Run: bun bench/e2e.ts serial|sharded [output-directory]
  * Then: bun bench/e2e.ts compare <serial-result.json> <sharded-result.json>
  */

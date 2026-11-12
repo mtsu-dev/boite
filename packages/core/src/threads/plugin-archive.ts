@@ -5,7 +5,7 @@ import { withLoad } from './records.ts';
 
 /**
  * `threads.archive` called by a plugin granted `threads.write`
- * (docs/plugins.md, Permissions). Always a Done checked as an automatic
+ * (docs/internals/plugins.md, Permissions). Always a Done checked as an automatic
  * pass would be, never on a pinned thread, recorded in the row's
  * `archiveReason` and the core's log. An already archived thread is answered
  * as it is, so a plugin never claims what the owner put away. `archived:

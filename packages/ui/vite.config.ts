@@ -75,7 +75,7 @@ function browserFloor(): Plugin {
     apply: 'build',
     generateBundle(_options, bundle) {
       const hits = Object.values(bundle).flatMap((file) => file.type === 'chunk' ? tooNewForFloor(file.code).map((hit) => `${file.fileName}: ${hit}`) : []);
-      if (hits.length) this.error(`the build uses what Safari 15.4 cannot run (docs/phone.md):\n${hits.join('\n')}`);
+      if (hits.length) this.error(`the build uses what Safari 15.4 cannot run (docs/internals/phone.md):\n${hits.join('\n')}`);
     },
   };
 }

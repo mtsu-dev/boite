@@ -80,7 +80,7 @@ that runs a core on a phone, comes beside it as
   downloads it once from the Bun release, checks the archive against the
   release's `SHASUMS256.txt` and keeps it under `node_modules/.cache`, so the
   first staging needs the network. The runtime carries its publisher's signature;
-  the [2026-09-19 Windows comparison](../bench/results/2026-09-29-resources.md#runtime-and-bundle-measurements-2026-09-19-to-2026-09-29)
+  the [2026-09-19 Windows comparison](../../bench/results/2026-09-29-resources.md#runtime-and-bundle-measurements-2026-09-19-to-2026-09-29)
   recorded about 650 ms of additional startup inspection for an unsigned core.
   Because the checksum comes from the same release, staging also verifies the
   signature: `stage-sidecar.ts` refuses a

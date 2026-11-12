@@ -3,7 +3,7 @@
  * recommends and for the ones the owner adds from a git URL. The reader below
  * is the whole format. A field it does not know, a value it cannot use, a
  * platform it has never heard of: each is refused with the file, the field and
- * what was expected, never skipped. docs/plugins.md is the authoring guide.
+ * what was expected, never skipped. docs/internals/plugins.md is the authoring guide.
  */
 
 import {

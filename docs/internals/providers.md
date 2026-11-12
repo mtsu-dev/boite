@@ -1,5 +1,8 @@
 # Providers
 
+This page is the technical reference for contributors. To see which agents
+Boite runs and how to connect one, read [supported agents](../supported-agents.md).
+
 ## Subscription proxy
 
 Settings, Providers offers an optional subscription proxy for Claude, Codex and

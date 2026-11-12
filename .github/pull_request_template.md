@@ -6,7 +6,7 @@ test, ci, build, chore or revert. The scope is optional.
 
 ## Kind of change
 
-- [ ] This is a bug fix, performance, documentation or a new plugin extension point (features go in plugins: [docs/plugins.md](https://github.com/mtsu-dev/boite/blob/main/docs/plugins.md))
+- [ ] This is a bug fix, performance, documentation or a new plugin extension point (features go in plugins: [docs/internals/plugins.md](https://github.com/mtsu-dev/boite/blob/main/docs/internals/plugins.md))
 
 ## What changed
 

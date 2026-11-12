@@ -1,7 +1,7 @@
 import type { RequestId, ThreadId, Timestamp, TurnId } from './ids';
 
 /**
- * Teams of bots (`docs/teams.md`): a few bots and the owner talk in one
+ * Teams of bots (`docs/internals/teams.md`): a few bots and the owner talk in one
  * group, each bot from its own thread, on any machine of the owner's group. A
  * member is keyed by the core it joined on and its bot id, `<coreId>/<botId>`,
  * so a key reads the same on every machine and never changes: a bot that moves
@@ -64,7 +64,7 @@ export interface Team {
 
 /** `team`: every member reads it. `private`: one recipient, a bot or the owner, and the owner. */
 export type TeamAudience = 'team' | 'private';
-/** Which routing rule picked the recipients (`docs/teams.md`). `single` and an owner's `none` only appear on posts routed before an owner post without a mention went to every member. */
+/** Which routing rule picked the recipients (`docs/internals/teams.md`). `single` and an owner's `none` only appear on posts routed before an owner post without a mention went to every member. */
 export type TeamRoute = 'mention' | 'everyone' | 'reply' | 'single' | 'dispatcher' | 'private' | 'none';
 
 export interface TeamPost {
@@ -124,7 +124,7 @@ export function teamMentions(text: string, members: readonly Pick<TeamMember, 'k
 export function mentionsEveryone(text: string): boolean { return /(^|[^\p{L}\p{N}_])@(tous|everyone)(?![\p{L}\p{N}_-])/iu.test(text); }
 
 /**
- * The first rule that applies (`docs/teams.md`, Routing): a private post to
+ * The first rule that applies (`docs/internals/teams.md`, Routing): a private post to
  * its recipient; mentions, `@tous` or the recipients the composer picked; a
  * reply to its post's author; otherwise an owner post to every member, as
  * `@tous` would, and a bot post to nobody, so bots never wake each other in a

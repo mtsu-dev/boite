@@ -51,7 +51,7 @@ export const FRAME_INTERVAL = 250;
  * flight at a time, so a slow link is never asked for more than it carries. A
  * moving page asks again as soon as the last frame took FRAME_INTERVAL, with
  * no fixed pause added to the trip: about four frames a second instead of two
- * (bench/remote-browser-frames.ts, docs/performance.md). A still
+ * (bench/remote-browser-frames.ts, docs/internals/performance.md). A still
  * page slows down and a refused or lost frame is retried with a growing pause.
  */
 export function nextPollDelay({ roundTrip, unchanged, failures }: PollState): number {

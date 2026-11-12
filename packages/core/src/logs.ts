@@ -240,7 +240,7 @@ export class DiagnosticLogs {
    * A start waits up to `SHORT_PROCESS_MS` for its exit. A clean exit within
    * that time joins its turn's batch instead of two records: on 2026-10-17,
    * about 20 agents wrote 89 process records a second (shell helpers, `sed`,
-   * `git`), and the eight files held six minutes (docs/trace.md).
+   * `git`), and the eight files held six minutes (docs/internals/trace.md).
    */
   #observeProcess(name: 'process.started' | 'process.exited', proc: RpcEvents['process.started']): void {
     const key = `${proc.threadId}:${proc.pid}`;

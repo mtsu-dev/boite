@@ -15,7 +15,7 @@
 
   /**
    * The browser this conversation's agent drives on the machine that runs it
-   * (docs/panel.md). Every client watches it the same way, desktop or phone,
+   * (docs/internals/panel.md). Every client watches it the same way, desktop or phone,
    * through the Store that owns the conversation. Nothing streams until the
    * user shows it: before that a card names the machine and the active tab.
    */
@@ -38,7 +38,7 @@
   const native = $derived(here && agentHost.active && !!watched?.view);
   const nativeTab = $derived(native ? watched?.tabId ?? null : null);
 
-  // The core keeps a tab awake while a viewer watches it (docs/browser.md):
+  // The core keeps a tab awake while a viewer watches it (docs/internals/browser.md):
   // shown natively, the page tells it so while the window is visible. A new
   // tab's draft covers the page, which may then sleep.
   $effect(() => {

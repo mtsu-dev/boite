@@ -9,7 +9,7 @@
  * session, and the CLI keeps agent-desktop on them (scope.ts).
  * agent-desktop itself runs from the agent's shell with the environment this
  * returns (desktop-cli.ts), from the pinned build Boite installs
- * (agent-desktop.ts). See docs/desktop.md.
+ * (agent-desktop.ts). See docs/internals/desktop.md.
  */
 import {
   VIRTUAL_DESKTOP_APPS_MAX,

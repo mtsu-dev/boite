@@ -1,177 +1,110 @@
-# Reviewed goals
+# Goals and the project board
 
-`/goal2 <objective>` starts a reviewed goal from the composer, its slash menu
-or a queued prompt. The core accepts `goal: { objective, review: true }` from
-any client (`threads.activity.set`). It began as the `goal2` experiment; an app
-or a stored queue that still names `goal2` in its experiments has that id
-dropped, not refused.
+A goal keeps the agent working, turn after turn, toward one objective. A
+reviewed goal adds a second opinion: a fresh reviewer must pass the work
+before the goal counts as done. The project board turns a list of cards into
+reviewed goals.
 
-A reviewed goal runs like `/goal` (see [context](context.md#pending-prompts-goals-and-loops)) until the agent ends a
-turn with `[BOITE_GOAL_COMPLETE]`. There, the core treats the marker as a claim
-and does not complete the goal:
+## Start a goal
 
-1. It starts a reviewer in a new child conversation of the thread, in the same
-   checkout and permission mode, with none of the agent's history. The reviewer
-   runs on the owner's delegation profile whose id or name is `reviewer`, else
-   on the conversation's own model. A profile on another agent gives a
-   cross-provider review, for example Codex judging a Claude goal.
-2. The reviewer receives the objective and the agent's last answer, both as
-   JSON data. It is told to inspect the diff, run the checks that prove the
-   objective, edit nothing, and end with `VERDICT: PASS`, `PARTIAL` or `FAIL`
-   under its findings.
-3. PASS completes the goal. PARTIAL, FAIL or an answer without a verdict line
-   (`missing`) goes back to the agent: the next goal turn carries the
-   findings, as JSON data, and from the second failed review it is told to
-   reconsider its approach. Only that first turn after a review carries them.
-4. After five reviews without a pass, the goal stops as blocked. The user's
-   reply resumes it for one more round, and so does each later reply.
+| Command | What it does |
+| --- | --- |
+| `/goal <objective>` | Keep working toward an objective, until the agent says it is done |
+| `/goal2 <objective>` | Work toward an objective until a fresh reviewer passes it |
 
-`ThreadActivity.goal.review` holds the phase, the reviewer conversation running
-now and every verdict with its round, its summary (2000 characters at most)
-and its conversation. The goal bar labels the goal Reviewed goal, shows
-Reviewing during a review, and draws one dot per verdict plus a pulsing dot for
-the running review. A dot opens its reviewer conversation. The details list
-each verdict with its findings.
+1. Type the command and your objective in the message box, or pick it in the
+   slash menu.
+2. Send it. A bar above the box shows the goal, its state and its progress.
+3. Use Pause, Resume, Remove or Mark complete on that bar when you need to.
 
-Before a reviewer or a tracker conversation starts on a model its agent has
-not listed since the last account change, the core reads that agent's models
-on the account the child will use, as `boite delegate spawn` does, once per
-review; the start then goes through the scheduler, so a goal replaced or paused
-meanwhile is not reviewed on the old read. An account update forgets Claude's list, and a
-review that started without reading it again paused the goal with "the agent
-has not listed this model".
+When the agent stops on a blocker, the bar reads Waiting for your answer, and
+your next message resumes the goal. Goals work with every agent.
 
-Reviewers are not subagents. Like workflow steps, they need no enabled team, a
-paused team holds them, and their answer goes to the goal, never to the parent
-as mail. They are not listed in the Subagents tab. Pausing, removing or
-completing the goal by hand stops the running reviewer, and resuming a goal
-paused during its review starts a new review. A core restart keeps the
-verdicts and drops the interrupted review; the resume starts a fresh one.
+## How a reviewed goal is checked
+
+1. When the agent claims it is done, Boite starts a reviewer in a new
+   conversation, in the same folder and permission mode, without the agent's
+   history.
+2. The reviewer inspects the changes, runs the checks, edits nothing and gives
+   a verdict: Pass, Partial or Fail.
+3. Pass completes the goal. Any other verdict sends the findings back to the
+   agent, which keeps working.
+4. After five reviews without a pass, the goal stops and waits for your reply.
+   Each reply allows one more round.
+
+The bar reads Reviewed goal, shows Reviewing during a review and draws one dot
+per verdict. A dot opens that reviewer's conversation. The reviewer runs on
+your delegation profile named `reviewer` if you have one, else on the
+conversation's own model. A profile on another agent gives a cross-agent
+review, for example Codex judging a Claude goal.
 
 ## The checklist
 
-A reviewed goal also keeps the checklist of what the user asked for, so the
-agent works on the user's requests rather than on its own plan
-(`goal-tracker.ts`, `goal-tracker-prompt.ts`). A tracker, one more child
-conversation of the thread with none of its history, runs short passes, one at
-a time, in the order they were asked for:
+A reviewed goal also keeps a Checklist of what you asked for, so the agent
+works on your requests rather than on its own plan.
 
-1. When the goal starts, it writes the list from the objective: one item per
-   distinct request, in the user's language, at most 12 words, a verb and a
-   visible result, with the user's own words it came from. Corrections ("or
-   rather", "but", `mot*`) keep their final meaning.
-2. Each later message of the user, a new prompt or a steer, adds, drops or
-   changes items. The tracker answers with additions, cancellations and
-   changes; the core applies them, so ids never move and a dropped item stays,
-   struck through.
-3. After each finished turn of the conversation, the agent's or the user's, it
-   reads a digest of that turn (one line per tool call, the failed ones marked,
-   and the agent's last answer) and marks the open items the turn did. An
-   item the turn never touched stays open, whatever the answer claims. The
-   goal's next turn or review waits for that check.
+- It is written from your objective, one short item per request.
+- Each later message you send adds, drops or changes items. A dropped item
+  stays, struck through, under a line such as "1 dropped".
+- After each turn, the items the turn did are ticked. An item the turn never
+  touched stays open, whatever the agent claims.
+- A claim with open items goes back to the agent before any review. After two
+  tries, the final review decides.
 
-The next goal turn hears what is still open, as JSON data, in place of the
-usual line about the agent's own task list. A completion claim with an open
-item goes back to the agent before any review runs, and says so; each item
-holds a claim back twice at most, then the review decides alone with the whole
-list, statuses included, in its prompt.
+The bar shows the next open item and a count such as 3/5 done. On the desktop
+it opens the side panel's Tasks tab; on a paired device the list unfolds in
+the bar. Press an item to see what you wrote.
 
-The tracker runs on `Settings.goalTracker`, the Checklist model row of
-Settings, General, Conversations, shown to the owner only: a provider, a model and its reasoning level, stored by
-the core of that machine. Automatic (`null`) takes the newest Opus at medium on
-Claude or the newest Sol at high on Codex (`GOAL_TRACKER_DEFAULTS`), the
-conversation's own agent first, else the conversation's own model. A small
-model is never chosen by itself: on nine real prompts of 900 to 4000
-characters (2026-10-18), Haiku 5.5 at xhigh dropped or inverted about two
-requests per long prompt, the same ones on every run, where Opus 5.5 at medium
-dropped none. On Claude the tracker starts without the user's guides, servers
-and hooks and keeps only `Read`; on every agent its rules tell it to answer
-from the text alone.
-
-`ThreadActivity.goal.checklist` holds the tracker conversation, its model, the
-phase (`writing`, `checking` or `idle`), the items with their status (`open`,
-`done`, `cancelled`), whether a later message `added` or `changed` them, how
-often each `bounced` a claim, and the last pass's `error`. The goal bar keeps
-one line: the first open item and `done/total`, dropped items left out. On the
-owner's app that line opens the side panel's Tasks tab. There the checklist
-sits under the goal it breaks down, in the same section: a progress bar with
-`done/total`, then the items in the order asked, done ones ticked and struck,
-the next open one marked. Dropped items wait folded under a "1 dropped" line,
-and an icon beside it opens the tracker conversation. The Reviews section lists
-each review, newest first, with what it found. A paired device, which has no
-Tasks tab, unfolds the same list in the bar instead. A press on an item shows
-its source. An item that bounced twice says the final review decides it. The
-screen leaves out the `added` and `changed` flags. A pass
-that fails, answers without its JSON block or runs past five minutes leaves the
-list as it was with the reason, and the goal goes on; a first list is tried
-three times at most. A core restart keeps the list and the tracker; work no
-pass had read yet is lost.
-
-This version does not run checks itself before the review: the reviewer runs
-them and spends tokens doing so. It has no token budget and no detection of
-the same finding repeated: the five-review stop bounds a goal instead. The
-tracker adds one pass per user message and per finished turn.
+Settings, General, Conversations, Checklist model picks the model. Automatic
+picks Opus at medium or Sol at high, the conversation's own agent first. Only
+the owner sees this setting.
 
 ## Automatic goals
 
-The client experiment Automatic goals (`auto-goal`, off by default) starts a
-reviewed goal without `/goal2`. A user prompt that starts a turn, on a thread
-with no goal or loop under way (a paused one counts), starts one when it holds
-at least `autoGoalMinChars` characters, 1500 by default. The owner sets that
-number under the switch on the Experiments page; the core accepts 200 to 20000.
-A steer, a slash command or a queued `/goal` or `/loop` never starts one, and a
-subagent's thread never does.
+Experimental: turn it on in Settings, Experiments (Automatic goals).
 
-The message stays as typed, and the goal's objective is that same prompt,
-verbatim, its spaces included. The turn it starts is the goal's first: the agent
-hears the prompt with the goal's rules, as a `/goal2` turn, and a claim or a
-blocker it ends on counts, so no second run comes before the review. That
-holds across a core restart while the turn still waits in line
-(`auto-goal:<thread>` marks it `first`): the goal stays active and the next
-core runs the turn as the goal's. A turn the restart interrupts leaves the goal
-paused, as any goal turn does. A prompt
-queued with the experiment on never shares a delivery with one queued with it
-off. The core decides in `threads.startTurn` from the
-experiments of the app that sent the prompt (`turns.start`) or that queued it
-(the composer item's `experiments`), so a queued prompt keeps its decision
-across a restart and another device's switch never changes it. The goal carries
-`auto: true`, and the goal bar names it "Automatic goal". Its remove button
-drops it in one click.
+A long prompt then starts a reviewed goal on itself, with its checklist and a
+card on the project board. Prompt length sets the threshold, 1500 characters
+by default. The agent may also start one when your prompt lists several
+requests. Remove the goal from the bar to drop it.
 
-When the thread belongs to a project and is not incognito, the core adds a card
-to the project board, linked to the conversation (`goalThreadId`), with the
-first line of the prompt as its text, cut to 2000 characters. The card follows
-the goal as a card the board started does: In progress while it runs, claimed
-(In review) once a review passes, Done when the user confirms. Removing the
-goal, or replacing it with another, unlinks its cards: an open one stays in To
-do, a claimed or done one keeps its column.
+## The project board
 
-An agent may ask for one below the threshold: `boite goal track`
-(`threads.goal.track`) starts the same goal on its own thread, its objective
-the user's last prompt, a steer included. Called during the turn, it makes that
-turn the goal's first, and its output tells the agent the claim marker. The
-core refuses it when the desktop app has the experiment off, when a goal or a
-loop is under way, and when that prompt already started a goal
-(`auto-goal:<thread>` keeps its message).
-While the experiment is on, the agent guide of a top-level thread says to run
-it when the user's prompt lists several distinct requests.
+The board lists a project's cards in four columns: To do, In progress, In
+review and Done. Every conversation of the project shows the same board.
 
-## Verification
+1. Open it with the header's board button, or Ctrl+J, which opens the drawer
+   under the chat on Board or Terminal. On a phone, use Project board in the
+   title menu.
+2. Press Add a card and write what needs doing.
+3. Move the card to In progress. Boite starts a new conversation with the
+   card's text as a `/goal2` objective, on the agent, model and mode of the
+   conversation the board is open in.
+4. When the review passes, the card moves to In review and waits for you.
+5. Move it to Done to confirm it.
 
-`goal-review.test.ts` drives reviewed goals through the real core with the
-echo driver: a failed review then a pass, the five-review stop and the reply
-that allows one more, pause and resume during a review, and a restart.
-`goal-tracker.test.ts` drives the checklist the same way: the first list, the
-checks and what the next turn hears, a claim sent back twice then reviewed,
-the user's additions and cancellations, the model Settings names, a tracker
-answer without JSON, a tracker stuck on a pass, a goal finished by hand during
-a pass, models read again after an account change, and a restart. The opt-in
-`goal-tracker.live.test.ts` (`BOITE_E2E_CLAUDE=1`) runs one real goal on Haiku
-with the checklist on Automatic. `auto-goal.test.ts` covers automatic goals:
-the threshold and its edge, the experiment off, a command, a steer, a queued
-prompt across a restart, a first turn still in line across a restart for an
-update (its claim, its blocker), `goal track` and its refusals, and the card claimed
-after a passing review. UI unit tests cover `/goal2` in the slash menu,
-the checklist model row on General, the goal bar's verdicts and checklist, the
-Automatic goals switch and its threshold row, the "Automatic goal" label, and
-the fake core's reviewer, tracker and automatic goals.
+- On a desktop, drag cards between columns. Every card also has a menu with
+  Move to, Open its conversation and Remove the card.
+- On a phone, the board shows one column per screen: swipe between them, or
+  tap a dot under the board.
+- Moving a card back to To do unlinks its conversation, which goes on by
+  itself.
+- A card that reads Goal not running has lost its goal. Start its goal, in its
+  menu, starts it again.
+- Only you confirm or remove a card. An agent can only claim one.
+
+## Limits
+
+- The reviewer runs the checks itself and spends tokens doing so.
+- There is no token budget: the five-review stop bounds a goal.
+- The checklist adds one short pass per message you send and per finished
+  turn.
+
+## Going further
+
+- [Context](context.md): queued messages and loops.
+- [Subagents](subagents.md): delegation profiles.
+- [Terminal](terminal.md): the other tab of the drawer.
+- [Experiments](experiments.md): turn on an experimental feature.
+- Technical reference: [goals](internals/goals.md),
+  [board](internals/board.md).
