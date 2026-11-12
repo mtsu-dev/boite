@@ -1,6 +1,7 @@
 <script lang="ts" generics="T">
   import { tick, untrack, type Snippet } from 'svelte';
   import { atOrBefore, reaches } from '../lib/message-window';
+  import { subscribeScroll, type ScrollGeometry, type ScrollSubscription } from '../lib/scroll-coordinator';
   let { items, keyOf, row, scrollRoot, estimate = 40, active = true, measurements = new Map<string, number>() }: {
     items: T[];
     keyOf: (item: T) => string;
@@ -67,37 +68,19 @@
   function outsidePointer(event: PointerEvent): void {
     if (!container?.contains(event.target as Node)) focusedNode = undefined;
   }
-  function offset(): number {
-    if (!scrollRoot || !container) return 0;
-    return container.getBoundingClientRect().top - scrollRoot.getBoundingClientRect().top + scrollRoot.scrollTop;
-  }
-  function refresh(): void {
-    if (frame !== null) cancelAnimationFrame(frame);
-    frame = null;
-    if (!scrollRoot || !container) return;
-    top = scrollRoot.scrollTop - offset();
-    height = scrollRoot.clientHeight || 600;
+  function refresh(geometry: ScrollGeometry): void {
+    if (!container) return;
+    top = geometry.top - container.getBoundingClientRect().top;
+    height = geometry.height;
     located = true;
   }
-  /**
-   * A resize, a size change and every threshold the rows cross all ask for the
-   * same reading: one per frame. A scroll reads at once: the browser sends it
-   * once a frame already, and the rows it brings are drawn in that frame.
-   */
-  let frame: number | null = null;
-  function schedule(): void {
-    frame ??= requestAnimationFrame(() => { frame = null; refresh(); });
-  }
+  let scrolling: ScrollSubscription | undefined;
+  function schedule(): void { scrolling?.schedule(); }
   $effect(() => {
     const root = scrollRoot;
     if (!root || !container || !active) return;
-    refresh();
-    root.addEventListener('scroll', refresh, { passive: true });
-    window.addEventListener('resize', schedule);
+    scrolling = subscribeScroll(root, container, refresh);
     window.addEventListener('pointerdown', outsidePointer, true);
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule);
-    observer?.observe(root);
-    observer?.observe(container);
     // A list also moves without a scroll or a resize: rows above it leave or grow. Its own size does not change, so
     // only its place in the viewport says the window is stale, and a list that slid into view would keep its blank spacer.
     // A list taller than the viewport keeps the same visible share while it moves, so the drawn rows are watched too:
@@ -107,10 +90,9 @@
     placement?.observe(container);
     for (const node of placed.keys()) placement?.observe(node);
     return () => {
-      root.removeEventListener('scroll', refresh); window.removeEventListener('resize', schedule); window.removeEventListener('pointerdown', outsidePointer, true);
-      observer?.disconnect(); placement?.disconnect(); placement = null;
-      if (frame !== null) cancelAnimationFrame(frame);
-      frame = null;
+      scrolling?.destroy(); scrolling = undefined;
+      window.removeEventListener('pointerdown', outsidePointer, true);
+      placement?.disconnect(); placement = null;
     };
   });
   $effect(() => {
@@ -151,10 +133,11 @@
     if (!scrollRoot || index < 0 || index >= items.length) return;
     focusedKey = keys[index]!;
     const targetTop = sums[index]!, targetBottom = sums[index + 1]!;
-    const origin = offset();
+    scrolling?.refresh();
+    const origin = scrollRoot.scrollTop - top;
     if (targetTop < top) scrollRoot.scrollTop = origin + targetTop;
     else if (targetBottom > top + height) scrollRoot.scrollTop = origin + targetBottom - height;
-    refresh();
+    scrolling?.refresh();
     await tick();
     const slot = [...(container?.querySelectorAll<HTMLElement>('[data-window-key]') ?? [])].find(node => node.dataset.windowKey === focusedKey);
     if (!slot) return;

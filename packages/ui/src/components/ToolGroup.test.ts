@@ -1,5 +1,7 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import { flushSync, mount, unmount } from 'svelte';
+import { flushSync, mount, tick, unmount } from 'svelte';
+import { Store as RealStore } from '../lib/store.svelte';
+import { FakeClient } from '../lib/fake-client';
 import type { ToolPart } from '../lib/tool-groups';
 import type { Store } from '../lib/store.svelte';
 import ToolGroup from './ToolGroup.svelte';
@@ -68,4 +70,43 @@ test('an open card on a running call watches its live output only while its grou
   group.click();
   flushSync();
   expect(watchLiveOutput).toHaveBeenCalledTimes(2);
+});
+
+test.each([false, true])('a real Store disclosure releases after closing and reopens completely (grouped=%s)', async grouped => {
+  const store = new RealStore();
+  const client = new FakeClient({ delayMs: 0 });
+  store.attach(client);
+  try {
+    await store.connect(); await store.open('t-trace');
+    const message = store.openThread!.messages.find(message => message.parts.some(part => part.type === 'tool' && part.status === 'done' && part.output))!;
+    const part = message.parts.find((part): part is ToolPart => part.type === 'tool' && part.status === 'done' && !!part.output)!;
+    const full = part.output;
+    part.output = 'preview'; part.outputDeferred = true;
+    const acquireOutput = vi.fn((toolId: string) => store.acquireToolOutput('t-trace', message.id, toolId));
+    const fetch = vi.spyOn(client, 'call');
+    const parts: ToolPart[] = grouped ? [part, { type: 'tool', toolId: 'other', name: 'Read', input: {}, output: '', status: 'done' }] : [part];
+    component = mount(ToolGroup, { target: document.body, props: { parts, isBackground: () => false, acquireOutput,
+      loadOutput: toolId => store.loadToolOutput('t-trace', message.id, toolId) } });
+    flushSync();
+    const group = document.querySelector<HTMLButtonElement>('[data-testid=tool-group-toggle]');
+    if (group) { group.click(); flushSync(); }
+    const toggle = document.querySelector<HTMLButtonElement>('[data-testid=tool-toggle]')!;
+    toggle.click(); flushSync();
+    await vi.waitFor(() => { flushSync(); expect(part.output).toBe(full); });
+    expect(acquireOutput).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('[data-testid=tool-output]')?.textContent).toBe(full);
+    const close = group ?? toggle;
+    close.click(); flushSync(); await tick(); flushSync();
+    await vi.waitFor(() => { flushSync(); expect(document.querySelector('[data-testid=tool-output]')).toBeNull(); });
+    expect(part.output).toBe('preview');
+    expect(part.outputDeferred).toBe(true);
+    close.click(); flushSync();
+    await vi.waitFor(() => { flushSync(); expect(part.output).toBe(full); });
+    expect(acquireOutput).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls.filter(([method]) => method === 'messages.toolPart')).toHaveLength(2);
+    expect(document.querySelector('[data-testid=tool-output]')?.textContent).toBe(full);
+    await unmount(component); component = null;
+    expect(part.output).toBe('preview');
+    expect(part.outputDeferred).toBe(true);
+  } finally { if (component) { await unmount(component); component = null; } client.close(); store.detach(); }
 });
