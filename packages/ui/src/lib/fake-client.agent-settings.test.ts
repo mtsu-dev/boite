@@ -28,6 +28,39 @@ test('fake eventWakes settings use the same boolean card and preserve the active
   }
 });
 
+test('fake agent.addProject for a bot: refused until addProjects is on, then added and entrusted; an existing project is not', async ({ createClient }) => {
+  const client = await createClient({ delayMs: 0 });
+  const mira = await agent(client);
+  const { threadId } = await client.call('agents.open', { agentId: mira.id });
+  await client.call('turns.start', { threadId, prompt: 'Set the site up.' });
+  await client.settled();
+  const held = async () => (await client.call('agents.settings.read', { threadId })).settings.find(s => s.key === 'projects')?.value;
+
+  await expect(client.call('agent.addProject', { threadId, path: '/workspace/site' })).rejects.toMatchObject({
+    code: RpcErrorCode.Refused, message: 'the owner has not let Mira add projects; ask with boite settings bot request addProjects true --why <reason>', data: { field: 'addProjects' } });
+  expect((await client.call('projects.list', {})).some(p => p.path === '/workspace/site')).toBe(false);
+
+  const card = await client.call('agents.settings.request', { threadId, key: 'addProjects', value: true, reason: 'The user asked for a site' });
+  expect(card.setting.previous).toBe(false);
+  await client.call('agents.settings.apply', { threadId, questionId: card.questionId });
+  expect((await client.call('agents.runtime.get', { agentId: mira.id })).addProjects).toBe(true);
+
+  const added = await client.call('agent.addProject', { threadId, path: '/workspace/site', name: 'Website' });
+  expect(added).toMatchObject({ name: 'Website', added: true, entrusted: true });
+  expect(await held()).toEqual([added.id]);
+  expect((await client.call('threads.get', { threadId })).messages.at(-1)).toMatchObject({ role: 'system', parts: [{ text: 'The agent added the project Website (/workspace/site).' }] });
+
+  // Already a project: answered as it is, and the bot does not gain it.
+  const known = (await client.call('projects.list', {})).find(p => p.id === 'p-notes')!;
+  expect(await client.call('agent.addProject', { threadId, path: known.path })).toMatchObject({ id: 'p-notes', added: false, entrusted: false });
+  expect(await client.call('agent.addProject', { threadId, path: '/workspace/site' })).toMatchObject({ id: added.id, added: false, entrusted: true });
+  expect(await held()).toEqual([added.id]);
+  await expect(client.call('agent.addProject', { threadId, path: '/srv/site', machine: 'pc' })).rejects.toMatchObject({ code: RpcErrorCode.Refused, data: { field: 'machine' } });
+
+  await client.call('threads.archive', { threadId });
+  await expect(client.call('agent.addProject', { threadId, path: '/workspace/more' })).rejects.toMatchObject({ code: RpcErrorCode.Refused, message: 'an archived thread cannot add projects' });
+});
+
 test('fake agent setting cards: read, request, refusals, apply with an edit and the answer the thread reads', async ({ createClient }) => {
   const client = await createClient({ delayMs: 0 });
   const mira = await agent(client);

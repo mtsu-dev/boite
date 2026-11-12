@@ -497,8 +497,8 @@ boite team list|say|dm|read|propose|invite|leave
 boite delegate models [--machine <name>]
 boite delegate profiles|list
 boite delegate spawn <brief> [--model <provider/model>] [--effort <level>] [--speed <tier>] [--profile <id>] [--title <t>] [--worktree] [--machine <name> [--project <name>]] [context flags]
-boite delegate council <request> [--models <a>,<b>[,...]] [--effort <level>] [--timeout <minutes>]
-boite delegate council again <council-id> <what-changed>
+boite delegate council <request>|--request-file <path> [--models <a>[:<effort>],<b>[:<effort>][,...]] [--effort <level>] [--role <member>=<text>]... [--timeout <minutes>]
+boite delegate council again <council-id> [<what-changed>] [--send-changes] [--request-file <path>]
 boite delegate council table <council-id>
 boite delegate send <thread-id> <text>
 boite delegate wait [thread-id] [--timeout <s>]
@@ -539,9 +539,11 @@ parent's checkout ([delegation](delegation.md#children-in-their-own-worktree)).
 `delegate council`, behind the Council experiment, has 2 to 6 models (three
 providers by default) review one request alone and read-only, each with a score
 out of 10, while the user can follow in the salon; `--timeout` sets the minutes
-a round may last, 30 by default. It returns the council id once the members'
+a round may last, 30 by default. `--models a:<effort>,b:<effort>` gives each
+member its own level, `--request-file` reads the request from a file and
+`--role <member>=<text>` adds a text one member alone reads. It returns the council id once the members'
 model lists are read, up to a minute when none is saved yet; the answers
-and the table arrive as one message, `council again` asks for one more round,
+and the table arrive as one message, `council again` asks the same members for one more round,
 `council table` prints the scores, `delegate list` shows the council and
 `delegate stop <council-id>` stops it. It needs no git and no pull request
 ([council](council.md)). `delegate debate` starts nothing and points here.
@@ -695,8 +697,23 @@ Registering a folder gives the agent no file access its process lacked. It
 reaches outside the thread's project, so the Communication settings decide as
 they do for `thread new` elsewhere: Off, Pause and a thread restricted to its
 own project refuse it. There is no hourly limit. A thread an agent started
-adds none until the user has written in it, and delegated children, workflow steps and bots'
-threads are refused.
+adds none until the user has written in it, and delegated children and
+workflow steps are refused.
+
+A bot adds a project from its own conversation only while its `addProjects`
+setting is on (`AgentSettingCards.entrust` in `agents/setting-cards.ts`). It
+is off by default: the refusal tells the bot to ask with
+`boite settings bot request addProjects true --why <reason>`, a card only the
+owner applies. With it on, the same checks and Communication settings apply,
+the folder is one of the bot's own machine (`--machine` is refused for a
+bot), and the new project joins those entrusted to it at once, through the
+code that writes its `projects` setting: the line reads "Added and entrusted
+to you." and `--json` carries `entrusted: true`. A folder that was already a
+project is answered with `added: false` and changes nothing: `entrusted`
+tells whether the bot already held it, and the bot gains no project by naming
+its folder. Only for one it does not hold, the line says to ask with
+`boite settings bot request projects +<name> --why <reason>`. A bot that
+already holds 50 projects is refused before the folder is added.
 
 With `--machine <name>`, the folder is one of another machine of the group,
 given by its absolute path there (`/home/me/site` from a Windows machine): it
@@ -882,7 +899,8 @@ thread. The MCP tool takes it as `boite_settings_request` with `page:
 `domain` (its role), `instructions`, `avatar`, `status` (`active`, `paused`,
 `archived`), `projects` (those entrusted to it), `model`, `effort`,
 `autoMemory` (the memory pass), `eventWakes` (automatic project and desk wakes),
-`subagents` and `dailyBudget` (dollars a day,
+`addProjects` (the bot may add a folder of its machine as a project, off by
+default), `subagents` and `dailyBudget` (dollars a day,
 or `null` for none). It prints the bot's name, each value and, for status,
 projects, models and efforts, the choices; a model reads `<provider>/<model>`,
 and its choices span every provider signed in on the machine. The listing cuts

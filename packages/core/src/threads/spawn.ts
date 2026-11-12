@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { isAbsolute } from 'node:path';
-import type { AgentProjectAdded, AgentSpawn, ContextPreset, ContextRequest, CoordinationPeer, DelegationModels, Message, PermissionMode, RpcParams, ThreadId, ThreadLink, ThreadSummary, Turn } from '@boite/contracts';
+import type { AgentProfile, AgentProjectAdded, AgentSpawn, ContextPreset, ContextRequest, CoordinationPeer, DelegationModels, Message, PermissionMode, RpcParams, ThreadId, ThreadLink, ThreadSummary, Turn } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { catalog, chooseModel, readNamed, type RouteRequest } from '../delegation/routes.ts';
 import { invalidParams, messageOf, refused, requiredText, unavailable } from '../errors.ts';
@@ -362,18 +362,33 @@ export class ThreadSpawns {
    * registered is answered as it is, whatever the settings. With `machine`,
    * the folder is one of that member of the group, which checks it and adds
    * it while its owner keeps `groupThreads` on (`addFor`).
+   *
+   * A bot adds a folder of its own machine while its owner keeps its
+   * `addProjects` setting on, and the project is entrusted to it at once
+   * through its `projects` setting. A folder that was already a project is
+   * not: the bot asks for it with a `projects` card, which the owner applies.
    */
   async addProject(params: RpcParams<'agent.addProject'>): Promise<AgentProjectAdded> {
     const method = 'agent.addProject';
     const caller = this.#threads.require(params.threadId);
     const threadId = caller.id;
-    if (caller.agentSessionId || caller.projectId === null) {
-      throw refused('a bot works in the projects the owner entrusts to it and cannot add projects', { threadId, field: 'threadId', expected: 'a conversation thread' });
-    }
     if (caller.parentThreadId || this.#core.delegation.remote.parentOf(caller.id)) {
       throw refused('a delegated agent or workflow step cannot add projects; ask its parent', { threadId, field: 'threadId', expected: 'a top-level thread' });
     }
     if (caller.archived) throw refused('an archived thread cannot add projects', { threadId, field: 'threadId', expected: 'a thread that is not archived' });
+    const workforce = this.#core.workforce;
+    let bot: AgentProfile | null = null;
+    if (caller.agentSessionId || caller.projectId === null) {
+      bot = workforce.projects.botOf(threadId);
+      if (bot === null) throw refused('this thread has no project and is no bot\'s own conversation: it cannot add projects', { threadId, field: 'threadId', expected: 'a conversation thread' });
+      if (workforce.resident.config(bot.id).addProjects !== true) {
+        throw refused(`the owner has not let ${bot.name} add projects; ask with boite settings bot request addProjects true --why <reason>`, { threadId, field: 'addProjects', expected: true });
+      }
+      // The other machine checks a bot's reach by its own settings (`groupBots`): its owner entrusts a project there with a `projects` card.
+      if (params.machine !== undefined) {
+        throw refused('a bot adds projects on its own machine only; ask for a project of another machine with boite settings bot request projects +<machine>/<project> --why <reason>', { threadId, field: 'machine', expected: 'no --machine' });
+      }
+    }
     const path = text(params.path, 'path', 4096, method).trim();
     const name = params.name === undefined ? undefined : text(params.name, 'name', 80, method).trim();
     if (params.machine !== undefined) return this.#addElsewhere(caller, text(params.machine, 'machine', 200, method), path, name);
@@ -384,12 +399,19 @@ export class ThreadSpawns {
       drafts: project.kind === 'drafts', current: project.id === own, added,
     });
     const known = this.#core.projects.registered(path);
-    if (known !== null) return answer(known, false);
+    // Already a project: a bot is told whether it holds it, and gains nothing by naming its folder.
+    if (known !== null) return bot === null ? answer(known, false) : { ...answer(known, false), entrusted: (bot.projectIds ?? []).includes(known.id) };
 
     this.#gate(threadId, true, 'add a project', method);
+    if (bot !== null) {
+      const full = workforce.settingCards.entrustRefusal(bot);
+      if (full !== null) throw refused(full, { threadId, field: 'projects' });
+    }
     const project = this.#core.projects.add(path, name);
     this.#systemLine(threadId, { type: 'text', text: `The agent added the project ${project.name} (${project.path}).` });
-    return answer(project, true);
+    if (bot === null) return answer(project, true);
+    workforce.settingCards.entrust(bot.id, project.id);
+    return { ...answer(project, true), entrusted: true };
   }
 
   /**

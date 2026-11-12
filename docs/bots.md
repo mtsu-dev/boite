@@ -89,6 +89,7 @@ after it.
 | --- | --- |
 | Daily budget for its own wakes, in dollars | Past it, routines and events wait until tomorrow. Your messages always run |
 | Automatic project and desk wakes | Off by default: only threads it started, was entrusted or watches wake it. Other events wait for the next routine |
+| Add projects | Off by default: lets it add a folder on its own machine as a project and entrusts the new project to it |
 | Allow subagents | Lets it hand work to [subagents](subagents.md), on the models listed under Subagent models |
 | Pause | No routine or event wakes it. You can still write to it |
 | Pause every bot | The same for every bot on this machine |

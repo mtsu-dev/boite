@@ -93,7 +93,7 @@ export interface MoveHooks {
 /** One carried message: its excerpt, its role, the turn it belonged to (counted within the move) and when it was written. */
 interface MovedMessage { role: Message['role']; text: string; turn: number; at: number }
 interface MovedRoutine { name: string; prompt: string; schedule: AgentSchedule; enabled: boolean; spent: boolean }
-interface MovedSettings { autoMemory: boolean; eventWakes: boolean; dailyBudgetUsd: number | null; subagents: { enabled: boolean; paused: boolean; anyModel: boolean } }
+interface MovedSettings { autoMemory: boolean; eventWakes: boolean; addProjects: boolean; dailyBudgetUsd: number | null; subagents: { enabled: boolean; paused: boolean; anyModel: boolean } }
 /** One waiting fact: `written` orders the versions of a key on the source. */
 interface MovedFact { key: string; text: string; written: number }
 /** What the target applied for one request: a print of each part, and the version of each fact it filed, by key. */
@@ -355,7 +355,7 @@ export class BotMoves {
     });
     const saved = this.#core.journal.getSetting(`agents:runtime:${agent.id}`) as AgentRuntimeConfig | undefined;
     const settings: MovedSettings | null = saved === undefined ? null : {
-      autoMemory: saved.autoMemory !== false, eventWakes: saved.eventWakes === true, dailyBudgetUsd: saved.dailyBudgetUsd ?? null,
+      autoMemory: saved.autoMemory !== false, eventWakes: saved.eventWakes === true, addProjects: saved.addProjects === true, dailyBudgetUsd: saved.dailyBudgetUsd ?? null,
       subagents: { enabled: saved.subagents.enabled, paused: saved.subagents.paused, anyModel: saved.subagents.anyModel !== false },
     };
     const brain: BotMovePayload['brain'] = {};
@@ -555,7 +555,7 @@ export class BotMoves {
     if (applied.settings !== settingsPrint || rerouted) {
       // The runtime policy names the route: a new route rewrites it even when the other settings stayed.
       const current = this.#store.resident.config(agent.id);
-      const settings = payload.settings ?? { autoMemory: current.autoMemory !== false, eventWakes: current.eventWakes ?? false, dailyBudgetUsd: current.dailyBudgetUsd ?? null,
+      const settings = payload.settings ?? { autoMemory: current.autoMemory !== false, eventWakes: current.eventWakes ?? false, addProjects: current.addProjects === true, dailyBudgetUsd: current.dailyBudgetUsd ?? null,
         subagents: { enabled: current.subagents.enabled, paused: current.subagents.paused, anyModel: current.subagents.anyModel !== false } };
       this.#settings(agent.id, agent.selection, settings);
       applied.settings = settingsPrint;
@@ -626,7 +626,7 @@ export class BotMoves {
     const config: AgentRuntimeConfig = {
       defaultRoute: selection, allowedRoutes: [{ ...selection, model: selection.model!, id: 'default', name: 'Default' }],
       subagents: { ...settings.subagents, profiles: [] },
-      autoMemory: settings.autoMemory, eventWakes: settings.eventWakes, dailyBudgetUsd: settings.dailyBudgetUsd,
+      autoMemory: settings.autoMemory, eventWakes: settings.eventWakes, addProjects: settings.addProjects, dailyBudgetUsd: settings.dailyBudgetUsd,
     };
     this.#core.journal.setSetting(`agents:runtime:${agentId}`, config);
   }
@@ -764,7 +764,9 @@ function readPayload(raw: unknown): BotMovePayload {
       throw invalidParams(`bot.move.settings.dailyBudgetUsd: expected dollars a day from ${AGENT_DAILY_BUDGET.min} to ${AGENT_DAILY_BUDGET.max}, or null`);
     }
     settings = {
-      autoMemory: boolean(v.autoMemory, 'bot.move.settings.autoMemory'), eventWakes: boolean(v.eventWakes, 'bot.move.settings.eventWakes'), dailyBudgetUsd: budget as number | null,
+      autoMemory: boolean(v.autoMemory, 'bot.move.settings.autoMemory'), eventWakes: boolean(v.eventWakes, 'bot.move.settings.eventWakes'),
+      // A core that predates the setting sends none: off, as every bot starts.
+      addProjects: v.addProjects === undefined ? false : boolean(v.addProjects, 'bot.move.settings.addProjects'), dailyBudgetUsd: budget as number | null,
       subagents: { enabled: boolean(v.subagents.enabled, 'bot.move.settings.subagents.enabled'), paused: boolean(v.subagents.paused, 'bot.move.settings.subagents.paused'), anyModel: boolean(v.subagents.anyModel, 'bot.move.settings.subagents.anyModel') },
     };
   }

@@ -71,6 +71,8 @@ test('a move carries the bot, its memory, routines, projects and the end of its 
   await owner.call('agents.routine.save', { value: { agentId: made.id, name: 'Morning round', prompt: 'Check the plants.', schedule: { kind: 'interval', everyMinutes: 60 }, enabled: true, nextAt: null, lastTurnId: null, lastScheduledAt: null } });
   await owner.call('agents.routine.save', { value: { agentId: made.id, name: 'Sunday', prompt: 'Plan the week.', schedule: { kind: 'daily', time: '09:00', timezone: 'UTC', days: [0] }, enabled: false, nextAt: null, lastTurnId: null, lastScheduledAt: null } });
   desk.core.workforce.fact(made.id, { key: 'letter', text: 'A letter about the roses came.', urgent: false });
+  // A setting the owner turned on goes with it.
+  await owner.call('agents.runtime.configure', { agentId: made.id, expectedRevision: desk.core.workforce.records.get('profile', made.id).revision, config: { ...desk.core.workforce.resident.config(made.id), addProjects: true } });
   const agent = desk.core.workforce.records.get('profile', made.id);
   const ours = desk.core.workforce.brainOf({ agentId: agent.id });
 
@@ -82,6 +84,7 @@ test('a move carries the bot, its memory, routines, projects and the end of its 
   const pcEcho = pc.core.accounts.list().find(a => a.providerId === 'echo')!.id;
   expect(there).toMatchObject({ name: 'Ada', domain: 'Gardens', instructions: 'Water the plants.', avatar: 'bot:c.1.2.3.4.1.1.0', status: 'active', projectIds: moved.projectIds, pinned: true });
   expect(there.selection).toEqual({ ...agent.selection, accountId: pcEcho });
+  expect(pc.core.workforce.resident.config(agent.id)).toMatchObject({ addProjects: true, eventWakes: false });
   expect(pc.core.workforce.sessionOf(agent.id)?.threadId).toBe(moved.threadId);
   const theirs = pc.core.workforce.brainOf({ agentId: agent.id });
   expect(theirs.instructions).toBe(ours.instructions);

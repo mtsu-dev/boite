@@ -201,8 +201,8 @@ export const COUNCIL_SKILL: BuiltinSkill = {
   body: `# Council
 
 \`\`\`sh
-boite delegate council "<request>" [--models <provider/model>,<provider/model>[,...]] [--effort <level>] [--timeout <minutes>]
-boite delegate council again <id> "<what changed>"
+boite delegate council "<request>"|--request-file <path> [--models <provider/model>[:<effort>],<provider/model>[:<effort>][,...]] [--effort <level>] [--role <member>=<text>]... [--timeout <minutes>]
+boite delegate council again <id> ["<what changed>"] [--send-changes] [--request-file <path>]
 boite delegate council table <id>
 \`\`\`
 
@@ -213,7 +213,11 @@ prevail over this page.
 ## Start
 
 - \`--models\`: ${COUNCIL_LIMITS.membersMin} to ${COUNCIL_LIMITS.membersMax} routes from \`boite delegate models\`. Default: ${COUNCIL_DEFAULT_MODELS.map(model => `\`${model}\``).join(', ')}.
-- \`--effort\`: one level for every member. Default: \`${COUNCIL_DEFAULT_EFFORT}\`. A model without that level runs at its strongest level below it, and a note says so.
+  With \`--models\` the same provider may sit several times, and the same model twice only at two efforts.
+- \`<provider/model>:<effort>\`: that member's own level. A level the model lacks refuses the council and lists the model's levels.
+- \`--effort\`: the level of every member written without one. Default: \`${COUNCIL_DEFAULT_EFFORT}\`. A model without that level runs at its strongest level below it, and a note says so.
+- \`--request-file <path>\`: the request, read from a UTF-8 file instead of the command's text. Giving both is refused.
+- \`--role <member>=<text>\`: a text of up to ${COUNCIL_LIMITS.roleChars} characters that this member alone reads after the request; \`<member>\` is written as in \`--models\`, effort included. Repeat it per member.
 - \`--timeout\`: the minutes one round may last, 1 to ${COUNCIL_LIMITS.timeoutMinutesMax}. Default: ${COUNCIL_LIMITS.timeoutMinutesDefault}.
 
 The command prints the council id and its members. The request holds up to
@@ -223,12 +227,12 @@ no pull request and no code.
 
 ## Rounds
 
-One round's answers come back as one message, under each member's name, with
-the table. Nothing to poll: keep working or end your turn. A member ends its
+One round's answers come back as one message, under each member's name, effort
+and role, with the table. Nothing to poll: keep working or end your turn. A member ends its
 answer with \`Score: n/10\` or \`Score: none\`; without a score the table says
 \`no score\`.
 
-- \`again\` starts one more round: the same members get what changed and review from zero.
+- \`again\` starts one more round: the same members, efforts and roles review from zero. What changed goes to the salon; \`--send-changes\` also sends it to the members. \`--request-file\` replaces the request.
 - \`table\` prints the \`## Council review\` section, one row per member and one column per round.
 - \`boite delegate stop <id>\` ends the council.
 

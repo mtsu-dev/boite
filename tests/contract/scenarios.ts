@@ -746,10 +746,15 @@ export const SCENARIOS: Record<string, Scenario> = {
     same(next.removed.filter(id => [archived.id, removed.id].includes(id)).sort(), [archived.id, removed.id].sort(), 'archived and deleted rows');
     check(!next.removed.includes(unchanged.id), 'the unchanged row was removed');
 
+    // Other scenarios share the real core, so unrelated removals may arrive too.
+    const other = await thread(env, await echo(env), 'removed elsewhere');
+    await env.call('threads.remove', { threadId: other.id });
     const quiet = await env.call('threads.listChanges', { since: next.cursor });
     check(quiet.kind === 'changes', 'the current cursor did not return changes');
     same(own(quiet.threads), [], 'no project row changed again');
-    same(quiet.removed, [], 'no row was removed again');
+    const ownIds = [pinned.id, unchanged.id, archived.id, removed.id, created.id];
+    same(quiet.removed.filter(id => ownIds.includes(id)), [], 'no project row was removed again');
+    check(quiet.removed.includes(other.id), 'an unrelated removal was not reported');
     // Far ahead: a late commit from another scenario's thread would make seq + 1 a real cursor.
     for (const since of [{ run: 'another-run', seq: 0 }, { ...quiet.cursor, seq: quiet.cursor.seq + 1_000_000 }]) {
       const full = await env.call('threads.listChanges', { since });

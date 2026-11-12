@@ -429,9 +429,12 @@ as on any thread (`coordination.ts`), so it finds, reads and messages other
 threads (`boite threads ...`) without the owner turning it on, and other
 threads can reach it the same way; its letters to the threads of its projects
 still go as its own whatever their settings. What stays out of reach: a
-worktree, a checkout, todos and `projects add` (it has no project), deleting
+worktree, a checkout and todos (it has no project), `projects add` unless the
+owner turned its `addProjects` setting on ([CLI](cli.md#commands)), deleting
 a thread and allowing a tool permission (the owner's), and the threads of a
 project not entrusted to it that it did not start.
+
+Captures: [the Add projects switch on desktop](../images/bot-add-projects-desktop.png) · [the same on a phone](../images/bot-add-projects-phone.png)
 
 A bot starts a thread in any project (`boite thread new`), with or without
 projects of its own. Full control follows the threads it started: they land
@@ -705,7 +708,7 @@ instructions (`--instructions-file <path>` for a long text), its picture
 (`avatar`: one or two characters, a robot code, a picture the owner imported (`img:<hash>`), or `""`), its `status`
 (`active`, `paused` or `archived`), the projects entrusted to it, its model and
 reasoning effort, the memory pass (`autoMemory`), its automatic event wakes
-for every project and desk fact (`eventWakes`, off by default), its subagents and its daily budget (`dailyBudget`, dollars a
+for every project and desk fact (`eventWakes`, off by default), whether it may add a folder of its machine as a project, which is then entrusted to it (`addProjects`, off by default), its subagents and its daily budget (`dailyBudget`, dollars a
 day or `null`). A name another bot holds is refused, when the card is drawn and
 again when it is applied. The context block tells the bot how to ask and when:
 one the user asks to rename itself draws the card, one that needs a project it
@@ -984,7 +987,7 @@ mode, and pauses it. It is never archived; Reset (`agents.builtin.reset`)
 archives its thread and starts a new one, empties its memory, removes its
 routines and gives back its default name, robot and route (or the route the
 reset names) and its default runtime settings (`agents:runtime:<id>` is
-dropped: no daily budget, event wakes off, auto memory and subagents on).
+dropped: no daily budget, event wakes and adding projects off, auto memory and subagents on).
 
 ## Migration
 
