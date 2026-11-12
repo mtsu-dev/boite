@@ -38,9 +38,7 @@ test('a bot\'s boite team propose card offers Create the team in French, and acc
     const jeux = await bot('Jeux (Producteur)');
     const { threadId } = await owner.call('agents.open', { agentId: huginn.id });
     await waitFor(() => harness.core.journal.listTurns(threadId).some(turn => turn.status === 'done'), 10_000);
-    page = await BrowserPage.launch({ url: `${harness.url}/?token=${harness.token}`, experiments: ['resident-agents', 'teams'], windowSize: { width: 1440, height: 900 } });
-    await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `try { localStorage.setItem('boite.locale', 'fr'); } catch {}` });
-    await page.reload();
+    page = await BrowserPage.launch({ url: `${harness.url}/?token=${harness.token}`, experiments: ['resident-agents', 'teams'], locale: 'fr', windowSize: { width: 1440, height: 900 } });
     await page.waitFor(`document.documentElement.lang === 'fr'`);
     await page.click('[data-testid=view-agents]');
     await page.click(`[data-testid="agent-entry-${huginn.id}"]`);

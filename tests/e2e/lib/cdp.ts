@@ -168,6 +168,8 @@ export interface BrowserOptions {
   showTour?: boolean;
   /** Experiments switched on before the first boot, as Settings, Experiments stores them. */
   experiments?: string[];
+  /** The app's language from the first boot, as Settings stores it: no reload, which would drop a `?token=` the UI has not stored yet. */
+  locale?: string;
   /** Extra Chromium switches, such as the fake camera a scan test reads its code from. */
   args?: string[];
   /**
@@ -463,6 +465,9 @@ export class BrowserPage {
       if (options.experiments !== undefined) {
         const stored = JSON.stringify(JSON.stringify(options.experiments));
         await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `try { localStorage.setItem('boite.experiments', ${stored}); } catch {}` });
+      }
+      if (options.locale !== undefined) {
+        await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `try { localStorage.setItem('boite.locale', ${JSON.stringify(options.locale)}); } catch {}` });
       }
       // Windows may clamp the headless window. Pin the CSS viewport before startup.
       await page.send('Emulation.setDeviceMetricsOverride', {
