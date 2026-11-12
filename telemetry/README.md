@@ -37,4 +37,4 @@ The relay has separate resources from Boite Legacy. Renaming a PostHog project
 does not change its numeric ID or ingestion key, so existing Legacy releases
 continue sending to the original project.
 
-See [analytics](../docs/analytics.md) for consent, fields and limitations.
+See [analytics](../docs/internals/analytics.md) for consent, fields and limitations.

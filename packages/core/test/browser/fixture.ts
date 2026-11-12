@@ -168,7 +168,7 @@ export function createBrowserFixture() {
     ({ threadId } = await echoThread(harness, owner));
     opened.agent = agent = await connect(harness.url, harness.core.agents.tokenFor(threadId), { client: { name: 'boite-cli', version: 'test' } });
   });
-  // The 60 s a browser shutdown hook gets (docs/development.md), after up to `SLEEP_LATE_MS` for a stalled sleep step's late answer.
+  // The 60 s a browser shutdown hook gets (docs/internals/development.md), after up to `SLEEP_LATE_MS` for a stalled sleep step's late answer.
   afterEach(async () => {
     later.release();
     const errors: unknown[] = [];

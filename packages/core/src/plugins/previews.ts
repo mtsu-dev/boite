@@ -6,6 +6,7 @@
 import type { PluginManifest, PluginSource } from '@boite/contracts';
 import { invalidParams } from '../errors.ts';
 import { newToken } from '../ids.ts';
+import type { UiTexts } from './ui.ts';
 
 export const PREVIEW_TTL_MS = 10 * 60_000;
 const PREVIEW_MAX = 16;
@@ -13,6 +14,8 @@ const PREVIEW_MAX = 16;
 export interface Previewed {
   manifest: PluginManifest;
   source: PluginSource;
+  /** The `provides.ui` files read at the previewed commit, or null. */
+  ui: UiTexts | null;
 }
 
 export class PluginPreviews {
@@ -41,6 +44,6 @@ export class PluginPreviews {
     if (preview === undefined || preview.expiresAt <= Date.now()) {
       throw invalidParams(`plugin preview is unknown or expired; inspect the URL again`, { field: 'previewId', expected });
     }
-    return { manifest: preview.manifest, source: preview.source };
+    return { manifest: preview.manifest, source: preview.source, ui: preview.ui };
   }
 }

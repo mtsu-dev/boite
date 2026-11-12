@@ -2,7 +2,7 @@
  * The Device panel's core half: the simulators and emulators this machine's
  * SDKs list, the ones each conversation has open, and their screens. Every SDK
  * command goes through `procs.spawn` as a tool process of `system:devices`;
- * a device is acted on only after the SDK listed it. See docs/devices.md.
+ * a device is acted on only after the SDK listed it. See docs/internals/devices.md.
  */
 import {
   deviceBound,

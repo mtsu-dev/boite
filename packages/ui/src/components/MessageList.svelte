@@ -29,6 +29,7 @@
   import MemoryRow from './MemoryRow.svelte';
   import { mergeNoticeRows, placeMemoryEvents } from '../lib/memory-timeline';
   import MessageActions from './MessageActions.svelte';
+  import { workspace } from '../lib/workspace.svelte';
   import { movedBy, pendingMoveOf, startedFrom, turnAnswer } from '../lib/message-display';
   import { focusComposer } from '../lib/focus';
   import { isSending } from '../lib/composer-queue';
@@ -489,7 +490,7 @@
     const observer = new ResizeObserver(entries => {
       for (const entry of entries) pending.set(entry.target, entry);
       // Pinned, the list follows what grows at its bottom in this same frame: the observer runs
-      // after layout, so the new line is painted already in view (docs/performance.md).
+      // after layout, so the new line is painted already in view (docs/internals/performance.md).
       if (following()) edge.follow(box);
       if (frame) return;
       // Applying slot heights inside ResizeObserver can resize that same batch.
@@ -801,6 +802,7 @@
                   text={() => turnAnswer(messages, turn.id)}
                   retry={atRest && store.openThread?.turns.at(-1)?.id === turn.id ? () => void retry(turn.id) : undefined}
                   fork={!narrow.current && forkable && !store.openThread?.incognito && source && source.state !== 'streaming' ? (worktree) => void store.fork(source.id, { worktree }) : undefined}
+                  plugin={store === workspace.primary && source ? { threadId, messageId: source.id, role: 'assistant' } : undefined}
                 />
               {/snippet}
             </MessageTurnSummary>

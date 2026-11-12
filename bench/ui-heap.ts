@@ -3,7 +3,7 @@
  * the DOM and the renderer's private memory, sampled with garbage collected,
  * while the fake client streams what a machine with many agents at work sends
  * (`?fake=1&load=<n>`, `lib/fake-client/load.ts`) and the user moves from one
- * busy thread to the next. docs/performance.md, "What a long day holds".
+ * busy thread to the next. docs/internals/performance.md, "What a long day holds".
  *
  * Run: bun bench/ui-heap.ts [--load 16] [--minutes 6] [--sample 60] [--switch 20]
  *        [--tick 100] [--open <thread>] [--core] [--steps 30] [--machines] [--hidden] [--bundle <dir>] [--ui <checkout>/packages/ui] [--snapshots <dir>]

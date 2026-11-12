@@ -4,7 +4,7 @@ import { tooNewForFloor } from './src/lib/browser-floor.ts';
 
 /** Compress the two prepaint blocks Vite leaves outside its JS pipeline. */
 export function prepaintMinify(): Plugin {
-  const comments = [' Painted before the stylesheet arrives,', ' The same rule as lib/theme.ts,', ' A browser under the floor (Safari 15.4, Chrome 111: docs/phone.md)'];
+  const comments = [' Painted before the stylesheet arrives,', ' The same rule as lib/theme.ts,', ' A browser under the floor (Safari 15.4, Chrome 111: docs/internals/phone.md)'];
   return {
     name: 'boite-prepaint-minify',
     apply: 'build',

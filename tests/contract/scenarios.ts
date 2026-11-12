@@ -360,6 +360,8 @@ export const SCENARIOS: Record<string, Scenario> = {
     await refusedWith(env.call('browser.command', { threadId, tabId: 'main', action: { kind: 'snapshot' } }), RpcErrorCode.Refused);
     await refusedWith(env.call('browser.remoteFrame', { threadId, maxWidth: 99 }), RpcErrorCode.Refused);
     await refusedWith(env.call('browser.remoteFrame', { threadId }), RpcErrorCode.Refused);
+    await refusedWith(env.call('browser.remoteStream', { threadId, maxWidth: 99 }), RpcErrorCode.Refused);
+    await refusedWith(env.call('browser.remoteStream', { threadId }), RpcErrorCode.Refused);
     await refusedWith(env.call('browser.remoteInput', { threadId, frameId: 'none', input: { kind: 'key', key: 'Enter' } }), RpcErrorCode.Refused);
   },
   'the virtual desktop refuses bad input before starting anything and has nothing to stop': async env => {
@@ -691,6 +693,9 @@ export const SCENARIOS: Record<string, Scenario> = {
   'plugins.setGrants refuses a plugin no list has, by field': async (env) => {
     const unknown = await refusedWith(env.call('plugins.setGrants', { id: 'no-such-plugin', grants: [] }), RpcErrorCode.InvalidParams, ['field', 'expected']);
     same(unknown.field, 'id', 'the refused grants field');
+  },
+  'plugins.ui answers no interface while no plugin with one is installed': async (env) => {
+    same(await env.call('plugins.ui', {}), [], 'the interfaces of a machine with no interface plugin');
   },
   'a plugin card reads a shared repository page as the Plugins page does, once per thread': async (env) => {
     const setup = await echo(env);

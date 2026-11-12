@@ -300,8 +300,12 @@ member. Once the hello is passed on, the relaying machine forwards every frame
 both ways without acting on it, though it can read it (see below). The member
 at the end authenticates the hello as it would any other. `/file/<ticket>` and `/view/<ticket>` under the
 same route are fetched from that member and streamed back with their headers
-and ranges, their tickets being what opens them. Nothing else of the other
-member is carried.
+and ranges, their tickets being what opens them. `/browser-stream/<ticket>`,
+the socket a viewer of the agent's browser is pushed its pictures on
+([the agent's browser](browser.md#watching-it)), is piped too, binary and
+without compression, opened by its ticket alone; a client that reads slower
+than it is sent is disconnected once 8 MiB wait for it. Nothing else of the
+other member is carried.
 
 The ticket for a member reached that way comes from the relaying machine,
 which picks the address it names among the member's own: the member checks

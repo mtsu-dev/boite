@@ -536,7 +536,7 @@ worker's build id, and each `.gz` carries its OS byte (3 or 10). The installer
 still builds its own UI on Windows.
 
 Shards are cut by `scripts/ci/e2e-shards.ts` from
-[e2e-durations.json](../scripts/ci/e2e-durations.json), the seconds each file
+[e2e-durations.json](../../scripts/ci/e2e-durations.json), the seconds each file
 took on recorded green runs: files go longest first to the lightest shard, and
 a file with no record counts as the median. `bun test --shard` cut by file
 count and ran 285 to 317, 410 to 417 and 501 to 519 s of tests; the recorded
@@ -609,7 +609,7 @@ RPC errors through `catch` and `toMatchObject` to avoid Bun 1.4.2 Windows
 its shards are the CI ones.
 It refuses failures, skips or a changed case list. Build/staging commands,
 the 2026-09-28 local comparison and the first hosted PR #108 run are preserved
-in the [dated report](../bench/results/2026-09-29-resources.md#e2e-partition-measurements-2026-09-28).
+in the [dated report](../../bench/results/2026-09-29-resources.md#e2e-partition-measurements-2026-09-28).
 Measure local latency separately from hosted CI and review latency. More runners
 can shorten elapsed time while increasing total runner minutes.
 
@@ -699,7 +699,7 @@ only answers it needs no second review. mtsu-patrol skips a push of at most
 150 changed lines after such a review (a setting in its panel) and says so in
 its summary.
 
-Follow the [PR rules](../AGENTS.md#follow-through-on-pull-requests): inspect CI
+Follow the [PR rules](../../AGENTS.md#follow-through-on-pull-requests): inspect CI
 and review findings together, verify and group fixes before pushing, and report
 unresolved bugs or unavailable reviews. Acknowledgements need no reply or repeat
 review request unless they contain a new finding. A regression test must catch
@@ -710,7 +710,7 @@ a failure existing coverage cannot detect.
 The hosted security policy uses CodeQL default setup for Actions,
 JavaScript/TypeScript and Rust, secret scanning with push protection, and
 Dependabot alerts/security updates. Vulnerability reports use the private
-channel in [SECURITY.md](../SECURITY.md). Actions are pinned to full commit SHAs.
+channel in [SECURITY.md](../../SECURITY.md). Actions are pinned to full commit SHAs.
 Hosted rulesets and security settings are managed separately from these files.
 
 Dependabot runs monthly for the Bun workspace, `docker/agents`, Cargo, Docker

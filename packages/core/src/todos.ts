@@ -254,7 +254,7 @@ function followGoal(core: Core, threadId: ThreadId, sent: Map<ThreadId, string>)
 }
 
 /**
- * The card of an automatic goal (`docs/goals.md`): the prompt's first line,
+ * The card of an automatic goal (`docs/internals/goals.md`): the prompt's first line,
  * linked to its conversation so the board follows that goal like one it
  * started. None for an incognito conversation, which no board keeps.
  */

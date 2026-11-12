@@ -3,7 +3,7 @@
   "id": "hello",
   "name": "Hello",
   "version": "0.1.0",
-  "description": "An example plugin: lists the conversations that changed last.",
+  "description": "An example plugin: lists the conversations that changed last, from an agent command and from a panel tab.",
   "homepage": "https://github.com/mtsu-dev/boite/tree/main/examples/plugins/hello",
   "runtime": "bun",
   "executable": "hello",
@@ -14,7 +14,8 @@
     }
   },
   "permissions": [
-    "threads.read"
+    "threads.read",
+    "ui"
   ],
   "provides": {
     "commands": [
@@ -39,6 +40,10 @@
         "hint": "<topic>",
         "prompt": "Run `boite hello-threads`, then recap in a few lines what each of those conversations is about. Focus on:"
       }
-    ]
+    ],
+    "ui": {
+      "script": "ui/index.js",
+      "style": "ui/style.css"
+    }
   }
 }

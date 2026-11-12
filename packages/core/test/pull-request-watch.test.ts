@@ -780,12 +780,20 @@ async function watchingChild(setup: Awaited<ReturnType<typeof watchedThread>>, r
   return child;
 }
 
-test('a delegated agent watches its pull request: the wake is its turn, its answer goes to the parent, and its stop ends the watch', async () => {
+/** The letter a subagent sent its parent under `requestId`, or null. */
+const letterOf = (child: string, parent: string, requestId: string) => {
+  const row = harness!.core.journal.db.query('SELECT data FROM delegation_messages WHERE sender_id = ? AND recipient_id = ? AND request_id = ?').get(child, parent, requestId) as { data: string } | null;
+  return row ? JSON.parse(row.data) as { quiet?: true; status: string; text: string } : null;
+};
+
+test('a delegated agent watches its pull request: the wake is its turn, its answer reaches the parent without waking it, and its stop ends the watch', async () => {
   const setup = await watchedThread();
   const { owner, threadId, github, drive, watches } = setup;
   const child = await watchingChild(setup, 'first');
   const sibling = await watchingChild(setup, 'second');
   expect(watches.of(child)).toHaveLength(1);
+  await settled(threadId);
+  const parentTurns = harness!.core.journal.listTurns(threadId).length;
 
   github.runs = [{ name: 'test', conclusion: 'FAILURE' }];
   github.updatedAt = '2026-10-15T09:31:00Z';
@@ -793,9 +801,12 @@ test('a delegated agent watches its pull request: the wake is its turn, its answ
   await settled(child);
   expect(wakes(child)).toHaveLength(1);
   expect(wakeText(child, wakes(child)[0]!.id)).toContain('Checks failed on aaaaaaa');
-  // What the wake turn answers comes back to the parent like any result of the subagent.
-  const result = () => harness!.core.journal.db.query('SELECT 1 FROM delegation_messages WHERE sender_id = ? AND recipient_id = ? AND request_id = ?').get(child, threadId, `result:${wakes(child)[0]!.id}`);
-  await waitFor(() => result() !== null);
+  expect(wakeText(child, wakes(child)[0]!.id)).toContain('without waking its agent');
+  // While it still watches, what the wake turn answers shows in the parent's conversation and opens no turn there.
+  await waitFor(() => letterOf(child, threadId, `result:${wakes(child)[0]!.id}`) !== null);
+  expect(letterOf(child, threadId, `result:${wakes(child)[0]!.id}`)).toMatchObject({ quiet: true, status: 'delivered' });
+  await settled(threadId);
+  expect(harness!.core.journal.listTurns(threadId)).toHaveLength(parentTurns);
 
   // The parent stopping this subagent ends its watch, not its sibling's.
   await owner.call('delegation.stop', { threadId, agentId: child });
@@ -805,6 +816,79 @@ test('a delegated agent watches its pull request: the wake is its turn, its answ
   // Its parent archived, the subagent watches nothing either.
   await owner.call('threads.archive', { threadId });
   expect(watches.of(sibling)).toEqual([]);
+});
+
+test('a delegated agent that merges its own pull request between turns wakes its parent with its last result', async () => {
+  const setup = await watchedThread();
+  const { threadId, github, drive, watches } = setup;
+  const child = await watchingChild(setup, 'owner');
+  // A full quiet letter must keep the exact pointer to its remaining answer when resent.
+  const rest = '\n[Cut at character 3700 of 9000. The rest: boite delegate result ' + child + ' turn-id 3700]';
+  const result = spyOn(harness!.core.delegation, 'result').mockImplementation((_turn, _rest, max = 4000) => 'r'.repeat(max - rest.length) + rest);
+  github.runs = [{ name: 'test', conclusion: 'SUCCESS' }];
+  github.updatedAt = '2026-10-15T09:31:00Z';
+  await drive();
+  await settled(child);
+  const quiet = letterOf(child, threadId, `result:${wakes(child)[0]!.id}`);
+  expect(quiet).toMatchObject({ quiet: true });
+  expect(quiet!.text).toHaveLength(4000);
+  expect(quiet!.text.endsWith(rest)).toBe(true);
+  result.mockRestore();
+  await settled(threadId);
+  const parentTurns = harness!.core.journal.listTurns(threadId).length;
+  // It merged with gh in that turn: the next read finds the pull request merged by this account, which wakes nobody.
+  github.state = 'MERGED';
+  github.updatedAt = '2026-10-15T09:40:00Z';
+  await drive();
+  expect(watches.of(child)).toEqual([]);
+  expect(wakes(child)).toHaveLength(1);
+  const id = (harness!.core.journal.db.query('SELECT id FROM delegation_messages WHERE sender_id = ? AND request_id = ?').get(child, `result:${wakes(child)[0]!.id}`) as { id: string }).id;
+  const again = letterOf(child, threadId, `result:${id}:watch-ended`);
+  expect(again?.quiet).toBeUndefined();
+  expect(again?.text).toBe(quiet!.text);
+  await waitFor(() => harness!.core.journal.listTurns(threadId).length > parentTurns);
+});
+
+test('a quiet result whose watch ends while its worktree settles wakes the parent', async () => {
+  const setup = await watchedThread();
+  const { threadId, github, drive, watches } = setup;
+  const child = await watchingChild(setup, 'race');
+  await settled(threadId);
+  const before = harness!.core.journal.listTurns(threadId).length;
+  let release!: () => void;
+  const settle = spyOn(harness!.core.delegation.worktrees, 'settle').mockReturnValue(new Promise<void>(resolve => { release = resolve; }));
+  try {
+    github.runs = [{ name: 'test', conclusion: 'SUCCESS' }];
+    github.updatedAt = '2026-10-15T09:31:00Z';
+    await drive();
+    await settled(child);
+    const turn = wakes(child)[0]!;
+    expect(letterOf(child, threadId, `result:${turn.id}`)).toBeNull();
+    github.state = 'MERGED';
+    github.updatedAt = '2026-10-15T09:40:00Z';
+    await drive();
+    expect(watches.of(child)).toEqual([]);
+    release();
+    await waitFor(() => letterOf(child, threadId, `result:${turn.id}`) !== null);
+    expect(letterOf(child, threadId, `result:${turn.id}`)?.quiet).toBeUndefined();
+    await waitFor(() => harness!.core.journal.listTurns(threadId).length > before);
+  } finally { settle.mockRestore(); }
+});
+
+test('unwatching a delegated agent at rest wakes its parent with its last quiet result', async () => {
+  const setup = await watchedThread();
+  const { threadId, github, drive, watches } = setup;
+  const child = await watchingChild(setup, 'unwatch');
+  github.runs = [{ name: 'test', conclusion: 'SUCCESS' }];
+  github.updatedAt = '2026-10-15T09:31:00Z';
+  await drive();
+  await settled(child);
+  expect(letterOf(child, threadId, `result:${wakes(child)[0]!.id}`)).toMatchObject({ quiet: true });
+  await settled(threadId);
+  const before = harness!.core.journal.listTurns(threadId).length;
+  await setup.owner.call('threads.unwatchPullRequest', { threadId: child });
+  expect(watches.of(child)).toEqual([]);
+  await waitFor(() => harness!.core.journal.listTurns(threadId).length > before);
 });
 
 test('a persistent agent takes its next work and keeps a subagent that still watches its pull request until the watch ends', async () => {

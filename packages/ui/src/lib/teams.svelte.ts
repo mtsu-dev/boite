@@ -1,5 +1,5 @@
 /*
- * The teams of one machine (`docs/teams.md`), read with `teams.list` and read
+ * The teams of one machine (`docs/internals/teams.md`), read with `teams.list` and read
  * again on `teams.changed`, for the Teams section of the lists and the team
  * chat. A core that refuses the read (the Teams experiment off there, or an
  * older core) leaves the list empty; the desktop turning the experiment on

@@ -463,7 +463,7 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
       let state = action === 'cancel' ? await client.call('core.updateCancel', {}) : await client.call('core.updateStatus', { refresh: true });
       if (action === 'update') {
         if (state.phase === 'error') throw new Error(state.error ?? 'Server update check failed');
-        if (state.mode !== 'systemd' && state.mode !== 'android') throw new Error('Automatic server updates need a standalone Linux systemd user installation or the managed Android server; see docs/server.md');
+        if (state.mode !== 'systemd' && state.mode !== 'android') throw new Error('Automatic server updates need a standalone Linux systemd user installation or the managed Android server; see docs/internals/server.md');
         if (state.version && state.phase === 'available') state = await client.call('core.updateInstall', { version: state.version });
       }
       print([`server: ${state.currentVersion}`, `update: ${state.phase}`, ...(state.version ? [`version: ${state.version}`] : []), ...(state.error ? [`error: ${state.error}`] : [])], state);

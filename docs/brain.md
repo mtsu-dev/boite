@@ -1,258 +1,121 @@
-# Agent brain
+# Brain
 
-Settings > Brain connects an existing folder on the selected core's
-machine. Browse opens the system folder dialog in the desktop app with a local
-core, and Boite's folder list elsewhere; the path can also be typed. Then select
-Connect folder.
-Each core stores its own path, so the
-same repository can live at different locations on different computers.
+The brain is a folder of instructions and skills that every agent in Boite
+shares. Connect it once and Claude Code, Codex and the others all start each
+conversation with the same rules and the same skill catalog. Keep it in Git to
+use the same brain on several computers.
 
-Only owners can inspect or configure a brain and synchronize it. A paired
-device cannot call these methods. An owner using a phone-sized browser has the
-same controls. The connected folder shows Synchronize and a Share instructions automatically
-switch, which saves immediately. Change folder reveals the path editor and
-Disconnect, which removes the setting and leaves the files alone.
-Instructions, Skills and Plugins each have a tab with a count. Select a file
-to expand its description and path; Git details stay under Sync details.
+## Connect a folder
 
-Manual skills marked `disable-model-invocation: true` appear in the composer's
-slash menu as soon as a folder is connected. Sending `/name` expands the skill
-body, preserving any following arguments. A native agent command with the same
-name takes precedence. Turning automatic sharing off keeps these commands
-available without adding the brain's instructions or skill catalog to each
-turn. Disconnect the folder to remove its manual commands as well.
+1. Open Settings, Brain.
+2. Press Browse and pick the folder, or type its path.
+3. Press Connect folder.
+4. Leave Share instructions automatically on to add the instructions and the
+   skill catalog to each turn.
 
-## Detection
+Each machine keeps its own path, so the same repository can live in different
+places on different computers. Change folder edits the path. Disconnect
+removes the setting and leaves your files alone.
 
-Boite reads these instruction entrypoints at the folder root: `AGENTS.md`,
-`.agents/AGENTS.md`, `CLAUDE.md` and `GEMINI.md`.
+## What Boite reads
 
-The catalog scans `skills`, `.agents/skills`, `.claude/skills`, `.codex/skills`,
-`plugins`, `.claude/plugins` and `.codex/plugins`. A skill is a `SKILL.md` with
-YAML frontmatter containing a nonempty name and description. An agent plugin
-has a `.claude-plugin/plugin.json` or `.codex-plugin/plugin.json` manifest with
-a nonempty name. Malformed entries remain visible with their file and reason.
-The folders under a skill hold its scripts and assets, so the scan does not
-enter them: a deep test corpus inside a skill neither reaches the depth bound
-nor counts as more skills.
-
-Links inside the folder are followed once; links outside it are reported and
-not read. Git metadata, dependencies and secret directories are skipped.
-Inventory is bounded to 500 entries, 2,000 directories, six nested levels and
-64 KiB per file. Reaching a bound appears as a problem in the inventory.
-
-Plugin detection does not install or enable a plugin. The agent's own plugin
-manager still owns that operation. This catalog is separate from Boite's
-native extensions in Settings > Plugins. It does not inventory other agent
-profiles elsewhere on the machine.
-
-Hooks have a card of their own on this page: each agent's hook sources, whether
-its isolated accounts have them, and the runs that blocked or failed since the
-core started ([hooks.md](hooks.md)).
-
-## Instructions in conversations
-
-When sharing is enabled, the core prepends the contents of the two `AGENTS.md`
-entrypoints and the valid skill names, descriptions and absolute paths to
-normal turns. Claude additionally gets `CLAUDE.md`; Antigravity gets `GEMINI.md`.
-Claude Code already names every skill in `<config>/skills/<name>/SKILL.md` and
-in the thread folder's `.claude/skills` to its model, so the catalog leaves out a
-brain skill whose file, resolved through links, is one of those; other agents get the whole catalog. A context mode
-without the Skill tool also gets it whole. Skill bodies stay on disk for the agent
-to read when needed. Project instruction
-files still follow each agent's native discovery rules.
-
-The shared driver context carries the prefix once per native session: whole
-on the session's first turn, then again only when its text changed, since the
-session already holds it (`packages/core/src/threads/brain-context.ts`). The
-core keeps, per thread, the hash of the text it last sent, the session
-generation it went to and the turn that carried it. A new session (first turn,
-account or provider switch, rewind, a background compaction taken, a
-driver's fresh start or the core's retry on one), any compaction, a failed
-or stopped turn that carried it, and a capacity retry that continues with a
-short prompt all send it whole on the next turn. With a 16 KiB
-AGENTS.md, ten turns of one session send 16,697 prompt bytes instead of
-165,620 (`bun run bench/brain-instructions.ts`, 2026-11-07).
-The user's journalled message remains unchanged. Each normal turn picks up
-edits to the entry files and the catalog, so a refresh or process restart is
-unnecessary. The core keeps its last scan and, before each turn, stats every
-path that scan looked at: the entry files, each catalog folder and each skill
-or plugin file, present or absent. Any difference in time or size means a new
-scan. A path changed within two seconds of a scan is not trusted, so an edit on
-a file system with coarse times is not missed. The scan result remains bounded by the
-inventory limits above.
-Missing folders or unreadable instruction files fail the turn instead of silently
-dropping their content. The combined prefix is limited to 128 KiB.
-
-### Boite guide
-
-Boite injects its environment guide before the first request of every native
-agent session, including when no brain is connected or sharing is disabled.
-Claude takes it in its system prompt instead, appended to Claude Code's own
-([providers](providers.md#claudes-system-prompt)): it then survives compaction
-and no message carries it.
-The guide covers the CLI, panel, attachments, tasks and project todos. It lives
-in `packages/core/src/agent-guide.ts`; no instruction file is created. A resumed
-session keeps the guide; a replacement session receives it again. The brain's
-own instructions follow the same rule, and also come again when they change.
-Coordination and delegation add compact feature instructions. Full command
-formats stay behind `boite help` and `boite workflow help`.
-
-The guide lists Boite's built-in skills, name, description and path, in the
-same shape as a brain's skills. They live in `packages/core/src/builtin-skills.ts`
-and are written to `<dataDir>/skills/<name>/SKILL.md` each time a guide names
-them, so an agent's edit is undone by the next session.
-
-| Skill | What it teaches |
-|---|---|
-| `boite-prove-it` | Check a change in proportion to its size, then put the proof in the answer: the deciding line, an attached capture or clip, or a `boite view` page. |
-| `boite-visual` | Pick the drawing from the reader's question, draw it with `boite view`, and send a standalone HTML file with `boite attach` when the user wants one to keep. |
-| `boite-council` | Ask several AIs to review a request alone and read-only, read their scores, fix and ask again, then put the table where the work ends ([council](council.md)). Listed only while the Council experiment is on. |
-| `boite-report-issue` | Read the app's anonymized logs, explain what failed, then draft a GitHub issue the user publishes ([trace](trace.md#structured-diagnostics)). Listed with the `boite logs problems` line only while agents may read diagnostics (`agentLogAccess`, on unless the owner turns it off). |
-
-Boite writes these texts itself rather than adapting another project's skills.
-
-The Boite guide switch retains its saved preference independently of sharing.
-With the guide on, the separate `boite ask` note is not added, and with
-"Asynchronous questions" off, the guide leaves its `boite ask` line out. The
-test-only echo driver always omits that line because it parses question text
-as a test directive. Real drivers follow the asynchronous-questions setting.
-The guide exists only in the turn prefix: it is never written into the brain
-folder, so the brain's Git status and the global links stay untouched, and a
-harness started outside Boite never reads it.
-
-Native slash commands, compaction and coordination turns in existing sessions
-do not receive this prefix. Disconnecting a brain stops its instructions,
-but keeps Boite's environment guide enabled unless its switch is off.
-Instructions already in a session's history remain there; start a new thread
-when previous instructions must leave the context.
-
-Communication and delegation defaults come from the thread policy, independently
-of a connected brain. Ordinary conversations enable both; saved owner restrictions
-remain authoritative. Compact feature instructions follow that policy and the
-request, with named delegation profiles making them available on each turn. These name
-authorized contacts and
-profiles, messaging commands, shared-checkout rules and current limits.
-Delegation also teaches dynamic workflows: `after`, `forEach`, `when` and
-`boite workflow extend`, with `boite workflow help` for the full format.
-
-### Short answers
-
-Settings > General > Short answers, on by default, puts one paragraph before every
-normal turn: reduce text before or between tool calls and make the final reply
-self-contained with the result and everything the user needs to know. It asks
-for short plain sentences, without preamble or hedging, while keeping every
-fact, number, path and command the user needs. It goes every turn
-rather than once a session because harnesses ask for progress notes and a
-style said once fades within a few answers. It is `SHORT_ANSWERS` in
-`packages/core/src/agent-guide.ts`. Context modes without
-guides, compaction and native slash commands do not receive it, and turning the
-Boite guide off removes it with the rest of Boite's own text.
-
-The setting also starts Claude with `CLAUDE_CODE_SILENT_TURN_REMINDER=0`. The
-CLI otherwise slips "the user hasn't heard from you in a while" into a long
-silent turn, which asks for routine progress notes this setting reduces. It applies
-when a Claude process starts, so a warm session keeps its value until then.
-
-## Global instructions
-
-Global AGENTS.md links the brain's root `AGENTS.md` into the user profiles on
-the core's machine. The switch is off by default and requires automatic sharing.
-These links also apply outside Boite, when the harness loads its global rules.
-
-| Harness | Default destination |
+| In the folder | Read as |
 | --- | --- |
-| Claude Code | `~/.claude/CLAUDE.md` |
-| Codex | `~/.codex/AGENTS.md` |
-| OpenCode | `~/.config/opencode/AGENTS.md` |
-| pi | `~/.pi/agent/AGENTS.md` |
-| Grok | `~/.grok/AGENTS.md` |
-| Gemini / Antigravity | `~/.gemini/GEMINI.md` |
-| Muse | `~/.config/muse/AGENTS.md` |
+| `AGENTS.md`, `.agents/AGENTS.md` | Instructions, for every agent |
+| `CLAUDE.md` | Instructions, for Claude Code only |
+| `GEMINI.md` | Instructions, for Antigravity only |
+| `skills`, `.agents/skills`, `.claude/skills`, `.codex/skills` | Skills: each a `SKILL.md` with a name and a description |
+| `plugins`, `.claude/plugins`, `.codex/plugins` | Agent plugins, listed only |
 
-Profile overrides from the core's environment are honored: `CLAUDE_CONFIG_DIR`,
-`CODEX_HOME`, `XDG_CONFIG_HOME`, `PI_CODING_AGENT_DIR`, `GROK_HOME` and
-`GEMINI_HOME`. Separate account profiles still receive Boite's turn prefix;
-this switch manages the global user profiles listed above.
+The page shows Instructions, Skills and Plugins tabs with a count each. Select
+a file to see its description and path. A malformed entry stays listed with
+the reason.
 
-Existing files move to a unique adjacent backup before linking. Disabling
-global instructions, disabling sharing or disconnecting restores those files.
-Boite leaves matching links created elsewhere alone. If a managed link was
-replaced outside Boite, it preserves the replacement and backup and reports
-the destination under Connected harnesses. Directories and higher-priority
-`AGENTS.override.md` files in Codex or pi profiles are never replaced.
+- Edits apply on the next turn, with no restart.
+- Skill bodies stay on disk; the agent reads one when it needs it.
+- A skill marked `disable-model-invocation: true` becomes a `/name` command in
+  the message box's slash menu. An agent's own command of the same name wins.
+- Boite does not install the plugins it lists. Install them through their
+  agent. Boite's own plugins are a separate thing, in Settings, Plugins.
 
-Boite repairs missing managed links at core startup and after synchronization.
-Closing Boite leaves the links working. Git can replace `AGENTS.md` atomically
-without breaking them. Windows requires file-symlink permission, normally
-provided by Developer Mode; a refusal stays visible per harness.
-When Windows refuses a file symlink with a privilege error, Connected harnesses
-shows recovery steps in the app's language. On the computer hosting the brain,
-press Win+R, open `ms-settings:developers`, enable Developer Mode and accept the
-Windows confirmation. Return to Brain and select Try again to reapply the saved
-configuration without switching sharing off. If Windows requires administrator
-approval or an organization manages this setting, contact that computer's
-administrator. Other link or restore errors also offer Try again, with their
-original error and destination preserved. Failed installations restore the
-original file where possible and keep any pending backup tracked.
+## Use it outside Boite too
 
-The source must be a readable, nonempty file within the brain, at most 64 KiB.
-Harness-specific size limits and discovery settings still apply. A running
-agent may need a new session to reload global rules. Use absolute paths for
-references that must work from different profile locations.
+Global AGENTS.md links the brain's `AGENTS.md` into each agent's own user
+profile on this machine, so the agents read it in a terminal as well. It is off
+by default and needs automatic sharing on. Existing files are backed up first
+and put back when you turn it off. Connected harnesses shows each link.
 
-Native discovery references: [Claude](https://code.claude.com/docs/en/memory),
-[Codex](https://learn.chatgpt.com/docs/agent-configuration/agents-md),
-[OpenCode](https://opencode.ai/docs/rules/),
-[pi](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/resource-loader.ts),
-[Grok](https://docs.x.ai/build/features/project-rules), and
-[Antigravity](https://antigravity.google/docs/rules-workflows).
+On Windows, these links need Developer Mode. If Windows refuses them, press
+Win+R, open `ms-settings:developers`, turn on Developer Mode, accept the
+confirmation, then come back to Brain and press Try again.
 
-## Synchronization
+## Sync between computers
 
-Use an existing Git checkout with a configured upstream on each computer.
-Git and authentication must already work on the machine hosting that core.
-A plain folder works for instruction sharing, without synchronization.
+Use a Git checkout with an upstream branch on each computer, with Git and its
+sign-in already working there. A plain folder still shares instructions, but
+does not sync.
 
-Synchronize fetches the configured remote, fast-forwards incoming commits and
-pushes outgoing commits to the upstream branch. It never stages, commits,
-stashes, resets, force-pushes or resolves conflicts. Local file changes,
-diverging histories, detached HEAD and a missing upstream stop the operation.
-Commit changes with Git before synchronizing. A second click cannot run a
-concurrent synchronization, and the folder cannot change during one.
-If the branch, upstream or HEAD changes during fetch, synchronization stops.
-Outgoing pushes name the checked commit rather than a mutable HEAD.
+- Synchronize fetches, fast-forwards incoming commits and pushes yours.
+- It never commits, stashes, resets or force-pushes. Uncommitted changes,
+  diverging histories or a missing upstream stop it: commit with Git first.
+- Pull automatically has two options, both off: At startup, and Periodically,
+  every 1 to 1440 minutes. Automatic pulls never push.
+- Sync details shows what is waiting to send and receive and the last sync.
 
-Boite records the last successful synchronization for this folder. The commit
-counts use local Git knowledge, refreshed by Synchronize. Authentication is
-noninteractive, repository hooks are disabled for these operations, and each
-Git command has a 30-second deadline. Git runs through the process registry
-and is stopped when the core closes.
+Boite does not clone a repository or commit your edits.
 
-Pull automatically has two independent options, both off by default: At startup
-and Periodically. The interval accepts 1 to 1440 minutes. Startup means starting
-the core hosting this folder, not opening a client connected to that core.
-Automatic pulls fetch and fast-forward only; they never push local commits.
-They use the same dirty-folder and divergence checks as Synchronize. A failure
-appears in the inventory and the next interval retries. The interval starts after
-the previous attempt finishes, and a manual synchronization takes priority.
-These settings apply even when automatic sharing is off. Disconnect stops pulls;
-closing the core cancels the timer and drains its Git processes.
+## The Boite guide
 
-This version does not clone repositories, commit edits or copy files directly
-between machines.
+Separate from your brain, Boite gives every agent session a short guide to its
+own commands and panel, about 300 tokens. The Boite guide switch on this page
+turns it off. Short answers, in Settings, General, on by default, adds one
+paragraph to each turn asking for brief, plain answers; turning the Boite
+guide off removes it too.
 
-## Verification
+## Hooks
 
-`bun test packages/core/test/brain.test.ts` exercises detection, invalid entries,
-links, owner access, instruction delivery and synchronization between two
-temporary checkouts through a local bare remote. No personal brain is read.
+A hook is a script an agent runs on its own events, such as before a tool
+call or when a turn ends. Boite never runs one itself. It makes sure each of
+your accounts finds your hooks, and shows what they did on the Hooks card of
+this page, with or without a brain folder.
 
-`bun test packages/core/test/brain-links.test.ts` creates physical file symlinks
-in temporary profiles and checks source replacement, backups, restoration,
-profile overrides and preservation of user changes.
+| Agent | Where its hooks live | Runs reported |
+| --- | --- | --- |
+| Claude Code | `hooks` in its `settings.json`, plus plugin hooks | Yes |
+| Codex | `hooks.json`, each hook trusted in `config.toml` | Yes |
+| Grok | `hooks/*.json`, and Claude's `~/.claude/settings.json` | No |
+| pi | Its extensions | No |
+| OpenCode and OpenCode 2 | Its plugins | No |
 
-`bun test tests/e2e/brain.test.ts` exercises the settings flow, errors and
-disconnect through the in-memory client. Desktop and phone captures go to
-`tests/e2e/.artifacts/brain-*.png`. This does not test provider-side plugin
-loading, a live model, hosted Git authentication or a second physical machine.
+- Each agent has one row with what Boite found, such as "13 hooks". For
+  Claude Code and Codex it also counts runs, blocked, failed and skipped.
+  Open the row to see each source path.
+- Recent lists the runs that blocked or failed, newest first, with the agent,
+  event, hook and reason.
+- A hook that refuses your prompt or stops the turn also shows in the
+  conversation with its reason.
+- Counts start when Boite starts on this machine.
+- A Codex hook nobody reviewed counts as skipped. Review new hooks in your own
+  Codex profile; the next start copies the trust to your other accounts.
+
+Hooks still run in a mode that skips approvals. They are off in a Neutral
+[subagent](subagents.md#context-modes) and in Boite's own background checks.
+
+## Limits
+
+- Only the owner sees and changes the brain, from the desktop app or a
+  browser of any size. A paired device cannot.
+- Instructions already in a conversation stay there after you disconnect:
+  start a new conversation to drop them.
+- Instructions and catalog together are limited to 128 KiB. The scan stops
+  at 500 entries and 64 KiB per file, and says so.
+- Links that point outside the folder are reported and not read.
+
+## Going further
+
+- [Bots](bots.md): each bot has a brain folder of its own.
+- [Plugins](plugins.md): Boite's own extensions.
+- [Accounts](accounts.md): separate accounts and what they share.
+- [Subagents](subagents.md): context modes that leave the brain out.
+- Technical reference: [brain](internals/brain.md),
+  [hooks](internals/hooks.md).

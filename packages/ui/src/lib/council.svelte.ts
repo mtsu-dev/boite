@@ -1,5 +1,5 @@
 /*
- * The councils of one machine (`docs/council.md`), read for what draws them: a
+ * The councils of one machine (`docs/internals/council.md`), read for what draws them: a
  * thread's cards read the councils it started with `council.list`, a salon
  * reads its council and posts with `council.get`. Both read again on
  * `council.changed` for their own council or thread, a burst of changes making

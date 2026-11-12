@@ -216,7 +216,7 @@ export class AgentRuntime {
     }
   }
 
-  /** This bot thread's agent is archived or paused, or bots are: a bot's team letter waits for it (`docs/teams.md`). */
+  /** This bot thread's agent is archived or paused, or bots are: a bot's team letter waits for it (`docs/internals/teams.md`). */
   holds(threadId: string): boolean {
     const agent = this.#store.agentOfThread(threadId);
     return agent !== null && this.#refusal(agent) !== null;

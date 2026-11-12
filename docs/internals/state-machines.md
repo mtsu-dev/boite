@@ -128,7 +128,7 @@ row (`archived` flag plus the deletion staging tables):
 | present | `threads.remove` | top-level conversation, not already being deleted | staged deletion (undoable) | family archived in one commit, workflows stopped, turns and processes waited for, rows staged not erased | `packages/core/src/threads.ts:498` `remove` |
 | staged deletion | retention expires | `threadDeletionRetentionDays` passed since deletion | purged | native transcripts removed | `packages/core/src/threads.ts:545` `purgeDeleted` |
 | present, incognito | `threads.remove` | work stopped | erased (not undoable) | folder and transcripts deleted with the rows | `packages/core/src/threads/incognito.ts:27` `eraseIncognito` |
-| archived with a worktree | checkout cleanup | exact tip merged, or checkout clean | worktree removed (`ThreadWorktreeRemoval`) | thread stays readable, cannot continue in the gone folder | `packages/contracts/src/threads.ts:112` (type), `docs/architecture.md` worktree cleanup |
+| archived with a worktree | checkout cleanup | exact tip merged, or checkout clean | worktree removed (`ThreadWorktreeRemoval`) | thread stays readable, cannot continue in the gone folder | `packages/contracts/src/threads.ts:112` (type), `docs/internals/architecture.md` worktree cleanup |
 
 A pending move to another project (asked while a turn runs) is memory-only
 (`packages/core/src/threads/move.ts:77` `#waiting`): a restart drops it

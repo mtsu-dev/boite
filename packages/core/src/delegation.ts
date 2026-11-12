@@ -11,7 +11,7 @@ import type { ProviderProbe } from './providers/probe.ts';
 import { assertDriverRunnable } from './drivers/index.ts';
 import { withLoad } from './threads/records.ts';
 import { nativeAgents } from './native-agents.ts';
-import { delegatedResultPage, DelegationWaits, RESULT_TEXT, teamUsage, turnResult, type ResultRest } from './delegation/results.ts';
+import { delegatedResultPage, DelegationWaits, quietResult, RESULT_TEXT, teamUsage, turnResult, type ResultRest } from './delegation/results.ts';
 import { INTERRUPTION_TEXT, parentListens, tellInterrupted } from './delegation/interruption.ts';
 import { askFinal, childEnd, closeQuestions, taskTurn, unwoken } from './delegation/completion.ts';
 import { permissionWake, questionWake, worktreeLine } from './delegation/messages.ts';
@@ -425,7 +425,7 @@ export class Delegation {
   #contact(thread: ThreadSummary): AgentLetter['from'] {
     return { coreId: 'local', threadId: thread.id, title: thread.title, project: thread.projectId ? this.#core.journal.getProject(thread.projectId)?.name : undefined, machine: 'Boite', resources: '', status: thread.status, mode: 'team' };
   }
-  send(params: RpcParams<'delegation.send'>, origin: NonNullable<AgentLetter['origin']> = 'agent', marks: Pick<AgentLetter, 'checkpoint' | 'carriesOn'> = {}): AgentLetter {
+  send(params: RpcParams<'delegation.send'>, origin: NonNullable<AgentLetter['origin']> = 'agent', marks: Pick<AgentLetter, 'checkpoint' | 'carriesOn' | 'quiet'> = {}): AgentLetter {
     // A child here whose parent is on another machine: the letter goes with its reports.
     if (this.remote.parentOf(params.threadId)) return this.remote.tell(params, origin);
     const sender = this.#core.threads.require(params.threadId), recipient = this.#core.threads.require(params.toThreadId);
@@ -451,7 +451,7 @@ export class Delegation {
     if (typeof reply === 'string') throw refused(reply, { field: 'text', toThreadId: recipient.id });
     const question = reply?.question, answer = reply?.answer;
     // A question letter stays until the card closes, which withdraws it if it was not delivered yet.
-    const letter: AgentLetter = { id: randomUUID(), origin, ...marks, from: this.#contact(sender), to: { coreId: 'local', threadId: recipient.id }, toTitle: recipient.title, toProject: this.#contact(recipient).project, toMachine: 'Boite', text: body, replyTo: null, createdAt: Date.now(), expiresAt: fromCore ? Number.MAX_SAFE_INTEGER : Date.now() + 15 * 60_000, status: question ? 'delivered' : 'received', error: null, ...(question ? { answered: question.id } : {}) };
+    const letter: AgentLetter = { id: randomUUID(), origin, ...marks, from: this.#contact(sender), to: { coreId: 'local', threadId: recipient.id }, toTitle: recipient.title, toProject: this.#contact(recipient).project, toMachine: 'Boite', text: body, replyTo: null, createdAt: Date.now(), expiresAt: fromCore ? Number.MAX_SAFE_INTEGER : Date.now() + 15 * 60_000, status: question || marks.quiet ? 'delivered' : 'received', error: null, ...(question ? { answered: question.id } : {}) };
     const post = () => this.#core.journal.append({ type: 'delegation.sent', threadId: sender.id, version: 1, payload: letter }, () => {
       this.#core.journal.db.query('INSERT INTO delegation_messages VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(letter.id, root.id, sender.id, recipient.id, requestId, fingerprint, letter.status, letter.createdAt, JSON.stringify(letter));
     });
@@ -464,7 +464,7 @@ export class Delegation {
       this.#core.threads.answerQuestion({ threadId: recipient.id, questionId: question.id, optionIds: answer.optionIds, ...(answer.text === undefined ? {} : { text: answer.text }) }, origin === 'user' ? 'the user, through the parent' : 'the parent agent');
       return letter;
     }
-    this.#kick(recipient.id);
+    if (!marks.quiet) this.#kick(recipient.id);
     return letter;
   }
   #letters(threadId: string, status: AgentLetter['status']): AgentLetter[] {
@@ -618,7 +618,7 @@ export class Delegation {
       const body = `${`${head}\n${result ?? 'No text result was returned.'}`.slice(0, RESULT_TEXT - tail.length)}${tail}`;
       if (link) { this.remote.letter(thread.id, { origin: 'result', requestId: `result:${turn.id}`, text: body, ...(live.length > 0 ? { checkpoint: true as const } : {}) }); return; }
       try {
-        this.send({ threadId: thread.id, toThreadId: parentId, requestId: `result:${turn.id}`, text: body }, 'result', live.length > 0 ? { checkpoint: true } : {});
+        this.send({ threadId: thread.id, toThreadId: parentId, requestId: `result:${turn.id}`, text: body }, 'result', { ...(live.length > 0 ? { checkpoint: true } : {}), ...(quietResult(this.#core, thread.id, turn) ? { quiet: true as const } : {}) });
       } catch (error) { this.#core.log('warn', `delegation result ${thread.id}: ${messageOf(error)}`); }
     };
     if (settling) this.#track(settling.then(() => { if (!this.#closed) deliver(); }));

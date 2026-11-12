@@ -23,7 +23,7 @@
   import Menu from '../Menu.svelte';
 
   /**
-   * The owner's composer in a team chat (`docs/teams.md`). A post that names
+   * The owner's composer in a team chat (`docs/internals/teams.md`). A post that names
    * nobody wakes every member; `@name` or the mention menu wakes only the bots
    * it names, `@everyone` or `@tous` every member, and the line under the field
    * says who the core will wake, from the same

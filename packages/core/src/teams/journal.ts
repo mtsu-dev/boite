@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite';
 
 /**
- * Teams of bots (`docs/teams.md`). Member keys are `<coreId>/<botId>`. A team's
+ * Teams of bots (`docs/internals/teams.md`). Member keys are `<coreId>/<botId>`. A team's
  * row and the posts its machine may have also stand on each member's machine.
  *
  * - `teams`: the team as JSON (`Team` without its live seq), its version and its chat thread.

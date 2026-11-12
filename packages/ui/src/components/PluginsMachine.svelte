@@ -6,7 +6,9 @@
   import PolicyLock from './PolicyLock.svelte';
   import { Download, ExternalLink, Play, Plus, Puzzle, RefreshCw, RotateCw, Search, ShieldAlert, Square, TriangleAlert } from '@lucide/svelte';
   import type { PluginAdds, PluginAppState, PluginGatewayState, PluginManifest, PluginPermission, PluginPool, PluginPreview, PluginRejected, PluginSettingValue, PluginState, PluginUpdates, RpcParams } from '@boite/contracts';
-  import { PLUGIN_ADD_SECTION, gatewayDashboardReachable } from '@boite/contracts';
+  import { PLUGIN_ADD_SECTION, PLUGIN_PERMISSIONS, gatewayDashboardReachable } from '@boite/contracts';
+  import { pluginUi } from '../lib/plugin-ui.svelte';
+  import { workspace } from '../lib/workspace.svelte';
   import { besideCore } from '../lib/gateway-dashboard';
   import { openExternal } from '../lib/links';
   import GatewayMoveDialog from './GatewayMoveDialog.svelte';
@@ -354,6 +356,7 @@
       ...adds.slashCommands.map((name) => `/${name}`),
       ...adds.skills,
       ...(adds.prompt ? [t.addsPrompt] : []),
+      ...(adds.ui ? [strings.pluginUi.adds] : []),
     ];
   }
 
@@ -364,6 +367,7 @@
       skills: (manifest.provides.skills ?? []).map((skill) => skill.name),
       slashCommands: (manifest.provides.slashCommands ?? []).map((command) => command.name),
       prompt: manifest.provides.prompt !== undefined,
+      ui: manifest.provides.ui !== undefined,
     };
   }
 
@@ -460,13 +464,13 @@
   {@const items = addsItems(adds)}
   {#if items.length > 0}
     <dt class="with-tip"><span class="ui-label">{t.adds}</span><InfoTip topic={t.adds} text={t.addsHint} /></dt>
-    <dd><ul class="chips">{#each items as item (item)}<li class="chip" class:mono={item !== t.addsPrompt} data-testid="plugin-adds-item">{item}</li>{/each}</ul></dd>
+    <dd><ul class="chips">{#each items as item (item)}<li class="chip" class:mono={item !== t.addsPrompt && item !== strings.pluginUi.adds} data-testid="plugin-adds-item">{item}</li>{/each}</ul></dd>
   {/if}
   {#if permissions.length > 0 || scoped}
     <dt class="with-tip"><span class="ui-label">{t.reaches}</span><InfoTip topic={t.reaches} text={t.reachesHint} /></dt>
     <dd>
       {#if permissions.length > 0}
-        <ul class="chips">{#each permissions as permission (permission)}<li class="chip" title={permission} data-testid="plugin-permission" data-permission={permission}>{permissionTitle(permission)}</li>{/each}</ul>
+        <ul class="chips">{#each permissions as permission (permission)}<li class="chip" class:danger={PLUGIN_PERMISSIONS[permission]?.danger === true} title={PLUGIN_PERMISSIONS[permission]?.danger === true ? strings.pluginUi.danger : permission} data-testid="plugin-permission" data-permission={permission}>{permissionTitle(permission)}</li>{/each}</ul>
       {:else}<span class="subtle">{t.reachesNothing}</span>{/if}
     </dd>
   {/if}
@@ -503,6 +507,21 @@
     <dl class="facts extras" data-testid="plugin-extras">{@render extras(plugin.adds, [], false)}</dl>
   {/if}
   {#if plugin.error}<p class="bad" role="alert">{plugin.error}</p>{/if}
+  {#if store === workspace.primary && pluginUi.status[plugin.id]}
+    {@const ui = pluginUi.status[plugin.id]!}
+    <div class="ui-state" data-testid="plugin-ui-state" data-plugin={plugin.id} data-ui-state={ui.state}>
+      <p class="state">
+        <span class="dot" class:ok={ui.state === 'running'} class:live={ui.state === 'loading'} class:bad={ui.state === 'failed'}></span><span class="ui-label">{
+          ui.state === 'running' ? strings.pluginUi.running
+          : ui.state === 'loading' ? strings.pluginUi.loading
+          : ui.state === 'skipped' ? strings.pluginUi.skipped
+          : fill(strings.pluginUi.failed, { error: ui.error ?? '' })}</span>
+      </p>
+      {#if ui.state === 'failed' || ui.state === 'running'}
+        <button class="ghost small" data-testid="plugin-ui-reload" data-plugin={plugin.id} onclick={() => void pluginUi.reload(plugin.id)}><RotateCw size={14} /><span class="ui-label">{strings.pluginUi.reload}</span></button>
+      {/if}
+    </div>
+  {/if}
   {#if errors[plugin.id]}<p class="bad" role="alert">{errors[plugin.id]}</p>{/if}
   {#if plugin.rejected}{@render refusal(plugin.rejected)}{/if}
   {#if plugin.status === 'installed' && on && plugin.app}
@@ -783,6 +802,9 @@
   .extras { align-items: baseline; }
   .with-tip { display: inline-flex; align-items: center; gap: 4px; }
   .chips { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 4px; }
+  .chip.danger { border-color: var(--color-danger); color: var(--color-danger); }
+  .ui-state { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
+  .ui-state .state { min-width: 0; overflow-wrap: anywhere; }
   .chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 1px 6px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); font-size: var(--text-xs); color: var(--color-foreground); }
   .tag { flex: none; padding: 1px 6px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--color-success) 16%, transparent); color: var(--color-success); font-size: var(--text-xs); font-weight: 500; }
   .account-actions { display: flex; margin-left: auto; gap: 4px; flex: none; }

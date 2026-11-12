@@ -482,7 +482,11 @@ export class GroupBotHost {
 
   #schedule(coreId: string, delay: number): void {
     if (this.#closed || this.#timers.has(coreId)) return;
-    const timer = setTimeout(() => { this.#timers.delete(coreId); void this.flush(coreId); }, delay);
+    const timer = setTimeout(() => {
+      this.#timers.delete(coreId);
+      // An unhandled rejection ends the core: a flush that failed here is logged, and its events wait for the next one.
+      void this.flush(coreId).catch(error => this.#core.log('warn', `group bot events for ${coreId}: ${messageOf(error)}`));
+    }, delay);
     timer.unref?.();
     this.#timers.set(coreId, timer);
   }
@@ -498,9 +502,12 @@ export class GroupBotHost {
     this.#sending.add(coreId);
     try {
       await this.#core.coordination.request(peer, 'bot.event', { events });
+      // Closed while that machine answered: the journal may be gone, and what was sent goes again after a restart.
+      if (this.#gone()) return;
       this.#attempts.delete(coreId);
       this.#drop(coreId, events);
     } catch (error) {
+      if (this.#gone()) return;
       // A refusal is final: that machine no longer wants them. A machine away gets them later.
       if (error instanceof PeerRefusal) { this.#drop(coreId, events); return; }
       const attempt = this.#attempts.get(coreId) ?? 0;
@@ -511,6 +518,8 @@ export class GroupBotHost {
     }
     if (this.outbox(coreId).length && !this.#timers.has(coreId)) this.#schedule(coreId, FLUSH_MS);
   }
+
+  #gone(): boolean { return this.#closed || this.#core.journal.isClosed(); }
 
   #drop(coreId: string, sent: BotEvent[]): void {
     const left = this.outbox(coreId).filter(entry => !sent.some(done => done.agentId === entry.agentId && done.key === entry.key && JSON.stringify(done.row) === JSON.stringify(entry.row)));

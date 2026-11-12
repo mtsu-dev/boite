@@ -56,13 +56,16 @@ describe('the plugin permission table', () => {
     expect([...filed.keys()].filter((name) => pluginClosedReason(name) !== null)).toEqual([]);
     // Nothing past what a device reaches, but the plugin's own ui.reveal.
     expect([...filed.keys()].filter((name) => !DEVICE_METHODS.has(name as never) && !DEVICE_EVENTS.has(name as never))).toEqual(['ui.reveal']);
-    expect(PLUGIN_PERMISSION_NAMES.length).toBeLessThanOrEqual(14);
+    // Fourteen domains, plus ui, which opens no method: its code runs in the app.
+    expect(PLUGIN_PERMISSION_NAMES.length).toBeLessThanOrEqual(15);
     expect(PLUGIN_CLOSED.filter((entry) => entry.reason.trim().length === 0)).toEqual([]);
   });
 
   test('a refusal names the permission and says the owner did not grant it, or why the method is never open', () => {
     const caller = { principal: 'plugin' as const, sessionId: null, threadId: null, permissions: ['threads.read' as const] };
     expect(accessRefusal('todos.list', caller)?.message).toBe('todos.list needs the plugin permission todos.read, which the owner did not grant (granted: threads.read)');
+    expect(accessRefusal('browser.remoteStream', caller)?.message).toBe('browser.remoteStream needs the plugin permission screens.read, which the owner did not grant (granted: threads.read)');
+    expect(accessRefusal('browser.remoteStream', { ...caller, permissions: ['screens.read'] })).toBeNull();
     expect(accessRefusal('secrets.list', caller)?.message).toBe('secrets.list is never open to plugins: secrets reach only the agent that asked for one');
     expect(accessRefusal('plugins.setGrants', caller)?.message).toBe("plugins.setGrants is never open to plugins: installing, removing, granting, turning off and setting up plugins is the owner's");
     expect(accessRefusal('settings.set', caller)?.message).toBe('settings.set is for the owner only; a plugin reaches the methods of its permissions (granted: threads.read)');

@@ -4,7 +4,7 @@ import type { RpcEventName, RpcMethodName } from './index';
 
 // ---------------------------------------------------------------------------
 // Plugins: one manifest format, `boite-plugin.json`. The recommended ones ship
-// inside the core; the owner adds others from a git URL. docs/plugins.md.
+// inside the core; the owner adds others from a git URL. docs/internals/plugins.md.
 // ---------------------------------------------------------------------------
 
 /** The file a plugin repository carries at its root. */
@@ -31,7 +31,7 @@ export type PluginRuntime = 'native' | 'bun';
 // ---------------------------------------------------------------------------
 // Permissions. A schema 2 plugin's processes get a token of their own that
 // reaches only what the owner granted of what its manifest asks for
-// (docs/plugins.md, Permissions). A schema 1 desktop app keeps the owner token
+// (docs/internals/plugins.md, Permissions). A schema 1 desktop app keeps the owner token
 // it always had.
 //
 // Every method and event a paired device reaches (`DEVICE_METHODS` and
@@ -44,7 +44,7 @@ export type PluginRuntime = 'native' | 'bun';
 export const PLUGIN_PERMISSION_NAMES = [
   'threads.read', 'threads.write', 'projects.read', 'projects.write', 'todos.read', 'todos.write',
   'agents.read', 'agents.write', 'files.read', 'questions.write', 'screens.read', 'screens.write',
-  'status.read', 'ui.reveal',
+  'status.read', 'ui.reveal', 'ui',
 ] as const;
 export type PluginPermission = (typeof PLUGIN_PERMISSION_NAMES)[number];
 
@@ -130,7 +130,7 @@ export const PLUGIN_PERMISSIONS: Readonly<Record<PluginPermission, PluginPermiss
   'questions.write': { methods: ['permissions.answer', 'questions.answer', 'questions.openPage', 'questions.skip'], events: [], danger: true },
   // What an agent's browser, a phone emulator or a desktop window shows.
   'screens.read': {
-    methods: ['browser.remoteFrame', 'browser.remoteSelection', 'browser.remoteStatus', 'devices.list', 'devices.sessions', 'devices.frame', 'devices.screenshot', 'devices.stream', 'windows.list', 'windows.frame'],
+    methods: ['browser.remoteFrame', 'browser.remoteStream', 'browser.remoteSelection', 'browser.remoteStatus', 'devices.list', 'devices.sessions', 'devices.frame', 'devices.screenshot', 'devices.stream', 'windows.list', 'windows.frame'],
     events: ['browser.remoteChanged', 'devices.changed', 'windows.changed'],
   },
   // Taps, types and opens there, reads the emulator's clipboard, closes what is shown.
@@ -145,6 +145,9 @@ export const PLUGIN_PERMISSIONS: Readonly<Record<PluginPermission, PluginPermiss
   },
   // Brings a conversation, a bot or the app updates to the front of the owner's desktop window.
   'ui.reveal': { methods: ['ui.reveal'], events: [] },
+  // Its `provides.ui` script and style run inside Boite's window, on every client of this core.
+  // The token gains nothing: the code runs in the app and reaches what the app reaches. Danger.
+  ui: { methods: [], events: [], danger: true },
 };
 
 /**
@@ -360,6 +363,54 @@ export interface PluginProvides {
   prompt?: string;
   /** Schema 2. Entries of the composer's `/` menu. */
   slashCommands?: PluginSlashCommand[];
+  /**
+   * Schema 2. A script and a stylesheet Boite's window loads: files of the
+   * plugin's repository, read at the commit the owner installed, or of its
+   * dev folder. Needs the `ui` permission. docs/plugins.md, Interface.
+   */
+  ui?: PluginUiFiles;
+}
+
+/** `provides.ui`: paths in the repository, relative to its root. At least one. */
+export interface PluginUiFiles {
+  /** An ES module whose default export Boite calls with the plugin API: `ui/index.js`. */
+  script?: string;
+  /** A stylesheet added to the page while the plugin is loaded: `ui/style.css`. */
+  style?: string;
+}
+
+/**
+ * What `provides.ui` may name: a path inside the repository, of letters,
+ * digits, `.`, `_`, `-` and `/`, with no `..`, a script ending in `.js` or
+ * `.mjs`, a style in `.css`.
+ */
+export const PLUGIN_UI_PATH_PATTERN = /^(?!.*(?:^|\/)\.\.?(?:\/|$))[A-Za-z0-9_][A-Za-z0-9._/-]{0,199}$/;
+/** Bytes each file may take: the window loads them at every start, a phone's included. */
+export const PLUGIN_UI_LIMITS = { script: 512 * 1024, style: 128 * 1024 } as const;
+
+/**
+ * One plugin's interface as `plugins.ui` hands it to a client: the files'
+ * text and what its script may call. Only plugins installed, enabled and
+ * granted `ui` are listed.
+ */
+export interface PluginUiBundle {
+  id: string;
+  name: string;
+  version: string;
+  /** Changes whenever the version or a file's bytes do: what a client compares to reload it. */
+  digest: string;
+  script: string | null;
+  style: string | null;
+  /** The permissions the owner granted: the script's RPC client reaches these and no more. */
+  permissions: PluginPermission[];
+  /**
+   * The values of the plugin's settings, as the owner set them. A change of
+   * these alone reaches the running script through `onSettingsChanged`, with
+   * no reload: `digest` does not cover them.
+   */
+  settings: Record<string, boolean | number | string>;
+  /** Why the files could not be read, a dev folder's missing file say. The bundle carries no code then. */
+  error: string | null;
 }
 
 /** Where a gateway plugin stands. Null on a plugin that provides no gateway. */
@@ -533,7 +584,7 @@ export interface PluginState {
   /**
    * What the owner granted of `permissions`: all the plugin's token reaches.
    * Absent with `permissions`. A permission the plugin asks for and the owner
-   * left out is refused by name (docs/plugins.md, Permissions).
+   * left out is refused by name (docs/internals/plugins.md, Permissions).
    */
   granted?: PluginPermission[];
   /** What the version an install or an update brings asks for; the consent dialog lists it. Absent when that version is schema 1. */
@@ -562,6 +613,8 @@ export interface PluginAdds {
   skills: string[];
   slashCommands: string[];
   prompt: boolean;
+  /** Whether it loads a script or a style into Boite's window. Absent from older cores. */
+  ui?: boolean;
 }
 
 /** What `plugins.command` hands back: the command's exit code and its output. */
@@ -575,7 +628,7 @@ export interface PluginCommandResult {
 
 /**
  * A recommended plugin's update source and its last check. The source is the
- * reviewed list's, never the plugin's own: docs/plugins.md, Updating.
+ * reviewed list's, never the plugin's own: docs/internals/plugins.md, Updating.
  */
 export interface PluginUpdates {
   /** The https repository and the ref whose `boite-plugin.json` is read. */
@@ -698,6 +751,12 @@ export interface PluginsRpcMethods {
    * declared and every value valid, or nothing changes; the refusal names the key.
    */
   'plugins.settings.set': { params: { id: string; values: PluginSettingValues }; result: PluginState };
+  /**
+   * The interface of every installed plugin that provides one and holds the
+   * `ui` permission: what a client's window loads after it starts. Owner and
+   * paired devices alike, since a phone draws the same window.
+   */
+  'plugins.ui': { params: Record<string, never>; result: PluginUiBundle[] };
 }
 
 export interface PluginsRpcEvents {
@@ -705,4 +764,6 @@ export interface PluginsRpcEvents {
   'plugins.updated': PluginState;
   /** A plugin's settings after the owner changed them: every value. Heard by the owner and by that plugin alone. */
   'plugin.settings.changed': { id: string; values: PluginSettingValues };
+  /** The set of plugin interfaces changed: `digest` sums every bundle's, so a client reads `plugins.ui` again only when it differs. */
+  'plugins.uiUpdated': { digest: string };
 }

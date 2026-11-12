@@ -49,9 +49,7 @@ test('the owner finds a team on the Bots page on a desktop and a phone, reads it
     const huginnThread = await conversation(huginn.id);
     const jeuxThread = await conversation(jeux.id);
 
-    page = await BrowserPage.launch({ url: `${harness.url}/?token=${harness.token}`, experiments: ['resident-agents', 'teams'], windowSize: { width: 1440, height: 900 } });
-    await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `try { localStorage.setItem('boite.locale', 'fr'); } catch {}` });
-    await page.reload();
+    page = await BrowserPage.launch({ url: `${harness.url}/?token=${harness.token}`, experiments: ['resident-agents', 'teams'], locale: 'fr', windowSize: { width: 1440, height: 900 } });
     await page.waitFor(`document.documentElement.lang === 'fr'`);
     // The core takes teams once the app has told it the experiment is on.
     await waitFor(() => (harness.core.clients.desktopExperiments() ?? harness.core.clients.current()?.experiments ?? []).includes('teams'), 10_000);

@@ -7,6 +7,8 @@
 
 const DOWNLOAD_MAX_BYTES = 64 * 1024 * 1024;
 const DOWNLOAD_CEILING_MS = 30 * 60_000;
+/** A download that receives nothing for this long stops; one still receiving goes on, up to its ceiling. */
+export const DOWNLOAD_IDLE_MS = 30_000;
 
 export interface ArtifactFetch {
   /** The plugin's id, which every refusal names. */

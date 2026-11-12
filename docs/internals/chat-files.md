@@ -63,7 +63,7 @@ not, and two matches at the same depth are reported instead of guessed.
 The local desktop's explicit open action follows the rules in
 [Open chat links in their apps](#open-chat-links-in-their-apps).
 
-Captures: [chat media on desktop](images/chat-media-desktop.png) · [chat media on a phone](images/chat-media-phone.png)
+Captures: [chat media on desktop](../images/chat-media-desktop.png) · [chat media on a phone](../images/chat-media-phone.png)
 Remote images are links, so reading an answer does not fetch a tracking image.
 Executable URL schemes are not rendered, and HTML in an answer's text stays
 text. A page runs only as an inline view, below.
@@ -101,7 +101,7 @@ A page small enough to write in the answer can be a ```` ```view ```` block
 instead, with no file and no command: the same frame, kit and theme, drawn
 where the block is ([view blocks](diagrams-and-formulas.md#view-blocks)).
 
-Captures: [a view on desktop](images/inline-view-desktop.png) · [the same on a phone](images/inline-view-phone.png) · [a view placed between two paragraphs](images/inline-view-placed-desktop.png) · [the same on a phone](images/inline-view-placed-phone.png)
+Captures: [a view on desktop](../images/inline-view-desktop.png) · [the same on a phone](../images/inline-view-phone.png) · [a view placed between two paragraphs](../images/inline-view-placed-desktop.png) · [the same on a phone](../images/inline-view-placed-phone.png)
 
 ### The app's look
 
