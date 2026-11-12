@@ -30,11 +30,13 @@ processes. A machine with an older Boite asks you to update it.
   UDP traffic can be missed.
 - An agent's GPU share is measured on Windows only.
 
-| System | CPU and memory | GPU | Disks |
+What Boite measures for the whole machine depends on the system:
+
+| System | Machine CPU and memory | GPU | Disks |
 | --- | --- | --- | --- |
 | Windows | Yes | Yes, with each agent's share | Fixed drives |
 | Linux | Yes | NVIDIA and AMD cards; other cards listed without a load | Disk file systems |
-| macOS | CPU, and total memory only | Not measured | `/` and `/Volumes` |
+| macOS | CPU, and the installed memory without how much is in use | Not measured | `/` and `/Volumes` |
 
 ## One conversation's processes
 
@@ -82,8 +84,8 @@ button. Only the owner changes these settings: a paired phone cannot.
 - On Linux, when a system memory limit slows a conversation's processes
   instead of failing them, Boite tells you and the agent in the chat. It
   stops nothing for that.
-- On macOS, per-agent memory comes from the processes' physical footprint and
-  CPU is not available.
+- On macOS, an agent's memory is its processes' physical footprint, and an
+  agent's CPU is not available. The machine's CPU is still shown.
 
 ## Going further
 

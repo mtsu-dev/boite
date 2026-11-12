@@ -25,7 +25,9 @@ It is turned off until you turn it on in Settings, Providers.
 2. Pick your agent. Boite installs it when it can and tells you the download
    size first. Otherwise it opens the agent's own installer page.
 3. Sign in on the page your browser opens. This is the agent's own sign-in:
-   your password never goes through Boite.
+   your password never goes through Boite. Two agents differ: for Hermes
+   Agent you choose a model and enter its key in Boite, and pi signs in from
+   pi itself, outside Boite.
 4. Start a conversation and pick the agent and model under the message box.
 
 An agent you already use in a terminal shows up as ready, with your existing

@@ -675,7 +675,7 @@ export interface ThreadsRpcMethods {
        * core makes its folder.
        */
       incognito?: boolean;
-      /** Start without part of the user's setup, fixed for the thread's life ([context modes](../../docs/internals/context-modes.md)). */
+      /** Start without part of the user's setup, fixed for the thread's life ([context modes](../../../docs/internals/context-modes.md)). */
       context?: ContextRequest | ContextPreset;
       /** Adopt this connection's compatible, prompt-free draft reservation. */
       preparationId?: string;
