@@ -75,10 +75,14 @@ the VPN or the Wi-Fi.
   scroll and type in the field below the preview.
 
 Provider accounts, keyboard shortcuts, resource limits, the brain,
-the task manager, worktrees, diagnostics, voice engines, server settings, the
-terminal, forks and moving a conversation stay on the desktop.
+the task manager, worktrees, diagnostics, voice engines, server settings,
+forks and moving a conversation stay on the desktop. The terminal is the
+owner's: a phone connected as the owner has it, with each shell in its own
+tab, and a paired device has none.
 
 ## What a phone may do
+
+A paired phone is limited to this:
 
 | It can | It cannot |
 | --- | --- |

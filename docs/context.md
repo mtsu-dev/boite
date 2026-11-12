@@ -22,7 +22,7 @@ request, with an estimated size.
 ## Compact the conversation
 
 Compaction replaces the history with a summary, so the next turn starts
-smaller. Each compaction counts as usage.
+smaller. A compaction can count as usage.
 
 1. Open the context meter.
 2. Press Compact context.
@@ -43,14 +43,15 @@ Without it, each agent keeps its own behaviour.
 | While the agent waits on background work | After an answer that left a command or a monitor running. |
 | Before the prompt cache expires | One minute before the provider drops the cached conversation. |
 
-- With a token limit, the last two idle moments compact from 85% of it, and at
-  least 64,000 tokens.
+- With a token limit, As soon as the agent has finished and While the agent
+  waits on background work wait until 85% of it, and at least 64,000 tokens.
+  Before the prompt cache expires does not depend on the limit.
 - Compaction defaults by agent type keeps separate settings for
   Conversations, Subagents and Bots. Each uses Common until you pick Customize
   this type.
 - Claude summary instructions replaces the summary prompt of Claude.
   `/compact` followed by your own instructions wins over it.
-- Nothing compacts while a goal or a loop is active.
+- Automatic compactions wait while a goal or a loop is active.
 - On a phone connected as the owner, Automatic compaction is a row in the
   machine's settings.
 
@@ -70,7 +71,8 @@ own. Copies spend the same account and are not counted in usage.
    current turn.
 
 Escape stops the current turn. When Escape first closes a menu or a popover,
-press it again to stop. On a phone, Enter writes a new line and the send
+press it again to stop. While you answer an agent's question, Escape stops
+nothing: Skip and the stop button still end the turn. On a phone, Enter writes a new line and the send
 button sends. When the machine is offline, your messages wait on the device
 and go out in order once it is back.
 
