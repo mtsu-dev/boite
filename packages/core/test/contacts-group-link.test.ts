@@ -28,7 +28,7 @@ test('a Bots host takes a member\'s contact: the contact follows it with its gra
   // C's Contacts bot sends A a request that is still pending when the link moves.
   const cBot = await contactsBotOf(c, cClient);
   const asked = await cClient.call('collaboration.ask', { threadId: cThread, text: 'Who runs alpha?' });
-  await cClient.call('contacts.bot.forward', { threadId: cBot.threadId, id: asked.id, contact: c.core.contacts.find(aId)!.name });
+  await cClient.call('contacts.bot.forward', { threadId: cBot.threadId, id: asked.id, contact: c.core.contacts.find(aId)!.name, want: 'share' });
   await waitFor(() => a.core.contacts.requests.list().some(request => request.direction === 'in' && request.remoteId === asked.id), 10000);
   await waitFor(() => a.core.contacts.find(cId)?.offers.length === 1, 10000);
   // Both cores support group links, yet no Bots host stands between them: a letter keeps the 15 minute window.
@@ -204,7 +204,7 @@ test('a member without a Contacts bot asks through the Bots host: queued while t
   // X's bot sends it to C, which reads A's thread at its alias on X; C's refusal comes back to A's thread.
   // A hand tried before X read the roster waits 30 s for its retry: offer it again until C follows.
   await waitFor(() => { if (!x.core.contacts.has(cId)) a.core.contacts.groupLink.sweep(true); return x.core.contacts.linkOf(cId) === 'connected'; }, 20000);
-  await xClient.call('contacts.bot.forward', { threadId: xBot.threadId, id: queued.id, contact: x.core.contacts.find(cId)!.name });
+  await xClient.call('contacts.bot.forward', { threadId: xBot.threadId, id: queued.id, contact: x.core.contacts.find(cId)!.name, want: 'share' });
   // The host's bot thread shows the forward of the member's ask.
   expect(x.core.coordination.get(xBot.threadId).requests).toEqual([expect.objectContaining({ id: queued.id, from: expect.objectContaining({ coreId: aId, threadId: aThread }), forwardedAt: expect.any(Number) })]);
   const incoming = () => c.core.contacts.requests.list().find(request => request.direction === 'in' && request.text === 'Who runs the build farm?');

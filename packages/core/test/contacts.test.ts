@@ -171,7 +171,7 @@ test('model tiers: a sender below its own owner\'s tier cannot write, and a lett
   expect(await thrown(hostClient.call('contacts.settings', { settings: { minTier: 4 as 1 } }))).toThrow('settings.minTier: expected 1, 2 or 3');
 }, 30000);
 
-test('an ask goes through the asking side\'s Contacts bot to a core without one, whose owner opens a project; the asking thread hears the answer from the contact', async () => {
+test('an ask for a project goes straight to the contact it names, a core without a Contacts bot, whose owner opens a project; the asking thread hears the answer from the contact', async () => {
   const { host, guest, hostClient, guestClient, hostId, guestId } = await linked();
   const open = await project(host, hostClient, 'alpha');
   const hostThread = await thread(hostClient, open.id, 'Alpha work');
@@ -179,12 +179,10 @@ test('an ask goes through the asking side\'s Contacts bot to a core without one,
   await contactsBotOf(guest, guestClient);
   await waitFor(() => guest.core.contacts.find(hostId)?.capabilities?.contactsBot === 1, 10000);
   // An agent names a contact as its owner did, in any case.
-  const asked = await guestClient.call('collaboration.ask', { threadId: guestThread, contact: guest.core.contacts.find(hostId)!.name.toUpperCase(), text: 'an agent on a project like alpha' });
-  expect(asked).toMatchObject({ direction: 'out', coreId: hostId, status: 'pending', stage: 'bot' });
-  // Nothing leaves before the bot sends it on.
-  await new Promise(resolve => setTimeout(resolve, 300));
-  expect(requestsOf(host)).toEqual([]);
-  guest.core.contacts.requests.forward({ id: asked.id, contact: hostId });
+  const asked = await guestClient.call('collaboration.ask', { threadId: guestThread, contact: guest.core.contacts.find(hostId)!.name.toUpperCase(), want: 'share', text: 'an agent on a project like alpha' });
+  // It names its contact: no turn of this side's bot, it leaves at once.
+  expect(asked).toMatchObject({ direction: 'out', coreId: hostId, status: 'pending' });
+  expect(asked.stage).toBeUndefined();
   await waitFor(() => requestsOf(host).some(request => request.remoteId === asked.id && request.direction === 'in'), 10000);
   const incoming = (await hostClient.call('contacts.get', {})).requests;
   // The host names the request with its own id; the guest's stays on the wire.
@@ -212,8 +210,7 @@ test('contact request answers resume automatic pauses while preserving Stop and 
   await waitFor(() => guest.core.contacts.find(hostId)?.capabilities?.contactsBot === 1, 10000);
   for (const reason of ['stop', 'owner', 'restart', 'failure'] as const) {
     const guestThread = await thread(guestClient, mine.id, `Paused by ${reason}`);
-    const asked = await guestClient.call('collaboration.ask', { threadId: guestThread, contact: hostId, text: `A request before ${reason}` });
-    guest.core.contacts.requests.forward({ id: asked.id, contact: hostId });
+    const asked = await guestClient.call('collaboration.ask', { threadId: guestThread, contact: hostId, want: 'share', text: `A request before ${reason}` });
     if (reason === 'owner') guest.core.coordination.configure(guestThread, { mode: 'brief', remote: true, resources: '', paused: true });
     else guest.core.coordination.pause(guestThread, reason);
     await waitFor(() => requestsOf(host).some(request => request.remoteId === asked.id), 10000);
@@ -239,14 +236,13 @@ test('without a Contacts bot nothing is decided for the owner: a trusted contact
   const mine = await project(guest, guestClient, 'mine', 'https://user:secret@github.com/acme/app');
   const guestThread = await thread(guestClient, mine.id, 'Guest work');
   await hostClient.call('contacts.update', { coreId: guestId, trusted: true });
-  // The asking core with no bot refuses at once, saying what to turn on.
-  expect(await thrown(guestClient.call('collaboration.ask', { threadId: guestThread, contact: hostId, text: 'help on the app' }))).toThrow('Settings > Experiments');
+  // An ask that names no contact needs this core's bot to pick one: without it, refused with what to turn on.
+  expect(await thrown(guestClient.call('collaboration.ask', { threadId: guestThread, text: 'help on the app' }))).toThrow('Settings > Experiments');
   await contactsBotOf(guest, guestClient);
   await waitFor(() => guest.core.contacts.find(hostId)?.capabilities?.contactsBot === 1, 10000);
-  const matched = await guestClient.call('collaboration.ask', { threadId: guestThread, contact: hostId, text: 'help on the app' });
+  const matched = await guestClient.call('collaboration.ask', { threadId: guestThread, contact: hostId, want: 'share', text: 'help on the app' });
   // Only host and path leave the guest: never the credentials its remote carries.
   expect(matched.gitRemote).toBe('github.com/acme/app');
-  guest.core.contacts.requests.forward({ id: matched.id, contact: hostId });
   await waitFor(() => requestsOf(host).some(request => request.remoteId === matched.id), 10000);
   await new Promise(resolve => setTimeout(resolve, 300));
   const incoming = (await hostClient.call('contacts.get', {})).requests.find(request => request.text === 'help on the app');
@@ -254,6 +250,12 @@ test('without a Contacts bot nothing is decided for the owner: a trusted contact
   expect(incoming?.stage).toBeUndefined();
   expect(requestsOf(guest).find(request => request.id === matched.id)?.status).toBe('pending');
   expect(host.core.contacts.find(guestId)?.grants).toEqual([]);
+  // A thread to talk to takes an Operator there: without one the ask is refused with why, instead of waiting on an owner who could only open a project.
+  const talk = await guestClient.call('collaboration.ask', { threadId: guestThread, contact: hostId, text: 'someone on the app' });
+  await waitFor(() => requestsOf(guest).find(request => request.id === talk.id)?.status === 'refused', 10000);
+  expect(requestsOf(guest).find(request => request.id === talk.id)?.reason).toContain('has no Operator to put threads in touch');
+  expect(requestsOf(host).some(request => request.remoteId === talk.id)).toBe(false);
+  await waitFor(() => letters(guest, guestThread).some(letter => letter.origin === 'contact' && letter.text.includes('has no Operator')), 10000);
 }, 30000);
 
 test('revoke rejects letters waiting for the closed project, queued wakes included, closes the reply window and hides it; remove closes the link', async () => {

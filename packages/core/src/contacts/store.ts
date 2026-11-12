@@ -24,7 +24,7 @@ import type { Core } from '../core.ts';
 import { invalidParams, messageOf, refused, RpcFailure, unavailable } from '../errors.ts';
 import { tailnetAddress } from '../group/addresses.ts';
 import { seal, type Sealing } from '../group/seal.ts';
-import { contactsBot } from './bot.ts';
+import { contactsBot, runPlan } from './bot.ts';
 import { ContactFlags } from './flags.ts';
 import { ContactFunnel } from './funnel.ts';
 import { ContactMembers, type LinkedContacts } from './members.ts';
@@ -549,11 +549,13 @@ export class ContactStore implements LinkedContacts {
     return { minTier };
   }
 
-  decide(params: RpcParams<'contacts.decide'>): ContactRequest {
+  decide(params: RpcParams<'contacts.decide'>): ContactRequest | Promise<ContactRequest> {
     if (typeof params.accept !== 'boolean') throw invalidParams('accept: expected a boolean', { field: 'accept' });
     if (params.accept) {
       // A talk or a new thread the bot settles: the owner's Accept lets the bot act; a project would close it with no thread in touch.
       const { request } = this.requests.pending(params.id, 'in');
+      // The Operator's plan, as the owner read it, runs now.
+      if (request.plan && contactsBot(this.#core) !== null) return runPlan(this.#core, request.id);
       if ((request.stage === 'bot' || request.stage === 'owner') && request.want !== undefined && request.want !== 'share' && contactsBot(this.#core) !== null) return this.requests.approve(request.id);
     }
     return this.requests.settle(params.id, params.accept, params.projectId, params.reason, 'owner');

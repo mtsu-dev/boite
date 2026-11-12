@@ -510,8 +510,9 @@ boite workflow output|templates|save|start
 boite help
 ```
 
-`threads ask "<what you need>"` hands a request for a contact to this
-machine's Contacts bot ([contacts](contacts.md#the-contacts-bot)): `--to
+`threads ask "<what you need>"` sends a request to a contact's Contacts bot
+([contacts](contacts.md#the-contacts-bot)), or, naming no contact, hands it
+to this machine's bot, which picks one: `--to
 <contact>/<thread-id>` names the thread, `--contact <name>` the contact,
 `--new` asks for a new thread, `--share` for a project opened to you. The
 answer comes back as a message naming the thread to write to with `threads
@@ -523,7 +524,8 @@ thread: `view` (the default: requests, relations, flags, contacts and
 projects), `forward <request> <contact>[/<thread-id>] [text]`,
 `connect <request> <thread-id>`, `start <request> <project> <brief> [--model
 <m>] [--effort <e>] [--worktree]`, `share <request> <project> <reason>`,
-`ask-owner <request> <proposal>`, `refuse <request> <reason>`, `cut <contact>
+`ask-owner <request> connect <thread-id>` or `ask-owner <request> start
+<project> <brief>` (the plan the owner's Accept runs), `refuse <request> <reason>`, `cut <contact>
 [--relation <id>] [--project <p>] <reason>`, `deliver <flag>` and `block <flag>
 [reason]`.
 

@@ -64,7 +64,8 @@ export const fr: Translation = {
       by: { owner: 'Propriétaire', match: 'Correspondance', concierge: 'Concierge', bot: 'Standardiste' },
       byTip: { owner: 'Décidé par le propriétaire.', match: 'Son remote git correspondait à un seul projet.', concierge: 'Décidé par l\'agent concierge pour un contact de confiance.', bot: 'Décidé par la Standardiste, le bot intégré de Boite.' },
       stage: { bot: 'Chez la Standardiste', owner: 'Vous attend', host: 'En route vers la machine Bots' },
-      inTouch: 'En relation avec {thread}'
+plan: { connect: 'Standardiste : la mettre en relation avec {thread}', connectIn: 'Standardiste : la mettre en relation avec {thread}, dans {project}', start: 'Standardiste : démarrer une conversation dans {project}', acceptTip: 'La Standardiste fait exactement ça. Aucun projet n\'est partagé.' },
+            inTouch: 'En relation avec {thread}'
     },
     bot: {
       tip: 'Le bot intégré de Boite. Chaque demande entre vos agents et vos contacts passe par lui : il trouve la bonne conversation, met les deux en relation et retient les lettres qui semblent dangereuses.',

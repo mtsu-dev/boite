@@ -67,6 +67,8 @@ export const strings = {
       byTip: { owner: 'Decided by the owner.', match: 'Its git remote matched exactly one project.', concierge: 'Decided by the concierge agent for a trusted contact.', bot: 'Decided by the Operator, Boite\'s built-in bot.' },
       /** Where a pending request stands: with the Operator, or waiting on the owner's answer to its card. */
       stage: { bot: 'With the Operator', owner: 'Waiting for you', host: 'On its way to the Bots machine' },
+      /** What the Operator will do once the owner accepts a request of a contact not trusted. */
+      plan: { connect: 'Operator: put it in touch with {thread}', connectIn: 'Operator: put it in touch with {thread}, in {project}', start: 'Operator: start a new thread in {project}', acceptTip: 'The Operator does exactly this. No project is shared.' },
       /** A request the Operator accepted by putting two threads in touch. */
       inTouch: 'In touch with {thread}'
     },

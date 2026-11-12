@@ -85,12 +85,11 @@ test('only the Operator\'s thread calls the bot methods; the owner ends a relati
   expect(view.contacts.map(contact => [contact.name, contact.bot])).toEqual([['Chris', true]]);
   expect(view.relations.map(relation => relation.id)).toEqual(relations!.map(relation => relation.id));
 
-  // An ordinary thread's request waits for the bot, which forwards it. `t-trace` runs echo, tier 2.
+  // An ordinary thread's request that names its contact leaves at once, with no turn of the bot. `t-trace` runs echo, tier 2.
   await client.call('contacts.settings', { settings: { minTier: 2 } });
   const waiting = await client.call('collaboration.ask', { threadId: 't-trace', contact: 'Chris', text: 'Who owns the website deploy?' });
-  expect([waiting.stage, waiting.status]).toEqual(['bot', 'pending']);
-  const forwarded = await client.call('contacts.bot.forward', { threadId: bot!.threadId, id: waiting.id, contact: 'Chris', text: 'The thread that deploys the website' });
-  expect(forwarded.stage).toBeUndefined();
+  expect([waiting.stage, waiting.status, waiting.want]).toEqual([undefined, 'pending', 'thread']);
+  await expect(client.call('contacts.bot.forward', { threadId: bot!.threadId, id: waiting.id, contact: 'Chris' })).rejects.toMatchObject({ code: RpcErrorCode.InvalidParams });
 
   const relation = relations![0]!;
   expect(flags!.filter(flag => flag.relationId === relation.id && flag.status === 'open')).not.toEqual([]);
@@ -119,7 +118,7 @@ test('a request that names no contact waits for the bot, which picks the contact
   const [host, guest] = [await fake({ coreId: 'core-host', coreName: 'host' }), await fake({ coreId: 'core-guest', coreName: 'guest' })];
   await host.call('contacts.join', { link: (await guest.call('contacts.invite', { share: false })).link });
   for (const each of [host, guest]) await each.call('contacts.settings', { settings: { minTier: 2 } });
-  await host.call('agents.builtin.ensure', { kind: 'contacts' });
+  for (const each of [host, guest]) await each.call('agents.builtin.ensure', { kind: 'contacts' });
   const bot = (await host.call('contacts.get', {})).bot!.threadId;
   const waiting = await host.call('collaboration.ask', { threadId: 't-trace', text: 'A reviewer for the notes project' });
   expect(waiting.coreId).toBe('');

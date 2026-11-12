@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte';
-  import { ArrowDownLeft, ArrowUpRight, Check, ChevronDown, GitBranch, X } from '@lucide/svelte';
+  import { ArrowDownLeft, ArrowUpRight, Check, ChevronDown, GitBranch, Waypoints, X } from '@lucide/svelte';
   import type { ContactRequest } from '@boite/contracts';
   import { settledByBot, type ContactsView } from '../../lib/contacts.svelte';
   import { ago, projectName } from '../../lib/format';
@@ -29,6 +29,9 @@
   const outcome = $derived(request.status !== 'accepted' ? labels.refused
     : request.relation && !request.project ? fill(labels.inTouch, { thread: mine ? request.relation.local.title : request.relation.remote.title })
     : fill(labels.accepted, { project: request.project?.name ?? '' }));
+  /** The Operator's plan for a contact not trusted: the owner's Accept runs it. */
+  const plan = $derived(!request.plan ? '' : request.plan.kind === 'start' ? fill(labels.plan.start, { project: request.plan.project.name })
+    : fill(request.plan.project ? labels.plan.connectIn : labels.plan.connect, { thread: request.plan.thread.title, project: request.plan.project ?? '' }));
   const sender = $derived([request.from.title, request.from.project, request.from.agent?.split(/\s+/).slice(1).join(' ')].filter(Boolean).join(' · '));
 
   let refusing = $state(false);
@@ -57,6 +60,7 @@
     <p class="text">{request.text}</p>
     <p class="from">{sender}</p>
     {#if request.stage}<p class="stage" data-stage={request.stage} data-testid="contact-request-stage">{labels.stage[request.stage]}</p>{/if}
+    {#if plan && mine}<p class="plan" data-testid="contact-request-plan" title={request.plan?.kind === 'start' ? request.plan.brief : undefined}><Waypoints size={14} strokeWidth={2} aria-hidden="true" /><span>{plan}</span></p>{/if}
     {#if request.gitRemote}<p class="remote" title={labels.remote}><GitBranch size={13} strokeWidth={2} aria-hidden="true" /><span>{request.gitRemote}</span></p>{/if}
     {#if mine}
       {#if refusing}
@@ -76,6 +80,8 @@
                 <Check size={14} strokeWidth={2.25} /><span class="ui-label">{labels.accept}</span><ChevronDown size={13} />
               </Menu>
             </span>
+          {:else if plan}
+            <button type="button" class="approve" disabled={busy} title={labels.plan.acceptTip} onclick={() => void view.decide(request.id, { accept: true })} data-testid="contact-approve-{request.id}"><Check size={14} strokeWidth={2.25} /><span class="ui-label">{labels.accept}</span></button>
           {:else if request.approved === false}
             <button type="button" class="approve" disabled={busy} title={labels.approveTip} onclick={() => void view.decide(request.id, { accept: true })} data-testid="contact-approve-{request.id}"><Check size={14} strokeWidth={2.25} /><span class="ui-label">{labels.approve}</span></button>
           {/if}
@@ -114,6 +120,8 @@
   .remote { display: flex; align-items: center; gap: 6px; margin: 0; min-width: 0; color: var(--color-subtle); font-family: var(--font-mono); font-size: var(--text-xs); }
   .remote span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .remote :global(svg) { flex: none; }
+  .plan { display: flex; align-items: flex-start; gap: 8px; margin: 2px 0 0; padding: 8px 10px; border-radius: var(--radius-md); background: var(--color-accent-soft); color: var(--color-foreground); font-size: var(--text-sm); font-weight: 600; overflow-wrap: anywhere; }
+  .plan :global(svg) { flex: none; margin-top: 2px; color: var(--color-accent); }
   .buttons { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 2px; }
   .accept :global(.trigger), .approve { height: var(--control); padding: 0 12px; border-color: var(--color-accent); background: var(--color-accent); color: var(--color-accent-ink); font-weight: 600; }
   .accept :global(.trigger:hover), .approve:hover:not(:disabled) { background: var(--color-control-primary-hover); }

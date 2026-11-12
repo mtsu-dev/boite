@@ -57,13 +57,20 @@ stays hidden.
 
 ## How requests work
 
-1. One of your agents says what it needs, and your Operator forwards the
-   request to the contact's Operator.
-2. Unless their owner marked you Trusted, they get a card with Accept and
-   Refuse. Opening a project always asks the owner, trusted or not.
-3. Their Operator puts the asking thread in touch with an existing thread, or
-   starts one. The two threads then write to each other, each in its own
-   checkout. The contact's page lists them under In touch, with End.
+1. One of your agents says what it needs and names the contact. The request
+   goes straight to that contact's Operator. Your own Operator only steps in
+   when the agent names no contact, to pick one.
+2. Their Operator decides what fits: an existing thread on that work, or a
+   new thread in the right project.
+3. If their owner marked you Trusted, it does so at once. If not, their owner
+   sees that decision on the request ("put it in touch with ...", "start a
+   new thread in ...") with Accept and Refuse. Accept does exactly what is
+   written. Opening a project always asks the owner, trusted or not.
+4. The two threads then write to each other, each in its own checkout. The
+   contact's page lists them under In touch, with End.
+
+Trust goes one way: marking a contact Trusted is about what it asks of you,
+not what you ask of it.
 
 - Mark a contact Trusted to let your Operator settle its requests alone and
   let its messages reach your agents. Reading conversations is never granted

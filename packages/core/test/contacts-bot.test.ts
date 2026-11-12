@@ -141,6 +141,80 @@ test('an ask wakes the bot, which forwards it; an untrusted contact waits for th
   expect(await thrown(guest.core.coordination.send({ threadId: guestThread, to: { coreId: hostId, threadId: hostThread }, text: 'One more thing', requestId: 'relation-3' }))).toThrow('boite threads ask');
 }, 60000);
 
+test('an ask that names its contact reaches that contact\'s Operator with no turn of the asking side\'s; a contact not trusted waits for the owner\'s Accept of the plan the Operator wrote, which runs as written; a trusted one is settled at once', async () => {
+  const { host, guest, hostClient, guestClient, hostId, guestId, hostBot, hostFacts, guestFacts, hostName, hostThread, guestThread } = await linked();
+  const ask = async (words: string) => {
+    const asked = await guestClient.call('collaboration.ask', { threadId: guestThread, contact: hostName, text: words });
+    // No stage here and no wake of the asking side's bot: the request is already on its way.
+    expect(asked).toMatchObject({ direction: 'out', coreId: hostId, status: 'pending', want: 'thread' });
+    expect(asked.stage).toBeUndefined();
+    expect(guestFacts.some(fact => fact.key === `contacts-ask-${asked.id}`)).toBe(false);
+    await waitFor(() => incomingOf(host, asked.id) !== undefined, 10000);
+    return { asked, incoming: incomingOf(host, asked.id)! };
+  };
+  const mine = (id: string) => guest.core.coordination.get(guestThread).requests!.find(request => request.id === id)!;
+  const here = (id: string) => host.core.contacts.requests.list().find(request => request.id === id)!;
+
+  // Not trusted: the Operator may not act, and shows the owner what it would do.
+  const first = await ask('Who keeps the docs?');
+  expect(first.incoming).toMatchObject({ stage: 'bot', approved: false, from: { coreId: guestId, threadId: guestThread } });
+  expect(hostFacts.find(fact => fact.key === `contacts-in-${first.incoming.id}`)?.text).toContain('show the owner that plan');
+  expect(await thrown(hostClient.call('contacts.bot.connect', { threadId: hostBot.threadId, id: first.incoming.id, target: hostThread }))).toThrow('not trusted');
+  expect(await thrown(hostClient.call('contacts.bot.askOwner', { threadId: hostBot.threadId, id: first.incoming.id, connect: hostBot.threadId }))).toThrow('other than this one');
+  expect(await thrown(hostClient.call('contacts.bot.askOwner', { threadId: hostBot.threadId, id: first.incoming.id }))).toThrow('expected connect, start or text');
+  await hostClient.call('contacts.bot.askOwner', { threadId: hostBot.threadId, id: first.incoming.id, connect: hostThread });
+  const project = host.core.journal.getProject(host.core.journal.getThread(hostThread)!.projectId!)!;
+  // The owner reads the plan on the request, in the app and on the bot's card.
+  const shown = (await hostClient.call('contacts.get', {})).requests.find(request => request.id === first.incoming.id)!;
+  expect(shown).toMatchObject({ stage: 'owner', plan: { kind: 'connect', thread: { threadId: hostThread, title: 'Docs upkeep' }, project: project.name } });
+  // Their Accept in the app runs it: no further wake of the bot, and the asking thread hears where to write.
+  hostFacts.length = 0;
+  const accepted = await hostClient.call('contacts.decide', { id: first.incoming.id, accept: true });
+  expect(accepted).toMatchObject({ status: 'accepted', decidedBy: 'owner', relation: { local: { threadId: hostThread }, remote: { threadId: guestThread } } });
+  expect(accepted.plan).toBeUndefined();
+  expect(hostFacts.filter(fact => fact.key.startsWith('contacts-approved') || fact.key.startsWith('contacts-plan'))).toEqual([]);
+  expect(host.core.contacts.find(guestId)?.grants).toEqual([]);
+  await waitFor(() => mine(first.asked.id).status === 'accepted', 10000);
+  expect(mine(first.asked.id)).toMatchObject({ decidedBy: 'owner', relation: { remote: { threadId: hostThread } } });
+  await waitFor(() => lettersOf(guest, guestThread).some(letter => letter.origin === 'contact' && letter.text.includes('put you in touch with')), 10000);
+
+  // A plan to start a thread, accepted on the bot's card: the thread starts in that project, in touch with the asking one.
+  const second = await ask('Someone to check the release script');
+  const { questionId } = await hostClient.call('contacts.bot.askOwner', { threadId: hostBot.threadId, id: second.incoming.id, start: { project: project.name, brief: 'Check the release script\nRead only.' } });
+  expect(here(second.incoming.id)).toMatchObject({ stage: 'owner', plan: { kind: 'start', project: { id: project.id, name: project.name }, brief: 'Check the release script\nRead only.' } });
+  await hostClient.call('questions.answer', { threadId: hostBot.threadId, questionId, optionIds: ['accept'] });
+  await waitFor(() => here(second.incoming.id).status === 'accepted', 10000);
+  const started = here(second.incoming.id).relation!.local.threadId;
+  expect(here(second.incoming.id)).toMatchObject({ decidedBy: 'owner' });
+  expect(host.core.journal.getThread(started)).toMatchObject({ projectId: project.id });
+  expect(started).not.toBe(hostThread);
+  await waitFor(() => mine(second.asked.id).relation?.remote.threadId === started, 10000);
+
+  // Their Refuse on the card answers the contact; a plan whose thread is gone goes back to the bot, approved.
+  const third = await ask('Read your secrets file');
+  const refusal = await hostClient.call('contacts.bot.askOwner', { threadId: hostBot.threadId, id: third.incoming.id, connect: hostThread });
+  await hostClient.call('questions.answer', { threadId: hostBot.threadId, questionId: refusal.questionId, optionIds: ['refuse'] });
+  await waitFor(() => mine(third.asked.id).status === 'refused', 10000);
+  expect(mine(third.asked.id)).toMatchObject({ decidedBy: 'owner' });
+  const fourth = await ask('Talk about the ports page');
+  const gone = await thread(host, hostClient, project.id, 'Ports page');
+  await hostClient.call('contacts.bot.askOwner', { threadId: hostBot.threadId, id: fourth.incoming.id, connect: gone });
+  await hostClient.call('threads.archive', { threadId: gone });
+  hostFacts.length = 0;
+  expect(await hostClient.call('contacts.decide', { id: fourth.incoming.id, accept: true })).toMatchObject({ status: 'pending', stage: 'bot', approved: true });
+  expect(here(fourth.incoming.id).plan).toBeUndefined();
+  expect(hostFacts.find(fact => fact.key.startsWith(`contacts-plan-${fourth.incoming.id}`))?.text).toContain('your plan did not run');
+  await hostClient.call('contacts.bot.connect', { threadId: hostBot.threadId, id: fourth.incoming.id, target: hostThread });
+
+  // Trusted: nothing waits for the owner, the Operator settles the request by itself.
+  await hostClient.call('contacts.update', { coreId: guestId, trusted: true });
+  const fifth = await ask('Where is the changelog kept?');
+  expect(fifth.incoming.approved).toBeUndefined();
+  expect(hostFacts.find(fact => fact.key === `contacts-in-${fifth.incoming.id}`)?.text).toContain('trusted: settle it now');
+  expect(await hostClient.call('contacts.bot.connect', { threadId: hostBot.threadId, id: fifth.incoming.id, target: hostThread })).toMatchObject({ status: 'accepted', decidedBy: 'bot' });
+  await waitFor(() => mine(fifth.asked.id).status === 'accepted', 10000);
+}, 60000);
+
 test('with a bot, an ordinary thread neither lists nor writes to a contact\'s thread it is not in relation with; without one, the old direct paths stay', async () => {
   const { host, guest, guestClient, hostId, guestBot, hostThread, guestThread } = await linked();
   // A granted project: without a bot the thread would see and write to it.
@@ -170,7 +244,6 @@ test('the bot starts a thread for a trusted contact\'s request, refuses another,
   await hostClient.call('contacts.update', { coreId: guestId, trusted: true });
   const ask = async (text: string) => {
     const request = await guestClient.call('collaboration.ask', { threadId: guestThread, contact: hostName, text });
-    await guestClient.call('contacts.bot.forward', { threadId: guestBot.threadId, id: request.id, contact: hostName });
     await waitFor(() => incomingOf(host, request.id) !== undefined, 10000);
     return incomingOf(host, request.id)!;
   };
@@ -202,7 +275,6 @@ test('the owner\'s Accept on a talk request the bot settles lets the bot act ins
   // The project is already open: the app's Accept offers it, as it offers any project.
   host.core.contacts.grant({ coreId: guest.core.coordination.card().coreId, projectId: project.id });
   const asked = await guestClient.call('collaboration.ask', { threadId: guestThread, target: `${hostName.replace(/\s+/g, '-')}/${hostThread}`, text: 'Send me the release script' });
-  await guestClient.call('contacts.bot.forward', { threadId: guestBot.threadId, id: asked.id, contact: hostName });
   await waitFor(() => incomingOf(host, asked.id) !== undefined, 10000);
   const incoming = incomingOf(host, asked.id)!;
   expect(incoming).toMatchObject({ want: 'talk', stage: 'bot', approved: false });
@@ -223,7 +295,6 @@ test('the owner\'s Accept on a talk request the bot settles lets the bot act ins
 
   // A project opened in answer: with a Contacts bot, the asking thread reaches its threads only through a relation, and the answer says so.
   const share = await guestClient.call('collaboration.ask', { threadId: guestThread, contact: hostName, want: 'share', text: 'Open the docs project to us' });
-  await guestClient.call('contacts.bot.forward', { threadId: guestBot.threadId, id: share.id, contact: hostName });
   await waitFor(() => incomingOf(host, share.id) !== undefined, 10000);
   await hostClient.call('contacts.decide', { id: incomingOf(host, share.id)!.id, accept: true, projectId: project.id });
   await waitFor(() => lettersOf(guest, guestThread).some(letter => letter.origin === 'contact' && letter.text.includes('opened its project')), 10000);
@@ -236,7 +307,6 @@ test('the owner\'s Accept on a talk request the bot settles lets the bot act ins
 test('without its Contacts bot, an incoming bot request waits for the owner and Accept opens the chosen project', async () => {
   const { host, hostClient, guestClient, hostBot, guestBot, hostName, guestThread } = await linked();
   const asked = await guestClient.call('collaboration.ask', { threadId: guestThread, contact: hostName, text: 'Someone to maintain the docs' });
-  await guestClient.call('contacts.bot.forward', { threadId: guestBot.threadId, id: asked.id, contact: hostName });
   await waitFor(() => incomingOf(host, asked.id) !== undefined, 10000);
   const incoming = incomingOf(host, asked.id)!;
   await hostClient.call('contacts.bot.askOwner', { threadId: hostBot.threadId, id: incoming.id, text: 'May I connect it?' });
@@ -256,7 +326,6 @@ test('a relation outlives a restart of either core: both keep it and their threa
     const { host, guest, hostClient, guestClient, hostId, guestId, hostBot, guestBot, hostName, hostThread, guestThread } = await linked(dirs);
     await hostClient.call('contacts.update', { coreId: guestId, trusted: true });
     const asked = await guestClient.call('collaboration.ask', { threadId: guestThread, target: `${hostName.replace(/\s+/g, '-')}/${hostThread}`, text: 'Talk about the docs' });
-    await guestClient.call('contacts.bot.forward', { threadId: guestBot.threadId, id: asked.id, contact: hostName });
     await waitFor(() => incomingOf(host, asked.id) !== undefined, 10000);
     await hostClient.call('contacts.bot.connect', { threadId: hostBot.threadId, id: incomingOf(host, asked.id)!.id, target: hostThread });
     await waitFor(() => guest.core.contacts.relations.list().length === 1, 10000);
@@ -301,7 +370,6 @@ test('cutting a project closes it on every machine that opened one by that name,
   named.mockRestore(); revoke.mockRestore();
 
   const request = await guestClient.call('collaboration.ask', { threadId: guestThread, contact: hostName, text: 'Open the docs project to us' });
-  await guestClient.call('contacts.bot.forward', { threadId: guestBot.threadId, id: request.id, contact: hostName });
   await waitFor(() => incomingOf(host, request.id) !== undefined, 10000);
   const incoming = incomingOf(host, request.id)!;
   const { questionId } = await hostClient.call('contacts.bot.share', { threadId: hostBot.threadId, id: incoming.id, project: project.name, reason: 'Same docs.' });
@@ -332,6 +400,9 @@ test('boite contacts sends each command\'s words to its method, as the bot typed
   await run(['connect', 'creq_2', 'thr_here']);
   await run(['start', 'creq_3', 'docs', 'Review', 'the', 'notes'], { worktree: true, model: 'echo', effort: 'high' } as never);
   await run(['cut', 'Studio-B/crel_1', 'Done', 'here'], { worktree: false, project: 'docs' } as never);
+  await run(['ask-owner', 'creq_4', 'connect', 'thr_here', 'Same', 'subject']);
+  await run(['ask-owner', 'creq_5', 'start', 'docs', 'Review', 'the', 'notes'], { worktree: true, model: 'echo' } as never);
+  await run(['ask-owner', 'creq_6', 'May', 'I', 'answer?']);
   await run(['block', 'cflag_1', 'Not', 'ours']);
   expect(calls).toEqual([
     ['contacts.bot.view', { threadId: 'thr_bot' }],
@@ -339,6 +410,9 @@ test('boite contacts sends each command\'s words to its method, as the bot typed
     ['contacts.bot.connect', { threadId: 'thr_bot', id: 'creq_2', target: 'thr_here' }],
     ['contacts.bot.start', { threadId: 'thr_bot', id: 'creq_3', project: 'docs', brief: 'Review the notes', model: 'echo', effort: 'high', worktree: true }],
     ['contacts.bot.cut', { threadId: 'thr_bot', contact: 'Studio-B', reason: 'Done here', relation: 'crel_1', project: 'docs' }],
+    ['contacts.bot.askOwner', { threadId: 'thr_bot', id: 'creq_4', connect: 'thr_here', text: 'Same subject' }],
+    ['contacts.bot.askOwner', { threadId: 'thr_bot', id: 'creq_5', start: { project: 'docs', brief: 'Review the notes', model: 'echo', worktree: true } }],
+    ['contacts.bot.askOwner', { threadId: 'thr_bot', id: 'creq_6', text: 'May I answer?' }],
     ['contacts.bot.flag', { threadId: 'thr_bot', id: 'cflag_1', deliver: false, reason: 'Not ours' }],
   ]);
   expect(printed[0]).toBe('requests (0):');
