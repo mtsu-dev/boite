@@ -7,6 +7,9 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { join } from 'node:path';
 import type { BrowserUserAgent } from '@boite/contracts';
 
+/** How many device pixels the agent's browser draws per CSS pixel, as T3 Code's does: a screencast ignores an emulated scale, a real one keeps its frames sharp. */
+export const RENDER_SCALE = 2;
+
 export interface ChromiumFound { path: string }
 export interface ChromiumMissing { path: null; reason: string }
 
@@ -80,27 +83,29 @@ export function trimProfile(profileDir: string): void {
  * `--password-store=basic` and `--use-mock-keychain` keep Chromium from
  * asking the desktop's keyring for a password, which would open a dialog.
  *
- * Headless Chromium draws WebGL with SwiftShader, on the CPU, unless it is
- * told to use the GPU. It is told to, and software rendering is off: a page
- * that needs WebGL on a machine without a usable GPU gets none, rather than
- * every core of the machine. On Linux ANGLE goes through EGL, which a
- * headless process reaches without a display. `gpu` false, in a macOS
- * virtual machine, draws pages on the CPU and leaves WebGL off: see
- * `drawsWithGpu`.
+ * The GPU is off and every page is drawn at twice its CSS size, on every
+ * system: T3 Code's browser does both (https://github.com/pingdotgg/t3code,
+ * MIT License), and the frames a viewer is sent follow its method
+ * (`push-stream.ts`). A screencast ignores the device scale DevTools
+ * emulates, so only a real factor of 2 gives sharp frames. Without a GPU
+ * Chromium draws pages on the CPU and WebGL with a software renderer
+ * (SwiftShader on Linux, Direct3D's Basic Render Driver on Windows): a
+ * heavy WebGL page takes several cores and draws fewer frames than before.
  *
  * Sites turn away a browser that says it is automated, so it says what the
  * same browser says with a window. `userAgent` replaces the one that names
  * `HeadlessChrome`, in every request, page, worker and popup.
  * `AutomationControlled` off leaves `navigator.webdriver` false; `--test-type`
  * keeps Chrome from showing a bar about that flag, which took 56 pixels of the
- * page. The screen is 1920 × 1080 rather than headless Chrome's 800 × 600,
- * smaller than its own window.
+ * page. The screen is 1920 × 1080 CSS pixels rather than headless Chrome's
+ * 800 × 600, smaller than its own window: `--screen-info` is given 7680 × 4320,
+ * as Chrome 157 divides it by the forced scale twice (3840 × 2160 gave a page
+ * a screen of 960 × 540).
  */
-export function chromiumArgs(profileDir: string, platform = process.platform, userAgent?: string, gpu = true): string[] {
+export function chromiumArgs(profileDir: string, platform = process.platform, userAgent?: string): string[] {
   return [
-    gpu ? '--enable-gpu' : '--disable-gpu',
-    '--disable-software-rasterizer',
-    ...(platform === 'linux' ? ['--use-gl=angle', '--use-angle=gl-egl'] : []),
+    '--disable-gpu',
+    `--force-device-scale-factor=${RENDER_SCALE}`,
     // Every tab of the agent counts as shown: none is throttled for being in the background.
     '--disable-background-timer-throttling',
     '--disable-renderer-backgrounding',
@@ -130,25 +135,10 @@ export function chromiumArgs(profileDir: string, platform = process.platform, us
     // which have no popup blocker: the conversation's tab limit is the bound (`#adopt` in `browser.ts`).
     '--disable-popup-blocking',
     '--test-type',
-    '--screen-info={1920x1080}',
+    '--screen-info={7680x4320}',
     ...(userAgent ? [`--user-agent=${userAgent}`] : []),
     'about:blank',
   ];
-}
-
-/**
- * False in a macOS virtual machine, a CI runner among them. Its GPU is the
- * hypervisor's paravirtual one, on which Chromium's GPU process loses its
- * Metal device and restarts. The process that exits then stays a zombie with
- * a thread in the kernel, opening the GPU's driver, and the browser's UI
- * thread waits for it to end: no DevTools command was answered for 10 to 30
- * seconds. On a macos-15 arm64 runner, 40 minutes of the browser tests gave
- * 48 GPU restarts in 1180 browsers and 20 silences past 3 seconds. Without
- * the GPU, 3177 browsers never took more than 1.6 seconds to answer. A Mac's
- * own hardware keeps the GPU.
- */
-export async function drawsWithGpu(platform = process.platform): Promise<boolean> {
-  return platform !== 'darwin' || !(await import('../platform/macos-vm.ts')).macVirtualMachine();
 }
 
 /**

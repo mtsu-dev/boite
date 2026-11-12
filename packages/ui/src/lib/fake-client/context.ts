@@ -366,6 +366,8 @@ export class FakeContext {
   >();
   /** Open cards and synthetic transit metadata: never a value or a project key. */
   readonly pendingSecrets = new Map<string, FakeSecretCard>();
+  /** The sockets of browser frames `browser.remoteStream` answers paths for (`browser.ts`). */
+  browserFrames: { open(path: string): import('../client').FrameSocket; close(): void } | null = null;
   readonly secretTransits = new Map<string, FakeSecretTransit>();
   readonly settledSecrets = new Map<string, { threadId: Thread['id']; result: RpcResult<'secrets.ask'> }>();
   readonly inFlight = new Map<ThreadId, { cancelled: boolean; done: Promise<void>; steered?: { prompt: string; attachments: Attachment[] }[] }>();

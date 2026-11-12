@@ -50,10 +50,10 @@ async function tapFrame(page: BrowserPage, touch: boolean) {
 const frameShown = (fit = true) => `(() => {
   const image = document.querySelector('${id('remote-browser-frame')}');
   const screen = image?.closest('button'), area = screen?.closest('.screen-area');
-  if (!image?.complete || image.naturalWidth <= 100 || !screen || !area || screen.disabled) return false;
-  const scale = Math.min(area.clientWidth / image.naturalWidth, area.clientHeight / image.naturalHeight);
-  return Math.abs(screen.offsetWidth - image.naturalWidth * scale) <= 2
-    && Math.abs(screen.offsetHeight - image.naturalHeight * scale) <= 2
+  if (!image || image.width <= 100 || !screen || !area || screen.disabled) return false;
+  const scale = Math.min(area.clientWidth / image.width, area.clientHeight / image.height);
+  return Math.abs(screen.offsetWidth - image.width * scale) <= 2
+    && Math.abs(screen.offsetHeight - image.height * scale) <= 2
     && (${!fit} || Math.abs(screen.offsetWidth - area.clientWidth) <= 2 && Math.abs(screen.offsetHeight - area.clientHeight) <= 2);
 })()`;
 
@@ -109,14 +109,14 @@ real('the core runs the agent browser; desktop and phone show it covered, then l
         // viewer changes size. Two viewers cannot both own the tab's viewport.
         await page.waitFor(frameShown(), 20_000);
         await owner.call('browser.command', {threadId: thread.id, tabId, action: {kind: 'preset', preset: 'laptop-1366x768'}});
-        await page.waitFor(`(() => {const image = document.querySelector('${id('remote-browser-frame')}'); return image?.complete && Math.abs(image.naturalWidth / image.naturalHeight - 1366 / 768) < .02;})()`);
+        await page.waitFor(`(() => {const image = document.querySelector('${id('remote-browser-frame')}'); return image && Math.abs(image.width / image.height - 1366 / 768) < .02;})()`);
       }
       try { await page.waitFor(frameShown(!phone), 20_000); }
       catch (error) {
         console.error('browser frame geometry', phone, await page.evaluate(`(() => {
           const image = document.querySelector('${id('remote-browser-frame')}');
           const screen = image?.closest('button'), area = screen?.closest('.screen-area');
-          return {complete: image?.complete, natural: [image?.naturalWidth, image?.naturalHeight],
+          return {natural: [image?.width, image?.height],
             screen: [screen?.offsetWidth, screen?.offsetHeight], area: [area?.clientWidth, area?.clientHeight], disabled: screen?.disabled};
         })()`));
         await capture(page, `agent-browser-core-failed-${phone ? 'phone' : 'desktop'}.png`);

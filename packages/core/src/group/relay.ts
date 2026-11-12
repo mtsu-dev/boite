@@ -19,6 +19,12 @@
  * from the other member and streamed back. Their tickets are what opens them,
  * as at the member's own address.
  *
+ * `/group/relay/<core id>/browser-stream/<ticket>` is the socket a viewer of
+ * the agent's browser is pushed its pictures on (browser/remote-drive.ts),
+ * piped as binary without compression. Its ticket, which the other member
+ * gave the client on the socket above, is what opens it; a client that reads
+ * slower than it is sent is disconnected at 8 MiB.
+ *
  * What this machine sees: everything the client says to the other member and
  * hears back, its key for that member included. A member of a group already
  * has full control of every other (docs/groups.md), so this gives it nothing
@@ -28,12 +34,13 @@
  */
 
 import type { ServerWebSocket } from 'bun';
-import { FILE_ROUTE, GROUP_RELAY_ROUTE, PROTOCOL_VERSION, RPC_PATH, RpcErrorCode, VIEW_ROUTE } from '@boite/contracts';
+import { BROWSER_STREAM_ROUTE, BROWSER_STREAM_TICKET, FILE_ROUTE, GROUP_RELAY_ROUTE, PROTOCOL_VERSION, RPC_PATH, RpcErrorCode, VIEW_ROUTE } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { messageOf } from '../errors.ts';
 import { TextSocket } from '../ws-client.ts';
 import { OUTBOUND_CONGESTION_TIMEOUT_MS, OUTBOUND_MAX_BUFFERED_BYTES } from '../server/connection.ts';
 import { RELAYED_LINK_HEADER } from '../server/peer.ts';
+import { MAX_SOCKET_BUFFER_BYTES } from '../browser/push-stream.ts';
 import { ticketAddresses } from './addresses.ts';
 
 /** One address of the other member gets this long to open before the next is tried. */
@@ -52,7 +59,7 @@ const SENDABLE = (code: number): boolean => code === 1000 || (code >= 1001 && co
 
 export interface RelayPath {
   coreId: string;
-  /** What follows the core id: `/rpc`, `/file/<ticket>` or `/view/<ticket>`. */
+  /** What follows the core id: `/rpc`, `/file/<ticket>`, `/view/<ticket>` or `/browser-stream/<ticket>`. */
   rest: string;
 }
 
@@ -65,16 +72,18 @@ export function parseRelayPath(pathname: string): RelayPath | null {
   return { coreId: match[1]!, rest: match[2]! };
 }
 
-/** A path the relay carries: the socket, a file or a view, and nothing else of the other member. */
-function carried(rest: string): 'socket' | 'http' | null {
+/** A path the relay carries: the socket, a file, a view or a stream of browser frames, and nothing else of the other member. */
+function carried(rest: string): 'socket' | 'stream' | 'http' | null {
   if (rest === RPC_PATH) return 'socket';
+  // Its ticket is what opens it, as a file's or a view's: the client got it on its relayed socket, from the other member.
+  if (rest.startsWith(`${BROWSER_STREAM_ROUTE}/`) && BROWSER_STREAM_TICKET.test(rest.slice(BROWSER_STREAM_ROUTE.length + 1))) return 'stream';
   for (const route of [FILE_ROUTE, VIEW_ROUTE]) if (rest.startsWith(`${route}/`) && /^[A-Za-z0-9_-]{1,256}$/.test(rest.slice(route.length + 1))) return 'http';
   return null;
 }
 
 /** What a relayed socket carries on this machine's server. */
 export interface RelaySocketData {
-  relay: RelayPipe;
+  relay: RelayPipe | RelayedStream;
 }
 
 /** Not Bun's own WebSocket, which closes sound streams from a core's server with 1002 or 1011 (`ws-client.ts`). */
@@ -105,6 +114,7 @@ export interface RelayBounds {
 
 export class RelayHub implements RelaySink {
   readonly #pipes = new Set<RelayPipe>();
+  readonly #streams = new Set<RelayedStream>();
   #timer: ReturnType<typeof setInterval> | null = null;
 
   readonly #core: Core;
@@ -135,7 +145,7 @@ export class RelayHub implements RelaySink {
     const kind = carried(path.rest);
     const targets = this.targets(path.coreId);
     if (kind === null || targets === null) return new Response('not found', { status: 404 });
-    if (kind === 'socket') return null;
+    if (kind !== 'http') return null;
     if (request.method !== 'GET' && request.method !== 'HEAD') return new Response('method not allowed', { status: 405 });
     if (targets.length === 0) return new Response('that machine gives no address this one may carry a client to', { status: 502 });
     const search = new URL(request.url).search;
@@ -180,6 +190,27 @@ export class RelayHub implements RelaySink {
     return pipe;
   }
 
+  /**
+   * The other member's stream of browser frames for a socket the server is
+   * about to upgrade, already open there: null for a path that is not a
+   * stream's, or when no address of that machine opens it (a ticket it does
+   * not know included). No deflate is offered: the frames are JPEGs.
+   */
+  async stream(path: RelayPath): Promise<RelayedStream | null> {
+    const targets = this.targets(path.coreId);
+    if (carried(path.rest) !== 'stream' || targets === null) return null;
+    for (const target of targets) {
+      const opened = await TextSocket.connect(`${target.replace(/^http/, 'ws')}${path.rest}`, DIAL_MS, { binary: true }).catch(() => null);
+      if (opened === null) continue;
+      this.#core.group.reached(path.coreId, target);
+      this.#arm();
+      const stream = new RelayedStream(path.coreId, opened, (ended) => { this.#streams.delete(ended); if (this.size === 0) this.#disarm(); });
+      this.#streams.add(stream);
+      return stream;
+    }
+    return null;
+  }
+
   /** The counted peers of the relayed sockets whose key for this machine is not checked yet. */
   *waitingPeers(): Generator<string> {
     for (const pipe of this.#pipes) if (!pipe.authenticated && pipe.peer !== null) yield pipe.peer;
@@ -192,20 +223,20 @@ export class RelayHub implements RelaySink {
 
   ended(pipe: RelayPipe): void {
     this.#pipes.delete(pipe);
-    if (this.#pipes.size === 0) this.#disarm();
+    if (this.size === 0) this.#disarm();
   }
 
   get size(): number {
-    return this.#pipes.size;
+    return this.#pipes.size + this.#streams.size;
   }
 
   /** A machine that left the group, or that this one left, is carried to no more. */
   sweep(): void {
-    for (const pipe of [...this.#pipes]) if (this.targets(pipe.coreId) === null) pipe.close(1001, 'no longer a machine of this group');
+    for (const pipe of [...this.#pipes, ...this.#streams]) if (this.targets(pipe.coreId) === null) pipe.close(1001, 'no longer a machine of this group');
   }
 
   closeAll(): void {
-    for (const pipe of [...this.#pipes]) pipe.close(1001, 'core stopping');
+    for (const pipe of [...this.#pipes, ...this.#streams]) pipe.close(1001, 'core stopping');
     this.#disarm();
   }
 
@@ -432,5 +463,61 @@ export class RelayPipe {
     }
     try { this.#socket?.close(SENDABLE(code) ? code : 1011, reason.slice(0, 120)); } catch { /* already gone */ }
     this.#hub.ended(this);
+  }
+}
+
+/**
+ * A viewer's stream of browser frames, carried to it from another member
+ * (`browser.remoteStream`): that machine's JPEGs go on as the binary messages
+ * they came as, never deflated, and the viewer's acknowledgements go back.
+ * The viewer's socket holds at most `MAX_SOCKET_BUFFER_BYTES` unsent, as on
+ * the machine that draws: past it the viewer is too slow, and is hung up on.
+ */
+export class RelayedStream {
+  #socket: ServerWebSocket<RelaySocketData> | null = null;
+  #closed = false;
+  /** What the other member sent before the viewer's socket was upgraded: a page and its first picture. */
+  #early: (string | Uint8Array)[] = [];
+
+  constructor(readonly coreId: string, private upstream: TextSocket, private ended: (stream: RelayedStream) => void) {
+    upstream.onMessage(text => this.#forward(text));
+    upstream.onBinary(bytes => this.#forward(bytes));
+    upstream.onClose(event => this.close(SENDABLE(event.code) ? event.code : 1011, event.reason || 'the other machine closed the stream'));
+  }
+
+  attach(socket: ServerWebSocket<RelaySocketData>): void {
+    if (this.#closed) { socket.close(1011, 'the other machine closed the stream'); return; }
+    this.#socket = socket;
+    for (const data of this.#early.splice(0)) this.#forward(data);
+  }
+
+  #forward(data: string | Uint8Array): void {
+    if (this.#closed) return;
+    const socket = this.#socket;
+    if (socket === null) { if (this.#early.length < 8) this.#early.push(data); return; }
+    if (socket.getBufferedAmount() + (typeof data === 'string' ? Buffer.byteLength(data) : data.byteLength) + 14 > MAX_SOCKET_BUFFER_BYTES) {
+      socket.terminate();
+      this.close(1013, 'slow viewer');
+      return;
+    }
+    if (typeof data === 'string') socket.send(data, false);
+    else socket.sendBinary(data, false);
+  }
+
+  /** An acknowledgement or a width: a few bytes of JSON, and nothing else is carried back. */
+  receive(raw: string | Buffer): void {
+    if (this.#closed || raw.length > 256) return;
+    try { this.upstream.send(typeof raw === 'string' ? raw : raw.toString()); } catch { this.close(1011, 'the other machine closed the stream'); }
+  }
+
+  drained(): void { /* the other member sends the next picture on the viewer's acknowledgement */ }
+
+  close(code = 1000, reason = ''): void {
+    if (this.#closed) return;
+    this.#closed = true;
+    this.#early = [];
+    this.upstream.close(SENDABLE(code) ? code : 1000, reason.slice(0, 120));
+    try { this.#socket?.close(SENDABLE(code) ? code : 1011, reason.slice(0, 120)); } catch { /* already gone */ }
+    this.ended(this);
   }
 }
