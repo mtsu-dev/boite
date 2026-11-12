@@ -149,7 +149,7 @@ describe('the recommended list', () => {
   test('Bots and Douane find their newer releases on their own repositories', () => {
     expect(recommendedUpdates()).toEqual({
       bots: { url: 'https://github.com/Skollheim/bots', ref: 'main' },
-      douane: { url: 'https://github.com/mtsu-dev/douane', ref: 'main' },
+      douane: { url: 'https://github.com/klNuno/douane', ref: 'main' },
     });
   });
 });
