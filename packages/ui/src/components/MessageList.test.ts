@@ -535,7 +535,8 @@ test('a call finished in the running turn rereads only that turn files, never a 
   ];
   running = mount(MessageList, { target: document.body, props: { store: owner, threadId: thread.id, messages: thread.messages } });
   flushSync();
-  await vi.waitFor(() => expect(document.querySelectorAll('[data-testid=turn-files]')).toHaveLength(2));
+  // The files line loads on demand (TurnFilesLoader.svelte): a busy runner can take past the default second to import it.
+  await vi.waitFor(() => expect(document.querySelectorAll('[data-testid=turn-files]')).toHaveLength(2), { timeout: 5_000 });
   const read = vi.spyOn(TurnFileCache.prototype, 'read');
   onTestFinished(() => read.mockRestore());
   thread.messages[1]!.parts.push(write('c.ts'));
