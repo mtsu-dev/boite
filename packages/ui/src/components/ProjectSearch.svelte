@@ -21,7 +21,7 @@
    *
    * The owner shows and hides `popover`: a pick and a close are only told.
    */
-  let { popover, testid, label, groups, several, byKeyboard = false, empty, footer, onpick, onclose }: {
+  let { popover, testid, label, groups, several, byKeyboard = false, empty, footer, placeholder = strings.thread.searchProjects, noMatch = strings.thread.noProjectMatch, onpick, onclose }: {
     popover: Closing;
     testid: string;
     label: string;
@@ -32,6 +32,9 @@
     byKeyboard?: boolean;
     /** What an empty list says before anything is typed. */
     empty?: string;
+    /** The field's words and the no-match line, for a list of something other than projects. */
+    placeholder?: string;
+    noMatch?: string;
     /** An action under the list that never scrolls away, the drafts' "Open a folder". */
     footer?: { id: string; label: string };
     onpick: (id: string) => void;
@@ -180,8 +183,8 @@
         autocomplete="off"
         autocapitalize="off"
         spellcheck="false"
-        placeholder={strings.thread.searchProjects}
-        aria-label={strings.thread.searchProjects}
+        {placeholder}
+        aria-label={placeholder}
         data-testid="{testid}-search"
       />
     </label>
@@ -213,7 +216,7 @@
           </button>
         {/each}
       {/each}
-      {#if none}<p class="empty" data-testid="{testid}-empty">{!typed && empty !== undefined ? empty : fill(strings.thread.noProjectMatch, { query: query.trim() })}</p>{/if}
+      {#if none}<p class="empty" data-testid="{testid}-empty">{!typed && empty !== undefined ? empty : fill(noMatch, { query: query.trim() })}</p>{/if}
     </div>
 
     {#if footer}

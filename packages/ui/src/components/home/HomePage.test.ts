@@ -114,11 +114,9 @@ test('a message from a contact outside a shared project pops up to be read: Deli
     await client.call('contacts.decide', { id: 'creq-pending', accept: false, reason: 'Not now' });
     // The thread's request goes through the Operator, which forwards it; the answer comes back to the thread.
     const operator = (await client.call('agents.builtin.ensure', { kind: 'contacts' })).id;
-    const botThread = (await client.call('contacts.get', {})).bot!.threadId;
     expect((await client.call('contacts.get', {})).bot!.agentId).toBe(operator);
     const answered = async (text: string) => {
-      const waiting = await client.call('collaboration.ask', { threadId: 't-trace', contact: 'core-sam', text });
-      const asked = await client.call('contacts.bot.forward', { threadId: botThread, id: waiting.id, contact: 'core-sam' });
+      const asked = await client.call('collaboration.ask', { threadId: 't-trace', contact: 'core-sam', want: 'share', text });
       await sam.call('contacts.decide', { id: asked.id, accept: false, reason: `No: ${text}` });
       await vi.waitFor(() => { flushSync(); expect(one('contact-request-notice')?.dataset.kind).toBe('mail'); });
       expect(one('contact-mail-notice-text')!.textContent).toContain(`No: ${text}`);
@@ -165,11 +163,9 @@ test('a thread request the Operator settles waits on it, not on the owner: no no
     for (const each of [client, sam]) await each.call('contacts.settings', { settings: { minTier: 2 } });
     await client.call('agents.builtin.ensure', { kind: 'contacts' });
     await sam.call('agents.builtin.ensure', { kind: 'contacts' });
-    const samBot = (await sam.call('contacts.get', {})).bot!.threadId;
     const home = (await sam.call('contacts.get', {})).contacts.find(entry => entry.coreId !== 'core-chris')!.coreId;
     const ask = async (text: string) => {
-      const waiting = await sam.call('collaboration.ask', { threadId: 't-trace', contact: home, want: 'thread', text });
-      const asked = await sam.call('contacts.bot.forward', { threadId: samBot, id: waiting.id, contact: home });
+      const asked = await sam.call('collaboration.ask', { threadId: 't-trace', contact: home, want: 'thread', text });
       await vi.waitFor(async () => expect((await contacts(store)).requests.some(entry => entry.id === asked.id)).toBe(true));
       return asked.id;
     };
@@ -191,6 +187,36 @@ test('a thread request the Operator settles waits on it, not on the owner: no no
       expect([request.status, request.stage, request.approved, request.project]).toEqual(['pending', 'bot', true, undefined]);
     });
     await vi.waitFor(() => { flushSync(); expect(one(`contact-approve-${held}`)).toBeNull(); });
+
+    // The Operator shows what it will do: the owner reads the plan, and Accept runs it with no project shared.
+    const planned = await ask('A thread that knows the trace tab');
+    await client.call('contacts.bot.askOwner', { threadId: (await contacts(store)).bot!.threadId, id: planned, connect: 't-trace' });
+    await vi.waitFor(() => { flushSync(); expect(one(`contact-request-${planned}`)?.querySelector('[data-testid="contact-request-plan"]')?.textContent).toContain('Finish the trace tab'); });
+    expect(one('contact-request-notice')).not.toBeNull();
+    expect(one(`contact-accept-${planned}`)).toBeNull();
+    expect(one<HTMLButtonElement>(`contact-approve-${planned}`)!.textContent).toContain(strings.contacts.requests.accept);
+    one<HTMLButtonElement>(`contact-approve-${planned}`)!.click();
+    await vi.waitFor(async () => {
+      const request = (await contacts(store)).requests.find(entry => entry.id === planned)!;
+      expect([request.status, request.decidedBy, request.relation?.local.threadId, request.project, request.plan]).toEqual(['accepted', 'owner', 't-trace', undefined, undefined]);
+    });
+
+    // The arrow beside Accept: the owner searches their conversations and picks another than the Operator's choice.
+    const picked = await ask('Someone on the scheduler');
+    const operator = (await contacts(store)).bot!.threadId;
+    await client.call('contacts.bot.askOwner', { threadId: operator, id: picked, connect: 't-trace' });
+    await vi.waitFor(() => { flushSync(); expect(one(`contact-pick-${picked}`)).not.toBeNull(); });
+    one<HTMLButtonElement>(`contact-pick-${picked}`)!.click();
+    await vi.waitFor(() => { flushSync(); expect(one(`contact-pick-${picked}-search`)).not.toBeNull(); });
+    const rows = [...document.querySelectorAll<HTMLButtonElement>(`[data-testid="contact-pick-${picked}-list"] [data-row]`)];
+    // The Operator's own thread is no choice.
+    expect(rows.some(row => row.dataset.value === operator)).toBe(false);
+    const other = rows.find(row => row.dataset.value !== 't-trace')!;
+    other.click();
+    await vi.waitFor(async () => {
+      const request = (await contacts(store)).requests.find(entry => entry.id === picked)!;
+      expect([request.status, request.decidedBy, request.relation?.local.threadId, request.plan]).toEqual(['accepted', 'owner', other.dataset.value, undefined]);
+    });
 
     // Trusted: the Operator settles it alone, so nothing asks the owner.
     await client.call('contacts.update', { coreId: 'core-sam', trusted: true });

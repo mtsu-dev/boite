@@ -64,6 +64,51 @@ test('contact requests appear above desktop and phone pages and open the request
   } finally { await page.close(); }
 }, 30_000);
 
+test('a request shows the plan the Operator wrote on desktop and phone, and Accept runs it', async () => {
+  const page = await BrowserPage.launch({ url: 'about:blank', windowSize: { width: 1440, height: 900 } });
+  const card = `${id('contact-requests')} ${id('contact-request-creq-plan')}`;
+  try {
+    await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('boite.experiments', JSON.stringify(['contacts']));` });
+    await page.navigate(`http://127.0.0.1:${port}/?fake=1&plan=1`);
+    await page.waitFor(`document.querySelector('${id('contact-request-notice')}')`);
+    await page.evaluate(`globalThis.__boiteTest.setTheme('dark')`);
+    await page.evaluate(`globalThis.__boiteTest.workspace.active.client.call('agents.builtin.ensure', { kind: 'contacts' })`);
+    // The fake announces no bot of its own: a contact change makes the page read the requests again, staged now.
+    await page.evaluate(`globalThis.__boiteTest.workspace.active.client.call('contacts.update', { coreId: 'core-chris', name: 'Chris' })`);
+    await page.evaluate(`globalThis.__boiteTest.workspace.active.showHome('core-chris')`);
+    await page.waitFor(`document.querySelector('${card} ${id('contact-approve-creq-plan')}')`);
+    await page.settleAnimations();
+    expect(await page.evaluate(`document.querySelector('${card} ${id('contact-request-plan')}').textContent`)).toContain('Finish the trace tab');
+    await page.screenshot(join(import.meta.dir, '.artifacts/contact-plan-desktop.png'));
+
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+    await page.waitFor(`document.querySelector('${card} ${id('contact-request-plan')}')?.getBoundingClientRect().width > 0`);
+    await page.settleAnimations();
+    expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
+    expect(await page.evaluate(`(() => { const box = document.querySelector('${card}').getBoundingClientRect(); return box.left >= 0 && box.right <= innerWidth; })()`)).toBe(true);
+    await page.screenshot(join(import.meta.dir, '.artifacts/contact-plan-phone.png'));
+
+    // The arrow opens the search over this machine's conversations; it stays inside a phone's width.
+    await page.click(`${card} ${id('contact-pick-creq-plan')}`);
+    await page.waitFor(`document.querySelector('${id('contact-pick-creq-plan-search')}')`);
+    await page.settleAnimations();
+    expect(await page.evaluate(`document.querySelectorAll('${id('contact-pick-creq-plan-list')} [data-row]').length > 1`)).toBe(true);
+    expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
+    await page.screenshot(join(import.meta.dir, '.artifacts/contact-pick-phone.png'));
+    await page.send('Emulation.clearDeviceMetricsOverride', {});
+    await page.settleAnimations();
+    await page.screenshot(join(import.meta.dir, '.artifacts/contact-pick-desktop.png'));
+    await page.evaluate(`document.querySelector('${id('contact-pick-creq-plan-search')}').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+    await page.waitFor(`!document.querySelector('${id('contact-pick-creq-plan-search')}')`);
+
+    await page.click(`${card} ${id('contact-approve-creq-plan')}`);
+    await page.waitFor(`!document.querySelector('${card} ${id('contact-approve-creq-plan')}')`);
+    const settled = await page.evaluate<{ status: string; decidedBy?: string; relation?: { local: { title: string } }; project?: unknown }>(`globalThis.__boiteTest.workspace.active.client.call('contacts.get', {}).then(view => view.requests.find(request => request.id === 'creq-plan'))`);
+    expect([settled.status, settled.decidedBy, settled.relation?.local.title, settled.project]).toEqual(['accepted', 'owner', 'Finish the trace tab', undefined]);
+    expect(page.errors()).toEqual([]);
+  } finally { await page.close(); }
+}, 30_000);
+
 test('the shared project picker searches every linked machine on desktop and phone', async () => {
   const page = await BrowserPage.launch({ url: 'about:blank', windowSize: { width: 1440, height: 1000 } });
   const picker = id('contact-open-core-chris');

@@ -37,7 +37,6 @@ async function flowsWithoutHolder(sides: Awaited<ReturnType<typeof setup>>): Pro
   const xBot = await contactsBotOf(x, xClient);
   const name = x.core.contacts.find(cId)!.name;
   const asked = await xClient.call('collaboration.ask', { threadId: xThread, contact: name, text: 'Still there without alpha?' });
-  await xClient.call('contacts.bot.forward', { threadId: xBot.threadId, id: asked.id, contact: name });
   const incoming = () => c.core.contacts.requests.list().find(request => request.direction === 'in' && request.text === 'Still there without alpha?');
   await waitFor(() => incoming() !== undefined, 10000);
   expect(incoming()!.from).toMatchObject({ coreId: xId, threadId: xThread });

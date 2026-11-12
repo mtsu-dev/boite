@@ -53,8 +53,7 @@ export const strings = {
       accept: 'Accept',
       acceptLabel: 'Accept: pick the project to share',
       /** Accept on a request for a thread the Operator settles: no project is shared. */
-      approve: 'Let the Operator connect it',
-      approveTip: 'The Operator puts the asking thread in touch with one of yours. No project is shared.',
+      approveTip: 'The Operator picks which of your conversations to put it in touch with. No project is shared.',
       refuse: 'Refuse',
       reason: 'Reason',
       reasonPlaceholder: 'Why, in a sentence the asking agent reads',
@@ -67,6 +66,10 @@ export const strings = {
       byTip: { owner: 'Decided by the owner.', match: 'Its git remote matched exactly one project.', concierge: 'Decided by the concierge agent for a trusted contact.', bot: 'Decided by the Operator, Boite\'s built-in bot.' },
       /** Where a pending request stands: with the Operator, or waiting on the owner's answer to its card. */
       stage: { bot: 'With the Operator', owner: 'Waiting for you', host: 'On its way to the Bots machine' },
+      /** What the Operator will do once the owner accepts a request of a contact not trusted. */
+      plan: { connect: 'The Operator picks {thread}', connectIn: 'The Operator picks {thread}, in {project}', start: 'The Operator starts a new thread in {project}', acceptTip: 'Does what the Operator picked. No project is shared.' },
+      /** The arrow beside Accept: the owner picks the thread themselves. */
+      pick: { label: 'Pick the conversation yourself', search: 'Search conversations and bots', empty: 'No conversation here yet', none: 'No conversation matches "{query}"' },
       /** A request the Operator accepted by putting two threads in touch. */
       inTouch: 'In touch with {thread}'
     },

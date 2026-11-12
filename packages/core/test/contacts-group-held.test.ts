@@ -44,8 +44,8 @@ test('a contact a member still holds is the whole group\'s: asked from the Bots 
 
   // (1) A thread on the Bots host names C: X's bot forwards it through A, C reads X's thread at its alias on A, and the relation C makes carries letters both ways.
   const fromX = await xClient.call('collaboration.ask', { threadId: xThread, contact: name, text: 'Who runs the build farm?' });
-  expect(fromX).toMatchObject({ status: 'pending', stage: 'bot' });
-  await xClient.call('contacts.bot.forward', { threadId: xBot.threadId, id: fromX.id, contact: name });
+  expect(fromX).toMatchObject({ status: 'pending' });
+  expect(fromX.stage).toBeUndefined();
   await waitFor(() => incoming('Who runs the build farm?') !== undefined, 10000);
   expect(incoming('Who runs the build farm?')!.from).toMatchObject({ coreId: aId, threadId: memberThreadId(xId, xThread) });
   await cClient.call('contacts.bot.connect', { threadId: cBot.threadId, id: incoming('Who runs the build farm?')!.id, target: cThread });
@@ -64,7 +64,6 @@ test('a contact a member still holds is the whole group\'s: asked from the Bots 
   // (2) A thread of A, which relays its asks to X: X's bot forwards it back to A, which sends it as its own thread's.
   const fromA = await aClient.call('collaboration.ask', { threadId: aThread, contact: name, text: 'Is alpha on 8080?' });
   await waitFor(() => requestOn(x, fromA.id) !== undefined, 10000);
-  await xClient.call('contacts.bot.forward', { threadId: xBot.threadId, id: fromA.id, contact: name });
   await waitFor(() => incoming('Is alpha on 8080?') !== undefined, 10000);
   expect(incoming('Is alpha on 8080?')!.from).toMatchObject({ coreId: aId, threadId: aThread });
   await cClient.call('contacts.decide', { id: incoming('Is alpha on 8080?')!.id, accept: false, reason: 'Not on 8080' });
@@ -75,7 +74,6 @@ test('a contact a member still holds is the whole group\'s: asked from the Bots 
   // (3) A thread of Y, a third member: X forwards it through A, and the answer comes back to Y through X.
   const fromY = await yClient.call('collaboration.ask', { threadId: yThread, contact: name, text: 'Does yankee build?' });
   await waitFor(() => requestOn(x, fromY.id) !== undefined, 10000);
-  await xClient.call('contacts.bot.forward', { threadId: xBot.threadId, id: fromY.id, contact: name });
   await waitFor(() => incoming('Does yankee build?') !== undefined, 10000);
   expect(incoming('Does yankee build?')!.from).toMatchObject({ coreId: aId, threadId: memberThreadId(yId, yThread) });
   await cClient.call('contacts.decide', { id: incoming('Does yankee build?')!.id, accept: false, reason: 'No yankee here' });
@@ -118,7 +116,6 @@ async function heldSetup(before: (sides: Awaited<ReturnType<typeof setup>>) => v
   const name = a.core.contacts.find(cId)!.name;
   const ask = async (words: string) => {
     const asked = await xClient.call('collaboration.ask', { threadId: xThread, contact: name, text: words });
-    await xClient.call('contacts.bot.forward', { threadId: xBot.threadId, id: asked.id, contact: name });
     return asked;
   };
   const incoming = (words: string) => c.core.contacts.requests.list().find(request => request.direction === 'in' && request.text === words);

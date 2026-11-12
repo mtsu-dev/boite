@@ -180,8 +180,8 @@ test('forwarding a mailbox backlog bounds deserialization and retries older fail
 
 test('a routed ask waits for the gateway\'s Contacts bot, and the contact\'s answer returns to the initiating thread', async () => {
   const { a, b, c, ai, bi, ci, ac, source, recipient } = await routed();
-  // Without a Contacts bot, the asking core refuses with what to turn on.
-  expect(await thrown(ac.call('collaboration.ask', { threadId: source, contact: ci, text: 'An agent on the opened project' }))).toThrow('Settings > Experiments');
+  // Without a Contacts bot, an ask that names no contact is refused with what to turn on.
+  expect(await thrown(ac.call('collaboration.ask', { threadId: source, text: 'An agent on the opened project' }))).toThrow('Settings > Experiments');
   // An older initiating core asks through its gateway once it has a route there, as a first letter makes.
   await a.core.coordination.send({ threadId: source, to: { coreId: ci, threadId: recipient }, text: 'Which port?', requestId: 'first-letter' });
   await waitFor(() => c.core.coordination.get(recipient).messages.length > 0, 10000);
@@ -189,12 +189,12 @@ test('a routed ask waits for the gateway\'s Contacts bot, and the contact\'s ans
   await waitFor(() => b.core.contacts.find(ci)?.capabilities?.contactsBot === 1, 10000);
   const peer = b.core.group.peers().find(entry => entry.coreId === ai)!;
   const from = a.core.coordination.describe(source);
-  const ask = (id: string, text: string) => b.core.coordination.mailboxes.handle(peer, { action: 'ask', from, coreId: ci, id, text, admission: b.core.contacts.find(ci)!.addedAt }) as Promise<ContactRequest>;
+  const ask = (id: string, text: string) => b.core.coordination.mailboxes.handle(peer, { action: 'ask', from, coreId: ci, id, text, want: 'share', admission: b.core.contacts.find(ci)!.addedAt }) as Promise<ContactRequest>;
   const asked = await ask('ask-1', 'An agent on the opened project');
-  expect(asked).toMatchObject({ direction: 'out', stage: 'bot', status: 'pending', contact: b.core.contacts.find(ci)!.name });
+  expect(asked).toMatchObject({ direction: 'out', status: 'pending', contact: b.core.contacts.find(ci)!.name });
+  expect(asked.stage).toBeUndefined();
   // The same ask again is the same request.
   expect((await ask('ask-1', 'An agent on the opened project')).id).toBe(asked.id);
-  b.core.contacts.requests.forward({ id: asked.id, contact: ci });
   a.core.coordination.pause(source, 'restart');
   const incoming = () => (c.core.journal.getSetting('contacts:requests') as { id: string; remoteId: string }[] ?? []).find(request => request.remoteId === asked.id);
   await waitFor(() => incoming() !== undefined, 10000);
@@ -206,7 +206,6 @@ test('a routed ask waits for the gateway\'s Contacts bot, and the contact\'s ans
   expect(a.core.coordination.get(source).messages.find(letter => letter.origin === 'contact')?.text).toStartWith(`${name} refused your request:`);
   // An older contact's automatic refusal keeps its attribution through the gateway.
   const older = await ask('ask-2', 'Project access');
-  b.core.contacts.requests.forward({ id: older.id, contact: ci });
   b.core.contacts.answered(ci, { id: older.id, status: 'refused', reason: 'No matching project.', decidedBy: 'concierge', decidedAt: Date.now() }, []);
   await waitFor(() => a.core.coordination.get(source).messages.filter(letter => letter.origin === 'contact' && letter.status === 'delivered').length === 2, 12000);
   const answer = a.core.coordination.get(source).messages.filter(letter => letter.origin === 'contact').find(letter => letter.text.includes('automatically'))!;

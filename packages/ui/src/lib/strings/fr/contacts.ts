@@ -51,8 +51,7 @@ export const fr: Translation = {
       remote: 'Remote git',
       accept: 'Accepter',
       acceptLabel: 'Accepter : choisir le projet à partager',
-      approve: 'Confier à la Standardiste',
-      approveTip: 'La Standardiste met la conversation qui demande en relation avec une des vôtres. Aucun projet n\'est partagé.',
+      approveTip: 'La Standardiste choisit laquelle de vos conversations mettre en relation. Aucun projet n\'est partagé.',
       refuse: 'Refuser',
       reason: 'Raison',
       reasonPlaceholder: 'Pourquoi, en une phrase que l\'agent lira',
@@ -64,7 +63,9 @@ export const fr: Translation = {
       by: { owner: 'Propriétaire', match: 'Correspondance', concierge: 'Concierge', bot: 'Standardiste' },
       byTip: { owner: 'Décidé par le propriétaire.', match: 'Son remote git correspondait à un seul projet.', concierge: 'Décidé par l\'agent concierge pour un contact de confiance.', bot: 'Décidé par la Standardiste, le bot intégré de Boite.' },
       stage: { bot: 'Chez la Standardiste', owner: 'Vous attend', host: 'En route vers la machine Bots' },
-      inTouch: 'En relation avec {thread}'
+      plan: { connect: 'La Standardiste choisit {thread}', connectIn: 'La Standardiste choisit {thread}, dans {project}', start: 'La Standardiste démarre une conversation dans {project}', acceptTip: 'Fait ce que la Standardiste a choisi. Aucun projet n\'est partagé.' },
+      pick: { label: 'Choisir la conversation vous-même', search: 'Chercher une conversation ou un bot', empty: 'Aucune conversation ici pour l\'instant', none: 'Aucune conversation ne correspond à « {query} »' },
+            inTouch: 'En relation avec {thread}'
     },
     bot: {
       tip: 'Le bot intégré de Boite. Chaque demande entre vos agents et vos contacts passe par lui : il trouve la bonne conversation, met les deux en relation et retient les lettres qui semblent dangereuses.',
