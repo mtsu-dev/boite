@@ -388,8 +388,10 @@
       {:else}<p class="none subtle" data-testid="favorites-empty">{strings.composer.favoritesEmpty}</p>{/each}
       </div>
     {:else}
-    <div class="head">
+    <div class="head provider-head">
       <AccountSeats name={shown ? shown.name : strings.composer.models} {shown} {seats} {shownAccountId} {choice} {locked} {disabled} busy={disabled || pickPending} onpick={pickSeat} onsignin={store.owner ? signInSeat : undefined} />
+      <!-- The search shares the name's line, so the list keeps that row for models. -->
+      {#if !needsInstall && !pending}<div class="head-search"><ModelSearch bind:value={modelQuery} bind:input={searchBox} /></div>{/if}
     </div>
     {#key `${shown?.id}:${shownAccountId}`}
     <div class="model-list">
@@ -421,7 +423,6 @@
         {#each [0, 1, 2] as index (index)}<span class="skeleton"></span>{/each}
       </div>
     {:else}
-      <ModelSearch bind:value={modelQuery} bind:input={searchBox} />
       {#if grouped}
         {#if pinnedModel}
           {@render modelRow(pinnedModel)}
@@ -574,6 +575,12 @@
   .main-models .head { flex-direction: column; align-items: stretch; justify-content: center; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--color-border); }
   /* The favorites' heading stands as tall as a provider's name line (AccountSeats). */
   .main-models .head > .provider-name { min-height: var(--control-sm); display: flex; align-items: center; }
+  /* The provider's name, then the search filling the rest of its line. An open
+     account list takes the head's width and puts the search under it. */
+  .main-models .provider-head { flex-direction: row; align-items: center; gap: 8px; }
+  .main-models .provider-head:has(:global(.accounts)) { flex-direction: column; align-items: stretch; }
+  .head-search { flex: 1 1 120px; min-width: 0; }
+  .head-search :global(.search-bar) { position: static; margin: 0; padding: 0; background: none; }
   .model-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; padding: 6px; }
   /* One provider: its model list is the whole popover, the refresh sits in the list's head. */
   .popover.single { grid-template-columns: minmax(0, 1fr); width: min(320px, calc(100vw - 32px)); }

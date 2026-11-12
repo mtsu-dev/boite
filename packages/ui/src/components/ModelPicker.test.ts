@@ -414,13 +414,13 @@ test('a signed-in Claude seat is probed before its model and account are applied
     await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null && accountButton() !== null);
     accountButton()!.click();
     await waitFor(() => document.querySelector('[data-instance="claude::a-claude-side"]') !== null);
-    // The accounts unfold inside the column's head, in its flow: the search and the models come after them, not under a layer.
+    // The accounts unfold inside the column's head, in its flow: the search (on the name's line, under the open list) and the models come after them, not under a layer.
     const list = document.querySelector<HTMLElement>('[data-testid=picker-accounts]')!;
     const head = list.closest('.head')!;
     const search = document.querySelector<HTMLElement>('[data-testid=composer-picker-menu] input')!;
     const firstModel = document.querySelector<HTMLElement>('[data-testid=composer-picker-menu] [data-model]')!;
     expect(head.closest('.main-models')).not.toBeNull();
-    expect(head.contains(search)).toBe(false);
+    expect(head.contains(search)).toBe(true);
     expect(list.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(list.compareDocumentPosition(firstModel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(getComputedStyle(list).position).not.toBe('absolute');
