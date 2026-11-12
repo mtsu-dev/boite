@@ -86,6 +86,7 @@ import { strings as harnessUpdates } from './strings/en/harnessUpdates';
 import { strings as providerSettings } from './strings/en/providerSettings';
 import { strings as localAcp } from './strings/en/localAcp';
 import { strings as plugins } from './strings/en/plugins';
+import { strings as pluginUi } from './strings/en/pluginUi';
 import { strings as time } from './strings/en/time';
 import { strings as errors } from './strings/en/errors';
 import { strings as units } from './strings/en/units';
@@ -185,6 +186,7 @@ export const strings = {
   ...providerSettings,
   ...localAcp,
   ...plugins,
+  ...pluginUi,
   ...time,
   ...errors,
   ...units,

@@ -23,9 +23,10 @@ import { FileDocuments, type FileDocument, type FileSaved, type FileWrite } from
  * on the machine that runs it, from any client. `desk` is a persistent
  * agent's desk, beside its own thread: what it does now, its work, routines,
  * memory and day. `council` is the salon of a council the thread started
- * (`docs/council.md`), opened from its card.
+ * (`docs/council.md`), opened from its card. `plugin` is a tab a plugin's
+ * interface script draws (`lib/plugin-ui.svelte.ts`), one per plugin tab.
  */
-export type SurfaceKind = 'desk' | 'agents' | 'messages' | 'trace' | 'browser' | 'agent-browser' | 'changes' | 'files' | 'file' | 'tasks' | 'device' | 'window' | 'council';
+export type SurfaceKind = 'desk' | 'agents' | 'messages' | 'trace' | 'browser' | 'agent-browser' | 'changes' | 'files' | 'file' | 'tasks' | 'device' | 'window' | 'council' | 'plugin';
 
 /** Every kind a stored layout may name, and what `parse` checks a blob against. */
 export const SURFACE_KINDS: readonly SurfaceKind[] = [
@@ -41,7 +42,8 @@ export const SURFACE_KINDS: readonly SurfaceKind[] = [
   'tasks',
   'device',
   'window',
-  'council'
+  'council',
+  'plugin'
 ];
 
 /**
@@ -79,6 +81,8 @@ export interface Surface {
   letterId?: string;
   /** The council the salon tab shows. */
   councilId?: string;
+  /** A plugin tab's `<plugin>/<tab>`: what draws it. */
+  tab?: string;
 }
 
 /** What the tab menu, the close button and the close key ask for. */
@@ -119,6 +123,7 @@ function surfaceId(kind: SurfaceKind, path?: string): string {
   // existed still names the trace tab the same way.
   if (SINGLETON_KINDS.includes(kind)) return kind;
   if (kind === 'file') return `file:${path ?? ''}`;
+  if (kind === 'plugin') return `plugin:${path ?? ''}`;
   return `browser:${secureId()}`;
 }
 
@@ -142,7 +147,7 @@ function parse(raw: string): Record<string, PanelState> {
     const surfaces: Surface[] = [];
     for (const surface of raws) {
       if (typeof surface !== 'object' || surface === null) continue;
-      const { title, url, profile, zoom, path, line, runId, peer, letterId } = surface as Surface;
+      const { title, url, profile, zoom, path, line, runId, peer, letterId, tab } = surface as Surface;
       // A layout stored while workflows had a tab of their own: that tab is the subagents tab now.
       const merged = (surface as { kind?: unknown }).kind === 'workflow';
       // A layout stored while the salon was a debate's: the same tab, on the same id.
@@ -156,6 +161,8 @@ function parse(raw: string): Record<string, PanelState> {
       if (kind === 'file' && typeof path !== 'string') continue;
       // Nor is a salon tab that names no council.
       if (kind === 'council' && typeof councilId !== 'string') continue;
+      // Nor is a plugin tab that names no plugin tab.
+      if (kind === 'plugin' && (typeof tab !== 'string' || id !== `plugin:${tab}`)) continue;
       if (surfaces.some((kept) => kept.id === id)) continue;
       // A zoom that is not one of the ladder's rungs is dropped, not clamped:
       // the ladder is the whole vocabulary here.
@@ -173,7 +180,8 @@ function parse(raw: string): Record<string, PanelState> {
         // A letter only means something inside its discussion: a tab stored before discussions comes back on the list.
         ...(typeof peer === 'string' ? { peer } : {}),
         ...(typeof peer === 'string' && typeof letterId === 'string' ? { letterId } : {}),
-        ...(kind === 'council' && typeof councilId === 'string' ? { councilId } : {})
+        ...(kind === 'council' && typeof councilId === 'string' ? { councilId } : {}),
+        ...(kind === 'plugin' && typeof tab === 'string' ? { tab } : {})
       });
     }
     const stored = (value as PanelState).activeSurfaceId;
@@ -503,6 +511,21 @@ export class BoundPanel {
     const opened = this.open('council');
     this.update(opened.id, { councilId });
     return this.state.surfaces.find((surface) => surface.id === opened.id) ?? opened;
+  }
+
+  /** One tab per plugin tab, `<plugin>/<tab>`, titled as its script named it. */
+  openPluginTab(tab: string, title: string): Surface {
+    const current = this.state;
+    const id = surfaceId('plugin', tab);
+    const existing = current.surfaces.find((surface) => surface.id === id);
+    if (existing) {
+      const named = { ...existing, title };
+      this.#write({ ...current, isOpen: true, activeSurfaceId: id, surfaces: current.surfaces.map((surface) => (surface.id === id ? named : surface)) });
+      return named;
+    }
+    const surface: Surface = { id, kind: 'plugin', tab, title };
+    this.#write({ isOpen: true, activeSurfaceId: id, surfaces: [...current.surfaces, surface] });
+    return surface;
   }
 
   /**

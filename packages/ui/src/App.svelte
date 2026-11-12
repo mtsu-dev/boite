@@ -130,7 +130,9 @@
     TerminalView: () => import('./components/TerminalView.svelte'),
     // The project board, in the same drawer: only once it is asked for.
     BoardDrawer: () => import('./components/BoardDrawer.svelte'),
-    PluginUpdateNotice: () => import('./components/PluginUpdateNotice.svelte')
+    PluginUpdateNotice: () => import('./components/PluginUpdateNotice.svelte'),
+    // Plugin interfaces load after startup, on any link: what they add is part of the app.
+    PluginUiHost: () => import('./components/PluginUiHost.svelte')
   };
   type Deferred = { [K in keyof typeof deferredLoaders]?: Awaited<ReturnType<(typeof deferredLoaders)[K]>>['default'] };
   let deferred = $state.raw<Deferred>({});
@@ -164,7 +166,7 @@
   // link that can spare the bytes (lib/prefetch.ts). The plugin update notice reads its own list, so it loads on any link.
   $effect(() => {
     if (!store.booted) return;
-    return whenIdle(() => { if (!prefetchAllowed()) return need('PluginUpdateNotice'); needAll(); prefetchParts(); warmPages(store, experimentOn('resident-agents')); });
+    return whenIdle(() => { need('PluginUiHost'); if (!prefetchAllowed()) return need('PluginUpdateNotice'); needAll(); prefetchParts(); warmPages(store, experimentOn('resident-agents')); });
   });
   let WhipOverlay = $state<typeof import('./components/WhipOverlay.svelte').default>();
   $effect(() => {
@@ -685,6 +687,7 @@
 <MoveProjectPicker />
 <DragGhost />
 {#if tour && deferred.Onboarding}{@const Onboarding = deferred.Onboarding}<Onboarding {store} />{:else if deferred.PluginUpdateNotice}{@const PluginUpdateNotice = deferred.PluginUpdateNotice}<PluginUpdateNotice />{/if}
+{#if deferred.PluginUiHost}{@const PluginUiHost = deferred.PluginUiHost}<PluginUiHost />{/if}
 {#if deferred.ProjectPicker}{@const ProjectPicker = deferred.ProjectPicker}<ProjectPicker {store} />{/if}
 <ConfirmDialog />
 {#if deferred.ImportDialog}{@const ImportDialog = deferred.ImportDialog}<ImportDialog {store} />{/if}

@@ -34,6 +34,9 @@
   import TraceSurface from './TraceSurface.svelte';
   import AgentDesk from './agents/AgentDesk.svelte';
   import CouncilSalon from './council/CouncilSalon.svelte';
+  import PluginTabSurface from './PluginTabSurface.svelte';
+  import { pluginUi } from '../lib/plugin-ui.svelte';
+  import { workspace } from '../lib/workspace.svelte';
 
   let {
     store,
@@ -265,6 +268,10 @@
   }
 
 
+  const PLUGIN_TAB = 'plugin-tab:';
+  /** Plugin interfaces load from the window's own core, so their tabs are offered on its threads. */
+  const pluginTabsHere = $derived(store === workspace.primary);
+
   /** A persistent agent's own thread has a desk, offered first. */
   const agentThread = $derived(!!store.openThread?.agentSessionId);
   let menuItems = $derived([
@@ -276,13 +283,18 @@
       disabled: !available(card.kind),
       ...(available(card.kind) ? {} : { hint: unavailable() })
     })),
+    // The tabs plugin interfaces add, on the machine that loaded them.
+    ...(pluginTabsHere ? pluginUi.tabs.map((tab) => ({ id: `${PLUGIN_TAB}${tab.key}`, label: tab.title, glyph: surfaceGlyph('plugin') })) : []),
     // The way back to a kind this device put away.
     separator('sep-customize'),
     { id: CUSTOMIZE, label: strings.controls.customize }
   ]);
 
   function pickNew(id: string): void {
-    if (id === CUSTOMIZE) store.showSettings('appearance', CONTROLS_SECTION);
+    if (id.startsWith(PLUGIN_TAB)) {
+      const tab = pluginUi.tab(id.slice(PLUGIN_TAB.length));
+      if (tab) panel.openPluginTab(tab.key, tab.title);
+    } else if (id === CUSTOMIZE) store.showSettings('appearance', CONTROLS_SECTION);
     else launch(id as SurfaceKind);
   }
 </script>
@@ -501,6 +513,8 @@
     {:else if active?.kind === 'council' && active.councilId}
       <!-- One salon per debate: the tab moved to another debate starts its reading afresh. -->
       {#key active.councilId}<CouncilSalon {store} councilId={active.councilId} threadId={panel.threadId ?? undefined} />{/key}
+    {:else if active?.kind === 'plugin' && active.tab}
+      {#key active.tab}<PluginTabSurface tab={active.tab} threadId={pluginTabsHere ? (store.openThread?.id ?? null) : null} />{/key}
     {:else}
       <SurfaceLauncher
         {available}
