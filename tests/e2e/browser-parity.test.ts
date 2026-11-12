@@ -164,7 +164,9 @@ test.skipIf(process.platform !== 'win32' || !executable)('in the desktop app, th
     expect(JSON.stringify(await command({ kind: 'snapshot' }, background.tabId))).toContain('ATELIER BOITE');
     await command({ kind: 'close' }, background.tabId);
     await page.click(`[data-testid=thread-row][data-thread-id="${session.threadId}"]`);
-    await page.waitFor(`document.querySelector('[data-testid=thread-row][data-thread-id="${session.threadId}"]')?.closest('.thread')?.classList.contains('open')`);
+    // Back on it, its docked browser takes the list's column again (App.svelte lends it to each panel that opens):
+    // its row is open while the list still shows, then the header names it.
+    await page.waitFor(`document.querySelector('[data-testid=thread-row][data-thread-id="${session.threadId}"]')?.closest('.thread')?.classList.contains('open') || document.querySelector('[data-testid=thread-title]')?.textContent.includes(${JSON.stringify(original.title)})`);
     expect((await command({ kind: 'evaluate', expression: 'globalThis.persistenceMarker' }, tabId)).value).toBe('same live page');
     console.log('Background open, snapshot, close and live page persistence passed');
   } catch (error) {

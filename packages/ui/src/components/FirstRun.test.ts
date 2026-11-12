@@ -25,10 +25,11 @@ test('a first run lists the agents as rows that each connect in one click, then 
   flushSync();
 
   // A visible path: three numbered steps, the first the one to take now, with the agents as its buttons.
-  const steps = [...document.querySelectorAll<HTMLElement>('[data-testid="first-run-steps"] > .step')];
-  expect(steps.map((step) => step.textContent!.replace(/^\d/, '').trim())).toEqual([strings.firstRun.stepConnect, strings.firstRun.stepProject, strings.firstRun.stepTask]);
+  // A screen reader counts the list's items: three, the agents inside the first.
+  const steps = [...document.querySelectorAll<HTMLElement>('[data-testid="first-run-steps"] > li')];
+  expect(steps.map((step) => step.querySelector('.ui-label')!.textContent!.trim())).toEqual([strings.firstRun.stepConnect, strings.firstRun.stepProject, strings.firstRun.stepTask]);
   expect(steps.map((step) => step.getAttribute('aria-current'))).toEqual(['step', null, null]);
-  expect(steps[0]!.nextElementSibling!.querySelectorAll('[data-testid="first-run-agent"]').length).toBe(rows().length);
+  expect(steps[0]!.querySelectorAll('[data-testid="first-run-agent"]').length).toBe(rows().length);
   // The lists' marks met once, each beside its word: the amber dot, the working ring, the red "!".
   const keys = [...document.querySelectorAll<HTMLElement>('[data-testid="first-run-marks"] .key')];
   expect(keys.map((key) => key.textContent!.trim())).toEqual([strings.sidebar.state.waiting, strings.sidebar.state.working, strings.sidebar.state.error]);

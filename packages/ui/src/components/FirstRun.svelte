@@ -37,8 +37,8 @@
   {#snippet action()}
     {#if store.owner}
       <ol class="steps" aria-label={strings.firstRun.steps} data-testid="first-run-steps">
-        <li class="step now" aria-current="step"><span class="number" aria-hidden="true">1</span><span class="ui-label">{strings.firstRun.stepConnect}</span></li>
-        <li class="rows">
+        <li class="step first" aria-current="step">
+          <span class="head now"><span class="number" aria-hidden="true">1</span><span class="ui-label">{strings.firstRun.stepConnect}</span></span>
       <div class="agents" role="group" aria-label={strings.firstRun.agents}>
         {#each agents as agent (agent.id)}
           <button type="button" class="ghost agent" data-testid="first-run-agent" data-provider={agent.id} onclick={() => store.openConnect(agent.id)}>
@@ -88,8 +88,9 @@
   .number { flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; box-shadow: inset 0 0 0 1px var(--color-edge); font-size: var(--text-sm); font-weight: 600; font-variant-numeric: tabular-nums; }
   .now { color: var(--color-foreground); font-weight: 600; }
   .now .number { background: var(--color-foreground); box-shadow: none; color: var(--color-on-foreground); }
-  /* The rows hang off the first step, under its words. */
-  .rows { margin: 0 0 var(--space-2); }
+  /* The rows hang off the first step, under its words, inside its list item so a reader counts three steps. */
+  .first { flex-direction: column; align-items: stretch; gap: var(--space-2); margin: 0 0 var(--space-2); color: inherit; font-size: inherit; }
+  .head { display: flex; align-items: center; gap: var(--space-3); min-height: 28px; font-size: var(--text-base); }
   .agents { display: flex; flex-direction: column; gap: 2px; width: 100%; padding: 4px; border-radius: var(--radius-lg); background: var(--color-surface-2); text-align: left; }
   .agent { width: 100%; height: auto; min-height: 52px; justify-content: flex-start; gap: var(--space-3); padding: 8px 10px; border-radius: var(--radius-md); text-align: left; color: var(--color-foreground); }
   .logo { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: var(--radius-md); background: var(--color-surface-3); color: var(--color-muted-foreground); }

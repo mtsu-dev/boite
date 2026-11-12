@@ -145,7 +145,8 @@ for (const width of [1280, 390]) {
       await page.choose('[data-testid=deleted-retention-days]', '7');
       await page.waitFor(`globalThis.__boiteTest.workspace.active.settings.threadDeletionRetentionDays === 7`);
       expect(await page.evaluate(`document.querySelectorAll('[data-testid=deleted-list] .expiry').length`)).toBe(2);
-      await page.evaluate(`document.querySelector('[data-testid=deleted-threads]').scrollIntoView({block:'center'}); document.querySelector('[data-testid=undo-toast] button:last-child')?.click()`);
+      // Out of the capture: the undo toast's close, never its Undo, which would bring the deleted thread back.
+      await page.evaluate(`document.querySelector('[data-testid=deleted-threads]').scrollIntoView({block:'center'}); document.querySelector('[data-testid=undo-toast] .dismiss')?.click()`);
       await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
       await page.screenshot(join(import.meta.dir, '.artifacts', `thread-delete-retention-${width}.png`));
       await page.click(`[data-testid=deleted-list] [data-thread-id="${archivedId}"] [data-testid=deleted-restore]`);

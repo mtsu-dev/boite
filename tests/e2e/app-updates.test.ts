@@ -191,6 +191,9 @@ test('ordinary browsers have no native update controls in Machines, including Fr
 
 test('waiting keeps channel changes disabled and cancellation restores the download at desktop and phone widths', async () => {
   for (const viewport of [1400, 390]) {
+    // The width changes on a blank page: a phone width makes the open Machines page push its Back entry
+    // (lib/mobile-history.ts), and a navigation sent while that history step was in flight never committed.
+    await page.navigate('about:blank');
     await width(viewport);
     await updates('waiting');
     expect(await page.text(id('app-update-status'))).toContain('Waiting for work');

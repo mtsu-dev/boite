@@ -130,15 +130,21 @@ function place(): void {
 }
 
 // The composer grows as one types and the strip comes and goes: a slow poll
-// while a card is up keeps the places true without hooking them.
+// while a card is up keeps the places true without hooking them. A resize
+// moves the page under them at once: a place in pixels for the old width
+// would sit off screen until the next poll, so the window's resize re-places
+// them before that frame is painted.
 function track(list: HTMLElement[], node: HTMLElement): { destroy(): void } {
-  if (list.push(node) + (list === cards ? toasts : cards).length === 1) timer = window.setInterval(place, 300);
+  if (list.push(node) + (list === cards ? toasts : cards).length === 1) {
+    timer = window.setInterval(place, 300);
+    window.addEventListener('resize', place);
+  }
   place();
   return {
     destroy() {
       list.splice(list.indexOf(node), 1);
       if (cards.length || toasts.length) place();
-      else { clearInterval(timer); reserve(null, 0); }
+      else { clearInterval(timer); window.removeEventListener('resize', place); reserve(null, 0); }
     }
   };
 }

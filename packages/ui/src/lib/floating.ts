@@ -1,6 +1,15 @@
 import { mobileOverlay } from './mobile-history';
 import { strings } from './strings';
 import type { MenuFit } from './menu-fit';
+/**
+ * The menu's height to the fraction, without its transform (every box is border-box, app.css).
+ * offsetHeight rounds: rows that add up to a half pixel, as Windows fonts give, left a sheet half
+ * a pixel short of the bottom edge and a menu opened upward half a pixel off its chip.
+ */
+function usedHeight(node: HTMLElement): number {
+  return Number.parseFloat(getComputedStyle(node).height) || node.offsetHeight;
+}
+
 /** Position desktop popovers at their anchor and phone menus above the keyboard. */
 export function floating(node: HTMLElement, options: { anchor: () => HTMLElement | null; side?: 'right'; placement?: 'top' | 'bottom'; align?: 'start' | 'end'; sheet?: boolean; matchWidth?: boolean; cap?: number; fit?: (anchor: DOMRect, height: number, topInset: number, cap: number) => MenuFit; dismiss?: () => void }) {
   let backdrop: HTMLButtonElement | null = null;
@@ -81,7 +90,7 @@ export function floating(node: HTMLElement, options: { anchor: () => HTMLElement
       node.style.width = `${width}px`;
       // Whole pixels: offsetHeight rounds, and a fractional cap left the sheet short of the bottom edge.
       node.style.maxHeight = `${Math.floor(Math.max(0, height - margin * 2) * .85)}px`;
-      node.style.top = `${Math.max(offset + margin, offset + height - node.offsetHeight)}px`;
+      node.style.top = `${Math.max(offset + margin, offset + height - usedHeight(node))}px`;
       node.style.left = '0px';
       node.style.transformOrigin = 'bottom center';
       return;
@@ -103,7 +112,7 @@ export function floating(node: HTMLElement, options: { anchor: () => HTMLElement
       const fit = options.fit?.(box, height, document.querySelector('.titlebar')?.getBoundingClientRect().bottom ?? 0, cap);
       const up = fit ? !fit.below : options.placement === 'top' ? above >= ideal || above > below : below < ideal && above > below;
       node.style.maxHeight = `${fit?.maxHeight ?? Math.max(0, Math.min(cap, up ? above : below))}px`;
-      top = up ? box.top - gap - node.offsetHeight : box.bottom + gap;
+      top = up ? box.top - gap - usedHeight(node) : box.bottom + gap;
       left = options.align === 'end' ? box.right - node.offsetWidth : box.left;
       node.dataset.direction = up ? 'up' : 'down';
       node.style.transformOrigin = up ? 'bottom left' : 'top left';

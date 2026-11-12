@@ -81,7 +81,8 @@
     if (!popover.open) return;
     const onpress = (event: PointerEvent) => {
       const target = event.target as Node | null;
-      if (target && content?.contains(target)) return;
+      // The anchor's own click toggles it: hiding here first would make that click reopen it.
+      if (target && (near()?.contains(target) || content?.contains(target))) return;
       popover.hide();
     };
     document.addEventListener('pointerdown', onpress, true);

@@ -75,6 +75,28 @@ test('Escape closes the glance and gives the focus back to the button it opened 
   expect(document.activeElement).toBe(trigger);
 });
 
+test('a second press on the button closes the glance, and a press elsewhere still puts it away', async () => {
+  const store = { client: { call: async () => [quota], on: () => () => {} }, owner: true, endpointUrl: 'glance-toggle-core', accounts: [] } as unknown as Store;
+  const trigger = glance(store);
+  const press = (target: Element) => {
+    target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+    if (target instanceof HTMLElement) target.click();
+  };
+  press(trigger);
+  await settle();
+  expect(document.querySelector('[data-testid="limits-glance"]')).not.toBeNull();
+  press(trigger);
+  await settle();
+  expect(document.querySelector('[data-testid="limits-glance"]')).toBeNull();
+
+  press(trigger);
+  await settle();
+  expect(document.querySelector('[data-testid="limits-glance"]')).not.toBeNull();
+  document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+  await settle();
+  expect(document.querySelector('[data-testid="limits-glance"]')).toBeNull();
+});
+
 test('an Escape in a dialog opened over the glance is that dialog\'s, and the glance stays', async () => {
   const store = { client: { call: async () => [quota], on: () => () => {} }, owner: true, endpointUrl: 'glance-palette-core', accounts: [] } as unknown as Store;
   glance(store);

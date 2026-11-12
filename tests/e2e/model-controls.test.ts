@@ -186,6 +186,10 @@ test.each(['glass', 'grain'])('pointer clicks open and select models with %s', a
 }, 30_000);
 
 test('favorites survive reload, reasoning has discrete stops, and the context ring compacts', async () => {
+  // Its own desktop width: a test above that stops early leaves its phone viewport behind.
+  await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+  await page.navigate(url);
+  await page.waitFor(`document.querySelector('[data-testid=composer-picker]')`);
   await page.click('[data-testid=composer-picker]');
   await page.click('[data-provider=claude]');
   await page.waitFor(`document.querySelector('[data-favorite-model="claude-fable-5-1"]')`);
@@ -409,6 +413,9 @@ test('the draft keeps a compact composer separate from the fixed favorites menu'
   await page.navigate(url);
   await page.waitFor(`document.querySelector('[data-testid=new-thread]')`);
   await page.click('[data-testid=new-thread]');
+  // Measured once the desktop draft has its own composer, at rest.
+  await page.waitFor(`innerWidth === 1440 && !!document.querySelector('[data-testid=composer]')?.closest('.drafting')`);
+  await page.settleAnimations();
   const before = await page.evaluate<any>(`(() => { const r=document.querySelector('[data-testid=composer]').getBoundingClientRect(); return {height:r.height,top:r.top}; })()`);
   await page.click('[data-testid=composer-picker]');
   await page.click('[data-provider=claude]');

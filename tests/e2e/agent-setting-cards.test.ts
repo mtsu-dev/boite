@@ -22,7 +22,9 @@ afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);
 
 
 async function capture(name: string) {
-  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+  // Not a bare wait on every animation's `finished`: one left in a part the phone covered settles only on a frame
+  // that part never draws, and the wait hung until the call timed out (settleAnimations pumps frames and skips it).
+  await page.settleAnimations();
   await page.screenshot(join(ARTIFACTS, name));
 }
 

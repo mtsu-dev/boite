@@ -16,7 +16,13 @@ async function size(phone: boolean) {
   await page.waitFor(`innerWidth === ${phone ? 390 : 1280}`);
 }
 async function settle() {
-  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+  // Each animation is awaited until its own end. One whose subtree turns `content-visibility: hidden` before it ends
+  // (a fold closing over its rows, the phone's covered page) stops updating: Chrome never settles its `finished` and
+  // drops it from getAnimations(), so the wait stops at the end time the animation declared, plus two frames.
+  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => Promise.race([
+    a.finished.catch(() => {}),
+    new Promise(resolve => setTimeout(resolve, Math.max(0, (a.effect.getComputedTiming().endTime - (a.currentTime ?? 0)) / Math.abs(a.playbackRate || 1)) + 34)),
+  ]))])`);
   // The band measures itself on the next frame; the timeline's reserve follows.
   await page.evaluate(`new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
 }

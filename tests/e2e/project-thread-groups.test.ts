@@ -137,7 +137,23 @@ for (const width of [1280, 390]) {
       const project = (machine: string, projectId: string) => `${root} ${id(width < 720 ? 'mobile-project-group' : 'project')}[data-machine-id="${machine}"][data-project-id="${projectId}"]`;
       const first = project(main, 'p-boite'), second = project(remote, 'p-boite');
       const row = (project: string, thread: string) => `${project} ${width < 720 ? '.row' : id('thread-row')}[data-thread-id="${thread}"]`;
-      const click = async (selector: string) => { await page.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`); await page.click(selector); };
+      // The scroll lands before the press: its `scroll` event fires on the next frame and a menu that opened first
+      // closes on it (ContextMenu.svelte), and a phone list may still snap. The press waits until two frames leave the target in place.
+      const click = async (selector: string) => {
+        await page.evaluate(`(async () => {
+          const target = document.querySelector(${JSON.stringify(selector)});
+          target.scrollIntoView({ block: 'center' });
+          const frame = () => new Promise(resolve => requestAnimationFrame(resolve));
+          let last = NaN;
+          for (let frames = 0; frames < 60; frames++) {
+            await frame();
+            const top = target.getBoundingClientRect().top;
+            if (top === last) return;
+            last = top;
+          }
+        })()`);
+        await page.click(selector);
+      };
       const optionsName = width < 720 ? 'mobile-grouping-options' : 'grouping-options';
       const options = id(optionsName), optionsMenu = id(`${optionsName}-menu`);
       /** The display menu's Done filter, the one place a card lists its done threads. */

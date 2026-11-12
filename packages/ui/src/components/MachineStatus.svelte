@@ -38,7 +38,7 @@
   const tones = { ready: 'success', connecting: 'warning', offline: 'offline', lost: 'offline' } as const;
   const chosen = $derived(filter === null ? null : machines.find(m => m.id === filter) ?? null);
   const shown = $derived(machines.length > 1 || issues > 0 || chosen !== null);
-  const name = strings.machines.heading;
+  const name = $derived(strings.machines.heading);
   // Off by choice or by sleep, not a fault: quiet, in the status grammar's grey, named in the tooltip and the name.
   const away = $derived(machines.filter(m => health.get(m) === 'offline'));
   /** Out of reach for any reason: what the glyph counts. */
