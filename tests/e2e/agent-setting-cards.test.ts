@@ -192,4 +192,17 @@ test('a native event wake setting card works at desktop and phone widths', async
   await page.click('[data-testid="agent-event-wakes"]');
   await page.waitFor(`window.__boiteTest.workspace.active.client.call('agents.runtime.get', { agentId: ${JSON.stringify(agentId)} }).then(c => c.eventWakes === true)`);
   expect(await page.evaluate(`window.__boiteTest.workspace.active.client.call('agents.snapshot', {}).then(s => s.profiles.find(p => p.id === ${JSON.stringify(agentId)}).status)`)).toBe('active');
+
+  // Its neighbour, off until the owner turns it on: the bot may add a folder of this machine as a project.
+  const addProjects = '[data-testid="agent-add-projects"]';
+  expect(await page.evaluate(`document.querySelector('${addProjects}').checked`)).toBe(false);
+  expect(await page.text(`label:has(${addProjects})`)).toContain('Add projects');
+  await page.evaluate(`document.querySelector('${addProjects}').scrollIntoView({ block: 'center' })`);
+  await capture('add-projects-settings-desktop.png');
+  await page.send('Emulation.setDeviceMetricsOverride', PHONE);
+  await page.evaluate(`document.querySelector('${addProjects}').scrollIntoView({ block: 'center' })`);
+  expect(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true);
+  await capture('add-projects-settings-phone.png');
+  await page.click(addProjects);
+  await page.waitFor(`window.__boiteTest.workspace.active.client.call('agents.runtime.get', { agentId: ${JSON.stringify(agentId)} }).then(c => c.addProjects === true && c.eventWakes === true)`);
 }, 60_000);

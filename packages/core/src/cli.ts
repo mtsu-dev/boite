@@ -72,7 +72,10 @@ export const USAGE = `usage: boite <command> [args] [--json]
                                  new and thread move can name it (--name <name>;
                                  --machine <name> from an agent thread: a folder
                                  of another machine of the group, its absolute
-                                 path there, once its owner allows it)
+                                 path there, once its owner allows it; a bot
+                                 adds a folder of its own machine while its
+                                 addProjects setting is on, and holds it at
+                                 once)
   projects archive|unarchive|remove <p>
                                  the owner's; removing leaves the folder on disk
 ${CONTROL_HELP}
@@ -142,7 +145,8 @@ ${CONTROL_HELP}
                                  a pairing (pages: ${SETTINGS_PAGES.join(', ')})
   settings bot [key]             a bot's settings a card may change:
                                  ${AGENT_SETTING_KEYS.slice(0, 5).join(', ')},
-                                 ${AGENT_SETTING_KEYS.slice(5).join(', ')}
+                                 ${AGENT_SETTING_KEYS.slice(5, 9).join(', ')},
+                                 ${AGENT_SETTING_KEYS.slice(9).join(', ')}
                                  (--bot <name>; yours in your own conversation)
   settings bot request <key> <value> --why <text>
                                  a card asking the user to change one, for you

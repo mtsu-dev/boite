@@ -151,6 +151,18 @@ test('a model picked after another writer changed the agent keeps that writer\'s
   expect(document.querySelector<HTMLInputElement>('[data-testid=agent-event-wakes]')!.checked).toBe(true);
 });
 
+test('the add projects switch starts off and saves with the engine settings', async () => {
+  const { client, agent } = await open();
+  const input = document.querySelector<HTMLInputElement>('[data-testid=agent-add-projects]')!;
+  expect(input.checked).toBe(false);
+  expect(input.closest('label')!.textContent).toContain('Add projects');
+  input.click();
+  await idle();
+  expect(status()?.dataset.state).toBe('saved');
+  expect((await client.call('agents.runtime.get', { agentId: agent().id })).addProjects).toBe(true);
+  expect((await client.call('agents.runtime.get', { agentId: agent().id })).eventWakes).toBe(false);
+});
+
 test('a route name cleared just before the card closes is never sent', async () => {
   const { client, agent, hide } = await open();
   const name = document.querySelector<HTMLInputElement>('[data-testid=agent-runtime] .agent-route input')!;

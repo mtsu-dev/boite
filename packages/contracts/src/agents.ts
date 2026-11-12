@@ -30,6 +30,12 @@ export interface AgentRuntimeConfig {
    */
   eventWakes?: boolean;
   /**
+   * The bot may register a folder of its machine as a project (`boite projects
+   * add`), which is entrusted to it at once. Default false: the owner turns it
+   * on, and a bot asks for it with a card like any of its settings.
+   */
+  addProjects?: boolean;
+  /**
    * What the agent may spend in a day in API-equivalent dollars, counted from
    * local midnight: its turns and its children's (subagents, workflow steps,
    * memory pass), priced from usage the way `usage.history` prices them. Past

@@ -152,12 +152,22 @@ function write(ctx: FakeContext, agent: AgentProfile, key: AgentSettingAsk['key'
     case 'effort': return ctx.agents.writeSetting(agent.id, { selection: { ...agent.selection, effort: value as string | null } });
     case 'autoMemory': return ctx.agents.writeSetting(agent.id, { config: { ...config, autoMemory: value as boolean } });
     case 'eventWakes': return ctx.agents.writeSetting(agent.id, { config: { ...config, eventWakes: value as boolean } });
+    case 'addProjects': return ctx.agents.writeSetting(agent.id, { config: { ...config, addProjects: value as boolean } });
     case 'subagents': return ctx.agents.writeSetting(agent.id, { config: { ...config, subagents: { ...config.subagents, enabled: value as boolean } } });
     case 'dailyBudget': return ctx.agents.writeSetting(agent.id, { config: { ...config, dailyBudgetUsd: value as number | null } });
   }
 }
 
 type Handlers = { [M in AgentSettingMethod]: (params: RpcParams<M>) => RpcResult<M> };
+
+/** The core's `AgentSettingCards.entrust`: a project the bot just added joins those entrusted to it, as an applied `projects` card writes it. */
+export function entrustProject(ctx: FakeContext, agent: AgentProfile, projectId: string): AgentProfile {
+  const normalized = normalizeAgentSetting('projects', { add: [projectId] }, context(ctx, agent));
+  if (!normalized.ok) throw refused(normalized.message, { field: 'projects' });
+  const saved = write(ctx, agent, 'projects', normalized.value);
+  settleAgentSettings(ctx, agent.id);
+  return saved;
+}
 
 /** As the core's creation route: the calling thread's own, or the model named; effort only when asked, permissions as the Bots page. */
 function createRoute(ctx: FakeContext, thread: Thread): AgentCreateContext['route'] {

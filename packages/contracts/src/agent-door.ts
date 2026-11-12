@@ -66,6 +66,13 @@ export interface AgentProjectAdded extends AgentProject {
   added: boolean;
   /** The other machine of the group it is a project of, as `--machine` names it, when it is not this one. */
   machine?: string;
+  /**
+   * Set when a bot asked: whether the project is among those entrusted to it.
+   * One this call added is entrusted at once; one that was already a project
+   * keeps whether the bot held it, and the bot asks for one it does not hold
+   * with a `projects` card.
+   */
+  entrusted?: boolean;
 }
 
 /**
@@ -81,6 +88,13 @@ export interface ThreadLink {
   project: string;
   /** The other machine of the group the thread is on, by its name, when it is not this one. */
   machine?: string;
+  /**
+   * Set when a bot asked: whether the project is among those entrusted to it.
+   * One this call added is entrusted at once; one that was already a project
+   * keeps whether the bot held it, and the bot asks for one it does not hold
+   * with a `projects` card.
+   */
+  entrusted?: boolean;
 }
 
 /** What `agent.spawn` answers: the new thread, its first turn and how to reach its agent. */
@@ -93,6 +107,13 @@ export interface AgentSpawn {
   project: string;
   /** The other machine of the group the thread started on, as `--machine` and `<machine>/<thread-id>` name it, when it is not this one. */
   machine?: string;
+  /**
+   * Set when a bot asked: whether the project is among those entrusted to it.
+   * One this call added is entrusted at once; one that was already a project
+   * keeps whether the bot held it, and the bot asks for one it does not hold
+   * with a `projects` card.
+   */
+  entrusted?: boolean;
 }
 
 /** What `agent.move` answers: where the thread goes, and when. */

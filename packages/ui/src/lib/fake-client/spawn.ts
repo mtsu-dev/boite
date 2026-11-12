@@ -1,6 +1,7 @@
 /** `agent.spawn`, as the core's `threads/spawn.ts` answers it: the same refusals, a real thread with the brief as its first message. */
-import { RpcErrorCode, type AgentProjectAdded, type AgentSpawn, type Message, type ThreadLink } from '@boite/contracts';
+import { AGENT_PROJECTS_MAX, RpcErrorCode, type AgentProfile, type AgentProjectAdded, type AgentSpawn, type Message, type ThreadLink } from '@boite/contracts';
 import { RpcFailure } from '../client';
+import { entrustProject } from './agent-settings';
 import { missingFolder, pathKey } from './checks';
 import { coordinationConfig, fakeCore } from './coordination';
 import { addFakeProject, folderToAdd } from './projects';
@@ -27,9 +28,22 @@ export function spawnMethods(ctx: FakeContext, create: FakeMethods['threads.crea
     'agent.addProject': async (params): Promise<AgentProjectAdded> => {
       const method = 'agent.addProject';
       const caller = ctx.thread(params.threadId);
-      if (caller.agentSessionId || caller.projectId === null) throw refuse('a persistent agent session takes its work through Agents and cannot add projects', { threadId: caller.id, field: 'threadId' });
       if (caller.parentThreadId) throw refuse('a delegated agent or workflow step cannot add projects; ask its parent', { threadId: caller.id, field: 'threadId' });
       if (caller.archived) throw refuse('an archived thread cannot add projects', { threadId: caller.id, field: 'threadId', expected: 'a thread that is not archived' });
+      // The core's rule for a bot: its `addProjects` setting, its own machine only, and what it adds is entrusted to it.
+      let bot: AgentProfile | null = null;
+      if (caller.agentSessionId || caller.projectId === null) {
+        const owner = ctx.agents.ownerOf(caller.id);
+        bot = owner === null ? null : ctx.agents.profileOf(owner);
+        if (bot?.status === 'archived') bot = null;
+        if (bot === null) throw refuse('this thread has no project and is no bot\'s own conversation: it cannot add projects', { threadId: caller.id, field: 'threadId' });
+        if (ctx.agents.configOf(bot.id).addProjects !== true) {
+          throw refuse(`the owner has not let ${bot.name} add projects; ask with boite settings bot request addProjects true --why <reason>`, { threadId: caller.id, field: 'addProjects', expected: true });
+        }
+        if (params.machine !== undefined) {
+          throw refuse('a bot adds projects on its own machine only; ask for a project of another machine with boite settings bot request projects +<machine>/<project> --why <reason>', { threadId: caller.id, field: 'machine' });
+        }
+      }
       const path = typeof params.path === 'string' ? params.path.trim() : '';
       const gate = () => {
         const config = coordinationConfig(ctx, caller.id);
@@ -68,12 +82,17 @@ export function spawnMethods(ctx: FakeContext, create: FakeMethods['threads.crea
       const answer = (p: { id: string; name: string; path: string; repository?: boolean; kind?: string }, added: boolean): AgentProjectAdded => (
         { id: p.id, name: p.name, path: p.path, repository: p.repository === true, drafts: p.kind === 'drafts', current: p.id === caller.projectId, added });
       const known = ctx.projects.find(p => pathKey(p.path) === pathKey(path));
-      if (known) return answer(known, false);
+      if (known) return bot === null ? answer(known, false) : { ...answer(known, false), entrusted: (bot.projectIds ?? []).includes(known.id) };
       gate();
       if (missingFolder(path)) throw refuse('a project path must be an existing directory', { path });
+      if (bot !== null && new Set(bot.projectIds ?? []).size >= AGENT_PROJECTS_MAX) {
+        throw refuse(`projects: ${bot.name} holds ${AGENT_PROJECTS_MAX} projects already, the most an agent holds; ask for one to be taken away with boite settings bot request projects -<name> --why <reason>`, { threadId: caller.id, field: 'projects' });
+      }
       const project = await addProject({ path, ...(params.name === undefined ? {} : { name: params.name.trim() }) });
       systemLine(`The agent added the project ${project.name} (${project.path}).`);
-      return answer(project, true);
+      if (bot === null) return answer(project, true);
+      entrustProject(ctx, bot, project.id);
+      return { ...answer(project, true), entrusted: true };
     },
     'agent.spawn': async (params): Promise<AgentSpawn> => {
       const caller = ctx.thread(params.threadId);
