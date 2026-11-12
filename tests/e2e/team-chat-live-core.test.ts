@@ -49,11 +49,7 @@ test('the owner finds a team on the Bots page on a desktop and a phone, reads it
     const huginnThread = await conversation(huginn.id);
     const jeuxThread = await conversation(jeux.id);
 
-    page = await BrowserPage.launch({ url: `${harness.url}/?token=${harness.token}`, experiments: ['resident-agents', 'teams'], windowSize: { width: 1440, height: 900 } });
-    await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `try { localStorage.setItem('boite.locale', 'fr'); } catch {}` });
-    // The page keeps the link's key only once its core has answered: a reload before that boots with no key, on the pairing screen.
-    await page.waitFor(`JSON.parse(localStorage.getItem('boite.core') ?? 'null')?.token === ${JSON.stringify(harness.token)}`);
-    await page.reload();
+    page = await BrowserPage.launch({ url: `${harness.url}/?token=${harness.token}`, experiments: ['resident-agents', 'teams'], locale: 'fr', windowSize: { width: 1440, height: 900 } });
     await page.waitFor(`document.documentElement.lang === 'fr'`);
     // The core takes teams once the app has told it the experiment is on.
     await waitFor(() => (harness.core.clients.desktopExperiments() ?? harness.core.clients.current()?.experiments ?? []).includes('teams'), 10_000);

@@ -180,9 +180,8 @@ test('a host that signs another time at each hello is dialed at the backoff\'s p
 test('a date a minute off is still refused, and tells its sender nothing it can replay', async () => {
   const { host, guest, hostId } = await linked();
   await duplex(guest, hostId);
-  // A guest tells its host what it offers once linked, in the background and through the same door: that
-  // request has been answered before the door is watched, or its 200 is counted with the check's answers.
-  await waitFor(() => !guest.core.contacts.find(hostId)?.syncPending);
+  // The guest's first sync after the join is a request of its own: counted, it lands among the check's on a slow machine.
+  await waitFor(() => guest.core.contacts.find(hostId)?.syncPending === undefined);
   // The host refuses whatever is not dated by its own clock: only the sender moves.
   const refusals: string[] = [];
   const forward = host.core.coordination.forward.bind(host.core.coordination);
