@@ -840,8 +840,7 @@
     --scroll-edge-bottom: 20px;
     padding: 20px var(--outline-room) var(--scroll-edge-bottom);
     overscroll-behavior: contain;
-    /* The toasts sit in room taken from the timeline's bottom, right above
-       the composer (notify-corner.ts and .css), so they cover no line of it. */
+    /* Phone toasts reserve room above the composer (notify-corner.ts and .css). */
     transition: margin var(--dur-2) var(--ease-out-quint);
   }
 
