@@ -27,11 +27,13 @@
   import FailMark from './FailMark.svelte';
   import Deferred from './Deferred.svelte';
   import { parts } from '../lib/deferred-parts';
+  import { QuotaReorder } from '../lib/quota-reorder.svelte';
+  import { railOrder } from '../lib/rail-order.svelte';
 
   /**
    * The column down the window's left edge, on a desktop, the same in every
    * view: where to be (the threads, Activity with what asks), then one picture
-   * per bot of every machine and the teams, then the machines when there is
+   * per team and per bot of every machine, in the order the user dragged them, then the machines when there is
    * more than one, and Settings. One edge pip marks the open place; a bot's
    * news is a badge on its picture. Contacts is the Bots column's other side
    * (agents/SideHead.svelte), its own place only with Bots off; the limits are a line at the foot of the list column
@@ -62,6 +64,20 @@
     .flatMap(machine => agentRows(agentDirectory(machine.store).snapshot).map(row => ({ machine, row })))
     .sort((a, b) => Number(b.row.profile.pinned === true) - Number(a.row.profile.pinned === true) || a.row.profile.createdAt - b.row.profile.createdAt) : []);
   const teams = $derived(teamsOn ? watchedTeams() : []);
+  /**
+   * Bots and teams in one list the user orders by dragging a picture up or down (or the arrow keys, Home and End on a focused
+   * one): a press that does not move 6 px stays a click. Untouched, the teams lead, then the bots as sorted above.
+   */
+  const reorder = new QuotaReorder({
+    order: () => railOrder.current,
+    onreorder: () => async (order: string[]) => { railOrder.save(order); return true; },
+    item: '.bots > .slot', attribute: 'railId', grip: '.bot', scroller: (root) => root
+  });
+  type RailEntry = { key: string } & ({ kind: 'team'; team: TeamRow } | { kind: 'bot'; bot: Bot });
+  const entries = $derived(reorder.sort<RailEntry>([
+    ...teams.map(team => ({ key: `${team.machine.id}:team:${team.team.id}`, kind: 'team' as const, team })),
+    ...bots.map(bot => ({ key: `${bot.machine.id}:bot:${bot.row.profile.id}`, kind: 'bot' as const, bot }))
+  ], entry => entry.key));
   /** What Activity holds for the user: the threads waiting on them and what contacts ask. */
   const waiting = $derived(threadsNeedingYou(stores) + inbox.contacts);
   const waitingLabel = $derived(waiting === 1 ? strings.app.rail.waitingOne : fill(strings.app.rail.waitingMany, { count: String(waiting) }));
@@ -205,39 +221,45 @@
 
   {#if botsOn}
     <span class="separator" aria-hidden="true"></span>
-    <div class="bots" role="list" aria-label={strings.app.rail.bots} onpointerover={(event) => placeName(slotOf(event))} onfocusin={(event) => placeName(slotOf(event))} onscroll={placeShownNames}>
-      {#each bots as bot (`${bot.machine.id}:${bot.row.profile.id}`)}
-        {@const state = stateOf(bot)}
-        {@const selected = bot.machine.store === store && openBot === bot.row.profile.id}
-        {@const unread = (bot.row.status?.unread ?? 0) > 0}
-        <div class="slot" class:selected role="listitem">
-          <span class="pip" aria-hidden="true"></span>
-          <button type="button" class="bot" class:dim={state === 'paused'} aria-label={unread && !selected ? `${labelOf(bot.row.profile.name, state)}, ${strings.app.rail.unread}` : labelOf(bot.row.profile.name, state)}
-            aria-current={selected ? 'page' : undefined} data-testid="rail-bot" data-agent-id={bot.row.profile.id} data-state={state}
-            onclick={() => workspace.showAgents(bot.machine.store, bot.row.profile.id)}>
-            <AgentAvatar kind="profile" id={bot.row.profile.id} name={bot.row.profile.name} avatar={bot.row.profile.avatar} size={44} squircle={selected}
-              lit={avatarLit({ open: selected, attention: state === 'waiting', failed: state === 'failed', unread })} />
-            <!-- One overlay, in one slot: the user's turn first, then a failure, work, news. A count is Activity's alone. -->
-            {#if state === 'waiting'}<span class="badge" aria-hidden="true"><span class="needs"></span></span>
-            {:else if state === 'failed'}<span class="badge" aria-hidden="true"><FailMark /></span>
-            {:else if state === 'working'}<span class="badge work" aria-hidden="true"><svg viewBox="0 0 14 14"><circle class="track" cx="7" cy="7" r="5" /></svg></span>
-            {:else if unread && !selected}<span class="badge" data-testid="rail-bot-unread" aria-hidden="true"><span class="news"></span></span>{/if}
-          </button>
-          {@render railName(bot.row.profile.name, null, several ? machineName(bot.machine) : null)}
-        </div>
-      {/each}
-      {#each teams as row (`${row.machine.id}:${row.team.id}`)}
-        {@const selected = row.machine.store === store && openTeam === row.team.id}
-        {@const news = !!row.chat?.unread && !selected}
-        <div class="slot" class:selected role="listitem">
-          <span class="pip" aria-hidden="true"></span>
-          <button type="button" class="bot team" aria-label={news ? `${row.team.name}, ${strings.app.rail.unread}` : row.team.name} aria-current={selected ? 'page' : undefined}
-            data-testid="rail-team" data-team-id={row.team.id} onclick={() => openTeamChat(row)}>
-            <AgentAvatar kind="team" id={row.team.id} name={row.team.name} members={pictures(row)} size={44} squircle lit={avatarLit({ open: selected, unread: news })} />
-            {#if news}<span class="badge" aria-hidden="true"><span class="news"></span></span>{/if}
-          </button>
-          {@render railName(row.team.name)}
-        </div>
+    <div class="bots" class:reordering={reorder.dragging !== null} role="list" aria-label={strings.app.rail.bots} use:reorder.track onpointerover={(event) => placeName(slotOf(event))} onfocusin={(event) => placeName(slotOf(event))} onscroll={placeShownNames}>
+      {#each entries as entry (entry.key)}
+        {#if entry.kind === 'bot'}
+          {@const bot = entry.bot}
+          {@const state = stateOf(bot)}
+          {@const selected = bot.machine.store === store && openBot === bot.row.profile.id}
+          {@const unread = (bot.row.status?.unread ?? 0) > 0}
+          <div class="slot" class:selected class:dragging={reorder.dragging === entry.key} role="listitem" data-rail-id={entry.key}>
+            <span class="pip" aria-hidden="true"></span>
+            <button type="button" class="bot" class:dim={state === 'paused'} aria-label={unread && !selected ? `${labelOf(bot.row.profile.name, state)}, ${strings.app.rail.unread}` : labelOf(bot.row.profile.name, state)}
+              aria-current={selected ? 'page' : undefined} aria-keyshortcuts="ArrowUp ArrowDown Home End" data-testid="rail-bot" data-agent-id={bot.row.profile.id} data-state={state}
+              onpointerdown={(event) => reorder.start(event, entry.key)} onkeydown={(event) => reorder.keyboard(event, entry.key)}
+              onclick={() => workspace.showAgents(bot.machine.store, bot.row.profile.id)}>
+              <AgentAvatar kind="profile" id={bot.row.profile.id} name={bot.row.profile.name} avatar={bot.row.profile.avatar} size={44} squircle={selected}
+                lit={avatarLit({ open: selected, attention: state === 'waiting', failed: state === 'failed', unread })} />
+              <!-- One overlay, in one slot: the user's turn first, then a failure, work, news. A count is Activity's alone. -->
+              {#if state === 'waiting'}<span class="badge" aria-hidden="true"><span class="needs"></span></span>
+              {:else if state === 'failed'}<span class="badge" aria-hidden="true"><FailMark /></span>
+              {:else if state === 'working'}<span class="badge work" aria-hidden="true"><svg viewBox="0 0 14 14"><circle class="track" cx="7" cy="7" r="5" /></svg></span>
+              {:else if unread && !selected}<span class="badge" data-testid="rail-bot-unread" aria-hidden="true"><span class="news"></span></span>{/if}
+            </button>
+            {@render railName(bot.row.profile.name, null, several ? machineName(bot.machine) : null)}
+          </div>
+        {:else}
+          {@const row = entry.team}
+          {@const selected = row.machine.store === store && openTeam === row.team.id}
+          {@const news = !!row.chat?.unread && !selected}
+          <div class="slot" class:selected class:dragging={reorder.dragging === entry.key} role="listitem" data-rail-id={entry.key}>
+            <span class="pip" aria-hidden="true"></span>
+            <button type="button" class="bot team" aria-label={news ? `${row.team.name}, ${strings.app.rail.unread}` : row.team.name} aria-current={selected ? 'page' : undefined}
+              aria-keyshortcuts="ArrowUp ArrowDown Home End" data-testid="rail-team" data-team-id={row.team.id}
+              onpointerdown={(event) => reorder.start(event, entry.key)} onkeydown={(event) => reorder.keyboard(event, entry.key)}
+              onclick={() => openTeamChat(row)}>
+              <AgentAvatar kind="team" id={row.team.id} name={row.team.name} members={pictures(row)} size={44} squircle lit={avatarLit({ open: selected, unread: news })} />
+              {#if news}<span class="badge" aria-hidden="true"><span class="news"></span></span>{/if}
+            </button>
+            {@render railName(row.team.name)}
+          </div>
+        {/if}
       {/each}
     </div>
     <div class="slot">
@@ -392,6 +414,10 @@
   .separator { flex: none; width: 28px; height: 1px; background: var(--color-edge); }
   .bots { display: flex; flex: 0 1 auto; flex-direction: column; align-items: center; gap: 8px; width: 100%; min-height: 0; overflow-y: auto; scrollbar-width: none; }
   /* Fixed against the window, so the scroller does not clip it (placeName). `--bar-left` as for every other card. */
+  /* A picture held to move: it dims where it will land; the name cards stay away while it moves. */
+  .slot.dragging > .bot { opacity: 0.55; }
+  .bots.reordering { cursor: grabbing; }
+  .bots.reordering .rail-name { visibility: hidden; }
   .bots .rail-name { position: fixed; left: calc(var(--name-x, var(--app-rail)) + var(--bar-left, 0px)); top: var(--name-y, 0px); }
 
   /* Activity's count in a small pill on the inbox glyph's lower right corner: a neutral raised ground with the

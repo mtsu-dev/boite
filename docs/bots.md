@@ -7,8 +7,9 @@ chat.
 
 Experimental: turn it on in Settings, Experiments, Bots. On the desktop, each
 bot then shows as a picture in the app rail, the column down the window's
-left edge, and the phone shows a Bots tab in its bottom bar. Bots you made
-keep running while the switch is off.
+left edge, and the phone shows a Bots tab in its bottom bar. Teams come
+first; drag a picture up or down to put bots and teams in your own order,
+which this device keeps. Bots you made keep running while the switch is off.
 
 ## Create a bot
 
@@ -24,7 +25,8 @@ keep running while the switch is off.
 
 You talk to a bot in its conversation like in any thread. On the desktop,
 clicking its picture in the app rail opens it, with the bot's column in place
-of the thread list. The head of that column shows what it does right now,
+of the thread list. The column stays when the bot's Desk opens beside the
+conversation. The head of that column shows what it does right now,
 what it waits on, an error, or its next wake. Its more menu holds Edit,
 Pause or Resume, Archive and the rest of the bot's menu, plus Brain and the
 bot engine. Archive asks you to type the bot's exact name; its conversation

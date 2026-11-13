@@ -146,7 +146,7 @@ test('a panel widened while the contacts column was folded gives the chat its ro
   }
 });
 
-test('a docked side panel lends the list column: the thread list beside a chat panel, the bot column beside a Desk card, each back when it closes', async () => {
+test('a docked side panel lends the thread list beside a chat panel, while a bot\'s Desk card leaves the bot column open', async () => {
   writeExperiments(['resident-agents']);
   await mountOnFake('/?fake=1&agents=1');
   const folded = () => query('.body').classList.contains('sidebar-folded');
@@ -159,30 +159,47 @@ test('a docked side panel lends the list column: the thread list beside a chat p
     store.togglePanel();
     await waitFor(() => !store.sidebarCollapsed && !folded());
 
-    // The Bots page: the Desk card folds the bot column the same lent way.
+    // The Bots page: opening a bot opens its Desk on the first visit, and the bot column it was picked from stays.
     workspace.showAgents(store);
     const view = AgentsView.of(store);
     await view.refresh();
     await openAgent(store, view.snapshot!.profiles[0]!.id);
     await waitFor(() => store.page === 'agents' && !!store.openThread?.agentSessionId);
-    store.panel.closeAll();
-    flushSync();
-    await waitFor(() => !store.sidebarCollapsed);
     store.panel.open('desk');
-    await waitFor(() => store.sidebarCollapsed && folded());
-    // Its own button brings the column back sooner, and the open desk does not fold it again.
-    store.sidebarCollapsed = false;
     flushSync();
     await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(store.panel.active?.kind).toBe('desk');
     expect(store.sidebarCollapsed).toBe(false);
+    expect(folded()).toBe(false);
     store.panel.closeAll();
-    flushSync();
-    // Closing the desk gives the column back; opening it again lends it again.
-    store.panel.open('desk');
-    await waitFor(() => store.sidebarCollapsed);
-    store.panel.closeAll();
-    await waitFor(() => !store.sidebarCollapsed && !folded());
   } finally {
+    store.showChat();
+  }
+});
+
+test('the rail puts teams first, and a picture moved with the keyboard keeps its new place on this device', async () => {
+  writeExperiments(['resident-agents', 'teams']);
+  localStorage.removeItem('boite.rail.order');
+  await mountOnFake('/?fake=1&agents=1');
+  try {
+    const view = AgentsView.of(store);
+    await view.refresh();
+    const [first] = view.snapshot!.profiles;
+    await store.client!.call('teams.create', { name: 'Release crew', members: [first!.id] });
+    const order = () => [...document.querySelectorAll<HTMLElement>('.app-rail .bots > .slot')].map(slot => slot.dataset['railId']!.split(':').slice(1).join(':'));
+    await waitFor(() => order().some(key => key.startsWith('team:')) && order().filter(key => key.startsWith('bot:')).length >= 2);
+    // Untouched, the team leads.
+    expect(order()[0]).toMatch(/^team:/);
+    const bots = order().filter(key => key.startsWith('bot:'));
+    // ArrowUp on the second bot moves it above the first; the device keeps the order.
+    const second = query<HTMLButtonElement>(`[data-testid=rail-bot][data-agent-id="${bots[1]!.slice(4)}"]`);
+    second.focus();
+    second.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }));
+    await waitFor(() => order().indexOf(bots[1]!) < order().indexOf(bots[0]!));
+    const saved = JSON.parse(localStorage.getItem('boite.rail.order') ?? '[]') as string[];
+    expect(saved.map(key => key.split(':').slice(1).join(':')).slice(0, order().length)).toEqual(order());
+  } finally {
+    localStorage.removeItem('boite.rail.order');
     store.showChat();
   }
 });

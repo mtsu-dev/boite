@@ -16,7 +16,7 @@
 <section class="recent-group" data-testid="recent-{kind}">
   <FoldHeader label={kind === 'done' ? strings.sidebar.doneThreads : kind === 'archived' ? strings.sidebar.archivedGroup : strings.sidebar.workingThreads} {count} {open} controls={uid}
     testid="recent-{kind}-toggle" onclick={() => open = !open}>
-    {#snippet icon()}{#if kind === 'done'}<CheckCheck size={14} aria-hidden="true" />{:else if kind === 'archived'}<Archive size={14} aria-hidden="true" />{:else}<LoaderCircle size={14} aria-hidden="true" />{/if}{/snippet}
+    {#snippet icon()}{#if kind === 'done'}<CheckCheck size={14} aria-hidden="true" />{:else if kind === 'archived'}<Archive size={14} aria-hidden="true" />{:else}<LoaderCircle size={14} class="turning" aria-hidden="true" />{/if}{/snippet}
   </FoldHeader>
   <div id={uid} hidden={!open}>
     {#if open}{@render children()}{/if}
@@ -25,4 +25,7 @@
 
 <style>
   .recent-group { border-top: 1px solid var(--color-border); }
+  /* The Working fold's mark turns like the rows' arcs under it: work is going on. */
+  .recent-group :global(.turning) { color: var(--color-accent); animation: spin 0.9s steps(54) infinite var(--loops); }
+  @media (prefers-reduced-motion: reduce) { .recent-group :global(.turning) { animation: none; } }
 </style>

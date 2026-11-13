@@ -84,10 +84,11 @@
   @container sidebar (max-width: 255.98px) {
     :global(html:lang(fr)) .counter .spare { display: block; }
   }
-  /* Work, still: the rows' accent arc (ThreadState.svelte). The open thread keeps the one live spinner. */
-  .work-ring { box-sizing: border-box; width: 9px; height: 9px; border: 1.5px solid var(--color-accent); border-top-color: transparent; border-radius: var(--radius-full); transform: rotate(45deg); }
-  /* Offline: the last known count, not live work, so its ring takes the header's grey. */
-  .away .work-ring { border-color: var(--color-muted-foreground); border-top-color: transparent; }
+  /* Work: the rows' turning accent arc (ThreadState.svelte). */
+  .work-ring { box-sizing: border-box; width: 9px; height: 9px; border: 1.5px solid var(--color-accent); border-top-color: transparent; border-radius: var(--radius-full); transform: rotate(45deg); animation: spin 0.9s steps(54) infinite var(--loops); }
+  /* Offline: the last known count, not live work, so its ring takes the header's grey and stands still. */
+  .away .work-ring { border-color: var(--color-muted-foreground); border-top-color: transparent; animation: none; }
+  @media (prefers-reduced-motion: reduce) { .work-ring { animation: none; } }
   .counter:hover:not(:disabled) { background: var(--color-hover); color: var(--color-foreground); }
   .counter.active { background: var(--color-active); color: var(--color-foreground); }
   /* The working fold's toggle inside the card, a quiet row over the fold, as the group labels read. */
