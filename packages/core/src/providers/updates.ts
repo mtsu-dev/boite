@@ -603,7 +603,7 @@ export class HarnessUpdates {
         const npm = npmUpdate(target.program, spec.latestNpm, before.latest, this.npmCli());
         said = npm === null
           ? await this.#run(target, spec.args, this.updateTimeoutMs)
-          : await runNpmUpdate(npm, () => this.#run(target, npm.args, this.updateTimeoutMs, npm), () => this.#core.procs.waitForExit(updateThreadId(id)));
+          : await runNpmUpdate(npm, () => this.#run(target, npm.args, this.updateTimeoutMs, npm), () => this.#core.procs.waitForExit(updateThreadId(id), undefined, {native: true, stops: true}));
       }
       // An updater may have moved the program on PATH.
       forgetWhich();

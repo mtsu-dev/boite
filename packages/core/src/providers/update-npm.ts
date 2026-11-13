@@ -40,7 +40,8 @@ export function npmUpdate(program: string, pkg: string | undefined, latest: stri
  * install while the fourth was being written, which left the old copy parked,
  * a stub that only says its postinstall did not run, and no command on PATH.
  * A failed update must leave the copy that ran before. `exited` resolves once
- * npm's processes are gone, and rejects while one still runs.
+ * npm's processes are gone, a child of its group deaf to SIGTERM included,
+ * and rejects while one still runs.
  */
 export async function runNpmUpdate(npm: NpmUpdate, run: () => Promise<string>, exited: () => Promise<void>): Promise<string> {
   const paths = npmReplacedPaths(npm.install);

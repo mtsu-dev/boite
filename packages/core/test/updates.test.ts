@@ -242,8 +242,8 @@ describe('harness updates', () => {
     writeFileSync(join(packageDir, 'package.json'), JSON.stringify({ name: '@boite-test/fake-agent', bin: { 'fake-agent': 'bin/agent' } }));
     const script = readFileSync(join(packageDir, 'bin', 'agent'), 'utf8');
     // npm as it stood when the limit cut OpenCode 2's install on 2026-11-13: the package and its link
-    // parked under arborist's names, the new release unpacked with the stub its postinstall replaces,
-    // and the unpacking still going, deaf to SIGTERM until the next step.
+    // parked under arborist's names, the new release unpacked with the stub its postinstall replaces.
+    // npm leaves on SIGTERM, but a child of its group ignores it and still writes the stub until the SIGKILL.
     const cli = join(harness!.dataDir, 'npm-cli.js');
     writeFileSync(cli, [
       "const { chmodSync, mkdirSync, renameSync, symlinkSync, writeFileSync } = require('node:fs');",
@@ -259,7 +259,9 @@ describe('harness updates', () => {
       "writeFileSync(join(pkg, 'bin', 'agent'), '#!/bin/sh\\necho \"postinstall script was not run\" >&2\\nexit 1\\n');",
       "chmodSync(join(pkg, 'bin', 'agent'), 0o755);",
       "symlinkSync(join(pkg, 'bin', 'agent'), link);",
-      "process.on('SIGTERM', () => {});",
+      "const stub = join(pkg, 'bin', 'agent');",
+      "const child = `process.on('SIGTERM', () => {}); setInterval(() => require('node:fs').writeFileSync(${JSON.stringify(stub)}, 'stub'), 20);`;",
+      "require('node:child_process').spawn(process.execPath, ['-e', child], { stdio: 'ignore' });",
       'setInterval(() => {}, 1000);',
     ].join('\n'));
     harness!.core.updates.npmCli = () => ({ executable: process.execPath, script: cli });
@@ -272,6 +274,8 @@ describe('harness updates', () => {
     expect(update.current).toBe('1.0.0');
     expect(update.message).toMatch(/did not answer `npm install -g @boite-test\/fake-agent@1\.1\.0` within 1 s; npm stopped halfway, and the copy that ran before was put back/);
     // The copy that ran before is back under its names, and nothing npm parked is left beside it.
+    // Its child writes every 20 ms until the SIGKILL: a restore before that loses the script again.
+    await Bun.sleep(300);
     expect(readFileSync(layout.link, 'utf8')).toBe(script);
     expect(readdirSync(layout.scope)).toEqual(['fake-agent']);
     expect(readdirSync(join(layout.prefix, 'bin'))).toEqual(['fake-agent']);
