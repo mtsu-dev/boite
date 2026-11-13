@@ -1,5 +1,6 @@
-import { accessSync, constants, existsSync, readFileSync, realpathSync } from 'node:fs';
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { createHash } from 'node:crypto';
+import { accessSync, constants, existsSync, lstatSync, readFileSync, realpathSync, renameSync, rmSync } from 'node:fs';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { currentOs, homePath } from '../paths.ts';
 import { Remembered, which } from './which.ts';
 
@@ -220,4 +221,58 @@ export function unwritableDir(install: NpmInstall): string | null {
     }
   }
   return null;
+}
+
+/**
+ * Where npm parks a path it replaces until the install is over: `.<name>-<hash>`
+ * beside it, the hash the first eight letters and digits of the path's SHA-1
+ * in base64, as arborist's `retire-path.js` names it. npm moves it back by
+ * itself when the install fails, or when a signal reaches it between two of
+ * its steps; a kill in the middle of a step, the unpacking of a large package
+ * included, leaves it parked and the command gone.
+ */
+export function npmRetirePath(path: string): string {
+  const hash = createHash('sha1').update(path).digest('base64').replace(/[^a-zA-Z0-9]+/g, '').slice(0, 8);
+  return resolve(dirname(path), `.${basename(path)}-${hash}`);
+}
+
+/** The paths `npm install -g` of this package parks before it unpacks the new release: the package and its command links. */
+export function npmReplacedPaths(install: NpmInstall): string[] {
+  const windows = currentOs() === 'windows';
+  const links = binNames(install.packageDir).flatMap((bin) => windows
+    ? [join(install.prefix, bin), join(install.prefix, `${bin}.cmd`), join(install.prefix, `${bin}.ps1`)]
+    : [join(install.prefix, 'bin', bin)]);
+  return [install.packageDir, ...links];
+}
+
+function present(path: string): boolean {
+  try {
+    lstatSync(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The parked copies of these paths that are there now: the ones an install about to run did not park. */
+export function npmParked(paths: string[]): Set<string> {
+  return new Set(paths.map(npmRetirePath).filter(present));
+}
+
+/**
+ * Moves back what an `npm install -g` cut short left parked, as npm's own
+ * rollback does: the half-unpacked release and its links go, the copy that ran
+ * before returns under its name. A parked copy that was already there before
+ * the install (`before`) is someone else's and stays. Returns the paths put back.
+ */
+export function restoreNpmParked(paths: string[], before: Set<string>): string[] {
+  const restored: string[] = [];
+  for (const path of paths) {
+    const parked = npmRetirePath(path);
+    if (before.has(parked) || !present(parked)) continue;
+    rmSync(path, { recursive: true, force: true });
+    renameSync(parked, path);
+    restored.push(path);
+  }
+  return restored;
 }

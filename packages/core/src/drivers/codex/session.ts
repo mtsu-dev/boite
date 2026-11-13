@@ -50,6 +50,7 @@ import { SpentWindows, turnError } from './availability.ts';
 import { SessionRetention } from '../session-retention.ts';
 import { endOnClose, releaseChild } from '../session-close.ts';
 import { noteReady } from '../driver-log.ts';
+import { CodexWriter } from './writer.ts';
 import {PROTECTED_CODEX_ARGS, protectedCodexConfig, protectedCodexThread} from './protected.ts';
 import {PROTECTED_TOOL, protectedTool, PROTECTED_COMMIT, protectedCommit} from '../protected.ts';
 
@@ -64,11 +65,8 @@ const SQLITE_INIT_CLOSE_MS = 2_000;
 // ---------------------------------------------------------------------------
 
 /**
- * One `codex app-server` process for a thread: one `initialize`, one
- * `thread/start` or `thread/resume`, then one `turn/start` per turn. With
- * `warmProcessMinutes` at zero the process goes with the turn; above zero it
- * takes the next turns of the thread until the idle window, a stop, an archive,
- * core shutdown or a changed setup ends it.
+ * One app-server per thread, initialized and opened once. Warm retention reuses
+ * it between turns until idle expiry, a stop, an archive, shutdown or new setup.
  */
 export class CodexSession {
   readonly #retention = new SessionRetention();
@@ -84,6 +82,7 @@ export class CodexSession {
   #exitCode: number | null = null;
   #exited: Promise<number | null> | null = null;
   #processClosed: Promise<void> = Promise.resolve();
+  readonly #writer: CodexWriter;
   #idle: Timer | null = null;
   /** The turn whose `turn/start` is in flight. Context updates also arrive while idle. */
   #current: CodexTurn | null = null;
@@ -116,7 +115,8 @@ export class CodexSession {
     readonly key: string,
     private warmMs: number,
     private readonly onEnded: (session: CodexSession) => void,
-  ) { }
+    previousClosed: Promise<void> = Promise.resolve(),
+  ) { this.#writer = new CodexWriter(previousClosed); }
 
   /** Reusable only while the process is up and the turn asks for the very same setup. */
   usable(key: string, warmMs: number): boolean {
@@ -226,11 +226,12 @@ export class CodexSession {
   }
 
   /** Archive, shutdown, an idle window, a changed setup: the process goes. */
-  close(reason: string | null, ctx?: SessionContext): void {
-    if (this.#ended) return;
+  close(reason: string | null, ctx?: SessionContext): Promise<void> {
+    if (this.#ended) return this.#writer.closed;
     this.#closing = true;
     if (reason !== null && ctx !== undefined) ctx.log('warn', `codex session: ${reason}`);
     this.#drop();
+    return this.#writer.closed;
   }
 
   // -- the turn -------------------------------------------------------------
@@ -312,13 +313,11 @@ export class CodexSession {
   #endTurn(turn: CodexTurn, drop: boolean): void {
     if (this.#active === turn) this.#active = null;
     this.#clearStopGrace();
-    turn.settle();
     this.#running = Math.max(0, this.#running - 1);
     if (drop || this.#closing || this.#retention.idleMs(this.warmMs) <= 0) {
       this.#drop();
-      return;
-    }
-    if (this.#running === 0 && !this.#retention.viewed) this.#armIdle();
+    } else if (this.#running === 0 && !this.#retention.viewed) this.#armIdle();
+    turn.settle();
   }
 
   // -- the process ----------------------------------------------------------
@@ -329,6 +328,9 @@ export class CodexSession {
   }
 
   async #open(ctx: SessionContext): Promise<void> {
+    // A closing app-server still owns its rollout writer until its pipes close.
+    await this.#writer.wait(this.#active?.stopped);
+    if (this.#closing || this.#active?.isStopped) throw new Error('the codex startup was stopped');
     // thread/resume cannot replace dynamicTools. Replaying through the core's
     // existing session-loss retry installs them on thread/start before any prompt.
     if (ctx.protectedExecution && ctx.sessionId !== null) throw new ThreadLostError('Protected Codex tools require thread/start; replay the captured conversation');
@@ -485,7 +487,6 @@ export class CodexSession {
       });
       child.once('error', (error) => {
         resolve(null);
-        closed();
         if (this.#child !== child) return;
         const sentence = `the codex agent did not start: ${messageOf(error)}`;
         rpc.fail(sentence);
@@ -531,9 +532,8 @@ export class CodexSession {
   }
 
   /**
-   * The one teardown: an accepted turn ends here, then the pipes go, then the
-   * child, through the registry. The child's own close is ignored once it is
-   * let go, so it can no longer bring that turn its `turn/completed`.
+   * End the accepted turn and release the child through the registry. Keep its
+   * writer discoverable until close, even when a replacement has been acquired.
    */
   #drop(): void {
     if (this.#ended) return;
@@ -546,7 +546,7 @@ export class CodexSession {
     const child = this.#child;
     this.#child = null;
     releaseChild(child);
-    this.onEnded(this);
+    this.#writer.release(this.#processClosed, () => this.onEnded(this));
   }
 
   #armIdle(): void {

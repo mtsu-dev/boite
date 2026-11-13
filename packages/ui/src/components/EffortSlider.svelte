@@ -1,15 +1,11 @@
 <script lang="ts">
   import { ChevronDown, Zap } from '@lucide/svelte';
-  /** The agents' level ids and the cost line each one reads. */
-  const LEVEL_COST: Record<string, 'off' | 'low' | 'middle' | 'deeper' | 'high' | 'top' | 'extended'> = {
-    off: 'off', none: 'off', minimal: 'off', low: 'low', medium: 'middle', high: 'deeper', xhigh: 'high', max: 'top', ultra: 'extended', ultrathink: 'extended'
-  };
   import type { EffortLevel } from '@boite/contracts';
   import { onDestroy } from 'svelte';
   import { Closing } from '../lib/closing.svelte';
   import { floating } from '../lib/floating';
   import { glides } from '../lib/motion';
-  import { fill, strings } from '../lib/strings';
+  import { strings } from '../lib/strings';
   import { levelName } from '../lib/format';
   import SheetHead from './SheetHead.svelte';
 
@@ -18,14 +14,15 @@
    * filled up to the active one. A click on a dot or its name, a drag along the
    * track, or the arrows move it, and none of them close the popover: the level
    * is a setting of the model the composer already runs. The filled part glows
-   * brighter as the level rises. The heading always names the picked level;
-   * the scale's two ends are named under the track. A dot under a mouse gets
-   * a hollow ring and its own name under it, and the line under the track
-   * reads that level's cost in a lighter ink until a click picks it. A model
-   * with a fast mode puts its switch at the top left of the popover (the bolt,
-   * its name and a small switch, on or off), and the chip carries a bolt while
-   * it is on; switching a speed on sends streaks across the popover, more and
-   * faster for the second tier. `readonly` names a bot's level and opens nothing.
+   * brighter as the level rises and the dots grow with the scale. The popover
+   * holds one word: the heading names the picked level, the level under a
+   * held or dragged thumb, or, in a lighter ink, the dot under a mouse, which
+   * also gets a hollow ring. The word rolls from one name to the next in the
+   * direction the scale moved. A model with a fast mode puts its bolt and name
+   * at the top left of the popover, filled while on, and the chip carries a
+   * bolt while it is on; switching a speed on sends streaks across the
+   * popover, more and faster for the second tier. `readonly` names a bot's
+   * level and opens nothing.
    */
   let {
     levels,
@@ -78,8 +75,21 @@
   const levelLabel = $derived(current ? levelName(current) : levels.length > 0 ? strings.composer.effortDefault : strings.composer.standardSpeed);
   /** A hovered dot other than the picked one: the preview, never the pick. */
   let ghost = $derived(hovered !== null && hovered !== index && !dragging ? hovered : null);
-  /** What the line under the track costs: the previewed level, else the live one. */
+  /** The level the heading names: the previewed one, else the live one. */
   let shown = $derived(ghost ?? index);
+  let shownLabel = $derived(ghost !== null ? levelName(levels[ghost]!) : levelLabel);
+  /**
+   * The heading's word with the one it replaces and the way the scale moved:
+   * the old name leaves as the new one arrives, upward for a higher level.
+   */
+  let told = { label: '', at: 0 };
+  let word = $derived.by(() => {
+    const label = shownLabel, at = shown;
+    const from = told.label === label ? '' : told.label;
+    const up = at >= told.at;
+    told = { label, at };
+    return { label, from, up };
+  });
   /** The fast switch's own name, on or off: the tier that runs, else the first one a click turns on. */
   const fastLabel = $derived(selectedSpeed ?? speeds[0] ? levelName((selectedSpeed ?? speeds[0])!) : '');
   const label = $derived(current || levels.length > 0 ? levelLabel : selectedSpeed ? levelName(selectedSpeed) : strings.composer.standardSpeed);
@@ -95,20 +105,6 @@
   let last = $derived(Math.max(0, levels.length - 1));
   /** 0 at the lowest level, 1 at the highest: how much the filled part glows. */
   let glow = $derived(last === 0 ? 1 : position / last);
-  /**
-   * The trade-off of the hovered or picked level in plain words, by its id:
-   * "High" is the third of six on one scale and the last of three on another,
-   * and reads the same on both. A level of another name reads its place on the scale.
-   */
-  let cost = $derived.by(() => {
-    if (levels.length === 0) return null;
-    if (shown < 0) return strings.composer.effortDefaultHint;
-    const ratio = last === 0 ? 0.5 : shown / last;
-    const step = LEVEL_COST[levels[shown]?.id ?? ''] ?? (ratio <= 0 ? 'low' : ratio >= 1 ? 'top' : ratio > 0.5 ? 'high' : 'middle');
-    // Fast on: one sentence, the level's depth then what the tier adds.
-    return selectedSpeed ? fill(strings.composer.effortWithFast, { depth: strings.composer.effortDepth[step], fast: levelName(selectedSpeed) }) : strings.composer.effortCost[step];
-  });
-
   type Streak = { top: number; from: number; length: number; delay: number; duration: number; thick: number; alpha: number };
   /** The streaks of the latest switch to a speed; `power` is 1 for the first tier, 2 past it. */
   let rush = $state<{ id: number; power: number; streaks: Streak[] } | null>(null);
@@ -300,11 +296,11 @@
           <button type="button" class="speed" class:active={!!selectedSpeed} data-testid="effort-speed" aria-label={strings.composer.speed} aria-pressed={!!selectedSpeed} title={selectedSpeed?.description ?? (selectedSpeed ? levelName(selectedSpeed) : strings.composer.standardSpeed)} onclick={cycleSpeed}>
             {#key rush?.id}<span class="bolt" class:dash={!!rush} class:strong={(rush?.power ?? 0) > 1}><Zap size={14} fill={selectedSpeed ? 'currentColor' : 'none'} /></span>{/key}
             <span class="ui-label" data-testid="effort-speed-label">{fastLabel}</span>
-            <!-- Off reads as a switch to turn on, not as a missing bolt. -->
-            <span class="switch mini" class:on={!!selectedSpeed} aria-hidden="true"></span>
           </button>
         {/if}
-        {#key rush?.id}<span class="level ui-label" class:dash={!!rush} class:strong={(rush?.power ?? 0) > 1} data-testid="effort-level">{levelLabel}</span>{/key}
+        {#key rush?.id}
+          <span class="level" class:dash={!!rush} class:strong={(rush?.power ?? 0) > 1} class:previewing={ghost !== null} data-testid="effort-level" data-previewing={ghost !== null ? '' : undefined}>{#key word.label}<span class="word ui-label" class:rolls={word.from !== ''} class:down={!word.up} data-from={word.from}>{word.label}</span>{/key}</span>
+        {/key}
         {#if ondefault && current}
           <button type="button" class="speed agent-default ui-label" data-testid="effort-default" title={strings.composer.effortDefaultHint} onclick={ondefault}>{strings.composer.effortDefault}</button>
         {/if}
@@ -326,6 +322,7 @@
         aria-valuenow={position}
         aria-valuetext={levelLabel}
         data-testid="effort-track"
+        class:held={dragging}
         onkeydown={ontrackkeydown}
         {onpointerdown}
         {onpointermove}
@@ -335,23 +332,14 @@
       >
         <div class="line" bind:this={line}>
           {#if current}
-            <span class="progress" style="width: calc({offset(index)} + var(--track-pad))"></span>
+            <span class="progress" style="width: calc({offset(index)} + var(--track-pad) - 4px)"></span>
             <span class="thumb" style="left: {offset(index)}"></span>
           {/if}
           {#each levels as level, at (level.id)}
-            <button type="button" class="dot" class:on={at <= index} class:hovered={at === ghost} data-dot={level.id} data-value={level.id} title={levelName(level)} aria-label={levelName(level)} tabindex="-1" style="left: {offset(at)}" onclick={() => pick(at)}></button>
+            <button type="button" class="dot" class:on={at <= index} class:hovered={at === ghost} data-dot={level.id} data-value={level.id} aria-label={levelName(level)} tabindex="-1" style:left={offset(at)} style:--rank={last === 0 ? 0.5 : at / last} onclick={() => pick(at)}></button>
           {/each}
         </div>
       </div>
-      {#if levels.length > 1}
-        <!-- The scale's two ends by name; a previewed dot's name takes their place under it. -->
-        <div class="ends" class:previewing={ghost !== null} aria-hidden="true" data-testid="effort-ends">
-          <span class="end" data-end="low" style:--at={0} style:left="0%">{levelName(levels[0]!)}</span>
-          <span class="end" data-end="high" style:--at={1} style:left="100%">{levelName(levels[last]!)}</span>
-          {#if ghost !== null}<span class="ghost" data-testid="effort-preview" style:--at={last === 0 ? 0.5 : ghost / last} style:left={offset(ghost)}>{levelName(levels[ghost]!)}</span>{/if}
-        </div>
-      {/if}
-      {#if cost}<p class="cost" class:previewing={ghost !== null} data-testid="effort-cost">{cost}</p>{/if}
       {/if}
 
     </div>
@@ -375,54 +363,57 @@
 .name { color: var(--color-subtle); }
 .level { color: var(--color-foreground); font-weight: 500; }
 /* Every menu's one edge, radius and shadow. */
-.popover { --track-pad: 12px; position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 40; width: 288px; padding: 10px 12px 12px; background: var(--overlay-surface); border: 1px solid var(--overlay-edge); border-radius: var(--radius-overlay); box-shadow: var(--shadow-overlay); animation: pop var(--dur-2) var(--ease-out-quint); transform-origin: bottom left; }
+.popover { --track-pad: 15px; position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 40; width: 272px; padding: 10px 12px 12px; background: var(--overlay-surface); border: 1px solid var(--overlay-edge); border-radius: var(--radius-overlay); box-shadow: var(--shadow-overlay); animation: pop var(--dur-2) var(--ease-out-quint); transform-origin: bottom left; }
 .popover.closing { animation-name: pop-out; pointer-events: none; }
-/* Three columns: the fast switch on the left, the level in the middle whatever the switch's width. */
-.heading { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; min-height: 24px; margin-bottom: 8px; color: var(--color-foreground); font-size: var(--text-sm); font-weight: 600; }
-.level { grid-column: 2; white-space: nowrap; transition: color var(--dur-1); }
-.speed { grid-column: 1; justify-self: start; display: inline-flex; align-items: center; gap: 5px; height: 24px; margin-left: -4px; padding: 0 6px; border: none; border-radius: var(--radius-md); background: transparent; font-size: var(--text-xs); font-weight: 500; color: var(--color-muted-foreground); transition: color var(--dur-2), background var(--dur-2), box-shadow var(--dur-2); }
+/* Three columns: the fast bolt on the left, the level in the middle whatever the bolt's width. */
+.heading { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; min-height: 28px; margin-bottom: 10px; color: var(--color-foreground); font-size: var(--text-base); font-weight: 600; }
+/* The one word of the popover. Its two states share a cell, so the name that leaves and the one that arrives cross in place. */
+.level { grid-column: 2; position: relative; display: inline-grid; justify-items: center; white-space: nowrap; letter-spacing: -0.01em; transition: color var(--dur-2); }
+.level.previewing { color: var(--color-muted-foreground); }
+.word { grid-area: 1 / 1; --roll: 9px; }
+.word.down { --roll: -9px; }
+.word.rolls { animation: word-in var(--dur-3) var(--ease-out-quint) both; }
+/* The name it replaces, drawn from an attribute: it leaves the other way and is no text of the page. */
+.word.rolls::before { content: attr(data-from); position: absolute; left: 50%; top: 0; translate: -50% 0; pointer-events: none; animation: word-out var(--dur-3) var(--ease-out-quint) both; }
+@keyframes word-in { from { opacity: 0; transform: translateY(var(--roll)); filter: blur(2px); } to { opacity: 1; transform: none; filter: none; } }
+/* The leaving name rides on the arriving one: twice the travel back, so it ends one step past where it stood. */
+@keyframes word-out { from { opacity: 1; transform: translateY(calc(-1 * var(--roll))); } to { opacity: 0; transform: translateY(calc(-2 * var(--roll))); } }
+.speed { grid-column: 1; justify-self: start; display: inline-flex; align-items: center; gap: 5px; height: 26px; margin-left: -2px; padding: 0 9px 0 7px; border: none; border-radius: 999px; background: transparent; box-shadow: inset 0 0 0 1px var(--color-border); font-size: var(--text-xs); font-weight: 500; color: var(--color-muted-foreground); transition: color var(--dur-2), background var(--dur-2), box-shadow var(--dur-2); }
 .speed :global(svg) { transition: transform var(--dur-2) var(--ease-out-quint); }
 /* The bolt is a live control: the one accent-soft fill (owner's decision), with accent ink and a glow, under the pointer and while on. */
 @media (hover: hover) {
-  .speed:hover { color: var(--color-accent); background: var(--color-accent-soft); box-shadow: 0 0 12px var(--color-accent-soft); }
+  .speed:hover { color: var(--color-accent); background: var(--color-accent-soft); box-shadow: inset 0 0 0 1px transparent, 0 0 12px var(--color-accent-soft); }
   .speed:hover :global(svg) { transform: rotate(-12deg) scale(1.16); }
 }
-.speed.active { color: var(--color-accent); background: var(--color-accent-soft); }
+.speed.active { color: var(--color-accent); background: var(--color-accent-soft); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--color-accent) 45%, transparent); }
 .speed.active .bolt { filter: drop-shadow(0 0 5px var(--color-accent-soft)); }
-/* The app's switch at a chip's scale. */
-.switch.mini { --switch-width: 24px; --switch-height: 14px; }
-.switch.mini::after { top: 2px; left: 2px; width: 8px; height: 8px; }
-.switch.mini.on::after { transform: translateX(10px); }
+.agent-default.speed { box-shadow: none; }
 .agent-default.speed:hover { color: var(--color-foreground); background: var(--color-hover); box-shadow: none; }
 .speed:active :global(svg) { transform: scale(.9); }
 .agent-default { grid-column: 3; justify-self: end; margin: 0 -4px 0 0; }
-.track { padding: 3px var(--track-pad); cursor: pointer; touch-action: none; height: 30px; background: var(--color-edge); border-radius: 999px; box-shadow: inset 0 0 0 1px var(--color-border); }
+/* A groove the fill runs in: a shade under the surface, one hairline around it. */
+.track { padding: 4px var(--track-pad); cursor: pointer; touch-action: none; height: 34px; background: color-mix(in oklch, var(--color-foreground) 7%, transparent); border-radius: 999px; box-shadow: inset 0 0 0 1px var(--color-border); }
 .track:focus-visible { outline: 1px solid var(--color-reasoning); outline-offset: 3px; }
-.line { position: relative; height: 24px; }
-/* The filled part lights up with the level: more accent, a brighter end at the thumb and a wider halo. */
+.line { position: relative; height: 26px; }
+/* The filled part lights up with the level: more accent, a brighter end at the thumb and a wider halo. It follows the thumb. */
 .progress {
-  position: absolute; inset: 0 auto 0 calc(-1 * var(--track-pad)); border-radius: 999px 0 0 999px;
-  background: linear-gradient(90deg, color-mix(in oklch, var(--color-accent) var(--effort-intensity), var(--color-surface-3)), color-mix(in oklch, var(--color-accent) var(--effort-intensity), var(--color-reasoning-on) calc(var(--effort-glow) * 22%)));
+  position: absolute; inset: 0 auto 0 calc(-1 * var(--track-pad) + 4px); border-radius: 999px;
+  background: linear-gradient(90deg, color-mix(in oklch, var(--color-accent) calc(var(--effort-intensity) * .45), transparent), color-mix(in oklch, var(--color-accent) var(--effort-intensity), var(--color-reasoning-on) calc(var(--effort-glow) * 18%)));
   box-shadow: 0 0 var(--effort-blur) color-mix(in oklch, var(--color-accent) var(--effort-halo), transparent);
-  transition: background var(--dur-3), box-shadow var(--dur-3);
+  transition: width var(--dur-3) var(--ease-out-quint), background var(--dur-3), box-shadow var(--dur-3);
 }
-.dot { position: absolute; top: 50%; width: 16px; height: 24px; padding: 0; border: none; background: transparent; transform: translate(-50%, -50%); }
-.dot::after { content: ""; display: block; width: 4px; height: 4px; margin: auto; border-radius: 50%; background: var(--color-muted-foreground); }
-.dot::after { transition: transform var(--dur-1) var(--ease-out-quint); }
-.dot.on::after { background: var(--color-reasoning-on); opacity: calc(.35 + var(--effort-glow) * .4); }
+.dot { position: absolute; top: 50%; width: 16px; height: 26px; padding: 0; border: none; background: transparent; transform: translate(-50%, -50%); }
+/* The dots grow along the scale: a higher level is a bigger step. */
+.dot::after { content: ""; display: block; --size: calc(3px + var(--rank) * 3px); width: var(--size); height: var(--size); margin: auto; border-radius: 50%; background: var(--color-subtle); transition: width var(--dur-2) var(--ease-out-quint), height var(--dur-2) var(--ease-out-quint), background var(--dur-2), box-shadow var(--dur-2); }
+.dot.on::after { background: var(--color-reasoning-on); opacity: .6; }
 /* The previewed dot: a hollow ring, unlike the filled thumb of the pick. */
-.dot.hovered::after { width: 12px; height: 12px; background: transparent; box-shadow: inset 0 0 0 1.5px var(--color-reasoning-on); opacity: 1; }
-/* The thumb sits inside the track with an even gap and a hairline edge, so it reads sharp on any surface. */
-.thumb { position: absolute; top: 50%; width: 24px; height: 24px; transform: translate(-50%, -50%); border-radius: 50%; background: var(--color-reasoning-on); box-shadow: 0 0 0 1px color-mix(in oklch, var(--color-foreground) 14%, transparent), var(--shadow-e1), 0 0 calc(var(--effort-blur) * .8) color-mix(in oklch, var(--color-accent) var(--effort-halo), transparent); z-index: 1; transition: box-shadow var(--dur-3); }
-/* The ends sit under the first and last dots, inside the track's own inset. */
-.ends { position: relative; height: 16px; margin: 6px var(--track-pad) 0; color: var(--color-muted-foreground); font-size: var(--text-xs); line-height: 16px; }
-.ends > span { position: absolute; top: 0; white-space: nowrap; transform: translateX(calc(var(--at) * -100%)); transition: opacity var(--dur-1); }
-/* Named per class: reduced motion fades them, never slides their script placement. */
-  .end { transition: opacity var(--dur-1); }
-  .ends.previewing .end { opacity: 0; }
-.ghost { color: var(--color-foreground); font-weight: 500; transition: opacity var(--dur-1); }
-.cost.previewing { color: var(--color-subtle); }
-.cost { margin: 8px 0 0; color: var(--color-muted-foreground); font-size: var(--text-xs); line-height: 1.35; text-align: center; }
+.dot.hovered::after { width: 14px; height: 14px; background: transparent; box-shadow: inset 0 0 0 1.5px var(--color-reasoning-on); opacity: .9; }
+/* The thumb slides from dot to dot inside the track, with an even gap, a hairline edge and a halo that widens with the level. */
+.thumb { position: absolute; top: 50%; width: 26px; height: 26px; transform: translate(-50%, -50%); border-radius: 50%; background: var(--color-reasoning-on);
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--color-foreground) 14%, transparent), var(--shadow-e1), 0 0 calc(var(--effort-blur) * .8) color-mix(in oklch, var(--color-accent) var(--effort-halo), transparent); z-index: 1;
+  transition: left var(--dur-3) var(--ease-out-quint), transform var(--dur-2) var(--ease-out-quint), box-shadow var(--dur-3); }
+/* Held, it presses in a little and wears a ring: the level under it is not picked until it is let go. */
+.track.held .thumb { transform: translate(-50%, -50%) scale(.9); box-shadow: 0 0 0 1px color-mix(in oklch, var(--color-foreground) 14%, transparent), 0 0 0 5px color-mix(in oklch, var(--color-accent) 35%, transparent), var(--shadow-e1); }
 /* Speed lines: each one crosses the whole popover from right to left, its bright head first. */
 .streaks { position: absolute; inset: 0; z-index: 2; overflow: hidden; border-radius: inherit; pointer-events: none; }
 .streak { position: absolute; left: 0; right: 0; height: var(--thick); transform: translateX(var(--from)); opacity: 0; animation-name: streak; animation-timing-function: cubic-bezier(.3, 0, .7, 1); animation-fill-mode: both;
@@ -462,17 +453,13 @@
 }
 /* A phone opens the popover as a bottom sheet (lib/floating.ts): every target a finger high. */
 @media (max-width: 720px) {
-  .popover { padding: 12px 16px 16px; }
-  .heading { min-height: var(--touch-target); }
-  .speed { height: var(--touch-target); padding: 0 10px; }
-  .popover { --track-pad: 18px; }
+  .popover { padding: 12px 16px 20px; --track-pad: 18px; }
+  .heading { min-height: var(--touch-target); font-size: var(--text-md); }
+  .speed { height: 36px; padding: 0 12px 0 10px; gap: 8px; font-size: var(--text-sm); }
   .track { height: var(--touch-target); padding-block: 8px; }
   .line { height: 28px; }
   .dot { width: var(--touch-target); height: var(--touch-target); }
   .thumb { width: 28px; height: 28px; }
-  .cost { font-size: var(--text-sm); }
-  .ends { height: 20px; line-height: 20px; font-size: var(--text-sm); }
-  .speed { gap: 8px; }
 }
-@media (prefers-reduced-motion: reduce) { .streaks { display: none; } .level.dash, .bolt.dash { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .streaks { display: none; } .level.dash, .bolt.dash, .word.rolls { animation: none; } .word.rolls::before { display: none; } }
 </style>

@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import type { HarnessUpdate, ProviderId } from '@boite/contracts';
+import type { DesktopUpdateStatus, HarnessUpdate, ProviderId } from '@boite/contracts';
 import { DONE_LINGER_MS, offerKeys, planOf, reconcileRows, type AppReading, type MachineReading, type UpdateRow } from './update-everything.svelte';
 
 function agent(providerId: string, overrides: Partial<HarnessUpdate> = {}): HarnessUpdate {
@@ -12,7 +12,8 @@ function machine(id: string, overrides: Partial<MachineReading> = {}): MachineRe
     server: { mode: 'systemd', phase: 'available', currentVersion: '2.0.0', version: '2.1.0', received: 0, total: null, error: null }, ...overrides };
 }
 
-const app: AppReading = { phase: 'available', currentVersion: '2.0.0', version: '2.1.0', channel: 'stable', received: 0, total: null, error: null };
+// This computer's reading and another desktop's report share one shape.
+const app = { phase: 'available', currentVersion: '2.0.0', version: '2.1.0', channel: 'stable', received: 0, total: null, error: null } satisfies AppReading & DesktopUpdateStatus;
 
 test('an Android server release is offered by the same update action as other managed servers', () => {
   const android = machine('android');

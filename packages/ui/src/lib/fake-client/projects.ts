@@ -1,4 +1,4 @@
-/** Projects, their files and the Claude Code sessions they can import. */
+/** Projects, their files and the Claude Code and Codex sessions they can import. */
 import { PROJECT_NAME_MAX, RpcErrorCode, type ImportableSession, type Project, type Thread, type ThreadId, type Turn } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { missingFolder, pathKey } from './checks';
@@ -237,9 +237,9 @@ export function projectMethods(ctx: FakeContext) {
         projectId: params.projectId,
         title: session.title,
         titleSource: 'agent',
-        providerId: 'claude',
+        providerId: session.providerId,
         accountId: params.accountId,
-        model: 'claude-sonnet-5-5',
+        model: session.providerId === 'codex' ? 'gpt-6-astra' : 'claude-sonnet-5-5',
         effort: null,
         cwd: project.path,
         branch: null,

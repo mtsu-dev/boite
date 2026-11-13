@@ -14,6 +14,8 @@ import { fill, strings } from './strings';
 const TICK_MS = 1000;
 
 export function desktopStatusOf(snapshot: UpdateSnapshot): DesktopUpdateStatus {
+  // A release this app cannot take is no update to the other machines.
+  if (snapshot.phase === 'blocked') return { ...desktopStatusOf({ ...snapshot, phase: 'current' }), version: null };
   return { phase: snapshot.phase, currentVersion: snapshot.currentVersion, version: snapshot.version, channel: snapshot.channel,
     received: snapshot.received, total: snapshot.total, error: snapshot.error };
 }

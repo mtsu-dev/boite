@@ -20,6 +20,8 @@
   import { ago, exactTime } from '../lib/format';
   import { wordFit } from '../lib/word-fit';
   import ProjectTile from './ProjectTile.svelte';
+  import ProviderLogo from './ProviderLogo.svelte';
+  import { agentLabel } from '../lib/format';
   import AgentAvatar from './agents/AgentAvatar.svelte';
   import { agentDirectory } from '../lib/agent-directory.svelte';
   import { avatarLit } from '../lib/avatar-lit';
@@ -29,8 +31,9 @@
    * Every thread row's one line, in the sidebar, Recent, Activity and a phone's
    * lists: the title takes the width, then an unsent draft, the pin, the pull
    * request when there is one, and the state at the end, in one slot, with the
-   * time after it. The thread's header names its agent, so the row carries no
-   * provider glyph; a flat list (`tile`) shows the project's tile first, since
+   * time after it. The provider's mark leads the title in its own colours, so
+   * the agent behind each row reads at a glance; a bot's thread wears the bot's
+   * face there instead, and a flat list (`tile`) shows the project's tile, since
    * no card names it. The state is its mark and its word; `fit` lets the
    * word give way on a narrow desktop list (ThreadState.svelte). `ask` (Activity) is one line under the title, which
    * keeps the row's width. `at` is the row's time (its last message in the
@@ -92,7 +95,8 @@
 
 <span class="headline" class:unread={thread.unread} class:hot={open || kind !== null} class:offline>
   {#if tile}<ProjectTile project={tile} store={owner} size={16} />{/if}
-  {#if bot}<span class="bot" title={bot.name} data-testid="thread-bot"><AgentAvatar kind="profile" id={bot.id} name={bot.name} avatar={bot.avatar} size={16} lit={avatarLit({ open, attention: kind === 'waiting' })} /></span>{/if}
+  {#if bot}<span class="bot" title={bot.name} data-testid="thread-bot"><AgentAvatar kind="profile" id={bot.id} name={bot.name} avatar={bot.avatar} size={16} lit={avatarLit({ open, attention: kind === 'waiting' })} /></span>
+  {:else if !tile}<span class="provider" title={agentLabel(owner, thread)} data-testid="thread-provider"><ProviderLogo providerId={thread.providerId} size={14} /></span>{/if}
   {#if ask}<span class="lead"><span class="title ui-label" use:wordFit={thread.title}></span>{@render ask()}</span>{:else}<span class="title ui-label" use:wordFit={thread.title}></span>{/if}
   {#if draft}<span class="draft" data-testid="thread-draft" title={strings.sidebar.unsentDraft} aria-label={strings.sidebar.unsentDraft}><PencilLine size={12} /></span>{/if}
   {#if thread.pinned}<span class="pin"><Pin size={12} /></span>{/if}
@@ -161,6 +165,7 @@
     color: var(--color-muted-foreground);
   }
   .bot,
+  .provider,
   .draft,
   .pin,
   .pr {

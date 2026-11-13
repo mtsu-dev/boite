@@ -7,7 +7,7 @@ export const strings = {
     unsupported: 'Automatic app updates are available in installed builds: the Windows x64 installer, the macOS app, and the Linux .deb or AppImage.',
     channel: 'Release channel',
     nightlyShort: 'Nightly', releaseShort: 'Release',
-    noRelease: 'No release yet: Boite ships nightly builds for now.',
+    blocked: 'Boite {version} cannot read the data of this version yet. You will be offered the first release that can.',
     updates: 'Updates',
     stable: 'Boite',
     nightly: 'Boite Nightly',

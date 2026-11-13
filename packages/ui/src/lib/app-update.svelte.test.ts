@@ -1,6 +1,7 @@
 import { expect, test, vi } from 'vitest';
 import type { AppUpdateBackend, UpdateChannel, UpdateClock, UpdateSnapshot } from './app-update.svelte';
 import { AppUpdater, appName, appUpdater } from './app-update.svelte';
+import { desktopStatusOf } from './desktop-update.svelte';
 
 function snapshot(overrides: Partial<UpdateSnapshot> = {}): UpdateSnapshot {
   return {
@@ -126,45 +127,40 @@ test('serializes checks, keeps the latest channel, announces it at once and down
   stop();
 });
 
-test('allows restoring an older stable release from installed nightly', async () => {
+test('picking Release on a nightly fetches the older stable at once, and going back only checks', async () => {
+  const running = { currentVersion: '2.1.0-nightly.8', currentChannel: 'nightly' as const };
+  let stable: UpdateSnapshot['phase'] = 'available';
   const native = backend({
-    status: vi.fn(async () => snapshot({
-      currentVersion: '2.1.0-nightly.8',
-      currentChannel: 'nightly',
-      channel: 'nightly'
-    })),
+    status: vi.fn(async () => snapshot({ ...running, channel: 'nightly' })),
     check: vi.fn(async (channel) => snapshot({
-      phase: 'available',
-      currentVersion: '2.1.0-nightly.8',
-      currentChannel: 'nightly',
-      channel,
-      version: '2.0.0'
+      ...running, channel, phase: channel === 'stable' ? stable : 'current', version: channel === 'stable' ? '2.0.0' : null
     })),
-    download: vi.fn(async () => snapshot({
-      phase: 'ready',
-      currentVersion: '2.1.0-nightly.8',
-      currentChannel: 'nightly',
-      channel: 'stable',
-      version: '2.0.0'
-    }))
+    download: vi.fn(async () => snapshot({ ...running, phase: 'ready', channel: 'stable', version: '2.0.0' }))
   });
   const updater = new AppUpdater(native, new FakeClock(), () => true);
   const stop = updater.start();
   await updater.settled();
-  updater.check('stable');
-  await updater.settled();
-  updater.download();
+  await updater.switchChannel('stable');
   await updater.settled();
 
-  expect(native.check).toHaveBeenCalledWith('stable', false);
+  // The owner's pick asks GitHub now, and the button that follows restarts.
+  expect(native.check).toHaveBeenCalledWith('stable', true);
   expect(native.download).toHaveBeenCalledOnce();
-  expect(updater.snapshot).toMatchObject({
-    phase: 'ready',
-    currentVersion: '2.1.0-nightly.8',
-    currentChannel: 'nightly',
-    channel: 'stable',
-    version: '2.0.0'
-  });
+  expect(updater.snapshot).toMatchObject({ ...running, phase: 'ready', channel: 'stable', version: '2.0.0' });
+
+  await updater.switchChannel('nightly');
+  await updater.settled();
+  expect(native.check).toHaveBeenLastCalledWith('nightly', true);
+  expect(updater.snapshot).toMatchObject({ phase: 'current', channel: 'nightly' });
+
+  // A release that cannot read what this nightly wrote is shown, never fetched.
+  stable = 'blocked';
+  await updater.switchChannel('stable');
+  await updater.settled();
+  expect(updater.snapshot).toMatchObject({ phase: 'blocked', channel: 'stable', version: '2.0.0' });
+  expect(native.download).toHaveBeenCalledOnce();
+  // Other machines, and cores that know no such phase, hear of no update.
+  expect(desktopStatusOf(updater.snapshot)).toMatchObject({ phase: 'current', version: null, channel: 'stable' });
   stop();
 });
 

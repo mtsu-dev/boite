@@ -41,13 +41,15 @@ tray. Otherwise it tries again at the next check. It does not touch agents.
 1. Back up your Boite data. On Windows it is in `%LOCALAPPDATA%\boite2`, on
    macOS in `~/Library/Application Support/boite2`; on Linux,
    [install](install.md#install-on-linux) gives the folder.
-2. In Settings, Machines and updates, change the Release channel.
-3. Boite checks that channel at once and offers its newest release.
+2. In Settings, Machines and updates, press Release or Nightly.
+3. Boite checks that channel at once and downloads its newest release.
+4. Press Restart, then confirm. Boite comes back on the other channel.
 
 Going back from Nightly to Release is allowed even when the version number is
-lower. Both channels keep the same conversations, accounts and settings, but
-an older version may refuse data a newer nightly wrote: Boite then stops
-without touching it, and you restore your backup.
+lower. Both channels keep the same conversations, accounts and settings. When
+the other channel's newest build cannot read your data yet, or does not say
+whether it can, the card says so and installs nothing: Boite stays where it is
+and offers the first build of that channel that can read it.
 
 ### Limits
 

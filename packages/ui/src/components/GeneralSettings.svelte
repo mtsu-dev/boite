@@ -13,6 +13,7 @@
   import PolicySettings from './PolicySettings.svelte';
   import WorkspaceCard from './WorkspaceCard.svelte';
   import QuietCard from './QuietCard.svelte';
+  import AgentsAloneCard from './AgentsAloneCard.svelte';
   import { untrack } from 'svelte';
   import { readTerminalGpu, setTerminalGpu } from '../lib/terminal-cursor';
 
@@ -58,7 +59,7 @@
   {#if store.owner}<AgentRepliesSettings {store} />{/if}
 
   <!-- Notifications above, the sound and the windows of the machine here: what reaches the person at it. -->
-  {#if store.owner}<QuietCard {store} />{/if}
+  {#if store.owner}<QuietCard {store} /><AgentsAloneCard {store} />{/if}
   <WorkspaceCard />
   <ArchivedThreads {store} />
   <WorktreesCard {store} />
