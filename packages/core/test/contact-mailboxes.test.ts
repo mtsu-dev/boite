@@ -181,7 +181,7 @@ test('forwarding a mailbox backlog bounds deserialization and retries older fail
 test('a routed ask waits for the gateway\'s Contacts mochi, and the contact\'s answer returns to the initiating thread', async () => {
   const { a, b, c, ai, bi, ci, ac, source, recipient } = await routed();
   // Without a Contacts bot, an ask that names no contact is refused with what to turn on.
-  expect(await thrown(ac.call('collaboration.ask', { threadId: source, text: 'An agent on the opened project' }))).toThrow('Settings > Experiments');
+  expect(await thrown(ac.call('collaboration.ask', { threadId: source, text: 'An agent on the opened project' }))).toThrow('Settings > Version > Experiments');
   // An older initiating core asks through its gateway once it has a route there, as a first letter makes.
   await a.core.coordination.send({ threadId: source, to: { coreId: ci, threadId: recipient }, text: 'Which port?', requestId: 'first-letter' });
   await waitFor(() => c.core.coordination.get(recipient).messages.length > 0, 10000);

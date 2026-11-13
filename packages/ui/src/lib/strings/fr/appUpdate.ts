@@ -36,6 +36,6 @@ export const fr: Translation = {
     installTitle: 'Installer la mise à jour de Boite ?',
     installBody: "Les agents terminent leur appel d'outil en cours, 30 secondes au plus. Boite se met ensuite à jour, redémarre et les reprend.",
     autoInstall: 'Installer les mises à jour tout seul quand rien ne tourne',
-    autoInstallHint: "Une version trouvée par la vérification toutes les six heures se télécharge et s'installe sans rien demander, seulement quand la fenêtre est rangée dans la zone de notification et qu'aucun fil, aucun message en attente ni aucun processus ne tourne. Boite revient dans la zone de notification. Sinon, il réessaie à la vérification suivante. Les agents gardent leur propre interrupteur dans la page Fournisseurs.",
+    autoInstallHint: "Une version trouvée par la vérification toutes les six heures se télécharge et s'installe sans rien demander, seulement quand la fenêtre est rangée dans la zone de notification et qu'aucun fil, aucun message en attente ni aucun processus ne tourne. Boite revient dans la zone de notification. Sinon, il réessaie à la vérification suivante. Les agents gardent leur propre interrupteur, dans Mises à jour des agents.",
   }
 };

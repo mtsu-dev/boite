@@ -167,7 +167,8 @@
 </section>
 
 <style>
-  h3 { margin: 4px 0 10px; font-size: var(--text-sm); font-weight: 500; color: var(--color-muted-foreground); }
+  section > :last-child { margin-bottom: var(--space-3); }
+  h3 { margin: var(--space-3) 0 10px; font-size: var(--text-sm); font-weight: 500; color: var(--color-muted-foreground); }
   ul { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 2px; }
   li {
     display: flex;

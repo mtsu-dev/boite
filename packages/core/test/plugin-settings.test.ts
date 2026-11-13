@@ -240,7 +240,7 @@ describe('plugin settings and turning a plugin off, end to end', () => {
         () => owner.call('plugins.accountAction', { id: 'pool', provider: 'codex', action: 'add' }),
       ]) {
         const { reason } = await rejection(call());
-        expect((reason as Error).message).toBe('pool is turned off. Turn it on in Settings > Plugins first.');
+        expect((reason as Error).message).toBe('pool is turned off. Turn it on in Settings > Agents > Plugins first.');
         expect((reason as { rpc: { data: unknown } }).rpc.data).toMatchObject({ id: 'pool', enabled: false });
       }
     } finally {

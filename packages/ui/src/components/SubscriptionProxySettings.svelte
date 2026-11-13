@@ -94,7 +94,7 @@
   }
 </script>
 
-<section class="card proxy-settings" data-testid="subscription-proxy-settings">
+<section class="card proxy-settings" id="settings-subscription-proxy" data-testid="subscription-proxy-settings">
   <h2 class="ui-label-box"><span class="ui-label">{strings.subscriptionProxy.heading}</span><InfoTip topic={strings.subscriptionProxy.heading} text={strings.subscriptionProxy.hint} /><PolicyLock {store} keys={['gateway', 'gateway.allowedBaseUrls']} /></h2>
   <label class="switch-row"><span class="text ui-label-box"><span class="ui-label">{strings.subscriptionProxy.enable}</span><InfoTip topic={strings.subscriptionProxy.enable} text={strings.subscriptionProxy.enabledHint} testid="subscription-proxy-enabled-hint" /></span><input type="checkbox" role="switch" bind:checked={config.enabled} disabled={gatewayOff} data-testid="subscription-proxy-enabled" /></label>
   {#if !open}<p class="hint off-line" data-testid="subscription-proxy-off">{strings.subscriptionProxy.offLine}</p>{/if}

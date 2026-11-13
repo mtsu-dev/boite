@@ -17,11 +17,11 @@ with the account you already pay for, and shows its work in one app.
 | [pi](https://github.com/earendil-works/pi) | Earendil Works | Install it yourself | Install it yourself | In pi itself |
 
 [OpenCode 2](https://opencode.ai/v2/docs/) is also supported as an experiment.
-It is turned off until you turn it on in Settings, Providers.
+It is turned off until you turn it on in Settings, AI accounts, Providers.
 
 ## Connect an agent
 
-1. Open Settings, Providers and press Connect an AI.
+1. Open Settings, AI accounts, Providers and press Connect an AI.
 2. Pick your agent. Boite installs it when it can and tells you the download
    size first. Otherwise it opens the agent's own installer page.
 3. Sign in on the page your browser opens. This is the agent's own sign-in:
@@ -59,12 +59,12 @@ Every agent keeps its conversation when you close and reopen Boite, and you can
 ## Use an agent that is not listed
 
 Any agent that speaks the Agent Client Protocol (ACP) works. In Settings,
-Providers, fill the Local ACP command card with a name and the command that
+AI accounts, fill the Local ACP command card with a name and the command that
 starts the agent. It then appears in the model picker like the others.
 
 ## Hide an agent you do not use
 
-Each card in Settings, Providers has a switch. An agent that is turned off
+Each card in Settings, AI accounts, Providers has a switch. An agent that is turned off
 disappears from the model picker. Nothing is uninstalled and your sign-in stays.
 
 ## Going further

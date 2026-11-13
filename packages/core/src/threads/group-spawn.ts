@@ -161,7 +161,7 @@ export function peerRefusal(core: Core, peer: CoordinationPeer, error: unknown, 
     if (error.message === GROUP_THREADS_OFF) {
       return refused(`${peer.name} does not let the other machines of its group ${off.lets}; propose the switch to the user with boite settings request groupThreads true --machine ${name} --why "<${off.why}>"`, { field: 'machine', setting: 'groupThreads' });
     }
-    if (error.message.startsWith('operation: expected')) return refused(`Boite on ${peer.name} is too old to ${what}; the owner updates it in Settings, Machines and updates`, { field: 'machine' });
+    if (error.message.startsWith('operation: expected')) return refused(`Boite on ${peer.name} is too old to ${what}; the owner updates it in Settings, Version, Updates`, { field: 'machine' });
     return refused(`${peer.name}: ${error.message}`, { field: 'machine' });
   }
   return unavailable(`${peer.name} did not answer: ${messageOf(error)}`, { field: 'machine' });

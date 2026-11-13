@@ -28,7 +28,7 @@ const DECIDED_KEPT = 50;
 /** A thread id, or a group member's thread at its Bots host: `<thread>~<16 hex>` (`memberThreadId`). */
 export const THREAD_ID = /^[A-Za-z0-9_-]{1,128}(~[0-9a-f]{16})?$/;
 const RELATION_ID = /^[A-Za-z0-9_-]{1,100}$/;
-export const NO_BOT = 'turn on Contacts in Settings > Experiments: it creates the Contacts mochi';
+export const NO_BOT = 'turn on Contacts in Settings > Version > Experiments: it creates the Contacts mochi';
 
 /**
  * `pendingSend`: an outgoing ask, or the answer to an incoming one, the other side has not received yet.
@@ -380,7 +380,7 @@ export class ContactRequests {
     const bot = contactsBot(this.#core);
     const wanted = given(ask.want) ? want(ask.want, 'ask.want') : undefined;
     // Only the Operator puts threads in touch: without one the owner could only open a project, which reaches no thread.
-    if (bot === null && (wanted === 'talk' || wanted === 'thread')) throw refused(`${contactFace(this.#core)} has no Operator to put threads in touch; its owner turns Contacts on in Settings > Experiments`);
+    if (bot === null && (wanted === 'talk' || wanted === 'thread')) throw refused(`${contactFace(this.#core)} has no Operator to put threads in touch; its owner turns Contacts on in Settings > Version > Experiments`);
     const request: StoredRequest = {
       id: newId('creq_'), remoteId: ask.id, direction: 'in', coreId, contact: contact.name, from, text: text(ask.text, 'ask.text', 4000),
       ...(wanted ? { want: wanted } : {}), ...(target ? { target: { threadId: target } } : {}),

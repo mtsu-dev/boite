@@ -6,7 +6,7 @@ live context of its work; the team only carries posts between them. A post
 wakes the mochis it names, and a mochi answers either in the group, which every
 member reads, or privately to one member or the owner.
 
-Teams sit behind the Teams switch in Settings > Experiments
+Teams sit behind the Teams switch in Settings > Version > Experiments
 ([experiments](experiments.md)). While it is off on a machine, the `teams.*`
 methods and `boite team` commands on the teams that machine holds refuse with
 the reason `experiment-off`, and no mochi of that machine can enter a team. The

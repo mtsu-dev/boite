@@ -629,7 +629,7 @@ interface Words { old?: string; away?: string }
 /** How a bot's `thread new` there fails. */
 function startWords(peer: CoordinationPeer): Words {
   return {
-    old: `Boite on ${peer.name} is too old to start threads for a mochi of another machine; the owner updates it in Settings, Machines and updates`,
+    old: `Boite on ${peer.name} is too old to start threads for a mochi of another machine; the owner updates it in Settings, Version, Updates`,
     away: 'the same --request-id later answers the thread if it started there',
   };
 }
@@ -641,7 +641,7 @@ function failure(core: Core, peer: CoordinationPeer, error: unknown, words: Word
     if (error.message === GROUP_BOTS_OFF) {
       return refused(`${peer.name} does not let the mochis of the other machines of its group look after its projects; propose the switch to the user with boite settings request groupBots true --machine ${machine} --why "<what you look after there>"`, { field: 'machine', machine, setting: 'groupBots' });
     }
-    if (error.message.startsWith('operation: expected')) return refused(words.old ?? `Boite on ${peer.name} is too old to let a mochi of another machine look after its projects; the owner updates it in Settings, Machines and updates`, { field: 'machine', machine });
+    if (error.message.startsWith('operation: expected')) return refused(words.old ?? `Boite on ${peer.name} is too old to let a mochi of another machine look after its projects; the owner updates it in Settings, Version, Updates`, { field: 'machine', machine });
     return refused(`${machine}: ${error.message}`, { field: 'machine', machine });
   }
   if (error instanceof PeerGone) return refused(`${peer.name} removed this machine from its group`, { field: 'machine', machine });

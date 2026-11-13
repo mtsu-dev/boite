@@ -10,7 +10,7 @@ export const fr: Translation = {
     compacting: "Libération d'espace disque dans l'historique. Cela n'arrive qu'une fois et peut prendre quelques minutes.",
     noEndpointTitle: 'Aucun cœur à joindre',
     noEndpointBody:
-      "Sur l'une de vos machines, ouvrez Réglages, Machines, Ajouter un appareil, puis scannez ou tapez son code ici.",
+      "Sur l'une de vos machines, ouvrez Réglages, Appareils, Groupe, Ajouter un appareil, puis scannez ou tapez son code ici.",
     openSettings: 'Ouvrir les réglages',
     rail: {
       label: 'Boite',

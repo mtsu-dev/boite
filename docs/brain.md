@@ -7,7 +7,7 @@ use the same brain on several computers.
 
 ## Connect a folder
 
-1. Open Settings, Brain.
+1. Open Settings, Agents, Instructions and skills.
 2. Press Browse and pick the folder, or type its path.
 3. Press Connect folder.
 4. Leave Share instructions automatically on to add the instructions and the
@@ -36,7 +36,8 @@ the reason.
 - A skill marked `disable-model-invocation: true` becomes a `/name` command in
   the message box's slash menu. An agent's own command of the same name wins.
 - Boite does not install the plugins it lists. Install them through their
-  agent. Boite's own plugins are a separate thing, in Settings, Plugins.
+  agent. Boite's own plugins are a separate thing, in Settings, Agents,
+  Plugins.
 
 ## Use it outside Boite too
 
@@ -68,7 +69,8 @@ Boite does not clone a repository or commit your edits.
 
 Separate from your brain, Boite gives every agent session a short guide to its
 own commands and panel, about 300 tokens. The Boite guide switch on this page
-turns it off. Short answers, in Settings, General, on by default, adds one
+turns it off. Short answers, in Settings, Conversations, Agent replies, on by
+default, adds one
 paragraph to each turn asking for brief, plain answers; turning the Boite
 guide off removes it too.
 

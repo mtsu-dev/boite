@@ -1,64 +1,60 @@
 <script lang="ts">
   import { MediaQuery } from 'svelte/reactivity';
-  import { tick } from 'svelte';
+  import { tick, untrack } from 'svelte';
+  import { ChevronDown, ChevronLeft, ChevronRight, Monitor, MonitorSmartphone, Network, Search } from '@lucide/svelte';
   import MobileSettings from './MobileSettings.svelte';
-  import BrainPage from './BrainPage.svelte';
+  import SettingsPage from './SettingsPage.svelte';
   import InfoTip from './InfoTip.svelte';
-  import { ChevronDown, ChevronLeft, ChevronRight, Search, Monitor, MonitorSmartphone } from '@lucide/svelte';
-  import { SETTINGS_ICONS, SETTINGS_ICON_SIZE, SETTINGS_ICON_STROKE } from '../lib/settings-icons';
-  import KeyboardPage from './KeyboardPage.svelte';
-  import LimitsPage from './LimitsPage.svelte';
-  import PluginsPage from './PluginsPage.svelte';
-  import { COMMAND_GROUPS } from '../lib/keybindings';
-  import { experimentsListed, experimentsShown } from '../lib/experiments.svelte';
-  import { experimentsRun } from '@boite/contracts';
-  import { experimentCopy } from '../lib/experiment-copy';
-  import { fill, strings } from '../lib/strings';
-  import type { SettingsTab, Store } from '../lib/store.svelte';
-  import AccountsPage from './AccountsPage.svelte';
-  import BrowserPage from './BrowserPage.svelte';
-  import AdvancedSettings from './AdvancedSettings.svelte';
-  import AppearancePage from './AppearancePage.svelte';
-  import ExperimentsPage from './ExperimentsPage.svelte';
-  import DiagnosticsPage from './DiagnosticsPage.svelte';
-  import GeneralSettings from './GeneralSettings.svelte';
   import PolicyBanner from './PolicyBanner.svelte';
-  import MachinesPage from './MachinesPage.svelte';
-  import ResourcesPage from './ResourcesPage.svelte';
-  import TaskManagerLoader from './TaskManagerLoader.svelte';
-  import UsagePage from './UsagePage.svelte';
-  import VoiceSettings from './VoiceSettings.svelte';
-  import { providerGroups } from '../lib/provider-family';
-  import { isThisPC, listedName, machineName, workspace } from '../lib/workspace.svelte';
   import SettingsMachineBar from './SettingsMachineBar.svelte';
   import Menu from './Menu.svelte';
   import MachineIcon from './MachineIcon.svelte';
-  import { untrack } from 'svelte';
+  import { SETTINGS_ICONS, SETTINGS_ICON_SIZE, SETTINGS_ICON_STROKE } from '../lib/settings-icons';
+  import { COMMAND_GROUPS } from '../lib/keybindings';
+  import { experimentsListed, experimentsShown } from '../lib/experiments.svelte';
+  import { experimentCopy } from '../lib/experiment-copy';
+  import { fill, strings } from '../lib/strings';
+  import type { SettingsTab, Store } from '../lib/store.svelte';
+  import { providerGroups } from '../lib/provider-family';
+  import { isThisPC, listedName, machineName, workspace } from '../lib/workspace.svelte';
   import { holdSettingsCard, revealSettingsCard } from '../lib/settings-flash';
-  import { desktopPage, desktopSettings, familyOf, machinePage, movedTo, navOf, ownerOnly, pageScopeOf, phonePage, sectionsOf, SETTINGS_FAMILIES } from '../lib/settings-tabs';
+  import { aliasesOf, desktopPlace, desktopSettings, machinePage, navOf, navSectionsOf, pageScopeOf, phonePlace, settingsHas, type SettingsCardId, type SettingsPage as Page } from '../lib/settings-tabs';
+  import { cardWords, searchSettings, settingsEntries, type ExtraEntry, type SettingsEntry } from '../lib/settings-index';
   import { PageScope, providePageScope } from '../lib/page-scope.svelte';
   import { titleSlot } from '../lib/title-slot.svelte';
 
   let { store, onopenthread }: { store: Store; onopenthread?: () => void } = $props();
 
   /**
-   * The pages that change one machine (`machinePage`) take it from the bar
-   * above them; the others are this window's (appearance), the whole group's (machines) or
-   * pick their own (usage, which also reads every machine). Experiments mixes
-   * this device's switches with a machine's, so its bar sits above the latter.
+   * Settings is nine pages (`lib/settings-tabs.ts`), one per question a person
+   * asks. A route names one of them, or a page or a card from before the map:
+   * `desktopPlace` says where it lands. Each page is a column of blocks, an
+   * older page whole or a single card, in the order the map gives.
    */
+  /** A paired device reads one card of Safeguards, the admin policy: without a policy the page has nothing for it. */
+  let bare = $derived(!store.owner && !store.policy?.present);
+  const narrow = new MediaQuery('(max-width: 720px)');
+  const inShell = window.__TAURI_INTERNALS__ !== undefined;
+  /** A phone browser: the list of pages, then a page (`MobileSettings.svelte`), with the cards a phone has. */
+  let phone = $derived(!desktopSettings(narrow.current));
+  let place = $derived.by((): { page: Page; section: string | null } => {
+    // A phone on its list picks no machine: its place is its first page's, until a page opens.
+    const found = phone ? phonePlace(store.settingsTab, store.settingsSection?.id, store.owner) : desktopPlace(store.settingsTab, store.settingsSection?.id, store.owner);
+    return found.page === null || (bare && found.page === 'safeguards') ? { page: navOf(false, phone)[0]!, section: null } : { page: found.page, section: found.section };
+  });
+  let tab = $derived(place.page);
+
   /** Machines this window controls, and the window's own whatever its role there. */
   let choices = $derived(workspace.machines.filter((machine) => machine.store === store || (machine.store.connection === 'ready' && machine.store.owner)));
   let picked = $state<string | null>(null);
   /**
-   * Until one is picked, a page shows the window's machine. Plugins open on
-   * this PC instead: desktop apps run where they were installed.
+   * Until one is picked, a page shows the window's machine. A route to the
+   * plugins opens on this PC instead: desktop apps run where they were installed.
    */
   let chosen = $derived(choices.find((machine) => machine.id === picked)
-    ?? (store.settingsTab === 'plugins' ? choices.find(isThisPC) : undefined)
+    ?? (place.section === 'plugins' ? choices.find(isThisPC) : undefined)
     ?? choices.find((machine) => machine.store === store));
-  /** The page shown: the route's own, the one it is a section of, or Home where this window may not open it. */
-  let tab = $derived(desktopPage(store.settingsTab, store.owner));
+  /** The machine a page's machine cards change (`machinePage`): the one picked in the line under its title. */
   let target = $derived(machinePage(tab) ? chosen?.store ?? store : store);
   /** A plugin card's Preview reads the repository on the card's machine, where the agent that asked runs. */
   $effect(() => {
@@ -67,169 +63,48 @@
   });
   /** The bar when there is a machine to pick or a default machine to speak of. */
   let bar = $derived(machinePage(tab) && chosen !== undefined && (choices.length > 1 || chosen.store.group?.settingsHome !== undefined));
-  /** The policy banner stands above the page, so the panel scrolls both on one column, as under the bar. */
-  let banner = $derived(target.policy?.present === true && target.policy.problems.length > 0);
   /**
    * A page reads the card it was asked to show off its own machine's layout:
    * on another machine than the window's, that layout follows the window's.
    */
   $effect(() => {
-    const machine = target, tab = store.settingsTab, section = store.settingsSection;
+    const machine = target, route = store.settingsTab, section = store.settingsSection;
     if (machine === store) return;
-    untrack(() => { machine.settingsTab = tab; machine.settingsSection = section; });
+    untrack(() => { machine.settingsTab = route; machine.settingsSection = section; });
   });
-  /** A card that moved (Workspace to General, Windows and sound to General): a link to its old page lands on its new one. */
-  $effect(() => {
-    const section = store.settingsSection;
-    const page = section && movedTo(store.settingsTab, section.id);
-    if (page && section) untrack(() => store.showSettings(page, section.id, { flash: section.flash === true }));
-  });
-  const narrow = new MediaQuery('(max-width: 720px)');
-  const inShell = window.__TAURI_INTERNALS__ !== undefined;
-
-  /** A page as the nav names it. */
-  type Tab = { id: SettingsTab; label: string };
-  /** One place the search can land: a page, or a card on it. */
-  type SettingsEntry = { tab: SettingsTab; section: string | null; label: string; trail: string; family: string };
 
   // Derived, not built once: the nav is written in the language the app is
   // speaking, and the language changes without a reload. Each entry wears its
   // icon (`SETTINGS_ICONS`), so the list scans by shape as well as by word.
-  let all = $derived<Tab[]>([
-    { id: 'general', label: strings.settings.tabs.general },
-    { id: 'appearance', label: strings.settings.tabs.appearance },
-    { id: 'keyboard', label: strings.settings.tabs.keyboard },
-    { id: 'voice', label: strings.speech.heading },
-    { id: 'accounts', label: strings.settings.tabs.accounts },
-    { id: 'plugins', label: strings.settings.tabs.plugins },
-    { id: 'browser', label: strings.settings.tabs.browser },
-    { id: 'brain', label: strings.brain.heading },
-    { id: 'usage', label: strings.settings.tabs.usage },
-    { id: 'limits', label: strings.usage.limits },
-    { id: 'task-manager', label: strings.taskManager.title },
-    { id: 'resources', label: strings.settings.tabs.resources },
-    { id: 'machines', label: strings.settings.tabs.machines },
-    { id: 'advanced', label: strings.settings.tabs.advanced },
-    { id: 'diagnostics', label: strings.settings.tabs.diagnostics },
-    { id: 'experiments', label: strings.settings.tabs.experiments }
-  ]);
+  let pages = $derived(navOf(store.owner).filter((id) => !(bare && id === 'safeguards')).map((id) => ({ id, label: strings.settingsMap.pages[id] })));
+  let words = $derived(cardWords());
+  /** A long page lists its sections under its entry while it is open. */
+  let sections = $derived(navSectionsOf(tab, store.owner).map((card) => ({ id: card.id, label: words[card.id as SettingsCardId].title })));
 
-  let providerList = $derived(providerGroups(store.providers, store.shownAccounts()));
-
-  let children: Partial<Record<SettingsTab, { id: string; label: string }[]>> = $derived({
-    general: [
-      { id: 'thread-list', label: strings.settings.threadList },
-      { id: 'conversations', label: strings.settings.inConversation },
-      { id: 'notifications', label: strings.settings.notificationsHeading },
-      ...(store.owner ? [{ id: 'agent-replies', label: strings.settings.agentReplies }] : []),
-      ...(store.owner ? [{ id: 'quiet', label: strings.protection.quiet }] : []),
-      ...(store.owner ? [{ id: 'agents-alone', label: strings.agentsAlone.heading }] : []),
-      { id: 'workspace', label: strings.settings.workspace },
-      { id: 'archived', label: strings.settings.archived.heading },
-      ...(store.owner ? [{ id: 'worktrees', label: strings.settings.worktrees.heading }] : []),
-      { id: 'app', label: strings.settings.app },
-      ...(store.owner ? [{ id: 'privacy', label: strings.telemetry.heading }] : []),
-      ...(target.policy?.present ? [{ id: 'policy', label: strings.policy.heading }] : [])
-    ],
-    appearance: [{ id: 'theme', label: strings.settings.display }, { id: 'reading', label: strings.settings.reading }, { id: 'buttons', label: strings.controls.heading }],
-    keyboard: [
-      ...COMMAND_GROUPS.map((group) => ({ id: `keys-${group.id}`, label: strings.keyboard.groups[group.id] })),
-      { id: 'keybinding-file', label: strings.keyboard.file }
-    ],
-    brain: [{ id: 'brain-folder', label: strings.brain.folder }, { id: 'hooks', label: strings.hooks.heading }],
-    // The page's order: connected providers first, then the ones still to add.
-    accounts: [
-      ...[...providerList.connected, ...providerList.rest, ...providerList.off].map((row) => ({ id: `provider-${row.id}`, label: row.name })),
-      { id: 'agent-updates', label: strings.harnessUpdates.heading },
-      { id: 'secrets', label: strings.secrets.heading }
-    ],
-    browser: [{ id: 'browser-profiles', label: strings.browserProfiles.card }],
-    usage: [
-      { id: 'usage-overview', label: strings.usage.overview },
-      { id: 'usage-chart', label: strings.usage.chart },
-      { id: 'usage-breakdown', label: strings.usage.breakdown },
-      { id: 'usage-threads', label: strings.usage.threads }
-    ],
-    resources: [
-      { id: 'limits', label: strings.protection.limits },
-      { id: 'tasks', label: strings.protection.tasks }
-    ],
-    machines: [
-      { id: 'updates', label: strings.appUpdate.updates },
-      { id: 'machines', label: strings.machines.heading },
-      ...(store.owner ? [{ id: 'windows', label: strings.windows.settings.allowedHeading }, { id: 'window-exclusions', label: strings.windows.settings.exclusionsHeading }] : [])
-    ],
-    advanced: [
-      ...(store.owner ? [{ id: 'execution', label: strings.settings.execution }, { id: 'phone', label: strings.phone.heading }, { id: 'origins', label: strings.machines.browserOrigins }] : []),
-      ...(desktopSettings(narrow.current) ? [{ id: 'details', label: strings.settings.terminalAndScrollbars }] : []),
-      { id: 'core', label: strings.settings.core }
-    ],
-    experiments: [...experimentsListed().map((id) => ({ id, label: experimentCopy()[id]?.title ?? id })), ...(store.owner && experimentsRun(target.core?.version) ? [{ id: 'background-compaction', label: strings.settings.backgroundCompaction }, { id: 'device-stream', label: strings.settings.deviceStream }] : [])],
-    diagnostics: [
-      { id: 'diagnostics-status', label: strings.diagnostics.status },
-      { id: 'diagnostics-problems', label: strings.diagnostics.problems },
-      { id: 'diagnostics-log', label: strings.diagnostics.log },
-      { id: 'diagnostics-agents', label: strings.diagnostics.agentAccess }
-    ]
-  });
-
-  // Experiments is a page only where the primary machine's build runs them: a Release has none, in the nav or in the search.
-  let tabs = $derived(all.filter((tab) => (store.owner || !ownerOnly(tab.id)) && (tab.id !== 'experiments' || experimentsShown())));
+  /** One title per screen, and what the page answers behind the "i" beside it. */
+  let title = $derived(strings.settingsMap.pages[tab]);
+  let info = $derived(strings.settingsMap.about[tab]);
+  let scopePicks = $derived(bar && choices.length > 1 && chosen !== undefined);
   /**
-   * The nav's families (`SETTINGS_FAMILIES`), the same list a phone shows,
-   * each page a peer inside its family (`navOf`): two levels, the nav and the
-   * page, nothing between. A family this window has no page of is left out.
+   * Where the page's settings apply, said once under the title as the map
+   * declares it ("This device", "This machine: studio", "All your machines",
+   * the name the picker where there are several); a card that differs says
+   * its own at its head, the first machine one then holding the picker.
    */
-  let families = $derived(SETTINGS_FAMILIES
-    .map((family) => ({ id: family.id, label: strings.settings.families[family.id], pages: navOf(family.id, store.owner).flatMap((id) => tabs.filter((entry) => entry.id === id)) }))
-    .filter((family) => family.pages.length > 0));
-  /** The pages merged into the shown one as its last sections (`lib/settings-tabs.ts`). */
-  let merged = $derived(sectionsOf(tab, store.owner));
-
-  /**
-   * What each page is for, said once behind the "i" beside the screen's title
-   * at the top of its card: the page's own title steps aside, so its card
-   * starts with its settings (app.css's `.page > header`).
-   */
-  function infoOf(page: SettingsTab): string {
-    switch (page) {
-      case 'keyboard': return strings.keyboard.intro;
-      case 'voice': return strings.speech.description;
-      case 'accounts': return strings.providerSettings.intro;
-      case 'plugins': return strings.plugins.intro;
-      case 'usage': return `${strings.usage.intro} ${strings.usage.note}`;
-      case 'machines': return strings.machines.intro;
-      case 'experiments': return strings.settings.experiments.intro;
-      case 'diagnostics': return strings.diagnostics.intro;
-      case 'task-manager': return strings.taskManager.scope;
-      default: return '';
-    }
-  }
-  /** One title per screen, at the top of its card: the page's own name, as the nav lists it. */
-  let title = $derived(tabs.find((entry) => entry.id === tab)?.label ?? '');
-  let info = $derived(infoOf(tab));
-  let scopePicks = $derived(bar && tab !== 'experiments' && choices.length > 1 && chosen !== undefined);
-  /**
-   * Where the page's settings apply, said once under the title, for most of
-   * its cards ("Saved on this device", "Agent settings apply on studio", the
-   * name the picker where there are several); a card that differs says its
-   * own at its head, the first machine one then holding the picker.
-   */
-  const scopes = providePageScope(new PageScope(() => pageScopeOf(tab), () => (scopePicks ? scopePicker : undefined)));
-  let scopeKind = $derived(scopes.line ?? (scopePicks && !scopes.hasMachineCard ? 'machine' : null));
-  let scope = $derived.by((): string | null => {
-    if (scopeKind === 'device') return strings.settings.scopeDevice;
-    if (scopeKind !== 'machine') return null;
+  const scopes = providePageScope(new PageScope(() => null, () => (scopePicks ? scopePicker : undefined), () => pageScopeOf(tab)));
+  let scopeKind = $derived(scopes.line ?? pageScopeOf(tab));
+  let scope = $derived.by((): string => {
+    if (scopeKind === 'device') return strings.settingsMap.scope.device;
+    if (scopeKind === 'group') return strings.settingsMap.scope.group;
     const machine = workspace.machines.find((m) => m.store === target);
-    return machine ? fill(strings.settings.scopeMachine, { machine: machineName(machine) }) : null;
+    return fill(strings.settingsMap.scope.machine, { machine: machine ? machineName(machine) : strings.machines.local });
   });
 
   /**
    * On a desktop the card carries the screen's one title, a step over the
    * cards' own, as a phone's screen does; the bar above stays empty but for a
    * page's buttons (UsagePage.svelte). The list's head leads back to the
-   * threads, as the bots column's does (SideHead.svelte); the rail's gear
-   * opens Settings' home: no extra Back button.
+   * threads, as the bots column's does (SideHead.svelte).
    */
   $effect(() => {
     if (!desktopSettings(narrow.current)) return;
@@ -238,89 +113,21 @@
   });
 
   /**
-   * Single settings the search also finds, each with the card it sits on:
-   * people look for "network" or "accent", not for the card's title.
+   * What the search looks through: every page, card and control of the map
+   * (`lib/settings-index.ts`), and the rows only the live data names: a
+   * provider's, an experiment's, a group of shortcuts.
    */
-  let settingsWords = $derived<[SettingsTab, string | null, string][]>([
-    ['general', 'thread-list', strings.settings.groupWorkingThreads],
-    ['general', 'thread-list', strings.settings.groupOtherProjects],
-    ['general', 'notifications', strings.settings.notifications],
-    ['general', 'agent-replies', strings.settings.asyncQuestions],
-    ['general', 'agent-replies', strings.settings.shortAnswers],
-    ['general', 'agent-replies', strings.settings.toolSummaries],
-    ['general', 'agent-replies', strings.settings.titleModel],
-    ['general', 'agent-replies', strings.settings.goalTrackerModel],
-    ['general', 'conversations', strings.features.chatArtifacts.title],
-    ...(inShell ? [['general', 'conversations', strings.features.openChatLinks.title] as [SettingsTab, string, string]] : []),
-    ['general', 'conversations', strings.features.previewComments.title],
-    ['browser', 'browser-profiles', strings.browserProfiles.heading],
-    ...(store.owner ? [['machines', 'window-exclusions', strings.windows.settings.addLabel]] as [SettingsTab, string, string][] : []),
-    ['general', 'archived', strings.settings.archived.doneRetentionLabel],
-    // The switch lives in the shell's own card: a browser has no tray.
-    ...(inShell ? [['general', 'app', strings.settings.closeToTray] as [SettingsTab, string, string]] : []),
-    ...(inShell ? [['general', 'app', strings.settings.launchAtLogin] as [SettingsTab, string, string]] : []),
-    ['general', 'app', strings.onboarding.label],
-    ['appearance', 'theme', strings.settings.accent],
-    ['appearance', 'theme', strings.settings.material],
-    ['appearance', 'theme', strings.settings.language],
-    ['advanced', 'details', strings.features.edgeScrollbars.title],
-    ['advanced', 'details', strings.settings.terminalCursor],
-    ['appearance', 'reading', strings.settings.font],
-    ['appearance', 'reading', strings.settings.monoFont],
-    ...(inShell ? [['appearance', 'reading', strings.settings.zoom] as [SettingsTab, string, string]] : []),
-    ['general', 'workspace', strings.settings.startIn],
-    ['general', 'workspace', strings.settings.panelStart],
-    ['general', 'conversations', strings.settings.groupChanges],
-    ['general', 'conversations', strings.settings.expandDiffs],
-    ['general', 'app', strings.settings.terminalGpu],
-    // The buttons people most often look for by name, the ones the old developer switch hid.
-    ['appearance', 'buttons', strings.terminal.title],
-    ['appearance', 'buttons', strings.rightPanel.trace],
-    ['accounts', null, strings.settings.modelDefaults],
-    ['machines', 'updates', strings.appUpdate.heading],
-    ['machines', 'updates', strings.appUpdate.channel],
-    ['accounts', 'agent-updates', strings.harnessUpdates.auto],
-    ['accounts', 'agent-updates', strings.harnessUpdates.heading],
-    ['machines', 'updates', strings.serverUpdate.updates],
-    ['general', 'quiet', strings.settings.focusGuard],
-    ['general', 'quiet', strings.settings.muteAgents],
-    ['general', 'agents-alone', strings.agentsAlone.reach],
-    ['general', 'agents-alone', strings.agentsAlone.bots],
-    ['resources', 'limits', strings.settings.memoryProtection],
-    ['resources', 'tasks', strings.settings.reapOrphans],
-    ['resources', 'tasks', strings.settings.keepAwake],
-    ['advanced', 'phone', strings.settings.listenOnLan],
-    ['machines', 'machines', strings.group.addDevice],
-    ['machines', 'machines', strings.machines.home],
-    ['advanced', 'phone', strings.phone.publicUrl],
-    ['machines', 'machines', strings.machines.main],
-    ['advanced', 'execution', strings.settings.warmProcessMinutes],
-    ['limits', 'limit-resume', strings.quotas.autoResume],
-    ['diagnostics', 'diagnostics-status', strings.diagnostics.export],
-    ['diagnostics', 'diagnostics-status', strings.diagnostics.report],
-    ['diagnostics', 'diagnostics-log', strings.diagnostics.search]
+  let providerList = $derived(providerGroups(store.providers, store.shownAccounts()));
+  let extras = $derived<ExtraEntry[]>([
+    ...COMMAND_GROUPS.map((group) => ({ page: 'input' as const, section: `keys-${group.id}`, label: strings.keyboard.groups[group.id], card: 'keyboard' as const })),
+    ...(store.owner ? [...providerList.connected, ...providerList.rest, ...providerList.off].map((row) => ({ page: 'ai' as const, section: `provider-${row.id}`, label: row.name, card: 'providers' as const })) : []),
+    ...(experimentsShown() ? experimentsListed().map((id) => ({ page: 'version' as const, section: id as string, label: experimentCopy()[id]?.title ?? id, card: 'experiments' as const })) : [])
   ]);
-
-  /** Every page, every section the nav names and the settings above: what the nav's search looks through. */
-  let entries = $derived<SettingsEntry[]>(tabs.flatMap((entry) => {
-    const sections = children[entry.id] ?? [];
-    const words = settingsWords.filter(([tab, section]) => tab === entry.id && (section === null || sections.some((child) => child.id === section)));
-    // "agents" finds Providers and Limits: a family's name is searched, never shown in a result.
-    const home = familyOf(entry.id);
-    const family = home ? strings.settings.families[home] : '';
-    return [
-      { tab: entry.id, section: null, label: entry.label, trail: '', family },
-      ...sections.map((child) => ({ tab: entry.id, section: child.id, label: child.label, trail: entry.label, family })),
-      ...words.map(([, section, label]) => ({
-        tab: entry.id,
-        section,
-        label,
-        trail: [entry.label, sections.find((child) => child.id === section)?.label].filter(Boolean).join(' · '),
-        family
-      }))
-    ];
-  // A word that repeats its section's own name ("Updates" under Updates) is one result, not two: two of one key broke the list.
-  }).filter((entry, index, all) => all.findIndex((other) => other.tab === entry.tab && other.section === entry.section && other.label === entry.label) === index));
+  /** Rows only the app draws: a browser has no tray, no sign-in start and no zoom of its own. */
+  let shellOnly = $derived(new Set([strings.settings.closeToTray, strings.settings.launchAtLogin, strings.settings.zoom, strings.features.openChatLinks.title]));
+  /** A phone finds only what it can open: the map leaves the desktop cards (the shortcuts, the toolbar) out of its entries. */
+  let entries = $derived(settingsEntries(store.owner, extras.filter((extra) => settingsHas(extra.page, extra.section, store.owner, phone)), phone)
+    .filter((entry) => !(bare && entry.page === 'safeguards') && (inShell || !shellOnly.has(entry.label))));
 
   const motion = (): ScrollBehavior => (window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth');
 
@@ -331,30 +138,21 @@
    */
   let query = $state('');
   let field = $state<HTMLInputElement>();
+  let panel = $state<HTMLElement>();
   /** The result Enter opens: the arrows move it, a new query puts it back on top. */
   let active = $state(0);
-  /** "Clavier" finds "clavier", "Récents" finds "recents": case and accents never decide a match. */
-  const fold = (text: string): string => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
-  /** A phone finds only what it can open: a desktop page it lacks (Keyboard, Plugins) would land on Home. */
-  let reachable = $derived(desktopSettings(narrow.current) ? entries : entries.filter((entry) => phonePage(entry.tab, entry.section, store.owner) !== 'home'));
-  let results = $derived.by(() => {
-    const words = fold(query).split(/\s+/).filter(Boolean);
-    if (words.length === 0) return [];
-    return reachable.filter((entry) => {
-      const text = fold(`${entry.label} ${entry.trail} ${entry.family}`);
-      return words.every((word) => text.includes(word));
-    }).slice(0, 12);
-  });
+  let results = $derived(searchSettings(entries, query));
   let searching = $derived(query.trim() !== '');
 
+  /** A result opens its page on its card, and rings the card once so the eye lands on it. */
   function open(entry: SettingsEntry) {
     query = '';
-    store.showSettings(entry.tab, entry.section);
+    store.showSettings(entry.page, entry.section, { flash: entry.section !== null });
   }
 
-  function go(page: SettingsTab) {
+  function go(page: SettingsTab, section: string | null = null) {
     query = '';
-    store.showSettings(page);
+    store.showSettings(page, section);
   }
 
   // The gear opens Settings to be searched: the keyboard lands in the field. A
@@ -380,23 +178,24 @@
 
   // A caller can name a card before this lazy settings subtree is mounted.
   // Effects run after its DOM is present, so the normal navigation path can
-  // perform the first scroll without timing guesses in the caller. A page
-  // merged into another is that page's section: its route scrolls to it.
+  // perform the first scroll without timing guesses in the caller. On a page
+  // already open the card glides into view; on one just opened it jumps and
+  // holds, since the blocks above it are still filling in.
+  let shown: Page | null = null;
   $effect(() => {
-    const route = store.settingsTab, section = store.settingsSection;
-    const inside = merged.includes(route);
-    const id = tab === route ? section?.id : inside ? route : undefined;
-    if (!id) return;
+    // A phone's screen reveals its own card (`MobileSettings.svelte`).
+    if (phone) return;
+    const page = tab, id = place.section, section = store.settingsSection;
+    void store.settingsTab;
     void section?.request;
+    const stayed = shown === page;
+    shown = page;
     let release = () => {};
     let live = true;
     void tick().then(() => {
       if (!live) return;
-      // A merged section jumps and holds: the page above it is still filling in.
-      // A card of a merged page is found by its own id, the page by its section's.
-      const card = inside && section && document.getElementById(`settings-${section.id}`) ? section.id : id;
-      revealSettingsCard(card, section?.flash === true, tab === route ? motion() : 'instant');
-      if (tab !== route) release = holdSettingsCard(card);
+      if (!id) { if (stayed && panel) panel.scrollTop = 0; return; }
+      if (revealSettingsCard(id, section?.flash === true, stayed ? motion() : 'instant') && !stayed) release = holdSettingsCard(id);
     });
     return () => { live = false; release(); };
   });
@@ -407,7 +206,7 @@
 {#snippet machineBar()}
   {#if chosen}<SettingsMachineBar machine={chosen} machines={choices} onpick={(id) => { picked = id; }} />{/if}
 {/snippet}
-<!-- A scope phrase with its machine as the picker, "Agent settings apply on [studio v]": it says where they apply and switches it. -->
+<!-- A scope phrase with its machine as the picker, "This machine: [studio v]": it says where they apply and switches it. -->
 {#snippet scopePicker(template: string)}
   {@const scopeWords = template.split('{machine}')}
   {#if chosen}
@@ -418,7 +217,7 @@
     {#if scopeWords[1]?.trim()}<span class="ui-label">{scopeWords[1].trim()}</span>{/if}
   {/if}
 {/snippet}
-<!-- Settings' home is this search: it finds every page, card and single setting. The phone's home opens on the same field. -->
+<!-- The search heads Settings: it finds every page, card and single setting. The phone's home opens on the same field. -->
 {#snippet searchField(phone: boolean)}
   <label class="search" class:phone data-testid="settings-home">
     <Search size={14} strokeWidth={1.75} aria-hidden="true" />
@@ -430,8 +229,8 @@
     <p class="hint" data-testid="settings-search-empty">{strings.settings.searchEmpty}</p>
   {:else}
     <div class="card flush results" data-testid="settings-search-results">
-      {#each results as entry, index (`${entry.tab}:${entry.section}:${entry.label}`)}
-        <button type="button" class="ghost result" class:active={index === Math.min(active, results.length - 1)} data-testid="settings-search-result" onpointermove={() => (active = index)} onclick={() => open(entry)}>
+      {#each results as entry, index (`${entry.page}:${entry.section}:${entry.label}`)}
+        <button type="button" class="ghost result" class:active={index === Math.min(active, results.length - 1)} data-testid="settings-search-result" data-page={entry.page} data-section={entry.section} onpointermove={() => (active = index)} onclick={() => open(entry)}>
           <span class="label ui-label">{entry.label}</span>
           {#if entry.trail}<span class="trail ui-label">{entry.trail}</span>{/if}
           <ChevronRight size={15} />
@@ -445,63 +244,56 @@
   {#if chosen}<SettingsMachineBar machine={chosen} machines={choices} picker={false} onpick={(id) => { picked = id; }} />{/if}
 {/snippet}
 
-{#if !desktopSettings(narrow.current)}
+{#if phone}
   <MobileSettings {store} {target} bar={bar ? machineBar : undefined} pick={bar && choices.length > 1 ? scopePicker : undefined} notes={machineNotes} search={searchField} found={searching ? searchResults : undefined} {onopenthread} />
 {:else}
 <div class="settings" data-testid="settings">
   <nav aria-label={strings.settings.heading}>
-    <!-- The list's head leads back to the threads, like the bots column's; the rail's gear opens Settings' home. -->
+    <!-- The list's head leads back to the threads, like the bots column's. -->
     <button type="button" class="ghost title" data-testid="settings-back" title={strings.settings.back} onclick={() => { store.showChat(); store.sidebarCollapsed = false; }}>
       <ChevronLeft size={18} aria-hidden="true" /><span class="ui-label">{strings.settings.heading}</span>
     </button>
     {@render searchField(false)}
-    <!-- The pages under their family heads, as on a phone, every page a peer of its family. -->
-    {#each families as family (family.id)}
-      <div class="family" role="group" aria-label={family.label} data-testid="settings-family" data-family={family.id}>
-        <p class="family-head ui-label" aria-hidden="true">{family.label}</p>
-        {#each family.pages as page (page.id)}
-          {@const here = !searching && tab === page.id}
-          {@const Icon = SETTINGS_ICONS[page.id as keyof typeof SETTINGS_ICONS]}
-          <button
-            type="button"
-            class="ghost tab"
-            class:active={here}
-            data-testid="settings-tab-{page.id}"
-            aria-current={here ? 'page' : undefined}
-            onclick={() => go(page.id)}
-          >
-            {#if Icon}<Icon size={SETTINGS_ICON_SIZE} strokeWidth={SETTINGS_ICON_STROKE} aria-hidden="true" />{/if}
-            <span class="ui-label">{page.label}</span>
-          </button>
-        {/each}
-      </div>
+    <!-- Nine pages, one list, no head over them. -->
+    {#each pages as page (page.id)}
+      {@const here = !searching && tab === page.id}
+      {@const Icon = SETTINGS_ICONS[page.id]}
+      <button type="button" class="ghost tab" class:active={here} data-testid="settings-tab-{page.id}" aria-current={here ? 'page' : undefined} onclick={() => go(page.id)}>
+        <Icon size={SETTINGS_ICON_SIZE} strokeWidth={SETTINGS_ICON_STROKE} aria-hidden="true" />
+        <span class="ui-label">{page.label}</span>
+      </button>
+      {#if here && sections.length > 0}
+        <div class="subs" role="group" aria-label={page.label} data-testid="settings-sections">
+          {#each sections as section (section.id)}
+            <button type="button" class="ghost tab sub" data-testid="settings-section-{section.id}" onclick={() => go(page.id, section.id)}><span class="ui-label">{section.label}</span></button>
+          {/each}
+        </div>
+      {/if}
+    {/each}
+    <!-- The pages from before the map, as routes: a link or a test that names one still opens where its content went. Never drawn, never reached by the keyboard. -->
+    {#each aliasesOf(store.owner) as alias (alias)}
+      <button type="button" hidden style="display: none" tabindex="-1" aria-hidden="true" data-testid="settings-tab-{alias}" onclick={() => go(alias)}></button>
     {/each}
   </nav>
 
-  <!-- The panel is keyed on the tab, so switching tabs fades the new page in
+  <!-- The panel is keyed on the page, so switching pages fades the new one in
        rather than swapping it in one frame. -->
   {#key tab}
-    <section class="framed">
+    <section class="framed" bind:this={panel}>
       {#if searching}
         <div class="found">{@render searchResults()}</div>
       {:else}
         <header class="screen" data-testid="settings-crumb">
-          <h1 class="ui-label-box"><span class="ui-label">{title}</span>{#if info}<InfoTip topic={title} text={info} testid="settings-info" />{/if}</h1>
-          {#if scope}
-            <p class="scope" data-testid="settings-scope" data-scope={scopeKind}>
-              {#if scopeKind === 'device'}<MonitorSmartphone size={14} strokeWidth={1.75} aria-hidden="true" />{:else if !scopePicks}<Monitor size={14} strokeWidth={1.75} aria-hidden="true" />{/if}
-              {#if scopeKind === 'machine' && scopePicks}{@render scopePicker(strings.settings.scopeMachine)}{:else}<span class="ui-label">{scope}</span>{/if}
-            </p>
-          {/if}
+          <h1 class="ui-label-box"><span class="ui-label">{title}</span><InfoTip topic={title} text={info} testid="settings-info" /></h1>
+          <p class="scope" data-testid="settings-scope" data-scope={scopeKind}>
+            {#if scopeKind === 'device'}<MonitorSmartphone size={14} strokeWidth={1.75} aria-hidden="true" />{:else if scopeKind === 'group'}<Network size={14} strokeWidth={1.75} aria-hidden="true" />{:else if !scopePicks}<Monitor size={14} strokeWidth={1.75} aria-hidden="true" />{/if}
+            {#if scopeKind === 'machine' && scopePicks}{@render scopePicker(strings.settingsMap.scope.machine)}{:else}<span class="ui-label">{scope}</span>{/if}
+          </p>
         </header>
-        {#if bar && tab !== 'experiments'}{@render machineNotes()}{/if}
+        {#if bar}{@render machineNotes()}{/if}
         {#key target}
         <PolicyBanner store={target} />
-        {@render view(tab)}
-        {#each merged as section (section)}
-          <!-- A page merged into this one, as its last section: its route scrolls here. -->
-          <div class="merged" id="settings-{section}">{@render view(section)}</div>
-        {/each}
+        <SettingsPage {store} {target} page={tab} line={scopeKind} {onopenthread} />
         {/key}
       {/if}
     </section>
@@ -509,48 +301,10 @@
 </div>
 {/if}
 
-{#snippet view(page: SettingsTab)}
-      {#if page === 'brain'}
-        <BrainPage store={target} />
-      {:else if page === 'voice'}
-        <VoiceSettings store={target} />
-      {:else if page === 'general'}
-        <GeneralSettings store={target} here={store} />
-      {:else if page === 'machines'}
-        <MachinesPage {onopenthread} {store} />
-      {:else if page === 'advanced'}
-        <AdvancedSettings store={target} />
-      {:else if page === 'appearance'}
-        <AppearancePage {store} />
-      {:else if page === 'keyboard'}
-        <KeyboardPage store={target} />
-      {:else if page === 'accounts'}
-        <AccountsPage store={target} />
-      {:else if page === 'browser'}
-        <BrowserPage />
-      {:else if page === 'usage'}
-        <UsagePage {store} />
-      {:else if page === 'limits'}
-        <LimitsPage store={target} />
-      {:else if page === 'task-manager'}
-        <TaskManagerLoader {store} {onopenthread} />
-      {:else if page === 'plugins'}
-        <PluginsPage store={target} />
-      {:else if page === 'experiments'}
-        <!-- Shown alone it carries the bar between its two halves; under Advanced, the bar above serves both. -->
-        <ExperimentsPage {store} {target} bar={bar && page === tab ? machineBar : undefined} />
-      {:else if page === 'diagnostics'}
-        <DiagnosticsPage store={target} {onopenthread} />
-      {:else if page === 'resources'}
-        <ResourcesPage store={target} />
-      {/if}
-{/snippet}
-
 <style>
   /* The panel scrolls title, bar and page together, on one column. */
   .framed { scrollbar-gutter: stable both-edges; }
   .framed > :global(.machine-bar) { padding: 24px var(--settings-gutter) 0; }
-  .framed > :global(.page) { height: auto; overflow: visible; padding-top: 20px; }
   .framed > :global(.policy-banner) { margin: 24px var(--settings-gutter) 0; }
   @media (min-width: 721px) {
     .framed > :global(.machine-bar) { padding-inline: max(var(--settings-gutter), calc((100% - var(--settings-width)) / 2)); max-width: none; }
@@ -558,18 +312,17 @@
   }
   @media (max-width: 720px) {
     .framed > :global(.machine-bar) { padding: 16px 16px 0; }
-    .framed > :global(.page) { padding-top: 16px; }
     .framed > :global(.policy-banner) { margin: 16px 16px 0; }
   }
   .tab span { flex: 1; text-align: left; }
   .tab { gap: 12px; }
   .tab :global(svg) { flex: none; width: 18px; height: 18px; color: var(--color-subtle); transition: color var(--dur-2); }
   .tab.active :global(svg) { color: var(--color-accent); }
-  /* A family: its head in the meta size over its entries, and air between two families. */
-  .family { display: flex; flex-direction: column; gap: 2px; }
-  .family + .family { margin-top: var(--space-5); }
-  .search + .family { margin-top: var(--space-3); }
-  .family-head { margin: 0; padding: 0 12px var(--space-2); color: var(--color-subtle); font-size: var(--text-meta); font-weight: 500; }
+  /* The sections of a long page, under its entry while it is open: one step in, no icon, the quiet tier. */
+  .subs { display: flex; flex-direction: column; gap: 2px; margin: 0 0 var(--space-1); }
+  .tab.sub { min-height: var(--control); padding: var(--space-1) 12px var(--space-1) calc(12px + 18px + 12px); font-size: var(--text-sm); color: var(--color-subtle); }
+  .tab.sub::before { display: none; }
+  .tab.sub:hover:not(:disabled) { color: var(--color-foreground); }
 
   /* The search heads the nav, on the chrome like the rows under it. */
   .search {
@@ -598,7 +351,7 @@
   /* What the search finds, in the page's column. */
   .found { padding: var(--space-8) max(var(--settings-gutter), calc((100% - var(--settings-width)) / 2)); }
   .hint { margin: 0; color: var(--color-muted-foreground); font-size: var(--text-base); }
-  .results { display: grid; }
+  .results { display: grid; grid-template-columns: minmax(0, 1fr); }
   .result {
     display: flex;
     align-items: center;
@@ -616,24 +369,13 @@
   .result .label { flex: none; max-width: 60%; }
   .result .trail { flex: 1; min-width: 0; font-size: var(--text-sm); color: var(--color-muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .result :global(svg) { flex: none; color: var(--color-subtle); }
-
-  /* A page merged into another reads as its last section: its title a section title, the same column. */
-  .merged { scroll-margin-top: var(--space-6); }
-  /* The last one fills the panel, so its route can scroll it to the top. */
-  .merged:last-child { min-height: 100%; }
-  .merged > :global(.page) { height: auto; overflow: visible; padding-top: 0; padding-inline: max(var(--settings-gutter), calc((100% - var(--settings-width)) / 2)); }
-  .merged > :global(.page > header h1) { font-size: var(--text-md); }
-
-  /* The bar carries the page's title and its "i": the page's own heading steps aside, and
-     its header with it unless it holds an action. A lock or another mark in the title stays. */
-  .framed > :global(.page > header h1 > .ui-label),
-  .framed > :global(.page > header h1 > .ui-label + .info-tip),
-  .framed > :global(.page > header h1:not(:has(> :not(.ui-label, .ui-label + .info-tip)))),
-  .framed > :global(.limits-page > header h1),
-  .framed > :global(.machines-page .head h1) { display: none; }
-  .framed > :global(.page > header:not(:has(button:not(.ui-label + .info-tip), [role='status'], .policy-lock))),
-  .framed > :global(.machines-page .head:not(:has(button:not(.ui-label + .info-tip)))) { display: none; }
-  .framed > :global(.page > header) { justify-content: flex-end; }
+  /* A phone's row is too short for both: the place goes under the name, each cut at the card's edge. */
+  @media (max-width: 720px) {
+    .result { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px var(--space-3); }
+    .result .label { grid-column: 1; max-width: 100%; overflow-wrap: anywhere; }
+    .result .trail { grid-column: 1; }
+    .result :global(svg) { grid-column: 2; grid-row: 1 / span 2; }
+  }
 
   /* The pages' list is a column of its own width, on the chrome: every page's name fits it,
      so it does not follow the thread list's, which a long title can pull to a third of the
@@ -666,10 +408,6 @@
   /* The screen's one title, at the top of its card in the settings column, one step over a card's. */
   .screen { display: flex; flex-direction: column; align-items: flex-start; padding: var(--space-8) max(var(--settings-gutter), calc((100% - var(--settings-width)) / 2)) 0; }
   .screen h1 { min-width: 0; margin: 0; color: var(--color-foreground); font-size: var(--settings-title); font-weight: 650; line-height: 1.2; letter-spacing: -0.02em; }
-  /* The first card's title follows the screen's title at the normal step, with no empty band between. */
-  .screen ~ :global(.page) { padding-top: var(--space-4); }
-  .screen ~ :global(.page > .card:first-child:has(> h2:first-child)),
-  .screen ~ :global(.page > header:first-child + .card:has(> h2:first-child)) { margin-top: var(--card-head); }
   /* The machine's name in the scope line is the picker: a word with an edge and a chevron, so it reads as one at rest. */
   :global(.settings .scope .trigger.text) { margin: -2px 0; color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-edge); }
   :global(.settings .scope .pick-name) { overflow: hidden; max-width: 28ch; text-overflow: ellipsis; white-space: nowrap; }
@@ -702,7 +440,7 @@
     font-weight: 500;
   }
 
-  section {
+  .framed {
     flex: 1;
     min-width: 0;
     min-height: 0;
@@ -738,8 +476,6 @@
     .search { width: 180px; height: var(--control); margin: 0; }
     .tab { width: auto; min-height: var(--row); white-space: nowrap; padding: 6px 10px; font-size: var(--text-sm); }
     .tab::before { display: none; }
-    .family { flex-direction: row; }
-    .family + .family, .search + .family { margin-top: 0; }
-    .family-head { display: none; }
+    .subs { display: none; }
   }
 </style>

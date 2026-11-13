@@ -72,7 +72,7 @@ test('a thread starts one on another machine of its group once that machine allo
   const asked = await cli(['settings', 'request', 'groupThreads', 'true', '--machine', machine, '--why', 'Print from the PC', '--json']);
   expect(asked.err).toBe('');
   const card = JSON.parse(asked.out) as { setting: { machine?: { coreId: string }; previous: unknown } };
-  expect(card.setting).toMatchObject({ key: 'groupThreads', value: true, previous: false, page: 'machines', machine: { coreId: pcId } });
+  expect(card.setting).toMatchObject({ key: 'groupThreads', value: true, previous: false, page: 'devices', machine: { coreId: pcId } });
   expect(await owner.call('questions.list', { threadId })).toHaveLength(1);
   expect(desk.core.settings.get().groupThreads ?? false).toBe(false);
   await pcOwner.call('settings.set', { groupThreads: true });
@@ -406,7 +406,7 @@ test('a member whose Boite has no model list is reported too old before anything
   pc.core.threads.spawns.catalogFor = async () => { throw invalidParams('operation: expected directory, deliver, receipt, search, read, group.sync, group.push, relay.*, thread.start, setting.* or bot.*'); };
   const before = pc.core.journal.listThreads().length;
   const spawned = await cli(['thread', 'new', 'notes', 'Brief', '--machine', machine, '--model', 'echo/echo']);
-  expect(spawned.err).toContain('is too old to start threads on a model chosen from another machine; the owner updates it in Settings, Machines and updates');
+  expect(spawned.err).toContain('is too old to start threads on a model chosen from another machine; the owner updates it in Settings, Version, Updates');
   expect((await cli(['delegate', 'models', '--machine', machine])).err).toContain('is too old to list its models for another machine');
   expect(pc.core.journal.listThreads()).toHaveLength(before);
   // Without --model nothing is read first: the thread starts as before.

@@ -4,7 +4,7 @@ export const strings = {
     /** The machine whose plugins the page shows. */
     machine: 'Machine',
     /** A desktop app asked to show a thread or a mochi on a machine this window does not have. */
-    revealUnknownMachine: 'The thread or mochi an app asked to show is on a machine this window is not connected to. Add it in Settings, Machines and updates.',
+    revealUnknownMachine: 'The thread or mochi an app asked to show is on a machine this window is not connected to. Add it in Settings, Devices, Machines.',
     revealMachineOffline: 'The thread or mochi an app asked to show is on {machine}, which is not connected right now.',
     intro: 'Plugins add agent commands, skills, slash commands, desktop apps and gateways. The switch on a card turns one off without uninstalling it; the gear holds its settings and details. A program a plugin downloads is checked against the SHA-256 its manifest publishes.',
     installedHeading: 'Installed',

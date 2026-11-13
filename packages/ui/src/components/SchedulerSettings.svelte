@@ -88,6 +88,7 @@
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: 10px;
+    padding: var(--space-3) 0;
   }
 
   .grid label { display: grid; gap: 6px; }

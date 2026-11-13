@@ -261,7 +261,7 @@
   header { margin-bottom: 28px; }
   p { color: var(--color-muted-foreground); font-size: var(--text-sm); line-height: 1.5; }
   #settings-brain-folder { scroll-margin-top: 24px; }
-  .brain-connection { border-radius: var(--radius-lg); background: var(--color-surface); overflow: hidden; }
+  .brain-connection { border-radius: var(--radius-lg); background: var(--card-fill); overflow: hidden; }
   .connection-top { display: flex; align-items: center; gap: 14px; padding: 24px 24px 0; }
   .folder-mark { width: 44px; height: 44px; display: grid; place-items: center; border-radius: var(--radius-md); background: var(--color-surface-2); flex: none; }
   .folder-info { flex: 1; min-width: 0; }
@@ -288,7 +288,7 @@
   .interval-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: var(--control); }
   .interval-value { display: flex; align-items: center; gap: 8px; font-size: var(--text-sm); color: var(--color-muted-foreground); }
   .interval-value input { width: 78px; }
-  .folder-form { padding: 24px; margin-top: 16px; background: var(--color-surface); border-radius: var(--radius-lg); }
+  .folder-form { padding: var(--space-5); background: var(--card-fill); border-radius: var(--radius-lg); }
   .folder-form h2 { margin-top: 16px; }
   .folder-form p { margin: 6px 0 24px; }
   .folder-form label { font-size: var(--text-sm); }

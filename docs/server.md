@@ -19,9 +19,9 @@ image of your own. No sign-in is built in.
    docker compose exec boite-server boite-server pair --owner
    ```
 
-3. Paste the printed link in your desktop app, Settings, Machines and
-   updates, Add machine. It works once: keep it out of logs.
-4. Sign the agents in from Settings, Providers, or in the container, such as
+3. Paste the printed link in your desktop app, Settings, Devices, Add
+   machine. It works once: keep it out of logs.
+4. Sign the agents in from Settings, AI accounts, Providers, or in the container, such as
    `docker compose exec boite-server codex login --device-auth`.
 
 The server answers on `http://127.0.0.1:7337` of the Docker host. Put your
@@ -96,8 +96,8 @@ the install folder, here `~/.local/lib/boite/`:
 - `~/.local/lib/boite/boite-core tailscale on` serves it on its tailnet
   HTTPS address. Linux may first need `sudo tailscale set --operator=$USER`.
 
-Such a server, and the Android one below, update from Settings, Machines and
-updates with owner access: Update installs, Cancel stops a download, and a
+Such a server, and the Android one below, update from Settings, Version,
+Updates with owner access: Update installs, Cancel stops a download, and a
 failed update restores the previous version and its data. On the server:
 `boite server check`, `boite server update`, `boite server cancel`.
 

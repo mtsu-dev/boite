@@ -166,7 +166,8 @@ become the target's own: one of this machine the target lists under no such
 name or path, one the target also lists (the mochi keeps this machine's copy,
 project ids being each machine's, and can add the target's after the move),
 whether it reaches them from the target through the group or not until this
-machine turns on "Mochis from the other machines" in Machines and updates, and
+machine turns on "Mochis from the other machines" in its row's menu in Settings,
+Devices, Group, and
 one it had from the target that the target no longer lists. Confirmed, the
 client calls `agents.move` on the store of the machine that holds the mochi and,
 once it answers, opens the mochi on its new machine. A refusal shows its message

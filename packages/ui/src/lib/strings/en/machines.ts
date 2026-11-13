@@ -6,10 +6,10 @@ export const strings = {
     intro: 'Each machine runs its own agents on its own files.',
     details: 'Details', address: 'Address', updateFailed: 'Update failed',
     label: 'Machine name', icon: 'Machine icon', icons: { desktop: 'Desktop', laptop: 'Laptop', phone: 'Phone', tablet: 'Tablet', apple: 'Mac', server: 'Server', rack: 'Server rack', nas: 'NAS', database: 'Database', cloud: 'Cloud', cpu: 'Processor', router: 'Router', terminal: 'Terminal', bot: 'Bot', gamepad: 'Game console', tv: 'TV', house: 'Home' }, link: 'Link from another machine', add: 'Add machine', adding: 'Connecting', connect: 'Connect',
-    addHint: 'On a machine of your group, open Settings, Machines, Add a device, copy the link and paste it here.',
+    addHint: 'On a machine of your group, open Settings, Devices, Group, Add a device, copy the link and paste it here.',
     scan: 'Scan the code', pasteLink: 'Paste the link', scanTitle: 'Scan the code',
     linkPlainHttp: '{host} has no HTTPS address: its own page opens to finish adding this device.',
-    scanHint: 'On any of your machines, open Settings, Machines, Add a device and point the camera at its QR code.',
+    scanHint: 'On any of your machines, open Settings, Devices, Group, Add a device and point the camera at its QR code.',
     scanStarting: 'Starting the camera', scanClose: 'Close the camera',
     scanErrors: {
       insecure: 'The camera needs an HTTPS address. Open Boite through its HTTPS address, or paste the link.',
@@ -61,6 +61,6 @@ export const strings = {
     /** A project card's head and a Machines row while the machine is out of reach, beside Reconnect. */
     offlineLine: '{machine} is offline',
     connectingLine: 'Connecting to {machine}',
-    agentLinkAddressRequired: 'Update both machines to relay through the app, or set a reachable HTTPS address for {machine} in General settings.',
+    agentLinkAddressRequired: 'Update both machines to relay through the app, or set a reachable HTTPS address for {machine} in Settings, Devices, Phone app.',
   }
 } as const;

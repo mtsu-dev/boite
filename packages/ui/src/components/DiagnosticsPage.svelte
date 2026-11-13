@@ -430,7 +430,8 @@
   .files { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; font-size: var(--text-sm); }
   .files span { color: var(--color-muted-foreground); }
   code { font-family: var(--font-mono); font-size: var(--text-xs); }
-  .buttons { margin-top: 18px; }
+  /* The row's air stands under its line, so the buttons do not sit on it. */
+  .buttons { padding: var(--space-3) 0; }
   .buttons button { gap: 6px; }
   .note { margin-top: 10px; overflow-wrap: anywhere; }
 
@@ -457,15 +458,15 @@
   .level[data-level='debug'] { color: var(--color-subtle); }
 
   .log-card { padding-bottom: 0; }
-  .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 12px; }
+  .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: var(--space-2) 0 var(--space-3); }
   .thread-pick { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .search { flex: 1 1 160px; min-width: 0; height: var(--control-sm); font-size: var(--text-sm); }
-  .rows { max-height: min(60vh, 560px); overflow: auto; margin: 0 calc(-1 * var(--settings-padding)); border-top: 1px solid var(--color-border); overscroll-behavior: contain; }
-  .edge { padding: 10px var(--settings-padding); margin: 0; color: var(--color-muted-foreground); font-size: var(--text-sm); }
+  .rows { max-height: min(60vh, 560px); overflow: auto; margin: 0 calc(-1 * var(--space-4)); border-top: 1px solid var(--color-border); overscroll-behavior: contain; }
+  .edge { padding: 10px var(--space-4); margin: 0; color: var(--color-muted-foreground); font-size: var(--text-sm); }
   .older { width: 100%; height: auto; min-height: var(--row); border-radius: 0; font-size: var(--text-sm); }
   .record + .record { border-top: 1px solid var(--color-border); }
   .record.expanded { background: var(--color-hover); }
-  .line { display: grid; grid-template-columns: auto auto auto minmax(0, 1fr); grid-template-areas: 'time level origin what' 'message message message message'; column-gap: 10px; row-gap: 2px; width: 100%; height: auto; padding: 6px var(--settings-padding); text-align: left; border-radius: 0; color: var(--color-foreground); white-space: normal; font-weight: normal; }
+  .line { display: grid; grid-template-columns: auto auto auto minmax(0, 1fr); grid-template-areas: 'time level origin what' 'message message message message'; column-gap: 10px; row-gap: 2px; width: 100%; height: auto; padding: 6px var(--space-4); text-align: left; border-radius: 0; color: var(--color-foreground); white-space: normal; font-weight: normal; }
   .time { grid-area: time; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-muted-foreground); font-variant-numeric: tabular-nums; }
   .line .level { grid-area: level; min-width: 0; }
   .origin { grid-area: origin; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-subtle); }
@@ -475,7 +476,7 @@
   .duration { flex: none; font-size: var(--text-xs); }
   .message { grid-area: message; font-size: var(--text-sm); line-height: 1.45; overflow-wrap: anywhere; }
   .record:not(.expanded) .message { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .detail { display: grid; gap: 6px; margin: 0; padding: 2px var(--settings-padding) 12px; }
+  .detail { display: grid; gap: 6px; margin: 0; padding: 2px var(--space-4) 12px; }
   .detail > div { display: grid; grid-template-columns: 110px 1fr; gap: 10px; align-items: baseline; }
   .ids { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: var(--text-sm); }
   .data { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; font-size: var(--text-sm); overflow-wrap: anywhere; }

@@ -37,7 +37,7 @@ rendering errors, failed calls, reconnections). Paths, names and addresses
 are placeholders such as \`<project:3fa2c1>\`, \`~\`, \`<user>\`, \`<host:9e01aa>\`.
 
 If the command answers that agent access is off, tell the user Settings >
-Diagnostics turns it on, and stop.
+Troubleshooting turns it on, and stop.
 
 ## 2. Explain before acting
 
@@ -62,7 +62,7 @@ github.com/mtsu-dev/boite; let them change anything. An agent never publishes
 it: the issue goes out under the user's own GitHub account, by their hand.
 The draft prints a link that opens GitHub with the issue filled in; give it
 to the user (\`boite browse <link>\` opens it in the panel) so they submit it
-there, signed in to their GitHub account, or from Settings > Diagnostics,
+there, signed in to their GitHub account, or from Settings > Troubleshooting,
 which creates it with \`gh\` when it is signed in. Give the path of the full
 anonymized export too, which they can drag into the issue.
 

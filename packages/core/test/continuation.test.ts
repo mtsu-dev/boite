@@ -187,7 +187,6 @@ test('a history that leaves messages out names the newest of them with the comma
   const { prompt } = continuationInput(journal, 'thr_cut', 'next', input, provider);
   const note = /\[(\d+) older messages omitted between the opening and recent exchanges\. (.*)\]/.exec(prompt)!;
   // Measured on 2026-11-13: this prompt was 73,190 characters with the bare count and one more message in it.
-  console.log(`fresh session over 80 messages: ${prompt.length} characters, note of ${note[0].length}`);
   expect(note[0].length).toBeLessThanOrEqual(OMITTED_NOTE_LIMIT);
   const history = prompt.slice(prompt.indexOf('<conversation-history>'), prompt.indexOf('</conversation-history>'));
   expect(history.length).toBeLessThanOrEqual(12_000 + 64_000 + 80);

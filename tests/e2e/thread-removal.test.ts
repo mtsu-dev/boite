@@ -11,8 +11,8 @@ async function openPhoneArchive(page: BrowserPage): Promise<void> {
   await mobileAction(page, 'mobile-settings');
   await page.waitFor(`document.querySelector('[data-testid=mobile-settings-home] [data-testid=settings-tab-general]')`);
   await page.click('[data-testid=mobile-settings-home] [data-testid=settings-tab-general]');
-  await page.waitFor(`document.querySelector('[data-testid=mobile-settings-archived]')`);
-  await page.click('[data-testid=mobile-settings-archived]');
+  await page.waitFor(`document.querySelector('[data-testid=archived-show]')`);
+  await page.click('[data-testid=archived-show]');
 }
 
 /** Delete waits in an archived row's menu, beside the row's one action (Restore). */

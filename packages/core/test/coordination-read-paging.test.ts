@@ -3,6 +3,7 @@ import { fitTranscript, TRANSCRIPT_READ_BUDGET, type AgentAddress, type AgentTra
 import { echoThread, startTestCore, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
 import { resultPageOf } from '../src/delegation/results.ts';
+import { remoteTranscript } from '../src/coordination-lookup.ts';
 
 const cores: TestCore[] = [];
 afterEach(async () => { for (const core of cores.splice(0)) await core.stop(); });
@@ -168,3 +169,16 @@ test('a linked core pages an entry, and an older core that answers with a page i
   // It answered: the refusal names the mismatch, not a machine that did not answer.
   expect(older).not.toThrow('did not answer');
 }, 25000);
+
+test('an older core that sends every tool name of an entry is cut to the newest, after a count of the rest', () => {
+  const contact = { coreId: 'core_far', threadId: 'thr_far' } as AgentTranscript['contact'];
+  const tools = Array.from({ length: 80 }, (_, index) => `tool-${index}`);
+  const read = remoteTranscript(contact, { entries: [{ id: 'msg_1', role: 'assistant', at: 1, text: 'done', tools }], more: false });
+  expect(read.entries[0]!.tools).toEqual(['+30 earlier', ...tools.slice(-50)]);
+  // What a current core sends, the count first, passes untouched.
+  const sent = ['+30 earlier', ...tools.slice(-50)];
+  expect(remoteTranscript(contact, { entries: [{ id: 'msg_1', role: 'assistant', at: 1, text: 'done', tools: sent }], more: false }).entries[0]!.tools).toEqual(sent);
+  // One name past the limit, with no count in front, is an older core's list too.
+  const over = tools.slice(0, 51);
+  expect(remoteTranscript(contact, { entries: [{ id: 'msg_1', role: 'assistant', at: 1, text: 'done', tools: over }], more: false }).entries[0]!.tools).toEqual(['+1 earlier', ...over.slice(1)]);
+});

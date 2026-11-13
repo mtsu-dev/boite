@@ -148,8 +148,8 @@ The Linux and macOS shells have no such call.
 
 A browser tab opens in a profile and keeps it. Each profile has its own cookies,
 storage and logins, kept across restarts. **Default** is the profile every tab
-used before there were others, so earlier logins stay there. Settings > General >
-Browser profiles adds, renames and deletes the others, and chooses the one new
+used before there were others, so earlier logins stay there. Settings > Safeguards >
+Built-in browser adds, renames and deletes the others, and chooses the one new
 tabs open in. The profile button in the address bar names the tab's profile
 (only its icon on a narrow bar). Its menu, like the panel's **+** menu, opens a
 new tab in another profile, or a private tab. A private tab is chosen per tab,
@@ -389,7 +389,7 @@ surface and B the Browser, the conversation's.
 
 ## Preview comments
 
-Settings, General, **Preview comments** is on by default. Open a Browser tab in the integrated panel and choose Reference an element.
+Settings, Conversations, In the conversation, **Preview comments** is on by default. Open a Browser tab in the integrated panel and choose Reference an element.
 Clicking an element inserts an `@element` mention at the cursor in the
 existing composer. Write around it and send normally. Draft text,
 attachments and queued messages stay intact. On a phone-sized window, selection
@@ -424,7 +424,7 @@ validation. No live provider login is required.
 
 ## Experimental PR review
 
-Settings, Experiments, **PR review** adds **Read in Boite** to each PR linked
+Settings, Version, Experiments, **PR review** adds **Read in Boite** to each PR linked
 to the conversation. The review shows the description, changed files and their
 diffs, discussion and inline comments, reviews, and GitHub check results. The
 same dialog works at phone width; diffs scroll horizontally and long filenames

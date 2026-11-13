@@ -462,9 +462,11 @@
   .problems {
     border-color: var(--color-danger);
   }
+  /* The card's own rows: the sentence and the list keep a row's air from the card's edges. */
+  .problems .intro { padding: var(--space-3) 0; }
   .problems ul {
-    margin: 8px 0 0;
-    padding-left: 18px;
+    margin: 0;
+    padding: var(--space-3) 0 var(--space-2) 18px;
   }
   .problems li {
     font-size: var(--text-sm);

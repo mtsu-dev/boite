@@ -6,7 +6,7 @@ and the known problems of each system.
 
 ## Read the log
 
-Open Settings, Diagnostics. Each machine keeps its own log. The page works
+Open Settings, Troubleshooting. Each machine keeps its own log. The page works
 on the desktop and on a phone connected as the owner.
 
 - Status: the Boite version and channel, the system, how long the core has
@@ -27,7 +27,7 @@ report ([updates](updates.md)).
 
 ## Export a report
 
-1. In Settings, Diagnostics, press Export anonymized logs.
+1. In Settings, Troubleshooting, Status, press Export anonymized logs.
 2. The file holds the last 24 hours: environment, grouped problems, threads
    and the timeline.
 
@@ -42,7 +42,7 @@ across exports of one machine.
 
 ## Report a problem
 
-1. In Settings, Diagnostics, press Report a problem.
+1. In Settings, Troubleshooting, Problems, press Report a problem.
 2. Fill the Title and What happened: what you did, what you expected and what
    you saw.
 3. Leave Include anonymized logs on, or turn it off.

@@ -732,11 +732,10 @@ test('the settings bar picks the machine a page changes without moving the windo
   expect(query('[data-testid=settings-machine]').textContent).toContain(`${store.core!.hostname} (you)`);
   // The picker is the machine's name in the title's scope line.
   expect(query('[data-testid=settings-scope]').contains(query('[data-testid=settings-machine]'))).toBe(true);
-  expect(query('[data-testid=settings-scope]').textContent).toContain(strings.settings.scopeMachine.split('{machine}')[0]!.trim());
+  expect(query('[data-testid=settings-scope]').textContent).toContain(strings.settingsMap.scope.machine.split('{machine}')[0]!.trim());
   expect(document.querySelectorAll('[data-testid=settings-machine]')).toHaveLength(1);
-  // Every other page opens on the window's machine. General is mostly this device's cards:
-  // the line under its title says so once, and its machine card's phrase holds the picker.
-  remote.store.showSettings('general', 'quiet');
+  // Every other page opens on the window's machine. Safeguards is the machine's: the line under its title holds the picker.
+  remote.store.showSettings('safeguards', 'quiet');
   await waitFor(() => query('[data-testid=settings-machine]').textContent?.includes(remote.label) === true && document.querySelector('[data-testid=setting-mute-agents]') !== null);
   await remote.store.client!.call('settings.set', { muteAgents: true });
   await store.client!.call('settings.set', { muteAgents: true });
@@ -748,40 +747,51 @@ test('the settings bar picks the machine a page changes without moving the windo
   await waitFor(() => store.settings?.muteAgents === false);
   expect(remote.store.settings?.muteAgents).toBe(true);
   // The window never moved: same machine, same conversation, still on the page it showed.
-  expect([workspace.active, remote.store.openThread, remote.store.settingsTab]).toEqual([remote.store, thread, 'general']);
+  expect([workspace.active, remote.store.openThread, remote.store.settingsTab]).toEqual([remote.store, thread, 'safeguards']);
+  expect(query('[data-testid=settings-scope]').dataset.scope).toBe('machine');
+  expect(query('[data-testid=settings-scope]').contains(query('[data-testid=settings-machine]'))).toBe(true);
+  expect(document.querySelectorAll('[data-testid=settings-machine]')).toHaveLength(1);
+  // Conversations is mostly this device's cards: the line says so once, and its first machine card's phrase holds the picker.
+  remote.store.showSettings('conversations');
+  await waitFor(() => document.querySelector('#settings-agent-replies [data-testid=card-scope]') !== null);
   expect(query('[data-testid=settings-scope]').dataset.scope).toBe('device');
   expect(query('#settings-agent-replies [data-testid=card-scope]').contains(query('[data-testid=settings-machine]'))).toBe(true);
   expect(document.querySelectorAll('[data-testid=settings-machine]')).toHaveLength(1);
-  // A page of this device says so once under its title, with no picker; the group's Machines page shows its title alone.
+  // A page of this device says so once under its title, with no picker; Devices says it holds for every machine.
   remote.store.showSettings('appearance');
   await waitFor(() => remote.store.settingsTab === 'appearance' && document.querySelector('[data-testid=settings-machine]') === null);
-  expect(query('[data-testid=settings-scope]').textContent?.trim()).toBe(strings.settings.scopeDevice);
-  remote.store.showSettings('machines');
-  await waitFor(() => remote.store.settingsTab === 'machines' && document.querySelector('[data-testid=settings-scope]') === null);
+  expect(query('[data-testid=settings-scope]').textContent?.trim()).toBe(strings.settingsMap.scope.device);
+  remote.store.showSettings('devices');
+  await waitFor(() => document.querySelector('[data-testid=settings-scope][data-scope=group]') !== null);
+  expect(query('[data-testid=settings-scope]').textContent?.trim()).toBe(strings.settingsMap.scope.group);
 });
 
 test('a page says where it applies once: one line for most of its cards, a tag only on a card that differs', async () => {
   await mountOnFake('/?fake=1');
   await waitFor(() => workspace.machines.length === 1 && store.connection === 'ready');
   const machine = workspace.machines[0]!;
-  // General is mostly this device's switches and three machine cards: the line says "this device" once, each machine card its own.
-  store.showSettings('general');
+  // Conversations is this device's cards first, then three of the machine: the line says "This device" once, each machine card its own.
+  store.showSettings('conversations');
   await waitFor(() => document.querySelector('#settings-agent-replies [data-testid=card-scope]') !== null);
-  expect(query('[data-testid=settings-scope]').textContent?.trim()).toBe(strings.settings.scopeDevice);
+  expect(query('[data-testid=settings-scope]').textContent?.trim()).toBe(strings.settingsMap.scope.device);
   expect([...document.querySelectorAll<HTMLElement>('[data-testid=card-scope]')].map((tag) => tag.dataset.kind)).toEqual(['machine', 'machine', 'machine']);
-  expect(query('#settings-agents-alone [data-testid=card-scope]').dataset.kind).toBe('machine');
   expect(document.body.textContent?.split(strings.settings.cardDevice)).toHaveLength(1);
   expect(query('#settings-agent-replies [data-testid=card-scope]').textContent?.trim()).toBe(fill(strings.settings.cardMachine, { machine: machineName(machine) }));
-  // Browser holds this device's settings alone: its card carries no tag, the line under the title says it once.
-  store.showSettings('browser');
-  await waitFor(() => document.querySelector('[data-testid=browser-profiles-card]') !== null && document.querySelector('[data-testid=settings-scope]') !== null);
+  // Appearance holds this device's settings alone: no card carries a tag, the line under the title says it once.
+  store.showSettings('appearance');
+  await waitFor(() => document.querySelector('[data-testid=settings-page][data-page=appearance]') !== null);
   expect(query('[data-testid=settings-scope]').dataset.scope).toBe('device');
-  expect(query('[data-testid=settings-scope]').textContent?.trim()).toBe(strings.settings.scopeDevice);
+  expect(query('[data-testid=settings-scope]').textContent?.trim()).toBe(strings.settingsMap.scope.device);
   expect(document.querySelectorAll('[data-testid=card-scope]')).toHaveLength(0);
-  // A page of the machine's agent settings: "Agent settings apply on studio", the name plain text with nothing to pick.
+  // Safeguards is the machine's, and its browser card alone is this device's: one tag, on that card.
+  store.showSettings('browser');
+  await waitFor(() => document.querySelector('[data-testid=browser-profiles-card]') !== null);
+  expect(query('[data-testid=settings-scope]').dataset.scope).toBe('machine');
+  expect([...document.querySelectorAll<HTMLElement>('[data-testid=card-scope]')].map((tag) => tag.dataset.kind)).toEqual(['device']);
+  // A page of one machine: "This machine: studio", the name plain text with nothing to pick.
   store.showSettings('voice');
-  await waitFor(() => document.querySelector('[data-testid=settings-scope][data-scope=machine]') !== null);
-  expect(query('[data-testid=settings-scope]').textContent?.trim()).toBe(fill(strings.settings.scopeMachine, { machine: machineName(machine) }));
+  await waitFor(() => document.querySelector('[data-testid=settings-page][data-page=input]') !== null);
+  expect(query('[data-testid=settings-scope]').textContent?.trim()).toBe(fill(strings.settingsMap.scope.machine, { machine: machineName(machine) }));
   expect(document.querySelector('[data-testid=settings-scope] [data-testid=settings-machine]')).toBeNull();
   expect(document.querySelectorAll('[data-testid=card-scope]')).toHaveLength(0);
 });

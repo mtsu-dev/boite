@@ -314,7 +314,7 @@ export function activityMethods(ctx: FakeContext) {
     'threads.goal.track': async (params) => {
       const thread = ctx.thread(params.threadId);
       if (thread.archived) throw refusal('goal track needs an existing, unarchived conversation');
-      if (!ctx.experimentsInForce().includes('auto-goal')) throw refusal('goal track needs the Automatic goals experiment, which is off in the desktop app (Settings, Experiments)');
+      if (!ctx.experimentsInForce().includes('auto-goal')) throw refusal('goal track needs the Automatic goals experiment, which is off in the desktop app (Settings, Version, Experiments)');
       if (busy(thread)) throw refusal('this conversation already has a goal or a loop; it must finish or be removed first');
       const last = lastPrompt(thread);
       if (!last) throw refusal('this conversation has no prompt of the user to track');

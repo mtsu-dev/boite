@@ -54,7 +54,7 @@ export const fr: Translation = {
     youInText: 'vous',
     paused: "En pause : les mochis recevront les messages à la reprise de l'équipe.",
     archived: "Cette équipe est archivée et n'accepte plus de messages.",
-    unavailable: "Pour écrire ici, activez l'expérience Équipes dans l'application de bureau, sous Paramètres, Expériences.",
+    unavailable: "Pour écrire ici, activez l'expérience Équipes dans l'application de bureau, sous Réglages, Version, Expérimentations.",
     empty: "Aucun message. Écrivez à toute l'équipe, ou mentionnez un mochi avec {mention}.",
     earlier: 'Afficher les messages précédents',
     newer: 'Afficher les messages suivants',

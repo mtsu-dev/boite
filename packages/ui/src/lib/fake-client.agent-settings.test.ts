@@ -214,7 +214,7 @@ test('fake mochis on a provider turned off name the fix in their status and hear
   await client.call('providers.setEnabled', { providerId: 'echo', enabled: false });
   off();
   expect(changes).toBeGreaterThan(0);
-  expect(await status()).toMatchObject({ state: 'error', problem: expect.stringMatching(/ is turned off on this machine; turn it on in Settings > Providers, or choose another model for Mira in its settings\.$/) });
+  expect(await status()).toMatchObject({ state: 'error', problem: expect.stringMatching(/ is turned off on this machine; turn it on in Settings > AI accounts > Providers, or choose another model for Mira in its settings\.$/) });
   await client.call('providers.setEnabled', { providerId: 'echo', enabled: true });
   expect((await status()).problem).toBeNull();
   // The thread's provider is the one its wakes start on: moved in the composer to one turned off, it says so.

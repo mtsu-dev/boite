@@ -42,7 +42,7 @@ Turn on Incognito at the right of the draft's header before the first send.
 The conversation and its folder are erased as soon as you leave it: open
 another thread, start a new draft, archive it or delete it. It never shows in
 the sidebar, the command palette or the phone's lists, and its usage leaves
-the Usage page with it. You cannot fork it or move it to a project. Files the
+Usage, in Settings, AI accounts, with it. You cannot fork it or move it to a project. Files the
 agent's own CLI writes elsewhere, such as its session transcripts in your home
 folder, stay.
 
@@ -55,7 +55,7 @@ branch.
 
 - Worktree by default, in a project's Manage project menu, turns the switch on
   for every new thread there.
-- Settings, General, Worktrees sets where new worktrees go: In each project
+- Settings, Conversations, Worktrees sets where new worktrees go: In each project
   (under `.boite/worktrees`) or One shared folder.
 - A worktree stays on disk after its thread is archived. Show worktrees lists
   them; Remove deletes the folder and its branch, and Remove the clean ones
@@ -80,7 +80,7 @@ replaced.
 - Rename a thread with Rename in its thread menu, or in the header.
 - Regenerate title, in the thread menu or the title menu, asks again. The item
   reads Writing a title while it works.
-- Settings, General, Conversations, Title model picks the model. Automatic
+- Settings, Conversations, Agent replies, Title model picks the model. Automatic
   uses the thread's own agent on its small model.
 - Muse Code, OpenCode, Antigravity, Grok and pi keep the prompt's title under
   Automatic.
@@ -96,11 +96,12 @@ phone, they sit above the message box or the bottom tabs.
 - Mark done moves a thread to the Done group. Archive puts it aside to pick up
   later; the toast offers Undo, or press Ctrl+Z.
 - The agent of an archived thread stops. Restore it from View archived threads
-  in the project menu, or Settings, General, Archived threads. Its agent starts
+  in the project menu, or Settings, Conversations, Archived threads. Its agent starts
   again with your first message.
 - Delete done threads after (days) defaults to 3. Manual archives are kept.
 - A deleted conversation can be restored from Show deleted conversations in
-  Settings, for the number of days set in Days before permanent deletion.
+  Settings, Conversations, Archived threads, for the number of days set in
+  Keep deleted conversations for.
 - Archive project takes a project out of the list. Its threads keep running,
   and a new thread brings it back. Remove from Boite removes the project and
   its threads; the files on disk stay.
@@ -117,7 +118,8 @@ phone, they sit above the message box or the bottom tabs.
 The list holds the Claude Code and the Codex sessions of that folder, for
 every account of either agent. When it holds both kinds, each row names its
 agent. Other agents' sessions cannot be imported. Subagent conversations are
-left out, and the Usage page does not count the imported turns.
+left out, and Usage, in Settings, AI accounts, does not count the imported
+turns.
 
 ## Project icons
 

@@ -63,7 +63,7 @@ real('a mochi project worker appears live in the project and opens as a conversa
   await page.settleAnimations();
   await page.screenshot(join(ARTIFACTS, 'archive-desktop.png'));
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-  await page.click('[data-testid="mobile-settings-archived"]');
+  await page.click('[data-testid="archived-show"]');
   await page.waitFor(`document.querySelector(${JSON.stringify(archivedBot)}) && document.querySelector(${JSON.stringify(archivedWorker)})`);
   await page.settleAnimations();
   await page.screenshot(join(ARTIFACTS, 'archive-phone.png'));

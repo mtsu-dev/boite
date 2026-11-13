@@ -66,8 +66,8 @@ test('limits identify the owning machine in the desktop glance and desktop and p
     // machine its settings apply on; the page's own heading steps aside.
     const heading = width === 1280 ? '[data-testid="settings-scope"]' : '[data-testid="mobile-settings-header"] h1';
     if (width === 1280) {
-      expect((await page.text('[data-testid="settings-crumb"] h1')).trim()).toBe('Limits');
-      expect((await page.text(heading)).trim()).toBe('Agent settings apply on Builder');
+      expect((await page.text('[data-testid="settings-crumb"] h1')).trim()).toBe('AI accounts');
+      expect((await page.text(heading)).trim()).toBe('This machine: Builder');
     } else expect((await page.text(heading)).trim()).toBe('Account limits for Builder');
     expect(await page.evaluate(`document.querySelector('${heading}')?.getClientRects().length > 0`)).toBe(true);
     // A renamed machine remains identifiable even on a narrow phone.
@@ -455,7 +455,7 @@ test('the same popup shares priorities across the app, tray and phone through th
       if (browser === tray) expect(heading).toBe('Account limits');
       else expect(heading).toMatch(/^Account limits for /);
       expect(await browser.evaluate(`document.querySelectorAll('[data-testid="quota-machine-scope"]').length`)).toBe(browser === tray ? 0 : 1);
-      expect(await browser.evaluate(`document.querySelector('${panel} footer button').textContent`)).toBe('Limits page');
+      expect(await browser.evaluate(`document.querySelector('${panel} footer button').textContent`)).toBe('Limits in Settings');
       expect(await browser.evaluate(`document.querySelector('[data-account-id="${accounts[1]!.id}"] .paid').textContent`)).toContain('Using credits');
       expect(await browser.evaluate(`getComputedStyle(document.querySelector('[data-account-id="${accounts[0]!.id}"] .track')).height`)).toBe('7px');
       for (const [index, reset] of resets.entries()) {

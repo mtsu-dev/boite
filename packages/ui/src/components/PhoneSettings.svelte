@@ -60,6 +60,8 @@
   // The phone app's page is no machine's: the machine it shows takes its notifications and passes on the others'.
   let ownOrigin = $derived(appPage() || !store.endpointUrl || servesThisPage(store.endpointUrl));
   let paired = $derived(store.sessions.some(session => session.current));
+  // The card reads its own pairing: whichever page holds it, an already paired phone must not be told to pair first.
+  $effect(() => { if (store.connection === 'ready') untrack(() => void store.loadSessions()); });
 
   $effect(() => {
     if (inShell || !paired || !ownOrigin || store.connection !== 'ready') return;
@@ -209,8 +211,8 @@
 <style>
   /* One block per subject, separated like the rows of the other cards: the
      field or the sentence first, its buttons under it. */
-  .block { display: flex; flex-direction: column; gap: 10px; }
-  .block + .block { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--color-border); }
+  .block { display: flex; flex-direction: column; gap: 10px; padding: var(--space-3) 0; }
+  .block + .block { border-top: 1px solid var(--color-border); }
   .fields { display: flex; flex-direction: column; gap: 10px; padding-top: 10px; }
   /* A field's label sits over its input. The LAN switch's row is the shared
      `.switch-row` (app.css): a column there turned the switch's 40 px flex

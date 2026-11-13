@@ -83,7 +83,7 @@ The existing Stop action cancels the maintenance turn. Paired devices may call i
 | ACP | `/compact` only when the session advertised that command |
 | echo | `[compact]`, a deterministic test operation; the divider it draws says `manual`, while `[compact]` inside a prompt draws an `auto` one |
 
-Claude summary instructions are optional in Settings, Advanced, Compaction.
+Claude summary instructions are optional in Settings, Agents, Compaction defaults by agent type.
 The common value applies to conversations, subagents and mochis; a customized
 category can keep its own instructions or leave them empty for the native
 summary prompt. Existing customized categories without this field also keep
@@ -116,9 +116,8 @@ again when invoked.
 ## Automatic compaction
 
 `Settings.autoCompact` is `{ tokens, moments }` or null, set by the owner under
-Settings, Advanced. A phone connected as owner has an Automatic compaction row
-in its machine settings and can also open the same card through a settings
-link ([phone settings](phone.md#settings-on-a-phone)). Null is
+Settings, Agents, Compaction defaults by agent type. A phone connected as owner
+lists the same page ([phone settings](phone.md#settings-on-a-phone)). Null is
 the default: each agent keeps its own compaction behaviour.
 
 `Settings.compactionByType` optionally overrides the complete policy for
@@ -241,8 +240,8 @@ a conversation in Done: its agent is asked instead and answers after its turn.
 ### Background compaction
 
 `Settings.backgroundCompaction` is an experiment, off by default, that the
-owner turns on under Settings, Experiments, for the machine picked above the
-card, the one that runs the thread (an agent asks with
+owner turns on under Settings, Version, Experiments, for the machine picked
+under the page's title, the one that runs the thread (an agent asks with
 `boite settings request backgroundCompaction true --why "..."`). It works
 with the token limit above and does nothing without one. Like `deviceStream`,
 it stays on its machine: the group's settings do not carry it.

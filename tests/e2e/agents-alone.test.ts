@@ -64,7 +64,7 @@ test('an agent asking for a mochi draws a card with its name, role, projects, mo
 test('a new install shows the reach on This project and mochi creation off; each step explains itself, desktop and phone', async () => {
   await page.send('Emulation.setDeviceMetricsOverride', DESKTOP);
   await page.click(id('nav-settings'));
-  await page.click(id('settings-tab-general'));
+  await page.click(id('settings-tab-agents'));
   await page.waitFor(`document.querySelector('${card}')`);
   expect(await page.text(`${card} h2`)).toContain('What agents may do alone');
   expect(await page.evaluate(`document.querySelector('${id('coordination-reach-project')}').getAttribute('aria-pressed')`)).toBe('true');
@@ -86,10 +86,9 @@ test('a new install shows the reach on This project and mochi creation off; each
 
   await page.send('Emulation.setDeviceMetricsOverride', PHONE);
   await mobileAction(page, 'mobile-settings');
-  await page.waitFor(`document.querySelector('${id('settings-tab-general')}')`);
-  await page.click(id('settings-tab-general'));
-  await page.waitFor(`document.querySelector('${id('mobile-settings-conversations')}')`);
-  await page.click(id('mobile-settings-conversations'));
+  await page.waitFor(`document.querySelector('${id('mobile-settings-pages')} ${id('settings-tab-agents')}')`);
+  await page.click(`${id('mobile-settings-pages')} ${id('settings-tab-agents')}`);
+  await page.waitFor(`document.querySelector('${id('settings-page')}')?.dataset.page === 'agents'`);
   await page.waitFor(`document.querySelector('${card}')`);
   await show();
   // The three steps stay inside the card's own padding.

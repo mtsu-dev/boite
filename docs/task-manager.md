@@ -1,12 +1,12 @@
 # Task manager
 
 The task manager shows what your agents cost each machine: CPU, memory, GPU,
-disk and network, per agent and per machine. Next to it, Settings, Protection
+disk and network, per agent and per machine. Next to it, Settings, Safeguards
 keeps agents from filling the memory or stealing your screen and speakers.
 
 ## Open the task manager
 
-1. Open Settings, Task manager. A card shows each connected machine: CPU and
+1. Open Settings, Troubleshooting, Task manager. A card shows each connected machine: CPU and
    GPU over the last minute, memory with the share Boite's agents hold, and
    the free space of each fixed disk, in red when less than 10% is free.
 2. Pick a machine's card to list its live processes, grouped by agent.
@@ -47,9 +47,9 @@ Windows, or Limited process tracking elsewhere.
 
 ## Protect the machine
 
-Settings, Protection holds the protections below. They are on by default.
+Settings, Safeguards holds the protections below, except the last one. They are on by default.
 
-### Peace and quiet
+### Windows and sound
 
 These apply when the agents run on Windows:
 
@@ -57,8 +57,9 @@ These apply when the agents run on Windows:
   behind, and Boite tries to give the focus back to the window you were in.
 - Mute agent audio: sounds from agent processes are muted. A sound you muted
   yourself stays muted when Boite lets go.
-- Stop what agents leave running: ten seconds after a turn, a process whose
-  parent has exited is stopped.
+- Stop what agents leave running, in Settings, Troubleshooting, Agent
+  processes: ten seconds after a turn, a process whose parent has exited is
+  stopped.
 
 ### Keeping the machine awake
 
