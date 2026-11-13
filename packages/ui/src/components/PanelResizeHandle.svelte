@@ -53,9 +53,4 @@
 <style>
   /* The panel's 1 px frame edge moves the handle's origin in. */
   .edge { display: contents; --resize-inset: 1px; }
-
-  /* Under 981 px the panel lies over the chat and keeps the width it has. */
-  @media (max-width: 980px) {
-    .edge { display: none; }
-  }
 </style>

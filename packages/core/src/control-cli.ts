@@ -55,6 +55,7 @@ export const CONTROL_HELP = `  threads [list] [--project <p>] [--archived]
   thread show <id>               state, pending questions and permissions, last answer
   thread send <id> <text>        the owner's prompt, or the agent's message
   thread done <id>               put a thread that is not at work in Done
+                                 (without <id>: this one, once this turn ends)
   thread stop|archive|unarchive|remove <id>   (remove: owner only)
   thread rename <id> <title>
   thread move <project> <id>     move another thread (without <id>: this one)
@@ -64,6 +65,11 @@ export const CONTROL_HELP = `  threads [list] [--project <p>] [--archived]
   allow|deny <id> <request-id>   (owner only, threads of this machine)
   A bot's <id> may be <machine>/<thread-id>: a thread of a project of that
   machine entrusted to it, which that machine lets bots of the group drive`;
+
+/** What an agent's own `thread done` prints. */
+export function doneLine(done: { when: 'turn-end' | 'done' }): string {
+  return done.when === 'turn-end' ? 'This thread goes to Done when this turn ends; the user can restore it.' : 'This thread is in Done; the user can restore it.';
+}
 
 /** `<machine>/<thread-id>` names a thread of another machine of the group; a bare id is one here. */
 export function targetOf(value: string): { target: string; machine?: string } {
@@ -328,6 +334,12 @@ export async function controlCommand(client: CoreClient, caller: Caller, threadI
     }
     case 'thread': {
       const action = want(0, `one of ${THREAD_ACTIONS.join(', ')} or move`);
+      if (action === 'done' && rest.length === 1) {
+        if (owner) throw new Usage('thread done needs a thread id (boite threads lists them)');
+        const done = await client.call('agent.done', { threadId });
+        print([doneLine(done)], done);
+        return;
+      }
       if (action === 'move') {
         const project = want(1, 'a project');
         const value = want(2, 'a thread id');
@@ -396,6 +408,11 @@ export async function controlCommand(client: CoreClient, caller: Caller, threadI
         return;
       }
       if (action !== 'stop' && action !== 'done' && action !== 'archive' && action !== 'unarchive' && action !== 'remove') throw new Usage(`thread: unknown action ${action}`);
+      if (!owner && action === 'done' && target === threadId && machine === undefined) {
+        const done = await client.call('agent.done', { threadId });
+        print([doneLine(done)], done);
+        return;
+      }
       if (!owner) {
         if (action === 'remove') ownerOnly('deleting a thread');
         const result = await client.call('resident.act', { threadId, target, action: action as Exclude<typeof action, 'remove'>, ...remote });

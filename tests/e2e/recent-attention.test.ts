@@ -157,18 +157,35 @@ test('working grouping persists on the device, retains attention and works on th
   await page.waitFor(`document.querySelector(${JSON.stringify(phoneRow(main))})`);
 }, 30_000);
 
-test('a merged PR arrives in Done and project filtering and restoration follow the owning machine', async () => {
-  const {threadId, archived} = await page.evaluate<{threadId: string; archived: number}>(`(async () => {
+test('a merged PR asks the agent, its answer puts the thread in Done, and project filtering and restoration follow the owning machine', async () => {
+  const {threadId, asked} = await page.evaluate<{threadId: string; asked: number}>(`(async () => {
     const s = globalThis.__boiteTest.workspace.machines[0].store;
     const t = await s.client.call('threads.create', {projectId:'p-boite', providerId:'echo', accountId:'a-echo', title:'Clean the Recent sidebar', worktree:{branch:'boite/recent-sidebar'}}), sha = 'a'.repeat(40);
+    // A finished, read turn: the agent's prompt cache is warm, so the question is worth a turn.
+    const turn = await s.client.call('turns.start', {threadId:t.id, prompt:'Clean the sidebar.'});
+    while ((await s.client.call('threads.get', {threadId:t.id})).turns.find(r => r.id === turn.id)?.status !== 'done') await new Promise(r => setTimeout(r, 20));
+    await s.client.call('threads.markRead', {threadId:t.id});
     s.client.setMergedPrFixture(t.id, {repository:'github.com/example/repo', branch:t.branch, tip:sha, clean:true, candidates:[{repository:'github.com/example/repo', branch:t.branch, sha, number:407, url:'https://github.com/example/repo/pull/407', mergedAt:'2026-10-02T12:00:00Z', fork:false}]});
-    return {threadId:t.id, archived:await s.client.sweepMergedPrArchives()};
+    return {threadId:t.id, asked:await s.client.sweepMergedPrArchives()};
   })()`);
-  expect(archived).toBe(1);
+  expect(asked).toBe(1);
+  // Asked, not put away: the row stays live while its agent answers.
+  expect(await page.evaluate(`globalThis.__boiteTest.workspace.machines[0].store.client.call('threads.get', {threadId:${JSON.stringify(threadId)}}).then(t => ({archived:t.archived, asked:t.turns.filter(turn => turn.execution?.operation === 'pull-request').length}))`)).toEqual({archived:false, asked:1});
+  await page.waitFor(`document.querySelector(${JSON.stringify(desktopRow(main, threadId))})`);
+  // The agent answers with `boite thread done`: Done once its turn ends. Echo reads "question" in the prompt as its cue for a card; skipping it ends the turn.
+  await page.evaluate(`(async () => {
+    const s = globalThis.__boiteTest.workspace.machines[0].store, threadId = ${JSON.stringify(threadId)};
+    await s.client.call('agent.done', {threadId});
+    while (!(await s.client.call('threads.get', {threadId})).archived) {
+      const [question] = await s.client.call('questions.list', {threadId});
+      if (question) await s.client.call('questions.skip', {threadId, questionId: question.id});
+      await new Promise(r => setTimeout(r, 20));
+    }
+  })()`);
   await page.waitFor(`!document.querySelector(${JSON.stringify(desktopRow(main, threadId))})`);
   await showDone(true);
   await page.waitFor(`document.querySelector(${JSON.stringify(inGroup('done', main, threadId))})`);
-  expect(await page.evaluate(`document.querySelector(${JSON.stringify(inGroup('done', main, threadId))}).querySelector('${id('done-thread-pr')}').getAttribute('href')`)).toBe('https://github.com/example/repo/pull/407');
+  expect(await page.evaluate(`document.querySelector(${JSON.stringify(inGroup('done', main, threadId))})?.querySelector('[data-testid="done-thread-pr"]')?.getAttribute('href')`)).toBe('https://github.com/example/repo/pull/407');
   await capture('recent-done-desktop.png');
   await openProjectFilter(page);
   await page.evaluate(`Array.from(document.querySelectorAll('${id('project-filter-menu')} [data-value]')).find(e => e.dataset.value === ${builderKey('p-boite')}).click()`);
