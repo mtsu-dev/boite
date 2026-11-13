@@ -62,7 +62,8 @@
     if (!asked.some((question) => question.id === shownId)) { shownId = asked[0]?.id ?? null; questionOpen = true; }
   });
   /** A plain question draws its own head (`QuestionCard`): the fold sits in it, the pager on its own row over it. */
-  const plain = (question: Asked) => !question.secret && !question.setting && !question.agentSetting && !question.team;
+  // A build without the Teams has no team card (lib/teams-entry.ts): a request a Nightly left is a plain question there, so it can still be answered or refused.
+  const plain = (question: Asked) => !question.secret && !question.setting && !question.agentSetting && !(question.team && teamsBuilt());
   // A card's "Answer in writing" brings that question up.
   $effect(() => {
     const chosen = repliesOf(store).chosen;
