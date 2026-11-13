@@ -232,7 +232,7 @@ export async function readTranscript(file: string, listing = false): Promise<Tra
  * Feeds `take` the file's lines in order until it returns false. True when
  * every line was read.
  */
-export async function readLines(file: string, take: (line: string) => boolean | void): Promise<boolean> {
+async function readLines(file: string, take: (line: string) => boolean | void): Promise<boolean> {
   const decoder = new TextDecoder();
   let rest = '';
   const chunks = Bun.file(file).stream().getReader();

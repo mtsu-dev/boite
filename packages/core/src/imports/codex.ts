@@ -14,7 +14,6 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import type { Dirent } from 'node:fs';
 import { join } from 'node:path';
-import { readLines } from './claude.ts';
 import type { TranscriptTurn } from './claude.ts';
 import { RolloutReader, isReject, metaOf, parseRecord } from './codex-rollout.ts';
 import type { RolloutMeta, RolloutReject } from './codex-rollout.ts';
@@ -47,6 +46,63 @@ export function rolloutFiles(dir: string, depth = 0): string[] {
   return out;
 }
 
+/** A `session_meta` line is tens of kilobytes (23 KB at most over 1001 real rollouts); a longer first line is no rollout. */
+export const META_LINE_MAX = 1 << 20;
+/** A later line past this is dropped without being held: a record that size is a blob, not a prompt or an answer. */
+export const LINE_MAX = 8 << 20;
+
+/**
+ * Feeds `take` the file's lines in order until it returns false, holding at
+ * most `max(index)` bytes of the line at that index (0 for the first). A
+ * longer line is given as null the moment it passes the bound, and the rest
+ * of it is skipped unread into memory.
+ */
+export async function readBoundedLines(
+  file: string,
+  max: (index: number) => number,
+  take: (line: string | null, index: number) => boolean | void,
+): Promise<void> {
+  const chunks = Bun.file(file).stream().getReader();
+  let parts: Uint8Array[] = [];
+  let held = 0;
+  let over = false;
+  let index = 0;
+  try {
+    for (;;) {
+      const { done, value } = await chunks.read();
+      if (done) break;
+      let start = 0;
+      for (;;) {
+        const at = value.indexOf(10, start);
+        const end = at < 0 ? value.length : at;
+        if (!over && end > start) {
+          if (held + end - start > max(index)) {
+            over = true;
+            parts = [];
+            if (take(null, index) === false) return;
+          } else {
+            parts.push(value.subarray(start, end));
+            held += end - start;
+          }
+        }
+        if (at < 0) break;
+        if (!over && take(Buffer.concat(parts).toString('utf8'), index) === false) return;
+        parts = [];
+        held = 0;
+        over = false;
+        index += 1;
+        start = at + 1;
+      }
+    }
+    if (!over && held > 0) take(Buffer.concat(parts).toString('utf8'), index);
+  } finally {
+    await chunks.cancel().catch(() => undefined);
+  }
+}
+
+const lineMax = (index: number): number => (index === 0 ? META_LINE_MAX : LINE_MAX);
+const OVERSIZED: RolloutReject = { field: 'line 1', expected: `a session_meta record of at most ${META_LINE_MAX} bytes` };
+
 /** What a list of sessions shows of one rollout. */
 export interface RolloutHead {
   prompt: string;
@@ -65,14 +121,13 @@ export async function listRollout(
   let meta: RolloutMeta | RolloutReject | null = null;
   let wanted = false;
   const reader = new RolloutReader();
-  await readLines(file, (line) => {
-    if (meta === null) {
-      if (line.trim().length === 0) return true;
-      meta = metaOf(line);
+  await readBoundedLines(file, lineMax, (line, index) => {
+    if (index === 0) {
+      meta = line === null ? OVERSIZED : metaOf(line);
       wanted = !isReject(meta) && !meta.subagent && wants(meta.cwd);
       return wanted;
     }
-    reader.line(line);
+    if (line !== null) reader.line(line);
     return !reader.hasPrompt;
   });
   if (meta === null) return { field: 'line 1', expected: 'a session_meta record' };
@@ -85,20 +140,23 @@ export async function listRollout(
 /** A rollout read whole: its session and one turn per prompt. */
 export async function readRollout(
   file: string,
-): Promise<{ meta: RolloutMeta; turns: TranscriptTurn[]; model: string | null } | RolloutReject> {
+): Promise<{ meta: RolloutMeta; turns: TranscriptTurn[]; model: string | null; dropped: number[] } | RolloutReject> {
   let meta: RolloutMeta | RolloutReject | null = null;
   const reader = new RolloutReader();
-  await readLines(file, (line) => {
-    if (meta === null) {
-      if (line.trim().length > 0) meta = metaOf(line);
-      return meta === null || !isReject(meta);
+  /** The numbers of the lines past `LINE_MAX`, which were not read. */
+  const dropped: number[] = [];
+  await readBoundedLines(file, lineMax, (line, index) => {
+    if (index === 0) {
+      meta = line === null ? OVERSIZED : metaOf(line);
+      return !isReject(meta);
     }
-    reader.line(line);
+    if (line === null) dropped.push(index + 1);
+    else reader.line(line);
     return true;
   });
   if (meta === null) return { field: 'line 1', expected: 'a session_meta record' };
   if (isReject(meta)) return meta;
-  return { meta, ...reader.finish() };
+  return { meta, ...reader.finish(), dropped };
 }
 
 /** One listed session of a Codex home. */

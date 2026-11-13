@@ -19,7 +19,7 @@ import type { Core } from './core.ts';
 import { notFound, refused } from './errors.ts';
 import { claudeProjectFolder, listTranscript, readTranscript } from './imports/claude.ts';
 import type { TranscriptListing } from './imports/claude.ts';
-import { CodexSessions, codexSessionsDir, readRollout } from './imports/codex.ts';
+import { CodexSessions, LINE_MAX, codexSessionsDir, readRollout } from './imports/codex.ts';
 import { isReject } from './imports/codex-rollout.ts';
 import { sessionThreads } from './journal/thread-rows.ts';
 import { currentOs } from './paths.ts';
@@ -271,6 +271,9 @@ export class ImportStore {
         { sessionId, model: rollout.model, titleSource: name === null ? 'prompt' : 'agent', turns: rollout.turns },
       );
       this.core.log('info', `imported codex session ${sessionId} into ${summary.id} (${rollout.turns.length} turns)`);
+      if (rollout.dropped.length > 0) {
+        this.core.log('warn', `import: ${file} lines ${rollout.dropped.join(', ')} are longer than ${LINE_MAX} bytes and were not read`);
+      }
       return summary;
     } finally {
       this.running.delete(sessionId);

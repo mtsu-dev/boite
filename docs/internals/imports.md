@@ -43,7 +43,12 @@ whose `source` is a string (an object marks a subagent's session), and reads
 on to the first prompt for those only. A first line that is not a JSON
 object, not a `session_meta`, or lacks `payload.id` or `payload.cwd` leaves
 the file out with one warning on the log naming the file, the field and what
-was expected; the listing goes on. Each file's answer is kept while its size
+was expected; the listing goes on. Lines are read under a bound
+(`readBoundedLines`): a first line past 1 MB rejects the file the same way
+once that much was read, and a later line past 8 MB is dropped without being
+held, an import naming the dropped line numbers on the log. Over 1001 real
+rollouts the longest first line was 23 KB and the longest line 21.6 MB
+(2026-11-13). Each file's answer is kept while its size
 and last write stay the same, so a home is read once: the first lines of 997
 real rollouts took 0.7 s (2026-11-13, `listRollout` over each file of a
 `~/.codex/sessions`, Linux). The title is the name
@@ -57,8 +62,10 @@ events whose `item` is a `UserMessage`, `AgentMessage`, `Reasoning`,
 `McpToolCall`. Before, they are `user_message`, `agent_message` and
 `agent_reasoning` events, the tools being the `function_call`,
 `custom_tool_call` and `local_shell_call` response items with their outputs.
-The first conversation record decides which dialect a file speaks and the
-other's records are skipped. `response_item` messages are never prompts: the
+Each turn speaks the dialect its prompt was first met in, so a session
+started on an old CLI and continued on a new one keeps every turn. Within a
+turn the other dialect's records are skipped, and its copy of the same prompt
+within 2 s is dropped, so a CLI that writes both doubles nothing. `response_item` messages are never prompts: the
 CLI also files its injected context under the user role. The model is the
 last `turn_context`'s.
 

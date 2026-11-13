@@ -6,7 +6,8 @@ import type { CoreClient } from '../src/client.ts';
 import { claudeProjectFolder } from '../src/imports/claude.ts';
 import { inspectJournal } from '../src/journal/integrity.ts';
 import { claudeSessionFixture, FIXTURE_SESSION_ID } from './fixtures/claude-session.ts';
-import { CODEX_FIXTURE_SESSION_ID, codexLegacySessionFixture, codexRolloutPath, codexSessionFixture } from './fixtures/codex-session.ts';
+import { META_LINE_MAX } from '../src/imports/codex.ts';
+import { CODEX_FIXTURE_SESSION_ID, codexLegacySessionFixture, codexMixedSessionFixture, codexRolloutPath, codexSessionFixture } from './fixtures/codex-session.ts';
 import { startTestCore, testProject } from './harness.ts';
 import type { TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
@@ -144,6 +145,58 @@ test('a rollout of the older dialect imports its events, its calls, and closes t
   expect((parts[1] as Tool).output).toContain('2\\n');
   expect(parts[2] as Tool).toMatchObject({ toolId: 'call_2', status: 'error', output: 'no result in the transcript' });
   expect(parts[3]).toEqual({ type: 'text', text: 'Two files.' });
+});
+
+test('a session begun in the older dialect and continued in the newer keeps both turns, each once', async () => {
+  const client = await harness.connect();
+  const project = await testProject(harness, client);
+  const account = await codexAccount(client);
+  rollout(account.isolationDir, 'mixed-1', codexMixedSessionFixture(project.path, 'mixed-1'));
+
+  const summary = await client.call('imports.run', { projectId: project.id, accountId: account.id, sessionId: 'mixed-1' });
+  expect(summary.model).toBe('gpt-5.5');
+  const thread = await client.call('threads.get', { threadId: summary.id });
+  expect(thread.turns).toHaveLength(2);
+  expect(thread.messages.map((message) => message.role)).toEqual(['user', 'assistant', 'user', 'assistant']);
+  expect(thread.messages[0]!.parts).toEqual([{ type: 'text', text: 'Count the files' }]);
+  expect(thread.messages[1]!.parts.map((part) => (part.type === 'tool' ? part.name : part.type))).toEqual(['shell', 'text']);
+  expect(thread.messages[2]!.parts).toEqual([{ type: 'text', text: 'Count them again' }]);
+  // The newer turn is read from its items: one Bash card, one answer, no copy from the older records beside them.
+  expect(thread.messages[3]!.parts.map((part) => (part.type === 'tool' ? part.name : part.type))).toEqual(['Bash', 'text']);
+  expect(thread.messages[3]!.parts[1]).toEqual({ type: 'text', text: 'Three files.' });
+});
+
+test('a first line past the bound rejects the file without holding it, and a later one is dropped from the import', async () => {
+  const client = await harness.connect();
+  const project = await testProject(harness, client);
+  const account = await codexAccount(client);
+  const good = codexSessionFixture(project.path);
+  // A valid session_meta, only too long: read whole it would be listed, so the listing proves the bound.
+  const meta = JSON.parse(good.split('\n')[0]!) as { payload: Record<string, unknown> };
+  meta.payload['id'] = 'huge-meta';
+  meta.payload['base_instructions'] = { text: 'x'.repeat(META_LINE_MAX) };
+  const huge = rollout(account.isolationDir, 'huge-meta', [JSON.stringify(meta), ...good.split('\n').slice(1)].join('\n'));
+  // A blob between two records of the conversation, 9 MB on one line.
+  const records = good.split('\n');
+  records.splice(4, 0, JSON.stringify({ timestamp: '2026-09-10T08:00:01.000Z', type: 'compacted', payload: { message: 'y'.repeat(9 << 20) } }));
+  rollout(account.isolationDir, CODEX_FIXTURE_SESSION_ID, records.join('\n'));
+
+  const log = spyOn(harness.core, 'log');
+  try {
+    const listed = await client.call('imports.list', { projectId: project.id });
+    expect(listed.map((session) => session.sessionId)).toEqual([CODEX_FIXTURE_SESSION_ID]);
+    const warned = (): string[] => log.mock.calls.filter(([level]) => level === 'warn').map(([, message]) => message);
+    expect(warned().filter((message) => message.includes(huge))).toEqual([
+      `import: ${huge} is not a rollout Boite reads: line 1, expected a session_meta record of at most ${META_LINE_MAX} bytes; skipped`,
+    ]);
+    expect(await thrown(client.call('imports.run', { projectId: project.id, accountId: account.id, sessionId: 'huge-meta' }))).toThrow('rollout line 1');
+
+    const summary = await client.call('imports.run', { projectId: project.id, accountId: account.id, sessionId: CODEX_FIXTURE_SESSION_ID });
+    expect((await client.call('threads.get', { threadId: summary.id })).turns).toHaveLength(2);
+    expect(warned().some((message) => message.includes('lines 5 are longer than'))).toBe(true);
+  } finally {
+    log.mockRestore();
+  }
 });
 
 test('a rollout the parser does not understand is skipped with the file and the field on the log, once', async () => {

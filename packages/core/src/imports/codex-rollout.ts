@@ -13,9 +13,11 @@
  *   being the `response_item` records `function_call`, `custom_tool_call`,
  *   `local_shell_call` and their `_output`.
  *
- * A file speaks one of the two: the first conversation record met decides,
- * and the other dialect's records are skipped, so a CLI that writes both
- * never doubles a prompt. `response_item` messages are never read as
+ * Each turn speaks one of the two, the one its prompt was first met in: a
+ * session started on an old CLI and continued on a new one holds turns of
+ * both. Within a turn the other dialect's records are skipped, and its copy
+ * of the same prompt written at the same moment is dropped, so a CLI that
+ * writes both never doubles a prompt or an answer. `response_item` messages are never read as
  * prompts: they also carry the context the CLI injects under the user role.
  * `turn_context` names the model of each turn.
  */
@@ -153,6 +155,11 @@ function argumentsOf(raw: unknown): unknown {
   }
 }
 
+type Dialect = 'items' | 'events';
+
+/** How far apart the two dialects' copies of one prompt are written, at most. */
+const ECHO_MS = 2_000;
+
 /** What a rollout read whole gives. */
 export interface Rollout {
   turns: TranscriptTurn[];
@@ -164,8 +171,10 @@ export interface Rollout {
 export class RolloutReader {
   private readonly turns: TranscriptTurn[] = [];
   private model: string | null = null;
-  /** Which of the two dialects the file speaks, once a conversation record said so. */
-  private dialect: 'items' | 'events' | null = null;
+  /** The dialect of the turn being read: the one its prompt came in. */
+  private dialect: Dialect | null = null;
+  /** True once the current turn's prompt was met again in the other dialect. */
+  private echoed = false;
   /** Calls of the older dialect waiting for their output, by `call_id`. */
   private readonly open = new Map<string, ToolPart>();
 
@@ -188,29 +197,23 @@ export class RolloutReader {
     }
   }
 
-  private speaks(dialect: 'items' | 'events'): boolean {
-    if (this.dialect === null) this.dialect = dialect;
-    return this.dialect === dialect;
-  }
-
   private event(payload: Json, at: number): void {
     switch (payload['type']) {
       case 'item_completed': {
         const item = object(payload['item']);
-        if (item !== null && this.speaks('items')) this.item(item, at);
+        if (item !== null) this.item(item, at);
         return;
       }
       case 'user_message': {
-        if (!this.speaks('events')) return;
         const images = list(payload['images']).map(imageOf).filter((image) => image !== null);
-        this.prompt(text(payload['message']) ?? '', images, at);
+        this.prompt('events', text(payload['message']) ?? '', images, at);
         return;
       }
       case 'agent_message':
-        if (this.speaks('events')) this.say(text(payload['message']) ?? '', at);
+        if (this.dialect === 'events') this.say(text(payload['message']) ?? '', at);
         return;
       case 'agent_reasoning':
-        if (this.speaks('events')) this.think(text(payload['text']) ?? '', at);
+        if (this.dialect === 'events') this.think(text(payload['text']) ?? '', at);
         return;
       default:
     }
@@ -224,9 +227,13 @@ export class RolloutReader {
         const images = blocks
           .map((block) => (block['type'] === 'image' ? imageOf(block['image_url'] ?? block['url']) : null))
           .filter((image) => image !== null);
-        this.prompt(prompt, images, at);
+        this.prompt('items', prompt, images, at);
         return;
       }
+      default:
+    }
+    if (this.dialect !== 'items') return;
+    switch (item['type']) {
       case 'AgentMessage':
         this.say(blocks.map((block) => text(block['text']) ?? '').join(''), at);
         return;
@@ -319,8 +326,16 @@ export class RolloutReader {
     }
   }
 
-  private prompt(prompt: string, images: TranscriptTurn['images'], at: number): void {
+  private prompt(dialect: Dialect, prompt: string, images: TranscriptTurn['images'], at: number): void {
     if (prompt.length === 0 && images.length === 0) return;
+    const current = this.turns[this.turns.length - 1];
+    // The same prompt in the other dialect, written at the same moment: the turn's second copy.
+    if (current !== undefined && dialect !== this.dialect && !this.echoed && current.prompt === prompt && Math.abs(at - current.promptAt) <= ECHO_MS) {
+      this.echoed = true;
+      return;
+    }
+    this.dialect = dialect;
+    this.echoed = false;
     this.turns.push({ prompt, images, promptAt: at, parts: [], answerAt: null, lastAt: at });
   }
 

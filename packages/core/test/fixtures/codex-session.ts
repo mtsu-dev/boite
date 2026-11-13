@@ -101,3 +101,27 @@ export function codexLegacySessionFixture(cwd: string, sessionId: string): strin
     { timestamp: '2026-09-10T08:00:06.000Z', type: 'response_item', payload: { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'Two files.' }] } },
   ]);
 }
+
+/**
+ * A session started on an old CLI and continued on a new one: an exchange in
+ * the older dialect, then one in the newer. The second exchange also carries
+ * the older dialect's copies, as a CLI in between writes them.
+ */
+export function codexMixedSessionFixture(cwd: string, sessionId: string): string {
+  return lines([
+    meta(cwd, sessionId),
+    { timestamp: '2026-09-10T08:00:01.000Z', type: 'event_msg', payload: { type: 'user_message', message: 'Count the files' } },
+    { timestamp: '2026-09-10T08:00:01.500Z', type: 'turn_context', payload: { cwd, model: 'gpt-5-codex' } },
+    { timestamp: '2026-09-10T08:00:03.000Z', type: 'response_item', payload: { type: 'function_call', name: 'shell', arguments: '{"command":["ls"]}', call_id: 'call_1' } },
+    { timestamp: '2026-09-10T08:00:04.000Z', type: 'response_item', payload: { type: 'function_call_output', call_id: 'call_1', output: 'a\nb' } },
+    { timestamp: '2026-09-10T08:00:06.000Z', type: 'event_msg', payload: { type: 'agent_message', message: 'Two files.' } },
+    { timestamp: '2026-09-12T09:00:00.000Z', type: 'turn_context', payload: { cwd, model: 'gpt-5.5' } },
+    item('2026-09-12T09:00:00.000Z', { type: 'UserMessage', id: 'u2', content: [{ type: 'text', text: 'Count them again', text_elements: [] }] }),
+    { timestamp: '2026-09-12T09:00:00.010Z', type: 'event_msg', payload: { type: 'user_message', message: 'Count them again' } },
+    { timestamp: '2026-09-12T09:00:02.000Z', type: 'response_item', payload: { type: 'custom_tool_call', call_id: 'c2', name: 'exec', input: 'ls', status: 'completed' } },
+    item('2026-09-12T09:00:03.000Z', { type: 'CommandExecution', id: 'c2', command: ['bash', '-lc', 'ls'], cwd, aggregated_output: 'a\nb\nc', exit_code: 0, status: 'completed' }),
+    { timestamp: '2026-09-12T09:00:03.000Z', type: 'response_item', payload: { type: 'custom_tool_call_output', call_id: 'c2', output: 'a\nb\nc' } },
+    item('2026-09-12T09:00:04.000Z', { type: 'AgentMessage', id: 'm2', phase: 'final_answer', content: [{ type: 'Text', text: 'Three files.' }] }),
+    { timestamp: '2026-09-12T09:00:04.010Z', type: 'event_msg', payload: { type: 'agent_message', message: 'Three files.' } },
+  ]);
+}
