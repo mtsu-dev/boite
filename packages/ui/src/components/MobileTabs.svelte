@@ -12,10 +12,9 @@
    * The phone's places, along the bottom edge where a thumb rests, the
    * desktop rail's in the same order. A new conversation is the list header's
    * "+". A conversation, a draft and an open keyboard hide the bar; the list's
-   * header names the machine. Three places, spread evenly: Threads, Activity
-   * and Bots. With the bots on, Contacts lives in the Bots tab, behind the
-   * two-way switch at the top of its page (MobileNavigation.svelte), so the
-   * tab stands for both. Settings is the header's gear, a page with its way
+   * header names the machine. Up to four places, spread evenly: Threads, Activity,
+   * Bots and Contacts, each a tab of its own as each is a place of the
+   * desktop rail. Settings is the header's gear, a page with its way
    * back, not a place.
    */
   let { store, screen, waiting, navigate, inert = false }: {
@@ -28,7 +27,7 @@
     inert?: boolean;
   } = $props();
   const bots = $derived(experimentOn('resident-agents'));
-  const current = $derived(store.page === 'agents' || (bots && store.page === 'home') ? 'agents' : store.page === 'home' ? 'contacts' : screen === 'activity' ? 'activity' : 'threads');
+  const current = $derived(store.page === 'agents' ? 'agents' : store.page === 'home' ? 'contacts' : screen === 'activity' ? 'activity' : 'threads');
   const page = (place: string) => current === place ? 'page' as const : undefined;
 
   /** The bots at work on every machine, as the desktop's switch counts them: the waiting colour once one needs the user. */
@@ -49,7 +48,7 @@
       <span class="glyph"><Bot size={20} />{#if atWork.count}<span class="dot" class:working={!atWork.waiting} data-testid="mobile-agents-at-work" data-waiting={atWork.waiting}></span>{/if}</span><span class="name ui-label">{strings.agents.heading}</span>
     </button>
   {/if}
-  {#if contactsShown(store) && !bots}
+  {#if contactsShown(store)}
     <button type="button" class="tab" data-testid="mobile-contacts" data-preload-view="home" aria-current={page('contacts')} onclick={() => store.showHome()}>
       <span class="glyph"><Contact size={20} /></span><span class="name ui-label">{strings.contacts.heading}</span>
     </button>

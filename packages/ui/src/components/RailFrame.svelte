@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dragWindow } from '../lib/window-drag';
   import { untrack, type Snippet } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import type { Store } from '../lib/store.svelte';
@@ -117,8 +118,18 @@
     measureMore();
     return () => { cancelAnimationFrame(frame); resized?.disconnect(); changed.disconnect(); };
   });
+
+  /**
+   * The column reaches the window's top, beside the title bar: the band above its head and the head's empty parts
+   * drag the window as the bar's do. The rows and the resize handle keep their own presses.
+   */
+  function dragTop(event: MouseEvent) {
+    if (event.target instanceof Element && event.target.closest('.scroll, [role=separator], [role=radio], [role=radiogroup]')) return;
+    dragWindow(event);
+  }
 </script>
 
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <aside
   bind:this={rail}
   class="rail {kind}"
@@ -133,6 +144,7 @@
   aria-label={label}
   data-testid={testid}
   data-quota-dock-target=""
+  onmousedown={dragTop}
 >
   <div class="views" class:scrolled={scrolled && !subhead}>{@render head()}</div>
   {@render subhead?.()}
