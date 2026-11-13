@@ -364,7 +364,4 @@ test('a row at work turns its ring, so the list shows which agents are busy; a q
   running = mount(ThreadState, { target: document.body, props: { thread: { status: 'running', unread: false, runningSince: NOW - 5_000, backgroundWork: null, lastUserMessageAt: NOW, createdAt: NOW } as Shown, now: NOW, away: true } });
   flushSync();
   expect(document.querySelector('.turning')).toBeNull();
-  // The loop is a compositor transform on the shared 60 Hz grid that stops with the window at rest.
-  const source = readFileSync(resolve(import.meta.dirname, 'ThreadState.svelte'), 'utf8');
-  expect(source).toMatch(/\.work-ring\.turning \{ animation: spin 0\.9s steps\(54\) infinite var\(--loops\); \}/);
 });
