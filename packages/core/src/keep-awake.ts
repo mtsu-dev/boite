@@ -77,9 +77,11 @@ export class KeepAwake {
     if (this.#rest !== null) { clearTimeout(this.#rest); this.#rest = null; }
     if (this.#release !== null || this.#unavailable) return;
     let lost = false;
-    const release = this.#hold(reason => {
+    // A helper that cannot start reports inside the call, before there is anything to give back.
+    let release: (() => void) | null = null;
+    release = this.#hold(reason => {
       lost = true;
-      if (this.#release === release) this.#release = null;
+      if (release !== null && this.#release === release) this.#release = null;
       this.#lost(reason);
     });
     if (release === null) return this.#lost('this machine has no sleep inhibitor Boite can hold');

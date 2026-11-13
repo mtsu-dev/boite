@@ -101,6 +101,24 @@ test('the machine is held awake while a turn runs or is queued, not for a thread
   } finally { h.core.logs.warn = warn; keeper.close(); }
 });
 
+test.skipIf(process.platform === 'win32')('a helper that cannot start is reported once and the turn goes on', async () => {
+  const warnings: string[] = [];
+  const warn = h.core.logs.warn.bind(h.core.logs);
+  h.core.logs.warn = (message, context) => { if (context?.event === 'keepAwake.unavailable') warnings.push(message); warn(message, context); };
+  // The report comes inside the hold call itself, before it has returned.
+  const keeper = new KeepAwake(h.core, onLost => posixKeepAwake([['/missing-boite-inhibitor']], onLost), 150);
+  try {
+    const owner = await h.connect();
+    const { threadId } = await echoThread(h, owner);
+    const turn = await owner.call('turns.start', { threadId, prompt: 'first '.repeat(250) });
+    await waitFor(() => warnings.length === 1);
+    expect(warnings[0]).toContain('/missing-boite-inhibitor did not start');
+    expect(keeper.held).toBe(false);
+    await waitFor(() => h.core.journal.listTurns(threadId).find(t => t.id === turn.id)?.status === 'done');
+    expect(warnings.length).toBe(1);
+  } finally { h.core.logs.warn = warn; keeper.close(); }
+});
+
 test.skipIf(process.platform === 'win32')('the helper holds until released, a refused inhibitor falls back to the next, and the last refusal is reported', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'boite-awake-'));
   const helper = join(dir, 'inhibit');
