@@ -124,6 +124,9 @@ test('the desktop page charts each day by provider, reads a column on hover and 
   expect(cards.width).toBeLessThanOrEqual(880);
   await capture('usage-desktop-dark.png');
 
+  // Usage is a section of AI accounts, held at the top while the cards above it fill in, until the
+  // reader scrolls: a turn of the wheel, as a hand gives, hands the page back before the chart is centred.
+  await page.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: 640, y: 400, deltaX: 0, deltaY: 1 });
   await page.evaluate(`document.querySelector('[data-testid=usage-chart]').scrollIntoView({ block: 'center' })`);
   const chart = await box('[data-testid=usage-chart]');
   await mouse(chart.right - 12, chart.top + chart.height / 2);
@@ -254,8 +257,10 @@ test('the limits tab is its own page, one card per account, no scrolling through
   await viewport(1280, 800);
   await openLimits();
   await page.waitFor(`document.querySelectorAll('[data-testid=usage-limit-account]').length >= 3`);
-  // The limits answer the first screen: nothing of the history is loaded beside them.
-  expect(await count('[data-testid=usage-chart]')).toBe(0);
+  // The limits answer the first screen: the history is the last section of AI accounts, never inside
+  // the limits nor on the screen they open on.
+  expect(await count('[data-testid=limits-page] [data-testid=usage-chart]')).toBe(0);
+  await page.waitFor(`(() => { const usage = document.getElementById('settings-usage'), limits = document.querySelector('[data-testid=limits-page]'); return !!usage && usage.getBoundingClientRect().top >= innerHeight && limits.getBoundingClientRect().top < innerHeight / 2 && !!(limits.compareDocumentPosition(usage) & Node.DOCUMENT_POSITION_FOLLOWING); })()`);
   expect(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true);
   await capture('limits-desktop-dark.png');
   await scheme('light');

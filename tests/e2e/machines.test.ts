@@ -149,8 +149,8 @@ test('two real cores pair, route turns independently, reconnect and survive a re
     await page.waitFor(`document.querySelector('[data-core-id="${home}"] ${id('machine-home')}') !== null && document.querySelectorAll('${id('machine-home')}').length === 1`);
     expect(await b.call('settings.get', {})).toMatchObject({ asyncQuestions: false, warmProcessMinutes: 2, agentCpuCapPercent: 35 });
     // Protection changes the machine its bar picks, here the second one, while the window stays on the first.
-    // Resources is a section of Diagnostics.
-    await page.click(id('settings-tab-diagnostics'));
+    // The resource limits are a card of Safeguards.
+    await page.click(id('settings-tab-safeguards'));
     await page.waitFor(`document.querySelector('${id('resources-page')}') && document.querySelector('${id('settings-machine')}')`);
     await page.click(id('settings-machine'));
     await page.waitFor(`document.querySelector('${id('settings-machine-menu')} [data-value="${second.url}"]')`);

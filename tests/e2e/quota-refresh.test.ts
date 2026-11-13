@@ -66,8 +66,8 @@ test('limits identify the owning machine in the desktop glance and desktop and p
     // machine its settings apply on; the page's own heading steps aside.
     const heading = width === 1280 ? '[data-testid="settings-scope"]' : '[data-testid="mobile-settings-header"] h1';
     if (width === 1280) {
-      expect((await page.text('[data-testid="settings-crumb"] h1')).trim()).toBe('Limits');
-      expect((await page.text(heading)).trim()).toBe('Agent settings apply on Builder');
+      expect((await page.text('[data-testid="settings-crumb"] h1')).trim()).toBe('AI accounts');
+      expect((await page.text(heading)).trim()).toBe('This machine: Builder');
     } else expect((await page.text(heading)).trim()).toBe('Account limits for Builder');
     expect(await page.evaluate(`document.querySelector('${heading}')?.getClientRects().length > 0`)).toBe(true);
     // A renamed machine remains identifiable even on a narrow phone.

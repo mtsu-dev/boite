@@ -115,3 +115,28 @@ test('the search finds a card by a word of its own or of a setting on it, names 
     expect(await page.evaluate(`document.querySelector('${id('settings-search')}').value`)).toBe('');
   }
 }, 120000);
+
+test('a paired desktop reads the admin policy on Safeguards, and has no page of the owner alone', async () => {
+  await page.navigate(`${base}/?fake=1&principal=session&policy=managed&settings=safeguards`);
+  await page.waitFor(`window.__boiteTest?.workspace.active.connection === 'ready' && document.querySelector('${id('settings-page')}')?.dataset.page === 'safeguards'`);
+  expect(await page.evaluate(`window.__boiteTest.workspace.active.owner`)).toBe(false);
+  // The policy card, read-only as on General before the map; nothing an owner alone may change.
+  expect(await page.evaluate(`[...document.querySelectorAll('${id('settings-page')} > [data-block]')].map(node => node.dataset.block)`)).toEqual(['policy']);
+  await page.waitFor(`document.getElementById('settings-policy')?.getClientRects().length > 0`);
+  expect(await page.evaluate(`document.querySelectorAll('#settings-policy input, #settings-policy button:not(.info-tip)').length`)).toBe(0);
+  for (const card of ['quiet', 'limits', 'browser-profiles', 'privacy']) expect(await page.evaluate(`document.getElementById('settings-${card}')`)).toBe(null);
+  const nav = () => page.evaluate<string[]>(`[...document.querySelectorAll('nav .tab:not([hidden])')].map(entry => entry.dataset.testid)`);
+  expect(await nav()).toContain('settings-tab-safeguards');
+  expect(await nav()).not.toContain('settings-tab-agents');
+  // The old route to the policy card still lands on it.
+  await page.click(id('settings-tab-appearance'));
+  await page.evaluate(`window.__boiteTest.workspace.active.showSettings('general', 'policy')`);
+  await page.waitFor(`document.querySelector('${id('settings-page')}')?.dataset.page === 'safeguards' && document.getElementById('settings-policy') !== null`);
+  await capture('paired-safeguards.png');
+  // On a machine with no policy the page would be empty for it: no entry, and its route opens the first page.
+  await page.navigate(`${base}/?fake=1&principal=session&settings=safeguards`);
+  await page.waitFor(`window.__boiteTest?.workspace.active.connection === 'ready' && document.querySelector('${id('settings-page')}')?.dataset.page === 'appearance'`);
+  expect(await nav()).not.toContain('settings-tab-safeguards');
+  await page.navigate(`${base}/?fake=1`);
+  await page.waitFor(`window.__boiteTest?.workspace.active.connection === 'ready'`);
+}, 60000);

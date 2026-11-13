@@ -50,7 +50,8 @@ test('owner controls consent on desktop and phone; captures both layouts', async
   await page.waitFor(`!document.querySelector('[data-testid="onboarding"]')`);
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
   await page.click('[data-testid="nav-settings"]');
-  await page.click('[data-testid="settings-tab-general"]');
+  // Privacy is a card of Safeguards.
+  await page.click('[data-testid="settings-tab-safeguards"]');
   await page.waitFor(`document.querySelector('${card} input')`);
   // The card's notice is the "i" beside its title: a click pins its text open.
   await page.click(`${card} [data-testid="telemetry-choice-notice"]`);

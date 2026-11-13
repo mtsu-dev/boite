@@ -64,7 +64,7 @@ for (const [name, size] of [['desktop', DESKTOP], ['phone', PHONE]] as const) {
     await page.waitFor(`localStorage.getItem('boite.experiments.build') === '2.0.0'`);
     // A route to the page that is gone lands on Settings' first page, not on an empty one.
     await page.evaluate(`window.__boiteTest.workspace.active.showSettings('experiments')`);
-    await page.waitFor(`document.querySelector('[data-testid="settings-tab-general"], [data-testid="settings-family"]')?.getBoundingClientRect().width > 0`);
+    await page.waitFor(`document.querySelector('[data-testid="settings-tab-appearance"], [data-testid="settings-family"]')?.getBoundingClientRect().width > 0`);
     expect(await page.evaluate(`document.querySelector('[data-testid="settings-tab-experiments"]')`)).toBeNull();
     expect(await page.evaluate(`document.querySelector('[data-testid="experiments-page"]')`)).toBeNull();
     expect(await page.evaluate(`import('/src/lib/experiments.ts').then(({ isExperimentEnabled }) => [isExperimentEnabled('whip'), isExperimentEnabled('resident-agents')])`)).toEqual([false, true]);
