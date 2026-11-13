@@ -985,7 +985,8 @@ test('a close a pull request watch has yet to tell is left to its wake, which as
   try {
     expect(await service.sweep()).toBe(0);
     service.observe(f.threadId);
-    await Bun.sleep(100);
+    // The detected pass must reach the watch guard before the next phase replaces it.
+    await waitFor(() => holds.mock.calls.length === 2);
     expectNotAsked(f.threadId);
   } finally { holds.mockRestore(); }
   // A close the watch receives while the checkout is being validated is left to it too.
