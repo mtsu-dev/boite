@@ -132,6 +132,7 @@ fn log_phase(snapshot: &Snapshot, before: &str) {
         "checking" => format!("checking the {channel} channel for an app update from {}", snapshot.current_version),
         "available" => format!("app update {version} is available on the {channel} channel"),
         "current" => format!("{} is the newest {channel} release", snapshot.current_version),
+        "blocked" => format!("{version} on the {channel} channel cannot read this app's data yet"),
         "downloading" => format!("downloading app update {version}"),
         "ready" if before == "downloading" => format!("app update {version} downloaded and verified, {} bytes", snapshot.received),
         "ready" => format!("app update {version} is ready again; the install did not start"),
@@ -241,6 +242,25 @@ fn release_asset_url(release: &Release) -> Result<&str, String> {
     Ok(&asset.browser_download_url)
 }
 
+/// The journal schema of the core this build ships (build.rs reads it from
+/// packages/core/src/journal/schema.ts). The data on disk is at this version.
+fn journal_schema() -> u64 {
+    env!("BOITE_JOURNAL_SCHEMA").parse().expect("build.rs writes a number")
+}
+
+/// What a manifest without `journal_schema` reads: v0.1.0, the only release
+/// published before the field that can still be offered, writes schema 50.
+const SCHEMA_BEFORE_FIELD: u64 = 50;
+
+/// The schema of a release older than this build's data, read from its
+/// latest.json. A core refuses a journal newer than it knows and exits, so
+/// such a release is never offered: going back from Nightly to Release waits
+/// for a release that reads what Nightly wrote.
+fn reads_less_than(manifest: &serde_json::Value, ours: u64) -> Option<u64> {
+    let theirs = manifest.get("journal_schema").and_then(serde_json::Value::as_u64).unwrap_or(SCHEMA_BEFORE_FIELD);
+    (theirs < ours).then_some(theirs)
+}
+
 fn offer_version(current: &semver::Version, next: &semver::Version, track: Track) -> bool {
     Track::of(&next.to_string()) == track &&
         if Track::of(&current.to_string()) != track { next != current } else { next > current }
@@ -340,7 +360,7 @@ pub async fn app_update_check(webview: Webview, app: AppHandle, state: State<'_,
     // Only the owner's Check for updates passes `force`: an automatic check
     // reuses a recent answer and waits out GitHub's rate limit (#991).
     let current = state.snapshot.lock().unwrap().clone();
-    let holds = current.channel == channel && matches!(current.phase.as_str(), "current" | "available");
+    let holds = current.channel == channel && matches!(current.phase.as_str(), "current" | "available" | "blocked");
     if state.throttle.lock().unwrap().admit(channel, holds, force.unwrap_or(false), Instant::now()) != Admit::Run { return Ok(current); }
     let _operation = match state.begin() {
         Ok(operation) => operation,
@@ -370,6 +390,10 @@ pub async fn app_update_check(webview: Webview, app: AppHandle, state: State<'_,
                 return Err("Update payload URL must belong to the selected Boite release".into());
             }
             let version = update.version.clone();
+            if reads_less_than(&update.raw_json, journal_schema()).is_some() {
+                return Ok(state.change(&app, |s| { s.phase = "blocked".into(); s.version = Some(version);
+                    s.notes = release.body; s.published_at = release.published_at; }));
+            }
             *state.pending.lock().unwrap() = Some(Pending { update, path: None, digest: None });
             Ok(state.change(&app, |s| { s.phase = "available".into(); s.version = Some(version);
                 s.notes = release.body; s.published_at = release.published_at; }))
@@ -598,6 +622,18 @@ mod tests {
     }
 
     #[test]
+    fn a_release_that_cannot_read_this_data_is_not_offered() {
+        let ours = journal_schema();
+        assert!(ours >= SCHEMA_BEFORE_FIELD);
+        assert_eq!(reads_less_than(&serde_json::json!({ "journal_schema": ours }), ours), None);
+        assert_eq!(reads_less_than(&serde_json::json!({ "journal_schema": ours + 1 }), ours), None);
+        assert_eq!(reads_less_than(&serde_json::json!({ "journal_schema": 49 }), 50), Some(49));
+        // v0.1.0's manifest predates the field: it reads schema 50, not 51.
+        assert_eq!(reads_less_than(&serde_json::json!({ "version": "0.1.0" }), 50), None);
+        assert_eq!(reads_less_than(&serde_json::json!({ "version": "0.1.0" }), 51), Some(50));
+    }
+
+    #[test]
     fn only_an_explicit_channel_switch_allows_a_downgrade() {
         let nightly = "2.0.0-nightly.20260922.1".parse().unwrap();
         let stable = "2.0.0-beta.1".parse().unwrap();
@@ -626,7 +662,9 @@ mod tests {
         let base = format!("http://{}", listener.local_addr().unwrap());
         let signature = "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRVlR0czA1Z2Fzc2FIOTVpL09KOVFGQm9pRVJKL0g3cUx6MEdkcTg0U2FiSFR6QU14VFFLUzJEUmdCako0MDBZVmxUeVU2N3FnZWZWTzU1dHZZRjRTQVI3TW03N2YybEFJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkwMDM0OTc5CWZpbGU6c2lnbmVkLXBheWxvYWQudHh0CkNWZXZIeUthZXRjLzE1L0RjV0ZqdlBhRUtCR0p4alV6OTNBZFAvUlREekVlWXpnYkVWT0dUWCtSRVpNZm04S0NnemptYU5ab2Nla0w1Mnh3Yzh4aEFRPT0K";
         let config: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
-        let manifest = serde_json::json!({ "version": "2.0.0", "platforms": { "windows-x86_64": {
+        // The schema field as scripts/ci/updater-manifest.ts writes it: the plugin
+        // must accept the extra key and hand it over in `raw_json`.
+        let manifest = serde_json::json!({ "version": "2.0.0", "journal_schema": journal_schema(), "platforms": { "windows-x86_64": {
             "url": format!("{base}/payload"), "signature": signature,
         } } }).to_string();
         let server = std::thread::spawn(move || {
@@ -666,6 +704,8 @@ mod tests {
                 .endpoints(vec![format!("{base}/latest.json").parse().unwrap()]).unwrap()
                 .build().unwrap().check().await.map_err(|e| e.to_string())?.unwrap();
             assert_eq!(update.version, "2.0.0");
+            assert_eq!(reads_less_than(&update.raw_json, journal_schema()), None);
+            assert_eq!(reads_less_than(&update.raw_json, journal_schema() + 1), Some(journal_schema()));
             let started = Instant::now();
             let bytes = update.download(|_, _| {}, || {}).await.map_err(|e| e.to_string());
             Ok::<_, String>((bytes, started.elapsed()))
