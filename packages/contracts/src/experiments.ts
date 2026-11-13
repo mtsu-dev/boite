@@ -155,6 +155,8 @@ export const FEATURE_CUTS: Partial<Record<ExperimentId, { ui: boolean; core: boo
   whip: { ui: true, core: false },
   // Council: the card and the salon in the UI; in the core the `boite delegate council` command only (the store and the RPC methods stay).
   debates: { ui: true, core: true },
+  // Contacts: the page, the column, the rows and the shared project screens in the UI. The core keeps it whole: a Release still reads and revokes what a Nightly left.
+  contacts: { ui: true, core: false },
 };
 
 /** The marker of a feature's code in a bundle. Built here from two parts, so this file never carries one. */

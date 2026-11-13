@@ -56,6 +56,7 @@
   import { minuteClock } from '../lib/clock.svelte';
   import { needsAnAI } from '../lib/first-run';
   import { contactsShown } from '../lib/contacts-rail.svelte';
+  import { contactsParts } from '../lib/contacts-entry';
   import { ScreenSlide } from '../lib/screen-slide.svelte';
   import { doneFilter, feedPlace, feedThread, inbox } from '../lib/inbox.svelte';
   import { followActivityReturn, leaveForAct, restoreActivity } from '../lib/activity-return.svelte';
@@ -82,9 +83,9 @@
   let ContactInboxRows = $state<typeof import('./home/ContactInboxRows.svelte').default>();
   $effect(() => {
     if (!contactsShown(store) || SidebarContacts) return;
-    void import('./home/SidebarContacts.svelte').then(module => { SidebarContacts = module.default; }).catch(() => {});
-    void import('./home/ContactRequestNotice.svelte').then(module => { ContactRequestNotice = module.default; }).catch(() => {});
-    void import('./home/ContactInboxRows.svelte').then(module => { ContactInboxRows = module.default; }).catch(() => {});
+    void contactsParts?.SidebarContacts().then(module => { SidebarContacts = module.default; }).catch(() => {});
+    void contactsParts?.ContactRequestNotice().then(module => { ContactRequestNotice = module.default; }).catch(() => {});
+    void contactsParts?.ContactInboxRows().then(module => { ContactInboxRows = module.default; }).catch(() => {});
   });
   let search = $state('');
   const query = $derived(search.trim().toLocaleLowerCase());

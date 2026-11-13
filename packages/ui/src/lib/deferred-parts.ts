@@ -33,8 +33,12 @@ export function prefetchParts(): void {
   for (const part of Object.values(parts)) void part.load().catch(() => undefined);
 }
 
-/** Shared rows load only for an expanded project with Contacts enabled. */
-export const sharedProjectThreads = new LazyComponent(() => import('../components/shared/SharedProjectThreads.svelte'));
+/**
+ * Shared rows load only for an expanded project with Contacts enabled. Both
+ * parts carry the Contacts' flag in full, as `lib/contacts-entry.ts` does: a
+ * build below its tag has no such chunk, and nothing draws the part there.
+ */
+export const sharedProjectThreads = new LazyComponent(() => typeof __BOITE_HAS_CONTACTS__ === 'undefined' || __BOITE_HAS_CONTACTS__ ? import('../components/shared/SharedProjectThreads.svelte') : Promise.reject(new Error('Contacts are not in this build')));
 
 /** Association controls load their dialog only when the owner opens it. */
-export const sharedProjectDialog = new LazyComponent(() => import('../components/shared/SharedProjectDialog.svelte'));
+export const sharedProjectDialog = new LazyComponent(() => typeof __BOITE_HAS_CONTACTS__ === 'undefined' || __BOITE_HAS_CONTACTS__ ? import('../components/shared/SharedProjectDialog.svelte') : Promise.reject(new Error('Contacts are not in this build')));

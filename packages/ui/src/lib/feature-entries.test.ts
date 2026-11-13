@@ -41,3 +41,8 @@ test('from source no flag is defined and the Council is there; a bundle defines 
   expect(councilBuilt()).toBe(false);
   expect(loadCouncilSalon()).toBeNull();
 });
+
+test('holds the Contacts screens from source, where no flag is defined', async () => {
+  const { contactsParts } = await import('./contacts-entry');
+  expect(Object.keys(contactsParts ?? {})).toEqual(['HomePage', 'ContactsRail', 'ContactRows', 'ContactRequestNotice', 'ContactInboxRows', 'SidebarContacts', 'SharedThreadDialog']);
+});

@@ -13,6 +13,7 @@
   import { needsAnAI } from '../lib/first-run';
   import { inbox } from '../lib/inbox.svelte';
   import { contactsShown } from '../lib/contacts-rail.svelte';
+  import { contactsParts } from '../lib/contacts-entry';
   import WindowResizeHandles from './WindowResizeHandles.svelte';
 
   /**
@@ -42,7 +43,7 @@
   let ContactRequestNotice = $state<typeof import('./home/ContactRequestNotice.svelte').default>();
   $effect(() => {
     if (!contactNotice || ContactRequestNotice) return;
-    void import('./home/ContactRequestNotice.svelte').then(module => { ContactRequestNotice = module.default; }).catch(() => {});
+    void contactsParts?.ContactRequestNotice().then(module => { ContactRequestNotice = module.default; }).catch(() => {});
   });
   let foldable = $derived(store.booted && !listless && (store.page === 'chat' || store.page === 'home' || (store.page === 'agents' && !mobile.current)));
   function toggleSidebar() {

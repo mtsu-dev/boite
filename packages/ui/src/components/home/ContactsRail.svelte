@@ -28,7 +28,7 @@
   });
 </script>
 
-<aside class="contacts-rail" class:collapsed={folded} class:drawn inert={folded} aria-label={labels.heading} data-testid="contacts-rail">
+<aside data-feature="boite-feature:contacts" class="contacts-rail" class:collapsed={folded} class:drawn inert={folded} aria-label={labels.heading} data-testid="contacts-rail">
   <div class="head">
     <button type="button" class="ghost home" title={labels.rail.home}
       onclick={() => show(null)} data-testid="contacts-rail-home"><House size={15} /><span class="title ui-label">{labels.heading}</span></button>

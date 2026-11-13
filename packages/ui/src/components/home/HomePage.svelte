@@ -35,7 +35,7 @@
   $effect(() => { void store.client; void store.connection; view.follow(); });
 </script>
 
-<div class="settings contacts" data-testid="home-page">
+<div data-feature="boite-feature:contacts" class="settings contacts" data-testid="home-page">
   <div class="page">
     {#if view.error}
       <div class="banner"><Notice icon={CircleAlert} tone="danger" role="alert" testid="home-error" detail={view.error} ondismiss={() => { view.error = ''; }} /></div>

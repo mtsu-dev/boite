@@ -43,7 +43,7 @@
   }
 </script>
 
-{#if projects.length}<div class="person" data-testid="shared-local-person">{strings.shared.you} · {localMachine}</div>{/if}
+{#if projects.length}<div data-feature="boite-feature:contacts" class="person" data-testid="shared-local-person">{strings.shared.you} · {localMachine}</div>{/if}
 {@render children()}
 {#if active && thread}
   {#each projects as project (project.shared.id)}

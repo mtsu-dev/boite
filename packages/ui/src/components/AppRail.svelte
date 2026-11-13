@@ -10,6 +10,7 @@
   import { agentRows, waitingOn, type AgentRowData } from '../lib/agents.svelte';
   import { watchTeams, type TeamRow } from '../lib/teams.svelte';
   import { contactsShown } from '../lib/contacts-rail.svelte';
+  import { contactsParts } from '../lib/contacts-entry';
   import { machineFilter } from '../lib/machine-filter.svelte';
   import { projectView } from '../lib/project-view.svelte';
   import { botEngine, newBot, newTeam } from '../lib/agents-view.svelte';
@@ -174,7 +175,7 @@
   let ContactRequestNotice = $state<typeof import('./home/ContactRequestNotice.svelte').default>();
   $effect(() => {
     if (!contactsOn || ContactRequestNotice) return;
-    void import('./home/ContactRequestNotice.svelte').then(module => { ContactRequestNotice = module.default; }).catch(() => {});
+    void contactsParts?.ContactRequestNotice().then(module => { ContactRequestNotice = module.default; }).catch(() => {});
   });
 </script>
 

@@ -50,7 +50,7 @@
 </script>
 
 <SharedDialog title={target.agent.title} {onclose} testid="shared-thread-dialog">
-  <p class="where">{fill(strings.shared.with, {name: view?.project?.contact.name ?? ''})} · {target.machine} · {target.agent.agent ?? ''}</p>
+  <p data-feature="boite-feature:contacts" class="where">{fill(strings.shared.with, {name: view?.project?.contact.name ?? ''})} · {target.machine} · {target.agent.agent ?? ''}</p>
   {#if current}
     {#if current.readThreads}
       <div class="actions"><button type="button" class="ghost small" disabled={busy} onclick={() => void read()} data-testid="shared-thread-refresh">{strings.shared.refresh}</button>

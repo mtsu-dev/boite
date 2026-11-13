@@ -45,6 +45,7 @@
   import { needsAnAI } from '../lib/first-run';
   import { listAbsent } from '../lib/list-absent';
   import { contactsRail, contactsShown } from '../lib/contacts-rail.svelte';
+  import { contactsParts } from '../lib/contacts-entry';
   import SideHead from './agents/SideHead.svelte';
   let { store }: { store: Store } = $props();
   const mobile = new MediaQuery('(max-width: 720px)');
@@ -79,7 +80,7 @@
   let ContactRows = $state<typeof import('./home/ContactRows.svelte').default>();
   $effect(() => {
     if (!contactsSide || ContactRows) return;
-    void import('./home/ContactRows.svelte').then(module => { ContactRows = module.default; }).catch(() => {});
+    void contactsParts?.ContactRows().then(module => { ContactRows = module.default; }).catch(() => {});
   });
   const foldLabel = $derived(contactsRail.folded ? strings.contacts.rail.show : strings.contacts.rail.hide);
   $effect(() => { if (showRows && scrollRoot) void tick().then(() => { if (scrollRoot && showRows) scrollRoot.scrollTop = savedScroll; }); });

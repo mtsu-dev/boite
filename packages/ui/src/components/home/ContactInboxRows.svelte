@@ -114,7 +114,7 @@
   {@const text = (row.request ?? row.letter).text}
   <!-- Activity's row (ActivityRow.svelte): its kind, who asks, where and since when, then what, whole; the answer
        beside the head, under it all on a phone. Another project waits in the row's menu. -->
-  <article class="contact-row" data-testid="activity-contact" data-kind={row.letter ? 'mail' : 'request'} data-count={same.length}>
+  <article data-feature="boite-feature:contacts" class="contact-row" data-testid="activity-contact" data-kind={row.letter ? 'mail' : 'request'} data-count={same.length}>
     <div class="lines">
       <ActivityKind kind={row.letter ? 'mail' : 'request'} />
       <p class="head">
