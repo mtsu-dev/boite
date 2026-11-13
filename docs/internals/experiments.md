@@ -41,7 +41,7 @@ sides read: `featureRuns(id, version)`, `listedExperiments(version)` (the
 switches a build shows), `effectiveExperiments(chosen, version)` (what is on:
 every finished feature, plus the chosen ones whose tag the build reaches) and
 `experimentRefusal(id, version)` (why a build has no switch for an id). The
-refusal names the tag and the build: "experiment.whip runs in Dev builds
+refusal names the builds that have it and this one: "experiment.whip runs in Dev builds
 only, and this machine runs a Nightly (2.0.0-nightly.20261113.1)". A stored
 choice for a feature the build lacks is ignored and kept.
 `experimentsRun(version)` and `isReleaseVersion(version)` remain for the
@@ -200,21 +200,27 @@ Defined as `false`, the branch and its import are dropped and no chunk holds
 the feature's modules. Nothing else may import those modules: one static
 import elsewhere puts them back in every build.
 
-What is cut today, in a build below the feature's tag:
+What is cut, in a build below the feature's tag:
 
-| Feature | UI | Core | What stands in the way |
+| Feature | UI | Core | What stays in every build, and why |
 | --- | --- | --- | --- |
 | Whip | cut: `lib/whip-entry.svelte.ts` loads `lib/whip/feature.ts` (the control, the Escape key), then the rope with its physics and sounds | has no core side | nothing |
-| Council (`debates`) | cut: the salon through `lib/council-entry.ts`, the card through its gated part in `lib/deferred-parts.ts`, with `lib/council.svelte.ts` | partly: the `boite delegate council` command (`council/cli.ts`, loaded by `delegate-cli.ts`) | `core.ts` builds `CouncilStore` in its constructor, and `delegation/guide.ts`, `delegation/results.ts`, `delegation/retirement.ts`, `delegation.ts`, `threads/cards.ts`, `threads/turn-context.ts` and `server.ts` call `core.council` synchronously; `modules.ts` registers `council/rpc.ts` at startup and `journal/schema.ts` creates its tables. The strings and the contract types stay too |
-| Automatic goals | not yet | not yet | no module of its own: the checks sit inside `core/src/activity.ts`, `composer.ts`, `composer-activity.ts`, `threads.ts` and `threads/turn-context.ts`, and in the UI `AutoGoalSetting.svelte` is a static import of the Experiments page |
-| Teams | not yet | not yet | `core.ts` imports `teams/store.ts` and builds the store, `modules.ts` registers `teams/rpc.ts`; in the UI `AppRail.svelte`, `ChatView.svelte`, `agents/AgentsPage.svelte`, `agents/AgentsRail.svelte`, `agents/BotColumnHead.svelte` and `lib/agent-move-flow.ts` import `lib/teams.svelte.ts` or a `teams/` component statically, and the Council salon does too |
-| Contacts | not yet | not yet | `core.ts` imports `contacts/store.ts`, `projects.ts`, `board.ts`, `compute.ts`, `access-policy.ts` and `review.ts`, `modules.ts` registers `contacts/rpc.ts` and `contacts/compute.ts`, and `server.ts` serves the link routes of `contacts/store.ts`; in the UI `AppRail.svelte`, `Sidebar.svelte`, `TitleBar.svelte`, `ActivityList.svelte`, `MobileNavigation.svelte` and `MobileTabs.svelte`, all on the first screen, import `lib/contacts-*` statically |
+| Council (`debates`) | cut: the salon through `lib/council-entry.ts`, the card through its gated part in `lib/deferred-parts.ts`, with `lib/council.svelte.ts` | cut: the store and the RPC methods through `council-entry.ts`, the `boite delegate council` command through `delegate-cli.ts` | the tables (`council/journal.ts`, read by `journal/schema.ts`), the strings and the contract types |
+| Automatic goals | cut: the threshold setting through `lib/auto-goal-entry.ts` | cut: `auto-goal.ts` (which prompt starts a goal, starting it, `boite goal track`) through `auto-goal-entry.ts` | the goal engine (`activity.ts`), a finished feature that also runs the goal an automatic start made; the `autoGoalMinChars` setting; one line of the agent guide; the strings |
+| Teams | cut: the chat, the dialog, the header through `lib/teams-entry.ts`, the request card through its gated part in `lib/deferred-parts.ts` | cut: the store with its peers, snapshots and mirror, the RPC methods and `boite team` through `teams-entry.ts` | the tables (`teams/journal.ts`); `coordination-team.ts`, which renders a letter's team part and asks the store; in the UI `lib/teams.svelte.ts`, the list the rails read (empty where the core has no team), and `lib/team-requests.ts` |
+| Contacts | cut: the page, the column, the rows, the notices and the shared thread dialog through `lib/contacts-entry.ts`, the shared project rows and dialog through their gated parts in `lib/deferred-parts.ts` | not cut | the whole core side. A Release still reads, revokes and removes what a Nightly left and keeps the access limits of a shared thread; 30 modules call its stores (`coordination.ts`, `threads/turn-context.ts`, `workdir.ts`, `artifacts.ts`, `server.ts`). Cutting it means a Release drops those reads and refuses to run a thread bound to a contact: a decision, not a refactor. In the UI: the column's fold (`lib/contacts-rail.svelte.ts`), the ask row and remote chip of a thread, `lib/operator.ts` |
 
-For the features not cut yet the run-time rule still holds in every build:
-no switch, no card, a refusal that names the tag. Their code is in the
-bundle and does not run. Cutting a core store needs a stand-in the
-synchronous readers can call while the real one is absent, which is a change
-of its own for each feature.
+In the core a store is built in the constructor and a prompt is admitted in
+one synchronous step, so the entries there use `require` behind the flag, not
+`import()`: Bun drops a folded `require` the same way. A build without the
+feature gets a stand-in from the entry, written for exactly what the rest of
+the core calls: the Council owns no thread, a team letter is not received,
+no prompt starts a goal, and every RPC method of the feature is refused with
+the tag and the build. The journal's tables are created in every build, so
+what a Nightly left is kept and ignored.
+
+For Contacts' core the run-time rule alone holds in a Release: no switch, a
+refusal that names the tag, the code in the bundle.
 
 ### The proof
 
@@ -254,8 +260,11 @@ that each cut feature's sources hold its marker and its flag.
 5. Run `bun scripts/ci/feature-cut.ts --build`. A leak names the chunk that
    holds the marker: find who imports the feature outside its entry.
 
-A service the core builds at startup cannot be cut this way yet (see the
-table): start with the parts that are already called on demand.
+A service the core builds at startup follows `teams-entry.ts`: a `require`
+behind the flag, and a stand-in typed with `Pick` of the real class for the
+members the rest of the core calls, so a new caller fails the type check
+until the stand-in answers it. `feature-stages.test.ts` starts a core with the
+flag set to `false` (`compiledWithout`) and checks the refusals.
 
 ## Devices and the desktop app
 
