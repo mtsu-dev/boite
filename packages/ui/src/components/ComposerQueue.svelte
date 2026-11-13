@@ -53,10 +53,11 @@
 
 <div class="queued" data-testid="composer-queued">
   {#each queued as entry, at (entry)}
-    <div class="queued-item" class:failed={entry.request?.failed !== undefined} data-testid="composer-queued-item">
-      <!-- The text clamps to three lines: the tooltip carries the whole prompt. -->
+    <!-- The text clamps to three lines: the tooltip carries the whole prompt. It sits on the row, since a disabled
+         button (a held answer, a box with text in it) gets no hover and so no tooltip in Chromium. -->
+    <div class="queued-item" class:failed={entry.request?.failed !== undefined} data-testid="composer-queued-item"
+      title={entry.text ? `${strings.composer.editQueued}: ${entry.text}` : strings.composer.editQueued}>
       <button type="button" class="queued-bubble"
-        title={entry.text ? `${strings.composer.editQueued}: ${entry.text}` : strings.composer.editQueued}
         disabled={disabled || !!entry.request?.start}
         onclick={() => onrestore(at)}>
         <span class="queued-text">{entry.text || strings.composer.attachAlt}</span>
