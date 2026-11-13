@@ -98,7 +98,7 @@ test('runCommand dispatches: the theme is stored and stamped, settings opens on 
 
   runCommand(store, 'providers', false);
   expect(store.page).toBe('settings');
-  expect(store.settingsTab).toBe('accounts');
+  expect(store.settingsTab).toBe('ai');
 
   // Every entry opens the same machine and folder picker.
   store.showChat();

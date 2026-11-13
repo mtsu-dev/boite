@@ -162,15 +162,18 @@ describe('the map of Settings', () => {
   });
 
   test('owner-only pages and cards stay out of a paired device', () => {
-    expect(SETTINGS_PAGES.filter(ownerOnly)).toEqual(['agents', 'safeguards']);
-    expect(navOf(false)).toEqual(['appearance', 'input', 'conversations', 'ai', 'devices', 'version', 'help']);
+    expect(SETTINGS_PAGES.filter(ownerOnly)).toEqual(['agents']);
+    expect(navOf(false)).toEqual(['appearance', 'input', 'conversations', 'ai', 'safeguards', 'devices', 'version', 'help']);
+    // A paired device reads what it read on General before the map: the privacy card and the admin policy, nothing it could change.
+    expect(cardsOf('safeguards', false).map((card) => card.id)).toEqual(['policy']);
+    expect(desktopPlace('general', 'policy', false)).toEqual({ page: 'safeguards', section: 'policy' });
     expect(cardsOf('ai', false).map((card) => card.id)).toEqual(['quotas', 'usage']);
     expect(cardsOf('conversations', false).map((card) => card.id)).toEqual(['thread-list', 'conversations', 'notifications', 'archived']);
     expect(cardsOf('help', false).map((card) => card.id)).toEqual(['task-manager', 'core', 'tour']);
     expect(cardsOf('devices', false).map((card) => card.id)).toEqual(['app', 'main-machine', 'group', 'machines', 'phone']);
     // A route to what it lacks opens the first page, or the card's page from the top.
     expect(desktopPlace('brain', null, false)).toEqual({ page: 'appearance', section: null });
-    expect(desktopPlace('resources', 'limits', false)).toEqual({ page: 'appearance', section: null });
+    expect(desktopPlace('resources', 'limits', false)).toEqual({ page: 'safeguards', section: null });
     expect(desktopPlace('general', 'worktrees', false)).toEqual({ page: 'conversations', section: null });
     expect(desktopHas('general', 'worktrees', false)).toBe(false);
     expect(desktopHas('accounts', 'provider-claude', false)).toBe(false);

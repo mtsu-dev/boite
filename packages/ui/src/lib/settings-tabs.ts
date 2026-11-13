@@ -39,7 +39,7 @@ export const PAGES: Record<SettingsPage, PageDef> = {
   conversations: { scope: 'device', phone: ['general', 'conversations'] },
   ai: { scope: 'machine', long: true, phone: ['accounts', null] },
   agents: { scope: 'machine', owner: true, phone: ['brain', null] },
-  safeguards: { scope: 'machine', owner: true, phone: ['general', null] },
+  safeguards: { scope: 'machine', phone: ['general', null] },
   devices: { scope: 'group', phone: ['machines', null] },
   version: { scope: 'machine', phone: ['machines', null] },
   help: { scope: 'machine', phone: ['diagnostics', null] }
@@ -107,7 +107,7 @@ export const SETTINGS_CARDS = [
   { id: 'limits', page: 'safeguards', block: 'limits', scope: 'machine', owner: true, from: ['resources', 'limits'] },
   { id: 'browser-profiles', page: 'safeguards', block: 'browser-profiles', scope: 'device', owner: true, from: ['browser', 'browser-profiles'] },
   { id: 'privacy', page: 'safeguards', block: 'privacy', scope: 'machine', owner: true, from: ['general', 'privacy'] },
-  { id: 'policy', page: 'safeguards', block: 'policy', scope: 'machine', owner: true, from: ['general', 'policy'] },
+  { id: 'policy', page: 'safeguards', block: 'policy', scope: 'machine', from: ['general', 'policy'] },
   // Devices: who connects to what.
   { id: 'app', page: 'devices', block: 'app', scope: 'device', from: ['general', 'app'] },
   { id: 'main-machine', page: 'devices', block: 'app', scope: 'device', from: ['machines', null] },

@@ -1982,6 +1982,40 @@ tr:last-child td {
   padding-bottom: 2px;
 }
 
+/* A title that shares its line with an action (Add a device, Check for
+   updates): the whole line stands above the card, the action at its right end. */
+.settings .page .card:has(> .card-head:first-child) {
+  position: relative;
+  margin-top: calc(var(--card-head) + var(--space-4));
+}
+
+.settings .page .card > .card-head:first-child {
+  position: absolute;
+  left: var(--space-4);
+  right: var(--space-4);
+  bottom: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: var(--card-head);
+  margin: 0;
+  padding: 0 0 2px;
+  border: 0;
+}
+
+.settings .page .card > .card-head:first-child > h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1) 6px;
+  min-width: 0;
+  margin: 0;
+}
+
+:is(.settings .page > .settings-stack > .card, .settings .page .card) > .card-head:first-child + * {
+  border-top: 0;
+}
+
 /* A line between every two rows of a card. What belongs to the row above (a
    hint, an error, a status) joins it without one. */
 :is(.settings .page > .card, .settings .page > form > .card, .settings .page > .settings-stack > .card) > :not(h2, :first-child) {
@@ -1989,6 +2023,11 @@ tr:last-child td {
 }
 :is(.settings .page > .card, .settings .page > form > .card, .settings .page > .settings-stack > .card) > :is(h2 + *, .hint, [role=alert], .error, [hidden]) {
   border-top: 0;
+}
+
+/* A button that is a card's whole row (Show archived threads) keeps the row's air above and under it. */
+:is(.settings .page > .card, .settings .page > form > .card, .settings .page > .settings-stack > .card) > button {
+  margin: var(--space-2) 0;
 }
 
 /* A card that is a list or a table runs its rows to its edges. */

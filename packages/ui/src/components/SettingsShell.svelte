@@ -69,7 +69,12 @@
    * `desktopPlace` says where it lands. Each page is a column of blocks, an
    * older page whole or a single card, in the order the map gives.
    */
-  let place = $derived(desktopPlace(store.settingsTab, store.settingsSection?.id, store.owner));
+  /** A paired device reads one card of Safeguards, the admin policy: without a policy the page has nothing for it. */
+  let bare = $derived(!store.owner && !store.policy?.present);
+  let place = $derived.by(() => {
+    const found = desktopPlace(store.settingsTab, store.settingsSection?.id, store.owner);
+    return bare && found.page === 'safeguards' ? { page: navOf(false)[0]!, section: null } : found;
+  });
   let tab = $derived(place.page);
 
   /** Machines this window controls, and the window's own whatever its role there. */
@@ -106,7 +111,7 @@
   // Derived, not built once: the nav is written in the language the app is
   // speaking, and the language changes without a reload. Each entry wears its
   // icon (`SETTINGS_ICONS`), so the list scans by shape as well as by word.
-  let pages = $derived(navOf(store.owner).map((id) => ({ id, label: strings.settingsMap.pages[id] })));
+  let pages = $derived(navOf(store.owner).filter((id) => !(bare && id === 'safeguards')).map((id) => ({ id, label: strings.settingsMap.pages[id] })));
   let words = $derived(cardWords());
   /** A long page lists its sections under its entry while it is open. */
   let sections = $derived(navSectionsOf(tab, store.owner).map((card) => ({ id: card.id, label: words[card.id as SettingsCardId].title })));

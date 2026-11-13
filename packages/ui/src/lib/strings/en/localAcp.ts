@@ -4,6 +4,8 @@ export const strings = {
     heading: 'Local ACP command',
     hint: 'Any agent that speaks ACP, started from its own command. It keeps its own sign-in and settings, and lists its models itself. Each argument is passed exactly as written, with no shell.',
     open: 'Add',
+    /** The card's one line while its form is closed. */
+    closed: 'An agent started from its own command',
     name: 'Name',
     namePlaceholder: 'My agent',
     commandPlaceholder: 'my-agent',

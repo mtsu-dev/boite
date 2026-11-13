@@ -745,7 +745,6 @@
   .provider.secondary { padding: 8px var(--settings-padding); gap: 8px; }
   .secondary .name { font-size: var(--text-sm); font-weight: 400; color: var(--color-muted-foreground); }
   .secondary .summary:hover .name { color: var(--color-foreground); }
-  .secondary-list { background: transparent; }
 
   /* Turned off: still listed, read as set aside. The switch keeps its full weight, it is the way back. */
   .provider.off .summary, .provider.off .summary :global(*), .member.off .member-line > :not(.act), .member.off .member-line > :not(.act) :global(*), .member.off .account, .member.off .account :global(*) { color: var(--color-subtle); }
