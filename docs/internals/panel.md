@@ -2,7 +2,9 @@
 
 The Panel button or [surface shortcuts](keybindings.md) open a thread's tabs
 beside the chat. Tabs are stored per machine/thread; width is shared on this device.
-At 720 px and below it covers the chat; **Chat** or Back hides it without
+Opening it never folds the thread list. Under 981 px, or when the list and the
+contacts column would leave the chat under its 360 px minimum beside a 300 px
+panel, it lies over the chat (`panelOverChat`). At 720 px and below it covers the chat; **Chat** or Back hides it without
 closing the agent's browser tabs. The phone header's **Browser** button opens
 the agent browser directly. New agent pages leave the phone on its chosen
 view. A mobile reload keeps tabs but starts with the panel closed, without

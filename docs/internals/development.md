@@ -1029,7 +1029,7 @@ on `--motion-duration` and `--motion-curve`: the terminal grows its slot, the pa
 the sidebar slide in from their window edge behind a negative margin that
 shrinks to zero. The chat gives way over the whole movement instead of jumping
 in one frame. The panel and the sidebar keep their final size while they
-slide, so nothing inside them rewraps. Over the chat, under 981 px, the panel moves by a transform; floating,
+slide, so nothing inside them rewraps. Over the chat (under 981 px, or with too little room beside the list), the panel moves by a transform; floating,
 it only fades out. A panel tab opened or picked after the panel is in fades
 its surface in. Captures and pointer aims wait on `page.settleAnimations()`
 from `tests/e2e/lib/cdp.ts`, which leaves out animations inside a folded
