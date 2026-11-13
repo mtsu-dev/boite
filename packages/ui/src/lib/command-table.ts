@@ -43,8 +43,8 @@ export const commandTable: readonly CommandDefinition[] = [
   { id: 'retitle', label: () => strings.palette.retitle, run: (store) => { const open = store.openThread; if (open) void store.retitle(open.id); } },
   { id: 'trace', label: () => strings.palette.trace, ownerOnly: true, run: (store) => { store.showChat(); store.panel.toggleKind('trace'); } },
   { id: 'appearance', label: () => strings.palette.appearance, run: (store) => { store.showSettings('appearance'); } },
-  { id: 'providers', label: () => strings.palette.providers, ownerOnly: true, run: (store) => { store.showSettings('accounts'); } },
-  { id: 'pair', label: () => strings.palette.pair, ownerOnly: true, run: (store) => { store.showSettings('machines', 'machines'); void store.addDevice(); } },
+  { id: 'providers', label: () => strings.palette.providers, ownerOnly: true, run: (store) => { store.showSettings('ai'); } },
+  { id: 'pair', label: () => strings.palette.pair, ownerOnly: true, run: (store) => { store.showSettings('devices', 'machines'); void store.addDevice(); } },
   { id: 'theme-dark', label: () => strings.palette.themeDark, run: () => { setTheme('dark'); } },
   { id: 'theme-light', label: () => strings.palette.themeLight, run: () => { setTheme('light'); } },
   { id: 'theme-system', label: () => strings.palette.themeSystem, run: () => { setTheme('system'); } },
@@ -73,8 +73,8 @@ export const commandTable: readonly CommandDefinition[] = [
     else if (store.draft && store.page === 'chat') store.projectChoiceRequest += 1;
   } },
   { id: 'subagents', run: (store) => { store.showChat(); store.panel.toggleKind('agents'); } },
-  { id: 'task-manager', run: (store) => { store.showSettings('task-manager'); } },
-  { id: 'archived', run: (store) => { store.showSettings('general', 'archived'); } },
+  { id: 'task-manager', run: (store) => { store.showSettings('help', 'task-manager'); } },
+  { id: 'archived', run: (store) => { store.showSettings('conversations', 'archived'); } },
   { id: 'tour', run: (store) => { store.showChat(); openTour(); } },
 ];
 const commandsById = new Map(commandTable.map(command => [command.id, command]));

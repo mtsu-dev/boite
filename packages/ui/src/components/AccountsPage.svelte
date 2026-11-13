@@ -31,7 +31,8 @@
    * the row's chevron. A family (Antigravity and its CLI) is one row, each way
    * in its own block inside it with its own switch.
    */
-  let { store }: { store: Store } = $props();
+  /** `extras`: the cards under the providers. The map of Settings places each itself (`SettingsShell.svelte`). */
+  let { store, extras = true }: { store: Store; extras?: boolean } = $props();
   const uid = $props.id();
 
   /** One pending code per account, so two logins never share a field. */
@@ -718,12 +719,14 @@
       {#each groups.off as row (row.id)}{@render providerRow(row, true)}{/each}
     </div>
   {/if}
+  {#if extras}
   {#if store.owner}<LocalAcpCard {store} />{/if}
   {#if store.owner}<HarnessUpdatesCard {store} />{/if}
   {#if store.owner}<SubscriptionProxySettings {store} />{/if}
   <!-- What agents sign in with beyond a provider: the keys they ask for in a card.
        The browser's logins have their own entry (BrowserPage.svelte). -->
   <SecretsCard />
+  {/if}
 </div>
 
 <style>
@@ -742,7 +745,6 @@
   .provider.secondary { padding: 8px var(--settings-padding); gap: 8px; }
   .secondary .name { font-size: var(--text-sm); font-weight: 400; color: var(--color-muted-foreground); }
   .secondary .summary:hover .name { color: var(--color-foreground); }
-  .secondary-list { background: transparent; }
 
   /* Turned off: still listed, read as set aside. The switch keeps its full weight, it is the way back. */
   .provider.off .summary, .provider.off .summary :global(*), .member.off .member-line > :not(.act), .member.off .member-line > :not(.act) :global(*), .member.off .account, .member.off .account :global(*) { color: var(--color-subtle); }

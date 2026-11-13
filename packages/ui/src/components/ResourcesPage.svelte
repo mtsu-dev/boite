@@ -11,7 +11,8 @@
   import { Autosave, toggled, typed, whole } from '../lib/autosave.svelte';
   import { threadTone } from '../lib/status-tone';
 
-  let { store }: { store: Store } = $props();
+  /** `part`: one of its two cards alone, where the map of Settings places them on two pages (`SettingsShell.svelte`). */
+  let { store, part }: { store: Store; part?: 'limits' | 'tasks' } = $props();
   const uid = $props.id();
 
   let cpuCap = $state(untrack(() => store.settings?.agentCpuCapPercent ?? 75));
@@ -50,12 +51,15 @@
 </script>
 
 <div class="page" data-testid="resources-page">
+  {#if !part}
   <header>
     <div>
       <h1>{strings.settings.tabs.resources}</h1>
     </div>
   </header>
+  {/if}
 
+  {#if part !== 'tasks'}
   <section class="card" id="settings-limits">
     <h2 class="ui-label-box"><span class="ui-label">{strings.protection.limits}</span><InfoTip gather topic={strings.protection.limits} text="" testid="section-info" /><SaveStatus save={limitsSave} /></h2>
     <label for="{uid}-memory-protection" class="switch-row">
@@ -88,6 +92,8 @@
       </dl>
     {:else}<p class="hint">{strings.resources.unknown}</p>{/if}
   </section>
+  {/if}
+  {#if part !== 'limits'}
   <!-- The live list, led by the switch that closes what a closed thread left running. -->
   <section class="card" id="settings-tasks">
     <h2 class="tasks-heading"><span class="ui-label">{strings.protection.tasks}</span><span class="live-dot" aria-hidden="true"></span></h2>
@@ -95,11 +101,10 @@
       <span class="text"><span class="ui-label-box"><span class="ui-label" id="{uid}-reap-orphans-name">{strings.settings.reapOrphans}</span><InfoTip topic={strings.settings.reapOrphans} text={strings.settings.reapOrphansHint} /><SyncMark {store} key="reapOrphans" /></span><span class="hint" id="{uid}-reap-orphans-effect">{strings.settings.effects.reapOrphans}</span></span>
       <input id="{uid}-reap-orphans" aria-labelledby="{uid}-reap-orphans-name" aria-describedby="{uid}-reap-orphans-effect" type="checkbox" role="switch" data-testid="setting-reap-orphans" checked={store.settings?.reapOrphans ?? true} onchange={(event) => void toggled(event.currentTarget, reapOrphans => store.saveSettings({ reapOrphans }))} />
     </label>
+    {#if store.resources.length === 0}
+      <p class="idle" data-testid="resources-empty">{strings.resources.empty}</p>
+    {/if}
   </section>
-
-  {#if store.resources.length === 0}
-    <p class="empty" data-testid="resources-empty">{strings.resources.empty}</p>
-  {/if}
 
   {#each resources as entry (entry.threadId)}
     <section class="card flush" data-testid="resource-row" data-thread-id={entry.threadId}>
@@ -139,9 +144,11 @@
       </table></div>
     </section>
   {/each}
+  {/if}
 </div>
 
 <style>
+  .idle { margin: 0; padding: var(--space-3) 0; color: var(--color-muted-foreground); font-size: var(--text-sm); }
   .memory-reading { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px 32px; margin: 0; padding: var(--space-3) 0; font-size: var(--text-sm); }
   dt { color: var(--color-muted-foreground); }
   dd { margin: 6px 0 0; font-variant-numeric: tabular-nums; }

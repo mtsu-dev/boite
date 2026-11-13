@@ -70,8 +70,9 @@ test('no button shows its icon smaller than it was drawn', async () => {
 
   await page.click(id('nav-settings'));
   await page.waitFor(`document.querySelector('${id('settings')}')`);
-  const tabs = await page.evaluate<string[]>(`Array.from(document.querySelectorAll('[data-testid^="settings-tab-"]')).map(tab => tab.dataset.testid)`);
-  expect(tabs.length).toBeGreaterThan(3);
+  const tabs = await page.evaluate<string[]>(`Array.from(document.querySelectorAll('[data-testid^="settings-tab-"]')).filter(tab => tab.offsetParent !== null).map(tab => tab.dataset.testid)`);
+  // The nine pages of the map; the old page names are routes without a button to draw.
+  expect(tabs.length).toBe(9);
   for (const tab of tabs) {
     await page.click(id(tab));
     await page.waitFor(`document.querySelector('${id(tab)}').getAttribute('aria-current') === 'page'`);

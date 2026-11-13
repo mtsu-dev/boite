@@ -55,7 +55,8 @@ export function checkClientPreferences(params: unknown): { ok: true; preferences
   const experiments = EXPERIMENT_IDS.filter(id => (given.experiments as unknown[]).includes(id));
   const raw = given.labels ?? {};
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw) || Object.keys(raw).length > CLIENT_LABELS_MAX) return { ok: false, message: `labels must map at most ${CLIENT_LABELS_MAX} keys to names`, field: 'labels' };
-  const known = new Set<string>([...REQUESTABLE_SETTING_KEYS, ...EXPERIMENT_IDS.map(id => `experiment.${id}`), ...SETTINGS_PAGES]);
+  // An app one version behind still names its pages as it lists them.
+  const known = new Set<string>([...REQUESTABLE_SETTING_KEYS, ...EXPERIMENT_IDS.map(id => `experiment.${id}`), ...SETTINGS_PAGES, ...SETTINGS_PAGE_ALIASES]);
   const labels: Record<string, string> = {};
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
     if (!known.has(key) || typeof value !== 'string') continue;
@@ -70,12 +71,25 @@ export function sameClientPreferences(a: ClientPreferences | null, b: ClientPref
   return canonical(a) === canonical(b);
 }
 
-/** The Settings pages a card can open, under the ids the app's navigation uses. */
-export const SETTINGS_PAGES = [
-  'general', 'appearance', 'keyboard', 'voice', 'accounts', 'plugins', 'brain',
-  'usage', 'limits', 'task-manager', 'resources', 'machines', 'advanced', 'experiments',
-] as const;
+/**
+ * The Settings pages a card can open, under the ids the app's navigation uses,
+ * in its order: one page per question a person asks.
+ */
+export const SETTINGS_PAGES = ['appearance', 'input', 'conversations', 'ai', 'agents', 'safeguards', 'devices', 'version', 'help'] as const;
 export type SettingsPage = (typeof SETTINGS_PAGES)[number];
+
+/**
+ * The page names of the Settings before its nine pages. An agent, a core or
+ * an app one version behind still names them: a card accepts one and the app
+ * opens the page its card moved to (`packages/ui/src/lib/settings-tabs.ts`).
+ */
+export const SETTINGS_PAGE_ALIASES = [
+  'general', 'keyboard', 'voice', 'accounts', 'plugins', 'brain', 'usage', 'limits',
+  'task-manager', 'resources', 'machines', 'advanced', 'experiments', 'browser', 'diagnostics',
+] as const;
+export type SettingsPageAlias = (typeof SETTINGS_PAGE_ALIASES)[number];
+/** A page as a card may name it: one of the nine, or a name from before them. */
+export type SettingsPageName = SettingsPage | SettingsPageAlias;
 
 /** Where one setting is drawn, and whether its card may apply it in one click. */
 export interface SettingPlace {
@@ -95,35 +109,35 @@ export interface SettingPlace {
  * browser profiles are left out: an agent has no reason to read them.
  */
 export const REQUESTABLE_SETTINGS = {
-  asyncQuestions: { page: 'general', section: 'conversations', sensitive: false },
-  shortAnswers: { page: 'general', section: 'conversations', sensitive: false },
-  toolSummaries: { page: 'general', section: 'conversations', sensitive: false },
-  titleModel: { page: 'general', section: 'conversations', sensitive: false },
-  threadDoneRetentionDays: { page: 'general', section: 'archived', sensitive: true },
-  threadDeletionRetentionDays: { page: 'general', section: 'archived', sensitive: true },
-  worktreeStorage: { page: 'general', section: 'worktrees', sensitive: true },
-  focusGuard: { page: 'general', section: 'quiet', sensitive: true },
-  muteAgents: { page: 'general', section: 'quiet', sensitive: true },
-  agentCpuCapPercent: { page: 'resources', section: 'limits', sensitive: false },
-  agentMemoryBudgetPercent: { page: 'resources', section: 'limits', sensitive: false },
-  threadMemoryCapMb: { page: 'resources', section: 'limits', sensitive: false },
-  memoryReserveMb: { page: 'resources', section: 'limits', sensitive: false },
-  memoryProtection: { page: 'resources', section: 'limits', sensitive: true },
-  reapOrphans: { page: 'resources', section: 'tasks', sensitive: false },
-  autoUpdateHarnesses: { page: 'accounts', section: 'agent-updates', sensitive: false },
-  autoInstallUpdates: { page: 'machines', section: 'updates', sensitive: false },
-  listenOnLan: { page: 'advanced', section: 'phone', sensitive: true },
-  publicUrl: { page: 'advanced', section: 'phone', sensitive: true },
-  browserOrigins: { page: 'advanced', section: 'origins', sensitive: true },
-  warmProcessMinutes: { page: 'advanced', section: 'execution', sensitive: false },
-  autoCompact: { page: 'advanced', section: 'auto-compact', sensitive: false },
-  compactionByType: { page: 'advanced', section: 'auto-compact', sensitive: false },
-  compactionSummary: { page: 'advanced', section: 'auto-compact', sensitive: false },
-  autoResumeLimitedThreads: { page: 'limits', section: 'limit-resume', sensitive: false },
-  backgroundCompaction: { page: 'experiments', section: 'background-compaction', sensitive: false },
-  deviceStream: { page: 'experiments', section: 'device-stream', sensitive: false },
-  groupThreads: { page: 'machines', section: 'machines', sensitive: false },
-  groupBots: { page: 'machines', section: 'machines', sensitive: false },
+  asyncQuestions: { page: 'conversations', section: 'agent-replies', sensitive: false },
+  shortAnswers: { page: 'conversations', section: 'agent-replies', sensitive: false },
+  toolSummaries: { page: 'conversations', section: 'agent-replies', sensitive: false },
+  titleModel: { page: 'conversations', section: 'agent-replies', sensitive: false },
+  threadDoneRetentionDays: { page: 'conversations', section: 'archived', sensitive: true },
+  threadDeletionRetentionDays: { page: 'conversations', section: 'archived', sensitive: true },
+  worktreeStorage: { page: 'conversations', section: 'worktrees', sensitive: true },
+  focusGuard: { page: 'safeguards', section: 'quiet', sensitive: true },
+  muteAgents: { page: 'safeguards', section: 'quiet', sensitive: true },
+  agentCpuCapPercent: { page: 'safeguards', section: 'limits', sensitive: false },
+  agentMemoryBudgetPercent: { page: 'safeguards', section: 'limits', sensitive: false },
+  threadMemoryCapMb: { page: 'safeguards', section: 'limits', sensitive: false },
+  memoryReserveMb: { page: 'safeguards', section: 'limits', sensitive: false },
+  memoryProtection: { page: 'safeguards', section: 'limits', sensitive: true },
+  reapOrphans: { page: 'help', section: 'tasks', sensitive: false },
+  autoUpdateHarnesses: { page: 'version', section: 'agent-updates', sensitive: false },
+  autoInstallUpdates: { page: 'version', section: 'updates', sensitive: false },
+  listenOnLan: { page: 'devices', section: 'phone', sensitive: true },
+  publicUrl: { page: 'devices', section: 'phone', sensitive: true },
+  browserOrigins: { page: 'devices', section: 'origins', sensitive: true },
+  warmProcessMinutes: { page: 'agents', section: 'execution', sensitive: false },
+  autoCompact: { page: 'agents', section: 'auto-compact', sensitive: false },
+  compactionByType: { page: 'agents', section: 'auto-compact', sensitive: false },
+  compactionSummary: { page: 'agents', section: 'auto-compact', sensitive: false },
+  autoResumeLimitedThreads: { page: 'ai', section: 'limit-resume', sensitive: false },
+  backgroundCompaction: { page: 'version', section: 'background-compaction', sensitive: false },
+  deviceStream: { page: 'version', section: 'device-stream', sensitive: false },
+  groupThreads: { page: 'devices', section: 'machines', sensitive: false },
+  groupBots: { page: 'devices', section: 'machines', sensitive: false },
 } as const satisfies Partial<Record<keyof Settings, SettingPlace>>;
 
 export type RequestableSetting = keyof typeof REQUESTABLE_SETTINGS;
@@ -153,6 +167,11 @@ export interface SettingMachine {
 
 export function isSettingsPage(page: unknown): page is SettingsPage {
   return typeof page === 'string' && (SETTINGS_PAGES as readonly string[]).includes(page);
+}
+
+/** True for one of the nine pages and for a name from before them. */
+export function isSettingsPageName(page: unknown): page is SettingsPageName {
+  return isSettingsPage(page) || (typeof page === 'string' && (SETTINGS_PAGE_ALIASES as readonly string[]).includes(page));
 }
 
 /** A section anchor as the app writes them: lowercase words joined by dashes. */
@@ -205,7 +224,8 @@ export type SettingAsk =
       value: unknown;
       /** The value when the agent asked, null when unset. The card settles when the setting leaves it. */
       previous: unknown;
-      page: SettingsPage;
+      /** Where the asking core draws the key; an older core names an older page. */
+      page: SettingsPageName;
       section: string;
       sensitive: boolean;
       /** An experiment's card: the app whose switch it was asked from (`ClientPreferences.app`). */
@@ -215,7 +235,8 @@ export type SettingAsk =
     }
   | {
       kind: 'open';
-      page: SettingsPage;
+      /** One of the nine pages, or a page from before them, kept as asked: the app reads either. */
+      page: SettingsPageName;
       section: string | null;
       /**
        * A plugin to preview (`boite plugin add`): Preview opens Settings >
@@ -281,7 +302,7 @@ export function currentSetting(key: RequestableKey, settings: Settings, client: 
 }
 
 function experimentPlace(id: ExperimentId): SettingPlace {
-  return { page: 'experiments', section: id, sensitive: false };
+  return { page: 'version', section: id, sensitive: false };
 }
 
 /** Every readable setting, an app's experiments after the core's settings once an app reported them. */
@@ -332,7 +353,7 @@ export function checkSettingRequest(params: SettingRequestParams, settings: Sett
   if (hasKey === (params.page !== undefined)) return { ok: false, message: 'settings.request takes a key and a value, or a page', data: { field: 'key', expected: 'key or page' } };
   if (!hasKey) {
     const { page, section } = params;
-    if (!isSettingsPage(page)) return { ok: false, message: `${String(page)} is not a Settings page`, data: { field: 'page', expected: SETTINGS_PAGES } };
+    if (!isSettingsPageName(page)) return { ok: false, message: `${String(page)} is not a Settings page`, data: { field: 'page', expected: SETTINGS_PAGES } };
     if (params.plugin !== undefined) return pluginCard(params, reason, open);
     if (section !== undefined && section !== null && (typeof section !== 'string' || section.length > 64 || !SETTINGS_SECTION_PATTERN.test(section))) {
       return { ok: false, message: 'section must be a card anchor of lowercase words joined by dashes', data: { field: 'section', expected: 'such as limits or provider-claude' } };
@@ -389,7 +410,8 @@ export function checkSettingRequest(params: SettingRequestParams, settings: Sett
  * and one thread holds one card per repository.
  */
 function pluginCard(params: Extract<SettingRequestParams, { page: string }>, reason: string, open: readonly SettingAsk[]): SettingRequestCheck {
-  if (params.page !== 'plugins') return { ok: false, message: 'a plugin card opens the plugins page', data: { field: 'page', expected: ['plugins'] } };
+  // Plugins is a card of the Agents page; `plugins` is its name from before.
+  if (params.page !== 'agents' && params.page !== 'plugins') return { ok: false, message: 'a plugin card opens the plugins card of the agents page', data: { field: 'page', expected: ['agents'] } };
   const given = params.plugin as unknown;
   if (given === null || typeof given !== 'object' || Array.isArray(given)) return { ok: false, message: 'plugin must be { url, ref? }', data: { field: 'plugin', expected: '{ url, ref? }' } };
   const { url, ref } = given as { url?: unknown; ref?: unknown };
@@ -399,7 +421,7 @@ function pluginCard(params: Extract<SettingRequestParams, { page: string }>, rea
     return { ok: false, message: `a card about the plugin at ${read.url} is already open in this thread`, data: { field: 'plugin.url', url: read.url } };
   }
   return {
-    ok: true, reason, setting: { kind: 'open', page: 'plugins', section: PLUGIN_ADD_SECTION, plugin: { url: read.url, ref: read.ref, ...(read.page === undefined ? {} : { page: read.page }) } },
+    ok: true, reason, setting: { kind: 'open', page: 'agents', section: PLUGIN_ADD_SECTION, plugin: { url: read.url, ref: read.ref, ...(read.page === undefined ? {} : { page: read.page }) } },
     options: [{ id: 'open', label: 'Preview' }, { id: 'refuse', label: 'Dismiss' }],
   };
 }

@@ -72,7 +72,7 @@ test('a thread starts one on another machine of its group once that machine allo
   const asked = await cli(['settings', 'request', 'groupThreads', 'true', '--machine', machine, '--why', 'Print from the PC', '--json']);
   expect(asked.err).toBe('');
   const card = JSON.parse(asked.out) as { setting: { machine?: { coreId: string }; previous: unknown } };
-  expect(card.setting).toMatchObject({ key: 'groupThreads', value: true, previous: false, page: 'machines', machine: { coreId: pcId } });
+  expect(card.setting).toMatchObject({ key: 'groupThreads', value: true, previous: false, page: 'devices', machine: { coreId: pcId } });
   expect(await owner.call('questions.list', { threadId })).toHaveLength(1);
   expect(desk.core.settings.get().groupThreads ?? false).toBe(false);
   await pcOwner.call('settings.set', { groupThreads: true });

@@ -209,8 +209,8 @@
 <style>
   /* One block per subject, separated like the rows of the other cards: the
      field or the sentence first, its buttons under it. */
-  .block { display: flex; flex-direction: column; gap: 10px; }
-  .block + .block { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--color-border); }
+  .block { display: flex; flex-direction: column; gap: 10px; padding: var(--space-3) 0; }
+  .block + .block { border-top: 1px solid var(--color-border); }
   .fields { display: flex; flex-direction: column; gap: 10px; padding-top: 10px; }
   /* A field's label sits over its input. The LAN switch's row is the shared
      `.switch-row` (app.css): a column there turned the switch's 40 px flex
