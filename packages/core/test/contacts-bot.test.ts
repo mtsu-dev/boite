@@ -476,7 +476,7 @@ test('a Release starts nothing from the Contacts bot: a plan or a share accepted
 
     await owner.call('questions.answer', { threadId: hostBot.threadId, questionId: plan.questionId, optionIds: ['accept'] });
     await owner.call('questions.answer', { threadId: hostBot.threadId, questionId: share.questionId, optionIds: ['yes'] });
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await waitFor(() => here(planned.id).stage === 'bot' && here(wanted.id).stage === 'bot', 10000);
     // Nothing started and nothing opened: both requests wait, back with the bot.
     expect(release.core.journal.listThreads().length).toBe(threads);
     expect(grants()).toBe(0);

@@ -53,6 +53,8 @@ export class SharedCompute {
     core.sharedProjects.registerPolicyListener(id => this.reconcile(id));
     core.sharedProjects.registerPeer('compute.models', (p, ctx) => this.#hostModels(ctx, p.host));
     core.sharedProjects.registerPeer('compute.start', (p, ctx, requestId) => {
+      // A contact's job runs a worker here: a Release admits none.
+      contactsGate(core);
       const { source, repository, ...input } = p ?? {};
       if (input.requestId !== requestId) throw invalidParams('compute.requestId: expected envelope requestId');
       const ref = threadRef(source);
@@ -61,7 +63,7 @@ export class SharedCompute {
     });
     core.sharedProjects.registerPeer('compute.get', (p, ctx) => this.#hostGet(ctx, p.jobId));
     core.sharedProjects.registerPeer('compute.cancel', (p, ctx) => this.#hostCancel(ctx, p));
-    core.sharedProjects.registerPeer('compute.send', (p, ctx, requestId) => this.#hostSend(ctx, p.jobId, p.text, requestId));
+    core.sharedProjects.registerPeer('compute.send', (p, ctx, requestId) => { contactsGate(core); return this.#hostSend(ctx, p.jobId, p.text, requestId); });
     core.sharedProjects.registerFlush(peerId => this.flush(peerId));
     this.#off = core.bus.onCommitted((name, payload) => {
       if (this.#closed) return;

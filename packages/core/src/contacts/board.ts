@@ -47,6 +47,8 @@ export class SharedBoard {
     core.sharedProjects.registerPeer('board.apply', (p, ctx, requestId) => {
       const command = boardCommand(p?.command);
       if (command.requestId !== requestId) throw invalidParams('command.requestId: expected the envelope operation id');
+      // A contact's Nightly asks as an app here does: new work stops, upkeep passes.
+      if (command.kind !== 'remove' && command.kind !== 'release') contactsGate(core);
       return this.#authoritativeApply(ctx, command, boardWorkerInfo(p.workerInfo));
     });
     core.sharedProjects.registerPeer('board.progress', (p, ctx) => progressAtAuthority(this, ctx, this.#progress(p)));

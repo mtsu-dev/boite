@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp.ts';
 import { toMobileList } from './lib/mobile.ts';
-import { startUi } from './lib/ui.ts';
+import { startDevUi } from './lib/ui.ts';
 
 /*
  * The stages of `EXPERIMENT_STAGES` as a person meets them: a Nightly lists
@@ -22,7 +22,8 @@ let base: string;
 beforeAll(async () => {
   mkdirSync(ARTIFACTS, { recursive: true });
   const port = await freePort();
-  server = await startUi(port);
+  // The page imports `/src/...`, which only the dev server answers.
+  server = await startDevUi(port);
   base = `http://127.0.0.1:${port}`;
   // A fresh profile: no experiment was ever stored.
   page = await BrowserPage.launch({ url: `${base}/?fake=1` });

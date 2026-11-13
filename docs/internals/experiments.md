@@ -70,7 +70,11 @@ run": the version in the hello (`info.version`) is enough.
   plan runs, and the request goes back to the bot. A letter the bot held as a
   Nightly is not delivered either (`contacts.bot.flag` with `deliver: true`):
   its flag stays open, and blocking it still answers. A workflow step meets
-  the same refusal, since the compute service reads the build itself.
+  the same refusal, since the compute service reads the build itself. A
+  contact's Nightly meets it too while the listener still runs: its
+  `compute.start`, `compute.send` and a new, edited or claimed card in
+  `board.apply` are refused, and its reads, cancels, removals and releases
+  answer.
   `packages/core/test/feature-stages.test.ts` covers it.
 - The app (`packages/ui/src/lib/experiments.ts`) follows the version of its
   primary machine's core: the Store `followDesktopOf` names says it on every
