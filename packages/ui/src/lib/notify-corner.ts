@@ -4,12 +4,9 @@ import './notify-corner.css';
  * One home for every notice: the undo and error toasts (`toastSlot`) and the
  * arriving cards (contact mail and requests, plugin updates, memory notes,
  * `class="notify-corner" use:notifyCorner`), all one form (Notice.svelte,
- * floating). With a thread or a phone list on screen they sit in room
- * the page keeps at its bottom, right above the composer or the tab bar,
- * centred on it, so none covers a line, a title or the field being typed in.
- * With neither, a desktop keeps the bottom-right corner, the cards stacked
- * upward in arrival order above the toasts and lifted over what owns the
- * bottom edge under them. The lift is `--corner-lift` on each card.
+ * floating). Phones keep room above the composer or tab bar. Desktops use
+ * the bottom-right corner without moving the conversation, stacking cards
+ * above toasts and keeping the composer and its strip clear.
  */
 /** Bottom-edge owners. A composer centred in an empty thread is not one. */
 const FLOORS = '[data-testid=composer],[data-testid=thread-activity],[data-testid=mobile-tabs]';
@@ -38,22 +35,15 @@ function shown(selector: string): HTMLElement | null {
 }
 
 /**
- * The toasts' home, in room the page keeps for them so they cover no line,
- * row or title: at the bottom of what scrolls, the thread or the phone's list
- * over it, right above the composer (its strip included) or the tab bar,
- * centred on it, where the eye and the hand that made the change are. The
- * timeline gives way at its bottom on every width. A desktop page with no
- * timeline keeps the bottom-right corner.
- *
- * The arriving cards take that room too, under the toasts, on every width: a
- * card never sits over a line of the conversation or a row of the list.
+ * Phones reserve room at the bottom of their timeline or list. Desktops
+ * keep notifications in the corner, above any controls under that corner.
  * Returns the cards it placed.
  */
 function placeToasts(): HTMLElement[] {
   const up = toasts.filter((toast) => toast.offsetHeight > 0);
   const phone = innerWidth <= 720;
   // On a phone the list screen lies over the thread, which still lays out under it.
-  const over = (phone && shown('[data-testid=mobile-list]')) || shown('[data-testid=timeline]');
+  const over = phone ? shown('[data-testid=mobile-list]') || shown('[data-testid=timeline]') : null;
   // Last first: the first card to arrive sits lowest, as in the corner.
   const slotted = over ? cards.filter((card) => card.offsetHeight > 0).reverse() : [];
   const room = [...up, ...slotted].reduce((sum, node) => sum + node.offsetHeight + 8, 0);
@@ -65,13 +55,17 @@ function placeToasts(): HTMLElement[] {
     top = box.bottom + (parseFloat(getComputedStyle(over).marginBottom) || 0) - room;
     centre = box.left + box.width / 2;
   } else {
-    top = innerHeight - 12 - room + 8;
+    // Clear phone centring before measuring the corner after a resize.
+    for (const node of [...up, ...cards]) {
+      delete node.dataset.slot;
+      node.style.removeProperty('--toast-left');
+    }
+    top = innerHeight - 12 - room + 8 - cornerFloor();
     centre = null;
   }
   for (const toast of up) {
     toast.style.setProperty('--toast-top', `${Math.round(top)}px`);
-    if (centre === null) toast.style.removeProperty('--toast-left');
-    else toast.style.setProperty('--toast-left', `${Math.round(centre)}px`);
+    if (centre !== null) toast.style.setProperty('--toast-left', `${Math.round(centre)}px`);
     toast.dataset.slot = centre === null ? 'end' : 'bottom';
     top += toast.offsetHeight + 8;
   }
@@ -85,25 +79,29 @@ function placeToasts(): HTMLElement[] {
   return slotted;
 }
 
+/** Height of controls beneath the corner, shared by its toasts and cards. */
+function cornerFloor(): number {
+  let lift = 0;
+  for (const node of [...cards, ...toasts]) {
+    if (!node.offsetHeight) continue;
+    const { left, right } = node.getBoundingClientRect();
+    for (const owner of document.querySelectorAll(FLOORS)) {
+      const box = owner.getBoundingClientRect();
+      // The wrapper includes the strip, queued messages and permissions above the field.
+      if (box.height && box.right > left && box.left < right && box.bottom > innerHeight - 160) lift = Math.max(lift, innerHeight - (owner.closest('.composer-wrap')?.getBoundingClientRect().top ?? box.top));
+    }
+  }
+  return lift;
+}
+
 function placeCards(slotted: HTMLElement[]): void {
   let lift = -1;
-  const bar = shown('[data-testid=composer-strip]')?.getBoundingClientRect();
   for (const card of cards) {
     // A card hidden on this page (display: none) keeps no room; one in the toasts' room is placed.
     if (!card.offsetHeight || slotted.includes(card)) continue;
-    delete card.dataset.slot;
-    card.style.removeProperty('--toast-left');
     if (lift < 0) {
-      const { left, right } = card.getBoundingClientRect();
-      lift = 0;
-      for (const owner of document.querySelectorAll(FLOORS)) {
-        const box = owner.getBoundingClientRect();
-        if (box.height && box.right > left && box.left < right && box.bottom > innerHeight - 160) lift = Math.max(lift, innerHeight - box.top);
-      }
-      // The strip above the composer (subagents, the way back) sits on that floor: a card rises over it too.
-      if (lift > 0 && bar?.height && bar.right > left && bar.left < right && bar.bottom >= innerHeight - lift - 1) lift = Math.max(lift, innerHeight - bar.top);
-      // Toasts in the corner (no timeline to keep room in) sit at its bottom: the cards stack above them.
-      lift = Math.max(lift, toasts.reduce((sum, toast) => sum + (toast.offsetHeight > 0 && toast.dataset.slot === 'end' ? toast.offsetHeight + 8 : 0), 0));
+      lift = cornerFloor();
+      lift += toasts.reduce((sum, toast) => sum + (toast.offsetHeight > 0 && toast.dataset.slot === 'end' ? toast.offsetHeight + 8 : 0), 0);
     }
     card.style.setProperty('--corner-lift', `${lift}px`);
     lift += card.offsetHeight + 8;

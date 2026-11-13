@@ -7,7 +7,7 @@
   import TurnFiles from './TurnFilesLoader.svelte';
   import { TurnChanges } from '../lib/turn-changes.svelte';
   import { TailHeight } from '../lib/tail-height.svelte';
-  import ThreadClosing from './ThreadClosing.svelte';
+  import TimelineFoot from './TimelineFoot.svelte';
   import MessageOutline from './MessageOutline.svelte';
   import AgentMessageGroup from './AgentMessageGroup.svelte';
   import TimelineCard from './TimelineCard.svelte';
@@ -29,9 +29,10 @@
   import FailedAttempts from './FailedAttempts.svelte';
   import MoveMarker from './MoveMarker.svelte';
   import SpawnMarker from './SpawnMarker.svelte';
+  import SwitchMarker from './SwitchMarker.svelte';
   import MessageActions from './MessageActions.svelte';
   import { workspace } from '../lib/workspace.svelte';
-  import { movedBy, pendingMoveOf, startedFrom, turnAnswer } from '../lib/message-display';
+  import { movedBy, startedFrom, turnAnswer } from '../lib/message-display';
   import { focusComposer } from '../lib/focus';
   import { isSending } from '../lib/composer-queue';
   import { retryTurn } from '../lib/composer-edit';
@@ -244,8 +245,6 @@
   const windowed = $derived(rows.length > WINDOW_FROM);
   /** The window was opened around a reading position and stops short of the thread's last message. */
   const cutBelow = $derived((store.messagesAfter ?? null) !== null);
-  /** A move the user made, said at the foot of the thread until the prompt that tells the agent goes. */
-  const pendingMove = $derived(cutBelow || isSending(timeline.at(-1) ?? { id: '' }) ? null : pendingMoveOf(store.openThread, threadId));
 
   function totals(list: TimelineRow[]): number[] { return slots.totals(list, timelineOrder); }
 
@@ -662,13 +661,11 @@
 
   /** Only once the loaded window reaches the thread's end: newer history still unread is not its last word. */
   let closingShown = $derived(closing !== null && store.messagesAfter === null && !store.loadingNewer);
-  /** The closing line lands under a pinned list: the bottom takes it in, like a new message. */
-  $effect(() => {
-    if (!closingShown) return;
+  /** A line lands at the foot of a pinned list: the bottom takes it in, like a new message. */
+  function followFoot(): void {
     const box = viewport;
-    if (!box || !untrack(following)) return;
-    void tick().then(() => { if (untrack(following)) edge.follow(box); });
-  });
+    if (box && following()) void tick().then(() => { if (following()) edge.follow(box); });
+  }
 
   /** The window moving under a pinned viewport changes the spacers: take the bottom again. */
   $effect(() => {
@@ -750,6 +747,7 @@
           data-role={group ? 'agent-mail' : message.role} data-turn={message.turnId}
         >
           {#if row.first && days.has(message.id)}<DayDivider at={days.get(message.id)!} />{/if}
+          {#if row.first && turn?.switched && message.role !== 'assistant' && firstInTurn.get(message.turnId) === message.id}<SwitchMarker names={store} shown={turn.switched} />{/if}
           {#if row.failures}
             <FailedAttempts {store} {threadId} messages={row.failures} turns={shownTurns} {signedOut} canFork={!narrow.current && forkable && !store.openThread?.incognito} reveal={failureTarget} oninspect={inspectFailures} />
           {:else if quietFold}
@@ -793,8 +791,7 @@
       {/each}
       {#if view.below > 0}<div class="spacer" data-testid="timeline-below" style="height: {view.below}px"></div>{/if}
       {#if store.loadingNewer}<p class="loading-older" data-testid="loading-newer">{strings.chat.loadingNewer}</p>{/if}
-      {#if pendingMove}<MoveMarker notice={pendingMove} pending />{/if}
-      {#if closingShown && closing}<ThreadClosing text={closing} />{/if}
+      <TimelineFoot {store} {threadId} pending={!cutBelow && !isSending(timeline.at(-1) ?? { id: '' })} closing={closingShown ? closing : null} onlanded={followFoot} />
     </div>
     {#if promptRoom > 0}<div class="spacer" data-testid="prompt-room" style:height="{promptRoom}px" aria-hidden="true"></div>{/if}
   </div>
@@ -840,8 +837,7 @@
     --scroll-edge-bottom: 20px;
     padding: 20px var(--outline-room) var(--scroll-edge-bottom);
     overscroll-behavior: contain;
-    /* The toasts sit in room taken from the timeline's bottom, right above
-       the composer (notify-corner.ts and .css), so they cover no line of it. */
+    /* Phone toasts reserve room above the composer (notify-corner.ts and .css). */
     transition: margin var(--dur-2) var(--ease-out-quint);
   }
 

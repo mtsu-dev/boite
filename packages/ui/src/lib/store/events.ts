@@ -190,6 +190,13 @@ export function listen(ctx: StoreContext, client: Client): void {
   });
 
   on('turn.started', (turn) => threads.upsertTurn(turn.threadId, turn));
+  // A running turn's divider gained what its new session was handed; the rest of the turn stays what this client holds.
+  on('turn.switched', ({ threadId, turnId, switched }) => {
+    for (const thread of threads.threadSnapshots(threadId)) {
+      const index = lastIndexById(thread.turns, turnId);
+      if (index >= 0) thread.turns[index] = { ...thread.turns[index]!, switched };
+    }
+  });
   // A subscription window crossed the alert set on its account.
   on('quotas.alerted', (alert) => layout.notifyLimit(alert));
   on('turn.finished', (turn) => {

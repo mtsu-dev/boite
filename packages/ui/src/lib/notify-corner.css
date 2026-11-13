@@ -11,7 +11,7 @@
 /* Held while a thread loads (notify-corner.ts): out of sight until the page lands and its slot exists. */
 .notify-corner[data-held], .toast-slot[data-held] { visibility: hidden; }
 
-/* In the toasts' room (notify-corner.ts): centred on what gave way. Every card here is a floating Notice. */
+/* Phones centre cards in the room their timeline or list keeps. */
 .notify-corner[data-slot='bottom'] { right: auto; left: var(--toast-left, 50%); translate: -50% 0; }
 
 /* The room a page keeps for the toasts (notify-corner.ts sets it), so they
@@ -19,9 +19,7 @@
 [data-corner-room='bottom'] { margin-bottom: var(--corner-room); }
 [data-testid=mobile-list] { transition: margin var(--dur-2) var(--ease-out-quint); }
 
-/* The undo and error toasts' one home (notify-corner.ts places it): in that
-   room, right above the composer, centred on what gave way; with no thread
-   on a desktop, the bottom-right corner. */
+/* Desktop toasts use the right corner; phones keep room above the composer. */
 .toast-slot {
   position: fixed;
   top: var(--toast-top, 12px);

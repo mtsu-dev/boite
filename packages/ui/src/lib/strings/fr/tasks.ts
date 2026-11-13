@@ -4,7 +4,7 @@ export const fr: Translation = {
 
   tasks: {
     goalSection: 'Objectif et boucle',
-    noActivity: "Aucun objectif ni boucle sur cette conversation",
+    noActivity: "Aucun objectif ni boucle sur ce fil",
     nextRun: 'Prochain passage {time}',
     iterations: '{count} itérations',
     agentSection: "Tâches de l'agent",

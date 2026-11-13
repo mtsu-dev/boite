@@ -17,7 +17,7 @@ import { createRemovedTurnUsage } from './usage-sums.ts';
 import { createKeptProcesses } from './kept-processes.ts';
 import { createMessageStats } from './thread-stats.ts';
 
-export const SCHEMA_VERSION = 50;
+export const SCHEMA_VERSION = 51;
 
 /** Raised when the journal was written by a newer core than this one. */
 export class JournalTooNewError extends Error {
@@ -504,6 +504,11 @@ export function migrate(db: Database, file: string): { from: number; to: number 
     // Counts are filled on demand, without reading historical parts at startup.
     createMessageStats(db);
     version = 50;
+  }
+  // The change of selection a turn started on (`Turn.switched`, JSON): its divider in the transcript.
+  if (!hasColumn('turns', 'switched')) {
+    db.exec('ALTER TABLE turns ADD COLUMN switched TEXT');
+    version = 51;
   }
   createSharedProjects(db);
   createSharedBoard(db);

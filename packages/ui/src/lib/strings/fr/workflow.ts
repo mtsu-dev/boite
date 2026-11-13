@@ -26,7 +26,7 @@ export const fr: Translation = {
     result: 'Résultat',
     output: 'Sortie',
     items: 'Exécutions',
-    openThread: 'Ouvrir la conversation',
+    openThread: 'Ouvrir le fil',
     back: 'Retour au graphe',
     close: 'Fermer le détail',
     notStarted: 'Pas encore démarrée.',

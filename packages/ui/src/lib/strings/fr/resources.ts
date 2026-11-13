@@ -15,17 +15,17 @@ export const fr: Translation = {
     memorySettings: 'Réglages mémoire',
     protectionOff: 'Protection mémoire désactivée',
     killReason: {
-      'thread-quota': (limit: string) => `Cette conversation a dépassé sa limite mémoire de ${limit}.`,
+      'thread-quota': (limit: string) => `Ce fil a dépassé sa limite mémoire de ${limit}.`,
       budget: (limit: string) => `Les agents ont dépassé leur budget mémoire commun de ${limit}.`,
       machine: (limit: string) => `La mémoire disponible est passée sous la réserve de ${limit}.`,
     },
-    threadCap: 'Cette conversation a atteint sa limite de mémoire. Boite a refusé de lui en accorder davantage.',
+    threadCap: 'Ce fil a atteint sa limite de mémoire. Boite a refusé de lui en accorder davantage.',
     budget: "Les agents ont atteint leur budget mémoire commun. Boite a refusé de leur en accorder davantage.",
-    throttled: (limit: string) => `Les processus de cette conversation sont ralentis par leur limite mémoire de ${limit}. Ils se figent au lieu d'échouer.`,
+    throttled: (limit: string) => `Les processus de ce fil sont ralentis par leur limite mémoire de ${limit}. Ils se figent au lieu d'échouer.`,
     empty: 'Rien ne tourne en ce moment.',
     processes: 'processus',
     killTree: "Tuer l'arborescence",
-    killConfirm: 'Tuer tous les processus de cette conversation ?',
+    killConfirm: 'Tuer tous les processus de ce fil ?',
     killConfirmYes: 'Tuer',
   }
 };

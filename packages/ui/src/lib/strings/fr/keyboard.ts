@@ -6,7 +6,7 @@ export const fr: Translation = {
     heading: 'Raccourcis',
     intro: 'Cliquez sur un raccourci, puis appuyez sur les touches voulues. Le changement s\'applique aussitôt sur cette machine.',
     search: 'Filtrer les commandes',
-    groups: { general: 'Général', surfaces: 'Panneau latéral', thread: 'Conversation et message', jump: 'Aller à une conversation', theme: 'Thème', terminal: 'Terminal' },
+    groups: { general: 'Général', surfaces: 'Panneau latéral', thread: 'Fil et message', jump: 'Aller à un fil', theme: 'Thème', terminal: 'Terminal' },
     record: 'Appuyez sur les touches',
     change: 'Changer le raccourci',
     reset: 'Revenir au défaut',
@@ -36,10 +36,10 @@ export const fr: Translation = {
       closeSurface: 'Fermer la surface active',
       stash: 'Mettre le message de côté, ou le reprendre',
       sendAndDraft: 'Envoyer le message',
-      pin: 'Épingler ou désépingler cette conversation',
-      reopenThread: 'Rouvrir la dernière conversation archivée',
+      pin: 'Épingler ou désépingler ce fil',
+      reopenThread: 'Rouvrir le dernier fil archivé',
       copyAnswer: 'Copier la dernière réponse',
-      find: 'Chercher dans cette conversation, ou choisir le projet d\'une nouvelle',
+      find: 'Chercher dans ce fil, ou choisir le projet d\'un nouveau',
       terminalNew: 'Nouveau terminal',
       terminalSplit: 'Diviser le terminal à droite',
       terminalSplitVertical: 'Diviser le terminal en bas',
@@ -48,7 +48,7 @@ export const fr: Translation = {
       terminalHistory: 'Commandes récentes du shell',
       terminalPreviousCommand: 'Aller à la commande précédente',
       terminalNextCommand: 'Aller à la commande suivante',
-      thread: 'Aller à la conversation {n}'
+      thread: 'Aller au fil {n}'
     }
   }
 };
