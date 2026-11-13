@@ -1,5 +1,5 @@
 /** Coordination between threads, on this core and on the other fake cores it trusts. */
-import { coordinationReach, defaultCoordinationConfig, reachRefusal, RpcErrorCode, TRANSCRIPT_ENTRY_PAGE, TRANSCRIPT_ENTRY_TEXT, TRANSCRIPT_READ_ENTRIES, transcriptStretch, type AgentAddress, type AgentContact, type AgentLetter, type AgentMatch, type AgentRelation, type Contact, type ContactRequest, type ContactsState, type CoordinationConfig, type HeldContactLetter, type CoordinationPeer, type CoordinationView, type Thread, type ThreadId } from '@boite/contracts';
+import { coordinationReach, defaultCoordinationConfig, fitTranscript, reachRefusal, RpcErrorCode, TRANSCRIPT_ENTRY_PAGE, TRANSCRIPT_ENTRY_TEXT, TRANSCRIPT_READ_ENTRIES, transcriptStretch, type AgentAddress, type AgentContact, type AgentLetter, type AgentMatch, type AgentRelation, type Contact, type ContactRequest, type ContactsState, type CoordinationConfig, type HeldContactLetter, type CoordinationPeer, type CoordinationView, type Thread, type ThreadId } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { archiveProject } from './project-archive';
 import { approveContactMail, contactMailRoute, holdContactMail } from './contact-hold';
@@ -559,7 +559,7 @@ export function coordinationMethods(ctx: FakeContext) {
           const page = transcriptStretch(entry.text, 0, TRANSCRIPT_ENTRY_TEXT);
           return page.next === undefined ? entry : { ...entry, ...page, length: entry.text.length };
         });
-      return { contact: found.contact, entries: entries.slice(-limit), more: entries.length > limit };
+      return fitTranscript({ contact: found.contact, entries: entries.slice(-limit), more: entries.length > limit });
     },
     'collaboration.wait': async (params) => {
       ctx.thread(params.threadId);
