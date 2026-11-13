@@ -576,7 +576,10 @@
   /* Balanced timeline margins, with room for the message outline rail. */
   --outline-room: 38px;
   /* Settings read in the conversation's column (its default width, whatever width a thread was set to). */
-  --settings-width: var(--column);
+  --settings-width: 920px;
+  /* The settings' list of pages: wide enough for the longest page name in every language, no wider. */
+  --settings-nav: 252px;
+  --settings-title: 28px;
   --settings-gutter: clamp(var(--space-5), 3vw, 48px);
   --settings-padding: var(--space-6);
   /* The room a settings card keeps above it for its title (44 px on a phone: the title's "i" is a target). */
@@ -2206,6 +2209,23 @@ tr:last-child td {
   margin-top: var(--space-1);
   color: var(--color-subtle);
   font-weight: 400;
+}
+
+/* A window with room draws the settings a size up: a row a finger could take, its name in the
+   head size, a switch and a button one step larger than the chat's chrome. A phone has its own sizes. */
+@media (min-width: 721px) {
+  .settings .framed { --control: 36px; --control-sm: 32px; --switch-width: 48px; --switch-height: 28px; --card-head: 40px; }
+  .settings .framed .page .switch-row { min-height: 64px; padding: var(--space-3) 0; }
+  .settings .framed .page .switch-row .text { font-size: var(--text-head); font-weight: 500; }
+  .settings .framed .page .switch-row .hint { font-size: var(--text-meta); font-weight: 400; }
+  .settings .framed .page > .card,
+  .settings .framed .page > form > .card,
+  .settings .framed .page > .settings-stack > .card { padding-inline: var(--space-5); border-radius: var(--radius-lg); margin-bottom: var(--space-8); }
+  .settings .framed .page > .card.flush { padding: 0; }
+  :is(.settings .framed .page > .card, .settings .framed .page > form > .card, .settings .framed .page > .settings-stack > .card) > h2:first-child { left: var(--space-5); right: var(--space-5); }
+  .settings .framed .page .card h2,
+  .settings .framed .page > .group-heading h2 { font-size: var(--text-title); }
+  .settings .framed .segmented button { padding: 0 14px; }
 }
 
 .row {

@@ -82,6 +82,7 @@ export const fr: Translation = {
     glance: 'Limites des comptes',
     lineLeft: 'Il reste {percent} % de la limite {window} de {provider}',
     lineLeftAccount: 'Il reste {percent} % de la limite {window} de {provider} sur {account}',
+    lineLeftPool: 'Il reste {percent} % de la limite {window} de {provider} sur {count} comptes',
     allLimits: 'Page des limites',
     readFailed: 'Lecture des limites impossible : {error}',
     quit: 'Quitter Boite',

@@ -15,7 +15,8 @@
   /**
    * The limits at the foot of every list column: one line in words, what the
    * least-off account has left in its tightest window and whose it is, which opens the
-   * glance. Before anything is read it names the glance. A right click hides
+   * glance. A subscription gateway's accounts of one provider read as one pool, by
+   * what they have left together (`lowestLimit`). Before anything is read it names the glance. A right click hides
    * it, like the other list controls (`sidebar.limits`).
    */
   let { store }: { store: Store } = $props();
@@ -34,7 +35,7 @@
   });
 
   /** Whose limit the line reads: the provider's, and the account's where that provider shows several. */
-  const text = $derived(meter ? fill(meter.several ? strings.quotas.lineLeftAccount : strings.quotas.lineLeft, { percent: String(meter.left), window: quotaLimitName(meter.window), provider: meter.provider, account: meter.account }) : strings.quotas.glance);
+  const text = $derived(meter ? fill(meter.pool ? strings.quotas.lineLeftPool : meter.several ? strings.quotas.lineLeftAccount : strings.quotas.lineLeft, { percent: String(meter.left), window: quotaLimitName(meter.window), provider: meter.provider, account: meter.account, count: String(meter.pool ?? 1) }) : strings.quotas.glance);
   const tip = $derived(meter ? fill(strings.app.rail.limitsLeft, { percent: String(meter.left), window: quotaWindowName(meter.window), account: meter.account }) : strings.quotas.glance);
   let button = $state<HTMLButtonElement>();
   let glance = $state<LimitsGlance>();

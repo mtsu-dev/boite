@@ -577,8 +577,6 @@ test('the reasoning slider draws one dot per level, the arrows move it and a hov
   expect(update).toHaveBeenCalledWith('t-trace', { accountId: 'a-echo', model: 'echo-1', effort: 'low', speed: null, expectedSelectionVersion: 0 });
   await waitFor(() => track().getAttribute('aria-valuenow') === '0');
   expect(chipText('composer-effort')).toBe('Effort Low');
-  // The line under the track says what the lowest level gives.
-  expect(query('[data-testid=effort-cost]').textContent).toBe(strings.composer.effortCost.low);
 
   // One dot right takes the same save path, and the popover stays open under it.
   press('ArrowRight');
@@ -587,16 +585,16 @@ test('the reasoning slider draws one dot per level, the arrows move it and a hov
   expect(document.querySelector('[data-testid=composer-effort-menu]')).not.toBeNull();
   await waitFor(() => chipText('composer-effort') === 'Effort High');
 
-  // A mouse over the low dot names it under its ring before any pick, the heading keeping the live level; leaving drops the preview.
+  // A mouse over the low dot names it in the heading before any pick; leaving puts the live level back.
   const line = query('[data-testid=effort-track] .line');
   line.getBoundingClientRect = () => ({ left: 0, width: 100, top: 0, height: 24, right: 100, bottom: 24, x: 0, y: 0, toJSON() {} });
   track().dispatchEvent(new PointerEvent('pointermove', { clientX: 2, pointerType: 'mouse', bubbles: true }));
-  await waitFor(() => document.querySelector('[data-testid=effort-preview]')?.textContent === 'Low');
-  expect(query('[data-testid=effort-level]').textContent).toBe('High');
+  await waitFor(() => query('[data-testid=effort-level]').textContent === 'Low');
+  expect(query('[data-testid=effort-level]').hasAttribute('data-previewing')).toBe(true);
   expect(store.openThread?.effort).toBe('high');
   track().dispatchEvent(new PointerEvent('pointerleave', { pointerType: 'mouse' }));
-  await waitFor(() => document.querySelector('[data-testid=effort-preview]') === null);
-  expect(query('[data-testid=effort-level]').textContent).toBe('High');
+  await waitFor(() => query('[data-testid=effort-level]').textContent === 'High');
+  expect(query('[data-testid=effort-level]').hasAttribute('data-previewing')).toBe(false);
 
   press('Home');
   await waitFor(() => track().getAttribute('aria-valuenow') === '0');
