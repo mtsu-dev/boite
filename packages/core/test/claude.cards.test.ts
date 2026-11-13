@@ -152,7 +152,7 @@ describe('claude driver', () => {
       .filter(part => part.type === 'permission')).toEqual([]);
   });
 
-  test('Auto refuses a Claude Code safety ask with its reason, and a hook ask keeps its card', async () => {
+  test('Auto refuses a Claude Code safety ask with its reason, while a hook ask and a settings ask rule keep their card', async () => {
     const client = await harness.connect();
     const threadId = await claudeThread(client);
     await client.call('threads.update', { threadId, permissionMode: 'bypassPermissions' });
@@ -176,6 +176,12 @@ describe('claude driver', () => {
           signal: new AbortController().signal, toolUseID: 'toolu_hook', requestId: 'req_hook',
           decisionReason: 'focus test reason',
         }));
+        // The same safety ask, forced by an ask rule of the user's settings: their rule asks for a card.
+        answers.push(await options.canUseTool!('Bash', { command: rm }, {
+          signal: new AbortController().signal, toolUseID: 'toolu_rule', requestId: 'req_rule',
+          suggestions: [], decisionReason: reason, suppressAlwaysAllowRule: true,
+          matchedAskRule: { source: 'userSettings', toolName: 'Bash', ruleContent: 'rm:*' },
+        }));
         fake.emit(success('sess-auto'));
         fake.end();
       })();
@@ -187,9 +193,13 @@ describe('claude driver', () => {
     const refused = answers[0];
     expect(refused?.behavior === 'deny' ? refused.message : '').toContain('rewrite it as "${D:?}/${p:?}"');
     expect(answers[1]).toEqual({ behavior: 'allow', updatedInput: { command: 'echo hello' } });
-    expect(requested).toEqual(['echo hello']);
+    expect(answers[2]).toEqual({ behavior: 'allow', updatedInput: { command: rm } });
+    expect(requested).toEqual(['echo hello', rm]);
     const parts = (await client.call('threads.get', { threadId })).messages.flatMap(message => message.parts);
-    expect(parts.filter(part => part.type === 'permission')).toMatchObject([{ toolName: 'Bash', decision: 'allow' }]);
+    expect(parts.filter(part => part.type === 'permission')).toMatchObject([
+      { toolName: 'Bash', decision: 'allow' },
+      { toolName: 'Bash', decision: 'allow' },
+    ]);
   });
 
   test('canUseTool routes to the permission gate and answers the CLI', async () => {
