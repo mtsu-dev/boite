@@ -174,6 +174,11 @@ function transcriptEntry(db: Database, threadId: string, id: string, offset: num
   return { entries: [{ id: row.id, role: row.role, at: row.created_at, text: page.text, tools: [], length: text.length, offset, ...(page.next === undefined ? {} : { next: page.next }) }], more: false };
 }
 
+/** Another core's tool names within this core's limit: an older core sends them all, and the newest matter as in a local read. */
+function remoteTools(tools: string[]): string[] {
+  return tools.length > TRANSCRIPT_ENTRY_TOOLS + 1 ? pageTools(tools) : tools;
+}
+
 /**
  * A transcript from another core, checked field by field before it reaches an
  * agent. With `entry`, the answer must be that one entry from that offset: an
@@ -193,7 +198,7 @@ export function checkTranscript(value: unknown, entry?: { entry?: string; offset
       throw invalidParams(`transcript.entries[${index}]: expected id, role, at, text up to ${most} characters, tool names and offsets within its length`);
     }
     return {
-      id: item.id.slice(0, 100), role: item.role!, at: item.at!, text: item.text, tools: item.tools.slice(0, TRANSCRIPT_ENTRY_TOOLS + 1),
+      id: item.id.slice(0, 100), role: item.role!, at: item.at!, text: item.text, tools: remoteTools(item.tools),
       ...(item.length === undefined ? {} : { length: item.length }), ...(item.offset === undefined ? {} : { offset: item.offset }), ...(item.next === undefined ? {} : { next: item.next }),
     };
   });
