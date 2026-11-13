@@ -736,14 +736,29 @@ asking thread reads the outcome as a message. Code:
 `agents/setting-cards.ts`, shared checks in
 `packages/contracts/src/agent-setting-requests.ts`.
 
-A thread asked to set up a bot creates it itself, with no card: `boite settings
-bot create <name>`, with its role, instructions, model and projects
-([CLI](cli.md)). `agents.create` makes it exactly as the Bots page does, full
-access, its conversation and its "Just created" first turn included, and
-returns its id and conversation so the thread briefs it with `boite threads
-send`. The owner allowed this on 2026-10-24: a thread asks only when something
-about the bot is unclear. Changing the bot afterwards still goes through a
-card. Code: `agents/create.ts`, shared checks in
+A thread asked to set up a bot calls `boite settings bot create <name>`, with
+its role, instructions, model and projects ([CLI](cli.md)). What `agents.create`
+does then follows the machine setting `agentBotCreation`:
+
+- `ask`, the value of a new install: nothing is created. The core draws an
+  asynchronous card in the calling thread (`QuestionRequest.setting` of kind
+  `bot`, built by `botCard`) with the checked bot, the names of its projects
+  and its model, and returns `{ questionId, setting }`. Approve calls the
+  owner-only `agents.create.approve`, which checks the bot again (the name may
+  have been taken since), saves it and settles the card with `applied` and the
+  bot's id and conversation; Decline answers `refuse`. The thread reads the
+  outcome like a setting request's (`settingAnswerText`). A second request for
+  the same name while its card is open is refused.
+- `free`: the bot is made at once, exactly as the Bots page does, full access,
+  its conversation and its "Just created" first turn included, and the call
+  returns its id and conversation so the thread briefs it with `boite threads
+  send`.
+
+An install whose journal existed before the setting did gets `free` written
+once at its first start (`SettingsStore.seedAgentDefaults`), a new one gets
+`ask`; the stored value is never rewritten afterwards. The key is requestable
+(`boite settings request agentBotCreation free --why "<reason>"`). Changing
+the bot afterwards still goes through a card. Code: `agents/create.ts`, shared checks in
 `packages/contracts/src/agent-create.ts`.
 
 ## Routines

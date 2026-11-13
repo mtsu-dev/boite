@@ -1,5 +1,5 @@
 /** Coordination between threads, on this core and on the other fake cores it trusts. */
-import { defaultCoordinationConfig, RpcErrorCode, TRANSCRIPT_ENTRY_PAGE, TRANSCRIPT_ENTRY_TEXT, TRANSCRIPT_READ_ENTRIES, transcriptStretch, type AgentAddress, type AgentContact, type AgentLetter, type AgentMatch, type AgentRelation, type Contact, type ContactRequest, type ContactsState, type CoordinationConfig, type HeldContactLetter, type CoordinationPeer, type CoordinationView, type Thread, type ThreadId } from '@boite/contracts';
+import { coordinationReach, defaultCoordinationConfig, reachRefusal, RpcErrorCode, TRANSCRIPT_ENTRY_PAGE, TRANSCRIPT_ENTRY_TEXT, TRANSCRIPT_READ_ENTRIES, transcriptStretch, type AgentAddress, type AgentContact, type AgentLetter, type AgentMatch, type AgentRelation, type Contact, type ContactRequest, type ContactsState, type CoordinationConfig, type HeldContactLetter, type CoordinationPeer, type CoordinationView, type Thread, type ThreadId } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { archiveProject } from './project-archive';
 import { approveContactMail, contactMailRoute, holdContactMail } from './contact-hold';
@@ -188,6 +188,17 @@ export function coordinationConfig(ctx: FakeContext, threadId: ThreadId): Coordi
   return ctx.coordination.get(threadId) ?? defaultCoordinationConfig();
 }
 
+/**
+ * As the core's `Coordination.scope`: a thread's config as its own agent may
+ * use it, cut to the machine's `coordinationReach`. `projects` is the other
+ * projects of this machine, `remote` the other machines.
+ */
+function scope(ctx: FakeContext, threadId: ThreadId): CoordinationConfig & { projects: boolean; reach: ReturnType<typeof coordinationReach> } {
+  const config = coordinationConfig(ctx, threadId);
+  const reach = coordinationReach(ctx.settings);
+  return { ...config, projects: config.remote && reach !== 'project', remote: config.remote && reach === 'group', reach };
+}
+
 /** The thread whose agent started this one, from the mark on its first prompt. */
 function starterOf(thread: Thread): ThreadId | undefined {
   for (const part of thread.messages.find(message => message.role === 'user')?.parts ?? []) if (part.type === 'text' && part.startedBy) return part.startedBy.threadId;
@@ -280,10 +291,10 @@ function chatOf(thread: Thread): { id: string; role: Thread['messages'][number][
 /** Every contact the thread may reach here and on trusted fake cores, with the core each lives on. */
 function reachable(ctx: FakeContext, threadId: ThreadId): { contact: AgentContact; core: FakeContext }[] {
   const source = ctx.thread(threadId);
-  const sourceConfig = coordinationConfig(ctx, threadId);
+  const sourceConfig = scope(ctx, threadId);
   if (source.archived || sourceConfig.mode === 'off') return [];
   const found = [...ctx.threads.values()]
-    .filter(thread => thread.id !== threadId && !thread.archived && coordinationConfig(ctx, thread.id).mode !== 'off' && (thread.projectId === source.projectId || sourceConfig.remote && coordinationConfig(ctx, thread.id).remote))
+    .filter(thread => thread.id !== threadId && !thread.archived && coordinationConfig(ctx, thread.id).mode !== 'off' && (thread.projectId === source.projectId || sourceConfig.projects && coordinationConfig(ctx, thread.id).remote))
     .map(thread => ({ contact: fakeAgentContact(ctx, thread, ctx.identity.coreId, ctx.identity.name), core: ctx }));
   if (sourceConfig.remote) for (const peer of trusted(ctx)) {
     const target = cores.get(peer.coreId);
@@ -344,10 +355,10 @@ function deliverPending(ctx: FakeContext, threadId: ThreadId): void {
     const sender = forwarding?.source ?? cores.get(letter.from.coreId);
     const source = forwarding?.thread ?? sender?.threads.get(letter.from.threadId);
     if (!sender || !source) continue;
-    const sourceConfig = coordinationConfig(sender, source.id);
+    const sourceConfig = scope(sender, source.id);
     if (sourceConfig.mode === 'off') continue;
     const sameProject = sender === ctx && source.projectId === thread.projectId;
-    if (!sameProject && !(config.remote && sourceConfig.remote)) continue;
+    if (!sameProject && !(config.remote && (sender === ctx ? sourceConfig.projects : sourceConfig.remote))) continue;
     if (forwarding ? !forwarding.allowed() : sender !== ctx && !(trusts(ctx, sender.identity.coreId) && trusts(sender, ctx.identity.coreId))) continue;
     if (thread.projectId !== null && ctx.projects.find(project => project.id === thread.projectId)?.archived) archiveProject(ctx, thread.projectId, false);
     holdUnassociated(ctx, threadId, letter);
@@ -380,10 +391,10 @@ export function coordinationMethods(ctx: FakeContext) {
     'collaboration.directory': async (params) => {
       const { threadId } = params;
       const source = ctx.thread(threadId);
-      const sourceConfig = coordinationConfig(ctx, threadId);
+      const sourceConfig = scope(ctx, threadId);
       if (source.archived || sourceConfig.mode === 'off') return { agents: [], unavailable: [] };
       const agents = [...ctx.threads.values()]
-        .filter(thread => thread.id !== threadId && !thread.archived && (thread.projectId === source.projectId || sourceConfig.remote && coordinationConfig(ctx, thread.id).remote))
+        .filter(thread => thread.id !== threadId && !thread.archived && (thread.projectId === source.projectId || sourceConfig.projects && coordinationConfig(ctx, thread.id).remote))
         .map(thread => fakeAgentContact(ctx, thread, ctx.identity.coreId, ctx.identity.name))
         .filter(agent => agent.mode !== 'off')
         .sort((a, b) => (b.activeAt ?? 0) - (a.activeAt ?? 0));
@@ -402,7 +413,7 @@ export function coordinationMethods(ctx: FakeContext) {
     },
     'collaboration.send': async (params) => {
       const source = ctx.thread(params.threadId);
-      const config = coordinationConfig(ctx, source.id);
+      const config = scope(ctx, source.id);
       if (source.archived || config.mode === 'off' || config.paused) {
         throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'coordination is off or paused for this thread' });
       }
@@ -423,9 +434,12 @@ export function coordinationMethods(ctx: FakeContext) {
       if (!target || target.archived || coordinationConfig(destination!, target.id).mode === 'off') {
         throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'recipient is unavailable for coordination' });
       }
-      if (destination === ctx && target.projectId !== source.projectId && !(config.remote && coordinationConfig(ctx, target.id).remote)) {
-        throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'both threads must allow coordination across projects' });
+      // As the core: the machine's reach is named, with the command that asks the owner to open it.
+      const own = coordinationConfig(ctx, source.id).remote;
+      if (destination === ctx && target.projectId !== source.projectId && !(config.projects && coordinationConfig(ctx, target.id).remote)) {
+        throw new RpcFailure({ code: RpcErrorCode.Refused, message: own && !config.projects ? reachRefusal(config.reach, 'machine') : 'both threads must allow coordination across projects' });
       }
+      if (destination !== ctx && own && !config.remote) throw new RpcFailure({ code: RpcErrorCode.Refused, message: reachRefusal(config.reach, 'group') });
       if (destination !== ctx && (!config.remote || !coordinationConfig(destination!, target.id).remote || (!box && !route && (!trusts(ctx, params.to.coreId) || !trusts(destination!, ctx.identity.coreId))))) {
         throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'remote core is not trusted' });
       }

@@ -15,7 +15,7 @@ import type {
   ProviderId,
   QuestionAnswer,
   QuestionOption,
-  SettingAsk,
+  SettingCardAsk,
   AgentSettingAsk,
   TeamAsk,
   RequestId,
@@ -70,7 +70,7 @@ export interface QuestionAsk {
    * the next prompt. The ticket still resolves, for a driver that cares.
    */
   async?: boolean;  /** A settings card (`settings.request`), always asynchronous. */
-  setting?: SettingAsk;
+  setting?: SettingCardAsk;
   /** An agent setting card (`agents.settings.request`), always asynchronous. */
   agentSetting?: AgentSettingAsk;
   /** A bot's team proposal (`teams.propose`, `invite`, `leave`), always asynchronous. */

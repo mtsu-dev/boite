@@ -14,6 +14,7 @@
   import InfoTip from './InfoTip.svelte';
   import SettingRequestCard from './SettingRequestCardLoader.svelte';
   import AgentSettingCard from './AgentSettingCardLoader.svelte';
+  import BotRequestCard from './BotRequestCard.svelte';
   import SubagentQuestions from './SubagentQuestions.svelte';
 
   /*
@@ -159,7 +160,7 @@
       {/if}
       {#if !plain(shown)}
       <div class="activity-row question-row">
-        {#if shown.secret}<KeyRound size={16} />{:else if shown.setting}<Settings2 size={16} />{:else if shown.agentSetting}<Bot size={16} />{:else if shown.team}<Users size={16} />{:else}<MessageCircleQuestionMark size={16} />{/if}
+        {#if shown.secret}<KeyRound size={16} />{:else if shown.setting?.kind === 'bot'}<Bot size={16} />{:else if shown.setting}<Settings2 size={16} />{:else if shown.agentSetting}<Bot size={16} />{:else if shown.team}<Users size={16} />{:else}<MessageCircleQuestionMark size={16} />{/if}
         <button type="button" class="ghost objective question-toggle" aria-expanded={questionOpen}
           title={foldTitle(shown.id)} data-testid="activity-question-toggle"
           onclick={() => toggleQuestion(shown!.id)}>
@@ -195,6 +196,9 @@
           {@const team = question.team}
           <Deferred part={parts.TeamCard}>{#snippet children(TeamCard)}<TeamCard {store} questionId={question.id} text={question.text} {team} answer={null} pending docked
             respond={(optionId) => store.answerQuestion(question.threadId, question.id, [optionId])} />{/snippet}</Deferred>
+          {:else if question.setting?.kind === 'bot'}
+          <BotRequestCard {store} threadId={question.threadId} questionId={question.id} setting={question.setting} answer={null} pending docked
+            respond={(optionId) => store.answerQuestion(question.threadId, question.id, [optionId])} />
           {:else if question.setting}
           <SettingRequestCard {store} text={question.text} setting={question.setting} answer={null} pending docked
             respond={(optionId) => store.answerQuestion(question.threadId, question.id, [optionId])} />

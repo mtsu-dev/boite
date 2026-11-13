@@ -1,4 +1,5 @@
 import { expect, vi } from 'vitest';
+import type { AgentCreated } from '@boite/contracts';
 import { flushSync, mount, unmount } from 'svelte';
 import { test } from '../../test/fake-client';
 import { AgentsView, agentOfThread, agentRows, openAgent } from '../../lib/agents.svelte';
@@ -223,7 +224,7 @@ test('an empty desk is one centred prompt in the column, the way into its first 
     const { store, client } = await ready({ delayMs: 0, agentsDemo: true });
     const view = AgentsView.of(store);
     const { id: threadId } = await client.call('threads.create', { projectId: 'p-boite', providerId: 'echo', accountId: 'a-echo' });
-    const { agent } = await client.call('agents.create', { threadId, name: 'Scribe' });
+    const { agent } = await client.call('agents.create', { threadId, name: 'Scribe' }) as AgentCreated;
     await view.refresh();
     store.showAgents(agent.id);
     page = mount(AgentsPage, { target: document.body, props: { store } });

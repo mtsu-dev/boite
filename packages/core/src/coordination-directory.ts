@@ -1,4 +1,4 @@
-import type { AgentAddress, AgentContact, AgentMatch, AgentTranscript, CoordinationConfig, CoordinationPeer, Message } from '@boite/contracts';
+import { reachRefusal, type AgentAddress, type AgentContact, type AgentMatch, type AgentTranscript, type CoordinationConfig, type CoordinationPeer, type CoordinationReach, type Message } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { checkMatchExtras, checkRemoteContact, checkTranscript, PARTIAL, partialList, partialName, queryPayload, readTranscript, searchContacts, searchWords, toolOutputEntry, transcriptQuery, type TranscriptQuery } from './coordination-lookup.ts';
 import { address, same } from './coordination-letter.ts';
@@ -11,7 +11,10 @@ import { invalidParams, messageOf, refused } from './errors.ts';
 /** What the lookups read from the coordination that owns them. */
 export interface LookupSide {
   selfId(): string;
-  config(threadId: string): CoordinationConfig;
+  /** The thread's config as its own agent may use it: `remote` already cut to the machine's reach (`Coordination.scope`). */
+  config(threadId: string): CoordinationConfig & { reach: CoordinationReach; machine(coreId: string): boolean };
+  /** The thread's own setting, whatever the machine's reach. */
+  own(threadId: string): CoordinationConfig;
   trusted(): CoordinationPeer[];
   localReach(threadId: string): AgentContact[];
   contact(threadId: string, resident?: boolean): AgentContact;
@@ -52,7 +55,13 @@ export class CoordinationLookups {
     }
     return out;
   }
-  private peers(threadId: string): CoordinationPeer[] { const hide = this.hidden(threadId); return this.side.trusted().filter(peer => !hide(peer.coreId)); }
+  /** True when only the machine's reach keeps `threadId` from a thread of another project here. */
+  private outside(threadId: string, target: string): boolean {
+    if (this.side.config(threadId).reach !== 'project' || !this.side.own(threadId).remote) return false;
+    const other = this.core.journal.getThread(target);
+    return other !== null && other !== undefined && other.projectId !== this.core.journal.getThread(threadId)?.projectId;
+  }
+  private peers(threadId: string): CoordinationPeer[] { const hide = this.hidden(threadId), scope = this.side.config(threadId); return this.side.trusted().filter(peer => !hide(peer.coreId) && scope.machine(peer.coreId)); }
   async directory(threadId: string): Promise<{ agents: AgentContact[]; unavailable: string[] }> {
     const thread = this.core.threads.require(threadId);
     const config = this.side.config(threadId);
@@ -64,7 +73,8 @@ export class CoordinationLookups {
         try { return { peer, answer: await projectCoordination(this.core, threadId, peer, 'directory', { partial: PARTIAL }) }; } catch { return { peer, answer: null }; }
       }));
       const hide = this.hidden(threadId);
-      const routed = await this.side.mailboxes.directory(threadId);
+      // Contacts reached through the group are other machines: only the widest reach lists them.
+      const routed = config.reach === 'group' ? await this.side.mailboxes.directory(threadId) : { entries: [], unavailable: [] };
       routed.entries = routed.entries.filter(entry => !hide(entry.coreId));
       // Trust and associations are read after the last await: a peer revoked while another lookup was pending is named, not listed.
       const trusted = new Set(this.side.trusted().map(peer => peer.coreId));
@@ -82,7 +92,7 @@ export class CoordinationLookups {
       }
       agents.push(...routed.entries);
       unavailable.push(...routed.unavailable);
-      for (const entry of this.related(threadId)) if (!agents.some(agent => same(agent, entry))) agents.push(entry);
+      if (config.reach === 'group') for (const entry of this.related(threadId)) if (!agents.some(agent => same(agent, entry))) agents.push(entry);
     }
     // Permissions may change while a remote directory is in flight.
     this.side.checkLookupAccess(threadId, config.remote);
@@ -125,7 +135,7 @@ export class CoordinationLookups {
       const list = partialList(answer);
       return { peer, missing: list.unavailable, matches: list.entries.map(match => ({ ...checkRemoteContact(match as AgentContact, peer), ...checkMatchExtras(match as { matched?: unknown; excerpts?: unknown }) })) };
     });
-    const routed = config.remote ? await this.side.mailboxes.search(threadId, words) : { entries: [], unavailable: [] };
+    const routed = config.remote && config.reach === 'group' ? await this.side.mailboxes.search(threadId, words) : { entries: [], unavailable: [] };
     const hide = this.hidden(threadId);
     routed.entries = routed.entries.filter(entry => !hide(entry.coreId));
     this.side.checkLookupAccess(threadId, config.remote);
@@ -172,11 +182,11 @@ export class CoordinationLookups {
     if (this.core.threads.require(threadId).archived || (config.mode === 'off' && !resident)) throw refused('coordination is disabled for this thread');
     if (to.coreId === this.side.selfId()) {
       const contact = (resident ? this.side.contact(to.threadId, true) : undefined) ?? this.side.localReach(threadId).find(a => same(a, to)) ?? (to.threadId === threadId ? this.side.contact(threadId) : undefined);
-      if (!contact) throw refused(`target: ${to.threadId} is not a contact this thread may reach; see boite threads`);
+      if (!contact) throw refused(this.outside(threadId, to.threadId) ? `target: ${reachRefusal(config.reach, 'machine')}` : `target: ${to.threadId} is not a contact this thread may reach; see boite threads`);
       return { contact, ...readTranscript(this.core.journal.db, to.threadId, query, id => this.core.journal.streamingMessage(id)) };
     }
     const peer = this.side.trusted().find(p => p.coreId === to.coreId);
-    if (!config.remote) throw refused('cross-machine coordination is disabled for this thread');
+    if (!config.machine(to.coreId)) throw refused(this.side.own(threadId).remote ? `target: ${reachRefusal(config.reach, 'group')}` : 'cross-machine coordination is disabled for this thread');
     if (this.hidden(threadId)(to.coreId)) throw refused('target: only the Contacts bot reads a contact\'s threads; ask it with boite threads ask', { field: 'target' });
     const payload = { threadId: to.threadId, ...queryPayload(query) };
     if (!peer) return this.side.mailboxes.read(threadId, to.coreId, payload);

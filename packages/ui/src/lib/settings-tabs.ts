@@ -48,6 +48,8 @@ const SECTION_PAGES: Partial<Record<SettingsTab, Record<string, { page: PhoneSec
     conversations: { page: 'conversations' },
     // Quiet is a card of the conversations page.
     quiet: { page: 'conversations', owner: true },
+    // What agents may do alone sits under Quiet, on the same page.
+    'agents-alone': { page: 'conversations', owner: true },
     // How agents answer is the machine's card under the same page, under its bar.
     'agent-replies': { page: 'conversations', owner: true },
     archived: { page: 'archived' },
