@@ -88,6 +88,7 @@ export const strings = {
     warmProcessMinutesHint: 'How long an agent stays loaded after a turn. 0 stops it right away.',
     autoCompact: 'Automatic compaction',
     compactionScope: 'Compaction defaults by agent type',
+    compactionScopeBackground: 'Background compaction by agent type',
     compactionSummary: 'Claude summary instructions',
     compactionSummaryHint: 'Applies to Claude compaction for this scope. Leave empty for the native prompt. Explicit /compact instructions take precedence.',
     compactionSummaryPlaceholder: 'Native summary prompt',

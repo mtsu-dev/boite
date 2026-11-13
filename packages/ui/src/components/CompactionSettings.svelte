@@ -42,7 +42,7 @@
 
 {#if store.owner}
   <section class="card" data-testid="compaction-settings">
-    <h2 class="ui-label-box"><span class="ui-label" id="{uid}-scope">{strings.settings.compactionScope}</span></h2>
+    <h2 class="ui-label-box"><span class="ui-label" id="{uid}-scope">{backgroundOnly ? strings.settings.compactionScopeBackground : strings.settings.compactionScope}</span></h2>
     <div class="scope" role="group" aria-labelledby="{uid}-scope">
       {#each targets as item (item.id)}
         <button type="button" class="ui-chip" class:picked={target === item.id} aria-pressed={target === item.id}

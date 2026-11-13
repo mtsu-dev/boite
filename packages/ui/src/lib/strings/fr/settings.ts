@@ -87,6 +87,7 @@ export const fr: Translation = {
     warmProcessMinutesHint: 'Durée pendant laquelle un agent reste chargé après un tour. 0 l\'arrête aussitôt.',
     autoCompact: 'Compaction automatique',
     compactionScope: "Compaction par type d'agent",
+    compactionScopeBackground: "Compaction en arrière-plan par type d'agent",
     compactionSummary: 'Consignes du résumé Claude',
     compactionSummaryHint: 'Appliquées à la compaction Claude de cette catégorie. Laissez vide pour le résumé natif. Les consignes explicites de /compact sont prioritaires.',
     compactionSummaryPlaceholder: 'Résumé natif',
