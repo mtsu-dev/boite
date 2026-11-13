@@ -27,7 +27,7 @@ export const fr: Translation = {
     creditUsed: '{used} utilisés',
     where: 'Où tourne la passerelle',
     remote: 'Passerelle distante', local: 'Douane sur cette machine',
-    localHint: 'Le plugin Douane, installé et lancé par Boite depuis Réglages > Plugins. Le proxy pointe tout seul sur son port local, et le suit si le port change.',
+    localHint: 'Le plugin Douane, installé et lancé par Boite depuis Réglages > Agents > Extensions. Le proxy pointe tout seul sur son port local, et le suit si le port change.',
     localMissing: 'Le plugin Douane n\'est pas installé sur cette machine.',
     localStopped: 'Le plugin Douane est arrêté.',
     localStarting: 'Le plugin Douane démarre.',

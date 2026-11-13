@@ -97,7 +97,7 @@ export const fr: Translation = {
     compactionCustomize: 'Personnaliser ce type',
     compactionInherited: 'Utilise les réglages communs.',
     compactionInheritanceHintRelease: "Chaque type hérite des réglages communs tant qu'il n'est pas personnalisé. Personnaliser copie tous les paramètres de compaction actuels. La compaction en arrière-plan demande une version Nightly. Désactivez pour rétablir l'héritage.",
-    compactionInheritanceHint: "Chaque type hérite des réglages communs tant qu'il n'est pas personnalisé. Personnaliser copie tous les paramètres de compaction actuels, y compris la compaction en arrière-plan dans Expérimentations. Désactivez pour rétablir l'héritage.",
+    compactionInheritanceHint: "Chaque type hérite des réglages communs tant qu'il n'est pas personnalisé. Personnaliser copie tous les paramètres de compaction actuels, y compris la compaction en arrière-plan sous Expérimentations, page Version. Désactivez pour rétablir l'héritage.",
     autoCompactHint: "Définissez une limite de jetons indépendante et choisissez les moments d'inactivité pour compacter. Chaque compaction compte dans l'usage.",
     autoCompactWhen: "Moments d'inactivité",
     autoCompactCondition: 'Taille du contexte',

@@ -231,7 +231,7 @@ test('a subagent on another machine names that machine, opens on its store, and 
     expect(row().querySelector('[data-testid=delegation-member-machine]')!.textContent).toBe('pc');
     expect(row().getAttribute('aria-disabled')).toBe('true');
     expect(row().getAttribute('data-preload-thread')).toBeNull();
-    expect(row().title).toBe('pc is not connected here. Connect it in Settings, Machines and updates to open this subagent.');
+    expect(row().title).toBe('pc is not connected here. Connect it in Settings, Devices, Machines to open this subagent.');
     expect(row().querySelector('[data-testid=delegation-member-away]')!.textContent).toBe(row().title);
     row().click();
     await settle();

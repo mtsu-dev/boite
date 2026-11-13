@@ -74,8 +74,8 @@ export const strings = {
     /** The list column's limits line: whose limit it reads, the account named where its provider has several. */
     lineLeft: '{percent}% of {provider}\'s {window} limit left',
     lineLeftAccount: '{percent}% of {provider}\'s {window} limit left on {account}',
-    /** The popover's way to the Limits page in Settings. */
-    allLimits: 'Limits page',
+    /** The popover's way to the Limits card in Settings, AI accounts. */
+    allLimits: 'Limits in Settings',
     /** A read of the limits failed; the core's reason follows. */
     readFailed: "Couldn't read the limits: {error}",
     quit: 'Quit Boite',

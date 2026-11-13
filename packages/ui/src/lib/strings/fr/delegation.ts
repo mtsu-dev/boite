@@ -60,6 +60,6 @@ export const fr: Translation = {
     activeSection: 'En cours',
     finishedSection: 'Terminés',
     runsOn: 'Tourne sur {machine}',
-    machineAway: "{machine} n'est pas connectée ici. Connectez-la dans Réglages, Machines et mises à jour pour ouvrir ce sous-agent."
+    machineAway: "{machine} n'est pas connectée ici. Connectez-la dans Réglages, Appareils, Machines pour ouvrir ce sous-agent."
   }
 };

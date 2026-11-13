@@ -455,7 +455,7 @@ test('the same popup shares priorities across the app, tray and phone through th
       if (browser === tray) expect(heading).toBe('Account limits');
       else expect(heading).toMatch(/^Account limits for /);
       expect(await browser.evaluate(`document.querySelectorAll('[data-testid="quota-machine-scope"]').length`)).toBe(browser === tray ? 0 : 1);
-      expect(await browser.evaluate(`document.querySelector('${panel} footer button').textContent`)).toBe('Limits page');
+      expect(await browser.evaluate(`document.querySelector('${panel} footer button').textContent`)).toBe('Limits in Settings');
       expect(await browser.evaluate(`document.querySelector('[data-account-id="${accounts[1]!.id}"] .paid').textContent`)).toContain('Using credits');
       expect(await browser.evaluate(`getComputedStyle(document.querySelector('[data-account-id="${accounts[0]!.id}"] .track')).height`)).toBe('7px');
       for (const [index, reset] of resets.entries()) {
