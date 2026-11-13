@@ -75,7 +75,7 @@
 <!-- An answer this client just sent clears the pending list before the card's answer arrives: it stays busy until then. -->
 {#if answer !== null || (!pending && !busy)}
   {@const settled = answer === null ? null : outcome(answer)}
-  <div class="team-card resolved" data-testid="team-card" data-kind={team.kind} data-state={answer === null ? 'closed' : 'answered'} data-outcome={settled} title={answer?.text ?? text}>
+  <div data-feature="boite-feature:teams" class="team-card resolved" data-testid="team-card" data-kind={team.kind} data-state={answer === null ? 'closed' : 'answered'} data-outcome={settled} title={answer?.text ?? text}>
     <span class="glyph"><Users size={15} strokeWidth={1.75} /></span>
     <span class="verdict ui-label" data-testid="team-card-verdict">{settled === null ? words.closed : settled === 'applied' ? words.applied[team.kind] : words.refused}</span>
     <span class="given ui-label" data-testid="team-card-subject">{teamName}</span>

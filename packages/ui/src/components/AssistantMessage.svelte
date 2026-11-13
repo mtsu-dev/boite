@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { teamsBuilt } from '../lib/teams-entry';
   import { Activity, Bot, FishingHook, MessageCircleQuestionMark, Settings2, Users } from '@lucide/svelte';
   import { showDecision } from '../lib/decision-tail.svelte';
   import { replyOf, repliesOf, sendAnswer, writeAnswer } from '../lib/question-reply.svelte';
@@ -224,7 +225,7 @@
           pending={store.pendingQuestions.some((q) => q.id === part.questionId)}
           respond={(optionId) => store.answerQuestion(message.threadId, part.questionId, [optionId])}
         />
-      {:else if part.type === 'question' && part.team}
+      {:else if part.type === 'question' && part.team && teamsBuilt()}
         {@const team = part.team}
         <Deferred part={parts.TeamCard}>{#snippet children(TeamCard)}<TeamCard
           {store}

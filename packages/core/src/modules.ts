@@ -32,7 +32,7 @@ import { registerContactMethods } from './contacts/rpc.ts';
 import { registerSharedComputeMethods } from './contacts/compute.ts';
 import { registerResidentMethods } from './agents/projects.ts';
 import { registerGroupMethods } from './group/rpc.ts';
-import { registerTeams } from './teams/rpc.ts';
+import { registerTeamMethods } from './teams-entry.ts';
 import { registerCouncil } from './council/rpc.ts';
 import { registerTerminalMethods } from './terminals.ts';
 import { registerWorkflowMethods } from './workflows.ts';
@@ -77,7 +77,7 @@ export function registerModules(core: Core): void {
   registerContactMethods(core);
   registerResidentMethods(core);
   registerGroupMethods(core);
-  registerTeams(core);
+  registerTeamMethods(core);
   registerSpeechMethods(core);
   registerPushMethods(core);
   // A goal starts turns: a team chat runs none (`threads/agentless.ts`).

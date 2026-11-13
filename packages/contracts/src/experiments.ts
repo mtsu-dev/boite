@@ -157,6 +157,8 @@ export const FEATURE_CUTS: Partial<Record<ExperimentId, { ui: boolean; core: boo
   debates: { ui: true, core: true },
   // Contacts: the page, the column, the rows and the shared project screens in the UI. The core keeps it whole: a Release still reads and revokes what a Nightly left.
   contacts: { ui: true, core: false },
+  // Teams: the chat, the dialog, the header and the request card in the UI; in the core the store, its peers and snapshots, the RPC methods and `boite team` (the tables and the letters' team fields stay).
+  teams: { ui: true, core: true },
 };
 
 /** The marker of a feature's code in a bundle. Built here from two parts, so this file never carries one. */

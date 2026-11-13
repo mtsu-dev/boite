@@ -142,7 +142,7 @@
 <svelte:window onkeydowncapture={onkeydown} />
 
 {#if overlay.shown}
-  <div class="scrim" class:closing={overlay.closing} role="presentation" use:portal use:overlay.attach onanimationend={overlay.end}
+  <div data-feature="boite-feature:teams" class="scrim" class:closing={overlay.closing} role="presentation" use:portal use:overlay.attach onanimationend={overlay.end}
     onclick={(event) => { if (event.target === event.currentTarget) close(); }}>
     <div class="dialog" class:closing={overlay.closing} role="dialog" aria-modal="true" aria-labelledby="{uid}-title" tabindex="-1" data-testid="team-dialog" bind:this={dialog}>
       <div class="head">

@@ -16,7 +16,8 @@ export const parts = {
   DiffView: new LazyComponent(() => import('../components/DiffView.svelte')),
   QuestionCard: new LazyComponent(() => import('../components/QuestionCard.svelte')),
   SecretCard: new LazyComponent(() => import('../components/SecretCard.svelte')),
-  TeamCard: new LazyComponent(() => import('../components/TeamCard.svelte')),
+  // The Teams' flag in full, as in `lib/teams-entry.ts`: a build below its tag has no such chunk, and a team's request draws as a plain question there.
+  TeamCard: new LazyComponent(() => typeof __BOITE_HAS_TEAMS__ === 'undefined' || __BOITE_HAS_TEAMS__ ? import('../components/TeamCard.svelte') : Promise.reject(new Error('Teams are not in this build'))),
   // The Council's flag in full, as in `lib/council-entry.ts`: a build below its tag has no such chunk, and nothing draws the part there.
   CouncilCard: new LazyComponent(() => typeof __BOITE_HAS_DEBATES__ === 'undefined' || __BOITE_HAS_DEBATES__ ? import('../components/council/CouncilCard.svelte') : Promise.reject(new Error('the Council is not in this build'))),
   QuotaOverview: nested.QuotaOverview,

@@ -738,3 +738,6 @@ export class TeamStore {
     return this.#draw(params.threadId, `${bot.name} asks to leave the team ${JSON.stringify(team.name)}.`, { kind: 'leave', by: bot.id, teamId: team.id, teamName: team.name, botId: bot.id });
   }
 }
+
+/** Marks this module in a bundle (scripts/ci/feature-cut.ts). */
+export const FEATURE_MARKER = 'boite-feature:teams';

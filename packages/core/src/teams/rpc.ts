@@ -28,3 +28,6 @@ export function registerTeams(core: Core): void {
   core.router.register('teams.invite', params => machines().invite(object(params)));
   core.router.register('teams.leave', params => teams().leave(object(params)));
 }
+
+/** Marks this module in a bundle (scripts/ci/feature-cut.ts). */
+export const FEATURE_MARKER = 'boite-feature:teams';

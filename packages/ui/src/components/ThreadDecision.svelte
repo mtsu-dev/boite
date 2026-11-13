@@ -9,6 +9,7 @@
   import { openQuestionPage } from '../lib/question-page';
   import { settingHeading } from '../lib/setting-requests';
   import { teamHeading } from '../lib/team-requests';
+  import { teamsBuilt } from '../lib/teams-entry';
   import Deferred from './Deferred.svelte';
   import { parts } from '../lib/deferred-parts';
   import InfoTip from './InfoTip.svelte';
@@ -192,7 +193,7 @@
           {:else if question.agentSetting}
           <AgentSettingCard {store} threadId={question.threadId} questionId={question.id} text={question.text} setting={question.agentSetting} answer={null} pending docked
             respond={(optionId) => store.answerQuestion(question.threadId, question.id, [optionId])} />
-          {:else if question.team}
+          {:else if question.team && teamsBuilt()}
           {@const team = question.team}
           <Deferred part={parts.TeamCard}>{#snippet children(TeamCard)}<TeamCard {store} questionId={question.id} text={question.text} {team} answer={null} pending docked
             respond={(optionId) => store.answerQuestion(question.threadId, question.id, [optionId])} />{/snippet}</Deferred>

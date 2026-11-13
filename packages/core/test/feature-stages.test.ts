@@ -245,3 +245,29 @@ test('a Release core refuses the Contacts calls that start something and still r
   expect(await owner.call('contacts.decide', { id: 'none', accept: false }).then(() => 'accepted', (error: Error) => error.message)).not.toContain('Nightly');
   owner.close();
 });
+
+/** Runs `body` as a bundle compiled without these features would: their build flags read false, as `featureDefines` defines them. */
+async function compiledWithout(flags: string[], body: () => Promise<void>): Promise<void> {
+  const scope = globalThis as Record<string, unknown>;
+  for (const flag of flags) scope[flag] = false;
+  try { await body(); } finally { for (const flag of flags) delete scope[flag]; }
+}
+
+test('a core compiled without the Teams starts, refuses every team method with the tag and the build, and keeps its other work', async () => {
+  await compiledWithout(['__BOITE_HAS_TEAMS__'], async () => {
+    const release = await core(RELEASE);
+    const owner = await release.connect();
+    const refusal = 'experiment.teams runs in Nightly and Dev builds only, and this machine runs a Release (2.0.0)';
+    for (const method of ['teams.list', 'teams.create', 'teams.post', 'teams.leave'] as const) {
+      expect(await owner.call(method, {} as never).then(() => 'accepted', (error: Error) => error.message), method).toContain(refusal);
+    }
+    // The stand-in answers what the rest of the core asks: a thread still opens and the core stops cleanly.
+    expect(release.core.teams.machineName('none')).toBe('');
+    expect(release.core.teams.snapshots.render('none', [], 'seen', false)).toEqual({ texts: new Map(), leftovers: [], channel: null });
+    expect((await echoThread(release, owner)).threadId).toBeString();
+    owner.close();
+  });
+  // From source, with no flag, the real store is there.
+  const dev = await core(DEV);
+  expect(dev.core.teams.constructor.name).toBe('TeamStore');
+});

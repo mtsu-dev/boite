@@ -135,3 +135,6 @@ export async function teamCommand(args: string[], client: CoreClient, threadId: 
       throw new Usage(`boite team: unknown action ${action}; expects list, say, dm, read, propose, invite or leave`);
   }
 }
+
+/** Marks this module in a bundle (scripts/ci/feature-cut.ts). */
+export const FEATURE_MARKER = 'boite-feature:teams';

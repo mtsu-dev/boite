@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { teamsParts } from '../lib/teams-entry';
   import { untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import { experimentOn } from '../lib/experiments.svelte';
@@ -90,7 +91,7 @@
   let TeamChat = $state.raw<typeof import('./teams/TeamChat.svelte').default>();
   let loadingTeamChat: Promise<void> | undefined;
   $effect(() => {
-    if (thread?.teamId && !TeamChat) loadingTeamChat ??= import('./teams/TeamChat.svelte').then(module => { TeamChat = module.default; }).catch(() => { loadingTeamChat = undefined; });
+    if (thread?.teamId && !TeamChat) loadingTeamChat ??= teamsParts?.TeamChat().then(module => { TeamChat = module.default; }).catch(() => { loadingTeamChat = undefined; });
   });
   // A salon opened as a thread (a link, the palette) draws as it does in the panel, loaded the same way.
   let CouncilSalon = $state.raw<typeof import('./council/CouncilSalon.svelte').default>();
