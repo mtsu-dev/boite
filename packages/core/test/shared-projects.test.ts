@@ -94,6 +94,8 @@ test('a Release activates, creates and relaunches nothing in an association a Ni
   expect(await thrown(call('todos.update', { threadId: scope.threadId, sharedProjectId: id, todoId: 'card-1', text: 'Edited as a todo' }))).toThrow(NIGHTLY_ONLY);
   expect(await thrown(call('sharedAccess.override', { sharedProjectId: id, requestId: 'override', override: { path: 'notes.md', actions: ['read'], jobId: null, reason: 'Needed', expiresAt: Date.now() + 60_000 } }))).toThrow(NIGHTLY_ONLY);
   expect(await thrown(call('sharedCompute.send', { ...scope, jobId: 'job-none', text: 'Go on', requestId: 'send' }))).toThrow(NIGHTLY_ONLY);
+  // A workflow step starts its job through the service, past the RPC: the build is read there too.
+  expect(await thrown(release.h.core.sharedCompute.start({ ...scope, requestId: 'wf-step', task: 'Run', title: 'Step' } as never))).toThrow(NIGHTLY_ONLY);
   expect(await thrown(call('sharedProjects.configure', { sharedProjectId: id, compute: { enabled: true, profiles: [], permissionMode: 'default', maxConcurrent: null } }))).toThrow(NIGHTLY_ONLY);
   expect(await thrown(call('sharedProjects.configure', { sharedProjectId: id, reviewer: { enabled: true, providerId: 'echo', accountId: 'none', model: null, effort: null, revokeOnViolation: false } as never }))).toThrow(NIGHTLY_ONLY);
   expect(release.h.core.sharedAccess.overrides(id)).toEqual([]);

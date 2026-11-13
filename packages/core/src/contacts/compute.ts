@@ -167,6 +167,8 @@ export class SharedCompute {
     const work = this.#startJob(p, connection); this.#background(work); return work;
   }
   async #startJob(p: RpcParams<'sharedCompute.start'>, connection?: Connection): Promise<SharedComputeJob> {
+    // Here and not at the RPC: a workflow step starts its job through the service.
+    contactsGate(this.core);
     const ctx = this.#sourceContext(p, connection);
     const { threadId: _thread, sharedProjectId: _shared, ...raw } = p;
     const input = computeInput(raw);
@@ -449,6 +451,8 @@ export class SharedCompute {
     return this.journal.get(record.job.id, 'source')!.job;
   }
   async send(p: RpcParams<'sharedCompute.send'>, connection?: Connection): Promise<{ ok: true }> {
+    // A follow-up starts a turn, and wakes a finished job again.
+    contactsGate(this.core);
     const ctx = this.#sourceContext(p, connection), record = this.#localRecord(ctx, p.jobId);
     const body = text(p.text, 'text', 4000), requestId = text(p.requestId, 'requestId', 100);
     if (record.claimClosed) throw refused('compute.claim: reservation is permanently closed');
@@ -565,10 +569,9 @@ export function registerSharedComputeMethods(core: Core): void {
   // Private host configuration: deliberately absent from device, agent and peer method sets.
   core.router.register('sharedCompute.host', p => core.sharedCompute.hostBinding(p.sharedProjectId));
   core.router.register('sharedCompute.models', (p, c) => core.sharedCompute.models(p, c.connection));
-  core.router.register('sharedCompute.start', (p, c) => { contactsGate(core); return core.sharedCompute.start(p, c.connection); });
+  core.router.register('sharedCompute.start', (p, c) => core.sharedCompute.start(p, c.connection));
   core.router.register('sharedCompute.list', (p, c) => core.sharedCompute.list(p, c.connection));
   core.router.register('sharedCompute.get', (p, c) => core.sharedCompute.get(p, c.connection));
-  // A follow-up starts a turn, and wakes a finished job again.
-  core.router.register('sharedCompute.send', (p, c) => { contactsGate(core); return core.sharedCompute.send(p, c.connection); });
+  core.router.register('sharedCompute.send', (p, c) => core.sharedCompute.send(p, c.connection));
   core.router.register('sharedCompute.cancel', (p, c) => core.sharedCompute.cancel(p, c.connection));
 }
