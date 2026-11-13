@@ -890,8 +890,7 @@ an app checks the flag before it names a machine.
 
 The desktop shell connected to the core it started on the same computer
 answers it: it unminimizes and focuses its window, then opens the thread, the
-Bots page on that bot (switching the Bots experiment on if it was
-off), or the app updates in Settings, Machines. A target with `coreId` opens on
+Bots page on that bot, or the app updates in Settings, Machines. A target with `coreId` opens on
 the window's machine whose core has that id; when the window has no such
 machine, or has it but not connected, it says so on the page it shows and opens
 nothing. Browser tabs, paired devices and windows following another machine do

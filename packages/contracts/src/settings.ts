@@ -1,6 +1,7 @@
 import type { BrowserProfile } from './browser';
 import type { AccountId, ProviderId, RequestId } from './ids';
-import type { ClientPreferences, ExperimentId, SettingAsk, SettingRequestParams } from './setting-requests.ts';
+import type { ExperimentId } from './experiments.ts';
+import type { ClientPreferences, SettingAsk, SettingRequestParams } from './setting-requests.ts';
 import type { AutoCompact, CacheKeepalive } from './settings-validation.ts';
 import type { SubscriptionProxy } from './subscription-proxy';
 import type { ThreadSummary } from './threads';
@@ -354,7 +355,13 @@ export interface SettingsRpcMethods {
   'telemetry.configure': { params: { mode: TelemetryState['mode']; countChoice?: boolean }; result: TelemetryState };
   'telemetry.export': { params: Record<string, never>; result: Record<string, unknown> };
   'telemetry.retryForget': { params: Record<string, never>; result: TelemetryState };
-  'settings.get': { params: Record<string, never>; result: Settings };
+  /**
+   * The settings in force. `stored` asks for the ones that are experiments as
+   * saved rather than as this build reads them (a Release reads them as off):
+   * what the copy to a following machine sends, so a hidden choice is never
+   * copied as "off". A core older than the stages ignores it and hides nothing.
+   */
+  'settings.get': { params: { stored?: boolean }; result: Settings };
   'settings.set': { params: Partial<Settings>; result: Settings };
   /**
    * The copy from the group's settings home (`Group.settingsHome`): only the
@@ -367,11 +374,13 @@ export interface SettingsRpcMethods {
    * The app says its language, the experiments it has on and the names it
    * gives settings, after each hello and on every change. Agents read them
    * from the app the user last used (`agent.settings`), and a card about an
-   * experiment settles when that app reports it changed. `desktop` is what
-   * `client.desktopExperiments` last said, null before any desktop app
-   * reported: a phone follows the computer's switches from its first hello.
+   * experiment settles when that app reports it changed. `desktop` and
+   * `desktopChosen` are what `client.desktopExperiments` last said in
+   * `experiments` and `chosen`, null before any desktop app reported: a phone
+   * follows the computer's switches from its first hello. A core from before
+   * `desktopChosen` answers without it.
    */
-  'client.preferences': { params: ClientPreferences; result: { ok: true; desktop: ExperimentId[] | null } };
+  'client.preferences': { params: ClientPreferences; result: { ok: true; desktop: ExperimentId[] | null; desktopChosen?: ExperimentId[] | null } };
 }
 
 export interface SettingsRpcEvents {
@@ -380,7 +389,13 @@ export interface SettingsRpcEvents {
   /**
    * The experiments of the desktop app this core follows, once its report
    * changes them: the app on this machine's loopback, else the last desktop
-   * app to report from elsewhere. Kept in memory, like the reports.
+   * app to report from elsewhere. `experiments` is what is in force in this
+   * core's build (`effectiveExperiments`), which is what an app from before
+   * the stages takes it for: a Release names no experiment there. `chosen`
+   * is the list as that app chose it, not cut down: the device that follows
+   * it keeps this one and reads it for the build that decides, so a Release
+   * in between erases nobody's switches. A core from before `chosen` sends
+   * `experiments` alone. Kept in memory, like the reports.
    */
-  'client.desktopExperiments': { experiments: ExperimentId[] };
+  'client.desktopExperiments': { experiments: ExperimentId[]; chosen?: ExperimentId[] };
 }

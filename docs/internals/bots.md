@@ -8,8 +8,8 @@ projectless, working in `agent-workspaces/<agent-id>/agent-<agent-id>` in the
 host's data directory. What the bot adds to that thread is a persona, a brain
 folder, a clock (routines), a desk of the threads it runs or watches, and
 wakes: turns the core starts on its thread when a routine is due or something
-happens on its desk. The page sits beside chat, behind the Bots switch in
-Settings > Experiments ([experiments](experiments.md)). Contracts:
+happens on its desk. The page sits beside chat in every build: Bots is a
+finished feature with no switch ([experiments](experiments.md)). Contracts:
 `packages/contracts/src/agents.ts`; core: `packages/core/src/agents/`.
 
 The wire keeps the old names (the `agents.*` methods, `AgentProfile`,

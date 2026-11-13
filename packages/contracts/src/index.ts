@@ -221,13 +221,18 @@ export { ChangeLog, LIST_CHANGES_IDS, listCursorProblem } from './list-changes.t
 export { GOAL_TRACKER_DEFAULTS, GOAL_CHECKLIST_MAX_ITEMS, GOAL_CHECKLIST_SOURCE_MAX, GOAL_CHECKLIST_TEXT_MAX, defaultTrackerModel, trackerEffort, type GoalTrackerRule } from './goal-tracker.ts';
 export { DEVICE_METHODS, DEVICE_EVENTS, AGENT_EVENTS, AGENT_METHODS, SUBSCRIBED_EVENTS, accessRefusal, agentHearsEvent, pluginMayCall, pluginMayHear, deviceBound, deviceDiffRef, eventThreadId, mayHearEvent, PLUGIN_SELF_EVENTS, PLUGIN_SELF_METHODS, pluginSelfCall, type AccessRefusal, type Caller } from './access.ts';
 export {
-  AGENTS_ALONE_SECTION, APP_LANGUAGES, CLIENT_APP_PATTERN, CLIENT_LABELS_MAX, CLIENT_LABEL_CHARS, EXPERIMENT_IDS, MACHINE_SETTINGS, PLUGIN_ADD_SECTION, REQUESTABLE_SETTINGS, REQUESTABLE_SETTING_KEYS, SETTING_REASON_MAX, SETTINGS_PAGES, SETTINGS_SECTION_PATTERN,
-  botCard, checkClientPreferences, checkSettingRequest, settledExperiment, currentSetting, effectiveSetting, experimentOf, isExperimentId, isExperimentKey, isMachineSetting, isRequestableSetting, isSettingsPage, readSettings,
+  AGENTS_ALONE_SECTION, APP_LANGUAGES, CLIENT_APP_PATTERN, CLIENT_LABELS_MAX, CLIENT_LABEL_CHARS, MACHINE_SETTINGS, PLUGIN_ADD_SECTION, REQUESTABLE_SETTINGS, REQUESTABLE_SETTING_KEYS, SETTING_REASON_MAX, SETTINGS_PAGES, SETTINGS_SECTION_PATTERN,
+  botCard, checkClientPreferences, checkSettingRequest, settledExperiment, currentSetting, effectiveSetting, experimentOf, isExperimentKey, isMachineSetting, isRequestableSetting, isSettingsPage, readSettings,
   sameClientPreferences, sameSetting, settingAnswerText, settledMachineSetting, settledSetting,
-  type AppLanguage, type BotAsk, type ClientPreferences, type ExperimentId, type ExperimentSettingKey, type MachineSetting, type RequestableKey, type RequestableSetting, type SettingAsk, type SettingCardAsk,
+  type AppLanguage, type BotAsk, type ClientPreferences, type ExperimentSettingKey, type MachineSetting, type RequestableKey, type RequestableSetting, type SettingAsk, type SettingCardAsk,
   type SettingMachine, type SettingNormalizer, type SettingOutcome, type SettingPlace, type SettingReading, type SettingRequestCheck, type SettingRequestParams, type SettingsPage,
   type SettingsReading,
 } from './setting-requests.ts';
+export {
+  EXPERIMENT_IDS, EXPERIMENT_STAGES, EXPERIMENTAL_SETTINGS, effectiveExperiments, experimentListed, experimentRefusal, experimentStartRefusal, experimentalSettingRefusal, experimentsRun, holdExperimentalSettings, keepStoredExperimentalSettings,
+  isExperimentId, isExperimentalSetting, isReleaseVersion, listedExperiments,
+  type ExperimentId, type ExperimentalSetting, type FeatureStage,
+} from './experiments.ts';
 export {
   AGENT_AVATAR_MAX, AGENT_DAILY_BUDGET, AGENT_DOMAIN_MAX, AGENT_INSTRUCTIONS_MAX, AGENT_NAME_MAX, AGENT_PICTURE_CODE, AGENT_PICTURE_MAX_BYTES, AGENT_PICTURE_TYPES,
   AGENT_PROJECTS_MAX, AGENT_SETTING_KEYS, AGENT_STATUSES, isAgentPicture,

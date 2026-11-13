@@ -2,7 +2,6 @@ import { expect, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import { test } from '../../test/fake-client';
 import { AgentsView, openAgent } from '../../lib/agents.svelte';
-import { setExperiment } from '../../lib/experiments';
 import AgentDesk from './AgentDesk.svelte';
 import BotWorkList from './BotWorkList.svelte';
 import { readFileSync } from 'node:fs';
@@ -20,7 +19,6 @@ const titles = (section: 'handling' | 'done') => {
 const card = (title: string) => [...document.querySelectorAll<HTMLElement>('[data-testid=desk-card]')].find(node => node.querySelector('.desk-card-title')?.textContent === title);
 
 test('Nova\'s desk is one column: who it is, its routines and its notes, its live step only away from its conversation, and no spend', async ({ ready }) => {
-  setExperiment('resident-agents', true);
   let desk: ReturnType<typeof mount> | null = null;
   try {
     const { store } = await ready({ delayMs: 0, agentsDemo: true });
@@ -81,12 +79,10 @@ test('Nova\'s desk is one column: who it is, its routines and its notes, its liv
   } finally {
     if (desk) await unmount(desk);
     document.body.innerHTML = '';
-    setExperiment('resident-agents', false);
   }
 });
 
 test('Nova\'s threads: what it handles, needs-you first, then what it is done with; a question answered in place, a thread dropped', async ({ ready }) => {
-  setExperiment('resident-agents', true);
   let list: ReturnType<typeof mount> | null = null;
   try {
     const { store } = await ready({ delayMs: 0, agentsDemo: true });
@@ -141,12 +137,10 @@ test('Nova\'s threads: what it handles, needs-you first, then what it is done wi
   } finally {
     if (list) await unmount(list);
     document.body.innerHTML = '';
-    setExperiment('resident-agents', false);
   }
 });
 
 test('an empty desk on the Desk panel is a line under its heading, its action beside it, not a prompt mid-panel', async ({ ready }) => {
-  setExperiment('resident-agents', true);
   let list: ReturnType<typeof mount> | null = null;
   try {
     const { store } = await ready({ delayMs: 0, agentsDemo: true });
@@ -168,6 +162,5 @@ test('an empty desk on the Desk panel is a line under its heading, its action be
   } finally {
     if (list) await unmount(list);
     document.body.innerHTML = '';
-    setExperiment('resident-agents', false);
   }
 });

@@ -36,6 +36,7 @@
   import { tick, type Snippet } from 'svelte';
   import { holdSettingsCard, revealSettingsCard } from '../lib/settings-flash';
   import { phonePage } from '../lib/settings-tabs';
+  import { experimentsShown } from '../lib/experiments.svelte';
   import { PageScope, providePageScope } from '../lib/page-scope.svelte';
   import { readTheme } from '../lib/theme';
   import { activeLocale } from '../lib/i18n.svelte';
@@ -254,7 +255,7 @@
           <!-- System holds one card on a phone, the machine's compaction: a paired phone has none to show. -->
           {#if target.owner}{@render row('settings-tab-advanced', strings.settings.tabs.advanced, () => store.showSettings('advanced'), 'advanced')}{/if}
           <!-- The phone follows the desktop app's experiments until it flips one here, and can follow it again from this page. -->
-          {@render row('settings-tab-experiments', strings.settings.tabs.experiments, () => store.showSettings('experiments'), 'experiments')}
+          {#if experimentsShown()}{@render row('settings-tab-experiments', strings.settings.tabs.experiments, () => store.showSettings('experiments'), 'experiments')}{/if}
           <!-- The task manager is Diagnostics' last section (lib/settings-tabs.ts); a paired phone, without the logs, opens it alone. -->
           {#if store.owner}{@render row('settings-tab-diagnostics', strings.diagnostics.heading, () => store.showSettings('diagnostics'), 'diagnostics')}
           {:else}{@render row('settings-tab-task-manager', strings.taskManager.title, () => store.showSettings('task-manager'), 'task-manager')}{/if}

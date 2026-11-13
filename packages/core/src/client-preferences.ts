@@ -1,14 +1,22 @@
-import { checkClientPreferences, sameClientPreferences, type ClientPreferences, type ExperimentId, type SentFrom, type SettingsReading } from '@boite/contracts';
+import { checkClientPreferences, effectiveExperiments, sameClientPreferences, type ClientPreferences, type ExperimentId, type SentFrom, type SettingsReading } from '@boite/contracts';
 import { RpcErrorCode } from '@boite/contracts';
 import { RpcFailure } from './errors.ts';
 import type { Connection } from './router.ts';
+import { CORE_VERSION } from './version.ts';
 
 /** Apps remembered by id, so a reconnect compares with the app's last report; the oldest goes first. */
 const APPS_KEPT = 64;
 
 /*
  * What each app says of itself (`client.preferences`): its id, language, the
- * experiments it has on and the names it gives settings. Kept in memory only:
+ * experiments it has on and the names it gives settings. The experiments are
+ * read for the build this core is (`effectiveExperiments`): a finished feature
+ * is on whatever the app said, and a Release keeps none of the others, so
+ * nothing the core gates on them runs because an app claimed it. Phones are
+ * told the desktop app's list twice: in force here (`desktopExperiments`),
+ * which is all an app from before the stages reads, and as it chose it
+ * (`desktopChosen`), which a phone keeps and reads for its own build, so a
+ * Release in between loses nobody's switches. Kept in memory only:
  * an app says it again after every hello. Agents read the app the user last
  * used: the one that last sent a prompt or changed a preference, or the first
  * to report once that app's socket closed. A phone that merely reconnects in a
@@ -19,30 +27,34 @@ export class ClientPreferencesBook {
   /** Each app's last report by its id, across its sockets. */
   readonly #byApp = new Map<string, ClientPreferences>();
   #latest: { connectionId: string; preferences: ClientPreferences; from: SentFrom | null } | null = null;
-  /** The desktop app phones follow: one on this machine's loopback outranks one reached from elsewhere. */
+  /** The desktop app phones follow, with the switches it chose: one on this machine's loopback outranks one reached from elsewhere. */
   #desktop: { experiments: ExperimentId[]; local: boolean } | null = null;
 
   /**
    * `reported` runs on every report with the experiments that app had at its
    * previous one, null when the core has none: a card settles on a flip, not
    * on another app's different value. `desktopMoved` runs when the followed
-   * desktop app's experiments change.
+   * desktop app's chosen experiments change, with that list in force
+   * in this build and as chosen.
    */
   readonly #reported: (preferences: ClientPreferences, before: readonly ExperimentId[] | null) => void;
-  readonly #desktopMoved: (experiments: ExperimentId[]) => void;
+  readonly #desktopMoved: (moved: { experiments: ExperimentId[]; chosen: ExperimentId[] }) => void;
+  readonly #version: string;
 
   constructor(
     reported: (preferences: ClientPreferences, before: readonly ExperimentId[] | null) => void,
-    desktopMoved: (experiments: ExperimentId[]) => void = () => {},
+    desktopMoved: (moved: { experiments: ExperimentId[]; chosen: ExperimentId[] }) => void = () => {},
+    version: string = CORE_VERSION,
   ) {
     this.#reported = reported;
     this.#desktopMoved = desktopMoved;
+    this.#version = version;
   }
 
   report(connection: Connection, params: unknown): void {
     const checked = checkClientPreferences(params);
     if (!checked.ok) throw new RpcFailure(RpcErrorCode.InvalidParams, checked.message, { field: checked.field });
-    const preferences = checked.preferences;
+    const preferences = { ...checked.preferences, experiments: effectiveExperiments(checked.preferences.experiments, this.#version) };
     if (!this.#byConnection.has(connection.id)) connection.onClose?.(() => this.#byConnection.delete(connection.id));
     const entry = { preferences, from: connection.sentFrom ?? null };
     this.#byConnection.set(connection.id, entry);
@@ -55,7 +67,7 @@ export class ClientPreferencesBook {
     const vacant = this.#latest === null || !this.#byConnection.has(this.#latest.connectionId) || this.#latest.connectionId === connection.id;
     if (vacant || moved) this.#latest = { connectionId: connection.id, ...entry };
     // A paired device may call itself a shell: only the owner's desktop app is followed.
-    if (entry.from?.client === 'shell' && connection.identity.principal === 'owner') this.#follow(preferences.experiments, connection.remote === false);
+    if (entry.from?.client === 'shell' && connection.identity.principal === 'owner') this.#follow(checked.preferences.experiments, connection.remote === false);
     this.#reported(preferences, before?.experiments ?? null);
   }
 
@@ -63,11 +75,16 @@ export class ClientPreferencesBook {
     if (!local && this.#desktop?.local === true) return;
     const changed = this.#desktop === null || this.#desktop.experiments.join() !== experiments.join();
     this.#desktop = { experiments: [...experiments], local };
-    if (changed) this.#desktopMoved([...experiments]);
+    if (changed) this.#desktopMoved({ experiments: effectiveExperiments(experiments, this.#version), chosen: [...experiments] });
   }
 
-  /** The followed desktop app's experiments, or null before one reported. */
+  /** What the followed desktop app has in force in this build, or null before one reported: what the core's own gates read, and what an app from before the stages is handed. */
   desktopExperiments(): ExperimentId[] | null {
+    return this.#desktop === null ? null : effectiveExperiments(this.#desktop.experiments, this.#version);
+  }
+
+  /** The switches the followed desktop app chose, whatever this build runs, or null before one reported: what a phone keeps. */
+  desktopChosen(): ExperimentId[] | null {
     return this.#desktop === null ? null : [...this.#desktop.experiments];
   }
 

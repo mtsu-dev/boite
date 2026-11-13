@@ -39,10 +39,12 @@ test('an agent reads the app\'s language and experiments, and its card turns an 
   // What \`boite settings\` reads: French, the experiment off, under the name the French page gives it.
   const read = await page.evaluate(`window.__boiteTest.workspace.active.client.call('agent.settings', { threadId: ${JSON.stringify(thread)} })`) as { app: { language: string }; settings: { key: string; value: unknown; label?: string }[] };
   expect(read.app.language).toBe('fr');
-  expect(read.settings.find(reading => reading.key === 'experiment.resident-agents')).toMatchObject({ value: false, label: 'Bots' });
+  expect(read.settings.find(reading => reading.key === 'experiment.whip')).toMatchObject({ value: false, label: 'Fouet' });
+  // A finished feature is on in every build: it is not a setting an agent reads or asks for.
+  expect(read.settings.find(reading => reading.key === 'experiment.resident-agents')).toBeUndefined();
   expect(read.settings.find(reading => reading.key === 'experiments')).toBeUndefined();
 
-  await page.evaluate(`window.__boiteTest.workspace.active.client.call('turns.start', { threadId: ${JSON.stringify(thread)}, prompt: 'show me the agents [settings-experiment]' })`);
+  await page.evaluate(`window.__boiteTest.workspace.active.client.call('turns.start', { threadId: ${JSON.stringify(thread)}, prompt: 'show me the whip [settings-experiment]' })`);
   await page.waitFor(`document.querySelector('${DOCKED} [data-testid="setting-switch"]')?.getBoundingClientRect().width > 0`);
   expect(await page.evaluate(`document.querySelector('${DOCKED} [data-testid="setting-switch"]').checked`)).toBe(false);
   expect(await page.evaluate(`document.querySelector('${DOCKED} [data-testid="setting-apply"]')`)).toBeNull();
@@ -58,9 +60,8 @@ test('an agent reads the app\'s language and experiments, and its card turns an 
   await page.waitFor(`document.querySelector('${DOCKED} [data-testid="setting-switch"]')?.getBoundingClientRect().width > 0`);
   await page.click(`${DOCKED} [data-testid="setting-switch"]`);
   await page.waitFor(`document.querySelector('[data-testid="setting-card"][data-outcome="applied"]')`);
-  expect(await page.evaluate(`JSON.parse(localStorage.getItem('boite.experiments'))`)).toEqual(['resident-agents']);
-  await page.waitFor(`window.__boiteTest.workspace.active.openThread?.messages.some(m => m.role === 'user' && m.parts.some(p => p.type === 'text' && p.text.includes('applied: experiment.resident-agents is now true')))`);
-  await page.waitFor(`document.querySelector('[data-testid="rail-add"], [data-testid="mobile-agents"]')`);
+  expect(await page.evaluate(`JSON.parse(localStorage.getItem('boite.experiments'))`)).toEqual(['whip']);
+  await page.waitFor(`window.__boiteTest.workspace.active.openThread?.messages.some(m => m.role === 'user' && m.parts.some(p => p.type === 'text' && p.text.includes('applied: experiment.whip is now true')))`);
   await capture('experiment-applied-desktop.png');
 
   // A sensitive switch shows in the card too, beside its warning, once the agent has read the card's report.

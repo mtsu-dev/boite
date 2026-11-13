@@ -818,8 +818,8 @@ each: key, value as JSON, the page and card it sits on and, quoted, the name
 that app shows (`agentCpuCapPercent 75 resources#limits "Plafond CPU de tous
 les agents"`). The list is `REQUESTABLE_SETTINGS` in
 `packages/contracts/src/setting-requests.ts`, then that app's experiments as
-`experiment.<id>` (`experiment.resident-agents true experiments#resident-agents
-"Agents"`); credentials, account ids and browser profiles are not in it.
+`experiment.<id>` (`experiment.whip true experiments#whip "Whip"`), the
+experiments its build still has a switch for; credentials, account ids and browser profiles are not in it.
 
 Language, experiments and names come from the apps: each says them after every
 hello and on every change (`client.preferences`, a paired phone included), with
@@ -837,7 +837,7 @@ way `ask` draws a question: the agent keeps working and the card outlives the
 turn and a restart. The value is JSON when it parses (`60`, `false`, `null`,
 `["https://a.example"]`) and the bare word otherwise. It is refused when the
 key is not in the list (the refusal lists them), when `settings.set` would
-refuse the value, when the setting already holds it (`experiment.resident-agents
+refuse the value, when the setting already holds it (`experiment.whip
 is already true`: the agent learns the state before the user has to say it),
 when a card on that key is already open in the thread, and for an experiment
 when the value is not true or false or no app has reported yet.

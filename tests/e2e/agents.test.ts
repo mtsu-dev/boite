@@ -90,7 +90,7 @@ beforeAll(async () => {
   const project = await testProject(harness, owner);
   projectThread = (await owner.call('threads.create', { projectId: project.id, providerId: 'echo', accountId, title: 'Build the landing page' })).id;
   site = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response('<!doctype html><title>Dashboard</title><h1>Sign in to the dashboard</h1><form><input placeholder="Email"><button>Continue</button></form>', { headers: { 'content-type': 'text/html' } }) });
-  page = await BrowserPage.launch({ url: `${harness.url}/?token=${harness.token}`, experiments: ['resident-agents'], windowSize: { width: DESKTOP.width, height: DESKTOP.height } });
+  page = await BrowserPage.launch({ url: `${harness.url}/?token=${harness.token}`, windowSize: { width: DESKTOP.width, height: DESKTOP.height } });
   await page.send('Emulation.setDeviceMetricsOverride', DESKTOP);
   await page.waitFor(`document.querySelector('[data-testid=status-connection]')?.dataset.state === 'ready'`, 30_000);
 }, 90_000);

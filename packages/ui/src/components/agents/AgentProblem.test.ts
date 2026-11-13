@@ -2,12 +2,10 @@ import { expect, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import { test } from '../../test/fake-client';
 import { AgentsView, statusOf } from '../../lib/agents.svelte';
-import { setExperiment } from '../../lib/experiments';
 import { fill, strings } from '../../lib/strings';
 import AgentsPage from './AgentsPage.svelte';
 
 test('a bot whose account is gone offers its other accounts in place, and one pick puts it back to work', async ({ ready }) => {
-  setExperiment('resident-agents', true);
   let page: ReturnType<typeof mount> | null = null;
   try {
     const { store } = await ready({ delayMs: 0, agentsDemo: true });
@@ -58,6 +56,5 @@ test('a bot whose account is gone offers its other accounts in place, and one pi
     await vi.waitFor(() => expect(effort()?.title).toBe(fill(strings.composer.botSettings, { name: 'Bolt' })));
   } finally {
     if (page) unmount(page);
-    setExperiment('resident-agents', false);
   }
 });

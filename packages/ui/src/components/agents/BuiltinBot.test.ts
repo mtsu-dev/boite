@@ -3,7 +3,6 @@ import { flushSync, mount, unmount } from 'svelte';
 import { test } from '../../test/fake-client';
 import { AgentsView } from '../../lib/agents.svelte';
 import { confirm } from '../../lib/confirm.svelte';
-import { setExperiment } from '../../lib/experiments';
 import { strings } from '../../lib/strings';
 import AgentsPage from './AgentsPage.svelte';
 import TitleBar from '../TitleBar.svelte';
@@ -16,7 +15,6 @@ const one = <T extends HTMLElement>(selector: string) => document.querySelector<
  * Reset, confirmed in the app's dialog, stands where Archive was.
  */
 test('a built-in bot carries its badge, locks its texts and resets after the app asks', async ({ ready }) => {
-  setExperiment('resident-agents', true);
   let page: ReturnType<typeof mount> | null = null;
   let bar: ReturnType<typeof mount> | null = null;
   try {
@@ -77,6 +75,5 @@ test('a built-in bot carries its badge, locks its texts and resets after the app
     if (bar) await unmount(bar);
     if (page) await unmount(page);
     confirm.answer(false);
-    setExperiment('resident-agents', false);
   }
 });

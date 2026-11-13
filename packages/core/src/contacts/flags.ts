@@ -13,6 +13,7 @@ import { invalidParams, refused } from '../errors.ts';
 import { newId } from '../ids.ts';
 import { contactsBot, tellBot } from './bot.ts';
 import { contactFace } from './face.ts';
+import { contactsGate } from './gate.ts';
 
 const FLAGS = 'contacts:flags';
 /** Open flags past which a new flagged letter is refused; an open flag is never evicted, since it may hold a letter. */
@@ -137,6 +138,8 @@ export class ContactFlags {
     const flag = flags.find(entry => entry.id === id);
     if (!flag) throw invalidParams(`contacts.bot.flag.id: ${String(id)} is not a flag; see boite contacts`, { field: 'id' });
     if (flag.status !== 'open') throw refused(`contacts.bot.flag.id: ${flag.id} is already ${flag.status}`, { field: 'id' });
+    // Delivering wakes the letter's thread: a Release starts nothing in Contacts, and the flag stays open to be blocked.
+    if (deliver) contactsGate(this.#core);
     flag.status = deliver ? 'delivered' : 'refused';
     this.#save(flags);
     const letter = flag.letterId ? this.#letter(flag.letterId) : null;

@@ -3,7 +3,6 @@ import type { AgentCreated } from '@boite/contracts';
 import { flushSync, mount, unmount } from 'svelte';
 import { test } from '../../test/fake-client';
 import { AgentsView, agentOfThread, agentRows, openAgent } from '../../lib/agents.svelte';
-import { setExperiment } from '../../lib/experiments';
 import { rightPanel } from '../../lib/right-panel.svelte';
 import { strings } from '../../lib/strings';
 import { newBot } from '../../lib/agents-view.svelte';
@@ -11,7 +10,6 @@ import AgentsPage from './AgentsPage.svelte';
 import TitleBar from '../TitleBar.svelte';
 
 test('an agent named on the way in opens alone: the default agent of the visit gives way to it', async ({ ready }) => {
-  setExperiment('resident-agents', true);
   let page: ReturnType<typeof mount> | null = null;
   try {
     const { store, client } = await ready({ delayMs: 0, agentsDemo: true });
@@ -33,12 +31,10 @@ test('an agent named on the way in opens alone: the default agent of the visit g
     expect(agentOfThread(view.snapshot, store.openThread!.id)?.id).toBe(named.id);
   } finally {
     if (page) unmount(page);
-    setExperiment('resident-agents', false);
   }
 });
 
 for (const previousBot of [false, true]) test(`a background reload preserves a pending bot selection (previous bot: ${previousBot})`, async ({ ready }) => {
-  setExperiment('resident-agents', true);
   let page: ReturnType<typeof mount> | null = null;
   let bar: ReturnType<typeof mount> | null = null;
   let release!: () => void;
@@ -74,12 +70,10 @@ for (const previousBot of [false, true]) test(`a background reload preserves a p
     release();
     if (bar) await unmount(bar);
     if (page) await unmount(page);
-    setExperiment('resident-agents', false);
   }
 });
 
 test('an open settings sheet stays open while the snapshot and the thread row change under it', async ({ ready }) => {
-  setExperiment('resident-agents', true);
   let page: ReturnType<typeof mount> | null = null;
   try {
     const { store } = await ready({ delayMs: 0, agentsDemo: true });
@@ -103,12 +97,10 @@ test('an open settings sheet stays open while the snapshot and the thread row ch
     expect(sheet()?.classList.contains('closing')).toBe(false);
   } finally {
     if (page) unmount(page);
-    setExperiment('resident-agents', false);
   }
 });
 
 test('a desk kept shut by an open panel opens on the next visit: the first visit is not spent', async ({ ready }) => {
-  setExperiment('resident-agents', true);
   // No desk seen and no panel left by an earlier test.
   localStorage.clear();
   rightPanel.load();
@@ -132,12 +124,10 @@ test('a desk kept shut by an open panel opens on the next visit: the first visit
     await vi.waitFor(() => expect(store.panel.surfaces.map(s => s.kind)).toEqual(['desk']));
   } finally {
     if (page) unmount(page);
-    setExperiment('resident-agents', false);
   }
 });
 
 test('a default bot that cannot be opened offers a retry instead of loading forever', async ({ ready }) => {
-  setExperiment('resident-agents', true);
   let page: ReturnType<typeof mount> | null = null;
   try {
     const { store, client } = await ready({ delayMs: 0, agentsDemo: true });
@@ -156,12 +146,10 @@ test('a default bot that cannot be opened offers a retry instead of loading fore
     await vi.waitFor(() => expect(store.openThread?.agentSessionId).toBeTruthy());
   } finally {
     if (page) unmount(page);
-    setExperiment('resident-agents', false);
   }
 });
 
 test("a desktop's column is the open bot's: who it is, its conversation, its threads; the rail's New bot opens the form here", async ({ ready }) => {
-  setExperiment('resident-agents', true);
   let page: ReturnType<typeof mount> | null = null;
   let bar: ReturnType<typeof mount> | null = null;
   try {
@@ -213,12 +201,10 @@ test("a desktop's column is the open bot's: who it is, its conversation, its thr
     if (bar) unmount(bar);
     if (page) unmount(page);
     document.body.innerHTML = '';
-    setExperiment('resident-agents', false);
   }
 });
 
 test('an empty desk is one centred prompt in the column, the way into its first task', async ({ ready }) => {
-  setExperiment('resident-agents', true);
   let page: ReturnType<typeof mount> | null = null;
   try {
     const { store, client } = await ready({ delayMs: 0, agentsDemo: true });
@@ -237,6 +223,5 @@ test('an empty desk is one centred prompt in the column, the way into its first 
     expect(document.querySelector('[data-testid=bot-first-task]')).toBeNull();
   } finally {
     if (page) unmount(page);
-    setExperiment('resident-agents', false);
   }
 });

@@ -1,5 +1,5 @@
 /** Permission requests and questions: asked by a turn, answered by the user. */
-import { RpcErrorCode, agentSettingAnswerText, checkClientPreferences, checkSettingRequest, isMachineSetting, MACHINE_SETTINGS, settledMachineSetting, settledExperiment, type SettingMachine, type ClientPreferences, type ExperimentId, checkSettingsPatch, readSettings, settingAnswerText, settledSetting, type Message, type MessagePart, type PermissionRequest, type QuestionAnswer, type QuestionOption, type QuestionRequest, type AgentSettingAsk, type SettingAsk, type SettingCardAsk, type SettingRequestParams, type Settings, type TeamAsk, type Thread, type ThreadId, type Turn } from '@boite/contracts';
+import { RpcErrorCode, agentSettingAnswerText, checkClientPreferences, checkSettingRequest, effectiveExperiments, experimentalSettingRefusal, isMachineSetting, MACHINE_SETTINGS, settledMachineSetting, settledExperiment, type SettingMachine, type ClientPreferences, type ExperimentId, checkSettingsPatch, readSettings, settingAnswerText, settledSetting, type Message, type MessagePart, type PermissionRequest, type QuestionAnswer, type QuestionOption, type QuestionRequest, type AgentSettingAsk, type SettingAsk, type SettingCardAsk, type SettingRequestParams, type Settings, type TeamAsk, type Thread, type ThreadId, type Turn } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { fakeCore } from './coordination';
 import { checkAnswer, checkAsk } from './checks';
@@ -191,19 +191,22 @@ export function fakeMember(ctx: FakeContext, query: string, method: string): Set
 /** `settings.request` on a thread whose turn is known; the fake agent's `[settings]` markers come here too. */
 export function requestSetting(ctx: FakeContext, thread: Thread, turn: Turn, params: SettingRequestParams): { questionId: string; setting: SettingAsk } {
   const open = [...ctx.pendingQuestions.values()].flatMap((pending) => (pending.request.threadId === thread.id && pending.request.setting ? [pending.request.setting] : []));
-  let settings = ctx.settings;
+  // As the core: a card reads the settings in force, and proposes nothing the save would refuse.
+  let settings = ctx.settingsInForce();
   let machine: SettingMachine | null = null;
   if (params.machine !== undefined) {
     if (!isMachineSetting(params.key)) throw new RpcFailure({ code: RpcErrorCode.Refused, message: `${String(params.key)} is this machine's own; a card for another machine asks about ${MACHINE_SETTINGS.join(', ')}`, data: { field: 'key' } });
     machine = fakeMember(ctx, params.machine, 'settings.request');
     const other = fakeCore(machine.coreId);
     if (other === undefined) throw new RpcFailure({ code: RpcErrorCode.Unavailable, message: `${machine.name} did not answer`, data: { field: 'machine' } });
-    settings = { ...ctx.settings, [params.key]: other.settings[params.key] };
+    settings = { ...settings, [params.key]: other.settings[params.key] };
   }
   const checked = checkSettingRequest(params, settings, (patch) => {
     const result = checkSettingsPatch(patch);
+    const experiment = result.ok ? experimentalSettingRefusal(result.patch, ctx.core.version) : null;
+    if (experiment !== null) return { ok: false, message: experiment.message, field: experiment.key };
     return result.ok ? { ok: true, patch: result.patch } : { ok: false, message: result.message, field: result.field };
-  }, open, ctx.clientPreferences, machine);
+  }, open, ctx.clientPreferences, machine, ctx.core.version);
   if (!checked.ok) throw new RpcFailure({ code: RpcErrorCode.Refused, message: checked.message, data: checked.data });
   return { questionId: askSetting(ctx, thread, turn, checked.reason, checked.options, checked.setting), setting: checked.setting };
 }
@@ -372,16 +375,18 @@ export function requestMethods(ctx: FakeContext) {
     },
     'agent.settings': async () => ({
       app: ctx.clientPreferences === null ? null : { language: ctx.clientPreferences.language, device: null, client: null },
-      settings: readSettings(ctx.settings, ctx.clientPreferences),
+      settings: readSettings(ctx.settingsInForce(), ctx.clientPreferences, ctx.core.version),
     }),
     'client.preferences': async (params) => {
       const checked = checkClientPreferences(params);
       if (!checked.ok) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: checked.message, data: { field: checked.field } });
       const before = ctx.clientApps.get(checked.preferences.app)?.experiments ?? null;
-      ctx.clientApps.set(checked.preferences.app, checked.preferences);
-      ctx.clientPreferences = checked.preferences;
-      settleSettings(ctx, ctx.settings, { preferences: checked.preferences, before });
-      return { ok: true, desktop: ctx.desktopExperiments === null ? null : [...ctx.desktopExperiments] };
+      // As the core: what the app chose, read for the build this core is.
+      const preferences = { ...checked.preferences, experiments: effectiveExperiments(checked.preferences.experiments, ctx.core.version) };
+      ctx.clientApps.set(preferences.app, preferences);
+      ctx.clientPreferences = preferences;
+      settleSettings(ctx, ctx.settingsInForce(), { preferences, before });
+      return { ok: true, desktop: ctx.desktopExperiments === null ? null : effectiveExperiments(ctx.desktopExperiments, ctx.core.version), desktopChosen: ctx.desktopExperiments === null ? null : [...ctx.desktopExperiments] };
     },
     'questions.skip': async (params) => {
       const pending = ctx.pendingQuestions.get(params.questionId);

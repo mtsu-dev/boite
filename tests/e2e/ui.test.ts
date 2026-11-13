@@ -30,7 +30,6 @@ const WORKTREE_SCREENSHOT = join(import.meta.dir, '.artifacts', 'ui-worktree.png
 const KEYBOARD_SCREENSHOT = join(import.meta.dir, '.artifacts', 'ui-keyboard.png');
 const RETITLE_SCREENSHOT = join(import.meta.dir, '.artifacts', 'ui-retitle.png');
 const IMPORT_SCREENSHOT = join(import.meta.dir, '.artifacts', 'ui-import.png');
-const EXPERIMENTS_SCREENSHOT = join(import.meta.dir, '.artifacts', 'ui-experiments.png');
 /** The cache `public/sw.js` opens, before the build appends its id; every other cache is deleted on activate. */
 const UI_CACHE_PREFIX = 'boite-ui-v6-';
 
@@ -159,8 +158,9 @@ test(
       percent = Math.min(100, Math.round(thread!.context!.tokens / thread!.context!.window! * 100));
     } finally { client.close(); }
     await page.waitFor(`document.querySelector('${testid('context-meter')}')?.dataset.percent === '${percent}'`);
-    // The ring says the share left in words beside it once most of the window is used (ContextControl.svelte).
-    expect((await page.text(testid('context-trigger'))).trim()).toBe(`${100 - percent}% context left`);
+    // The ring says the share left in words beside it once most of the window is used (ContextControl.svelte);
+    // the prompt cache clock, on in every build, follows it once a turn has written the cache.
+    expect((await page.text(testid('context-trigger'))).trim()).toStartWith(`${100 - percent}% context left`);
 
     await page.screenshot(SCREENSHOT);
     expect(existsSync(SCREENSHOT)).toBe(true);
@@ -218,26 +218,10 @@ test(
       client.close();
     }
 
-    // The import sits behind an experiment: the menu has no row until the
-    // switch on the Experiments page is on, and the row is there the moment it is.
+    // Session import is on in every build: the row is in the menu with nothing stored.
     const openProjectMenu = `(() => { document.querySelector('${testid('project-row')}').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 60, clientY: 60 })); return null; })()`;
     await page.evaluate<null>(openProjectMenu);
     await page.waitFor(`document.querySelector('${testid('context-menu')} [data-value=copy]')`);
-    await page.click(`${testid('context-menu')} [data-value=manage]`);
-    await page.waitFor(`document.querySelector('${testid('context-menu')} [data-value=back]')`);
-    expect(await page.evaluate<boolean>(`document.querySelector('${testid('context-menu')} [data-value=import]') === null`)).toBe(true);
-    await page.evaluate<null>(`(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return null; })()`);
-    await page.waitFor(`!document.querySelector('${testid('context-menu')}')`);
-
-    await page.click(testid('nav-settings'));
-    await page.click(testid('settings-tab-experiments'));
-    await page.click(testid('experiment-session-import'));
-    await page.waitFor(`document.querySelector('${testid('experiment-session-import')}').checked`);
-    await page.screenshot(EXPERIMENTS_SCREENSHOT);
-    await page.click(testid('settings-back'));
-    await page.waitFor(`document.querySelector('${testid('chat')}')`);
-
-    await page.evaluate<null>(openProjectMenu);
     await page.click(`${testid('context-menu')} [data-value=manage]`);
     await page.waitFor(`document.querySelector('${testid('context-menu')} [data-value=import]')`);
     await page.click(`${testid('context-menu')} [data-value=import]`);

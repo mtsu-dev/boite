@@ -1,7 +1,8 @@
 # Contacts
 
-Experimental: turn it on in Settings, Experiments. It needs Bots on first and
-is not ready for everyday use: a full security and network review comes first.
+Experimental: Contacts exist in Nightly builds only. Turn them on in Settings,
+Experiments ([experiments](experiments.md)). They are not ready for everyday
+use: a full security and network review comes first.
 
 A contact is another person's Boite. Your agents and theirs work together on
 the projects each side shares, and on nothing else. A contact never sees your
@@ -131,7 +132,7 @@ your group as one Boite, named after the group.
 
 ## Going further
 
-- [Experiments](experiments.md): turn Bots and Contacts on.
+- [Experiments](experiments.md): turn Contacts on in a Nightly build.
 - [Bots](bots.md): the Operator is one.
 - [Coordination](coordination.md): how agents write to each other.
 - [Machines](machines.md): your own group, which is full trust.

@@ -242,3 +242,30 @@ test('installing updates by itself follows the default machine, a server include
   await syncSettings(await end(server), await end(desk));
   expect((await desk.call('settings.get', {})).autoInstallUpdates).toBe(false);
 });
+
+test('a Release home copies what it stores, never the experiments its build reads as off, and a Release follower is not copied twice', async () => {
+  const release = async () => {
+    const client = new FakeClient({ delayMs: 0, version: '2.0.0' });
+    await client.connect();
+    return client;
+  };
+  const chosen = { cacheKeepalive: { hours: 2 }, compactionByType: { agent: { autoCompact: null, backgroundCompaction: true } } };
+
+  // The home ran a Nightly when these were chosen, and a Release now: it reads them as off.
+  const home = await release();
+  await home.call('settings.follow', { patch: chosen });
+  expect(await home.call('settings.get', {})).toMatchObject({ cacheKeepalive: null, compactionByType: { agent: { backgroundCompaction: false } } });
+  const follower = await machine();
+  await follower.call('settings.set', { ...chosen, shortAnswers: true });
+  await home.call('settings.follow', { patch: { shortAnswers: false } });
+
+  const report = await syncSettings(await end(home), await end(follower));
+  expect(report.changed).toBe(1);
+  expect(await follower.call('settings.get', {})).toMatchObject({ ...chosen, shortAnswers: false });
+
+  // The other way: a Release follower stores the Nightly home's choice, reads it as off and has nothing left to take.
+  const behind = await release();
+  expect((await syncSettings(await end(follower), await end(behind))).settings).toMatchObject({ cacheKeepalive: null, shortAnswers: false });
+  expect(await behind.call('settings.get', { stored: true })).toMatchObject(chosen);
+  expect((await syncSettings(await end(follower), await end(behind))).changed).toBe(0);
+});

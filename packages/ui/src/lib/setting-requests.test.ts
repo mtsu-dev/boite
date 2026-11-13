@@ -52,6 +52,15 @@ test('a card about a graduated experiment is never settled by a core setting mov
 test('a graduated experiment keeps its name, and one with no switch left says it is always on', () => {
   expect(settingLabel('experiment.edge-scrollbars' as RequestableKey)).toBe('Hide scrollbars until the pointer is near');
   expect(settingLabel('experiment.press-preload' as RequestableKey)).toBe('Load on press');
-  expect(retiredHint('experiment.press-preload')).toBe('This experiment is now always on.');
+  expect(retiredHint('experiment.press-preload')).toBe('This is now on in every build.');
   expect(retiredHint('experiment.preview-comments')).toBe('This experiment has its own switch in Settings now.');
+});
+
+test('an old card about a finished experiment reads as words, never as its key', () => {
+  expect(settingLabel('experiment.resident-agents' as RequestableKey)).toBe('Bots');
+  expect(settingLabel('experiment.prompt-cache' as RequestableKey)).toBe('Prompt cache timer');
+  expect(settingLabel('experiment.recording-indicators' as RequestableKey)).toBe('Show actions in recordings');
+  for (const id of ['prompt-cache', 'recording-indicators']) {
+    expect(retiredHint(`experiment.${id}`)).toBe('This is now on in every build.');
+  }
 });

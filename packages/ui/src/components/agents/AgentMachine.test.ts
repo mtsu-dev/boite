@@ -3,7 +3,6 @@ import { flushSync, mount, unmount } from 'svelte';
 import { RpcErrorCode } from '@boite/contracts';
 import { AgentsView } from '../../lib/agents.svelte';
 import { confirm } from '../../lib/confirm.svelte';
-import { setExperiment } from '../../lib/experiments';
 import { FakeClient } from '../../lib/fake-client';
 import { droppedFailure, RpcFailure } from '../../lib/rpc-error';
 import { Store, store as primary } from '../../lib/store.svelte';
@@ -24,7 +23,6 @@ afterEach(async () => {
   opened.length = 0;
   workspace.machines = [];
   workspace.active = primary;
-  setExperiment('resident-agents', false);
   localStorage.clear();
   document.body.innerHTML = '';
 });
@@ -41,7 +39,6 @@ async function machine(id: string, name: string): Promise<{ store: Store; client
 
 /** Two machines of one group, both reached from this window, and a bot on the first. */
 async function setup() {
-  setExperiment('resident-agents', true);
   const first = await machine('first', 'First');
   const second = await machine('second', 'Second');
   expect(await first.store.createGroup('Home')).toBe(true);
