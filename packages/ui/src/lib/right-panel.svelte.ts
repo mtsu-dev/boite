@@ -222,7 +222,7 @@ export function panelOverChat(viewport: number, sibling: number): boolean {
 }
 
 export function clampPanel(width: number, viewport: number, sibling: number): number {
-  const room = Math.max(viewport - sibling - SIBLING_MIN, PANEL_MIN);
+  const room = Math.max(viewport - sibling - DESK_CHROME - SIBLING_MIN, PANEL_MIN);
   const max = Math.max(PANEL_MIN, Math.min(Math.round(viewport * 0.7), room));
   return Math.min(max, Math.max(PANEL_MIN, Math.round(width)));
 }

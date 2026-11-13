@@ -436,8 +436,10 @@ describe('the right panel', () => {
     expect(window.localStorage.getItem(PANEL_WIDTH_KEY)).toBe('520');
     expect(new RightPanelStore().width).toBe(520);
 
-    // 70 percent of the viewport is the ceiling, the chat column's 360 px the other.
-    expect(clampPanel(2000, 1400, 280)).toBe(760);
+    // 70 percent of the viewport is the ceiling, the chat column's 360 px beside the rail and gaps the other.
+    expect(clampPanel(2000, 1400, 280)).toBe(644);
+    // A docked panel at the default width shrinks before the chat drops under 360 px.
+    expect(clampPanel(360, 1100, 300)).toBe(324);
     // A 900 px window with a 280 px sidebar leaves the chat nothing: the floor wins.
     expect(clampPanel(2000, 900, 280)).toBe(PANEL_MIN);
     expect(clampPanel(10, 1400, 280)).toBe(PANEL_MIN);

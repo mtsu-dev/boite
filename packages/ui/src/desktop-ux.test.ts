@@ -114,6 +114,8 @@ test('a panel widened while the contacts column was folded gives the chat its ro
   expect(contactsRail.folded).toBe(true);
   const stored = rightPanel.width;
   rightPanel.width = 700;
+  // Wide enough that list, contacts and a docked panel all fit beside the chat.
+  window.innerWidth = 1600;
   await mountOnFake();
   try {
     if (!store.panelOpen) store.togglePanel();
@@ -131,6 +133,7 @@ test('a panel widened while the contacts column was folded gives the chat its ro
     // The width asked for stays, for the day the room comes back.
     expect(rightPanel.width).toBe(700);
   } finally {
+    window.innerWidth = 1024;
     if (!contactsRail.folded) contactsRail.toggle();
     rightPanel.width = stored;
   }
