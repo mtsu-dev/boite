@@ -229,9 +229,10 @@ export {
   type SettingsReading,
 } from './setting-requests.ts';
 export {
+  BUILD_KINDS, BUILD_KIND_NAMES, COMPILED_BUILD_KIND, EXPERIMENTAL_SETTINGS_STAGE, FEATURE_CUTS, buildKindOf, featureCompiled, featureDefines, featureFlag, featureMarker, featureRuns, stageRuns,
   EXPERIMENT_IDS, EXPERIMENT_STAGES, EXPERIMENTAL_SETTINGS, effectiveExperiments, experimentListed, experimentRefusal, experimentStartRefusal, experimentalSettingRefusal, experimentsRun, holdExperimentalSettings, keepStoredExperimentalSettings,
   isExperimentId, isExperimentalSetting, isReleaseVersion, listedExperiments,
-  type ExperimentId, type ExperimentalSetting, type FeatureStage,
+  type BuildKind, type ExperimentId, type ExperimentalSetting, type FeatureStage,
 } from './experiments.ts';
 export {
   AGENT_AVATAR_MAX, AGENT_DAILY_BUDGET, AGENT_DOMAIN_MAX, AGENT_INSTRUCTIONS_MAX, AGENT_NAME_MAX, AGENT_PICTURE_CODE, AGENT_PICTURE_MAX_BYTES, AGENT_PICTURE_TYPES,

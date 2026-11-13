@@ -17,7 +17,8 @@ export const parts = {
   QuestionCard: new LazyComponent(() => import('../components/QuestionCard.svelte')),
   SecretCard: new LazyComponent(() => import('../components/SecretCard.svelte')),
   TeamCard: new LazyComponent(() => import('../components/TeamCard.svelte')),
-  CouncilCard: new LazyComponent(() => import('../components/council/CouncilCard.svelte')),
+  // The Council's flag in full, as in `lib/council-entry.ts`: a build below its tag has no such chunk, and nothing draws the part there.
+  CouncilCard: new LazyComponent(() => typeof __BOITE_HAS_DEBATES__ === 'undefined' || __BOITE_HAS_DEBATES__ ? import('../components/council/CouncilCard.svelte') : Promise.reject(new Error('the Council is not in this build'))),
   QuotaOverview: nested.QuotaOverview,
   LimitsGlance: new LazyComponent(() => import('../components/LimitsGlance.svelte')),
   PinnedQuota: new LazyComponent(() => import('../components/PinnedQuota.svelte')),

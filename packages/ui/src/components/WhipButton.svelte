@@ -33,7 +33,8 @@
   const label = $derived(whip.held ? strings.experiments.whip.drop : off ? strings.experiments.whip.off : strings.experiments.whip.action);
 </script>
 
-<button type="button" class="ghost icon whip" class:active={whip.held}
+<!-- data-feature: the marker a build without the Whip must not hold (scripts/ci/feature-cut.ts). -->
+<button type="button" class="ghost icon whip" class:active={whip.held} data-feature="boite-feature:whip"
   data-testid={mobile ? 'whip-button-mobile' : 'whip-button'}
   title={name ? undefined : label}
   aria-label={label}

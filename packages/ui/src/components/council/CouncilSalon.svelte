@@ -228,7 +228,8 @@
   });
 </script>
 
-<section class="salon" data-testid="council-salon" data-council-id={councilId} data-status={council?.status}>
+<!-- data-feature: the marker a build without the Council must not hold (scripts/ci/feature-cut.ts). -->
+<section class="salon" data-feature="boite-feature:debates" data-testid="council-salon" data-council-id={councilId} data-status={council?.status}>
   {#if !reader || reader.refused}
     <p class="placeholder" data-testid="council-unavailable">{labels.unavailable}</p>
   {:else if reader.missing}

@@ -5,8 +5,8 @@
   import DeviceStreamSettings from './DeviceStreamSettings.svelte';
   import AutoGoalSetting from './AutoGoalSetting.svelte';
   import { untrack, type Snippet } from 'svelte';
-  import { experimentsRun } from '@boite/contracts';
-  import { canFollowDesktop, desktopExperiments, followsDesktop, listedSwitches, readExperiments, setExperiment, setFollowDesktop, subscribeExperiments, type ExperimentId } from '../lib/experiments';
+  import { EXPERIMENT_STAGES, buildKindOf, experimentsRun } from '@boite/contracts';
+  import { canFollowDesktop, desktopExperiments, experimentsBuild, followsDesktop, listedSwitches, readExperiments, setExperiment, setFollowDesktop, subscribeExperiments, type ExperimentId } from '../lib/experiments';
   import { experimentCopy } from '../lib/experiment-copy';
   import { strings } from '../lib/strings';
   import { ensureOperator } from '../lib/operator';
@@ -30,6 +30,11 @@
   let heard = $state(untrack(() => desktopExperiments() !== null));
 
   let listed = $state<ExperimentId[]>(untrack(() => listedSwitches()));
+  /**
+   * A Dev build lists the features of two tags, so each switch says its own
+   * and the dev-only ones stand out. A Nightly lists one tag: nothing to tell apart.
+   */
+  let tagged = $state(untrack(() => buildKindOf(experimentsBuild()) === 'dev'));
   /** The machine being configured runs experiments: a Release core refuses them and reads them as off. */
   let machineRuns = $derived(target !== undefined && experimentsRun(target.core?.version));
   let thresholdRuns = $derived(store !== undefined && experimentsRun(store.core?.version));
@@ -44,6 +49,7 @@
   $effect(() => subscribeExperiments((next) => {
     enabled = next;
     listed = listedSwitches();
+    tagged = buildKindOf(experimentsBuild()) === 'dev';
     following = followsDesktop();
     heard = desktopExperiments() !== null;
   }));
@@ -73,7 +79,7 @@
     {#each listed as id (id)}
       <label for="{uid}-{id}" class="switch-row" id="settings-{id}">
         <span class="text">
-          <span class="ui-label-box"><span class="ui-label" id="{uid}-{id}-name">{copy[id]?.title ?? id}</span><InfoTip topic={copy[id]?.title ?? id} text={copy[id]?.hint ?? ''} /></span>
+          <span class="ui-label-box"><span class="ui-label" id="{uid}-{id}-name">{copy[id]?.title ?? id}</span><InfoTip topic={copy[id]?.title ?? id} text={copy[id]?.hint ?? ''} />{#if tagged}{@const tag = EXPERIMENT_STAGES[id] === 'dev' ? 'dev' : 'nightly'}<span class="tag" class:dev={tag === 'dev'} data-testid="stage-tag-{id}" data-tag={tag} title={strings.settings.experiments.tagHints[tag]}>{strings.settings.experiments.tags[tag]}</span>{/if}</span>
         </span>
         <input id="{uid}-{id}" aria-labelledby="{uid}-{id}-name"
           type="checkbox"
@@ -91,3 +97,8 @@
   {#if target && bar}{@render bar()}{/if}
   {#if target && machineRuns}<CacheKeepaliveSettings store={target} /><CompactionSettings store={target} backgroundOnly /><DeviceStreamSettings store={target} />{/if}
 </div>
+
+<style>
+  .tag { flex: none; padding: 0 var(--space-2); border: 1px solid var(--color-border); border-radius: var(--radius-sm); color: var(--color-muted-foreground); font-size: var(--text-xs); line-height: 1.5; white-space: nowrap; }
+  .tag.dev { color: var(--color-foreground); border-color: var(--color-muted-foreground); }
+</style>

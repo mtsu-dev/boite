@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, onTestFinished, test, vi } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
+import { EXPERIMENT_STAGES } from '@boite/contracts';
 import ExperimentsPage from './ExperimentsPage.svelte';
 import { BUILD_STORAGE_KEY, DESKTOP_STORAGE_KEY, EXPERIMENTS_STORAGE_KEY, desktopHeard, followDesktopOf, heardBuild, heardDesktop, isExperimentEnabled, readExperiments, setExperiment, subscribeExperiments, writeExperiments } from '../lib/experiments';
 import { experimentsShown } from '../lib/experiments.svelte';
@@ -85,6 +86,36 @@ test('on a Nightly the page lists exactly the five experiments, and a toggle wri
   await tick();
   expect(window.localStorage.getItem(EXPERIMENTS_STORAGE_KEY)).toBe('[]');
   expect(query<HTMLInputElement>('[data-testid=experiment-whip]').checked).toBe(false);
+});
+
+test('a Dev build lists the dev features and tags each switch; a Nightly lists the nightly ones alone, with no tag', async () => {
+  // Whip stands for a feature still being built: no feature carries the dev tag today.
+  EXPERIMENT_STAGES.whip = 'dev';
+  onTestFinished(() => { EXPERIMENT_STAGES.whip = 'nightly'; });
+  const owner = primarySays('2.0.0-beta.1');
+  running = mount(ExperimentsPage, { target: document.body });
+  flushSync();
+  await tick();
+  const switches = () => [...document.querySelectorAll('[data-testid^=experiment-]')].map((node) => node.getAttribute('data-testid'));
+  expect(switches()).toEqual(['whip', 'contacts', 'auto-goal', 'teams', 'debates'].map((id) => `experiment-${id}`));
+  expect(query('[data-testid=stage-tag-whip]').textContent).toBe(strings.settings.experiments.tags.dev);
+  expect(query('[data-testid=stage-tag-whip]').getAttribute('title')).toBe(strings.settings.experiments.tagHints.dev);
+  expect(query('[data-testid=stage-tag-teams]').textContent).toBe(strings.settings.experiments.tags.nightly);
+  // The tag is beside the name, outside the switch: a click on it flips nothing by itself being a control.
+  expect(query('[data-testid=stage-tag-whip]').closest('label')).toBe(query('[data-testid=experiment-whip]').closest('label'));
+
+  // The same device on a Nightly: the dev feature has no switch, a stored choice for it is ignored and kept.
+  setExperiment('whip', true);
+  expect(isExperimentEnabled('whip')).toBe(true);
+  heardBuild(owner, NIGHTLY);
+  flushSync();
+  await tick();
+  expect(switches()).toEqual(['contacts', 'auto-goal', 'teams', 'debates'].map((id) => `experiment-${id}`));
+  expect(document.querySelector('[data-testid^=stage-tag-]')).toBeNull();
+  expect(isExperimentEnabled('whip')).toBe(false);
+  setExperiment('whip', true);
+  expect(isExperimentEnabled('whip')).toBe(false);
+  expect(JSON.parse(window.localStorage.getItem(EXPERIMENTS_STORAGE_KEY)!)).toContain('whip');
 });
 
 test('with empty storage every finished feature is on, and none of them can be switched', () => {

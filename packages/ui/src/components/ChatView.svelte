@@ -28,6 +28,7 @@
   import ContactHoldNotice from './ContactHoldNotice.svelte';
   import { firstRunScreen, needsAnAI } from '../lib/first-run';
   import { closingLine } from '../lib/closing-line';
+  import { loadCouncilSalon } from '../lib/council-entry';
 
   /** `locked`: the conversation reads but takes nothing more, said in place of the composer (an archived agent's). */
   let { store, locked = null }: { store: Store; locked?: string | null } = $props();
@@ -95,7 +96,7 @@
   let CouncilSalon = $state.raw<typeof import('./council/CouncilSalon.svelte').default>();
   let loadingSalon: Promise<void> | undefined;
   $effect(() => {
-    if (thread?.councilId && !CouncilSalon) loadingSalon ??= import('./council/CouncilSalon.svelte').then(module => { CouncilSalon = module.default; }).catch(() => { loadingSalon = undefined; });
+    if (thread?.councilId && !CouncilSalon) loadingSalon ??= loadCouncilSalon()?.then(module => { CouncilSalon = module.default; }).catch(() => { loadingSalon = undefined; });
   });
   let project = $derived(store.openProject);
   let draftChoice = $derived(store.defaultChoice());

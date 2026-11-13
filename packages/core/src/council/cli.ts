@@ -10,6 +10,9 @@ import { COUNCIL_LIMITS, councilRoleBrief, type Council, type RpcParams } from '
 import type { CoreClient } from '../client.ts';
 import { Usage } from '../cli-args.ts';
 
+/** What `scripts/ci/feature-cut.ts` looks for in a core bundle (`featureMarker('debates')`): this module is in none below the Council's tag. */
+export const FEATURE_MARKER = 'boite-feature:debates';
+
 type Print = (lines: string[], value: unknown) => void;
 
 export const COUNCIL_USAGE = 'boite delegate council "<request>"|--request-file <path> [--models <provider/model>[:<effort>],<provider/model>[:<effort>][,...]] [--effort <level>] [--role <member>=<text>]... [--timeout <minutes per round>]; boite delegate council again <id> ["<what changed>"] [--send-changes] [--request-file <path>]; boite delegate council table <id>';

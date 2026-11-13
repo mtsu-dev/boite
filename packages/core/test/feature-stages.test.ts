@@ -2,12 +2,13 @@ import { afterEach, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { EXPERIMENT_IDS, EXPERIMENT_STAGES, effectiveExperiments, experimentalSettingRefusal, holdExperimentalSettings, isReleaseVersion, listedExperiments, type ClientPreferences, type ExperimentId, type Settings } from '@boite/contracts';
+import { EXPERIMENT_IDS, EXPERIMENT_STAGES, FEATURE_CUTS, buildKindOf, effectiveExperiments, experimentRefusal, experimentStartRefusal, featureCompiled, featureDefines, featureMarker, stageRuns, experimentalSettingRefusal, holdExperimentalSettings, isReleaseVersion, listedExperiments, type ClientPreferences, type ExperimentId, type Settings } from '@boite/contracts';
 import { connect } from '../src/client.ts';
 import { echoThread, startTestCore, type TestCore } from './harness.ts';
 
 const RELEASE = '2.0.0';
 const NIGHTLY = '2.0.1-nightly.20261113.1';
+const DEV = '2.0.0-beta.1';
 const EXPERIMENTAL: ExperimentId[] = ['whip', 'contacts', 'auto-goal', 'teams', 'debates'];
 const report = (experiments: ExperimentId[]): ClientPreferences => ({ app: 'app-desktop-0001', language: 'en', experiments, labels: {} });
 
@@ -46,6 +47,61 @@ test('a version without a prerelease part is a Release, and only the other build
   expect(experimentalSettingRefusal({ deviceStream: true }, NIGHTLY)).toBeNull();
   expect(holdExperimentalSettings<Partial<Settings>>({ deviceStream: true, shortAnswers: true }, RELEASE)).toEqual({ deviceStream: false, shortAnswers: true });
   expect(holdExperimentalSettings<Partial<Settings>>({ deviceStream: true }, NIGHTLY)).toEqual({ deviceStream: true });
+});
+
+test('a build has one of three kinds, read from its version', () => {
+  expect(['2.0.0', '0.1.1', '', null, undefined].map(buildKindOf)).toEqual(['release', 'release', 'release', 'release', 'release']);
+  expect(['2.0.0-nightly.20261111.1', '2.0.1-nightly.20261113.12', '2.0.0-nightly'].map(buildKindOf)).toEqual(['nightly', 'nightly', 'nightly']);
+  // Any other prerelease is a build from source: the checkout's own version, a test core, a name that only starts like a nightly.
+  expect(['2.0.0-beta.1', '2.0.0-test.0', '2.0.0-rc.1', '2.0.0-nightlyish.1'].map(buildKindOf)).toEqual(['dev', 'dev', 'dev', 'dev']);
+  // A build has the features tagged at or below its kind.
+  expect((['release', 'nightly', 'dev'] as const).map(kind => (['release', 'nightly', 'dev'] as const).filter(stage => stageRuns(stage, kind))))
+    .toEqual([['release'], ['release', 'nightly'], ['release', 'nightly', 'dev']]);
+});
+
+test('a dev feature exists in a Dev build only, a nightly one in a Nightly and a Dev build', () => {
+  // The real table with one feature of each tag: whip stands for a dev feature, teams for a nightly one.
+  const stages = { ...EXPERIMENT_STAGES, whip: 'dev', teams: 'nightly' } as const;
+
+  expect(listedExperiments(DEV, stages)).toContain('whip');
+  expect(listedExperiments(NIGHTLY, stages)).not.toContain('whip');
+  expect(listedExperiments(RELEASE, stages)).not.toContain('whip');
+  expect(experimentRefusal('whip', DEV, stages)).toBeNull();
+  expect(experimentRefusal('whip', NIGHTLY, stages)).toBe(`experiment.whip runs in Dev builds only, and this machine runs a Nightly (${NIGHTLY}): it is still being built and no published build has it`);
+  expect(experimentRefusal('whip', RELEASE, stages)).toBe(`experiment.whip runs in Dev builds only, and this machine runs a Release (${RELEASE}): it is still being built and no published build has it`);
+  expect(experimentStartRefusal('whip', NIGHTLY, stages)).toContain('runs in Dev builds only');
+
+  expect(listedExperiments(DEV, stages)).toContain('teams');
+  expect(listedExperiments(NIGHTLY, stages)).toContain('teams');
+  expect(listedExperiments(RELEASE, stages)).not.toContain('teams');
+  expect(experimentRefusal('teams', NIGHTLY, stages)).toBeNull();
+  expect(experimentRefusal('teams', DEV, stages)).toBeNull();
+  expect(experimentRefusal('teams', RELEASE, stages)).toBe(`experiment.teams runs in Nightly builds only, and this machine runs a Release (${RELEASE}): switch the update channel to Nightly in Settings > Updates to try it`);
+
+  // A stored choice for a feature the build lacks is ignored, and still there for the build that has it.
+  const chosen = ['whip', 'teams'];
+  expect(effectiveExperiments(chosen, DEV, stages)).toEqual(expect.arrayContaining(['whip', 'teams']));
+  expect(effectiveExperiments(chosen, NIGHTLY, stages)).toContain('teams');
+  expect(effectiveExperiments(chosen, NIGHTLY, stages)).not.toContain('whip');
+  expect(effectiveExperiments(chosen, RELEASE, stages)).toEqual(effectiveExperiments([], RELEASE));
+  expect(chosen).toEqual(['whip', 'teams']);
+});
+
+test('a build is compiled with one constant for its kind and one flag per tagged feature', () => {
+  const stages = { ...EXPERIMENT_STAGES, whip: 'dev', teams: 'nightly' } as const;
+  expect(featureDefines(RELEASE, stages)).toMatchObject({ __BOITE_BUILD_KIND__: '"release"', __BOITE_HAS_WHIP__: 'false', __BOITE_HAS_TEAMS__: 'false' });
+  expect(featureDefines(NIGHTLY, stages)).toMatchObject({ __BOITE_BUILD_KIND__: '"nightly"', __BOITE_HAS_WHIP__: 'false', __BOITE_HAS_TEAMS__: 'true', __BOITE_HAS_AUTO_GOAL__: 'true' });
+  expect(featureDefines(DEV, stages)).toMatchObject({ __BOITE_BUILD_KIND__: '"dev"', __BOITE_HAS_WHIP__: 'true', __BOITE_HAS_TEAMS__: 'true' });
+  // A finished feature has no flag: nothing of it is ever cut.
+  expect(Object.keys(featureDefines(RELEASE)).sort()).toEqual(['__BOITE_BUILD_KIND__', '__BOITE_HAS_AUTO_GOAL__', '__BOITE_HAS_CONTACTS__', '__BOITE_HAS_DEBATES__', '__BOITE_HAS_TEAMS__', '__BOITE_HAS_WHIP__']);
+  // From source nothing is compiled out; a bundle compiled as a Release lacks what its kind lacks, whatever version it later hears.
+  expect(featureCompiled('whip')).toBe(true);
+  expect(featureCompiled('whip', 'release')).toBe(false);
+  expect(featureCompiled('whip', 'nightly')).toBe(true);
+  expect(featureCompiled('theme-grain', 'release')).toBe(true);
+  // Only a feature above the release tag can be cut, and its marker is its own.
+  for (const id of Object.keys(FEATURE_CUTS) as ExperimentId[]) expect(EXPERIMENT_STAGES[id], id).not.toBe('release');
+  expect(featureMarker('whip')).toBe('boite-feature:whip');
 });
 
 test('a Release core runs no experiment an app reports, refuses the card for one and names the Nightly channel', async () => {

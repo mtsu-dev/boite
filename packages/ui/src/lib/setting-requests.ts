@@ -40,7 +40,7 @@ function graduated(key: string): { title: string; switched: boolean } | null {
   if (id === 'prompt-cache') return { title: strings.settingRequest.promptCacheTimer, switched: false };
   if (id === 'recording-indicators') return { title: strings.settingRequest.recordingActions, switched: false };
   const known = experimentOf(key);
-  if (known !== null && EXPERIMENT_STAGES[known] === 'normal') return { title: strings.settingRequest.formerExperiment, switched: false };
+  if (known !== null && EXPERIMENT_STAGES[known] === 'release') return { title: strings.settingRequest.formerExperiment, switched: false };
   return null;
 }
 
