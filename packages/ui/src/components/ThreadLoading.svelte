@@ -1,16 +1,13 @@
 <script lang="ts">
   import { fill, strings } from '../lib/strings';
   import { transferBytes } from '../lib/format';
-  import Deferred from './Deferred.svelte';
-  import { parts } from '../lib/deferred-parts';
-  import { HOUSE_BOT } from '../lib/robots';
 
   /**
    * What the chat shows between the click on a thread and its first page: the
    * outline of a conversation in the transcript's own column, a prompt and two
    * replies in quiet shapes, repeated down to the composer so the page reads
    * whole rather than stopping mid-screen. Once the core
-   * says what the page weighs, a bar in the house bot's teal and the numbers count it in;
+   * says what the page weighs, a bar and the numbers count it in;
    * before that (a page short enough to come whole, or a core that sends
    * answers whole) the shapes say it alone.
    */
@@ -36,9 +33,9 @@
         <div class="bar" data-testid="thread-loading-bar" style:transform="scaleX({fraction})"></div>
       </div>
     {/if}
-    <!-- Said in words beside the house bot, so the shapes read as a page on its way, not an empty thread. -->
+    <!-- Said in words, so the shapes read as a page on its way, not an empty thread. -->
     <p class="caption" class:alone={!label}>
-      <span class="what"><span class="mark" aria-hidden="true"><Deferred part={parts.RobotFace} quiet>{#snippet children(RobotFace)}<RobotFace robot={HOUSE_BOT} />{/snippet}</Deferred></span>{strings.chat.opening}</span>
+      <span class="what">{strings.chat.opening}</span>
       {#if label}<span class="numbers" data-testid="thread-loading-progress">{label}</span>{/if}
     </p>
   </div>
@@ -113,8 +110,6 @@
 
   .caption.alone { justify-content: center; }
   .what { display: inline-flex; align-items: center; gap: 8px; }
-  .mark { display: block; flex: none; width: 22px; height: 22px; }
-  .mark :global(svg.robot) { display: block; width: 100%; height: 100%; border-radius: 50%; }
 
   .numbers {
     font-variant-numeric: tabular-nums;

@@ -32,18 +32,18 @@ export function createCodexDriver(): Driver {
     const warmMs = Math.max(0, ctx.warmProcessMinutes) * MINUTE_MS;
     const key = sessionKey(ctx);
     let session = sessions.get(threadId) ?? null;
+    let previousClosed = Promise.resolve();
     const usable = session?.usable(key, warmMs) === true;
     const setupChange = 'the thread changed mode, account, folder or compaction limit';
     noteWarmSession(ctx, 'Codex app-server', { kept: session !== null, usable, sameSetup: session?.key === key, setupChange });
     if (session !== null && !usable) {
-      sessions.delete(threadId);
-      session.close(session.key === key ? null : setupChange, ctx);
+      previousClosed = session.close(session.key === key ? null : setupChange, ctx);
       session = null;
     }
     if (session === null) {
       session = new CodexSession(key, warmMs, ended => {
         if (sessions.get(threadId) === ended) sessions.delete(threadId);
-      });
+      }, previousClosed);
       if (viewed.has(threadId)) session.setViewed(true);
       sessions.set(threadId, session);
     }
@@ -84,16 +84,14 @@ export function createCodexDriver(): Driver {
     releaseThread(threadId: ThreadId): void {
       const session = sessions.get(threadId);
       if (session === undefined || session.busy()) return;
-      sessions.delete(threadId);
-      session.close(null);
+      void session.close(null);
     },
 
     shutdown(): void {
       const open = [...sessions.values()];
-      sessions.clear();
       viewed.clear();
       probes.forget();
-      for (const session of open) session.close(null);
+      for (const session of open) void session.close(null);
     },
   };
 }

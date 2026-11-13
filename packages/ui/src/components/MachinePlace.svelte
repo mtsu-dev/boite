@@ -7,16 +7,18 @@
    * A machine named as a place wherever it stands beside a project or a thread (a list card's head, the palette, a
    * phone card, Recent's place line): one monitor glyph and "on <machine>", so "Builder" reads as where the work
    * runs, not a tag. Out of reach, its state follows as a small mark of its own, never run into the name.
+   * `dim`: a list card's head while its machine reconnects, the place faded with no mark, its state in the tooltip.
    */
-  let { host, size = 12, testid }: { host: HostMark; size?: number; testid?: string } = $props();
+  let { host, size = 12, testid, dim = false }: { host: HostMark; size?: number; testid?: string; dim?: boolean } = $props();
 </script>
 
-<span class="machine-place" class:offline={host.away} data-testid={testid} data-state={host.state} title={host.text}>
+<span class="machine-place" class:offline={host.away} class:dim data-testid={testid} data-state={host.state} title={host.text}>
   <span class="on"><Monitor {size} strokeWidth={1.75} aria-hidden="true" /><span class="ui-label">{fill(strings.connection.onMachine, { name: host.label })}</span></span>{#if host.away}<span class="away" data-testid="machine-away">{host.state === 'connecting' ? strings.connection.connecting : strings.connection.offline}</span>{/if}
 </span>
 
 <style>
   .machine-place { display: inline-flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--text-xs); font-weight: 400; color: var(--color-subtle); white-space: nowrap; }
+  .dim { opacity: .55; }
   .on { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
   .on > :global(svg) { flex: none; }
   .on > .ui-label { overflow: hidden; text-overflow: ellipsis; }

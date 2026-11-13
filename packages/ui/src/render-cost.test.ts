@@ -145,6 +145,7 @@ test('every endless animation pauses with the window at rest', () => {
  */
 const WORKING_LOOPS = [
   'components/AppRail.svelte', 'components/BrowserNav.svelte', 'components/BrowserSurface.svelte',
+  'components/ProjectThreadCounters.svelte', 'components/RecentGroup.svelte',
   'components/Sidebar.svelte', 'components/StatusMark.svelte', 'components/TerminalDrawer.svelte',
   'components/TerminalView.svelte', 'components/ThinkingPart.svelte', 'components/ThreadActivity.svelte',
   'components/ThreadLoading.svelte', 'components/ThreadState.svelte', 'components/ToolCard.svelte',

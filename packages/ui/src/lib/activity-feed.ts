@@ -151,7 +151,12 @@ function feedEvents<M extends { id: string; store: RowSource<Delegated> }>(all: 
   const key = (entry: FeedSource<M>, id = entry.thread.id) => `${entry.machine.id}\n${id}`;
   const byKey = new Map(entries.map(entry => [key(entry), entry]));
   const parentOf = (entry: FeedSource<M>) => entry.thread.parentThreadId ? byKey.get(key(entry, entry.thread.parentThreadId)) : undefined;
-  const listedKind = (entry: FeedSource<M>): ThreadState | null => { const kind = stateOf(entry); return kind !== null && LISTED.has(kind) ? kind : null; };
+  const listedKind = (entry: FeedSource<M>): ThreadState | null => {
+    const kind = stateOf(entry);
+    if (kind === null || !LISTED.has(kind)) return null;
+    // A failure or a stop is news until it is read, as a finish is: opening the thread or Mark all as read clears it.
+    return (kind === 'error' || kind === 'interrupted') && !entry.thread.unread ? null : kind;
+  };
   // A sub-agent that failed while its parent still works is the parent's to handle: nothing asks the user yet.
   const listed = entries.filter(entry => {
     const kind = listedKind(entry);
@@ -217,6 +222,19 @@ export function activityFeed<M extends { id: string; store: Owner }>(all: readon
     };
     return [row(lead, false), ...helpers.map(helper => row(helper, true))];
   });
+}
+
+/**
+ * The threads "Mark all as read" clears: every row but a decision (a permission, a question), which only the user's
+ * answer settles; a sub-agent's row counts as its own. Each machine's threads apart, since ids collide between them.
+ */
+export function readableThreads<M>(rows: readonly Pick<FeedRow<M>, 'machine' | 'thread' | 'kind'>[]): Map<M, ThreadSummary['id'][]> {
+  const byMachine = new Map<M, ThreadSummary['id'][]>();
+  for (const row of rows) {
+    if (row.kind !== 'failed' && row.kind !== 'stopped' && row.kind !== 'done') continue;
+    byMachine.set(row.machine, [...byMachine.get(row.machine) ?? [], row.thread.id]);
+  }
+  return byMachine;
 }
 
 /** One event, one row: a lead row with the sub-agent rows that share its event, which it shows as lines of its own. */

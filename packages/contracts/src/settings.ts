@@ -236,6 +236,65 @@ export interface Settings {
    * reads it to leave those keys out of `settings.follow`.
    */
   syncOverrides?: string[];
+  /**
+   * What `agents.create` does when a thread's agent calls it (`boite settings
+   * bot create`): `ask` draws a card in that thread and creates nothing until
+   * the owner approves it; `free` creates the bot at once, with full access.
+   * Per machine, never synced. The core writes it at its first start: `ask` on
+   * a new data directory, `free` on one that already held a journal. Missing
+   * reads as `ask`.
+   */
+  agentBotCreation?: AgentBotCreation;
+  /**
+   * How far an ordinary thread's agent may list, search, read and message
+   * other threads: `project` (its project on this machine), `machine` (every
+   * project of this machine) or `group` (also the trusted machines). A
+   * thread's own `CoordinationConfig` narrows inside it and never widens it.
+   * Per machine, never synced. Written at the first start like
+   * `agentBotCreation`: `project` on a new data directory, `group` on an
+   * older one. Missing reads as `project`.
+   */
+  coordinationReach?: CoordinationReach;
+}
+
+export const AGENT_BOT_CREATION = ['ask', 'free'] as const;
+export type AgentBotCreation = (typeof AGENT_BOT_CREATION)[number];
+/** From the narrowest to the widest. */
+export const COORDINATION_REACH = ['project', 'machine', 'group'] as const;
+export type CoordinationReach = (typeof COORDINATION_REACH)[number];
+
+/** The two settings as a new data directory gets them, and as a missing key reads. */
+export const CLOSED_AGENT_DEFAULTS = { agentBotCreation: 'ask', coordinationReach: 'project' } as const satisfies Pick<Settings, 'agentBotCreation' | 'coordinationReach'>;
+/** What agents did before the two settings existed: written once on a data directory older than them. */
+export const OPEN_AGENT_DEFAULTS = { agentBotCreation: 'free', coordinationReach: 'group' } as const satisfies Pick<Settings, 'agentBotCreation' | 'coordinationReach'>;
+
+export function agentBotCreation(settings: Pick<Settings, 'agentBotCreation'>): AgentBotCreation {
+  return settings.agentBotCreation ?? CLOSED_AGENT_DEFAULTS.agentBotCreation;
+}
+
+export function coordinationReach(settings: Pick<Settings, 'coordinationReach'>): CoordinationReach {
+  return settings.coordinationReach ?? CLOSED_AGENT_DEFAULTS.coordinationReach;
+}
+
+/**
+ * The keys of the two settings a stored settings object lacks, with the value
+ * the first start writes: closed on a new data directory, open on one whose
+ * journal existed before this start. Empty once both are stored, so a later
+ * start, or a later default, never moves them.
+ */
+export function agentDefaultsToWrite(stored: unknown, journalExisted: boolean): Partial<Pick<Settings, 'agentBotCreation' | 'coordinationReach'>> {
+  const held = typeof stored === 'object' && stored !== null ? stored as Partial<Settings> : {};
+  const defaults = journalExisted ? OPEN_AGENT_DEFAULTS : CLOSED_AGENT_DEFAULTS;
+  return {
+    ...(held.agentBotCreation === undefined ? { agentBotCreation: defaults.agentBotCreation } : {}),
+    ...(held.coordinationReach === undefined ? { coordinationReach: defaults.coordinationReach } : {}),
+  };
+}
+
+/** What a refused agent reads: the setting that holds it back and the command that asks the owner to open it. */
+export function reachRefusal(reach: CoordinationReach, wanted: 'machine' | 'group'): string {
+  const scope = wanted === 'machine' ? 'another project of this machine' : 'another machine';
+  return `the setting coordinationReach is ${JSON.stringify(reach)} on this machine, which keeps this thread from ${scope}; ask the owner to open it with: boite settings request coordinationReach ${wanted} --why "<reason>"`;
 }
 
 /** One starred model. Accounts are named by label: an id means nothing on another machine. */

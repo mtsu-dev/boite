@@ -98,7 +98,7 @@ export const fr: Translation = {
     autoRemoveWorktrees: 'Supprimer les worktrees terminés',
     backToProjectMenu: 'Retour',
     backToThreadMenu: 'Retour',
-    importSession: 'Importer une session Claude Code',
+    importSession: 'Importer une session',
     archiveProject: 'Archiver le projet',
     refreshIcon: "Rafraîchir l'icône",
     projectArchivedToast: '{project} archivé',
