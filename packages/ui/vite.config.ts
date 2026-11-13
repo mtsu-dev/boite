@@ -186,15 +186,6 @@ function offlineParts(): Plugin {
   };
 }
 
-/**
- * Boot modules that lazy chunks import too and that the `boot` group does not
- * take (see `build` below): Markdown with its file and inline views, the list
- * of teams and the live views, which were in `boot` only while the panel
- * imported the Council's salon statically, and the tables of lazy imports of
- * the cut features. Their dependencies follow them.
- */
-const SHARED_WITH_LAZY = /\/src\/(?:components\/Prose\.svelte|lib\/(?:teams|live-view)\.svelte\.ts|lib\/(?:contacts|teams|whip)-entry(?:\.svelte)?\.ts)$/;
-
 export default defineConfig({
   plugins: [lucideGlyph(), completeCatalogues(), svelte(), { name: 'boite-colors-prepaint', transformIndexHtml: () => [{ tag: 'script', children: colorsBootScript(), injectTo: 'head' }] }, browserFloor(), dropFakeClient(), localePreload(), offlineParts(), prepaintMinify(), precompress()],
   base: './',
@@ -209,9 +200,7 @@ export default defineConfig({
     // modules the boot shares with a lazy chunk (Svelte, the store, Lucide
     // icons) are one chunk rather than dozens of small ones. A module only the
     // boot uses stays in the entry, and one no boot module imports stays lazy.
-    // Rolldown's count of sharers misses most lazy chunks and leaves what they
-    // share in the entry: `shared` names the ones that must not sit there.
-    rolldownOptions: { output: { codeSplitting: { groups: [{ name: 'boot', tags: ['$initial'], minShareCount: 2 }, { name: 'shared', tags: ['$initial'], test: SHARED_WITH_LAZY }] } } }
+    rolldownOptions: { output: { codeSplitting: { groups: [{ name: 'boot', tags: ['$initial'], minShareCount: 2 }] } } }
   },
   server: { port: 5173, strictPort: true }
 });
