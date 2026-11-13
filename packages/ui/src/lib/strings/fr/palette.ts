@@ -4,6 +4,7 @@ export const fr: Translation = {
 
   palette: {
     placeholder: 'Cherchez un fil, un projet ou une commande',
+    groups: { running: 'En cours', finished: 'Finis', done: 'Terminés', archived: 'Archivés' },
     projects: 'Projets',
     /** Extra words a project row answers to: picking one starts a thread there. */
     newThreadWords: 'nouveau fil nouvelle conversation démarrer brouillon new thread',

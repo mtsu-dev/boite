@@ -272,6 +272,7 @@
     ['general', 'workspace', strings.settings.panelStart],
     ['general', 'conversations', strings.settings.groupChanges],
     ['general', 'conversations', strings.settings.expandDiffs],
+    ['general', 'conversations', strings.settings.typingCorrection],
     ['general', 'app', strings.settings.terminalGpu],
     // The buttons people most often look for by name, the ones the old developer switch hid.
     ['appearance', 'buttons', strings.terminal.title],

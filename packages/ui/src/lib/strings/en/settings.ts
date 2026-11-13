@@ -48,6 +48,7 @@ export const strings = {
       groupIdle: 'Projects with nothing to do fold into Idle projects at the end of the list',
       groupChanges: 'Edits join the turn\'s other steps instead of each standing on its own row',
       expandDiffs: 'Each edit shows its diff open, without a click',
+      typingCorrection: 'The message box underlines spelling mistakes, corrects and capitalizes as you type',
       openChatLinks: 'A file or folder link opens in its own app',
       notifications: 'An alert when a thread you are not looking at needs you',
       kinds: {
@@ -217,6 +218,7 @@ export const strings = {
     chatWidth: 'Chat width',
     groupChanges: 'Group modified files in the conversation',
     expandDiffs: 'Expand change previews by default',
+    typingCorrection: 'Check spelling and correct as I type',
     chatWidthComfortable: 'Comfortable',
     chatWidthWide: 'Wide',
     chatWidthFull: 'Full',

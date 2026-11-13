@@ -515,6 +515,24 @@
       .chips :global(:is(.effort, .permission) > .trigger > .ui-label) { display: none; }
       .bar .chips :global(:is(.effort, .permission) > .trigger) { padding: 0 9px; }
     }
+    /* Under that the row never wraps: a wrapped chip took a row of its own between the field and the buttons,
+       starting past the "+". The model is the one value with words left, so it is the one that gives: its name
+       ends in an ellipsis (its menu says it whole) and the icon chips keep their size. */
+    @container composer (max-width: 520px) {
+      .chips { flex-wrap: nowrap; }
+      .chips > :global(*) { flex: none; }
+      .chips :global(.picker) { flex: 0 1 auto; min-width: 0; }
+      .chips :global(.picker > .trigger) { min-width: 0; max-width: 100%; }
+      .chips :global(.picker > .trigger > .label) { min-width: 0; }
+      .chips :global(.picker > .trigger > svg) { flex: none; }
+    }
+    /* Narrower still, every chip drops its chevron and the model's name keeps what they gave back. */
+    @container composer (max-width: 380px) {
+      .chips { gap: 2px; }
+      .chips :global(:is(.picker, .effort, .permission) > .trigger > .lucide-chevron-down) { display: none; }
+      .chips :global(.picker > .trigger) { padding-right: 10px; }
+      .chips :global(.picker > .trigger .account) { display: none; }
+    }
   }
 
   /* A desktop's round targets reach 32 px: send and stop ("+" and the microphone are app.css's icon button). */

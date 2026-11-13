@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { rankItems, scoreFields, scoreMatch, sectionRows, type PaletteItem } from './palette';
+import { paletteSections, rankItems, scoreFields, scoreMatch, threadGroup, type PaletteItem } from './palette';
 
 describe('scoreMatch', () => {
   test('a prefix beats a word start, which beats a substring, which beats scattered letters', () => {
@@ -81,18 +81,67 @@ describe('scoreFields', () => {
   });
 });
 
-describe('sectionRows', () => {
-  test('a section stands where its best row ranked and keeps its rows together', () => {
-    const ranked: PaletteItem[] = [
-      { id: 'a', kind: 'thread', label: 'A', section: 'boite' },
-      { id: 'cmd', kind: 'command', label: 'Command' },
-      { id: 'b', kind: 'thread', label: 'B', section: 'notes' },
-      { id: 'c', kind: 'thread', label: 'C', section: 'boite' }
-    ];
-    expect(sectionRows(ranked).map((section) => [section.id, section.items.map((item) => item.id)])).toEqual([
-      ['boite', ['a', 'c']],
-      ['command', ['cmd']],
-      ['notes', ['b']]
+describe('threadGroup', () => {
+  test('archived wins over done, done over the state, and only a turn under way or owed counts as running', () => {
+    expect(threadGroup({ archived: true, doneAt: 5 }, 'working')).toBe('archived');
+    expect(threadGroup({ doneAt: 5 }, 'working')).toBe('done');
+    for (const state of ['working', 'queued', 'waiting', 'delegating', 'monitoring', 'background', 'watching']) expect(threadGroup({}, state)).toBe('running');
+    for (const state of [null, 'done', 'error', 'interrupted']) expect(threadGroup({ doneAt: null }, state)).toBe('finished');
+  });
+});
+
+describe('paletteSections', () => {
+  const thread = (id: string, section: string, at: number, label = id): PaletteItem => ({ id, kind: 'thread', label, section, at });
+  const items: PaletteItem[] = [
+    { id: 'settings', kind: 'command', label: 'Open settings' },
+    thread('old-archived', 'archived', 1, 'Port the archive'),
+    thread('bot', 'bots', 90, 'Port bot'),
+    thread('done-old', 'done', 2, 'Port the docs'),
+    thread('finished-old', 'finished', 10, 'Port the scheduler'),
+    { id: 'project', kind: 'project', label: 'Portal' },
+    thread('run-old', 'running', 20, 'Port the trace'),
+    thread('done-new', 'done', 30, 'Ship the docs'),
+    thread('finished-new', 'finished', 40, 'Review the loader'),
+    thread('run-new', 'running', 50, 'Bench the core'),
+    // A subagent is a thread like another: it stands in its state's group at its own date.
+    thread('run-sub', 'running', 35, 'Explore'),
+    { id: 'new-thread', kind: 'command', label: 'New thread' }
+  ];
+  const shape = (query: string) => paletteSections(query, items).map((section) => [section.id, section.items.map((item) => item.id)]);
+
+  test('nothing typed: running, finished, done, then bots and commands, each thread group most recent first', () => {
+    expect(shape('')).toEqual([
+      ['running', ['run-new', 'run-sub', 'run-old']],
+      ['finished', ['finished-new', 'finished-old']],
+      ['done', ['done-new', 'done-old']],
+      ['bots', ['bot']],
+      ['command', ['settings', 'new-thread']]
     ]);
+  });
+
+  test('a query keeps the order among matches and brings the archived threads and the projects in', () => {
+    // "Port the trace" is the oldest running match and "Portal" the best match of all: neither moves a heading.
+    expect(shape('port')).toEqual([
+      ['running', ['run-old']],
+      ['finished', ['finished-old']],
+      ['done', ['done-old']],
+      ['archived', ['old-archived']],
+      ['project', ['project']],
+      ['bots', ['bot']]
+    ]);
+    // A weaker match that is more recent still leads its group.
+    expect(shape('the')).toEqual([
+      ['running', ['run-new', 'run-old']],
+      ['finished', ['finished-new', 'finished-old']],
+      ['done', ['done-new', 'done-old']],
+      ['archived', ['old-archived']]
+    ]);
+  });
+
+  test('a group is cut at its cap, so a long one never pushes the next out', () => {
+    const many = Array.from({ length: 20 }, (_, n) => thread(`r${n}`, 'running', n));
+    const sections = paletteSections('', [...many, thread('f', 'finished', 1)]);
+    expect(sections.map((section) => [section.id, section.items.length])).toEqual([['running', 8], ['finished', 1]]);
+    expect(sections[0]!.items[0]!.id).toBe('r19');
   });
 });

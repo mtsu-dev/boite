@@ -16,8 +16,10 @@ export interface PaletteItem {
   keywords?: string;
   /** The second line a list may draw under the label. The palette draws none; the slash menu does. */
   description?: string;
-  /** The heading a row sits under: a thread's project on its machine. Rows without one group by kind. */
+  /** The heading a row sits under: a thread's group (`ThreadGroup`) or `bots`. Rows without one group by kind. */
   section?: string;
+  /** When the row was last used: the order inside a thread group, most recent first. */
+  at?: number;
 }
 
 /** A text a query word may land on, and what landing there costs against the label. */
@@ -141,26 +143,61 @@ export function rankItems(query: string, items: PaletteItem[], limit = PALETTE_L
   return scored.slice(0, limit).map((entry) => entry.item);
 }
 
+/** Where a thread stands, in the order the palette lists them: at work, finished its turn, marked done, archived. */
+export type ThreadGroup = 'running' | 'finished' | 'done' | 'archived';
+/** Bots and team chats have no project and keep a heading of their own, after the projects. */
+export const BOTS_SECTION = 'bots';
+/** Every heading the palette draws, in its one order, typed or not. */
+export const SECTION_ORDER: readonly string[] = ['running', 'finished', 'done', 'archived', 'project', BOTS_SECTION, 'command'];
+
+/**
+ * A thread's group. Archived wins over done, done over what it is doing. `state` is the row's state as every list
+ * reads it (lib/thread-state.ts): at work covers a turn under way, a queued one, one that waits for the user and work
+ * left in the background; a failure and a turn that ended are finished.
+ */
+export function threadGroup(thread: { archived?: boolean; doneAt?: number | null }, state: string | null): ThreadGroup {
+  if (thread.archived) return 'archived';
+  if (thread.doneAt) return 'done';
+  return state === null || state === 'done' || state === 'error' || state === 'interrupted' ? 'finished' : 'running';
+}
+
+/** The most rows a heading holds with nothing typed: the list opens short. Archived threads and projects wait for a query. */
+export const RESTING_ROWS: Readonly<Record<string, number>> = { running: 8, finished: 6, done: 3, archived: 0, project: 0, [BOTS_SECTION]: 3 };
+/** The most rows a heading holds under a query, so no group pushes the ones after it out of reach. */
+export const MATCHED_ROWS: Readonly<Record<string, number>> = { running: 8, finished: 8, done: 6, archived: 6, project: 6, [BOTS_SECTION]: 6 };
+
+/**
+ * The palette's list: threads at work, then finished, done and archived ones, then the projects, the bots and the
+ * commands. A thread group runs most recent first; the other headings keep the order given, best match first under a
+ * query. A query only drops what does not match: the headings and the order inside a thread group stay.
+ */
+export function paletteSections(query: string, items: readonly PaletteItem[]): PaletteSection[] {
+  const typed = query.trim().length > 0;
+  const caps = typed ? MATCHED_ROWS : RESTING_ROWS;
+  const sections = new Map<string, { kind: PaletteKind; rows: { item: PaletteItem; score: number; order: number }[] }>();
+  items.forEach((item, order) => {
+    const score = typed ? scoreFields(query, itemFields(item)) : 0;
+    if (score === null || score < 0) return;
+    const id = item.section ?? item.kind;
+    const section = sections.get(id) ?? { kind: item.kind, rows: [] };
+    sections.set(id, section);
+    section.rows.push({ item, score, order });
+  });
+  const out: PaletteSection[] = [];
+  for (const id of [...SECTION_ORDER, ...[...sections.keys()].filter((key) => !SECTION_ORDER.includes(key))]) {
+    const section = sections.get(id);
+    if (!section) continue;
+    if (section.kind === 'thread') section.rows.sort((a, b) => (b.item.at ?? 0) - (a.item.at ?? 0) || a.order - b.order);
+    else section.rows.sort((a, b) => b.score - a.score || a.order - b.order);
+    const rows = section.rows.slice(0, caps[id] ?? PALETTE_LIMIT).map((row) => row.item);
+    if (rows.length > 0) out.push({ id, kind: section.kind, items: rows });
+  }
+  return out;
+}
+
 export interface PaletteSection {
   /** The rows' `section`, or their kind for rows without one. */
   id: string;
   kind: PaletteKind;
   items: PaletteItem[];
-}
-
-/**
- * Ranked rows cut into the headings the palette draws: a project's threads
- * together, then the projects, then the commands. A section stands where its
- * best row ranked, its rows keep their order inside it, so typing still puts
- * the best match first and the first row is always the best one.
- */
-export function sectionRows(ranked: readonly PaletteItem[]): PaletteSection[] {
-  const sections = new Map<string, PaletteSection>();
-  for (const item of ranked) {
-    const id = item.section ?? item.kind;
-    const section = sections.get(id);
-    if (section) section.items.push(item);
-    else sections.set(id, { id, kind: item.kind, items: [item] });
-  }
-  return [...sections.values()];
 }

@@ -406,9 +406,11 @@
   /* The card's one fill (.card). */
   --card-fill: var(--color-surface);
   --shadow-overlay: 0 12px 36px rgb(0 0 0 / 0.5), 0 1px 2px rgb(0 0 0 / 0.4);
-  --overlay-pad: var(--space-1);
+  /* Air on both levels: the card's own inset, then the row's, so a row's words start 18 px from the card's edge
+     and its hover fill never touches it. */
+  --overlay-pad: 6px;
   --overlay-row: max(32px, var(--control));
-  --overlay-row-pad: var(--space-2);
+  --overlay-row-pad: var(--space-3);
   --radius-overlay-row: var(--radius-sm);
   /* The panel's border draws its hairline; then a top light and a contact shadow.
      No wide blur: 40 px of it read as a darker band on the chrome beside the card.
@@ -2795,10 +2797,11 @@ html[data-glass] #app {
 
 [data-accent-swatch] { --color-accent: oklch(75.5% 0.141 var(--accent-hue)); }
 /* One switch: the native checkbox with role=switch, or the `.switch` span a menu row or a button draws (`.on` when set).
-   `--switch-width` and `--switch-height` size it; the rim is a twelfth of the height (2px on a 24px switch) and the
+   `--switch-width` and `--switch-height` size it, and nothing else may: the knob travels by them, so a track a row
+   narrowed would let it run past its end (`min-width` holds it); the rim is a twelfth of the height (2px on a 24px switch) and the
    knob keeps the same air inside it. Off is a ringed track with a grey knob, on the filled foreground track with a
    dark knob, so the state reads without comparing greys. */
-input[type=checkbox][role=switch], .switch { appearance: none; position: relative; flex: 0 0 var(--switch-width, 40px); width: var(--switch-width, 40px); height: var(--switch-height, 24px); min-height: var(--switch-height, 24px); padding: 0; margin: 0; border: calc(var(--switch-height, 24px) / 12) solid var(--switch-rim); border-radius: 999px; background: var(--switch-off); transition: background var(--dur-2), border-color var(--dur-2); }
+input[type=checkbox][role=switch], .switch { appearance: none; position: relative; flex: 0 0 var(--switch-width, 40px); width: var(--switch-width, 40px); min-width: var(--switch-width, 40px); height: var(--switch-height, 24px); min-height: var(--switch-height, 24px); padding: 0; margin: 0; border: calc(var(--switch-height, 24px) / 12) solid var(--switch-rim); border-radius: 999px; background: var(--switch-off); transition: background var(--dur-2), border-color var(--dur-2); }
 input[type=checkbox][role=switch] { cursor: pointer; }
 input[type=checkbox][role=switch]::after, .switch::after { content: ''; position: absolute; width: calc(var(--switch-height, 24px) - 8px); height: calc(var(--switch-height, 24px) - 8px); top: calc(4px - var(--switch-height, 24px) / 12); left: calc(4px - var(--switch-height, 24px) / 12); border-radius: 50%; background: var(--switch-knob); transition: transform var(--dur-2) var(--ease-out-quint), background var(--dur-2); }
 input[type=checkbox][role=switch]:checked, .switch.on { background: var(--switch-on); border-color: transparent; }
