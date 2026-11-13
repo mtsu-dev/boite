@@ -18,7 +18,8 @@
   import { archivedFocus, clearArchivedFocus } from '../lib/archived-focus.svelte';
 
   /** `eager` reads the list at once: the phone's page of its own, where the archive is all there is to see. */
-  let { store, eager = false }: { store: Store; eager?: boolean } = $props();
+  /** `place`: Settings' card, or the thread list's own archive (Sidebar.svelte), whose first line names it: no heading, rows as the list's. */
+  let { store, eager = false, place = 'settings' }: { store: Store; eager?: boolean; place?: 'settings' | 'list' } = $props();
 
   /**
    * Null until asked for: the General page opens without reading the archive.
@@ -147,8 +148,8 @@
   }
 </script>
 
-<section class="card" id="settings-archived" data-testid="archived-threads">
-  <h2 class="ui-label-box"><span class="ui-label">{strings.settings.archived.heading}</span><InfoTip topic={strings.settings.archived.heading} text={strings.settings.archived.intro} /></h2>
+<section class={place === 'list' ? 'in-list' : 'card'} id={place === 'list' ? undefined : 'settings-archived'} data-testid="archived-threads">
+  {#if place !== 'list'}<h2 class="ui-label-box"><span class="ui-label">{strings.settings.archived.heading}</span><InfoTip topic={strings.settings.archived.heading} text={strings.settings.archived.intro} /></h2>{/if}
   {#if focusId && focusName}
     <p class="focus" data-testid="archived-focus">
       <span class="ui-label">{fill(strings.settings.archived.inProject, { project: focusName })}</span>
@@ -212,7 +213,7 @@
   {/if}
 </section>
 
-<DeletedThreads {store} {eager} />
+{#if place !== 'list'}<DeletedThreads {store} {eager} />{/if}
 
 <style>
   /* One group, rows parted by hairlines, as Recent's and Activity's rows are one list. The settings card around it
@@ -247,6 +248,13 @@
     transition: background var(--dur-2) var(--ease-out-quint);
   }
   .archived li + li { border-top: 1px solid var(--color-border); }
+  /* In the thread list: rows as the list's own, rounded and parted by air, on the list's sides. */
+  .in-list .archived { display: flex; flex-direction: column; gap: 2px; }
+  .in-list .archived li { padding: 8px 10px; border-radius: var(--radius-md); }
+  .in-list .archived li + li { border-top: 0; }
+  .in-list .focus { padding: 0 2px 0 10px; }
+  .in-list .muted { margin: 0; padding: 12px 10px; color: var(--color-muted-foreground); font-size: var(--text-sm); }
+  .in-list > button { margin: 4px 10px; }
   .archived li:hover { background: var(--color-hover); }
 
   /* Two lines at most, as a list's title: the whole one is the row's tooltip. */

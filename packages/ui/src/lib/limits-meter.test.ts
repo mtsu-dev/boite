@@ -1,32 +1,60 @@
 import { expect, test } from 'vitest';
 import type { AccountQuota } from '@boite/contracts';
-import { lowestLimit } from './limits-meter';
+import { limitsNotice } from './limits-meter';
 
-const row = (label: string, ...used: number[]) => ({
+type Win = [label: string, used: number, resetsAt?: number];
+const row = (label: string, ...windows: Win[]) => ({
   accountId: label, providerId: 'claude', providerName: 'Claude', label, enabled: true, status: 'ready', checkedAt: null, error: null,
-  windows: used.map((usedPercent, index) => ({ id: `w${index}`, label: index ? 'Weekly' : '5 hours', usedPercent, resetsAt: null })),
+  windows: windows.map(([name, usedPercent, resetsAt], index) => ({ id: `w${index}`, label: name, usedPercent, resetsAt: resetsAt ?? null })),
 }) as unknown as AccountQuota;
-
-test('the gauge reads the least left in any window of any account, toned as the limits views tone it', () => {
-  expect(lowestLimit([])).toBeNull();
-  expect(lowestLimit([row('Work', 20, 40), row('Home', 10, 94.5)])).toEqual({ left: 5, tone: 'low', account: 'Home', provider: 'Claude', several: true, window: 'Weekly' });
-  expect(lowestLimit([row('Work', 100)])?.tone).toBe('out');
-  expect(lowestLimit([row('Work', 12)])).toMatchObject({ left: 88, tone: 'ok', provider: 'Claude', several: false });
-});
-
-const pooled = (label: string, status: 'ready' | 'cooldown' | 'error' | 'disabled', ...used: number[]) => ({
-  ...row(label, ...used), accountId: `proxy:claude:${label}`,
+const pooled = (label: string, status: 'ready' | 'cooldown' | 'error' | 'disabled', ...windows: Win[]) => ({
+  ...row(label, ...windows), accountId: `proxy:claude:${label}`,
   gateway: { kind: 'douane', entryId: label, display: 'accounts', plan: null, accounts: 1, status, credits: [] },
 }) as unknown as AccountQuota;
 
-test('a gateway\'s accounts of one provider read as their pool, not as the emptiest of them', () => {
-  // One account of three spent: the gateway still serves from the two others.
-  const rows = [pooled('Main', 'ready', 10, 100), pooled('Second', 'ready', 30, 40), pooled('Third', 'cooldown', 20, 10)];
-  expect(lowestLimit(rows)).toEqual({ left: 50, tone: 'ok', account: 'Claude · 3 accounts', provider: 'Claude', several: true, window: 'Weekly', pool: 3 });
-  // An entry the gateway cannot use is not part of what is left.
-  expect(lowestLimit([...rows, pooled('Broken', 'error', 0, 0)])).toMatchObject({ left: 50, pool: 3 });
-  // Every account spent: the pool is out.
-  expect(lowestLimit([pooled('Main', 'ready', 5, 100), pooled('Second', 'ready', 5, 100)])).toMatchObject({ left: 0, tone: 'out', pool: 2 });
-  // A gateway's one account stays an account.
-  expect(lowestLimit([pooled('Main', 'ready', 10, 100)])).toEqual({ left: 0, tone: 'out', account: 'Main', provider: 'Claude', several: false, window: 'Weekly' });
+test('the line stays silent while every provider has an account with room', () => {
+  expect(limitsNotice([])).toBeNull();
+  expect(limitsNotice([row('Home', ['5 hours', 20], ['Weekly', 40])])).toBeNull();
+  // The owner's gateway: one account spent on 5 hours, one on its week, one on a model's week; the fourth serves everything.
+  expect(limitsNotice([
+    pooled('lzt', 'ready', ['Weekly', 36], ['Fable weekly', 57]),
+    pooled('Main', 'ready', ['Weekly', 67], ['Fable weekly', 100]),
+    pooled('suisse', 'ready', ['Weekly', 100], ['Fable weekly', 8]),
+    pooled('x1', 'ready', ['5 hours', 100], ['Weekly', 32], ['Fable weekly', 64]),
+  ])).toBeNull();
+  // An account nothing is read of may still serve: no alarm on the others' word.
+  expect(limitsNotice([row('Home', ['Weekly', 100]), row('Work')])).toBeNull();
+});
+
+test('a provider spent on every account says so, until the first of them resets', () => {
+  expect(limitsNotice([row('Home', ['5 hours', 100, 5000], ['Weekly', 40, 9000])])).toEqual(
+    { kind: 'out', provider: 'Claude', window: '5 hours', scoped: false, left: 0, until: 5000, account: 'Home', accounts: 1 });
+  // Each account waits for the latest of its spent windows; the line gives the earliest account back.
+  expect(limitsNotice([
+    pooled('Main', 'ready', ['5 hours', 100, 3000], ['Weekly', 100, 9000]),
+    pooled('Second', 'cooldown', ['5 hours', 100, 6000], ['Weekly', 50, 8000]),
+  ])).toMatchObject({ kind: 'out', scoped: false, until: 6000, accounts: 2 });
+  // No reset known for one of them: no time is promised.
+  expect(limitsNotice([row('Home', ['Weekly', 100])])).toMatchObject({ kind: 'out', until: null });
+  // An entry the gateway cannot use is not counted as room, nor as a reason to stay silent.
+  expect(limitsNotice([pooled('Main', 'ready', ['Weekly', 100, 4000]), pooled('Broken', 'error')])).toMatchObject({ kind: 'out', accounts: 1, until: 4000 });
+});
+
+test('a model spent on every account is named alone while the provider still works', () => {
+  expect(limitsNotice([
+    pooled('Main', 'ready', ['Weekly', 30, 9000], ['Fable weekly', 100, 7000]),
+    pooled('Second', 'ready', ['Weekly', 100, 5000], ['Fable weekly', 10, 7000]),
+  ])).toEqual({ kind: 'out', provider: 'Claude', window: 'Fable weekly', scoped: true, left: 0, until: 5000, account: 'Main', accounts: 2 });
+});
+
+test('running low reads what the best account has left, and out comes before low', () => {
+  expect(limitsNotice([row('Home', ['Weekly', 95]), row('Work', ['Weekly', 88.4])])).toEqual(
+    { kind: 'low', provider: 'Claude', window: 'Weekly', scoped: false, left: 11, until: null, account: 'Work', accounts: 2 });
+  const codex = { ...row('Plus', ['5 hours', 100, 2000]), providerId: 'codex', providerName: 'Codex' } as AccountQuota;
+  expect(limitsNotice([row('Home', ['Weekly', 95]), codex])).toMatchObject({ kind: 'out', provider: 'Codex' });
+});
+
+test('an account that keeps serving on credits is not out', () => {
+  const paid = { ...row('Home', ['Weekly', 100]), credits: { kind: 'balance', enabled: true, remaining: 12, limit: null, unlimited: false } } as unknown as AccountQuota;
+  expect(limitsNotice([paid])).toBeNull();
 });

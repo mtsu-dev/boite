@@ -392,12 +392,16 @@
      place line under it. */
   .classic { --pad-x: 10px; }
   .classic .row { min-height: var(--row); padding: 8px var(--pad-x); gap: 7px; }
-  .classic.meta .row { min-height: calc(var(--row) + 22px); padding: 9px 10px 28px; }
+  /* Two lines with air around them: the title carries the row, in the list's strongest weight; the place line
+     sits under the title's own edge, past the mark, a size and a tier under it, so the eye runs down the titles. */
+  .classic.meta .row { min-height: calc(var(--row) + 28px); padding: 11px 10px 33px; }
+  .thread.classic.meta .row :global(.headline .title) { font-weight: 600; }
   .thread.classic .row :global(.headline) { align-items: center; padding-top: 0; }
   .thread.classic .row :global(.headline .title) { display: block; white-space: nowrap; -webkit-line-clamp: none; line-clamp: none; padding-bottom: 0.5em; margin-bottom: -0.5em; }
   .thread.classic .row :global(.headline > :is(.when, .at, .bot, .provider, .draft, .pin, .pr, .tile)) { margin-top: 0; }
   .classic :is(.actions, .done) { top: calc(19px - var(--act) / 2); }
-  .metadata { position: absolute; bottom: 9px; left: 10px; right: 10px; display: flex; align-items: center; gap: 9px; min-width: 0; pointer-events: none; font-size: var(--text-xs); color: var(--color-muted-foreground); }
+  .metadata { position: absolute; bottom: 11px; left: calc(var(--pad-x) + var(--meta-inset, 23px)); right: 10px; display: flex; align-items: center; gap: 12px; min-width: 0; height: 16px; pointer-events: none; font-size: 12px; line-height: 16px; font-weight: 400; color: var(--color-subtle); }
+  .metadata :global(a) { font-weight: 500; }
   .metadata > span { display: flex; align-items: center; gap: 4px; min-width: 0; }
   .metadata span span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .metadata :global(svg) { flex: none; }

@@ -1,3 +1,4 @@
+import { closeArchived } from './lib/archived-view.svelte';
 import { afterEach, expect, test, vi } from 'vitest';
 import { mount, unmount } from 'svelte';
 import type { Project, ThreadSummary } from '@boite/contracts';
@@ -129,7 +130,7 @@ test('a project whose only conversations were archived by hand shows them under 
   await waitFor(() => document.querySelector(row) !== null);
   expect(document.querySelector(row)!.classList.contains('pending')).toBe(false);
   // The header keeps one count: the archived ones are no pill on the card, their count is in its menu, on the way to
-  // their one home, Settings' archive, opened on this project.
+  // their home in the list, the archive opened on this project.
   const laterCard = `[data-testid=later-projects] section[data-project-id="${paused.id}"]`;
   expect(document.querySelector(`${laterCard} [data-testid=project-archived-toggle]`)).toBeNull();
   const item = '[data-testid=context-menu] [data-testid=project-archived-toggle]';
@@ -138,10 +139,10 @@ test('a project whose only conversations were archived by hand shows them under 
   const home = document.querySelector<HTMLButtonElement>(item)!;
   expect([home.dataset.value, home.querySelector('.hint')?.textContent]).toEqual(['archived', '1']);
   home.click();
-  await waitFor(() => store.settingsSection?.id === 'archived');
+  await waitFor(() => document.querySelector('[data-testid=sidebar-archived]') !== null);
   expect([archivedFocus.store === store, archivedFocus.projectId]).toEqual([true, paused.id]);
   clearArchivedFocus();
-  store.showChat();
+  closeArchived();
 
   // Nothing left to do there: the idle fold, never a card.
   expect(card('[data-testid=sidebar]', finished.id)).toBeNull();
