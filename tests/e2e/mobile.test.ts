@@ -124,8 +124,8 @@ test('phone navigates conversations, activity and settings without a sidebar', a
   expect(bar.bottom).toBe(844);
   expect(bar.list).toBeLessThanOrEqual(bar.top);
   expect(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true);
-  // One line per row, no provider glyph: a worktree thread's branch rides in the row's tooltip under its title.
-  expect(await page.evaluate(`document.querySelector('[data-testid=mobile-list] [data-testid=thread-provider]') === null`)).toBe(true);
+  // Each row leads with its provider's mark; a worktree thread's branch rides in the row's tooltip under its title.
+  expect(await page.evaluate(`document.querySelector('[data-testid=mobile-thread-t-trace] [data-testid=thread-provider] svg, [data-testid=mobile-thread-t-trace] [data-testid=thread-provider] [data-initial]') !== null`)).toBe(true);
   expect(await page.evaluate<string>(`document.querySelector('[data-testid=mobile-thread-t-trace]').title`)).toContain('boite/trace');
   await capture('mobile-conversations.png');
   await page.click('[data-testid=mobile-list] .thread');
