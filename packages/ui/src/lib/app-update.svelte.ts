@@ -13,6 +13,8 @@ export type UpdatePhase =
   | 'waiting'
   | 'installing'
   | 'current'
+  /** A release was found that cannot read the data this build wrote: it is not offered. */
+  | 'blocked'
   | 'error';
 
 export interface UpdateSnapshot {
@@ -178,7 +180,14 @@ function queryFixture(): AppUpdateTestFixture | undefined {
     error: phase === 'error' ? 'The release server did not answer.' : null,
     supported: true
   };
-  return { snapshot };
+  // From a nightly, Release finds an older stable build; `appUpdateRelease=blocked`
+  // makes it one that cannot read this nightly's data.
+  const release = query.get('appUpdateRelease') === 'blocked' ? 'blocked' : 'available';
+  const checks = currentChannel === 'nightly' ? { stable: {
+    ...snapshot, phase: release, channel: 'stable', version: '2.0.0-beta.2', received: 0, total: null, error: null,
+    notes: '## What changed\n\n- The first stable release', publishedAt: '2026-09-22T12:00:00Z'
+  } satisfies UpdateSnapshot } : undefined;
+  return { snapshot, checks };
 }
 
 const fixture = queryFixture();
@@ -297,6 +306,19 @@ export class AppUpdater {
   /** The owner's Check for updates or channel choice: asks GitHub even right after another check. */
   checkNow(channel: UpdateChannel = this.snapshot.channel): void {
     this.#queueCheck(channel, true);
+  }
+
+  /**
+   * The owner picked a channel. Checks it now and, when that brings a build of
+   * the other channel, downloads it at once: the card's next button restarts
+   * into it.
+   */
+  async switchChannel(channel: UpdateChannel): Promise<void> {
+    if (channel === this.snapshot.channel) return;
+    this.checkNow(channel);
+    await this.settled();
+    const { phase, channel: checked, currentChannel } = this.snapshot;
+    if (phase === 'available' && checked === channel && currentChannel !== channel) this.download();
   }
 
   #queueCheck(channel: UpdateChannel, force: boolean): void {
