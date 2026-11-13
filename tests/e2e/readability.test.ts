@@ -39,13 +39,13 @@ test('connecting another machine keeps thread rows at their single-machine heigh
   expect(await height()).toBeCloseTo(single, 1);
   // In Projects the header names the machine; a row repeating it would only take room from the title.
   expect(await page.evaluate(`Array.from(document.querySelectorAll('${id('thread-row')}')).every(e => !e.querySelector('.machine'))`)).toBe(true);
-  // The machine reads as a place, "on Builder", in words of its own (no aria-label needed); this machine's own projects go unnamed.
+  // Every header carries its machine's icon, named in its tooltip and for screen readers, never in words.
   expect(await page.evaluate(`(() => {
     const rows = Array.from(document.querySelectorAll('${id('project-row')}'));
     const builder = rows.filter(e => e.title.endsWith(' · Builder'));
     return builder.length > 0 && builder.length < rows.length && rows.every(e => {
       const host = e.querySelector('${id('project-host')}[title]');
-      return builder.includes(e) ? !!host && host.textContent.includes('Builder') : !host;
+      return !!host && host.textContent.trim() === '' && (builder.includes(e) ? host.getAttribute('aria-label') === 'Builder' : host.getAttribute('aria-label') !== 'Builder');
     });
   })()`)).toBe(true);
   // The project's tile leads its header, the machine after it; under the keyboard (or a mouse) the tile gives way to the fold chevron.
