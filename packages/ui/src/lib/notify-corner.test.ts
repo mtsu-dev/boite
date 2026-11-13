@@ -162,10 +162,14 @@ test('desktop corner cards stack above toasts and keep the composer strip, queue
   window.innerWidth = 1440;
   window.innerHeight = 768;
   const timeline = box('timeline', { top: 48, bottom: 460, left: 300, right: 1440, height: 412, width: 1140 });
-  box('composer', { top: 700, bottom: 768, left: 400, right: 1424, height: 68, width: 1024 });
-  box('composer-strip', { top: 460, bottom: 500, left: 400, right: 1424, height: 40, width: 1024 });
-  box('composer-strip-lines', { top: 500, bottom: 668, left: 400, right: 1424, height: 168, width: 1024 });
-  box('composer-foot', { top: 668, bottom: 700, left: 400, right: 1424, height: 32, width: 1024 });
+  const wrap = box('composer-wrap', { top: 460, bottom: 768, left: 384, right: 1440, height: 308, width: 1056 });
+  wrap.className = 'composer-wrap';
+  wrap.append(
+    box('composer-strip', { top: 460, bottom: 500, left: 400, right: 1424, height: 40, width: 1024 }),
+    box('composer-strip-lines', { top: 500, bottom: 668, left: 400, right: 1424, height: 168, width: 1024 }),
+    box('composer-foot', { top: 668, bottom: 700, left: 400, right: 1424, height: 32, width: 1024 }),
+    box('composer', { top: 700, bottom: 768, left: 400, right: 1424, height: 68, width: 1024 })
+  );
   const toast = box('toast', { left: 1084, right: 1424, width: 340 });
   Object.defineProperty(toast, 'offsetHeight', { value: 40 });
   const slot = toastSlot(toast);

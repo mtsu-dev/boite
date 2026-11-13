@@ -60,13 +60,12 @@ function placeToasts(): HTMLElement[] {
       delete node.dataset.slot;
       node.style.removeProperty('--toast-left');
     }
-    top = innerHeight - 12 - room + 8 - cornerFloor([...up, ...cards]);
+    top = innerHeight - 12 - room + 8 - cornerFloor();
     centre = null;
   }
   for (const toast of up) {
     toast.style.setProperty('--toast-top', `${Math.round(top)}px`);
-    if (centre === null) toast.style.removeProperty('--toast-left');
-    else toast.style.setProperty('--toast-left', `${Math.round(centre)}px`);
+    if (centre !== null) toast.style.setProperty('--toast-left', `${Math.round(centre)}px`);
     toast.dataset.slot = centre === null ? 'end' : 'bottom';
     top += toast.offsetHeight + 8;
   }
@@ -81,19 +80,15 @@ function placeToasts(): HTMLElement[] {
 }
 
 /** Height of controls beneath the corner, shared by its toasts and cards. */
-function cornerFloor(nodes: HTMLElement[]): number {
+function cornerFloor(): number {
   let lift = 0;
-  const foot = [...document.querySelectorAll('[data-testid=composer-strip],[data-testid=composer-strip-lines],[data-testid=composer-foot]')].map((owner) => owner.getBoundingClientRect());
-  for (const node of nodes) {
+  for (const node of [...cards, ...toasts]) {
     if (!node.offsetHeight) continue;
     const { left, right } = node.getBoundingClientRect();
     for (const owner of document.querySelectorAll(FLOORS)) {
       const box = owner.getBoundingClientRect();
-      if (box.height && box.right > left && box.left < right && box.bottom > innerHeight - 160) lift = Math.max(lift, innerHeight - box.top);
-    }
-    // Queued messages and permissions can separate the strip from the field.
-    if (lift > 0) for (const box of foot) {
-      if (box.height && box.right > left && box.left < right) lift = Math.max(lift, innerHeight - box.top);
+      // The wrapper includes the strip, queued messages and permissions above the field.
+      if (box.height && box.right > left && box.left < right && box.bottom > innerHeight - 160) lift = Math.max(lift, innerHeight - (owner.closest('.composer-wrap')?.getBoundingClientRect().top ?? box.top));
     }
   }
   return lift;
@@ -104,10 +99,8 @@ function placeCards(slotted: HTMLElement[]): void {
   for (const card of cards) {
     // A card hidden on this page (display: none) keeps no room; one in the toasts' room is placed.
     if (!card.offsetHeight || slotted.includes(card)) continue;
-    delete card.dataset.slot;
-    card.style.removeProperty('--toast-left');
     if (lift < 0) {
-      lift = cornerFloor([...cards, ...toasts]);
+      lift = cornerFloor();
       lift += toasts.reduce((sum, toast) => sum + (toast.offsetHeight > 0 && toast.dataset.slot === 'end' ? toast.offsetHeight + 8 : 0), 0);
     }
     card.style.setProperty('--corner-lift', `${lift}px`);
