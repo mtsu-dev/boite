@@ -625,13 +625,19 @@ It also prints how to open, drive and stop the instance:
   `boite`, `--channel dev` included, to that thread's own core, so
   `projects add` would land there. The subcommand passes none of them on and
   names the instance's data directory.
-- `stop` asks the core to shut down over `POST /shutdown`, waits for the PID
-  captured at spawn and removes temporary data. One instance per checkout.
+- `stop` asks the core to shut down over `POST /shutdown`, waits for the
+  process captured at spawn and removes temporary data. The state keeps each
+  PID with the start time the OS gives that run (`startKey` on Linux): a PID
+  that is now another process is never signalled, and `stop` then only clears
+  the stale state. One instance per checkout.
 
 On the real Dev data the core keeps the port its last run bound, as the app
 does. Inherited `BOITE_*` variables are not passed to the core, so a run from
 inside a Boite thread does not hand its thread identity or data directory on;
-`--env NAME=VALUE` passes one deliberately.
+`--env NAME=VALUE` passes one deliberately. The core is always given
+`--data-dir` with the directory the command checked, and `--env` refuses
+`BOITE_DATA_DIR`, `XDG_DATA_HOME`, `HOME`, `USERPROFILE` and `LOCALAPPDATA`,
+so the lock and schema checks and the core never look at two directories.
 
 | Case | What the command does |
 | --- | --- |
@@ -646,7 +652,7 @@ inside a Boite thread does not hand its thread identity or data directory on;
 | `--migrate` | Lets the branch migrate the real Dev data. |
 | `--scratch` | Empty temporary data, removed at `stop`. |
 | `--echo` | Sets `BOITE_ECHO=1`: the [echo provider](#the-echo-provider) joins the model list, and its turns cost nothing. |
-| `--shell` | Builds Boite Dev (`bun run build:shell:dev`, then the sidecar staging) and launches its window hidden with `BOITE_SHELL_HIDDEN=1`, instead of a bare core. |
+| `--shell` | Builds Boite Dev (`bun run build:shell:dev`, then the sidecar staging) and launches its window hidden with `BOITE_SHELL_HIDDEN=1`, instead of a bare core. It always opens the real Dev data: `--copy` and `--scratch` are refused with it. |
 | `--no-build` | Serves `packages/ui/dist` as it is. |
 | `--timeout <seconds>` | How long to wait for the ready line, 90 by default. |
 

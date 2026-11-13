@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { Database } from 'bun:sqlite';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { BRANCH_SCHEMA, journalSchema, schemaState } from './dev-data.ts';
-import { parseArgs } from './instance.ts';
+import { parseArgs, statePath } from './instance.ts';
 
 const ROOT = resolve(import.meta.dir, '..', '..');
 const SCRIPT = join(import.meta.dir, 'instance.ts');
@@ -26,7 +26,7 @@ const spawned: Bun.Subprocess[] = [];
 
 async function instance(box: ReturnType<typeof sandbox>, ...args: string[]): Promise<{ code: number; out: string; err: string }> {
   // The core's own variables travel through --env: the script drops every inherited BOITE_* one.
-  const core = args[0] === 'stop' || args[0] === 'url' || args[0] === 'cli' ? [] : ['--no-build', '--env', 'BOITE_HOST_AGENTS=0', '--env', 'BOITE_TAILNET=0', '--env', 'BOITE_TELEMETRY_URL='];
+  const core = ['stop', 'url', 'cli', 'status'].includes(args[0] ?? '') ? [] : ['--no-build', '--env', 'BOITE_HOST_AGENTS=0', '--env', 'BOITE_TAILNET=0', '--env', 'BOITE_TELEMETRY_URL='];
   const proc = Bun.spawn([process.execPath, SCRIPT, ...args, ...core], { env: box.env, stdout: 'pipe', stderr: 'pipe', windowsHide: true });
   const [out, err, code] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
   return { code, out, err };
@@ -115,6 +115,49 @@ describe('bun run dev:instance', () => {
     } finally {
       await real.stop(true);
     }
+  }, TIMEOUT);
+
+  test('the core opens the directory that was checked, whatever --env names', async () => {
+    const box = fresh();
+    const stable = join(box.devDir, '..', 'boite2');
+    for (const pair of [`BOITE_DATA_DIR=${stable}`, `XDG_DATA_HOME=${join(box.home, 'elsewhere')}`, `HOME=${join(box.home, 'elsewhere')}`, `LOCALAPPDATA=${join(box.home, 'elsewhere')}`]) {
+      const refused = await instance(box, '--env', pair);
+      expect(refused.code).toBe(2);
+      expect(refused.err).toContain(`--env ${pair.split('=')[0]} would choose the data directory`);
+    }
+    expect(existsSync(stable)).toBe(false);
+    expect(existsSync(join(box.home, 'elsewhere'))).toBe(false);
+    // An inherited one is dropped, and the core is told its directory outright.
+    box.env.BOITE_DATA_DIR = stable;
+    const started = await instance(box);
+    expect(started.code).toBe(0);
+    expect(existsSync(join(box.devDir, 'journal.db'))).toBe(true);
+    expect(existsSync(stable)).toBe(false);
+    expect(() => parseArgs(['--shell', '--copy'])).toThrow('--shell always opens the real Dev data');
+  }, TIMEOUT);
+
+  test('a state whose pids now belong to other processes is stale: nothing is signalled', async () => {
+    const box = fresh();
+    await instance(box);
+    const file = statePath(box.devDir);
+    const state = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+    await instance(box, 'stop');
+    // The core crashed, its core.json stayed, and its pid and the shell's went to two unrelated processes.
+    const reused = [0, 1].map(() => Bun.spawn([process.execPath, '-e', 'setInterval(() => {}, 1000)'], { stdout: 'ignore', stderr: 'ignore', windowsHide: true }));
+    spawned.push(...reused);
+    const core = JSON.parse(readFileSync(join(box.devDir, 'core.json'), 'utf8')) as Record<string, unknown>;
+    writeFileSync(join(box.devDir, 'core.json'), JSON.stringify({ ...core, pid: reused[0]!.pid }));
+    writeFileSync(file, JSON.stringify({ ...state, pid: reused[0]!.pid, shellPid: reused[1]!.pid, shellIdentity: state.identity }));
+
+    const status = await instance(box, 'status');
+    expect(status.out).toContain('runs no Dev instance');
+    const stopped = await instance(box, 'stop');
+    expect(stopped.code).toBe(0);
+    expect(stopped.out).toContain('no longer the processes this checkout started');
+    expect(reused.map(proc => proc.exitCode)).toEqual([null, null]);
+    expect(existsSync(file)).toBe(false);
+    // And a start is not held back by it.
+    expect((await instance(box)).code).toBe(0);
   }, TIMEOUT);
 
   test('Dev data held by another core is named, left alone, and still open to --copy', async () => {

@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { PAIR_QUERY_PARAM } from '../../packages/contracts/src/index.ts';
 import { ensureProductionUi, productionUiIsFresh } from '../../tests/e2e/lib/prod-ui.ts';
+import { processPlatform } from '../../packages/core/src/platform/index.ts';
 import { BRANCH_SCHEMA, copyDevData, coreUrl, devDataDir, lockHolder, messages, schemaState } from './dev-data.ts';
 
 const ROOT = resolve(import.meta.dir, '..', '..');
@@ -32,8 +33,12 @@ options of start:
   --echo       set BOITE_ECHO=1: the echo provider, whose turns cost nothing
   --shell      build Boite Dev and launch its window hidden (BOITE_SHELL_HIDDEN=1) instead of a bare core
   --no-build   serve packages/ui/dist as it is
-  --env K=V    one more variable for the core; inherited BOITE_* variables are never passed on
+  --env K=V    one more variable for the core; inherited BOITE_* variables are never passed on,
+               and none that chooses the data directory is accepted
   --timeout N  seconds to wait for the ready line (default 90)`;
+
+/** What decides where a core or a shell keeps its data. None is taken from --env: the directory checked is the one opened. */
+const DATA_VARIABLES = new Set(['BOITE_DATA_DIR', 'XDG_DATA_HOME', 'HOME', 'USERPROFILE', 'LOCALAPPDATA']);
 
 class Refusal extends Error {
   constructor(message: string, readonly code: number) {
@@ -85,7 +90,9 @@ export function parseArgs(argv: string[]): Options {
       const pair = value();
       const at = pair.indexOf('=');
       if (at <= 0) throw new Refusal(`--env expects NAME=VALUE, got ${pair}`, 2);
-      options.env[pair.slice(0, at)] = pair.slice(at + 1);
+      const name = pair.slice(0, at);
+      if (DATA_VARIABLES.has(name.toUpperCase())) throw new Refusal(`--env ${name} would choose the data directory: this command opens the Dev data it checked, or what --copy and --scratch make`, 2);
+      options.env[name] = pair.slice(at + 1);
     } else if (arg === '--help' || arg === '-h') throw new Refusal(USAGE, 0);
     else if (arg.startsWith('--')) throw new Refusal(`unknown option ${arg}\n\n${USAGE}`, 2);
     else words.push(arg);
@@ -94,12 +101,16 @@ export function parseArgs(argv: string[]): Options {
   options.rest = words.slice(1);
   const modes = [options.copy, options.migrate, options.scratch].filter(Boolean).length;
   if (modes > 1) throw new Refusal('--copy, --migrate and --scratch exclude each other', 2);
+  if (options.shell && (options.copy || options.scratch)) throw new Refusal('--shell always opens the real Dev data: the app picks its directory itself, so --copy and --scratch are for the bare core', 2);
   return options;
 }
 
 interface State {
   /** The core: captured at spawn, or read from `core.json` of the shell this script launched. */
   pid: number;
+  /** Which run of `pid` that was (`processIdentity`); null where the OS would not say. */
+  identity: string | null;
+  shellIdentity?: string | null;
   /** The Boite Dev shell, captured at spawn, in `--shell` mode. */
   shellPid?: number;
   url: string;
@@ -111,7 +122,7 @@ interface State {
 }
 
 /** One instance per checkout and Dev data directory. The file holds no token. */
-function statePath(devDir: string): string {
+export function statePath(devDir: string): string {
   const key = createHash('sha256').update(`${ROOT}\0${devDir}`).digest('hex').slice(0, 12);
   return join(tmpdir(), `${TEMP_PREFIX}${key}.json`);
 }
@@ -133,6 +144,19 @@ function alive(pid: number): boolean {
   }
 }
 
+/** One run of a pid, as the OS names it: a later process wearing the same pid reads differently. */
+function processIdentity(pid: number): string | null {
+  const key = processPlatform.startKey?.(pid) ?? null;
+  if (key !== null) return key;
+  const startedAt = processPlatform.startedAt(pid);
+  return startedAt === null ? null : String(startedAt);
+}
+
+/** Is `pid` still the process this script started? Unknown counts as no: nothing is signalled on a guess. */
+function ours(pid: number, identity: string | null | undefined): boolean {
+  return identity !== null && identity !== undefined && alive(pid) && processIdentity(pid) === identity;
+}
+
 function coreFile(dataDir: string): Record<string, unknown> | null {
   try {
     return JSON.parse(readFileSync(join(dataDir, 'core.json'), 'utf8')) as Record<string, unknown>;
@@ -144,13 +168,12 @@ function coreFile(dataDir: string): Record<string, unknown> | null {
 const say = (text: string): void => { process.stdout.write(`${text}\n`); };
 
 /** The environment of what this script starts: none of the caller's own Boite identity or data directory. */
-function childEnv(options: Options, dataDir: string | null): Record<string, string> {
+function childEnv(options: Options): Record<string, string> {
   const env: Record<string, string> = {};
   for (const [name, value] of Object.entries(process.env)) {
     if (value !== undefined && !name.startsWith('BOITE_')) env[name] = value;
   }
   if (options.echo) env.BOITE_ECHO = '1';
-  if (dataDir !== null && options.shell) env.BOITE_DATA_DIR = dataDir;
   return { ...env, ...options.env };
 }
 
@@ -178,16 +201,18 @@ function removeTemporary(state: Pick<State, 'mode' | 'dataDir'>): void {
   rmSync(state.dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 }
 
-async function startCore(options: Options, dataDir: string | null, log: string): Promise<{ pid: number; url: string }> {
+async function startCore(options: Options, dataDir: string, temporary: boolean, log: string): Promise<Started> {
   const out = openSync(log, 'w', 0o600);
-  // Its own data directory and a free port for temporary data; the real Dev data keeps the port its last run bound.
-  const args = [MAIN, '--channel', 'dev', ...(dataDir === null ? [] : ['--port', '0', '--data-dir', dataDir])];
-  const child = spawn(process.execPath, args, { cwd: ROOT, env: childEnv(options, null), detached: true, stdio: ['ignore', out, out], windowsHide: true });
+  // Always the directory this script checked: `--data-dir` wins over anything in the environment.
+  // A free port for temporary data; the real Dev data keeps the port its last run bound.
+  const args = [MAIN, '--channel', 'dev', '--data-dir', dataDir, ...(temporary ? ['--port', '0'] : [])];
+  const child = spawn(process.execPath, args, { cwd: ROOT, env: childEnv(options), detached: true, stdio: ['ignore', out, out], windowsHide: true });
   closeSync(out);
   let exited = false;
   child.once('exit', () => { exited = true; });
   const pid = child.pid;
   if (pid === undefined) throw new Refusal('the core could not be started', 1);
+  const identity = processIdentity(pid);
   const url = await waitFor(() => READY.exec(tail(log, 200))?.[1] ?? null, options.timeoutMs, () => exited);
   if (url === null) {
     // Only the process this call spawned.
@@ -195,8 +220,10 @@ async function startCore(options: Options, dataDir: string | null, log: string):
     throw new Refusal(`the core ${exited ? 'exited before it was ready' : `printed no ready line in ${options.timeoutMs / 1000} s and was stopped`}. Its output (${log}):\n${tail(log)}`, 1);
   }
   child.unref();
-  return { pid, url };
+  return { pid, identity, url };
 }
+
+interface Started { pid: number; identity: string | null; url: string; shellPid?: number; shellIdentity?: string | null }
 
 function run(cmd: string[], what: string): void {
   // The build's own output goes to stderr, so stdout stays what this command reports.
@@ -204,7 +231,7 @@ function run(cmd: string[], what: string): void {
   if (result.status !== 0) throw new Refusal(`${what} failed (${cmd.join(' ')}), see above`, 1);
 }
 
-async function startShell(options: Options, dataDir: string | null, devDir: string, log: string): Promise<{ pid: number; shellPid: number; url: string }> {
+async function startShell(options: Options, devDir: string, log: string): Promise<Started> {
   if (process.platform === 'linux' && spawnSync('pkg-config', ['--exists', 'webkit2gtk-4.1']).status !== 0) {
     throw new Refusal('--shell needs the WebKitGTK headers on Linux (docs/internals/development.md, "Rebuilding the shell executable"). Without them, run the bare core: the same command without --shell.', 5);
   }
@@ -218,15 +245,16 @@ async function startShell(options: Options, dataDir: string | null, devDir: stri
   const target = (JSON.parse(metadata.stdout) as { target_directory: string }).target_directory;
   const executable = join(target, 'release', process.platform === 'win32' ? 'boite-dev-shell.exe' : 'boite-dev-shell');
   if (!existsSync(executable)) throw new Refusal(`no Boite Dev shell at ${executable}: run without --no-build`, 1);
-  const directory = dataDir ?? devDir;
+  const directory = devDir;
   const launchedAt = Date.now();
   const out = openSync(log, 'w', 0o600);
-  const child = spawn(executable, [], { cwd: ROOT, env: { ...childEnv(options, dataDir), BOITE_SHELL_HIDDEN: '1' }, detached: true, stdio: ['ignore', out, out], windowsHide: true });
+  const child = spawn(executable, [], { cwd: ROOT, env: { ...childEnv(options), BOITE_SHELL_HIDDEN: '1' }, detached: true, stdio: ['ignore', out, out], windowsHide: true });
   closeSync(out);
   let exited = false;
   child.once('exit', () => { exited = true; });
   const shellPid = child.pid;
   if (shellPid === undefined) throw new Refusal('the shell could not be started', 1);
+  const shellIdentity = processIdentity(shellPid);
   // The shell starts its own core, which writes `core.json` once it listens.
   const core = await waitFor(() => {
     const record = coreFile(directory);
@@ -238,13 +266,13 @@ async function startShell(options: Options, dataDir: string | null, devDir: stri
     throw new Refusal(`the Boite Dev shell ${exited ? 'exited' : 'was stopped'} before its core was ready. Its output (${log}):\n${tail(log)}`, 1);
   }
   child.unref();
-  return { ...core, shellPid };
+  return { ...core, identity: processIdentity(core.pid), shellPid, shellIdentity };
 }
 
 async function start(options: Options): Promise<void> {
   const devDir = devDataDir();
   const running = readState(devDir);
-  if (running !== null && alive(running.pid)) {
+  if (running !== null && ours(running.pid, running.identity)) {
     throw new Refusal(`This checkout already runs a Dev instance at ${running.url} (pid ${running.pid}, data ${running.dataDir}).\nStop it first: ${RUN} stop`, 3);
   }
   const schema = schemaState(devDir);
@@ -286,9 +314,9 @@ async function start(options: Options): Promise<void> {
   if (mode === 'dev' && schema.kind === 'older') say(`migrate ${devDir} goes from journal schema ${schema.found} to ${schema.branch}, for good (--migrate)`);
 
   const log = statePath(devDir).replace(/\.json$/, '.log');
-  let started: { pid: number; url: string; shellPid?: number };
+  let started: Started;
   try {
-    started = options.shell ? await startShell(options, dataDir, devDir, log) : await startCore(options, dataDir, log);
+    started = options.shell ? await startShell(options, devDir, log) : await startCore(options, dataDir ?? devDir, dataDir !== null, log);
   } catch (error) {
     if (dataDir !== null) removeTemporary({ mode, dataDir });
     throw error;
@@ -318,23 +346,37 @@ async function stop(): Promise<void> {
     say(`Nothing to stop: this checkout (${ROOT}) started no Dev instance.`);
     return;
   }
-  // The shell first, or it would start its core again.
-  if (state.shellPid !== undefined && alive(state.shellPid)) process.kill(state.shellPid);
-  const record = coreFile(state.dataDir);
-  if (alive(state.pid)) {
-    if (record?.pid !== state.pid) {
-      throw new Refusal(`pid ${state.pid} is alive but ${join(state.dataDir, 'core.json')} no longer names it: it may be another process, so it was left alone. Remove ${statePath(devDir)} once you have checked.`, 1);
-    }
+  const coreOurs = ours(state.pid, state.identity);
+  const shellOurs = state.shellPid !== undefined && ours(state.shellPid, state.shellIdentity);
+  const unknown = [[state.pid, state.identity] as const, ...(state.shellPid === undefined ? [] : [[state.shellPid, state.shellIdentity] as const])]
+    .filter(([pid, identity]) => alive(pid) && (identity === null || identity === undefined)).map(([pid]) => pid);
+  if (unknown.length > 0) {
+    throw new Refusal(`pid ${unknown.join(' and ')} is alive, but this system gave no start time to tell it from the process this checkout started: nothing was signalled. Stop it yourself if it is the instance, then remove ${statePath(devDir)}.`, 1);
+  }
+  if (!coreOurs && !shellOurs) {
+    const reused = [state.pid, ...(state.shellPid === undefined ? [] : [state.shellPid])].filter(alive);
+    removeTemporary(state);
+    rmSync(statePath(devDir), { force: true });
+    say(reused.length > 0
+      ? `The instance this checkout started is gone: pid ${reused.join(' and ')} ${reused.length > 1 ? 'are' : 'is'} no longer the processes this checkout started, so nothing was signalled. Its state was removed.`
+      : `The instance this checkout started (pid ${state.pid}) was already gone. Its state was removed.`);
+    return;
+  }
+  // The shell first, or it would start its core again. Only the run captured at spawn.
+  if (shellOurs) process.kill(state.shellPid!);
+  if (coreOurs) {
+    const record = coreFile(state.dataDir);
+    const stillOurs = (): true | null => (ours(state.pid, state.identity) ? null : true);
     try {
-      await fetch(`${state.url}/shutdown`, { method: 'POST', headers: { authorization: `Bearer ${String(record.token)}` } });
+      if (record?.pid === state.pid) await fetch(`${state.url}/shutdown`, { method: 'POST', headers: { authorization: `Bearer ${String(record.token)}` } });
     } catch {
       // No answer: the wait below decides.
     }
-    let gone = await waitFor(() => (alive(state.pid) ? null : true), 20_000, () => false);
-    if (gone === null && state.shellPid === undefined) {
-      // The pid this script captured when it spawned the core, still named by its own core.json.
+    let gone = await waitFor(stillOurs, record?.pid === state.pid ? 20_000 : 0, () => false);
+    if (gone === null && state.shellPid === undefined && ours(state.pid, state.identity)) {
+      // The run this script spawned, checked again at the moment of the signal.
       process.kill(state.pid);
-      gone = await waitFor(() => (alive(state.pid) ? null : true), 15_000, () => false);
+      gone = await waitFor(stillOurs, 15_000, () => false);
     }
     if (gone === null) throw new Refusal(`the core (pid ${state.pid}) did not stop; its data ${state.dataDir} was kept`, 1);
   }
@@ -345,7 +387,7 @@ async function stop(): Promise<void> {
 
 function runningState(): State {
   const state = readState(devDataDir());
-  if (state === null || !alive(state.pid)) throw new Refusal(`This checkout runs no Dev instance. Start one: ${RUN}`, 1);
+  if (state === null || !ours(state.pid, state.identity)) throw new Refusal(`This checkout runs no Dev instance. Start one: ${RUN}`, 1);
   return state;
 }
 
@@ -412,7 +454,7 @@ async function main(argv: string[]): Promise<void> {
   else if (options.command === 'capture') await capture(options);
   else if (options.command === 'status') {
     const state = readState(devDataDir());
-    if (state === null || !alive(state.pid)) say(`This checkout runs no Dev instance. Journal schema of this branch: ${BRANCH_SCHEMA}.`);
+    if (state === null || !ours(state.pid, state.identity)) say(`This checkout runs no Dev instance. Journal schema of this branch: ${BRANCH_SCHEMA}.`);
     else say(`running ${state.url}, pid ${state.pid}, data ${state.dataDir} (${state.mode}), output in ${state.log}`);
   } else throw new Refusal(`unknown command ${options.command}\n\n${USAGE}`, 2);
 }
