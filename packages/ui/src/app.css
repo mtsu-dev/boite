@@ -286,10 +286,9 @@
   --color-selection: rgba(228, 228, 231, 0.18);
   --accent-hue: 295;
   --color-accent: oklch(75.5% 0.141 var(--accent-hue));
-  /* Once a violet tint under selected and highlighted things; the accent now
-     stays on the send button, focus, spinners and small marks, so the fill
-     under them is the neutral selection. A palette may still set its own. */
-  --color-accent-soft: var(--color-active);
+  /* The accent's tint under what is selected or picked: the open row, a picked
+     choice, a count. A palette may set its own. */
+  --color-accent-soft: color-mix(in oklch, var(--color-accent) 18%, transparent);
   --color-accent-ink: #15111f;
   --color-reasoning: var(--color-accent);
   /* What the agent looking after a project sends: the accent turned away round the wheel (orange at the default violet), so its letters never read as the user's own. */
@@ -438,13 +437,12 @@
   --color-control-hover: var(--color-surface-3);
   --color-control-primary-hover: var(--color-accent);
   --color-control-strong-hover: var(--color-foreground);
-  /* The one primary button form, on every page and platform: filled in the text colour
-     (white in dark, near black in light). The accent never fills a primary: it stays on
-     the send button, focus, switches and small marks. `button.primary` wears these; a
-     link drawn as a primary takes them too. */
-  --primary-fill: var(--color-foreground);
-  --primary-ink: var(--color-on-foreground);
-  --primary-hover: var(--color-control-strong-hover);
+  /* The one primary button form, on every page and platform: filled in the accent, like
+     the send button, so the action a view leads with is the colour on it. `button.primary`
+     wears these; a link drawn as a primary takes them too. */
+  --primary-fill: var(--color-accent);
+  --primary-ink: var(--color-accent-ink);
+  --primary-hover: var(--color-control-primary-hover);
   --shadow-control: inset 0 1px 0 rgb(255 255 255 / 0.06);
 
   --font-fallback: ui-sans-serif, system-ui, 'Segoe UI Variable Text', 'Segoe UI', sans-serif;
@@ -529,7 +527,7 @@
   /* The main column's top bar, on the chrome above its panel. */
   --titlebar: 46px;
   /* The app rail down the window's left edge (AppRail.svelte): its width, a button's side and corner. */
-  --app-rail: 72px;
+  --app-rail: 80px;
   --rail-button: 44px;
   --radius-rail: 14px;
   /* A caption button, Windows' own width, the bar's full height. */
@@ -576,7 +574,10 @@
   /* Balanced timeline margins, with room for the message outline rail. */
   --outline-room: 38px;
   /* Settings read in the conversation's column (its default width, whatever width a thread was set to). */
-  --settings-width: var(--column);
+  --settings-width: 920px;
+  /* The settings' list of pages: wide enough for the longest page name in every language, no wider. */
+  --settings-nav: 252px;
+  --settings-title: 28px;
   --settings-gutter: clamp(var(--space-5), 3vw, 48px);
   --settings-padding: var(--space-6);
   /* The room a settings card keeps above it for its title (44 px on a phone: the title's "i" is a target). */
@@ -1069,6 +1070,7 @@ html[data-chat-width='full'] {
    its 18 percent there, and the few one-off mixes simply draw no tint. */
 @supports not (color: color-mix(in oklch, red 50%, blue)) {
   :root {
+    --color-accent-soft: oklch(75.5% 0.141 var(--accent-hue) / 0.18);
     --color-resident-soft: oklch(66% 0.15 calc(var(--accent-hue) + 115) / 0.14);
     --overlay-edge: var(--color-edge);
   }
@@ -1371,7 +1373,7 @@ button.primary:disabled {
   color: var(--color-subtle);
 }
 
-/* A primary action is filled in the text colour: the accent is kept for the send button. */
+/* A primary action is filled in the accent, as the send button is. */
 button.primary {
   background: var(--primary-fill);
   border-color: var(--primary-fill);
@@ -1715,6 +1717,9 @@ details[open] > summary .fold-caret {
 .disclosure-fold {
   display: grid;
   grid-template-rows: 0fr;
+  /* As wide as its column, never its content's: an `auto` track grows to the widest unbreakable line under it (a
+     nowrap label, a long word), and that width scrolled the whole sidebar sideways. */
+  grid-template-columns: minmax(0, 1fr);
   opacity: 0;
   transition: grid-template-rows var(--dur-3) var(--ease-out-quint),
     opacity var(--dur-2) var(--ease-out-quint);
@@ -2206,6 +2211,23 @@ tr:last-child td {
   margin-top: var(--space-1);
   color: var(--color-subtle);
   font-weight: 400;
+}
+
+/* A window with room draws the settings a size up: a row a finger could take, its name in the
+   head size, a switch and a button one step larger than the chat's chrome. A phone has its own sizes. */
+@media (min-width: 721px) {
+  .settings .framed { --control: 36px; --control-sm: 32px; --switch-width: 48px; --switch-height: 28px; --card-head: 40px; }
+  .settings .framed .page .switch-row { min-height: 64px; padding: var(--space-3) 0; }
+  .settings .framed .page .switch-row .text { font-size: var(--text-head); font-weight: 500; }
+  .settings .framed .page .switch-row .hint { font-size: var(--text-meta); font-weight: 400; }
+  .settings .framed .page > .card,
+  .settings .framed .page > form > .card,
+  .settings .framed .page > .settings-stack > .card { padding-inline: var(--space-5); border-radius: var(--radius-lg); margin-bottom: var(--space-8); }
+  .settings .framed .page > .card.flush { padding: 0; }
+  :is(.settings .framed .page > .card, .settings .framed .page > form > .card, .settings .framed .page > .settings-stack > .card) > h2:first-child { left: var(--space-5); right: var(--space-5); }
+  .settings .framed .page .card h2,
+  .settings .framed .page > .group-heading h2 { font-size: var(--text-title); }
+  .settings .framed .segmented button { padding: 0 14px; }
 }
 
 .row {

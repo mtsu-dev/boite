@@ -9,7 +9,7 @@ let server: { close(): Promise<void> };
 beforeAll(async () => {
   const port = await freePort();
   server = await startUi(port);
-  page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1`, experiments: ['resident-agents'] });
+  page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1` });
   await page.waitFor(`window.__boiteTest?.workspace.active.connection === 'ready'`);
 }, 60000);
 afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);

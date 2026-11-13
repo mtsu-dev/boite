@@ -55,7 +55,8 @@ Without it, each agent keeps its own behaviour.
 - On a phone connected as the owner, Automatic compaction is a row in the
   machine's settings.
 
-Experimental: Background compaction, in Settings, Experiments. With a token
+Experimental, in Nightly builds only: Background compaction, in Settings,
+Experiments. With a token
 limit, a copy of the session compacts once the conversation reaches 85% of it,
 while you keep working. It works with Claude and Codex; OpenCode 2 uses its
 own. Copies spend the same account and are not counted in usage.
@@ -112,6 +113,6 @@ newest 50 turns of a conversation.
 - [Models](models.md): what carries over when you change model.
 - [Usage](usage.md): tokens, cost and the prompt cache timer.
 - [Goals](goals.md): reviewed goals and the project board.
-- [Experiments](experiments.md): turn on an experimental feature.
+- [Experiments](experiments.md): unfinished features, in Nightly builds.
 - Technical reference: [context](internals/context.md),
   [prompt cache](internals/prompt-cache.md).

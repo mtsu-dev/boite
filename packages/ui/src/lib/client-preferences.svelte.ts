@@ -1,6 +1,7 @@
 /*
  * What this app tells each core it is connected to about itself
- * (`client.preferences`): an id kept on the device, the language it speaks, the experiments it has on
+ * (`client.preferences`): an id kept on the device, the language it speaks, the experiments it chose
+ * (the core reads them for its own build, so a finished feature or a Release needs nothing said here)
  * and the names it gives settings in that language. An agent then reads the
  * screen the user reads (`boite settings`), and a card about an experiment
  * settles once this app reports the switch moved. Sent after every hello and
@@ -10,7 +11,7 @@ import { EXPERIMENT_IDS, REQUESTABLE_SETTING_KEYS, SETTINGS_PAGES, type ClientPr
 import { untrack } from 'svelte';
 import type { ObservableClient } from './client';
 import { experimentCopy } from './experiment-copy';
-import { readExperiments, subscribeExperiments } from './experiments';
+import { chosenExperiments, desktopHeard, subscribeExperiments } from './experiments';
 import { activeLocale } from './i18n.svelte';
 import { secureId } from './secure-id';
 import { settingLabel, settingsPageLabel } from './setting-requests';
@@ -36,9 +37,9 @@ export function clientPreferences(): ClientPreferences {
   const copy = experimentCopy();
   const labels: Record<string, string> = {};
   for (const key of REQUESTABLE_SETTING_KEYS) labels[key] = settingLabel(key);
-  for (const id of EXPERIMENT_IDS) labels[`experiment.${id}`] = copy[id].title;
+  for (const id of EXPERIMENT_IDS) { const words = copy[id]; if (words) labels[`experiment.${id}`] = words.title; }
   for (const page of SETTINGS_PAGES) labels[page] = settingsPageLabel(page);
-  return { app: deviceAppId(), language: activeLocale(), experiments: readExperiments(), labels };
+  return { app: deviceAppId(), language: activeLocale(), experiments: chosenExperiments(), labels };
 }
 
 /**
@@ -54,8 +55,8 @@ export function reportPreferences(client: ObservableClient, current: () => boole
     if (!again && said === sent) return;
     sent = said;
     client.call('client.preferences', preferences).then((answer) => {
-      // An older core answers without it.
-      if (current()) desktop(answer.desktop ?? null);
+      // An older core answers without it, and one from before the chosen list with the historic one alone.
+      if (current()) desktop(desktopHeard(answer));
     }, () => {
       // An older core has no such method; a later change tries again.
       sent = '';

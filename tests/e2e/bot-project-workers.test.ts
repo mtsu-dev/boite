@@ -22,7 +22,7 @@ real('a bot project worker appears live in the project and opens as a conversati
   const bot = await makeAgent(harness, owner, { name: 'Scout', projectIds: [project.id] });
   restore = scripted(() => ({ text: 'Checking the project build. I will send the result to Scout.', hold: true })).restore;
   await owner.call('delegation.configure', { threadId: bot.threadId, config: { enabled: true, paused: false, profiles: [], anyModel: true } });
-  page = await BrowserPage.launch({ url: `${harness.url}/?token=${harness.token}`, experiments: ['resident-agents'], windowSize: { width: 1440, height: 900 } });
+  page = await BrowserPage.launch({ url: `${harness.url}/?token=${harness.token}`, windowSize: { width: 1440, height: 900 } });
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
   await page.waitFor(`document.querySelector('[data-testid=status-connection]')?.dataset.state === 'ready'`, 30_000);
   const worker = await owner.call('delegation.spawn', { threadId: bot.threadId, title: 'Verify project build', task: 'Verify the project build and report the result.', requestId: 'visible-worker' });

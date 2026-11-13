@@ -5,7 +5,8 @@
   import DeviceStreamSettings from './DeviceStreamSettings.svelte';
   import AutoGoalSetting from './AutoGoalSetting.svelte';
   import { untrack, type Snippet } from 'svelte';
-  import { EXPERIMENT_IDS, canFollowDesktop, desktopExperiments, followsDesktop, readExperiments, setExperiment, setFollowDesktop, subscribeExperiments, type ExperimentId } from '../lib/experiments';
+  import { experimentsRun } from '@boite/contracts';
+  import { canFollowDesktop, desktopExperiments, followsDesktop, listedSwitches, readExperiments, setExperiment, setFollowDesktop, subscribeExperiments, type ExperimentId } from '../lib/experiments';
   import { experimentCopy } from '../lib/experiment-copy';
   import { strings } from '../lib/strings';
   import { ensureOperator } from '../lib/operator';
@@ -13,8 +14,11 @@
   import type { Store } from '../lib/store.svelte';
 
   /**
-   * The switches of this device, with the Automatic goals threshold of `store`, this
-   * window's machine; then the experiments of `target`, the machine `bar` picks.
+   * The switches of this device: the experiments the primary machine's build
+   * lists (none on a Release, where Settings has no such page), with the
+   * Automatic goals threshold of `store`, this window's machine; then the
+   * experiments of `target`, the machine `bar` picks. A machine's own are
+   * experiments too: they show only while its core is not a Release.
    */
   let { store, target = store, bar }: { store?: Store; target?: Store; bar?: Snippet } = $props();
   const uid = $props.id();
@@ -25,10 +29,10 @@
   let following = $state(untrack(() => followsDesktop()));
   let heard = $state(untrack(() => desktopExperiments() !== null));
 
-  /** Contacts and Teams need Bots: their switches wait, greyed, until Bots is on. */
-  function locked(id: ExperimentId): boolean {
-    return (id === 'contacts' || id === 'teams') && !enabled.includes('resident-agents');
-  }
+  let listed = $state<ExperimentId[]>(untrack(() => listedSwitches()));
+  /** The machine being configured runs experiments: a Release core refuses them and reads them as off. */
+  let machineRuns = $derived(target !== undefined && experimentsRun(target.core?.version));
+  let thresholdRuns = $derived(store !== undefined && experimentsRun(store.core?.version));
 
   function toggle(id: ExperimentId, on: boolean) {
     setExperiment(id, on);
@@ -39,6 +43,7 @@
   // The desktop app can change them while the page is open.
   $effect(() => subscribeExperiments((next) => {
     enabled = next;
+    listed = listedSwitches();
     following = followsDesktop();
     heard = desktopExperiments() !== null;
   }));
@@ -65,31 +70,24 @@
   {/if}
 
   <section class="card">
-    {#each EXPERIMENT_IDS as id (id)}
-      <label for="{uid}-{id}" class="switch-row" class:locked={locked(id)} id="settings-{id}">
+    {#each listed as id (id)}
+      <label for="{uid}-{id}" class="switch-row" id="settings-{id}">
         <span class="text">
-          <span class="ui-label-box"><span class="ui-label" id="{uid}-{id}-name">{copy[id].title}</span><InfoTip topic={copy[id].title} text={locked(id) ? strings.experiments[id === 'teams' ? 'teams' : 'contacts'].needsBots : copy[id].hint} /></span>
+          <span class="ui-label-box"><span class="ui-label" id="{uid}-{id}-name">{copy[id]?.title ?? id}</span><InfoTip topic={copy[id]?.title ?? id} text={copy[id]?.hint ?? ''} /></span>
         </span>
         <input id="{uid}-{id}" aria-labelledby="{uid}-{id}-name"
           type="checkbox"
           role="switch"
           data-testid="experiment-{id}"
-          disabled={locked(id)}
-          aria-disabled={locked(id)}
-          checked={enabled.includes(id) && !locked(id)}
+          checked={enabled.includes(id)}
           onchange={(event) => toggle(id, event.currentTarget.checked)}
         />
       </label>
       <!-- Its threshold is the core's, under the switch while it is on. -->
-      {#if id === 'auto-goal' && store && enabled.includes(id)}<AutoGoalSetting {store} />{/if}
+      {#if id === 'auto-goal' && store && thresholdRuns && enabled.includes(id)}<AutoGoalSetting {store} />{/if}
     {/each}
   </section>
 
   {#if target && bar}{@render bar()}{/if}
-  {#if target}<CacheKeepaliveSettings store={target} /><CompactionSettings store={target} backgroundOnly /><DeviceStreamSettings store={target} />{/if}
+  {#if target && machineRuns}<CacheKeepaliveSettings store={target} /><CompactionSettings store={target} backgroundOnly /><DeviceStreamSettings store={target} />{/if}
 </div>
-
-<style>
-  /* A switch that waits on another: its words grey with it, its "i" still answers. */
-  .switch-row.locked .ui-label { color: var(--color-muted-foreground); }
-</style>

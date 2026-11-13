@@ -86,7 +86,7 @@ export function sharedLetterMethods(ctx:FakeContext,ordinary:Pick<FakeMethods,'c
     return cloneShared(ctx.letters.get(thread.id)!.find(l=>l.id===saved.id)!);
   }
   return {
-    'contacts.sendHuman':async p=>send(p,true),
+    'contacts.sendHuman':async p=>{ctx.startGate('contacts');return send(p,true);},
     'collaboration.send':async p=>send(p,false),
     'collaboration.configure':async p=>{await ordinary['collaboration.configure'](p);reconcileShared(ctx);flushContactMail();return ordinary['collaboration.get']({threadId:p.threadId});},
   } satisfies Partial<FakeMethods>;

@@ -8,8 +8,8 @@ projectless, working in `agent-workspaces/<agent-id>/agent-<agent-id>` in the
 host's data directory. What the bot adds to that thread is a persona, a brain
 folder, a clock (routines), a desk of the threads it runs or watches, and
 wakes: turns the core starts on its thread when a routine is due or something
-happens on its desk. The page sits beside chat, behind the Bots switch in
-Settings > Experiments ([experiments](experiments.md)). Contracts:
+happens on its desk. The page sits beside chat in every build: Bots is a
+finished feature with no switch ([experiments](experiments.md)). Contracts:
 `packages/contracts/src/agents.ts`; core: `packages/core/src/agents/`.
 
 The wire keeps the old names (the `agents.*` methods, `AgentProfile`,
@@ -42,12 +42,17 @@ thread is archived too and read-only; unarchiving the bot restores it.
 
 On a desktop, every bot of every machine is a picture in the app rail, the
 column down the window's left edge (`AppRail.svelte`), under Threads and the
-contacts; its `+` makes a bot, a team or opens the bot engine. A picture says
+contacts; its `+` makes a bot, a team or opens the bot engine. Teams lead,
+then pinned bots, then bots by creation; a picture dragged 6 px or moved with
+the arrow keys reorders bots and teams together (`QuotaReorder`), and the order
+stays on the device under `boite.rail.order` (`lib/rail-order.svelte.ts`),
+keyed `machineId:bot:id` or `machineId:team:id`. A picture says
 how the bot stands (`railBotState`, `lib/app-rail.ts`, which the phone's bot
 list reads too): an amber count while it needs the user, a red `!` after a
 failure, a turning accent arc while it works, dimmed while paused. Clicking
 one opens the Bots page: the chat page with the bot column in the thread
-list's place (`BotColumnHead` and `BotColumn`). The column's head shows the
+list's place (`BotColumnHead` and `BotColumn`); unlike the thread list
+beside a chat panel, the column is not lent to a docked Desk. The column's head shows the
 bot's squircle, its name and one live line (the step and a timer, what it
 waits on, an error, its next wake); its more menu holds the row menu below,
 the brain and the bot engine. Under it come Conversation, then the threads
@@ -736,14 +741,29 @@ asking thread reads the outcome as a message. Code:
 `agents/setting-cards.ts`, shared checks in
 `packages/contracts/src/agent-setting-requests.ts`.
 
-A thread asked to set up a bot creates it itself, with no card: `boite settings
-bot create <name>`, with its role, instructions, model and projects
-([CLI](cli.md)). `agents.create` makes it exactly as the Bots page does, full
-access, its conversation and its "Just created" first turn included, and
-returns its id and conversation so the thread briefs it with `boite threads
-send`. The owner allowed this on 2026-10-24: a thread asks only when something
-about the bot is unclear. Changing the bot afterwards still goes through a
-card. Code: `agents/create.ts`, shared checks in
+A thread asked to set up a bot calls `boite settings bot create <name>`, with
+its role, instructions, model and projects ([CLI](cli.md)). What `agents.create`
+does then follows the machine setting `agentBotCreation`:
+
+- `ask`, the value of a new install: nothing is created. The core draws an
+  asynchronous card in the calling thread (`QuestionRequest.setting` of kind
+  `bot`, built by `botCard`) with the checked bot, the names of its projects
+  and its model, and returns `{ questionId, setting }`. Approve calls the
+  owner-only `agents.create.approve`, which checks the bot again (the name may
+  have been taken since), saves it and settles the card with `applied` and the
+  bot's id and conversation; Decline answers `refuse`. The thread reads the
+  outcome like a setting request's (`settingAnswerText`). A second request for
+  the same name while its card is open is refused.
+- `free`: the bot is made at once, exactly as the Bots page does, full access,
+  its conversation and its "Just created" first turn included, and the call
+  returns its id and conversation so the thread briefs it with `boite threads
+  send`.
+
+An install whose journal existed before the setting did gets `free` written
+once at its first start (`SettingsStore.seedAgentDefaults`), a new one gets
+`ask`; the stored value is never rewritten afterwards. The key is requestable
+(`boite settings request agentBotCreation free --why "<reason>"`). Changing
+the bot afterwards still goes through a card. Code: `agents/create.ts`, shared checks in
 `packages/contracts/src/agent-create.ts`.
 
 ## Routines

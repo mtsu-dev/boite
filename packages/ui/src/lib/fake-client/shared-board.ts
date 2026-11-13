@@ -100,6 +100,8 @@ export function sharedTodos(ctx:FakeContext,projectId:string):Todo[]{
   });
 }
 export async function applySharedBoard(ctx:FakeContext,p:import('@boite/contracts').RpcParams<'sharedBoard.apply'>){
+      // As the core: a new card, an edit or a claim is new work; removing and releasing stay open in every build.
+      if(p?.command?.kind!=='remove'&&p?.command?.kind!=='release')ctx.startGate('contacts');
       const {shared,source}=check(ctx,p),command=commandOf(p.command),host=authority(ctx,shared);
       if(source.kind==='agent'&&(command.kind==='remove'||command.kind==='update'&&command.status==='done'))throw refusedShared('sharedBoard: only the user confirms or removes a card');
       if(!host){
@@ -158,6 +160,7 @@ export function sharedBoardMethods(ctx:FakeContext){
     },
     'sharedBoard.apply':async p=>applySharedBoard(ctx,p),
     'sharedBoard.start':async p=>{
+      ctx.startGate('contacts');
       const {shared,local}=check(ctx,p),host=authority(ctx,shared);if(!host)throw refusedShared('sharedBoard: claim authority unavailable');
       const card=boardOf(host,shared.id).cards.get(p.cardId),assignment=card?.assignment,board=boardOf(ctx,shared.id);
       if(!assignment||assignment.claimId!==p.claimId||!sameProject(assignment.worker.project,local)||assignment.worker.threadId!==p.threadId||board.starts.has(`stopped:${p.claimId}`))throw refusedShared('claimId: expected this host worker reservation');

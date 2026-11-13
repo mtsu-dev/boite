@@ -80,8 +80,6 @@ after 30 seconds, 2 minutes and 5 minutes. Stop retrying ends the wait.
 
 ## The prompt cache timer
 
-Experimental: turn it on in Settings, Experiments (Prompt cache timer).
-
 A clock beside the context meter counts down how long the provider keeps the
 conversation cached, while the thread is idle. A message sent while the
 cache is warm can cost less input, depending on the provider and model.
@@ -98,7 +96,8 @@ The timer is an estimate from what the agent reports or the provider
 documents. It does not check the cache, and changing the model or account
 resets it.
 
-Keep the prompt cache warm, in Settings, Experiments, is off by default.
+Keep the prompt cache warm is an experiment: it exists in Nightly builds
+only, in Settings, Experiments, and is off by default.
 While a conversation waits on its agents or workflows, Boite sends a one-word
 turn shortly before the cache lapses, for at most 12 hours by default (1 to
 24). Each ping counts as usage, and a ping that misses the cache ends the

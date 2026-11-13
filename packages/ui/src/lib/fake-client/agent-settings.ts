@@ -3,12 +3,13 @@
  * draws them: a thread, or a persistent agent about itself, asks the user to
  * change one of an agent's settings; Apply writes it through the agent's own
  * settings, and any change to the agent settles the cards it answers. A
- * thread creates the bot the user asked for with no card, as the core's
- * `agents/create.ts`.
+ * thread asks for the bot the user asked for as the core's
+ * `agents/create.ts`: a card the owner approves, or the bot at once where
+ * `agentBotCreation` is `free`.
  */
 import {
-  AGENT_SETTING_KEYS, AGENT_STATUSES, RpcErrorCode, agentModelRoute, agentSettingProposal, agentSettingValue, providerEnabled, checkAgentCreate, checkAgentSettingRequest, normalizeAgentSetting, settledAgentSetting,
-  type AgentCreateContext, type AgentProfile, type AgentSelection, type AgentSettingAsk, type AgentSettingContext, type AgentSettingReading, type AgentSettingRequestParams,
+  AGENT_SETTING_KEYS, AGENT_STATUSES, RpcErrorCode, agentBotCreation, agentModelRoute, botCard, agentSettingProposal, agentSettingValue, providerEnabled, checkAgentCreate, checkAgentSettingRequest, normalizeAgentSetting, settledAgentSetting,
+  type AgentCreateContext, type AgentCreated, type AgentCreation, type AgentProfile, type AgentSelection, type AgentSettingAsk, type AgentSettingContext, type AgentSettingReading, type AgentSettingRequestParams,
   type DelegationConfig, type RpcParams, type RpcResult, type Thread, type Turn,
 } from '@boite/contracts';
 import { RpcFailure } from '../client';
@@ -16,7 +17,7 @@ import type { AgentSettingMethod } from '../fake-agents';
 import type { FakeContext } from './context';
 import { pickModel } from './delegation';
 import { modelsOf } from './provider-catalog';
-import { askAgentSetting } from './requests';
+import { askAgentSetting, askSetting } from './requests';
 import { BUILTIN_LOCKED, BUILTIN_NEVER_ARCHIVED } from './builtin-bots';
 
 const refused = (message: string, data?: Record<string, unknown>) => new RpcFailure({ code: RpcErrorCode.Refused, message, ...(data ? { data } : {}) });
@@ -191,6 +192,12 @@ function createRoute(ctx: FakeContext, thread: Thread): AgentCreateContext['rout
   };
 }
 
+function saveBot(ctx: FakeContext, bot: AgentCreation): AgentCreated {
+  const { name, domain, instructions, projectIds, selection } = bot;
+  const agent = ctx.agents.create({ name, domain, instructions, avatar: '', status: 'active', projectIds, selection });
+  return { agent, threadId: ctx.agents.conversationOf(agent.id) };
+}
+
 export function agentSettingMethods(ctx: FakeContext): Handlers {
   return {
     'agents.create': params => {
@@ -202,9 +209,36 @@ export function agentSettingMethods(ctx: FakeContext): Handlers {
         route: createRoute(ctx, thread),
       });
       if (!checked.ok) throw refused(checked.message, checked.data);
-      const { name, domain, instructions, projectIds, selection } = checked.value;
-      const agent = ctx.agents.create({ name, domain, instructions, avatar: '', status: 'active', projectIds, selection });
-      return { agent, threadId: ctx.agents.conversationOf(agent.id) };
+      if (agentBotCreation(ctx.settings) === 'free') return saveBot(ctx, checked.value);
+      // As the core: on `ask` nothing is created, the owner reads a card in the calling thread.
+      const bot = checked.value;
+      if ([...ctx.pendingQuestions.values()].some(pending => pending.request.threadId === thread.id && pending.request.setting?.kind === 'bot' && pending.request.setting.bot.name.toLowerCase() === bot.name.toLowerCase())) {
+        throw refused(`a card asking to create the bot ${JSON.stringify(bot.name)} is already open in this thread`, { field: 'name' });
+      }
+      const turn = thread.turns.find(entry => entry.status === 'running') ?? thread.turns.at(-1);
+      if (!turn) throw refused('the thread has no turn to ask in yet', { threadId: thread.id });
+      const model = modelsOf(ctx, bot.selection.providerId, bot.selection.accountId).find(entry => entry.id === bot.selection.model)?.name ?? bot.selection.model ?? '';
+      const card = botCard(bot, bot.projectIds.map(id => ctx.projects.find(project => project.id === id)?.name ?? id), model);
+      return { questionId: askSetting(ctx, thread, turn, card.text, card.options, card.setting), setting: card.setting };
+    },
+    'agents.create.approve': params => {
+      const pending = ctx.pendingQuestions.get(params.questionId);
+      const ask = pending?.request.setting;
+      if (pending?.request.threadId !== params.threadId || ask?.kind !== 'bot') {
+        throw new RpcFailure({ code: RpcErrorCode.NotFound, message: `agents.create.approve: ${String(params.questionId)} is no open bot card of thread ${String(params.threadId)}`, data: { field: 'questionId' } });
+      }
+      const { name, domain, instructions, projectIds, selection } = ask.bot;
+      // As the core: checked again, the name may have been taken since the card was drawn.
+      const checked = checkAgentCreate({ name, domain, instructions, projects: projectIds }, {
+        bots: ctx.agents.liveProfiles(),
+        projects: ctx.projects.filter(project => project.kind !== 'drafts').map(project => ({ id: project.id, label: project.name })),
+        route: () => ({ ok: true, value: selection }),
+      });
+      if (!checked.ok) throw refused(checked.message, checked.data);
+      const made = saveBot(ctx, checked.value);
+      ctx.pendingQuestions.delete(params.questionId);
+      pending.resolve({ optionIds: ['applied'], value: { agentId: made.agent.id, threadId: made.threadId } });
+      return made;
     },
     'agents.settings.read': params => {
       ctx.thread(params.threadId);

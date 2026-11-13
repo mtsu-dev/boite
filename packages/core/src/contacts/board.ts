@@ -15,6 +15,7 @@ import { projectAddress, sameProject, threadRef } from './project-policy.ts';
 import { fingerprint } from './project-journal.ts';
 import type { SharedPeerContext } from './projects.ts';
 import { accessBinding, bindBoard } from './access-scopes.ts';
+import { contactsGate } from './gate.ts';
 
 export class SharedBoard {
   readonly journal: SharedBoardJournal;
@@ -46,6 +47,8 @@ export class SharedBoard {
     core.sharedProjects.registerPeer('board.apply', (p, ctx, requestId) => {
       const command = boardCommand(p?.command);
       if (command.requestId !== requestId) throw invalidParams('command.requestId: expected the envelope operation id');
+      // A contact's Nightly asks as an app here does: new work stops, upkeep passes.
+      if (command.kind !== 'remove' && command.kind !== 'release') contactsGate(core);
       return this.#authoritativeApply(ctx, command, boardWorkerInfo(p.workerInfo));
     });
     core.sharedProjects.registerPeer('board.progress', (p, ctx) => progressAtAuthority(this, ctx, this.#progress(p)));
@@ -174,6 +177,8 @@ export class SharedBoard {
     return [...projected.values()];
   }
   async apply(p: RpcParams<'sharedBoard.apply'>, connection?: Connection): Promise<SharedBoardReceipt> {
+    // A new card, an edit or a claim is new work on the board; removing a card and releasing a claim are upkeep. Read here, so `todos.update` on a shared card meets it too.
+    if (p?.command?.kind !== 'remove' && p?.command?.kind !== 'release') contactsGate(this.core);
     const ctx = this.core.sharedProjects.scope(p, connection); this.check(ctx);
     const command = boardCommand(p.command), value: PendingBoardCommand = {threadId: p.threadId, source: ctx.source, command};
     if (ctx.source.kind === 'agent' && (command.kind === 'remove' || command.kind === 'update' && command.status === 'done')) throw refused('sharedBoard: only the user confirms or removes a card');
@@ -488,5 +493,5 @@ export class SharedBoard {
 export function registerSharedBoardMethods(core: Core): void {
   core.router.register('sharedBoard.get', (p, ctx) => core.sharedBoard.get(p, ctx.connection));
   core.router.register('sharedBoard.apply', (p, ctx) => core.sharedBoard.apply(p, ctx.connection));
-  core.router.register('sharedBoard.start', (p, ctx) => core.sharedBoard.start(p, ctx.connection));
+  core.router.register('sharedBoard.start', (p, ctx) => { contactsGate(core); return core.sharedBoard.start(p, ctx.connection); });
 }

@@ -31,7 +31,7 @@ export function devicesMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
   const screens = new Map<string, number>();
   // When each device last answered a stream poll, and what its clipboard holds.
   const watched = new Map<string, number>(), clipboards = new Map<string, string>();
-  const live = (deviceId: string) => ctx.settings.deviceStream === true && Date.now() - (watched.get(deviceId) ?? 0) < VIEWER_MS;
+  const live = (deviceId: string) => ctx.settingsInForce().deviceStream === true && Date.now() - (watched.get(deviceId) ?? 0) < VIEWER_MS;
   const list = (threadId: string) => [...(sessions.get(threadId)?.values() ?? [])].map(session => ({ ...session }));
   const changed = (threadId: string) => ctx.emitToThread(threadId, 'devices.changed', { threadId, sessions: list(threadId) });
   const release = (threadId: string) => { if (sessions.delete(threadId)) changed(threadId); };
@@ -81,7 +81,7 @@ export function devicesMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
         hosts: [{ id: LOCAL_DEVICE_HOST, name: 'This computer', platforms: [{ platform: 'android', available: true }, { platform: 'ios', available: false, reason: 'iOS Simulators need macOS with Xcode.' }] }],
         devices: devices.map(device => ({ ...device })),
         sessions: list(threadId),
-        liveStream: ctx.settings.deviceStream === true
+        liveStream: ctx.settingsInForce().deviceStream === true
       };
     },
     'devices.sessions': async ({ threadId }) => {
@@ -137,7 +137,7 @@ export function devicesMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
       }
       const streamOnly = input.kind === 'touch' ? 'a touch' : input.kind === 'scroll' ? 'a scroll' : input.kind === 'clipboard' ? 'the device clipboard'
         : input.kind === 'text' && !isAdbText(input.text) ? 'text beyond printable ASCII' : undefined;
-      if (streamOnly) throw refusal(`${streamOnly} needs the device's live stream (adb input cannot send it): ${ctx.settings.deviceStream === true ? 'show the device in the Device panel to start it' : STREAM_OFF}`, { deviceId });
+      if (streamOnly) throw refusal(`${streamOnly} needs the device's live stream (adb input cannot send it): ${ctx.settingsInForce().deviceStream === true ? 'show the device in the Device panel to start it' : STREAM_OFF}`, { deviceId });
       screens.set(deviceId, (screens.get(deviceId) ?? 0) + 1);
       return { ok: true, via: 'adb' };
     },
@@ -149,7 +149,7 @@ export function devicesMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
         throw refusal('device stream after must be the id and seq of a chunk this device sent');
       }
       const session = ready(threadId, deviceId);
-      if (ctx.settings.deviceStream !== true) return { deviceId, state: 'off', reason: STREAM_OFF, chunks: [] };
+      if (ctx.settingsInForce().deviceStream !== true) return { deviceId, state: 'off', reason: STREAM_OFF, chunks: [] };
       if (session.platform !== 'android') return { deviceId, state: 'unavailable', reason: 'iOS Simulators have no live stream; the panel shows their screenshots', chunks: [] };
       const id = `fake-${deviceId}`;
       // The first answer starts at the key frame; each later one waits a frame's time and sends the next.
@@ -165,7 +165,7 @@ export function devicesMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
     'devices.clipboard': async ({ threadId, deviceId, copy }) => {
       if (copy !== undefined && copy !== 'copy' && copy !== 'cut') throw refusal('device clipboard copy must be copy or cut');
       ready(threadId, deviceId);
-      if (!live(deviceId)) throw refusal(`the device clipboard needs the live stream: ${ctx.settings.deviceStream === true ? 'show the device in the Device panel to start it' : STREAM_OFF}`, { deviceId });
+      if (!live(deviceId)) throw refusal(`the device clipboard needs the live stream: ${ctx.settingsInForce().deviceStream === true ? 'show the device in the Device panel to start it' : STREAM_OFF}`, { deviceId });
       return { text: clipboards.get(deviceId) ?? 'Copied on the fake phone' };
     },
     'devices.screenshot': async ({ threadId, deviceId, hostId }) => {

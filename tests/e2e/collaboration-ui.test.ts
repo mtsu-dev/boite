@@ -34,11 +34,10 @@ async function openCoordination() {
   await page.click('[data-testid=panel-add-menu]:not(.closing) [data-value="coordination"]');
 }
 
-/** Maximize and restore are rows of the panel switcher's list. */
+/** Maximize and restore are a button of the panel's strip. */
 async function toggleMaximize() {
-  await page.click('[data-testid=panel-add]');
-  await page.waitFor(`document.querySelector('[data-testid=panel-add-menu]:not(.closing) [data-value="panel-maximize"]')`);
-  await page.click('[data-testid=panel-add-menu]:not(.closing) [data-value="panel-maximize"]');
+  await page.waitFor(`document.querySelector('[data-testid=panel-maximize]')`);
+  await page.click('[data-testid=panel-maximize]');
 }
 
 async function prepareDiscussions() {

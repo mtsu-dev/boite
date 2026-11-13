@@ -1,7 +1,8 @@
 import { expect } from 'vitest';
-import { RpcErrorCode, type AgentProfile } from '@boite/contracts';
+import { RpcErrorCode, type AgentCreated, type AgentProfile } from '@boite/contracts';
 import { test } from '../test/fake-client';
-import type { FakeClient } from './fake-client';
+import { FakeClient } from './fake-client';
+import { sharedPair } from '../test/shared-projects';
 
 async function agent(client: FakeClient, name = 'Mira'): Promise<AgentProfile> {
   return client.call('agents.profile.save', { value: { name, domain: '', instructions: '', avatar: '', status: 'active', projectIds: [],
@@ -160,7 +161,7 @@ test("fake agents.create: the core's refusals, then the bot made at once on the 
   expect(await live()).not.toContain('Scribe');
 
   // Bounds hold on the trimmed text, as the name's do.
-  const { agent: scribe, threadId: conversation } = await client.call('agents.create', { threadId, name: 'Scribe', domain: ` ${'d'.repeat(500)} `, effort: 'high', projects: ['notes'] });
+  const { agent: scribe, threadId: conversation } = await client.call('agents.create', { threadId, name: 'Scribe', domain: ` ${'d'.repeat(500)} `, effort: 'high', projects: ['notes'] }) as AgentCreated;
   expect(scribe).toMatchObject({ name: 'Scribe', domain: 'd'.repeat(500), status: 'active', projectIds: ['p-notes'], selection: { providerId: 'echo', accountId: 'a-echo', model: 'echo-1', effort: 'high', permissionMode: 'bypassPermissions' } });
   expect(conversation).not.toBeNull();
   expect(await client.call('questions.list', { threadId })).toEqual([]);
@@ -169,7 +170,7 @@ test("fake agents.create: the core's refusals, then the bot made at once on the 
   const { models } = await client.call('providers.probe', { providerId: 'claude', accountId: 'a-claude-main' });
   const onDefault = await client.call('threads.create', { projectId: 'p-boite', providerId: 'claude', accountId: 'a-claude-main' });
   expect(models[0]!.default).not.toBe(true);
-  expect((await client.call('agents.create', { threadId: onDefault.id, name: 'Herald' })).agent.selection.model).toBe(models.find((model) => model.default === true)!.id);
+  expect((await client.call('agents.create', { threadId: onDefault.id, name: 'Herald' }) as AgentCreated).agent.selection.model).toBe(models.find((model) => model.default === true)!.id);
 });
 
 test('fake model cards name the provider and move an agent to another one, allowing the route', async ({ createClient }) => {
@@ -221,4 +222,91 @@ test('fake bots on a provider turned off name the fix in their status and hear o
   await client.call('threads.update', { threadId, accountId: 'a-codex' });
   await client.call('providers.setEnabled', { providerId: 'codex', enabled: false });
   expect((await status()).problem).toMatch(/^Codex is turned off on this machine;/);
+});
+
+test('where bot creation asks first, a thread gets a card: Approve creates the bot, Decline creates none', async ({ createClient }) => {
+  const client = await createClient({ delayMs: 0 });
+  await client.call('settings.set', { agentBotCreation: 'ask' });
+  const { id: threadId } = await client.call('threads.create', { projectId: 'p-boite', providerId: 'echo', accountId: 'a-echo' });
+  await client.call('turns.start', { threadId, prompt: 'make me a bot' });
+  const names = async () => (await client.call('agents.snapshot', {})).profiles.map((profile) => profile.name);
+
+  const asked = await client.call('agents.create', { threadId, name: 'Scribe', domain: 'Notes', projects: ['notes'] });
+  expect('agent' in asked).toBe(false);
+  expect(asked).toMatchObject({ setting: { kind: 'bot', bot: { name: 'Scribe', domain: 'Notes' } } });
+  expect(await names()).not.toContain('Scribe');
+  // The same bot is not asked twice while its card is open.
+  await expect(client.call('agents.create', { threadId, name: 'scribe' })).rejects.toMatchObject({ code: RpcErrorCode.Refused });
+
+  const made = await client.call('agents.create.approve', { threadId, questionId: (asked as { questionId: string }).questionId });
+  expect(made.agent).toMatchObject({ name: 'Scribe', selection: { permissionMode: 'bypassPermissions' } });
+  expect(await names()).toContain('Scribe');
+  expect(await client.call('questions.list', { threadId })).toEqual([]);
+
+  const second = await client.call('agents.create', { threadId, name: 'Herald' }) as { questionId: string };
+  await client.call('questions.answer', { threadId, questionId: second.questionId, optionIds: ['refuse'] });
+  expect(await names()).not.toContain('Herald');
+  await expect(client.call('agents.create.approve', { threadId, questionId: second.questionId })).rejects.toMatchObject({ code: RpcErrorCode.NotFound });
+});
+
+test('the fake bounds a thread to its project until the machine reach opens, and names the command in its refusal', async ({ createClient }) => {
+  const client = await createClient({ delayMs: 0 });
+  const others = async () => (await client.call('collaboration.directory', { threadId: 't-trace' })).agents.filter((agent) => agent.project !== 'boite');
+  // The demo machine reads as an install that already held data: open.
+  const here = (await client.call('collaboration.identity', {})).coreId;
+  const far = (await others()).find((agent) => agent.coreId === here)!;
+  expect(far).toBeDefined();
+
+  await client.call('settings.set', { coordinationReach: 'project' });
+  expect(await others()).toEqual([]);
+  await expect(client.call('collaboration.send', { threadId: 't-trace', to: { coreId: far.coreId, threadId: far.threadId }, text: 'hello', requestId: 'reach-1' }))
+    .rejects.toMatchObject({ code: RpcErrorCode.Refused, message: expect.stringContaining('boite settings request coordinationReach machine') });
+
+  await client.call('settings.set', { coordinationReach: 'machine' });
+  expect((await others()).map((agent) => agent.threadId)).toContain(far.threadId);
+});
+
+// Review round 1: the core's exceptions hold on the in-memory client at the closed reach.
+test.each(['directory','read'] as const)('fake preserves the contact-shared project exception at project reach for %s',async operation=>{
+ const pair=await sharedPair();
+ const {a,b,bid,at,bt}=pair;
+ try {
+  const allowed=()=>operation==='directory'?a.call('collaboration.directory',{threadId:at.id}):a.call('collaboration.read',{threadId:at.id,target:{coreId:bid,threadId:bt.id}});
+  await b.call('contacts.grant',{coreId:pair.aid,projectId:pair.bp.id,readThreads:true});
+  await a.call('settings.set',{coordinationReach:'project'});
+  const out=await allowed();
+  expect('agents' in out?out.agents.some(t=>t.coreId===bid&&t.threadId===bt.id):out.contact.coreId===bid).toBe(true);
+ } finally {pair.close();}
+});
+
+test('fake preserves Contacts bot reach on a closed machine',async()=>{
+ const client=new FakeClient({delayMs:0});await client.connect();
+ try{
+  await client.call('settings.set',{coordinationReach:'project'});
+  const bot=await client.call('agents.builtin.ensure',{kind:'contacts'});
+  const {threadId}=await client.call('agents.open',{agentId:bot.id});
+  expect((await client.call('collaboration.directory',{threadId})).agents.some(t=>t.project==='boite')).toBe(true);
+ }finally{client.close();}
+});
+
+// Review round 2: a link opens its one project of the contact's machine, not every project that contact granted.
+test.each(['directory', 'search', 'read'] as const)('project reach excludes a granted but unassociated contact project from %s', async operation => {
+  const pair = await sharedPair();
+  const { a, b, aid, bid, at, bp } = pair;
+  try {
+    const other = (await b.call('threads.list', {})).find(t => t.projectId !== null && t.projectId !== bp.id && !t.archived);
+    if (!other?.projectId) throw new Error('expected a second demo project');
+    await b.call('contacts.grant', { coreId: aid, projectId: other.projectId, readThreads: true });
+    await a.call('settings.set', { coordinationReach: 'project' });
+    if (operation === 'directory') {
+      const directory = await a.call('collaboration.directory', { threadId: at.id });
+      expect(directory.agents.some(t => t.coreId === bid && t.threadId === other.id)).toBe(false);
+    } else if (operation === 'search') {
+      const found = await a.call('collaboration.search', { threadId: at.id, query: other.title });
+      expect(found.matches.some(t => t.coreId === bid && t.threadId === other.id)).toBe(false);
+    } else {
+      const result = await a.call('collaboration.read', { threadId: at.id, target: { coreId: bid, threadId: other.id } }).catch(error => error);
+      expect(result).toMatchObject({ code: RpcErrorCode.Refused });
+    }
+  } finally { pair.close(); }
 });

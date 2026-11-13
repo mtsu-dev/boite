@@ -3,6 +3,7 @@
   import { MediaQuery } from 'svelte/reactivity';
   import { currentSetting, experimentOf, isExperimentKey, type QuestionAnswer, type Settings, type SettingAsk } from '@boite/contracts';
   import { readExperiments, setExperiment, subscribeExperiments } from '../lib/experiments';
+  import { experimentsListed } from '../lib/experiments.svelte';
   import { keepFocus } from '../lib/focus';
   import { desktopSettings } from '../lib/settings-tabs';
   import { retiredHint, settingHeading, settingHint, settingLabel, settingPlaceText, settingsReachable, settingValueText } from '../lib/setting-requests';
@@ -53,8 +54,10 @@
 
   const change = $derived(setting.kind === 'change' ? setting : null);
   /** An experiment is this device's own switch, which any of the user's devices flips for itself. */
-  const experiment = $derived(change === null ? null : experimentOf(change.key));
-  /** An experiment this build no longer lists: it graduated, and the card can only be refused. */
+  const known = $derived(change === null ? null : experimentOf(change.key));
+  /** Null too for an id without a switch in the build that decides: a finished feature, or any experiment on a Release. */
+  const experiment = $derived(known !== null && experimentsListed().includes(known) ? known : null);
+  /** An experiment this build no longer lists: it graduated or runs in a Nightly only, and the card can only be refused. */
   const retired = $derived(change !== null && experiment === null && isExperimentKey(change.key));
   let experiments = $state(readExperiments());
   $effect(() => subscribeExperiments((enabled) => { experiments = enabled; }));
