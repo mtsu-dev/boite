@@ -96,18 +96,17 @@ export function releaseNotes(
   commits: Commit[], repository: string, tag: string, previous?: string, announcement = '', files: string[] = [],
 ): string {
   const url = `https://github.com/${repository}`;
-  const list = (group: Commit[]) => group.map(({ sha, subject, authors }) =>
-    `- ${escapeMarkdown(subject)} ([${sha.slice(0, 7)}](${url}/commit/${sha}))${credits(authors)}`,
-  ).join('\n');
+  const entry = ({ sha, subject, authors }: Commit) =>
+    `- ${escapeMarkdown(subject)} ([${sha.slice(0, 7)}](${url}/commit/${sha}))${credits(authors)}`;
   const known = new Set<string>(SECTIONS.map(([type]) => type));
   const groups = [
     ...SECTIONS.map(([type, title]) => [title, commits.filter((commit) => commitType(commit.subject) === type)] as const),
     ['Other changes', commits.filter((commit) => !known.has(commitType(commit.subject) ?? ''))] as const,
-  ].filter(([, group]) => group.length > 0);
+  ].filter(([, group]) => group.length > 0).map(([title, group]) => [title, group.map(entry)] as const);
   // A list with nothing to tell apart needs no heading.
-  const changes = groups.length === 1 && groups[0]![0] === 'Other changes'
-    ? list(groups[0]![1])
-    : groups.map(([title, group]) => `### ${title}\n\n${list(group)}`).join('\n\n');
+  const headed = !(groups.length === 1 && groups[0]![0] === 'Other changes');
+  const render = (sections: (readonly [string, string[]])[]) => sections
+    .map(([title, lines]) => headed ? `### ${title}\n\n${lines.join('\n')}` : lines.join('\n')).join('\n\n');
   const compare = previous
     ? `[Full diff](${url}/compare/${encodeURIComponent(previous)}...${encodeURIComponent(tag)})`
     : '';
@@ -115,9 +114,36 @@ export function releaseNotes(
     ? '> [!WARNING]\n> Nightly builds are unstable and may contain bugs or unfinished changes. Back up your Boite data before installing or switching channels.'
     : '';
   const downloads = downloadNotes(repository, tag, files);
-  return [warning, downloads, announcement.trim(), downloads ? '## What\'s changed' : '', changes || 'No code changes.', compare]
-    .filter(Boolean).join('\n\n') + '\n';
+  const assemble = (changes: string, more = '') =>
+    [warning, downloads, announcement.trim(), downloads ? '## What\'s changed' : '', changes || 'No code changes.', more, compare]
+      .filter(Boolean).join('\n\n') + '\n';
+  const notes = assemble(render(groups));
+  if (notes.length <= NOTES_LIMIT) return notes;
+  // The list keeps whole entries, in section order, and links the rest.
+  const more = (count: number) =>
+    `${count} more ${count === 1 ? 'change is' : 'changes are'} in the [commit history](${url}/commits/${encodeURIComponent(tag)}).`;
+  const budget = NOTES_LIMIT - assemble('-', more(commits.length)).length + 1;
+  const kept: [string, string[]][] = [];
+  let used = 0;
+  let shown = 0;
+  fill: for (const [title, lines] of groups) {
+    const heading = headed ? `### ${title}\n\n`.length : 0;
+    const separator = kept.length ? 2 : 0;
+    for (const [index, line] of lines.entries()) {
+      const cost = line.length + (index ? 1 : heading + separator);
+      if (used + cost > budget) break fill;
+      if (!index) kept.push([title, []]);
+      kept.at(-1)![1].push(line);
+      used += cost;
+      shown++;
+    }
+  }
+  return assemble(render(kept), more(commits.length - shown));
 }
+
+// GitHub refuses a release body longer than this. A first release lists the
+// whole history (1059 commits for v0.1.0, 187,608 characters).
+export const NOTES_LIMIT = 125_000;
 
 function git(args: string[]): string {
   const result = Bun.spawnSync(['git', ...args], { stdout: 'pipe', stderr: 'pipe' });

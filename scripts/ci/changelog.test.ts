@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { previousRelease, releaseNotes, type Release } from './changelog.ts';
+import { NOTES_LIMIT, previousRelease, releaseNotes, type Release } from './changelog.ts';
 
 const release = (tag: string, date: string, prerelease = false, draft = false): Release => ({
   tag_name: tag, published_at: date, prerelease, draft,
@@ -73,6 +73,26 @@ test('each commit credits its author and co-authors, GitHub accounts by login', 
 test('the first release has no invented previous version', () => {
   expect(previousRelease([], 'v1.0.0', () => true)).toBeUndefined();
   expect(releaseNotes([{ sha: 'a'.repeat(40), subject: 'Initial implementation' }], 'example/boite', 'v1.0.0')).not.toContain('/compare/');
+});
+
+test('notes past GitHub\'s body limit keep whole entries in order and link the rest', () => {
+  const commits = Array.from({ length: 1500 }, (_, index) => ({
+    sha: index.toString(16).padStart(40, '0'),
+    subject: `${index < 500 ? 'feat' : 'fix'}: change number ${index} ${'x'.repeat(40)}`,
+    authors: ['meetsu <96637888+klNuno@users.noreply.github.com>'],
+  }));
+  const notes = releaseNotes(commits, 'example/boite', 'v1.0.0', undefined, 'Hello.');
+  expect(notes.length).toBeLessThanOrEqual(NOTES_LIMIT);
+  expect(notes.startsWith('Hello.\n\n### Features\n\n')).toBe(true);
+  const shown = notes.split('\n').filter((line) => line.startsWith('- '));
+  expect(shown.every((line) => line.endsWith(' by @klNuno'))).toBe(true);
+  expect(shown[0]).toContain('change number 0 ');
+  expect(shown.at(-1)).toContain(`change number ${shown.length - 1} `);
+  expect(notes).toContain('### Fixes');
+  expect(notes.trimEnd().endsWith(`${1500 - shown.length} more changes are in the [commit history](https://github.com/example/boite/commits/v1.0.0).`)).toBe(true);
+  expect(NOTES_LIMIT - notes.length).toBeLessThan(400);
+  const short = releaseNotes(commits.slice(0, 3), 'example/boite', 'v1.0.0');
+  expect(short).not.toContain('more change');
 });
 
 test('release downloads link the actual installers by platform before the changelog', () => {
