@@ -163,6 +163,23 @@ export const FEATURE_CUTS: Partial<Record<ExperimentId, { ui: boolean; core: boo
   'auto-goal': { ui: true, core: true },
 };
 
+const LOADED = new Set<string>();
+
+/**
+ * Every module of a cut feature calls this at its top level with its marker
+ * written out. A call with an effect is never dropped by a bundler, unlike an
+ * unused constant, so a module that reaches a bundle carries its marker there
+ * however it was imported.
+ */
+export function markFeature(marker: string): void {
+  LOADED.add(marker);
+}
+
+/** The markers of the feature modules loaded so far. */
+export function loadedFeatures(): readonly string[] {
+  return [...LOADED];
+}
+
 /** The marker of a feature's code in a bundle. Built here from two parts, so this file never carries one. */
 export function featureMarker(id: ExperimentId): string {
   return ['boite-feature', id].join(':');

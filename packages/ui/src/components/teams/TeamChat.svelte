@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { markFeature } from '@boite/contracts';
   import { tick } from 'svelte';
   import { Archive, ArrowDown, ArrowUp, Lock, Pause, Reply, UserRound } from '@lucide/svelte';
   import { TEAM_OWNER, type AgentProfile, type Message, type TeamParty, type TeamPostRef, type Thread } from '@boite/contracts';
@@ -111,6 +112,8 @@
     pinned = true;
     toBottom();
   }
+  // Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
+  markFeature('boite-feature:teams');
 </script>
 
 <section data-feature="boite-feature:teams" class="team-chat" data-testid="team-chat" data-team-id={team?.id}>

@@ -2,6 +2,7 @@
  * `boite team`: a bot posts in the teams it belongs to, reads them, and
  * proposes a team, an invitation or its leaving on a card (`docs/internals/teams.md`).
  */
+import { markFeature } from '@boite/contracts';
 import type { Team, TeamPost } from '@boite/contracts';
 import type { CoreClient } from './client.ts';
 import { Usage } from './cli-args.ts';
@@ -136,5 +137,5 @@ export async function teamCommand(args: string[], client: CoreClient, threadId: 
   }
 }
 
-/** Marks this module in a bundle (scripts/ci/feature-cut.ts). */
-export const FEATURE_MARKER = 'boite-feature:teams';
+// Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
+markFeature('boite-feature:teams');

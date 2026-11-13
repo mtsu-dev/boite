@@ -1,4 +1,5 @@
 /** The council methods (`docs/internals/council.md`). Who may call which is in `access.ts`; each refuses while the experiment is off. */
+import { markFeature } from '@boite/contracts';
 import { COUNCIL_DEFAULT_EFFORT } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { accountFor, catalog, PROBE_TIMEOUT_MS, providersNamed } from '../delegation/routes.ts';
@@ -61,5 +62,5 @@ export function registerCouncil(core: Core, probe: ProviderProbe): void {
   core.router.register('council.stop', (params, ctx) => core.council.stop(object(params), ctx.connection.identity.principal));
 }
 
-/** Marks this module in a bundle (scripts/ci/feature-cut.ts). */
-export const FEATURE_MARKER = 'boite-feature:debates';
+// Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
+markFeature('boite-feature:debates');

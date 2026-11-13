@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { markFeature } from '@boite/contracts';
   import { untrack } from 'svelte';
   import { TextQuote } from '@lucide/svelte';
   import { AUTO_GOAL_MIN_CHARS } from '@boite/contracts';
@@ -31,6 +32,8 @@
     const ok = await store.saveSettings({ autoGoalMinChars: chars as number }).finally(() => { saving = false; });
     if (ok) dirty = false;
   }
+  // Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
+  markFeature('boite-feature:auto-goal');
 </script>
 
 <!-- The core decides on the owner's machine, so a paired device does not see the threshold. -->

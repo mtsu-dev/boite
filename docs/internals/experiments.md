@@ -225,12 +225,15 @@ refusal that names the tag, the code in the bundle.
 ### The proof
 
 `FEATURE_CUTS`, beside the tags, says which features are cut from which
-bundle. Each writes its marker, `boite-feature:<id>`, in the modules its lazy
-entry loads: a `data-feature` attribute on the root of a component, an
-exported constant in a core module. `scripts/ci/feature-cut.ts` reads a
-bundle and fails when it holds the marker of a feature above its kind (a
-leak), or lacks the marker of a feature it must hold (the marker went, and
-the first check would pass on anything):
+bundle, and `scripts/ci/feature-modules.ts` lists the modules of each: all
+that its lazy entry loads and nothing else imports. Every one of them calls
+`markFeature('boite-feature:<id>')` at its top level (a component in its
+script). A call with an effect is one thing no bundler drops, where an unused
+constant goes as soon as a module is imported by name: so a module that
+reaches a bundle carries its marker there however it got in.
+`scripts/ci/feature-cut.ts` reads a bundle and fails when it holds the marker
+of a feature above its kind (a leak), or lacks the marker of a feature it
+must hold (the marker went, and the first check would pass on anything):
 
 ```sh
 bun scripts/ci/feature-cut.ts           # packages/ui/dist and packages/core/dist, as the kind package.json says
@@ -240,8 +243,10 @@ bun scripts/ci/feature-cut.ts --build   # builds the UI and the core for the thr
 The desktop jobs of `desktop.yml` run the first form on what they just
 packaged, the compiled core included, so a Nightly and a Release are each
 checked as what they are; the Linux x64 job also runs the second.
-`scripts/ci/feature-cut.test.ts` plants a leak and a lost marker, and checks
-that each cut feature's sources hold its marker and its flag.
+`scripts/ci/feature-cut.test.ts` plants a leak and a lost marker, checks the
+marker call in every listed module, fails on a file of a feature's directory
+that is in neither list of `feature-modules.ts`, and bundles a direct import
+of each cut core store as a Release with Bun itself: the scan must see it.
 
 ### Adding a feature so it can be cut
 
@@ -254,8 +259,9 @@ that each cut feature's sources hold its marker and its flag.
    is not `release`.
 3. The places that draw or call the feature go through the entry and handle
    `null`: draw nothing, or refuse with `experimentRefusal(id, version)`.
-4. Write the marker `boite-feature:<id>` once in a module the entry loads, add
-   the feature to `FEATURE_CUTS`, and name its files in the last table of
+4. Call `markFeature('boite-feature:<id>')` at the top level of every module
+   of the feature, list them in `scripts/ci/feature-modules.ts`, add the
+   feature to `FEATURE_CUTS`, and name its entry in the table of
    `scripts/ci/feature-cut.test.ts`.
 5. Run `bun scripts/ci/feature-cut.ts --build`. A leak names the chunk that
    holds the marker: find who imports the feature outside its entry.

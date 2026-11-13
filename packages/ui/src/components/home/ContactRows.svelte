@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { markFeature } from '@boite/contracts';
   import { UserPlus } from '@lucide/svelte';
   import { contactRows, initialsOf, openContact, watchContacts } from '../../lib/contacts.svelte';
   import { count } from '../../lib/format';
@@ -18,6 +19,8 @@
   const watched = watchContacts(() => machines);
   const rows = $derived(contactRows(watched()));
   const show = (owner: Store, coreId: string | null) => void openContact(owner, coreId);
+  // Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
+  markFeature('boite-feature:contacts');
 </script>
 
   <!-- A row stands for every copy of its contact in the group: it is current on any of them. -->

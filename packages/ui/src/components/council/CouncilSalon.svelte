@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { markFeature } from '@boite/contracts';
   import { AtSign, LoaderCircle, Square } from '@lucide/svelte';
   import { COUNCIL_AUTHOR, COUNCIL_EXPERIMENT, COUNCIL_LEGACY_SUMMARY, COUNCIL_LIMITS, COUNCIL_MENTION_END, COUNCIL_OWNER, COUNCIL_SYSTEM, councilMention, councilOver, councilScore, councilTable, type CouncilPost, type ThreadId } from '@boite/contracts';
   import { councilRoom, faceOf, followCouncil } from '../../lib/council.svelte';
@@ -226,6 +227,8 @@
     void council?.roundsDone;
     if (pinned && scroller) scroller.scrollTop = scroller.scrollHeight;
   });
+  // Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
+  markFeature('boite-feature:debates');
 </script>
 
 <!-- data-feature: the marker a build without the Council must not hold (scripts/ci/feature-cut.ts). -->

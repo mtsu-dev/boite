@@ -229,7 +229,7 @@ export {
   type SettingsReading,
 } from './setting-requests.ts';
 export {
-  BUILD_KINDS, BUILD_KIND_NAMES, COMPILED_BUILD_KIND, EXPERIMENTAL_SETTINGS_STAGE, FEATURE_CUTS, buildKindOf, featureCompiled, featureDefines, featureFlag, featureMarker, featureRuns, stageRuns,
+  BUILD_KINDS, BUILD_KIND_NAMES, COMPILED_BUILD_KIND, EXPERIMENTAL_SETTINGS_STAGE, FEATURE_CUTS, buildKindOf, featureCompiled, featureDefines, featureFlag, featureMarker, markFeature, loadedFeatures, featureRuns, stageRuns,
   EXPERIMENT_IDS, EXPERIMENT_STAGES, EXPERIMENTAL_SETTINGS, effectiveExperiments, experimentListed, experimentRefusal, experimentStartRefusal, experimentalSettingRefusal, experimentsRun, holdExperimentalSettings, keepStoredExperimentalSettings,
   isExperimentId, isExperimentalSetting, isReleaseVersion, listedExperiments,
   type BuildKind, type ExperimentId, type ExperimentalSetting, type FeatureStage,

@@ -1,3 +1,4 @@
+import { markFeature } from '@boite/contracts';
 /** Shared by the desktop and phone controls; the overlay owns the rope. */
 class Whip {
   held = $state(false);
@@ -24,3 +25,6 @@ export function installWhipEscape(): () => void {
   window.addEventListener('keydown', onKey, true);
   return () => window.removeEventListener('keydown', onKey, true);
 }
+
+// Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
+markFeature('boite-feature:whip');

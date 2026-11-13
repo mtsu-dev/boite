@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { markFeature } from '@boite/contracts';
   import { Users } from '@lucide/svelte';
   import type { QuestionAnswer, TeamAsk } from '@boite/contracts';
   import { errorText } from '../lib/errors';
@@ -70,6 +71,8 @@
   function outcome(given: QuestionAnswer): 'applied' | 'refused' {
     return given.optionIds.length === 0 && (given.text ?? '').startsWith('applied') ? 'applied' : 'refused';
   }
+  // Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
+  markFeature('boite-feature:teams');
 </script>
 
 <!-- An answer this client just sent clears the pending list before the card's answer arrives: it stays busy until then. -->

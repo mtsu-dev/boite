@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { markFeature } from '@boite/contracts';
   import { untrack } from 'svelte';
   import { Cpu, ShieldCheck, Users } from '@lucide/svelte';
   import type { SharedProjectScope } from '@boite/contracts';
@@ -46,6 +47,8 @@
     catch (e) { error = errorText(e); }
     finally { busy = false; }
   }
+  // Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
+  markFeature('boite-feature:contacts');
 </script>
 
 <SharedDialog title={project ? `${strings.shared.heading} · ${project.contact.name}` : strings.shared.heading} {onclose} compact testid="shared-project-dialog">

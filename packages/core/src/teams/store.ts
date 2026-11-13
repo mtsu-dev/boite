@@ -7,6 +7,7 @@
  * chat. A machine with a member on it keeps a mirror (`mirror.ts`), the team's
  * row and the posts it may have, so a letter runs there as it does here.
  */
+import { markFeature } from '@boite/contracts';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -739,5 +740,5 @@ export class TeamStore {
   }
 }
 
-/** Marks this module in a bundle (scripts/ci/feature-cut.ts). */
-export const FEATURE_MARKER = 'boite-feature:teams';
+// Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
+markFeature('boite-feature:teams');

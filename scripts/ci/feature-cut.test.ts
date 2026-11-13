@@ -1,9 +1,10 @@
 import { afterEach, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { EXPERIMENT_IDS, EXPERIMENT_STAGES, FEATURE_CUTS, featureDefines, featureFlag, featureMarker, type ExperimentId } from '../../packages/contracts/src/experiments.ts';
 import { describe, scanBundle, type Cuts } from './feature-cut.ts';
+import { FEATURE_DIRECTORIES, FEATURE_MODULES, STAYS } from './feature-modules.ts';
 
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
@@ -99,3 +100,41 @@ test('the UI build and the core build define the kind and the flags of the stamp
   expect(defineFlags('2.0.0')).toEqual(Object.entries(featureDefines('2.0.0')).flatMap(([name, value]) => ['--define', `${name}=${value}`]));
   for (const script of ['build.ts', 'compile.ts']) expect(readFileSync(join(import.meta.dir, '..', '..', 'packages', 'core', 'bin', script), 'utf8'), script).toContain('defineFlags(');
 });
+
+test('every module of a cut feature calls markFeature with its marker, and no file of a feature directory is unaccounted for', () => {
+  const root = join(import.meta.dir, '..', '..');
+  expect(Object.keys(FEATURE_MODULES).sort()).toEqual(Object.keys(FEATURE_CUTS).sort());
+  for (const [id, sides] of Object.entries(FEATURE_MODULES) as [ExperimentId, { ui: string[]; core: string[] }][]) {
+    for (const side of ['ui', 'core'] as const) {
+      expect(sides[side].length > 0, `${id} ${side}`).toBe(FEATURE_CUTS[id]![side]);
+      for (const file of sides[side]) expect(readFileSync(join(root, file), 'utf8'), file).toContain(`markFeature('${featureMarker(id)}');`);
+    }
+  }
+  for (const [id, directories] of Object.entries(FEATURE_DIRECTORIES) as [ExperimentId, string[]][]) {
+    const listed = new Set([...FEATURE_MODULES[id]!.ui, ...FEATURE_MODULES[id]!.core]);
+    for (const directory of directories) {
+      for (const name of readdirSync(join(root, directory))) {
+        const file = `${directory}/${name}`;
+        if (/\.test\.ts$/.test(name) || !/\.(?:ts|svelte)$/.test(name)) continue;
+        expect(listed.has(file) || file in STAYS, `${file} is in the directory of ${id}: list it in feature-modules.ts, or in STAYS with its reason`).toBe(true);
+      }
+    }
+  }
+});
+
+test('a core module imported directly, outside its entry, is a leak the scan sees in a real Release bundle', async () => {
+  const root = join(import.meta.dir, '..', '..');
+  // What a careless change does: a static import of one name of a cut module. The bundler keeps the code and drops every unused export.
+  const leaks: [ExperimentId, string, string][] = [
+    ['teams', 'packages/core/src/teams/store.ts', 'TeamStore'],
+    ['debates', 'packages/core/src/council/store.ts', 'CouncilStore'],
+    ['auto-goal', 'packages/core/src/auto-goal.ts', 'autoGoal'],
+  ];
+  for (const [id, file, name] of leaks) {
+    const dir = bundle({ 'entry.ts': `import { ${name} } from ${JSON.stringify(join(root, file))};\n(globalThis as Record<string, unknown>).leaked = ${name};\n` });
+    const outdir = join(dir, 'out');
+    const built = await Bun.build({ entrypoints: [join(dir, 'entry.ts')], target: 'bun', define: featureDefines('2.0.0'), minify: true, splitting: true, outdir });
+    expect(built.success, id).toBe(true);
+    expect(scanBundle(outdir, 'core', 'release').filter(finding => finding.feature === id).map(finding => finding.problem), `${id}: ${file} imported directly`).toEqual(['leak']);
+  }
+}, 60_000);

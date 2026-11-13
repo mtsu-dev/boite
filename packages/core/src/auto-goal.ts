@@ -5,6 +5,7 @@
  * a build below the experiment's tag does not hold this module. The goal it
  * starts is an ordinary one: running and reviewing it is `activity.ts`.
  */
+import { markFeature } from '@boite/contracts';
 import { AUTO_GOAL_MIN_CHARS, isComposerActivity } from '@boite/contracts';
 import type { ComposerChoice, ThreadActivity } from '@boite/contracts';
 import type { ActivityStore } from './activity.ts';
@@ -12,9 +13,6 @@ import type { Core } from './core.ts';
 import { messageOf, refused } from './errors.ts';
 import { nativeCommandPrompt } from './threads/operations.ts';
 import { addGoalCard } from './todos.ts';
-
-/** Marks this module in a bundle (scripts/ci/feature-cut.ts). */
-export const FEATURE_MARKER = 'boite-feature:auto-goal';
 
 /**
  * Whether a prompt that starts a turn also starts an automatic reviewed goal:
@@ -82,3 +80,6 @@ function lastPrompt(core: Core, threadId: string): { turnId: string; messageId: 
   }
   return null;
 }
+
+// Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
+markFeature('boite-feature:auto-goal');

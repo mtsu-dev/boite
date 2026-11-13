@@ -1,3 +1,4 @@
+import { markFeature } from '@boite/contracts';
 import { createHash } from 'node:crypto';
 import { COUNCIL_AUTHOR, COUNCIL_DEFAULT_EFFORT, COUNCIL_DEFAULT_MODELS, COUNCIL_EXPERIMENT, COUNCIL_LEGACY_SUMMARY, COUNCIL_LIMITS, COUNCIL_OWNER, COUNCIL_SYSTEM, councilHandles, councilMention, councilNames, councilNearestEffort, councilOver, councilSplitEffort, councilTable, threadActive } from '@boite/contracts';
 import type { Council, CouncilMember, CouncilPost, CouncilReadOnly, CouncilStatus, Message, Principal, RpcParams, ThreadSummary, Turn } from '@boite/contracts';
@@ -889,5 +890,5 @@ export class CouncilStore {
   }
 }
 
-/** Marks this module in a bundle (scripts/ci/feature-cut.ts). */
-export const FEATURE_MARKER = 'boite-feature:debates';
+// Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
+markFeature('boite-feature:debates');
