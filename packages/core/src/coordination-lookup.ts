@@ -1,4 +1,4 @@
-import { TRANSCRIPT_ENTRY_PAGE, TRANSCRIPT_ENTRY_TEXT, TRANSCRIPT_READ_ENTRIES, transcriptStretch as stretch, type AgentContact, type AgentMatch, type AgentTranscriptEntry, type CoordinationPeer, type Message, type MessagePart } from '@boite/contracts';
+import { fitTranscript, TRANSCRIPT_ENTRY_PAGE, TRANSCRIPT_ENTRY_TEXT, TRANSCRIPT_ENTRY_TOOLS, TRANSCRIPT_READ_ENTRIES, transcriptStretch as stretch, type AgentContact, type AgentMatch, type AgentTranscript, type AgentTranscriptEntry, type CoordinationPeer, type Message, type MessagePart } from '@boite/contracts';
 import type { Database } from 'bun:sqlite';
 import { address, text } from './coordination-letter.ts';
 import { invalidParams } from './errors.ts';
@@ -118,20 +118,29 @@ function said(row: Row, held?: Held, sanitize?: (value: string) => string): { te
   return { text: sanitize ? sanitize(raw) : raw, tools: parts.flatMap(part => part.type === 'tool' ? [sanitize ? sanitize(part.name) : part.name] : []) };
 }
 
+/** The newest `TRANSCRIPT_ENTRY_TOOLS` names, each at the 200 characters a reading core accepts, after a count of the ones left out. */
+function pageTools(tools: string[]): string[] {
+  const kept = tools.slice(-TRANSCRIPT_ENTRY_TOOLS).map(name => name.slice(0, 200));
+  return tools.length > kept.length ? [`+${tools.length - kept.length} earlier`, ...kept] : kept;
+}
+
 /**
- * A page of entries or one entry's text, as `query` asks. Only the rows read
- * are loaded: a long thread's tool output is never loaded whole. `held` gives
- * the current parts of a message still streaming, whose row can be up to 30
- * seconds behind.
+ * A page of entries or one entry's text of thread `threadId`, shown as
+ * `contact`, as `query` asks. A page fits `TRANSCRIPT_READ_BUDGET` with the contact card, its newest
+ * entries kept. Only the rows read are loaded: a long thread's tool output is
+ * never loaded whole. `held` gives the current parts of a message still
+ * streaming, whose row can be up to 30 seconds behind.
  */
-export function readTranscript(db: Database, threadId: string, query: TranscriptQuery, held?: Held, sanitize?: (value: string) => string): { entries: AgentTranscriptEntry[]; more: boolean } {
-  return query.entry === undefined ? transcript(db, threadId, query.limit, query.before, held, sanitize) : transcriptEntry(db, threadId, query.entry, query.offset ?? 0, held, sanitize);
+export function readTranscript(db: Database, threadId: string, contact: AgentContact, query: TranscriptQuery, held?: Held, sanitize?: (value: string) => string): AgentTranscript {
+  return query.entry === undefined ? fitTranscript({ contact, ...transcript(db, threadId, query.limit, query.before, held, sanitize) })
+    : { contact, ...transcriptEntry(db, threadId, query.entry, query.offset ?? 0, held, sanitize) };
 }
 
 /**
  * The newest `limit` entries before `before`, oldest first, and whether older
  * ones remain. Each carries the first `ENTRY_TEXT` characters of its text; a
  * longer one names its whole `length` and the `next` offset of the rest.
+ * The caller fits the page to the read budget.
  */
 export function transcript(db: Database, threadId: string, limit: number, before: number | undefined, held?: Held, sanitize?: (value: string) => string): { entries: AgentTranscriptEntry[]; more: boolean } {
   const entries: AgentTranscriptEntry[] = [];
@@ -147,7 +156,7 @@ export function transcript(db: Database, threadId: string, limit: number, before
       const { text, tools } = said(row, held, sanitize);
       if (text.length === 0 && tools.length === 0) continue;
       const page = stretch(text, 0, TRANSCRIPT_ENTRY_TEXT);
-      entries.push({ id: row.id, role: row.role, at: row.created_at, text: page.text, tools, ...(page.next === undefined ? {} : { length: text.length, next: page.next }) });
+      entries.push({ id: row.id, role: row.role, at: row.created_at, text: page.text, tools: pageTools(tools), ...(page.next === undefined ? {} : { length: text.length, next: page.next }) });
     }
     if (entries.length === limit || rows.length < limit) break;
   }
@@ -184,7 +193,7 @@ export function checkTranscript(value: unknown, entry?: { entry?: string; offset
       throw invalidParams(`transcript.entries[${index}]: expected id, role, at, text up to ${most} characters, tool names and offsets within its length`);
     }
     return {
-      id: item.id.slice(0, 100), role: item.role!, at: item.at!, text: item.text, tools: item.tools.slice(0, 50),
+      id: item.id.slice(0, 100), role: item.role!, at: item.at!, text: item.text, tools: item.tools.slice(0, TRANSCRIPT_ENTRY_TOOLS + 1),
       ...(item.length === undefined ? {} : { length: item.length }), ...(item.offset === undefined ? {} : { offset: item.offset }), ...(item.next === undefined ? {} : { next: item.next }),
     };
   });
@@ -192,6 +201,12 @@ export function checkTranscript(value: unknown, entry?: { entry?: string; offset
     throw invalidParams(`transcript: expected entry ${entry.entry} from offset ${entry.offset ?? 0}; that machine may run an older Boite that reads pages only`);
   }
   return { entries, more: single ? false : raw.more };
+}
+
+/** `contact`'s transcript from another core, checked, a page fitted to the read budget whatever that core sent. */
+export function remoteTranscript(contact: AgentContact, value: unknown, entry?: { entry?: string; offset?: number }): AgentTranscript {
+  const page = { contact, ...checkTranscript(value, entry) };
+  return entry?.entry === undefined ? fitTranscript(page) : page;
 }
 
 /** A search result from another core, checked before it reaches an agent. */

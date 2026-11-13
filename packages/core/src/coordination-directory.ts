@@ -1,6 +1,6 @@
 import type { AgentAddress, AgentContact, AgentMatch, AgentTranscript, CoordinationConfig, CoordinationPeer, Message } from '@boite/contracts';
 import type { Core } from './core.ts';
-import { checkMatchExtras, checkRemoteContact, checkTranscript, PARTIAL, partialList, partialName, queryPayload, readTranscript, searchContacts, searchWords, toolOutputEntry, transcriptQuery, type TranscriptQuery } from './coordination-lookup.ts';
+import { checkMatchExtras, checkRemoteContact, remoteTranscript, PARTIAL, partialList, partialName, queryPayload, readTranscript, searchContacts, searchWords, toolOutputEntry, transcriptQuery, type TranscriptQuery } from './coordination-lookup.ts';
 import { address, same } from './coordination-letter.ts';
 import { PeerRefusal } from './coordination-wire.ts';
 import { contactsBot } from './contacts/bot.ts';
@@ -173,7 +173,7 @@ export class CoordinationLookups {
     if (to.coreId === this.side.selfId()) {
       const contact = (resident ? this.side.contact(to.threadId, true) : undefined) ?? this.side.localReach(threadId).find(a => same(a, to)) ?? (to.threadId === threadId ? this.side.contact(threadId) : undefined);
       if (!contact) throw refused(`target: ${to.threadId} is not a contact this thread may reach; see boite threads`);
-      return { contact, ...readTranscript(this.core.journal.db, to.threadId, query, id => this.core.journal.streamingMessage(id)) };
+      return readTranscript(this.core.journal.db, to.threadId, contact, query, id => this.core.journal.streamingMessage(id));
     }
     const peer = this.side.trusted().find(p => p.coreId === to.coreId);
     if (!config.remote) throw refused('cross-machine coordination is disabled for this thread');
@@ -186,7 +186,7 @@ export class CoordinationLookups {
       const contact = checkRemoteContact(raw?.contact as AgentContact, from);
       if (contact.threadId !== to.threadId) throw new Error('transcript of another thread');
       // An older machine sends a page for a read of one entry: say so rather than "did not answer".
-      try { return { contact, ...checkTranscript(answer, query) }; } catch (error) { incompatible = messageOf(error); throw new PeerRefusal(incompatible); }
+      try { return remoteTranscript(contact, answer, query); } catch (error) { incompatible = messageOf(error); throw new PeerRefusal(incompatible); }
     }, [peer]);
     const { results, unavailable } = collect();
     if (!this.side.trusted().some(current => current.coreId === peer.coreId)) throw refused('target.coreId: machine permission revoked');

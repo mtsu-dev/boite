@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'bun:test';
-import type { AgentAddress, AgentTranscript, Turn } from '@boite/contracts';
+import { TRANSCRIPT_READ_BUDGET, type AgentAddress, type AgentTranscript, type Turn } from '@boite/contracts';
 import { echoThread, startTestCore, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
 import { resultPageOf } from '../src/delegation/results.ts';
@@ -19,9 +19,9 @@ function say(h: TestCore, threadId: string, text: string, at: number, turnId = '
   h.core.journal.putMessage({ id, threadId, turnId, role: 'assistant', state: 'complete', createdAt: at, parts: [{ type: 'text', text }, { type: 'tool', toolId: 't1', name: 'Bash', input: {}, status: 'done', output: 'tool output' }] as never });
   return id;
 }
-/** A long answer: the page cut at 3,000 and the entry read from 2,999 that ends at 18,999 both fall inside a surrogate pair. */
+/** A long answer: the page cut at 500 and the entry read from 499 that ends at 16,499 both fall inside a surrogate pair. */
 function long(seed: number, size = 40_000): string {
-  return `${seed}:`.padEnd(2999, 'x') + '😀' + 'y'.repeat(15_997) + '😀' + `${'z'.repeat(size - 19_000)} end ${seed}`;
+  return `${seed}:`.padEnd(499, 'x') + '😀' + 'y'.repeat(15_997) + '😀' + `${'z'.repeat(size - 16_500)} end ${seed}`;
 }
 /** Every entry's whole text, through its `next` cursors. */
 async function whole(read: (entry: string, offset: number) => Promise<AgentTranscript>, page: AgentTranscript): Promise<string[]> {
@@ -39,21 +39,22 @@ async function whole(read: (entry: string, offset: number) => Promise<AgentTrans
   return texts;
 }
 
-test('a default read is a quarter of its former size, and every cut entry reads back whole', async () => {
+test('a default read carries a 500-character preview of each entry, and every cut entry reads back whole', async () => {
   const { h, a, b } = await setup();
   const texts = Array.from({ length: 30 }, (_, index) => long(index));
   for (const [index, text] of texts.entries()) say(h, b, text, 1000 + index);
   const target = h.core.coordination.get(b).self;
   const page = await h.core.coordination.read(a, target);
-  // Measured: 30 entries of 4,000 characters made 120,000 characters of text by default.
+  // Measured on 2026-11-13: this read was 29,990 characters of text and 31,662 of JSON with 3,000 an entry.
   const chars = page.entries.reduce((sum, entry) => sum + entry.text.length, 0);
-  console.log(`default read: ${page.entries.length} entries, ${chars} characters of text, ${JSON.stringify(page).length} bytes of JSON`);
+  console.log(`default read: ${page.entries.length} entries, ${chars} characters of text, ${JSON.stringify(page).length} characters of JSON`);
   expect(page.entries).toHaveLength(10);
-  expect(chars).toBeLessThanOrEqual(30_000);
+  expect(chars).toBeLessThanOrEqual(5_000);
+  expect(JSON.stringify(page).length).toBeLessThan(TRANSCRIPT_READ_BUDGET / 2);
   expect(page.more).toBe(true);
   for (const entry of page.entries) expect(entry.tools).toEqual(['Bash']);
   // The cut never splits a surrogate pair: the entry stops before it and the rest starts with it.
-  expect(page.entries[0]!.next).toBe(2999);
+  expect(page.entries[0]!.next).toBe(499);
   expect(await whole((entry, offset) => h.core.coordination.read(a, target, undefined, undefined, entry, offset), page)).toEqual(texts.slice(20));
   // The older entries are a `before` away, cut the same way.
   const older = await h.core.coordination.read(a, target, 20, page.entries[0]!.at);
@@ -61,6 +62,36 @@ test('a default read is a quarter of its former size, and every cut entry reads 
   expect(await thrown(h.core.coordination.read(a, target, undefined, undefined, page.entries[0]!.id, 40_100))).toThrow('offset: expected 0 to');
   expect(await thrown(h.core.coordination.read(a, target, undefined, undefined, 'no-such-entry'))).toThrow('not an entry of this thread');
   expect(await thrown(h.core.coordination.read(a, target, undefined, undefined, undefined, 5))).toThrow('offset: expected a nonnegative integer beside entry');
+});
+
+test('a page stops at the size budget with its newest entries, and the cursor at the cut reaches the rest', async () => {
+  const { h, a, b } = await setup();
+  const ids = Array.from({ length: 60 }, (_, index) => say(h, b, long(index, 20_000), 1000 + index));
+  // One message that called 400 tools: the newest names stay, after a count of the others.
+  const busy = crypto.randomUUID();
+  h.core.journal.putMessage({ id: busy, threadId: b, turnId: 'history', role: 'assistant', state: 'complete', createdAt: 2000, parts: Array.from({ length: 400 }, (_, index) => ({ type: 'tool', toolId: `t${index}`, name: `tool-${index}`, input: {}, status: 'done', output: '' })) as never });
+  const target = h.core.coordination.get(b).self;
+  const seen: string[] = [];
+  let before: number | undefined;
+  for (let pages = 0; ; pages += 1) {
+    const page = await h.core.coordination.read(a, target, 100, before);
+    const size = JSON.stringify(page).length;
+    if (pages === 0) {
+      console.log(`read of 100 entries: ${page.entries.length} entries, ${size} characters of JSON`);
+      // The newest end is the one kept.
+      const last = page.entries.at(-1)!;
+      expect(last.id).toBe(busy);
+      expect([last.tools.length, last.tools[0], last.tools[1], last.tools.at(-1)]).toEqual([51, '+350 earlier', 'tool-350', 'tool-399']);
+      expect(page.entries.length).toBeLessThan(61);
+    }
+    expect(size).toBeLessThanOrEqual(TRANSCRIPT_READ_BUDGET);
+    expect(page.entries.length).toBeGreaterThan(0);
+    seen.unshift(...page.entries.map(entry => entry.id));
+    if (!page.more) break;
+    before = page.entries[0]!.at;
+    expect(pages).toBeLessThan(20);
+  }
+  expect(seen).toEqual([...ids, busy]);
 });
 
 test('a final answer cut for its reader names the command and offset that read the rest exactly', async () => {
@@ -109,7 +140,7 @@ test('a linked core pages an entry, and an older core that answers with a page i
   say(two.h, two.b, text, 1000);
   const target: AgentAddress = { coreId: cardB.coreId, threadId: two.b };
   const page = await one.h.core.coordination.read(one.a, target);
-  expect(page.entries[0]).toMatchObject({ length: text.length, next: 2999 });
+  expect(page.entries[0]).toMatchObject({ length: text.length, next: 499 });
   expect(await whole((entry, offset) => one.h.core.coordination.read(one.a, target, undefined, undefined, entry, offset), page)).toEqual([text]);
   // An older core reads the payload's thread, limit and before only, and sends a page.
   const request = one.h.core.coordination.request.bind(one.h.core.coordination);
@@ -117,7 +148,7 @@ test('a linked core pages an entry, and an older core that answers with a page i
     const { entry: _entry, offset: _offset, ...older } = payload as Record<string, unknown>;
     return request(peer, operation, operation === 'read' ? older : payload);
   };
-  const older = await thrown(one.h.core.coordination.read(one.a, target, undefined, undefined, page.entries[0]!.id, 2999));
+  const older = await thrown(one.h.core.coordination.read(one.a, target, undefined, undefined, page.entries[0]!.id, 499));
   expect(older).toThrow('older Boite');
   // It answered: the refusal names the mismatch, not a machine that did not answer.
   expect(older).not.toThrow('did not answer');

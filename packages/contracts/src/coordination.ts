@@ -3,6 +3,7 @@ import type { PermissionRequest } from './permissions';
 import type { QuestionRequest } from './questions';
 import type { ThreadStatus, ThreadSummary, ThreadWake } from './threads';
 import type { ContactCapabilities, SharedProjectRef, SharedThreadRef } from './shared-projects';
+import { TOOL_OUTPUT_INLINE_CHARS } from './message-preview';
 
 export type CoordinationMode = 'off' | 'brief' | 'team';
 export interface CoordinationConfig {
@@ -50,8 +51,17 @@ export interface AgentMatch extends AgentContact {
 }
 /** Entries a read returns when the reader names no limit. */
 export const TRANSCRIPT_READ_ENTRIES = 10;
-/** Characters of each entry a page of entries carries; the entry's `next` leads to the rest. */
-export const TRANSCRIPT_ENTRY_TEXT = 3000;
+/** Characters of each entry a page of entries carries, a preview; the entry's `next` leads to the rest. */
+export const TRANSCRIPT_ENTRY_TEXT = 500;
+/** Tool names a page keeps per entry, the newest; a first name `+N earlier` counts the ones left out. */
+export const TRANSCRIPT_ENTRY_TOOLS = 50;
+/**
+ * Characters a whole page may take once serialized: the contact card, every
+ * entry's text, tool names and fields. It is the size past which a tool's
+ * output stops travelling inline, so a read costs its reader no more than any
+ * other tool result. A read of one entry is bounded by `TRANSCRIPT_ENTRY_PAGE`.
+ */
+export const TRANSCRIPT_READ_BUDGET = TOOL_OUTPUT_INLINE_CHARS;
 /** Characters a read of one entry carries from its offset. */
 export const TRANSCRIPT_ENTRY_PAGE = 16_000;
 /** `size` characters of `text` from `from`, never ending halfway through a surrogate pair, and where the rest starts. */
@@ -67,7 +77,7 @@ export interface AgentTranscriptEntry {
   role: 'user' | 'assistant' | 'system';
   at: Timestamp;
   /**
-   * Text only. A page of entries carries the first 3,000 characters of each;
+   * Text only. A page of entries carries the first 500 characters of each;
    * a read of one entry (`entry`, `offset`) carries up to 16,000 from `offset`.
    */
   text: string;
@@ -83,8 +93,24 @@ export interface AgentTranscriptEntry {
 export interface AgentTranscript {
   contact: AgentContact;
   entries: AgentTranscriptEntry[];
-  /** Older entries exist before the first one returned; pass its `at` as `before`. */
+  /**
+   * Older entries exist before the first one returned; pass its `at` as
+   * `before`. True with fewer entries than asked when the page stopped at
+   * `TRANSCRIPT_READ_BUDGET`.
+   */
   more: boolean;
+}
+/**
+ * `page` within `TRANSCRIPT_READ_BUDGET` characters of JSON: the oldest entries
+ * leave until it fits, and `more` then says so, the first entry kept being the
+ * cursor of the next read. The newest entry always stays.
+ */
+export function fitTranscript(page: AgentTranscript): AgentTranscript {
+  let size = JSON.stringify(page).length;
+  let drop = 0;
+  // An entry leaves with the comma that followed it.
+  for (; size > TRANSCRIPT_READ_BUDGET && drop < page.entries.length - 1; drop += 1) size -= JSON.stringify(page.entries[drop]).length + 1;
+  return drop === 0 ? page : { ...page, entries: page.entries.slice(drop), more: true };
 }
 export interface AgentLetter {
   /**

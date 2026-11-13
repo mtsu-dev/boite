@@ -5,7 +5,7 @@ import type { AgentMatch, AgentTranscript, RpcParams, SharedComputePolicy, Share
 import type { Core } from '../core.ts';
 import type { Connection } from '../router.ts';
 import { text } from '../coordination-letter.ts';
-import { checkMatchExtras, checkRemoteContact, checkTranscript, queryPayload, readTranscript, searchContacts, searchWords, transcriptQuery } from '../coordination-lookup.ts';
+import { checkMatchExtras, checkRemoteContact, remoteTranscript, queryPayload, readTranscript, searchContacts, searchWords, transcriptQuery } from '../coordination-lookup.ts';
 import { PeerRefusal } from '../coordination-wire.ts';
 import { invalidParams, refused, RpcFailure } from '../errors.ts';
 import { SharedProjectJournal, fingerprint } from './project-journal.ts';
@@ -440,7 +440,7 @@ export class SharedProjects {
     const entry = this.localThreads(ctx).find(t => t.ref.threadId === target.threadId);
     if (!entry) throw refused('target.threadId: expected an available thread of this shared project');
     if (!entry.readThreads) throw refused('target.threadId: destination project requires readThreads');
-    return { contact: entry.agent, ...readTranscript(this.core.journal.db, target.threadId, transcriptQuery(p), id => this.core.journal.streamingMessage(id), redactSharedText) };
+    return readTranscript(this.core.journal.db, target.threadId, entry.agent, transcriptQuery(p), id => this.core.journal.streamingMessage(id), redactSharedText);
   }
   async read(p: RpcParams<'sharedProjects.read'>, connection?: Connection): Promise<AgentTranscript> {
     const ctx = this.scope(p, connection);
@@ -455,7 +455,7 @@ export class SharedProjects {
     const peer = this.core.contacts.peers().find(p => p.coreId === ctx.peerId)!;
     const contact = checkRemoteContact(raw?.contact, peer);
     if (contact.threadId !== target.address.threadId) throw refused('transcript.contact: expected the requested thread');
-    return { contact: { ...contact, sharedThread: target }, ...checkTranscript(raw, query) };
+    return remoteTranscript({ ...contact, sharedThread: target }, raw, query);
   }
   notify(id: string, kinds: ('threads' | 'board' | 'compute' | 'access')[] = ['threads', 'board', 'compute', 'access']): void {
     if (kinds.includes('access')) for (const listener of this.#policyListeners) listener(id);
