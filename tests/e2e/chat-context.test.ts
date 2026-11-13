@@ -26,6 +26,15 @@ test('silent work has no typing bubble, live text stays visible, and receipts fo
   expect(await page.evaluate(`document.querySelector('.author') === null`)).toBe(true);
   expect(await page.evaluate(`document.querySelectorAll('.receipts .received').length`)).toBe(1);
   expect(await page.evaluate(`document.querySelector('[data-testid="turn-elapsed"]').textContent`)).toMatch(/^Working for \d+s$/);
+  await update(`thread.progress = { turnId: thread.turns[0].id, phase: 'starting', detail: null, at: Date.now(), since: Date.now() };`);
+  await capture('quiet-chat-starting-desktop');
+  expect(await page.evaluate(`document.querySelector('[data-testid="turn-elapsed"]').textContent`)).toMatch(/^Starting agent · \d+s$/);
+  expect(await page.evaluate(`document.querySelector('[data-testid="turn-summary"]').getAttribute('aria-label')`)).toBe('Starting agent');
+  await page.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+  await capture('quiet-chat-starting-phone');
+  await page.send('Emulation.setDeviceMetricsOverride',{width:1300,height:850,deviceScaleFactor:1,mobile:false});
+  await update(`thread.progress.phase = 'thinking';`);
+  expect(await page.evaluate(`document.querySelector('[data-testid="turn-elapsed"]').textContent`)).toMatch(/^Working for \d+s$/);
   expect(await page.evaluate(`document.querySelector('[data-testid="turn-finished-at"]') === null`)).toBe(true);
   expect(await page.evaluate(`document.querySelector('[data-testid="turn-summary"]').getBoundingClientRect().left < document.querySelector('.bubble').getBoundingClientRect().left`)).toBe(true);
   expect(await page.evaluate(`document.querySelector('[data-testid="typing-indicator"]') === null`)).toBe(true);

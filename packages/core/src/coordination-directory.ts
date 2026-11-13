@@ -1,6 +1,6 @@
 import { reachRefusal, type AgentAddress, type AgentContact, type AgentMatch, type AgentTranscript, type CoordinationConfig, type CoordinationPeer, type CoordinationReach, type Message } from '@boite/contracts';
 import type { Core } from './core.ts';
-import { checkMatchExtras, checkRemoteContact, checkTranscript, PARTIAL, partialList, partialName, queryPayload, readTranscript, searchContacts, searchWords, toolOutputEntry, transcriptQuery, type TranscriptQuery } from './coordination-lookup.ts';
+import { checkMatchExtras, checkRemoteContact, remoteTranscript, PARTIAL, partialList, partialName, queryPayload, readTranscript, searchContacts, searchWords, toolOutputEntry, transcriptQuery, type TranscriptQuery } from './coordination-lookup.ts';
 import { address, same } from './coordination-letter.ts';
 import { PeerRefusal } from './coordination-wire.ts';
 import { contactsBot } from './contacts/bot.ts';
@@ -187,11 +187,13 @@ export class CoordinationLookups {
     if (tool !== undefined) return this.ownToolOutput(threadId, to, query, tool);
     const config = this.side.config(threadId);
     const resident = to.coreId === this.side.selfId() && this.core.workforce.projects.over(threadId, to.threadId) !== null;
-    if (this.core.threads.require(threadId).archived || (config.mode === 'off' && !resident)) throw refused('coordination is disabled for this thread');
+    // Its own conversation, whatever its coordination settings: a carried history names the messages it left out.
+    const own = to.coreId === this.side.selfId() && to.threadId === threadId;
+    if (this.core.threads.require(threadId).archived || (config.mode === 'off' && !resident && !own)) throw refused('coordination is disabled for this thread');
     if (to.coreId === this.side.selfId()) {
-      const contact = (resident ? this.side.contact(to.threadId, true) : undefined) ?? this.side.localReach(threadId).find(a => same(a, to)) ?? (to.threadId === threadId ? this.side.contact(threadId) : undefined);
+      const contact = (resident || own ? this.side.contact(to.threadId, true) : undefined) ?? this.side.localReach(threadId).find(a => same(a, to)) ?? (to.threadId === threadId ? this.side.contact(threadId) : undefined);
       if (!contact) throw refused(this.outside(threadId, to.threadId) ? `target: ${reachRefusal(config.reach, 'machine')}` : `target: ${to.threadId} is not a contact this thread may reach; see boite threads`);
-      return { contact, ...readTranscript(this.core.journal.db, to.threadId, query, id => this.core.journal.streamingMessage(id)) };
+      return readTranscript(this.core.journal.db, to.threadId, contact, query, id => this.core.journal.streamingMessage(id));
     }
     const peer = this.side.trusted().find(p => p.coreId === to.coreId);
     if (!config.machine(to.coreId)) throw refused(this.side.own(threadId).remote ? `target: ${reachRefusal(config.reach, 'group')}` : 'cross-machine coordination is disabled for this thread');
@@ -205,7 +207,7 @@ export class CoordinationLookups {
       const contact = checkRemoteContact(raw?.contact as AgentContact, from);
       if (contact.threadId !== to.threadId) throw new Error('transcript of another thread');
       // An older machine sends a page for a read of one entry: say so rather than "did not answer".
-      try { return { contact, ...checkTranscript(answer, query) }; } catch (error) { incompatible = messageOf(error); throw new PeerRefusal(incompatible); }
+      try { return remoteTranscript(contact, answer, query); } catch (error) { incompatible = messageOf(error); throw new PeerRefusal(incompatible); }
     }, [peer]);
     const { results, unavailable } = collect();
     closed();

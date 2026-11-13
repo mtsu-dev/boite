@@ -122,7 +122,7 @@ export class AgentEntrustments {
     try { return this.#store.records.get('profile', agentId); } catch { return null; }
   }
 
-  /** Joins every turn of an entrusted thread; empty otherwise. */
+  /** What an entrusted thread's session reads once, and again when it changes (`threads/coordination-context.ts`); empty otherwise. */
   instructions(threadId: string): string {
     const entry = this.of(threadId);
     const agent = entry ? this.#profile(entry.agentId) : null;

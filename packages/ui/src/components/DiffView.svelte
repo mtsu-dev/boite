@@ -303,10 +303,6 @@
     --row-bg: var(--diff-remove-wash);
   }
 
-  /* The bar rides on the number, which stays put while the code scrolls sideways. */
-  .row.add .num { box-shadow: inset 3px 0 0 var(--color-success); }
-  .row.remove .num { box-shadow: inset 3px 0 0 var(--color-danger); }
-
   /* The words that changed inside a changed line: a deeper wash of the line's own status colour. */
   .text :global(mark.word) {
     border-radius: 2px;
