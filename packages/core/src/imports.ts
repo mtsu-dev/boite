@@ -1,26 +1,40 @@
 /*
- * Sessions an agent ran outside Boite, brought in as threads. Only Claude Code
- * keeps transcripts Boite can read today: every account on the `claude-sdk`
+ * Sessions an agent ran outside Boite, brought in as threads. Claude Code and
+ * Codex keep transcripts Boite can read. Every account on the `claude-sdk`
  * protocol has a config directory (its isolation directory, or the user's own
  * `~/.claude`), and `projects/<folder>` under it holds one `.jsonl` per
- * session of that working directory. A listing reads each file's first
- * prompt and its last title record, and reuses them while the file is
+ * session of that working directory. Every account on the `codex-appserver`
+ * protocol has a Codex home (its isolation directory, or the user's own
+ * `~/.codex`) whose `sessions` tree holds one rollout per session, every
+ * working directory together (`imports/codex.ts`). A listing reads each
+ * file's first prompt and its title, and reuses them while the file is
  * unchanged; an import reads it whole and writes one finished turn per prompt, then sets
  * the session id so the next turn resumes where the CLI left off.
  */
 
 import { existsSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Account, AccountId, ImportableSession, Project, ProjectId, ThreadSummary } from '@boite/contracts';
+import type { Account, AccountId, ImportableSession, Project, ProjectId, ProviderDescriptor, ThreadSummary } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { notFound, refused } from './errors.ts';
 import { claudeProjectFolder, listTranscript, readTranscript } from './imports/claude.ts';
 import type { TranscriptListing } from './imports/claude.ts';
+import { CodexSessions, codexSessionsDir, readRollout } from './imports/codex.ts';
+import { isReject } from './imports/codex-rollout.ts';
 import { sessionThreads } from './journal/thread-rows.ts';
 import { currentOs } from './paths.ts';
 import { titleFromPrompt } from './titles.ts';
 
 const SESSION_ID = /^[A-Za-z0-9_-]+$/;
+
+/** The protocols whose agent keeps sessions Boite reads, and the reader each takes. */
+type ImportSource = 'claude' | 'codex';
+
+function sourceOf(provider: ProviderDescriptor): ImportSource | null {
+  if (provider.protocol === 'claude-sdk') return 'claude';
+  if (provider.protocol === 'codex-appserver') return 'codex';
+  return null;
+}
 
 /** The same folder whatever the case of the drive letter or a separator's direction, on Windows. */
 function sameFolder(a: string, b: string): boolean {
@@ -54,16 +68,22 @@ export class ImportStore {
   /** A listing under way, which a second client or a quick reopen shares. */
   private readonly listing = new Map<ProjectId, Promise<ImportableSession[]>>();
 
-  constructor(private readonly core: Core) {}
+  /** What each Codex home's rollouts said, kept the same way. */
+  private readonly codex: CodexSessions;
 
-  /** The claude accounts and where each keeps its transcripts; an account with no directory is skipped. */
-  private roots(): { account: Account; dir: string }[] {
-    const out: { account: Account; dir: string }[] = [];
+  constructor(private readonly core: Core) {
+    this.codex = new CodexSessions((level, message) => core.log(level, message));
+  }
+
+  /** The Claude and Codex accounts and where each keeps its sessions; an account with no directory is skipped. */
+  private roots(): { account: Account; dir: string; source: ImportSource }[] {
+    const out: { account: Account; dir: string; source: ImportSource }[] = [];
     for (const account of this.core.accounts.list()) {
       const provider = this.core.providers.get(account.providerId);
-      if (provider === undefined || provider.protocol !== 'claude-sdk') continue;
+      const source = provider === undefined ? null : sourceOf(provider);
+      if (provider === undefined || source === null) continue;
       const dir = account.isolationDir ?? this.core.accounts.defaultLocation(provider);
-      if (dir !== null) out.push({ account, dir });
+      if (dir !== null) out.push({ account, dir, source });
     }
     return out;
   }
@@ -89,7 +109,37 @@ export class ImportStore {
     }
     const out = new Map<string, ImportableSession>();
     const cwd = resolved(project.path);
-    for (const { account, dir } of this.roots()) {
+    /** One row per file: accounts that share a directory share the row. */
+    const add = (account: Account, session: Omit<ImportableSession, 'providerId' | 'accountId' | 'accountIds' | 'threadId'>): void => {
+      const key = resolved(session.file);
+      const existing = out.get(key);
+      if (existing !== undefined) {
+        if (!existing.accountIds!.includes(account.id)) existing.accountIds!.push(account.id);
+        return;
+      }
+      out.set(key, {
+        providerId: account.providerId,
+        accountId: account.id,
+        accountIds: [account.id],
+        ...session,
+        threadId: known.get(session.sessionId) ?? null,
+      });
+    };
+    const here = (recorded: string): boolean => sameFolder(recorded, project.path) || sameFolder(resolved(recorded), cwd);
+    for (const { account, dir, source } of this.roots()) {
+      if (source === 'codex') {
+        for (const found of await this.codex.list(dir, here)) {
+          add(account, {
+            sessionId: found.sessionId,
+            file: found.file,
+            title: found.name ?? titleFromPrompt(found.prompt),
+            startedAt: found.promptAt,
+            updatedAt: found.mtimeMs,
+            bytes: found.size,
+          });
+        }
+        continue;
+      }
       const seen = new Set<string>();
       for (const folder of this.folders(dir, project)) {
         if (!existsSync(folder)) {
@@ -115,23 +165,13 @@ export class ImportStore {
             continue;
           }
           seen.add(sessionId);
-          const key = resolved(file);
-          const existing = out.get(key);
-          if (existing !== undefined) {
-            if (!existing.accountIds!.includes(account.id)) existing.accountIds!.push(account.id);
-            continue;
-          }
-          out.set(key, {
-            providerId: account.providerId,
-            accountId: account.id,
-            accountIds: [account.id],
+          add(account, {
             sessionId,
             file,
             title: head.agentTitle ?? titleFromPrompt(head.prompt),
             startedAt: head.promptAt,
             updatedAt: stat.mtimeMs,
             bytes: stat.size,
-            threadId: known.get(sessionId) ?? null,
           });
         }
         this.listed.set(folder, now);
@@ -144,8 +184,9 @@ export class ImportStore {
     const project = this.core.projects.require(params.projectId);
     const account = this.core.accounts.require(params.accountId);
     const provider = this.core.providers.require(account.providerId);
-    if (provider.protocol !== 'claude-sdk') {
-      throw refused('only a Claude account keeps sessions Boite can import', {
+    const source = sourceOf(provider);
+    if (source === null) {
+      throw refused('only a Claude or Codex account keeps sessions Boite can import', {
         accountId: account.id,
         providerId: provider.id,
         protocol: provider.protocol,
@@ -157,6 +198,7 @@ export class ImportStore {
     this.checkFree(params.sessionId);
     const dir = account.isolationDir ?? this.core.accounts.defaultLocation(provider);
     if (dir === null) throw refused('this account has no transcript directory', { accountId: account.id });
+    if (source === 'codex') return this.runCodex(project, account, provider, dir, params.sessionId);
     const paths = this.folders(dir, project).map(folder => join(folder, `${params.sessionId}.jsonl`));
     const files = paths.filter(path => existsSync(path));
     if (files.length === 0) throw notFound(`no transcript at ${paths[0]}`, { file: paths[0], sessionId: params.sessionId });
@@ -201,6 +243,37 @@ export class ImportStore {
       return summary;
     } finally {
       this.running.delete(params.sessionId);
+    }
+  }
+
+  /** A Codex rollout into a thread; the session id is what `thread/resume` takes on the next turn. */
+  private async runCodex(project: Project, account: Account, provider: ProviderDescriptor, home: string, sessionId: string): Promise<ThreadSummary> {
+    const files = this.codex.find(home, sessionId);
+    if (files.length === 0) {
+      const dir = codexSessionsDir(home);
+      throw notFound(`no rollout for session ${sessionId} under ${dir}`, { file: dir, sessionId });
+    }
+    this.running.add(sessionId);
+    try {
+      const file = files[0]!;
+      const rollout = await readRollout(file);
+      if (isReject(rollout)) throw refused(`rollout ${rollout.field}: expected ${rollout.expected}`, { file, field: rollout.field, expected: rollout.expected });
+      if (rollout.meta.id !== sessionId) throw refused(`rollout payload.id: expected ${sessionId}`, { file, field: 'payload.id', expected: sessionId });
+      if (rollout.meta.subagent) throw refused('this rollout is a subagent session', { file, field: 'payload.source', expected: 'a session a person started' });
+      if (!sameFolder(rollout.meta.cwd, project.path) && !sameFolder(resolved(rollout.meta.cwd), resolved(project.path))) {
+        throw refused(`transcript cwd: expected ${project.path}`, { file, cwd: rollout.meta.cwd, field: 'cwd', expected: project.path });
+      }
+      const first = rollout.turns[0];
+      if (first === undefined) throw refused('this transcript has no prompt to import', { file });
+      const name = this.codex.sessionNames(home).get(sessionId) ?? null;
+      const summary = this.core.threads.createImported(
+        { projectId: project.id, providerId: provider.id, accountId: account.id, title: name ?? titleFromPrompt(first.prompt), cwd: project.path },
+        { sessionId, model: rollout.model, titleSource: name === null ? 'prompt' : 'agent', turns: rollout.turns },
+      );
+      this.core.log('info', `imported codex session ${sessionId} into ${summary.id} (${rollout.turns.length} turns)`);
+      return summary;
+    } finally {
+      this.running.delete(sessionId);
     }
   }
 

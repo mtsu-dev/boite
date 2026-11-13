@@ -103,10 +103,12 @@ Experimental: turn it on in Settings, Experiments (Claude Code session import).
 2. Pick a session started in that folder. One already imported shows
    Imported.
 3. Boite opens a thread with its history, and your next message continues the
-   same Claude Code session.
+   same session.
 
-Only Claude Code sessions can be imported. Subagent conversations are left
-out, and the Usage page does not count the imported turns.
+The list holds the Claude Code and the Codex sessions of that folder, for
+every account of either agent. When it holds both kinds, each row names its
+agent. Other agents' sessions cannot be imported. Subagent conversations are
+left out, and the Usage page does not count the imported turns.
 
 ## Project icons
 

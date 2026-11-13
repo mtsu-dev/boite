@@ -828,6 +828,7 @@ Never terminate processes by executable name or a path pattern.
 | Scenario | Focused browser test |
 | --- | --- |
 | Header, sidebar, prompt navigation | `tests/e2e/header.test.ts` |
+| Import list naming each session's agent, desktop and phone | `tests/e2e/import-agents.test.ts` |
 | Scroll following and virtualized history | `tests/e2e/chat-scroll.test.ts` |
 | Context, compaction and turn receipts | `tests/e2e/chat-context.test.ts` |
 | Readability, tools, answered questions, high contrast | `tests/e2e/readability.test.ts` |

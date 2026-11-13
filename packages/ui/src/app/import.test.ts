@@ -43,9 +43,11 @@ test('Import a Claude Code session in the project menu lists the transcripts and
   // The dialog opens at once and says it is reading; the rows follow.
   await waitFor(() => document.querySelector('[data-testid=import-dialog]') !== null);
   expect(document.querySelector('[data-testid=import-loading]')).not.toBeNull();
-  await waitFor(() => document.querySelectorAll('[data-testid=import-row]').length === 2);
+  await waitFor(() => document.querySelectorAll('[data-testid=import-row]').length === 3);
   const rows = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-testid=import-row]'));
-  expect(rows.map((row) => row.querySelector('.title')?.textContent)).toEqual(['Finish the trace tab', 'Where the shell looks for a core']);
+  expect(rows.map((row) => row.querySelector('.title')?.textContent)).toEqual(['Finish the trace tab', 'Where the shell looks for a core', 'Sort the release notes by date']);
+  // Two kinds of sessions in one list: each row names the agent that kept it.
+  expect(rows.map((row) => row.querySelector('[data-testid=import-agent]')?.textContent)).toEqual(['Claude', 'Claude', 'Codex']);
   // The session that is already the trace thread cannot be taken twice.
   expect(rows[0]?.disabled).toBe(true);
   expect(rows[0]?.querySelector('.hint')?.textContent).toBe('Imported');
@@ -66,8 +68,8 @@ test('Import a Claude Code session in the project menu lists the transcripts and
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=manage]').click();
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=import]') !== null);
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=import]').click();
-  await waitFor(() => document.querySelectorAll('[data-testid=import-row]').length === 2);
-  expect(Array.from(document.querySelectorAll<HTMLButtonElement>('[data-testid=import-row]')).every((row) => row.disabled)).toBe(true);
+  await waitFor(() => document.querySelectorAll('[data-testid=import-row]').length === 3);
+  expect(Array.from(document.querySelectorAll<HTMLButtonElement>('[data-testid=import-row]')).map((row) => row.disabled)).toEqual([true, true, false]);
   press('Escape');
   await waitFor(() => document.querySelector('[data-testid=import-dialog]') === null);
 });
@@ -80,7 +82,7 @@ test('a shared transcript asks for its account, supports menu keys, and imports 
   const imported = vi.spyOn(store, 'importSession');
   try {
     await store.openImports('p-boite');
-    await waitFor(() => document.querySelectorAll('[data-testid=import-row]').length === 2);
+    await waitFor(() => document.querySelectorAll('[data-testid=import-row]').length === 3);
     const row = query<HTMLButtonElement>('[data-testid=import-row]:not(:disabled)');
     row.click();
     expect(imported).not.toHaveBeenCalled();
