@@ -5,8 +5,8 @@ member reviews alone, read-only, without seeing the others, and gives a score
 out of 10 with its remarks. Use it for a second, third and fourth opinion on
 a diff, a plan or a design choice.
 
-Experimental, in Nightly builds only: turn it on in Settings, Experiments,
-Council.
+Experimental, in Nightly builds only: turn it on in Settings, Version,
+Experiments, Council.
 
 Nobody debates and nobody votes. The answers go back to the conversation that
 started the council, which can ask the same members for one more round. Each
@@ -94,5 +94,5 @@ plan mode.
 
 - [Subagents](subagents.md): handing work to one child at a time.
 - [Workflows](workflows.md): plans of many steps.
-- [Experiments](experiments.md): the switches in Settings, Experiments.
+- [Experiments](experiments.md): the switches in Settings, Version, Experiments.
 - Technical reference: [council](internals/council.md).

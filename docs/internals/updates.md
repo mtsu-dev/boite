@@ -19,7 +19,7 @@ attached to that release; [Android setup](android.md) and
 
 ## Finding updates
 
-Settings, Machines and updates opens on one card that folds nothing: the
+Settings, Version opens on the Updates card, which folds nothing: the
 version this desktop app runs, the release found with its changelog on GitHub,
 the channel (Nightly or Release), Check for updates and Update
 ([machines](machines.md#the-machines-page)). The card belongs to this
@@ -30,7 +30,7 @@ downloaded, with nothing else waiting, makes the button Restart, which installs
 after a restart confirmation. Each machine's row below says in one word where
 its updates stand (Up to date, Update available, Updating, Update failed).
 Agent versions, with their own update and skip controls and the automatic
-update switch, are on each machine's Providers page ([agent updates](agent-updates.md)).
+update switch, are in each machine's Agent updates card, on the same page ([agent updates](agent-updates.md)).
 Under them, **Install updates by itself when nothing runs** lets the app
 install a release without a click ([installing by itself](#installing-by-itself)).
 
@@ -57,7 +57,7 @@ too. A newer release lights the dot and opens the card again. A press
 elsewhere only closes the card.
 
 On a phone the card stays closed until the button is pressed, and opens as a
-sheet. Settings, Machines and updates has the same thing as its Update button,
+sheet. Settings, Version, Updates has the same thing as its Update button,
 beside Check for updates.
 
 Update all sends one `core.updateEverything` request to each machine, all at
@@ -95,7 +95,7 @@ updates one call each, without that ordering.
 ### The desktop app of another PC
 
 Another Windows PC of the group shows its desktop app as a Boite row under
-its name, and Settings, Machines and updates lists it under the app's own
+its name, and Settings, Version, Updates lists it under the app's own
 update, started by the same Update button.
 Only that PC's own window can run its installer, so the request goes through
 its core:

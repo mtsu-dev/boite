@@ -5,7 +5,7 @@ Boite runs and how to connect one, read [supported agents](../supported-agents.m
 
 ## Subscription proxy
 
-Settings, Providers offers an optional subscription proxy for Claude, Codex and
+Settings, AI accounts offers an optional subscription proxy for Claude, Codex and
 both OpenCode versions, and for Grok when the gateway is Douane.
 Choose Douane or CLIProxyAPI, enter the gateway's API URL and its limits dashboard
 URL, enable the switch and save. The API URL accepts an origin or a path ending
@@ -88,7 +88,7 @@ the in-memory client with a saved gateway that is off.
 
 The proxy card's first choice is where the gateway runs: Remote gateway (the
 URLs above, typed by the user) or Douane on this machine, the Douane plugin
-(Settings > Plugins, [gateways](plugins.md#gateways)). Settings store it as
+(Settings > Agents > Plugins, [gateways](plugins.md#gateways)). Settings store it as
 `subscriptionProxy.mode`, `remote` or `local`; settings with no `mode` read as
 remote, unchanged. In local mode the kind is Douane and the core writes both
 URLs from the plugin's port: `baseUrl` `http://127.0.0.1:<port>/v1` and
@@ -122,7 +122,7 @@ than a dead link (`gatewayDashboardReachable` in contracts,
 
 Move my connections to Douane, under the proxy settings, appears once a Douane
 gateway is saved and the core advertises `features.gatewayMove`. The Douane
-plugin's row in Settings > Plugins offers it too while the plugin runs; that
+plugin's row in Settings > Agents > Plugins offers it too while the plugin runs; that
 one sends `target: "plugin"` and moves into the plugin whatever the proxy
 points at. It lists what
 this machine's accounts hold that Douane can serve, default and isolated
@@ -377,12 +377,12 @@ OpenCode's descriptor, with the `linux` and `macos` profiles, `shared` and
   accepted for existing descriptors. Echo requires at least one static model.
 - `experimental: true` marks an agent Boite drives without long use behind it.
   It stays off until the user turns it on ([below](#turning-a-provider-off)),
-  and its row on the Providers page carries an Experimental badge.
+  and its row in the Providers card carries an Experimental badge.
 - `capabilities` is six booleans: `approvals`, `hooks`, `checkpoint`, `images`,
   `planMode`, `resume`. `approvals: false` means the thread's permission mode
   never reaches that agent, and the UI stops promising a gate that does not exist.
   `hooks: true` says the agent runs hooks of its own, which is what lets the
-  descriptor name `hookSources` and puts the agent in Settings > Brain > Hooks.
+  descriptor name `hookSources` and puts the agent in Settings > Agents > Scripts your agents run.
   `images: false` refuses a turn's image attachments before anything is sent, so an unsupported image cannot reach the provider. Where `images` is
   true, each protocol hands an attachment over in its own shape: the Claude
   driver turns the prompt into a content-block array, one text block plus one
@@ -635,7 +635,7 @@ OpenCode 2 ships on Windows x64 as the tarball of its npm platform package,
 release. Grok and pi have no archive Boite can pin, so their row links to the
 agent's own install guide.
 
-Settings > Providers offers the next install or sign-in step. Install adopts
+Settings > AI accounts > Providers offers the next install or sign-in step. Install adopts
 an existing CLI login before `providers.updated`; otherwise it continues to
 sign-in. Cancellation or leaving the page cancels that continuation. Returning
 to the window checks for external installs. Provider families can group multiple
@@ -908,7 +908,7 @@ unchecked by this run.
 
 ## A local ACP command
 
-The Providers page has a Local ACP command card for any agent that speaks ACP
+Settings > AI accounts has a Local ACP command card for any agent that speaks ACP
 over stdio: a name, the command that starts it, its arguments one per field and
 its environment variables. `providers.addLocal` checks each field
 (`checkLocalAcpCommand` in `packages/contracts/src/local-acp.ts`, which the
@@ -945,7 +945,7 @@ only remove and add.
 
 ## Turning a provider off
 
-Every provider has a switch on the Providers page, for a machine that has
+Every provider has a switch in the Providers card, for a machine that has
 more agents installed than its user wants offered. `providers.setEnabled`
 stores the choice per core, in the journal setting `provider-switches`, and
 each summary carries it as `enabled`. A provider nobody touched follows its
@@ -1366,7 +1366,7 @@ of the stream's `message_start`, else the thread's) writes its updates as text,
 so its consecutive thinking blocks share one part as before.
 
 Tool summaries are off by default: the driver sets the variable only when the
-owner turns on Settings > General > Tool summaries (`Settings.toolSummaries`),
+owner turns on Settings > Conversations > Agent replies > Tool summaries (`Settings.toolSummaries`),
 read when a Claude process starts. Each tool summary is one request the CLI
 sends to Haiku after a batch of calls finished (`source=tool_use_summary_generation` in its debug log), on the
 thread's account. It names the calls it covers, so it can arrive while the next

@@ -70,7 +70,7 @@ before every spawn (`packages/core/src/profile-share.ts`):
   from the account's.
 
 A path that fails is logged once and shown under the account in Settings >
-Brain > Hooks; the spawn goes on without it. The login files never move: a
+Agents > Scripts your agents run; the spawn goes on without it. The login files never move: a
 share that would cover one is refused when the descriptor loads. The default
 account needs none of this, since it runs on the user's own directory. A test
 core (`BOITE_HOST_AGENTS=0`) shares nothing.
@@ -221,11 +221,11 @@ goes to the page and never to a window over the user's work.
 When the composer has no usable provider, its model chip becomes `Connect an AI` and
 opens `ConnectFlow.svelte`:
 Claude and Codex first, each naming the plan it uses, the other agents below.
-Choosing one walks the same steps as its row on the Providers page
+Choosing one walks the same steps as its row in the Providers card
 (`lib/provider-setup.ts`), one at a time: the download when Boite can fetch the
 agent, its own installer page otherwise, then the sign-in with the page to open
 and the field for a code. An agent whose login is a menu (see below) gets the
-same terminal as on the Providers page, inside the dialog. A download asked for
+same terminal as in the Providers card, inside the dialog. A download asked for
 here goes on to the sign-in by itself. Once the account answers, `Use <provider>` moves
 the composer to it
 through `store.useProvider`, the same remembered choice a pick in the model
@@ -267,7 +267,7 @@ the same one as the thread terminal ([terminal.md](terminal.md)):
    PowerShell. On Linux and macOS, `/bin/sh -c` runs the command with its
    arguments as given, then `exec`s the user's shell: a profile still reading
    its input cannot swallow typed keys.
-3. The Providers page draws the shell under the provider's row. The user
+3. The Providers card draws the shell under the provider's row. The user
    answers the CLI there and closes the terminal once signed in, or types `exit`.
 4. When the shell exits, the core rechecks the account and `accounts.updated`
    follows. `accounts.loginCancel` closes the shell too.
@@ -276,7 +276,7 @@ The default account may sign in this way, unlike a piped login: the command runs
 in plain view, in the user's own CLI, which is what they would have typed in a
 terminal of their own. A sign-in from a row goes to the default account first
 when it is not signed in, then to an isolated account nobody is signed into,
-then to a new one. OpenCode and Grok use it; the phone has no Providers page
+then to a new one. OpenCode and Grok use it; the phone has no Providers card
 and no terminal.
 
 ## What the core refuses, and why
@@ -371,7 +371,7 @@ next turn.
 
 ## Provider controls and account pools
 
-Settings > Providers shows installation and sign-in steps, account labels and
+Settings > AI accounts > Providers shows installation and sign-in steps, account labels and
 identities, Check connection, Rename, Remove, Add another account and Use my
 command-line login. Default-location accounts keep their external login.
 The provider's default model and effort are device preferences. This page shows

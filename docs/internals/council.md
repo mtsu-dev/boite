@@ -11,7 +11,7 @@ Boite provides the mechanism only. Which members sit, at what effort, what the
 request says, how many rounds run and what the thread does with the answers
 come from the user's instructions, which always prevail.
 
-It is an experiment, off by default: Settings, Experiments, Council. The stored
+It is an experiment, off by default: Settings, Version, Experiments, Council. The stored
 experiment id is still `debates`, so a switch that was on stays on
 ([experiments](experiments.md#council)). A thread asks for a council through the
 `boite-council` skill, which lists the commands, their defaults and the three

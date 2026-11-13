@@ -1,6 +1,6 @@
 # Experiments
 
-An experiment is unfinished work behind a switch in Settings > Experiments. It
+An experiment is unfinished work behind a switch in Settings > Version > Experiments. It
 exists in a Nightly or a source build and does not exist in a Release.
 
 ## Stages
@@ -87,10 +87,12 @@ run": the version in the hello (`info.version`) is enough.
   its chosen list in `client.preferences`; the core normalizes it for its own
   gates and tells phones the desktop app's list twice: in force in its build
   on the historic field, and as chosen on a separate one.
-- Settings lists `listedExperiments(version)` and has no Experiments page when
-  experiments do not run (`pageAvailable` in `lib/settings-tabs.ts`, desktop
-  nav, search and phone list): a route or a card that points there lands on
-  the first page. The three machine settings and the Automatic goals threshold
+- Settings lists `listedExperiments(version)` and draws no Experiments card,
+  nor the three machine cards after it, when experiments do not run (cards
+  marked `experimental` in `SETTINGS_CARDS`, `cardShown` in
+  `packages/ui/src/lib/settings-tabs.ts`, so the search finds none either): a
+  route or a card that points at one opens the Version page from the top
+  (`desktopPlace`). The three machine settings and the Automatic goals threshold
   show only while the core of the machine being configured is not a Release.
   A card about an experiment without a switch in this build can only be
   refused, and says why.
@@ -113,7 +115,7 @@ from `lib/experiment-copy.ts` and `lib/strings/*/experiments.ts`
 guide text out of [the experiments guide](../experiments.md). The checks of a
 finished id at its call sites keep passing and are deleted later; the id stays
 in `EXPERIMENT_IDS` until they are. A finished feature a person would still
-want off gets a switch in `lib/features.ts`, on the Settings page it belongs
+want off gets a switch in `lib/features.ts`, on the Settings card it belongs
 to, as [chat files and previews](chat-files.md),
 [open chat links](chat-files.md#open-chat-links-in-their-apps),
 [preview comments](panel.md#preview-comments) and the

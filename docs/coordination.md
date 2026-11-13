@@ -71,8 +71,8 @@ connections stay open.
 
 - Reading a conversation on another machine needs a reading grant on that
   machine. Finding and messaging do not.
-- Threads from the other machines, in that machine's Settings, Machines and
-  updates, lets agents of the other machines start conversations there. It is
+- Threads from the other machines, in the menu of that machine's row in
+  Settings, Devices, Group, lets agents of the other machines start conversations there. It is
   off by default.
 - Bots from the other machines lets a bot of another machine look after the
   projects of this one that you entrusted to it. It is off by default and
