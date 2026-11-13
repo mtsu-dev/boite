@@ -3,6 +3,8 @@
   import type { Store } from '../lib/store.svelte';
   import AgentDock from './AgentDock.svelte';
   import ComposerQueue from './ComposerQueue.svelte';
+  import Deferred from './Deferred.svelte';
+  import { permissionCard } from '../lib/idle-parts';
 
   /**
    * What waits, over the composer card. The permission out of view is the one
@@ -13,7 +15,9 @@
    * desktop and a phone, that a press unfolds into one row per run. Under it,
    * always in view, the prompts held for the turn, drawn where they will land
    * (`ComposerQueue`): dashed user bubbles on the right, a press taking one
-   * back into the box. It grows upward: the field under it never moves. While
+   * back into the box. A subagent's command waiting for approval has no row
+   * in this timeline: its card stands here, named by the subagent, answered
+   * in place. It grows upward: the field under it never moves. While
    * a question takes the field during a turn, the field's button is Send
    * alone, so the turn's Stop is on the strip's line.
    */
@@ -38,6 +42,9 @@
   let answers = $derived(thread?.pendingAnswers?.length ? thread.pendingAnswers : null);
   let queued = $derived(composer && composer.queued.length > 0 ? composer : null);
   let permission = $derived(thread ? store.pendingPermissions.find((request) => request.threadId === thread.id) ?? null : null);
+  /** What this thread's subagents wait on approval for: the thread's row says "Needs you", so the ask shows here, where it is read. */
+  let kids = $derived(thread ? new Map(store.threads.filter((row) => row.parentThreadId === thread.id && !row.archived).map((row) => [row.id, row] as const)) : null);
+  let childAsks = $derived(kids?.size ? store.pendingPermissions.filter((request) => kids.has(request.threadId)) : []);
 
   let open = $state(false);
   // Another thread opens folded.
@@ -64,6 +71,16 @@
     {/if}
   </div>
 {/if}
+{#if childAsks.length}
+  <div class="child-asks" data-testid="subagent-permissions">
+    {#each childAsks as request (request.id)}
+      {@const child = kids?.get(request.threadId)}
+      <Deferred part={permissionCard}>{#snippet children(PermissionCard)}<PermissionCard toolName={request.toolName} decision={null} {request}
+        answer={(decision) => store.answer(request.id, decision)}
+        asker={{ title: child?.title ?? '', open: () => { void store.open(request.threadId); } }} />{/snippet}</Deferred>
+    {/each}
+  </div>
+{/if}
 <div class="foot" class:alone data-testid="composer-foot">
   {#if permission}{#await import('./DecisionPill.svelte') then pill}<pill.default {permission} answer={(decision: 'allow' | 'deny') => store.answer(permission.id, decision)} />{/await}{/if}
 </div>
@@ -86,6 +103,8 @@
   /* The held prompts keep the conversation's width, right-aligned like the bubbles they will become. */
   .held { display: flex; flex-direction: column; width: 100%; max-width: var(--content); min-width: 0; margin: 0 auto; }
   .answers { display: flex; flex-direction: column; min-width: 0; }
+  /* The subagents' asks: the conversation's width, never taller than a third of the window, the rest scrolls. */
+  .child-asks { display: flex; flex-direction: column; flex: none; width: 100%; max-width: var(--content); min-width: 0; max-height: 36vh; margin: 0 auto; padding-bottom: 4px; overflow-y: auto; scrollbar-width: thin; }
 
   /* The card: on the composer card's top edge, its width, its surface and edge,
      the top corners rounded and no gap, so card and foot read as one object
