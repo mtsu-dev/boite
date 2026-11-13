@@ -383,6 +383,8 @@ export class Core {
       this.logs.info(`${message} in ${Math.round(now - phaseAt)} ms`, { source: 'startup', event, durationMs: now - phaseAt, ...(data ? { data } : {}) });
       phaseAt = now;
     };
+    // Read before the journal opens and creates its file: only a data directory older than this start counts as one.
+    const journalExisted = existsSync(join(this.dataDir, 'journal.db'));
     this.journal = new Journal(join(this.dataDir, 'journal.db'), { onError: (message) => this.log('error', message) });
     const schema = this.journal.schema;
     phase('startup.journal-opened', schema.from === schema.to ? `Journal opened at schema ${schema.to}` : `Journal opened and migrated from schema ${schema.from} to ${schema.to}`,
@@ -396,6 +398,7 @@ export class Core {
     this.#stopMoves = scheduleInlineValueMoves(this.journal, (message) => this.log('error', message));
     this.router = new Router();
     this.settings = new SettingsStore(this);
+    this.settings.seedAgentDefaults(journalExisted);
     this.clients = new ClientPreferencesBook(
       (preferences, before) => this.threads.cards.settleClient(preferences, before),
       (experiments) => this.bus.emit('client.desktopExperiments', { experiments }),

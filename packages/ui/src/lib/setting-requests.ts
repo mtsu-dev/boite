@@ -5,7 +5,7 @@
  * are in `packages/contracts/src/setting-requests.ts`, the core's cards in
  * `packages/core/src/threads/cards.ts`.
  */
-import { experimentOf, type AutoCompactMoment, type ProviderSummary, type RequestableKey, type RequestableSetting, type SettingAsk, type SettingsPage } from '@boite/contracts';
+import { experimentOf, type AutoCompactMoment, type ProviderSummary, type RequestableKey, type RequestableSetting, type SettingAsk, type SettingCardAsk, type SettingsPage } from '@boite/contracts';
 import { experimentCopy } from './experiment-copy';
 import { formatLocale } from './i18n.svelte';
 import { fill, strings } from './strings';
@@ -40,8 +40,9 @@ export function retiredHint(key: string): string {
 }
 
 /** The card's title, in the dock's row and on the card. */
-export function settingHeading(setting: SettingAsk): string {
+export function settingHeading(setting: SettingCardAsk): string {
   const words = strings.settingRequest;
+  if (setting.kind === 'bot') return strings.botRequest.heading;
   if (setting.kind === 'open') return setting.plugin ? words.headingPlugin : words.headingOpen;
   return setting.sensitive ? words.headingSensitive : words.heading;
 }
@@ -71,6 +72,8 @@ export function settingValueText(key: RequestableKey, value: unknown, providers:
     const unit = UNITS[key as RequestableSetting];
     return new Intl.NumberFormat(formatLocale(), unit ? { style: 'unit', unit: unit.unit, unitDisplay: unit.display } : {}).format(value);
   }
+  if (key === 'coordinationReach' && typeof value === 'string' && value in strings.agentsAlone.steps) return strings.agentsAlone.steps[value as keyof typeof strings.agentsAlone.steps];
+  if (key === 'agentBotCreation' && typeof value === 'string' && value in strings.agentsAlone.values) return strings.agentsAlone.values[value as keyof typeof strings.agentsAlone.values];
   if (typeof value === 'string') return value;
   if (Array.isArray(value)) return value.length === 0 ? words.none : value.map(String).join(', ');
   const object = value as Record<string, unknown>;

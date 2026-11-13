@@ -1,4 +1,4 @@
-import { checkSettingsPatch, followedPatch, keepLaterFavorites, readSettings, MACHINE_SETTINGS, DEFAULT_THREAD_DONE_RETENTION_DAYS, DEFAULT_THREAD_DELETION_RETENTION_DAYS, subscriptionProxyOf, type AdminPolicy, type Settings, type SubscriptionProxy } from '@boite/contracts';
+import { agentDefaultsToWrite, checkSettingsPatch, followedPatch, keepLaterFavorites, readSettings, MACHINE_SETTINGS, DEFAULT_THREAD_DONE_RETENTION_DAYS, DEFAULT_THREAD_DELETION_RETENTION_DAYS, subscriptionProxyOf, type AdminPolicy, type Settings, type SubscriptionProxy } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { writesTitles } from './drivers/index.ts';
 import { invalidParams } from './errors.ts';
@@ -44,6 +44,20 @@ export class SettingsStore {
     Reflect.deleteProperty(patch, 'maxConcurrentTurns');
     Reflect.deleteProperty(patch, 'perAccountConcurrency');
     return { ...DEFAULT_SETTINGS, ...patch };
+  }
+
+  /**
+   * The first start that knows `agentBotCreation` and `coordinationReach`
+   * stores them, once: closed on a new data directory, open (what agents did
+   * before) on one whose journal existed before this start. A stored value is
+   * never rewritten, so no later default moves an install.
+   */
+  seedAgentDefaults(journalExisted: boolean): void {
+    const stored = this.#core.journal.getSetting('settings');
+    const missing = agentDefaultsToWrite(stored, journalExisted);
+    if (Object.keys(missing).length === 0) return;
+    this.#core.journal.setSetting('settings', { ...(typeof stored === 'object' && stored !== null ? stored : {}), ...missing });
+    this.#core.logs.info(`Agent defaults stored: ${Object.entries(missing).map(([key, value]) => `${key} ${value}`).join(', ')}`, { source: 'settings', event: 'settings.agent-defaults', data: { ...missing, journalExisted } });
   }
 
   #overlay(settings: Settings): Settings {

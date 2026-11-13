@@ -23,6 +23,15 @@ which this device keeps. Bots you made keep running while the switch is off.
 4. Press Create. Its conversation opens: it introduces itself, reads its
    instructions, sets up the routines they call for and tells you its plan.
 
+You can also ask the agent of any conversation to set a bot up for you. A
+card then appears in that conversation with the bot's name, role, projects and
+model, and the line "This bot runs with full access to this machine". Approve
+creates it; Decline creates nothing, and the agent is told either way. To let
+agents create bots without that card, turn on Create bots without asking in
+Settings, General, What agents may do alone. A bot created this way has full
+access to this machine. An install that already held conversations before this
+setting existed starts with it on, as it worked before.
+
 You talk to a bot in its conversation like in any thread. On the desktop,
 clicking its picture in the app rail opens it, with the bot's column in place
 of the thread list. The column stays when the bot's Desk opens beside the

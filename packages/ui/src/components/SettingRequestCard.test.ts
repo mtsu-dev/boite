@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
-import type { Message, QuestionRequest, RequestableKey } from '@boite/contracts';
+import type { Message, QuestionRequest, RequestableKey, SettingAsk } from '@boite/contracts';
 import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
 import AssistantMessage from './AssistantMessage.svelte';
@@ -35,7 +35,7 @@ function card(store: Store, question: QuestionRequest): void {
     props: {
       store,
       text: question.text,
-      setting: question.setting!,
+      setting: question.setting as SettingAsk,
       answer: null,
       pending: true,
       respond: (optionId: 'refuse' | 'open') => store.answerQuestion(question.threadId, question.id, [optionId])
