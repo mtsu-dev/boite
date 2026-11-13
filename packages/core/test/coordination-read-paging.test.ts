@@ -178,4 +178,7 @@ test('an older core that sends every tool name of an entry is cut to the newest,
   // What a current core sends, the count first, passes untouched.
   const sent = ['+30 earlier', ...tools.slice(-50)];
   expect(remoteTranscript(contact, { entries: [{ id: 'msg_1', role: 'assistant', at: 1, text: 'done', tools: sent }], more: false }).entries[0]!.tools).toEqual(sent);
+  // One name past the limit, with no count in front, is an older core's list too.
+  const over = tools.slice(0, 51);
+  expect(remoteTranscript(contact, { entries: [{ id: 'msg_1', role: 'assistant', at: 1, text: 'done', tools: over }], more: false }).entries[0]!.tools).toEqual(['+1 earlier', ...over.slice(1)]);
 });

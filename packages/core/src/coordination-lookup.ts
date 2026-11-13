@@ -176,7 +176,9 @@ function transcriptEntry(db: Database, threadId: string, id: string, offset: num
 
 /** Another core's tool names within this core's limit: an older core sends them all, and the newest matter as in a local read. */
 function remoteTools(tools: string[]): string[] {
-  return tools.length > TRANSCRIPT_ENTRY_TOOLS + 1 ? pageTools(tools) : tools;
+  // A current core sends its limit of names after one count line: that shape passes as it came.
+  const counted = tools.length === TRANSCRIPT_ENTRY_TOOLS + 1 && /^\+\d+ earlier$/.test(tools[0]!);
+  return tools.length > TRANSCRIPT_ENTRY_TOOLS && !counted ? pageTools(tools) : tools;
 }
 
 /**
