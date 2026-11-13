@@ -295,10 +295,10 @@ with one message, a `pull-request` turn, when:
   CodeRabbit's holds nothing while it stays pending, unless the base branch
   requires it or commit statuses are the only checks;
 - someone other than the account `gh` signs in as posts a comment, a review or
-  an inline review comment, replies included. From a mochi, a review counts
+  an inline review comment, replies included. From a bot, a review counts
   when it names findings (`Actionable comments posted` above zero, outside
   diff comments, changes requested), and its summary (CodeRabbit's
-  walkthrough, mtsu-patrol's) only when rewritten to name findings. A mochi's
+  walkthrough, mtsu-patrol's) only when rewritten to name findings. A bot's
   other rewrites, an empty review, a reply in a thread that only agrees with
   the agent's answer ("Thanks for the fix", "I withdraw this finding", with no
   "but", "still" or "incomplete") and a notice that it will not review (quota,
