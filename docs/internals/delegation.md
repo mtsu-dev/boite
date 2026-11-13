@@ -26,19 +26,19 @@ permissions, process trace and usage. It inherits the parent's project,
 checkout and permission mode at creation. Profiles can use any installed,
 runnable provider and account. Native provider subagents are separate from
 these Boite subagents, and appear in their own section of the tab. The global
-Bots page holds bots: agents with their own identity, memory and
+Mochis page holds mochis: agents with their own identity, memory and
 routines, each in a thread of its own; it is not the list of children of a
-conversation. The bots are in the desktop's app rail and the Bots tab is in the
-phone's bottom navigation, in every build. Each bot opens its ordinary conversation, with its desk in
-the right panel ([bots](bots.md)).
+conversation. The mochis are in the desktop's app rail and the Mochis tab is in the
+phone's bottom navigation, in every build. Each mochi opens its ordinary conversation, with its desk in
+the right panel ([mochis](mochis.md)).
 
-A bot delegates project work with `boite delegate spawn "<brief>" --project <project>`.
-The project must be entrusted to that bot. With one entrusted project, delegation
+A mochi delegates project work with `boite delegate spawn "<brief>" --project <project>`.
+The project must be entrusted to that mochi. With one entrusted project, delegation
 uses it automatically; with several or none, an unnamed child stays personal.
 Project workers run in the project's folder and appear in its thread list,
-including Done and Archived, while the bot keeps steering them from Subagents.
+including Done and Archived, while the mochi keeps steering them from Subagents.
 Ordinary conversations keep their helpers under their parent. Memory passes
-stay in the bot's brain folder.
+stay in the mochi's brain folder.
 
 Subagents is one list and nothing else: the conversation's
 [workflow](workflows.md) runs, then the Boite subagents, then the provider's
@@ -185,7 +185,7 @@ provider session carries a short guide: the commands, `--model`, `--effort` and
 and the rule that results come back as messages. Later turns carry it again
 when the request is about handing work out (delegation, subagents, parallel
 work, a workflow) or the team is paused. A child receives one line naming its
-parent and how to report a blocker. Bots keep their own setting, which starts off. Only the
+parent and how to report a blocker. Mochis keep their own setting, which starts off. Only the
 owner can configure profiles or turn delegation off; the parent agent resumes
 the pauses listed under [Stop, pause and resume](#stop-pause-and-resume). A
 paired phone can inspect and stop an enabled team.
@@ -277,7 +277,7 @@ other machines** switch (`groupThreads`) as `thread new --machine`: while it is
 off the spawn is refused with the settings card to propose, and a letter from
 the parent is refused too. Stops, result pages and reports always pass. The
 parent's own gates apply first: subagents on and unpaused, the owner's
-any-model rule. A bot's subagents run on its own machine only.
+any-model rule. A mochi's subagents run on its own machine only.
 
 Without `--model`, `--effort` or `--speed`, the child runs on the parent's
 provider and model (or the named `--profile`) there, at the parent's level when
@@ -576,7 +576,7 @@ true` on a [workflow](workflows.md) step) gives the child a git worktree of its
 own on a new `boite/sub-<id>` branch, in the configured worktree folder. Its
 branch and folder are chosen at spawn and shown in the spawn output; the
 worktree itself is made from the parent's current HEAD, or the entrusted project's
-HEAD for a bot, just before the child's first turn. Uncommitted edits are not in it. A
+HEAD for a mochi, just before the child's first turn. Uncommitted edits are not in it. A
 conversation outside a git repository is refused by name.
 
 The child is told to commit its work on that branch. When one of its turns ends

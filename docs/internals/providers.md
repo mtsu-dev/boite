@@ -774,7 +774,7 @@ agent on 2026-11-04:
   medium, high), so Boite shows it as that model's effort; Claude and GPT have
   none. The `models` list of the same answer still carries the pre-1.4 ids
   `gemini-3.8-flash-low`, `-medium` and `-high`, which the agent takes as a
-  model and turns into the family plus that level. A thread or bot saved on one
+  model and turns into the family plus that level. A thread or mochi saved on one
   of them keeps running: its id is sent as is, and the check that refuses an
   unlisted model accepts an id that is a listed family followed by `-<level>`.
 A shell call (`kind: execute`) still running when the prompt answers is the
@@ -960,10 +960,10 @@ without starting the agent. The update check skips it, its program is not
 even asked its version, its usage is not read, no title is written on it, a
 delegated agent cannot be routed to it and no default account is adopted for
 it. Its warm processes
-are released at once; a turn already queued or running ends by itself. A bot
+are released at once; a turn already queued or running ends by itself. A mochi
 on it keeps its event wakes, facts and letters waiting, its status says to turn
 the provider back on or pick another model, and they run once one is done
-([bots](bots.md)).
+([mochis](mochis.md)).
 
 Nothing is removed. Accounts, threads, the managed install and the user's own
 install stay as they are, and turning the provider back on adopts an existing

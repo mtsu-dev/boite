@@ -112,7 +112,7 @@ worktree.
 - Agents launched from a shell appear under "Started from a command". On Linux
   and macOS, one launched inside another shell can be missing.
 - A paired phone can follow the children and stop them.
-- A bot has its own Allow subagents switch, in its settings.
+- A mochi has its own Allow subagents switch, in its settings.
 - A child can run on another machine of your group only while that machine's
   Threads from the other machines switch is on.
 

@@ -151,9 +151,9 @@ and assertions when making the suite faster.
 - [Council](docs/internals/council.md): several models review one request alone and
   read-only behind an experiment, each with a score, and the salon the owner
   follows.
-- [Bots](docs/internals/bots.md): Boite's persistent agents, each a thread with a name,
-  memory, routines and a desk, their `boite bot` commands and their guide.
-- [Teams](docs/internals/teams.md): bots and the owner in one group, routing, delivery
+- [Mochis](docs/internals/mochis.md): Boite's persistent agents, each a thread with a name,
+  memory, routines and a desk, their `boite mochi` commands and their guide.
+- [Teams](docs/internals/teams.md): mochis and the owner in one group, routing, delivery
   through coordination letters, the reply envelope and `boite team`.
 - [Model switching](docs/internals/model-switching.md) and [context](docs/internals/context.md):
   session reuse, queued turns and compaction.

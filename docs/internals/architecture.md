@@ -15,7 +15,7 @@ user's DPAPI state, OAuth loopback callback or profile. Local cores are resident
 by default: quitting the shell leaves work running until an owner calls
 `core.shutdown`. Tests can set `BOITE_CORE_RESIDENT=0`; on Windows that mode
 keeps the shell's `KILL_ON_JOB_CLOSE` Job Object. Adopted and remote cores remain
-independent. [Bots](bots.md) describes background work.
+independent. [Mochis](mochis.md) describes background work.
 
 The shell passes `--data-dir` and adopts a local core only when its PID is alive
 and `/health` reports the shell's version. Split JavaScript bundles must also
@@ -77,7 +77,7 @@ The [CLI](cli.md) uses the agent credential inside a thread.
 Project, settings, provider and account changes reach authenticated connections
 allowed to receive them. Message, permission, question, panel, process and
 activity events are scoped to subscribed threads as well as principal access.
-Questions from bots' threads also reach owner and paired-device
+Questions from mochis' threads also reach owner and paired-device
 clients without a subscription, so an agent's row and desk see a card the user
 must answer.
 `composer.updated` reaches owner and paired devices without a thread
@@ -499,7 +499,7 @@ exception is another agent writing to a thread at rest: a coordination letter,
 or a parent's follow-up to its delegated agent, that finds no turn under way, no
 background work, no pull request whose checks it waits on, and no delegated agent
 or workflow at work. That turn opens a request of its own
-(`TurnExecution.opensRequest`, set at admission), so a bot writing to a thread
+(`TurnExecution.opensRequest`, set at admission), so a mochi writing to a thread
 last used yesterday does not count from yesterday. A chat summary's `Worked for`
 adds the request's earlier turns to its own (`requestWork`): their durations,
 plus the gap before a background or delegation turn, while the agent waited on

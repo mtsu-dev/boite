@@ -37,7 +37,7 @@ feature is for.
 - [Subagents](subagents.md): let an agent delegate part of its work.
 - [Workflows](workflows.md): plans of delegated steps.
 - [The council](council.md): several models review one request.
-- [Bots](bots.md): persistent agents with memory and routines.
+- [Mochis](mochis.md): persistent agents with memory and routines.
 - [Coordination](coordination.md): messages between agents.
 - [The brain](brain.md): instructions and skills shared by every agent.
 - [Plugins](plugins.md): add features to Boite.

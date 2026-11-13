@@ -13,7 +13,7 @@ working on the code. To learn how to use Boite, read the [user guide](../README.
 - [Android client app](android.md): the APK that opens the phone UI and connects to an existing core.
 - [Headless server](server.md): run a core with Docker or without the desktop app.
 - [Android server](android-server.md): host a core and agents on a phone with Termux and the separate Boite Server app.
-- [Experiments](experiments.md): stages, and switches for unfinished features in Nightly and source builds. Contacts remain experimental; Bots are finished.
+- [Experiments](experiments.md): stages, and switches for unfinished features in Nightly and source builds. Contacts remain experimental; Mochis are finished.
 
 ## Conversations and tools
 
@@ -45,14 +45,14 @@ working on the code. To learn how to use Boite, read the [user guide](../README.
 - [Agent updates](agent-updates.md): CLI update notices, automatic updates and remote machines.
 - [Diagnostics](diagnostics.md): logs, anonymized exports and problem reports.
 
-## Machines and bots
+## Machines and mochis
 
 - [Machines](machines.md): connect cores, switch between them and keep each thread on its owning machine.
 - [Groups](groups.md): one owner's machines and devices, invitations, addresses and trust.
 - [Contacts](contacts.md): experimental collaboration with another owner on explicitly shared projects.
 - [Agent coordination](coordination.md): messages between threads and machines, discussions and permissions.
-- [Bots](bots.md): persistent agents with their own identity, thread, memory, desk and routines.
-- [Teams](teams.md): experimental groups of bots and the owner, routing by name, group or private posts, `boite team`.
+- [Mochis](mochis.md): persistent agents with their own identity, thread, memory, desk and routines.
+- [Teams](teams.md): experimental groups of mochis and the owner, routing by name, group or private posts, `boite team`.
 - [Agent brain](brain.md): shared instructions, skill discovery and Git synchronization.
 - [Agent hooks](hooks.md): hooks on each account and what they blocked.
 - [Plugins](plugins.md): install recommended plugins or a Git URL, and write your own.
