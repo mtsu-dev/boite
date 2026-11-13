@@ -11,6 +11,8 @@ import { askPermission, askQuestion, askAsync, requestSetting } from './requests
 import { backgroundShell, streamToolInput, runTool, documentTool, spawnProcess, toolBurst } from './turn-tools';
 import { delegationConfig, pumpDelegation } from './delegation';
 import { applyWaitingMove } from './thread-move';
+import { applyWaitingDone } from './agent-done';
+import { sweepMergedPrFixtures } from './merged-pr-archive';
 import { autoTitle } from './titles';
 import type { FakeContext } from './context';
 
@@ -79,7 +81,7 @@ export function startTurn(ctx: FakeContext, threadId: ThreadId, prompt: string, 
     threadId,
     turnId: turn.id,
     // A compaction the fake core opened by itself is Boite's message, as the core's is.
-    role: automatic ? 'system' : 'user',
+    role: automatic || operation === 'pull-request' ? 'system' : 'user',
     // The images ride after the text, the order the core journals them in.
     parts: [
       userPart(thread, prompt, previewReferences, automatic, activityKind, moved, label),
@@ -129,7 +131,7 @@ function refuseTurn(ctx: FakeContext, thread: Thread, queuedTurn?: Turn): RpcFai
  * The operations the fake core opens by itself: a compaction, a delegated
  * child's turn, and a persistent agent's wakes, labelled in its conversation.
  */
-type FakeOperation = 'compact' | 'delegation' | 'routine' | 'event';
+type FakeOperation = 'compact' | 'delegation' | 'routine' | 'event' | 'pull-request';
 
 function turnExecution(thread: Thread, operation: FakeOperation | undefined, automatic: boolean): NonNullable<Turn['execution']> {
   return {
@@ -396,8 +398,12 @@ function finishTurn(ctx: FakeContext, thread: Thread, turn: Turn, message: Messa
   pushScheduler(ctx, turn, 'finished');
   // A move the agent asked for during the turn happens now, as the core's turn runner does.
   applyWaitingMove(ctx, thread.id);
+  // Then the Done its agent asked for, as the core's turn runner calls `agentDone.applyWaiting`.
+  applyWaitingDone(ctx, thread.id);
   autoCompact(ctx, thread, turn);
   finishDelegation(ctx, thread, turn, message, record);
+  // A merge seen while the thread worked is asked about once it rests (the core waits `settleMs`; the fake does not).
+  if (ctx.mergedPrAfterTurn.delete(thread.id)) queueMicrotask(() => { void sweepMergedPrFixtures(ctx, thread.id); });
 }
 
 function finishDelegation(ctx: FakeContext, thread: Thread, turn: Turn, message: Message, record: StreamRecord): void {

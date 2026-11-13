@@ -61,8 +61,10 @@ branch.
   after all its conversations are done or archived, only when its last commit
   is on another branch or in a merged pull request. Uncommitted changes always
   stay.
-- Hide merged PR conversations moves a worktree conversation to Done once its
-  branch is merged.
+- Ask to finish after merge: once every pull request of a worktree conversation
+  is merged or closed, Boite asks its agent whether the conversation is done.
+  The agent moves it to Done or keeps it open when it still has something to
+  say. Nothing goes to Done by itself.
 
 ## Titles
 
