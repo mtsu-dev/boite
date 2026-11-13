@@ -48,7 +48,7 @@ afterAll(async () => {
 }, 30_000);
 
 for (const [width, height] of [[390, 844], [360, 760]] as const) {
-  test(`a tap on Stop ends a bot's turn and keeps it stopped on a ${width}×${height} phone`, async () => {
+  test(`a tap on Stop ends a mochi's turn and keeps it stopped on a ${width}×${height} phone`, async () => {
     let agent = await owner.call('agents.profile.save', { value: { name: `Watcher ${width}`, domain: 'Watches the deploys', instructions: 'Watch the deploys.', avatar: '', status: 'active', projectIds: [],
       selection: { providerId: 'echo', accountId, model: 'echo', effort: null, permissionMode: 'default' } } });
     agent = await quietAgent(owner, agent);

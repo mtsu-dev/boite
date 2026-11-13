@@ -176,7 +176,7 @@ test('Short answers starts on and saves when flipped', async () => {
   await page.waitFor(`globalThis.__boiteTest.workspace.active.settings?.shortAnswers === true`);
 }, 30_000);
 
-test('the bots are in the app rail on the desktop and in the phone bar, with no switch', async () => {
+test('the mochis are in the app rail on the desktop and in the phone bar, with no switch', async () => {
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
   await page.waitFor(`!document.querySelector('${id('mobile-settings-detail')}') && !history.state?.boiteOverlay`);
   // The agents fixture, so the rail has bots to draw.

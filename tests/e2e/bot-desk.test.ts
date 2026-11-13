@@ -32,7 +32,7 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await page?.close(); await server?.close(); }, 60_000);
 
-test('the bot desk shows who it is, Now, routines and memory in one column without overflowing on desktop or phone', async () => {
+test('the mochi desk shows who it is, Now, routines and memory in one column without overflowing on desktop or phone', async () => {
   for (const width of [1440, 390]) {
     await page.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: width === 390 });
     // A first visit on a wide window opens the desk by itself: read its state once the panel has settled,

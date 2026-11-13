@@ -15,7 +15,7 @@ beforeAll(async () => {
 
 afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);
 
-test('bot settings save local and remote projects separately on desktop and phone', async () => {
+test('mochi settings save local and remote projects separately on desktop and phone', async () => {
   await page.waitFor(`window.__boiteTest?.workspace.machines.length === 2 && window.__boiteTest.workspace.primary.group?.cores.length === 2`);
   const grant = await page.evaluate<string>(`(async () => {
     window.__boiteTest.setTheme('dark');
@@ -44,7 +44,7 @@ test('bot settings save local and remote projects separately on desktop and phon
 
   // Permission is the destination's and reacts while the form remains open.
   await page.evaluate(`window.__boiteTest.workspace.machines.find(m => m.store !== window.__boiteTest.workspace.primary).store.saveSettings({ groupBots: false })`);
-  await page.waitFor(`document.querySelector('${id('agent-project-machine-fake-builder')}')?.textContent.includes('Bots from the other machines')`);
+  await page.waitFor(`document.querySelector('${id('agent-project-machine-fake-builder')}')?.textContent.includes('Mochis from the other machines')`);
   expect(await page.evaluate(`document.querySelector('${remote}').checked && !document.querySelector('${remote}').disabled`)).toBe(true);
   await page.click(remote);
   await page.waitFor(`document.querySelector('${remote}')?.disabled`);

@@ -30,21 +30,21 @@ async function capture(name: string) {
 const card = id('settings-agents-alone');
 const show = () => page.evaluate(`document.querySelector('${card}').scrollIntoView({ block: 'center' })`);
 
-test('an agent asking for a bot draws a card with its name, role, projects, model and the full access line; Approve creates it', async () => {
+test('an agent asking for a mochi draws a card with its name, role, projects, model and the full access line; Approve creates it', async () => {
   await page.send('Emulation.setDeviceMetricsOverride', DESKTOP);
   const DOCKED = `${id('activity-question')} ${id('bot-request-card')}[data-state="pending"]`;
   const threadId = await page.evaluate(`(async () => {
     const store = window.__boiteTest.workspace.active;
     const thread = await store.client.call('threads.create', { projectId: 'p-boite', providerId: 'echo', accountId: 'a-echo' });
     await window.__boiteTest.workspace.select(store, thread.id);
-    await store.client.call('turns.start', { threadId: thread.id, prompt: 'set up a bot for my notes' });
+    await store.client.call('turns.start', { threadId: thread.id, prompt: 'set up a mochi for my notes' });
     await store.client.call('agents.create', { threadId: thread.id, name: 'Scribe', domain: 'Keeps the notes in order', projects: ['notes'] });
     return thread.id;
   })()`) as string;
   await page.waitFor(`document.querySelector('${DOCKED}')?.getBoundingClientRect().width > 0`);
   expect(await page.text(`${DOCKED} ${id('bot-request-name')}`)).toBe('Scribe');
   expect(await page.text(`${DOCKED} ${id('bot-request-role')}`)).toBe('Keeps the notes in order');
-  expect(await page.text(`${DOCKED} ${id('bot-request-access')}`)).toBe('This bot runs with full access to this machine.');
+  expect(await page.text(`${DOCKED} ${id('bot-request-access')}`)).toBe('This mochi runs with full access to this machine.');
   await capture('bot-card-desktop.png');
 
   await page.send('Emulation.setDeviceMetricsOverride', PHONE);
@@ -61,7 +61,7 @@ test('an agent asking for a bot draws a card with its name, role, projects, mode
   await capture('bot-card-approved-desktop.png');
 }, 120_000);
 
-test('a new install shows the reach on This project and bot creation off; each step explains itself, desktop and phone', async () => {
+test('a new install shows the reach on This project and mochi creation off; each step explains itself, desktop and phone', async () => {
   await page.send('Emulation.setDeviceMetricsOverride', DESKTOP);
   await page.click(id('nav-settings'));
   await page.click(id('settings-tab-general'));
@@ -70,7 +70,7 @@ test('a new install shows the reach on This project and bot creation off; each s
   expect(await page.evaluate(`document.querySelector('${id('coordination-reach-project')}').getAttribute('aria-pressed')`)).toBe('true');
   expect(await page.text(id('coordination-reach-effect'))).toContain('its own project only');
   expect(await page.evaluate(`document.querySelector('${id('setting-agent-bot-creation')}').checked`)).toBe(false);
-  expect(await page.text(card)).toContain('A bot created this way has full access to this machine');
+  expect(await page.text(card)).toContain('A mochi created this way has full access to this machine');
   await show();
   await capture('settings-desktop-closed.png');
 

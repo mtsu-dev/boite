@@ -79,7 +79,7 @@ for (const [name, size] of [['desktop', DESKTOP], ['phone', PHONE]] as const) {
     await page.evaluate(`localStorage.removeItem('boite.experiments'); localStorage.removeItem('boite.experiments.build')`);
   }, 60000);
 
-  test(`${name}: Bots are in the ${name === 'desktop' ? 'app rail' : 'bottom bar'} on a fresh profile`, async () => {
+  test(`${name}: Mochis are in the ${name === 'desktop' ? 'app rail' : 'bottom bar'} on a fresh profile`, async () => {
     await open('&agents=1', size);
     expect(await page.evaluate(`localStorage.getItem('boite.experiments')`)).toBeNull();
     // A phone opens on the conversation: its bar is on the list.
