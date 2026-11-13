@@ -33,7 +33,18 @@ export function targetOf(file: string): string | undefined {
   return TARGETS.find(([, pattern]) => pattern.test(file))?.[0];
 }
 
-export function updaterManifest(version: string, repository: string, payloads: Payload[], notes: string, date: string) {
+/**
+ * The journal schema the release's core writes, from the line the shell's
+ * build.rs also reads. The shell offers no release older than its own data:
+ * a core refuses a journal newer than it knows.
+ */
+export function journalSchema(source = readFileSync(join(import.meta.dir, '../../packages/core/src/journal/schema.ts'), 'utf8')): number {
+  const match = /^export const SCHEMA_VERSION = (\d+);$/m.exec(source);
+  if (!match) throw new Error('packages/core/src/journal/schema.ts: expected `export const SCHEMA_VERSION = <number>;`');
+  return Number(match[1]);
+}
+
+export function updaterManifest(version: string, repository: string, payloads: Payload[], notes: string, date: string, journal_schema = journalSchema()) {
   if (!/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(version)) throw new Error('expected a semantic version');
   if (!/^[\w.-]+\/[\w.-]+$/.test(repository)) throw new Error('expected owner/repository');
   if (!Number.isFinite(Date.parse(date))) throw new Error('expected an ISO publication date');
@@ -51,7 +62,7 @@ export function updaterManifest(version: string, repository: string, payloads: P
   }
   const missing = TARGETS.map(([target]) => target).filter((target) => !platforms[target]);
   if (missing.length) throw new Error(`missing signed payloads for ${missing.join(', ')}`);
-  return { version, notes, pub_date: date, platforms };
+  return { version, notes, pub_date: date, journal_schema, platforms };
 }
 
 /** Every file a release publishes, refusing anything the pipeline did not expect. */

@@ -133,7 +133,7 @@ test('refused by name: another provider, a bad id, a missing file, a transcript 
   if (echo === undefined) throw new Error('no echo account');
 
   expect(await thrown(client.call('imports.run', { projectId, accountId: echo.id, sessionId: FIXTURE_SESSION_ID }))).toThrow(
-    'only a Claude account',
+    'only a Claude or Codex account',
   );
   expect(await thrown(client.call('imports.run', { projectId, accountId: account.id, sessionId: '../escape' }))).toThrow(
     'letters, digits, dashes and underscores',
