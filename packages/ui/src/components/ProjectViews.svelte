@@ -16,7 +16,7 @@
   /**
    * The thread list's head, one row: its two views, Projects and Recent, as a
    * segmented switch with the side on raised, then the display menu named
-   * "Filter" and search; under it "New thread" in words, with its key.
+   * "Filter", search and "+" for a new thread, its name and key in its tooltip.
    * Recent's project filter and the machine filter live in the display menu,
    * which dots its button while one of them hides threads; each one on is a
    * chip in words on the line under the head, removed with a press.
@@ -26,8 +26,6 @@
   const selected = $derived(projectView.selected(entries));
   const target = $derived(workspace.view === 'recent' && selected ? selected.project : store.openProject ?? store.projects.find(p => !p.archived));
   const targetOwner = $derived(workspace.view === 'recent' && selected ? selected.machine.store : store);
-  /** The key that starts one, at the row's end where it has one. */
-  const newKey = $derived(store.keyLabel('new-thread'));
   const newLabel = $derived(target ? fill(strings.sidebar.newThreadIn, { project: projectName(target) }) : strings.sidebar.newThread);
   /** The filters that hide threads, counted on the display button: the project Recent lists, the machine. */
   const filters = $derived(Number(workspace.view === 'recent' && selected !== undefined) + Number(machineFilter.shown(workspace.machinesOr(store)) !== null));
@@ -52,17 +50,11 @@
     <DisplayOptions {entries} {target} owner={targetOwner} {filters} word onaddproject={addProject} />
     {#if entries.length}
       <button class="ghost icon small" title={`${strings.sidebar.search}${store.keyHint('palette')}`} aria-label={strings.sidebar.search} data-testid="sidebar-search-open" onclick={() => store.paletteOpen = true}><Search size={16} /></button>
+      <button class="ghost icon small" title={`${newLabel}${store.keyHint('new-thread')}`} aria-label={newLabel} data-testid="new-thread" onclick={create}><Plus size={16} /></button>
     {/if}
   </div>
 </div>
 <FilterChips {entries} owner={store} />
-{#if entries.length}
-  <!-- The list's main action in words, over the rows: a head of one row has no room for "New thread" beside
-       both views, Filter and search at the column's default width. -->
-  <button class="ghost new" title={`${newLabel}${store.keyHint('new-thread')}`} aria-label={newLabel} data-testid="new-thread" onclick={create}>
-    <Plus size={16} aria-hidden="true" /><span class="ui-label">{strings.sidebar.newThread}</span>{#if newKey}<span class="kbd">{newKey}</span>{/if}
-  </button>
-{/if}
 {/if}
 
 <style>
@@ -90,16 +82,8 @@
   @container sidebar (max-width: 239px) {
     .list-head .title :global(.side) { padding: 0 4px; }
   }
-  /* A row on the cards' edges, as tall as a thread row: the glyph where a row's text starts, the key at its end. */
-  .new { display: flex; align-items: center; gap: 8px; width: 100%; height: 32px; margin: 2px 0 6px; padding: 0 8px 0 7px; border-radius: var(--radius-md);
-    background: var(--color-surface-2); color: var(--color-foreground); font-size: var(--text-body); font-weight: 500; }
-  .new:hover:not(:disabled) { background: var(--color-surface-3); }
-  .new > :global(svg) { flex: none; color: var(--color-muted-foreground); }
-  .new .ui-label { flex: 1; min-width: 0; text-align: start; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .new .kbd { flex: none; }
   @media (max-width: 720px) {
     /* `button.icon` grows to the touch target on a phone. */
     .actions :global(button.icon) { width: var(--touch-target); height: var(--touch-target); }
-    .new { height: var(--touch-target); }
   }
 </style>

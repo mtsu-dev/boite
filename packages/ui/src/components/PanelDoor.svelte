@@ -6,21 +6,27 @@
   import type { Store } from '../lib/store.svelte';
 
   /**
-   * The door to the side panel, the same on a thread's header and a bot's,
-   * outlined so its words read as a button. Closed, it reads "Panels" and how
-   * many it holds, and opens them. Open, it is the one place that names the
-   * panel, its icon and name with a chevron, and the panel switcher: its list
-   * holds every panel, the showing one checked, and the way to close
-   * (`PanelSwitcher.svelte`, handed over by `RightPanel.svelte` through
-   * `lib/panel-switch.svelte.ts`, so it loads with the panel).
-   * A phone's panel covers the header: its own head carries the door
-   * (`inPanel`). `ontoggle` is what the closed door opens (a bot's opens on its desk).
+   * The door to the side panel, the same on a thread's header and a bot's.
+   * On a desktop it is the panel glyph alone, pressed while the panel is open:
+   * a click opens the panel, the next one closes it. The panel's own strip
+   * holds its tabs and the launcher that adds one (`RightPanel.svelte`).
+   * On a phone it reads "Panels" and how many it holds; the phone's panel
+   * covers the header, so its own head carries the door (`inPanel`), which
+   * names the showing panel and switches it (`PanelSwitcher.svelte`, handed
+   * over by `RightPanel.svelte` through `lib/panel-switch.svelte.ts`).
+   * `ontoggle` is what the door opens and closes (a bot's opens on its desk).
    */
   let { store, count = 0, ontoggle, testid, inPanel = false }: { store: Store; count?: number; ontoggle?: () => void; testid: string; inPanel?: boolean } = $props();
   const mobile = new MediaQuery('(max-width: 720px)');
-  const named = $derived(store.panelOpen && panelSwitch.store === store && (inPanel || !mobile.current));
+  const named = $derived(inPanel && store.panelOpen && panelSwitch.store === store);
 </script>
 
+{#if !mobile.current && !inPanel}
+  <button type="button" class="icon-button panel-glyph" title={`${strings.thread.panelHint}${store.keyHint('panel')}`} aria-label={strings.thread.panelHint}
+    aria-pressed={store.panelOpen} data-testid={testid} onclick={() => ontoggle?.()}>
+    <PanelRight size={16} strokeWidth={1.75} />
+  </button>
+{:else}
 <span class="panel-door" class:on={named} class:in-panel={inPanel}>
   {#if named && panelSwitch.door}
     <panelSwitch.door {inPanel} />
@@ -35,8 +41,11 @@
     </button>
   {/if}
 </span>
+{/if}
 
 <style>
+  /* Off the window's edge by the gap the crumb keeps on the left, its 32 px target kept. */
+  .panel-glyph { flex: none; margin: calc((var(--icon-button-target) - var(--icon-button)) / 2); margin-right: 4px; }
   /* Off the window's edge by the gap the crumb keeps on the left. */
   .panel-door { display: inline-flex; flex: none; min-width: 0; align-items: center; margin-right: 4px; }
   /* 32 px high as the title's menu and the sidebar fold; on a phone the button around the face keeps the touch height. */

@@ -215,6 +215,11 @@ test('a project card names its machine only when it is not this app\'s own', asy
   const line = () => card(remote.id)?.querySelector<HTMLElement>('[data-testid=project-offline]') ?? null;
   const reconnect = () => line()?.querySelector<HTMLButtonElement>('[data-testid=project-reconnect]') ?? null;
   expect(line()).toBeNull();
+  // A machine retrying a dropped link is not offline: its name dims, no line, no "Connecting" banner.
+  remote.store.connection = 'connecting';
+  await waitFor(() => card(remote.id)!.querySelector('[data-testid=project-host].dim') !== null);
+  expect(line()).toBeNull();
+  expect(card(remote.id)!.textContent).not.toContain('Connecting');
   remote.store.connection = 'closed';
   await waitFor(() => reconnect()?.textContent === 'Reconnect');
   expect(line()!.textContent).toContain(`${remote.label} is offline`);

@@ -344,7 +344,7 @@
             >
               {#if projectView.order === 'manual'}<GripVertical size={12} />{/if}<span class="mark"><ProjectTile {project} store={owner} size={18} /><span class="fold-caret" class:open={!collapsed} aria-hidden="true"><ChevronRight size={16} /></span></span
               ><span class="name project-title ui-label" class:gone={project.missing === true}>{projectName(project)}</span
-              >{#if host(machine)}<MachinePlace host={{ ...host(machine)!, away: false }} testid="project-host" />{/if}{#if project.missing === true}<span class="missing" data-testid="project-missing" title={strings.sidebar.projectMissing} aria-label={strings.sidebar.projectMissing}><FolderX size={13} aria-hidden="true" /></span>{/if}{#if rollup && !needsYou(rollup.kind) && rollup.kind !== 'done' && lists.working.length === 0}<ProjectRollup {rollup} />{/if}
+              >{#if host(machine)}<MachinePlace host={{ ...host(machine)!, away: false }} dim={away} testid="project-host" />{/if}{#if project.missing === true}<span class="missing" data-testid="project-missing" title={strings.sidebar.projectMissing} aria-label={strings.sidebar.projectMissing}><FolderX size={13} aria-hidden="true" /></span>{/if}{#if rollup && !needsYou(rollup.kind) && rollup.kind !== 'done' && lists.working.length === 0}<ProjectRollup {rollup} />{/if}
             </button>
             <ProjectThreadCounters {entry} working={lists.working.length} waiting={needs.count} failed={needs.failed} {listed} {controls} {collapsed} {away} />
             <button
@@ -355,8 +355,9 @@
               onclick={(e) => openProjectMenu(e, machine, project, list, section)}><Ellipsis size={15} /></button
             >
           </div>
-          <!-- Out of reach, said once under the name with its next step; the rows below dim as last seen. -->
-          {#if away}<div class="offline"><MachineOffline store={owner} label={machine.label} /></div>{/if}
+          <!-- Offline, said once under the name with its next step; the rows below dim as last seen. A reconnect
+               in progress says nothing here: the rows dim and the machine's place says it, so a blip does not jump the list. -->
+          {#if owner.connection === 'closed'}<div class="offline"><MachineOffline store={owner} label={machine.label} /></div>{/if}
           <div id="{controls}-body" class="disclosure-fold" class:open={!collapsed} inert={collapsed}>
             <div>
               <SharedProjectThreads store={owner} projectId={project.id} active={!collapsed && !away}>
