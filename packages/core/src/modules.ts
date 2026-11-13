@@ -33,7 +33,7 @@ import { registerSharedComputeMethods } from './contacts/compute.ts';
 import { registerResidentMethods } from './agents/projects.ts';
 import { registerGroupMethods } from './group/rpc.ts';
 import { registerTeamMethods } from './teams-entry.ts';
-import { registerCouncil } from './council/rpc.ts';
+import { registerCouncilMethods } from './council-entry.ts';
 import { registerTerminalMethods } from './terminals.ts';
 import { registerWorkflowMethods } from './workflows.ts';
 import { registerWorktreeMethods } from './worktree-sweep.ts';
@@ -143,7 +143,7 @@ export function registerModules(core: Core): void {
   core.router.register('delegation.stop', (params, ctx) => ({ stopped: core.delegation.stop(params.threadId, params.agentId, ctx.connection.identity.principal === 'agent' ? 'agent' : 'stop') }));
   core.router.register('delegation.resume', (params, ctx) => core.delegation.resume(params.threadId, params.agentId, ctx.connection.identity.principal));
   registerWorkflowMethods(core, probe);
-  registerCouncil(core, probe);
+  registerCouncilMethods(core, probe);
   registerUpdateMethods(core);
   registerAccountMethods(core);
   registerThreadMethods(core, probe);

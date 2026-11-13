@@ -62,7 +62,8 @@ import { HarnessUpdates } from './providers/updates.ts';
 import { Coordination } from './coordination.ts';
 import type { TeamStore } from './teams/store.ts';
 import { teamStore } from './teams-entry.ts';
-import { CouncilStore } from './council/store.ts';
+import type { CouncilStore } from './council/store.ts';
+import { councilStore } from './council-entry.ts';
 import { GroupStore, type NetworkSink } from './group.ts';
 import { ContactStore } from './contacts/store.ts';
 import { SharedProjects } from './contacts/projects.ts';
@@ -469,7 +470,7 @@ export class Core {
 
     this.workforce = new AgentStore(this);
     this.teams = teamStore(this);
-    this.council = new CouncilStore(this);
+    this.council = councilStore(this);
     this.pullRequests = new PullRequests(this);
     this.linkedPullRequests = new LinkedPullRequests(this, (threadId, url, refresh) => this.pullRequests.detail(threadId, url, refresh));
     this.pullRequestWatches = new PullRequestWatches(this, (threadId, args) => this.pullRequests.gh(threadId, args), options.pullRequestWatches);

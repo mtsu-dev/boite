@@ -153,7 +153,7 @@ export function featureDefines(version: string | null | undefined, stages: Recor
 export const FEATURE_CUTS: Partial<Record<ExperimentId, { ui: boolean; core: boolean }>> = {
   // The Whip has no core side.
   whip: { ui: true, core: false },
-  // Council: the card and the salon in the UI; in the core the `boite delegate council` command only (the store and the RPC methods stay).
+  // Council: the card and the salon in the UI; in the core the store, the RPC methods and `boite delegate council` (the tables stay).
   debates: { ui: true, core: true },
   // Contacts: the page, the column, the rows and the shared project screens in the UI. The core keeps it whole: a Release still reads and revokes what a Nightly left.
   contacts: { ui: true, core: false },

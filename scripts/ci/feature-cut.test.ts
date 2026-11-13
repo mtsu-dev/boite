@@ -61,7 +61,8 @@ test('every feature declared cut writes its marker and its flag in the sources, 
     debates: {
       ui: { marker: ['packages/ui/src/components/council/CouncilSalon.svelte', 'packages/ui/src/components/council/CouncilCard.svelte'], entry: 'packages/ui/src/lib/council-entry.ts' },
       // (the card's own gated import is in lib/deferred-parts.ts, which the salon's modules import: checked below)
-      core: { marker: ['packages/core/src/council/cli.ts'], entry: 'packages/core/src/delegate-cli.ts' },
+      // (the store and the RPC methods have their own entry, core/src/council-entry.ts: checked below)
+      core: { marker: ['packages/core/src/council/cli.ts', 'packages/core/src/council/store.ts', 'packages/core/src/council/rpc.ts'], entry: 'packages/core/src/delegate-cli.ts' },
     },
     contacts: { ui: { marker: ['HomePage', 'ContactsRail', 'ContactRows', 'ContactRequestNotice', 'ContactInboxRows', 'SidebarContacts'].map((name) => `packages/ui/src/components/home/${name}.svelte`).concat(['SharedThreadDialog', 'SharedProjectThreads', 'SharedProjectDialog'].map((name) => `packages/ui/src/components/shared/${name}.svelte`)), entry: 'packages/ui/src/lib/contacts-entry.ts' } },
     teams: {
@@ -82,6 +83,7 @@ test('every feature declared cut writes its marker and its flag in the sources, 
     }
   }
   for (const id of ['debates', 'contacts', 'teams'] as const) expect(read('packages/ui/src/lib/deferred-parts.ts')).toContain(`typeof ${featureFlag(id)} === 'undefined' || ${featureFlag(id)}`);
+  expect(read('packages/core/src/council-entry.ts')).toContain(`typeof ${featureFlag('debates')} === 'undefined' || ${featureFlag('debates')}`);
   // The contracts file names no marker in full, or every bundle would hold them all.
   const contracts = read('packages/contracts/src/experiments.ts');
   for (const id of EXPERIMENT_IDS) expect(contracts, id).not.toContain(featureMarker(id));

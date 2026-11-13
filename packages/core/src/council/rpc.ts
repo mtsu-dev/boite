@@ -60,3 +60,6 @@ export function registerCouncil(core: Core, probe: ProviderProbe): void {
   core.router.register('council.closeRound', params => core.council.closeRound(object(params)));
   core.router.register('council.stop', (params, ctx) => core.council.stop(object(params), ctx.connection.identity.principal));
 }
+
+/** Marks this module in a bundle (scripts/ci/feature-cut.ts). */
+export const FEATURE_MARKER = 'boite-feature:debates';

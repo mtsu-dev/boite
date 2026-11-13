@@ -38,7 +38,7 @@ export interface DelegateOptions {
  * (`packages/contracts/src/experiments.ts`): in a bundle below the Council's
  * tag it is `false`, the import is dropped and the bundle has no such module.
  * From source and in tests it is not defined. The store and the RPC methods
- * are still in every bundle (docs/internals/experiments.md#out-of-the-build).
+ * go the same way in `council-entry.ts` (docs/internals/experiments.md#out-of-the-build).
  */
 function councilCli(): Promise<typeof import('./council/cli.ts')> | null {
   if (typeof __BOITE_HAS_DEBATES__ === 'undefined' || __BOITE_HAS_DEBATES__) return import('./council/cli.ts');

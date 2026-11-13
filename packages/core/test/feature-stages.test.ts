@@ -271,3 +271,19 @@ test('a core compiled without the Teams starts, refuses every team method with t
   const dev = await core(DEV);
   expect(dev.core.teams.constructor.name).toBe('TeamStore');
 });
+
+test('a core compiled without the Council starts, refuses every council method with the tag and the build, and owns no thread', async () => {
+  await compiledWithout(['__BOITE_HAS_DEBATES__'], async () => {
+    const release = await core(RELEASE);
+    const owner = await release.connect();
+    const refusal = 'experiment.debates runs in Nightly and Dev builds only, and this machine runs a Release (2.0.0)';
+    for (const method of ['council.start', 'council.list', 'council.get', 'council.stop'] as const) {
+      expect(await owner.call(method, {} as never).then(() => 'accepted', (error: Error) => error.message), method).toContain(refusal);
+    }
+    const { threadId } = await echoThread(release, owner);
+    expect([release.core.council.enabled(), release.core.council.owns(threadId), release.core.council.running(threadId), release.core.council.stopParent(threadId, 'test')]).toEqual([false, false, false, 0]);
+    owner.close();
+  });
+  const dev = await core(DEV);
+  expect(dev.core.council.constructor.name).toBe('CouncilStore');
+});

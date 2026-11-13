@@ -888,3 +888,6 @@ export class CouncilStore {
     this.#off();
   }
 }
+
+/** Marks this module in a bundle (scripts/ci/feature-cut.ts). */
+export const FEATURE_MARKER = 'boite-feature:debates';
