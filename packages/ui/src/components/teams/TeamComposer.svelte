@@ -11,7 +11,7 @@
 <script lang="ts">
   import { markFeature } from '@boite/contracts';
   import { untrack } from 'svelte';
-  import { ArrowUp, AtSign, Lock, LoaderCircle, UsersRound, X } from '@lucide/svelte';
+  import { ArrowUp, AtSign, ChevronDown, CornerDownRight, Lock, LoaderCircle, UsersRound, X } from '@lucide/svelte';
   import { routeTeamPost, TEAM_OWNER, TEAM_POST_MAX, type Team, type TeamMember } from '@boite/contracts';
   import { errorText } from '../../lib/errors';
   import { hasKeyboard } from '../../lib/live-input';
@@ -26,9 +26,10 @@
   /**
    * The owner's composer in a team chat (`docs/internals/teams.md`). A post that names
    * nobody wakes every member; `@name` or the mention menu wakes only the bots
-   * it names, `@everyone` or `@tous` every member, and the line under the field
-   * says who the core will wake, from the same
-   * rule it applies (`routeTeamPost`). The audience menu makes the post private
+   * it names, `@everyone` or `@tous` every member, and the words beside the send
+   * button, where a thread's composer keeps its hint, say who the core will
+   * wake, from the same rule it applies (`routeTeamPost`). The card and its bar
+   * are the thread composer's (`Composer.svelte`, `ComposerBar.svelte`). The audience menu makes the post private
    * to one member. A post keeps its id until it lands, so a retry after a lost
    * answer returns the same post.
    */
@@ -162,6 +163,7 @@
   <div class="composer" data-testid="team-composer" data-private={recipient ? 'true' : undefined}>
     {#if reply}
       <div class="replying" data-testid="team-replying">
+        <CornerDownRight size={14} />
         <span class="ui-label">{fill(labels.replying, { name: partyName(team, reply.author, true) })}</span>
         <span class="excerpt">{reply.excerpt}</span>
         <button type="button" class="ghost small icon" title={labels.cancelReply} aria-label={labels.cancelReply} onclick={() => { reply = null; field?.focus(); }} data-testid="team-reply-cancel"><X size={14} /></button>
@@ -178,15 +180,19 @@
       data-testid="team-composer-input"
     ></textarea>
     <div class="bar">
-      <Menu items={audienceItems} onpick={pickAudience} label={labels.audience} testid="team-audience">
-        {#if recipient}<Lock size={14} /><span class="ui-label">{fill(labels.onlyReads, { name: recipient.name })}</span>
-        {:else}<UsersRound size={14} /><span class="ui-label">{labels.everyoneReads}</span>{/if}
-      </Menu>
-      {#if !recipient}
-        <Menu items={mentionItems} onpick={mention} label={labels.mention} variant="ghost" testid="team-mention">
-          <AtSign size={14} /><span class="ui-label mention-label">{labels.mention}</span>
+      <div class="chips">
+        <Menu items={audienceItems} onpick={pickAudience} label={labels.audience} testid="team-audience">
+          {#if recipient}<Lock size={14} /><span class="ui-label">{fill(labels.onlyReads, { name: recipient.name })}</span>
+          {:else}<UsersRound size={14} /><span class="ui-label">{labels.everyoneReads}</span>{/if}
+          <ChevronDown size={14} />
         </Menu>
-      {/if}
+        {#if !recipient}
+          <Menu items={mentionItems} onpick={mention} label={labels.mention} testid="team-mention">
+            <AtSign size={14} /><span class="ui-label mention-label">{labels.mention}</span>
+          </Menu>
+        {/if}
+      </div>
+      {#if !error && !tooLong}<span class="wakes" title={wakes} data-testid="team-wakes" aria-live="polite">{wakes}</span>{/if}
       <button
         type="button"
         class="primary icon send"
@@ -200,33 +206,36 @@
     </div>
   </div>
   {#if error}<p class="note error" role="alert" data-testid="team-composer-error">{error}</p>
-  {:else if tooLong}<p class="note error" role="alert" data-testid="team-composer-error">{fill(labels.tooLong, { max: count(TEAM_POST_MAX) })}</p>
-  {:else}<p class="note" data-testid="team-wakes" aria-live="polite">{wakes}</p>{/if}
+  {:else if tooLong}<p class="note error" role="alert" data-testid="team-composer-error">{fill(labels.tooLong, { max: count(TEAM_POST_MAX) })}</p>{/if}
 </div>
 
 <style>
-  /* The thread composer's look (Composer.svelte): `composer-wrap` and `composer` also take the app's focus ring. */
-  .composer-wrap { padding: 8px 20px 16px; }
+  /* The thread composer's card (Composer.svelte): `composer-wrap` and `composer` also take the app's focus edge (app.css). */
+  .composer-wrap { position: relative; flex: none; padding: 8px 20px 16px; }
   .composer {
-    /* The focus ring (`.composer::before`, app.css) is laid on this box, not on the card around the chat. */
     position: relative;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
     max-width: var(--content);
     margin: 0 auto;
-    background: var(--composer-glaze) var(--color-composer-surface);
-    border: 1px solid var(--color-border);
-    border-top-color: var(--color-edge);
-    border-radius: var(--radius-xl);
+    background: var(--color-composer-surface);
+    border: 1px solid var(--color-composer-edge);
+    border-radius: var(--radius-composer);
+    container: composer / inline-size;
     box-shadow: var(--shadow-composer);
+    transition: border-color var(--motion-duration) var(--motion-curve), box-shadow var(--motion-duration) var(--motion-curve);
   }
-  .composer[data-private] { border-color: var(--color-muted-foreground); }
+  /* A private post is written in a dashed card, as it will read in the chat. */
+  .composer[data-private] { border-style: dashed; }
   textarea {
     display: block;
     width: 100%;
-    min-height: calc(1lh + 12px);
+    min-height: calc(1lh + 14px);
     max-height: min(200px, calc(8lh + 16px));
     field-sizing: content;
     resize: none;
-    padding: 12px 14px 0;
+    padding: 14px 16px 0;
     border: 0;
     background: transparent;
     color: var(--color-foreground);
@@ -236,21 +245,51 @@
     outline: none;
   }
   textarea::placeholder { color: var(--color-subtle); }
-  .bar { display: flex; align-items: center; gap: 6px; padding: 4px 8px 8px 10px; }
-  .send { margin-left: auto; width: var(--control); height: var(--control); border-radius: var(--radius-full); flex: none; }
-  .send:not(:disabled):active { transform: scale(.92); }
+
+  /* The thread bar's row and chips (ComposerBar.svelte): no frame, muted ink, a fill only under the pointer or while the menu is open. */
+  .bar { display: flex; align-items: flex-end; gap: 8px; padding: 4px 8px 8px 10px; }
+  .chips { flex: 0 1 auto; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+  .chips :global(.trigger) {
+    width: auto;
+    height: var(--control-head);
+    padding: 0 10px;
+    gap: 7px;
+    border-color: transparent;
+    border-radius: var(--radius-md);
+    background: transparent;
+    box-shadow: none;
+    color: var(--color-muted-foreground);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    transition: background var(--dur-2) var(--ease-out-quint), color var(--dur-2) var(--ease-out-quint), transform var(--motion-duration) var(--motion-curve);
+  }
+  .chips :global(.trigger > .lucide-chevron-down) { flex: none; opacity: .6; }
+  .chips :global(.trigger[aria-expanded='true']) { border-color: transparent; background: var(--color-hover); color: var(--color-foreground); }
+  @media (hover: hover) { .chips :global(.trigger:hover) { border-color: transparent; background: var(--color-hover); color: var(--color-foreground); } }
+  .chips :global(button.trigger:active:not(:disabled)), .send:active:not(:disabled) { transform: scale(calc(1 - .06 * var(--motion))); transition-duration: var(--dur-1); }
+  .composer[data-private] .chips :global(.menu:first-child .trigger) { color: var(--color-foreground); }
+
+  /* Who the post wakes, where a thread's composer keeps its hint: beside send, in the subtle ink. */
+  .wakes { flex: 1 1 0; align-self: center; min-width: 0; text-align: right; overflow: hidden; color: var(--color-subtle); font-size: var(--text-sm); text-overflow: ellipsis; white-space: nowrap; }
+  .send { flex: none; width: 32px; height: 32px; border-radius: var(--radius-full); box-shadow: var(--shadow-send); transition: background var(--dur-2) var(--ease-out-quint), opacity var(--dur-2) var(--ease-out-quint), transform var(--motion-duration) var(--motion-curve); }
   .send :global(.spinner) { animation: spin 1s linear infinite var(--loops); }
-  .replying { display: flex; align-items: center; gap: 8px; margin: 8px 8px 0; padding: 4px 4px 4px 10px; border-radius: var(--radius-md); background: var(--color-hover); font-size: var(--text-sm); }
-  .replying .ui-label { flex: none; font-weight: 600; }
-  .excerpt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-muted-foreground); }
+
+  .replying { display: flex; align-items: center; gap: 8px; margin: 8px 8px 0; padding: 2px 4px 2px 10px; border-radius: var(--radius-md); background: var(--color-hover); color: var(--color-muted-foreground); font-size: var(--text-sm); }
+  .replying :global(svg) { flex: none; }
+  .replying .ui-label { flex: none; color: var(--color-foreground); font-weight: 500; }
+  .excerpt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .note { max-width: var(--content); margin: 6px auto 0; padding: 0 14px; color: var(--color-muted-foreground); font-size: var(--text-xs); }
   .note.error { color: var(--color-danger); }
   @media (prefers-reduced-motion: reduce) { .send :global(.spinner) { animation: none; } }
   @media (max-width: 720px) {
     .composer-wrap { padding: 8px 12px max(10px, env(safe-area-inset-bottom)); }
-    .composer { box-shadow: var(--shadow-e1); }
+    .composer { border-radius: var(--radius-xl); }
     textarea { font-size: var(--text-md); }
+    .bar { align-items: center; }
+    .chips { flex: none; flex-wrap: nowrap; max-width: 70%; }
+    .chips :global(.trigger) { height: var(--touch-target); }
     .mention-label { display: none; }
     .send { width: var(--touch-target); height: var(--touch-target); }
   }
+  @media (max-width: 400px) { .composer-wrap { padding-inline: 8px; } }
 </style>

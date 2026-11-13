@@ -1,6 +1,6 @@
 <script lang="ts">
   import { markFeature } from '@boite/contracts';
-  import { ArrowLeft, Archive, ArchiveRestore, Ellipsis, Pause, PenLine, Play } from '@lucide/svelte';
+  import { ArrowLeft, Archive, ArchiveRestore, ChevronDown, Ellipsis, Pause, PenLine, Play } from '@lucide/svelte';
   import type { AgentProfile, Team, Thread } from '@boite/contracts';
   import type { AgentsView } from '../../lib/agents.svelte';
   import { confirm } from '../../lib/confirm.svelte';
@@ -16,11 +16,14 @@
   import TeamDialog from './TeamDialog.svelte';
 
   /**
-   * The top of a team's chat: its members' pictures, its name and "Team chat ·
-   * N bots and you" (or that it is paused or archived), and a menu to edit the
-   * team (name, brief, members), pause or resume it, and archive or restore
-   * it, each through the owner method the core already has. A paired phone
-   * shows the menu greyed, with why: changing a team stays on the computer.
+   * The head of a team's chat, in a bot header's two shapes (`AgentHeader`).
+   * A desktop draws it in the window's top bar: the name, the chevron of its
+   * menu, then "Team chat · N bots and you" (or that it is paused or
+   * archived). A phone draws it over the chat, with the way back and the
+   * members' pictures. The menu edits the team (name, brief, members), pauses
+   * or resumes it, archives or restores it, each through the owner method the
+   * core already has. A paired phone shows the menu greyed, with why: changing
+   * a team stays on the computer.
    */
   let { store, view, others = [], thread, team, onback }: {
     store: Store;
@@ -86,24 +89,45 @@
   markFeature('boite-feature:teams');
 </script>
 
-<header class="agent-head" data-testid="team-header" data-paused={team?.paused ? 'true' : undefined} data-archived={team?.archived ? 'true' : undefined}>
-  {#if onback}<button type="button" class="ghost icon agent-mobile-back" aria-label={strings.agents.list} title={strings.agents.list} onclick={onback} data-testid="agent-back"><ArrowLeft size={18} strokeWidth={1.75} /></button>{/if}
-  <span class="team-head-identity">
-    <span class="agent-head-robot"><AgentAvatar kind="team" id={team?.id ?? thread.id} name={team?.name ?? thread.title} members={pictures} size={36} lit={avatarLit({ open: true })} /></span>
-    <span class="agent-head-text">
-      <strong data-testid="team-title">{team?.name ?? thread.title}</strong>
-      <span class="agent-live"><span class="agent-live-text" data-testid="team-room">{room}</span></span>
+<header class="agent-head team-head" class:compact={!onback} data-testid="team-header" data-paused={team?.paused ? 'true' : undefined} data-archived={team?.archived ? 'true' : undefined}>
+  {#if onback}
+    <button type="button" class="ghost icon agent-mobile-back" aria-label={strings.agents.list} title={strings.agents.list} onclick={onback} data-testid="agent-back"><ArrowLeft size={18} strokeWidth={1.75} /></button>
+    <span class="team-head-identity">
+      <span class="agent-head-robot"><AgentAvatar kind="team" id={team?.id ?? thread.id} name={team?.name ?? thread.title} members={pictures} size={36} lit={avatarLit({ open: true })} /></span>
+      <span class="agent-head-text">
+        <strong data-testid="team-title">{team?.name ?? thread.title}</strong>
+        <span class="agent-live"><span class="agent-live-text" data-testid="team-room">{room}</span></span>
+      </span>
     </span>
-  </span>
-  {#if items.length}
-    <nav class="agent-head-actions" aria-label={team?.name ?? thread.title}>
-      <Menu placement="bottom" align="end" variant="ghost" label={labels.menu} testid="team-menu" disabled={busy} {items} onpick={pick}>
-        <Ellipsis size={18} strokeWidth={1.75} />
-      </Menu>
-    </nav>
+    {#if items.length}
+      <nav class="agent-head-actions" aria-label={team?.name ?? thread.title}>
+        <Menu placement="bottom" align="end" variant="ghost" label={labels.menu} heading={team?.name ?? thread.title} testid="team-menu" disabled={busy} {items} onpick={pick}>
+          <Ellipsis size={18} strokeWidth={1.75} />
+        </Menu>
+      </nav>
+    {/if}
+  {:else}
+    <!-- A thread header's grammar: the title, the chevron of its menu, then one quiet line of state. -->
+    <span class="team-head-name"><strong data-testid="team-title">{team?.name ?? thread.title}</strong></span>
+    {#if items.length}
+      <span class="agent-head-menu">
+        <Menu placement="bottom" variant="text" label={labels.menu} heading={team?.name ?? thread.title} testid="team-menu" disabled={busy} {items} onpick={pick}>
+          <ChevronDown size={16} />
+        </Menu>
+      </span>
+    {/if}
+    <span class="team-head-room" data-testid="team-room">{room}</span>
   {/if}
 </header>
 
 {#if editing && team}
   <TeamDialog {view} {others} {team} onclose={() => { editing = false; }} ondone={() => {}} />
 {/if}
+
+<style>
+  /* In the window's bar the name starts where a thread's title does, in its weight; the room's line follows in the meta ink. */
+  .team-head.compact { gap: 0; }
+  .team-head-name { display: flex; align-items: center; flex: 0 1 auto; min-width: 0; height: var(--control); }
+  .team-head-name strong { overflow: hidden; font-weight: 550; text-overflow: ellipsis; white-space: nowrap; }
+  .team-head-room { flex: 0 1 auto; min-width: 0; margin-left: 6px; overflow: hidden; color: var(--color-muted-foreground); font-size: var(--text-sm); text-overflow: ellipsis; white-space: nowrap; }
+</style>
