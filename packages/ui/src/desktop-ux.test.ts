@@ -743,11 +743,12 @@ test('a page says where it applies once: one line for most of its cards, a tag o
   await mountOnFake('/?fake=1');
   await waitFor(() => workspace.machines.length === 1 && store.connection === 'ready');
   const machine = workspace.machines[0]!;
-  // General is mostly this device's switches and two machine cards: the line says "this device" once, each machine card its own.
+  // General is mostly this device's switches and three machine cards: the line says "this device" once, each machine card its own.
   store.showSettings('general');
   await waitFor(() => document.querySelector('#settings-agent-replies [data-testid=card-scope]') !== null);
   expect(query('[data-testid=settings-scope]').textContent?.trim()).toBe(strings.settings.scopeDevice);
-  expect([...document.querySelectorAll<HTMLElement>('[data-testid=card-scope]')].map((tag) => tag.dataset.kind)).toEqual(['machine', 'machine']);
+  expect([...document.querySelectorAll<HTMLElement>('[data-testid=card-scope]')].map((tag) => tag.dataset.kind)).toEqual(['machine', 'machine', 'machine']);
+  expect(query('#settings-agents-alone [data-testid=card-scope]').dataset.kind).toBe('machine');
   expect(document.body.textContent?.split(strings.settings.cardDevice)).toHaveLength(1);
   expect(query('#settings-agent-replies [data-testid=card-scope]').textContent?.trim()).toBe(fill(strings.settings.cardMachine, { machine: machineName(machine) }));
   // Browser holds this device's settings alone: its card carries no tag, the line under the title says it once.
