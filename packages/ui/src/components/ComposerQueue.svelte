@@ -54,8 +54,9 @@
 <div class="queued" data-testid="composer-queued">
   {#each queued as entry, at (entry)}
     <div class="queued-item" class:failed={entry.request?.failed !== undefined} data-testid="composer-queued-item">
+      <!-- The text clamps to three lines: the tooltip carries the whole prompt. -->
       <button type="button" class="queued-bubble"
-        title={strings.composer.editQueued}
+        title={entry.text ? `${strings.composer.editQueued}: ${entry.text}` : strings.composer.editQueued}
         disabled={disabled || !!entry.request?.start}
         onclick={() => onrestore(at)}>
         <span class="queued-text">{entry.text || strings.composer.attachAlt}</span>

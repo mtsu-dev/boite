@@ -152,6 +152,7 @@ test('queued prompts are dashed bubbles under the strip line: a press takes one 
   const items = [...document.querySelectorAll<HTMLElement>('[data-testid=composer-queued-item]')];
   expect(items).toHaveLength(2);
   expect(items.map(item => item.querySelector('.queued-bubble')?.textContent?.trim())).toEqual(['Add a test for a file with a BOM', 'Then rerun the suite']);
+  expect(items[0]!.querySelector('.queued-bubble')?.getAttribute('title')).toContain('Add a test for a file with a BOM');
   expect(document.querySelector('[data-testid=composer-queued] .queued-foot')?.textContent).toContain('Sent after the next tool, or when the turn ends');
   items[1]!.querySelector<HTMLButtonElement>('.queued-bubble')!.click();
   expect(restore).toHaveBeenCalledWith(1);
