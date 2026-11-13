@@ -99,7 +99,7 @@ export interface ThreadProgress {
   providerAt?: Timestamp | null;
 }
 
-/** A merged PR, or a plugin granted `threads.write` (`pluginName` as it was then, readable after an uninstall). */
+/** A plugin granted `threads.write` (`pluginName` as it was then), or a merged PR: older cores only, this one asks the agent. */
 export type ThreadArchiveReason =
   | { type: 'pr-merged'; number: number; url: string; archivedAt: Timestamp }
   | ({ type: 'plugin'; archivedAt: Timestamp } & PluginActor);

@@ -1,8 +1,9 @@
-import type { ThreadSummary } from '@boite/contracts';
+import { doneQuestion, settledLinks, type LinkedPullRequest, type SettledPullRequests, type ThreadSummary } from '@boite/contracts';
 import type { Core } from './core.ts';
+import { messageOf } from './errors.ts';
 import { linkedPullRequestSignature } from './linked-pull-requests.ts';
 import { archiveState, archiveStateKey } from './merged-pr-archive-state.ts';
-import { repositoryOf, type PullRequests } from './pull-requests.ts';
+import { repositoryOf, type MergedPrProof, type PullRequests } from './pull-requests.ts';
 
 const ARCHIVE_SCAN_ROWS = 128;
 const ARCHIVE_PROOFS = 8;
@@ -10,12 +11,34 @@ const ARCHIVE_YIELD_ROWS = 8;
 /** A merge can happen elsewhere without changing the conversation. Check again next minute. */
 const NEGATIVE_RETRY_MS = 60_000;
 const NEGATIVE_ENTRIES = 2_000;
+/** How long after its last turn a thread whose agent reports no prompt cache may still be asked. */
+const UNKNOWN_CACHE_MS = 60 * 60_000;
+
+/**
+ * The question is worth a turn only while the agent's prompt cache still
+ * holds the conversation: later it would pay the whole context again for one
+ * line. A thread past it stays as it is, for the user to mark done; a watch's
+ * wake still carries the hint, since that turn happens anyway.
+ */
+export function warmForQuestion(thread: Pick<ThreadSummary, 'promptCache'>, lastFinishedAt: number | null, now = Date.now()): boolean {
+  const cache = thread.promptCache;
+  if (cache) return now < cache.at + cache.ttlSeconds * 1000;
+  return lastFinishedAt !== null && now - lastFinishedAt < UNKNOWN_CACHE_MS;
+}
 
 /** What a thread looked like when its proof failed: any update or new PR link starts over. */
 interface Negative { signature: string; nextAt: number }
 
-/** Visibility maintenance owns one timer and one bounded, non-overlapping pass. */
-export class MergedPrArchive {
+/**
+ * Once every pull request of a worktree conversation is merged or closed,
+ * Boite asks its agent, once, whether the thread can go to Done; the agent
+ * answers with `boite thread done` (`agent.done`) or leaves it open. Nothing
+ * is put away by itself: an agent often has a last thing to say after a
+ * merge. The question waits for the thread to rest, so it never lands in the
+ * middle of the agent's own answer. One timer and one bounded,
+ * non-overlapping pass, plus merges a badge or a watch already saw.
+ */
+export class MergedPrAsk {
   #timer: ReturnType<typeof setTimeout> | null = null;
   #pending: Promise<number> | null = null;
   #controller: AbortController | null = null;
@@ -30,6 +53,9 @@ export class MergedPrArchive {
   readonly #detected = new Set<string>();
   #detection: Promise<void> | null = null;
   readonly #detectionController = new AbortController();
+  /** Threads a detected merge found at work: checked again once their turn ends and `settleMs` passed. */
+  readonly #afterTurn = new Set<string>();
+  readonly #afterTurnTimers = new Set<ReturnType<typeof setTimeout>>();
   readonly #unlisten: () => void;
   #core: Core;
   #pullRequests: PullRequests;
@@ -38,9 +64,18 @@ export class MergedPrArchive {
   constructor(core: Core, pullRequests: PullRequests, settleMs = 60_000, graceMs = 90_000) { this.#core = core; this.#pullRequests = pullRequests; this.#settleMs = settleMs;
     this.#readyAt = Date.now() + graceMs;
     this.#unlisten = core.bus.onCommitted((name, payload) => {
+      if (name === 'turn.finished') {
+        const threadId = (payload as { threadId: string }).threadId;
+        if (!this.#afterTurn.delete(threadId) || this.#closed) return;
+        // The user gets a moment to read the answer and write first; their message keeps the question away.
+        const timer = setTimeout(() => { this.#afterTurnTimers.delete(timer); this.observe(threadId); }, this.#settleMs);
+        timer.unref();
+        this.#afterTurnTimers.add(timer);
+        return;
+      }
       if (name !== 'threads.pullRequestsChanged') return;
-      const event = payload as { threadId: string; pullRequests: { state: string }[] };
-      if (event.pullRequests.some(pr => pr.state === 'MERGED')) this.observe(event.threadId);
+      const event = payload as { threadId: string; pullRequests: LinkedPullRequest[] };
+      if (event.pullRequests.some(pr => pr.state === 'MERGED') || settledLinks(event.pullRequests)) this.observe(event.threadId);
     });
   }
   /** A badge or watch already detected the merge. Check this thread without waiting for the history scan. */
@@ -61,11 +96,16 @@ export class MergedPrArchive {
       if (this.#closed || this.#core.journal.isClosed()) return;
       try {
         const thread = this.#core.journal.getThread(id);
-        if (!thread || this.#backingOff(thread, true) || !this.eligible(thread, true)) continue;
+        if (!thread || this.#backingOff(thread, true)) continue;
+        if (!this.eligible(thread, true)) {
+          // The agent merged its own pull request in this turn: ask once the turn ended.
+          if (this.#core.threads.isBusy(id) && !thread.archived) this.#afterTurn.add(id);
+          continue;
+        }
         const signal = AbortSignal.any([this.#detectionController.signal, AbortSignal.timeout(30_000)]);
-        await this.#archive(thread, signal, true);
+        await this.#ask(thread, signal, true);
       } catch {
-        if (!this.#closed && !this.#core.journal.isClosed()) this.#core.log('warn', 'Merged PR detection failed; conversation remains visible', { source: 'merged-pr-archive', event: 'archive.detectionFailed', threadId: id });
+        if (!this.#closed && !this.#core.journal.isClosed()) this.#core.log('warn', 'Merged PR detection failed; nothing was asked', { source: 'merged-pr-ask', event: 'ask.detectionFailed', threadId: id });
       }
     }
   }
@@ -73,7 +113,7 @@ export class MergedPrArchive {
     const run = (): void => {
       if (this.#closed) return;
       this.#timer = setTimeout(() => { void this.sweep().catch(() => {
-        this.#core.log('warn', 'Merged PR archive sweep failed; conversations remain visible', { source: 'merged-pr-archive', event: 'archive.sweepFailed' });
+        this.#core.log('warn', 'Merged PR sweep failed; nothing was asked', { source: 'merged-pr-ask', event: 'ask.sweepFailed' });
       }).finally(run); }, Math.max(1, this.#readyAt - Date.now(), 60_000));
       this.#timer.unref();
     };
@@ -83,6 +123,9 @@ export class MergedPrArchive {
     this.#closed = true;
     this.#unlisten();
     this.#detected.clear();
+    this.#afterTurn.clear();
+    for (const timer of this.#afterTurnTimers) clearTimeout(timer);
+    this.#afterTurnTimers.clear();
     this.#detectionController.abort();
     if (this.#timer) clearTimeout(this.#timer);
     this.#controller?.abort();
@@ -93,6 +136,17 @@ export class MergedPrArchive {
   eligible(thread: ThreadSummary, detected = false): boolean {
     return this.#eligibleWithScheduler(thread, this.#busyThreads(), detected);
   }
+  /** A thread Boite may ask at all: a top-level worktree conversation of a project that keeps the setting on. */
+  mayAsk(thread: ThreadSummary): boolean {
+    if (thread.archived || thread.parentThreadId || thread.agentSessionId || !thread.projectId || !thread.branch || thread.branch === 'HEAD') return false;
+    const project = this.#core.journal.getProject(thread.projectId);
+    return !!project && !project.archived && project.path !== thread.cwd && this.#core.journal.getSetting(`project-auto-archive-merged-pr:${project.id}`) !== false;
+  }
+  /** A watch's wake already asked about these: the sweep does not ask again. */
+  asked(threadId: string, urls: readonly string[]): void {
+    const state = archiveState(this.#core.journal, threadId);
+    this.#core.journal.setSetting(archiveStateKey(threadId), { ...state, asked: [...new Set([...(state.asked ?? []), ...urls])] });
+  }
   #eligibleWithScheduler(thread: ThreadSummary, busy: ReadonlySet<string>, detected = false): boolean {
     const core = this.#core;
     if (this.#closed || (!detected && Date.now() < this.#readyAt) || core.stopping || core.threads.handoff.active || core.threads.isRemoving(thread.id)) return false;
@@ -100,8 +154,9 @@ export class MergedPrArchive {
     const project = core.journal.getProject(thread.projectId);
     if (!project || project.archived || project.path === thread.cwd || core.journal.getSetting(`project-auto-archive-merged-pr:${project.id}`) === false) return false;
     if (!this.#quiescent(thread, busy, false, detected)) return false;
+    if (!warmForQuestion(thread, core.journal.lastTurn(thread.id)?.finishedAt ?? null)) return false;
     // Retained children remain history. Every visible or archived member must
-    // have completed and delivered its work before the parent can reach Done.
+    // have completed and delivered its work before the agent is asked about Done.
     const children = core.journal.db.query('WITH RECURSIVE family(id) AS (SELECT id FROM threads WHERE parent_thread_id = ? UNION SELECT child.id FROM threads child JOIN family ON child.parent_thread_id = family.id) SELECT id FROM family WHERE id <> ? AND id NOT IN (SELECT thread_id FROM thread_deletions)').all(thread.id, thread.id) as { id: string }[];
     if (children.some(({ id }) => { const child = core.journal.getThread(id); return !child || !this.#quiescent(child, busy, true, detected); })) return false;
     const repository = repositoryOf(thread.cwd);
@@ -110,18 +165,17 @@ export class MergedPrArchive {
   }
   #quiescent(thread: ThreadSummary, busy: ReadonlySet<string>, child = false, detected = false): boolean {
     const core = this.#core;
-    const finishing = detected && !child && thread.status === 'running';
-    // Reading or viewing completed work is not pending work. Keep unread history in Done.
-    if (core.threads.isRemoving(thread.id) || thread.agentSessionId || (thread.status !== 'idle' && !finishing) || thread.pinned || (!detected && Date.now() - thread.updatedAt < this.#settleMs) || core.threads.focus.hasProtectedInput(thread.id)) return false;
-    if (core.threads.sideQuestions.active(thread.id) || (!finishing && (core.threads.runner.handles.has(thread.id) || core.threads.runner.steering.has(thread.id) || core.threads.agentState.background.get(thread.id)?.length)) || core.threads.moves.pendingOf(thread.id)) return false;
-    if (!finishing && busy.has(thread.id)) return false;
-    if ((!finishing && core.procs.liveCount(thread.id)) || core.terminals.threadProcesses(thread.id) || core.threads.cards.listPermissions(thread.id).length || [...core.threads.cards.questions.values()].some(entry => entry.request.threadId === thread.id) || [...core.threads.cards.asyncCards.values()].some(entry => entry.threadId === thread.id)) return false;
+    // The question is a turn of its own: it waits for the thread to rest, whoever saw the merge.
+    if (core.threads.isRemoving(thread.id) || thread.agentSessionId || thread.status !== 'idle' || thread.pinned || (!detected && Date.now() - thread.updatedAt < this.#settleMs) || core.threads.focus.hasProtectedInput(thread.id)) return false;
+    if (core.threads.sideQuestions.active(thread.id) || core.threads.runner.handles.has(thread.id) || core.threads.runner.steering.has(thread.id) || core.threads.agentState.background.get(thread.id)?.length || core.threads.moves.pendingOf(thread.id) || core.threads.agentDone.pending(thread.id)) return false;
+    if (busy.has(thread.id)) return false;
+    if (core.procs.liveCount(thread.id) || core.terminals.threadProcesses(thread.id) || core.threads.cards.listPermissions(thread.id).length || [...core.threads.cards.questions.values()].some(entry => entry.request.threadId === thread.id) || [...core.threads.cards.asyncCards.values()].some(entry => entry.threadId === thread.id)) return false;
     if (core.threads.deferred.deferredAnswers.get(thread.id)?.length || core.threads.deferred.consumed.has(thread.id) || core.threads.deferred.pendingWakes.has(thread.id)) return false;
     const activity = core.activity.get(thread.id);
     if ((activity.goal && activity.goal.status !== 'complete') || (activity.loop && activity.loop.status !== 'complete') || core.workflows.active(thread.id)) return false;
     if (core.journal.db.query("SELECT 1 FROM workflow_runs WHERE root_id = ? AND status IN ('done', 'failed') AND json_extract(data, '$.delivered') IS NOT 1 LIMIT 1").get(thread.id)) return false;
     const last = core.journal.db.query('SELECT status FROM turns WHERE thread_id = ? ORDER BY rowid DESC LIMIT 1').get(thread.id) as { status: string } | null;
-    if ((child && !last) || (last && last.status !== 'done' && !(finishing && last.status === 'running'))) return false;
+    if ((child && !last) || (last && last.status !== 'done')) return false;
     if (core.journal.db.query("SELECT 1 FROM delegation_messages WHERE root_id = ? AND status NOT IN ('delivered', 'expired', 'rejected') LIMIT 1").get(thread.id) || core.journal.db.query("SELECT 1 FROM coordination_letters WHERE thread_id = ? AND status NOT IN ('delivered', 'expired', 'rejected') LIMIT 1").get(thread.id) || core.journal.db.query('SELECT 1 FROM coordination_wakes WHERE thread_id = ? LIMIT 1').get(thread.id)) return false;
     return true;
   }
@@ -195,34 +249,66 @@ export class MergedPrArchive {
     if (entries.size > NEGATIVE_ENTRIES) entries.delete(entries.keys().next().value!);
   }
   async #pass(signal: AbortSignal): Promise<number> {
-    let archived = 0;
+    let asked = 0;
     const deadline = Date.now() + 30_000;
     const selected = await this.#select(signal);
     for (const thread of selected) {
       if (Date.now() >= deadline || this.#closed || signal.aborted || this.#core.journal.isClosed()) break;
-      if (await this.#archive(thread, signal)) archived++;
+      if (await this.#ask(thread, signal)) asked++;
     }
-    return archived;
+    return asked;
   }
-  async #archive(thread: ThreadSummary, signal: AbortSignal, detected = false): Promise<boolean> {
+  /**
+   * The exact tip merged (`proveMerged`, as for a settled worktree), or, with
+   * no such proof, every linked pull request closed as last read: one closed
+   * without a merge has no tip to prove, and the agent judges what is left.
+   */
+  async #settled(thread: ThreadSummary, signal: AbortSignal): Promise<{ settled: SettledPullRequests; proof: MergedPrProof | null } | null> {
+    const links = this.#core.linkedPullRequests.saved(thread.id);
+    const proof = await askRead(this.#pullRequests.proveMerged(thread, signal), signal);
+    if (proof) {
+      const others = links.filter(pr => pr.url.toLowerCase() !== proof.url.toLowerCase() && (pr.state === 'MERGED' || pr.state === 'CLOSED'));
+      return { proof, settled: { urls: [proof.url, ...others.map(pr => pr.url)], summary: [`#${proof.number} merged`, ...others.map(pr => `#${pr.number} ${pr.state.toLowerCase()}`)].join(', ') } };
+    }
+    const settled = settledLinks(links);
+    return settled && !links.some(pr => pr.state === 'MERGED') ? { settled, proof: null } : null;
+  }
+  async #ask(thread: ThreadSummary, signal: AbortSignal, detected = false): Promise<boolean> {
     const generation = archiveState(this.#core.journal, thread.id).generation;
     const signature = this.#signature(thread);
     try {
-      const proof = await archiveRead(this.#pullRequests.proveMerged(thread, signal), signal);
+      const found = await this.#settled(thread, signal);
       if (this.#closed || signal.aborted || this.#core.journal.isClosed()) return false;
-      if (!proof) { this.#remember(thread, signature, detected); return false; }
+      if (!found) { this.#remember(thread, signature, detected); return false; }
+      const { settled, proof } = found;
       const current = this.#core.journal.getThread(thread.id);
       if (!current || (!detected && current.updatedAt !== thread.updatedAt) || !this.eligible(current, detected) || archiveState(this.#core.journal, thread.id).generation !== generation) return false;
       const state = archiveState(this.#core.journal, thread.id);
       const restored = state.restoredCheckout;
-      if (state.dismissed?.includes(proof.url) || (restored && restored.cwd === thread.cwd && restored.branch === thread.branch && restored.projectId === thread.projectId)) { this.#remember(thread, signature, detected); return false; }
-      this.#core.journal.setSetting(archiveStateKey(thread.id), { ...state, binding: proof });
-      if (!await archiveRead(this.#pullRequests.validateMergedCheckout(thread, proof, signal), signal)) { this.#remember(thread, signature, detected); return false; }
-      if (this.#closed || signal.aborted || this.#core.journal.isClosed()) return false;
-      // No await between the final state check and the visibility transaction.
-      if (this.#core.threads.archiveMergedPr(thread, proof, generation, detected)) { this.#negative.delete(thread.id); this.#detectedNegative.delete(thread.id); return true; }
+      // Asked once per pull request: a restored thread or one the agent kept open is not asked again for the same work.
+      const fresh = settled.urls.filter(url => !state.asked?.includes(url) && !state.dismissed?.includes(url));
+      if (fresh.length === 0 || (restored && restored.cwd === thread.cwd && restored.branch === thread.branch && restored.projectId === thread.projectId)) { this.#remember(thread, signature, detected); return false; }
+      if (proof) {
+        this.#core.journal.setSetting(archiveStateKey(thread.id), { ...state, binding: proof });
+        if (!await askRead(this.#pullRequests.validateMergedCheckout(thread, proof, signal), signal)) { this.#remember(thread, signature, detected); return false; }
+        if (this.#closed || signal.aborted || this.#core.journal.isClosed()) return false;
+      }
+      // No await between the final state check and the turn.
+      const latest = this.#core.journal.getThread(thread.id);
+      if (!latest || !this.eligible(latest, detected) || archiveState(this.#core.journal, thread.id).generation !== generation) return false;
+      const { text, label } = doneQuestion(settled);
+      try {
+        this.#core.threads.startTurn(thread.id, { prompt: text, display: label }, { kind: 'pull-request' });
+      } catch (error) {
+        this.#core.log('warn', `thread ${thread.id}: the Done question waits, no turn could open: ${messageOf(error)}`, { source: 'merged-pr-ask', threadId: thread.id });
+        return false;
+      }
+      this.asked(thread.id, settled.urls);
+      this.#negative.delete(thread.id);
+      this.#detectedNegative.delete(thread.id);
+      return true;
     } catch {
-      // Missing auth, unavailable repositories and failed validation leave the conversation visible.
+      // Missing auth, unavailable repositories and failed validation ask nothing.
       if (!signal.aborted && !this.#closed) this.#remember(thread, signature, detected);
     }
     return false;
@@ -230,9 +316,9 @@ export class MergedPrArchive {
 }
 
 /** A late provider result cannot resume a closed pass, even if it ignored cancellation. */
-function archiveRead<T>(pending: Promise<T>, signal: AbortSignal): Promise<T> {
+function askRead<T>(pending: Promise<T>, signal: AbortSignal): Promise<T> {
   return new Promise((resolve, reject) => {
-    const canceled = (): void => { reject(new Error('merged PR archive pass canceled')); };
+    const canceled = (): void => { reject(new Error('merged PR pass canceled')); };
     signal.addEventListener('abort', canceled, { once: true });
     pending.then(value => {
       signal.removeEventListener('abort', canceled);

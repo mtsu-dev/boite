@@ -260,6 +260,7 @@ export function registerAgentMethods(core: Core): void {
   core.router.register('agent.where', (params) => whereOf(core, core.threads.require(params.threadId)));
   // The access check already held the call to the token's own thread.
   core.router.register('agent.move', (params) => core.threads.moves.request(params.threadId, params.project));
+  core.router.register('agent.done', (params) => core.threads.agentDone.request(params.threadId));
   core.router.register('agent.spawn', (params) => core.threads.spawns.spawn(params));
   core.router.register('agent.addProject', (params) => core.threads.spawns.addProject(params));
   core.router.register('agent.projects', (params) => {

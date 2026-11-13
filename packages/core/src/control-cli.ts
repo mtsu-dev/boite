@@ -55,6 +55,7 @@ export const CONTROL_HELP = `  threads [list] [--project <p>] [--archived]
   thread show <id>               state, pending questions and permissions, last answer
   thread send <id> <text>        the owner's prompt, or the agent's message
   thread done <id>               put a thread that is not at work in Done
+                                 (without <id>: this one, once this turn ends)
   thread stop|archive|unarchive|remove <id>   (remove: owner only)
   thread rename <id> <title>
   thread move <project> <id>     move another thread (without <id>: this one)
@@ -64,6 +65,11 @@ export const CONTROL_HELP = `  threads [list] [--project <p>] [--archived]
   allow|deny <id> <request-id>   (owner only, threads of this machine)
   A bot's <id> may be <machine>/<thread-id>: a thread of a project of that
   machine entrusted to it, which that machine lets bots of the group drive`;
+
+/** What an agent's own `thread done` prints. */
+export function doneLine(done: { when: 'turn-end' | 'done' }): string {
+  return done.when === 'turn-end' ? 'This thread goes to Done when this turn ends; the user can restore it.' : 'This thread is in Done; the user can restore it.';
+}
 
 /** `<machine>/<thread-id>` names a thread of another machine of the group; a bare id is one here. */
 export function targetOf(value: string): { target: string; machine?: string } {
@@ -99,6 +105,8 @@ function awayNamed(entry: { id: string; name: string; machine?: string }, query:
 export function isControlCommand(parsed: Parsed): boolean {
   const [command, action] = parsed.positional;
   if (command === 'thread') {
+    // `thread done` alone is the agent's own Done (cli.ts); with an id it puts another thread there.
+    if (action === 'done' && parsed.positional.length === 2) return false;
     if (THREAD_ACTIONS.includes(action as typeof THREAD_ACTIONS[number])) return true;
     // `thread move <project> <thr_id>` names another thread; `thread move <project words>` stays the caller's own move.
     return action === 'move' && parsed.positional.length === 4 && /^(?:[^/\s]+\/)?thr_[0-9a-z]+$/.test(parsed.positional[3] ?? '');
@@ -396,6 +404,11 @@ export async function controlCommand(client: CoreClient, caller: Caller, threadI
         return;
       }
       if (action !== 'stop' && action !== 'done' && action !== 'archive' && action !== 'unarchive' && action !== 'remove') throw new Usage(`thread: unknown action ${action}`);
+      if (!owner && action === 'done' && target === threadId && machine === undefined) {
+        const done = await client.call('agent.done', { threadId });
+        print([doneLine(done)], done);
+        return;
+      }
       if (!owner) {
         if (action === 'remove') ownerOnly('deleting a thread');
         const result = await client.call('resident.act', { threadId, target, action: action as Exclude<typeof action, 'remove'>, ...remote });

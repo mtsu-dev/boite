@@ -38,7 +38,7 @@ import { PLUGIN_COMMAND_TIMEOUT_MS, isPluginCommandWord } from './cli-commands.t
 import { PLUGIN_HELP, pluginAction, pluginCommand } from './plugin-cli.ts';
 import { issueCommand, logsCommand } from './logs-cli.ts';
 import { projectsCommand } from './projects-cli.ts';
-import { CONTROL_HELP, controlCommand, isControlCommand, ownerThreadNew, ownerWithoutThread, spawnedLines, type Caller } from './control-cli.ts';
+import { CONTROL_HELP, controlCommand, doneLine, isControlCommand, ownerThreadNew, ownerWithoutThread, spawnedLines, type Caller } from './control-cli.ts';
 
 export interface CliIo {
   out(text: string): void;
@@ -531,7 +531,13 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
     },
     projects: async () => { await projectsCommand(client, caller, threadId, parsed, io.cwd, print); },
     thread: async () => {
-      const action = want(0, 'move or new');
+      const action = want(0, 'move, new or done');
+      if (action === 'done') {
+        if (caller === 'owner') throw new Usage('thread done needs a thread id (boite threads lists them)');
+        const done = await client.call('agent.done', { threadId });
+        print([doneLine(done)], done);
+        return;
+      }
       if (action === 'new' && caller === 'owner') {
         if (parsed.machine !== undefined) throw new Usage('thread new --machine is for an agent in a thread; from a terminal, reach that machine with --core');
         // From a terminal the brief is the user's own prompt, not an agent's.

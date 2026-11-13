@@ -125,3 +125,28 @@ export function orderPullRequests(all: LinkedPullRequest[]): LinkedPullRequest[]
   all.forEach(visit);
   return ordered;
 }
+
+/** The pull requests behind one question: what the agent reads and what is never asked about twice. */
+export interface SettledPullRequests { urls: string[]; summary: string }
+
+/** Every linked pull request merged or closed, as last read; null while one is open or none is linked. */
+export function settledLinks(links: readonly Pick<LinkedPullRequest, 'url' | 'number' | 'state'>[]): SettledPullRequests | null {
+  if (links.length === 0 || links.some(pr => pr.state !== 'MERGED' && pr.state !== 'CLOSED')) return null;
+  return { urls: links.map(pr => pr.url), summary: links.map(pr => `#${pr.number} ${pr.state.toLowerCase()}`).join(', ') };
+}
+
+/** The prompt that asks, and the short line the timeline shows for it. */
+export function doneQuestion(settled: SettledPullRequests): { text: string; label: string } {
+  return {
+    text: [
+      `Boite: every pull request of this thread is now merged or closed (${settled.summary}).`,
+      'If the work here is finished and nothing is left to tell the user, run `boite thread done`: this thread goes to Done once this turn ends, and the user can still restore it.',
+      'If something remains (a follow-up, a check, an open question), leave it open and carry on or end your turn.',
+      'Either way, answer in one short line.',
+    ].join('\n'),
+    label: `Pull requests settled (${settled.summary}): is this thread done?`,
+  };
+}
+
+/** The line a pull request watch adds to a wake that tells of a merge or a close, so no second turn asks the same. */
+export const WATCH_DONE_HINT = 'Every pull request of this thread is now merged or closed: if the work here is finished and nothing is left to tell the user, run `boite thread done`, and this thread goes to Done once this turn ends.';
