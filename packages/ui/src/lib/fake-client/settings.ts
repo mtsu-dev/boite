@@ -1,5 +1,5 @@
 /** Core settings, the scheduler they size, keybindings and telemetry. */
-import { KEYBINDING_COMMANDS, MACHINE_SETTINGS, parseChord, RpcErrorCode, checkSettingsPatch, followedPatch, keepLaterFavorites } from '@boite/contracts';
+import { KEYBINDING_COMMANDS, MACHINE_SETTINGS, parseChord, RpcErrorCode, checkSettingsPatch, experimentalSettingRefusal, followedPatch, keepLaterFavorites, keepStoredExperimentalSettings } from '@boite/contracts';
 import type { Settings } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import type { FakeContext, FakeMethods } from './context';
@@ -26,20 +26,20 @@ export function settingsMethods(ctx: FakeContext) {
         checked.patch.subscriptionProxy = { ...proxy, kind: 'douane', baseUrl: `http://127.0.0.1:${port}/v1`, dashboardUrl: `http://127.0.0.1:${port}/admin/` };
       }
       ctx.settings = { ...ctx.settings, ...checked.patch };
-      ctx.emit('settings.updated', { ...ctx.settings });
+      ctx.emit('settings.updated', ctx.settingsInForce());
       // As the core: another gateway starts its quotas over.
       ctx.emit('subscriptionProxy.quotasUpdated', gatewayQuotas(ctx));
-      return { ...ctx.settings };
+      return ctx.settingsInForce();
     },
     'subscriptionProxy.setEnabled': async ({ enabled }) => {
       if (typeof enabled !== 'boolean') throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'subscriptionProxy.setEnabled enabled must be a boolean', data: { field: 'enabled' } });
       const proxy = ctx.settings.subscriptionProxy;
       if (!proxy?.baseUrl) throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'no subscription proxy is configured: the owner sets one up in Settings > Accounts', data: { field: 'subscriptionProxy' } });
-      if (proxy.enabled === enabled) return { ...ctx.settings };
+      if (proxy.enabled === enabled) return ctx.settingsInForce();
       ctx.settings = { ...ctx.settings, subscriptionProxy: { ...proxy, enabled } };
-      ctx.emit('settings.updated', { ...ctx.settings });
+      ctx.emit('settings.updated', ctx.settingsInForce());
       ctx.emit('subscriptionProxy.quotasUpdated', gatewayQuotas(ctx));
-      return { ...ctx.settings };
+      return ctx.settingsInForce();
     },
     'scheduler.get': async (params) => {
       return structuredClone(ctx.scheduler);
@@ -63,7 +63,8 @@ export function settingsMethods(ctx: FakeContext) {
       return { events: [], truncated: false };
     },
     'settings.get': async (params) => {
-      return { ...ctx.settings };
+      // As the core: `stored` hands the copy to a following machine what is saved, not what a Release reads as off.
+      return params?.stored === true ? { ...ctx.settings } : ctx.settingsInForce();
     },
     'keybindings.get': async (params) => {
       return structuredClone(ctx.keybindings);
@@ -94,37 +95,43 @@ export function settingsMethods(ctx: FakeContext) {
       const patch: unknown = params?.patch;
       if (typeof patch !== 'object' || patch === null || Array.isArray(patch)) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'patch: expected an object of settings', data: { field: 'patch' } });
       const followed = followedPatch(ctx.settings, patch);
-      return Object.keys(followed).length === 0 ? structuredClone(ctx.settings) : methods['settings.set']({ ...followed });
+      // As the core: what the settings home holds is stored as it is, an experiment included, and read as off on a Release.
+      return Object.keys(followed).length === 0 ? ctx.settingsInForce() : save({ ...followed }, true);
     },
-    'settings.set': async (params) => {
-      // The core's own check, so a value the core refuses is refused here too.
-      const checked = checkSettingsPatch(params);
-      if (!checked.ok) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: checked.message, data: { field: checked.field } });
-      const titleModel = checked.patch.titleModel;
-      if (titleModel && ctx.providers.find(p => p.id === titleModel.providerId)?.titles !== true) {
-        throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `titleModel names ${titleModel.providerId}, which is not a loaded provider that writes titles`, data: { field: 'titleModel' } });
-      }
-      const tracker = checked.patch.goalTracker;
-      if (tracker && !ctx.providers.some(p => p.id === tracker.providerId)) {
-        throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `goalTracker names ${tracker.providerId}, which is not a loaded provider`, data: { field: 'goalTracker' } });
-      }
-      checkPolicySettings(ctx, checked.patch);
-      const before = Object.fromEntries(MACHINE_SETTINGS.map(key => [key, ctx.settings[key] === true]));
-      ctx.settings = { ...ctx.settings, ...keepLaterFavorites(ctx.settings, checked.patch) };
-      // As the core's `setting.changed`: the other members' cards about this machine settle.
-      for (const key of MACHINE_SETTINGS) {
-        if ((ctx.settings[key] === true) === before[key]) continue;
-        for (const core of ctx.roster?.cores ?? []) {
-          const other = core.coreId === ctx.identity.coreId ? undefined : fakeCore(core.coreId);
-          if (other) settleMachineSetting(other, ctx.identity.coreId, key, ctx.settings[key] === true);
-        }
-      }
-      ctx.emit('scheduler.updated', structuredClone(ctx.scheduler));
-      ctx.emit('settings.updated', { ...ctx.settings });
-      settleSettings(ctx, ctx.settings);
-      if (checked.patch.subscriptionProxy) ctx.emit('subscriptionProxy.quotasUpdated', gatewayQuotas(ctx));
-      return { ...ctx.settings };
-    },
+    'settings.set': async (params) => save(params, false),
   } satisfies Partial<FakeMethods>;
+
+  async function save(params: Partial<Settings>, followed: boolean): Promise<Settings> {
+    // The core's own check, so a value the core refuses is refused here too.
+    const checked = checkSettingsPatch(params);
+    if (!checked.ok) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: checked.message, data: { field: checked.field } });
+    const experiment = followed ? null : experimentalSettingRefusal(checked.patch, ctx.core.version);
+    if (experiment !== null) throw new RpcFailure({ code: RpcErrorCode.Refused, message: experiment.message, data: { field: experiment.key } });
+    const titleModel = checked.patch.titleModel;
+    if (titleModel && ctx.providers.find(p => p.id === titleModel.providerId)?.titles !== true) {
+      throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `titleModel names ${titleModel.providerId}, which is not a loaded provider that writes titles`, data: { field: 'titleModel' } });
+    }
+    const tracker = checked.patch.goalTracker;
+    if (tracker && !ctx.providers.some(p => p.id === tracker.providerId)) {
+      throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `goalTracker names ${tracker.providerId}, which is not a loaded provider`, data: { field: 'goalTracker' } });
+    }
+    checkPolicySettings(ctx, checked.patch);
+    const before = Object.fromEntries(MACHINE_SETTINGS.map(key => [key, ctx.settings[key] === true]));
+    // A Release only shows the experiments as off: a save that hands that back leaves them as stored.
+    ctx.settings = { ...ctx.settings, ...keepLaterFavorites(ctx.settings, followed ? checked.patch : keepStoredExperimentalSettings(ctx.settings, checked.patch, ctx.core.version)) };
+    // As the core's `setting.changed`: the other members' cards about this machine settle.
+    for (const key of MACHINE_SETTINGS) {
+      if ((ctx.settings[key] === true) === before[key]) continue;
+      for (const core of ctx.roster?.cores ?? []) {
+        const other = core.coreId === ctx.identity.coreId ? undefined : fakeCore(core.coreId);
+        if (other) settleMachineSetting(other, ctx.identity.coreId, key, ctx.settings[key] === true);
+      }
+    }
+    ctx.emit('scheduler.updated', structuredClone(ctx.scheduler));
+    ctx.emit('settings.updated', ctx.settingsInForce());
+    settleSettings(ctx, ctx.settingsInForce());
+    if (checked.patch.subscriptionProxy) ctx.emit('subscriptionProxy.quotasUpdated', gatewayQuotas(ctx));
+    return ctx.settingsInForce();
+  }
   return methods;
 }

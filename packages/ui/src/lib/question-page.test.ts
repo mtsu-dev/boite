@@ -1,6 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { mount, unmount } from 'svelte';
-import { setExperiment } from './experiments';
 import { FakeClient } from './fake-client';
 import { rightPanel } from './right-panel.svelte';
 import { openQuestionPage } from './question-page';
@@ -12,7 +11,6 @@ afterEach(async () => {
   if (mounted) await unmount(mounted);
   mounted = undefined;
   document.body.innerHTML = '';
-  setExperiment('resident-agents', false);
 });
 
 async function setup(): Promise<{ client: FakeClient; store: Store }> {
@@ -49,7 +47,6 @@ test('in the thread, Open on a question asked with --open shows its page in the 
 });
 
 test('from the Agents page, Open on an ordinary thread\'s question opens that thread in the chat with its page in the panel', async () => {
-  setExperiment('resident-agents', true);
   const { client, store } = await setup();
   const other = store.threads.find((thread) => thread.id !== 't-trace' && !thread.archived && !thread.agentSessionId)!.id;
   const { questionId } = await ask(client, other, 'https://ci.example/login');

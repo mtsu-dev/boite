@@ -15,7 +15,7 @@ export function pairingMethods(ctx: FakeContext) {
   let tailscale = fakeTailscale();
   const setPublicUrl = (publicUrl: string | null) => {
     ctx.settings = { ...ctx.settings, publicUrl };
-    ctx.emit('settings.updated', structuredClone(ctx.settings));
+    ctx.emit('settings.updated', ctx.settingsInForce());
   };
   return {
     'pairing.grant': async (params) => {

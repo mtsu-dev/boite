@@ -15,7 +15,7 @@ const ARTIFACTS = join(import.meta.dir, '.artifacts', 'team-across-machines');
 const WIDE = { width: 816, height: 900, deviceScaleFactor: 1, mobile: false };
 const NARROW = { width: 330, height: 720, deviceScaleFactor: 1, mobile: true };
 const CORE = [process.execPath, 'run', join(import.meta.dir, 'lib', 'team-bot-core.ts')];
-const EXPERIMENTS: ExperimentId[] = ['resident-agents', 'teams'];
+const EXPERIMENTS: ExperimentId[] = ['teams'];
 const machine = (name: string, more: { dataDir?: string; port?: number } = {}) => ({ command: CORE, env: { BOITE_MACHINE_NAME: name }, ...more });
 const until = async (check: () => Promise<boolean>, what: string, ms = 30_000) => {
   const deadline = Date.now() + ms;

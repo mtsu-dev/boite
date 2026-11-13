@@ -1,8 +1,6 @@
 export const strings = {
 
   experiments: {
-    pinnedQuotas: { title: 'Pinned model quotas', hint: 'Pin the current model provider limits in a corner of the conversation or below the thread list' },
-    recordingIndicators: { title: 'Show actions in recordings', hint: 'Add click markers and navigation keys to browser recordings. Typed text and password input are never shown as key labels.' },
     whip: {
       title: 'Whip',
       hint: 'An animated whip follows your pointer or finger. Flick to crack it, click or tap to drop it',
@@ -10,26 +8,9 @@ export const strings = {
       drop: 'Drop the whip',
       off: 'The whip needs animations, which are off in your system settings (Windows: Accessibility > Visual effects > Animation effects)'
     },
-    themeGrain: {
-      title: 'Grain theme',
-      hint: 'A grainy ground fading from light grey at the top left to black at the bottom right'
-    },
-    sessionImport: {
-      title: 'Claude Code session import',
-      hint: 'Turn a session started in the terminal into a thread, from the project menu and the palette'
-    },
-    promptCache: {
-      title: 'Prompt cache timer',
-      hint: 'A clock beside the context meter counting down how long the provider keeps the conversation cached'
-    },
-    residentAgents: {
-      title: 'Bots',
-      hint: 'Bots: persistent agents with their own brain, memory and routines, from the sidebar. Bots you already made keep running while this is off'
-    },
     contacts: {
       title: 'Contacts',
-      hint: 'A Home page beside Threads where you link your Boite with another owner\'s through Tailscale. A built-in bot, the Operator, carries every request between your agents and theirs. Not ready for everyday use',
-      needsBots: 'Needs Bots: the Operator that carries every request is a bot. Turn Bots on first'
+      hint: 'A Home page beside Threads where you link your Boite with another owner\'s through Tailscale. A built-in bot, the Operator, carries every request between your agents and theirs. Not ready for everyday use'
     },
     autoGoal: {
       title: 'Automatic goals',
@@ -40,8 +21,7 @@ export const strings = {
     },
     teams: {
       title: 'Teams',
-      hint: 'Bots that work together in a shared chat, listed above them on the Bots page: a post wakes the bots it names, and each answers in the group or privately. Your bots post with boite team. Not ready for everyday use',
-      needsBots: 'Needs Bots: a team\'s chat is listed with its bots. Turn Bots on first'
+      hint: 'Bots that work together in a shared chat, listed above them on the Bots page: a post wakes the bots it names, and each answers in the group or privately. Your bots post with boite team. Not ready for everyday use'
     },
     debates: {
       title: 'Council',

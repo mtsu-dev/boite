@@ -14,8 +14,8 @@
   import { workspace } from '../lib/workspace.svelte';
 
   /**
-   * The foot's update button and the card it opens, bottom left of the
-   * window. A release found anywhere lights the dot and opens the card by
+   * The rail foot's update button and the card it opens right of the rail,
+   * its foot on the button's, growing upward, as the machines card does. A release found anywhere lights the dot and opens the card by
    * itself on a wide window, once per release: its close button puts that
    * release off until a newer one comes, a press elsewhere only hides the
    * card. Update the app downloads this app's release alone; Update all
@@ -185,7 +185,7 @@
 {#if card.shown && shown}
   <div class="updates-card" class:closing={card.closing} bind:this={content} role="dialog" tabindex="-1" aria-label={strings.updateAll.heading}
     {onkeydown} data-testid="updates-card" use:card.attach onanimationend={card.end}
-    use:floating={{ anchor: () => trigger?.closest<HTMLElement>('.foot') ?? trigger ?? null, placement: 'top', align: 'start', cap: 520, dismiss: close }}>
+    use:floating={{ anchor: () => trigger?.closest<HTMLElement>('.slot') ?? trigger ?? null, side: 'right', align: 'end', dismiss: close }}>
     <header>
       <span class="glyph" class:busy={underWay} class:done={allDone} aria-hidden="true">
         {#if allDone}<Check size={18} strokeWidth={2} />{:else}<CircleArrowDown size={18} strokeWidth={1.75} />{/if}

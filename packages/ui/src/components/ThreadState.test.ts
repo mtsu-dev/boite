@@ -43,8 +43,8 @@ test('a parent whose turn ended waits on its working sub-agents, their count in 
 
   const state = draw({ status: 'idle', unread: true, backgroundWork: { kinds: ['shell'], since: NOW } }, working.get('parent' as ThreadId)!);
   expect(state.dataset['state']).toBe('delegating');
-  // Work of any kind is the still ring and the one word "Working", never a clock: the count and the time stay in the tooltip.
-  expect(state.querySelector('.work-ring')).not.toBeNull();
+  // Work of any kind is the turning ring and the one word "Working", never a clock: the count and the time stay in the tooltip.
+  expect(state.querySelector('.work-ring.turning')).not.toBeNull();
   expect(state.querySelector('.dot')).toBeNull();
   expect(state.textContent?.trim()).toBe('Working');
   expect(state.getAttribute('role')).toBe('img');
@@ -144,7 +144,7 @@ test('a monitoring thread counts from its oldest task and says what still runs',
   const state = draw({ status: 'idle', unread: true, backgroundWork: { kinds: ['monitor', 'monitor'], since: NOW - 125_000 } });
   expect(state.dataset['state']).toBe('monitoring');
   expect(state.classList.contains('monitoring')).toBe(true);
-  // One shape for every kind of work: the still arc; which work it is, the tooltip says.
+  // One shape for every kind of work: the turning arc; which work it is, the tooltip says.
   expect(state.querySelector('.work-ring')).not.toBeNull();
   expect(state.textContent?.trim()).toBe('Working');
   expect(state.getAttribute('title')).toBe('Monitoring for 2m 05s\n2 monitors still running');
@@ -350,3 +350,18 @@ test('a thread at rest watching pull requests counts its time until their checks
   expect(projectRollup([{ status: 'idle', unread: true }, { status: 'idle', unread: false, pullRequestWatches: [watch] }])).toEqual({ kind: 'watching', count: 1 });
 });
 
+
+test('a row at work turns its ring, so the list shows which agents are busy; a queued turn and an unreached machine stay still', () => {
+  vi.useFakeTimers({ now: NOW });
+  expect(draw({ status: 'running', runningSince: NOW - 5_000 }).querySelector('.work-ring.turning')).not.toBeNull();
+  unmount(running!, { outro: false });
+  document.body.innerHTML = '';
+  const queued = draw({ status: 'queued' });
+  expect(queued.querySelector('.work-ring')).not.toBeNull();
+  expect(queued.querySelector('.turning')).toBeNull();
+  unmount(running!, { outro: false });
+  document.body.innerHTML = '';
+  running = mount(ThreadState, { target: document.body, props: { thread: { status: 'running', unread: false, runningSince: NOW - 5_000, backgroundWork: null, lastUserMessageAt: NOW, createdAt: NOW } as Shown, now: NOW, away: true } });
+  flushSync();
+  expect(document.querySelector('.turning')).toBeNull();
+});

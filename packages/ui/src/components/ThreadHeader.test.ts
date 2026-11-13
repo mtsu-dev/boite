@@ -160,48 +160,31 @@ test("a desktop header's menu has find first, eight rows at most and names its g
   for (const id of ['kind:changes', 'agents', 'terminal-toggle', 'coordination']) expect(list.querySelector(`[data-value="${id}"]`)).toBeNull();
 });
 
-test("a desktop header's door reads Panels, then names the open panel and switches it", async () => {
+test("a desktop header's panel button is a glyph that opens the panel and closes it on the next click", async () => {
   await start();
-  // A door with its name, not a glyph to guess: "Panels" while none shows, and a tooltip that says what panels are.
   if (store.panelOpen) { store.togglePanel(); await settle(); }
   const door = () => document.querySelector<HTMLButtonElement>('[data-testid=panel-toggle]');
-  expect(door()!.textContent?.trim()).toBe(strings.thread.panelMenu);
+  // The glyph alone, its name in the tooltip: no word, no count, no chevron.
+  expect(door()!.textContent?.trim()).toBe('');
+  expect(door()!.querySelectorAll('svg')).toHaveLength(1);
   expect(door()!.title).toContain(strings.thread.panelHint);
-  expect(door()!.querySelector('[data-testid=panel-toggle-count]')).toBeNull();
-  // Open with the panel still loading: pressed, named later.
-  store.panel.openChanges(); store.panel.open('files'); await settle();
-  expect(store.panelOpen).toBe(true);
-  expect(door()!.getAttribute('aria-pressed')).toBe('true');
-  // The panel says what shows: the door names it, its icon, its name and a chevron, and its list switches it.
-  const pick = vi.fn();
-  panelSwitch.name = 'Files'; panelSwitch.title = 'Files'; panelSwitch.glyph = Files;
-  panelSwitch.items = () => [{ id: 'changes', label: 'Changes' }, { id: 'files', label: 'Files', active: true }];
-  panelSwitch.pick = pick;
-  panelSwitch.door = PanelSwitcher;
-  panelSwitch.store = store; await settle();
-  expect(door()).toBeNull();
-  const named = document.querySelector<HTMLButtonElement>('[data-testid=panel-add]')!;
-  expect(named.textContent?.trim()).toBe('Files');
-  expect(named.querySelectorAll('svg')).toHaveLength(2);
-  expect(named.getAttribute('aria-label')).toContain('Files');
-  named.click(); await settle();
-  expect(document.querySelector('[data-testid=panel-add-menu] [data-value=files] .check')).not.toBeNull();
-  document.querySelector<HTMLButtonElement>('[data-testid=panel-add-menu] [data-value=changes]')!.click(); await settle();
-  expect(pick).toHaveBeenCalledWith('changes');
-  // Another machine's panel leaves this header's door plain.
-  panelSwitch.store = new Store(); await settle();
-  expect(door()!.getAttribute('aria-pressed')).toBe('true');
-  panelSwitch.store = null; panelSwitch.door = null;
-  // Closed, it is the door again, with what it holds.
-  store.togglePanel(); await settle();
   expect(door()!.getAttribute('aria-pressed')).toBe('false');
-  expect(door()!.textContent).toContain(strings.thread.panelMenu);
-  expect(door()!.querySelector('[data-testid=panel-toggle-count]')?.textContent).toBe('2');
-  expect(document.querySelector('[data-testid=terminal-toggle]')).toBeNull();
-  expect(document.querySelector('[data-testid=board-toggle]')).toBeNull();
-  expect(document.querySelector('[data-testid=panel-menu]')).toBeNull();
   door()!.click(); await settle();
   expect(store.panelOpen).toBe(true);
+  // With the panel there and its switcher handed over, the header keeps the same toggle: no launcher opens from it.
+  panelSwitch.name = 'Files'; panelSwitch.title = 'Files'; panelSwitch.glyph = Files;
+  panelSwitch.items = () => [{ id: 'files', label: 'Files', active: true }];
+  panelSwitch.pick = vi.fn();
+  panelSwitch.door = PanelSwitcher;
+  panelSwitch.store = store; await settle();
+  expect(door()!.getAttribute('aria-pressed')).toBe('true');
+  door()!.click(); await settle();
+  expect(document.querySelector('[data-testid=panel-add-menu]')).toBeNull();
+  expect(store.panelOpen).toBe(false);
+  expect(door()!.getAttribute('aria-pressed')).toBe('false');
+  panelSwitch.store = null; panelSwitch.door = null;
+  expect(document.querySelector('[data-testid=terminal-toggle]')).toBeNull();
+  expect(document.querySelector('[data-testid=board-toggle]')).toBeNull();
 });
 
 test("a desktop header names its place, project then title, and the project brings the thread list back", async () => {

@@ -1,14 +1,11 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { ArrowRightLeft } from '@lucide/svelte';
 import type { AgentsSnapshot, ThreadSummary } from '@boite/contracts';
-import { setExperiment } from './experiments';
 import { agentDirectory } from './agent-directory.svelte';
 import { pickThreadAction, threadMenuItems, threadToolItems } from './thread-menu';
 import type { Store } from './store.svelte';
 import type { MenuItem } from './menu';
 
-beforeEach(() => { setExperiment('resident-agents', true); });
-afterEach(() => { setExperiment('resident-agents', false); });
 
 const thread = (patch: Partial<ThreadSummary> = {}) => ({ id: 't1', title: 'Port', cwd: '/w', projectId: 'p1', parentThreadId: null, agentSessionId: null, archived: false, incognito: false, pinned: false, status: 'idle', ...patch } as ThreadSummary);
 const stub = () => ({

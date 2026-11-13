@@ -114,7 +114,9 @@ for (const phone of [false, true]) {
     const toggle = document.querySelector<HTMLButtonElement>('[data-testid=composer-foot-fold]')!;
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     expect(document.querySelector<HTMLElement>('[data-testid=agent-dock-label]')!.dataset.text).toBe('Waiting on 1 workflow');
-    expect(document.querySelector('[data-testid=agent-dock-queued]')?.textContent).toBe('· 1 queued');
+    // The held prompt is no count on the line: it stands above it as its own dashed bubble, folded or not.
+    expect(document.querySelector('[data-testid=agent-dock-queued]')).toBeNull();
+    expect(document.querySelector<HTMLElement>('[data-testid=composer-held]')!.hidden).toBe(false);
     // The names follow on the same line on both screens: a phone cuts them earlier at a word, never drops them by rule.
     expect(document.querySelector('[data-testid=agent-dock-names]')?.textContent).toContain(run!.name);
     const { compile } = await import('svelte/compiler');
@@ -124,64 +126,37 @@ for (const phone of [false, true]) {
     const stop = document.querySelector<HTMLElement>('[data-testid=agent-dock-stop]')!;
     expect(stop.textContent?.trim()).toBe('Stop workflows');
     expect(stop.title).toContain('The agent itself is not stopped');
-    expect(document.querySelector<HTMLElement>('[data-testid=composer-held]')!.hidden).toBe(true);
     toggle.click();
     flushSync();
-    // Unfolded: the same words, then one row per run and the queued prompt with its Edit and Delete.
+    // Unfolded: the same words, then one row per run; the queued bubble keeps its place with its Delete.
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
     expect(document.querySelector<HTMLElement>('[data-testid=agent-dock-label]')!.dataset.text).toBe('Waiting on 1 workflow');
-    expect(document.querySelector('[data-testid=agent-dock-queued]')?.textContent).toBe('· 1 queued');
     expect([...document.querySelectorAll('[data-testid=agent-dock-row]')].map(row => row.textContent)).toEqual([run!.name]);
     expect(document.querySelector<HTMLElement>('[data-testid=composer-held]')!.hidden).toBe(false);
-    expect(document.querySelector('[data-testid=composer-queued-item] [data-testid=composer-queued-edit]')).not.toBeNull();
     expect(document.querySelector('[data-testid=composer-queued-item] [data-testid=composer-queued-remove]')).not.toBeNull();
     vi.restoreAllMocks();
   });
 }
 
-test('queued prompts are "Queued" rows: their text, Edit and Delete, and the text itself takes the prompt back', async () => {
+test('queued prompts are dashed bubbles under the strip line: a press takes one back, Delete removes it, Send now sits under them', async () => {
   await open();
   const threadId = store.openThread!.id;
   store.composerStates[threadId] = { text: '', attachments: [], queued: [{ text: 'Add a test for a file with a BOM', attachments: [] }, { text: 'Then rerun the suite', attachments: [] }], sending: false, paused: false };
   const restore = vi.fn();
   foot({ onrestore: restore });
   await tick();
+  // Under the strip's line, in view without unfolding anything.
+  const held = document.querySelector<HTMLElement>('[data-testid=composer-held]')!;
+  expect(held.hidden).toBe(false);
+  expect(held.compareDocumentPosition(document.querySelector('[data-testid=composer-strip-lines]')!) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
   const items = [...document.querySelectorAll<HTMLElement>('[data-testid=composer-queued-item]')];
   expect(items).toHaveLength(2);
-  expect(items.map(item => item.querySelector('[data-testid=composer-queued-state]')?.textContent)).toEqual(['Queued', 'Queued']);
-  expect(document.body.textContent).not.toContain('Then:');
-  expect(items[0]!.querySelector('[data-testid=composer-queued-text]')?.textContent).toBe('Add a test for a file with a BOM');
-  expect(items[0]!.querySelector('[data-testid=composer-queued-edit]')?.getAttribute('aria-label')).toBe('Edit');
-  expect(items[0]!.querySelector('[data-testid=composer-queued-remove]')?.getAttribute('aria-label')).toBe('Delete');
-  items[1]!.querySelector<HTMLButtonElement>('[data-testid=composer-queued-text]')!.click();
+  expect(items.map(item => item.querySelector('.queued-bubble')?.textContent?.trim())).toEqual(['Add a test for a file with a BOM', 'Then rerun the suite']);
+  expect(items[0]!.getAttribute('title')).toContain('Add a test for a file with a BOM');
+  expect(document.querySelector('[data-testid=composer-queued] .queued-foot')?.textContent).toContain('Sent after the next tool, or when the turn ends');
+  items[1]!.querySelector<HTMLButtonElement>('.queued-bubble')!.click();
   expect(restore).toHaveBeenCalledWith(1);
   const remove = vi.spyOn(store, 'removeQueued');
   items[0]!.querySelector<HTMLButtonElement>('[data-testid=composer-queued-remove]')!.click();
   expect(remove).toHaveBeenCalledWith(threadId, 0);
-});
-
-test('on a phone a queued prompt shows two lines, its text edits it, and Edit sits beside Delete on 40 px targets', async () => {
-  await open();
-  const threadId = store.openThread!.id;
-  store.composerStates[threadId] = { text: '', attachments: [], queued: [{ text: 'Rename the export button and move it beside the filters, then rerun the suite', attachments: [] }], sending: false, paused: false };
-  const restore = vi.fn();
-  foot({ onrestore: restore });
-  await tick();
-  const item = document.querySelector<HTMLElement>('[data-testid=composer-queued-item]')!;
-  item.querySelector<HTMLButtonElement>('[data-testid=composer-queued-text]')!.click();
-  expect(restore).toHaveBeenLastCalledWith(0);
-  // The same two icons as a desktop, in that order at the row's end.
-  expect([...item.querySelectorAll<HTMLElement>('.tools button')].map((button) => button.dataset.testid)).toEqual(['composer-queued-edit', 'composer-queued-remove']);
-  item.querySelector<HTMLButtonElement>('[data-testid=composer-queued-edit]')!.click();
-  expect(restore).toHaveBeenCalledTimes(2);
-  // jsdom applies no component CSS: read the queue's phone rules as Svelte compiles them.
-  const { compile } = await import('svelte/compiler');
-  const { readFileSync } = await import('node:fs');
-  const source = readFileSync(`${import.meta.dirname}/ComposerQueue.svelte`, 'utf8').replace(/<script lang="ts">[\s\S]*?<\/script>/, '<script></script>');
-  const css = compile(source, { filename: 'ComposerQueue.svelte', cssHash: () => 'q' }).css?.code ?? '';
-  const phone = css.slice(css.indexOf('@media (max-width: 720px)'), css.indexOf('@media (max-width: 400px)'));
-  expect(phone).toContain('-webkit-line-clamp: 2');
-  expect(phone).toContain('--icon-button: 40px');
-  // Nothing is hidden on a phone: Edit keeps its icon.
-  expect(phone).not.toContain('display: none');
 });

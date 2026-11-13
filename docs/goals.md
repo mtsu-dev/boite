@@ -61,7 +61,8 @@ the owner sees this setting.
 
 ## Automatic goals
 
-Experimental: turn it on in Settings, Experiments (Automatic goals).
+Experimental, in Nightly builds only: turn it on in Settings, Experiments
+(Automatic goals).
 
 A long prompt then starts a reviewed goal on itself, with its checklist and a
 card on the project board. Prompt length sets the threshold, 1500 characters
@@ -105,6 +106,6 @@ review and Done. Every conversation of the project shows the same board.
 - [Context](context.md): queued messages and loops.
 - [Subagents](subagents.md): delegation profiles.
 - [Terminal](terminal.md): the other tab of the drawer.
-- [Experiments](experiments.md): turn on an experimental feature.
+- [Experiments](experiments.md): unfinished features, in Nightly builds.
 - Technical reference: [goals](internals/goals.md),
   [board](internals/board.md).

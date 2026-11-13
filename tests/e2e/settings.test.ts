@@ -121,7 +121,6 @@ test('installing a missing agent goes on to its sign-in without a second click o
 }, 30_000);
 
 test('Grain is visible above solid and acrylic surfaces and the settings fit a phone', async () => {
-  await page.click(id('settings-tab-experiments')); await page.click(id('experiment-theme-grain'));
   await page.click(id('settings-tab-appearance')); await page.click(id('theme-grain'));
   await page.click(id('settings-back'));
   await page.waitFor(`document.documentElement.dataset.theme === 'grain'`);
@@ -177,18 +176,16 @@ test('Short answers starts on and saves when flipped', async () => {
   await page.waitFor(`globalThis.__boiteTest.workspace.active.settings?.shortAnswers === true`);
 }, 30_000);
 
-test('the experiment adds the bots to the app rail on the desktop and Agents in the phone menu', async () => {
+test('the bots are in the app rail on the desktop and in the phone bar, with no switch', async () => {
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
   await page.waitFor(`!document.querySelector('${id('mobile-settings-detail')}') && !history.state?.boiteOverlay`);
-  // The agents fixture, so the rail has bots to draw once the experiment is on.
+  // The agents fixture, so the rail has bots to draw.
   await page.navigate(`${uiUrl}/?fake=1&open=recent&agents=1`);
   await page.waitFor(`document.querySelector('${id('nav-settings')}')`);
-  // Off, the rail holds the threads alone: no bot and no way to add one.
-  expect(await page.evaluate(`document.querySelector('${id('app-rail')} ${id('view-threads')}') !== null && document.querySelector('${id('rail-bot')}') === null && document.querySelector('${id('rail-add')}') === null`)).toBe(true);
-  expect(await page.evaluate(`document.querySelector('${id('mobile-agents')}') === null`)).toBe(true);
-  await capture('agents-launcher-disabled-desktop.png');
+  // Bots are on in every build: the Experiments page has no switch for them.
   await page.click(id('nav-settings')); await page.click(id('settings-tab-experiments'));
-  await page.click(id('experiment-resident-agents'));
+  await page.waitFor(`document.querySelector('${id('experiment-whip')}')`);
+  expect(await page.evaluate(`document.querySelector('${id('experiment-resident-agents')}')`)).toBeNull();
   await page.click(id('settings-back'));
   await page.waitFor(`document.querySelector('${id('app-rail')} ${id('rail-bot')}') && document.querySelector('${id('app-rail')} ${id('rail-add')}')`);
   expect(await page.evaluate(`document.querySelector('${id('app-rail')} ${id('view-threads')}').getAttribute('aria-current')`)).toBe('page');
@@ -199,24 +196,12 @@ test('the experiment adds the bots to the app rail on the desktop and Agents in 
   // The rail's Threads button leads back to the threads.
   await page.click(id('view-threads'));
   await page.waitFor(`!document.querySelector('${id('agents-page')}') && document.querySelector('${id('view-threads')}')?.getAttribute('aria-current') === 'page'`);
-  await page.click(id('rail-bot'));
-  await page.waitFor(`document.querySelector('${id('agents-page')}')`);
-  // Switched off while it is open, the page closes with it.
-  await page.evaluate(`import('/src/lib/experiments.ts').then(({ setExperiment }) => setExperiment('resident-agents', false))`);
-  await page.waitFor(`!document.querySelector('${id('agents-page')}') && document.querySelector('${id('nav-settings')}') && !document.querySelector('${id('rail-add')}') && !document.querySelector('${id('rail-bot')}')`);
-  // Switched on again, the chat stays where it is: nobody navigated to the page.
-  await page.evaluate(`import('/src/lib/experiments.ts').then(({ setExperiment }) => setExperiment('resident-agents', true))`);
-  await page.waitFor(`document.querySelector('${id('rail-add')}')`);
-  expect(await page.evaluate(`document.querySelector('${id('agents-page')}') === null`)).toBe(true);
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   await toMobileList(page);
   expect(await page.evaluate(`document.querySelector('${id('mobile-agents')}').closest('[data-testid=mobile-tabs]') !== null`)).toBe(true);
   await capture('agents-launcher-enabled-phone.png');
   await mobileAction(page, 'mobile-agents');
   await page.waitFor(`document.querySelector('${id('agents-page')}')`);
-  await page.evaluate(`import('/src/lib/experiments.ts').then(({ setExperiment }) => setExperiment('resident-agents', false))`);
-  await page.waitFor(`!document.querySelector('${id('agents-page')}') && !document.querySelector('${id('mobile-agents')}')`);
-  await capture('agents-launcher-disabled-phone.png');
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
 }, 30_000);
 
