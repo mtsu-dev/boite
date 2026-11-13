@@ -1,28 +1,58 @@
 # Experiments
 
-An experiment is unfinished work behind a switch in Settings > Experiments. It
-exists in a Nightly or a source build and does not exist in a Release.
+An experiment is unfinished work behind a switch in Settings > Experiments.
+Every feature has a tag, `release`, `nightly` or `dev`, and exists only in the
+builds at or above it: a Release has none of the unfinished ones, in its
+behaviour and in its files.
 
-## Stages
+## Tags
 
-Every switch has one stage, in `EXPERIMENT_STAGES`
+Every feature has one tag, in `EXPERIMENT_STAGES`
 (`packages/contracts/src/experiments.ts`) and nowhere else:
 
-| Stage | Meaning | Ids |
+| Tag | Meaning | Ids |
 | --- | --- | --- |
-| `normal` | Finished. On in every build, with no switch. | `theme-grain`, `session-import`, `prompt-cache`, `resident-agents` (Bots), `recording-indicators`, `pinned-quotas` |
-| `experimental` | May change or go away. A switch in a Nightly or a source build, absent from a Release. | `whip`, `contacts`, `auto-goal`, `teams`, `debates` (Council) |
+| `release` | Finished. On in every build, with no switch. | `theme-grain`, `session-import`, `prompt-cache`, `resident-agents` (Bots), `recording-indicators`, `pinned-quotas` |
+| `nightly` | May change or go away. A switch in a Nightly and in a Dev build, absent from a Release. | `whip`, `contacts`, `auto-goal`, `teams`, `debates` (Council) |
+| `dev` | Being built. A switch in a Dev build only, absent from a Nightly and from a Release. | none today |
 
-A Release carries a plain version (`2.0.0`); a Nightly
-(`2.0.0-nightly.20261111.1`) and a build from source (`2.0.0-beta.1`) carry a
-prerelease part (`isReleaseVersion`: no `-`). An unknown version reads as a
-Release, so nothing unfinished shows by accident. The same file gives the
-answers both sides read: `experimentsRun(version)`, `listedExperiments(version)`
-(the switches a build shows), `effectiveExperiments(chosen, version)` (what is
-on: every finished feature, plus the chosen experiments where they run) and
-`experimentRefusal(id, version)` (why a build has no switch for an id).
+A build has a kind, read from its version by one function, `buildKindOf`:
 
-Three core settings are experiments too (`EXPERIMENTAL_SETTINGS`):
+| Kind | Version | Built by |
+| --- | --- | --- |
+| Release | plain: `2.0.0` | the release workflow |
+| Nightly | `2.0.0-nightly.YYYYMMDD.N` | the nightly workflow, which stamps it (`scripts/ci/nightly-build.ts`) |
+| Dev | any other prerelease: `2.0.0-beta.1`, `2.0.0-test.0` | a build from source: `bun run dev:core`, `bun run build:shell:dev` (the app "Boite Dev"), a test core |
+
+An unknown version reads as a Release, so nothing unfinished shows by
+accident. A feature exists in a build whose kind is at or above its tag
+(`stageRuns`): a Dev build has everything, a Nightly the `release` and
+`nightly` features, a Release the `release` ones.
+
+| | Release build | Nightly build | Dev build |
+| --- | --- | --- | --- |
+| `release` feature | on | on | on |
+| `nightly` feature | absent | switch | switch |
+| `dev` feature | absent | absent | switch |
+
+So a feature merged with the `dev` tag reaches no Nightly and no Release, and
+one tagged `nightly` reaches no Release. The same file gives the answers both
+sides read: `featureRuns(id, version)`, `listedExperiments(version)` (the
+switches a build shows), `effectiveExperiments(chosen, version)` (what is on:
+every finished feature, plus the chosen ones whose tag the build reaches) and
+`experimentRefusal(id, version)` (why a build has no switch for an id). The
+refusal names the tag and the build: "experiment.whip runs in Dev builds
+only, and this machine runs a Nightly (2.0.0-nightly.20261113.1)". A stored
+choice for a feature the build lacks is ignored and kept.
+`experimentsRun(version)` and `isReleaseVersion(version)` remain for the
+places that ask about the nightly tag as a whole.
+
+In a Dev build the Experiments page lists the features of two tags, so each
+switch shows its own beside its name ("Nightly", "Dev only"), on the desktop
+and on a phone. A Nightly lists one tag and shows none.
+
+Three core settings are experiments too (`EXPERIMENTAL_SETTINGS`, tagged
+`nightly` by `EXPERIMENTAL_SETTINGS_STAGE`):
 [Keep the prompt cache warm](prompt-cache.md#keeping-the-cache-warm)
 (`cacheKeepalive`), [Background compaction](context.md#background-compaction)
 (`backgroundCompaction`) and [Device live stream](devices.md#live-stream)
@@ -106,11 +136,20 @@ run": the version in the hello (`info.version`) is enough.
   values a save keeps, `settings.get { stored: true }`) and for the Contacts
   calls a Release refuses.
 
-## Graduating an experiment
+## Tagging and promoting a feature
 
-Change its line of `EXPERIMENT_STAGES` from `experimental` to `normal`. The
-switch leaves the page in every build, the feature is on everywhere, and both
-sides follow without another edit. Then, in the same change: drop its entry
+A new feature gets an id in `EXPERIMENT_IDS` and a line in
+`EXPERIMENT_STAGES`: `dev` while it is being built, so that merging it shows
+it to nobody outside a build from source. It also gets a title and a hint in
+`lib/experiment-copy.ts` and `lib/strings/*/experiments.ts`, and its code
+reads `experimentOn(id)` in the app and the list in force in the core.
+
+Promoting it is one line: change its tag in `EXPERIMENT_STAGES` from `dev` to
+`nightly`, then from `nightly` to `release`. Both sides, the Experiments page
+and the builds' contents follow without another edit.
+
+At `release` the switch leaves the page in every build and the feature is on
+everywhere. Then, in the same change: drop its entry
 from `lib/experiment-copy.ts` and `lib/strings/*/experiments.ts`
 (`experiment-copy.test.ts` fails otherwise), name it in `graduated()` of
 `lib/setting-requests.ts` so an old card keeps a readable title, and move its
@@ -122,6 +161,101 @@ to, as [chat files and previews](chat-files.md),
 [open chat links](chat-files.md#open-chat-links-in-their-apps),
 [preview comments](panel.md#preview-comments) and the
 [pointer interactions](interactions.md) did.
+
+## Out of the build
+
+A build below a feature's tag does not ship the feature's code. Refusing at
+run time is not enough for that: the bundler has to drop the modules.
+
+A packaged build knows its kind when it is compiled. `featureDefines(version)`
+turns the stamped version into `__BOITE_BUILD_KIND__`, the one constant, and
+one boolean per tagged feature derived from it and from `EXPERIMENT_STAGES`
+(`__BOITE_HAS_WHIP__`, `__BOITE_HAS_DEBATES__`, `__BOITE_HAS_AUTO_GOAL__`,
+`__BOITE_HAS_TEAMS__`, `__BOITE_HAS_CONTACTS__`). Three builds receive them:
+
+- the UI, through Vite's `define` (`packages/ui/vite.config.ts`), from the
+  root `package.json`;
+- the core bundle, through `bun build --define` (`packages/core/bin/build.ts`,
+  what `bun run build:core` runs), from the core's `package.json`;
+- the compiled core, the Linux and macOS sidecar (`packages/core/bin/compile.ts`),
+  with the same flags (`bin/defines.ts`).
+
+The nightly workflow stamps both `package.json` files before it builds, and a
+Release carries its plain version there, so no workflow passes a kind. Under
+`bun run` from source, in the dev server's own tests and in every test,
+nothing is defined and the version rule above decides alone. A compiled
+bundle also refuses what it was compiled without, whatever version it hears
+(`featureCompiled`, read by `featureRuns`).
+
+Neither Bun nor Rolldown folds a call, or a constant imported from another
+module, so a helper cannot carry the gate. Each feature has one lazy entry
+that writes its flag in full before a dynamic import:
+
+```ts
+if (typeof __BOITE_HAS_WHIP__ === 'undefined' || __BOITE_HAS_WHIP__) return import('./whip/feature');
+return null;
+```
+
+Defined as `false`, the branch and its import are dropped and no chunk holds
+the feature's modules. Nothing else may import those modules: one static
+import elsewhere puts them back in every build.
+
+What is cut today, in a build below the feature's tag:
+
+| Feature | UI | Core | What stands in the way |
+| --- | --- | --- | --- |
+| Whip | cut: `lib/whip-entry.svelte.ts` loads `lib/whip/feature.ts` (the control, the Escape key), then the rope with its physics and sounds | has no core side | nothing |
+| Council (`debates`) | cut: the salon through `lib/council-entry.ts`, the card through its gated part in `lib/deferred-parts.ts`, with `lib/council.svelte.ts` | partly: the `boite delegate council` command (`council/cli.ts`, loaded by `delegate-cli.ts`) | `core.ts` builds `CouncilStore` in its constructor, and `delegation/guide.ts`, `delegation/results.ts`, `delegation/retirement.ts`, `delegation.ts`, `threads/cards.ts`, `threads/turn-context.ts` and `server.ts` call `core.council` synchronously; `modules.ts` registers `council/rpc.ts` at startup and `journal/schema.ts` creates its tables. The strings and the contract types stay too |
+| Automatic goals | not yet | not yet | no module of its own: the checks sit inside `core/src/activity.ts`, `composer.ts`, `composer-activity.ts`, `threads.ts` and `threads/turn-context.ts`, and in the UI `AutoGoalSetting.svelte` is a static import of the Experiments page |
+| Teams | not yet | not yet | `core.ts` imports `teams/store.ts` and builds the store, `modules.ts` registers `teams/rpc.ts`; in the UI `AppRail.svelte`, `ChatView.svelte`, `agents/AgentsPage.svelte`, `agents/AgentsRail.svelte`, `agents/BotColumnHead.svelte` and `lib/agent-move-flow.ts` import `lib/teams.svelte.ts` or a `teams/` component statically, and the Council salon does too |
+| Contacts | not yet | not yet | `core.ts` imports `contacts/store.ts`, `projects.ts`, `board.ts`, `compute.ts`, `access-policy.ts` and `review.ts`, `modules.ts` registers `contacts/rpc.ts` and `contacts/compute.ts`, and `server.ts` serves the link routes of `contacts/store.ts`; in the UI `AppRail.svelte`, `Sidebar.svelte`, `TitleBar.svelte`, `ActivityList.svelte`, `MobileNavigation.svelte` and `MobileTabs.svelte`, all on the first screen, import `lib/contacts-*` statically |
+
+For the features not cut yet the run-time rule still holds in every build:
+no switch, no card, a refusal that names the tag. Their code is in the
+bundle and does not run. Cutting a core store needs a stand-in the
+synchronous readers can call while the real one is absent, which is a change
+of its own for each feature.
+
+### The proof
+
+`FEATURE_CUTS`, beside the tags, says which features are cut from which
+bundle. Each writes its marker, `boite-feature:<id>`, in the modules its lazy
+entry loads: a `data-feature` attribute on the root of a component, an
+exported constant in a core module. `scripts/ci/feature-cut.ts` reads a
+bundle and fails when it holds the marker of a feature above its kind (a
+leak), or lacks the marker of a feature it must hold (the marker went, and
+the first check would pass on anything):
+
+```sh
+bun scripts/ci/feature-cut.ts           # packages/ui/dist and packages/core/dist, as the kind package.json says
+bun scripts/ci/feature-cut.ts --build   # builds the UI and the core for the three kinds aside, about a minute
+```
+
+The desktop jobs of `desktop.yml` run the first form on what they just
+packaged, the compiled core included, so a Nightly and a Release are each
+checked as what they are; the Linux x64 job also runs the second.
+`scripts/ci/feature-cut.test.ts` plants a leak and a lost marker, and checks
+that each cut feature's sources hold its marker and its flag.
+
+### Adding a feature so it can be cut
+
+1. Keep everything of the feature in modules nothing else imports: its
+   components, its state, its commands. Shared code it needs stays outside.
+2. Give it one lazy entry, a small file that writes the feature's flag in
+   full as above and returns the dynamic import, or `null`. Declare the flag
+   beside the others in `packages/contracts/src/experiments.ts`
+   (`declare global`); `featureDefines` already defines it for every id that
+   is not `release`.
+3. The places that draw or call the feature go through the entry and handle
+   `null`: draw nothing, or refuse with `experimentRefusal(id, version)`.
+4. Write the marker `boite-feature:<id>` once in a module the entry loads, add
+   the feature to `FEATURE_CUTS`, and name its files in the last table of
+   `scripts/ci/feature-cut.test.ts`.
+5. Run `bun scripts/ci/feature-cut.ts --build`. A leak names the chunk that
+   holds the marker: find who imports the feature outside its entry.
+
+A service the core builds at startup cannot be cut this way yet (see the
+table): start with the parts that are already called on demand.
 
 ## Devices and the desktop app
 
@@ -202,7 +336,7 @@ settings, with the Windows path. It comes back as soon as the setting changes.
 The Bots page ([bots](bots.md)) and every button that leads there: the
 bots' pictures and `+` in the app rail, the phone's Bots tab, the command
 palette row and the link from a bot's own thread. Bots are finished
-(`resident-agents` is `normal`): the page is there in every build, with no
+(`resident-agents` is `release`): the page is there in every build, with no
 switch.
 
 ## Teams
@@ -267,11 +401,16 @@ the Contacts page if it is open; contacts, grants and requests stay on the core.
 
 ## Verification
 
-`ExperimentsPage.test.ts` covers the stages in the app: the five switches a
+`packages/core/test/feature-stages.test.ts` covers the three kinds and the
+three tags with a feature of each, the refusals and the build's constants.
+`ExperimentsPage.test.ts` covers the tags in the app: the tags a Dev build
+shows and the dev feature a Nightly does not list, the five switches a
 Nightly lists, the finished features on with empty storage, a Release that
 turns the experiments off and drops the page while the stored choice stays,
 and the machine settings hidden for a Release core. `tests/e2e/feature-stages.test.ts`
 captures Settings on a Nightly and on a Release, desktop and phone.
+`lib/feature-entries.test.ts` covers the lazy entries of the Whip and the
+Council, and `scripts/ci/feature-cut.test.ts` [the proof](#the-proof).
 
 `whip.test.ts` covers the toggle, persistence, desktop and phone layout, drop and rethrow, whole
 interface movement, rope drawing and release, cancellation and reduced motion. `shell.test.ts` verifies
