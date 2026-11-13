@@ -37,6 +37,13 @@
     return session.accountIds?.length ? session.accountIds : [session.accountId];
   }
 
+  /** Sessions of more than one agent in the list: each row then names its own. */
+  let mixed = $derived(new Set(held?.sessions.map((session) => session.providerId)).size > 1);
+
+  function agentLabel(session: ImportableSession): string {
+    return store.providers.find((provider) => provider.id === session.providerId)?.name ?? session.providerId;
+  }
+
   function accountLabel(accountId: AccountId): string {
     return store.accounts.find(account => account.id === accountId)?.label ?? accountId;
   }
@@ -126,6 +133,7 @@
               onclick={(event) => pick(session, event)}
             >
               <span class="title ui-label">{session.title}</span>
+              {#if mixed}<span class="agent ui-label" data-testid="import-agent">{agentLabel(session)}</span>{/if}
               <span class="account ui-label">{accounts.length > 1 ? fill(strings.imports.accounts, { count: String(accounts.length) }) : accountLabel(accounts[0]!)}</span>
               <span class="hint ui-label">{hintOf(session)}</span>
             </button>
@@ -230,6 +238,7 @@
     font-weight: 400;
   }
 
+  .agent,
   .account,
   .hint {
     flex: none;

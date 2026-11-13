@@ -215,6 +215,7 @@
   .thread:focus-visible { outline-offset: -2px; }
   .thread :global(.headline) { gap: 10px; align-items: flex-start; }
   .thread :global(.headline > :is(.tile, .bot)) { margin-top: calc(0.36 * var(--text-reading) - 8px); }
+  .thread :global(.headline > .provider) { margin-top: calc(0.36 * var(--text-reading) - 7px); }
   /* A phone reads every title at full ink: the mark says which rows need the user. Two lines of it before the
      ellipsis in the lists; Activity's are whole, since the row is about them. */
   .thread :global(.headline .title) { color: var(--color-foreground); font-weight: 400; }

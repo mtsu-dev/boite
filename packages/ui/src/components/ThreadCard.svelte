@@ -293,7 +293,7 @@
   /* The card's strongest line. A clamped title's second line keeps its untrimmed box: .ui-label's half-em under it
      showed the top of the third line, so only a descender's room is kept. */
   .feed .row :global(.headline .title) { flex: 0 1 auto; font-size: var(--text-head); font-weight: var(--weight-title); white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; padding-bottom: 0.25em; margin-bottom: -0.25em; }
-  .feed .row :global(.headline > :is(.tile, .bot)) { margin-top: 2px; }
+  .feed .row :global(.headline > :is(.tile, .bot, .provider)) { margin-top: 2px; }
   /* The menu at the kind line's end, its glyph's box on the card's right edge, so the title keeps the card's width. */
   .feed .actions { top: calc(var(--feed-pad) + var(--menu-at) - var(--menu-h) / 2); right: calc(var(--pad-x) - (var(--menu-w) - 14px) / 2); width: var(--menu-w); height: var(--menu-h); min-height: 0; }
   /* The place line under the title, a descender's room and the row's 4 px clear of it, one line: the project gives
@@ -335,7 +335,7 @@
      opens 5 px down and their middle sits 0.36 em under that. */
   .thread:not(.feed) .row :global(.headline) { align-items: flex-start; padding-top: 5px; }
   .thread:not(.feed) .row :global(.headline .title) { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; padding-bottom: 0.25em; margin-bottom: -0.25em; }
-  .thread:not(.feed) .row :global(.headline > :is(.when, .at, .bot, .draft, .pin, .pr)) { height: 20px; margin-top: calc(0.36 * var(--text-body) - 10px); }
+  .thread:not(.feed) .row :global(.headline > :is(.when, .at, .bot, .provider, .draft, .pin, .pr)) { height: 20px; margin-top: calc(0.36 * var(--text-body) - 10px); }
   /* The time on the same line whether the row's mark draws it (no state) or the row does. */
   .thread:not(.feed) .row :global(.headline > :is(.at, .when:not(.state))) { line-height: 20px; }
   .thread:not(.feed) .row :global(.headline > .tile) { margin-top: calc(0.36 * var(--text-body) - 8px); }
@@ -387,7 +387,7 @@
   .classic.meta .row { min-height: calc(var(--row) + 22px); padding: 9px 10px 28px; }
   .thread.classic .row :global(.headline) { align-items: center; padding-top: 0; }
   .thread.classic .row :global(.headline .title) { display: block; white-space: nowrap; -webkit-line-clamp: none; line-clamp: none; padding-bottom: 0.5em; margin-bottom: -0.5em; }
-  .thread.classic .row :global(.headline > :is(.when, .at, .bot, .draft, .pin, .pr, .tile)) { margin-top: 0; }
+  .thread.classic .row :global(.headline > :is(.when, .at, .bot, .provider, .draft, .pin, .pr, .tile)) { margin-top: 0; }
   .classic :is(.actions, .done) { top: calc(19px - var(--act) / 2); }
   .metadata { position: absolute; bottom: 9px; left: 10px; right: 10px; display: flex; align-items: center; gap: 9px; min-width: 0; pointer-events: none; font-size: var(--text-xs); color: var(--color-muted-foreground); }
   .metadata > span { display: flex; align-items: center; gap: 4px; min-width: 0; }

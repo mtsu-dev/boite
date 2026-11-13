@@ -453,13 +453,14 @@ test('the project cards float a thread that waits on the user, Recent keeps stri
   store.threads.find((t) => t.id === last)!.status = 'waiting';
   await waitFor(() => rowsOf()[0] === last);
   expect(document.querySelector('[data-testid=thread-project]')).toBeNull();
-  // The card from before the redraw: a thread without a pull request keeps one line, its branch in the
-  // row's tooltip; a thread with one shows its number and branch on a second line, no hover needed.
+  // The card from before the redraw, each title led by its provider's mark: a thread without a pull request
+  // keeps one line, its branch in the row's tooltip; a thread with one shows its number and branch on a second
+  // line, no hover needed.
   const branched = store.threadsOf(project.id).find((t) => !t.pullRequest)!;
   branched.branch = 'boite/port-the-scheduler';
   const row = () => document.querySelector<HTMLElement>(`[data-testid=thread-row][data-thread-id="${branched.id}"]`)!;
   await waitFor(() => { const lines = row()?.title.split('\n') ?? []; return lines[0] === branched.title && lines.includes('boite/port-the-scheduler'); });
-  expect(document.querySelectorAll('[data-testid=thread-provider]')).toHaveLength(0);
+  expect(document.querySelectorAll('[data-testid=thread-provider]')).toHaveLength(document.querySelectorAll('[data-testid=thread-row]').length);
   expect(row().closest('.thread')!.querySelector('[data-testid=thread-branch], [data-testid=thread-pr]')).toBeNull();
   const pulled = store.threads.find((t) => t.pullRequest && t.branch && document.querySelector(`[data-testid=thread-row][data-thread-id="${t.id}"]`))!;
   const card = () => document.querySelector(`[data-testid=thread-row][data-thread-id="${pulled.id}"]`)!.closest('.thread')!;
@@ -479,6 +480,7 @@ test('the project cards float a thread that waits on the user, Recent keeps stri
   await waitFor(() => cards().length > 0 && cards().every((card) => card.querySelector('[data-testid=thread-project]') !== null));
   expect(document.querySelector('.thread.classic [data-testid=project-tile]')).toBeNull();
   await waitFor(() => row().closest('.thread')!.querySelector('[data-testid=thread-branch]')?.textContent === 'boite/port-the-scheduler');
+  expect(document.querySelectorAll('[data-testid=thread-provider]')).toHaveLength(document.querySelectorAll('[data-testid=thread-row]').length);
   expect(document.querySelector(`[data-thread-id="${last}"] [data-testid=thread-state]`)?.getAttribute('data-state')).toBe('waiting');
 });
 
