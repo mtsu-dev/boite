@@ -380,11 +380,11 @@
               </div>
               <div id="{controls}-done" hidden={!doneOpen} data-testid="project-done">
                 {#if doneOpen}<GroupLabel kind="done" count={archiveCount(project, 'done')} />{/if}
-                <RecentDone entries={[entry]} {scrollRoot} {now} open={doneOpen && !collapsed} header={false}
+                <RecentDone entries={[entry]} {scrollRoot} {now} open={doneOpen && !collapsed} header={false} cap={10}
                   onrows={doneObserver(entry, 'done')} />
               </div>
               <div id="{controls}-archived" hidden={!archivedOpen} data-testid="project-archived">
-                <RecentDone kind="archived" entries={[entry]} {scrollRoot} {now} open={archivedOpen && !collapsed && (!later || projectThreadView.laterOpen)} header={false}
+                <RecentDone kind="archived" entries={[entry]} {scrollRoot} {now} open={archivedOpen && !collapsed && (!later || projectThreadView.laterOpen)} header={false} cap={10}
                   onrows={doneObserver(entry, 'archived')} />
               </div>
               {#if lists.attention.length === 0 && lists.working.length === 0 && !project.archivedThreads && draftsHere.length === 0}<p class="none">{strings.sidebar.noThreads}</p>{/if}
@@ -581,21 +581,19 @@
   .host { display: flex; flex: none; color: var(--color-muted-foreground); }
   /* The rows under it carry no machine icon, so the header says the machine is unreachable. */
   .host.offline { color: var(--color-danger); }
-  .head :global(.counters) { flex: 0 1000 auto; min-width: min-content; margin-right: 2px; transition: margin-right var(--dur-2) var(--ease-out-quint); }
-  /* The menu appears at the right end on hover and the counters step left of it, as a row's state does. */
+  .head :global(.counters) { flex: 0 1000 auto; min-width: min-content; }
+  /* The menu keeps its slot at the right end even while hidden, so it sits at the same place on every project and
+     the counters never move under the pointer. */
   .project-actions {
-    position: absolute;
-    right: 2px;
-    top: 6px;
+    flex: none;
+    margin-right: 2px;
     opacity: 0;
   }
+  /* Its ring inside its own slot, never over the count beside it. */
+  .project-actions:focus-visible { outline-offset: -2px; }
   .head:hover .project-actions,
   .head:focus-within .project-actions {
     opacity: 1;
-  }
-  .head:hover :global(.counters),
-  .head:focus-within :global(.counters) {
-    margin-right: 28px;
   }
   .none {
     padding: 4px 10px;
@@ -612,6 +610,5 @@
     .project-actions {
       opacity: 1;
     }
-    .head :global(.counters) { margin-right: 28px; }
   }
 </style>

@@ -111,7 +111,8 @@
   /* Offline: the last known count, not live work, so its ring takes the header's grey and stands still. */
   .away .work-ring { border-color: var(--color-muted-foreground); border-top-color: transparent; animation: none; transform: rotate(45deg); }
   .counter:hover:not(:disabled) { background: var(--color-hover); color: var(--color-foreground); }
-  .counter.active { background: var(--color-active); color: var(--color-foreground); }
+  /* Open, a count says it by its ink, Working and Done alike: no box stays behind once the pointer leaves. */
+  .counter.active { color: var(--color-foreground); }
   /* Done: the rows' finished green on the mark alone, the count in the header's grey. */
   .done :global(svg) { color: var(--color-success); }
   /* The working fold's toggle inside the card, a quiet row over the fold, as the group labels read. */

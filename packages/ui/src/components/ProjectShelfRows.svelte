@@ -188,7 +188,7 @@
         {#each kept as list (list)}
           {#if projectThreadView.isOpen(entry, list)}
             <div id="{controls}-{list}" class="history" data-testid="project-{list}">
-              <RecentDone kind={list} entries={[entry]} {scrollRoot} {now} open header={false} {onopen} onrows={observer(entry, list)} />
+              <RecentDone kind={list} entries={[entry]} {scrollRoot} {now} open header={false} cap={10} {onopen} onrows={observer(entry, list)} />
             </div>
           {/if}
         {/each}
@@ -293,14 +293,14 @@
   .actions button {
     border-color: transparent;
   }
-  /* A pointer sees a row's own buttons on the row it is over; a touch screen always does. Hidden, they take no room, so the counts stay at the edge. */
+  /* A pointer sees a row's own buttons on the row it is over; a touch screen always does. Hidden, they keep their slot, so the counts beside them never move. */
   @media (hover: hover) {
     .actions {
-      display: none;
+      opacity: 0;
     }
     .row:hover .actions,
     .row:focus-within .actions {
-      display: flex;
+      opacity: 1;
     }
   }
   /* Done and archived conversations an idle project still has: always shown, they are what it holds. */

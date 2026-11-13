@@ -99,19 +99,23 @@
   /** Rows scrolled under the head: it takes a hairline and the fade deepens, so no sliced row shows below it. */
   let scrolled = $state(false);
 
-  /** At rest the foot never shows half a row: its fade ends at the top of the row the edge slices (lib/row-cut.ts). */
-  let cut = $state(0);
-  /** Rows below the foot: the limits line under the list takes a hairline, the head's mirror, so it stands on its own
-   *  ground and never reads as part of the card fading above it. */
+  /** Rows below the foot: the list melts into its edge over a deep fade, and the limits line under it takes a
+   *  hairline, the head's mirror, so it stands on its own ground. At the list's end both go: the last row reads
+   *  whole, right over the line, with no fade and no room left for one. */
   let more = $state(false);
   const measureMore = () => { const box = scroller; more = !!box && box.scrollTop + box.clientHeight < box.scrollHeight - 1; };
   $effect(() => {
     const box = scroller;
     if (!box) return;
-    let stop: (() => void) | undefined;
-    let gone = false;
-    void import('../lib/row-cut').then(({ watchRowCut }) => { if (!gone) stop = watchRowCut(box, value => { cut = value; measureMore(); }); });
-    return () => { gone = true; stop?.(); };
+    // The list also grows and shrinks without a scroll: rows arrive, a card folds, the window is resized.
+    let frame = 0;
+    const later = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(measureMore); };
+    const resized = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(later);
+    const changed = new MutationObserver(later);
+    resized?.observe(box);
+    changed.observe(box, { childList: true, subtree: true });
+    measureMore();
+    return () => { cancelAnimationFrame(frame); resized?.disconnect(); changed.disconnect(); };
   });
 </script>
 
@@ -132,7 +136,7 @@
 >
   <div class="views" class:scrolled={scrolled && !subhead}>{@render head()}</div>
   {@render subhead?.()}
-  <div class="scroll" class:scrolled data-project-list={kind === 'sidebar' ? '' : undefined} bind:this={scroller} style:--cut={cut ? `${cut}px` : undefined}
+  <div class="scroll" class:scrolled data-project-list={kind === 'sidebar' ? '' : undefined} bind:this={scroller}
     onscroll={() => { scrolled = (scroller?.scrollTop ?? 0) > 0; measureMore(); onscroll?.(); }}>
     {@render children()}
   </div>
@@ -164,8 +168,8 @@
 </aside>
 
 <style>
-  /* Typed, so the foot's fade eases to a row's top when the list settles instead of jumping. */
-  @property --cut { syntax: '<length>'; inherits: false; initial-value: 0px; }
+  /* Typed, so the foot's fade eases away when the list reaches its end instead of jumping. */
+  @property --foot { syntax: '<length>'; inherits: false; initial-value: 0px; }
   /* The container name `sidebar` is also read by Sidebar.svelte's narrow-column layout. */
   .rail {
     container: sidebar / inline-size;
@@ -186,22 +190,26 @@
        foot. The fade is exactly the padding, so at rest it covers nothing; a
        mask, not a scroll-driven animation, because tests and closing elements
        wait on every running animation and that one would never end. */
-    /* Shallow at the foot, the shared edge (app.css `--scroll-edge`): the last row reads whole at the end, where the
-       fade covers only the padding; at rest it ends on a row's top (`--cut`, set by the script). */
+    /* On top, the shared edge (app.css `--scroll-edge`). At the foot a deeper one, a row's height (`--foot`), only
+       while rows lie below: a row leaving the list dissolves over its whole height, down to nothing at the edge,
+       so no hard line ever slices it and no row is held back to leave a hole. */
     --fade: var(--scroll-edge);
+    --foot: 0px;
     /* Shorter on top: the head's tools sit right above, and a deeper fade
        there opened a wider gap under them than between them and the switch. */
     --fade-top: 3px;
-    padding: var(--fade-top) 6px var(--fade);
+    /* The last card ends on the list's own inset, the same 6 px as its sides: no dead room over the limits line. */
+    padding: var(--fade-top) 6px 6px;
     /* A row the keyboard reaches scrolls clear of both fades, never read through one. */
-    scroll-padding-block: calc(var(--fade-top) + 4px) calc(var(--fade) + 4px);
+    scroll-padding-block: calc(var(--fade-top) + 4px) calc(var(--row) + 4px);
     display: flex;
     flex-direction: column;
     --mask-top: var(--fade-top);
-    /* Eased like the shared edge: the sliver at the very edge closes, the rest of the line stays legible. */
-    mask-image: linear-gradient(to bottom, transparent, black var(--mask-top), black calc(100% - var(--fade) - var(--cut)), rgb(0 0 0 / 0.55) calc(100% - var(--fade) / 2 - var(--cut)), transparent calc(100% - var(--cut)));
-    transition: --cut var(--motion-duration) var(--motion-curve);
+    /* Eased, not linear: full ink at the fade's top, most of it gone by its middle, nothing at the edge. */
+    mask-image: linear-gradient(to bottom, transparent, black var(--mask-top), black calc(100% - var(--foot)), rgb(0 0 0 / 0.72) calc(100% - var(--foot) * 0.7), rgb(0 0 0 / 0.34) calc(100% - var(--foot) * 0.4), rgb(0 0 0 / 0.08) calc(100% - var(--foot) * 0.14), transparent);
+    transition: --foot var(--motion-duration) var(--motion-curve);
   }
+  .rail.more .scroll { --foot: var(--row); }
   /* Scrolled: the head reads as an opaque edge the rows pass under, so no sliced card title shows through the
      3 px fade; the top fade as deep as the foot's. */
   .scroll.scrolled { --mask-top: var(--fade); }

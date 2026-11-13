@@ -217,6 +217,8 @@
 {/if}
 
 <style>
+  /* Typed, so the line's end eases under the row's buttons instead of jumping. */
+  @property --row-hide { syntax: '<length>'; inherits: false; initial-value: -12px; }
   .thread {
     /* The room the row's own buttons take at its right edge: a 32 px hit area each, a phone's touch target. */
     --act: max(32px, var(--control-sm));
@@ -374,12 +376,18 @@
   .done { right: calc(3px + var(--act)); color: var(--color-muted-foreground); }
   .thread:has(.done) { --act-room: calc(2 * var(--act) + 3px); }
   .thread:is(:hover, :focus-within) .done, .thread:is(:hover, :focus-within) .actions { opacity: 1; }
-  /* While the buttons show, the title's line ends where they begin: the time gives up its place and a state
-     steps left, whole, so they never cover a word. */
-  .thread:not(.feed):is(:hover, :focus-within) .row > :global(.headline) { margin-right: calc(var(--act-room) + 4px - var(--pad-x)); }
-  .thread:is(:hover, :focus-within) :global(.headline .when:not(.state)) { visibility: hidden; }
-  /* The time leaves its room to the title rather than to an empty slot. */
-  .thread:not(.feed):is(:hover, :focus-within) :global(.headline > .at) { display: none; }
+  /* While the buttons show, nothing on the title's line moves. What ends the line, its time or its state, fades out
+     whole where it stands and the buttons take its place; when they need more room than it held (a short time, two
+     buttons), the title's last letters melt away under them (`--row-hide`, eased from past the line's edge). */
+  .thread:not(.feed) .row > :global(.headline) { --row-hide: -12px; transition: --row-hide var(--dur-2) var(--ease-out-quint); }
+  .thread:not(.feed) .row :global(.headline > :is(.when, .at)) { transition: opacity var(--dur-2) var(--ease-out-quint); }
+  .thread:not(.feed):is(:hover, :focus-within) .row > :global(.headline) {
+    --row-hide: calc(var(--act-room) - var(--pad-x));
+    mask-image: linear-gradient(to left, transparent var(--row-hide), black calc(var(--row-hide) + 12px));
+  }
+  .thread:not(.feed):is(:hover, :focus-within) .row :global(.headline > :is(.when, .at)) { opacity: 0; }
+  /* Activity's card keeps its menu on a line of its own; only a time under it steps out. */
+  .thread.feed:is(:hover, :focus-within) :global(.headline .when:not(.state)) { visibility: hidden; }
   /* The classic card, as it was before the redraw: one line for the title, its state or its time at the end, and the
      place line under it. */
   .classic { --pad-x: 10px; }
@@ -407,5 +415,7 @@
   @media (max-width: 720px) {
     .done, .actions { opacity: 1; }
     .thread:not(.feed) .row > :global(.headline) { margin-right: calc(var(--act-room) + 4px - var(--pad-x)); }
+    .thread:not(.feed):is(:hover, :focus-within) .row > :global(.headline) { mask-image: none; }
+    .thread:not(.feed):is(:hover, :focus-within) .row :global(.headline > :is(.when, .at)) { opacity: 1; }
   }
 </style>
