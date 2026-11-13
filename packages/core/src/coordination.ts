@@ -175,8 +175,8 @@ export class Coordination {
     // and still reaches the threads of its projects as theirs (`resident` letters) whatever this says.
     return defaultCoordinationConfig();
   }
-  /** What a thread's own agent may reach: its config cut to the machine's reach (`coordination-scope.ts`). */
-  scope(threadId: string): CoordinationScope { return coordinationScope(this.#core, threadId, this.config(threadId), this.trusted()); }
+  /** What a thread's own agent may reach: its config cut to the machine's reach (`coordination-scope.ts`). `letter`: the one it is sending. */
+  scope(threadId: string, letter?: Pick<AgentLetter, 'id' | 'to'>): CoordinationScope { return coordinationScope(this.#core, threadId, this.config(threadId), this.trusted(), letter); }
   #saveConfig(threadId: string, config: CoordinationConfig): void {
     this.#core.journal.setSetting(`coordination:${threadId}`, config);
     this.#core.bus.emit('collaboration.changed', { threadId });
@@ -368,12 +368,13 @@ export class Coordination {
       if (letters.length > 0) return waiter.done(letters);
     }
   }
-  async send(params: RpcParams<'collaboration.send'>, human = false, connection?: Connection): Promise<AgentLetter> {
+  /** `answerId`: the id of the letter a started thread's first answer takes, set by `threads/spawn.ts` only. */
+  async send(params: RpcParams<'collaboration.send'>, human = false, connection?: Connection, answerId?: string): Promise<AgentLetter> {
     const to = address(params.to, 'to');
     const local = to.coreId === this.#self('').coreId;
     const resident = local ? this.#core.workforce.projects.over(params.threadId, to.threadId) : null;
     let from = this.#contact(params.threadId, resident !== null);
-    const config = this.scope(params.threadId);
+    const id = answerId ?? randomUUID(), config = this.scope(params.threadId, { id, to });
     if (config.paused) throw refused('coordination paused by the owner');
     const body = text(params.text, 'text');
     const requestId = text(params.requestId, 'requestId', 128);
@@ -400,7 +401,7 @@ export class Coordination {
       if (!peer && !route) throw refused('destination machine is not trusted for coordination');
       if (!human && (this.#core.contacts.isContact(to.coreId) || route)) this.#core.contacts.checkSendTier(params.threadId, to.coreId);
       from = this.#contact(params.threadId, resident !== null);
-      if (!this.scope(params.threadId).machine(to.coreId) || this.config(params.threadId).paused) throw refused('coordination permissions changed; retry the send');
+      if (!this.scope(params.threadId, { id, to }).machine(to.coreId) || this.config(params.threadId).paused) throw refused('coordination permissions changed; retry the send');
       // No directory round trip on send: a disconnected recipient can receive after reconnect.
       toTitle = to.threadId;
       toMachine = peer?.name ?? route!.name;
@@ -414,12 +415,12 @@ export class Coordination {
     const provenance = await outgoingContact(this.#core, from, to, human, connection);
     if (to.coreId !== from.coreId) this.#core.contacts.reach.checkSend(from.threadId, to, provenance.sharedProjectId !== undefined);
     this.#contact(params.threadId, resident !== null); if (this.config(params.threadId).paused) throw refused('coordination paused by the owner');
-    if (to.coreId !== from.coreId && !this.scope(params.threadId).machine(to.coreId)) throw refused('coordination permissions changed; retry the send');
+    if (to.coreId !== from.coreId && !this.scope(params.threadId, { id, to }).machine(to.coreId)) throw refused('coordination permissions changed; retry the send');
     const raced = this.rows('thread_id = ? AND request_id = ?', params.threadId, requestId)[0];
     if (raced) { if (raced.fingerprint !== fingerprint) throw refused('requestId already used for different content'); return JSON.parse(raced.data) as AgentLetter; }
     const createdAt = Date.now();
     const contact = this.#core.contacts.known(to.coreId) ?? this.mailboxes.route(params.threadId, to.coreId);
-    const letter: AgentLetter = { ...(resident ? { origin: 'resident' as const } : {}), id: randomUUID(), from, to, toTitle, toProject, toMachine, text: body, replyTo: params.replyTo ?? null, createdAt, expiresAt: createdAt + (resident ? RESIDENT_LETTER_TTL_MS : this.#core.contacts.letterTtl(to.coreId, to.threadId) ?? LETTER_TTL_MS), status: 'queued', error: null,
+    const letter: AgentLetter = { ...(resident ? { origin: 'resident' as const } : {}), id, from, to, toTitle, toProject, toMachine, text: body, replyTo: params.replyTo ?? null, createdAt, expiresAt: createdAt + (resident ? RESIDENT_LETTER_TTL_MS : this.#core.contacts.letterTtl(to.coreId, to.threadId) ?? LETTER_TTL_MS), status: 'queued', error: null,
       ...(contact ? { contact: { coreId: contact.coreId, name: contact.name } } : {}), ...provenance };
     this.#core.journal.append({ type: 'coordination.sent', threadId: from.threadId, version: 1, payload: letter }, () => this.#put(letter, 'out', from.threadId, requestId, fingerprint));
     // It may hear back from that contact for a while, even outside the projects opened to it.
@@ -635,7 +636,7 @@ export class Coordination {
       try { incomingContact(this.#core, letter, peer); } catch { return false; }
       return !this.#core.contacts.isContact(letter.from.coreId) || this.#core.contacts.mayReach(letter.from.coreId, letter.to.threadId, letter.from.threadId);
     }
-    const sender = this.scope(letter.from.threadId);
+    const sender = this.scope(letter.from.threadId, letter);
     if (sender.mode === 'off') return false;
     return this.#inProject(letter) || (recipient.remote && sender.projects);
   }
@@ -788,7 +789,7 @@ export class Coordination {
       this.#attempts.set(letter.id, Date.now());
       const sender = this.#core.journal.getThread(letter.from.threadId);
       if (!sender || sender.archived) { this.update(letter, 'rejected', 'Thread archived or removed'); return; }
-      const config = this.scope(letter.from.threadId);
+      const config = this.scope(letter.from.threadId, letter);
       const peer = this.trusted().find(p => p.coreId === letter.to.coreId);
       const route = !peer ? this.mailboxes.route(letter.from.threadId, letter.to.coreId) : undefined;
       if ((!peer && !route) || !config.machine(letter.to.coreId) || config.mode === 'off') { this.update(letter, 'rejected', 'Machine permission revoked'); return; }
@@ -796,7 +797,7 @@ export class Coordination {
       try {
         const answer = peer ? await this.exchange(peer, letter.status === 'queued' ? 'deliver' : 'receipt', letter.status === 'queued' ? letter : { id: letter.id, fromThreadId: letter.from.threadId }) as AgentLetter : await this.mailboxes.relay(letter);
         if (this.#closed) return;
-        if ((peer ? !this.trusted().some(p => p.coreId === peer.coreId) : !this.mailboxes.route(letter.from.threadId, letter.to.coreId)) || !this.scope(letter.from.threadId).machine(letter.to.coreId)) { this.update(letter, 'rejected', 'Machine permission revoked'); return; }
+        if ((peer ? !this.trusted().some(p => p.coreId === peer.coreId) : !this.mailboxes.route(letter.from.threadId, letter.to.coreId)) || !this.scope(letter.from.threadId, letter).machine(letter.to.coreId)) { this.update(letter, 'rejected', 'Machine permission revoked'); return; }
         if (!answer || answer.id !== letter.id || !same(answer.from, letter.from) || !same(answer.to, letter.to) || !['received', 'delivered', 'uncertain', 'expired', 'rejected'].includes(answer.status)) throw new Error('invalid delivery receipt');
         const title = text(answer.toTitle, 'receipt.toTitle', 200);
         const error = answer.error === null ? null : text(answer.error, 'receipt.error', 4000);
