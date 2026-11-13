@@ -139,12 +139,17 @@ test('channel options preserve the installed channel and nightly window name, an
   expect(await page.text(id('updates-version'))).toContain('2.0.0-nightly.7');
   expect((await page.text(id('updates-found'))).trim()).toBe('2.0.0-beta.2');
   await capture('channel-release-ready');
+}, 30_000);
+
+// A fresh page: on the Windows runner, navigating again to the address this
+// page already showed started a second navigation that never let ours commit.
+test('Release is one pick then a restart on a phone', async () => {
   await width(390);
   await updates('available', true);
   await page.click(id('app-update-stable'));
   await page.waitFor(`document.querySelector('${id('updates-run-all')}')?.textContent.includes('Restart')`);
   await capture('channel-release-ready-phone');
-}, 45_000);
+}, 30_000);
 
 test('a release that cannot read the nightly data says so and offers nothing', async () => {
   await page.navigate(`${base}/?fake=1&appUpdate=available&appUpdateChannel=nightly&appUpdateCurrentChannel=nightly&appUpdateRelease=blocked`);
