@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import type { PermissionRequest, QuestionRequest, ThreadSummary } from '@boite/contracts';
-import { activityFeed, feedOperation, needsYouCount, storeNeeds } from './activity-feed';
+import { activityFeed, feedOperation, needsYouCount, readableThreads, storeNeeds } from './activity-feed';
 
 const NOW = Date.UTC(2026, 10, 7, 12);
 
@@ -14,7 +14,7 @@ test('Activity lists what needs the user, failures included, then the updates, e
   const permissions = [{ id: 'p', threadId: 'push', toolName: 'Bash', input: { command: 'git push' }, description: null, createdAt: NOW - 60_000 }] as unknown as PermissionRequest[];
   const threads = [
     thread('done', { unread: true, updatedAt: NOW - 1_000 }),
-    thread('failed', { status: 'error', updatedAt: NOW - 2_000 }),
+    thread('failed', { status: 'error', unread: true, updatedAt: NOW - 2_000 }),
     thread('stopped', { status: 'idle', unread: true, backgroundWait: { state: 'interrupted', for: 'tests', reason: 'core-restarted', at: NOW }, updatedAt: NOW - 500 }),
     thread('asks', { status: 'waiting', openQuestions: 1, updatedAt: NOW - 30_000 }),
     thread('push', { status: 'waiting', updatedAt: NOW - 3_000 }),
@@ -61,8 +61,8 @@ test('Activity lists what needs the user, failures included, then the updates, e
 test('a sub-agent that failed under a parent still at work is the parent\'s business; a thread outside projects says its bot', () => {
   const threads = [
     thread('parent', { status: 'running' }),
-    thread('child', { status: 'error', parentThreadId: 'parent' as ThreadSummary['parentThreadId'] }),
-    thread('bot', { status: 'error' })
+    thread('child', { status: 'error', unread: true, parentThreadId: 'parent' as ThreadSummary['parentThreadId'] }),
+    thread('bot', { status: 'error', unread: true })
   ];
   const machine = { id: 'local', store: { pendingQuestions: [], pendingPermissions: [], subagents: () => null } };
   const feed = activityFeed(threads.map(t => ({ machine, thread: t, project: undefined })), entry => entry.thread.id === 'bot' ? 'Scout' : null);
@@ -95,4 +95,26 @@ test('one event per row: a sub-agent shares its parent\'s row only for the same 
   ]);
   // Every count says the rows the section lists.
   expect(needsYouCount(threads.map(t => ({ machine, thread: t, project: undefined })))).toBe(2);
+});
+
+test('Mark all as read clears every failure, stop and finish, never a decision; a read failure stays off the feed', () => {
+  const questions = [{ id: 'q', threadId: 'asks', text: 'Which port?', options: [], createdAt: NOW - 5_000 }] as unknown as QuestionRequest[];
+  const permissions = [{ id: 'p', threadId: 'push', toolName: 'Bash', input: { command: 'git push' }, description: null, createdAt: NOW - 5_000 }] as unknown as PermissionRequest[];
+  const threads = [
+    thread('failed', { status: 'error', unread: true }),
+    thread('stopped', { unread: true, backgroundWait: { state: 'interrupted', for: 'tests', reason: 'core-restarted', at: NOW } }),
+    thread('done', { unread: true }),
+    thread('asks', { status: 'waiting', openQuestions: 1 }),
+    thread('push', { status: 'waiting' }),
+    // Read already: the user opened it, or marked it, so it is no longer news.
+    thread('seen', { status: 'error', unread: false }),
+    thread('seen-stop', { unread: false, backgroundWait: { state: 'interrupted', for: 'tests', reason: 'core-restarted', at: NOW } })
+  ];
+  const machine = { id: 'local', store: { pendingQuestions: questions, pendingPermissions: permissions, subagents: () => null } };
+  const feed = activityFeed(threads.map(t => ({ machine, thread: t, project: undefined })));
+  expect(feed.map(row => row.thread.id).sort()).toEqual(['asks', 'done', 'failed', 'push', 'stopped']);
+  expect(readableThreads(feed)).toEqual(new Map([[machine, ['failed', 'stopped', 'done']]]));
+  // Once read, only the decisions are left.
+  const after = activityFeed(threads.map(t => ({ machine, thread: { ...t, unread: false }, project: undefined })));
+  expect(after.map(row => row.thread.id).sort()).toEqual(['asks', 'push']);
 });

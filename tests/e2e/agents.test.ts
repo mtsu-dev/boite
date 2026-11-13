@@ -372,7 +372,7 @@ test('a bot\'s menu sits in its column on a desktop and on its row\'s long press
   /** Opens the bot from its picture in the rail, then its column's menu. */
   const columnMenu = async (agentId: string) => {
     await openRailBot(page, agentId);
-    // A docked Desk takes the bot column's place (the column is lent to it); closed, the column comes back with its menu.
+    // The column stays beside a docked Desk; the desk is closed so the column's menu has the room it opens in.
     await page.evaluate(`document.querySelector('${id('right-panel')} ${id('panel-close')}')?.click()`);
     await page.waitFor(`getComputedStyle(document.querySelector('.agents-rail')).display !== 'none'`);
     await page.click(id('bot-column-menu'));

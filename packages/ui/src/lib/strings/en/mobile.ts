@@ -36,7 +36,7 @@ export const strings = {
     settingsLeave: 'Back',
     settingsBack: 'Back to settings',
     /** Activity's second line: why the thread is listed. `updates` heads what the user reads, under what needs them. */
-    feed: { run: 'Wants to run:', helperAsks: '{title} needs you', updates: 'Updates', verb: { answer: 'Answer', review: 'Review', deny: 'Deny', skip: 'Skip' } },
+    feed: { run: 'Wants to run:', helperAsks: '{title} needs you', updates: 'Updates', markAllRead: 'Mark all as read', markAllReadHint: 'Clears failures, stops and finished work. Questions and permissions stay.', verb: { answer: 'Answer', review: 'Review', deny: 'Deny', skip: 'Skip' } },
     navigation: 'Navigation', activity: 'Activity',
     waitingElsewhere: '{count} waiting for you',
     search: 'Find a conversation', noThreads: 'No matching conversations.'

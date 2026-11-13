@@ -41,7 +41,7 @@ test('queued prompts sit above the activity dock attached to the input', async (
     }
     // Going out, the queue has no Send now: its foot keeps the button's height so
     // the label's ink room does not overflow the list into a scrollbar, and a
-    // long prompt shows whole lines (one on a desktop, two on a phone), not a sliver of the next.
+    // long prompt's bubble shows three whole lines, not a sliver of the next.
     await page.evaluate(`(() => {
       const state = globalThis.__boiteTest.workspace.active.composerStates['t-trace'];
       state.queued[0].text = 'A follow-up long enough to need more than three lines in the bubble. '.repeat(8);
@@ -52,11 +52,11 @@ test('queued prompts sit above the activity dock attached to the input', async (
       await page.send('Emulation.setDeviceMetricsOverride', { width, height: 850, deviceScaleFactor: 1, mobile: width === 390 });
       const fit = await page.evaluate<{ overflow: number; lines: number }>(`(() => {
         const queue = document.querySelector('[data-testid="composer-queued"]');
-        // clientHeight is whole pixels and the line 1.4 of the font: a tenth of a line is rounding, a sliver is more.
-        const text = queue.querySelector('[data-testid="composer-queued-text"] .words');
+        // clientHeight is whole pixels: a tenth of a line is rounding, a sliver is more.
+        const text = queue.querySelector('.queued-text');
         return { overflow: queue.scrollHeight - queue.clientHeight, lines: Math.round(text.clientHeight / parseFloat(getComputedStyle(text).lineHeight) * 10) / 10 };
       })()`);
-      expect(fit).toEqual({ overflow: 0, lines: width === 390 ? 2 : 1 });
+      expect(fit).toEqual({ overflow: 0, lines: 3 });
     }
     await page.evaluate(`globalThis.__boiteTest.workspace.active.composerStates['t-trace'].sending = false`);
     await page.evaluate(`globalThis.__boiteTest.workspace.active.openThread.activity = { goal: null, loop: null, tasks: [{ id: 'work', text: 'Keep the latest answer visible', status: 'in_progress' }] }`);
