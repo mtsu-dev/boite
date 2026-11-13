@@ -39,4 +39,9 @@
   .master .words { display: grid; gap: 6px; flex: 1; min-width: 0; }
   .effect { color: var(--color-muted-foreground); font-size: var(--text-sm); line-height: 1.5; }
   .card .master h2 { margin: 0; }
+  /* On a page of Settings the title stands above the card, as every card's does: the row keeps the effect and the switch. */
+  :global(.settings .page) > .card:has(> .master:first-child) { margin-top: calc(var(--card-head) + var(--space-4)); }
+  :global(.settings .page) > .card > .master:first-child { align-items: center; padding: var(--space-3) 0; }
+  :global(.settings .page) > .card > .master:first-child h2 { position: absolute; left: var(--space-4); right: var(--space-4); bottom: 100%; display: flex; align-items: center; gap: 6px; min-height: var(--card-head); padding-bottom: 2px; cursor: default; }
+  @media (min-width: 721px) { :global(.settings .framed .page) > .card > .master:first-child h2 { left: var(--space-5); right: var(--space-5); } }
 </style>

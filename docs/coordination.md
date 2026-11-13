@@ -11,7 +11,7 @@ yourself: the agents do, and you see them in the chat.
 
 On a new install, the agent of an ordinary conversation reaches the
 conversations of its own project only. You choose how far it goes in Settings,
-General, What agents may do alone, under Other conversations an agent reaches:
+Agents, What agents may do alone, under Other conversations an agent reaches:
 
 | Step | What an agent lists, reads and writes to |
 | --- | --- |
@@ -96,8 +96,8 @@ connections stay open.
 
 - Reading a conversation on another machine needs a reading grant on that
   machine. Finding and messaging do not.
-- Threads from the other machines, in that machine's Settings, Machines and
-  updates, lets agents of the other machines start conversations there. It is
+- Threads from the other machines, in the menu of that machine's row in
+  Settings, Devices, Group, lets agents of the other machines start conversations there. It is
   off by default.
 - Bots from the other machines lets a bot of another machine look after the
   projects of this one that you entrusted to it. It is off by default and

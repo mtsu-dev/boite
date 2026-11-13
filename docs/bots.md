@@ -27,7 +27,7 @@ card then appears in that conversation with the bot's name, role, projects and
 model, and the line "This bot runs with full access to this machine". Approve
 creates it; Decline creates nothing, and the agent is told either way. To let
 agents create bots without that card, turn on Create bots without asking in
-Settings, General, What agents may do alone. A bot created this way has full
+Settings, Agents, What agents may do alone. A bot created this way has full
 access to this machine. An install that already held conversations before this
 setting existed starts with it on, as it worked before.
 
@@ -118,7 +118,7 @@ and the threads it started are done. Its `skills/` folder stays behind.
 ## Teams
 
 Experimental: Teams exist in Nightly builds only. Turn them on in Settings,
-Experiments, Teams ([experiments](experiments.md)).
+Version, Experiments, Teams ([experiments](experiments.md)).
 
 1. Press the `+` under the bots in the app rail and pick a new team.
 2. Give it a name, an optional brief that every member reads, and its members:

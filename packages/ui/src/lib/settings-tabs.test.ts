@@ -1,98 +1,257 @@
-import { describe, expect, test } from 'vitest';
-import { SETTINGS_FAMILIES, SETTINGS_TABS, desktopPage, familyOf, movedTo, navOf, phonePage, sectionsOf, viewOf } from './settings-tabs';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { REQUESTABLE_SETTINGS, SETTINGS_PAGES, SETTINGS_PAGE_ALIASES } from '@boite/contracts';
 
-describe('the settings families', () => {
-  test('four families hold every page once, each page a peer inside its family', () => {
-    const listed = SETTINGS_FAMILIES.flatMap((family) => [...family.pages]);
-    expect(new Set(listed).size).toBe(listed.length);
-    expect([...listed].sort()).toEqual(SETTINGS_TABS.filter((tab) => tab !== 'home').sort());
-    expect(SETTINGS_FAMILIES.map((family) => family.id)).toEqual(['app', 'agents', 'connections', 'advanced']);
-    expect(familyOf('keyboard')).toBe('app');
-    expect(familyOf('voice')).toBe('app');
-    expect(familyOf('plugins')).toBe('agents');
-    expect(familyOf('usage')).toBe('agents');
-    expect(familyOf('browser')).toBe('connections');
-    expect(familyOf('diagnostics')).toBe('advanced');
-    expect(familyOf('home')).toBeNull();
+const experiments = vi.hoisted(() => ({ shown: true }));
+vi.mock('./experiments.svelte', () => ({ experimentsShown: () => experiments.shown }));
+
+import { PAGES, aliasesOf, SETTINGS_CARDS, SETTINGS_TABS, blocksOf, cardOf, cardsOf, desktopHas, desktopPage, desktopPlace, machinePage, settingsHas, navOf, navSectionsOf, ownerOnly, pageScopeOf, phonePlace, placeOf, type SettingsTab } from './settings-tabs';
+
+beforeEach(() => { experiments.shown = true; });
+
+/**
+ * Every page and card Settings had before the map, as the old nav and its
+ * search named them (the old `SettingsShell.svelte`), with the page each must
+ * open now.
+ */
+const BEFORE: readonly (readonly [SettingsTab, string | null, string, string | null])[] = [
+  ['home', null, 'appearance', null],
+  ['general', null, 'conversations', null],
+  ['general', 'thread-list', 'conversations', 'thread-list'],
+  ['general', 'conversations', 'conversations', 'conversations'],
+  ['general', 'notifications', 'conversations', 'notifications'],
+  ['general', 'agent-replies', 'conversations', 'agent-replies'],
+  ['general', 'quiet', 'safeguards', 'quiet'],
+  ['general', 'workspace', 'appearance', 'workspace'],
+  ['general', 'archived', 'conversations', 'archived'],
+  ['general', 'worktrees', 'conversations', 'worktrees'],
+  ['general', 'app', 'devices', 'app'],
+  ['general', 'privacy', 'safeguards', 'privacy'],
+  ['general', 'policy', 'safeguards', 'policy'],
+  ['appearance', null, 'appearance', null],
+  ['appearance', 'theme', 'appearance', 'theme'],
+  ['appearance', 'reading', 'appearance', 'reading'],
+  ['appearance', 'buttons', 'appearance', 'buttons'],
+  ['keyboard', null, 'input', 'keyboard'],
+  ['keyboard', 'keys-chat', 'input', 'keys-chat'],
+  ['keyboard', 'keybinding-file', 'input', 'keybinding-file'],
+  ['voice', null, 'input', 'voice'],
+  ['accounts', null, 'ai', null],
+  ['accounts', 'provider-claude', 'ai', 'provider-claude'],
+  ['accounts', 'agent-updates', 'version', 'agent-updates'],
+  ['accounts', 'secrets', 'ai', 'secrets'],
+  ['plugins', null, 'agents', 'plugins'],
+  ['plugins', 'plugins-add', 'agents', 'plugins-add'],
+  ['browser', null, 'safeguards', 'browser-profiles'],
+  ['browser', 'browser-profiles', 'safeguards', 'browser-profiles'],
+  ['brain', null, 'agents', null],
+  ['brain', 'brain-folder', 'agents', 'brain-folder'],
+  ['brain', 'hooks', 'agents', 'hooks'],
+  ['usage', null, 'ai', 'usage'],
+  ['usage', 'usage-overview', 'ai', 'usage-overview'],
+  ['usage', 'usage-chart', 'ai', 'usage-chart'],
+  ['usage', 'usage-breakdown', 'ai', 'usage-breakdown'],
+  ['usage', 'usage-threads', 'ai', 'usage-threads'],
+  ['limits', null, 'ai', 'quotas'],
+  ['limits', 'limit-resume', 'ai', 'limit-resume'],
+  ['task-manager', null, 'help', 'task-manager'],
+  ['resources', null, 'safeguards', 'limits'],
+  ['resources', 'limits', 'safeguards', 'limits'],
+  ['resources', 'tasks', 'help', 'tasks'],
+  ['machines', null, 'devices', null],
+  ['machines', 'updates', 'version', 'updates'],
+  ['machines', 'machines', 'devices', 'machines'],
+  ['machines', 'group', 'devices', 'group'],
+  ['machines', 'windows', 'safeguards', 'windows'],
+  ['machines', 'window-exclusions', 'safeguards', 'window-exclusions'],
+  ['advanced', null, 'agents', 'auto-compact'],
+  ['advanced', 'execution', 'agents', 'execution'],
+  ['advanced', 'auto-compact', 'agents', 'auto-compact'],
+  ['advanced', 'phone', 'devices', 'phone'],
+  ['advanced', 'origins', 'devices', 'origins'],
+  ['advanced', 'details', 'appearance', 'details'],
+  ['advanced', 'core', 'help', 'core'],
+  ['experiments', null, 'version', 'experiments'],
+  ['experiments', 'whip', 'version', 'whip'],
+  ['experiments', 'background-compaction', 'version', 'background-compaction'],
+  ['experiments', 'device-stream', 'version', 'device-stream'],
+  ['diagnostics', null, 'help', null],
+  ['diagnostics', 'diagnostics-status', 'help', 'diagnostics-status'],
+  ['diagnostics', 'diagnostics-problems', 'help', 'diagnostics-problems'],
+  ['diagnostics', 'diagnostics-log', 'help', 'diagnostics-log'],
+  ['diagnostics', 'diagnostics-agents', 'help', 'diagnostics-agents'],
+  // Links that named a card on a page it had already left still follow the card.
+  ['general', 'secrets', 'ai', 'secrets'],
+  ['general', 'browser-profiles', 'safeguards', 'browser-profiles'],
+  ['resources', 'quiet', 'safeguards', 'quiet'],
+  ['appearance', 'workspace', 'appearance', 'workspace']
+];
+
+describe('the map of Settings', () => {
+  test('nine pages in the nav order, and every route from before is still a route', () => {
+    expect([...SETTINGS_PAGES]).toEqual(['appearance', 'input', 'conversations', 'ai', 'agents', 'safeguards', 'devices', 'version', 'help']);
+    expect(navOf(true)).toEqual([...SETTINGS_PAGES]);
+    for (const old of ['home', 'advanced', 'brain', 'voice', 'general', 'machines', 'keyboard', 'accounts', 'plugins', 'browser', 'usage', 'limits', 'resources', 'task-manager', 'experiments', 'diagnostics']) {
+      expect(SETTINGS_TABS, old).toContain(old);
+    }
+    expect(SETTINGS_PAGE_ALIASES.every((alias) => (SETTINGS_TABS as readonly string[]).includes(alias))).toBe(true);
   });
 
-  test('round 20: Voice, Usage, Plugins and Experiments open as pages of their own, not as sections of an unrelated parent', () => {
-    for (const tab of ['voice', 'usage', 'plugins', 'experiments', 'keyboard', 'limits', 'machines'] as const) expect(desktopPage(tab, true)).toBe(tab);
-    expect(desktopPage('voice', false)).toBe('voice');
-    expect(sectionsOf('general', true)).toEqual([]);
-    expect(sectionsOf('limits', true)).toEqual([]);
-    expect(sectionsOf('accounts', true)).toEqual([]);
-    expect(sectionsOf('advanced', true)).toEqual([]);
-    expect(sectionsOf('diagnostics', true)).toEqual(['resources', 'task-manager']);
-    expect(desktopPage('resources', true)).toBe('diagnostics');
-    expect(phonePage('voice', null, true)).toBe('voice');
-    expect(phonePage('voice', null, false)).toBe('voice');
-    expect(phonePage('usage', null, true)).toBe('usage');
-    expect(phonePage('experiments', null, true)).toBe('experiments');
-    expect(phonePage('resources', null, true)).toBe('diagnostics');
-    expect(phonePage('resources', null, false)).toBe('home');
-    // A phone turns plugins on and off and sets them as the desktop does; a paired device has no such page.
-    expect(phonePage('plugins', null, true)).toBe('plugins');
-    expect(phonePage('plugins', null, false)).toBe('home');
+  test('every card sits on exactly one page, under an id no other card has', () => {
+    const ids = SETTINGS_CARDS.map((card) => card.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const card of SETTINGS_CARDS) expect(SETTINGS_PAGES, card.id).toContain(card.page);
+    for (const page of SETTINGS_PAGES) {
+      expect(cardsOf(page, true).length, page).toBeGreaterThan(0);
+      // A block is one run of cards: the same component is never drawn twice on a page.
+      const blocks = blocksOf(page, true).map((entry) => entry.block);
+      expect(new Set(blocks).size, page).toBe(blocks.length);
+      expect(blocksOf(page, true).flatMap((entry) => entry.cards.map((card) => card.id))).toEqual(cardsOf(page, true).map((card) => card.id));
+    }
   });
 
-  test('an old task-manager link opens Diagnostics at its section for the owner, its own page for a device', () => {
-    expect(viewOf('task-manager', true)).toBe('diagnostics');
-    expect(desktopPage('task-manager', true)).toBe('diagnostics');
-    expect(phonePage('task-manager', null, true)).toBe('diagnostics');
-    expect(navOf('advanced', true)).not.toContain('task-manager');
-
-    // A paired device may not read the logs, so Diagnostics is not its to host the task manager.
-    expect(viewOf('task-manager', false)).toBe('task-manager');
-    expect(desktopPage('task-manager', false)).toBe('task-manager');
-    expect(phonePage('task-manager', null, false)).toBe('task-manager');
-    expect(sectionsOf('diagnostics', false)).toEqual([]);
-    expect(navOf('advanced', false)).toContain('task-manager');
-    expect(navOf('advanced', false)).not.toContain('diagnostics');
+  test('each page holds the cards the map gives it, in its order', () => {
+    const ids = (page: typeof SETTINGS_PAGES[number]) => cardsOf(page, true).map((card) => card.id);
+    expect(ids('appearance')).toEqual(['theme', 'reading', 'buttons', 'workspace', 'details']);
+    expect(ids('input')).toEqual(['keyboard', 'keybinding-file', 'voice']);
+    expect(ids('conversations')).toEqual(['thread-list', 'conversations', 'notifications', 'agent-replies', 'archived', 'worktrees']);
+    expect(ids('ai')).toEqual(['providers', 'local-acp', 'secrets', 'quotas', 'limit-resume', 'subscription-proxy', 'usage']);
+    expect(ids('agents')).toEqual(['brain', 'hooks', 'plugins', 'agents-alone', 'auto-compact', 'execution']);
+    expect(ids('safeguards')).toEqual(['quiet', 'windows', 'window-exclusions', 'limits', 'browser-profiles', 'privacy', 'policy']);
+    expect(ids('devices')).toEqual(['app', 'main-machine', 'group', 'machines', 'phone', 'origins']);
+    expect(ids('version')).toEqual(['updates', 'agent-updates', 'experiments', 'cache-keepalive', 'background-compaction', 'device-stream']);
+    expect(ids('help')).toEqual(['diagnostics-status', 'diagnostics-problems', 'diagnostics-log', 'diagnostics-agents', 'tasks', 'task-manager', 'core', 'tour']);
+    // Conversations: this device's cards first, then the machine's.
+    const scopes = cardsOf('conversations', true).map((card) => card.scope);
+    expect(scopes).toEqual(['device', 'device', 'device', 'machine', 'machine', 'machine']);
+    // The subscription proxy is one card, on one page.
+    expect(SETTINGS_CARDS.filter((card) => card.id.includes('proxy')).map((card) => card.page)).toEqual(['ai']);
   });
 
-  test('a card that moved opens on its new page from a link to the old one; on a phone, quiet sits on the conversations page and the keys and windows on the page of their task', () => {
-    expect(movedTo('appearance', 'workspace')).toBe('general');
-    expect(movedTo('resources', 'quiet')).toBe('general');
-    expect(movedTo('resources', 'limits')).toBeUndefined();
-    expect(movedTo('resources', null)).toBeUndefined();
-    expect(phonePage('general', 'quiet', true)).toBe('conversations');
-    expect(phonePage('general', 'quiet', false)).toBe('home');
-    // General's odd cards live with their task, a project menu's old link included.
-    expect(movedTo('general', 'secrets')).toBe('accounts');
-    expect(movedTo('general', 'windows')).toBe('machines');
-    expect(movedTo('general', 'window-exclusions')).toBe('machines');
-    expect(phonePage('general', 'secrets', true)).toBe('accounts');
-    expect(phonePage('general', 'windows', true)).toBe('machines');
-    // Providers is the owner's: a paired phone's old link lands on Home.
-    expect(phonePage('general', 'secrets', false)).toBe('home');
-    expect(phonePage('advanced', 'auto-compact', true)).toBe('advanced');
+  test('every page and card from before the map opens on its new page', () => {
+    for (const [tab, section, page, landing] of BEFORE) {
+      expect(placeOf(tab, section), `${tab} ${section}`).toEqual({ page, section: landing });
+      expect(desktopPage(tab, true, section), `${tab} ${section}`).toBe(page);
+    }
+    // A card's first home is on record, and resolves back to the card.
+    for (const card of SETTINGS_CARDS) {
+      expect(placeOf(card.from[0], card.id)).toEqual({ page: card.page, section: card.id });
+      expect(cardOf(card.id)?.page).toBe(card.page);
+    }
   });
 
-  test('the browser has its own entry: a link to its card under General or Providers opens it, a paired device lands on Home', () => {
-    expect(movedTo('general', 'browser-profiles')).toBe('browser');
-    expect(movedTo('accounts', 'browser-profiles')).toBe('browser');
-    expect(desktopPage('browser', true)).toBe('browser');
-    expect(desktopPage('browser', false)).toBe('general');
-    expect(phonePage('general', 'browser-profiles', true)).toBe('browser');
-    expect(phonePage('accounts', 'browser-profiles', true)).toBe('browser');
-    expect(phonePage('browser', null, false)).toBe('home');
+  test('a setting an agent may ask about names a card of the map', () => {
+    for (const [key, place] of Object.entries(REQUESTABLE_SETTINGS)) {
+      expect(cardOf(place.section)?.page, key).toBe(place.page);
+    }
+    for (const key of ['asyncQuestions', 'shortAnswers', 'toolSummaries', 'titleModel'] as const) {
+      expect(REQUESTABLE_SETTINGS[key]).toMatchObject({ page: 'conversations', section: 'agent-replies' });
+    }
   });
 
-  test('a page that is not merged opens itself', () => {
-    for (const tab of ['keyboard', 'limits', 'machines'] as const) expect(desktopPage(tab, true)).toBe(tab);
-    // A desktop has no page between the nav and a page: Home, or a page this window may not open, shows General.
-    expect(desktopPage('home', true)).toBe('general');
-    expect(desktopPage('resources', false)).toBe('general');
+  test('the line under a title: this device, this machine or all your machines', () => {
+    expect(SETTINGS_PAGES.map((page) => pageScopeOf(page))).toEqual(['device', 'machine', 'device', 'machine', 'machine', 'machine', 'group', 'machine', 'machine']);
+    expect(machinePage('appearance')).toBe(false);
+    expect(machinePage('conversations')).toBe(true);
+    expect(machinePage('devices')).toBe(true);
   });
 
-  test('the nav lists each family\'s pages as peers, in the phone\'s order, and leaves out one merged into another', () => {
-    expect(navOf('app', true)).toEqual(['general', 'keyboard', 'voice', 'appearance']);
-    expect(navOf('agents', true)).toEqual(['accounts', 'plugins', 'brain', 'limits', 'usage']);
-    expect(navOf('connections', true)).toEqual(['browser', 'machines']);
-    expect(navOf('advanced', true)).toEqual(['advanced', 'experiments', 'diagnostics']);
-    // A paired device: no Diagnostics, so the task manager is its own page; Providers, Plugins and Instructions are the owner's.
-    expect(navOf('advanced', false)).toEqual(['advanced', 'experiments', 'task-manager']);
-    expect(navOf('agents', false)).toEqual(['limits', 'usage']);
+  test('only the long page lists its sections in the nav', () => {
+    expect(navSectionsOf('ai', true).map((card) => card.id)).toEqual(['providers', 'local-acp', 'secrets', 'quotas', 'subscription-proxy', 'usage']);
+    for (const page of SETTINGS_PAGES) if (page !== 'ai') expect(navSectionsOf(page, true), page).toEqual([]);
+    expect(PAGES.ai.long).toBe(true);
   });
+
+  test('owner-only pages and cards stay out of a paired device', () => {
+    expect(SETTINGS_PAGES.filter(ownerOnly)).toEqual(['agents']);
+    expect(navOf(false)).toEqual(['appearance', 'input', 'conversations', 'ai', 'safeguards', 'devices', 'version', 'help']);
+    // A paired device reads what it read on General before the map: the privacy card and the admin policy, nothing it could change.
+    expect(cardsOf('safeguards', false).map((card) => card.id)).toEqual(['policy']);
+    expect(desktopPlace('general', 'policy', false)).toEqual({ page: 'safeguards', section: 'policy' });
+    expect(cardsOf('ai', false).map((card) => card.id)).toEqual(['quotas', 'usage']);
+    expect(cardsOf('conversations', false).map((card) => card.id)).toEqual(['thread-list', 'conversations', 'notifications', 'archived']);
+    expect(cardsOf('help', false).map((card) => card.id)).toEqual(['task-manager', 'core', 'tour']);
+    expect(cardsOf('devices', false).map((card) => card.id)).toEqual(['app', 'main-machine', 'group', 'machines', 'phone']);
+    // A route to what it lacks opens the first page, or the card's page from the top.
+    expect(desktopPlace('brain', null, false)).toEqual({ page: 'appearance', section: null });
+    expect(desktopPlace('resources', 'limits', false)).toEqual({ page: 'safeguards', section: null });
+    expect(desktopPlace('general', 'worktrees', false)).toEqual({ page: 'conversations', section: null });
+    expect(desktopHas('general', 'worktrees', false)).toBe(false);
+    expect(desktopHas('accounts', 'provider-claude', false)).toBe(false);
+    expect(desktopHas('accounts', 'provider-claude', true)).toBe(true);
+    expect(desktopHas('limits', null, false)).toBe(true);
+  });
+
+  test('experiments are a section of Version, and only where the build runs them', () => {
+    expect(cardsOf('version', true).some((card) => card.id === 'experiments')).toBe(true);
+    experiments.shown = false;
+    expect(cardsOf('version', true).map((card) => card.id)).toEqual(['updates', 'agent-updates']);
+    expect(navOf(true)).toContain('version');
+    expect(desktopPlace('experiments', null, true)).toEqual({ page: 'version', section: null });
+    expect(desktopHas('experiments', 'device-stream', true)).toBe(false);
+    expect(phonePlace('experiments', null, true)).toEqual({ page: 'version', section: null });
+  });
+});
+
+describe('the phone, on the same map', () => {
+  const ids = (page: Parameters<typeof cardsOf>[0], owner: boolean) => cardsOf(page, owner, true).map((card) => card.id);
+
+  test('its list is the map\'s pages in the map\'s order, the owner\'s pages left out for a paired phone', () => {
+    expect(navOf(true, true)).toEqual(['appearance', 'input', 'conversations', 'ai', 'agents', 'safeguards', 'devices', 'version', 'help']);
+    expect(navOf(false, true)).toEqual(['appearance', 'input', 'conversations', 'ai', 'safeguards', 'devices', 'version', 'help']);
+  });
+
+  test('a phone has every card but the desktop ones: what it could open before the map, no more, no less', () => {
+    expect(SETTINGS_CARDS.filter((card) => 'desktop' in card).map((card) => card.id)).toEqual(
+      ['buttons', 'workspace', 'details', 'keyboard', 'keybinding-file', 'thread-list', 'notifications', 'execution', 'app', 'origins', 'core', 'tour']);
+    expect(ids('appearance', true)).toEqual(['theme', 'reading']);
+    expect(ids('input', true)).toEqual(['voice']);
+    expect(ids('conversations', true)).toEqual(['conversations', 'agent-replies', 'archived', 'worktrees']);
+    expect(ids('ai', true)).toEqual(['providers', 'local-acp', 'secrets', 'quotas', 'limit-resume', 'subscription-proxy', 'usage']);
+    expect(ids('agents', true)).toEqual(['brain', 'hooks', 'plugins', 'agents-alone', 'auto-compact']);
+    expect(ids('safeguards', true)).toEqual(['quiet', 'windows', 'window-exclusions', 'limits', 'browser-profiles', 'privacy', 'policy']);
+    expect(ids('devices', true)).toEqual(['main-machine', 'group', 'machines', 'phone']);
+    expect(ids('version', true)).toEqual(['updates', 'agent-updates', 'experiments', 'cache-keepalive', 'background-compaction', 'device-stream']);
+    expect(ids('help', true)).toEqual(['diagnostics-status', 'diagnostics-problems', 'diagnostics-log', 'diagnostics-agents', 'tasks', 'task-manager']);
+    // A paired phone: what it reads or changes today.
+    expect(ids('appearance', false)).toEqual(['theme', 'reading']);
+    expect(ids('input', false)).toEqual(['voice']);
+    expect(ids('conversations', false)).toEqual(['conversations', 'archived']);
+    expect(ids('ai', false)).toEqual(['quotas', 'usage']);
+    expect(ids('agents', false)).toEqual([]);
+    expect(ids('safeguards', false)).toEqual(['policy']);
+    expect(ids('devices', false)).toEqual(['main-machine', 'group', 'machines', 'phone']);
+    expect(ids('version', false)).toEqual(['updates', 'experiments']);
+    expect(ids('help', false)).toEqual(['task-manager']);
+  });
+
+  test('a route lands on the card\'s page, on the page from the top for a desktop card, on the list for a page it lacks', () => {
+    expect(phonePlace('home', null, true)).toEqual({ page: null, section: null });
+    expect(phonePlace('accounts', null, true)).toEqual({ page: 'ai', section: null });
+    expect(phonePlace('plugins', null, false)).toEqual({ page: null, section: null });
+    expect(phonePlace('resources', null, true)).toEqual({ page: 'safeguards', section: 'limits' });
+    expect(phonePlace('resources', null, false)).toEqual({ page: 'safeguards', section: null });
+    expect(phonePlace('task-manager', null, false)).toEqual({ page: 'help', section: 'task-manager' });
+    expect(phonePlace('general', 'quiet', true)).toEqual({ page: 'safeguards', section: 'quiet' });
+    expect(phonePlace('general', 'archived', false)).toEqual({ page: 'conversations', section: 'archived' });
+    expect(phonePlace('conversations', 'agent-replies', true)).toEqual({ page: 'conversations', section: 'agent-replies' });
+    expect(phonePlace('conversations', 'agent-replies', false)).toEqual({ page: 'conversations', section: null });
+    expect(phonePlace('ai', 'provider-claude', true)).toEqual({ page: 'ai', section: 'provider-claude' });
+    expect(phonePlace('ai', 'provider-claude', false)).toEqual({ page: 'ai', section: null });
+    expect(phonePlace('version', 'device-stream', true)).toEqual({ page: 'version', section: 'device-stream' });
+    // The shortcuts stay on the desktop: Input opens on what a phone has of it.
+    expect(phonePlace('keyboard', null, true)).toEqual({ page: 'input', section: null });
+    expect(phonePlace('input', 'keys-chat', true)).toEqual({ page: 'input', section: null });
+    expect(phonePlace('general', 'app', true)).toEqual({ page: 'devices', section: null });
+    expect(settingsHas('input', 'keyboard', true, true)).toBe(false);
+    expect(settingsHas('input', 'voice', false, true)).toBe(true);
+    expect(settingsHas('agents', 'execution', true, true)).toBe(false);
+    expect(settingsHas('agents', 'execution', true)).toBe(true);
+  });
+});
+
+test('a window answers only to the old page names whose cards it shows', () => {
+  expect(aliasesOf(true)).toEqual(expect.arrayContaining(['general', 'accounts', 'plugins', 'brain', 'machines', 'advanced']));
+  // A paired device never had Providers, Plugins or Instructions: no route by those names.
+  for (const gone of ['accounts', 'plugins', 'brain'] as const) expect(aliasesOf(false)).not.toContain(gone);
+  expect(aliasesOf(false)).toEqual(expect.arrayContaining(['general', 'machines', 'limits']));
 });

@@ -15,7 +15,7 @@ export const strings = {
     interact: 'Tap or swipe the device screen', interactDesk: 'The device screen: click it, then type',
     deskHint: 'Click the screen, then type. Drag to swipe, scroll with the wheel, Esc goes back. Paste types the clipboard; copying from the device is not available.', image: 'Live view of {name}', gesture: 'Tap to touch. Drag to swipe.',
     deskHintLive: 'Click the screen, then type. Drag to swipe, scroll with the wheel, Esc goes back. Paste sends your clipboard to the device and pastes it; Ctrl+C copies the device\'s selection here.',
-    streamOff: 'Screenshots: the live stream is off in Settings > Experiments.',
+    streamOff: 'Screenshots: the live stream is off in Settings > Version > Experiments.',
     streamOffRelease: 'Screenshots: the live stream needs a Nightly build.',
     streamDecoder: 'Screenshots: this browser cannot decode the live video.',
     streamFailed: 'Screenshots: the live stream stopped. {reason}',

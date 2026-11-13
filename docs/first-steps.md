@@ -25,8 +25,8 @@ stays editable in Settings afterwards.
   nothing you already chose is lost.
 - A paired device sees six screens, without the privacy one. A phone sees two:
   Welcome and Reach.
-- The tour opens once per device. To see it again, use Settings, General,
-  Getting started, Replay the tour, or Show the tour again in the command
+- The tour opens once per device. To see it again, use Settings,
+  Troubleshooting, Getting started, Replay the tour, or Show the tour again in the command
   palette.
 
 ### The preset question

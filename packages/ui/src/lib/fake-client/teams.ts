@@ -73,7 +73,7 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
   const self = () => ctx.identity.coreId;
   const key = (botId: string) => teamMemberKey(self(), botId);
   const gate = () => {
-    if (!ctx.experimentsInForce().includes('teams')) throw refused('teams need the Teams experiment, which is off in the desktop app (Settings, Experiments)', { reason: 'experiment-off' });
+    if (!ctx.experimentsInForce().includes('teams')) throw refused('teams need the Teams experiment, which is off in the desktop app (Settings, Version, Experiments)', { reason: 'experiment-off' });
   };
   const all = () => [...state(ctx).teams.values()];
   const changed = (team: Team) => ctx.emit('teams.changed', { teamId: team.id, version: team.version });
@@ -110,7 +110,7 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
     const there = fakeCore(peer.coreId);
     if (!there) throw refused(`${field}: ${peer.name} did not answer; its bots can join once it answers`, { field, reason: 'unreachable' });
     if (!there.experimentsInForce().includes('teams')) {
-      throw refused(`${peer.name}: teams need the Teams experiment, which is off in the desktop app (Settings, Experiments)`, { field, reason: 'experiment-off' });
+      throw refused(`${peer.name}: teams need the Teams experiment, which is off in the desktop app (Settings, Version, Experiments)`, { field, reason: 'experiment-off' });
     }
     const found = among(there.agents.liveProfiles(), name);
     if (!found) throw refused(`${peer.name}: bot: no bot ${JSON.stringify(name)}`, { field, reason: 'peer-refused' });

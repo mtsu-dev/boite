@@ -96,7 +96,7 @@ The commands are agent-browser's, so an agent that knows one knows the other.
 `boite browser open http://localhost:3000` goes to the page in the current tab,
 or opens a tab in the default profile when there is none; `localhost` is the
 agent's own machine. `boite browser profiles` lists the profiles the user made
-in Settings > General > Browser profiles on that machine, and
+in Settings, Safeguards, Built-in browser on that machine, and
 `open <url> --profile Pro` opens a new tab in one of them, by name or id.
 `--profile private` opens a private tab that keeps nothing once the last private
 tab closes, or once the browser or Boite restarts. A second account the agent
@@ -825,10 +825,10 @@ Boite draws those cards the same way.
 user last used and the language it speaks (`app: the desktop app on "PC"
 speaks French; ...`), then lists the settings an agent may ask about, one row
 each: key, value as JSON, the page and card it sits on and, quoted, the name
-that app shows (`agentCpuCapPercent 75 resources#limits "Plafond CPU de tous
+that app shows (`agentCpuCapPercent 75 safeguards#limits "Plafond CPU de tous
 les agents"`). The list is `REQUESTABLE_SETTINGS` in
 `packages/contracts/src/setting-requests.ts`, then that app's experiments as
-`experiment.<id>` (`experiment.whip true experiments#whip "Whip"`), the
+`experiment.<id>` (`experiment.whip true version#whip "Whip"`), the
 experiments its build still has a switch for; credentials, account ids and browser profiles are not in it.
 
 Language, experiments and names come from the apps: each says them after every
@@ -874,10 +874,11 @@ core setting moving settles nothing.
 Show in Settings stays as a secondary button for whoever can apply. A paired
 device answers a core setting's card with Refuse only. An open card's Open
 Settings is offered to any client whose Settings draws that card. No button to Settings appears where the card is
-missing: a paired device's Settings lacks the owner pages (Providers,
-Plugins, Protection, Brain) and the owner's cards on shared pages (worktrees,
-privacy, execution, browser origins, auto-compact), and a phone browser's
-Settings lacks some cards of the computer's. The card never answers "applied"
+missing: a paired device's Settings lacks the Agents page and every card
+`SETTINGS_CARDS` marks `owner` on the other pages (providers, keys,
+worktrees, privacy, browser origins and the rest;
+`packages/ui/src/lib/settings-tabs.ts`), and a phone browser's Settings lacks
+some cards of the computer's. The card never answers "applied"
 itself: the core closes every open card whose setting left the value it was
 asked from, whoever moved it, from the card or from the page. The agent then
 reads `applied: <key> is now <value>` or `changed: the user set <key> to
@@ -889,23 +890,32 @@ line asking the user to check it first. Show in Settings opens the setting's
 card, which rings once in the accent colour.
 
 `settings open <page>[#<card>] --why <text>` points at a page for what is not
-one value, a provider login (`accounts#provider-claude`) or a device to add
-(`machines#machines`). Open Settings goes there with the same ring and sends
+one value, a provider login (`ai#provider-claude`) or a device to add
+(`devices#group`). The page is one of the nine of `SETTINGS_PAGES`
+(`packages/contracts/src/setting-requests.ts`): `appearance`, `input`,
+`conversations`, `ai`, `agents`, `safeguards`, `devices`, `version`, `help`.
+A name from before them (`SETTINGS_PAGE_ALIASES`, such as `accounts` or
+`machines`) is still accepted, since an agent or a core one version behind
+writes it; the app opens the page its card moved to (`placeOf` in
+`packages/ui/src/lib/settings-tabs.ts`). The card is a section anchor
+(`SETTINGS_SECTION_PATTERN`), a card id of the map or an anchor inside one,
+such as a provider's row. Open Settings goes there with the same ring and sends
 `opened: the user opened Settings at <page>`; Dismiss sends `dismissed`. The
 MCP tools `boite_settings` and `boite_settings_request` do the same.
 
 `plugin add <url> [--ref <ref>] --why <text>` asks the user to look at a
 plugin someone shared: a repository URL, any page of it, `owner/repo` for
-GitHub, or its `git@host:path` clone URL, read as Settings > Plugins reads it
+GitHub, or its `git@host:path` clone URL, read as Settings, Agents, Plugins reads it
 ([Install and run](plugins.md#install-and-run)). The card shows the
-repository and the ref; nothing is fetched yet. Preview opens Settings >
-Plugins with the repository read, where the user installs it or not, and
+repository and the ref; nothing is fetched yet. Preview opens Settings,
+Agents, Plugins with the repository read, where the user installs it or not, and
 sends `opened: the user is reading the preview of <url>`; Dismiss sends
 `dismissed`. An agent never installs: `plugins.inspect` and `plugins.add`
 stay the owner's. A phone and a paired device show the card without Preview,
-since their Settings have no Plugins page. One card per repository and
+since their Settings have no Agents page. One card per repository and
 thread. The MCP tool takes it as `boite_settings_request` with `page:
-"plugins"` and `plugin: { url, ref? }`.
+"agents"` (the old `"plugins"` is still accepted) and `plugin: { url, ref?
+}`.
 
 `settings bot [key]` reads a bot's settings a card may change: `name`,
 `domain` (its role), `instructions`, `avatar`, `status` (`active`, `paused`,
@@ -1082,7 +1092,7 @@ sending anything. From the owner's terminal, `issue submit` creates it on
 export to attach. Inside a thread, `issue submit` publishes nothing: the
 issue would be public and signed by the owner's GitHub login, so the agent
 gives the user the link and the user submits it, or submits it from
-Settings > Diagnostics. [Trace](trace.md#structured-diagnostics)
+Settings, Troubleshooting. [Trace](trace.md#structured-diagnostics)
 owns the record format, rotation, anonymization and query bounds.
 
 ## Where the command lives

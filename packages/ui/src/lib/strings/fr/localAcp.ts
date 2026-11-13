@@ -5,6 +5,7 @@ export const fr: Translation = {
     heading: 'Commande ACP locale',
     hint: "N'importe quel agent qui parle ACP, lancé par sa propre commande. Il garde sa connexion et ses réglages, et liste lui-même ses modèles. Chaque argument est passé tel quel, sans shell.",
     open: 'Ajouter',
+    closed: 'Un agent lancé par sa propre commande',
     name: 'Nom',
     namePlaceholder: 'Mon agent',
     commandPlaceholder: 'mon-agent',

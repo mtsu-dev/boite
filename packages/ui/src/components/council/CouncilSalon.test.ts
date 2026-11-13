@@ -114,7 +114,7 @@ test('with the experiment off, the thread draws no card, not even an old debate\
   await settle();
   expect(document.body.textContent).toContain('A second council is reviewing');
   expect(document.querySelector('[data-testid=council-card]')).toBeNull();
-  expect(query('[data-testid=council-unavailable]').textContent).toContain('Settings, Experiments');
+  expect(query('[data-testid=council-unavailable]').textContent).toContain('Settings, Version, Experiments');
   expect(document.querySelector('[data-testid=council-composer]')).toBeNull();
 });
 

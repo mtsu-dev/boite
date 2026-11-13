@@ -148,7 +148,7 @@ A browser that refuses storage shows the tour on every launch.
 upgrade today; the number is what a later build would read to decide otherwise,
 and a version it does not know still counts as seen.
 
-Settings, General, Getting started brings it back, and so does "Replay the
+Settings, Troubleshooting, Getting started brings it back, and so does "Replay the
 tour" in the command palette. Neither forgets anything that was set.
 
 `App.svelte` loads the component the first time the tour is due, the way it

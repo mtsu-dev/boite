@@ -58,7 +58,7 @@ export function track(core: Core, activity: ActivityStore, threadId: string): Th
   const thread = core.journal.getThread(threadId);
   if (!thread || thread.archived) throw refused('goal track needs an existing, unarchived conversation');
   const experiments = core.clients.desktopExperiments() ?? core.clients.current()?.experiments ?? [];
-  if (!experiments.includes('auto-goal')) throw refused('goal track needs the Automatic goals experiment, which is off in the desktop app (Settings, Experiments)', { reason: 'experiment-off' });
+  if (!experiments.includes('auto-goal')) throw refused('goal track needs the Automatic goals experiment, which is off in the desktop app (Settings, Version, Experiments)', { reason: 'experiment-off' });
   if (activity.busy(threadId)) throw refused('this conversation already has a goal or a loop; it must finish or be removed first', { reason: 'busy' });
   const last = lastPrompt(core, threadId);
   if (!last) throw refused('this conversation has no prompt of the user to track', { reason: 'no-prompt' });

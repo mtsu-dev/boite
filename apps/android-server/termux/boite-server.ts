@@ -1184,7 +1184,7 @@ async function main(argv: string[]): Promise<void> {
       const name = SIGN_IN_COMMANDS[result.agent]!.name;
       return answer(result, result.signedIn === null ? `${name} is signed in; Boite reads it at its next start.`
         : result.signedIn ? `${name} is signed in. You can go back to Boite Server.`
-          : `Boite still reads ${name} as signed out: see Settings, Providers in Boite.`);
+          : `Boite still reads ${name} as signed out: see Settings, AI accounts, Providers in Boite.`);
     }
     case 'config': {
       const [key, value] = args.positionals();

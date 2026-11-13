@@ -1,6 +1,6 @@
 # Agent brain
 
-Settings > Brain connects an existing folder on the selected core's
+Settings > Agents > Instructions and skills connects an existing folder on the selected core's
 machine. Browse opens the system folder dialog in the desktop app with a local
 core, and Boite's folder list elsewhere; the path can also be typed. Then select
 Connect folder.
@@ -43,7 +43,7 @@ Inventory is bounded to 500 entries, 2,000 directories, six nested levels and
 
 Plugin detection does not install or enable a plugin. The agent's own plugin
 manager still owns that operation. This catalog is separate from Boite's
-native extensions in Settings > Plugins. It does not inventory other agent
+native extensions in Settings > Agents > Plugins. It does not inventory other agent
 profiles elsewhere on the machine.
 
 Hooks have a card of their own on this page: each agent's hook sources, whether
@@ -138,7 +138,7 @@ Delegation also teaches dynamic workflows: `after`, `forEach`, `when` and
 
 ### Short answers
 
-Settings > General > Short answers, on by default, puts one paragraph before every
+Settings > Conversations > Agent replies > Short answers, on by default, puts one paragraph before every
 normal turn: reduce text before or between tool calls and make the final reply
 self-contained with the result and everything the user needs to know. It asks
 for short plain sentences, without preamble or hedging, while keeping every

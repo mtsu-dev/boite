@@ -12,19 +12,28 @@ test('Show and Open are offered only where this client draws the target card', (
   // The live device stream runs on the owner's machine: only the owner's Experiments draws its card, on a phone too.
   expect(settingsReachable(open('experiments', 'device-stream'), { owner: false, phone: false })).toBe(false);
   expect(settingsReachable(open('experiments', 'device-stream'), { owner: true, phone: true })).toBe(true);
-  // A phone browser lacks the desktop's General, Advanced and pairing cards.
+  // A phone browser lacks the map's desktop cards.
   expect(settingsReachable(open('resources', 'limits'), { owner: true, phone: true })).toBe(true);
   expect(settingsReachable(open('general', 'conversations'), { owner: true, phone: true })).toBe(true);
   expect(settingsReachable(open('advanced', 'origins'), { owner: true, phone: true })).toBe(false);
-  expect(settingsReachable(open('machines', 'devices'), { owner: true, phone: true })).toBe(false);
+  // The shortcuts are a desktop card of the map: a phone has the page, not the card.
+  expect(settingsReachable(open('input', 'keyboard'), { owner: true, phone: true })).toBe(false);
+  expect(settingsReachable(open('input', 'voice'), { owner: true, phone: true })).toBe(true);
+  expect(settingsReachable(open('keyboard', null), { owner: true, phone: true })).toBe(false);
   expect(settingsReachable(open('advanced', 'origins'), { owner: true, phone: false })).toBe(true);
-  // Windows and sound sit on General, the owner's only, a page of its own on a phone too.
-  expect(REQUESTABLE_SETTINGS.focusGuard).toMatchObject({ page: 'general', section: 'quiet' });
-  expect(REQUESTABLE_SETTINGS.muteAgents).toMatchObject({ page: 'general', section: 'quiet' });
+  // Windows and sound sit on Safeguards, the owner's only, on a phone too.
+  expect(REQUESTABLE_SETTINGS.focusGuard).toMatchObject({ page: 'safeguards', section: 'quiet' });
+  expect(REQUESTABLE_SETTINGS.muteAgents).toMatchObject({ page: 'safeguards', section: 'quiet' });
+  expect(settingsReachable(open('safeguards', 'quiet'), { owner: true, phone: true })).toBe(true);
+  expect(settingsReachable(open('safeguards', 'quiet'), { owner: false, phone: false })).toBe(false);
+  expect(settingsReachable(open('devices', 'origins'), { owner: true, phone: true })).toBe(false);
+  expect(settingsReachable(open('devices', 'origins'), { owner: true, phone: false })).toBe(true);
   expect(settingsReachable(open('general', 'quiet'), { owner: true, phone: true })).toBe(true);
   expect(settingsReachable(open('general', 'quiet'), { owner: true, phone: false })).toBe(true);
   expect(settingsReachable(open('general', 'quiet'), { owner: false, phone: false })).toBe(false);
-  expect(settingsReachable(open('resources', 'quiet'), { owner: true, phone: true })).toBe(false);
+  // A card's id wins over the page named beside it, on a phone as on a desktop.
+  expect(settingsReachable(open('resources', 'quiet'), { owner: true, phone: true })).toBe(true);
+  expect(settingsReachable(open('resources', 'quiet'), { owner: false, phone: true })).toBe(false);
 });
 
 test('an automatic compaction change that only adds a moment reads differently from the current one', () => {

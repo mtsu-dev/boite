@@ -1,6 +1,6 @@
 # Experiments
 
-An experiment is unfinished work behind a switch in Settings > Experiments.
+An experiment is unfinished work behind a switch in Settings > Version > Experiments.
 Every feature has a tag, `release`, `nightly` or `dev`, and exists only in the
 builds at or above it: a Release has none of the unfinished ones, in its
 behaviour and in its files.

@@ -12,7 +12,7 @@ the OpenCode server, protected bridges, health checks).
 
 | # | Flow | Destination | When | Data sent | Default | User switch | Policy key |
 |---|---|---|---|---|---|---|---|
-| 1 | Usage analytics | The analytics relay (`DEFAULT_TELEMETRY_URL` in `packages/core/src/telemetry.ts`), which forwards to the analytics store | Queue flushed every 5 min, a daily ping, product events | Install UUID (hashed by the relay in basic mode), event, time, app and OS version, arch, provider, outcome, durations; enhanced adds model, effort, permission mode, rounded token counts. The relay sees the IP | Basic, in published builds only | Settings > General > Privacy and analytics: Off; `BOITE_TELEMETRY_URL=""` | `analytics` |
+| 1 | Usage analytics | The analytics relay (`DEFAULT_TELEMETRY_URL` in `packages/core/src/telemetry.ts`), which forwards to the analytics store | Queue flushed every 5 min, a daily ping, product events | Install UUID (hashed by the relay in basic mode), event, time, app and OS version, arch, provider, outcome, durations; enhanced adds model, effort, permission mode, rounded token counts. The relay sees the IP | Basic, in published builds only | Settings > Safeguards > Privacy and analytics: Off; `BOITE_TELEMETRY_URL=""` | `analytics` |
 | 2 | Analytics consent receipt | Same relay, `POST /consent` | The user picks a mode in the tour or Settings | Mode, receipt UUID, IP | On an explicit choice | `BOITE_TELEMETRY_URL=""` | `analytics` |
 | 3 | Analytics deletion and export | Same relay, `POST /forget`, `POST /export` | Leaving enhanced mode (retried until accepted), Export | Enhanced install UUID | After enhanced was on | None: it is the deletion path | `analytics` (`off` holds a pending deletion until the key allows it) |
 | 4 | Desktop app update check | GitHub releases API and release assets of the app's repository | 8 s after the window opens, every 6 h, on focus after 15 min, Check for updates | GET, user agent, IP | On, desktop app only | None | `updates.app: "off"` |
@@ -32,11 +32,11 @@ the OpenCode server, protected bridges, health checks).
 | 18 | OpenCode Go quota read | `opencode.ai/zen/go/v1/usage` | As row 13 | OpenCode Go API key | On per account | Per-account quota switch | `quotaReads: false` |
 | 19 | Subscription gateway | The gateway URL the user saved | Model discovery, Limits, gateway checks while it is on | Gateway key, model and quota requests | No | Gateway switch off | `gateway: false`, or `gateway.allowedBaseUrls` |
 | 20 | Credential move to a gateway | The saved gateway, `POST /admin/api/accounts/import` | The user confirms Move | The selected accounts' credential files and API keys | No | Do not use | `gateway: false` |
-| 21 | Recommended plugin update check | GitHub repositories of the recommended plugins (`git fetch --depth 1`) | 1 min after start, every 6 h, opening Settings > Plugins, before install | Git request, IP | On once one is installed; Settings > Plugins always checks | Uninstall the plugin | `plugins.recommended: false` |
+| 21 | Recommended plugin update check | GitHub repositories of the recommended plugins (`git fetch --depth 1`) | 1 min after start, every 6 h, opening Settings > Agents > Plugins, before install | Git request, IP | On once one is installed; Settings > Agents > Plugins always checks | Uninstall the plugin | `plugins.recommended: false` |
 | 22 | Plugin install from a URL | The https Git repository the user pastes | Add from URL | Git fetch | No | Do not use | `plugins.install: false` |
 | 23 | Plugin artifact download | Release assets the plugin's manifest names | Install, Update, Reinstall | GET, IP | No | Do not click | `plugins.install: false` |
 | 24 | A plugin's own traffic | Whatever the plugin reaches | While an installed plugin runs | What the plugin sends | Runs after install | Stop it, Start with Boite off, uninstall | None: the plugin is a program the user installed; `plugins.install: false` keeps new ones out |
-| 25 | Cloud dictation | `api.groq.com`, `openrouter.ai` transcription endpoints | Each dictation with the API engine, or the fallback | Audio, language, the API key | No | Settings > Voice: Local, fallback off | `dictation: "local"` or `"off"` |
+| 25 | Cloud dictation | `api.groq.com`, `openrouter.ai` transcription endpoints | Each dictation with the API engine, or the fallback | Audio, language, the API key | No | Settings > Input > Voice: Local, fallback off | `dictation: "local"` or `"off"` |
 | 26 | Local dictation download | `huggingface.co`, `registry.npmjs.org`, whisper.cpp GitHub releases | Set up dictation, pick a new model | GET, IP | No | Do not set up | `dictation: "off"`; user-initiated under `local` |
 | 27 | Custom dictation model | The Hugging Face URL the user gives | Add a model from a link | GET | No | Do not use | `dictation: "off"` |
 | 28 | Web Push | The browser vendor's push service (`fcm.googleapis.com`, `*.push.apple.com`, `updates.push.services.mozilla.com`, `*.notify.windows.com`) | Each notification for a device that enabled them | Encrypted title, body, thread and kind; VAPID signature | No | Disable on the device | `network.push: false` |
@@ -65,7 +65,7 @@ Each one is either blocked by a policy key or started by the user:
 
 - Rows 4 and 6, the app and server update checks: `updates.app`, `updates.server`.
 - Row 8, agent version checks: `updates.agents`.
-- Row 21, recommended plugin checks, including on opening Settings > Plugins: `plugins.recommended`.
+- Row 21, recommended plugin checks, including on opening Settings > Agents > Plugins: `plugins.recommended`.
 - Row 30, pull request discovery and watch: `pullRequests`.
 - Row 32, the agent browser: `agentBrowser`.
 - Row 45, the agent-desktop download: `agentDesktop`.

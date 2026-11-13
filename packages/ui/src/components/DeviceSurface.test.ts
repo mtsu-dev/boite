@@ -351,7 +351,7 @@ test('screenshots stay, and say why, while the stream is off or this browser can
     await vi.advanceTimersByTimeAsync(500); await settle();
     expect(document.querySelector<HTMLImageElement>('[data-testid=device-frame]')!.src).toMatch(/^data:image\/jpeg;base64,/);
     expect(document.querySelector<HTMLCanvasElement>('[data-testid=device-stream]')!.hidden).toBe(true);
-    expect(document.querySelector('[data-testid=device-stream-note]')!.textContent).toContain('the live stream is off in Settings > Experiments');
+    expect(document.querySelector('[data-testid=device-stream-note]')!.textContent).toContain('the live stream is off in Settings > Version > Experiments');
     // Turned on, the stream is asked again within its retry, but this browser has no H.264 decoder.
     expect(await store.saveSettings({ deviceStream: true })).toBe(true);
     await vi.advanceTimersByTimeAsync(9000); await settle();

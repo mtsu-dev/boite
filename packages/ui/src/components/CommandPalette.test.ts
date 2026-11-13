@@ -145,11 +145,11 @@ test('a command runs: settings opens on the tab asked, and Escape closes without
   flushSync();
   await tick();
 
-  await type('providers');
+  await type('AI accounts');
   expect(rows()).toEqual(['providers']);
   key('Enter');
   expect(store.page).toBe('settings');
-  expect(store.settingsTab).toBe('accounts');
+  expect(store.settingsTab).toBe('ai');
   expect(store.paletteOpen).toBe(false);
 
   store.paletteOpen = true;
@@ -159,7 +159,8 @@ test('a command runs: settings opens on the tab asked, and Escape closes without
   expect(rows()).toEqual(['task-manager']);
   key('Enter');
   expect(store.page).toBe('settings');
-  expect(store.settingsTab).toBe('task-manager');
+  expect(store.settingsTab).toBe('help');
+  expect(store.settingsSection?.id).toBe('task-manager');
   expect(store.paletteOpen).toBe(false);
 
   store.paletteOpen = true;

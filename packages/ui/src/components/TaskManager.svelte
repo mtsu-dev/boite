@@ -196,7 +196,10 @@
 
 <style>
   header p { margin: 6px 0 0; }
-  .overview { display: flex; align-items: center; gap: 24px; padding: 16px; margin-bottom: 16px; }
+  .overview { display: flex; align-items: center; gap: 24px; margin-bottom: 16px; }
+  /* The page's card rules read these as rows: they are one row, with its own air and no line over each figure. */
+  .page.task-manager > .overview.card { padding: var(--space-3) var(--space-4); }
+  .page.task-manager > .overview.card > * { border-top: 0; }
   .overview > div { display: grid; gap: 4px; align-self: start; }
   .machines { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin-bottom: 24px; }
   .heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; margin-bottom: 12px; }

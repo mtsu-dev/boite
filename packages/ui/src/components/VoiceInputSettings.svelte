@@ -109,7 +109,7 @@
   .picker { min-width: 0; max-width: 55%; }
   .picker :global(.menu), .picker :global(.trigger) { max-width: 100%; }
   .selected { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .test-row { display: flex; align-items: center; gap: 16px; padding-top: 8px; }
+  .test-row { display: flex; align-items: center; gap: 16px; padding: var(--space-2) 0; }
   .test-row button { flex: none; }
   meter { flex: 1; min-width: 0; width: 100%; height: 12px; border-radius: var(--radius-md); background: var(--color-edge); }
   meter::-webkit-meter-bar { background: var(--color-edge); border: none; border-radius: var(--radius-md); }

@@ -68,7 +68,7 @@ and says there is no report.
 A hook that refuses the prompt or stops the turn appears in the thread with
 its event and reason. Other runs contribute to the Settings ledger.
 
-Everything else goes to Settings > Brain > Hooks, a card that shows with or
+Everything else goes to Settings > Agents > Scripts your agents run, a card that shows with or
 without a brain folder. Each agent that runs hooks has one row: what it found
 ("13 hooks", "2 modules") and, for Claude and Codex, the counts since the core
 started (runs, blocked, failed, skipped). Opening the row lists each source

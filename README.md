@@ -48,7 +48,7 @@ New release notes put the download links under each platform, above the changelo
 > bugs or unfinished changes. Back up your Boite data before installing or switching channels.
 
 1. Open the [download page](https://github.com/mtsu-dev/boite/releases) and choose your system and processor.
-2. Install and sign in to your agents, then connect them in Settings, Providers.
+2. Install and sign in to your agents, then connect them in Settings, AI accounts, Providers.
 3. Open a project, choose a model and start a conversation.
 
 See [installation](docs/install.md), [first steps](docs/first-steps.md),

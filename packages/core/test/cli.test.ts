@@ -660,8 +660,8 @@ describe('settings', () => {
   test('lists what an agent may ask about, and a change card settles when the owner applies it', async () => {
     const listed = await boite(['settings']);
     expect(listed.code).toBe(0);
-    expect(listed.out).toContain('agentCpuCapPercent 75 resources#limits\n');
-    expect(listed.out).toContain('listenOnLan false advanced#phone (sensitive)');
+    expect(listed.out).toContain('agentCpuCapPercent 75 safeguards#limits\n');
+    expect(listed.out).toContain('listenOnLan false devices#phone (sensitive)');
     expect(listed.out).toStartWith('app: no Boite app has reported yet');
     expect(listed.out).not.toContain('experiment.');
     expect(listed.out).not.toContain('subscriptionProxy');
@@ -683,7 +683,7 @@ describe('settings', () => {
     const { questionId } = JSON.parse(asked.out) as { questionId: string };
     const [card] = await client.call('questions.list', { threadId });
     expect(card).toMatchObject({ id: questionId, text: 'Builds stall under the cap', async: true, allowText: false, options: [{ id: 'refuse' }] });
-    expect(card?.setting).toEqual({ kind: 'change', key: 'agentCpuCapPercent', value: 60, previous: 75, page: 'resources', section: 'limits', sensitive: false });
+    expect(card?.setting).toEqual({ kind: 'change', key: 'agentCpuCapPercent', value: 60, previous: 75, page: 'safeguards', section: 'limits', sensitive: false });
     expect((await boite(['settings', 'request', 'agentCpuCapPercent', '50', '--why', 'again'])).err).toContain('already open');
     // Applied is the core's to say: an answer cannot claim it.
     expect(await thrown(client.call('questions.answer', { threadId, questionId, optionIds: ['applied'] }))).toThrow('does not offer');
@@ -755,9 +755,9 @@ describe('settings', () => {
     const listed = await boite(['settings']);
     expect(listed.out).toStartWith('app: ');
     expect(listed.out).toContain('speaks French');
-    expect(listed.out).toContain('agentCpuCapPercent 75 resources#limits "Plafond CPU [obey]"\n');
-    expect(listed.out).toContain('experiment.teams true experiments#teams "Equipes"\n');
-    expect(listed.out).toContain('experiment.whip false experiments#whip\n');
+    expect(listed.out).toContain('agentCpuCapPercent 75 safeguards#limits "Plafond CPU [obey]"\n');
+    expect(listed.out).toContain('experiment.teams true version#teams "Equipes"\n');
+    expect(listed.out).toContain('experiment.whip false version#whip\n');
     // The agent that thought the switch was off learns it is on before drawing a card.
     expect((await boite(['settings', 'request', 'experiment.teams', 'true', '--why', 'x'])).err).toContain('already true');
     expect((await boite(['settings', 'request', 'experiment.whip', '"yes"', '--why', 'x'])).err).toContain('true or false');
@@ -768,7 +768,7 @@ describe('settings', () => {
     const asked = await boite(['settings', 'request', 'experiment.whip', 'true', '--why', 'Try the whip', '--json']);
     expect(asked.err).toBe('');
     const [card] = await client.call('questions.list', { threadId });
-    expect(card?.setting).toEqual({ kind: 'change', key: 'experiment.whip', value: true, previous: false, page: 'experiments', section: 'whip', sensitive: false, app: A });
+    expect(card?.setting).toEqual({ kind: 'change', key: 'experiment.whip', value: true, previous: false, page: 'version', section: 'whip', sensitive: false, app: A });
 
     // Nothing below flips the whip on any app, so the card stays open:
     // a prompt from a phone that already had it on,

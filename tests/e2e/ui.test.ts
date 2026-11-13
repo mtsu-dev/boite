@@ -653,16 +653,18 @@ test(
   async () => {
     await page.click(testid('nav-settings'));
     await page.waitFor(`document.querySelector('${testid('settings-home')}')`);
-    // The core the UI talks to sits under Advanced, with the rest a developer reads.
-    await page.click(testid('settings-tab-advanced'));
+    // The core the UI talks to is a card of Troubleshooting, with the rest a developer reads.
+    await page.click(testid('settings-tab-help'));
     await page.waitFor(`document.querySelector('${testid('settings-endpoint')}')`);
     expect(await page.evaluate<string>(textOf('settings-endpoint'))).toBe(`127.0.0.1:${core.port}`);
     expect(await page.evaluate<string>(textOf('settings-version'))).toBe(corePackage.version);
-    await page.click(testid('settings-tab-machines'));
-    // The updates card heads the page with the version of the core it runs; the machine's row repeats a version
-    // only where it differs, so this one names the machine alone. The address stays under Advanced.
+    await page.click(testid('settings-tab-version'));
+    // The updates card heads Version with the version of the core it runs; the machine's row repeats a version
+    // only where it differs, so this one names the machine alone. The address stays on Troubleshooting.
     await page.waitFor(`document.querySelector('${testid('updates-version')} .number')`);
     expect(await page.evaluate<string>(`document.querySelector('${testid('updates-version')} .number').textContent.trim()`)).toBe(corePackage.version);
+    // The machine's row is on Devices.
+    await page.click(testid('settings-tab-devices'));
     await page.waitFor(`document.querySelector('${testid('machine-card')}')`);
     expect(await page.evaluate<boolean>(`!!document.querySelector('${testid('machine-card')} ${testid('machine-version')}')`)).toBe(false);
     expect(await page.evaluate<string>(textOf('machine-card-status'))).toBe('Connected');
@@ -751,10 +753,8 @@ test(
       expect(await phone.evaluate<string>('location.search')).toBe('');
       await phone.waitFor(`document.querySelector('[data-testid=mobile-header]')`);
       await mobileAction(phone, 'mobile-settings');
-      // The phone's own settings are a row of General.
-      await phone.click('[data-testid=settings-tab-general]');
-      await phone.waitFor(`document.querySelector('[data-testid=mobile-settings-phone]')`);
-      await phone.click('[data-testid=mobile-settings-phone]');
+      // The phone's own settings are a card of Devices.
+      await phone.click('[data-testid=settings-tab-devices]');
       await phone.waitFor(`document.querySelector('[data-testid=phone-settings]')`);
       expect(await phone.evaluate(`document.querySelector('[data-testid=phone-public-url]') === null`)).toBe(true);
       await phone.waitFor(`navigator.serviceWorker.controller !== null`, RECONNECT_TIMEOUT_MS);

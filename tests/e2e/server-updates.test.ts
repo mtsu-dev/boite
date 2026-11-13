@@ -25,7 +25,18 @@ async function machines() {
   await page.waitFor(`window.__boiteTest?.workspace.machines.length === 2`);
   // Settings is also reached through the visible menu below; this opens its page after a reload.
   await page.evaluate(`window.__boiteTest.workspace.active.showSettings('machines')`);
-  await page.waitFor(`document.querySelector('${id('app-updates-card')}') && document.querySelector('${row} ${id('machine-updates-state')}')`);
+  await page.waitFor(`document.querySelector('${row} ${id('machine-updates-state')}')`);
+  await show('version');
+  await page.waitFor(`document.querySelector('${id('app-updates-card')}')`);
+}
+/** The machine list is on Devices and the updates card on Version, on a desktop and on a phone. */
+async function show(tab: 'devices' | 'version') {
+  await page.evaluate(`window.__boiteTest.workspace.active.showSettings('${tab}')`);
+  await page.waitFor(`document.querySelector('${id('settings-page')}')?.dataset.page === '${tab}'`);
+}
+async function rowIs(state: string) {
+  await show('devices');
+  await page.waitFor(`document.querySelector('${row} ${id('machine-updates-state')}')?.dataset.state === '${state}'`);
 }
 async function capture(name: string) {
   await page.evaluate('document.fonts.ready');
@@ -33,10 +44,11 @@ async function capture(name: string) {
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
   await page.screenshot(join(captureDir, `server-update-${name}.png`));
 }
-const state = () => page.evaluate<string>(`document.querySelector('${row} ${id('machine-updates-state')}')?.dataset.state ?? ''`);
-const builderPart = () => page.evaluate<string>(`[...document.querySelectorAll('${part}')].find(item => item.textContent.includes('${builderLabel}'))?.textContent ?? ''`);
+const state = async () => { await show('devices'); return page.evaluate<string>(`document.querySelector('${row} ${id('machine-updates-state')}')?.dataset.state ?? ''`); };
+const builderPart = async () => { await show('version'); return page.evaluate<string>(`[...document.querySelectorAll('${part}')].find(item => item.textContent.includes('${builderLabel}'))?.textContent ?? ''`); };
 /** Update starts every pending part at once, with no confirmation, and Builder's server can be stopped while it downloads or waits. */
 async function updateAndCancel(prefix: string) {
+  await show('version');
   expect(await page.evaluate(`document.querySelector('${id('updates-run-all')}').disabled`)).toBe(false);
   await page.click(id('updates-run-all'));
   await page.waitFor(`document.querySelector('${id('server-update-cancel')}') && !document.querySelector('${id('server-update-cancel')}').disabled`);
@@ -53,12 +65,13 @@ test('a server release shows in the footer and in Machines, and actions target t
   await size(1400);
   await machines();
   // Up to date: the row says so, and nothing of Builder waits in the card.
-  await page.waitFor(`document.querySelector('${row} ${id('machine-updates-state')}')?.dataset.state === 'current'`);
+  await rowIs('current');
   expect(await page.evaluate(`document.querySelector('${id('nav-updates')}') === null`)).toBe(true);
   expect(await builderPart()).toBe('');
   // Builder runs the version the card heads with: its row does not repeat it, the head says it once.
   expect(await page.evaluate(`window.__boiteTest.workspace.machines.find(machine => machine.id === 'http://builder.test').store.core.version`)).toBe('2.0.0-beta.1');
   expect(await page.text(id('updates-version'))).toContain('2.0.0-beta.1');
+  await show('devices');
   expect(await page.evaluate(`document.querySelector('${row} ${id('machine-version')}') === null`)).toBe(true);
   await capture('current-desktop');
   await page.navigate(`${base}/?fake=1&machines=1&open=recent&serverUpdate=available`);
@@ -66,9 +79,10 @@ test('a server release shows in the footer and in Machines, and actions target t
   await page.waitFor(`document.querySelector('${id('nav-updates')}')`);
   const active = await page.evaluate('window.__boiteTest.workspace.active.machineId');
   await page.click(id('nav-settings'));
-  await page.waitFor(`document.querySelector('${id('settings-tab-machines')}')`);
-  await page.click(id('settings-tab-machines'));
-  await page.waitFor(`document.querySelector('${row} ${id('machine-updates-state')}')?.dataset.state === 'available'`);
+  await page.waitFor(`document.querySelector('${id('settings-tab-devices')}')`);
+  await page.click(id('settings-tab-devices'));
+  await rowIs('available');
+  await show('version');
   await page.waitFor(`[...document.querySelectorAll('${part}')].some(item => item.textContent.includes('${builderLabel}'))`);
   expect(await page.evaluate('window.__boiteTest.workspace.active.machineId')).toBe(active);
   const offer = await builderPart();
@@ -89,18 +103,21 @@ test('an Android server offers and cancels its update on desktop and phone', asy
     await size(width);
     await page.waitFor(`window.__boiteTest?.workspace.machines.length === 2`);
     await page.evaluate(`window.__boiteTest.workspace.active.showSettings('machines')`);
-    await page.waitFor(`document.querySelector('${id('app-updates-card')}') && document.querySelector('${row}')`);
+    await page.waitFor(`document.querySelector('${row}')`);
+    await show('version');
+    await page.waitFor(`document.querySelector('${id('app-updates-card')}')`);
     await page.waitFor(`window.__boiteTest.workspace.machines.find(machine => machine.id === 'http://builder.test').store.harnessUpdates.some(agent => agent.checkedAt !== null)`);
     expect(await state()).toBe('');
     await page.waitFor(`!window.__boiteTest.workspace.machines.find(machine => machine.id === 'http://builder.test').store.serverUpdater.busy`);
     await page.evaluate(`(() => { const updater = window.__boiteTest.workspace.machines.find(machine => machine.id === 'http://builder.test').store.serverUpdater;
       updater.apply({ ...updater.snapshot, phase: 'error', error: 'Android server controller does not support managed updates; run boite-server update in Termux once' }); })()`);
+    await show('version');
     await page.waitFor(`document.querySelector('${id('updates-failure')}')?.textContent.includes('run boite-server update in Termux once')`);
     expect(await state()).toBe('failed');
     await capture(`android-check-error-${label}`);
     await page.navigate(`${base}/?fake=1&machines=1&open=recent&serverMode=android&serverUpdate=available`);
     await machines();
-    await page.waitFor(`document.querySelector('${row} ${id('machine-updates-state')}')?.dataset.state === 'available'`);
+    await rowIs('available');
     expect(await page.evaluate(`window.__boiteTest.workspace.machines.find(machine => machine.id === 'http://builder.test').store.serverUpdater.snapshot.mode`)).toBe('android');
     expect(await builderPart()).toContain('2.0.0-beta.2');
     await capture(`android-available-${label}`);

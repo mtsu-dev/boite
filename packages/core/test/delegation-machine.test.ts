@@ -430,7 +430,7 @@ test('a member whose Boite does not know these operations is reported too old, a
   // As an older core answers an operation it does not know.
   pc.core.delegation.remote.peer = async () => { throw invalidParams('operation: expected directory, deliver, receipt, search, read, group.sync, group.push, relay.*, thread.start, setting.* or bot.*'); };
   const spawned = await cli(['delegate', 'spawn', 'Read the notes', '--machine', machine, '--project', 'notes', '--request-id', 'old-1']);
-  expect(spawned.err).toContain('is too old to run subagents for another machine; the owner updates it in Settings, Machines and updates');
+  expect(spawned.err).toContain('is too old to run subagents for another machine; the owner updates it in Settings, Version, Updates');
   expect(childrenOnPc()).toHaveLength(0);
   expect(desk.core.delegation.remote.holds(threadId, 'old-1')).toBe(false);
 });

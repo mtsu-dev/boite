@@ -11,14 +11,14 @@ change that traffic. Besides it, Boite connects out for the following:
 
 | Purpose | Destination | When | How to stop it |
 | --- | --- | --- | --- |
-| Usage analytics | Boite's analytics relay | Every 5 minutes, a daily ping | Settings, General, Privacy and analytics |
+| Usage analytics | Boite's analytics relay | Every 5 minutes, a daily ping | Settings, Safeguards, Privacy and analytics |
 | App and server update checks | GitHub releases | After start, every 6 hours, Check for updates | Policy file only |
 | Agent version checks and updates | npm, the agent's vendor | After start, every 6 hours, Update | Turn the agent off |
 | Agent installs and sign-ins | The agent's vendor | When you press Install or Sign in | Do not press |
-| Limits | Each provider's usage service, with the account's token | Limits page and sidebar bars | Quota monitoring off for the account |
+| Limits | Each provider's usage service, with the account's token | Limits, in Settings, AI accounts, and sidebar bars | Quota monitoring off for the account |
 | Subscription gateway | The gateway you saved | While it is on | Turn the gateway off |
 | Plugins | The plugin's Git repository and downloads | Install, update checks | Uninstall the plugin |
-| Cloud dictation | Groq or OpenRouter, with your key | Each dictation with the API engine | Settings, Voice: the Local engine, fallback off |
+| Cloud dictation | Groq or OpenRouter, with your key | Each dictation with the API engine | Settings, Input, Voice: the Local engine, fallback off |
 | Phone notifications | Your browser vendor's push service, encrypted | Each notification | Turn notifications off on the device |
 | Issue reports | GitHub, through your `gh` or a prefilled issue page | When you report a problem | Do not report |
 | Pull requests | GitHub, through your `gh` | While `gh` is signed in | Policy file |
@@ -49,8 +49,8 @@ counted anonymously, without an installation ID, even when you pick Off.
 
 ### Turn analytics off
 
-1. Open Settings, General, Privacy and analytics. On a phone connected as the
-   owner, it is Settings, This phone, Privacy.
+1. Open Settings, Safeguards, Privacy and analytics. A phone connected as the
+   owner has the same card.
 2. Turn off Anonymous counters and Enhanced analytics.
 
 Turning Enhanced analytics off also asks for its data to be deleted. Deletion
@@ -101,7 +101,7 @@ key, and [admin policy](internals/enterprise.md) lists every value.
 - Boite looks at the file every 3 seconds: an edit applies without a
   restart. Only `network.lan` and `network.contacts` need one.
 - A locked control is drawn disabled with a lock that names the key and the
-  file. Settings, General lists the locks under Managed by your organization,
+  file. Settings, Safeguards lists the locks under Managed by your organization,
   and a banner above every settings page lists problems in the file.
 - A file that cannot be read or is not valid JSON locks every key to its
   strictest value, with no agent allowed, until it is fixed. A key with a bad

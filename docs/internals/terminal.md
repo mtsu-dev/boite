@@ -118,7 +118,7 @@ the shell ends.
 
 It draws on the GPU with xterm's WebGL renderer, loaded with the screen. A
 browser that refuses a WebGL context, or loses it, falls back to the DOM
-renderer for that screen and asks for no other. Settings, Appearance, "Draw
+renderer for that screen and asks for no other. Settings, Devices, This device, "Draw
 terminals on the GPU" turns it off per device for the screens opened next. The
 cursor blink then comes from xterm's own timer rather than a CSS animation.
 Unicode 11 widths keep emoji and East Asian text at the two cells the shell
@@ -173,7 +173,7 @@ and Menlo, on the solid `--color-terminal-background` of `app.css`, edge to edge
 with a few pixels of padding. The 16 ANSI colours are the `--ansi-*` tokens of
 each theme; 256-colour and truecolour output draws as the program sends it, with
 a 4.5:1 minimum contrast ratio, halved for dim text. The cursor blinks, an
-outline when the screen has no keyboard; Settings, Appearance makes it a bar
+outline when the screen has no keyboard; Settings, Appearance, Terminal and scrollbars makes it a bar
 (the default), a block or an underline, per device, and a program that asks for
 a shape still gets it. URLs and OSC 8 links open in the browser on a click.
 Refused keystrokes display their error. Reloading the same conversation
@@ -221,7 +221,7 @@ the shell prompt, so `Ctrl+D` does not end it; `exit` does. `Ctrl+Shift+F`
 finds, `Ctrl+Shift+H` lists the recent commands, `Ctrl+Up` and `Ctrl+Down`
 jump between commands and reach the shell when it marks none. The up arrow and
 `Ctrl+R` stay the shell's own history. A full-screen program, in the alternate
-screen, still receives its Ctrl-letter keys. Settings, Keyboard rebinds or
+screen, still receives its Ctrl-letter keys. Settings, Input, Keyboard rebinds or
 clears the eight under Terminal ([keybindings.md](keybindings.md#the-commands)).
 
 On Windows and Linux, `Ctrl+C` copies selected text or interrupts when there is no

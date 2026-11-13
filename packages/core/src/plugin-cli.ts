@@ -46,7 +46,7 @@ export async function pluginCommand(client: CoreClient, io: Io, threadId: string
 
 /**
  * `boite plugin add <url> [--ref <ref>] --why <text>`: a card on the agent's
- * thread. Its Preview opens Settings > Plugins with the repository read;
+ * thread. Its Preview opens Settings > Agents > Plugins with the repository read;
  * nothing is fetched before the user clicks, and only the user installs.
  */
 async function pluginAdd(client: CoreClient, threadId: string, args: string[], print: Printer): Promise<void> {
@@ -65,12 +65,12 @@ async function pluginAdd(client: CoreClient, threadId: string, args: string[], p
   }
   if (url === undefined) throw new Usage('plugin add needs the repository: a URL, its page or owner/repo');
   if (why === undefined || why.trim() === '') throw new Usage('plugin add needs --why <text>, the reason the user reads on the card');
-  if (threadId === '') throw new Usage('plugin add puts a card in an agent\'s thread; from a terminal, paste the URL in Settings > Plugins');
+  if (threadId === '') throw new Usage('plugin add puts a card in an agent\'s thread; from a terminal, paste the URL in Settings > Agents > Plugins');
   const asked = await client.call('settings.request', { threadId, reason: why, page: 'plugins', plugin: { url, ...(ref === undefined ? {} : { ref }) } });
   const plugin = asked.setting.kind === 'open' ? asked.setting.plugin : undefined;
   print([
     `requested: ${asked.questionId}`,
-    `card: Preview opens Settings > Plugins with ${plugin?.url ?? url}${plugin?.ref ? ` at ${plugin.ref}` : ''} read; the user installs it there or not`,
+    `card: Preview opens Settings > Agents > Plugins with ${plugin?.url ?? url}${plugin?.ref ? ` at ${plugin.ref}` : ''} read; the user installs it there or not`,
     'Keep working. The outcome arrives as a message quoting your reason; without one, nothing changed.',
   ], asked);
 }

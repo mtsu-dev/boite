@@ -109,7 +109,7 @@ export class Diagnostics {
     // The router already keeps a paired device to diagnostics.report; this holds even if access.ts changes.
     if (connection && deviceBound(connection.identity.principal)) throw refused('diagnostics: a paired device only reports its own errors');
     if (connection?.identity.principal !== 'agent') return false;
-    if (this.#core.settings.get().agentLogAccess === false) throw refused('diagnostics: the owner turned off agent access to logs (Settings > Diagnostics)');
+    if (this.#core.settings.get().agentLogAccess === false) throw refused('diagnostics: the owner turned off agent access to logs (Settings > Troubleshooting > Agents can read anonymized logs)');
     if (threadId === undefined || threadId !== connection.identity.threadId) throw refused('diagnostics: an agent names its own thread');
     return true;
   }

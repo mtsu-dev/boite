@@ -625,7 +625,7 @@ test('a bot whose provider is turned off keeps its facts and letters, names the 
     // Clients hear of it: the bot's row turns to its problem without another change.
     await waitFor(() => changes > 0);
   } finally { off(); }
-  expect(status()).toMatchObject({ state: 'error', problem: `${name} is turned off on this machine; turn it on in Settings > Providers, or choose another model for ${agent.name} in its settings.` });
+  expect(status()).toMatchObject({ state: 'error', problem: `${name} is turned off on this machine; turn it on in Settings > AI accounts > Providers, or choose another model for ${agent.name} in its settings.` });
   h.core.agentRuntime.fact(agent.id, { urgent: true, key: 'turn:one', text: 'Thread one finished.', delay: 0, threadIds: [] });
   tick(); tick();
   // Held, not spent: on main the first tick dropped it with a warning (issue #992).

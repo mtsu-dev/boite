@@ -6,7 +6,7 @@ agents through a subscription gateway.
 
 ## Sign in to an agent
 
-1. Open Settings, Providers.
+1. Open Settings, AI accounts, Providers.
 2. On the agent's row, press Sign in.
 3. Press Open the sign-in page and finish in your browser. The row turns
    ready on its own.
@@ -34,7 +34,7 @@ command-line login brings it back.
 
 ## Add a second account for the same agent
 
-1. Open Settings, Providers and find the agent's row.
+1. Open Settings, AI accounts, Providers and find the agent's row.
 2. Press Add another account.
 3. Sign in as above, with the other account.
 4. Press Rename to give it a name you will recognize.
@@ -71,7 +71,7 @@ Before each start, Boite takes them from your usual agent folder:
 
 An API key set inside a shared settings file applies to every account that
 uses the file. A path Boite could not share is shown under the account in
-Settings, Brain, Hooks; the agent starts without it.
+Settings, Agents, Scripts your agents run; the agent starts without it.
 
 ## When an account is signed out or removed
 
@@ -92,9 +92,9 @@ As an option, Claude Code, Codex and both OpenCode versions can go through a
 gateway you run, and Grok too when the gateway is Douane. Boite supports
 Douane and CLIProxyAPI.
 
-1. Open Settings, Providers, Subscription proxy.
+1. Open Settings, AI accounts, Subscription proxy.
 2. Under Where the gateway runs, pick Remote gateway or Douane on this
-   machine (the Douane plugin, from Settings, Plugins).
+   machine (the Douane plugin, from Settings, Agents, Plugins).
 3. For a remote gateway, choose Douane or CLIProxyAPI and enter the API URL,
    the Limits dashboard URL and, if needed, the API key (optional).
 4. Turn on Use a subscription proxy and press Save proxy.

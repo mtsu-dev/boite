@@ -9,7 +9,7 @@
    * The two things an agent may do without a card, one machine's settings:
    * how far a conversation's agent reaches other conversations
    * (`coordinationReach`) and whether it creates a bot without asking
-   * (`agentBotCreation`). General on a desktop, Conversations on a phone.
+   * (`agentBotCreation`). A card of the Agents page, on a desktop and a phone.
    */
   let { store }: { store: Store } = $props();
   const uid = $props.id();

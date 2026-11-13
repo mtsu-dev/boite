@@ -11,7 +11,7 @@ it: install one only if you trust whoever publishes it.
 
 ## Install a plugin
 
-Settings, Plugins is a grid of cards: your installed plugins first, then the
+Settings, Agents, Plugins is a grid of cards: your installed plugins first, then the
 recommended ones. Search plugins finds one by name or author, and Show narrows
 the grid to All, On or Off.
 
@@ -125,7 +125,8 @@ Some plugins keep several logins of an agent's command-line tool, under
 Account pools behind their gear. Save current CLI login stores the login the tool
 uses now, Use this account makes a saved one its default again, and Forget
 account removes it. This changes the tool's default login, outside Boite too.
-Boite's own accounts in Settings, Providers keep their own login.
+Boite's own accounts in Settings, AI accounts, Providers keep their own
+login.
 
 ## Remove a plugin
 

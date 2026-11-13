@@ -46,6 +46,7 @@ function card(localCore = true) {
     },
     addDevice: vi.fn(async () => { store.deviceInvite = invite(listening ? 'http://192.168.1.52:7337' : 'http://127.0.0.1:7337'); }),
     closeDeviceInvite: vi.fn(() => { store.deviceInvite = null; }),
+    loadSessions: vi.fn(async () => {}),
     saveSettings: vi.fn(async (patch: { listenOnLan?: boolean }) => { store.settings = { ...store.settings, ...patch }; return true; }),
   });
   mounted = mount(AddDevice, { target: document.body, props: { store: store as unknown as Store } });
@@ -99,6 +100,7 @@ test('turning the network off restarts, settles on the bound address and draws t
     }) },
     // Pairing.addDevice never throws: a failure becomes the store's error.
     addDevice: vi.fn(async () => { store.deviceInvite = invite('https://boite.example.com'); }),
+    loadSessions: vi.fn(async () => {}),
     saveSettings: vi.fn(async (patch: { listenOnLan?: boolean }) => { store.settings = { ...store.settings, ...patch }; return true; }),
   });
   mounted = mount(PhoneSettings, { target: document.body, props: { store: store as unknown as Store } });

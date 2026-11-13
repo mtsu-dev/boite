@@ -91,7 +91,7 @@ export class TeamStore {
 
   /** The `teams` experiment: off, the machine holding a team refuses its methods, and a machine lets no bot of its own join a team. */
   gate(): void {
-    if (!this.#open()) throw refused('teams need the Teams experiment, which is off in the desktop app (Settings, Experiments)', { reason: 'experiment-off' });
+    if (!this.#open()) throw refused('teams need the Teams experiment, which is off in the desktop app (Settings, Version, Experiments)', { reason: 'experiment-off' });
   }
 
   // Teams.

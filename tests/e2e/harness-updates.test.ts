@@ -25,11 +25,12 @@ async function settings(tab: string) {
   await page.click(id(`settings-tab-${tab}`));
 }
 async function machines() {
-  await settings('machines');
+  await settings('devices');
   await page.waitFor(`document.querySelectorAll('${id('machine-updates-state')}').length === 2`);
 }
+/** The agents' versions are a card of Version. */
 async function providers() {
-  await settings('accounts');
+  await settings('version');
   await page.waitFor(`document.querySelector('${card}') && document.querySelector('${row('claude')}')`);
 }
 /** Picks the machine Providers changes in the bar above it; the window stays on its own machine. */
@@ -56,16 +57,17 @@ test('agent updates live on Providers and Update and Skip target the machine its
   await page.waitFor(`document.querySelector('${id('nav-updates')}')`);
   await capture('harness-updates-chat');
   await machines();
-  expect((await page.text(id('settings-tab-machines'))).trim()).toBe('Machines and updates');
+  expect((await page.text(id('settings-tab-devices'))).trim()).toBe('Devices');
   // Each machine's row says a release is waiting; the agents themselves are listed in the updates card, not under the rows.
   await page.waitFor(`document.querySelectorAll('${id('machine-updates-state')}[data-state="available"]').length === 2`);
   expect(await page.evaluate(`document.querySelector('${id('machines-page')} ${card}, ${id('machines-page')} ${id('machine-agent-update')}') === null`)).toBe(true);
-  await page.waitFor(`document.querySelectorAll('${id('updates-other')}[data-part="codex"]').length === 2`);
-  expect(await page.evaluate(`document.querySelectorAll('${id('updates-other')}[data-part="claude"]').length`)).toBe(2);
   await capture('harness-updates-machines');
 
   const active = await page.evaluate('window.__boiteTest.workspace.active.machineId');
   await providers();
+  // The updates card moved to Version with the agents' card: it still lists both machines' agents.
+  await page.waitFor(`document.querySelectorAll('${id('updates-other')}[data-part="codex"]').length === 2`);
+  expect(await page.evaluate(`document.querySelectorAll('${id('updates-other')}[data-part="claude"]').length`)).toBe(2);
   expect(await page.evaluate(`document.querySelector('${card} h2') !== null && document.querySelector('${card} h4') === null`)).toBe(true);
   // The window's machine is picked first, by its host name.
   expect(await page.text(id('settings-machine'))).toContain('studio');
@@ -93,14 +95,17 @@ test('agent updates live on Providers and Update and Skip target the machine its
   await page.click(`${row('claude')} ${id('harness-update-skip')}`);
   await page.waitFor(`document.querySelector('${row('claude')} ${id('harness-update-unskip')}')`);
 
-  // On a phone Machines lists what each machine still offers, and Update starts it there: back from Providers to the Settings list, then Machines.
+  // On a phone Version lists what each machine still offers, and Update starts it there: the page the desktop showed stays open at the phone's width.
   await size(390);
-  await page.waitFor(`document.querySelector('${id('mobile-settings-back')}') || document.querySelector('${id('mobile-settings-connection')}') || document.querySelector('${id('machines-page')}')`);
-  if (await page.evaluate<boolean>(`!document.querySelector('${id('machines-page')}') && !document.querySelector('${id('mobile-settings-connection')}')`)) await page.click(id('mobile-settings-back'));
-  await page.waitFor(`document.querySelector('${id('mobile-settings-connection')}') || document.querySelector('${id('machines-page')}')`);
-  if (!await page.evaluate<boolean>(`document.querySelector('${id('machines-page')}') !== null`)) await page.click(id('mobile-settings-connection'));
-  await page.waitFor(`document.querySelector('${id('machines-page')}') && document.querySelector('${id('updates-others')}')`);
-  expect((await page.text('[data-testid=mobile-settings-header] h1')).trim()).toBe('Machines and updates');
+  const version = `${id('settings-page')}[data-page="version"]`;
+  await page.waitFor(`document.querySelector('${id('mobile-settings-back')}') || document.querySelector('${id('mobile-settings-home')}')`);
+  if (await page.evaluate<boolean>(`!document.querySelector('${version}')`)) {
+    if (await page.evaluate<boolean>(`!document.querySelector('${id('mobile-settings-home')}')`)) await page.click(id('mobile-settings-back'));
+    await page.waitFor(`document.querySelector('${id('mobile-settings-home')}')`);
+    await page.click(id('settings-tab-version'));
+  }
+  await page.waitFor(`document.querySelector('${version} ${id('app-updates-card')}') && document.querySelector('${version} ${id('updates-others')}')`);
+  expect((await page.text('[data-testid=mobile-settings-header] h1')).trim()).toBe('Version');
   // Builder's codex is done and this PC's Claude is skipped: neither is offered again.
   expect(await page.evaluate(`document.querySelectorAll('${id('updates-other')}[data-part="codex"]').length`)).toBe(1);
   expect(await page.evaluate(`document.querySelectorAll('${id('updates-other')}[data-part="claude"]').length`)).toBe(1);
@@ -121,10 +126,13 @@ test('unknown releases run their own updater and Machines keeps no agent version
   await page.waitFor(`document.querySelector('${cli} ${id('harness-update-current')}')`);
   expect(await page.evaluate(`document.querySelector('${cli} ${id('harness-update-row-blind')}') === null`)).toBe(true);
   await capture('harness-update-blind-current');
-  // On Providers, a version is only ever in the agents card.
-  expect(await page.evaluate(`[...document.querySelectorAll('${id('accounts-page')} ${id('provider-update')}')].every(node => node.closest('${card}'))`)).toBe(true);
-  await settings('machines');
-  // Machines names Boite's versions; the agents' are on Providers, the page just left.
+  // A version is only ever in the agents card: on Version, and nowhere on AI accounts.
+  expect(await page.evaluate(`[...document.querySelectorAll('${id('settings-page')} ${id('provider-update')}')].every(node => node.closest('${card}'))`)).toBe(true);
+  await settings('ai');
+  await page.waitFor(`document.querySelector('${id('accounts-page')}') !== null`);
+  expect(await page.evaluate(`document.querySelector('${id('accounts-page')} ${id('provider-update')}, ${id('accounts-page')} ${card}') === null`)).toBe(true);
+  await settings('devices');
+  // Devices names the machines; the agents' versions are on Version.
   await page.waitFor(`document.querySelector('${id('machines-page')}') !== null`);
   for (const name of ['harness-updates-card', 'harness-updates-check', 'setting-auto-update-harnesses', 'harness-update-row-run', 'harness-update-row-blind', 'machine-agent-update', 'provider-update', 'install-update']) {
     expect(await page.evaluate(`document.querySelector('${id('machines-page')} ${id(name)}') === null`)).toBe(true);

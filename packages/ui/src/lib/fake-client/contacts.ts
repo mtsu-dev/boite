@@ -21,7 +21,7 @@ const INVITE_TTL = DAY;
 const DECLINED = 'The owner declined this request.';
 /** The core's cap on the relations a contact may hold here. */
 const MAX_RELATIONS = 64;
-const NO_BOT = 'turn on Contacts in Settings > Experiments: it creates the Contacts bot';
+const NO_BOT = 'turn on Contacts in Settings > Version > Experiments: it creates the Contacts bot';
 const BOT_ONLY = 'contacts.bot.*: only the Contacts bot\'s thread calls this';
 const SMALL = new Set(['haiku', 'lite', 'oss', 'mini', 'nano']);
 const FRONTIER = new Set(['opus', 'fable', 'sol', 'luna']);
@@ -376,7 +376,7 @@ export function contactMethods(ctx: FakeContext) {
     const staged = destination.agents.builtin('contacts') !== null;
     if (!staged && (request.want === 'talk' || request.want === 'thread')) {
       // Like the core: only an Operator puts threads in touch.
-      Object.assign(request, { status: 'refused', reason: `${reciprocal.name === '' ? 'It' : contact.name} has no Operator to put threads in touch; its owner turns Contacts on in Settings > Experiments`, decidedAt: ctx.now() });
+      Object.assign(request, { status: 'refused', reason: `${reciprocal.name === '' ? 'It' : contact.name} has no Operator to put threads in touch; its owner turns Contacts on in Settings > Version > Experiments`, decidedAt: ctx.now() });
       return;
     }
     const copy: ContactRequest = {

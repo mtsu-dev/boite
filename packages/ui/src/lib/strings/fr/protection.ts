@@ -5,7 +5,7 @@ export const fr: Translation = {
   protection: {
     quiet: 'Fenêtres et son',
     limits: 'Limites de ressources',
-    tasks: 'Gestionnaire de tâches',
+    tasks: 'Processus des agents',
     windows: "La mise au second plan, le son et les limites de ressources s'appliquent sur un hôte Windows.",
   }
 };
