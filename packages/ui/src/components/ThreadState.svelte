@@ -19,12 +19,11 @@
    * One grammar in every list (rows, Recent, the palette, the phone,
    * Activity), from `stateForm`: the user's turn is an amber dot, a failure
    * its "!" disc, a stop the grey square a stopped subagent wears in the thread
-   * (DelegationActivity.svelte), work a still accent arc, an unreached machine
+   * (DelegationActivity.svelte), work a turning accent arc, an unreached machine
    * its cloud; each mark is followed by its word ("Needs you", "Failed",
    * "Stopped", "Working", "Queued", "Offline") in the row's neutral ink, the hue staying on the mark. News and
-   * rest show the time. Lists hold many rows at work: their marks stay still,
-   * the one live spinner is the open thread's. How long work has run lives in
-   * the thread and the tooltip.
+   * rest show the time. Work turns, as it does in the thread; a queued turn's
+   * arc waits, still. How long work has run lives in the thread and the tooltip.
    * `fit`: the desktop list, where the word stays at every width a user gets by
    * default and the title gives way first (two lines, cut at a word); the word
    * goes only where the title would keep under about 12 characters a line (the
@@ -99,7 +98,7 @@
   <!-- The mark and its word read as one image named by the state: the word may give way to the title (`fit`). -->
   <span class="when state {stale ? 'unreachable' : kind}" class:fit data-testid="thread-state" data-state={stale ? 'unreachable' : kind} title={name} aria-label={name} role="img">
     {#if stale}<CloudOff size={11} aria-hidden="true" />
-    {:else if form === 'work'}<span class="work-ring" aria-hidden="true"></span>
+    {:else if form === 'work'}<span class="work-ring" class:turning={kind !== 'queued'} aria-hidden="true"></span>
     {:else if kind === 'error'}<FailMark />
     {:else if kind === 'interrupted'}<Square size={9} fill="currentColor" aria-hidden="true" />
     {:else}<span class="dot" class:needs-dot={kind === 'waiting'} aria-hidden="true"></span>{/if}
@@ -133,9 +132,11 @@
   @container thread-row (max-width: 217.98px) {
     :global(html:lang(fr)) .fit .word { display: none; }
   }
-  /* Every mark is 8 px. Work, of any kind: a still accent arc, a spinner at rest, so it never reads as an idle ring
-     or as the amber of the user's turn; which work it is lives in the tooltip. */
+  /* Every mark is 8 px. Work, of any kind: an accent arc that turns (still while queued), so it never reads as an
+     idle ring or as the amber of the user's turn; which work it is lives in the tooltip. Its loop steps on the
+     shared 60 Hz grid and stops with the window at rest (app.css `--loops`). */
   .work-ring { flex: none; box-sizing: border-box; width: 9px; height: 9px; border: 1.5px solid var(--color-accent); border-top-color: transparent; border-radius: var(--radius-full); transform: rotate(45deg); }
+  .work-ring.turning { transform: none; animation: spin 0.9s steps(54) infinite var(--loops); }
   /* The user's turn is an amber dot; a failure has its own shape (FailMark.svelte); a stop is neutral, never red. */
   .dot { flex: none; width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--color-live); }
   .state :global(svg) { flex: none; }

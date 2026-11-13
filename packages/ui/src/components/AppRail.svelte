@@ -16,7 +16,6 @@
   import { separator } from '../lib/menu';
   import { contextMenu } from '../lib/context-menu.svelte';
   import { dragWindow } from '../lib/window-drag';
-  import { isMac } from '../lib/keybindings';
   import { railBotState, threadsNeedingYou, type RailBotState } from '../lib/app-rail';
   import { inbox } from '../lib/inbox.svelte';
   import { followActivityReturn } from '../lib/activity-return.svelte';
@@ -49,7 +48,6 @@
   const botsOn = $derived(experimentOn('resident-agents'));
   const teamsOn = $derived(botsOn && experimentOn('teams'));
   const contactsOn = $derived(contactsShown(store));
-  const macShell = window.__TAURI_INTERNALS__ !== undefined && isMac();
 
   // Every machine's bots stay read while the rail is drawn, so their pictures say how each one stands.
   followAgentDirectories(() => stores, () => botsOn);
@@ -180,7 +178,10 @@
 {/snippet}
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-<nav class="app-rail" class:mac={macShell} aria-label={strings.app.rail.label} data-testid="app-rail" onmousedown={dragWindow}>
+<nav class="app-rail" aria-label={strings.app.rail.label} data-testid="app-rail" onmousedown={dragWindow}>
+  <!-- The rail's card, under its buttons: rounded and edged like the chat card (app.css `.framed`), its top level
+       with the chat card's, so the band above stays the window's to drag (and macOS's lights). -->
+  <span class="rail-card framed" aria-hidden="true"></span>
   <div class="slot" class:selected={onThreads}>
     <span class="pip" aria-hidden="true"></span>
     <button type="button" class="rail-button" class:on={onThreads} aria-current={onThreads ? 'page' : undefined}
@@ -290,21 +291,23 @@
     flex-direction: column;
     align-items: center;
     gap: 8px;
-    padding: 10px 0 12px;
-    background: var(--color-frame);
+    padding: calc(var(--titlebar) + 10px) 0 calc(var(--frame-gap) + 12px);
     user-select: none;
     -webkit-user-select: none;
+    /* The card's own ground: the badges and counts are cut out of it. */
+    --rail-ground: var(--color-background);
   }
-  /* macOS draws its traffic lights over the window's top left corner. */
-  .app-rail.mac { padding-top: 40px; }
+  /* A card of the frame like the chat's, inset by the frame gap on the window's side and the list's, its top on
+     the chat card's. Behind every button (z-index -1 in the rail's own stacking context). */
+  .rail-card { position: absolute; inset: var(--titlebar) var(--frame-gap) var(--frame-gap); z-index: -1; pointer-events: none; }
   .grow { flex: 1; min-height: 8px; }
 
   /* One place per button: its pip stands in the rail's left edge. */
   .slot { position: relative; display: grid; place-items: center; width: 100%; }
-  /* Inset from the chrome's edge and clear of a 44 px picture's left side (14 px in), so it never cuts one. */
+  /* Inside the card's left edge, clear of a 44 px picture's left side (18 px in), so it never cuts one. */
   .pip {
     position: absolute;
-    left: 3px;
+    left: calc(var(--frame-gap) + 2px);
     top: 50%;
     width: 4px;
     height: 0;
@@ -328,7 +331,7 @@
     color: var(--color-muted-foreground);
     box-shadow: none;
   }
-  /* Where you are is the one filled tile: the others stand bare on the chrome, and the pointer lights one a step
+  /* Where you are is the one filled tile: the others stand bare on the card, and the pointer lights one a step
      under the open place's fill, so hover never reads as a second selection. */
   .rail-button { background: transparent; }
   .rail-button:hover:not(:disabled) { background: var(--color-surface-2); color: var(--color-foreground); }
@@ -397,7 +400,7 @@
   /* Activity's count in a small pill on the inbox glyph's lower right corner: a neutral raised ground with the
      digit in the amber ink (amber is a dot or a count, never a filled badge), ringed in the tile's own ground so
      it reads cut out of the glyph and held to it rather than floating beside it. */
-  .rail-button { --count-ring: var(--color-frame); }
+  .rail-button { --count-ring: var(--rail-ground); }
   .count {
     position: absolute;
     left: calc(50% + 2px);
@@ -419,8 +422,8 @@
   }
   .rail-button:hover:not(:disabled) { --count-ring: var(--color-surface-2); }
   .rail-button.on, .rail-button.on:hover:not(:disabled) { --count-ring: var(--color-surface-3); }
-  /* A bot's or a team's one overlay, bottom right of its picture, cut out of the chrome: the amber dot for its turn,
-     the failure's "!", the list rows' still accent arc for work (the open thread keeps the one live spinner), a full
+  /* A bot's or a team's one overlay, bottom right of its picture, cut out of the card: the amber dot for its turn,
+     the failure's "!", the list rows' turning accent arc for work, a full
      ink dot for news. */
   .badge {
     position: absolute;
@@ -431,13 +434,14 @@
     display: grid;
     place-items: center;
     border-radius: 50%;
-    background: var(--color-frame);
+    background: var(--rail-ground);
   }
   .needs, .news { width: 10px; height: 10px; border-radius: 50%; background: var(--color-live); }
   .news { background: var(--color-foreground); }
   .work svg { width: 14px; height: 14px; overflow: visible; }
   .work circle { fill: none; stroke-width: 2; }
-  .work .track { stroke: var(--color-accent); stroke-dasharray: 23.6 31.4; transform: rotate(-45deg); transform-origin: 7px 7px; }
+  .work .track { stroke: var(--color-accent); stroke-dasharray: 23.6 31.4; transform-origin: 7px 7px; }
+  .work svg { animation: spin 0.9s steps(54) infinite var(--loops); }
 
   .foot { display: flex; flex-direction: column; align-items: center; gap: 4px; align-self: stretch; }
   /* Settings marks itself selected like the buttons above, but its hover stays quiet like its neighbours. */

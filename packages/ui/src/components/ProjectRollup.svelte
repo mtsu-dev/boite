@@ -24,8 +24,9 @@
     font-variant-numeric: tabular-nums;
     color: var(--color-muted-foreground);
   }
-  /* The rows' marks: a grey ring for work (dotted in the queue), the stop's grey square for work that stopped short. */
+  /* The rows' marks: the turning arc for work (a still dotted ring in the queue), the stop's grey square for work that stopped short. */
   .rollup .work-ring { box-sizing: border-box; width: 8px; height: 8px; border: 1.5px dashed var(--color-accent); border-radius: var(--radius-full); }
+  .rollup:not(.queued) .work-ring { border-style: solid; border-top-color: transparent; animation: spin 0.9s steps(54) infinite var(--loops); }
   .rollup.queued .work-ring { border-style: dotted; border-color: var(--color-muted-foreground); }
   .rollup.interrupted :global(svg) { color: var(--color-subtle); }
 </style>
