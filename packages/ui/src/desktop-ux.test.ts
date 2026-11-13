@@ -61,28 +61,30 @@ test('a maximized panel stays with its thread: the Contacts page beside the list
   }
 });
 
-test('contacts are the Bots column\'s other side: its head folds the column on the right, a row opens a contact', async () => {
+test('contacts are a circle of the rail beside the bots, never a side of the Bots column: its head folds the column on the right, a row opens a contact', async () => {
   writeExperiments(['resident-agents', 'contacts']);
   await mountOnFake();
   try {
-    // A first start finds the column folded, and no contacts button on the rail: Activity counts what they ask.
+    // A first start finds the column folded; the rail keeps a Contacts circle with the bots on.
     // The Bots page draws no such column: read it afresh each time.
     const rail = () => query('[data-testid=contacts-rail]');
     // The column is fetched after the shell (`lib/contacts-entry.ts`).
     await waitFor(() => document.querySelector('[data-testid=contacts-rail]') !== null);
     expect(rail().classList.contains('collapsed')).toBe(true);
     expect(query('main').compareDocumentPosition(rail()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(document.querySelector('[data-testid=rail-contacts]')).toBeNull();
+    expect(query('[data-testid=rail-contacts]').getAttribute('aria-current')).toBeNull();
     expect(document.querySelector('[data-testid=contacts-toggle]')).toBeNull();
 
-    // The Bots column's switch turns it to Contacts, the Contacts page in the main card.
+    // The Bots column has no switch to Contacts: the rail's circle opens the Contacts page in the main card.
     workspace.showAgents(store);
-    await waitFor(() => document.querySelector('[data-testid=side-contacts]') !== null);
-    query<HTMLButtonElement>('[data-testid=side-contacts]').click();
+    await waitFor(() => document.querySelector('[data-testid=side-head]') !== null);
+    expect(document.querySelector('[data-testid=side-switch]')).toBeNull();
+    query<HTMLButtonElement>('[data-testid=rail-contacts]').click();
     await waitFor(() => document.querySelector('[data-testid=home-add]') !== null);
     expect([store.page, store.contact]).toEqual(['home', null]);
     await waitFor(() => document.querySelector('[data-testid=sidebar] [data-testid=rail-contact]') !== null);
-    expect(query('[data-testid=sidebar] [data-testid=side-switch]').dataset['view']).toBe('home');
+    expect(query('[data-testid=rail-contacts]').getAttribute('aria-current')).toBe('page');
+    expect(document.querySelector('[data-testid=side-switch]')).toBeNull();
 
     // Its head folds the right column, which is not drawn while this side lists the same rows.
     query<HTMLButtonElement>('[data-testid=contacts-toggle]').click();
