@@ -456,6 +456,8 @@ export class Journal {
   runningTurn(threadId: string): Turn | null { return oneTurn(this.db, 'running', threadId); }
   lastTurn(threadId: string, conversation = false): Turn | null { return oneTurn(this.db, conversation ? 'conversation' : 'last', threadId); }
   /** The newest turn that is neither queued nor running. */
+  /** The last turn that started before `turnId`, cache pings aside. */
+  statedTurn(threadId: string, turnId: string): Turn | null { return oneTurn(this.db, 'stated', threadId, turnId); }
   lastEndedTurn(threadId: string): Turn | null { return oneTurn(this.db, 'ended', threadId); }
   /** The oldest queued turn that runs `operation`. */
   queuedTurn(threadId: string, operation: string): Turn | null { return oneTurn(this.db, 'queued', threadId, operation); }

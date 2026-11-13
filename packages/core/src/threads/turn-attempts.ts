@@ -99,7 +99,8 @@ export class TurnAttempts {
     this.#livePermissions.set(threadId, permissions);
     const settings = new LiveSettings(() => ({ effort: state.thread.effort, speed: state.thread.speed ?? null }), taken => {
       state.thread = { ...state.thread, ...taken };
-      if (state.running.execution) state.running.execution = { ...state.running.execution, ...taken };
+      // The transcript stated what the turn started on: the next turn's divider starts from that.
+      if (state.running.execution) state.running.execution = { startedOn: { effort: state.running.execution.effort, speed: state.running.execution.speed ?? null }, ...state.running.execution, ...taken };
       this.#core.journal.putTurn(state.running);
     });
     this.#liveSettings.set(threadId, { state, settings });

@@ -62,7 +62,7 @@ import { eraseIncognito } from './threads/incognito.ts';
 import { AccountSessions } from './threads/account-sessions.ts';
 import { removeTranscripts, threadSessions, type NativeSession } from './threads/transcript-purge.ts';
 import { ThreadCreation } from './threads/creation.ts';
-import { accountRemoved, followAgent } from './threads/account-fallback.ts';
+import { accountRemoved, followedAgent } from './threads/account-fallback.ts';
 import { requireAgent } from './threads/agentless.ts';
 import { expandSlashPrompt } from './plugins/extensions.ts';
 
@@ -634,6 +634,7 @@ export class ThreadStore {
     const autonomous = autonomousSource(origin);
     if (autonomous !== null) this.#core.agentRuntime.admit(thread, autonomous);
     // A signed-out or removed account hands the thread to another of its agent (`threads/account-fallback.ts`).
+    let accountLeft: ReturnType<typeof followedAgent>[1];
     if (executionChoice) {
       const provider = this.#core.providers.require(executionChoice.providerId);
       const account = this.#core.accounts.require(executionChoice.accountId);
@@ -642,7 +643,7 @@ export class ThreadStore {
       thread = { ...thread, providerId: provider.id, accountId: account.id, model,
         effort: checkEffort(provider, account.id, model, executionChoice.effort), speed: checkSpeed(provider, account.id, model, executionChoice.speed ?? null),
         ...(!sameAccount ? { sessionId: null, sessionResumeAt: null } : {}) };
-    } else thread = followAgent(this.#core, thread);
+    } else [thread, accountLeft] = followedAgent(this.#core, thread);
     this.#core.sharedCompute?.assertTurn(threadId);
     this.#core.sharedAccess?.assertTurn(threadId);
     const provider = this.#core.providers.require(thread.providerId);
@@ -694,6 +695,7 @@ export class ThreadStore {
         ...(executionChoice ? { frozenSelection: true as const } : {}),
         ...(operation ? { operation } : {}), ...(automatic ? { automatic: true as const } : {}),
         ...(originAgentWrites(origin) && threadAtRest(this.#core, thread) ? { opensRequest: true as const } : {}),
+        ...(accountLeft ? { accountLeft } : {}),
       },
     };
     const message: Message = {

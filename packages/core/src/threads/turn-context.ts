@@ -23,7 +23,8 @@ import { nativeSkillFiles } from '../brain.ts';
 import { takesSystemGuide } from '../drivers/index.ts';
 import { effectiveCompaction, contextRulesBlock, type CompactionPolicy } from '@boite/contracts';
 import { prepareAttachments, FileReferences } from '../attachments.ts';
-import { continuationInput, switchBackInput, tailInput, type PartPlace } from '../continuation.ts';
+import { continuationInput, switchBackInput, tailInput, type HistoryInput, type PartPlace } from '../continuation.ts';
+import { recordHandover } from './switch-notice.ts';
 import type { Core } from '../core.ts';
 import type { BackgroundCompactionSetting, EmitSink, PermissionTicket, ToolPatch, QuestionAsk, QuestionTicket, SessionContext, StepBoundary, StepDecision, TurnContext } from '../drivers/types.ts';
 import { newId } from '../ids.ts';
@@ -349,7 +350,7 @@ export class TurnContexts {
     // No closure of this context may reach `input` or `prepared`: they share one
     // scope, and a driver keeps the callbacks of its session between turns.
     const input = resumePrompt !== undefined ? { prompt: resumePrompt, attachments: [] } : this.#lastUserInput(threadId, turn.id);
-    const carry = carrier(this.#core, this.#files, threadId, resumePrompt !== undefined ? null : turn.id, input, provider);
+    const carry = carrier(this.#core, this.#files, threadId, resumePrompt !== undefined ? null : turn.id, input, provider, turn);
     const fresh = thread.sessionId === null && ((thread.sessionGeneration ?? 0) > 0 || resumePrompt !== undefined);
     // A session resumed by a switch back to its account: what it missed goes with its first prompt (`threads/account-sessions.ts`).
     const kind = turn.execution?.operation;
@@ -357,7 +358,7 @@ export class TurnContexts {
     const missed = fresh || kind === 'compact' || kind === 'keepalive' || kind === 'background' || nativeCommandPrompt(input.prompt)
       || (resumePrompt !== undefined && this.#threads.accountSessions.carrying(threadId) === turn.id)
       ? null : this.#threads.accountSessions.gap(thread);
-    let continued = input;
+    let continued: HistoryInput = input;
     if (fresh) continued = carry();
     // After a switch back, the prompts a stop cut before the resumed session's last turn: the missed exchanges hold the later ones.
     else if (resumePrompt === undefined && !turn.execution?.operation && !turn.execution?.automatic && !nativeCommandPrompt(input.prompt)) {
@@ -386,6 +387,7 @@ export class TurnContexts {
     if (missed !== null) {
       continued = switchBackInput(this.#core.journal, threadId, missed, turn.id, continued, provider, fileReference);
       this.#threads.accountSessions.carried(threadId, turn.id);
+      recordHandover(this.#core, turn, 'resumed', continued.carried ?? { full: 0, cut: 0, omitted: 0, chars: 0 });
     }
     this.#core.sharedAccess.uploads(threadId, continued.attachments);
     const prepared = prepareAttachments(this.#core.dataDir, continued, provider);
@@ -648,8 +650,8 @@ type TurnInput = Parameters<typeof continuationInput>[3];
  * `makeContext`, so that only the context's `continuation` holds the input,
  * not every callback of the context.
  */
-function carrier(core: Core, files: FileReferences, threadId: ThreadId, turnId: TurnId | null, input: TurnInput, provider: ProviderDescriptor): () => { prompt: string; attachments: Attachment[] } {
-  const history = (): { prompt: string; attachments: Attachment[] } => {
+function carrier(core: Core, files: FileReferences, threadId: ThreadId, turnId: TurnId | null, input: TurnInput, provider: ProviderDescriptor, turn: Turn): () => { prompt: string; attachments: Attachment[] } {
+  const history = (): HistoryInput => {
     const result = continuationInput(core.journal, threadId, turnId, input, provider, (part, place) => {
       core.sharedAccess.uploads(threadId, [part]);
       return files.of(threadId, part, place);
@@ -659,7 +661,12 @@ function carrier(core: Core, files: FileReferences, threadId: ThreadId, turnId: 
   };
   // Read once for a resume, before its note lands: a later fresh start would otherwise carry the note twice.
   const resumedHistory = turnId === null ? history() : null;
-  return () => resumedHistory ?? history();
+  return () => {
+    const { carried, ...fresh } = resumedHistory ?? history();
+    // Said on the turn's divider when the session is new because the account changed (`threads/switch-notice.ts`).
+    recordHandover(core, turn, 'fresh', carried ?? { full: 0, cut: 0, omitted: 0, chars: 0 });
+    return fresh;
+  };
 }
 
 /** `TurnContext.continuation`, built here for the same reason as `carrier`. */

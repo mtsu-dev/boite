@@ -262,6 +262,7 @@ export const DEVICE_EVENTS: ReadonlySet<RpcEventName> = new Set<RpcEventName>([
   // The load `thread.updated` already carries to the same sockets, without the rest of the row.
   'thread.load',
   'turn.started', 'turn.finished',
+  'turn.switched', // The divider of a turn the device already reads, with what its new session was handed.
   'turn.toolCompleted',
   'message.started', 'message.delta', 'message.part', 'message.completed', 'message.truncated',
   'permission.requested', 'permission.resolved', 'question.asked', 'question.answered',

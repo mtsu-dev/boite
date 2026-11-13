@@ -37,7 +37,73 @@ export type TurnExecution = Pick<ThreadSummary,
    * admission, since what the thread was doing then is not in its turns.
    */
   opensRequest?: true;
+  /**
+   * The core moved the thread to this account by itself at admission, because
+   * the one it ran on signed out or was removed (`threads/account-fallback.ts`).
+   * The turn's divider says so (`TurnSwitch.reason`).
+   */
+  accountLeft?: 'signed-out' | 'removed';
+  /**
+   * The effort and speed the turn started on, kept once a change reached it
+   * while it ran (`docs/internals/model-switching.md`): what the transcript
+   * said last, so the next turn's divider starts from it.
+   */
+  startedOn?: { effort: string | null; speed: string | null };
 };
+
+/** One side of a change of selection, as the transcript states it. */
+export type SwitchSide = Pick<ThreadSummary, 'providerId' | 'accountId' | 'model' | 'effort'> & {
+  speed: string | null;
+  /** The account's label when the turn started: the account may be gone since, and a paired device reads no account. */
+  account: string;
+};
+
+/**
+ * What a new native session was handed of the conversation
+ * (`docs/internals/model-switching.md#context-transfer`). `fresh`: a session
+ * that starts on the journal's bounded excerpts. `resumed`: the session the
+ * thread had left on this account, given only the exchanges it missed.
+ */
+export interface SwitchHandover {
+  session: 'fresh' | 'resumed';
+  /** Messages carried whole. */
+  full: number;
+  /** Messages carried with their middle or their tool output cut. */
+  cut: number;
+  /** Messages left out between the opening and the recent exchanges. */
+  omitted: number;
+  /** Characters of history put before the request. */
+  chars: number;
+}
+
+/**
+ * The turn started on another model, effort, speed, account or agent than the
+ * transcript last stated: the previous turn that started, a cache ping aside.
+ * A client draws it as a divider above the turn's first message. It lives on
+ * the turn, so it is no message and no agent ever reads it.
+ */
+export interface TurnSwitch {
+  from: SwitchSide;
+  to: SwitchSide;
+  /** Why the core made the change by itself; absent when the user picked it. */
+  reason?: 'signed-out' | 'removed';
+  /** Set when the change needed a new native session, once the prompt is built. */
+  handover?: SwitchHandover;
+}
+
+/** What the transcript states of a turn's selection: its execution, at the effort and speed it started on. */
+export function statedSelection(execution: TurnExecution): Pick<SwitchSide, 'providerId' | 'accountId' | 'model' | 'effort' | 'speed'> {
+  return {
+    providerId: execution.providerId, accountId: execution.accountId, model: execution.model,
+    effort: execution.startedOn ? execution.startedOn.effort : execution.effort,
+    speed: (execution.startedOn ? execution.startedOn.speed : execution.speed) ?? null,
+  };
+}
+
+/** Whether two selections read differently in the transcript. */
+export function selectionDiffers(a: Pick<SwitchSide, 'providerId' | 'accountId' | 'model' | 'effort' | 'speed'>, b: Pick<SwitchSide, 'providerId' | 'accountId' | 'model' | 'effort'> & { speed?: string | null }): boolean {
+  return a.providerId !== b.providerId || a.accountId !== b.accountId || a.model !== b.model || a.effort !== b.effort || (a.speed ?? null) !== (b.speed ?? null);
+}
 
 export interface Turn {
   id: TurnId;
@@ -76,6 +142,8 @@ export interface Turn {
    * notification and starts no memory pass; clients fold it to one line.
    */
   quiet?: true;
+  /** The selection changed before this turn: the divider above it (`TurnSwitch`). */
+  switched?: TurnSwitch;
 }
 
 /**
@@ -216,4 +284,6 @@ export interface TurnsRpcEvents {
   /** A small broadcast lets queued input advance even when its conversation is off screen. */
   'turn.toolCompleted': { threadId: ThreadId; turnId: TurnId; boundary: string };
   'turn.finished': Turn;
+  /** A running turn's divider gained what its new session was handed (`TurnSwitch.handover`). */
+  'turn.switched': { threadId: ThreadId; turnId: TurnId; switched: TurnSwitch };
 }
