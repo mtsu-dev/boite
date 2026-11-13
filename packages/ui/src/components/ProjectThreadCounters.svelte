@@ -56,7 +56,7 @@
     <button type="button" class="ghost counter working" class:away class:active={open && grouped} data-testid="project-working-toggle" data-count={working}
       title={workingLabel} aria-label={workingLabel} aria-expanded={grouped ? open : undefined} aria-controls={grouped ? `${controls}-working` : undefined} disabled={!grouped || searching}
       onclick={() => projectThreadView.toggle(entry, 'working', collapsed)}>
-      <span class="mark-word"><span class="work-ring" aria-hidden="true"></span><span class="ui-label word">{strings.sidebar.workingThreads}</span></span><span class="ui-label number">{formatCount(working)}</span>
+      <span class="work-ring" aria-hidden="true"></span><span class="ui-label word">{strings.sidebar.workingThreads}</span><span class="ui-label">{formatCount(working)}</span>
     </button>
   {/if}
   {#if done > 0 && !doneFilter.shown}
@@ -83,20 +83,28 @@
   /* Said by every row that needs the user, so not here, unless the rows drop their word: a row's word gives way under
      a 200 px row in English, 220 px in French (ThreadState.svelte), a 236 or 256 px list, its 36 px of edges around
      the row's text. */
-  /* Needs you and Working alike: the word gives way whole, never cut, when the head it sits in lets the count shrink (Sidebar.svelte: the project
+  /* The word gives way whole, never cut, when the head it sits in lets the count shrink (Sidebar.svelte: the project
      name keeps priority). The mark and the word share one wrapping line, its end against the number: short of room,
      the word wraps under a zero-width strut, out of sight, and the mark stays beside the number. */
-  .waiting, .working { display: inline-grid; grid-template-columns: auto auto; gap: 0; }
+  .waiting { display: inline-grid; grid-template-columns: auto auto; gap: 0; }
   .mark-word { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; min-width: 12px; height: 22px; overflow: hidden; }
   .mark-word::before { content: ''; width: 0; height: 22px; }
-  :is(.waiting, .working) .word { margin: 0 2px 0 4px; }
-  :is(.waiting, .working) .number { margin-left: 4px; }
+  .waiting .word { margin: 0 2px 0 4px; }
+  .waiting .number { margin-left: 4px; }
   .spare { display: none; }
   @container sidebar (max-width: 235.98px) {
     .counter .spare { display: block; }
   }
   @container sidebar (max-width: 255.98px) {
     :global(html:lang(fr)) .counter .spare { display: block; }
+  }
+  /* Working keeps its word whole and cannot fold it under a strut as above: pressed, its ground would stay as wide as
+     the word. So the word leaves at the widths where the rows drop theirs, and the project's name keeps its room. */
+  @container sidebar (max-width: 235.98px) {
+    .working .word { display: none; }
+  }
+  @container sidebar (max-width: 255.98px) {
+    :global(html:lang(fr)) .working .word { display: none; }
   }
   /* Work: the rows' turning accent arc (ThreadState.svelte), on the same loop. */
   .work-ring { box-sizing: border-box; width: 9px; height: 9px; border: 1.5px solid var(--color-accent); border-top-color: transparent; border-radius: var(--radius-full); animation: spin 0.9s steps(54) infinite var(--loops); }
