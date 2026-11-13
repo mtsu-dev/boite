@@ -45,14 +45,18 @@ test('the bot desk shows who it is, Now, routines and memory in one column witho
     await page.settleAnimations();
     // One column, no tabs: who it is, then its routines and memory.
     for (const part of ['desk-ident', 'desk-schedule', 'desk-memory']) expect(await page.evaluate(visible(part))).toBe(true);
-    // The threads it handles: in the Bots page's column while it shows on a desktop; in the desk on a phone,
-    // or when the docked desk borrows the column's place (the column folds, as the thread list does for a panel).
+    // The threads it handles: in the Bots page's column on a desktop, which stays beside the desk; in the desk on a phone.
     await page.waitFor(shownAnywhere('desk-work'));
     const columnShown = width !== 390 && await page.evaluate<boolean>(`getComputedStyle(document.querySelector('.agents-rail')).display !== 'none'`);
+    expect(columnShown).toBe(width !== 390);
     expect(await page.evaluate(shownAnywhere('desk-work', id(columnShown ? 'bot-column' : 'agent-desk')))).toBe(true);
     expect(await page.evaluate(shownAnywhere('bot-handling'))).toBe(true);
     expect(await page.evaluate(`document.querySelector('${id('agent-desk')} [role=tab]')`)).toBeNull();
-    expect(await page.evaluate(visible('desk-steps'))).toBe(false);
+    // Now, with the steps of the running turn folded under it, is drawn where no conversation beside the desk says it:
+    // on a phone. A desktop keeps the bot's conversation and column beside the desk, so its desk has no Now card.
+    expect(await page.evaluate(`!!document.querySelector('${id('desk-now')}')`)).toBe(!columnShown);
+    expect(await page.evaluate(`!!document.querySelector('${id('desk-steps')}')`)).toBe(!columnShown);
+    if (!columnShown) expect(await page.evaluate(visible('desk-steps'))).toBe(false);
     await capture(`desk-${width}`);
     // The desk and every card stay inside the panel, including their text. The cards are flat sections now:
     // a row's hover ground and a head's icon bleed past a card's text edge on purpose (one inset for the desk),
@@ -72,6 +76,7 @@ test('the bot desk shows who it is, Now, routines and memory in one column witho
     expect(layout.cards.length).toBeGreaterThan(1);
     expect(layout.cards.filter(overflow => overflow > 0)).toEqual([]);
 
+    if (columnShown) continue;
     await page.click(`${id('desk-activity')} > summary`);
     await page.waitFor(visible('desk-steps'));
     await capture(`desk-steps-${width}`);

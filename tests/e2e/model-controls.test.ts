@@ -425,10 +425,13 @@ test('the draft keeps a compact composer separate from the fixed favorites menu'
   }
   await page.click('[data-provider=favorites]');
   await capture('picker-draft-favorites.png');
-  const layout = await page.evaluate<any>(`(() => { const c=document.querySelector('[data-testid=composer]').getBoundingClientRect(); const m=document.querySelector('[data-testid=composer-picker-menu]').getBoundingClientRect(); return {composerHeight:c.height,composerTop:c.top,composerBottom:c.bottom,menuTop:m.top,menuHeight:m.height}; })()`);
+  const layout = await page.evaluate<any>(`(() => { const c=document.querySelector('[data-testid=composer]').getBoundingClientRect(); const chip=document.querySelector('[data-testid=composer-picker]').getBoundingClientRect(); const m=document.querySelector('[data-testid=composer-picker-menu]').getBoundingClientRect(); return {composerHeight:c.height,composerTop:c.top,chipTop:chip.top,chipLeft:chip.left,menuLeft:m.left,menuBottom:m.bottom,menuHeight:m.height}; })()`);
   expect(layout.composerHeight).toBe(before.height);
   expect(layout.composerTop).toBe(before.top);
-  // The menu opens beside the composer, never over it: wholly above or wholly below, as tall as its column up to its cap.
-  expect(layout.menuTop + layout.menuHeight <= layout.composerTop || layout.menuTop >= layout.composerBottom).toBe(true);
+  // The menu hangs off its own chip, as the effort and permission menus do: its start edge on the chip's, wholly
+  // above it, so the chip and the row it sits in stay in sight; as tall as its column up to its cap.
+  expect(Math.abs(layout.menuLeft - layout.chipLeft)).toBeLessThanOrEqual(1);
+  expect(layout.menuBottom).toBeLessThanOrEqual(layout.chipTop);
+  expect(layout.chipTop - layout.menuBottom).toBeLessThanOrEqual(12);
   expect(layout.menuHeight).toBeLessThanOrEqual(360);
 }, 30_000);

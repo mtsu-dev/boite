@@ -305,7 +305,8 @@ real('three agents in the rail; a phone shows the list, then the conversation fu
 
 // A rail with more bots than it holds pushed Settings and the machines off the window, with no scroll to reach them.
 real('a rail too short for its bots scrolls them, keeps its foot on screen and shows a name past its edge', async () => {
-  await page.send('Emulation.setDeviceMetricsOverride', { ...DESKTOP, height: 300 });
+  // 360 px: under the window's top band, the rail's own buttons and its foot, the list keeps room for one bot of its three.
+  await page.send('Emulation.setDeviceMetricsOverride', { ...DESKTOP, height: 360 });
   try {
     await page.waitFor(`document.querySelectorAll('${id('app-rail')} ${id('rail-bot')}').length >= 3`);
     await page.settleAnimations();

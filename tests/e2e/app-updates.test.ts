@@ -54,8 +54,8 @@ test('the rail\'s foot button and Machines both reach updates, and the foot fits
   await page.waitFor(`window.__boiteTest?.workspace.machines.length === 2 && ${JSON.stringify(foot)}.every(name => document.querySelector('${id('app-rail')} .foot [data-testid="' + name + '"]')) && document.querySelector('${id('sidebar')} ${id('nav-limits')}')`);
   // A downloaded release is announced in the app rail's foot, bottom left, above Settings.
   expect(await page.evaluate(`document.querySelector('${id('nav-updates')}') !== null`)).toBe(true);
-  // The panels' door is named in words; the rail's controls stay icons.
-  expect((await page.text(id('panel-toggle'))).trim()).toBe('Panels');
+  // The panels' door is a glyph named by its tooltip, as the rail's controls are icons.
+  expect(await page.evaluate(`(() => { const door = document.querySelector('${id('panel-toggle')}'); return [door.innerText.trim(), door.querySelectorAll('svg').length, door.getAttribute('aria-label'), door.title.startsWith(door.getAttribute('aria-label'))]; })()`)).toEqual(['', 1, "Panels: this thread's changes, files, browser and tools, beside the chat", true]);
   expect(await page.evaluate(`${JSON.stringify(foot)}.every(name => document.querySelector('${id('app-rail')} .foot [data-testid="' + name + '"]').innerText.trim() === '')`)).toBe(true);
   // Stacked in the 72 px rail, each control keeps its size and its own row.
   expect(await page.evaluate(`(() => {

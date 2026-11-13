@@ -20,8 +20,13 @@ async function chord(page: BrowserPage, key: string, code: string, keyCode: numb
   await page.send("Input.dispatchKeyEvent", { type: "keyUp", ...base });
 }
 
-/** The terminal is a row of the panel's launcher since the header lost its own button. */
+/**
+ * The terminal is a row of the panel's launcher since the header lost its own button. Each machine opens its own
+ * panel: right after a switch the previous machine's launcher is still drawn, so the page first settles on the
+ * showing machine's panel, open or closed.
+ */
 async function toggleTerminal(page: BrowserPage): Promise<void> {
+  await page.waitFor('!!document.querySelector("[data-testid=panel-add]") === globalThis.__boiteTest.workspace.active.panelOpen && !!document.querySelector("[data-testid=panel-toggle]")');
   if (!await page.evaluate<boolean>('!!document.querySelector("[data-testid=panel-add]")')) await page.click("[data-testid=panel-toggle]");
   await page.waitFor('document.querySelector("[data-testid=panel-add]")');
   await page.click("[data-testid=panel-add]");
