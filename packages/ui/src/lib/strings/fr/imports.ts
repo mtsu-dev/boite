@@ -4,9 +4,9 @@ export const fr: Translation = {
 
   imports: {
     title: 'Importer une session dans {project}',
-    intro: "Sessions Claude Code lancées dans ce dossier. L'une d'elles devient un fil avec son historique, et le tour suivant le continue.",
+    intro: "Sessions Claude Code et Codex lancées dans ce dossier. L'une d'elles devient un fil avec son historique, et le tour suivant le continue.",
     loading: 'Recherche des sessions',
-    empty: 'Aucune session Claude Code pour ce dossier.',
+    empty: 'Aucune session Claude Code ou Codex pour ce dossier.',
     imported: 'Importée',
     chooseAccount: 'Choisir un compte pour {title}',
     accounts: '{count} comptes',

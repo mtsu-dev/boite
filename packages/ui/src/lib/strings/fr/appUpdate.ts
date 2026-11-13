@@ -9,7 +9,7 @@ export const fr: Translation = {
     unsupported: 'Les mises à jour automatiques sont disponibles dans les versions installées : l’installateur Windows x64, l’app macOS et le .deb ou l’AppImage Linux.',
     channel: 'Canal de publication',
     nightlyShort: 'Nightly', releaseShort: 'Release',
-    noRelease: 'Pas encore de release : Boite sort en builds nightly pour l’instant.',
+    blocked: 'Boite {version} ne sait pas encore lire les données de cette version. La première version qui le peut vous sera proposée.',
     updates: 'Mises à jour',
     stable: 'Boite',
     nightly: 'Boite Nightly',
