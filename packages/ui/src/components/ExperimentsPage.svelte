@@ -3,7 +3,7 @@
   import CompactionSettings from './CompactionSettings.svelte';
   import CacheKeepaliveSettings from './CacheKeepaliveSettings.svelte';
   import DeviceStreamSettings from './DeviceStreamSettings.svelte';
-  import AutoGoalSetting from './AutoGoalSetting.svelte';
+  import { loadAutoGoalSetting } from '../lib/auto-goal-entry';
   import { untrack, type Snippet } from 'svelte';
   import { EXPERIMENT_STAGES, buildKindOf, experimentsRun } from '@boite/contracts';
   import { canFollowDesktop, desktopExperiments, experimentsBuild, followsDesktop, listedSwitches, readExperiments, setExperiment, setFollowDesktop, subscribeExperiments, type ExperimentId } from '../lib/experiments';
@@ -53,6 +53,9 @@
     following = followsDesktop();
     heard = desktopExperiments() !== null;
   }));
+  // The threshold loads with the page, out of the builds below the experiment's tag (lib/auto-goal-entry.ts).
+  let AutoGoalSetting = $state.raw<typeof import('./AutoGoalSetting.svelte').default>();
+  void loadAutoGoalSetting()?.then(module => { AutoGoalSetting = module.default; }).catch(() => {});
 </script>
 
 <div class="page" data-testid="experiments-page">
@@ -90,7 +93,7 @@
         />
       </label>
       <!-- Its threshold is the core's, under the switch while it is on. -->
-      {#if id === 'auto-goal' && store && thresholdRuns && enabled.includes(id)}<AutoGoalSetting {store} />{/if}
+      {#if id === 'auto-goal' && store && thresholdRuns && enabled.includes(id) && AutoGoalSetting}<AutoGoalSetting {store} />{/if}
     {/each}
   </section>
 

@@ -287,3 +287,19 @@ test('a core compiled without the Council starts, refuses every council method w
   const dev = await core(DEV);
   expect(dev.core.council.constructor.name).toBe('CouncilStore');
 });
+
+test('a core compiled without automatic goals starts no goal from a prompt and refuses goal track with the tag and the build', async () => {
+  const { startsAutoGoal } = await import('../src/composer-activity.ts');
+  const long = 'x'.repeat(2000);
+  expect(startsAutoGoal(long, ['auto-goal'], 100)).toBe(true);
+  await compiledWithout(['__BOITE_HAS_AUTO_GOAL__'], async () => {
+    expect(startsAutoGoal(long, ['auto-goal'], 100)).toBe(false);
+    const release = await core(RELEASE);
+    const owner = await release.connect();
+    const { threadId } = await echoThread(release, owner);
+    expect(release.core.activity.autoGoal(threadId, 'none', 'none', long)).toBe(false);
+    expect(() => release.core.activity.track(threadId)).toThrow('experiment.auto-goal runs in Nightly and Dev builds only, and this machine runs a Release (2.0.0)');
+    expect(release.core.activity.busy(threadId)).toBe(false);
+    owner.close();
+  });
+});

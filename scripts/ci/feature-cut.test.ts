@@ -69,6 +69,7 @@ test('every feature declared cut writes its marker and its flag in the sources, 
       ui: { marker: ['teams/TeamChat', 'teams/TeamDialog', 'teams/TeamHeader', 'TeamCard'].map((name) => `packages/ui/src/components/${name}.svelte`), entry: 'packages/ui/src/lib/teams-entry.ts' },
       core: { marker: ['packages/core/src/teams/store.ts', 'packages/core/src/teams/rpc.ts', 'packages/core/src/team-cli.ts'], entry: 'packages/core/src/teams-entry.ts' },
     },
+    'auto-goal': { ui: { marker: ['packages/ui/src/components/AutoGoalSetting.svelte'], entry: 'packages/ui/src/lib/auto-goal-entry.ts' }, core: { marker: ['packages/core/src/auto-goal.ts'], entry: 'packages/core/src/auto-goal-entry.ts' } },
   };
   expect(Object.keys(places).sort()).toEqual(Object.keys(FEATURE_CUTS).sort());
   for (const [id, cut] of Object.entries(FEATURE_CUTS) as [ExperimentId, { ui: boolean; core: boolean }][]) {

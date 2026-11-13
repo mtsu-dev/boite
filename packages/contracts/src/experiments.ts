@@ -159,6 +159,8 @@ export const FEATURE_CUTS: Partial<Record<ExperimentId, { ui: boolean; core: boo
   contacts: { ui: true, core: false },
   // Teams: the chat, the dialog, the header and the request card in the UI; in the core the store, its peers and snapshots, the RPC methods and `boite team` (the tables and the letters' team fields stay).
   teams: { ui: true, core: true },
+  // Automatic goals: the threshold setting in the UI; in the core `auto-goal.ts`, what turns a prompt into a goal (the goal engine itself is a finished feature).
+  'auto-goal': { ui: true, core: true },
 };
 
 /** The marker of a feature's code in a bundle. Built here from two parts, so this file never carries one. */

@@ -358,6 +358,8 @@ test('Automatic goals is off by default; on, its threshold row sits under the sw
   flushSync();
   await tick();
   expect(window.localStorage.getItem(EXPERIMENTS_STORAGE_KEY)).toBe('["auto-goal"]');
+  // The threshold is a chunk of its own (lib/auto-goal-entry.ts): it draws once loaded.
+  await vi.waitFor(() => { flushSync(); expect(document.querySelector('[data-testid=auto-goal-settings]')).not.toBeNull(); });
   const row = query('[data-testid=auto-goal-settings]');
   expect(toggle.closest('label')!.nextElementSibling).toBe(row);
   const field = query<HTMLInputElement>('[data-testid=auto-goal-min-chars]');
