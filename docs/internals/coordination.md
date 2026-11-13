@@ -24,8 +24,12 @@ The directory, search and read (`coordination-directory.ts`) and `send`
 take it instead of the thread's config, so the thread's config only narrows.
 Unchanged by the reach: a parent and its subagents, a workflow and its steps,
 team members, a bot and the threads of the projects entrusted to it, the
-Contacts bot's thread, and a project shared with a contact (its threads keep
-reaching that contact's machine). The reach bounds what this machine's threads
+Contacts bot's thread, a project shared with a contact (its threads keep
+reaching that contact's machine), and the first answer of a thread an agent
+started with `boite thread new`: `threads/spawn.ts` names that one letter, and
+`send`, the local delivery and the relay to another machine let it reach the
+starter in another project or on another machine. A later letter between the
+two follows the reach again. The reach bounds what this machine's threads
 ask for; a letter another machine sends here is still delivered.
 
 A refusal names the setting and the command that asks the owner to open it,

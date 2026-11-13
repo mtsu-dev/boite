@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { isAbsolute } from 'node:path';
 import type { AgentProfile, AgentProjectAdded, AgentSpawn, ContextPreset, ContextRequest, CoordinationPeer, DelegationModels, Message, PermissionMode, RpcParams, ThreadId, ThreadLink, ThreadSummary, Turn } from '@boite/contracts';
 import type { Core } from '../core.ts';
@@ -26,7 +26,8 @@ const BOT_LEDGER = 'bot-spawns:';
  * the group. `bot`: that thread is a bot's, which hears the first answer as an
  * event of its desk.
  */
-interface Origin { origin: ThreadLink; reported: boolean; coreId?: string; bot?: true }
+/** `answer`: the id of the letter that carries its first answer back, which the reach does not stop. */
+interface Origin { origin: ThreadLink; reported: boolean; coreId?: string; bot?: true; answer?: string }
 /** `spawned`: what a member answered, for a thread started on another machine. */
 interface Started { at: number; requestId: string; fingerprint: string; threadId: ThreadId; turnId: string; spawned?: AgentSpawn }
 
@@ -477,16 +478,25 @@ export class ThreadSpawns {
     const head = `${thread.title}: ${turn.status}`;
     // The thread that started it reads the rest of a cut answer with `boite threads read`.
     const body = `${head}\n${this.#core.delegation.result(turn, 'thread', Math.max(1000, 4000 - head.length - 1)) ?? 'No text result was returned.'}`;
+    // The reach of this machine bounds what a thread asks for, not the answer to a start it allowed.
+    const answer = randomUUID();
+    this.#core.journal.setSetting(key, { ...saved, reported: true, answer } satisfies Origin);
     try {
       await this.#core.coordination.send({
         threadId: thread.id,
         to: { coreId: saved.coreId ?? this.#core.coordination.identity().coreId, threadId: saved.origin.threadId },
         text: body.length > 4000 ? `${body.slice(0, 3900)}\n[Truncated. Open the thread for the complete answer.]` : body,
         requestId: `spawn-result:${turn.id}`,
-      });
+      }, false, undefined, answer);
     } catch (error) {
       this.#core.log('warn', `thread ${thread.id}: its answer did not go back to ${saved.origin.threadId}: ${messageOf(error)}`);
     }
+  }
+
+  /** Whether `letterId` is the first answer of a thread an agent started, on its way to that starter. */
+  answers(threadId: ThreadId, to: { coreId: string; threadId: string }, letterId: string): boolean {
+    const saved = this.#core.journal.getSetting(`${ORIGIN}${threadId}`) as Origin | undefined;
+    return saved?.answer === letterId && saved.origin.threadId === to.threadId && (saved.coreId ?? this.#core.coordination.identity().coreId) === to.coreId;
   }
 
   /** The thread's origin, when an agent started it. */

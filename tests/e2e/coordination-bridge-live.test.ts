@@ -22,7 +22,8 @@ test('the owner app relays signed reads, preserves directional grants on reload,
     for (let index = 0; index < 2; index++) {
       const core = await startCore(); cores.push(core);
       const client = await connect(core.url, core.token); clients.push(client);
-      await client.call('settings.set', { browserOrigins: [origin] });
+      // A new install keeps an agent inside its project; this scenario reads across machines.
+      await client.call('settings.set', { browserOrigins: [origin], coordinationReach: 'group' });
     }
     const threads = [];
     for (const [index, client] of clients.entries()) {

@@ -105,6 +105,21 @@ test('a thread starts one on another machine of its group once that machine allo
   expect(chained.err).toContain('a thread an agent started cannot start another until the user writes in it');
 });
 
+test('the answer of a thread started on another machine crosses back when both machines keep agents in their project', async () => {
+  answering();
+  const { desk, pc, owner, pcOwner, threadId, machine, cli } = await setup();
+  await owner.call('settings.set', { coordinationReach: 'project' });
+  await pcOwner.call('settings.set', { groupThreads: true, coordinationReach: 'project' });
+  const started = await cli(['thread', 'new', 'notes', 'Print the letter on the USB printer', '--machine', machine, '--title', 'Print the letter', '--json']);
+  expect(started.err).toBe('');
+  const spawned = JSON.parse(started.out) as AgentSpawn;
+  await waitFor(() => desk.core.coordination.get(threadId).messages.some(m => m.from.threadId === spawned.thread.id));
+  expect(desk.core.coordination.get(threadId).messages.find(m => m.from.threadId === spawned.thread.id)).toMatchObject({ text: 'Print the letter: done\nDone in notes', relation: 'started' });
+  // Nothing else of that thread leaves its machine.
+  const more = await pc.core.coordination.send({ threadId: spawned.thread.id, to: { coreId: desk.core.coordination.identity().coreId, threadId }, text: 'One more thing.', requestId: 'more' }).catch((error: Error) => error);
+  expect((more as Error).message).toContain('coordinationReach is "project"');
+});
+
 test('another machine stays within the caller\'s communication settings and the group', async () => {
   answering();
   const { desk, pc, owner, threadId, machine, cli } = await setup();

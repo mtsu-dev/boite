@@ -98,6 +98,14 @@
   @container sidebar (max-width: 255.98px) {
     :global(html:lang(fr)) .counter .spare { display: block; }
   }
+  /* Working keeps its word whole and cannot fold it under a strut as above: pressed, its ground would stay as wide as
+     the word. So the word leaves at the widths where the rows drop theirs, and the project's name keeps its room. */
+  @container sidebar (max-width: 235.98px) {
+    .working .word { display: none; }
+  }
+  @container sidebar (max-width: 255.98px) {
+    :global(html:lang(fr)) .working .word { display: none; }
+  }
   /* Work: the rows' turning accent arc (ThreadState.svelte), on the same loop. */
   .work-ring { box-sizing: border-box; width: 9px; height: 9px; border: 1.5px solid var(--color-accent); border-top-color: transparent; border-radius: var(--radius-full); animation: spin 0.9s steps(54) infinite var(--loops); }
   /* Offline: the last known count, not live work, so its ring takes the header's grey and stands still. */

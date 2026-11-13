@@ -95,6 +95,23 @@ test('an agent starts a real thread in another project, which answers it back as
   expect(h.core.journal.listThreads(notes.id)).toHaveLength(1);
 });
 
+test('the first answer of a started thread comes back whatever the reach, and nothing else passes with it', async () => {
+  answering(); const { h, owner, threadId, cli } = await setup();
+  // A new install keeps an agent inside its project.
+  await owner.call('settings.set', { coordinationReach: 'project' });
+  const spawned = JSON.parse((await cli(['thread', 'new', 'notes', 'Write the 2.4 release notes', '--title', 'Release notes 2.4', '--json'])).out) as AgentSpawn;
+  await waitFor(() => h.core.coordination.get(threadId).messages.some(m => m.from.threadId === spawned.thread.id));
+  const letter = h.core.coordination.get(threadId).messages.find(m => m.from.threadId === spawned.thread.id)!;
+  expect(letter).toMatchObject({ text: 'Release notes 2.4: done\nDone in notes', relation: 'started' });
+  await waitFor(() => h.core.coordination.get(threadId).messages.find(m => m.id === letter.id)?.status === 'delivered');
+  // The answer is the one letter the reach lets through: a second one from that thread, or one to it, is still refused.
+  const starter = { coreId: h.core.coordination.identity().coreId, threadId };
+  const more = await h.core.coordination.send({ threadId: spawned.thread.id, to: starter, text: 'One more thing.', requestId: 'more' }).catch((error: Error) => error);
+  expect((more as Error).message).toContain('coordinationReach is "project"');
+  const back = await h.core.coordination.send({ threadId, to: spawned.address, text: 'Add the migration note.', requestId: 'follow-up' }).catch((error: Error) => error);
+  expect((back as Error).message).toContain('coordinationReach is "project"');
+});
+
 test('starting threads stays within communication settings and one agent generation, with no hourly budget', async () => {
   answering(); const { h, owner, threadId, notes, cli } = await setup();
   const config = h.core.coordination.config(threadId);
