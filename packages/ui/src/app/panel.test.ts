@@ -9,13 +9,8 @@ import { mountOnFake, query, test, type, waitFor } from '../test/app';
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
 
 test('a floating panel can dock after leaving or closing its browser tab and changing threads', async ({ app: _app }) => {
-  // Dock is a row of the panel switcher on the header's door: the head holds the tabs and the close only.
-  const dockRow = () => {
-    // A launcher playing its exit holds the rows it opened with: the next open reads them again.
-    const open = '[data-testid=panel-add-menu]:not(.closing)';
-    if (!document.querySelector(open)) { document.querySelector<HTMLButtonElement>('[data-testid=panel-add]')?.click(); flushSync(); }
-    return document.querySelector<HTMLButtonElement>(`${open} [data-testid=panel-dock]`);
-  };
+  // Dock is a button of the panel's strip while the panel floats.
+  const dockRow = () => document.querySelector<HTMLButtonElement>('[data-testid=panel-titlebar] > [data-testid=panel-dock]');
   await waitFor(() => document.querySelector('[data-thread-id="t-trace"]') !== null);
   query<HTMLButtonElement>('[data-thread-id="t-trace"]').click();
   await waitFor(() => store.openThread?.id === 't-trace');
@@ -24,7 +19,6 @@ test('a floating panel can dock after leaving or closing its browser tab and cha
   rightPanel.floating = true;
   store.panel.openTasks();
   await waitFor(() => document.querySelector('[data-testid=panel-add]') !== null);
-  expect(document.querySelector('[data-testid=panel-titlebar] > [data-testid=panel-dock]')).toBeNull();
   store.panel.close(browser);
   flushSync();
   expect(document.querySelector('[data-testid=browser-slot]')).toBeNull();
@@ -58,8 +52,8 @@ test("the panel selector lists the terminal, and a control's right click leads t
   // A hidden terminal is listed by name with every other panel, behind no door.
   await waitFor(() => document.querySelector('[data-testid=panel-add-menu] [data-value=terminal-toggle]') !== null);
   query<HTMLButtonElement>('[data-testid=panel-add]').click();
-  // Open, the door is the switcher: the head's close shuts the panel.
-  if (!wasOpen) query<HTMLButtonElement>('[data-testid=panel-close]').click();
+  // The header's glyph shuts the panel it opened.
+  if (!wasOpen) query<HTMLButtonElement>('[data-testid=panel-toggle]').click();
 
   // The context's number sits beside the model chip once the context matters (ComposerBar's CONTEXT_SHOWN_FROM).
   store.openThread!.context = { tokens: 150_000, window: 200_000, at: Date.now() };
@@ -94,10 +88,9 @@ test('the header button opens the panel on its launcher, which opens the changes
   query<HTMLButtonElement>('[data-testid=panel-toggle]').click();
   // An empty panel opens on its cards rather than forcing one surface.
   await waitFor(() => document.querySelector('[data-testid=panel-launcher]') !== null);
-  // Open, the door turns into the switcher, named Panels while no panel shows.
+  // Open, the header keeps its toggle, pressed; the strip's "+" holds the launcher.
   await waitFor(() => document.querySelector('[data-testid=panel-add]') !== null);
-  expect(query('[data-testid=panel-add]').textContent?.trim()).toBe('Panels');
-  expect(document.querySelector('[data-testid=panel-toggle]')).toBeNull();
+  expect(query('[data-testid=panel-toggle]').getAttribute('aria-pressed')).toBe('true');
   expect(document.querySelector('[data-testid=trace-panel]')).toBeNull();
   for (const kind of ['agent-browser', 'changes', 'files', 'tasks', 'trace']) {
     expect(document.querySelector(`[data-testid=launch-${kind}]`)).not.toBeNull();
@@ -210,8 +203,6 @@ test('what the agent asks for through panel.open opens on the thread it named', 
   });
   await waitFor(() => document.querySelector('[data-testid=file-panel]') !== null);
   expect(store.panel.active?.line).toBe(42);
-  // Showing, its name is on the header's door, the switcher, which carries the path.
-  expect(query('[data-testid=panel-add]').getAttribute('title')).toContain('src/lib/store.svelte.ts');
-  expect(query('[data-testid=panel-door-name]').textContent).toBe('store.svelte.ts');
+  // Showing, its tab carries the path.
   expect(query('[data-testid=panel-tab][data-kind=file]').getAttribute('title')).toBe('src/lib/store.svelte.ts');
 });

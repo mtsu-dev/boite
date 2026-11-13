@@ -22,7 +22,7 @@ test('a machine out of reach keeps its project card\'s count of what needs the u
   client = new FakeClient({ delayMs: 0 });
   store = new Store(); store.attach(client); await store.connect();
   const thread = store.threadsOf('p-boite').find(t => !t.parentThreadId)!;
-  store.threads = store.threads.map(t => t.id === thread.id ? { ...t, status: 'error' } : t);
+  store.threads = store.threads.map(t => t.id === thread.id ? { ...t, status: 'error', unread: true } : t);
   workspace.machines = [{ id: 'local', label: 'Local', store }]; workspace.active = store;
   workspace.setView('projects');
   mounted = mount(Sidebar, { target: document.body, props: { store } });

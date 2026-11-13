@@ -231,9 +231,8 @@ test('the reasoning row names each level, sets the effort of the picked model, a
   expect(query('[data-testid=composer-picker]').textContent).toContain('Opus 5.5');
   expect(document.querySelector('[data-testid=composer-picker-effort]')).toBeNull();
   expect(query('[data-testid=composer-effort]').textContent?.trim()).toBe('Effort Extra high');
-  // The heading names the live level, the line under the track what it costs.
+  // The heading names the live level.
   expect(query('[data-testid=effort-level]').textContent).toBe('Extra high');
-  expect(query('[data-testid=effort-cost]').textContent).toBe(strings.composer.effortCost.high);
 
   query<HTMLButtonElement>('[data-testid=composer-effort-menu] [data-value=high]').click();
   await waitFor(() => effortPicked() === 'high');

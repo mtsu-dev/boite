@@ -2,18 +2,14 @@ import type { ExperimentId } from './experiments';
 import { strings } from './strings';
 
 /**
- * The title and hint of every shipped experiment, in the language the app
- * speaks when this is called. One entry per id, so a new experiment cannot land
- * without its words, and the Settings nav lists the same rows as the page.
+ * The title and hint of every experiment that has a switch, in the language
+ * the app speaks when this is called. A finished feature has no switch and no
+ * entry (`EXPERIMENT_STAGES` in contracts); `experiment-copy.test.ts` fails
+ * when an experimental id lands without its words. The Settings nav lists the
+ * same rows as the page.
  */
-export function experimentCopy(): Record<ExperimentId, { title: string; hint: string }> {
+export function experimentCopy(): Partial<Record<ExperimentId, { title: string; hint: string }>> {
   return {
-    'pinned-quotas': strings.experiments.pinnedQuotas,
-    'recording-indicators': strings.experiments.recordingIndicators,
-    'theme-grain': strings.experiments.themeGrain,
-    'session-import': strings.experiments.sessionImport,
-    'prompt-cache': strings.experiments.promptCache,
-    'resident-agents': strings.experiments.residentAgents,
     whip: strings.experiments.whip,
     contacts: strings.experiments.contacts,
     'auto-goal': strings.experiments.autoGoal,

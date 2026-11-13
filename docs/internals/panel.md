@@ -439,10 +439,10 @@ source for omitted content. Results are cached for ten seconds. Descriptions
 and comments use the existing escaped Markdown renderer; remote images are
 not fetched.
 
-## Experimental recording indicators
+## Recording indicators
 
-Enable **Recording indicators** before starting a browser recording to include
-fading click rings and navigation-key labels in the saved video. The collector
+A browser recording includes fading click rings and navigation-key labels in
+the saved video by default, in every build. The collector
 keeps at most twelve recent marks, omits printable key labels, and ignores
 navigation keys in password and payment fields. Page contents are still part
 of the recording. Stopping or closing the browser removes the collector.

@@ -828,6 +828,7 @@ Never terminate processes by executable name or a path pattern.
 | Scenario | Focused browser test |
 | --- | --- |
 | Header, sidebar, prompt navigation | `tests/e2e/header.test.ts` |
+| Import list naming each session's agent, desktop and phone | `tests/e2e/import-agents.test.ts` |
 | Scroll following and virtualized history | `tests/e2e/chat-scroll.test.ts` |
 | Context, compaction and turn receipts | `tests/e2e/chat-context.test.ts` |
 | Readability, tools, answered questions, high contrast | `tests/e2e/readability.test.ts` |
@@ -971,8 +972,7 @@ ownership and duplication, not an automatic split.
 
 ## UI spacing and motion
 
-Settings, Experiments, Pinned model quotas adds a pin to Account limits and
-the Limits page. The card follows the open conversation's model provider,
+Pinned model quotas put a pin on Account limits and the Limits page. The card follows the open conversation's model provider,
 including every matching Douane account, and offers four conversation corners
 or a dock below the thread or bot list. Drag the card from outside its buttons
 to a corner or the sidebar; arrow keys move a focused card and Home docks it.

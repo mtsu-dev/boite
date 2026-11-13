@@ -22,6 +22,11 @@ import { RpcFailure, type Client } from './client';
  * everything else stays on its own machine. What the target changed for
  * itself (`Settings.syncOverrides`) is skipped. Login tokens never cross
  * machines: a sign-in stays where it was made.
+ *
+ * Each end is read as it stores its settings (`settings.get` with `stored`).
+ * A Release reads the settings that are experiments as off without touching
+ * what is saved, so the home's reading must never reach a follower as a
+ * choice: a Nightly follower would lose its own.
  */
 
 /** One machine as the sync sees it. */
@@ -123,8 +128,10 @@ async function copyKeybindings(source: Client, target: Client, kept: ReadonlySet
 export async function syncSettings(source: SyncEnd, target: SyncEnd, signal?: AbortSignal): Promise<SyncReport> {
   let kept: ReadonlySet<string> = new Set();
   const { settings, changed } = await stage('settings', async () => {
-    const [fromSettings, toSettings] = await Promise.all([
-      source.client.call('settings.get', {}),
+    // Both ends as stored: a Release reads its experiments as off, and that reading is no choice to copy or to compare with.
+    const [fromSettings, toSettings, inForce] = await Promise.all([
+      source.client.call('settings.get', { stored: true }),
+      target.client.call('settings.get', { stored: true }),
       target.client.call('settings.get', {})
     ]);
     kept = new Set(toSettings.syncOverrides ?? []);
@@ -133,7 +140,7 @@ export async function syncSettings(source: SyncEnd, target: SyncEnd, signal?: Ab
       .filter(([key, value]) => JSON.stringify(effective(settings, key as (typeof SYNCED_SETTINGS)[number])) !== JSON.stringify(value));
     const changed = differs(toSettings).length;
     signal?.throwIfAborted();
-    if (!changed) return { settings: toSettings, changed };
+    if (!changed) return { settings: inForce, changed };
     // The target leaves out what it keeps at the moment it writes: a save from another window meanwhile stays its own.
     const patch = Object.fromEntries(differs(toSettings)) as Partial<Settings>;
     const written = await optional(target.client.call('settings.follow', { patch }));

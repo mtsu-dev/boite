@@ -38,7 +38,7 @@ test("the rail's badge is the number of Activity's Needs you rows: a failure cou
     thread('asks', { status: 'waiting' }),
     // Asks without stopping: the user's turn, not work.
     thread('question', { status: 'running', openQuestions: 1 }),
-    thread('failed', { status: 'error' }),
+    thread('failed', { status: 'error', unread: true }),
     // A parent that asks, its sub-agent interrupted under it: two events, the stop a row of Updates of its own.
     thread('parent', { status: 'waiting' }),
     thread('child', { status: 'idle', unread: true, backgroundWait: { state: 'interrupted', for: 'tests', reason: 'core-restarted', at: 1 }, parentThreadId: 'parent' as ThreadSummary['parentThreadId'] }),

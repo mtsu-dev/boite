@@ -23,14 +23,13 @@ const CHIP = '[data-testid="prompt-cache"]';
  * Opens the recent thread and gives it a cache that finished `minutesAgo`
  * minutes back, on the thread's own model and account.
  */
-async function open(size: { width: number; height: number }, cache: { minutesAgo: number; ttlSeconds: number; maxSeconds?: number; source: string }, experiment = true, locale = 'en'): Promise<BrowserPage> {
+async function open(size: { width: number; height: number }, cache: { minutesAgo: number; ttlSeconds: number; maxSeconds?: number; source: string }, locale = 'en'): Promise<BrowserPage> {
   const page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1&open=recent`, windowSize: size });
   pages.push(page);
   await page.waitFor(`!!(${STORE})?.openThread && !!document.querySelector('[data-testid="composer"]')`);
   await page.evaluate(`(async () => {
     // A language other than English loads its catalogue first.
     await (await import('/src/lib/i18n.svelte.ts')).setLocaleSetting(${JSON.stringify(locale)});
-    (await import('/src/lib/experiments.ts')).setExperiment('prompt-cache', ${experiment});
     const store = ${STORE};
     const thread = store.openThread;
     // The composer's row draws the meter (and the cache clock in it) once the context matters: 75% used.
@@ -98,7 +97,7 @@ test('an active turn hides the old cache clock until its new result arrives', as
 }, 90_000);
 
 test('past the OpenAI 30 minutes the cache reads maybe, on a phone and in French', async () => {
-  const page = await open({ width: 390, height: 844 }, { minutesAgo: 40, ttlSeconds: 1800, maxSeconds: 86_400, source: 'documented' }, true, 'fr');
+  const page = await open({ width: 390, height: 844 }, { minutesAgo: 40, ttlSeconds: 1800, maxSeconds: 86_400, source: 'documented' }, 'fr');
   await page.waitFor(`document.querySelector('${CHIP}')?.dataset.state === 'maybe'`);
   expect(await page.text(CHIP)).toContain('23 h');
   expect(await page.evaluate<string>(`document.querySelector('[data-testid="context-trigger"]').getAttribute('aria-label')`)).toContain('peut-être encore chaud');
@@ -112,15 +111,11 @@ test('past the OpenAI 30 minutes the cache reads maybe, on a phone and in French
   await page.screenshot(join(import.meta.dir, '.artifacts', 'prompt-cache-phone-bar.png'));
 }, 90_000);
 
-test('another model reads cold, and the experiment off draws nothing', async () => {
+test('another model reads cold', async () => {
   const page = await open({ width: 1300, height: 850 }, { minutesAgo: 2, ttlSeconds: 300, source: 'documented' });
   await page.waitFor(`document.querySelector('${CHIP}')?.dataset.state === 'warm'`);
   await page.evaluate(`(async () => { (${STORE}).openThread.model = 'another-model'; })()`);
   await page.waitFor(`document.querySelector('${CHIP}')?.dataset.state === 'cold'`);
   await capture(page, 'prompt-cache-cold');
   expect(await page.text('[data-testid="prompt-cache-detail"]')).toContain('Model or account changed');
-
-  const off = await open({ width: 1300, height: 850 }, { minutesAgo: 2, ttlSeconds: 300, source: 'documented' }, false);
-  await off.waitFor(`document.querySelector('[data-testid="context-trigger"]')`);
-  expect(await off.evaluate<boolean>(`!!document.querySelector('${CHIP}')`)).toBe(false);
 }, 90_000);

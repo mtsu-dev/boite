@@ -272,7 +272,15 @@ for (const width of [1280, 390]) {
       expect(await page.evaluate(`!!document.querySelector('${row(project(remote, 'p-boite'), 't-trace')}')`)).toBe(true);
       await click(`${first} ${id('project-working-toggle')}`);
       expect(await page.evaluate(`!document.querySelector('${row(first, 't-scheduler')}') && ${width < 720} === !document.querySelector('${first} ${id('done-thread')}')`)).toBe(true);
-      if (width >= 720) await showDone(false);
+      if (width >= 720) {
+        await showDone(false);
+        // With the Done switch off, the card's head still counts its done thread and opens its done list, then folds it.
+        await page.waitFor(`document.querySelector('${first} ${id('project-done-toggle')}')?.dataset.count === '1' && document.querySelector('${first} ${id('project-done')}').hidden`);
+        await click(`${first} ${id('project-done-toggle')}`);
+        await page.waitFor(`!!document.querySelector('${first} ${id('project-done')} ${id('done-thread')}[data-thread-id="t-trace"]')`);
+        await click(`${first} ${id('project-done-toggle')}`);
+        await page.waitFor(`document.querySelector('${first} ${id('project-done')}').hidden`);
+      }
       await page.evaluate(`(() => { const store = globalThis.__boiteTest.workspace.machines[0].store; store.threads = store.threads.map(t => t.id === 't-scheduler' ? {...t, pinned:true} : t); })()`);
       await page.waitFor(`document.querySelector('${row(first, 't-scheduler')}')`);
       await click(`${first} ${id('project-working-toggle')}`);

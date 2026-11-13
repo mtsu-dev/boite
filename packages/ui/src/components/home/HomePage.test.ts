@@ -668,7 +668,6 @@ test('the Operator card links the bot, lists the threads in touch with an End th
   expect(one('home-relations')!.textContent).toContain(strings.contacts.bot.none);
 
   // The link opens the bot on the Bots page, which Contacts never goes without.
-  setExperiment('resident-agents', true);
   one<HTMLButtonElement>('home-bot-open')!.click();
   expect(store.page).toBe('agents');
 });

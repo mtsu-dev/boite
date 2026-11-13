@@ -15,6 +15,7 @@
   import { openQuestionPage } from '../lib/question-page';
   import SettingRequestCard from './SettingRequestCardLoader.svelte';
   import AgentSettingCard from './AgentSettingCardLoader.svelte';
+  import BotRequestCard from './BotRequestCard.svelte';
   import Prose from './Prose.svelte';
   import ChatFile from './ChatFile.svelte';
   import InlineView from './InlineView.svelte';
@@ -207,7 +208,7 @@
       {:else if part.type === 'question' && part.async === true && (part.answer ?? null) === null && store.pendingQuestions.some((q) => q.id === part.questionId)}
         <!-- Waiting at the top of the composer: here only a line that brings it up. -->
         <button type="button" class="ghost docked-question" data-testid="question-docked" title={strings.chat.questionOpen} onclick={() => showDecision(part.questionId)}>
-          {#if part.setting}<Settings2 size={15} strokeWidth={1.75} />{:else if part.agentSetting}<Bot size={15} strokeWidth={1.75} />{:else if part.team}<Users size={15} strokeWidth={1.75} />{:else}<MessageCircleQuestionMark size={15} strokeWidth={1.75} />{/if}
+          {#if part.setting?.kind === 'bot'}<Bot size={15} strokeWidth={1.75} />{:else if part.setting}<Settings2 size={15} strokeWidth={1.75} />{:else if part.agentSetting}<Bot size={15} strokeWidth={1.75} />{:else if part.team}<Users size={15} strokeWidth={1.75} />{:else}<MessageCircleQuestionMark size={15} strokeWidth={1.75} />{/if}
           <span class="docked-text ui-label">{strings.chat.questionHeading}</span>
           <span class="waiting-mark" role="img" aria-label={strings.chat.questionDocked}></span>
         </button>
@@ -233,7 +234,17 @@
           pending={store.pendingQuestions.some((q) => q.id === part.questionId)}
           respond={(optionId) => store.answerQuestion(message.threadId, part.questionId, [optionId])}
         />{/snippet}</Deferred>
-      {:else if part.type === 'question' && part.setting}
+      {:else if part.type === 'question' && part.setting?.kind === 'bot'}
+        <BotRequestCard
+          {store}
+          threadId={message.threadId}
+          questionId={part.questionId}
+          setting={part.setting}
+          answer={part.answer ?? null}
+          pending={store.pendingQuestions.some((q) => q.id === part.questionId)}
+          respond={(optionId) => store.answerQuestion(message.threadId, part.questionId, [optionId])}
+        />
+      {:else if part.type === 'question' && part.setting && part.setting.kind !== 'bot'}
         <SettingRequestCard
           {store}
           text={part.text}

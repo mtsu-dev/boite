@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, tick, untrack } from 'svelte';
-  import { ArrowLeft, ArrowRightToLine, ChevronLeft, ChevronRight, ListX, Maximize2, Minimize2, PanelRightClose, SquareX, X, GripHorizontal, PanelsTopLeft } from '@lucide/svelte';
+  import { ArrowLeft, ArrowRightToLine, ChevronLeft, ChevronRight, ListX, Maximize2, Minimize2, SquareX, X, GripHorizontal, PanelsTopLeft } from '@lucide/svelte';
   import { floatingPanel, RESIZE_DIRECTIONS } from '../lib/floating-panel';
   import { browserBridge } from '../lib/browser-bridge';
   import { stripOverflows } from '../lib/strip-overflow';
@@ -311,29 +311,19 @@
     notePanelUse(store, thread, kind);
     noted++;
   }
-  /** The switcher's closing rows: a desktop's door no longer shuts the panel on a click, a phone's tab has no glyph to close it by. */
-  const HIDE = 'panel-hide';
+  /** A phone's tab has no glyph to close it by: its switcher's last row closes the showing panel. */
   const CLOSE_TAB = 'close-tab';
-  /** The panel's own window rows, in its switcher since the head holds the tabs and the close only. They keep the buttons' test ids. */
-  const MAXIMIZE = 'panel-maximize';
-  const DOCK = 'panel-dock';
   /**
-   * The door's list: which panel, then what the panel's window does (a
-   * desktop's expand, a floating panel's dock), then the way out, last as
-   * every menu's closing action is.
+   * The launcher's list: every panel. A desktop's strip keeps its own
+   * buttons for the window (dock, maximize) and the close beside the "+";
+   * a phone's door ends on closing the showing panel.
    */
   let headChoices = $derived<MenuItem[]>([
     ...choices,
-    ...(phone ? [] : [
-      separator('sep-window'),
-      { id: MAXIMIZE, label: rightPanel.maximized ? strings.rightPanel.restore : strings.rightPanel.maximize, glyph: rightPanel.maximized ? Minimize2 : Maximize2, testid: MAXIMIZE },
-      ...(rightPanel.floating ? [{ id: DOCK, label: strings.browser.dock, glyph: PanelsTopLeft, testid: DOCK }] : []),
-      { id: HIDE, label: strings.rightPanel.closePanel, glyph: PanelRightClose, testid: HIDE, hint: store.keyLabel('panel') || undefined }
-    ]),
     ...(phone && active ? [separator('sep-close'), { id: CLOSE_TAB, label: fill(strings.rightPanel.closeTab, { title: label(active) }), glyph: X }] : [])
   ]);
 
-  // The door names the showing panel and switches it: the panel tells it what to say while it is here.
+  // The switcher (the strip's "+", the phone's door) lists the panels and names the showing one: the panel tells it what to say while it is here.
   $effect(() => {
     panelSwitch.store = store;
     panelSwitch.name = active ? label(active) : strings.thread.panelMenu;
@@ -354,10 +344,7 @@
   function pickPanel(id: string): void {
     const thread = store.openThread;
     if (id === 'terminal-toggle' || id === 'board-toggle' || id === 'coordination') note(id);
-    if (id === MAXIMIZE) rightPanel.maximized = !rightPanel.maximized;
-    else if (id === DOCK) { rightPanel.floating = false; rightPanel.maximized = false; }
-    else if (id === HIDE) shut();
-    else if (id === CLOSE_TAB) { if (active) void closeTabs(panel, 'close', active.id); }
+    if (id === CLOSE_TAB) { if (active) void closeTabs(panel, 'close', active.id); }
     else if (id === CUSTOMIZE) store.showSettings('appearance', CONTROLS_SECTION);
     else if (id.startsWith(PLUGIN_TAB)) { const tab = pluginUi.tab(id.slice(PLUGIN_TAB.length)); if (tab) panel.openPluginTab(tab.key, tab.title); }
     else if (id === 'terminal-toggle') store.toggleTerminal();
@@ -457,7 +444,7 @@
           oncontextmenu={(event) => openTabMenu(event, surface)}
           use:longPress
         >
-          <!-- Every open panel is its glyph alone, named in its tooltip and on the header's door: one title in any frame.
+          <!-- Every open panel is its glyph alone, named in its tooltip (a phone's door names it too).
                The showing one is filled. Its close is a corner cross under the pointer. -->
           <span class="glyph solo" aria-hidden="true"><SurfaceIcon kind={surface.kind} size={14} /></span>
           <span class="name ui-label sr-only">{label(surface)}</span>
@@ -488,8 +475,19 @@
       </button>
     {/if}
 
-    <!-- The showing surface's head goes here (SurfaceHead.svelte): one head, named on the door. A phone's strip holds the thread and the door. -->
+    <!-- A desktop's "+" after the tabs opens the launcher (PanelSwitcher.svelte): every panel, searchable. -->
+    {#if !phone}<PanelSwitcher add />{/if}
+
+    <!-- The showing surface's head goes here (SurfaceHead.svelte): one head, named on its tab. A phone's strip holds the thread and the door. -->
     {#if phone}<span class="spacer"></span>{:else}<div class="surface-head" data-testid="panel-surface-head" bind:this={tools.slot}></div>{/if}
+
+    {#if !phone}
+      {#if rightPanel.floating}<button type="button" class="ghost small icon" data-testid="panel-dock" title={strings.browser.dock} aria-label={strings.browser.dock}
+        onclick={() => { rightPanel.floating = false; rightPanel.maximized = false; }}><PanelsTopLeft size={14} strokeWidth={1.75} /></button>{/if}
+      {@const sizeLabel = rightPanel.maximized ? strings.rightPanel.restore : strings.rightPanel.maximize}
+      <button type="button" class="ghost small icon maximize" data-testid="panel-maximize" title={sizeLabel} aria-label={sizeLabel} aria-pressed={rightPanel.maximized}
+        onclick={() => (rightPanel.maximized = !rightPanel.maximized)}>{#if rightPanel.maximized}<Minimize2 size={14} strokeWidth={1.75} />{:else}<Maximize2 size={14} strokeWidth={1.75} />{/if}</button>
+    {/if}
 
     {#if phone}
       <!-- A phone's panel covers the thread: its title stays on top, and the door beside it names the panel and switches it. -->

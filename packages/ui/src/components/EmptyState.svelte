@@ -10,14 +10,14 @@
 
   /**
    * The one empty view of the app (first run, "All caught up", a list with
-   * nothing in it): a drawn bot in its colours, one line, one action, as one
+   * nothing in it): a drawn bot in its colours (none with `robot={null}`), one line, one action, as one
    * block centred in whatever card holds it. The rail keeps its bots grey;
    * here they are shown as drawn. `action` is the button or the short note
    * under the line.
    */
   let { line, robot = HOUSE_BOT, testid, markTestid, small = false, action }: {
     line: string;
-    robot?: Robot;
+    robot?: Robot | null;
     testid?: string;
     markTestid?: string;
     /** A list's empty pane rather than a whole screen: a smaller bot and line. */
@@ -27,7 +27,7 @@
 </script>
 
 <div class="empty-state" class:small data-testid={testid}>
-  <span class="mark" data-testid={markTestid} aria-hidden="true"><RobotFace {robot} /></span>
+  {#if robot}<span class="mark" data-testid={markTestid} aria-hidden="true"><RobotFace {robot} /></span>{/if}
   <h1 class="line">{line}</h1>
   {#if action}<div class="action">{@render action()}</div>{/if}
 </div>

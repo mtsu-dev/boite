@@ -21,7 +21,7 @@ const QUIET = /^\[quiet\]/i;
  * Agent setting cards live with the threads' questions, and a thread creating a
  * bot resolves its route like a subagent's: `fake-client/agent-settings.ts` answers them.
  */
-export type AgentSettingMethod = Extract<keyof AgentsRpcMethods, `agents.settings.${string}` | 'agents.create' | 'agents.avatar.set'>;
+export type AgentSettingMethod = Extract<keyof AgentsRpcMethods, `agents.settings.${string}` | 'agents.create' | 'agents.create.approve' | 'agents.avatar.set'>;
 type AgentHandlers = {
   [M in Exclude<keyof AgentsRpcMethods, AgentSettingMethod>]: (params: RpcParams<M>) => RpcResult<M>;
 };

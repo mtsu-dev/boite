@@ -24,7 +24,7 @@ afterEach(async () => {
   vi.restoreAllMocks(); document.body.innerHTML = ''; localStorage.clear();
 });
 
-test('a phone row gives its title the width: a linked pull request stays in the thread, off the row', async () => {
+test('a phone row shows its linked pull request under its title, a link outside the row\'s button', async () => {
   vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
     media, matches: true, onchange: null, addListener() {}, removeListener() {}
   }));
@@ -32,13 +32,18 @@ test('a phone row gives its title the width: a linked pull request stays in the 
   store = new Store(); store.attach(client); await store.connect();
   const thread = store.threads.find(t => !t.parentThreadId && !t.archived && t.projectId !== null)!;
   thread.branch = null;
-  await client.call('threads.linkPullRequest', { threadId: thread.id, url: 'https://github.com/example/repo/pull/9951' });
+  const url = 'https://github.com/example/repo/pull/9951';
+  await client.call('threads.linkPullRequest', { threadId: thread.id, url });
   workspace.machines = [{ id: 'local', label: 'Local', store }]; workspace.active = store;
   mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'threads' } });
   await settle();
   const row = document.querySelector<HTMLElement>(`[data-testid=mobile-row][data-thread-id="${thread.id}"]`)!;
   expect(row.querySelector('.title')?.textContent).toBe(thread.title);
-  expect(row.querySelector('[data-testid=thread-pr]')).toBeNull();
+  const badge = row.querySelector<HTMLAnchorElement>('[data-testid=mobile-row-where] [data-testid=thread-pr]');
+  expect(badge?.href).toBe(url);
+  expect(badge?.textContent).toContain('#9951');
+  expect(badge?.closest('button')).toBeNull();
+  expect(row.querySelector('[data-testid=thread-headline] [data-testid=thread-pr], .headline [data-testid=thread-pr]')).toBeNull();
 });
 
 test('Activity gives each row its reason and its time, a sub-agent under its parent', async () => {
@@ -391,6 +396,11 @@ test("a project header names another machine as a place once two are connected, 
     const reconnect = () => document.querySelector<HTMLButtonElement>(`[data-testid=mobile-project-group][data-machine-id="${remote.machineId}"] [data-testid=project-reconnect]`);
     expect(reconnect()).toBeNull();
     const line = () => document.querySelector<HTMLElement>(`[data-testid=mobile-project-group][data-machine-id="${remote.machineId}"] [data-testid=project-offline]`);
+    expect(line()).toBeNull();
+    expect(host()?.classList.contains('dim')).toBe(false);
+    // Retrying a dropped link: the name dims, no offline line yet.
+    remote.connection = 'connecting'; await settle();
+    expect(host()?.classList.contains('dim')).toBe(true);
     expect(line()).toBeNull();
     remote.connection = 'closed'; await settle();
     // The state said once under the name, with its next step on that same line.
