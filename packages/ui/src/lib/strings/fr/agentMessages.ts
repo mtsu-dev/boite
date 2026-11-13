@@ -30,7 +30,7 @@ export const fr: Translation = {
       touch: 'Répondu : écrire à', opened: 'Répondu : {contact} a ouvert {project}', answered: 'Répondu',
       refused: 'Refusé : {reason}', refusedPlain: 'Refusé',
       linked: 'Mis en relation avec {thread}', shared: '{project} ouvert',
-      want: { talk: 'Veut parler à un fil', thread: 'Veut une nouveau fil', share: 'Veut l\'ouverture d\'un projet' },
+      want: { talk: 'Veut parler à un fil', thread: 'Veut un nouveau fil', share: 'Veut l\'ouverture d\'un projet' },
       id: 'Demande', openAnswer: 'Ouvrir la réponse', expand: 'Voir toute la demande', collapse: 'Réduire'
     }
   }

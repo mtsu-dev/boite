@@ -16,7 +16,7 @@ export const fr: Translation = {
     backup: 'Fils et réglages sauvegardés. Si le démarrage échoue, la version précédente est restaurée.',
     reconnect: 'Les appareils connectés se reconnectent automatiquement.',
     confirmTitle: 'Mettre à jour {machine} ?',
-    confirmBody: 'Les agents terminent leur outil en cours, 30 secondes au plus. La version {version} s’installe ensuite et ils reprennent après le redémarrage. Vos fils sont sauvegardées.',
+    confirmBody: 'Les agents terminent leur outil en cours, 30 secondes au plus. La version {version} s’installe ensuite et ils reprennent après le redémarrage. Vos fils sont sauvegardés.',
     manualTitle: 'Mise à jour manuelle',
     docker: 'Après la fin des agents, exécutez ceci dans le dossier Compose :',
     manual: 'Consultez le guide pour mettre à jour cette installation.',

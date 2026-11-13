@@ -22,7 +22,7 @@ export const fr: Translation = {
     },
     promptCache: {
       title: 'Minuteur du cache de prompt',
-      hint: 'Une horloge à côté de la jauge de contexte, qui décompte le temps pendant lequel le provider gardu fil en cache'
+      hint: 'Une horloge à côté de la jauge de contexte, qui décompte le temps pendant lequel le provider garde le fil en cache'
     },
     residentAgents: {
       title: 'Bots',

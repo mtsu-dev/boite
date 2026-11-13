@@ -24,7 +24,7 @@ export const fr: Translation = {
     switchConfirm: "Changer d'agent",
     switchCancel: 'Rester avec {provider}',
     cacheTitle: "Reconstruire le cache d'un fil de {tokens} jetons ?",
-    cacheBody: "Ce changement peut faire retraiter toute le fil hors cache au prochain tour, ce qui consomme plus de quota. Changer de modèle ou d'effort de raisonnement peut affecter le cache, tout comme activer le mode Fast de Claude pour la première fois.",
+    cacheBody: "Ce changement peut faire retraiter tout le fil hors cache au prochain tour, ce qui consomme plus de quota. Changer de modèle ou d'effort de raisonnement peut affecter le cache, tout comme activer le mode Fast de Claude pour la première fois.",
     cacheConfirm: 'Changer',
     cacheCancel: 'Garder le réglage',
     options: 'Ajouter au message',

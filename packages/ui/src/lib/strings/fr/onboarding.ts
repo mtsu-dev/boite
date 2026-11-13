@@ -48,7 +48,7 @@ export const fr: Translation = {
     profile: {
       title: "D'abord, lequel êtes-vous ?",
       everyday: "Je ne suis pas dev ! Ne m'embrouillez pas avec du code et des commandes !",
-      everydayHint: "Une nouveau fil attend dans Documents/Boite jusqu'à ce que vous lui donniez un dossier, et l'agent demande avant d'agir.",
+      everydayHint: "Un nouveau fil attend dans Documents/Boite jusqu'à ce que vous lui donniez un dossier, et l'agent demande avant d'agir.",
       developer: 'Je suis dev, mettez-moi la totale.',
       developerHint: "L'appli s'ouvre sur votre dernier projet, les fils montrent le terminal et la trace des processus, le panneau s'ouvre sur les modifications.",
       later: "Rien n'est retiré, dans un cas comme dans l'autre. Style et langue, dans les réglages, affiche ou masque chaque bouton, un par un."

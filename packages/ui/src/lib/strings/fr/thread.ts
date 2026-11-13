@@ -49,7 +49,7 @@ export const fr: Translation = {
     minutes: (n: number) => `${n} min`,
     hours: (n: number) => `${n} h`,
     none: 'Aucun fil ouvert',
-    noneBody: 'Choisissez-en une à gauche, ou lancez-en une nouvelle.',
+    noneBody: 'Choisissez-en un à gauche, ou lancez-en un nouveau.',
     trace: 'Trace',
     panel: 'Panneau',
     panelHint: 'Panneaux : modifications, fichiers, navigateur et outils de ce fil, à côté de la discussion',

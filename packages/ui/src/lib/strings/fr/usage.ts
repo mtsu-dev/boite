@@ -67,7 +67,7 @@ export const fr: Translation = {
     noRankedThreads: 'Aucun fil à classer pour cette mesure.',
     threadTurns: '{turns} tours',
     untitled: 'Fil sans titre',
-    archived: 'Archivée',
+    archived: 'Archivé',
     emptyRange: "Aucun tour terminé sur les {days} derniers jours.",
     unpriced: 'Aucun prix pour {providers} : ni tarif public, ni coût rapporté.',
     limits: 'Limites',

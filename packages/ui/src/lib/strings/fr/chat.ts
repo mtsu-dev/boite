@@ -245,7 +245,7 @@ export const fr: Translation = {
     editMessage: 'Modifier et renvoyer depuis ici',
     retry: 'Relancer cette réponse',
     fork: 'Bifurquer depuis ici',
-    forkHere: 'Bifurquer dans une nouveau fil',
+    forkHere: 'Bifurquer dans un nouveau fil',
     forkWorktree: 'Bifurquer dans un nouveau worktree',
     sentAt: 'Envoyé {time}',
     error: 'Erreur',
