@@ -28,15 +28,15 @@ export const fr: Translation = {
     findPanel: 'Chercher un panneau',
     noPanelMatch: 'Aucun panneau ne correspond',
     roles: {
-      board: 'Les tâches de tout le projet, en colonnes', tasks: 'Objectif, boucle, tâches et suivis de cette conversation',
-      trace: 'Les programmes que lance cette conversation', messages: 'Ce que cet agent et les autres agents se sont écrit',
-      coordination: "Laisser d'autres agents trouver cette conversation et lui écrire",
-      changes: 'Ce que cette conversation a changé dans le code, fichier par fichier', files: 'Parcourir et lire les fichiers du projet',
-      browser: 'La page web que regardent cette conversation et son agent', device: "Un écran de téléphone ou d'émulateur que l'agent pilote",
-      desk: 'Le travail en cours de ce bot, ses routines et sa mémoire', agents: "Les agents d'aide que cette conversation a lancés",
+      board: 'Les tâches de tout le projet, en colonnes', tasks: 'Objectif, boucle, tâches et suivis de ce fil',
+      trace: 'Les programmes que lance ce fil', messages: 'Ce que cet agent et les autres agents se sont écrit',
+      coordination: "Laisser d'autres agents trouver ce fil et lui écrire",
+      changes: 'Ce que ce fil a changé dans le code, fichier par fichier', files: 'Parcourir et lire les fichiers du projet',
+      browser: 'La page web que regardent ce fil et son agent', device: "Un écran de téléphone ou d'émulateur que l'agent pilote",
+      desk: 'Le travail en cours de ce bot, ses routines et sa mémoire', agents: "Les agents d'aide que ce fil a lancés",
       terminal: 'Une ligne de commande dans le dossier du projet', customize: 'Choisir les panneaux que cette liste propose'
     },
-    groups: { used: 'Utilisés dans cette conversation', work: 'Travail', agents: 'Agents', tools: 'Outils' },
+    groups: { used: 'Utilisés dans ce fil', work: 'Travail', agents: 'Agents', tools: 'Outils' },
     formerly: {
       trace: 'Anciennement Trace', tasks: 'Anciennement Gestionnaire de tâches', messages: 'Anciennement Discussions',
       coordination: 'Anciennement Liens entre conversations', customize: 'Anciennement Choisir les boutons'

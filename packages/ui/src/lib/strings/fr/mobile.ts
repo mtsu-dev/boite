@@ -3,7 +3,7 @@ import type { Translation } from '../../i18n.svelte';
 export const fr: Translation = {
   mobile: {
     clearSearch: 'Effacer la recherche',
-    atWork: '{count} en cours', atWorkFilter: 'Afficher seulement les conversations en cours',
+    atWork: '{count} en cours', atWorkFilter: 'Afficher seulement les fils en cours',
     draftTitle: 'Que voulez-vous faire ?', draftHint: 'Lancez une tâche, posez une question ou reprenez votre travail.',
     pairTitle: 'Votre Boite, sur votre téléphone',
     pairBody: 'Sur l’une de vos machines, ouvrez Réglages, Machines, Ajouter un appareil, puis scannez son QR code ici.',
@@ -25,8 +25,8 @@ export const fr: Translation = {
     checkReach: 'Joindre {host}', checkOpen: 'Ouvrir',
     checkReachHint: 'Ouvrez-la dans un onglet du navigateur. Si la page ne charge pas, ce téléphone ne joint pas la machine : vérifiez Tailscale, le VPN ou le Wi-Fi.',
     localNetworkAsk: 'Quand votre navigateur le demande, autorisez Boite à accéder aux appareils de votre réseau local : vos machines s’y trouvent.',
-    emptyTitle: 'Commencez une conversation',
-    emptyBody: 'Confiez une tâche à un agent. Vos conversations apparaîtront ici.',
+    emptyTitle: 'Commencez un fil',
+    emptyBody: 'Confiez une tâche à un agent. Vos fils apparaîtront ici.',
     emptyActivity: 'Tout est à jour',
     nothingNeedsYou: 'Rien ne vous attend',
     computer: 'Ordinateur connecté',
@@ -38,6 +38,6 @@ export const fr: Translation = {
     feed: { run: 'Veut lancer :', helperAsks: '{title} vous attend', updates: 'Nouvelles', markAllRead: 'Tout marquer comme lu', markAllReadHint: 'Retire les échecs, les arrêts et le travail fini. Les questions et les permissions restent.', verb: { answer: 'Répondre', review: 'Examiner', deny: 'Refuser', skip: 'Passer' } },
     navigation: 'Navigation', activity: 'Activité',
     waitingElsewhere: '{count} en attente de vous',
-    search: 'Trouver une conversation', noThreads: 'Aucune conversation ne correspond.'
+    search: 'Trouver un fil', noThreads: 'Aucun fil ne correspond.'
   }
 };
