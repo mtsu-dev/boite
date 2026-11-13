@@ -64,8 +64,7 @@ the VPN or the Wi-Fi.
 
 ## Use it
 
-- The bottom bar holds Threads and Activity, plus Bots when that experiment
-  is on. The + for a new conversation sits in the thread list's header.
+- The bottom bar holds Threads, Activity and Bots. The + for a new conversation sits in the thread list's header.
 - The gear at the end of each list's header opens Settings; Back, or the
   system's back gesture, returns to the list.
 - Slide a row left for Pin and Archive. Tap a conversation's title for its
@@ -131,5 +130,6 @@ computer screen.
 
 - [Machines](machines.md): groups, several computers and switching.
 - [Server](server.md): a machine without the desktop app, or on Android.
-- [Experiments](experiments.md): the Bots tab and Contacts.
+- [Bots](bots.md): the Bots tab.
+- [Experiments](experiments.md): Contacts and the other unfinished features, in Nightly builds.
 - Technical reference: [phone](internals/phone.md), [Android](internals/android.md).

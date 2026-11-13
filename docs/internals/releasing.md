@@ -211,6 +211,12 @@ displays boite (de nuit) in the window title and tray. The in-app channel select
 track, including an older stable version when leaving nightly.
 [Desktop updates](updates.md) covers restart behavior and data compatibility.
 
+A Release carries a plain version (`2.0.0`); a Nightly and a build from source
+carry a prerelease one (`2.0.0-nightly.20261111.1`, `2.0.0-beta.1`). That is
+what separates them at run time: [experiments](experiments.md) do not exist in
+a Release, in the app or in the core, and nothing else has to be set when a
+version is cut.
+
 Boite Dev remains a separate development install. It uses `com.boite.two.dev`,
 the product name Boite Dev and `boite2-dev`, with no automatic app updates.
 
