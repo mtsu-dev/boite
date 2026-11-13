@@ -1,6 +1,7 @@
 <script lang="ts">
   import { rowAsks, stateForm } from '../lib/status-order';
-  import { Archive, Ellipsis, Pin, PinOff } from '@lucide/svelte';
+  import { Archive, Ellipsis, GitBranch, Pin, PinOff } from '@lucide/svelte';
+  import { trackThreadPullRequest } from '../lib/thread-pull-request.svelte';
   import type { Project, ThreadSummary } from '@boite/contracts';
   import type { Machine } from '../lib/workspace.svelte';
   import type { MenuItem } from '../lib/menu';
@@ -12,6 +13,7 @@
   import MachinePlace from './MachinePlace.svelte';
   import type { RowPlace } from '../lib/row-place';
   import ThreadHeadline from './ThreadHeadline.svelte';
+  import PullRequestBadge from './PullRequestBadge.svelte';
   import ThreadState from './ThreadState.svelte';
   import { wordFit } from '../lib/word-fit';
   import { threadState } from '../lib/thread-state';
@@ -26,7 +28,8 @@
   /**
    * A phone's thread row, the desktop row's grammar at a finger's size (ThreadHeadline.svelte): the title gets the
    * width, two lines of it before any ellipsis, its mark, its word and its time at the end of its first line, then where it
-   * lives under it when the list says so. The pull request waits in the thread, the pin under the slide. `compact` is
+   * lives under it when the list says so. A list row's place line also carries its pull request, a link, and its branch, as
+   * before the redraw, outside the row's button; the pin waits under the slide. `compact` is
    * the flat lists' form (Recent, Activity): the project's tile first, unless the line under the title names the
    * project in words. Activity (the phone's screen) is a card under its kind line, whose glyph is the card's one
    * mark (ActivityKind.svelte): the whole title on the card's width, on the kind word's edge as on the desktop; under
@@ -62,9 +65,14 @@
   /** A dot when the user must act or a turn failed, the arc for work, each with its word; the time alone otherwise (ThreadState draws it then). */
   const form = $derived(stateForm(kind));
   const away = $derived(owner.connection !== 'ready');
+  const pr = trackThreadPullRequest(() => ({ owner, thread }));
+  /** A list row's pull request and branch; Activity's cards keep their own lines. */
+  const pullRequest = $derived(reason === undefined ? pr.value : null);
+  const branch = $derived(reason === undefined ? thread.branch : undefined);
   /** "Offline" said once: on the place line, unless the card's head, the place's machine or the row's own state
       (work it last saw, ThreadState.svelte) already says it. */
   const chip = $derived(away && !placed && !where?.host?.away && form !== 'work');
+  const listLine = $derived(reason === undefined && (!!where || chip || !!branch || pullRequest !== null));
   /** Activity: what the thread asks, in words, a question whole; nothing when its reason only names the place line's project. */
   const ask = $derived(reason === undefined ? null : feedQuestion(owner, thread.id) ?? feedAsk(owner, thread.id, { reason, place: where?.project }));
   /** Activity: the whole command the thread asks to run, read before Allow. */
@@ -90,7 +98,7 @@
 </script>
 
 {#snippet placeLine(since?: number)}
-  <span class="meta" data-testid="mobile-row-meta"><span class="where" data-testid="mobile-row-where" title={where?.text}>{#if where?.project}<span class="ui-label" use:wordFit={where.project}></span>{/if}{#if where?.host}<MachinePlace host={where.host} />{/if}{#if chip}<span class="away" data-testid="thread-offline">{strings.connection.offline}</span>{/if}</span>{#if since !== undefined}<time class="since ui-label" title={exactTime(since)}>{ago(since, now)}</time>{/if}</span>
+  <span class="meta" data-testid="mobile-row-meta"><span class="where" data-testid="mobile-row-where" title={where?.text}>{#if where?.project}<span class="ui-label" use:wordFit={where.project}></span>{/if}{#if where?.host}<MachinePlace host={where.host} />{/if}{#if chip}<span class="away" data-testid="thread-offline">{strings.connection.offline}</span>{/if}{#if pullRequest}<PullRequestBadge {pullRequest} />{/if}{#if branch}<span class="branch" data-testid="thread-branch" title={branch}><GitBranch size={12} /><span class="ui-label">{branch}</span></span>{/if}</span>{#if since !== undefined}<time class="since ui-label" title={exactTime(since)}>{ago(since, now)}</time>{/if}</span>
 {/snippet}
 {#snippet why()}{@render placeLine(verb || !feedKind ? at : undefined)}{/snippet}
 
@@ -116,8 +124,10 @@
         <ThreadHeadline {owner} {thread} {now} tile={compact && where === undefined ? project : undefined} offline={away}
           at={form !== null ? thread.lastUserMessageAt ?? thread.createdAt : undefined} />
       {/if}
-      {#if reason === undefined && (where || chip)}{@render placeLine()}{/if}
+      {#if listLine}<span class="meta meta-room" aria-hidden="true"><span class="ui-label">&nbsp;</span></span>{/if}
     </button>
+    <!-- A list row's place line over the room kept for it: the pull request's link cannot sit inside the row's button. -->
+    {#if listLine}<div class="list-meta">{@render placeLine()}</div>{/if}
     {#if reason !== undefined && (ask || operation || helpers.length > 0)}
       <!-- What is decided on, whole up to four lines and behind "Show all" past them (ClampText.svelte), then the
            sub-agents asking the same; outside the row's button, since the fold is a button of its own. -->
@@ -178,6 +188,12 @@
      moving the line ("atlas-api" lost its p). */
   .meta .where { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; min-width: 0; padding-block: 0.3em; margin-block: -0.3em; overflow: hidden; white-space: nowrap; }
   .meta .where > .ui-label { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .where > .branch { display: flex; align-items: center; gap: 4px; flex: 0 1 auto; min-width: 0; overflow: hidden; }
+  .where > .branch :global(svg) { flex: none; }
+  .where > .branch > .ui-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  /* The room the list row's place line takes in its button, and the line laid over it inside the button's 1 px border and padding. */
+  .meta-room { visibility: hidden; }
+  .list-meta { position: absolute; left: 13px; right: 13px; bottom: 10px; pointer-events: none; }
   /* "Offline" when nothing above says it: MachinePlace's state mark, alone. */
   .where > .away { flex: none; padding: 0 6px; border: 1px solid var(--color-edge); border-radius: var(--radius-sm); font-size: var(--text-xs); line-height: 1.5; }
   /* Activity's since when, last on the place line: the title keeps its line whole. */
