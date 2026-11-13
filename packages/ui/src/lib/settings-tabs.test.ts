@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { SETTINGS_FAMILIES, SETTINGS_TABS, desktopPage, familyOf, movedTo, navOf, phonePage, sectionsOf, viewOf } from './settings-tabs';
+import { SETTINGS_FAMILIES, SETTINGS_TABS, desktopPage, familyOf, homeOf, movedTo, navOf, phonePage, sectionsOf, viewOf } from './settings-tabs';
 
 describe('the settings families', () => {
   test('four families hold every page once, each page a peer inside its family', () => {
@@ -73,7 +73,7 @@ describe('the settings families', () => {
     expect(movedTo('general', 'browser-profiles')).toBe('browser');
     expect(movedTo('accounts', 'browser-profiles')).toBe('browser');
     expect(desktopPage('browser', true)).toBe('browser');
-    expect(desktopPage('browser', false)).toBe('general');
+    expect(desktopPage('browser', false)).toBe('home');
     expect(phonePage('general', 'browser-profiles', true)).toBe('browser');
     expect(phonePage('accounts', 'browser-profiles', true)).toBe('browser');
     expect(phonePage('browser', null, false)).toBe('home');
@@ -81,9 +81,17 @@ describe('the settings families', () => {
 
   test('a page that is not merged opens itself', () => {
     for (const tab of ['keyboard', 'limits', 'machines'] as const) expect(desktopPage(tab, true)).toBe(tab);
-    // A desktop has no page between the nav and a page: Home, or a page this window may not open, shows General.
-    expect(desktopPage('home', true)).toBe('general');
-    expect(desktopPage('resources', false)).toBe('general');
+    // Settings opens on Home, a tile per page, and a page this window may not open lands there too.
+    expect(desktopPage('home', true)).toBe('home');
+    expect(desktopPage('resources', false)).toBe('home');
+  });
+
+  test('Home lists every page this window may open, the ones merged into another under their own name too', () => {
+    // The nav names only Diagnostics: a tile is where Memory and processes and the task manager are found by name.
+    expect(homeOf('advanced', true)).toEqual(['advanced', 'experiments', 'diagnostics', 'resources', 'task-manager']);
+    expect(homeOf('advanced', false)).toEqual(['advanced', 'experiments', 'task-manager']);
+    expect(homeOf('connections', false)).toEqual(['machines']);
+    for (const family of SETTINGS_FAMILIES) expect(homeOf(family.id, true)).toEqual([...family.pages]);
   });
 
   test('the nav lists each family\'s pages as peers, in the phone\'s order, and leaves out one merged into another', () => {

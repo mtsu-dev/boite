@@ -115,6 +115,9 @@ test("settings nav keeps every entry's words inside it and centres the page's co
     await page.evaluate("location.reload()");
     await page.waitFor('document.querySelector("[data-testid=nav-settings]")');
     await page.click("[data-testid=nav-settings]");
+    // Settings opens on its home, a tile per page: General is one click from it.
+    await page.waitFor('document.querySelector("[data-testid=settings-home-general]")');
+    await page.click("[data-testid=settings-home-general]");
     await page.waitFor('document.querySelector("[data-testid=settings-tab-machines]") && document.querySelector("[data-testid=settings-page] > section.card")');
     await page.evaluate("document.fonts.ready");
     for (const width of [1920, 1440, 1100, 900]) {

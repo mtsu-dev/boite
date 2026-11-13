@@ -146,14 +146,34 @@ test('the checklist model sits with how agents answer on General, with no experi
   await waitFor(() => document.querySelector('[data-testid=settings]') === null);
 });
 
-test('a desktop has two levels: the gear opens the nav, its search and the first page, a typed word lists its results in the page and Enter opens one', async ({ app: _app }) => {
+test('the gear opens Settings on its home: a tile per page under its family, the search in the nav, a typed word lists its results in the page and Enter opens one', async ({ app: _app }) => {
   query<HTMLButtonElement>('[data-testid=nav-settings]').click();
   await waitFor(() => document.querySelector('[data-testid=settings-search]') !== null);
-  // No grid of tiles between the nav and a page: Home shows General beside the nav, the search heads the nav.
+  // Home is the page Settings opens on: the nav's first entry lights, no page's does, and the search heads the nav.
   expect(query('[data-testid=settings-home]').closest('nav')).not.toBeNull();
-  expect(document.querySelector('[data-testid^=settings-home-]')).toBeNull();
+  await waitFor(() => document.querySelector('[data-testid=settings-tab-home]')?.getAttribute('aria-current') === 'page');
+  expect(query('[data-testid=settings-crumb] h1').textContent?.trim()).toBe('Home');
+  expect(document.querySelector('[data-testid=settings-tab-general]')?.getAttribute('aria-current')).toBeNull();
+  // One tile per page under the nav's four families; a page merged into Diagnostics keeps a tile under its own name.
+  const tiles = (family: string) => [...document.querySelectorAll<HTMLElement>(`[data-testid=settings-home-family][data-family=${family}] .tile`)].map((tile) => tile.dataset.testid?.replace('settings-home-', ''));
+  expect(tiles('app')).toEqual(['general', 'keyboard', 'voice', 'appearance']);
+  expect(tiles('agents')).toEqual(['accounts', 'plugins', 'brain', 'limits', 'usage']);
+  expect(tiles('connections')).toEqual(['browser', 'machines']);
+  expect(tiles('advanced')).toEqual(['advanced', 'experiments', 'diagnostics', 'resources', 'task-manager']);
+  // A tile says its page's state where there is one to read.
+  expect(query('[data-testid=settings-home-appearance-status]').textContent).toBe('System · English');
+  expect(query('[data-testid=settings-home-accounts-status]').textContent).toMatch(/connected|Connect a provider/);
+  // A merged page's tile opens its host at its section, and the nav's Home entry leads back.
+  query<HTMLButtonElement>('[data-testid=settings-home-resources]').click();
+  await waitFor(() => document.querySelector('#settings-resources [data-testid=resources-page]') !== null);
+  expect(query('[data-testid=settings-tab-diagnostics]').getAttribute('aria-current')).toBe('page');
+  query<HTMLButtonElement>('[data-testid=settings-tab-home]').click();
+  await waitFor(() => document.querySelector('[data-testid=settings-home-page]') !== null);
+  // A tile opens its page.
+  query<HTMLButtonElement>('[data-testid=settings-home-general]').click();
   await waitFor(() => document.querySelector('[data-testid=settings-tab-general]')?.getAttribute('aria-current') === 'page');
   expect(query('[data-testid=settings-crumb] h1').textContent?.trim()).toBe('General');
+  expect(document.querySelector('[data-testid=settings-home-page]')).toBeNull();
   // The entries stand under four family heads, Advanced named like the others.
   expect([...document.querySelectorAll<HTMLElement>('nav [data-testid=settings-family]')].map((family) => [family.dataset.family, family.querySelector('.family-head')?.textContent ?? null])).toEqual([
     ['app', 'App'], ['agents', 'Agents'], ['connections', 'Connections'], ['advanced', 'Advanced']

@@ -34,6 +34,12 @@ export const strings = {
     search: 'Search settings',
     searchEmpty: 'No setting matches',
     connectProvider: 'Connect a provider',
+    /** The state line under a tile of the desktop's Settings home. */
+    providersReady: '{count} connected',
+    providersOne: '1 connected',
+    machinesCount: '{count} machines',
+    devicesCount: '{count} paired devices',
+    devicesOne: '1 paired device',
     conversations: 'Conversations',
     /** General's cards by topic: how the list groups, what a conversation shows, what reaches you. */
     threadList: 'Thread list',

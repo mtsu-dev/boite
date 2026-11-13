@@ -26,6 +26,7 @@
   import MachinesPage from './MachinesPage.svelte';
   import ResourcesPage from './ResourcesPage.svelte';
   import TaskManagerLoader from './TaskManagerLoader.svelte';
+  import SettingsHome from './SettingsHome.svelte';
   import UsagePage from './UsagePage.svelte';
   import VoiceSettings from './VoiceSettings.svelte';
   import { providerGroups } from '../lib/provider-family';
@@ -35,7 +36,7 @@
   import MachineIcon from './MachineIcon.svelte';
   import { untrack } from 'svelte';
   import { holdSettingsCard, revealSettingsCard } from '../lib/settings-flash';
-  import { desktopPage, desktopSettings, familyOf, machinePage, movedTo, navOf, ownerOnly, pageScopeOf, phonePage, sectionsOf, SETTINGS_FAMILIES } from '../lib/settings-tabs';
+  import { desktopPage, desktopSettings, familyOf, homeOf, machinePage, movedTo, navOf, ownerOnly, pageScopeOf, phonePage, sectionsOf, SETTINGS_FAMILIES } from '../lib/settings-tabs';
   import { PageScope, providePageScope } from '../lib/page-scope.svelte';
   import { titleSlot } from '../lib/title-slot.svelte';
 
@@ -86,6 +87,7 @@
   });
   const narrow = new MediaQuery('(max-width: 720px)');
   const inShell = window.__TAURI_INTERNALS__ !== undefined;
+  const HomeIcon = SETTINGS_ICONS.home;
 
   /** A page as the nav names it. */
   type Tab = { id: SettingsTab; label: string };
@@ -183,6 +185,10 @@
   let families = $derived(SETTINGS_FAMILIES
     .map((family) => ({ id: family.id, label: strings.settings.families[family.id], pages: navOf(family.id, store.owner).flatMap((id) => tabs.filter((entry) => entry.id === id)) }))
     .filter((family) => family.pages.length > 0));
+  /** Home's tiles: the same families, a page merged into another under its own name too (`homeOf`). */
+  let homeFamilies = $derived(SETTINGS_FAMILIES
+    .map((family) => ({ id: family.id, label: strings.settings.families[family.id], pages: homeOf(family.id, store.owner).flatMap((id) => tabs.filter((entry) => entry.id === id)) }))
+    .filter((family) => family.pages.length > 0));
   /** The pages merged into the shown one as its last sections (`lib/settings-tabs.ts`). */
   let merged = $derived(sectionsOf(tab, store.owner));
 
@@ -206,7 +212,7 @@
     }
   }
   /** One title per screen, at the top of its card: the page's own name, as the nav lists it. */
-  let title = $derived(tabs.find((entry) => entry.id === tab)?.label ?? '');
+  let title = $derived(tab === 'home' ? strings.settings.tabs.home : tabs.find((entry) => entry.id === tab)?.label ?? '');
   let info = $derived(infoOf(tab));
   let scopePicks = $derived(bar && tab !== 'experiments' && choices.length > 1 && chosen !== undefined);
   /**
@@ -229,7 +235,7 @@
    * cards' own, as a phone's screen does; the bar above stays empty but for a
    * page's buttons (UsagePage.svelte). The list's head leads back to the
    * threads, as the bots column's does (SideHead.svelte); the rail's gear
-   * opens Settings' home: no extra Back button.
+   * and the nav's first entry open Settings' home: no extra Back button.
    */
   $effect(() => {
     if (!desktopSettings(narrow.current)) return;
@@ -326,9 +332,9 @@
   const motion = (): ScrollBehavior => (window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth');
 
   /**
-   * The search heads the nav: while it holds words, the card lists what they
-   * find in place of the page; a result or a nav entry opens its page and
-   * empties it.
+   * The search heads the nav, Home included: while it holds words, the card
+   * lists what they find in place of the page; a result, a tile or a nav entry
+   * opens its page and empties it.
    */
   let query = $state('');
   let field = $state<HTMLInputElement>();
@@ -419,7 +425,7 @@
     {#if scopeWords[1]?.trim()}<span class="ui-label">{scopeWords[1].trim()}</span>{/if}
   {/if}
 {/snippet}
-<!-- Settings' home is this search: it finds every page, card and single setting. The phone's home opens on the same field. -->
+<!-- The search of Settings' home: it finds every page, card and single setting. The phone's home opens on the same field. -->
 {#snippet searchField(phone: boolean)}
   <label class="search" class:phone data-testid="settings-home">
     <Search size={14} strokeWidth={1.75} aria-hidden="true" />
@@ -456,6 +462,11 @@
       <ChevronLeft size={18} aria-hidden="true" /><span class="ui-label">{strings.settings.heading}</span>
     </button>
     {@render searchField(false)}
+    <!-- Home, the page Settings opens on: one tile per page (SettingsHome.svelte). -->
+    <button type="button" class="ghost tab home" class:active={!searching && tab === 'home'} data-testid="settings-tab-home" aria-current={!searching && tab === 'home' ? 'page' : undefined} onclick={() => go('home')}>
+      <HomeIcon size={SETTINGS_ICON_SIZE} strokeWidth={SETTINGS_ICON_STROKE} aria-hidden="true" />
+      <span class="ui-label">{strings.settings.tabs.home}</span>
+    </button>
     <!-- The pages under their family heads, as on a phone, every page a peer of its family. -->
     {#each families as family (family.id)}
       <div class="family" role="group" aria-label={family.label} data-testid="settings-family" data-family={family.id}>
@@ -498,6 +509,7 @@
         {#if bar && tab !== 'experiments'}{@render machineNotes()}{/if}
         {#key target}
         <PolicyBanner store={target} />
+        {#if tab === 'home'}<SettingsHome {store} target={chosen?.store ?? store} families={homeFamilies} onopen={go} />{/if}
         {@render view(tab)}
         {#each merged as section (section)}
           <!-- A page merged into this one, as its last section: its route scrolls here. -->
@@ -569,7 +581,7 @@
   /* A family: its head in the meta size over its entries, and air between two families. */
   .family { display: flex; flex-direction: column; gap: 2px; }
   .family + .family { margin-top: var(--space-5); }
-  .search + .family { margin-top: var(--space-3); }
+  .tab.home + .family { margin-top: var(--space-4); }
   .family-head { margin: 0; padding: 0 12px var(--space-2); color: var(--color-subtle); font-size: var(--text-meta); font-weight: 500; }
 
   /* The search heads the nav, on the chrome like the rows under it. */
@@ -687,9 +699,7 @@
     line-height: 1.35;
     color: var(--color-muted-foreground);
   }
-  /* The open page's mark: a short bar of the accent at the row's edge, drawn in as the page changes. */
-  .tab::before { content: ''; position: absolute; left: 0; top: 50%; width: 3px; height: 18px; border-radius: 0 3px 3px 0; background: var(--color-accent); transform: translateY(-50%) scaleY(0); transition: transform var(--dur-3) var(--ease-out-quint); }
-  .tab.active::before { transform: translateY(-50%) scaleY(1); }
+  /* The open page shows by its fill and its icon's accent, never by a bar on the row's side. */
 
   /* A full width row does not shrink under the finger, it fills one step more. */
   .tab:active:not(:disabled) {
@@ -738,9 +748,8 @@
     .title { height: var(--control); margin: 0; font-size: var(--text-sm); white-space: nowrap; }
     .search { width: 180px; height: var(--control); margin: 0; }
     .tab { width: auto; min-height: var(--row); white-space: nowrap; padding: 6px 10px; font-size: var(--text-sm); }
-    .tab::before { display: none; }
     .family { flex-direction: row; }
-    .family + .family, .search + .family { margin-top: 0; }
+    .family + .family, .tab.home + .family { margin-top: 0; }
     .family-head { display: none; }
   }
 </style>
