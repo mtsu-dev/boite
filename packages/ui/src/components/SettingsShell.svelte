@@ -1,7 +1,6 @@
 <script lang="ts">
   import { MediaQuery } from 'svelte/reactivity';
   import { tick, untrack } from 'svelte';
-  import { SETTINGS_PAGE_ALIASES } from '@boite/contracts';
   import { ChevronDown, ChevronLeft, ChevronRight, Monitor, MonitorSmartphone, Network, Search } from '@lucide/svelte';
   import MobileSettings from './MobileSettings.svelte';
   import InfoTip from './InfoTip.svelte';
@@ -57,7 +56,7 @@
   import { providerGroups } from '../lib/provider-family';
   import { isThisPC, listedName, machineName, workspace } from '../lib/workspace.svelte';
   import { holdSettingsCard, revealSettingsCard } from '../lib/settings-flash';
-  import { blocksOf, desktopPlace, desktopSettings, machinePage, navOf, navSectionsOf, pageScopeOf, phonePage, type SettingsBlock, type SettingsCardId, type SettingsPage } from '../lib/settings-tabs';
+  import { aliasesOf, blocksOf, desktopPlace, desktopSettings, machinePage, navOf, navSectionsOf, pageScopeOf, phonePage, type SettingsBlock, type SettingsCardId, type SettingsPage } from '../lib/settings-tabs';
   import { cardWords, searchSettings, settingsEntries, type ExtraEntry, type SettingsEntry } from '../lib/settings-index';
   import { PageScope, providePageScope } from '../lib/page-scope.svelte';
   import { titleSlot } from '../lib/title-slot.svelte';
@@ -309,8 +308,8 @@
       {/if}
     {/each}
     <!-- The pages from before the map, as routes: a link or a test that names one still opens where its content went. Never drawn, never reached by the keyboard. -->
-    {#each SETTINGS_PAGE_ALIASES as alias (alias)}
-      <button type="button" hidden tabindex="-1" aria-hidden="true" data-testid="settings-tab-{alias}" onclick={() => go(alias)}></button>
+    {#each aliasesOf(store.owner) as alias (alias)}
+      <button type="button" hidden style="display: none" tabindex="-1" aria-hidden="true" data-testid="settings-tab-{alias}" onclick={() => go(alias)}></button>
     {/each}
   </nav>
 
@@ -389,7 +388,7 @@
   {:else if id === 'machines'}<MachinesPage {onopenthread} {store} extras={false} />
   {:else if id === 'phone'}<PhoneSettings store={target} />
   {:else if id === 'origins'}<OriginsCard store={target} />
-  {:else if id === 'updates'}<UpdatesCard />
+  {:else if id === 'updates'}<div class="own"><UpdatesCard /></div>
   {:else if id === 'agent-updates'}<HarnessUpdatesCard store={target} />
   {:else if id === 'experiments'}<ExperimentsPage {store} {target} />
   {:else if id === 'diagnostics'}<DiagnosticsPage store={target} {onopenthread} />
@@ -481,6 +480,8 @@
   .map > .block > :global(.page > header h1 > .ui-label + .info-tip),
   .map > .block > :global(.page > header h1:not(:has(> :not(.ui-label, .ui-label + .info-tip)))),
   .map > .block > :global(.limits-page > header h1),
+  /* A card with its own padding and no title above it (the app's version): it keeps them, one step in from the page's card rules. */
+  .own > :global(.card) { max-width: var(--settings-width); margin-bottom: var(--space-6); }
   .map > .block > :global(.machines-page .head h1) { display: none; }
   .map > .block > :global(.page > header:not(:has(button:not(.ui-label + .info-tip), [role='status'], .policy-lock))),
   .map > .block > :global(.machines-page .head:not(:has(button:not(.ui-label + .info-tip)))) { display: none; }

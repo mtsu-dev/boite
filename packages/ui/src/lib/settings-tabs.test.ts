@@ -4,7 +4,7 @@ import { REQUESTABLE_SETTINGS, SETTINGS_PAGES, SETTINGS_PAGE_ALIASES } from '@bo
 const experiments = vi.hoisted(() => ({ shown: true }));
 vi.mock('./experiments.svelte', () => ({ experimentsShown: () => experiments.shown }));
 
-import { PAGES, SETTINGS_CARDS, SETTINGS_TABS, blocksOf, cardOf, cardsOf, desktopHas, desktopPage, desktopPlace, legacyRoute, machinePage, navOf, navSectionsOf, ownerOnly, pageScopeOf, phonePage, placeOf, type SettingsTab } from './settings-tabs';
+import { PAGES, aliasesOf, SETTINGS_CARDS, SETTINGS_TABS, blocksOf, cardOf, cardsOf, desktopHas, desktopPage, desktopPlace, legacyRoute, machinePage, navOf, navSectionsOf, ownerOnly, pageScopeOf, phonePage, placeOf, type SettingsTab } from './settings-tabs';
 
 beforeEach(() => { experiments.shown = true; });
 
@@ -229,4 +229,11 @@ describe('the phone, which still lists the pages from before', () => {
     expect(phonePage('input', 'keyboard', true)).toBe('home');
     expect(phonePage('appearance', 'theme', true)).toBe('appearance');
   });
+});
+
+test('a window answers only to the old page names whose cards it shows', () => {
+  expect(aliasesOf(true)).toEqual(expect.arrayContaining(['general', 'accounts', 'plugins', 'brain', 'machines', 'advanced']));
+  // A paired device never had Providers, Plugins or Instructions: no route by those names.
+  for (const gone of ['accounts', 'plugins', 'brain'] as const) expect(aliasesOf(false)).not.toContain(gone);
+  expect(aliasesOf(false)).toEqual(expect.arrayContaining(['general', 'machines', 'limits']));
 });

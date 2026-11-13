@@ -657,8 +657,8 @@ describe('settings', () => {
   test('lists what an agent may ask about, and a change card settles when the owner applies it', async () => {
     const listed = await boite(['settings']);
     expect(listed.code).toBe(0);
-    expect(listed.out).toContain('agentCpuCapPercent 75 resources#limits\n');
-    expect(listed.out).toContain('listenOnLan false advanced#phone (sensitive)');
+    expect(listed.out).toContain('agentCpuCapPercent 75 safeguards#limits\n');
+    expect(listed.out).toContain('listenOnLan false devices#phone (sensitive)');
     expect(listed.out).toStartWith('app: no Boite app has reported yet');
     expect(listed.out).not.toContain('experiment.');
     expect(listed.out).not.toContain('subscriptionProxy');
@@ -752,9 +752,9 @@ describe('settings', () => {
     const listed = await boite(['settings']);
     expect(listed.out).toStartWith('app: ');
     expect(listed.out).toContain('speaks French');
-    expect(listed.out).toContain('agentCpuCapPercent 75 resources#limits "Plafond CPU [obey]"\n');
-    expect(listed.out).toContain('experiment.teams true experiments#teams "Equipes"\n');
-    expect(listed.out).toContain('experiment.whip false experiments#whip\n');
+    expect(listed.out).toContain('agentCpuCapPercent 75 safeguards#limits "Plafond CPU [obey]"\n');
+    expect(listed.out).toContain('experiment.teams true version#teams "Equipes"\n');
+    expect(listed.out).toContain('experiment.whip false version#whip\n');
     // The agent that thought the switch was off learns it is on before drawing a card.
     expect((await boite(['settings', 'request', 'experiment.teams', 'true', '--why', 'x'])).err).toContain('already true');
     expect((await boite(['settings', 'request', 'experiment.whip', '"yes"', '--why', 'x'])).err).toContain('true or false');

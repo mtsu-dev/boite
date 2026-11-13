@@ -227,6 +227,19 @@ export function navOf(owner: boolean): SettingsPage[] {
   return SETTINGS_PAGES.filter((page) => pageAvailable(page, owner));
 }
 
+/**
+ * The pages from before the map this window still answers to by name: one
+ * whose cards it shows somewhere. A paired device, which had no Providers
+ * page, has no route by that name either.
+ */
+export function aliasesOf(owner: boolean): LegacyTab[] {
+  return (Object.keys(LEGACY) as LegacyTab[]).filter((alias) => {
+    if (isPage(alias)) return false;
+    const cards = CARDS.filter((card) => card.from[0] === alias);
+    return cards.length === 0 ? pageAvailable(LEGACY[alias][0], owner) : cards.some((card) => cardShown(card, owner));
+  });
+}
+
 /** The sections the nav lists under a long page while it is open. */
 export function navSectionsOf(page: SettingsPage, owner: boolean): SettingsCard[] {
   return PAGES[page].long ? cardsOf(page, owner).filter((card) => card.nav) : [];
