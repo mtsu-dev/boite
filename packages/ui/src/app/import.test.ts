@@ -27,7 +27,7 @@ test('the project menu carries no import until the session-import experiment is 
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=import]') !== null);
 });
 
-test('Import a Claude Code session in the project menu lists the transcripts and opens the imported thread', async () => {
+test('Import a session in the project menu lists the transcripts and opens the imported thread', async () => {
   store.draft = null;
   setExperiment('session-import', true);
   await mountOnFake();

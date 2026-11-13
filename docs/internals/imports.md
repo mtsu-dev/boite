@@ -107,7 +107,7 @@ follow their primary machine's desktop switches until they choose their own
 the palette no command, and
 the `import-session` chord does nothing.
 
-`Import a Claude Code session` sits in a project's menu (right click, or the
+`Import a session` sits in a project's menu (right click, or the
 dots beside its name) and in the palette, where it takes the open thread's
 project, else the draft's, else the first one. The dialog lists the sessions
 with the account and the time of the last write; a session already imported
