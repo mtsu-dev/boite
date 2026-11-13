@@ -60,6 +60,10 @@ export function listen(ctx: StoreContext, client: Client): void {
           s.core = client.core;
           // The primary machine's build decides which experiments exist.
           heardBuild(s, s.core?.version);
+          // The folds are kept per core, so they are read once the core says which it is: here, for
+          // every ready, as a client that failed its first hello reaches ready without Store.connect.
+          // Before the lists land and before the landing, so a draft it opens unfolds over them.
+          ctx.projects.restoreFolds();
           ctx.connection.clockOffset = client.clockOffset ?? 0;
           if (ctx.connection.localCore) noteThisComputer(s.core?.hostname);
           undo.discardExpired(s, s.core?.startedAt);

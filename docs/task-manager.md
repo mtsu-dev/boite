@@ -61,6 +61,14 @@ These apply when the agents run on Windows:
   processes: ten seconds after a turn, a process whose parent has exited is
   stopped.
 
+### Keeping the machine awake
+
+Keep this machine awake while agents work: the machine that runs the agents
+does not go to sleep while a turn runs or waits in the queue, even with the
+app closed. A conversation waiting for your answer does not keep it awake, and
+the screen may still turn off. It is on by default; the switch sits with
+Stop what agents leave running.
+
 ### Resource limits
 
 - Protect available memory: over a limit, Boite stops the largest process

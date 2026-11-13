@@ -49,6 +49,7 @@ import { AgentBrowser, BROWSER_SCOPE } from './browser.ts';
 import { MobileDevices } from './devices/control.ts';
 import { VirtualDesktops } from './desktop/service.ts';
 import { DesktopWindows } from './windows/service.ts';
+import { KeepAwake, type KeepAwakeHold } from './keep-awake.ts';
 import { LazyMcp } from './mcp/lazy.ts';
 import { QuotaStore } from './quotas.ts';
 import { dropRetiredAccounts } from './account-retirement.ts';
@@ -116,6 +117,8 @@ export interface CoreOptions {
   dataDirKind?: 'default' | 'custom';
   /** How often a resident core runs its retention passes; a test shortens the minute. */
   retentionPassMs?: number;
+  /** The sleep inhibitor this core holds while agents work, instead of the platform's; tests count the holds. */
+  keepAwake?: KeepAwakeHold;
   /** Legacy vault cleanup only; tests substitute it so no system store is touched. */
   secretVault?: (dir: string) => Promise<SecretVault>;
   /** The admin policy file this core reads instead of the machine's (`policy.ts`); tests point it inside their data directory. */
@@ -243,6 +246,8 @@ export class Core {
   /** Simulators and emulators open in conversations' Device panels. */
   readonly devices = new MobileDevices(this);
   readonly windows = new DesktopWindows(this);
+  /** The machine stays awake while a turn runs or is queued (`keep-awake.ts`). */
+  readonly keepAwake: KeepAwake;
   /** Conversations' private X desktops for GUI apps (docs/internals/desktop.md). */
   readonly desktops = new VirtualDesktops(this);
   /** The user's stdio MCP servers, started when a conversation first calls one (`mcp/lazy.ts`). */
@@ -487,6 +492,9 @@ export class Core {
       return { ok: true as const };
     });
     this.procs.applySettings(this.settings.get());
+    // `BOITE_KEEP_AWAKE=0`: tests and a host that must never be held awake by this core.
+    const platformHold = this.procs.platform.keepAwake;
+    this.keepAwake = new KeepAwake(this, options.keepAwake ?? (process.env.BOITE_KEEP_AWAKE === '0' || !platformHold ? null : onLost => platformHold(onLost)));
     dropRetiredAccounts(this);
     this.accounts.ensureDefaults();
     this.accounts.recheckSignedOut();
@@ -639,6 +647,7 @@ export class Core {
     await this.browser.close();
     this.devices.stop();
     this.windows.stop();
+    this.keepAwake.close();
     await this.desktops.stopAll();
     this.lazyMcp.close();
     this.artifactPreviews.stop();

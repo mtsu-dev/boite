@@ -475,8 +475,9 @@ export class Connection {
       // The primary machine's build decides which experiments exist; a client that reports no state says it here.
       heardBuild(s, core.version);
       this.clockOffset = client.clockOffset ?? 0;
+      // A client that reports its state had its folds read by the ready handler (events.ts).
       // Before the landing: a draft it opens unfolds its project over the restored folds.
-      this.ctx.projects.restoreFolds();
+      if (!observable(client)) this.ctx.projects.restoreFolds();
       if (this.localCore) noteThisComputer(core.hostname);
       this.connection = client.state;
       this.principal = client.principal;

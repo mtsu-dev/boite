@@ -101,6 +101,10 @@
       <span class="text"><span class="ui-label-box"><span class="ui-label" id="{uid}-reap-orphans-name">{strings.settings.reapOrphans}</span><InfoTip topic={strings.settings.reapOrphans} text={strings.settings.reapOrphansHint} /><SyncMark {store} key="reapOrphans" /></span><span class="hint" id="{uid}-reap-orphans-effect">{strings.settings.effects.reapOrphans}</span></span>
       <input id="{uid}-reap-orphans" aria-labelledby="{uid}-reap-orphans-name" aria-describedby="{uid}-reap-orphans-effect" type="checkbox" role="switch" data-testid="setting-reap-orphans" checked={store.settings?.reapOrphans ?? true} onchange={(event) => void toggled(event.currentTarget, reapOrphans => store.saveSettings({ reapOrphans }))} />
     </label>
+    <label for="{uid}-keep-awake" class="switch-row">
+      <span class="text"><span class="ui-label-box"><span class="ui-label" id="{uid}-keep-awake-name">{strings.settings.keepAwake}</span><InfoTip topic={strings.settings.keepAwake} text={strings.settings.keepAwakeHint} /></span><span class="hint" id="{uid}-keep-awake-effect">{strings.settings.effects.keepAwake}</span></span>
+      <input id="{uid}-keep-awake" aria-labelledby="{uid}-keep-awake-name" aria-describedby="{uid}-keep-awake-effect" type="checkbox" role="switch" data-testid="setting-keep-awake" checked={store.settings?.keepAwake ?? true} onchange={(event) => void toggled(event.currentTarget, keepAwake => store.saveSettings({ keepAwake }))} />
+    </label>
     {#if store.resources.length === 0}
       <p class="idle" data-testid="resources-empty">{strings.resources.empty}</p>
     {/if}

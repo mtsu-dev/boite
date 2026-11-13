@@ -496,6 +496,31 @@ unmuted: the tests that need the test core to mute it are skipped then, with
 that reason, as on a machine with no audio device. A mute an earlier run left
 behind, or an unmute that failed, is no such machine, and the tests run.
 
+## Keeping the machine awake
+
+While a turn runs or waits for a scheduler slot, the core holds the sleep
+inhibitor of the machine it runs on (`keep-awake.ts`,
+`ProcessPlatform.keepAwake`), so a long task is not cut by the machine going
+to sleep. It is the core's, not the window's: it holds with the app closed and
+on a headless server. A thread in `waiting`, an approval or a question card
+open for the user, holds nothing. The hold is given back 5 seconds after the
+last working thread rests, at once when `keepAwake` goes off, and when the
+core closes.
+
+| OS | Inhibitor | Ends with a dead core because |
+| --- | --- | --- |
+| Linux | `systemd-inhibit --what=sleep:idle --mode=block cat`; `--what=idle` alone when logind refuses to block sleep, as it does for a service with no active session | `cat` reads a pipe the core holds |
+| macOS | `caffeinate -i cat` | the same pipe |
+| Windows | `SetThreadExecutionState(ES_CONTINUOUS \| ES_SYSTEM_REQUIRED)` | the state belongs to the process |
+
+None of them stops a sleep the user orders, a closed lid or the screen
+turning off. A machine without the helper, or one that refuses it, logs
+`keepAwake.unavailable` once and is not asked again until the setting changes.
+`BOITE_KEEP_AWAKE=0` makes a core hold nothing; the test preload sets it.
+`keep-awake.test.ts` drives the rule with a counted hold and the helper with a
+stand-in command, and lists the real logind inhibitor where a system bus
+exists.
+
 ## Turning them off
 
 | Setting | Effect when off |
@@ -504,6 +529,7 @@ behind, or an unmute that failed, is no such machine, and the tests run.
 | `focusGuard` | Leaves agent windows' foreground behavior unchanged |
 | `muteAgents` | Restores agent sessions muted by Boite |
 | `reapOrphans` | Retains leftovers until tree termination or core exit |
+| `keepAwake` | Gives the sleep inhibitor back; the machine sleeps by its own power settings |
 
 Protections are on by default. Notifications are a separate client preference
 under General, stored per machine as `boite.notifications`. Windows uses the

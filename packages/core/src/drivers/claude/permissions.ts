@@ -45,6 +45,28 @@ function askedQuestions(raw: unknown): AskedQuestion[] {
   return out;
 }
 
+type AskOptions = Parameters<CanUseTool>[2];
+
+/**
+ * Auto (`bypassPermissions`) promises a run that never waits on the user, yet
+ * Claude Code still asks for its own safety checks there: in 2.1.323 a
+ * `rm -rf "$D/$p"` whose variables may be empty stops on a card until someone
+ * answers. Such an ask is the one that refuses an "always allow" rule
+ * (`suppressAlwaysAllowRule`); a PreToolUse hook's ask does not set it, so the
+ * user's own guards keep their card, and so does an ask rule of their settings.
+ * The refusal carries the CLI's reason, which says how to write the call so it
+ * needs no approval, and the agent goes on with that.
+ */
+function autoRefusal(mode: string, options: AskOptions): { reason: string; message: string } | null {
+  if (mode !== 'bypassPermissions' || options.suppressAlwaysAllowRule !== true || options.matchedAskRule !== undefined) return null;
+  // The reason may carry ANSI escapes.
+  const reason = (options.decisionReason ?? '').replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').trim() || 'a Claude Code safety check';
+  return {
+    reason,
+    message: `Not run: Claude Code asks for approval here (${reason}), and this thread runs in Auto, where nobody is asked. Do the same thing in a form that needs no approval.`,
+  };
+}
+
 /** What the gate reads from its session: the turn the CLI is on, and the context of the last turn attached. */
 export interface GateHost {
   head(): ClaudeTurn | null;
@@ -69,6 +91,11 @@ export function toolGate(host: GateHost): ToolGate {
     if (toolName === ASK_TOOL) return askUser(turn, input);
     if (turn.isStopped || options.signal.aborted) return { behavior: 'deny', message: DENIED };
     if (turn.ctx.thread.permissionMode === 'yolo') return { behavior: 'allow', updatedInput: input };
+    const refusal = autoRefusal(turn.ctx.thread.permissionMode, options);
+    if (refusal !== null) {
+      turn.ctx.log('info', `claude safety check on ${toolName} in Auto: refused without a card (${refusal.reason})`);
+      return { behavior: 'deny', message: refusal.message };
+    }
     const ticket = turn.ctx.requestPermission(toolName, input, options.title ?? options.description ?? null);
     const index = turn.takeIndex();
     turn.part(index, { type: 'permission', requestId: ticket.requestId, toolName, decision: null });

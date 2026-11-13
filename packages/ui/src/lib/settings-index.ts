@@ -68,7 +68,7 @@ export function cardWords(): Record<SettingsCardId, CardWords> {
     'diagnostics-problems': { title: strings.diagnostics.problems, controls: [[strings.diagnostics.report]] },
     'diagnostics-log': { title: strings.diagnostics.log, controls: [[strings.diagnostics.search]] },
     'diagnostics-agents': { title: strings.diagnostics.agentAccess, controls: [] },
-    tasks: { title: strings.protection.tasks, controls: [[s.reapOrphans, s.reapOrphansHint]] },
+    tasks: { title: strings.protection.tasks, controls: [[s.reapOrphans, s.reapOrphansHint], [s.keepAwake, s.keepAwakeHint]] },
     'task-manager': { title: strings.taskManager.title, controls: [[strings.taskManager.search, strings.taskManager.scope]] },
     core: { title: s.core, controls: [[s.version], [s.endpoint], [s.dataDir]] },
     tour: { title: strings.settingsMap.tour, controls: [[s.tourReplay, strings.settingsMap.tourHint]] }

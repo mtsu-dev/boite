@@ -152,6 +152,56 @@ describe('claude driver', () => {
       .filter(part => part.type === 'permission')).toEqual([]);
   });
 
+  test('Auto refuses a Claude Code safety ask with its reason, while a hook ask and a settings ask rule keep their card', async () => {
+    const client = await harness.connect();
+    const threadId = await claudeThread(client);
+    await client.call('threads.update', { threadId, permissionMode: 'bypassPermissions' });
+    const requested: string[] = [];
+    client.on('permission.requested', request => {
+      requested.push(String((request.input as { command?: string }).command));
+      void client.call('permissions.answer', { requestId: request.id, decision: 'allow' });
+    });
+    const answers: (PermissionResult | null)[] = [];
+    // What Claude Code 2.1.323 sends in bypass mode, read from a live run on 2026-11-13.
+    const rm = 'D=/tmp/x; for p in a; do rm -rf "$D/$p"; done';
+    const reason = `Dangerous rm operation on possibly-empty variable path: "$D/$p" in \`rm -rf "$D/$p"\` (rewrite it as "\${D:?}/\${p:?}" or use a literal path)`;
+    scripted((fake, options) => {
+      fake.emit(init('sess-auto'));
+      void (async () => {
+        answers.push(await options.canUseTool!('Bash', { command: rm }, {
+          signal: new AbortController().signal, toolUseID: 'toolu_rm', requestId: 'req_rm',
+          suggestions: [], decisionReason: reason, suppressAlwaysAllowRule: true,
+        }));
+        answers.push(await options.canUseTool!('Bash', { command: 'echo hello' }, {
+          signal: new AbortController().signal, toolUseID: 'toolu_hook', requestId: 'req_hook',
+          decisionReason: 'focus test reason',
+        }));
+        // The same safety ask, forced by an ask rule of the user's settings: their rule asks for a card.
+        answers.push(await options.canUseTool!('Bash', { command: rm }, {
+          signal: new AbortController().signal, toolUseID: 'toolu_rule', requestId: 'req_rule',
+          suggestions: [], decisionReason: reason, suppressAlwaysAllowRule: true,
+          matchedAskRule: { source: 'userSettings', toolName: 'Bash', ruleContent: 'rm:*' },
+        }));
+        fake.emit(success('sess-auto'));
+        fake.end();
+      })();
+    });
+    const finished = client.next('turn.finished', turn => turn.threadId === threadId, 10000);
+    await client.call('turns.start', { threadId, prompt: 'clean up' });
+    expect((await finished).status).toBe('done');
+    expect(answers[0]).toMatchObject({ behavior: 'deny' });
+    const refused = answers[0];
+    expect(refused?.behavior === 'deny' ? refused.message : '').toContain('rewrite it as "${D:?}/${p:?}"');
+    expect(answers[1]).toEqual({ behavior: 'allow', updatedInput: { command: 'echo hello' } });
+    expect(answers[2]).toEqual({ behavior: 'allow', updatedInput: { command: rm } });
+    expect(requested).toEqual(['echo hello', rm]);
+    const parts = (await client.call('threads.get', { threadId })).messages.flatMap(message => message.parts);
+    expect(parts.filter(part => part.type === 'permission')).toMatchObject([
+      { toolName: 'Bash', decision: 'allow' },
+      { toolName: 'Bash', decision: 'allow' },
+    ]);
+  });
+
   test('canUseTool routes to the permission gate and answers the CLI', async () => {
     const client = await harness.connect();
     const threadId = await claudeThread(client);
