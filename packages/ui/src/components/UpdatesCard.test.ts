@@ -9,7 +9,7 @@ import { RpcFailure } from '../lib/client';
 import { Store, store as primary } from '../lib/store.svelte';
 import { workspace } from '../lib/workspace.svelte';
 import { confirm } from '../lib/confirm.svelte';
-import { strings } from '../lib/strings';
+import { fill, strings } from '../lib/strings';
 
 let view: ReturnType<typeof mount> | undefined;
 const stores: Store[] = [];
@@ -61,7 +61,7 @@ async function machine(id: string, offered: boolean) {
   return { store, client };
 }
 
-test('nothing folded: the version, the release found, the channel with Release closed, one check and one update', async () => {
+test('nothing folded: the version, the release found, the channel, one check and one update', async () => {
   const { updater, native } = await app(nightly('available', '2.0.0-nightly.20261022.2'));
   view = mount(UpdatesCard, { target: document.body, props: { updater, native: true } });
   flushSync();
@@ -72,12 +72,43 @@ test('nothing folded: the version, the release found, the channel with Release c
   expect(one('app-update-status')!.textContent).toContain(strings.harnessUpdates.availableShort);
   const [nightlyButton, release] = [one<HTMLButtonElement>('app-update-nightly')!, one<HTMLButtonElement>('app-update-stable')!];
   expect([nightlyButton.getAttribute('aria-pressed'), nightlyButton.disabled]).toEqual(['true', false]);
-  // No stable release exists yet: Release stays visible, closed, and says why.
-  expect([release.disabled, release.title]).toEqual([true, strings.appUpdate.noRelease]);
+  expect([release.getAttribute('aria-pressed'), release.disabled]).toEqual(['false', false]);
   expect(one<HTMLButtonElement>('updates-run-all')!.disabled).toBe(false);
   one<HTMLButtonElement>('updates-check-all')!.click();
   // The owner asked: the shell checks even right after another check (#991).
   await vi.waitFor(() => expect(native.check).toHaveBeenCalledWith('nightly', true));
+});
+
+test('Release on a nightly fetches the release at once, then one click restarts; one that cannot read the data says so', async () => {
+  const offer = (phase: UpdateSnapshot['phase']): UpdateSnapshot => ({ ...nightly(phase, '0.1.0'), channel: 'stable' });
+  let stable: UpdateSnapshot['phase'] = 'available';
+  const { updater, native, publish } = await app(nightly('current'), {
+    check: vi.fn(async (channel) => (channel === 'stable' ? offer(stable) : nightly('current'))),
+    download: vi.fn(async () => offer('ready'))
+  });
+  view = mount(UpdatesCard, { target: document.body, props: { updater, native: true } });
+  flushSync();
+  one<HTMLButtonElement>('app-update-stable')!.click();
+  await vi.waitFor(() => expect(native.download).toHaveBeenCalledOnce());
+  await updater.settled();
+  flushSync();
+  expect(native.check).toHaveBeenCalledWith('stable', true);
+  expect(one('app-update-stable')!.getAttribute('aria-pressed')).toBe('true');
+  expect(one('updates-found')!.textContent).toBe('0.1.0');
+  expect(one('updates-run-all')!.textContent).toContain(strings.updateAll.restart);
+
+  one<HTMLButtonElement>('app-update-nightly')!.click();
+  await vi.waitFor(() => expect(native.check).toHaveBeenLastCalledWith('nightly', true));
+  await updater.settled();
+  stable = 'blocked';
+  one<HTMLButtonElement>('app-update-stable')!.click();
+  await vi.waitFor(() => expect(native.check).toHaveBeenLastCalledWith('stable', true));
+  await updater.settled();
+  publish(offer('blocked'));
+  expect(one('app-update-status')!.textContent).toContain(fill(strings.appUpdate.blocked, { version: '0.1.0' }));
+  expect(one('updates-found')).toBeNull();
+  expect(one<HTMLButtonElement>('updates-run-all')?.disabled ?? true).toBe(true);
+  expect(native.download).toHaveBeenCalledOnce();
 });
 
 test('a downloaded release restarts on a confirmed click, and waiting offers a cancel that locks the channel', async () => {

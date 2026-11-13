@@ -20,9 +20,6 @@
   /** The desktop app's updater; `native` is false in a browser, which has none. */
   let { updater = appUpdater, native = showAppUpdateUi() }: { updater?: AppUpdater; native?: boolean } = $props();
 
-  /** No stable release is published yet: the channel opens with the first one. */
-  const RELEASE_PUBLISHED = false;
-
   const uid = $props.id();
   let checking = $state(false);
   const app = $derived(native ? updater.snapshot : null);
@@ -70,6 +67,7 @@
       case 'waiting': return strings.appUpdate.waiting;
       case 'installing': return strings.appUpdate.installing;
       case 'current': return strings.serverUpdate.current;
+      case 'blocked': return fill(strings.appUpdate.blocked, { version: app.version ?? '' });
       case 'error': return app.error ?? strings.appUpdate.failed;
       default: return strings.appUpdate.idle;
     }
@@ -108,8 +106,8 @@
   }
 
   function choose(channel: UpdateChannel): void {
-    if (!app || channel === app.channel) return;
-    updater.checkNow(channel);
+    if (!app) return;
+    void updater.switchChannel(channel);
   }
 </script>
 
@@ -125,7 +123,7 @@
         <button type="button" class:on={app!.channel === 'nightly'} aria-pressed={app!.channel === 'nightly'} data-testid="app-update-nightly"
           disabled={app!.phase === 'waiting' || app!.phase === 'installing'} onclick={() => choose('nightly')}><span class="ui-label">{strings.appUpdate.nightlyShort}</span></button>
         <button type="button" class:on={app!.channel === 'stable'} aria-pressed={app!.channel === 'stable'} data-testid="app-update-stable"
-          disabled={!RELEASE_PUBLISHED || app!.phase === 'waiting' || app!.phase === 'installing'} title={RELEASE_PUBLISHED ? undefined : strings.appUpdate.noRelease}
+          disabled={app!.phase === 'waiting' || app!.phase === 'installing'}
           onclick={() => choose('stable')}><span class="ui-label">{strings.appUpdate.releaseShort}</span></button>
       </div>
     {/if}

@@ -27,7 +27,8 @@ export function affectedChecks(files: string[]) {
       checks.desktop = checks.shellRust = true;
     } else if (/^packages\/(core|contracts)\//.test(file)) {
       // The shell's Rust tests compile apps/shell/src-tauri and start inline
-      // fake cores, never this code. The APK build reads APP_ORIGIN from the
+      // fake cores, never this code; its build.rs reads only SCHEMA_VERSION,
+      // which the desktop builds compile. The APK build reads APP_ORIGIN from the
       // contracts and nothing from the core.
       checks.core = checks.web = checks.desktop = checks.server = checks.telemetry = checks.e2eTypes = checks.stress = true;
       if (file.startsWith('packages/contracts/')) checks.android = true;

@@ -116,21 +116,40 @@ test('General has no update controls or shortcut and the Machines tab opens upda
   expect(await disabled('updates-run-all')).toBe(false);
 }, 30_000);
 
-test('channel options preserve the installed channel and nightly window name, and Release waits for its first build', async () => {
-  await updates('ready', true);
+test('channel options preserve the installed channel and nightly window name, and Release is one pick then a restart', async () => {
+  await updates('available', true);
   await page.waitFor(`document.title.endsWith('boite (de nuit)')`);
   expect(await page.text(id('titlebar'))).not.toContain('boite (de nuit)');
-  // The channel is two buttons in the card, no fold: Nightly is on, Release has nothing published yet.
+  // The channel is two buttons in the card, no fold, both open: Nightly is on.
   expect(await page.evaluate(`document.querySelector('${id('app-updates-card')} details, ${id('app-updates-card')} summary') === null`)).toBe(true);
-  expect(await page.evaluate(`document.querySelector('${id('app-update-nightly')}').getAttribute('aria-pressed')`)).toBe('true');
-  expect(await disabled('app-update-nightly')).toBe(false);
-  expect(await disabled('app-update-stable')).toBe(true);
-  expect(await page.evaluate(`document.querySelector('${id('app-update-stable')}').title`)).toBe('No release yet: Boite ships nightly builds for now.');
-  await page.click(id('app-update-stable'));
-  expect(await page.evaluate(`document.querySelector('${id('app-update-stable')}').getAttribute('aria-pressed')`)).toBe('false');
-  expect(await page.text(id('updates-version'))).toContain('2.0.0-nightly.7');
+  const pressed = (name: string) => page.evaluate<string>(`document.querySelector('${id(name)}').getAttribute('aria-pressed')`);
+  expect(await pressed('app-update-nightly')).toBe('true');
+  expect([await disabled('app-update-nightly'), await disabled('app-update-stable')]).toEqual([false, false]);
   expect((await page.text(id('updates-found'))).trim()).toBe('2.0.0-nightly.8');
-  await capture('channel-options');
+  // Release checks and downloads the older stable build at once: the next click restarts into it.
+  await page.click(id('app-update-stable'));
+  await page.waitFor(`document.querySelector('${id('updates-run-all')}')?.textContent.includes('Restart')`);
+  expect(await pressed('app-update-stable')).toBe('true');
+  expect(await page.text(id('updates-version'))).toContain('2.0.0-nightly.7');
+  expect((await page.text(id('updates-found'))).trim()).toBe('2.0.0-beta.2');
+  await capture('channel-release-ready');
+  await width(390);
+  await updates('available', true);
+  await page.click(id('app-update-stable'));
+  await page.waitFor(`document.querySelector('${id('updates-run-all')}')?.textContent.includes('Restart')`);
+  await capture('channel-release-ready-phone');
+}, 45_000);
+
+test('a release that cannot read the nightly data says so and offers nothing', async () => {
+  await page.navigate(`${base}/?fake=1&appUpdate=available&appUpdateChannel=nightly&appUpdateCurrentChannel=nightly&appUpdateRelease=blocked`);
+  await page.waitFor(`document.querySelector('${id('nav-settings')}')`);
+  await machines();
+  await page.waitFor(`document.querySelector('${id('app-update-stable')}')`);
+  await page.click(id('app-update-stable'));
+  await page.waitFor(`document.querySelector('${id('app-update-status')}')?.textContent.includes('cannot read the data')`);
+  expect(await page.text(id('app-update-status'))).toContain('Boite 2.0.0-beta.2 cannot read the data of this version yet.');
+  expect(await absent('updates-found')).toBe(true);
+  await capture('channel-release-blocked');
 }, 30_000);
 
 test('download progress and retry fit a narrow desktop', async () => {

@@ -172,11 +172,12 @@ keeps its own value ([synchronization](machines.md#automatic-settings-synchroniz
 
 Choose Release for regular releases or Nightly for checked daily builds from
 `main` ([CI schedule](ci.md#boite-de-nuit)). Nightlies may contain unfinished
-changes. Until the first stable release is published, Release stays disabled
-(`RELEASE_PUBLISHED` in `UpdatesCard.svelte`).
+changes.
 
-Changing the channel immediately checks for its newest signed release and
-offers it. Returning from nightly to Boite permits a lower version. Both
+Changing the channel immediately checks for its newest signed release and,
+when it is a build of the other channel, downloads it (`switchChannel` in
+`app-update.svelte.ts`): the card's next button is Restart. Returning from
+nightly to Boite permits a lower version. Both
 channels use the same install location, bundle identifier and `boite2` data
 directory. Projects, accounts and journal files stay in place. The Windows
 installer retains the name Boite. A nightly build calls itself boite (de nuit)
@@ -184,8 +185,17 @@ in the window title and tray tooltip, and uses the violet and magenta icon. The
 title bar inside the window never shows the app's name: its room goes to the
 project, the thread or settings.
 
-Keep a backup before trying nightlies: retaining files does not make a future
-journal schema readable by an older release. Boite refuses a journal schema it
+A release is offered only when it reads the journal this build left on disk.
+Each `latest.json` carries `journal_schema`, the `SCHEMA_VERSION` of
+`packages/core/src/journal/schema.ts` that `scripts/ci/updater-manifest.ts`
+reads; the shell's `build.rs` compiles the same line in. A release whose schema
+is lower answers the check with the `blocked` phase: the card names it and
+offers nothing, and it is not reported to other machines. A manifest without
+the field counts as schema 50, what v0.1.0 writes. The channel stays chosen, so
+the first release that reads the data is offered by the next check.
+
+Keep a backup before trying nightlies: the check covers the journal, not every
+file a nightly may write. Boite refuses a journal schema it
 cannot read: the core names the file and both schema versions on stderr, leaves
 the file untouched and exits with code 1. Cores built before this check open a
 newer journal anyway, so restore the backup before going back to one. The
