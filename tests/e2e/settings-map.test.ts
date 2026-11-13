@@ -11,7 +11,7 @@ import { startUi } from './lib/ui.ts';
  * the search opening a card and ringing it. Each page is captured for review.
  * A phone (390x844) walks the same map: its list, each page it has, one search.
  */
-const ARTIFACTS = join(import.meta.dir, '.artifacts', 'settings-map');
+const ARTIFACTS = join(import.meta.dir, '.artifacts', 'settings-map', 'final');
 const DESKTOP = { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false };
 const PHONE = { width: 390, height: 844, deviceScaleFactor: 1, mobile: true };
 /** What a phone has of each page: the map's cards without the desktop ones, by an anchor each draws. */
@@ -195,6 +195,8 @@ test('a phone lists the pages it has in the map\'s order, each with its cards, a
   await page.evaluate(`(() => { const field = document.querySelector('${id('settings-search')}'); field.value = ''; field.dispatchEvent(new Event('input', { bubbles: true })); })()`);
   await page.type(id('settings-search'), 'compaction');
   await page.waitFor(`document.querySelector('${id('settings-search-result')}')?.dataset.section === 'auto-compact'`);
+  // No result runs past the screen's edge.
+  expect(await page.evaluate(`document.scrollingElement.scrollWidth <= innerWidth && [...document.querySelectorAll('.result')].every(row => row.getBoundingClientRect().right <= innerWidth)`)).toBe(true);
   await capture('phone-search.png');
   await page.click(id('settings-search-result'));
   await page.waitFor(`document.querySelector('${id('settings-page')}')?.dataset.page === 'agents' && ${slid}`);

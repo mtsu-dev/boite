@@ -350,7 +350,7 @@
   /* What the search finds, in the page's column. */
   .found { padding: var(--space-8) max(var(--settings-gutter), calc((100% - var(--settings-width)) / 2)); }
   .hint { margin: 0; color: var(--color-muted-foreground); font-size: var(--text-base); }
-  .results { display: grid; }
+  .results { display: grid; grid-template-columns: minmax(0, 1fr); }
   .result {
     display: flex;
     align-items: center;
@@ -368,6 +368,13 @@
   .result .label { flex: none; max-width: 60%; }
   .result .trail { flex: 1; min-width: 0; font-size: var(--text-sm); color: var(--color-muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .result :global(svg) { flex: none; color: var(--color-subtle); }
+  /* A phone's row is too short for both: the place goes under the name, each cut at the card's edge. */
+  @media (max-width: 720px) {
+    .result { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px var(--space-3); }
+    .result .label { grid-column: 1; max-width: 100%; overflow-wrap: anywhere; }
+    .result .trail { grid-column: 1; }
+    .result :global(svg) { grid-column: 2; grid-row: 1 / span 2; }
+  }
 
   /* The pages' list stands in the thread list's column, on the chrome, and
      the page in the inset card beside it, as in the rest of the frame. */

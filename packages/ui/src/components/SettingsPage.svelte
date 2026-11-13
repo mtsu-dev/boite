@@ -161,7 +161,8 @@
   /* The first card's title follows the screen's title at the normal step, with no empty band between. */
   .map > :first-child:is(.block) > :global(.page:first-child > .card:first-child:has(> h2:first-child)),
   .map > :first-child:is(.block) > :global(.page:first-child > header:first-child + .card:has(> h2:first-child)),
-  .map > :global(.page:first-child > .card:first-child:has(> h2:first-child)) { margin-top: var(--card-head); }
+  .map > :global(.page:first-child > .card:first-child:has(> h2:first-child)),
+  .map > :global(.page:first-child > .card:first-child:has(> .card-head:first-child)) { margin-top: var(--card-head); }
   .map > :first-child:is(.block) > :global(.page:first-child > .group-heading:first-child) { margin-top: 0; }
 
   /* A phone's header sits close over the page: half the room above the first card. */
