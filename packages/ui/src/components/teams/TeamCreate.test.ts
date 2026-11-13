@@ -20,7 +20,6 @@ afterEach(async () => {
   for (const close of closers.splice(0)) close();
   workspace.machines = []; workspace.active = previousActive;
   setExperiment('teams', false);
-  setExperiment('resident-agents', false);
   vi.restoreAllMocks(); document.body.innerHTML = ''; localStorage.clear();
   document.documentElement.classList.remove('agents-detail-open');
 });
@@ -53,7 +52,6 @@ async function machine(names: string[], at: { coreId?: string; coreName?: string
 /** This computer with three bots and no team yet, the Teams experiment on in the app and on the core. */
 async function computer() {
   setExperiment('teams', true);
-  setExperiment('resident-agents', true);
   const local = await machine(['Huginn', 'Jeux', 'Muninn']);
   workspace.machines = [{ id: 'local', label: 'Local', store: local.store }]; workspace.active = local.store;
   return local;
@@ -179,7 +177,6 @@ test("the bots of a machine outside the group are listed greyed with why, and ca
 
 test("a bot of another machine of the group joins from the dialog under its machine's name, and an edit keeps it one row until it is taken out", async () => {
   setExperiment('teams', true);
-  setExperiment('resident-agents', true);
   const local = await machine(['Huginn'], { coreId: 'desk', coreName: 'Desk', publicUrl: 'https://desk.test' });
   // Its second bot: no bot of this machine has that id, so nothing here can pass for it.
   const remote = await machine(['Ratatosk', 'Munin'], { coreId: 'firebat', coreName: 'Firebat', publicUrl: 'https://firebat.test' });

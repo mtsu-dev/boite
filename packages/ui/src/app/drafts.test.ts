@@ -218,6 +218,9 @@ test('a draft names its project in the heading and the dropdown moves it to anot
 
   // The one plus left says where it will open the draft, and a project row has none.
   expect(query<HTMLButtonElement>('[data-testid=new-thread]').title).toBe('New thread in notes (Ctrl+N)');
+  // A glyph in the list's head, not a wide row with its shortcut written out.
+  expect(query<HTMLButtonElement>('[data-testid=new-thread]').textContent?.trim()).toBe('');
+  expect(query('[data-testid=new-thread]').querySelector('kbd')).toBeNull();
   expect(document.querySelector('[data-testid=project-new-thread]')).toBeNull();
 
   // The draft opens in the project of the thread that was open, `notes`.
@@ -225,6 +228,8 @@ test('a draft names its project in the heading and the dropdown moves it to anot
   await waitFor(() => store.draft !== null);
 
   const heading = query('[data-testid=draft-sentence]');
+  // The heading opens on its sentence: no bot face over it.
+  expect(heading.firstElementChild?.tagName).toBe('H1');
   // The mode, the model and the effort are the chips' to say, once.
   expect(heading.textContent).not.toContain('with approval requests');
   expect(heading.querySelector('h1')?.textContent).toContain('notes');

@@ -1,7 +1,6 @@
 /*
- * The panel's strip shows the open panels, all alike, as glyphs; the header's
- * door names the showing one and is the panel switcher, the one door to every
- * panel and tool.
+ * The panel's strip shows the open panels, all alike, as glyphs, then the "+"
+ * launcher to every panel and tool; the header's glyph opens and closes the panel.
  */
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
@@ -30,7 +29,7 @@ afterEach(async () => {
   store?.detach(); client?.close(); document.body.innerHTML = '';
 });
 
-test('the header door names the showing panel and switches it: every panel in one scroll, the recent ones first, a pick that lands and stays, an open kind gone back to', async () => {
+test('the strip\'s + launcher switches the panel: every panel in one scroll, the recent ones first, a pick that lands and stays, an open kind gone back to', async () => {
   client = new FakeClient({ delayMs: 0 });
   store = new Store(); store.attach(client); await store.connect();
   await store.open('t-trace');
@@ -40,24 +39,23 @@ test('the header door names the showing panel and switches it: every panel in on
   mountPanel();
   await settle();
 
-  // One treatment: every tab in the strip is an open panel's glyph; the door outside the panel says the showing one's name, once.
+  // One treatment: every tab in the strip is an open panel's glyph, the "+" after them; the header keeps its toggle, pressed.
   expect(document.querySelectorAll('[data-testid=panel-tabs] .tab:not([data-testid=panel-tab])')).toHaveLength(0);
   const selector = () => query<HTMLButtonElement>('[data-testid=panel-add]')!;
   const head = query('[data-testid=panel-titlebar]')!;
-  expect(head.contains(selector())).toBe(false);
-  expect(selector().textContent?.trim()).toBe('Files');
-  expect(head.querySelector('[data-testid=panel-add], [data-testid=panel-title]')).toBeNull();
-  expect(query('[data-testid=panel-toggle]')).toBeNull();
+  expect(head.contains(selector())).toBe(true);
+  expect(query('[data-testid=panel-toggle]')?.getAttribute('aria-pressed')).toBe('true');
   selector().click(); await settle();
   const listed = () => Array.from(document.querySelectorAll<HTMLElement>('[data-testid=panel-add-menu] [data-value]')).map((row) => row.dataset['value']);
   const sections = () => Array.from(document.querySelectorAll('[data-testid=panel-add-menu] .section')).map((one) => one.textContent);
   // One list: the open Files leads as the panel used last, then every kind once in its family, the coordination,
-  // the way to hide some, the window's switch, then the way to close it. No row to more panels.
+  // the way to hide some. The window's switches and the close are the strip's own buttons. No row to more panels.
   expect(listed()[0]).toBe('files');
   for (const card of offeredCards()) expect(listed().filter((id) => id === card.kind)).toHaveLength(1);
   expect(listed()).toEqual(expect.arrayContaining(['changes', 'coordination', 'customize']));
   expect(listed()).not.toContain('all-panels');
-  expect(listed().slice(-2)).toEqual(['panel-maximize', 'panel-hide']);
+  expect(listed()).not.toContain('panel-maximize');
+  expect(listed()).not.toContain('panel-hide');
   expect(new Set(listed()).size).toBe(listed().length);
   expect(sections()).toEqual(['Used in this thread', 'Work', 'Agents', 'Tools']);
   expect(query('[data-testid=panel-add-menu] [data-value=files]')?.classList.contains('active')).toBe(true);
@@ -66,7 +64,6 @@ test('the header door names the showing panel and switches it: every panel in on
   // The pick lands: its click does not bubble into the old tab and bring it back.
   query<HTMLButtonElement>('[data-testid=panel-add-menu] [data-value=changes]')!.click(); await settle();
   expect(store.panel.active?.kind).toBe('changes');
-  expect(selector().textContent?.trim()).toBe('Changes');
   expect(query('[data-testid=panel-tab][data-kind=changes]')?.getAttribute('aria-selected')).toBe('true');
   expect(query('[data-testid=panel-tab][data-kind=files]')).not.toBeNull();
 
@@ -83,11 +80,10 @@ test('the header door names the showing panel and switches it: every panel in on
   expect([coordinationRequest.store === store, coordinationRequest.threadId]).toEqual([true, 't-trace']);
   closeCoordination();
 
-  // The list's last row closes the panel; the door reads "Panels" again and holds the focus.
-  selector().click(); await settle();
-  query<HTMLButtonElement>('[data-testid=panel-add-menu] [data-testid=panel-hide]')!.click(); await settle();
+  // The header's glyph closes the panel on its second click.
+  query<HTMLButtonElement>('[data-testid=panel-toggle]')!.click(); await settle();
   expect(store.panelOpen).toBe(false);
-  expect(query('[data-testid=panel-toggle]')?.textContent).toContain('Panels');
+  expect(query('[data-testid=panel-toggle]')?.getAttribute('aria-pressed')).toBe('false');
 });
 
 test('the launcher finds a panel by its name or its line: Enter opens the first, the arrows walk the rows, Escape closes', async () => {
@@ -143,7 +139,7 @@ test('a panel switch slides the body in and keeps the head still', async () => {
   expect(query('[data-testid=panel-titlebar] [data-arriving]')).toBeNull();
 });
 
-test('an empty panel keeps the door as its switcher, named Panels', async () => {
+test('an empty panel keeps its + launcher', async () => {
   client = new FakeClient({ delayMs: 0 });
   store = new Store(); store.attach(client); await store.connect();
   await store.open('t-trace');
@@ -155,15 +151,14 @@ test('an empty panel keeps the door as its switcher, named Panels', async () => 
   await settle();
   expect(store.panelOpen).toBe(true);
   expect(document.querySelectorAll('[data-testid=panel-tab]')).toHaveLength(0);
-  expect(query('[data-testid=panel-add]')?.textContent?.trim()).toBe('Panels');
   query<HTMLButtonElement>('[data-testid=panel-add]')!.click(); await settle();
   query<HTMLButtonElement>('[data-testid=panel-add-menu] [data-value=changes]')!.click(); await settle();
   expect(store.panel.active?.kind).toBe('changes');
 });
 
-// The panel has one head: it says what the showing surface holds, then that surface's actions, the close
-// last; the window's switches stay rows of the door's list.
-test('the panel head says what the surface holds and carries its actions, the close last: maximize in the switcher', async () => {
+// The panel has one head: it says what the showing surface holds, then that surface's actions, then the
+// window's maximize and the close, last.
+test('the panel head says what the surface holds and carries its actions, then maximize and the close last', async () => {
   client = new FakeClient({ delayMs: 0 });
   store = new Store(); store.attach(client); await store.connect();
   await store.open('t-trace');
@@ -181,8 +176,8 @@ test('the panel head says what the surface holds and carries its actions, the cl
   expect(controls.at(-1)?.dataset.testid).toBe('panel-close');
   // Every action there is named, by its words or its tooltip.
   for (const one of controls) expect(one.getAttribute('aria-label') || one.textContent?.trim() || one.title).toBeTruthy();
-  query<HTMLButtonElement>('[data-testid=panel-add]')!.click(); await settle();
-  query<HTMLButtonElement>('[data-testid=panel-add-menu] [data-testid=panel-maximize]')!.click(); await settle();
+  expect(controls.at(-2)?.dataset.testid).toBe('panel-maximize');
+  query<HTMLButtonElement>('[data-testid=panel-titlebar] [data-testid=panel-maximize]')!.click(); await settle();
   expect(rightPanel.maximized).toBe(true);
   rightPanel.maximized = false;
   store.panel.openFiles(); await settle();

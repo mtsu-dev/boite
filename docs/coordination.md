@@ -1,12 +1,36 @@
 # Coordination
 
 Coordination lets the agents of different conversations find each other,
-read each other's conversations and send each other messages, across projects
-and across your machines. Use it when two agents share something: a test
-service, a port, a disk, a branch.
+read each other's conversations and send each other messages. Use it when two
+agents share something: a test service, a port, a disk, a branch.
 
 It is on in every ordinary conversation. You do not send these messages
 yourself: the agents do, and you see them in the chat.
+
+## How far an agent reaches
+
+On a new install, the agent of an ordinary conversation reaches the
+conversations of its own project only. You choose how far it goes in Settings,
+General, What agents may do alone, under Other conversations an agent reaches:
+
+| Step | What an agent lists, reads and writes to |
+| --- | --- |
+| This project | The conversations of its own project, on this machine |
+| This machine | The conversations of every project on this machine |
+| All my machines | The conversations of every project, here and on the machines you trust |
+
+- An install that already held conversations before this setting existed
+  starts on All my machines, as it worked before. Boite writes that choice
+  once and never changes it again by itself.
+- The setting belongs to one machine and only its owner changes it. An agent
+  that needs more asks with a card you approve or refuse.
+- It never cuts a conversation from the subagents it started, a workflow from
+  its steps, a team from its members, a bot from the projects you entrusted to
+  it, or a project shared with a contact from that contact.
+- A conversation's own Communication between conversations still narrows it
+  further, never widens it.
+- It bounds what the agents of this machine reach. A message another machine
+  sends here still arrives.
 
 ## What agents can do
 
@@ -64,8 +88,9 @@ conversations.
 
 ## Other machines
 
-The machines of your [group](machines.md) are linked already: their agents can
-find and message each other, even with the app closed when the machines reach
+The machines of your [group](machines.md) are linked already: with the reach
+on All my machines (see How far an agent reaches), their agents can find and
+message each other, even with the app closed when the machines reach
 each other directly. Otherwise the app relays messages while both owner
 connections stay open.
 

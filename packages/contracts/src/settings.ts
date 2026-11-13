@@ -1,6 +1,7 @@
 import type { BrowserProfile } from './browser';
 import type { AccountId, ProviderId, RequestId } from './ids';
-import type { ClientPreferences, ExperimentId, SettingAsk, SettingRequestParams } from './setting-requests.ts';
+import type { ExperimentId } from './experiments.ts';
+import type { ClientPreferences, SettingAsk, SettingRequestParams } from './setting-requests.ts';
 import type { AutoCompact, CacheKeepalive } from './settings-validation.ts';
 import type { SubscriptionProxy } from './subscription-proxy';
 import type { ThreadSummary } from './threads';
@@ -236,6 +237,65 @@ export interface Settings {
    * reads it to leave those keys out of `settings.follow`.
    */
   syncOverrides?: string[];
+  /**
+   * What `agents.create` does when a thread's agent calls it (`boite settings
+   * bot create`): `ask` draws a card in that thread and creates nothing until
+   * the owner approves it; `free` creates the bot at once, with full access.
+   * Per machine, never synced. The core writes it at its first start: `ask` on
+   * a new data directory, `free` on one that already held a journal. Missing
+   * reads as `ask`.
+   */
+  agentBotCreation?: AgentBotCreation;
+  /**
+   * How far an ordinary thread's agent may list, search, read and message
+   * other threads: `project` (its project on this machine), `machine` (every
+   * project of this machine) or `group` (also the trusted machines). A
+   * thread's own `CoordinationConfig` narrows inside it and never widens it.
+   * Per machine, never synced. Written at the first start like
+   * `agentBotCreation`: `project` on a new data directory, `group` on an
+   * older one. Missing reads as `project`.
+   */
+  coordinationReach?: CoordinationReach;
+}
+
+export const AGENT_BOT_CREATION = ['ask', 'free'] as const;
+export type AgentBotCreation = (typeof AGENT_BOT_CREATION)[number];
+/** From the narrowest to the widest. */
+export const COORDINATION_REACH = ['project', 'machine', 'group'] as const;
+export type CoordinationReach = (typeof COORDINATION_REACH)[number];
+
+/** The two settings as a new data directory gets them, and as a missing key reads. */
+export const CLOSED_AGENT_DEFAULTS = { agentBotCreation: 'ask', coordinationReach: 'project' } as const satisfies Pick<Settings, 'agentBotCreation' | 'coordinationReach'>;
+/** What agents did before the two settings existed: written once on a data directory older than them. */
+export const OPEN_AGENT_DEFAULTS = { agentBotCreation: 'free', coordinationReach: 'group' } as const satisfies Pick<Settings, 'agentBotCreation' | 'coordinationReach'>;
+
+export function agentBotCreation(settings: Pick<Settings, 'agentBotCreation'>): AgentBotCreation {
+  return settings.agentBotCreation ?? CLOSED_AGENT_DEFAULTS.agentBotCreation;
+}
+
+export function coordinationReach(settings: Pick<Settings, 'coordinationReach'>): CoordinationReach {
+  return settings.coordinationReach ?? CLOSED_AGENT_DEFAULTS.coordinationReach;
+}
+
+/**
+ * The keys of the two settings a stored settings object lacks, with the value
+ * the first start writes: closed on a new data directory, open on one whose
+ * journal existed before this start. Empty once both are stored, so a later
+ * start, or a later default, never moves them.
+ */
+export function agentDefaultsToWrite(stored: unknown, journalExisted: boolean): Partial<Pick<Settings, 'agentBotCreation' | 'coordinationReach'>> {
+  const held = typeof stored === 'object' && stored !== null ? stored as Partial<Settings> : {};
+  const defaults = journalExisted ? OPEN_AGENT_DEFAULTS : CLOSED_AGENT_DEFAULTS;
+  return {
+    ...(held.agentBotCreation === undefined ? { agentBotCreation: defaults.agentBotCreation } : {}),
+    ...(held.coordinationReach === undefined ? { coordinationReach: defaults.coordinationReach } : {}),
+  };
+}
+
+/** What a refused agent reads: the setting that holds it back and the command that asks the owner to open it. */
+export function reachRefusal(reach: CoordinationReach, wanted: 'machine' | 'group'): string {
+  const scope = wanted === 'machine' ? 'another project of this machine' : 'another machine';
+  return `the setting coordinationReach is ${JSON.stringify(reach)} on this machine, which keeps this thread from ${scope}; ask the owner to open it with: boite settings request coordinationReach ${wanted} --why "<reason>"`;
 }
 
 /** One starred model. Accounts are named by label: an id means nothing on another machine. */
@@ -295,7 +355,13 @@ export interface SettingsRpcMethods {
   'telemetry.configure': { params: { mode: TelemetryState['mode']; countChoice?: boolean }; result: TelemetryState };
   'telemetry.export': { params: Record<string, never>; result: Record<string, unknown> };
   'telemetry.retryForget': { params: Record<string, never>; result: TelemetryState };
-  'settings.get': { params: Record<string, never>; result: Settings };
+  /**
+   * The settings in force. `stored` asks for the ones that are experiments as
+   * saved rather than as this build reads them (a Release reads them as off):
+   * what the copy to a following machine sends, so a hidden choice is never
+   * copied as "off". A core older than the stages ignores it and hides nothing.
+   */
+  'settings.get': { params: { stored?: boolean }; result: Settings };
   'settings.set': { params: Partial<Settings>; result: Settings };
   /**
    * The copy from the group's settings home (`Group.settingsHome`): only the
@@ -308,11 +374,13 @@ export interface SettingsRpcMethods {
    * The app says its language, the experiments it has on and the names it
    * gives settings, after each hello and on every change. Agents read them
    * from the app the user last used (`agent.settings`), and a card about an
-   * experiment settles when that app reports it changed. `desktop` is what
-   * `client.desktopExperiments` last said, null before any desktop app
-   * reported: a phone follows the computer's switches from its first hello.
+   * experiment settles when that app reports it changed. `desktop` and
+   * `desktopChosen` are what `client.desktopExperiments` last said in
+   * `experiments` and `chosen`, null before any desktop app reported: a phone
+   * follows the computer's switches from its first hello. A core from before
+   * `desktopChosen` answers without it.
    */
-  'client.preferences': { params: ClientPreferences; result: { ok: true; desktop: ExperimentId[] | null } };
+  'client.preferences': { params: ClientPreferences; result: { ok: true; desktop: ExperimentId[] | null; desktopChosen?: ExperimentId[] | null } };
 }
 
 export interface SettingsRpcEvents {
@@ -321,7 +389,13 @@ export interface SettingsRpcEvents {
   /**
    * The experiments of the desktop app this core follows, once its report
    * changes them: the app on this machine's loopback, else the last desktop
-   * app to report from elsewhere. Kept in memory, like the reports.
+   * app to report from elsewhere. `experiments` is what is in force in this
+   * core's build (`effectiveExperiments`), which is what an app from before
+   * the stages takes it for: a Release names no experiment there. `chosen`
+   * is the list as that app chose it, not cut down: the device that follows
+   * it keeps this one and reads it for the build that decides, so a Release
+   * in between erases nobody's switches. A core from before `chosen` sends
+   * `experiments` alone. Kept in memory, like the reports.
    */
-  'client.desktopExperiments': { experiments: ExperimentId[] };
+  'client.desktopExperiments': { experiments: ExperimentId[]; chosen?: ExperimentId[] };
 }

@@ -1,7 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import type { UiRevealTarget } from '@boite/contracts';
-import { setExperiment } from './experiments';
-import { experimentOn } from './experiments.svelte';
 import { onReveal, reveal, revealRequested, type RevealWorkspace } from './reveal';
 import type { Store } from './store.svelte';
 import { fill, strings } from './strings';
@@ -9,7 +7,6 @@ import { fill, strings } from './strings';
 const internals = window as unknown as { __TAURI_INTERNALS__?: unknown };
 afterEach(() => {
   delete internals.__TAURI_INTERNALS__;
-  setExperiment('resident-agents', false);
 });
 
 type FakeStore = Store & { showAgents: ReturnType<typeof vi.fn>; showSettings: ReturnType<typeof vi.fn> };
@@ -44,12 +41,10 @@ test('the window comes forward, then the thread opens on the machine that asked'
   expect(workspace.showAgents).not.toHaveBeenCalled();
 });
 
-test('an agent opens on the Agents page, switching its experiment on, without the chat on the way', async () => {
+test('an agent opens on the Agents page, without the chat on the way', async () => {
   const from = fakeStore(true);
   const workspace: RevealWorkspace = { ...alone, active: from, select: vi.fn(async () => undefined), showAgents: vi.fn() };
-  expect(experimentOn('resident-agents')).toBe(false);
   await reveal(workspace, from, { kind: 'agent', agentId: 'agent-7' }, async () => undefined);
-  expect(experimentOn('resident-agents')).toBe(true);
   expect(workspace.showAgents).toHaveBeenCalledWith(from, 'agent-7');
   expect(workspace.select).not.toHaveBeenCalled();
 });

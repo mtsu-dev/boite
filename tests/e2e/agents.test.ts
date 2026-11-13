@@ -90,7 +90,7 @@ beforeAll(async () => {
   const project = await testProject(harness, owner);
   projectThread = (await owner.call('threads.create', { projectId: project.id, providerId: 'echo', accountId, title: 'Build the landing page' })).id;
   site = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response('<!doctype html><title>Dashboard</title><h1>Sign in to the dashboard</h1><form><input placeholder="Email"><button>Continue</button></form>', { headers: { 'content-type': 'text/html' } }) });
-  page = await BrowserPage.launch({ url: `${harness.url}/?token=${harness.token}`, experiments: ['resident-agents'], windowSize: { width: DESKTOP.width, height: DESKTOP.height } });
+  page = await BrowserPage.launch({ url: `${harness.url}/?token=${harness.token}`, windowSize: { width: DESKTOP.width, height: DESKTOP.height } });
   await page.send('Emulation.setDeviceMetricsOverride', DESKTOP);
   await page.waitFor(`document.querySelector('[data-testid=status-connection]')?.dataset.state === 'ready'`, 30_000);
 }, 90_000);
@@ -335,6 +335,8 @@ real('a rail too short for its bots scrolls them, keeps its foot on screen and s
     const railRight = await page.evaluate<number>(`document.querySelector('${id('app-rail')}').getBoundingClientRect().right`);
     expect(name.width).toBeGreaterThan(20);
     expect(name.left).toBeGreaterThan(railRight);
+    // Beside its button, not past the list column, where it went unseen.
+    expect(name.left - railRight).toBeLessThan(12);
     expect(Math.abs(name.middle - rail.last.y)).toBeLessThan(2);
     await capture('rail-short-desktop.png');
   } finally {
@@ -375,7 +377,7 @@ test('a bot\'s menu sits in its column on a desktop and on its row\'s long press
   /** Opens the bot from its picture in the rail, then its column's menu. */
   const columnMenu = async (agentId: string) => {
     await openRailBot(page, agentId);
-    // A docked Desk takes the bot column's place (the column is lent to it); closed, the column comes back with its menu.
+    // The column stays beside a docked Desk; the desk is closed so the column's menu has the room it opens in.
     await page.evaluate(`document.querySelector('${id('right-panel')} ${id('panel-close')}')?.click()`);
     await page.waitFor(`getComputedStyle(document.querySelector('.agents-rail')).display !== 'none'`);
     await page.click(id('bot-column-menu'));

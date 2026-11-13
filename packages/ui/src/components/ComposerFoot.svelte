@@ -9,13 +9,13 @@
    * card, on the composer card's top edge, by its title (`DecisionPill`, loaded
    * with the first permission: its titles stay out of the entry chunk) with its
    * Deny and Allow once. Above it, outside the card, one quiet strip: the work
-   * this thread waits on and the prompts held for the turn in one line ("3
-   * working · 1 queued", `AgentDock`), the same on a desktop and a phone, that a
-   * press unfolds into one row per run and the held prompts with their Edit and
-   * Delete (`ComposerQueue`). With nothing running, the held prompts are the
-   * strip's rows. It grows upward: the field under it never moves. While a
-   * question takes the field during a turn, the field's button is Send alone,
-   * so the turn's Stop is on the strip's line.
+   * this thread waits on in one line ("3 working", `AgentDock`), the same on a
+   * desktop and a phone, that a press unfolds into one row per run. Under it,
+   * always in view, the prompts held for the turn, drawn where they will land
+   * (`ComposerQueue`): dashed user bubbles on the right, a press taking one
+   * back into the box. It grows upward: the field under it never moves. While
+   * a question takes the field during a turn, the field's button is Send
+   * alone, so the turn's Stop is on the strip's line.
    */
   let { store, key, thread, composer, blocked, alone = false, stopsTurn = false, machine, sendNow, onrestore, onsendnow }: {
     store: Store;
@@ -39,33 +39,31 @@
   let queued = $derived(composer && composer.queued.length > 0 ? composer : null);
   let permission = $derived(thread ? store.pendingPermissions.find((request) => request.threadId === thread.id) ?? null : null);
 
-  let line = $state(false);
   let open = $state(false);
-  let heldCount = $derived((answers?.length ?? 0) + (queued?.queued.length ?? 0));
   // Another thread opens folded.
   $effect(() => { void thread?.id; open = false; });
 </script>
 
 <div class="strip-lines" data-testid="composer-strip-lines">
-  {#if thread}<AgentDock {store} threadId={thread.id} turn={stopsTurn} bind:shown={line} held={heldCount} {open} ontoggle={() => (open = !open)} />{/if}
-  {#if answers || queued}
-    <div class="held" data-testid="composer-held" hidden={line && !open}>
-      {#if answers}
-        <div class="answers" data-testid="question-queued">
-          <ComposerQueue queued={answerEntries(answers)} disabled={true} paused={false} sendNow={null} onrestore={() => {}} onsendnow={() => {}} />
-        </div>
-      {/if}
-      {#if queued}
-        <ComposerQueue queued={queued.queued}
-          disabled={queued.sending || blocked}
-          paused={queued.paused} sending={queued.sending} outgoing={queued.outgoing ?? 0} connected={store.connection === 'ready'} {machine} starts={!thread}
-          {sendNow}
-          {onrestore} onremove={(at) => store.removeQueued(key, at)} onretry={(at) => store.retryQueued(key, at)}
-          {onsendnow} />
-      {/if}
-    </div>
-  {/if}
+  {#if thread}<AgentDock {store} threadId={thread.id} turn={stopsTurn} {open} ontoggle={() => (open = !open)} />{/if}
 </div>
+{#if answers || queued}
+  <div class="held" data-testid="composer-held">
+    {#if answers}
+      <div class="answers" data-testid="question-queued">
+        <ComposerQueue queued={answerEntries(answers)} disabled={true} paused={false} sendNow={null} onrestore={() => {}} onsendnow={() => {}} />
+      </div>
+    {/if}
+    {#if queued}
+      <ComposerQueue queued={queued.queued}
+        disabled={queued.sending || blocked}
+        paused={queued.paused} sending={queued.sending} outgoing={queued.outgoing ?? 0} connected={store.connection === 'ready'} {machine} starts={!thread}
+        {sendNow}
+        {onrestore} onremove={(at) => store.removeQueued(key, at)} onretry={(at) => store.retryQueued(key, at)}
+        {onsendnow} />
+    {/if}
+  </div>
+{/if}
 <div class="foot" class:alone data-testid="composer-foot">
   {#if permission}{#await import('./DecisionPill.svelte') then pill}<pill.default {permission} answer={(decision: 'allow' | 'deny') => store.answer(permission.id, decision)} />{/await}{/if}
 </div>
@@ -85,6 +83,8 @@
      lined up with the card's words under it. */
   .strip-lines { --foot-row: 28px; padding: 0 2px 4px; color: var(--color-muted-foreground); font-size: var(--text-meta); }
   .strip-lines:not(:has(.foot-row)) { display: none; }
+  /* The held prompts keep the conversation's width, right-aligned like the bubbles they will become. */
+  .held { display: flex; flex-direction: column; width: 100%; max-width: var(--content); min-width: 0; margin: 0 auto; }
   .answers { display: flex; flex-direction: column; min-width: 0; }
 
   /* The card: on the composer card's top edge, its width, its surface and edge,

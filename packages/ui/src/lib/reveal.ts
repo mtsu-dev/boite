@@ -8,8 +8,6 @@
  * (`coreId`) opens on the Store of the machine whose core has that id.
  */
 import type { UiRevealTarget } from '@boite/contracts';
-import { setExperiment } from './experiments';
-import { experimentOn } from './experiments.svelte';
 import type { Store } from './store.svelte';
 import { fill, strings } from './strings';
 
@@ -59,8 +57,7 @@ export async function reveal(workspace: RevealWorkspace, from: Store, target: Ui
     await workspace.select(on, target.threadId);
     return;
   }
-  // An agent's page, where its conversation, memory, model and look are; the Agents page shows with its experiment on.
-  if (!experimentOn('resident-agents')) setExperiment('resident-agents', true);
+  // An agent's page, where its conversation, memory, model and look are. Bots are on in every build.
   workspace.showAgents(on, target.agentId);
 }
 

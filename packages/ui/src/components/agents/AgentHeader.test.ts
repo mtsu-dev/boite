@@ -2,7 +2,6 @@ import { expect, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import { test } from '../../test/fake-client';
 import { AgentsView, statusOf } from '../../lib/agents.svelte';
-import { setExperiment } from '../../lib/experiments';
 import { strings } from '../../lib/strings';
 import AgentHeader from './AgentHeader.svelte';
 import BotColumnHead from './BotColumnHead.svelte';
@@ -10,7 +9,6 @@ import BotColumnHead from './BotColumnHead.svelte';
 // A bot whose account was removed read "Its last turn failed" under its name, a cause the banner
 // beside it contradicted: the line now says what it needs.
 test('a bot whose account is gone says it needs an account, not that its last turn failed', async ({ ready }) => {
-  setExperiment('resident-agents', true);
   let head: ReturnType<typeof mount> | null = null;
   try {
     const { store } = await ready({ delayMs: 0, agentsDemo: true });
@@ -30,13 +28,11 @@ test('a bot whose account is gone says it needs an account, not that its last tu
     unmount(column);
   } finally {
     if (head) unmount(head);
-    setExperiment('resident-agents', false);
   }
 });
 
 // With the bot column folded on a desktop, the header held only the name: no visible way back to the bots.
 test('a desktop header offers the way back to the bot list only while the column is folded', async ({ ready }) => {
-  setExperiment('resident-agents', true);
   let head: ReturnType<typeof mount> | null = null;
   try {
     const { store } = await ready({ delayMs: 0, agentsDemo: true });
@@ -58,6 +54,5 @@ test('a desktop header offers the way back to the bot list only while the column
     expect(crumb()).toBeNull();
   } finally {
     if (head) unmount(head);
-    setExperiment('resident-agents', false);
   }
 });

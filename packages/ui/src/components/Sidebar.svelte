@@ -173,6 +173,8 @@
     const { [key]: was, ...rest } = unfolded;
     unfolded = was ? rest : { ...rest, [key]: true };
   }
+  /** A card lists its done threads under the display menu's switch, or once its own Done count is pressed. */
+  const doneShown = (entry: ProjectEntry) => doneFilter.shown || projectThreadView.isOpen(entry, 'done');
   /** Each listed project's sorted rows, shared by its section and by Alt+digit. */
   let projectLists = $derived(listsFor(activeGroups));
   /** The rows of the listed projects in drawn order, read only as far as the ninth: projects below it cost nothing. */
@@ -187,7 +189,7 @@
       const { lists } = projectLists.get(projectKey(entry))!;
       const { shown } = cardRows(entry, lists.attention);
       for (const thread of open ? [...shown, ...lists.working] : shown) rows.push({ store: entry.machine.store, threadId: thread.id });
-      for (const kind of ['done', 'archived'] as const) if (kind === 'done' ? doneFilter.shown : later) rows.push(...projectDoneRows[JSON.stringify([kind, projectKey(entry)])] ?? []);
+      for (const kind of ['done', 'archived'] as const) if (kind === 'done' ? doneShown(entry) : later) rows.push(...projectDoneRows[JSON.stringify([kind, projectKey(entry)])] ?? []);
     }
     return rows;
   }
@@ -267,7 +269,7 @@
       {/each}
       <!-- One history, newest first under the pins (lib/thread-order.ts compareRecent): the marks say what needs you. -->
       <WindowList items={attention} keyOf={entry => JSON.stringify([entry.machine.id, entry.thread.id])} {scrollRoot} estimate={54} measurements={measurements('recent')}>
-        {#snippet row(entry)}<ThreadCard {...entry} {now} recent showDone where={places(entry)} />{/snippet}
+        {#snippet row(entry)}<ThreadCard {...entry} {now} classic showDone where={places(entry)} />{/snippet}
       </WindowList>
       <!-- Done is the display menu's filter: on, the finished threads follow the live ones. -->
       {#if doneFilter.shown}
@@ -282,7 +284,7 @@
         {#if working.length > 0}
           <RecentGroup kind="working" count={working.length} bind:open={workingOpen}>
             <WindowList items={working} keyOf={entry => JSON.stringify([entry.machine.id, entry.thread.id])} {scrollRoot} estimate={34} measurements={measurements('recent-working')}>
-              {#snippet row(entry)}<ThreadCard {...entry} {now} recent showDone where={places(entry)} />{/snippet}
+              {#snippet row(entry)}<ThreadCard {...entry} {now} classic showDone where={places(entry)} />{/snippet}
             </WindowList>
           </RecentGroup>
         {/if}
@@ -299,7 +301,7 @@
         {@const owner = machine.store}
         {@const workingOpen = projectThreadView.isOpen(entry, 'working')}
         {@const later = section === 'later'}
-        {@const doneOpen = archiveCount(project, 'done') > 0 && doneFilter.shown}
+        {@const doneOpen = archiveCount(project, 'done') > 0 && doneShown(entry)}
         {@const archivedOpen = later && archiveCount(project, 'archived') > 0}
         {@const { lists } = projectLists.get(projectKey(entry))!}
         {@const fold = cardRows(entry, lists.attention)}
@@ -356,21 +358,22 @@
               onclick={(e) => openProjectMenu(e, machine, project, list, section)}><Ellipsis size={15} /></button
             >
           </div>
-          <!-- Out of reach, said once under the name with its next step; the rows below dim as last seen. -->
-          {#if away}<div class="offline"><MachineOffline store={owner} label={machine.label} /></div>{/if}
+          <!-- Offline, said once under the name with its next step; the rows below dim as last seen. A reconnect
+               in progress says nothing here: the rows dim and the machine's icon says it, so a blip does not jump the list. -->
+          {#if owner.connection === 'closed'}<div class="offline"><MachineOffline store={owner} label={machine.label} /></div>{/if}
           <div id="{controls}-body" class="disclosure-fold" class:open={!collapsed} inert={collapsed}>
             <div>
               <SharedProjectThreads store={owner} projectId={project.id} active={!collapsed && !away}>
               {#each draftsHere as draft (draft.id)}<DraftRow {owner} entry={draft} />{/each}
               <WindowList items={fold.shown} keyOf={thread => JSON.stringify([machine.id, thread.id])} {scrollRoot} active={!collapsed} estimate={36} measurements={measurements(JSON.stringify([machine.id, project.id]))}>
-                {#snippet row(thread)}<ThreadCard {machine} {project} {thread} {now} showDone placed={!!host(machine)?.away} />{/snippet}
+                {#snippet row(thread)}<ThreadCard {machine} {project} {thread} {now} classic showDone placed={!!host(machine)?.away} />{/snippet}
               </WindowList>
               {#if fold.folded.length}<FoldMore count={fold.folded.length} open={fold.open} ontoggle={() => toggleFold(key)} />{/if}
               <ProjectThreadCounters {entry} working={lists.working.length} waiting={needs.count} {controls} {collapsed} {away} place="fold" />
               <div id="{controls}-working" hidden={!workingOpen || lists.working.length === 0} data-testid="project-working">
                 {#if workingOpen && lists.working.length > 0}
                   <WindowList items={lists.working} keyOf={thread => JSON.stringify([machine.id, thread.id])} {scrollRoot} active={!collapsed} estimate={36} measurements={measurements(JSON.stringify([machine.id, project.id, 'working']))}>
-                    {#snippet row(thread)}<ThreadCard {machine} {project} {thread} {now} showDone placed={!!host(machine)?.away} />{/snippet}
+                    {#snippet row(thread)}<ThreadCard {machine} {project} {thread} {now} classic showDone placed={!!host(machine)?.away} />{/snippet}
                   </WindowList>
                 {/if}
               </div>

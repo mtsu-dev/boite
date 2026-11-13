@@ -216,6 +216,11 @@ test('a project card shows its machine\'s icon once two machines are listed', as
   const line = () => card(remote.id)?.querySelector<HTMLElement>('[data-testid=project-offline]') ?? null;
   const reconnect = () => line()?.querySelector<HTMLButtonElement>('[data-testid=project-reconnect]') ?? null;
   expect(line()).toBeNull();
+  // A machine retrying a dropped link: its icon marks it, no line, no "Connecting" banner.
+  remote.store.connection = 'connecting';
+  await waitFor(() => card(remote.id)!.querySelector('[data-testid=project-host].offline') !== null);
+  expect(line()).toBeNull();
+  expect(card(remote.id)!.textContent).not.toContain('Connecting');
   remote.store.connection = 'closed';
   await waitFor(() => reconnect()?.textContent === 'Reconnect');
   expect(line()!.textContent).toContain(`${remote.label} is offline`);

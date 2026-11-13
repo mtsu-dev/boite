@@ -61,6 +61,7 @@ export function sharedAccessMethods(ctx: FakeContext) {
     'sharedAccess.reviewConfig': async p => {requireShared(ctx,p.sharedProjectId); return cloneShared(sharedAccessState(ctx,p.sharedProjectId).review);},
     'sharedAccess.overrides': async p => {requireShared(ctx,p.sharedProjectId); return cloneShared(sharedAccessState(ctx,p.sharedProjectId).overrides);},
     'sharedAccess.override': async p => {
+      ctx.startGate('contacts');
       const s=requireShared(ctx,p.sharedProjectId); assertSharedActive(ctx,s);
       const o=p.override;
       if (!o || Object.keys(o).some(k=>!['path','actions','jobId','reason','expiresAt'].includes(k))) throw invalidShared('override: expected path, actions, jobId, reason and expiresAt');

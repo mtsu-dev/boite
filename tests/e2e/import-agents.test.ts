@@ -28,8 +28,6 @@ const fits = `(() => {
 
 test('the import list names the agent of each session when it holds Claude Code and Codex ones, at desktop and phone widths', async () => {
   await page.evaluate(`(async () => {
-    const { setExperiment } = await import('/src/lib/experiments.ts');
-    setExperiment('session-import', true);
     const { workspace } = await import('/src/lib/workspace.svelte.ts');
     await workspace.active.openImports('p-boite');
   })()`);

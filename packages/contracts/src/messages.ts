@@ -7,7 +7,7 @@ import type { MessageId, ProjectId, RequestId, ThreadId, Timestamp, TurnId } fro
 import type { RpcMethods } from './index';
 import type { QuestionAnswer, QuestionOption } from './questions';
 import type { SecretRequestStatus } from './secrets';
-import type { AppLanguage, SettingAsk } from './setting-requests.ts';
+import type { AppLanguage, SettingCardAsk } from './setting-requests.ts';
 import type { ActivityTurn } from './threads';
 import type { TeamAsk, TeamPostRef } from './teams';
 import type { Turn } from './turns';
@@ -198,7 +198,7 @@ export type MessagePart =
       /** Asked without stopping: see `QuestionRequest.async`. */
       async?: boolean;
       /** A settings card: see `QuestionRequest.setting`. */
-      setting?: SettingAsk;
+      setting?: SettingCardAsk;
       /** An agent setting card: see `QuestionRequest.agentSetting`. */
       agentSetting?: AgentSettingAsk;
       /** A bot's team proposal: see `QuestionRequest.team`. */

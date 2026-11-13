@@ -111,13 +111,19 @@ test('drafts survive reload and composer menus stay above the chrome', async () 
   try {
     page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1`, windowSize: { width: 1100, height: 760 } });
     await page.waitFor('document.querySelector("[data-testid=composer-input]")');
-    await page.type('[data-testid=composer-input]', 'A draft worth keeping');
+    // Longer than the list is wide: the row cuts it, and never widens its card.
+    const kept = 'A draft worth keeping, long enough to run past the edge of the list: one line of it would be several columns wide';
+    await page.type('[data-testid=composer-input]', kept);
     await page.settleAnimations();
     await page.screenshot(join(import.meta.dir, '.artifacts', 'drafts-desktop.png'));
+    // A long draft once pushed its card's rows out to the text's width: the thread under it lost its "Needs you" past the edge.
+    const edges = await page.evaluate<{ card: number; rows: number[] }>(`(() => { const draft = document.querySelector('[data-testid=draft-row]'); const card = draft.closest('.project'); return { card: card.getBoundingClientRect().right, rows: [draft, ...card.querySelectorAll('[data-testid=thread-row]')].map(row => row.getBoundingClientRect().right) }; })()`);
+    expect(edges.rows.length).toBeGreaterThan(1);
+    for (const right of edges.rows) expect(right).toBeLessThanOrEqual(edges.card);
     const heights = await page.evaluate<{ draft: number; row: number }>(`({ draft: document.querySelector('[data-testid=draft-row]').getBoundingClientRect().height, row: document.querySelector('[data-testid=thread-row]').getBoundingClientRect().height })`);
     expect(heights.draft).toBeLessThanOrEqual(heights.row + 1);
     await page.send('Page.reload', {});
-    await page.waitFor('document.querySelector("[data-testid=composer-input]")?.value === "A draft worth keeping"');
+    await page.waitFor(`document.querySelector("[data-testid=composer-input]")?.value === ${JSON.stringify(kept)}`);
     await page.click('[data-testid=thread-row]');
     await page.waitFor('document.querySelector("[data-testid=timeline]")');
     expect(await page.evaluate('document.querySelector("[data-testid=draft-row]") !== null')).toBe(true);

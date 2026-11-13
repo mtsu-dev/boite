@@ -280,8 +280,8 @@ and an update of the app.
 
 ### In the app
 
-Teams needs Bots: its switch stays greyed while Bots is off, and turning Bots
-off turns Teams off too. With the experiment on, a Teams section heads the
+Teams is an experiment of a Nightly or a source build; Bots, which it builds
+on, is on in every build. With the experiment on, a Teams section heads the
 Bots page's list, above the bots, on the desktop and on the phone
 (`components/agents/AgentsRail.svelte`). The heading stays while there is no
 team yet, with one line under it, "No team yet: put a few bots in one chat.",

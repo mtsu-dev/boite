@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { CompactionTarget } from '@boite/contracts';
+  import { experimentsRun, type CompactionTarget } from '@boite/contracts';
   import type { Store } from '../lib/store.svelte';
   import { strings } from '../lib/strings';
   import { compactionPolicy } from '../lib/compaction-settings';
@@ -50,7 +50,7 @@
     </div>
     {#if target}
       <div class="customize">
-        <span class="words"><label for="{uid}-custom" class="ui-label">{strings.settings.compactionCustomize}</label><InfoTip topic={strings.settings.compactionCustomize} text={strings.settings.compactionInheritanceHint} /></span>
+        <span class="words"><label for="{uid}-custom" class="ui-label">{strings.settings.compactionCustomize}</label><InfoTip topic={strings.settings.compactionCustomize} text={experimentsRun(store.core?.version) ? strings.settings.compactionInheritanceHint : strings.settings.compactionInheritanceHintRelease} /></span>
         <input id="{uid}-custom" type="checkbox" role="switch" data-testid="compaction-customize" checked={customized}
           disabled={!store.settings || saving} onchange={(event) => void customize(event.currentTarget)} />
       </div>
