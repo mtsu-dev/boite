@@ -286,6 +286,26 @@ test('changing a Store endpoint drops the previous machine composer and element 
   }
 });
 
+test('a machine whose first hello fails gets its folds back once its transport connects by itself', async ({ ready, createStore }) => {
+  // An earlier visit folded a project on this machine.
+  const before = await ready();
+  before.store.machineId = 'https://desk.test';
+  before.store.toggleProject('p-boite');
+  before.store.detach();
+  // The machine listed again in a new view, unreachable at first: the client keeps retrying without Store.connect.
+  const { store, client } = createStore();
+  store.machineId = 'https://desk.test';
+  store.attach(client);
+  vi.spyOn(client, 'connect').mockRejectedValueOnce(new Error('connection closed'));
+  vi.spyOn(console, 'error').mockImplementation(() => {});
+  await store.connect();
+  expect(store.connection).not.toBe('ready');
+  await client.restore();
+  await vi.waitFor(() => expect(store.projects.some(project => project.id === 'p-boite')).toBe(true));
+  expect(store.isCollapsed('p-boite')).toBe(true);
+  expect(store.isCollapsed('p-notes')).toBe(false);
+});
+
 test('changing a Store endpoint drops the previous machine updates, todos, resources, trace and folds', async ({ store, client }) => {
   const saved = Object.entries(localStorage);
   const replacement = new FakeClient({ delayMs: 0 });
