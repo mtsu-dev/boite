@@ -28,8 +28,8 @@ runnable provider and account. Native provider subagents are separate from
 these Boite subagents, and appear in their own section of the tab. The global
 Bots page holds bots: agents with their own identity, memory and
 routines, each in a thread of its own; it is not the list of children of a
-conversation. Enable it in Settings > Experiments to show the bots in the
-desktop's app rail and the Bots tab in the phone's bottom navigation. Each bot opens its ordinary conversation, with its desk in
+conversation. The bots are in the desktop's app rail and the Bots tab is in the
+phone's bottom navigation, in every build. Each bot opens its ordinary conversation, with its desk in
 the right panel ([bots](bots.md)).
 
 A bot delegates project work with `boite delegate spawn "<brief>" --project <project>`.

@@ -55,13 +55,10 @@ what Boite ran itself.
 
 ## From the UI
 
-The import is an experiment: it shows once `Claude Code session import` is on
-in Settings, Experiments. It is a client preference: phones and browsers
-follow their primary machine's desktop switches until they choose their own
-([experiments](experiments.md)). The ids live in
-`packages/contracts/src/setting-requests.ts`. With it off, the menu has no row,
-the palette no command, and
-the `import-session` chord does nothing.
+The import was an experiment and is now on in every build, with no switch
+(`session-import` is `normal` in `EXPERIMENT_STAGES`,
+[experiments](experiments.md)): the project menu has the row, the palette the
+command, and the `import-session` chord runs it.
 
 `Import a Claude Code session` sits in a project's menu (right click, or the
 dots beside its name) and in the palette, where it takes the open thread's
