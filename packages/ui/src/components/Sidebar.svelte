@@ -35,7 +35,7 @@
   import DraftRow from './DraftRow.svelte';
   import GroupLabel from './GroupLabel.svelte';
   import ProjectTile from './ProjectTile.svelte';
-  import MachinePlace from './MachinePlace.svelte';
+  import MachineIcon from './MachineIcon.svelte';
   import MachineOffline from './MachineOffline.svelte';
   import ProjectRollup from './ProjectRollup.svelte';
   import RailFrame from './RailFrame.svelte';
@@ -343,8 +343,9 @@
               onclick={() => projectThreadView.toggleProject(entry, lists, draftsHere.length)}
             >
               {#if projectView.order === 'manual'}<GripVertical size={12} />{/if}<span class="mark"><ProjectTile {project} store={owner} size={18} /><span class="fold-caret" class:open={!collapsed} aria-hidden="true"><ChevronRight size={16} /></span></span
-              ><span class="name project-title ui-label" class:gone={project.missing === true}>{projectName(project)}</span
-              >{#if host(machine)}<MachinePlace host={{ ...host(machine)!, away: false }} testid="project-host" />{/if}{#if project.missing === true}<span class="missing" data-testid="project-missing" title={strings.sidebar.projectMissing} aria-label={strings.sidebar.projectMissing}><FolderX size={13} aria-hidden="true" /></span>{/if}{#if rollup && !needsYou(rollup.kind) && rollup.kind !== 'done' && lists.working.length === 0}<ProjectRollup {rollup} />{/if}
+              >{#if multi}<span class="host" data-testid="project-host" class:offline={owner.connection !== 'ready'}
+                title={`${machine.label} · ${strings.connection[owner.connection]}`} aria-label={machine.label}><MachineIcon icon={machine.icon} os={owner.core?.os} size={14} /></span>{/if}<span class="name project-title ui-label" class:gone={project.missing === true}>{projectName(project)}</span
+              >{#if project.missing === true}<span class="missing" data-testid="project-missing" title={strings.sidebar.projectMissing} aria-label={strings.sidebar.projectMissing}><FolderX size={13} aria-hidden="true" /></span>{/if}{#if rollup && !needsYou(rollup.kind) && rollup.kind !== 'done' && lists.working.length === 0}<ProjectRollup {rollup} />{/if}
             </button>
             <ProjectThreadCounters {entry} working={lists.working.length} waiting={needs.count} failed={needs.failed} {listed} {controls} {collapsed} {away} />
             <button
@@ -572,12 +573,10 @@
   @media (prefers-reduced-motion: reduce) {
     .mark > :global(*) { transition: none; }
   }
-  /* The machine, after the name, as a place (MachinePlace.svelte). The project name keeps priority: in a narrow
-     column the place gives way first, shrinking to an ellipsis, then the counter's spare word hides. */
-  .toggle :global(.machine-place) { flex: 0 1000 auto; min-width: 0; overflow: hidden; }
-  @container sidebar (max-width: 255.98px) {
-    .head:has(:global(.machine-place)) :global(.counter .spare) { display: none; }
-  }
+  /* The machine, once two are listed: its icon before the name, its name and state in the tooltip. */
+  .host { display: flex; flex: none; color: var(--color-muted-foreground); }
+  /* The rows under it carry no machine icon, so the header says the machine is unreachable. */
+  .host.offline { color: var(--color-danger); }
   .head :global(.counters) { flex: 0 1000 auto; min-width: min-content; margin-right: 2px; transition: margin-right var(--dur-2) var(--ease-out-quint); }
   /* The menu appears at the right end on hover and the counters step left of it, as a row's state does. */
   .project-actions {
