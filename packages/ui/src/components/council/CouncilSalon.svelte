@@ -369,7 +369,7 @@
   .who time { margin-left: 2px; color: var(--color-subtle); font-variant-numeric: tabular-nums; }
   .score { font-variant-numeric: tabular-nums; }
   .to-one { align-self: flex-start; padding: 0 8px; border-radius: var(--radius-full); background: var(--color-active); color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 500; }
-  .reply-to { margin: 0; padding-left: 8px; border-left: 2px solid var(--color-border); color: var(--color-muted-foreground); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .reply-to { margin: 0; color: var(--color-muted-foreground); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .text { min-width: 0; font-size: var(--text-sm); overflow-wrap: anywhere; }
   .plain { margin: 0; white-space: pre-wrap; }
   .mention { color: var(--color-foreground); font-weight: 600; }

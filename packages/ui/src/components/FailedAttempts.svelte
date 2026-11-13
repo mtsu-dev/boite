@@ -72,6 +72,6 @@
   .entry { min-width: 0; }
   .wake { display: flex; align-items: center; gap: 7px; margin-top: 16px; color: var(--color-muted-foreground); font-size: var(--text-xs); }
   .wake :global(svg) { flex: none; }
-  pre { margin: 8px 0 0; padding: 10px 12px; border-left: 2px solid var(--color-border); color: var(--color-muted-foreground); font-family: var(--font-mono); font-size: var(--text-xs); line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+  pre { margin: 8px 0 0; padding: 10px 12px; border-radius: var(--radius-md); background: var(--color-surface-2); color: var(--color-muted-foreground); font-family: var(--font-mono); font-size: var(--text-xs); line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
   @media (max-width: 720px) { summary { min-height: var(--control-touch); } }
 </style>
