@@ -234,9 +234,10 @@ limit by itself is compacted by the agent before it is sent, as above. The in-me
 and the independent token limit after a turn, not when a thread is shown; it
 has no background work or prompt cache.
 
-When a merged PR moves a conversation to Done, its last prompt can finish,
-but a compaction turn is stopped. If the provider announces native compaction
-after Done, that turn is stopped too. The history already written is kept.
+When a conversation lands in Done while a compaction runs, the compaction turn
+is stopped. If the provider announces native compaction after Done, that turn
+is stopped too. The history already written is kept. A merged PR no longer puts
+a conversation in Done: its agent is asked instead and answers after its turn.
 
 ### Background compaction
 
@@ -552,9 +553,10 @@ holds the prompt at the head of the queue.
 
 Asynchronous creation and send retain the original core, thread and draft
 identity. Accepted work does not select a thread after newer navigation or
-consume the newer draft. Automatic merged-PR archive preserves local input and
-pauses retained queues; manual archive and deletion clear input as requested.
-See [archive boundaries](development.md#merged-pull-request-archives).
+consume the newer draft. A merged-PR archive from an older core preserves local
+input and pauses retained queues; manual archive and deletion clear input as
+requested, and `boite thread done` waits while a device reports input. See
+[merged pull requests](development.md#merged-pull-requests).
 
 ## Editing a message and forking
 
