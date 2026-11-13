@@ -37,8 +37,10 @@ function graduated(key: string): { title: string; switched: boolean } | null {
   if (id === 'theme-grain') return { title: strings.settings.themeGrain, switched: false };
   if (id === 'session-import') return { title: strings.palette.importSession, switched: false };
   if (id === 'pinned-quotas') return { title: strings.quotas.pin, switched: false };
+  if (id === 'prompt-cache') return { title: strings.settingRequest.promptCacheTimer, switched: false };
+  if (id === 'recording-indicators') return { title: strings.settingRequest.recordingActions, switched: false };
   const known = experimentOf(key);
-  if (known !== null && EXPERIMENT_STAGES[known] === 'normal') return { title: key, switched: false };
+  if (known !== null && EXPERIMENT_STAGES[known] === 'normal') return { title: strings.settingRequest.formerExperiment, switched: false };
   return null;
 }
 

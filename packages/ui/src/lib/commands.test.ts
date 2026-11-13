@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect } from 'vitest';
 import { test } from '../test/fake-client';
 import { appCommands, isAgentCommand, runCommand, slashName } from './commands.svelte';
-import { setExperiment, writeExperiments } from './experiments';
+import { writeExperiments } from './experiments';
 import type { Store } from './store.svelte';
 import { THEME_STORAGE_KEY } from './theme';
 import { work } from './work-prefs.svelte';
@@ -124,7 +124,6 @@ test('a hidden trace card stays in the palette, while persistent agents only ope
 
   runCommand(store, 'agents', false);
   expect(store.page).toBe('chat');
-  setExperiment('resident-agents', true);
   expect(ids(store)).not.toContain('agents');
   runCommand(store, 'agents', false);
   expect(store.page).toBe('chat');

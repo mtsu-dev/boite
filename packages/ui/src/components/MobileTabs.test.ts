@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, onTestFinished, test, vi } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
@@ -38,8 +38,6 @@ test('Activity carries the count of conversations waiting on the user, capped so
 });
 
 test('Bots carries a dot while bots work, in the waiting colour once one asks the user; the count is in its name only', async () => {
-  setExperiment('resident-agents', true);
-  onTestFinished(() => setExperiment('resident-agents', false));
   const { agentDirectory } = await import('../lib/agent-directory.svelte');
   app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 0, navigate: () => {} } }); await settle();
   const rest = { status: 'idle', openQuestions: 0, backgroundWork: null, unread: false } as const;
@@ -70,8 +68,7 @@ test('Contacts has no tab of its own for anyone: the Bots tab, always there, hol
 });
 
 test('with the bots on, the bar keeps three places: Contacts is the Bots tab\'s other side, which stays marked on it', async () => {
-  setExperiment('contacts', true); setExperiment('resident-agents', true);
-  onTestFinished(() => setExperiment('resident-agents', false));
+  setExperiment('contacts', true);
   client.close(); store.detach();
   client = new FakeClient({ delayMs: 0 }); store = new Store(); store.attach(client); await store.connect();
   app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 0, navigate: () => {} } }); await settle();

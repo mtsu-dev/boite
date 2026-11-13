@@ -1,6 +1,5 @@
 import { expect, vi } from 'vitest';
 import { store } from '../lib/store.svelte';
-import { setExperiment } from '../lib/experiments';
 import { mountOnFake, press, query, test, waitFor } from '../test/app';
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
@@ -20,7 +19,6 @@ test('the project menu carries the import with nothing stored: session import is
 
 test('Import a Claude Code session in the project menu lists the transcripts and opens the imported thread', async () => {
   store.draft = null;
-  setExperiment('session-import', true);
   await mountOnFake();
   await waitFor(() => document.querySelector('[data-testid=project-row][data-project-id="p-boite"]') !== null);
 
@@ -64,7 +62,6 @@ test('Import a Claude Code session in the project menu lists the transcripts and
 });
 
 test('a shared transcript asks for its account, supports menu keys, and imports with the alternative', async () => {
-  setExperiment('session-import', true);
   await mountOnFake();
   const alternative = await store.client!.call('accounts.add', { providerId: 'claude', label: 'Alternative login', useDefaultLocation: true });
   await waitFor(() => store.accounts.some(account => account.id === alternative.id));

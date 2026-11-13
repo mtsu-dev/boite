@@ -69,6 +69,11 @@ for (const [name, size] of [['desktop', DESKTOP], ['phone', PHONE]] as const) {
     expect(await page.evaluate(`document.querySelector('[data-testid="experiments-page"]')`)).toBeNull();
     expect(await page.evaluate(`import('/src/lib/experiments.ts').then(({ isExperimentEnabled }) => [isExperimentEnabled('whip'), isExperimentEnabled('resident-agents')])`)).toEqual([false, true]);
     expect(await page.evaluate(`JSON.parse(localStorage.getItem('boite.experiments'))`)).toEqual(['whip']);
+    // The phone's list is taller than the screen: show the whole Advanced family, where the row was.
+    if (name === 'phone') {
+      await page.evaluate(`document.querySelector('[data-testid="settings-family"][data-family="advanced"]').scrollIntoView({ block: 'end' })`);
+      await page.waitFor(`(() => { const box = document.querySelector('[data-testid="settings-family"][data-family="advanced"]').getBoundingClientRect(); return box.top >= 0 && box.bottom <= innerHeight; })()`);
+    }
     await capture(`release-settings-${name}.png`);
     await page.evaluate(`localStorage.removeItem('boite.experiments'); localStorage.removeItem('boite.experiments.build')`);
   }, 60000);

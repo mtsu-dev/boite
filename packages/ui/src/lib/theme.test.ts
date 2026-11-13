@@ -24,8 +24,6 @@ function color(): string {
 }
 
 test('grain resolves to itself, stamps the root and takes the meta colour', () => {
-  setExperiment('theme-grain', true);
-
   setTheme('grain');
 
   expect(readTheme()).toBe('grain');

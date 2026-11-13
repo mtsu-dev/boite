@@ -3,7 +3,6 @@ import { flushSync, mount, unmount } from 'svelte';
 import type { AccountQuota } from '@boite/contracts';
 import type { Store } from '../lib/store.svelte';
 import { pinnedQuotas } from '../lib/pinned-quotas.svelte';
-import { setExperiment } from '../lib/experiments';
 import { strings } from '../lib/strings';
 import PinnedQuota from './PinnedQuota.svelte';
 import QuotaPin from './QuotaPin.svelte';
@@ -14,7 +13,6 @@ afterEach(async () => {
   mounted = undefined;
   document.body.innerHTML = '';
   pinnedQuotas.set(false, 'bottom-left');
-  setExperiment('pinned-quotas', false);
   vi.useRealTimers();
 });
 const settle = async () => { for (let i = 0; i < 20; i++) { await Promise.resolve(); flushSync(); } };

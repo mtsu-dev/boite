@@ -92,7 +92,6 @@ test('with empty storage every finished feature is on, and none of them can be s
   expect(isExperimentEnabled('resident-agents')).toBe(true);
   expect([...readExperiments()].sort()).toEqual([...FINISHED].sort());
   // No switch, so no flip: nothing is stored and Bots stays on.
-  setExperiment('resident-agents', false);
   expect(window.localStorage.getItem(EXPERIMENTS_STORAGE_KEY)).toBeNull();
   expect(isExperimentEnabled('resident-agents')).toBe(true);
   // On a Release too.
