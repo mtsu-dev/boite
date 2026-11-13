@@ -29,7 +29,7 @@ function card(allow: () => FirewallStatus) {
     sessions: [],
     settings: { listenOnLan: false, publicUrl: null },
     client: { call },
-    addDevice: vi.fn(async () => {}), loadSessions: vi.fn(async () => {}),
+    addDevice: vi.fn(async () => {}),
     saveSettings: vi.fn(async (patch: { listenOnLan?: boolean }) => {
       store.settings = { ...store.settings, ...patch };
       return true;
@@ -69,7 +69,7 @@ test('an unreadable firewall says so, and claims no refused change nor offers th
   const store = $state({
     owner: true, principal: 'owner', connection: 'ready', endpointUrl: null, deviceInvite: null, sessions: [],
     settings: { listenOnLan: true, publicUrl: null }, client: { call },
-    addDevice: vi.fn(async () => {}), loadSessions: vi.fn(async () => {}), saveSettings: vi.fn(async () => true),
+    addDevice: vi.fn(async () => {}), saveSettings: vi.fn(async () => true),
   });
   mounted = mount(PhoneSettings, { target: document.body, props: { store: store as unknown as Store } });
   await settle();
@@ -85,7 +85,7 @@ test('a public network says how to mark it private, and offers no rule Windows w
   const store = $state({
     owner: true, principal: 'owner', connection: 'ready', endpointUrl: null, deviceInvite: null, sessions: [],
     settings: { listenOnLan: true, publicUrl: null }, client: { call },
-    addDevice: vi.fn(async () => {}), loadSessions: vi.fn(async () => {}), saveSettings: vi.fn(async () => true),
+    addDevice: vi.fn(async () => {}), saveSettings: vi.fn(async () => true),
   });
   mounted = mount(PhoneSettings, { target: document.body, props: { store: store as unknown as Store } });
   await settle();

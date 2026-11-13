@@ -4,9 +4,9 @@ Boite records the tokens every turn reports, prices them at public API rates,
 and shows the subscription limits each agent reports for your accounts. Use
 it to see where your quota goes and to get warned before you run out.
 
-## Usage
+## The Usage page
 
-Open Settings, AI accounts, Usage.
+Open Settings, Usage.
 
 1. Pick the range, 7, 30 or 90 days, and the measure: Tokens, API estimate or
    Turns. Every card follows them.
@@ -22,7 +22,7 @@ Open Settings, AI accounts, Usage.
   conversations keeps their totals. An incognito conversation keeps nothing.
 - A machine that is not connected is named above the page and left out of
   the totals.
-- On a phone, Usage and Limits are on the same page.
+- On a phone, Usage and Limits sit under Settings, Machines.
 
 ## The API estimate
 
@@ -39,7 +39,7 @@ invoice.
 
 ## Subscription limits
 
-Settings, AI accounts, Limits shows the windows each provider last reported for your
+Settings, Limits shows the windows each provider last reported for your
 signed-in accounts, such as 5 hours and Weekly, with their reset times.
 
 - Tracked accounts sets which accounts Boite asks. An account whose provider
@@ -58,7 +58,7 @@ Muse Code shows limits only once a running session has reported them.
 
 ## Quota alerts
 
-1. In Settings, AI accounts, Limits, press the bell on an account's card.
+1. In Settings, Limits, press the bell on an account's card.
 2. For 5 hours or Weekly, pick the share left that should notify you: 50%,
    25% or 10%, or Custom for any whole number from 0 to 99. Six at most per
    period.
@@ -69,8 +69,7 @@ account every five minutes, even with no window open.
 
 ## Resume after a usage limit
 
-Resume threads after a usage limit, in Settings, AI accounts, Limits, is off
-by default.
+Resume threads after a usage limit, in Settings, Limits, is off by default.
 Turned on, a Claude or Codex thread stopped by a subscription limit resumes by
 itself a minute after the limit resets, once per window. Stop, a new message
 or a changed model cancels it, and the banner above the box has Do not
@@ -98,7 +97,7 @@ documents. It does not check the cache, and changing the model or account
 resets it.
 
 Keep the prompt cache warm is an experiment: it exists in Nightly builds
-only, in Settings, Version, Experiments, and is off by default.
+only, in Settings, Experiments, and is off by default.
 While a conversation waits on its agents or workflows, Boite sends a one-word
 turn shortly before the cache lapses, for at most 12 hours by default (1 to
 24). Each ping counts as usage, and a ping that misses the cache ends the

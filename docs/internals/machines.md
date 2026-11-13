@@ -17,7 +17,7 @@ switch without a destination still restores the previous conversation.
 
 Machines connect through a [group](groups.md): one invitation per machine,
 and each connects to every other, phones included. Existing full-control
-connections are merged into one group when opening Settings, Devices.
+connections are merged into one group when opening Machines and updates.
 The group card contains each machine's settings, connection status and display
 preferences. Click its name to rename the group.
 
@@ -52,7 +52,7 @@ where the user already opened something. The machine that was off is retried
 in the background and comes back as one more machine of the list.
 
 A start opens on the machine shown last. A device can name its main machine
-instead, under Main machine in Settings, Devices, once it reaches more than one:
+instead, under Machines and updates in Settings, once it reaches more than one:
 every start then opens on that machine, whichever one was shown since. The
 choice is made on the device and kept there (`boite.main` in its storage), so a
 phone and a browser each have their own. The desktop app has no such row: it
@@ -206,8 +206,8 @@ when renaming.
 
 ## The machines page
 
-Settings, Devices holds the group card and Settings, Version the Updates card;
-neither folds anything. The Updates card holds Boite's updates: the version this desktop app runs, the release found with its
+Settings, Machines and updates folds nothing. Its first card is Boite's
+updates: the version this desktop app runs, the release found with its
 changelog, the channel (Nightly or Release; Release stays disabled until a
 stable release is published), Check for updates and Update. Check reads
 everything again: the app, Boite on every machine connected with full control,
@@ -246,8 +246,8 @@ machines** (`groupBots`, off by default) lets a bot of another machine look
 after the projects of this one its owner entrusted to it; off, it cuts them
 off at once ([bots](bots.md#projects-of-the-other-machines-of-the-group)). A
 row shown away hides both.
-Agent versions and their automatic update switch are in each machine's
-Agent updates card, on Settings, Version. How a phone reaches this machine without a server of the
+Agent versions and their automatic update switch are on each machine's
+Providers page. How a phone reaches this machine without a server of the
 group (Tailscale HTTPS, the local network, a reverse proxy of one's own) is the
 Phone app card under Advanced.
 
@@ -308,15 +308,15 @@ copies the settings machine's value at once when that machine is connected in
 this window, at its next connection otherwise. Only a change made on that machine
 marks it; the copy itself never does.
 
-Every settings page that holds a card of one machine (`machinePage` in
-`packages/ui/src/lib/settings-tabs.ts`: every page but Appearance) names that
-machine under its title, with a picker once this window has more than one
+Every settings page that belongs to one machine (General, Keyboard, Voice,
+Providers, Plugins, Brain, Limits, Task manager, Protection, Advanced and
+Diagnostics) has a machine picker above it once this window has more than one
 machine to pick. Picking another machine shows and
 changes that machine's settings without moving the window or its open
 conversation; Plugins opens on this PC, the others on the window's machine.
 On a machine that follows the settings machine, a note under the picker says
-so; the settings machine says it holds the role. Cards marked `device` in
-`SETTINGS_CARDS` belong to the window, those marked `group` to the group, and Usage keeps its own machine filter,
+so; the settings machine says it holds the role. Appearance and Experiments belong
+to the window, Machines to the group, and Usage keeps its own machine filter,
 which can read every machine at once.
 
 Methods absent on an older core are skipped for that part. Automatic brain

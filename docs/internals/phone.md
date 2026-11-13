@@ -45,24 +45,51 @@ choosing Answer in writing, editing a message, or opening search explicitly
 still starts typing. A terminal opens on its output and waits for a tap before
 taking the keyboard. Desktop autofocus stays available.
 
-At phone widths, Settings lists the same pages as the desktop
-(`SETTINGS_PAGES`), those the phone may open.
-Each opens as a screen of its own; the back button or browser Back returns to
-the list. The phone's experiments follow the computer's desktop app until the
-phone flips one of its own: Bots on the computer brings the phone's Bots tab
-with it ([experiments](experiments.md)).
+At phone widths, Settings opens a list in two groups. This phone:
+Notifications, Appearance, Privacy, the two analytics switches, and
+Experiments, which follow the computer's desktop app until the phone flips one
+of its own: Bots on the computer brings the phone's Bots tab with it
+([experiments](experiments.md)).
+Machine: the
+machine itself with its connection, which opens Machines, then Usage, Voice,
+Archived threads and Secrets. Owner connections also show Browser profiles
+and Allowed windows. Each opens a screen of its own; the back button or browser
+Back returns to the list. Theme and accent belong to the current device;
+Appearance also holds the chat's files and previews switch, and leaves the
+column width, the terminal, the workspace and the header's buttons to the
+desktop. The notification screen names the connected machine that will send
+its alerts, and offers to install the app while it is not installed.
+Machines shows the group: its machines, which the phone switches to or
+reconnects, and its devices, this phone marked as such. A phone that reaches no
+machine shows **Scan the code** and **Paste the link** there, as on its first
+screen ([adding a phone](#adding-a-phone)). Chrome uses `BarcodeDetector` when
+available; the fallback loads jsQR on the first scan. Decoding stays on the
+device. Other QR content leaves the scanner open. The camera requires HTTPS and
+closing the view stops its tracks. A machine takes the hostname reported by its
+core; its card can rename it.
+Voice shows the connected core's dictation readiness. Engine installation and
+API credentials stay in desktop Voice settings, including for owner sessions.
+Usage has two tabs: Usage shows the connected core's tokens and API cost per
+day, provider and model; Limits draws the core's subscription bars, read-only
+([usage.md](usage.md)), under the switch that turns the owner's saved Douane or
+CLIProxyAPI gateway on or off
+([providers](providers.md#switching-the-gateway-from-limits)).
 
-A phone that reaches no machine shows **Scan the code** and **Paste the link**
-in Settings, as on its first screen ([adding a phone](#adding-a-phone)). Chrome
-uses `BarcodeDetector` when available; the fallback loads jsQR on the first
-scan. Decoding stays on the device. Other QR content leaves the scanner open.
-The camera requires HTTPS and closing the view stops its tracks. A machine
-takes the hostname reported by its core; its card can rename it.
+Owner sessions have an Automatic compaction row with common defaults and
+independent settings for conversations, subagents and bots.
 
-A link or a card can open a page the phone lists, subject to its permissions.
-Project management is available from each project card's menu. What the phone
-lists does not change RPC permissions. A paired device sees the group's
-devices but leaves adding and removing them to the owner.
+Owner sessions also get Plugins, the same page as the desktop's: the grid
+takes one card per row and a card's gear opens as a bottom sheet
+([plugins](plugins.md)).
+
+Provider accounts, keyboard shortcuts, resource limits, the brain,
+the task manager, worktrees, diagnostics, the tour and
+server configuration have no row in the phone's settings list. A link or a
+card can still open a supported detail page, subject to its permissions;
+`MobileSettings.svelte` defines those pages. Project management is available
+from each project card's menu. This smaller phone menu also applies to owner
+sessions; it does not change RPC permissions. A paired device's Machines
+page lists devices but leaves adding and removing them to the owner.
 
 Device sessions receive only events corresponding to the state they may read.
 Account login output, process traces, plugin state and core diagnostics
@@ -81,7 +108,7 @@ binds `0.0.0.0` instead, and `--host` takes a specific address:
 bun packages/core/src/main.ts --lan
 ```
 
-Settings, Devices, Phone app, Reachable on the local network saves
+Settings, Advanced, Phone app, Reachable on the local network saves
 `listenOnLan`. The core
 reads it at startup; enabling it binds `0.0.0.0`. Explicit `--host` or `--lan`
 flags take precedence. A running core never rebinds, so changing the switch
@@ -155,7 +182,7 @@ with the core's own origin, and the second with its device signature.
 
 ## Adding a phone
 
-On any machine of the group, Settings, Devices, Group, **Add a device** draws a QR
+On any machine of the group, Settings, Machines, **Add a device** draws a QR
 code of this link:
 
 ```
@@ -516,7 +543,7 @@ boite.example.com {
 
 ### Through Tailscale
 
-On a tailnet the phone is already on, Settings, Devices, Phone app has
+On a tailnet the phone is already on, Settings, Advanced, Phone app has
 **HTTPS through Tailscale**. It reads the `tailscale` CLI (found on `PATH`, or
 where the installers put it on Windows, macOS and Linux; `BOITE_TAILSCALE_CLI`
 names another) and says which of these it found, with the way out of each:
@@ -737,8 +764,8 @@ Each device chooses the kinds it gets, all on by default: Approvals
 (permission requests, plan approvals, settings and agent settings cards asking
 to apply a change), Questions (an agent's questions, `boite ask`, a delegated
 agent's), Finished, Errors and Limits (the alerts set on an account in
-Settings, AI accounts, Limits, [usage](usage.md#alerts)). The rows sit under the notifications switch, in
-the Notifications card of Settings, Conversations, and dim while
+Settings, Limits, [usage](usage.md#alerts)). The rows sit under the notifications switch, in
+General on the desktop and in Notifications on the phone, and dim while
 the switch is off. The choice lives in the page's `localStorage`: the kinds
 turned off under `boite.notifications.muted`, so a kind added later starts on.
 Local toasts read it (`shouldNotify` in `lib/notify.ts`). For Web Push the core

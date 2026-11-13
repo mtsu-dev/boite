@@ -37,8 +37,7 @@ ends, the files move under the last thing the agent wrote.
 
 ## Links in answers
 
-Settings, Conversations, In the conversation, Chat files and previews is on
-by default. Each device keeps
+Settings, General, Chat files and previews is on by default. Each device keeps
 its own choice. With it on, a file path in an answer becomes a link:
 
 - Markdown links, bare web addresses, absolute paths, `file:///` links and
@@ -55,8 +54,7 @@ agent sent stay downloadable.
 
 ### Open links in their own apps
 
-Settings, Conversations, In the conversation, Open chat links in their apps
-is off by default and exists
+Settings, General, Open chat links in their apps is off by default and exists
 only in the desktop app. On, a click on a local file or folder opens it in its
 default app, shortcuts and files outside the project included. Only links from
 this computer open this way. On another machine or a phone, links keep the

@@ -127,7 +127,7 @@ RPC error with code `Refused` and `data: { policy, file }`; a provider the
 policy blocks carries the same `policy` object in its summary.
 
 The app draws each control a key locks disabled, with a lock that opens the
-key and the file that hold it. Settings > Safeguards lists the active keys under
+key and the file that hold it. Settings > General lists the active keys under
 "Managed by your organization", and a banner above every settings page lists
 the problems while the file has any. A provider the policy blocks shows as
 turned off by the organization, with no switch to turn it back on. The agent

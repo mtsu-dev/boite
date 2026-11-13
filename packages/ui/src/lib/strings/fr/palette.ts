@@ -16,8 +16,8 @@ export const fr: Translation = {
     addProject: 'Ajouter un projet',
     importSession: 'Importer une session',
     settings: 'Ouvrir les réglages',
-    appearance: "Réglages de l'apparence",
-    providers: 'Comptes IA',
+    appearance: 'Réglages du style et de la langue',
+    providers: 'Fournisseurs et comptes',
     pair: 'Ajouter un appareil',
     sidebar: 'Afficher ou masquer la barre latérale',
     panel: 'Afficher ou masquer le panneau',
@@ -34,14 +34,6 @@ export const fr: Translation = {
     archive: 'Archiver ce fil',
     themeDark: 'Thème : sombre',
     themeLight: 'Thème : clair',
-    themeSystem: 'Thème : système',
-    oldPages: {
-      settings: 'général système avancé extensions expérimentations navigateur mises à jour general system advanced plugins experiments browser updates',
-      appearance: 'style langue look language',
-      providers: 'fournisseurs limites consommation quotas providers limits usage',
-      pair: 'machines',
-      taskManager: 'diagnostic ressources mémoire processus diagnostics resources',
-      archived: 'général fils conversations general'
-    }
+    themeSystem: 'Thème : système'
   }
 };

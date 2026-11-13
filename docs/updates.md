@@ -23,15 +23,15 @@ On a wide window the card opens by itself once per release. Remind me later
 puts that release off, even after a restart; a newer release shows it again.
 On a phone the card opens only when you press the button, as a sheet.
 
-Settings, Version, Updates has the same controls: the installed version, the
-release found with its changelog, the channel, Check for updates and Update.
-Each machine's row in Settings, Devices, Machines reads Up to date, Update available,
+Settings, Machines and updates has the same controls: the installed version,
+the release found with its changelog, the channel, Check for updates and
+Update. Each machine's row there reads Up to date, Update available,
 Updating or Update failed.
 
 ### Install updates by itself
 
-Turn on Install updates by itself when nothing runs, in Settings, Version,
-Updates, to skip the click. It is off by default. A release found by the
+Turn on Install updates by itself when nothing runs, in Settings, Machines
+and updates, to skip the click. It is off by default. A release found by the
 six-hour check then installs only while the window is hidden in the tray and
 no conversation, queued message or process runs. Boite comes back in the
 tray. Otherwise it tries again at the next check. It does not touch agents.
@@ -41,7 +41,7 @@ tray. Otherwise it tries again at the next check. It does not touch agents.
 1. Back up your Boite data. On Windows it is in `%LOCALAPPDATA%\boite2`, on
    macOS in `~/Library/Application Support/boite2`; on Linux,
    [install](install.md#install-on-linux) gives the folder.
-2. In Settings, Version, Updates, press Release or Nightly.
+2. In Settings, Machines and updates, press Release or Nightly.
 3. Boite checks that channel at once and downloads its newest release.
 4. Press Restart, then confirm. Boite comes back on the other channel.
 
@@ -66,13 +66,13 @@ and offers the first build of that channel that can read it.
 
 ## How agents are updated
 
-Each machine checks its own agents every six hours. Open Settings, Version,
-pick that machine under the title and find the Agent updates card:
+Each machine checks its own agents every six hours. Open Settings, Providers
+for that machine and find the Agent updates card:
 
 - Each agent shows its installed and available version, with Update and Skip.
 - Skip stops offering that version. A later one is offered again, and Offer
   it again brings back the skipped one.
-- Update agents automatically makes that machine update its agents by itself. It is off
+- Automatic updates makes that machine update its agents by itself. It is off
   by default.
 - An agent whose newest version Boite cannot read shows Checks by itself and
   Run its updater.

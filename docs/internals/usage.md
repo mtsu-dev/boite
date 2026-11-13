@@ -1,8 +1,8 @@
 # Usage
 
-Settings > AI accounts > Usage shows what the agents spent through Boite:
-tokens, the API equivalent cost and turns, per day, provider, model and
-thread. Limits sits above it on the same page, holding the subscription windows each provider
+Settings > Usage shows what the agents spent through Boite: tokens, the API
+equivalent cost and turns, per day, provider, model and thread. Settings >
+Limits is its own tab beside it, holding the subscription windows each provider
 last reported. Everything on the usage page comes from turns the core already
 recorded in its journal. Boite never estimates a token count; it prices the
 reported tokens at each model's public API rates ([The API
@@ -111,7 +111,7 @@ an alert is set, and its tooltip lists them.
   `5-hour limit: 8% left` in the body, labelled `limitFiveHour` or
   `limitWeekly` with `values.percent`, which the phone's words fill in its
   language. A desktop shows a toast whatever is on screen; a click opens
-  Settings, AI accounts, Limits, on the machine that sent it. A tapped push, or a page's
+  Settings, Limits, on the machine that sent it. A tapped push, or a page's
   notice through the service worker, opens Limits the same way
   (`?limits=1&member=<core id>` with no window open).
 
@@ -155,7 +155,7 @@ failure. It never quotes the body, which can echo a credential.
 
 ## Quota sources and freshness
 
-Settings > AI accounts > Limits and the tray show monitored, signed-in accounts. Providers
+Settings > Limits and the tray show monitored, signed-in accounts. Providers
 contains setup and account controls without usage. With no signed-in account,
 Limits and the tray offer connection. Monitoring switches are under Tracked
 accounts in Limits; the tray has no switch. [Accounts](accounts.md) owns login
@@ -498,7 +498,7 @@ during a wait fails the turn the usual way.
 
 ### Usage limit
 
-Settings > AI accounts > Limits has "Resume threads after a usage limit"
+Settings > Limits has "Resume threads after a usage limit"
 (`autoResumeLimitedThreads`, off by default). With it on, a turn that failed
 on a usage limit plans one resume a minute after the window resets
 (`threads/limit-resume.ts`). The reset is the one the agent reported, else the
@@ -537,7 +537,8 @@ a device can already open, and the thread titles it names are the ones
 `packages/core/src/access.ts`. A device also reads `quotas.list` and
 `subscriptionProxy.quotas` with the bars the core holds: no refresh button, no
 monitoring switch, no reset. A core older than that refuses the read, and the
-Limits tab asks to update Boite on that machine. A phone lists the same page.
+Limits tab asks to update Boite on that machine. On a phone both pages are under
+Settings > Machines, as Usage and Limits.
 
 ## The fake client
 

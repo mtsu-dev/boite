@@ -87,7 +87,7 @@ flag's size by the forced scale of 2 twice.
 A browser whose identity cannot be read starts as it is, with a warning in the
 log. A page check of `boite view` skips the read.
 
-Settings > Safeguards > Built-in browser has a User-Agent editor on each custom
+Settings > General > Browser profiles has a User-Agent editor on each custom
 profile. Leave it empty for the unchanged browser identity, append a suffix
 such as a bug bounty program marker, or replace the complete value. The
 setting is stored as `browserProfiles[].userAgent` (`mode: suffix | replace`,
@@ -189,7 +189,7 @@ disk.
 ### Copying a desktop profile's sign-ins
 
 The desktop's own browser keeps its profiles in WebView2, on the PC. The
-agent browser cannot read them, so Settings > Safeguards > Built-in browser has
+agent browser cannot read them, so Settings > General > Browser profiles has
 **Copy sign-ins to agents** on each profile, in the Windows desktop app. It
 lists the connected machines the user owns; picking one reads that profile's
 cookies on the PC (`browser_cookies`, through a blank view of the profile

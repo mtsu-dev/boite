@@ -124,9 +124,6 @@ test('the desktop page charts each day by provider, reads a column on hover and 
   expect(cards.width).toBeLessThanOrEqual(880);
   await capture('usage-desktop-dark.png');
 
-  // Usage is a section of AI accounts, held at the top while the cards above it fill in, until the
-  // reader scrolls: a turn of the wheel, as a hand gives, hands the page back before the chart is centred.
-  await page.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: 640, y: 400, deltaX: 0, deltaY: 1 });
   await page.evaluate(`document.querySelector('[data-testid=usage-chart]').scrollIntoView({ block: 'center' })`);
   const chart = await box('[data-testid=usage-chart]');
   await mouse(chart.right - 12, chart.top + chart.height / 2);
@@ -189,14 +186,14 @@ test('the phone page fits 390 px and is reachable from the phone settings list',
   await viewport(390, 844, true);
   await page.waitFor(`document.querySelector('[data-testid=mobile-settings-detail] [data-testid=usage-chart] svg path')`);
   expect(await fits()).toBe(true);
-  // The bar above names the page and carries its info mark; the usage's own title steps aside,
-  // and its refresh stays on the section's row, inside the screen.
+  // The bar above names the page and carries its info mark; the page's own title steps aside,
+  // and its refresh joins the bar's right end rather than taking a row of its own.
   expect(await page.evaluate(`document.querySelector('[data-testid=mobile-settings-info]').getBoundingClientRect().height > 0`)).toBe(true);
   expect(await page.evaluate(`document.querySelector('[data-testid=usage-page] > header h1').getBoundingClientRect().height`)).toBe(0);
   expect(await page.evaluate(`(() => {
     const info = document.querySelector('[data-testid=mobile-settings-info]').getBoundingClientRect();
     const refresh = document.querySelector('[data-testid=usage-refresh]').getBoundingClientRect();
-    return info.width > 0 && refresh.width > 0 && refresh.left >= 0 && refresh.right <= innerWidth;
+    return refresh.top < info.bottom && refresh.bottom > info.top && refresh.right <= innerWidth;
   })()`)).toBe(true);
   await capture('usage-phone-dark.png');
 
@@ -257,10 +254,8 @@ test('the limits tab is its own page, one card per account, no scrolling through
   await viewport(1280, 800);
   await openLimits();
   await page.waitFor(`document.querySelectorAll('[data-testid=usage-limit-account]').length >= 3`);
-  // The limits answer the first screen: the history is the last section of AI accounts, never inside
-  // the limits nor on the screen they open on.
-  expect(await count('[data-testid=limits-page] [data-testid=usage-chart]')).toBe(0);
-  await page.waitFor(`(() => { const usage = document.getElementById('settings-usage'), limits = document.querySelector('[data-testid=limits-page]'); return !!usage && usage.getBoundingClientRect().top >= innerHeight && limits.getBoundingClientRect().top < innerHeight / 2 && !!(limits.compareDocumentPosition(usage) & Node.DOCUMENT_POSITION_FOLLOWING); })()`);
+  // The limits answer the first screen: nothing of the history is loaded beside them.
+  expect(await count('[data-testid=usage-chart]')).toBe(0);
   expect(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true);
   await capture('limits-desktop-dark.png');
   await scheme('light');

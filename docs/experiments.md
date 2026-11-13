@@ -1,19 +1,19 @@
 # Experiments
 
 Experiments are features that are not finished yet. They can change or
-disappear, so each one has a switch in Settings, Version, Experiments.
+disappear, so each one has a switch in Settings, Experiments.
 
 ## Where they exist
 
-Experiments exist in Nightly builds only. A Release has no Experiments card
-on its Version page and runs none of them, whatever was switched on before.
+Experiments exist in Nightly builds only. A Release has no Experiments page
+and runs none of them, whatever was switched on before.
 
 A few are still being built and exist only in Boite Dev, the build made from
 the source code. There, each switch says whether it is in Nightly too or in
 Dev only.
 
-- To try them, switch the machine to Nightly: in Settings, Version,
-  Updates, change the Release channel to Nightly
+- To try them, switch the machine to Nightly: in Settings, Machines and
+  updates, change the Release channel to Nightly
   ([updates](updates.md#switch-between-release-and-nightly)). Nightly may
   contain unfinished changes.
 - Going back to Release turns every experiment off. Your switches are kept:

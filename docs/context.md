@@ -33,8 +33,7 @@ the chat with the token counts before and after.
 
 ### Automatic compaction
 
-Settings, Agents, Compaction defaults by agent type, Automatic compaction sets
-when Boite compacts for you.
+Settings, Advanced, Automatic compaction sets when Boite compacts for you.
 Without it, each agent keeps its own behaviour.
 
 | Setting | What it does |
@@ -53,10 +52,11 @@ Without it, each agent keeps its own behaviour.
 - Claude summary instructions replaces the summary prompt of Claude.
   `/compact` followed by your own instructions wins over it.
 - Automatic compactions wait while a goal or a loop is active.
-- On a phone connected as the owner, the same card is on the same page.
+- On a phone connected as the owner, Automatic compaction is a row in the
+  machine's settings.
 
 Experimental, in Nightly builds only: Background compaction, in Settings,
-Version, Experiments. With a token
+Experiments. With a token
 limit, a copy of the session compacts once the conversation reaches 85% of it,
 while you keep working. It works with Claude and Codex; OpenCode 2 uses its
 own. Copies spend the same account and are not counted in usage.

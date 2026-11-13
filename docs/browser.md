@@ -77,7 +77,7 @@ To sign the agent in to a site:
 When an agent meets a sign-in page, it may ask you in the chat. The question
 card's Open button opens the page in the conversation's browser.
 
-Settings, Safeguards, Built-in browser, Browser profiles lists the profiles:
+Settings, General, Browser profiles lists the profiles:
 
 - Add profile creates one. Open new tabs here picks the profile new tabs use.
 - User-Agent, on a profile you created, appends a marker to the browser's

@@ -51,9 +51,8 @@ function thumb() {
 
 async function setSwitch(on: boolean) {
   await page.click('[data-testid=nav-settings]');
-  // The switch is a detail of Appearance, beside the terminal's cursor.
-  await page.click('[data-testid=settings-tab-appearance]');
-  await page.waitFor(`!!document.querySelector('${toggle}')`);
+  // The switch is a detail of Advanced, beside the terminal's cursor.
+  await page.click('[data-testid=settings-tab-advanced]');
   expect(await page.evaluate(`!!document.querySelector('${toggle}')`)).toBe(true);
   const checked = await page.evaluate<boolean>(`document.querySelector('${toggle}').getAttribute('aria-checked') === 'true' || document.querySelector('${toggle}').checked === true`);
   if (checked !== on) await page.click(toggle);

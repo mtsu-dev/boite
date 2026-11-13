@@ -339,7 +339,7 @@ test('a crashed desktop app says so on its card, with its exit code and why behi
   const reason = 'This core has no desktop to show a window on: neither DISPLAY nor WAYLAND_DISPLAY is set.';
   await open((rows) => {
     const bots = rows.find((plugin) => plugin.id === 'bots')!;
-    bots.app = { enabled: true, status: 'crashed', pid: null, exitCode: 3, error: 'bots exited with code 3 4 times in 5 minutes; start it again from Settings > Agents > Plugins.', startedAt: null };
+    bots.app = { enabled: true, status: 'crashed', pid: null, exitCode: 3, error: 'bots exited with code 3 4 times in 5 minutes; start it again from Settings > Plugins.', startedAt: null };
     rows.push({ ...structuredClone(bots), id: 'headless', name: 'Headless', app: { enabled: true, status: 'unavailable', pid: null, exitCode: null, error: reason, startedAt: null } });
   });
   await vi.waitFor(() => expect(row('headless')).not.toBeNull());

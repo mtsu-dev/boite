@@ -292,7 +292,7 @@ describe('a desktop app', () => {
       return bytes === null ? new Response('missing', { status: 404 }) : new Response(bytes, { headers: { 'content-length': String(bytes.length) } });
     }) as typeof fetch);
     restores.push(() => fetchSpy.mockRestore());
-    // Bots installs from the recommended list, as Settings > Agents > Plugins offers it first.
+    // Bots installs from the recommended list, as Settings > Plugins offers it first.
     harness.core.plugins.recommended = [parseManifest(manifest('0.1.0', v1), 'recommended.json[0]')];
 
     const [listed] = await client.call('plugins.list', {});

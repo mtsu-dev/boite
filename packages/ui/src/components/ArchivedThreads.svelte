@@ -4,7 +4,6 @@
   import { Ellipsis, RotateCcw, Trash2 } from '@lucide/svelte';
   import { DEFAULT_THREAD_DONE_RETENTION_DAYS, type ThreadId, type ThreadSummary } from '@boite/contracts';
   import InfoTip from './InfoTip.svelte';
-  import CardScope from './CardScope.svelte';
   import Menu from './Menu.svelte';
   import DeletedThreads from './DeletedThreads.svelte';
   import { archivedThreads, archivedTime } from '../lib/archive';
@@ -149,7 +148,7 @@
 </script>
 
 <section class="card" id="settings-archived" data-testid="archived-threads">
-  <h2 class="ui-label-box"><span class="ui-label">{strings.settings.archived.heading}</span><InfoTip topic={strings.settings.archived.heading} text={strings.settings.archived.intro} /><CardScope {store} /></h2>
+  <h2 class="ui-label-box"><span class="ui-label">{strings.settings.archived.heading}</span><InfoTip topic={strings.settings.archived.heading} text={strings.settings.archived.intro} /></h2>
   {#if focusId && focusName}
     <p class="focus" data-testid="archived-focus">
       <span class="ui-label">{fill(strings.settings.archived.inProject, { project: focusName })}</span>

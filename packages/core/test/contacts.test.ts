@@ -237,7 +237,7 @@ test('without a Contacts bot nothing is decided for the owner: a trusted contact
   const guestThread = await thread(guestClient, mine.id, 'Guest work');
   await hostClient.call('contacts.update', { coreId: guestId, trusted: true });
   // An ask that names no contact needs this core's bot to pick one: without it, refused with what to turn on.
-  expect(await thrown(guestClient.call('collaboration.ask', { threadId: guestThread, text: 'help on the app' }))).toThrow('Settings > Version > Experiments');
+  expect(await thrown(guestClient.call('collaboration.ask', { threadId: guestThread, text: 'help on the app' }))).toThrow('Settings > Experiments');
   await contactsBotOf(guest, guestClient);
   await waitFor(() => guest.core.contacts.find(hostId)?.capabilities?.contactsBot === 1, 10000);
   const matched = await guestClient.call('collaboration.ask', { threadId: guestThread, contact: hostId, want: 'share', text: 'help on the app' });

@@ -234,7 +234,7 @@ test('a provider turned off refuses a turn and reports provider-disabled, as dri
   const refusal = await client.call('turns.start', { threadId: thread.id, prompt: 'hello' }).catch(error => error as { code: number; message: string; data: unknown });
   expect(refusal).toMatchObject({
     code: RpcErrorCode.Unavailable,
-    message: 'Echo is turned off on this machine. Turn it on in Settings > AI accounts > Providers to use it',
+    message: 'Echo is turned off on this machine. Turn it on in Settings > Providers to use it',
     data: { providerId: 'echo', disabled: true },
   });
   expect(await code(client.call('providers.probe', { providerId: 'echo', accountId: 'a-echo' }))).toBe(RpcErrorCode.Unavailable);

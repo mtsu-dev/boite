@@ -58,14 +58,14 @@ For a Codex login, for example:
 docker compose exec boite-server codex login --device-auth
 ```
 
-For isolated accounts, use the Providers card of Settings, AI accounts. Default CLI logins persist in
+For isolated accounts, use the Providers page. Default CLI logins persist in
 the home volume; isolated accounts persist in the data volume. See
 [accounts](accounts.md). Install additional system tools in a derived image,
 or user tools under `/home/node/.local`, whose `bin` directory is on `PATH`.
 
 The image ships its agents in `/opt/agents`, owned by root. npm's global prefix
 is `/home/node/.local` (`NPM_CONFIG_PREFIX`), and its `bin` comes before
-`/opt/agents` on `PATH`. An agent update, from the Agent updates card or the
+`/opt/agents` on `PATH`. An agent update, from the Providers page or the
 agent's own command (`codex update`, `pi update self`), installs there, in the
 home volume, and that copy runs from then on. It outlives an image update, so
 it is the copy Boite updates next. `npm uninstall -g <package>`
@@ -145,8 +145,8 @@ no real provider call and uses no existing login directory.
 
 ## Updating from the app
 
-Open Settings, Devices. A remote server whose row says Update
-available has a signed release waiting: the Updates card of Settings, Version lists it
+Open Settings, Machines and updates. A remote server whose row says Update
+available has a signed release waiting: the updates card at the top lists it
 under the app's own, with its installed and offered versions, and its Update
 button installs it with everything else waiting. While that server downloads
 or waits for its agents, its line offers Cancel. A Docker or hand-made server
@@ -466,7 +466,7 @@ exits 0 when the state is on or off, 2 when Tailscale needs something first
 it must be allowed to change Tailscale's serve config (on Linux, `sudo tailscale
 set --operator=$USER` once). See [phone.md](phone.md#through-tailscale).
 
-Paste the link into Settings, Devices, Add machine. Full control
+Paste the link into Settings, Machines and updates, Add machine. Full control
 permits
 accounts, projects, settings and further pairing. Removing the local connection
 forgets its key; revoking it on the server invalidates it. [Machines](machines.md)

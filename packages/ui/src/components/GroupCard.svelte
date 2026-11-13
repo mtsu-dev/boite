@@ -176,7 +176,7 @@
 
 {#if group}
   <section class="card group" class:mobile data-testid="group-card" id="settings-group">
-    <header class="card-head">
+    <header>
       <h2>
         {#if editing}
           <form class="rename" onsubmit={(event) => { event.preventDefault(); void rename(); }}>
@@ -262,7 +262,7 @@
   </section>
 {:else if owner}
   <section class="card group" class:mobile data-testid="group-card" id="settings-group">
-    <header class="card-head">
+    <header>
       <h2>{strings.group.heading}<InfoTip topic={strings.group.heading} text={strings.group.intro} /></h2>
       {@render addButton()}
     </header>
@@ -322,11 +322,22 @@
 
 <style>
   .group {
-    padding: var(--space-1) var(--space-4);
-    margin-bottom: var(--space-6);
+    padding: 16px 20px;
+    margin-bottom: 20px;
   }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--color-border);
+  }
+  /* The settings pages give a card's title a bottom margin, which would lift the name off the button's line. */
+  :global(.settings .page .card.group > header > h2) { margin: 0; }
   .group > header > h2,
   .group > h2 {
+    font-size: var(--text-base);
     margin: 0;
     min-width: 0;
     display: flex; align-items: center; gap: 6px;
@@ -454,7 +465,7 @@
     background: var(--color-active);
     color: var(--color-foreground);
   }
-  .join { margin-top: var(--space-3); padding-bottom: var(--space-3); }
+  .join { margin-top: 16px; }
   footer {
     display: flex;
     flex-wrap: wrap;
@@ -501,11 +512,6 @@
   .mobile button { min-height: var(--touch-target); }
   .mobile .icon-only { min-width: var(--touch-target); }
   .mobile .field button { flex: 1; }
-  /* A window with room: the inset of every other card of the page, its title with it. */
-  @media (min-width: 721px) {
-    :global(.settings .framed) .group { padding-inline: var(--space-5); }
-    :global(.settings .framed) .group > :global(.card-head:first-child) { left: var(--space-5); right: var(--space-5); }
-  }
   @media (max-width: 720px) {
     .group { padding: 14px 16px; }
     .row { flex-wrap: wrap; }

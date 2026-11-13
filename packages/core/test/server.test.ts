@@ -883,7 +883,7 @@ describe('server', () => {
     const phoneLink = await pair(['--data-dir', harness.dataDir]);
     expect(phoneLink.role).toBe('device');
 
-    // `boite-core accounts` asks the same core, as its owner, what Settings > AI accounts > Providers shows.
+    // `boite-core accounts` asks the same core, as its owner, what Settings > Providers shows.
     const listed = harness.core.accounts.list();
     expect(listed.length).toBeGreaterThan(0);
     expect(await accounts(['--data-dir', harness.dataDir], ownerClient)).toEqual(listed);

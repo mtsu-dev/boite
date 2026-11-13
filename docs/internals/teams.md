@@ -6,7 +6,7 @@ live context of its work; the team only carries posts between them. A post
 wakes the bots it names, and a bot answers either in the group, which every
 member reads, or privately to one member or the owner.
 
-Teams sit behind the Teams switch in Settings > Version > Experiments
+Teams sit behind the Teams switch in Settings > Experiments
 ([experiments](experiments.md)). While it is off on a machine, the `teams.*`
 methods and `boite team` commands on the teams that machine holds refuse with
 the reason `experiment-off`, and no bot of that machine can enter a team. The

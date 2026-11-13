@@ -24,8 +24,7 @@
   import WindowExclusionsCard from './WindowExclusionsCard.svelte';
   import type { Store } from '../lib/store.svelte';
   /** `store`: the machine whose windows the page's last cards change, this window's own. */
-  /** `extras`: the updates above the machines and the window cards under them. The map of Settings places each itself (`SettingsShell.svelte`). */
-  let { mobile = false, onopenthread, store: here, extras = true }: { mobile?: boolean; onopenthread?: () => void; store?: Store; extras?: boolean } = $props();
+  let { mobile = false, onopenthread, store: here }: { mobile?: boolean; onopenthread?: () => void; store?: Store } = $props();
   /**
    * The switches a machine of a group holds for itself: whether the agents of
    * the other machines may start threads there (`groupThreads`), and whether
@@ -186,7 +185,7 @@
     <h1 class="ui-label-box"><span class="ui-label">{strings.settings.tabs.machines}</span><InfoTip topic={strings.settings.tabs.machines} text={strings.machines.intro} /></h1>
   </header>
 
-  {#if extras}<UpdatesCard />{/if}
+  <UpdatesCard />
 
     <!-- A device of a group has nothing to add: its group brings every machine. One that reaches none adds itself here. -->
     {#if topForm}<PairMachine {mobile} bind:this={pairingForm} />{/if}
@@ -286,10 +285,10 @@
   </section>
 
   <!-- Chosen on the device itself, a phone included: it says where that device opens. -->
-  {#if extras}<MainMachine />{/if}
+  <MainMachine />
 
   <!-- What agents may see on this window's machine, the task these cards serve . -->
-  {#if extras && here?.owner}
+  {#if here?.owner}
     <p class="scope cards-scope" data-testid="machines-windows-scope">{fill(strings.machines.scopeOn, { machine: thisName })}</p>
     <WindowAllowlistCard store={here} />
     <WindowExclusionsCard store={here} />

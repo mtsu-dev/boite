@@ -48,45 +48,33 @@ test('phone settings expose browser profiles and allowed windows only to owners 
   await navigateMobile('mobile-settings');
   await page.waitFor(`document.querySelector('[data-testid=mobile-settings-home]')`);
   const rows = `[...document.querySelectorAll('[data-testid=mobile-settings-home] .row')].map(row => row.dataset.testid)`;
-  // The list is the map's pages a phone has, in its order; the owner-only ones (Agents, and Safeguards without an admin policy) leave a paired phone.
-  const expected = ['settings-tab-appearance', 'settings-tab-input', 'settings-tab-conversations', 'settings-tab-ai', 'settings-tab-agents', 'settings-tab-safeguards', 'settings-tab-devices', 'settings-tab-version', 'settings-tab-help'];
-  const ownerOnly = ['settings-tab-agents', 'settings-tab-safeguards'];
-  const card = (id: string) => `document.querySelector('[data-testid=settings-page] [data-testid=${id}]')`;
+  // Home lists the desktop's families; the owner-only pages (accounts, plugins, the brain, the browser's profiles, System's compaction, Diagnostics) leave a paired phone.
+  const expected = ['settings-tab-general', 'settings-tab-voice', 'settings-tab-appearance', 'settings-tab-accounts', 'settings-tab-plugins', 'settings-tab-brain', 'settings-tab-limits', 'settings-tab-usage', 'settings-tab-browser', 'mobile-settings-connection', 'settings-tab-advanced', 'settings-tab-experiments', 'settings-tab-diagnostics'];
+  const ownerOnly = ['settings-tab-accounts', 'settings-tab-plugins', 'settings-tab-brain', 'settings-tab-browser', 'settings-tab-advanced', 'settings-tab-diagnostics'];
   expect(await page.evaluate<string[]>(rows)).toEqual(expected);
-  // No row for an old page, and the keyboard, a desktop's, has no route at all.
-  expect(await page.evaluate(`document.querySelector('.row[data-testid=settings-tab-resources]') === null && document.querySelector('[data-testid=settings-tab-keyboard]') === null`)).toBe(true);
-  // An owner finds the browser profiles and the windows agents may see on Safeguards.
-  await page.click('[data-testid=settings-tab-safeguards]');
-  await page.waitFor(`document.querySelector('[data-testid=settings-page]')?.dataset.page === 'safeguards' && ${card('browser-profiles-card')} && ${card('window-allowlist')}`);
+  expect(await page.evaluate(`document.querySelector('[data-testid=settings-tab-resources]') === null && document.querySelector('[data-testid=settings-tab-keyboard]') === null`)).toBe(true);
+  // An owner finds the browser profiles under Browser and the windows agents may see under Machines.
+  await page.click('[data-testid=settings-tab-browser]');
+  await page.waitFor(`document.querySelector('[data-testid=browser-page] [data-testid=browser-profiles-card]')`);
   await page.click('[data-testid=mobile-settings-back]');
   await page.waitFor(`document.querySelector('[data-testid=mobile-settings-home]')`);
-  // Input holds the voice alone on a phone.
-  await page.click('[data-testid=settings-tab-input]');
-  await page.waitFor(`document.querySelector('[data-testid=settings-page]')?.dataset.page === 'input'`);
-  expect(await page.evaluate(`document.querySelector('[data-testid=keyboard-page]') === null`)).toBe(true);
+  await page.click('[data-testid=mobile-settings-connection]');
+  await page.waitFor(`document.querySelector('[data-testid=machines-windows-scope]')`);
   await page.click('[data-testid=mobile-settings-back]');
   await page.waitFor(`document.querySelector('[data-testid=mobile-settings-home]')`);
   await page.evaluate(`(() => { const store=__boiteTest.workspace.active; store.client.becomes('session'); store.principal='session'; })()`);
   await page.waitFor(`__boiteTest.workspace.active.owner === false`);
-  expect(await page.evaluate<string[]>(rows)).toEqual(expected.filter(row => !ownerOnly.includes(row)));
-  // A paired phone has no route to the windows agents may see or to the browser profiles, under a new name or an old one.
-  expect(await page.evaluate(`['agents', 'safeguards', 'browser', 'resources', 'plugins', 'brain'].every(id => document.querySelector('[data-testid=settings-tab-' + id + ']') === null)`)).toBe(true);
-  await page.click('[data-testid=settings-tab-devices]');
-  await page.waitFor(`document.querySelector('[data-testid=mobile-settings-detail]') && ${card('group-card')}`);
-  expect(await page.evaluate(`document.querySelector('[data-testid=window-allowlist]') === null && document.querySelector('[data-testid=browser-profiles-card]') === null`)).toBe(true);
-  await page.click('[data-testid=mobile-settings-back]');
-  await page.waitFor(`document.querySelector('[data-testid=mobile-settings-home]')`);
-  // Its task manager, a row of the old list, is a card of Troubleshooting.
-  await page.click('[data-testid=settings-tab-help]');
-  await page.waitFor(`document.querySelector('[data-testid=settings-page]')?.dataset.page === 'help' && document.querySelector('[data-testid=settings-page] [data-block=task-manager]')`);
+  expect(await page.evaluate<string[]>(rows)).toEqual([...expected.filter(row => !ownerOnly.includes(row)), 'settings-tab-task-manager']);
+  await page.click('[data-testid=mobile-settings-connection]');
+  await page.waitFor(`document.querySelector('[data-testid=mobile-settings-detail]')`);
+  expect(await page.evaluate(`document.querySelector('[data-testid=machines-windows-scope]') === null`)).toBe(true);
   await page.click('[data-testid=mobile-settings-back]');
   await page.waitFor(`document.querySelector('[data-testid=mobile-settings-home]')`);
   await page.evaluate(`(() => { const store=__boiteTest.workspace.active; store.client.becomes('owner'); store.principal='owner'; })()`);
   await page.waitFor(`__boiteTest.workspace.active.owner === true`);
   expect(await page.evaluate<string[]>(rows)).toEqual(expected);
-  // Compaction is a card of Agents.
-  await page.click('[data-testid=settings-tab-agents]');
-  await page.waitFor(`document.querySelector('[data-testid=settings-page]')?.dataset.page === 'agents' && ${card('compaction-target-common')}`);
+  await page.click('[data-testid=settings-tab-advanced]');
+  await page.waitFor(`document.querySelector('[data-testid=compaction-target-common]')`);
   for (const type of ['common', 'agent', 'subagent', 'bot']) {
     await page.click(`[data-testid=compaction-target-${type}]`);
     await page.waitFor(`document.querySelector('[data-testid=compaction-target-${type}]')?.getAttribute('aria-pressed') === 'true'`);
@@ -95,14 +83,18 @@ test('phone settings expose browser profiles and allowed windows only to owners 
   await page.click('[data-testid=mobile-settings-back]');
   await page.waitFor(`document.querySelector('[data-testid=mobile-settings-home]')`);
   await capture('phone-settings-home-dark.png');
-  // This phone's notifications are a card of Devices; Back returns to the list.
-  await page.click('[data-testid=settings-tab-devices]');
+  // This phone's notifications sit in General's index; Back climbs to the index, then Home.
+  await page.click('[data-testid=settings-tab-general]');
+  await page.waitFor(`document.querySelector('[data-testid=mobile-settings-general]')`);
+  await page.click('[data-testid=mobile-settings-phone]');
   await page.waitFor(`document.querySelector('[data-testid=phone-settings]')`);
-  expect(await page.evaluate(`document.querySelector('[data-testid=phone-public-url]') === null`)).toBe(true);
+  expect(await page.evaluate(`document.querySelector('[data-testid=phone-public-url]') === null && document.querySelector('[data-testid=group-add-device]') === null`)).toBe(true);
   await capture('phone-settings-notifications.png');
   await page.evaluate('history.back()');
+  await page.waitFor(`document.querySelector('[data-testid=mobile-settings-general]')`);
+  await page.evaluate('history.back()');
   await page.waitFor(`document.querySelector('[data-testid=mobile-settings-home]')`);
-  await page.click('[data-testid=settings-tab-devices]');
+  await page.click('[data-testid=mobile-settings-connection]');
   await page.waitFor(`document.querySelector('[data-testid=group-card]')`);
   expect(await page.evaluate(`document.querySelector('[data-testid=browser-origins]') === null`)).toBe(true);
   await capture('phone-settings-machines.png');
@@ -114,10 +106,8 @@ test('phone settings expose browser profiles and allowed windows only to owners 
   await page.click('[data-testid=mobile-settings-back]');
   await capture('phone-settings-home-light.png');
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
-  // The keyboard is a desktop's: Input shows it there, and the phone left it out.
-  await page.waitFor(`document.querySelector('nav .tab[data-testid=settings-tab-input]')`);
-  await page.click('nav .tab[data-testid=settings-tab-input]');
-  await page.waitFor(`document.querySelector('[data-testid=settings-page] [data-testid=keyboard-page]')`);
+  // Resources is a section of Diagnostics now; Keyboard is a desktop page the phone leaves out.
+  await page.waitFor(`document.querySelector('[data-testid=settings-tab-keyboard]')`);
   await capture('phone-settings-desktop-unchanged.png');
   await page.click('[data-testid=settings-back]');
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
@@ -246,7 +236,8 @@ test('model sheets stay on screen and browser Back closes the sheet without losi
   await page.waitFor(`!document.querySelector('[data-testid=composer-picker-menu]')`);
   expect(await page.evaluate(`document.querySelector('[data-testid=composer-input]').value`)).toBe('Keep this draft');
   await navigateMobile('mobile-settings');
-  await page.click('[data-testid=settings-tab-devices]');
+  await page.click('[data-testid=settings-tab-general]');
+  await page.click('[data-testid=mobile-settings-phone]');
   await page.waitFor(`document.querySelector('[data-testid=phone-settings]')`);
   await capture('mobile-installation.png');
 }, 15_000);
@@ -368,8 +359,8 @@ test('the panel sheet, Agents and Settings keep clear of a notch and the status 
     expect(await top('[data-testid=mobile-header] strong')).toBeGreaterThanOrEqual(47);
     await capture('mobile-safe-agents.png');
     await navigateMobile('mobile-settings');
-    await page.waitFor(`document.querySelector('[data-testid=mobile-settings-pages] .row')`);
-    expect(await top('[data-testid=mobile-settings-pages]')).toBeGreaterThanOrEqual(47);
+    await page.waitFor(`document.querySelector('[data-testid=mobile-settings-home] h2')`);
+    expect(await top('[data-testid=mobile-settings-home] h2')).toBeGreaterThanOrEqual(47);
     await capture('mobile-safe-settings.png');
   } finally {
     await page.send('Emulation.setSafeAreaInsetsOverride', { insets: { top: 0, bottom: 0, left: 0, right: 0 } });
@@ -714,15 +705,15 @@ test('screens slide over the one they open from, the panel and sheets from their
   expect(await moves()).toEqual([]);
   expect(await page.evaluate(`document.querySelector('[data-testid=mobile-header]').dataset.slide ?? null`)).toBe(null);
 
-  // A Settings page comes over the list and goes back off it; from one page to another it is only replaced.
+  // A Settings page comes over the home and goes back off it; between the two tabs of Usage it is only replaced.
   await navigateMobile('mobile-settings');
   await page.waitFor(`document.querySelector('[data-testid=mobile-settings-home]') && ${still} && ${screensSettled}`);
   await moves();
-  await page.click('[data-testid=settings-tab-ai]');
+  await page.click('[data-testid=settings-tab-usage]');
   await page.waitFor(`document.querySelector('[data-testid=mobile-settings-detail]') && !document.querySelector('[data-testid=mobile-settings-home]') && ${still}`);
   expect(await moves()).toEqual(['screen-in', 'screen-under-out']);
-  await page.evaluate(`document.querySelector('[data-testid=settings-tab-devices]')?.click() ?? window.__boiteTest?.workspace.active.showSettings('devices')`);
-  await page.waitFor(`document.querySelector('[data-testid=settings-page]')?.dataset.page === 'devices'`);
+  await page.click('[data-testid=mobile-usage-tab-limits]');
+  await page.waitFor(`document.querySelector('[data-testid=mobile-usage-tab-limits]')?.getAttribute('aria-selected') === 'true'`);
   await frames();
   expect(await moves()).toEqual([]);
   // The page sliding off takes no tap, and neither does the home beneath it, which a tap through the page would reach.

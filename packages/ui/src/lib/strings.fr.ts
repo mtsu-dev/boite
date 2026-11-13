@@ -48,7 +48,6 @@ import { fr as agentShape } from './strings/fr/agentShape';
 import { fr as media } from './strings/fr/media';
 import { fr as btw } from './strings/fr/btw';
 import { fr as secrets } from './strings/fr/secrets';
-import { fr as settingsMap } from './strings/fr/settingsMap';
 import { fr as slash } from './strings/fr/slash';
 import { fr as activity } from './strings/fr/activity';
 import { fr as mention } from './strings/fr/mention';
@@ -150,7 +149,6 @@ export const fr: Translation = {
   ...media,
   ...btw,
   ...secrets,
-  ...settingsMap,
   ...slash,
   ...activity,
   ...mention,

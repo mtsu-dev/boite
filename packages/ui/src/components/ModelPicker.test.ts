@@ -543,7 +543,7 @@ test('a thread whose provider is turned off says so beside the picker, and the c
   expect(await store.setProviderEnabled(provider.id, false)).toBe(true);
   await waitFor(() => chip() !== null);
   expect(chip()!.textContent).toBe('Turned off');
-  expect(chip()!.title).toBe(`${provider.name} is turned off. Turn it on in Settings > AI accounts > Providers to continue this conversation.`);
+  expect(chip()!.title).toBe(`${provider.name} is turned off. Turn it on in Settings > Providers to continue this conversation.`);
   chip()!.click();
   await waitFor(() => store.page === 'settings' && store.settingsTab === 'accounts');
   store.showChat();

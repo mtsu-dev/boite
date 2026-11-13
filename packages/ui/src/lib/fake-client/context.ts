@@ -503,7 +503,7 @@ export class FakeContext {
         if (!provider || provider.enabled !== false) return null;
         return provider.policy
           ? `${provider.name} is blocked by your organization's policy; choose another model for ${agent.name} in its settings.`
-          : `${provider.name} is turned off on this machine; turn it on in Settings > AI accounts > Providers, or choose another model for ${agent.name} in its settings.`;
+          : `${provider.name} is turned off on this machine; turn it on in Settings > Providers, or choose another model for ${agent.name} in its settings.`;
       },
       // A project's folder holds files: a brain root refuses it.
       occupied: path => this.projects.some(p => p.path.replace(/[\\/]+$/, '') === path),

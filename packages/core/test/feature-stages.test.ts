@@ -76,7 +76,7 @@ test('a dev feature exists in a Dev build only, a nightly one in a Nightly and a
   expect(listedExperiments(RELEASE, stages)).not.toContain('teams');
   expect(experimentRefusal('teams', NIGHTLY, stages)).toBeNull();
   expect(experimentRefusal('teams', DEV, stages)).toBeNull();
-  expect(experimentRefusal('teams', RELEASE, stages)).toBe(`experiment.teams runs in Nightly and Dev builds only, and this machine runs a Release (${RELEASE}): switch the update channel to Nightly in Settings > Version > Updates to try it`);
+  expect(experimentRefusal('teams', RELEASE, stages)).toBe(`experiment.teams runs in Nightly and Dev builds only, and this machine runs a Release (${RELEASE}): switch the update channel to Nightly in Settings > Updates to try it`);
 
   // A stored choice for a feature the build lacks is ignored, and still there for the build that has it.
   const chosen = ['whip', 'teams'];
@@ -123,7 +123,7 @@ test('a Release core runs no experiment an app reports, refuses the card for one
 
   const asked = await owner.call('settings.request', { threadId, reason: 'Try the whip', key: 'experiment.whip', value: true }).catch((error: Error) => error.message);
   expect(asked).toContain('experiment.whip runs in Nightly and Dev builds only, and this machine runs a Release (2.0.0)');
-  expect(asked).toContain('Settings > Version > Updates');
+  expect(asked).toContain('Settings > Updates');
   expect(await owner.call('settings.request', { threadId, reason: 'x', key: 'experiment.resident-agents', value: true }).catch((error: Error) => error.message)).toContain('no longer an experiment');
   expect(await owner.call('settings.request', { threadId, reason: 'x', key: 'deviceStream', value: true }).catch((error: Error) => error.message)).toContain('deviceStream is an experiment');
   expect(await owner.call('questions.list', { threadId })).toEqual([]);

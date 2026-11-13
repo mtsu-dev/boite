@@ -1,23 +1,14 @@
-import { Activity, Archive, Bot, Brain, ChartColumn, Cpu, FlaskConical, Gauge, GitBranch, Globe, KeyRound, Keyboard, LifeBuoy, MessagesSquare, Mic, Monitor, MonitorSmartphone, Palette, Puzzle, Rocket, ShieldCheck, SlidersHorizontal, Smartphone, Sparkles, Stethoscope, Wrench } from '@lucide/svelte';
+import { Activity, Archive, Brain, ChartColumn, Cpu, FlaskConical, Gauge, GitBranch, Globe, KeyRound, Keyboard, MessagesSquare, Mic, Monitor, Palette, Puzzle, SlidersHorizontal, Smartphone, Stethoscope, Wrench } from '@lucide/svelte';
 import type { SettingsTab } from './settings-tabs';
 
 /**
  * One lucide icon a Settings entry, the desktop's nav and the phone's rows
  * alike (a list of words alone was slow to scan). One family, one
- * size and one stroke where they are drawn (`SETTINGS_ICON_SIZE`). The nine
- * pages of the map first, then the phone's rows from before it.
+ * size and one stroke where they are drawn (`SETTINGS_ICON_SIZE`).
  */
-export const SETTINGS_ICONS: Record<Exclude<SettingsTab, 'home'> | 'phone' | 'archived' | 'worktrees', typeof Palette> = {
-  appearance: Palette,
-  input: Keyboard,
-  conversations: MessagesSquare,
-  ai: Sparkles,
-  agents: Bot,
-  safeguards: ShieldCheck,
-  devices: MonitorSmartphone,
-  version: Rocket,
-  help: LifeBuoy,
+export const SETTINGS_ICONS: Record<Exclude<SettingsTab, 'home'> | 'conversations' | 'phone' | 'archived' | 'worktrees', typeof Palette> = {
   general: SlidersHorizontal,
+  appearance: Palette,
   keyboard: Keyboard,
   voice: Mic,
   accounts: KeyRound,
@@ -32,6 +23,7 @@ export const SETTINGS_ICONS: Record<Exclude<SettingsTab, 'home'> | 'phone' | 'ar
   diagnostics: Stethoscope,
   resources: Cpu,
   'task-manager': Activity,
+  conversations: MessagesSquare,
   phone: Smartphone,
   archived: Archive,
   worktrees: GitBranch
