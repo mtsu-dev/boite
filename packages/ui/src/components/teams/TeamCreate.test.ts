@@ -84,10 +84,15 @@ async function newTeam(): Promise<HTMLElement> {
   if (plus && !document.querySelector('[data-testid=agents-new-team]')) { plus.click(); await settle(); }
   return query('[data-testid=agents-new-team]');
 }
+/** The dialog is fetched on its first opening (`lib/teams-entry.ts`): wait for it, however long the import takes. */
+async function dialogShown(): Promise<HTMLElement> {
+  const dialog = await vi.waitFor(() => { flushSync(); return query<HTMLElement>('[data-testid=team-dialog]'); });
+  await settle();
+  return dialog;
+}
 async function openDialog() {
   (await newTeam()).click();
-  await settle();
-  return query('[data-testid=team-dialog]');
+  return dialogShown();
 }
 
 test('with no team yet the Bots list shows the bots first, then the Teams heading with New team and one line', async () => {
@@ -105,8 +110,8 @@ test('with no team yet the Bots list shows the bots first, then the Teams headin
   document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle();
   const action = query<HTMLButtonElement>('[data-testid=agents-teams-empty-action]');
   expect(action.textContent?.trim()).toBe('New team');
-  action.click(); await settle();
-  expect(document.querySelector('[data-testid=team-dialog]')).not.toBeNull();
+  action.click();
+  expect(await dialogShown()).not.toBeNull();
 });
 
 test('the dialog asks for a name and a bot, then creates the team on this machine and opens its chat', async () => {

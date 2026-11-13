@@ -113,7 +113,7 @@ test('a Release delivers no letter a Nightly held: the flag stays open, its thre
   const client = await release.connect();
   const turns = () => release.core.journal.listTurns(hostThread).length;
   const before = turns();
-  expect(await thrown(client.call('contacts.bot.flag', { threadId: bot.threadId, id: flag.id, deliver: true }))).toThrow('experiment.contacts runs in Nightly builds only, and this machine runs a Release (2.0.0)');
+  expect(await thrown(client.call('contacts.bot.flag', { threadId: bot.threadId, id: flag.id, deliver: true }))).toThrow('experiment.contacts runs in Nightly and Dev builds only, and this machine runs a Release (2.0.0)');
   expect(release.core.contacts.flags.list().find(entry => entry.id === flag.id)?.status).toBe('open');
   expect(contactMailGate(release.core, hostThread).held(letterAt(release, hostThread, steering.id)!)).toBe(true);
   expect(turns()).toBe(before);

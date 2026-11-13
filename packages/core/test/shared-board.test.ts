@@ -505,7 +505,7 @@ test('a Release authority applies no card, edit or claim a contact\'s Nightly se
   try {
     await b.client.call('sharedBoard.apply', { ...theirs, command: command('update', 'as-release', 'Edited at a Release') }).catch(() => undefined);
     await waitFor(() => sent.some(s => s.kind === 'update'), 10000);
-    expect(sent.find(s => s.kind === 'update')!.error).toContain('experiment.contacts runs in Nightly builds only, and this machine runs a Release (2.0.0)');
+    expect(sent.find(s => s.kind === 'update')!.error).toContain('experiment.contacts runs in Nightly and Dev builds only, and this machine runs a Release (2.0.0)');
     expect((await cards(a.client, scope))[0]!.text).toBe('Written while both were Nightly');
     await b.client.call('sharedBoard.apply', { ...theirs, command: { kind: 'remove', requestId: 'remove-at-release', cardId: 'card_collision' } }).catch(() => undefined);
     await waitFor(() => sent.some(s => s.kind === 'remove'), 10000);

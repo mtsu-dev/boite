@@ -12,6 +12,7 @@
 import { bunTarget, shellTarget } from '../../../apps/shell/scripts/targets.ts';
 import { requirePinnedBun } from '../../../scripts/ci/bun-version.ts';
 import { bunRuntime } from './bun-runtime.ts';
+import { defineFlags } from './defines.ts';
 
 /** A compile takes seconds; one past this is stuck, and says so before the job's own limit. */
 const COMPILE_TIMEOUT_MS = 10 * 60_000;
@@ -35,6 +36,8 @@ const runtime = target ? await bunRuntime(target).catch((error: unknown) => {
 const result = Bun.spawnSync([
   process.execPath, 'build', '--compile', ...(target ? [`--target=${target}`, `--compile-executable-path=${runtime}`] : []),
   '--minify-whitespace', '--minify-syntax', '--bytecode', '--format=esm', '--env=BOITE_RELEASE_*',
+  // The build's kind and its features' flags: `--version=<version>` compiles another kind (scripts/ci/feature-cut.ts).
+  ...defineFlags(option('version')),
   'src/compiled-main.ts', 'src/artifact-retention-worker.ts', 'src/platform/linux-tcp-worker.ts', '--outfile', option('outfile') ?? `dist/boite-core${suffix}`,
 ], {
   stdout: 'inherit', stderr: 'inherit', windowsHide: true, timeout: COMPILE_TIMEOUT_MS,

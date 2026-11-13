@@ -9,6 +9,7 @@
 </script>
 
 <script lang="ts">
+  import { markFeature } from '@boite/contracts';
   import { untrack } from 'svelte';
   import { ArrowUp, AtSign, Lock, LoaderCircle, UsersRound, X } from '@lucide/svelte';
   import { routeTeamPost, TEAM_OWNER, TEAM_POST_MAX, type Team, type TeamMember } from '@boite/contracts';
@@ -153,6 +154,8 @@
 
   // Answering a post brings the caret to the field.
   $effect(() => { if (reply) untrack(() => field?.focus()); });
+  // Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
+  markFeature('boite-feature:teams');
 </script>
 
 <div class="composer-wrap team-composer-wrap">

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { teamsParts } from '../lib/teams-entry';
   import { untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import { experimentOn } from '../lib/experiments.svelte';
@@ -28,6 +29,7 @@
   import ContactHoldNotice from './ContactHoldNotice.svelte';
   import { firstRunScreen, needsAnAI } from '../lib/first-run';
   import { closingLine } from '../lib/closing-line';
+  import { loadCouncilSalon } from '../lib/council-entry';
 
   /** `locked`: the conversation reads but takes nothing more, said in place of the composer (an archived agent's). */
   let { store, locked = null }: { store: Store; locked?: string | null } = $props();
@@ -89,13 +91,13 @@
   let TeamChat = $state.raw<typeof import('./teams/TeamChat.svelte').default>();
   let loadingTeamChat: Promise<void> | undefined;
   $effect(() => {
-    if (thread?.teamId && !TeamChat) loadingTeamChat ??= import('./teams/TeamChat.svelte').then(module => { TeamChat = module.default; }).catch(() => { loadingTeamChat = undefined; });
+    if (thread?.teamId && !TeamChat) loadingTeamChat ??= teamsParts?.TeamChat().then(module => { TeamChat = module.default; }).catch(() => { loadingTeamChat = undefined; });
   });
   // A salon opened as a thread (a link, the palette) draws as it does in the panel, loaded the same way.
   let CouncilSalon = $state.raw<typeof import('./council/CouncilSalon.svelte').default>();
   let loadingSalon: Promise<void> | undefined;
   $effect(() => {
-    if (thread?.councilId && !CouncilSalon) loadingSalon ??= import('./council/CouncilSalon.svelte').then(module => { CouncilSalon = module.default; }).catch(() => { loadingSalon = undefined; });
+    if (thread?.councilId && !CouncilSalon) loadingSalon ??= loadCouncilSalon()?.then(module => { CouncilSalon = module.default; }).catch(() => { loadingSalon = undefined; });
   });
   let project = $derived(store.openProject);
   let draftChoice = $derived(store.defaultChoice());

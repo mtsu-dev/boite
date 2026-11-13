@@ -16,8 +16,10 @@ export const parts = {
   DiffView: new LazyComponent(() => import('../components/DiffView.svelte')),
   QuestionCard: new LazyComponent(() => import('../components/QuestionCard.svelte')),
   SecretCard: new LazyComponent(() => import('../components/SecretCard.svelte')),
-  TeamCard: new LazyComponent(() => import('../components/TeamCard.svelte')),
-  CouncilCard: new LazyComponent(() => import('../components/council/CouncilCard.svelte')),
+  // The Teams' flag in full, as in `lib/teams-entry.ts`: a build below its tag has no such chunk, and a team's request draws as a plain question there.
+  TeamCard: new LazyComponent(() => typeof __BOITE_HAS_TEAMS__ === 'undefined' || __BOITE_HAS_TEAMS__ ? import('../components/TeamCard.svelte') : Promise.reject(new Error('Teams are not in this build'))),
+  // The Council's flag in full, as in `lib/council-entry.ts`: a build below its tag has no such chunk, and nothing draws the part there.
+  CouncilCard: new LazyComponent(() => typeof __BOITE_HAS_DEBATES__ === 'undefined' || __BOITE_HAS_DEBATES__ ? import('../components/council/CouncilCard.svelte') : Promise.reject(new Error('the Council is not in this build'))),
   QuotaOverview: nested.QuotaOverview,
   LimitsGlance: new LazyComponent(() => import('../components/LimitsGlance.svelte')),
   PinnedQuota: new LazyComponent(() => import('../components/PinnedQuota.svelte')),
@@ -32,8 +34,12 @@ export function prefetchParts(): void {
   for (const part of Object.values(parts)) void part.load().catch(() => undefined);
 }
 
-/** Shared rows load only for an expanded project with Contacts enabled. */
-export const sharedProjectThreads = new LazyComponent(() => import('../components/shared/SharedProjectThreads.svelte'));
+/**
+ * Shared rows load only for an expanded project with Contacts enabled. Both
+ * parts carry the Contacts' flag in full, as `lib/contacts-entry.ts` does: a
+ * build below its tag has no such chunk, and nothing draws the part there.
+ */
+export const sharedProjectThreads = new LazyComponent(() => typeof __BOITE_HAS_CONTACTS__ === 'undefined' || __BOITE_HAS_CONTACTS__ ? import('../components/shared/SharedProjectThreads.svelte') : Promise.reject(new Error('Contacts are not in this build')));
 
 /** Association controls load their dialog only when the owner opens it. */
-export const sharedProjectDialog = new LazyComponent(() => import('../components/shared/SharedProjectDialog.svelte'));
+export const sharedProjectDialog = new LazyComponent(() => typeof __BOITE_HAS_CONTACTS__ === 'undefined' || __BOITE_HAS_CONTACTS__ ? import('../components/shared/SharedProjectDialog.svelte') : Promise.reject(new Error('Contacts are not in this build')));

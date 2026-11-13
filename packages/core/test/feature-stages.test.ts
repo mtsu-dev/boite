@@ -2,12 +2,13 @@ import { afterEach, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { EXPERIMENT_IDS, EXPERIMENT_STAGES, effectiveExperiments, experimentalSettingRefusal, holdExperimentalSettings, isReleaseVersion, listedExperiments, type ClientPreferences, type ExperimentId, type Settings } from '@boite/contracts';
+import { EXPERIMENT_IDS, EXPERIMENT_STAGES, FEATURE_CUTS, buildKindOf, effectiveExperiments, experimentRefusal, experimentStartRefusal, featureCompiled, featureDefines, featureMarker, stageRuns, experimentalSettingRefusal, holdExperimentalSettings, isReleaseVersion, listedExperiments, type ClientPreferences, type ExperimentId, type Settings } from '@boite/contracts';
 import { connect } from '../src/client.ts';
 import { echoThread, startTestCore, type TestCore } from './harness.ts';
 
 const RELEASE = '2.0.0';
 const NIGHTLY = '2.0.1-nightly.20261113.1';
+const DEV = '2.0.0-beta.1';
 const EXPERIMENTAL: ExperimentId[] = ['whip', 'contacts', 'auto-goal', 'teams', 'debates'];
 const report = (experiments: ExperimentId[]): ClientPreferences => ({ app: 'app-desktop-0001', language: 'en', experiments, labels: {} });
 
@@ -48,6 +49,61 @@ test('a version without a prerelease part is a Release, and only the other build
   expect(holdExperimentalSettings<Partial<Settings>>({ deviceStream: true }, NIGHTLY)).toEqual({ deviceStream: true });
 });
 
+test('a build has one of three kinds, read from its version', () => {
+  expect(['2.0.0', '0.1.1', '', null, undefined].map(buildKindOf)).toEqual(['release', 'release', 'release', 'release', 'release']);
+  expect(['2.0.0-nightly.20261111.1', '2.0.1-nightly.20261113.12', '2.0.0-nightly'].map(buildKindOf)).toEqual(['nightly', 'nightly', 'nightly']);
+  // Any other prerelease is a build from source: the checkout's own version, a test core, a name that only starts like a nightly.
+  expect(['2.0.0-beta.1', '2.0.0-test.0', '2.0.0-rc.1', '2.0.0-nightlyish.1'].map(buildKindOf)).toEqual(['dev', 'dev', 'dev', 'dev']);
+  // A build has the features tagged at or below its kind.
+  expect((['release', 'nightly', 'dev'] as const).map(kind => (['release', 'nightly', 'dev'] as const).filter(stage => stageRuns(stage, kind))))
+    .toEqual([['release'], ['release', 'nightly'], ['release', 'nightly', 'dev']]);
+});
+
+test('a dev feature exists in a Dev build only, a nightly one in a Nightly and a Dev build', () => {
+  // The real table with one feature of each tag: whip stands for a dev feature, teams for a nightly one.
+  const stages = { ...EXPERIMENT_STAGES, whip: 'dev', teams: 'nightly' } as const;
+
+  expect(listedExperiments(DEV, stages)).toContain('whip');
+  expect(listedExperiments(NIGHTLY, stages)).not.toContain('whip');
+  expect(listedExperiments(RELEASE, stages)).not.toContain('whip');
+  expect(experimentRefusal('whip', DEV, stages)).toBeNull();
+  expect(experimentRefusal('whip', NIGHTLY, stages)).toBe(`experiment.whip runs in Dev builds only, and this machine runs a Nightly (${NIGHTLY}): it is still being built and no published build has it`);
+  expect(experimentRefusal('whip', RELEASE, stages)).toBe(`experiment.whip runs in Dev builds only, and this machine runs a Release (${RELEASE}): it is still being built and no published build has it`);
+  expect(experimentStartRefusal('whip', NIGHTLY, stages)).toContain('runs in Dev builds only');
+
+  expect(listedExperiments(DEV, stages)).toContain('teams');
+  expect(listedExperiments(NIGHTLY, stages)).toContain('teams');
+  expect(listedExperiments(RELEASE, stages)).not.toContain('teams');
+  expect(experimentRefusal('teams', NIGHTLY, stages)).toBeNull();
+  expect(experimentRefusal('teams', DEV, stages)).toBeNull();
+  expect(experimentRefusal('teams', RELEASE, stages)).toBe(`experiment.teams runs in Nightly and Dev builds only, and this machine runs a Release (${RELEASE}): switch the update channel to Nightly in Settings > Updates to try it`);
+
+  // A stored choice for a feature the build lacks is ignored, and still there for the build that has it.
+  const chosen = ['whip', 'teams'];
+  expect(effectiveExperiments(chosen, DEV, stages)).toEqual(expect.arrayContaining(['whip', 'teams']));
+  expect(effectiveExperiments(chosen, NIGHTLY, stages)).toContain('teams');
+  expect(effectiveExperiments(chosen, NIGHTLY, stages)).not.toContain('whip');
+  expect(effectiveExperiments(chosen, RELEASE, stages)).toEqual(effectiveExperiments([], RELEASE));
+  expect(chosen).toEqual(['whip', 'teams']);
+});
+
+test('a build is compiled with one constant for its kind and one flag per tagged feature', () => {
+  const stages = { ...EXPERIMENT_STAGES, whip: 'dev', teams: 'nightly' } as const;
+  expect(featureDefines(RELEASE, stages)).toMatchObject({ __BOITE_BUILD_KIND__: '"release"', __BOITE_HAS_WHIP__: 'false', __BOITE_HAS_TEAMS__: 'false' });
+  expect(featureDefines(NIGHTLY, stages)).toMatchObject({ __BOITE_BUILD_KIND__: '"nightly"', __BOITE_HAS_WHIP__: 'false', __BOITE_HAS_TEAMS__: 'true', __BOITE_HAS_AUTO_GOAL__: 'true' });
+  expect(featureDefines(DEV, stages)).toMatchObject({ __BOITE_BUILD_KIND__: '"dev"', __BOITE_HAS_WHIP__: 'true', __BOITE_HAS_TEAMS__: 'true' });
+  // A finished feature has no flag: nothing of it is ever cut.
+  expect(Object.keys(featureDefines(RELEASE)).sort()).toEqual(['__BOITE_BUILD_KIND__', '__BOITE_HAS_AUTO_GOAL__', '__BOITE_HAS_CONTACTS__', '__BOITE_HAS_DEBATES__', '__BOITE_HAS_TEAMS__', '__BOITE_HAS_WHIP__']);
+  // From source nothing is compiled out; a bundle compiled as a Release lacks what its kind lacks, whatever version it later hears.
+  expect(featureCompiled('whip')).toBe(true);
+  expect(featureCompiled('whip', 'release')).toBe(false);
+  expect(featureCompiled('whip', 'nightly')).toBe(true);
+  expect(featureCompiled('theme-grain', 'release')).toBe(true);
+  // Only a feature above the release tag can be cut, and its marker is its own.
+  for (const id of Object.keys(FEATURE_CUTS) as ExperimentId[]) expect(EXPERIMENT_STAGES[id], id).not.toBe('release');
+  expect(featureMarker('whip')).toBe('boite-feature:whip');
+});
+
 test('a Release core runs no experiment an app reports, refuses the card for one and names the Nightly channel', async () => {
   const h = await core(RELEASE);
   const owner = await desktop(h);
@@ -66,7 +122,7 @@ test('a Release core runs no experiment an app reports, refuses the card for one
   expect(read.settings.filter(setting => setting.key.startsWith('experiment.'))).toEqual([]);
 
   const asked = await owner.call('settings.request', { threadId, reason: 'Try the whip', key: 'experiment.whip', value: true }).catch((error: Error) => error.message);
-  expect(asked).toContain('experiment.whip runs in Nightly builds only, and this machine runs a Release (2.0.0)');
+  expect(asked).toContain('experiment.whip runs in Nightly and Dev builds only, and this machine runs a Release (2.0.0)');
   expect(asked).toContain('Settings > Updates');
   expect(await owner.call('settings.request', { threadId, reason: 'x', key: 'experiment.resident-agents', value: true }).catch((error: Error) => error.message)).toContain('no longer an experiment');
   expect(await owner.call('settings.request', { threadId, reason: 'x', key: 'deviceStream', value: true }).catch((error: Error) => error.message)).toContain('deviceStream is an experiment');
@@ -110,7 +166,7 @@ test('a Release reads the experimental settings as off, refuses to turn one on, 
   owner = await release.connect();
   expect(await owner.call('settings.get', {})).toMatchObject({ deviceStream: false, backgroundCompaction: false, cacheKeepalive: null });
   expect(release.core.settings.get().deviceStream).toBe(false);
-  expect(await owner.call('settings.set', { deviceStream: true }).catch((error: Error) => error.message)).toContain('deviceStream is an experiment: it runs in Nightly builds only, and this machine runs a Release (2.0.0)');
+  expect(await owner.call('settings.set', { deviceStream: true }).catch((error: Error) => error.message)).toContain('deviceStream is an experiment: it runs in Nightly and Dev builds only, and this machine runs a Release (2.0.0)');
   // An ordinary setting still saves, and an experiment sent as off is not refused: it is left as stored.
   expect(await owner.call('settings.set', { shortAnswers: true, deviceStream: false })).toMatchObject({ shortAnswers: true, deviceStream: false });
   expect(release.core.settings.stored().deviceStream).toBe(true);
@@ -177,7 +233,7 @@ test('a Release that saves a compaction limit, or the values it reads, leaves ev
 test('a Release core refuses the Contacts calls that start something and still reads and removes what exists', async () => {
   const release = await core(RELEASE);
   const owner = await release.connect();
-  const refusal = 'experiment.contacts runs in Nightly builds only, and this machine runs a Release (2.0.0)';
+  const refusal = 'experiment.contacts runs in Nightly and Dev builds only, and this machine runs a Release (2.0.0)';
   expect(await owner.call('contacts.invite', {}).then(() => 'accepted', (error: Error) => error.message)).toContain(refusal);
   expect(await owner.call('contacts.join', { link: 'boite://contact/none' }).then(() => 'accepted', (error: Error) => error.message)).toContain(refusal);
   expect(await owner.call('contacts.grant', { coreId: 'none', projectId: 'none' as never }).then(() => 'accepted', (error: Error) => error.message)).toContain(refusal);
@@ -188,4 +244,62 @@ test('a Release core refuses the Contacts calls that start something and still r
   expect(await owner.call('contacts.cancelInvites', {})).toEqual({ cancelled: 0 });
   expect(await owner.call('contacts.decide', { id: 'none', accept: false }).then(() => 'accepted', (error: Error) => error.message)).not.toContain('Nightly');
   owner.close();
+});
+
+/** Runs `body` as a bundle compiled without these features would: their build flags read false, as `featureDefines` defines them. */
+async function compiledWithout(flags: string[], body: () => Promise<void>): Promise<void> {
+  const scope = globalThis as Record<string, unknown>;
+  for (const flag of flags) scope[flag] = false;
+  try { await body(); } finally { for (const flag of flags) delete scope[flag]; }
+}
+
+test('a core compiled without the Teams starts, refuses every team method with the tag and the build, and keeps its other work', async () => {
+  await compiledWithout(['__BOITE_HAS_TEAMS__'], async () => {
+    const release = await core(RELEASE);
+    const owner = await release.connect();
+    const refusal = 'experiment.teams runs in Nightly and Dev builds only, and this machine runs a Release (2.0.0)';
+    for (const method of ['teams.list', 'teams.create', 'teams.post', 'teams.leave'] as const) {
+      expect(await owner.call(method, {} as never).then(() => 'accepted', (error: Error) => error.message), method).toContain(refusal);
+    }
+    // The stand-in answers what the rest of the core asks: a thread still opens and the core stops cleanly.
+    expect(release.core.teams.machineName('none')).toBe('');
+    expect(release.core.teams.snapshots.render('none', [], 'seen', false)).toEqual({ texts: new Map(), leftovers: [], channel: null });
+    expect((await echoThread(release, owner)).threadId).toBeString();
+    owner.close();
+  });
+  // From source, with no flag, the real store is there.
+  const dev = await core(DEV);
+  expect(dev.core.teams.constructor.name).toBe('TeamStore');
+});
+
+test('a core compiled without the Council starts, refuses every council method with the tag and the build, and owns no thread', async () => {
+  await compiledWithout(['__BOITE_HAS_DEBATES__'], async () => {
+    const release = await core(RELEASE);
+    const owner = await release.connect();
+    const refusal = 'experiment.debates runs in Nightly and Dev builds only, and this machine runs a Release (2.0.0)';
+    for (const method of ['council.start', 'council.list', 'council.get', 'council.stop'] as const) {
+      expect(await owner.call(method, {} as never).then(() => 'accepted', (error: Error) => error.message), method).toContain(refusal);
+    }
+    const { threadId } = await echoThread(release, owner);
+    expect([release.core.council.enabled(), release.core.council.owns(threadId), release.core.council.running(threadId), release.core.council.stopParent(threadId, 'test')]).toEqual([false, false, false, 0]);
+    owner.close();
+  });
+  const dev = await core(DEV);
+  expect(dev.core.council.constructor.name).toBe('CouncilStore');
+});
+
+test('a core compiled without automatic goals starts no goal from a prompt and refuses goal track with the tag and the build', async () => {
+  const { startsAutoGoal } = await import('../src/composer-activity.ts');
+  const long = 'x'.repeat(2000);
+  expect(startsAutoGoal(long, ['auto-goal'], 100)).toBe(true);
+  await compiledWithout(['__BOITE_HAS_AUTO_GOAL__'], async () => {
+    expect(startsAutoGoal(long, ['auto-goal'], 100)).toBe(false);
+    const release = await core(RELEASE);
+    const owner = await release.connect();
+    const { threadId } = await echoThread(release, owner);
+    expect(release.core.activity.autoGoal(threadId, 'none', 'none', long)).toBe(false);
+    expect(() => release.core.activity.track(threadId)).toThrow('experiment.auto-goal runs in Nightly and Dev builds only, and this machine runs a Release (2.0.0)');
+    expect(release.core.activity.busy(threadId)).toBe(false);
+    owner.close();
+  });
 });

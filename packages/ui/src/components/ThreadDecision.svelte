@@ -9,6 +9,7 @@
   import { openQuestionPage } from '../lib/question-page';
   import { settingHeading } from '../lib/setting-requests';
   import { teamHeading } from '../lib/team-requests';
+  import { teamsBuilt } from '../lib/teams-entry';
   import Deferred from './Deferred.svelte';
   import { parts } from '../lib/deferred-parts';
   import InfoTip from './InfoTip.svelte';
@@ -61,7 +62,8 @@
     if (!asked.some((question) => question.id === shownId)) { shownId = asked[0]?.id ?? null; questionOpen = true; }
   });
   /** A plain question draws its own head (`QuestionCard`): the fold sits in it, the pager on its own row over it. */
-  const plain = (question: Asked) => !question.secret && !question.setting && !question.agentSetting && !question.team;
+  // A build without the Teams has no team card (lib/teams-entry.ts): a request a Nightly left is a plain question there, so it can still be answered or refused.
+  const plain = (question: Asked) => !question.secret && !question.setting && !question.agentSetting && !(question.team && teamsBuilt());
   // A card's "Answer in writing" brings that question up.
   $effect(() => {
     const chosen = repliesOf(store).chosen;
@@ -192,7 +194,7 @@
           {:else if question.agentSetting}
           <AgentSettingCard {store} threadId={question.threadId} questionId={question.id} text={question.text} setting={question.agentSetting} answer={null} pending docked
             respond={(optionId) => store.answerQuestion(question.threadId, question.id, [optionId])} />
-          {:else if question.team}
+          {:else if question.team && teamsBuilt()}
           {@const team = question.team}
           <Deferred part={parts.TeamCard}>{#snippet children(TeamCard)}<TeamCard {store} questionId={question.id} text={question.text} {team} answer={null} pending docked
             respond={(optionId) => store.answerQuestion(question.threadId, question.id, [optionId])} />{/snippet}</Deferred>

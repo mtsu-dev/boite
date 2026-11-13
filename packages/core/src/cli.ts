@@ -29,8 +29,8 @@ import { browserRecipe } from './browser-recipe.ts';
 import { deviceCommand } from './device-cli.ts';
 import { WINDOW_REQUEST_TIMEOUT_MS, windowCommand } from './window-cli.ts';
 import { secretCommand } from './secret-cli.ts';
-import { teamCommand } from './team-cli.ts';
 import { agentsCommand, AgentsUsage, WAIT_MAX_S } from './agents-cli.ts';
+import { teamCli } from './teams-entry.ts';
 import { contactsCommand } from './contacts/cli.ts';
 import type { RpcParams } from '@boite/contracts';
 import { contextRequest, parse, requiredText, Usage, type Parsed } from './cli-args.ts';
@@ -462,7 +462,7 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
     window: async () => childOutput(await windowCommand(rest, io, client, threadId), parsed.json, io, print),
     desktop: async () => childOutput(await (await import('./desktop-cli.ts')).desktopCommand(rest, io, client, threadId), parsed.json, io, print),
     secret: async () => childOutput(await secretCommand(rest, io, client, threadId), parsed.json, io, print),
-    team: async () => childOutput(await teamCommand(rest, client, threadId, parsed.requestId), parsed.json, io, print),
+    team: async () => childOutput(await (await teamCli()).teamCommand(rest, client, threadId, parsed.requestId), parsed.json, io, print),
     // `boite --limit 5 logs` parsed them as globals: they come first, so the command's own flags still win.
     // A global `--level` yields to the command's own `--min-level`, which it would otherwise override.
     logs: () => logsCommand([...(parsed.limit === undefined ? [] : ['--limit', String(parsed.limit)]), ...(parsed.level === undefined || rest.some(entry => entry === '--min-level' || entry.startsWith('--min-level=')) ? [] : ['--level', parsed.level]), ...rest], client, threadId, agentCaller, io.cwd, print),

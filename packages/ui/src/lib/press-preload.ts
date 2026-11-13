@@ -16,6 +16,7 @@
  * `__BOITE_PRESS_PRELOAD_TEST__`.
  */
 
+import { contactsParts } from './contacts-entry';
 import { prefetchAllowed } from './prefetch';
 
 /** What a press needs from a machine's store. */
@@ -36,7 +37,7 @@ export const PRESS_HOLD_MS = 8_000;
 const views: Record<string, () => Promise<unknown>> = {
   settings: () => import('../components/SettingsShell.svelte'),
   agents: () => import('../components/agents/AgentsPage.svelte'),
-  home: () => import('../components/home/HomePage.svelte')
+  home: () => contactsParts?.HomePage() ?? Promise.resolve(undefined)
 };
 
 /** False under a driven browser, unless its own test asked for it. */

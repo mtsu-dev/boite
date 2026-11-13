@@ -68,6 +68,8 @@ test('contacts are the Bots column\'s other side: its head folds the column on t
     // A first start finds the column folded, and no contacts button on the rail: Activity counts what they ask.
     // The Bots page draws no such column: read it afresh each time.
     const rail = () => query('[data-testid=contacts-rail]');
+    // The column is fetched after the shell (`lib/contacts-entry.ts`).
+    await waitFor(() => document.querySelector('[data-testid=contacts-rail]') !== null);
     expect(rail().classList.contains('collapsed')).toBe(true);
     expect(query('main').compareDocumentPosition(rail()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(document.querySelector('[data-testid=rail-contacts]')).toBeNull();
