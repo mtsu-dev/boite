@@ -1714,6 +1714,9 @@ details[open] > summary .fold-caret {
 .disclosure-fold {
   display: grid;
   grid-template-rows: 0fr;
+  /* As wide as its column, never its content's: an `auto` track grows to the widest unbreakable line under it (a
+     nowrap label, a long word), and that width scrolled the whole sidebar sideways. */
+  grid-template-columns: minmax(0, 1fr);
   opacity: 0;
   transition: grid-template-rows var(--dur-3) var(--ease-out-quint),
     opacity var(--dur-2) var(--ease-out-quint);

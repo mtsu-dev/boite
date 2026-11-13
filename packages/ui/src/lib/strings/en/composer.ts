@@ -56,9 +56,7 @@ export const strings = {
     footDecision: 'Waiting for approval:',
     footDecisions: '{count} decisions waiting:',
     footShowHint: 'Scroll to the command that asks',
-    /** The strip over the composer, the same on every screen: what this conversation waits on (`delegation.waiting`), then what waits to be sent; a press unfolds them. */
-    stripQueued: '· {count} queued',
-    stripQueuedAlone: '{count} queued',
+    /** The strip over the composer, the same on every screen: what this conversation waits on (`delegation.waiting`); a press unfolds it. */
     stripOpen: 'Show each one',
     stripClose: 'Fold into one line',
     /** The strip's Stop, worded by what it stops, its tooltip saying the rest. */
@@ -76,8 +74,6 @@ export const strings = {
     sendWhenLoaded: 'Sends once the files are ready',
     stop: 'Stop',
     queued: 'Sent after the next tool, or when the turn ends',
-    /** The word before a queued prompt's text: it goes after the running turn. */
-    queuedLabel: 'Queued',
     /** A refused send held the pending messages until the user sends again. */
     queuedPaused: 'Held after a refused send',
     sendNow: 'Send now',
@@ -92,8 +88,6 @@ export const strings = {
     outboxFailed: 'Not sent: {reason}',
     outboxRetry: 'Send again',
     outboxSettings: 'The model and effort it was written with could not be set again.',
-    queuedEdit: 'Edit',
-    queuedRemove: 'Delete',
     removeQueued: 'Delete this pending message',
     picker: 'Provider and model',
     models: 'Models',

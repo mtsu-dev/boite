@@ -790,13 +790,7 @@ test('reconnecting queues a send instead of sending it, and a new thread queues 
   expect(store.draftEntries.find(entry => entry.active)).toMatchObject({ text: 'a new thread', queued: 'waiting' });
 });
 
-/** Presses one of the icon actions on a queued row. */
-async function queuedAction(line: Element, testid: 'composer-queued-edit' | 'composer-queued-remove'): Promise<void> {
-  line.querySelector<HTMLButtonElement>(`[data-testid=${testid}]`)!.click();
-  flushSync();
-}
-
-test('each queued prompt is a row of its own above the composer card, its Send now, Edit and Delete named icons', async ({ queueApp: _app }) => {
+test('each queued prompt is a dashed bubble above the composer card: a press edits it, Delete removes it', async ({ queueApp: _app }) => {
   await store.open('t-trace');
   await store.client!.call('turns.start', { threadId: 't-trace', prompt: 'Wait [permission]' });
   await waitFor(() => store.openThread?.status === 'waiting');
@@ -811,23 +805,18 @@ test('each queued prompt is a row of its own above the composer card, its Send n
   expect(lines).toHaveLength(2);
   // Outside the card: the field stays where it is however many wait.
   expect(lines.every((line) => line.closest('[data-testid=composer]') === null)).toBe(true);
-  expect(lines.map((line) => line.querySelector('.queued-title')?.textContent)).toEqual(['first pending', 'second pending']);
-  // Icons a finger reaches without hovering, each with a tooltip and a name; no menu to open.
+  expect(lines.map((line) => line.querySelector('.queued-text')?.textContent)).toEqual(['first pending', 'second pending']);
   for (const line of lines) {
-    for (const [testid, name] of [['composer-queued-edit', 'Edit'], ['composer-queued-remove', 'Delete']] as const) {
-      const button = line.querySelector<HTMLButtonElement>(`[data-testid=${testid}]`)!;
-      expect([button.getAttribute('aria-label'), !!button.title]).toEqual([name, true]);
-    }
+    const remove = line.querySelector<HTMLButtonElement>('[data-testid=composer-queued-remove]')!;
+    expect(remove.getAttribute('aria-label')).toBe('Delete this pending message');
   }
-  expect(document.querySelector('[data-testid=composer-queued-menu]')).toBeNull();
-  const sendNow = document.querySelectorAll('[data-testid=composer-send-now]');
-  expect(sendNow.length).toBeLessThanOrEqual(1);
-  if (sendNow.length) expect(sendNow[0]!.closest('[data-testid=composer-queued-item]')).toBe(lines[1]);
-  // Delete takes that prompt out; Edit takes the other, and only it, back into the box.
-  await queuedAction(lines[1]!, 'composer-queued-remove');
+  // Delete takes that prompt out; a press on the other bubble takes it, and only it, back into the box.
+  lines[1]!.querySelector<HTMLButtonElement>('[data-testid=composer-queued-remove]')!.click();
+  flushSync();
   await waitFor(() => store.composerStates['t-trace']!.queued.length === 1);
   expect(store.composerStates['t-trace']!.queued.map((entry) => entry.text)).toEqual(['first pending']);
-  await queuedAction(document.querySelector('[data-testid=composer-queued-item]')!, 'composer-queued-edit');
+  document.querySelector<HTMLButtonElement>('[data-testid=composer-queued-item] .queued-bubble')!.click();
+  flushSync();
   await waitFor(() => input().value === 'first pending');
   expect(store.composerStates['t-trace']!.queued).toEqual([]);
 });
@@ -964,7 +953,8 @@ test('an outbox prompt the core refuses shows why, holds the next one, and goes 
   await new Promise(resolve => setTimeout(resolve, 20));
   expect(starts.map(start => start.prompt)).toEqual(['First while away']);
   // The last one is cancelled; Send again sends the first under the same id, then the second.
-  await queuedAction(document.querySelectorAll('[data-testid=composer-queued-item]')[2]!, 'composer-queued-remove');
+  document.querySelectorAll<HTMLButtonElement>('[data-testid=composer-queued-remove]')[2]!.click();
+  flushSync();
   await waitFor(() => store.composerStates['t-descriptors']!.queued.length === 2);
   query<HTMLButtonElement>('[data-testid=composer-outbox-retry]').click();
   await waitFor(() => store.composerStates['t-descriptors']!.queued.length === 0 && !store.busy);
