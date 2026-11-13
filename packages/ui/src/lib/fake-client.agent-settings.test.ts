@@ -288,3 +288,25 @@ test('fake preserves Contacts bot reach on a closed machine',async()=>{
   expect((await client.call('collaboration.directory',{threadId})).agents.some(t=>t.project==='boite')).toBe(true);
  }finally{client.close();}
 });
+
+// Review round 2: a link opens its one project of the contact's machine, not every project that contact granted.
+test.each(['directory', 'search', 'read'] as const)('project reach excludes a granted but unassociated contact project from %s', async operation => {
+  const pair = await sharedPair();
+  const { a, b, aid, bid, at, bp } = pair;
+  try {
+    const other = (await b.call('threads.list', {})).find(t => t.projectId !== null && t.projectId !== bp.id && !t.archived);
+    if (!other?.projectId) throw new Error('expected a second demo project');
+    await b.call('contacts.grant', { coreId: aid, projectId: other.projectId, readThreads: true });
+    await a.call('settings.set', { coordinationReach: 'project' });
+    if (operation === 'directory') {
+      const directory = await a.call('collaboration.directory', { threadId: at.id });
+      expect(directory.agents.some(t => t.coreId === bid && t.threadId === other.id)).toBe(false);
+    } else if (operation === 'search') {
+      const found = await a.call('collaboration.search', { threadId: at.id, query: other.title });
+      expect(found.matches.some(t => t.coreId === bid && t.threadId === other.id)).toBe(false);
+    } else {
+      const result = await a.call('collaboration.read', { threadId: at.id, target: { coreId: bid, threadId: other.id } }).catch(error => error);
+      expect(result).toMatchObject({ code: RpcErrorCode.Refused });
+    }
+  } finally { pair.close(); }
+});
