@@ -35,7 +35,7 @@ export const strings = {
       coordination: 'Let other agents find and message this thread',
       changes: 'What this thread changed in the code, file by file', files: "Browse and read the project's files",
       browser: 'The web page this thread and its agent look at', device: 'A phone or emulator screen the agent drives',
-      desk: "This bot's work now, its routines and its memory", agents: 'The helper agents this thread started',
+      desk: "This mochi's work now, its routines and its memory", agents: 'The helper agents this thread started',
       terminal: "A command line in the project's folder", customize: 'Choose which panels this list offers'
     },
     /** The launcher's groups: the panels this thread used, newest first, then every panel by family. */

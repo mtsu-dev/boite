@@ -15,8 +15,8 @@ export const BUILTIN_COMMANDS: ReadonlySet<string> = new Set([
   'status', 'task', 'team', 'thread', 'threads', 'todo', 'view', 'where', 'window', 'workflow', 'plugin',
   // control-cli.ts
   'questions', 'answer', 'permissions', 'allow', 'deny',
-  // The old spellings `canonicalCommand` rewrites.
-  'agent', 'agents',
+  // The spellings `canonicalCommand` rewrites: `mochi` is the one help shows, `agent` and `agents` are old.
+  'mochi', 'agent', 'agents',
 ]);
 
 /** How long a plugin's agent command may run (`plugins.command`); the CLI waits a minute longer for the answer. */

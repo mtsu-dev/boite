@@ -65,14 +65,14 @@ export const USAGE = `usage: boite <command> [args] [--json]
                                  <tier> from boite delegate models, with the
                                  same --machine for that machine's; refused
                                  when it lacks them, never another model);
-                                 a bot names an entrusted remote project
+                                 a mochi names an entrusted remote project
                                  as <machine>/<project>
   projects                       the projects added to Boite
   projects add <folder>          add an existing folder as a project, so thread
                                  new and thread move can name it (--name <name>;
                                  --machine <name> from an agent thread: a folder
                                  of another machine of the group, its absolute
-                                 path there, once its owner allows it; a bot
+                                 path there, once its owner allows it; a mochi
                                  adds a folder of its own machine while its
                                  addProjects setting is on, and holds it at
                                  once)
@@ -143,14 +143,14 @@ ${CONTROL_HELP}
                                  a card with a button to that Settings page,
                                  for what is not one value: a provider login,
                                  a pairing (pages: ${SETTINGS_PAGES.join(', ')})
-  settings bot [key]             a bot's settings a card may change:
+  settings mochi [key]           a mochi's settings a card may change:
                                  ${AGENT_SETTING_KEYS.slice(0, 5).join(', ')},
                                  ${AGENT_SETTING_KEYS.slice(5, 9).join(', ')},
                                  ${AGENT_SETTING_KEYS.slice(9).join(', ')}
-                                 (--bot <name>; yours in your own conversation)
-  settings bot request <key> <value> --why <text>
+                                 (--mochi <name>; yours in your own conversation)
+  settings mochi request <key> <value> --why <text>
                                  a card asking the user to change one, for you
-                                 or --bot <name>: name Ada, status paused,
+                                 or --mochi <name>: name Ada, status paused,
                                  model codex/gpt-6.1-sol (<provider>/<model>,
                                  any provider), projects +boite -old
                                  (+<machine>/<name> for a project of another
@@ -158,15 +158,16 @@ ${CONTROL_HELP}
                                  --instructions-file <path>, avatar with
                                  --picture <image>; the outcome
                                  arrives as a message (applied, changed, refused)
-  settings bot picture <image>   give a bot a face at once, no card: yours, or
-                                 --bot <name>; a PNG, JPEG, WebP or GIF of at
+  settings mochi picture <image>
+                                 give a mochi a face at once, no card: yours, or
+                                 --mochi <name>; a PNG, JPEG, WebP or GIF of at
                                  most ${AGENT_PICTURE_MAX_BYTES / 1024} KB, or a robot code, one or two
                                  characters, "" for the robot its id draws
-  settings bot create <name>     ask for the bot the user asked for, on your
+  settings mochi create <name>   ask for the mochi the user asked for, on your
                                  own route or --model <provider/model>
                                  (--effort, --project a,b, --domain <text>,
                                  --instructions-file <path>): the owner reads
-                                 a card, or the bot is created at once where
+                                 a card, or the mochi is created at once where
                                  the setting agentBotCreation is free
 ${PLUGIN_HELP}
   task list                      the agent's task list
@@ -188,23 +189,24 @@ ${PLUGIN_HELP}
   threads inbox                  every exchange and its delivery state
                                  <thread>: <thread-id>, <machine>/<thread-id>
   threads contacts               other owners' Boites linked as contacts
-  threads ask <text>             ask the Contacts bot for a contact's thread
+  threads ask <text>             ask the Contacts mochi for a contact's thread
                                  (--contact <c>, --to <c>/<thread>, --new, --share);
                                  the answer names the thread to write to
-  contacts [help]                the Contacts bot's own commands
-  bot memory                     a bot's MEMORY.md and its path
-  bot remember <fact>            add a dated line to MEMORY.md
-  bot routines                   its routines: schedule, next run, last outcome
-  bot schedule <json>            name, prompt, schedule; optional id and enabled
-  bot unschedule <routine-id>    remove one routine
-  bot watch|unwatch <thread-id>  put a thread of its projects on its desk, or
+  contacts [help]                the Contacts mochi's own commands
+  mochi memory                   a mochi's MEMORY.md and its path
+  mochi remember <fact>          add a dated line to MEMORY.md
+  mochi routines                 its routines: schedule, next run, last outcome
+  mochi schedule <json>          name, prompt, schedule; optional id and enabled
+  mochi unschedule <routine-id>  remove one routine
+  mochi watch|unwatch <thread-id>
+                                 put a thread of its projects on its desk, or
                                  take one off; <machine>/<thread-id> for a
                                  project another machine entrusted to it
-  bot event <bot> <text>         wake a bot with an event from outside Boite
+  mochi event <mochi> <text>     wake a mochi with an event from outside Boite
                                  (--key <key>: a later event with the same key
                                  replaces it while it waits); from a terminal
                                  as the owner, or --core with a paired device
-  team <command>                 a bot's teams: post, read, propose (boite team help)
+  team <command>                 a mochi's teams: post, read, propose (boite team help)
   --request-id <id>              reuse to retry threads send|reply or delegate spawn|send
   delegate models                models, reasoning levels and speeds a subagent can use
                                  (--machine <name>: another machine's, for
@@ -214,10 +216,10 @@ ${PLUGIN_HELP}
                                  --effort <level>, --speed <tier>, --title <title>,
                                  --profile <id>, --worktree for a git worktree of
                                  its own from your checkout's HEAD (the project's
-                                 for a bot), and a context mode: --context
+                                 for a mochi), and a context mode: --context
                                  light|neutral, --keep|--drop <parts>, --tools
                                  <Tool,...>, --rules <text>|--rules-file <path>)
-                                 --project <p> places a bot's child in an entrusted project
+                                 --project <p> places a mochi's child in an entrusted project
                                  --machine <name> runs it on another machine of the
                                  group, in its project named like yours or --project
   delegate list                  every subagent, workflow and council: state, model, time
@@ -260,9 +262,9 @@ ${PLUGIN_HELP}
 
   Outside a thread, threads, thread, questions, answer, permissions, allow,
   deny and projects need no --thread: the owner drives every thread, and a
-  message it sends is its own prompt. Inside a bot's conversation they reach
+  message it sends is its own prompt. Inside a mochi's conversation they reach
   the threads of the projects entrusted to it, and its messages reach them as
-  that bot's.
+  that mochi's.
 
   --core <url>                   another core, with its token in BOITE_TOKEN
                                  (an owner token, or a paired device's session)
@@ -480,9 +482,9 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
     },
     bot: async () => {
       if (rest[0] === 'event') {
-        if (rest.length < 3) throw new Usage('bot event needs a bot and the text: boite bot event <bot> [--key <key>] <text>');
+        if (rest.length < 3) throw new Usage('mochi event needs a mochi and the text: boite mochi event <mochi> [--key <key>] <text>');
         const sent = await client.call('agents.event', { agent: rest[1]!, text: rest.slice(2).join(' '), ...(parsed.key === undefined ? {} : { key: parsed.key }) });
-        print([`event: ${sent.key} for ${sent.agentId}`, 'It wakes the bot once its thread is free; a later event with the same key replaces it until then.'], sent);
+        print([`event: ${sent.key} for ${sent.agentId}`, 'It wakes the mochi once its thread is free; a later event with the same key replaces it until then.'], sent);
         return;
       }
       const result = await botCommand(client, threadId, rest);
@@ -644,7 +646,7 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
       if (action === 'bot') {
         const agent = parsed.bot === undefined ? {} : { agent: parsed.bot };
         if (rest[1] === 'create') {
-          if (rest.length !== 3) throw new Usage('settings bot create takes one name; quote a name with spaces');
+          if (rest.length !== 3) throw new Usage('settings mochi create takes one name; quote a name with spaces');
           const created = await client.call('agents.create', {
             threadId, name: rest[2]!,
             ...(parsed.domain === undefined ? {} : { domain: parsed.domain }),
@@ -657,7 +659,7 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
             const { bot: asked } = created.setting;
             print([
               `asked: ${created.questionId}`,
-              `card: the owner approves or declines the bot ${asked.name} (${asked.selection.providerId}/${asked.selection.model ?? 'default'}, full access${created.setting.projects.length === 0 ? '' : `, projects ${created.setting.projects.join(', ')}`})`,
+              `card: the owner approves or declines the mochi ${asked.name} (${asked.selection.providerId}/${asked.selection.model ?? 'default'}, full access${created.setting.projects.length === 0 ? '' : `, projects ${created.setting.projects.join(', ')}`})`,
               BOT_CARD_NOTE,
               'Keep working. The outcome arrives as a message (approved, declined); without one, nothing was created.',
             ], created);
@@ -675,27 +677,27 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
           return;
         }
         if (rest[1] === 'picture') {
-          if (rest.length !== 3) throw new Usage('settings bot picture takes one image file, or a robot code, one or two characters or "" for the robot its id draws');
+          if (rest.length !== 3) throw new Usage('settings mochi picture takes one image file, or a robot code, one or two characters or "" for the robot its id draws');
           const wanted = rest[2]!;
           const file = absolute(io.cwd, wanted);
           const isFile = wanted.trim() !== '' && existsSync(file);
-          if (!isFile && !/^(bot|img):/.test(wanted) && /[./\\]/.test(wanted)) throw new Usage(`settings bot picture: no file at ${file}`);
+          if (!isFile && !/^(bot|img):/.test(wanted) && /[./\\]/.test(wanted)) throw new Usage(`settings mochi picture: no file at ${file}`);
           const avatar = isFile ? (await client.call('agents.picture.put', { threadId, dataUrl: pictureDataUrl(file) })).avatar : wanted;
           const saved = await client.call('agents.avatar.set', { threadId, avatar, ...agent });
           print([
             `picture: ${saved.name} (${saved.id}) now wears ${saved.avatar === '' ? 'the robot its id draws' : saved.avatar}`,
-            'The user sees it at once, in the bot list and its conversation.',
+            'The user sees it at once, in the mochi list and its conversation.',
           ], saved);
           return;
         }
         if (rest[1] === 'request') {
-          if (parsed.why === undefined || parsed.why.trim().length === 0) throw new Usage('settings bot request needs --why <text>, the reason the user reads on the card');
+          if (parsed.why === undefined || parsed.why.trim().length === 0) throw new Usage('settings mochi request needs --why <text>, the reason the user reads on the card');
           const key = want(2, `a key: ${AGENT_SETTING_KEYS.join(', ')}`);
           const fromFile = key === 'instructions' && parsed.instructionsFile !== undefined;
-          if (parsed.picture !== undefined && key !== 'avatar') throw new Usage('--picture goes with settings bot request avatar');
+          if (parsed.picture !== undefined && key !== 'avatar') throw new Usage('--picture goes with settings mochi request avatar');
           const fromPicture = parsed.picture !== undefined;
-          if (fromPicture && rest.length > 3) throw new Usage('settings bot request avatar takes a value or --picture <path>, not both');
-          if (!fromPicture && (fromFile ? rest.length > 3 : rest.length < 4)) throw new Usage(fromFile ? 'settings bot request instructions takes the text or --instructions-file <path>, not both' : 'settings bot request needs a value after the key');
+          if (fromPicture && rest.length > 3) throw new Usage('settings mochi request avatar takes a value or --picture <path>, not both');
+          if (!fromPicture && (fromFile ? rest.length > 3 : rest.length < 4)) throw new Usage(fromFile ? 'settings mochi request instructions takes the text or --instructions-file <path>, not both' : 'settings mochi request needs a value after the key');
           const value = fromPicture ? (await client.call('agents.picture.put', { threadId, dataUrl: pictureDataUrl(absolute(io.cwd, parsed.picture!)) })).avatar
             : fromFile ? readRules(parsed.instructionsFile!) : agentSettingArg(key, rest.slice(3));
           const asked = await client.call('agents.settings.request', { threadId, reason: parsed.why, key, value, ...agent });
@@ -703,26 +705,26 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
           print([
             `requested: ${asked.questionId}`,
             `change: ${setting.agentName}'s ${setting.key} ${clipped(JSON.stringify(setting.previous))} -> ${clipped(JSON.stringify(setting.value))}`,
-            'card: Apply, or the user changes it in the bot\'s settings',
+            'card: Apply, or the user changes it in the mochi\'s settings',
             'Keep working. The outcome arrives as a message quoting your reason; without one, nothing changed.',
           ], asked);
           return;
         }
-        if (rest.length > 2) throw new Usage('settings bot expects a key, request <key> <value>, picture <image> or create <name>');
+        if (rest.length > 2) throw new Usage('settings mochi expects a key, request <key> <value>, picture <image> or create <name>');
         const read = await client.call('agents.settings.read', { threadId, ...agent });
         const shown = rest[1] === undefined ? read.settings : read.settings.filter(reading => reading.key === rest[1]);
-        if (shown.length === 0) throw new Usage(`settings bot: unknown key ${rest[1]}; the keys are ${AGENT_SETTING_KEYS.join(', ')}`);
+        if (shown.length === 0) throw new Usage(`settings mochi: unknown key ${rest[1]}; the keys are ${AGENT_SETTING_KEYS.join(', ')}`);
         const named = (reading: (typeof shown)[number], value: unknown): string => {
           const text = JSON.stringify(reading.key === 'projects' && Array.isArray(value) ? value.map(id => reading.choices?.find(choice => choice.id === id)?.label ?? id) : value ?? null);
           return rest[1] === undefined ? clipped(text) : text;
         };
-        // Every provider's models make a long list: the full view cuts it, `settings bot model` shows it whole.
+        // Every provider's models make a long list: the full view cuts it, `settings mochi model` shows it whole.
         const choices = (reading: (typeof shown)[number]): string => {
           const text = (reading.choices ?? []).map(choice => choice.label === choice.id ? choice.id : `${choice.label} (${choice.id})`).join(', ');
           return rest[1] === undefined ? clipped(text, 600) : text;
         };
         print([
-          `bot: ${read.agentName} (${read.agentId})`,
+          `mochi: ${read.agentName} (${read.agentId})`,
           ...shown.map(reading => `${reading.key} ${named(reading, reading.value)}${reading.choices?.length ? `\n    choices: ${choices(reading)}` : ''}`),
         ], rest[1] === undefined ? read : shown[0]);
         return;

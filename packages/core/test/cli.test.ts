@@ -58,7 +58,7 @@ afterEach(async () => {
   await harness.stop();
 });
 
-test('delegate spawn --project reaches the core from a bot looking after several projects', async () => {
+test('delegate spawn --project reaches the core from a mochi looking after several projects', async () => {
   const client = await harness.connect();
   const projects = await client.call('projects.list', {});
   const project = projects[0]!;
@@ -253,18 +253,19 @@ test('a send retried with the same --request-id is the same letter, and without 
   expect(received.n).toBe(2);
 });
 
-test('a bot reads its memory, notes facts, keeps its routines and its desk from its own thread, under bot or the old agent', async () => {
+test('a mochi reads its memory, notes facts, keeps its routines and its desk from its own thread, under mochi or the old bot and agent', async () => {
   const client = await harness.connect();
   const worker = threadId;
   const project = harness.core.threads.require(worker).projectId!;
   const { agent, threadId: own } = await makeAgent(harness, client, { projectIds: [project] });
   threadId = own;
   cwd = harness.core.threads.require(own).cwd;
-  const noted = await boite(['bot', 'remember', 'Keep', 'prototypes', 'small.', '--json']);
+  const noted = await boite(['mochi', 'remember', 'Keep', 'prototypes', 'small.', '--json']);
   expect(noted.code).toBe(0);
   expect(JSON.parse(noted.out).noted).toBe('Keep prototypes small.');
+  expect(JSON.parse((await boite(['mochi', 'memory', '--json'])).out).text).toContain('Keep prototypes small.');
+  // The old spellings, as mochis' brains still write them.
   expect(JSON.parse((await boite(['bot', 'memory', '--json'])).out).text).toContain('Keep prototypes small.');
-  // The old spelling, as bots' brains still write it.
   expect(JSON.parse((await boite(['agent', 'memory', '--json'])).out).text).toContain('Keep prototypes small.');
 
   const scheduled = await boite(['bot', 'schedule', JSON.stringify({ name: 'Morning', prompt: 'Read the news', schedule: { kind: 'interval', everyMinutes: 60 } }), '--json']);
@@ -285,13 +286,13 @@ test('a bot reads its memory, notes facts, keeps its routines and its desk from 
   const elsewhere = await client.call('projects.add', { path: join(harness.dataDir, 'elsewhere'), name: 'Elsewhere' });
   const outside = await client.call('threads.create', { projectId: elsewhere.id, providerId: 'echo', accountId: harness.core.threads.require(worker).accountId, title: 'Outside' });
   expect((await boite(['bot', 'watch', outside.id])).err).toContain('is not in a project entrusted to Ada');
-  expect((await boite(['bot', 'inbox'])).err).toContain('bot expects memory, remember, routines, schedule, unschedule, watch or unwatch');
+  expect((await boite(['bot', 'inbox'])).err).toContain('mochi expects memory, remember, routines, schedule, unschedule, watch or unwatch');
   // An ordinary thread is no agent's.
   threadId = worker;
-  expect((await boite(['bot', 'routines'])).err).toContain("no bot's thread");
+  expect((await boite(['bot', 'routines'])).err).toContain("no mochi's thread");
 });
 
-test('a bot is free to act from its own thread: it reaches threads, asks, draws, attaches, delegates and plans like any thread', async () => {
+test('a mochi is free to act from its own thread: it reaches threads, asks, draws, attaches, delegates and plans like any thread', async () => {
   const client = await harness.connect();
   const worker = threadId;
   const { threadId: own } = await makeAgent(harness, client, { projectIds: [harness.core.threads.require(worker).projectId!] });
@@ -348,7 +349,7 @@ describe('usage', () => {
     expect(help.err).toContain('usage: boite');
     expect(help.out).toBe('');
     // Help names bots and threads; the old spellings still run but are not shown.
-    for (const shown of ['threads find <words>', 'threads send <thread> <text>', 'bot remember <fact>', 'settings bot request', 'threads [list] [--project <p>] [--archived]']) expect(help.err).toContain(shown);
+    for (const shown of ['threads find <words>', 'threads send <thread> <text>', 'mochi remember <fact>', 'settings mochi request', 'threads [list] [--project <p>] [--archived]']) expect(help.err).toContain(shown);
     for (const hidden of ['agents list', 'agents send', 'agent remember', 'settings agent', '--agent <name>']) expect(help.err).not.toContain(hidden);
     // A lone help after a command is the same request, never a question titled "help".
     const ask = await boite(['ask', 'help']);

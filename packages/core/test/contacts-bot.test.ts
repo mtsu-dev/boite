@@ -58,7 +58,7 @@ async function linked(dirs: { host?: string; guest?: string } = {}) {
 const lettersOf = (h: TestCore, threadId: string): AgentLetter[] => h.core.coordination.get(threadId).messages;
 const incomingOf = (h: TestCore, remoteId: string) => h.core.contacts.requests.list().find(request => request.direction === 'in' && request.remoteId === remoteId);
 
-test('an ask wakes the bot, which forwards it; an untrusted contact waits for the owner\'s Yes; connect puts both threads in touch without a project grant; cut ends both sides', async () => {
+test('an ask wakes the mochi, which forwards it; an untrusted contact waits for the owner\'s Yes; connect puts both threads in touch without a project grant; cut ends both sides', async () => {
   const { host, guest, hostClient, guestClient, hostId, guestId, hostBot, guestBot, hostFacts, guestFacts, hostName, guestName, hostThread, guestThread } = await linked();
 
   // The asking thread names no contact: only its bot hears of it, as data.
@@ -76,7 +76,7 @@ test('an ask wakes the bot, which forwards it; an untrusted contact waits for th
   expect(host.core.contacts.requests.list()).toEqual([]);
 
   // Only the bot's thread forwards; it sends the fields the contact's bot reads.
-  expect(await thrown(guestClient.call('contacts.bot.forward', { threadId: guestThread, id: asked.id, contact: hostName }))).toThrow('only the Contacts bot');
+  expect(await thrown(guestClient.call('contacts.bot.forward', { threadId: guestThread, id: asked.id, contact: hostName }))).toThrow('only the Contacts mochi');
   changes.length = 0;
   const forwarded = await guestClient.call('contacts.bot.forward', { threadId: guestBot.threadId, id: asked.id, contact: hostName, want: 'talk', target: hostThread });
   expect(forwarded.forwardedAt).toBeNumber();
@@ -236,7 +236,7 @@ test('an ask that names its contact reaches that contact\'s Operator with no tur
   await waitFor(() => mine(fifth.asked.id).status === 'accepted', 10000);
 }, 60000);
 
-test('with a bot, an ordinary thread neither lists nor writes to a contact\'s thread it is not in relation with; without one, the old direct paths stay', async () => {
+test('with a mochi, an ordinary thread neither lists nor writes to a contact\'s thread it is not in relation with; without one, the old direct paths stay', async () => {
   const { host, guest, guestClient, hostId, guestBot, hostThread, guestThread } = await linked();
   // A granted project: without a bot the thread would see and write to it.
   host.core.contacts.grant({ coreId: guest.core.coordination.card().coreId, projectId: host.core.threads.require(hostThread).projectId! });
@@ -245,7 +245,7 @@ test('with a bot, an ordinary thread neither lists nor writes to a contact\'s th
 
   expect(await thrown(send(guestThread, 'blocked'))).toThrow('boite threads ask');
   expect((await guest.core.coordination.directory(guestThread)).agents.some(agent => agent.coreId === hostId)).toBe(false);
-  expect(await thrown(guestClient.call('collaboration.read', { threadId: guestThread, target: { coreId: hostId, threadId: hostThread } }))).toThrow('only the Contacts bot');
+  expect(await thrown(guestClient.call('collaboration.read', { threadId: guestThread, target: { coreId: hostId, threadId: hostThread } }))).toThrow('only the Contacts mochi');
   expect((await guestClient.call('collaboration.contacts', { threadId: guestThread })).every(contact => contact.projects.length === 0)).toBe(true);
   // The bot's own thread sees the contact's threads.
   expect((await guest.core.coordination.directory(guestBot.threadId)).agents.some(agent => agent.coreId === hostId && agent.threadId === hostThread)).toBe(true);
@@ -260,7 +260,7 @@ test('with a bot, an ordinary thread neither lists nor writes to a contact\'s th
   expect(await thrown(guestClient.call('collaboration.ask', { threadId: guestThread, text: 'Anyone on the docs?' }))).toThrow('Settings > Version > Experiments');
 }, 60000);
 
-test('the bot starts a thread for a trusted contact\'s request, refuses another, and its share card opens a project only on the owner\'s Yes', async () => {
+test('the mochi starts a thread for a trusted contact\'s request, refuses another, and its share card opens a project only on the owner\'s Yes', async () => {
   const { host, hostClient, guestClient, guestId, hostBot, guestBot, hostName, guestThread } = await linked();
   await hostClient.call('contacts.update', { coreId: guestId, trusted: true });
   const ask = async (text: string) => {
@@ -290,7 +290,7 @@ test('the bot starts a thread for a trusted contact\'s request, refuses another,
   expect(host.core.contacts.requests.list().find(request => request.id === third.id)).toMatchObject({ status: 'accepted', decidedBy: 'owner' });
 }, 60000);
 
-test('the owner\'s Accept on a talk request the bot settles lets the bot act instead of closing it with a project; a project answer says how to reach its threads', async () => {
+test('the owner\'s Accept on a talk request the mochi settles lets the mochi act instead of closing it with a project; a project answer says how to reach its threads', async () => {
   const { host, guest, hostClient, guestClient, hostId, hostBot, guestBot, hostFacts, hostName, hostThread, guestThread } = await linked();
   const project = host.core.journal.listProjects()[0]!;
   // The project is already open: the app's Accept offers it, as it offers any project.
@@ -331,7 +331,7 @@ test('the owner\'s Accept on a talk request the bot settles lets the bot act ins
   expect(answer.text).not.toContain('boite threads send');
 }, 60000);
 
-test('without its Contacts bot, an incoming bot request waits for the owner and Accept opens the chosen project', async () => {
+test('without its Contacts mochi, an incoming mochi request waits for the owner and Accept opens the chosen project', async () => {
   const { host, hostClient, guestClient, hostBot, guestBot, hostName, guestThread } = await linked();
   const asked = await guestClient.call('collaboration.ask', { threadId: guestThread, contact: hostName, text: 'Someone to maintain the docs' });
   await waitFor(() => incomingOf(host, asked.id) !== undefined, 10000);
@@ -381,7 +381,7 @@ test('a relation outlives a restart of either core: both keep it and their threa
   }
 }, 90000);
 
-test('cutting a project closes it on every machine that opened one by that name, and an owner answer that failed hands the request back to the bot', async () => {
+test('cutting a project closes it on every machine that opened one by that name, and an owner answer that failed hands the request back to the mochi', async () => {
   const { host, hostClient, guestClient, guestId, hostBot, guestBot, hostName, guestName, guestThread } = await linked();
   const project = host.core.journal.listProjects()[0]!;
   host.core.contacts.grant({ coreId: guestId, projectId: project.id });
@@ -409,7 +409,7 @@ test('cutting a project closes it on every machine that opened one by that name,
   expect(host.core.contacts.requests.list().find(entry => entry.id === incoming.id)?.status).toBe('pending');
 }, 60000);
 
-test('boite contacts sends each command\'s words to its method, as the bot typed them', async () => {
+test('boite contacts sends each command\'s words to its method, as the mochi typed them', async () => {
   const calls: [string, unknown][] = [];
   const client = { call: async (method: string, params: unknown) => {
     calls.push([method, params]);
@@ -447,7 +447,7 @@ test('boite contacts sends each command\'s words to its method, as the bot typed
   expect(await thrown(run(['dance']))).toThrow('contacts expects forward');
 });
 
-test('a Release starts nothing from the Contacts bot: a plan or a share accepted on a card made as a Nightly does not run, and no new plan is proposed', async () => {
+test('a Release starts nothing from the Contacts mochi: a plan or a share accepted on a card made as a Nightly does not run, and no new plan is proposed', async () => {
   const dataDir = mkdtempSync(join(tmpdir(), 'boite-bot-stages-'));
   try {
     const { host, guest, hostClient, guestClient, hostName, hostBot, guestThread } = await linked({ host: dataDir });

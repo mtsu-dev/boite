@@ -7,7 +7,7 @@ const thread = (over: Record<string, unknown> = {}) => ({ id: 't1', agentSession
 const store = (open: unknown, over: Record<string, unknown> = {}) => ({ openThread: open, loadingThreadId: null, staged: {}, ...over }) as unknown as Store;
 const view = (watches: { agentId: string }[]) => ({ snapshot: { watches } }) as unknown as AgentsView;
 
-test('the first-task prompt waits for a bot with an empty desk and a conversation with nothing in it or on its way', () => {
+test('the first-task prompt waits for a mochi with an empty desk and a conversation with nothing in it or on its way', () => {
   expect(awaitsFirstTask(store(thread()), view([]), 'a')).toBe(true);
   // Another bot's desk says nothing about this one.
   expect(awaitsFirstTask(store(thread()), view([{ agentId: 'b' }]), 'a')).toBe(true);

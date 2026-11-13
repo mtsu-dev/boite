@@ -8,7 +8,7 @@ import BotColumnHead from './BotColumnHead.svelte';
 
 // A bot whose account was removed read "Its last turn failed" under its name, a cause the banner
 // beside it contradicted: the line now says what it needs.
-test('a bot whose account is gone says it needs an account, not that its last turn failed', async ({ ready }) => {
+test('a mochi whose account is gone says it needs an account, not that its last turn failed', async ({ ready }) => {
   let head: ReturnType<typeof mount> | null = null;
   try {
     const { store } = await ready({ delayMs: 0, agentsDemo: true });
@@ -32,7 +32,7 @@ test('a bot whose account is gone says it needs an account, not that its last tu
 });
 
 // With the bot column folded on a desktop, the header held only the name: no visible way back to the bots.
-test('a desktop header offers the way back to the bot list only while the column is folded', async ({ ready }) => {
+test('a desktop header offers the way back to the mochi list only while the column is folded', async ({ ready }) => {
   let head: ReturnType<typeof mount> | null = null;
   try {
     const { store } = await ready({ delayMs: 0, agentsDemo: true });

@@ -23,8 +23,8 @@ the other projects of this machine, `machine(coreId)` for another machine).
 The directory, search and read (`coordination-directory.ts`) and `send`
 take it instead of the thread's config, so the thread's config only narrows.
 Unchanged by the reach: a parent and its subagents, a workflow and its steps,
-team members, a bot and the threads of the projects entrusted to it, the
-Contacts bot's thread, a project shared with a contact (its threads keep
+team members, a mochi and the threads of the projects entrusted to it, the
+Contacts mochi's thread, a project shared with a contact (its threads keep
 reaching that contact's machine), and the first answer of a thread an agent
 started with `boite thread new`: `threads/spawn.ts` names that one letter, and
 `send`, the local delivery and the relay to another machine let it reach the
@@ -57,13 +57,13 @@ to turn communication off or restrict it to the current project. The settings
 open in a dialog and remain available in the Agents panel. Explicit owner
 settings are preserved; a conversation saved in the former Brief or Team mode
 is on. Describe what the agent is working on in Resources so another agent can
-find the right contact. Archived conversations are unavailable. A bot's
+find the right contact. Archived conversations are unavailable. A mochi's
 thread starts with coordination on like any other, so it finds, reads and
 messages threads with `boite threads` and they reach it the same way; the
 owner may turn it off. Its letters to the threads of its projects still go
 when its own thread is Off, and reach a recipient that is Off, paused or
-restricted to its own project. A Pause on the bot's own thread refuses them,
-and an archived recipient or a project no longer entrusted to the bot rejects
+restricted to its own project. A Pause on the mochi's own thread refuses them,
+and an archived recipient or a project no longer entrusted to the mochi rejects
 them.
 
 Coordination has no distributed lock or automatic loop detector. Instructions
@@ -119,7 +119,7 @@ place and last words. Opening one shows the back and forth: what reaches this
 thread's agent sits on the right in the accent color, like the user's prompts;
 its own letters sit on the left, like its answers. A delegation prompt the user
 typed sits on the right under "You", a subagent's result is labelled "Result",
-and the letters of the bot the project is entrusted to keep that bot's color
+and the letters of the mochi the project is entrusted to keep that mochi's color
 and name on the left. Letters of one
 side a few minutes apart share one time stamp, a silence of twenty minutes gets
 a line of its own, and a reply to a letter other than the one just before it
@@ -133,7 +133,7 @@ the list beside the open discussion; a narrow one or a phone swaps them, with a
 back arrow.
 
 The tag says who started or delegated whom: Started this thread, Started from
-here, Parent, Subagent, or Looks after the project for the bot
+here, Parent, Subagent, or Looks after the project for the mochi
 the owner entrusted the thread's project to. The core works it out when it
 reads letters out (`AgentLetter.relation`), from the journal, so a delegation
 or an entrusted project that began later still shows.
@@ -150,20 +150,20 @@ for `here`. Otherwise this thread's contacts name its core, and last the one
 machine listing the id opens, since an agent may know it by another name. A
 thread no connected machine or contact holds leaves a notice instead.
 
-## Letters from the bot of a project
+## Letters from the mochi of a project
 
-A letter from the [bot](bots.md#projects-entrusted-to-a-bot)
+A letter from the [mochi](mochis.md#projects-entrusted-to-a-mochi)
 the owner entrusted a thread's project to carries `origin: 'resident'` and is
-labelled with that bot in the timeline. The provider reads it in its own
+labelled with that mochi in the timeline. The provider reads it in its own
 section, as direction from the user's delegate that is still not the user and
-grants no approval; the thread does not answer it by letter, since the bot
+grants no approval; the thread does not answer it by letter, since the mochi
 reads the thread's final answer in an event when the turn ends. Such a letter
 passes the communication settings of the thread, Off, Pause and the
-own-project restriction included, and the Off of the bot's own thread; a Pause
-on the bot's thread refuses it. It waits six hours instead of
+own-project restriction included, and the Off of the mochi's own thread; a Pause
+on the mochi's thread refuses it. It waits six hours instead of
 fifteen minutes, and is rejected once the project is no longer entrusted to the
-bot or the bot is archived. Only the local core sets the origin; a remote
-letter's origin is never believed. The core's events to the bot are not
+mochi or the mochi is archived. Only the local core sets the origin; a remote
+letter's origin is never believed. The core's events to the mochi are not
 letters: they reach it as `event` turns on its own thread.
 
 ## Reaching another computer
@@ -194,7 +194,7 @@ membership, so removing a member also ends its agent access. Existing separate
 groups retain their own controls; moving a machine requires leaving its old
 group first.
 
-Across projects and machines is enabled by default for ordinary conversations and bots.
+Across projects and machines is enabled by default for ordinary conversations and mochis.
 Both endpoints must allow it: disabling it restricts discovery and messages to
 that conversation's project on the same core. A machine link never overrides
 a conversation's explicit restrictions or pause. Removing a link revokes that
@@ -230,10 +230,10 @@ where the grant has `readThreads`. `read` needs that grant too. `deliver`
 reaches those threads, or a thread that wrote to the contact in the last 7
 days. A contact never sends `group.sync` or `group.push`, and only a contact
 sends `contact.sync` (the projects opened to the receiver and its Contacts
-bot), `contact.ask` and `contact.answer` (a request and its decision, with the
+mochi), `contact.ask` and `contact.answer` (a request and its decision, with the
 thread a relation joins) and `contact.relation` (a relation ended). Only the
-Contacts bot sends `contact.ask`, and an ordinary thread writes to a contact's
-thread only through a relation ([the Contacts bot](contacts.md#the-contacts-bot)). Between members of a group,
+Contacts mochi sends `contact.ask`, and an ordinary thread writes to a contact's
+thread only through a relation ([the Contacts mochi](contacts.md#the-contacts-mochi)). Between members of a group,
 `relay.*` carries a contact's requests to the member that holds a project
 opened to it, and that member's requests back
 ([contacts](contacts.md#projects-of-the-other-machines-of-the-group)); a
@@ -249,18 +249,18 @@ itself and answers a folder that is already a project as it is. `setting.read` r
 the others (`groupThreads`, `groupBots`), for a settings card, and `setting.changed` tells
 the other members that it changed, which settles their open cards.
 
-The `bot.*` operations, also sealed and group-only, let a bot of one member
+The `bot.*` operations, also sealed and group-only, let a mochi of one member
 look after the projects of another that its owner entrusted to it:
 `bot.lease`, `bot.threads`, `bot.thread`, `bot.send`, `bot.act`,
-`bot.answer` and `bot.start` (a thread the bot starts there) go to the member
-that holds the project, each with the bot's lease, and `bot.event` comes back with a turn, a question or a failure. The
+`bot.answer` and `bot.start` (a thread the mochi starts there) go to the member
+that holds the project, each with the mochi's lease, and `bot.event` comes back with a turn, a question or a failure. The
 holding member refuses all of them while its own `groupBots` setting is off
-([bots](bots.md#projects-of-the-other-machines-of-the-group)).
+([mochis](mochis.md#projects-of-the-other-machines-of-the-group)).
 
 The `team.*` operations, also sealed and group-only, carry a team between the
 machines of its members: `team.sync` from the machine holding it, `team.post`,
 `team.read`, `team.report`, `team.moved` and `team.owner` toward it, and
-`team.bot` to name a bot of a machine. The holder finds who speaks from the
+`team.bot` to name a mochi of a machine. The holder finds who speaks from the
 group identity of the machine asking
 ([teams](teams.md#across-machines)).
 
@@ -309,13 +309,13 @@ message is not mistaken for noise: `from.thread` is the sender's conversation
 title, `from.address` what `boite threads read` takes, `from.relation` how it
 relates to the recipient ("started this thread; its request is your task", "a
 thread you started; it reports to you", "your parent", "your subagent", the
-the bot the project is entrusted to, same project, another project or machine), `from.project`,
+the mochi the project is entrusted to, same project, another project or machine), `from.project`,
 `from.machine` when it is elsewhere, `from.agent`, `from.branch`,
 `from.status` and `from.about`, what it works on. `about` is the sender's
 declared resources; a sender on the same core without any falls back to the
 first request of its conversation, cut to 200 characters. That sender is a
 contact the recipient may already read with `boite threads read`; a letter from
-the bot a project is entrusted to gets no fallback, since the bot's thread
+the mochi a project is entrusted to gets no fallback, since the mochi's thread
 holds its work across all its projects and opens with its creation, not with
 the task the letter is about. Another machine
 shares its resources only, never its chat. A reply carries `inReplyTo.yours`,
@@ -338,7 +338,7 @@ The coordination guide, and the instructions of the agent a thread is
 entrusted to, go to a native session once (`threads/coordination-context.ts`).
 They go again on a new session (an account or provider switch, a rewind, a
 continuation), after a compaction, and when their text changes: coordination
-paused or resumed, contacts reachable or not, the Contacts bot's role. The
+paused or resumed, contacts reachable or not, the Contacts mochi's role. The
 session counts as holding them once the turn that carried them ends done; a
 failed or stopped turn sends them again. Letters, their labels, task data and
 the short-answer reminder still ride on every turn. Over 20 turns of one
@@ -456,7 +456,7 @@ Communication settings decide whether the agent may start one. With
 machine's owner allowed it there.
 `boite projects add <folder>` registers a folder as a project first, under the
 same settings, and `--machine <name>` one of another machine of the group. A
-bot does so only with its `addProjects` setting on, on its own machine
+mochi does so only with its `addProjects` setting on, on its own machine
 ([CLI](cli.md#commands)).
 
 The CLI uses the authenticated current conversation as sender. Agents cannot

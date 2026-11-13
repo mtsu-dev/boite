@@ -100,7 +100,7 @@ afterAll(async () => {
   await site?.stop(true);
 }, 30_000);
 
-test('the bot column takes the thread list\'s place without moving it, and folds with it', async () => {
+test('the mochi column takes the thread list\'s place without moving it, and folds with it', async () => {
   const layout = `(() => { const r = s => { const b = document.querySelector(s)?.getBoundingClientRect(); return b && [b.left, b.top, b.width, b.height].map(Math.round); };
     return { rail: r('[data-testid="sidebar"]') ?? r('.agents-rail'), card: r('.body main'), fold: !!document.querySelector('[data-testid="sidebar-toggle"]') }; })()`;
   await page.waitFor(`document.querySelector('[data-testid="sidebar"]') && document.querySelector('.body main') && document.querySelector('${id('rail-add')}')`);
@@ -304,7 +304,7 @@ real('three agents in the rail; a phone shows the list, then the conversation fu
 }, 120_000);
 
 // A rail with more bots than it holds pushed Settings and the machines off the window, with no scroll to reach them.
-real('a rail too short for its bots scrolls them, keeps its foot on screen and shows a name past its edge', async () => {
+real('a rail too short for its mochis scrolls them, keeps its foot on screen and shows a name past its edge', async () => {
   for (const name of ['Atlas', 'Cleo', 'Echo', 'Sage']) await agentOf(name, 'Keeps the short rail full');
   // The shell's minimum height (window.rs). More bots overflow a usable rail;
   // 300 px leaves no space for even one row between navigation and its foot.
@@ -347,7 +347,7 @@ real('a rail too short for its bots scrolls them, keeps its foot on screen and s
   }
 }, 60_000);
 
-test('a bot\'s menu sits in its column on a desktop and on its row\'s long press on a phone: pin, rename, pause, edit, archive, copy', async () => {
+test('a mochi\'s menu sits in its column on a desktop and on its row\'s long press on a phone: pin, rename, pause, edit, archive, copy', async () => {
   // Lyra speaks first, so it sits before the two others in the rail: the bot pinned and long-pressed below is never one they archive or pause.
   await agentOf('Lyra', 'Keeps the calendar');
   const orion = (await agentOf('Orion', 'Watches the builds')).agent;
@@ -364,7 +364,7 @@ test('a bot\'s menu sits in its column on a desktop and on its row\'s long press
   /** The core's copy of a bot, read until it says what the menu asked. */
   const saved = async (agentId: string, check: (agent: AgentProfile) => boolean) => {
     for (const end = Date.now() + 5_000; !check(await profile(agentId));) {
-      if (Date.now() > end) throw new Error(`bot ${agentId} never matched: ${JSON.stringify(await profile(agentId))}`);
+      if (Date.now() > end) throw new Error(`mochi ${agentId} never matched: ${JSON.stringify(await profile(agentId))}`);
       await Bun.sleep(50);
     }
   };

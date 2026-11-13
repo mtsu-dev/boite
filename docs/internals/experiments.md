@@ -12,7 +12,7 @@ Every feature has one tag, in `EXPERIMENT_STAGES`
 
 | Tag | Meaning | Ids |
 | --- | --- | --- |
-| `release` | Finished. On in every build, with no switch. | `theme-grain`, `session-import`, `prompt-cache`, `resident-agents` (Bots), `recording-indicators`, `pinned-quotas` |
+| `release` | Finished. On in every build, with no switch. | `theme-grain`, `session-import`, `prompt-cache`, `resident-agents` (Mochis), `recording-indicators`, `pinned-quotas` |
 | `nightly` | May change or go away. A switch in a Nightly and in a Dev build, absent from a Release. | `whip`, `contacts`, `auto-goal`, `teams`, `debates` (Council) |
 | `dev` | Being built. A switch in a Dev build only, absent from a Nightly and from a Release. | none today |
 
@@ -86,7 +86,7 @@ run": the version in the hello (`info.version`) is enough.
   (`packages/ui/src/lib/settings-sync.ts`). The core also starts nothing new
   in Contacts on a Release (`contacts/gate.ts`, `experimentStartRefusal`):
   inviting, joining, granting, offering, asking, accepting a request or mail,
-  trusting a contact, storing a Tailscale key and the Contacts bot's
+  trusting a contact, storing a Tailscale key and the Contacts mochi's
   forwards are refused with the Nightly reason, while reading, refusing,
   revoking and removing what exists still answer. The same holds for what a
   Nightly left in the data directory: accepting an association, turning its
@@ -94,10 +94,10 @@ run": the version in the hello (`info.version`) is enough.
   (`sharedBoard.apply`, `todos.update` on a shared card), a path override and
   a follow-up to a compute job are refused, while declining, turning off,
   removing a card, releasing a claim, cancelling a job and revoking go
-  through. The Contacts bot proposes no plan (`contacts.bot.askOwner` with
+  through. The Contacts mochi proposes no plan (`contacts.bot.askOwner` with
   `connect` or `start`), and a Yes on a card drawn as a Nightly opens and
   starts nothing: the build is read when the owner answers and again when the
-  plan runs, and the request goes back to the bot. A letter the bot held as a
+  plan runs, and the request goes back to the mochi. A letter the mochi held as a
   Nightly is not delivered either (`contacts.bot.flag` with `deliver: true`):
   its flag stays open, and blocking it still answers. A workflow step meets
   the same refusal, since the compute service reads the build itself. A
@@ -346,24 +346,24 @@ a click does nothing, and its tooltip says animations are off in the system
 settings, with the Windows path. It comes back as soon as the setting changes.
 
 
-## Bots
+## Mochis
 
-The Bots page ([bots](bots.md)) and every button that leads there: the
-bots' pictures and `+` in the app rail, the phone's Bots tab, the command
-palette row and the link from a bot's own thread. Bots are finished
+The Mochis page ([mochis](mochis.md)) and every button that leads there: the
+mochis' pictures and `+` in the app rail, the phone's Mochis tab, the command
+palette row and the link from a mochi's own thread. Mochis are finished
 (`resident-agents` is `release`): the page is there in every build, with no
 switch.
 
 ## Teams
 
-Teams of bots ([teams](teams.md)). The switch gates
+Teams of mochis ([teams](teams.md)). The switch gates
 the `teams.*` methods and `boite team` commands on the teams a machine holds,
 on the core, which reads the desktop app's experiments, and the team lines of
-the bots' guide. A machine with its switch off lets no bot of its own enter a
-team; a bot already in a team another machine holds stays in it, and that
+the mochis' guide. A machine with its switch off lets no mochi of its own enter a
+team; a mochi already in a team another machine holds stays in it, and that
 machine's switch decides ([teams](teams.md#across-machines)). Letters
-already in a bot's inbox still go out once it is off. In the app it shows the
-Teams section above the bots on the Bots page, on the desktop and on the
+already in a mochi's inbox still go out once it is off. In the app it shows the
+Teams section above the mochis on the Mochis page, on the desktop and on the
 phone, and the team chats there ([teams](teams.md#in-the-app)); a phone
 follows the desktop's switch.
 
@@ -381,10 +381,10 @@ round under way: its answers still come back.
 
 ## Contacts
 
-Turning it on creates the Contacts bot
-([contacts](contacts.md#the-contacts-bot)) on the window's machine and on
+Turning it on creates the Contacts mochi
+([contacts](contacts.md#the-contacts-mochi)) on the window's machine and on
 every connected owner machine with a contact, once; turning it off leaves the
-bot on the core, like any bot. A paired phone only flips its own switch.
+mochi on the core, like any mochi. A paired phone only flips its own switch.
 
 The contacts column and the Contacts page ([contacts](contacts.md)). On a
 desktop window the contacts stand in a column on the right edge, the thread

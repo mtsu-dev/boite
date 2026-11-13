@@ -360,7 +360,7 @@ the in-memory client mirrors it:
 - With no other account able to run, a removed account is refused as above and
   a signed-out one names itself in the turn's check, as before.
 - A title for such a thread is written on the account its next turn would use.
-- A bot keeps the account its profile names.
+- A mochi keeps the account its profile names.
 
 The composer follows the same rule. A draft opens on the remembered account
 while it is signed in, else on another of that provider. The picker shows a

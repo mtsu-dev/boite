@@ -18,7 +18,7 @@ export function delegationProject(ctx: FakeContext, parent: Thread, wanted?: str
     if (!byId && !byPath && byName.length > 1) throw new RpcFailure({ code: RpcErrorCode.Refused, message: `project: ${byName.length} projects are named ${query}; name one by its id or folder` });
     project = byId ?? byPath ?? byName[0];
     if (!project || project.archived || (agent ? !entrusted.includes(project) : parent.projectId !== project.id)) {
-      throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'project: expected an entrusted project for a bot, or this conversation\'s own project' });
+      throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'project: expected an entrusted project for a mochi, or this conversation\'s own project' });
     }
   }
   return project && parent.projectId === null ? { ...parent, projectId: project.id, cwd: project.path, branch: null } : parent;

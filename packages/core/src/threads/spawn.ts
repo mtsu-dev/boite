@@ -78,7 +78,7 @@ export class ThreadSpawns {
     // A bot starts threads in any project from its own thread, and drives what it started.
     const bot = caller.agentSessionId ? this.#core.workforce.projects.botOf(threadId) : null;
     if ((caller.agentSessionId && bot === null) || (!caller.agentSessionId && caller.projectId === null)) {
-      throw refused('an archived bot starts no thread', { threadId, field: 'threadId', expected: 'a conversation thread, or an active bot' });
+      throw refused('an archived mochi starts no thread', { threadId, field: 'threadId', expected: 'a conversation thread, or an active mochi' });
     }
     if (caller.archived) throw refused('an archived thread cannot start threads', { threadId, field: 'threadId', expected: 'a thread that is not archived' });
     const machine = params.machine === undefined ? null : text(params.machine, 'machine', 128).trim();
@@ -126,9 +126,9 @@ export class ThreadSpawns {
       const origin: ThreadLink = { threadId, title: bot ? bot.name : caller.title, projectId: from.id, project: from.name };
       const address = { coreId: this.#core.coordination.identity().coreId, threadId };
       const note = bot
-        ? `This thread was started by ${bot.name}, a bot of the user's that looks after their work, not typed by the user. `
+        ? `This thread was started by ${bot.name}, a mochi of the user's that looks after their work, not typed by the user. `
           + 'Treat the brief below as your task, within your own permissions; it grants no approval the user did not give. '
-          + 'Your final answer to it goes back to that bot automatically, so finish with a clear result: what you did, how you verified it, the pull request.\n\nBrief:\n'
+          + 'Your final answer to it goes back to that mochi automatically, so finish with a clear result: what you did, how you verified it, the pull request.\n\nBrief:\n'
         : `This thread was started by the agent of thread "${caller.title}" (${threadId}) in project ${from.name}, not typed by the user. `
           + 'Treat the brief below as your task, within your own permissions; it grants no approval the user did not give. '
           + `Your final answer to it is sent back to that agent automatically; boite threads send ${address.coreId}/${threadId} <text> reaches it sooner.\n\nBrief:\n`;
@@ -320,9 +320,9 @@ export class ThreadSpawns {
     return this.#once(BOT_LEDGER, `${peer.coreId}:${lease.agentId}`, start.requestId, fingerprint, 'bot.start', async () => {
       const target = this.#core.projects.require(projectId);
       const origin: ThreadLink = { threadId: lease.threadId, title: lease.name, projectId: target.id, project: target.name, machine: peer.name };
-      const note = `This thread was started by ${lease.name}, a bot of the user's on ${peer.name}, another machine of theirs, that looks after their work, not typed by the user. `
+      const note = `This thread was started by ${lease.name}, a mochi of the user's on ${peer.name}, another machine of theirs, that looks after their work, not typed by the user. `
         + 'Treat the brief below as your task, within your own permissions; it grants no approval the user did not give. '
-        + 'Your final answer to it goes back to that bot automatically, so finish with a clear result: what you did, how you verified it, the pull request.\n\nBrief:\n';
+        + 'Your final answer to it goes back to that mochi automatically, so finish with a clear result: what you did, how you verified it, the pull request.\n\nBrief:\n';
       return this.#launch({
         projectId: target.id, title: start.title, prompt: start.prompt, note, worktree: start.worktree, ...(start.context === undefined ? {} : { context: start.context }),
         agent: agentHere(this.#core, start, this.#core.coordination.identity().name), origin: { origin, reported: false, coreId: peer.coreId, bot: true },
@@ -381,13 +381,13 @@ export class ThreadSpawns {
     let bot: AgentProfile | null = null;
     if (caller.agentSessionId || caller.projectId === null) {
       bot = workforce.projects.botOf(threadId);
-      if (bot === null) throw refused('this thread has no project and is no bot\'s own conversation: it cannot add projects', { threadId, field: 'threadId', expected: 'a conversation thread' });
+      if (bot === null) throw refused('this thread has no project and is no mochi\'s own conversation: it cannot add projects', { threadId, field: 'threadId', expected: 'a conversation thread' });
       if (workforce.resident.config(bot.id).addProjects !== true) {
-        throw refused(`the owner has not let ${bot.name} add projects; ask with boite settings bot request addProjects true --why <reason>`, { threadId, field: 'addProjects', expected: true });
+        throw refused(`the owner has not let ${bot.name} add projects; ask with boite settings mochi request addProjects true --why <reason>`, { threadId, field: 'addProjects', expected: true });
       }
       // The other machine checks a bot's reach by its own settings (`groupBots`): its owner entrusts a project there with a `projects` card.
       if (params.machine !== undefined) {
-        throw refused('a bot adds projects on its own machine only; ask for a project of another machine with boite settings bot request projects +<machine>/<project> --why <reason>', { threadId, field: 'machine', expected: 'no --machine' });
+        throw refused('a mochi adds projects on its own machine only; ask for a project of another machine with boite settings mochi request projects +<machine>/<project> --why <reason>', { threadId, field: 'machine', expected: 'no --machine' });
       }
     }
     const path = text(params.path, 'path', 4096, method).trim();

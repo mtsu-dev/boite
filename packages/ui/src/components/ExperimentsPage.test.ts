@@ -390,7 +390,7 @@ test('Automatic goals is off by default; on, its threshold row sits under the sw
   expect(document.querySelector('[data-testid=auto-goal-settings]')).toBeNull();
 });
 
-test('Contacts and Teams wait on nothing: Bots is always on, and Contacts is made with the Operator', async () => {
+test('Contacts and Teams wait on nothing: Mochis is always on, and Contacts is made with the Operator', async () => {
   const client = new FakeClient({ delayMs: 0 });
   const store = new Store();
   store.attach(client);
@@ -447,7 +447,7 @@ test('turning Contacts on makes nothing when a machine of the group has the Oper
   ensured.mockRestore();
   const real = home.call.bind(home);
   vi.spyOn(home, 'call').mockImplementation(async (method, params) => {
-    if (method === 'agents.builtin.ensure') throw new Error('selection: no signed-in account on this machine to run the bot');
+    if (method === 'agents.builtin.ensure') throw new Error('selection: no signed-in account on this machine to run the mochi');
     return real(method, params);
   });
   running = mount(ExperimentsPage, { target: document.body, props: { store: stores[0] } });

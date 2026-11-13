@@ -34,7 +34,7 @@ async function setup(count = 1) {
   return { h, client, projects, agent, threadId, parent: h.core.threads.require(threadId), spawn, grant };
 }
 
-test('a bot delegates into its sole entrusted project and keeps route ownership and result delivery', async () => {
+test('a mochi delegates into its sole entrusted project and keeps route ownership and result delivery', async () => {
   const s = await setup();
   const seen = new Map<string, string>();
   const driver = scripted(ctx => { seen.set(ctx.thread.id, ctx.thread.cwd); return { text: 'Project inspected' }; });
@@ -50,7 +50,7 @@ test('a bot delegates into its sole entrusted project and keeps route ownership 
   expect(s.h.core.workforce.resident.allowed(s.agent.id, child.thread, true)).toBe(false);
 });
 
-test('a bot with several projects selects an entrusted project by id, name or path', async () => {
+test('a mochi with several projects selects an entrusted project by id, name or path', async () => {
   const s = await setup(2);
   const target = s.projects[1]!;
   for (const [index, project] of [target.id, target.name, target.path].entries()) {
@@ -66,7 +66,7 @@ test('a bot with several projects selects an entrusted project by id, name or pa
   expect(child.thread.projectId).toBe(s.projects[0]!.id);
 });
 
-test('bot retries keep their original project and explicit project participates in idempotency', async () => {
+test('mochi retries keep their original project and explicit project participates in idempotency', async () => {
   const s = await setup(0);
   const personal = await s.spawn('old-default');
   expect(personal.thread).toMatchObject({ projectId: null, cwd: s.parent.cwd });
@@ -98,7 +98,7 @@ test('ordinary delegation preserves the parent checkout and refuses an explicit 
   expect(await thrown(s.client.call('delegation.spawn', { threadId, project: s.projects[0]!.id, task: 'Inspect checkout', requestId: 'cross-project' }))).toThrow('project');
 });
 
-test('workflow children use the sole bot project while fixed memory children stay personal', async () => {
+test('workflow children use the sole mochi project while fixed memory children stay personal', async () => {
   const s = await setup();
   const route = s.h.core.delegation.resolve(s.threadId, { profileId: 'worker' });
   const workflowId = s.h.core.delegation.createChild(s.parent, route, 'Workflow', () => {});
@@ -109,7 +109,7 @@ test('workflow children use the sole bot project while fixed memory children sta
   expect(s.h.core.threads.require(memoryId)).toMatchObject({ projectId: null, cwd: s.parent.cwd, parentThreadId: s.threadId, permissionMode: 'plan' });
 });
 
-test('archived bot project children count in their project while ordinary subagents stay out', async () => {
+test('archived mochi project children count in their project while ordinary subagents stay out', async () => {
   const s = await setup();
   const child = await s.spawn('archive-bot');
   await waitFor(() => s.h.core.threads.require(child.thread.id).archived);

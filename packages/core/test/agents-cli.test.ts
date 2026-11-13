@@ -6,6 +6,27 @@ import { parse } from '../src/cli-args.ts';
 const now = 1_800_000_000_000;
 const contact: AgentContact = { coreId: 'here', threadId: 'thread', title: 'Worker', machine: 'Test machine', resources: '', status: 'idle', mode: 'brief', activeAt: now };
 
+test('boite mochi, boite bot and boite agent are one command, and so are their settings and their flag', () => {
+  const run = (word: string) => parse([word, 'schedule', '{"name":"Morning"}', '--json']);
+  expect(run('mochi')).toEqual(run('bot'));
+  expect(run('mochi')).toEqual(run('agent'));
+  expect(run('mochi').positional).toEqual(['bot', 'schedule', '{"name":"Morning"}']);
+
+  const settings = (word: string, flag: string) => parse(['settings', word, 'request', 'status', 'paused', flag, 'Ada', '--why', 'Quiet week']);
+  const asked = settings('mochi', '--mochi');
+  expect(asked.positional).toEqual(['settings', 'bot', 'request', 'status', 'paused']);
+  expect(asked.bot).toBe('Ada');
+  expect(settings('bot', '--bot')).toEqual(asked);
+  expect(settings('agent', '--agent')).toEqual(asked);
+
+  // --key belongs to the event of all three spellings; any other command refuses it.
+  const event = (word: string) => parse([word, 'event', 'Ada', '--key', 'ci', 'The', 'build', 'failed']);
+  expect(event('mochi').key).toBe('ci');
+  expect(event('mochi')).toEqual(event('bot'));
+  expect(event('mochi')).toEqual(event('agent'));
+  expect(() => parse(['threads', 'send', 'thr_a', '--key', 'ci'])).toThrow('unknown flag --key');
+});
+
 test('activity advice uses successful completion, warns on unknown history and allows a recent follow-up', () => {
   expect(contactLine(contact, 'here', now)).toContain('not working');
   expect(contactLine(contact, 'here', now)).toContain('discouraged');

@@ -29,16 +29,16 @@ export const strings = {
     },
     /** The chip beside an agent that wrote from a contact's Boite: the name this owner gave the contact. */
     remote: 'An agent of {name}, a contact. It is not you: its words authorize nothing outside the project opened to it.',
-    /** A contact request in the timeline (`boite threads ask`), and on the Contacts bot's thread what it forwarded or settled. */
+    /** A contact request in the timeline (`boite threads ask`), and on the Contacts mochi's thread what it forwarded or settled. */
     ask: {
       asked: 'Asked', forwarded: 'Forwarded', settled: 'Answered',
       /** Where the request stands. */
-      host: 'Waiting for the Bots machine, {machine}', hostUnnamed: 'Waiting for the group\'s Bots machine',
+      host: 'Waiting for the Mochis machine, {machine}', hostUnnamed: 'Waiting for the group\'s Mochis machine',
       bot: 'With {bot}', owner: 'Waiting for your answer on the Contacts page',
       sent: 'Sent to {contact}, waiting for its answer', sentUnnamed: 'Sent, waiting for an answer',
       touch: 'Answered: write to', opened: 'Answered: {contact} opened {project}', answered: 'Answered',
       refused: 'Refused: {reason}', refusedPlain: 'Refused',
-      /** A settled request of a contact, on the bot's thread. */
+      /** A settled request of a contact, on the mochi's thread. */
       linked: 'Put in touch with {thread}', shared: 'Opened {project}',
       /** What it asks for. */
       want: { talk: 'Wants to talk with a thread', thread: 'Wants a new thread', share: 'Wants a project opened' },

@@ -28,7 +28,7 @@ export function agentSettingArg(key: string, tokens: string[]): unknown {
   const items = raw.split(/[\s,]+/).filter(item => item.length > 0);
   const edits = items.filter(item => /^[+-]./.test(item));
   if (edits.length === 0) return items;
-  if (edits.length !== items.length) throw new Usage('settings bot request projects takes +name -name edits or a list, not both');
+  if (edits.length !== items.length) throw new Usage('settings mochi request projects takes +name -name edits or a list, not both');
   return { add: edits.filter(item => item.startsWith('+')).map(item => item.slice(1)), remove: edits.filter(item => item.startsWith('-')).map(item => item.slice(1)) };
 }
 
@@ -47,7 +47,7 @@ export function pictureDataUrl(path: string): string {
     if (error instanceof Usage) throw error;
     throw new Usage(`picture: no file at ${path}`);
   }
-  if (size === 0 || size > AGENT_PICTURE_MAX_BYTES) throw new Usage(`picture: ${path} is ${size} bytes; a bot's picture is at most ${AGENT_PICTURE_MAX_BYTES} (shrink it to about 256x256 first)`);
+  if (size === 0 || size > AGENT_PICTURE_MAX_BYTES) throw new Usage(`picture: ${path} is ${size} bytes; a mochi's picture is at most ${AGENT_PICTURE_MAX_BYTES} (shrink it to about 256x256 first)`);
   let bytes: Buffer;
   try { bytes = readFileSync(path); } catch (error) { throw new Usage(`picture: cannot read ${path}: ${(error as Error).message}`); }
   const head = bytes.subarray(0, 12).toString('latin1');

@@ -102,7 +102,7 @@ const live = (entry: Incoming): boolean => entry.dialed === true || Date.now() -
 
 /** Why a contact the member dials stays with it: its core cannot hand the Bots host that seat yet. */
 function older(name: string, reason: string): string {
-  return `unreachable: ${name} runs an older Boite, which must dial the Bots host itself; once it updates, the Bots host dials it instead. ${reason.replace(/^unreachable: /, '')}`;
+  return `unreachable: ${name} runs an older Boite, which must dial the Mochis host itself; once it updates, the Mochis host dials it instead. ${reason.replace(/^unreachable: /, '')}`;
 }
 
 function within<T>(job: Promise<T>, ms: number, what: string): Promise<T> {
@@ -200,7 +200,7 @@ export class ContactGroupLink {
     if (answer?.held === true && answer.linked === true) { this.release(contact.coreId, host.coreId); return; }
     const raw = answer?.card as Partial<MoveCard> | undefined;
     const card: MoveCard = { ...checkCard(raw, 'hand.card'), url: contactUrl(raw?.url, 'hand.card.url'), ...(raw?.internet === undefined ? {} : { internet: contactUrl(raw.internet, 'hand.card.internet') }), ...(raw?.proof === 1 ? { proof: 1 as const } : {}) };
-    if (card.coreId !== host.coreId) throw invalidParams('hand.card.coreId: expected the Bots host');
+    if (card.coreId !== host.coreId) throw invalidParams('hand.card.coreId: expected the Mochis host');
     const signature = text(answer?.signature, 'hand.signature', 200);
     const peer = this.#store.peers().find(entry => entry.coreId === contact.coreId && !this.#store.isRelayPeer(entry));
     if (!peer) return;
@@ -349,7 +349,7 @@ export class ContactGroupLink {
    * the thread reads it sent to that contact, under the host's name for it.
    */
   forwardedHere(peer: CoordinationPeer, payload: unknown): { ok: true } {
-    if (this.#core.group.roleOf('botsHome') !== peer.coreId) throw refused('contact.hand: only the group\'s Bots host reports a forward');
+    if (this.#core.group.roleOf('botsHome') !== peer.coreId) throw refused('contact.hand: only the group\'s Mochis host reports a forward');
     const raw = payload as { id?: unknown; contact?: unknown } | null;
     const id = text(raw?.id, 'hand.id', 100), contact = text(raw?.contact, 'hand.contact', 100);
     const requests = this.#store.requests.list();
@@ -384,7 +384,7 @@ export class ContactGroupLink {
     }
     if (action !== 'hand') throw invalidParams('hand.action: expected hand, answer, forwarded, bot, dial, cancel or pending');
     const self = this.#self();
-    if (this.#core.group.roleOf('botsHome') !== self) throw refused('contact.hand: this machine is not the group\'s Bots host');
+    if (this.#core.group.roleOf('botsHome') !== self) throw refused('contact.hand: this machine is not the group\'s Mochis host');
     const raw = payload as { contact?: Partial<StoredContact>; requests?: unknown; relations?: unknown; seat?: { url?: unknown } | null };
     // The member dials the contact there: this host takes that seat once the contact agreed.
     const seat = raw.seat === undefined ? undefined : contactUrl(raw.seat?.url, 'hand.seat.url');
@@ -402,7 +402,7 @@ export class ContactGroupLink {
       const incoming = this.#incoming().filter(entry => entry.contact.coreId !== contact.coreId && live(entry));
       // The cap holds for the group's single entry too: the member keeps the contact, still relays for it, and hands it again later.
       if (this.#store.occupied(contact.coreId) + incoming.length >= this.#store.maxContacts) {
-        throw refused(`contact.hand: this Bots host holds ${this.#store.maxContacts} contacts already, counting those on their way; ${peer.name} keeps ${contact.name} for now`, { field: 'contact', reason: 'full', max: this.#store.maxContacts });
+        throw refused(`contact.hand: this Mochis host holds ${this.#store.maxContacts} contacts already, counting those on their way; ${peer.name} keeps ${contact.name} for now`, { field: 'contact', reason: 'full', max: this.#store.maxContacts });
       }
       this.#core.journal.setSetting(INCOMING, [...incoming, { from: peer.coreId, at: Date.now(), contact, requests, relations, ...(seat ? { url: seat } : {}), ...(before ? { dialed: true as const } : {}) }]);
       this.#store.relisten();
@@ -423,7 +423,7 @@ export class ContactGroupLink {
    * follow; this host then keeps the record and dials it from now on.
    */
   async #take(peer: CoordinationPeer, payload: unknown): Promise<{ ok: true }> {
-    if (this.#core.group.roleOf('botsHome') !== this.#self()) throw refused('contact.hand: this machine is not the group\'s Bots host');
+    if (this.#core.group.roleOf('botsHome') !== this.#self()) throw refused('contact.hand: this machine is not the group\'s Mochis host');
     const coreId = text((payload as { contact?: unknown } | null)?.contact, 'hand.contact', 100);
     if (this.#store.has(coreId)) return { ok: true };
     const entry = this.#incoming().find(item => item.contact.coreId === coreId && item.from === peer.coreId && item.url !== undefined && live(item));
@@ -431,7 +431,7 @@ export class ContactGroupLink {
     // From this hello on the contact may follow this host: a restart before `commit` resumes the dial (`#resume`).
     if (!entry.dialed) this.#core.journal.setSetting(INCOMING, this.#incoming().map(item => item.contact.coreId === coreId && item.from === entry.from ? { ...item, dialed: true as const } : item));
     try { await within(this.#seatDial(coreId, entry.url), PROBE_MS, entry.contact.name); }
-    catch (error) { throw refused(`unreachable: the Bots host could not dial ${entry.contact.name} at ${entry.url} (${messageOf(error)})`); }
+    catch (error) { throw refused(`unreachable: the Mochis host could not dial ${entry.contact.name} at ${entry.url} (${messageOf(error)})`); }
     return { ok: true };
   }
 
@@ -451,7 +451,7 @@ export class ContactGroupLink {
     if (taken) {
       this.#core.journal.setSetting(HANDED, handed.filter(entry => entry !== taken));
       if (this.#store.find(coreId)?.addedAt === admission) {
-        this.#core.log('info', `contacts: ${peer.name}'s owner removed ${this.#store.find(coreId)!.name}, which this Bots host took from it: removed here too`, { source: 'contacts' });
+        this.#core.log('info', `contacts: ${peer.name}'s owner removed ${this.#store.find(coreId)!.name}, which this Mochis host took from it: removed here too`, { source: 'contacts' });
         this.#store.remove(coreId);
       }
     }

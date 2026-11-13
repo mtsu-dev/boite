@@ -12,11 +12,11 @@ async function agent(client: FakeClient, name = 'Mira'): Promise<AgentProfile> {
 const prompts = async (client: FakeClient, threadId: string) => (await client.call('threads.get', { threadId })).messages
   .filter((message) => message.role === 'user').map((message) => (message.parts[0]?.type === 'text' ? message.parts[0].text : ''));
 
-test('fake eventWakes settings use the same boolean card and preserve the active bot', async ({ createClient }) => {
+test('fake eventWakes settings use the same boolean card and preserve the active mochi', async ({ createClient }) => {
   const client = await createClient({ delayMs: 0 });
   const mira = await agent(client);
   const { id: threadId } = await client.call('threads.create', { projectId: 'p-boite', providerId: 'echo', accountId: 'a-echo' });
-  await client.call('turns.start', { threadId, prompt: 'Configure the bot.' });
+  await client.call('turns.start', { threadId, prompt: 'Configure the mochi.' });
   await client.settled();
   const read = await client.call('agents.settings.read', { threadId, agent: mira.id });
   expect(read.settings.find(s => s.key === 'eventWakes')?.value).toBe(false);
@@ -29,7 +29,7 @@ test('fake eventWakes settings use the same boolean card and preserve the active
   }
 });
 
-test('fake agent.addProject for a bot: refused until addProjects is on, then added and entrusted; an existing project is not', async ({ createClient }) => {
+test('fake agent.addProject for a mochi: refused until addProjects is on, then added and entrusted; an existing project is not', async ({ createClient }) => {
   const client = await createClient({ delayMs: 0 });
   const mira = await agent(client);
   const { threadId } = await client.call('agents.open', { agentId: mira.id });
@@ -38,7 +38,7 @@ test('fake agent.addProject for a bot: refused until addProjects is on, then add
   const held = async () => (await client.call('agents.settings.read', { threadId })).settings.find(s => s.key === 'projects')?.value;
 
   await expect(client.call('agent.addProject', { threadId, path: '/workspace/site' })).rejects.toMatchObject({
-    code: RpcErrorCode.Refused, message: 'the owner has not let Mira add projects; ask with boite settings bot request addProjects true --why <reason>', data: { field: 'addProjects' } });
+    code: RpcErrorCode.Refused, message: 'the owner has not let Mira add projects; ask with boite settings mochi request addProjects true --why <reason>', data: { field: 'addProjects' } });
   expect((await client.call('projects.list', {})).some(p => p.path === '/workspace/site')).toBe(false);
 
   const card = await client.call('agents.settings.request', { threadId, key: 'addProjects', value: true, reason: 'The user asked for a site' });
@@ -100,7 +100,7 @@ test('fake agent setting cards: read, request, refusals, apply with an edit and 
   await expect(client.call('agents.settings.apply', { threadId, questionId })).rejects.toMatchObject({ code: RpcErrorCode.NotFound });
 });
 
-test('a bot may propose a robot with every shared part, or a four-part code, and nothing else', async ({ createClient }) => {
+test('a mochi may propose a robot with every shared part, or a four-part code, and nothing else', async ({ createClient }) => {
   const client = await createClient({ delayMs: 0 });
   await agent(client);
   const thread = async () => {
@@ -147,7 +147,7 @@ test('fake agent setting cards settle from the agent\'s own settings, and the [a
   expect(read).toContain('> Quicker answers\n\nchanged: the user set Mira\'s effort to "high", not "low"');
 });
 
-test("fake agents.create: the core's refusals, then the bot made at once on the thread's route with full access", async ({ createClient }) => {
+test("fake agents.create: the core's refusals, then the mochi made at once on the thread's route with full access", async ({ createClient }) => {
   const client = await createClient({ delayMs: 0 });
   await agent(client);
   const { id: threadId } = await client.call('threads.create', { projectId: 'p-boite', providerId: 'echo', accountId: 'a-echo' });
@@ -181,7 +181,7 @@ test('fake model cards name the provider and move an agent to another one, allow
   const own = policy.allowedRoutes[0]!;
   await client.call('agents.runtime.configure', { agentId: mira.id, expectedRevision: mira.revision, config: { ...policy, allowedRoutes: [{ ...own, id: 'codex/default' }, { ...own, id: 'codex/default-3', effort: 'low' }] } });
   const { id: threadId } = await client.call('threads.create', { projectId: 'p-boite', providerId: 'echo', accountId: 'a-echo' });
-  await client.call('turns.start', { threadId, prompt: 'Move the bot.' });
+  await client.call('turns.start', { threadId, prompt: 'Move the mochi.' });
   await client.settled();
   const read = (await client.call('agents.settings.read', { threadId, agent: mira.id })).settings.find(s => s.key === 'model')!;
   expect(read.value).toBe('echo/echo-1');
@@ -205,7 +205,7 @@ test('fake model cards name the provider and move an agent to another one, allow
   expect(config.allowedRoutes.map(route => `${route.id}: ${route.providerId}/${route.model}`)).toEqual(['codex/default: echo/echo-1', 'codex/default-3: echo/echo-1', 'codex/default-2: codex/default']);
 });
 
-test('fake bots on a provider turned off name the fix in their status and hear of the switch, as on the core', async ({ createClient }) => {
+test('fake mochis on a provider turned off name the fix in their status and hear of the switch, as on the core', async ({ createClient }) => {
   const client = await createClient({ delayMs: 0 });
   const mira = await agent(client);
   const status = async () => (await client.call('agents.snapshot', {})).status.find(s => s.agentId === mira.id)!;
@@ -224,11 +224,11 @@ test('fake bots on a provider turned off name the fix in their status and hear o
   expect((await status()).problem).toMatch(/^Codex is turned off on this machine;/);
 });
 
-test('where bot creation asks first, a thread gets a card: Approve creates the bot, Decline creates none', async ({ createClient }) => {
+test('where mochi creation asks first, a thread gets a card: Approve creates the mochi, Decline creates none', async ({ createClient }) => {
   const client = await createClient({ delayMs: 0 });
   await client.call('settings.set', { agentBotCreation: 'ask' });
   const { id: threadId } = await client.call('threads.create', { projectId: 'p-boite', providerId: 'echo', accountId: 'a-echo' });
-  await client.call('turns.start', { threadId, prompt: 'make me a bot' });
+  await client.call('turns.start', { threadId, prompt: 'make me a mochi' });
   const names = async () => (await client.call('agents.snapshot', {})).profiles.map((profile) => profile.name);
 
   const asked = await client.call('agents.create', { threadId, name: 'Scribe', domain: 'Notes', projects: ['notes'] });
@@ -279,7 +279,7 @@ test.each(['directory','read'] as const)('fake preserves the contact-shared proj
  } finally {pair.close();}
 });
 
-test('fake preserves Contacts bot reach on a closed machine',async()=>{
+test('fake preserves Contacts mochi reach on a closed machine',async()=>{
  const client=new FakeClient({delayMs:0});await client.connect();
  try{
   await client.call('settings.set',{coordinationReach:'project'});

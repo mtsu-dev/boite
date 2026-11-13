@@ -54,11 +54,11 @@ function save(store: AgentStore, bot: AgentCreation): AgentCreated {
 
 export function createAgent(core: Core, store: AgentStore, params: AgentCreateParams): AgentCreateResult {
   const thread = core.threads.require(params.threadId);
-  if (thread.archived) throw refused('an archived thread cannot create a bot', { threadId: thread.id });
+  if (thread.archived) throw refused('an archived thread cannot create a mochi', { threadId: thread.id });
   const bot = checked(core, store, thread, params);
   if (agentBotCreation(core.settings.get()) === 'free') return save(store, bot);
   const open = core.threads.listQuestions(thread.id).some(request => request.setting?.kind === 'bot' && request.setting.bot.name.toLowerCase() === bot.name.toLowerCase());
-  if (open) throw refused(`a card asking to create the bot ${JSON.stringify(bot.name)} is already open in this thread`, { field: 'name' });
+  if (open) throw refused(`a card asking to create the mochi ${JSON.stringify(bot.name)} is already open in this thread`, { field: 'name' });
   const names = new Map(core.projects.list().map(project => [project.id, project.name]));
   let model = bot.selection.model ?? '';
   try { model = modelsFor(core.providers.require(bot.selection.providerId), bot.selection.accountId).find(entry => entry.id === bot.selection.model)?.name ?? model; } catch { /* The id names it. */ }
@@ -75,7 +75,7 @@ export function createAgent(core: Core, store: AgentStore, params: AgentCreatePa
 export function approveAgent(core: Core, store: AgentStore, params: AgentCreateApproveParams): AgentCreated {
   const request = core.threads.listQuestions(params.threadId).find(question => question.id === params.questionId);
   const ask = request?.setting;
-  if (ask?.kind !== 'bot') throw notFound(`agents.create.approve: ${String(params.questionId)} is no open bot card of thread ${String(params.threadId)}`, { field: 'questionId' });
+  if (ask?.kind !== 'bot') throw notFound(`agents.create.approve: ${String(params.questionId)} is no open mochi card of thread ${String(params.threadId)}`, { field: 'questionId' });
   const { name, domain, instructions, projectIds, selection } = ask.bot;
   const result = checkAgentCreate({ name, domain, instructions, projects: projectIds }, context(core, store, () => {
     try {
@@ -88,6 +88,6 @@ export function approveAgent(core: Core, store: AgentStore, params: AgentCreateA
   }));
   if (!result.ok) throw refused(result.message, result.data);
   const made = save(store, result.value);
-  core.threads.cards.settle(open => (open.id === params.questionId ? { optionIds: ['applied'], value: { agentId: made.agent.id, threadId: made.threadId } } : null), 'the owner, who approved the bot');
+  core.threads.cards.settle(open => (open.id === params.questionId ? { optionIds: ['applied'], value: { agentId: made.agent.id, threadId: made.threadId } } : null), 'the owner, who approved the mochi');
   return made;
 }

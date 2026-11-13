@@ -474,14 +474,14 @@ describe('automatic compaction', () => {
         bot: { autoCompact: { tokens: null, moments: ['turn-end'] }, backgroundCompaction: false },
       } });
       await turn(client, threadId, 'x'.repeat(1100));
-      await turn(client, botId, 'bot work');
+      await turn(client, botId, 'mochi work');
       await pause(180);
       expect(await compactions(client, threadId)).toHaveLength(0);
       expect(await compactions(client, botId)).toHaveLength(1);
       expect(seen.get(threadId)?.at(-1)).toBe(2000);
       expect(seen.get(botId)?.at(-1)).toBeNull();
       const before = (await client.call('agents.snapshot', {})).status[0]!.last;
-      expect(before?.text).toContain('bot work');
+      expect(before?.text).toContain('mochi work');
       await client.call('settings.set', { compactionByType: { bot: { autoCompact: null, backgroundCompaction: false } } });
       await turn(client, botId, 'x'.repeat(1100));
       await pause(100);

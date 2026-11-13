@@ -49,7 +49,7 @@ async function flowsWithoutHolder(sides: Awaited<ReturnType<typeof setup>>): Pro
   await waitFor(() => letters(x, xThread).some(letter => letter.text === 'Back to xray'), 10000);
 }
 
-test('a contact its member dials, which cannot reach the Bots host, moves there with the Bots host dialing it, and works with the member off', async () => {
+test('a contact its member dials, which cannot reach the Mochis host, moves there with the Mochis host dialing it, and works with the member off', async () => {
   const sides = await setup(cores, true);
   const { a, x, aClient, c, xId, cId } = sides;
   unreachable(x);
@@ -77,7 +77,7 @@ test('a contact on an older Boite stays with the member that dials it, which say
   expect(x.core.contacts.has(cId)).toBe(false);
 }, 60000);
 
-test('a contact that dials its member and cannot reach the Bots host\'s tailnet name moves through the Bots host\'s Funnel', async () => {
+test('a contact that dials its member and cannot reach the Mochis host\'s tailnet name moves through the Mochis host\'s Funnel', async () => {
   const sides = await setup(cores);
   const { a, x, aClient, c, xId, cId } = sides;
   unreachable(x);
@@ -125,11 +125,11 @@ async function restartBeforeCommit(away: number): Promise<void> {
   await flowsWithoutHolder({ ...sides, x: back, xClient: await back.connect() });
 }
 
-test('a Bots host that stopped after the contact took its hello, before keeping the contact, dials it again once it is back', async () => {
+test('a Mochis host that stopped after the contact took its hello, before keeping the contact, dials it again once it is back', async () => {
   await restartBeforeCommit(0);
 }, 90000);
 
-test('a Bots host back two hours after the contact took its hello still dials it again', async () => {
+test('a Mochis host back two hours after the contact took its hello still dials it again', async () => {
   await restartBeforeCommit(2 * 3_600_000);
 }, 90000);
 
@@ -159,7 +159,7 @@ async function restarted(x: TestCore): Promise<TestCore> {
   return back;
 }
 
-test('removing a contact on the member cancels the seat the Bots host still dials', async () => {
+test('removing a contact on the member cancels the seat the Mochis host still dials', async () => {
   const { sides: { x, c, aClient, xClient, aId, xId, cId }, restore } = await strandedBeforeHello();
   const xray = await project(x, xClient, 'xray');
   await aClient.call('contacts.grant', { coreId: cId, projectId: xray.id, machine: xId });
@@ -173,7 +173,7 @@ test('removing a contact on the member cancels the seat the Bots host still dial
   expect(c.core.contacts.has(xId)).toBe(false);
 }, 60000);
 
-test('a Bots host that missed the cancel asks the member before it dials the seat again', async () => {
+test('a Mochis host that missed the cancel asks the member before it dials the seat again', async () => {
   const { sides: { a, c, x, aClient, xId, cId } } = await strandedBeforeHello();
   const request = a.core.coordination.request.bind(a.core.coordination);
   a.core.coordination.request = (peer, op, payload) => (payload as { action?: unknown } | null)?.action === 'cancel' ? Promise.reject(new Error('lost on the way')) : request(peer, op, payload);
@@ -187,7 +187,7 @@ test('a Bots host that missed the cancel asks the member before it dials the sea
   expect(c.core.contacts.has(xId)).toBe(false);
 }, 60000);
 
-test('a bare 403 from the contact keeps the Bots host dialing its seat until the contact takes the hello', async () => {
+test('a bare 403 from the contact keeps the Mochis host dialing its seat until the contact takes the hello', async () => {
   const { a, x, c, aClient, xId, cId } = await setup(cores, true);
   unreachable(x);
   x.core.contacts.groupLink.commit = () => { throw new Error('stopped before commit'); };
@@ -213,7 +213,7 @@ test('a bare 403 from the contact keeps the Bots host dialing its seat until the
   } finally { Date.now = clock; }
 }, 90000);
 
-test('a contact that signs its refusal of the Bots host\'s hello ends the resume of a seat it never took', async () => {
+test('a contact that signs its refusal of the Mochis host\'s hello ends the resume of a seat it never took', async () => {
   const { sides: { x, c, cClient, aId, xId, cId }, restore } = await strandedBeforeHello();
   await cClient.call('contacts.remove', { coreId: aId });
   restore();
@@ -284,7 +284,7 @@ async function lateCancel(followed: boolean): Promise<void> {
   } finally { pending.release(); cancel.release(); }
 }
 
-test('a cancel slower than the member\'s answer still removes the contact the Bots host took back on it', async () => {
+test('a cancel slower than the member\'s answer still removes the contact the Mochis host took back on it', async () => {
   await lateCancel(true);
 }, 60000);
 
@@ -292,7 +292,7 @@ test('a resume the member allowed before its owner removed the contact never tak
   await lateCancel(false);
 }, 60000);
 
-test('a contact that followed the Bots host is recovered after the member that handed it left the group', async () => {
+test('a contact that followed the Mochis host is recovered after the member that handed it left the group', async () => {
   const { a, x, c, aClient, aId, xId, cId } = await setup(cores, true);
   unreachable(x);
   x.core.contacts.groupLink.commit = () => { throw new Error('stopped before commit'); };
@@ -308,7 +308,7 @@ test('a contact that followed the Bots host is recovered after the member that h
   expect(back.core.journal.getSetting('contacts:incoming')).toEqual([]);
 }, 60000);
 
-test('a contact removed, linked again and removed again while the Bots host is out of reach loses the first link there too', async () => {
+test('a contact removed, linked again and removed again while the Mochis host is out of reach loses the first link there too', async () => {
   const { a, x, c, aClient, xClient, cClient, xId, cId } = await setup(cores, true);
   const xray = await project(x, xClient, 'xray');
   await aClient.call('contacts.grant', { coreId: cId, projectId: xray.id, machine: xId });
@@ -341,7 +341,7 @@ test('a contact removed, linked again and removed again while the Bots host is o
   expect(x.core.journal.getSetting('contacts:handed')).toEqual([]);
 }, 60000);
 
-test('a server that takes the upgrade without the Bots host\'s key does not win the move over the Bots host', async () => {
+test('a server that takes the upgrade without the Mochis host\'s key does not win the move over the Mochis host', async () => {
   const { a, x, c, aClient, xId, cId } = await setup(cores);
   // Answers every upgrade at once and holds no key of X: a wrong or replaced public origin.
   const impostor = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch(request, server) { return server.upgrade(request) ? undefined : new Response('no'); }, websocket: { message() {} } });

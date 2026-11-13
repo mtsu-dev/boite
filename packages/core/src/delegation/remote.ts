@@ -249,7 +249,7 @@ export class RemoteDelegation {
   async spawn(params: RpcParams<'delegation.spawn'>, workflow = false): Promise<DelegatedAgent> {
     const parent = this.#core.threads.require(params.threadId);
     if (parent.parentThreadId || this.parentOf(parent.id)) throw refused('delegation supports one level; ask the parent to delegate another task');
-    if (parent.agentSessionId) throw refused('delegation.spawn.machine: a bot\'s subagents run on its own machine', { field: 'machine' });
+    if (parent.agentSessionId) throw refused('delegation.spawn.machine: a mochi\'s subagents run on its own machine', { field: 'machine' });
     const requestId = text(params.requestId, 'requestId', 128);
     const task = text(params.task, 'task', 12000);
     const title = params.title === undefined ? task.split('\n')[0]!.slice(0, 80) : text(params.title, 'title', 120);

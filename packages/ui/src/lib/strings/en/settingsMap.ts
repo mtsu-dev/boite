@@ -54,7 +54,7 @@ export const strings = {
       brain: 'instructions skills memory rules',
       hooks: 'scripts',
       plugins: 'extensions add-ons',
-      'agents-alone': 'bots coordination reach permission',
+      'agents-alone': 'mochis bots coordination reach permission',
       'auto-compact': 'compaction context tokens summary',
       execution: 'warm process idle',
       quiet: 'focus mute audio windows',

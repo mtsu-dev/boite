@@ -66,14 +66,14 @@ export const fr: Translation = {
       accepted: '{project} partagé',
       refused: 'Refusée',
       by: { owner: 'Propriétaire', match: 'Correspondance', concierge: 'Concierge', bot: 'Standardiste' },
-      byTip: { owner: 'Décidé par le propriétaire.', match: 'Son remote git correspondait à un seul projet.', concierge: 'Décidé par l\'agent concierge pour un contact de confiance.', bot: 'Décidé par la Standardiste, le bot intégré de Boite.' },
-      stage: { bot: 'Chez la Standardiste', owner: 'Vous attend', host: 'En route vers la machine Bots' },
+      byTip: { owner: 'Décidé par le propriétaire.', match: 'Son remote git correspondait à un seul projet.', concierge: 'Décidé par l\'agent concierge pour un contact de confiance.', bot: 'Décidé par la Standardiste, le mochi intégré de Boite.' },
+      stage: { bot: 'Chez la Standardiste', owner: 'Vous attend', host: 'En route vers la machine Mochis' },
       plan: { connect: 'La Standardiste choisit {thread}', connectIn: 'La Standardiste choisit {thread}, dans {project}', start: 'La Standardiste démarre un fil dans {project}', acceptTip: 'Fait ce que la Standardiste a choisi. Aucun projet n\'est partagé.' },
-      pick: { label: 'Choisir le fil vous-même', search: 'Chercher un fil ou un bot', empty: 'Aucun fil ici pour l\'instant', none: 'Aucun fil ne correspond à « {query} »' },
+      pick: { label: 'Choisir le fil vous-même', search: 'Chercher un fil ou un mochi', empty: 'Aucun fil ici pour l\'instant', none: 'Aucun fil ne correspond à « {query} »' },
       inTouch: 'En relation avec {thread}'
     },
     bot: {
-      tip: 'Le bot intégré de Boite. Chaque demande entre vos agents et vos contacts passe par lui : il trouve le bon fil, met les deux en relation et retient les lettres qui semblent dangereuses.',
+      tip: 'Le mochi intégré de Boite. Chaque demande entre vos agents et vos contacts passe par lui : il trouve le bon fil, met les deux en relation et retient les lettres qui semblent dangereuses.',
       open: 'Ouvrir',
       openTip: 'Ouvrir le fil de {name}',
       none: 'Aucun fil ne travaille encore avec un contact.',

@@ -56,7 +56,7 @@ test('ensure makes one Operator with Boite\'s texts, returns it again, and locks
   expect((await client.call('agents.brain.save', { agentId: made.id, expectedRevision: brain.revision, instructions: brain.instructions, memory: 'Chris works on the website.' })).memory).toBe('Chris works on the website.');
 });
 
-test('reset puts back Boite\'s name, texts and default route, a new thread and an empty memory; an owner\'s bot is never reset', async () => {
+test('reset puts back Boite\'s name, texts and default route, a new thread and an empty memory; an owner\'s mochi is never reset', async () => {
   const client = await fake();
   const made = await client.call('agents.builtin.ensure', { kind: 'contacts' });
   const first = (await client.call('agents.open', { agentId: made.id })).threadId;
@@ -75,7 +75,7 @@ test('reset puts back Boite\'s name, texts and default route, a new thread and a
   expect(await refusal(client.call('agents.builtin.reset', { agentId: mine.id }))).toMatchObject({ code: RpcErrorCode.Refused });
 });
 
-test('only the Operator\'s thread calls the bot methods; the owner ends a relation and its flags go with it', async () => {
+test('only the Operator\'s thread calls the mochi methods; the owner ends a relation and its flags go with it', async () => {
   const client = await fake();
   expect(await refusal(client.call('contacts.bot.view', { threadId: 't-trace' }))).toEqual({ code: RpcErrorCode.Refused, field: 'threadId' });
   await client.call('agents.builtin.ensure', { kind: 'contacts' });
@@ -114,7 +114,7 @@ test('a renamed contact keeps its relations and flags under the new name; cut re
   expect(await refusal(client.call('contacts.bot.cut', { threadId: bot!.threadId, contact: 'Christine', project: 7 as never, reason: 'Done.' }))).toEqual({ code: RpcErrorCode.InvalidParams, field: 'project' });
 });
 
-test('a request that names no contact waits for the bot, which picks the contact and forwards it', async () => {
+test('a request that names no contact waits for the mochi, which picks the contact and forwards it', async () => {
   const [host, guest] = [await fake({ coreId: 'core-host', coreName: 'host' }), await fake({ coreId: 'core-guest', coreName: 'guest' })];
   await host.call('contacts.join', { link: (await guest.call('contacts.invite', { share: false })).link });
   for (const each of [host, guest]) await each.call('contacts.settings', { settings: { minTier: 2 } });

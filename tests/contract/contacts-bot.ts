@@ -18,16 +18,16 @@ async function refused(call: Promise<unknown>, code: number, field?: string): Pr
 }
 
 export const CONTACTS_BOT_SCENARIOS: Record<string, Scenario> = {
-  'only the Contacts bot thread settles requests, and an unknown request, flag or relation is refused by its field': async (env: ContractEnv) => {
+  'only the Contacts mochi thread settles requests, and an unknown request, flag or relation is refused by its field': async (env: ContractEnv) => {
     const account = (await env.call('accounts.list', {})).find(entry => entry.providerId === 'echo')!;
-    const project = await env.call('projects.add', { path: await env.newFolder(), name: 'Bot contract' });
-    const thread = await env.call('threads.create', { projectId: project.id, providerId: 'echo', accountId: account.id, title: 'Not the bot' });
+    const project = await env.call('projects.add', { path: await env.newFolder(), name: 'Mochi contract' });
+    const thread = await env.call('threads.create', { projectId: project.id, providerId: 'echo', accountId: account.id, title: 'Not the mochi' });
     const bot = await env.call('agents.builtin.ensure', { kind: 'contacts' });
     const { threadId: botThread } = await env.call('agents.open', { agentId: bot.id });
 
     const view = await env.call('contacts.bot.view', { threadId: botThread });
-    check(Array.isArray(view.requests) && Array.isArray(view.relations) && Array.isArray(view.flags) && Array.isArray(view.contacts), 'the bot view lists requests, relations, flags and contacts');
-    check(view.projects.some(entry => entry.id === project.id), 'the bot view names the projects it may start a thread on');
+    check(Array.isArray(view.requests) && Array.isArray(view.relations) && Array.isArray(view.flags) && Array.isArray(view.contacts), 'the mochi view lists requests, relations, flags and contacts');
+    check(view.projects.some(entry => entry.id === project.id), 'the mochi view names the projects it may start a thread on');
 
     // Another thread of this owner is not the bot.
     const other = thread.id;
@@ -50,13 +50,13 @@ export const CONTACTS_BOT_SCENARIOS: Record<string, Scenario> = {
     await refused(env.call('contacts.cutRelation', { id: 'crel-none' }), RpcErrorCode.InvalidParams, 'id');
   },
 
-  'the Bots role names one machine of the group or none': async (env: ContractEnv) => {
-    const group = await env.call('group.create', { name: 'Bots contract' });
+  'the Mochis role names one machine of the group or none': async (env: ContractEnv) => {
+    const group = await env.call('group.create', { name: 'Mochis contract' });
     const self = group.cores[0]!.coreId;
     await refused(env.call('group.botsHome', { coreId: 'core-elsewhere' }), RpcErrorCode.InvalidParams, 'coreId');
-    check((await env.call('group.botsHome', { coreId: self })).botsHome === self, 'the Bots role is this machine');
-    check((await env.call('group.get', {}))?.botsHome === self, 'the Bots role read back');
-    check((await env.call('group.botsHome', { coreId: null })).botsHome === undefined, 'the Bots role cleared');
+    check((await env.call('group.botsHome', { coreId: self })).botsHome === self, 'the Mochis role is this machine');
+    check((await env.call('group.get', {}))?.botsHome === self, 'the Mochis role read back');
+    check((await env.call('group.botsHome', { coreId: null })).botsHome === undefined, 'the Mochis role cleared');
     // The other scenarios start with no group.
     await env.call('group.leave', {});
   },

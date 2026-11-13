@@ -28,7 +28,7 @@ const DECIDED_KEPT = 50;
 /** A thread id, or a group member's thread at its Bots host: `<thread>~<16 hex>` (`memberThreadId`). */
 export const THREAD_ID = /^[A-Za-z0-9_-]{1,128}(~[0-9a-f]{16})?$/;
 const RELATION_ID = /^[A-Za-z0-9_-]{1,100}$/;
-export const NO_BOT = 'turn on Contacts in Settings > Version > Experiments: it creates the Contacts bot';
+export const NO_BOT = 'turn on Contacts in Settings > Version > Experiments: it creates the Contacts mochi';
 
 /**
  * `pendingSend`: an outgoing ask, or the answer to an incoming one, the other side has not received yet.
@@ -221,7 +221,7 @@ export class ContactRequests {
       const named = rest.length && first ? this.#store.held.find(first) : undefined;
       if (named) { contact = named; body = body.slice(first!.length).trim(); }
     }
-    if (byBot && !contact) throw invalidParams('contact: the Contacts bot names the contact it asks', { field: 'contact' });
+    if (byBot && !contact) throw invalidParams('contact: the Contacts mochi names the contact it asks', { field: 'contact' });
     // A named contact is asked at once, and its Operator settles the request. Only an ask naming none waits for this core's bot to pick one.
     const direct = contact !== null;
     if (!direct && bot === null) throw refused(NO_BOT);
@@ -229,7 +229,7 @@ export class ContactRequests {
     const requests = this.list();
     const coreId = contact?.coreId ?? '';
     if (requests.filter(request => request.coreId === coreId && request.direction === 'out' && request.status === 'pending').length >= MAX_PENDING) {
-      throw refused(contact ? `at most ${MAX_PENDING} requests may wait at ${contact.name}; wait for an answer` : `at most ${MAX_PENDING} requests may wait for the Contacts bot; wait for an answer`);
+      throw refused(contact ? `at most ${MAX_PENDING} requests may wait at ${contact.name}; wait for an answer` : `at most ${MAX_PENDING} requests may wait for the Contacts mochi; wait for an answer`);
     }
     // The bot's own ask for a contact another member holds goes through that member (`host-asks.ts`).
     const sending = !direct ? { stage: 'bot' as const } : throughHolder(contact!) ?? { pendingSend: true as const };

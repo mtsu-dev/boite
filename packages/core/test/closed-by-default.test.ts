@@ -43,7 +43,7 @@ async function twoProjects(h: TestCore) {
   return { owner, here, sibling: sibling.id, far: far.id, address };
 }
 
-test('a new data directory starts closed: bots are asked for on a card and threads reach their own project', async () => {
+test('a new data directory starts closed: mochis are asked for on a card and threads reach their own project', async () => {
   const h = await boot();
   const stored = h.core.journal.getSetting('settings') as Settings;
   expect([stored.agentBotCreation, stored.coordinationReach]).toEqual(['ask', 'project']);
@@ -111,13 +111,13 @@ test('with ask, agents.create draws a card and creates nothing until the owner a
   expect(bots()).toEqual([...before, 'Herald']);
   expect(h.core.threads.listQuestions(here).filter(question => question.setting?.kind === 'bot')).toEqual([]);
   const answer = part(card!.id).answer!;
-  expect(settingAnswerText(card!.setting!, answer)).toContain(`approved: the bot "Herald" exists (${made.agent.id})`);
+  expect(settingAnswerText(card!.setting!, answer)).toContain(`approved: the mochi "Herald" exists (${made.agent.id})`);
 
   const second = await owner.call('agents.create', { threadId: here, name: 'Scout' }) as AgentCreateAsked;
   await owner.call('questions.answer', { threadId: here, questionId: second.questionId, optionIds: ['refuse'] });
   expect(bots()).toEqual([...before, 'Herald']);
-  expect(settingAnswerText(second.setting, part(second.questionId).answer!)).toBe('declined: the user did not create the bot "Scout"; nothing was created');
-  expect((await thrown(owner.call('agents.create.approve', { threadId: here, questionId: second.questionId }))).message).toContain('no open bot card');
+  expect(settingAnswerText(second.setting, part(second.questionId).answer!)).toBe('declined: the user did not create the mochi "Scout"; nothing was created');
+  expect((await thrown(owner.call('agents.create.approve', { threadId: here, questionId: second.questionId }))).message).toContain('no open mochi card');
 
   // Free: the bot exists at once, as before the setting.
   await owner.call('settings.set', { agentBotCreation: 'free' });
@@ -168,11 +168,11 @@ test('agent cannot approve or open the settings; repeated and archived approvals
  } finally {agent.close();}
  const made=await owner.call('agents.create.approve',{threadId,questionId:asked.questionId});
  expect(made.agent.name).toBe('ReviewBot');
- expect((await thrown(owner.call('agents.create.approve',{threadId,questionId:asked.questionId}))).message).toContain('no open bot card');
+ expect((await thrown(owner.call('agents.create.approve',{threadId,questionId:asked.questionId}))).message).toContain('no open mochi card');
  const next=await owner.call('agents.create',{threadId,name:'ArchivedBot'});
  if ('agent' in next) throw Error('missing card');
  await owner.call('threads.archive',{threadId});
- expect((await thrown(owner.call('agents.create.approve',{threadId,questionId:next.questionId}))).message).toContain('no open bot card');
+ expect((await thrown(owner.call('agents.create.approve',{threadId,questionId:next.questionId}))).message).toContain('no open mochi card');
 });
 
 async function pair() {
@@ -199,7 +199,7 @@ test('project reach preserves associated contact directory, read and send',async
  expect((await a.core.coordination.send({threadId:at.threadId,to:{coreId:bi,threadId:bt.threadId},text:'hello',requestId:'probe'})).status).not.toBe('rejected');
 });
 
-test('Contacts bot keeps its group reach on a new install',async()=>{
+test('Contacts mochi keeps its group reach on a new install',async()=>{
  const h=await boot(),owner=await h.connect(),{threadId,accountId}=await echoThread(h,owner);
  const bot=await contactsBotOf(h,owner);
  expect(h.core.coordination.scope(bot.threadId).reach).toBe('group');

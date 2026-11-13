@@ -474,7 +474,7 @@ export class AgentProjects {
   #require(threadId: ThreadId, method: string): { agent: AgentProfile; projectIds: ProjectId[] } {
     const resident = this.residentOf(threadId);
     if (resident === null) {
-      throw refused(`${method}: no project is entrusted to this conversation; the owner entrusts projects to a bot in its settings on the Bots page`, { threadId, field: 'threadId', expected: 'the thread of an agent with projects' });
+      throw refused(`${method}: no project is entrusted to this conversation; the owner entrusts projects to a mochi in its settings on the Mochis page`, { threadId, field: 'threadId', expected: 'the thread of an agent with projects' });
     }
     return resident;
   }
@@ -482,12 +482,12 @@ export class AgentProjects {
   /** The target thread, held to the bot's projects and the threads it started. */
   #target(threadId: ThreadId, targetId: unknown, method: string): { agent: AgentProfile; projectIds: ProjectId[]; target: ThreadSummary } {
     const agent = this.botOf(threadId);
-    if (agent === null) throw refused(`${method}: no project is entrusted to this conversation; the owner entrusts projects to a bot in its settings on the Bots page`, { threadId, field: 'threadId', expected: 'the thread of a bot' });
+    if (agent === null) throw refused(`${method}: no project is entrusted to this conversation; the owner entrusts projects to a mochi in its settings on the Mochis page`, { threadId, field: 'threadId', expected: 'the thread of a mochi' });
     const resident = { agent, projectIds: this.projectsOf(agent) };
     if (typeof targetId !== 'string' || targetId.length === 0) throw invalidParams(`${method}.target: expected a thread id`);
     const target = this.#core.journal.getThread(targetId);
     if (target === null || !this.#drives(resident.agent, resident.projectIds, target)) {
-      throw refused(`${method}.target: ${targetId} is not a thread of the projects entrusted to this bot, nor one it started`, { threadId, field: 'target', target: targetId, expected: 'a thread in one of its projects, or one it started' });
+      throw refused(`${method}.target: ${targetId} is not a thread of the projects entrusted to this mochi, nor one it started`, { threadId, field: 'target', target: targetId, expected: 'a thread in one of its projects, or one it started' });
     }
     return { ...resident, target };
   }
@@ -504,7 +504,7 @@ export class AgentProjects {
     let projectIds = resident.projectIds;
     if (params.project !== undefined) {
       const project = this.#core.projects.find(params.project, 'resident.threads', 'project', { threadId: params.threadId });
-      if (!resident.projectIds.includes(project.id)) throw refused(`resident.threads.project: ${params.project} is not entrusted to this bot`, { threadId: params.threadId, field: 'project', expected: 'one of its projects' });
+      if (!resident.projectIds.includes(project.id)) throw refused(`resident.threads.project: ${params.project} is not entrusted to this mochi`, { threadId: params.threadId, field: 'project', expected: 'one of its projects' });
       projectIds = [project.id];
     }
     return this.rows(projectIds, params.archived === true);
@@ -588,7 +588,7 @@ export class AgentProjects {
       }
       case 'move': {
         const project = this.#core.projects.find(params.project, method, 'project');
-        if (!steward.projectIds.includes(project.id)) throw refused(`${method}.project: ${project.name} is not entrusted to this bot`, { field: 'project', expected: 'another of its projects' });
+        if (!steward.projectIds.includes(project.id)) throw refused(`${method}.project: ${project.name} is not entrusted to this mochi`, { field: 'project', expected: 'another of its projects' });
         if (project.id === target.projectId) throw refused(`${method}.project: ${target.id} is already in ${project.name}`, { field: 'project', expected: 'another project' });
         await this.#core.threads.move(target.id, project.id);
         this.#line(target.id, `Moved to ${project.name} by ${by}.`);
@@ -622,8 +622,8 @@ export class AgentProjects {
     const projectIds = this.projectsOf(agent);
     const remote = this.#store.group.views(agent);
     const away = remote.length === 0 ? '' : `Projects of other machines of the group entrusted to you: ${remote.map(project => project.name).join(', ')}. `
-      + '`boite threads` lists their threads as `<machine>/<thread-id>` with `machine=<name>`; name them that way in `boite thread show|send|done|archive|unarchive|stop <id>`, `boite thread rename <id> <title>`, `boite answer` and `boite bot watch`. '
-      + 'That machine decides: it may refuse bots of the group, and a machine that does not answer is named unreachable; its events reach you once it is back. '
+      + '`boite threads` lists their threads as `<machine>/<thread-id>` with `machine=<name>`; name them that way in `boite thread show|send|done|archive|unarchive|stop <id>`, `boite thread rename <id> <title>`, `boite answer` and `boite mochi watch`. '
+      + 'That machine decides: it may refuse mochis of the group, and a machine that does not answer is named unreachable; its events reach you once it is back. '
       + '`boite thread new <machine>/<project> <brief>` starts a thread there (its agent codes, verifies and opens the pull request); it is on your desk and its first answer comes back to you as an event.';
     if (!projectIds.length) return away;
     const projects = projectIds.map(id => this.#core.journal.getProject(id)!).map(p => `${p.name} (${p.path})`).join(', ');
@@ -718,7 +718,7 @@ export class AgentProjects {
 
   /** Who acted, in a target's timeline: the bot of its project, or the bot that started it elsewhere. */
   #by(agent: AgentProfile, projectIds: readonly ProjectId[], target: ThreadSummary): string {
-    return target.projectId !== null && projectIds.includes(target.projectId) ? `${agent.name}, the bot the user entrusted this project to` : `${agent.name}, the bot that started this thread`;
+    return target.projectId !== null && projectIds.includes(target.projectId) ? `${agent.name}, the mochi the user entrusted this project to` : `${agent.name}, the mochi that started this thread`;
   }
 
   row(thread: ThreadSummary): ProjectThreadRow {

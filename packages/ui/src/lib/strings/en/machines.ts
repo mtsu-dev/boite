@@ -42,9 +42,9 @@ export const strings = {
     home: 'Settings', homeNone: 'Not shared', homeBadge: 'Settings',
     homeHint: 'The other machines follow the settings of this one: conversations, resources, keyboard and brain switches. A setting changed on another machine stays there and gets a star.',
     homeOlder: 'Update Boite on {machines} to follow the settings machine.',
-    bots: 'Bots', botsBadge: 'Bots',
-    botsHint: 'Hosts new bots and the Contacts bot, the group\'s one entry for contacts. Bots made before stay where they are; move one from its settings.',
-    botsOlder: 'Update Boite on {machine} to pick the bots machine.',
+    bots: 'Mochis', botsBadge: 'Mochis',
+    botsHint: 'Hosts new mochis and the Contacts mochi, the group\'s one entry for contacts. Mochis made before stay where they are; move one from its settings.',
+    botsOlder: 'Update Boite on {machine} to pick the mochis machine.',
     follows: '{machine} follows the settings of {home}. A setting you change here stays on {machine} and gets a star.',
     followsAway: 'Copies resume once {home} is connected.',
     isHome: '{machine} is the settings machine: the others follow its settings.',
@@ -56,8 +56,8 @@ export const strings = {
     /** A machine row's menu: the group switches it holds and its removal. */
     options: 'Options for {machine}',
     groupThreadsHint: 'Agents on the other machines of the group may start threads on this machine, in its projects, on their own agent (boite thread new --machine), and add its folders as projects (boite projects add --machine). Off by default.',
-    groupBots: 'Bots from the other machines',
-    groupBotsHint: 'A bot of another machine of the group may look after the projects of this machine its owner entrusted to it: list, read and steer their threads and answer their questions. Never tool permissions, deleting threads or this machine\'s settings. Turning it off cuts them off at once. Off by default.',
+    groupBots: 'Mochis from the other machines',
+    groupBotsHint: 'A mochi of another machine of the group may look after the projects of this machine its owner entrusted to it: list, read and steer their threads and answer their questions. Never tool permissions, deleting threads or this machine\'s settings. Turning it off cuts them off at once. Off by default.',
     /** A project card's head and a Machines row while the machine is out of reach, beside Reconnect. */
     offlineLine: '{machine} is offline',
     connectingLine: 'Connecting to {machine}',

@@ -115,7 +115,7 @@ Hooks still run in a mode that skips approvals. They are off in a Neutral
 
 ## Going further
 
-- [Bots](bots.md): each bot has a brain folder of its own.
+- [Mochis](mochis.md): each mochi has a brain folder of its own.
 - [Plugins](plugins.md): Boite's own extensions.
 - [Accounts](accounts.md): separate accounts and what they share.
 - [Subagents](subagents.md): context modes that leave the brain out.

@@ -241,10 +241,10 @@ projects with `boite thread new --machine` ([CLI](cli.md#commands)), add its
 folders as projects with `boite projects add --machine`, and read the models
 such a thread can run on with `boite delegate models --machine`. The
 setting belongs to that machine and is saved there, so the PC with the printer
-can accept them while the server does not. Beside it, **Bots from the other
-machines** (`groupBots`, off by default) lets a bot of another machine look
+can accept them while the server does not. Beside it, **Mochis from the other
+machines** (`groupBots`, off by default) lets a mochi of another machine look
 after the projects of this one its owner entrusted to it; off, it cuts them
-off at once ([bots](bots.md#projects-of-the-other-machines-of-the-group)). A
+off at once ([mochis](mochis.md#projects-of-the-other-machines-of-the-group)). A
 row shown away hides both.
 Agent versions and their automatic update switch are in each machine's
 Agent updates card, on Settings, Version. How a phone reaches this machine without a server of the
@@ -324,31 +324,31 @@ changes require the settings machine's `brain.configured` event. A failure names
 its stage; earlier changes stay copied, and the next change or reconnect tries
 again.
 
-## The Bots machine
+## The Mochis machine
 
-The group card's **Bots** role picks the member that hosts new bots and the
-Contacts bot, or None (`group.botsHome`, kept in the roster like
-`settingsHome`; `features.botsHome`). That member's row carries a Bots badge,
+The group card's **Mochis** role picks the member that hosts new mochis and the
+Contacts mochi, or None (`group.botsHome`, kept in the roster like
+`settingsHome`; `features.botsHome`). That member's row carries a Mochis badge,
 and one machine may hold both roles. A core before the role shuts the menu
 and the card says to update it.
 
-The Bots page creates a new bot there while this window reaches that machine
+The Mochis page creates a new mochi there while this window reaches that machine
 as its owner, else on the machine the page shows
-([bots](bots.md#the-page)). The Contacts switch makes the group's one Contacts
-bot on the Bots machine and only there: while that machine is offline it
-makes none, since the bot may be there out of sight, and the Operator card of
-the Contacts page says "<bot> is on <machine>, offline for now"
-(`botsHostAway`). With no Bots role it makes it on the Settings machine while
+([mochis](mochis.md#the-page)). The Contacts switch makes the group's one Contacts
+mochi on the Mochis machine and only there: while that machine is offline it
+makes none, since the mochi may be there out of sight, and the Operator card of
+the Contacts page says "<mochi> is on <machine>, offline for now"
+(`botsHostAway`). With no Mochis role it makes it on the Settings machine while
 that one is connected, else on the window's machine. It makes none while any
 connected owner machine already lists one (`operatorHost`, `lib/operator.ts`).
-A change of the role moves the Contacts bot to the new Bots machine by itself,
-before its contact links ([contacts](contacts.md#group-to-group)). Other bots
+A change of the role moves the Contacts mochi to the new Mochis machine by itself,
+before its contact links ([contacts](contacts.md#group-to-group)). Other mochis
 made before stay where they are; each one moves from its settings
-([moving a bot](bots.md#moving-a-bot-to-another-machine)).
+([moving a mochi](mochis.md#moving-a-mochi-to-another-machine)).
 
 The contact lists (`contactRows`, `lib/contacts.svelte.ts`) show the group as
 one Boite: a contact that several members hold is one row, keyed by the group
-and the contact's core id, opening on the Bots machine when it holds the
+and the contact's core id, opening on the Mochis machine when it holds the
 contact, else on the first machine listed that does, with what waits on every
 copy added up. No row names a machine of ours.
 
@@ -512,7 +512,7 @@ Reconnecting clears the capability check so an updated core is detected.
 ## Back and forward
 
 On a desktop, a mouse's back and forward buttons walk the views this window
-showed, in order: a thread, a draft, a settings tab or the Bots page, on
+showed, in order: a thread, a draft, a settings tab or the Mochis page, on
 whichever machine each one was. Back from a thread on another machine returns
 to that machine as well as to the view. A view opened after going back replaces
 what was ahead of it, as in a browser.

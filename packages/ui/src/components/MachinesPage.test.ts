@@ -109,7 +109,7 @@ test('the default machine is one choice for the whole group: the others follow i
   expect(target.store.settings?.asyncQuestions).toBe(true);
 });
 
-test('the Bots role is a second choice for the group, with its own badge beside the Settings one', async () => {
+test('the Mochis role is a second choice for the group, with its own badge beside the Settings one', async () => {
   const { source, target } = await setup();
   expect(query('[data-testid="group-bots-pick"]').textContent).toContain(strings.machines.homeNone);
   query<HTMLButtonElement>('[data-testid="group-bots-pick"]').click();

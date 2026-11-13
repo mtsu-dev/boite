@@ -15,7 +15,7 @@ let restore: (() => void) | undefined;
 beforeAll(() => ensureProductionUi(), 120_000);
 afterAll(async () => { await page?.close(); await harness?.stop(); restore?.(); }, 30_000);
 
-real('a bot project worker appears live in the project and opens as a conversation on desktop and phone', async () => {
+real('a mochi project worker appears live in the project and opens as a conversation on desktop and phone', async () => {
   harness = await startTestCore();
   const owner = await harness.connect();
   const project = await owner.call('projects.add', { path: harness.dataDir, name: 'Worker project' });

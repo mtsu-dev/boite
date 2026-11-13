@@ -52,7 +52,7 @@ export class ContactBotHome {
     if (this.#ready === key) return true;
     if (this.#job === null && (force || Date.now() >= this.#next)) {
       this.#job = this.#send(host, key)
-        .catch(error => { if (!this.#closed) this.#core.log('info', `contacts: the Contacts bot stays here for now (${messageOf(error)})`, { source: 'contacts' }); })
+        .catch(error => { if (!this.#closed) this.#core.log('info', `contacts: the Contacts mochi stays here for now (${messageOf(error)})`, { source: 'contacts' }); })
         .finally(() => { this.#job = null; });
     }
     return false;
@@ -72,7 +72,7 @@ export class ContactBotHome {
         catch (error) { if (moves.unfinished(requestId) || !await holds().catch(() => false)) throw error; }
       }
     }
-    if (contactsBot(this.#core) !== null) this.#core.log('warn', `contacts: ${host.name} runs its own Contacts bot; the one here stays, with no contact`, { source: 'contacts' });
+    if (contactsBot(this.#core) !== null) this.#core.log('warn', `contacts: ${host.name} runs its own Contacts mochi; the one here stays, with no contact`, { source: 'contacts' });
     this.#ready = key;
     if (!this.#closed) this.#resweep();
   }
@@ -94,7 +94,7 @@ export class ContactBotHome {
     this.#core.journal.deleteSetting(COMING);
     if (contactsBot(this.#core) !== null) return;
     void this.#core.workforce.builtins.ensure({ kind: 'contacts' })
-      .catch(error => this.#core.log('warn', `contacts: no Contacts bot could start here (${messageOf(error)})`, { source: 'contacts' }));
+      .catch(error => this.#core.log('warn', `contacts: no Contacts mochi could start here (${messageOf(error)})`, { source: 'contacts' }));
   }
 
   close(): Promise<unknown> { this.#closed = true; return this.#job ?? Promise.resolve(); }

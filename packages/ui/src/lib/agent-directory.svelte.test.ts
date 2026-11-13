@@ -4,7 +4,7 @@ import type { AgentsSnapshot } from '@boite/contracts';
 import { agentDirectory } from './agent-directory.svelte';
 import type { Store } from './store.svelte';
 
-test("a directory first made inside a derived still wakes it when its snapshot lands: the rail's bots on a cold load", () => {
+test("a directory first made inside a derived still wakes it when its snapshot lands: the rail's mochis on a cold load", () => {
   const store = { client: null, threads: [] } as unknown as Store;
   let seen: (AgentsSnapshot | null)[] = [];
   const stop = $effect.root(() => {

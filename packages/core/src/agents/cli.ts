@@ -4,20 +4,20 @@ import { targetOf } from '../control-cli.ts';
 
 export const BOT_ACTIONS = 'memory, remember, routines, schedule, unschedule, watch or unwatch';
 
-/** `boite bot ...` (`boite agent` before) from a bot's own thread. Authentication stays in the existing boite CLI. */
+/** `boite mochi ...` (`boite agent` before) from a bot's own thread. Authentication stays in the existing boite CLI. */
 export async function botCommand(client: CoreClient, threadId: string, args: string[]): Promise<unknown> {
   const [action, ...rest] = args;
   const snapshot = await client.call('agents.snapshot', { threadId });
   const agent = snapshot.profiles[0];
-  if (!agent) throw new Error('this thread is not a bot\'s');
+  if (!agent) throw new Error('this thread is not a mochi\'s');
   const need = (index: number, name: string): string => {
     const value = rest[index];
-    if (!value) throw new Error(`bot ${action} needs ${name}`);
+    if (!value) throw new Error(`mochi ${action} needs ${name}`);
     return value;
   };
   const json = <T>(): T => {
     try { return JSON.parse(rest.join(' ')) as T; }
-    catch { throw new Error(`bot ${action} needs a JSON object`); }
+    catch { throw new Error(`mochi ${action} needs a JSON object`); }
   };
   switch (action) {
     case 'memory': {
@@ -26,7 +26,7 @@ export async function botCommand(client: CoreClient, threadId: string, args: str
     }
     case 'remember': {
       const text = rest.join(' ').trim();
-      if (!text) throw new Error('bot remember needs the fact to note');
+      if (!text) throw new Error('mochi remember needs the fact to note');
       const brain = await client.call('agents.memory.note', { threadId, text });
       return { noted: text, memory: `${brain.path}/MEMORY.md`, characters: brain.memory.length };
     }
@@ -34,7 +34,7 @@ export async function botCommand(client: CoreClient, threadId: string, args: str
     case 'schedule': {
       const value = json<{ name: string; prompt: string; schedule: AgentSchedule; id?: string; expectedRevision?: number; enabled?: boolean }>();
       const previous = value.id ? snapshot.routines.find(r => r.id === value.id) : undefined;
-      if (value.id && !previous) throw new Error(`bot schedule: no routine ${value.id}; boite bot routines lists yours`);
+      if (value.id && !previous) throw new Error(`mochi schedule: no routine ${value.id}; boite mochi routines lists yours`);
       const params: RpcParams<'agents.routine.save'> = {
         threadId,
         ...(previous ? { id: previous.id, expectedRevision: value.expectedRevision ?? previous.revision } : {}),
@@ -42,7 +42,7 @@ export async function botCommand(client: CoreClient, threadId: string, args: str
       };
       return client.call('agents.routine.save', params);
     }
-    case 'unschedule': return client.call('agents.routine.remove', { threadId, routineId: need(0, 'a routine id (boite bot routines lists them)') });
+    case 'unschedule': return client.call('agents.routine.remove', { threadId, routineId: need(0, 'a routine id (boite mochi routines lists them)') });
     case 'watch':
     case 'unwatch': {
       // `<machine>/<thread-id>`: a thread of a project another machine of the group entrusted to the bot.
@@ -50,6 +50,6 @@ export async function botCommand(client: CoreClient, threadId: string, args: str
       const watched = await client.call('agents.watch', { threadId, watchThreadId: target, watched: action === 'watch', ...(machine === undefined ? {} : { machine }) });
       return watched ?? { unwatched: rest[0] };
     }
-    default: throw new Error(`bot expects ${BOT_ACTIONS}`);
+    default: throw new Error(`mochi expects ${BOT_ACTIONS}`);
   }
 }

@@ -14,9 +14,9 @@ const cores: TestCore[] = [];
 const restores: (() => void)[] = [];
 afterEach(async () => { for (const h of cores.splice(0)) await h.stop(); for (const restore of restores.splice(0)) restore(); });
 
-test('the native bot eventWakes boolean card reads, validates, applies and reverses without pausing the bot', async () => {
+test('the native mochi eventWakes boolean card reads, validates, applies and reverses without pausing the mochi', async () => {
   const { h, owner, agent, worker, run, profile, cards } = await setup();
-  await owner.call('turns.start', { threadId: worker, prompt: 'Configure the bot.' });
+  await owner.call('turns.start', { threadId: worker, prompt: 'Configure the mochi.' });
   await waitFor(() => settled(h, worker));
   expect((await run(['settings', 'bot', 'eventWakes', '--bot', 'Ada'], worker)).out).toContain('eventWakes false');
   expect((await run(['settings', 'bot', 'request', 'eventWakes', 'sometimes', '--bot', 'Ada', '--why', 'Batch project news.'], worker)).code).not.toBe(0);
@@ -30,7 +30,7 @@ test('the native bot eventWakes boolean card reads, validates, applies and rever
   }
 });
 
-test('a bot adds a project only while the owner keeps addProjects on, holds what it adds, and gains no project that already existed', async () => {
+test('a mochi adds a project only while the owner keeps addProjects on, holds what it adds, and gains no project that already existed', async () => {
   const { h, owner, agent, self, other, run, profile, cards } = await setup();
   await owner.call('turns.start', { threadId: self, prompt: 'Set the site up.' });
   await waitFor(() => settled(h, self));
@@ -42,7 +42,7 @@ test('a bot adds a project only while the owner keeps addProjects on, holds what
   expect((await run(['settings', 'bot', 'addProjects'], self)).out).toContain('addProjects false');
   const off = await run(['projects', 'add', site, '--name', 'Website'], self);
   expect(off.code).toBe(1);
-  expect(off.err).toContain('the owner has not let Ada add projects; ask with boite settings bot request addProjects true --why <reason>');
+  expect(off.err).toContain('the owner has not let Ada add projects; ask with boite settings mochi request addProjects true --why <reason>');
   expect(h.core.projects.registered(site)).toBeNull();
 
   // The bot cannot turn it on: its token writes no runtime setting and applies no card, its own included.
@@ -72,7 +72,7 @@ test('a bot adds a project only while the owner keeps addProjects on, holds what
   // A folder that was already a project is answered as it is and not entrusted: the owner's card decides.
   const known = await run(['projects', 'add', other.path, '--json'], self);
   expect(JSON.parse(known.out)).toMatchObject({ id: other.id, added: false, entrusted: false });
-  expect((await run(['projects', 'add', other.path], self)).out).toContain('it is not entrusted to you. Ask with boite settings bot request projects +"Other" --why <reason>');
+  expect((await run(['projects', 'add', other.path], self)).out).toContain('it is not entrusted to you. Ask with boite settings mochi request projects +"Other" --why <reason>');
   expect(JSON.parse((await run(['projects', 'add', site, '--json'], self)).out)).toMatchObject({ id: added.id, added: false, entrusted: true });
   expect(profile().projectIds).toEqual([added.id]);
   expect(lines()).toHaveLength(1);
@@ -80,7 +80,7 @@ test('a bot adds a project only while the owner keeps addProjects on, holds what
   // Its own machine only, and the Communication settings still decide.
   const more = join(h.dataDir, 'more');
   mkdirSync(more, { recursive: true });
-  expect((await run(['projects', 'add', more, '--machine', 'pc'], self)).err).toContain('a bot adds projects on its own machine only');
+  expect((await run(['projects', 'add', more, '--machine', 'pc'], self)).err).toContain('a mochi adds projects on its own machine only');
   const coordination = h.core.coordination.config(self);
   await owner.call('collaboration.configure', { threadId: self, config: { ...coordination, paused: true } });
   expect((await run(['projects', 'add', more], self)).err).toContain('communication is paused');
@@ -111,7 +111,7 @@ test('a bot adds a project only while the owner keeps addProjects on, holds what
   // Turned off again: refused again, and what it holds stays.
   const current = profile();
   await owner.call('agents.runtime.configure', { agentId: agent.id, expectedRevision: current.revision, config: { ...h.core.workforce.resident.config(agent.id), addProjects: false } });
-  expect((await run(['projects', 'add', more], self)).err).toContain('boite settings bot request addProjects true');
+  expect((await run(['projects', 'add', more], self)).err).toContain('boite settings mochi request addProjects true');
   expect(profile().projectIds).toEqual([added.id]);
 });
 
@@ -211,11 +211,11 @@ test('a discussion asks to entrust projects to an agent; the owner unticks one a
   await waitFor(() => h.core.journal.listTurns(worker).some(t => t.status === 'done'));
 
   const listed = await run(['settings', 'bot', 'projects', '--bot', 'ada'], worker);
-  expect(listed.out).toContain('bot: Ada');
+  expect(listed.out).toContain('mochi: Ada');
   expect(listed.out).toContain('projects []');
   expect(listed.out).toContain('Notes');
   // A discussion is no agent's conversation: it names the agent.
-  expect((await run(['settings', 'bot'], worker)).err).toContain("this thread is no bot's conversation; name one: Ada");
+  expect((await run(['settings', 'bot'], worker)).err).toContain("this thread is no mochi's conversation; name one: Ada");
 
   const asked = await run(['settings', 'bot', 'request', 'projects', '+Notes', '+Other', '--bot', 'Ada', '--why', 'Ada should watch the release projects.'], worker);
   expect(asked.code).toBe(0);
@@ -244,7 +244,7 @@ test("an agent asks about its own settings from its thread; a change from its se
   const heard = (text: string) => (prompts.get(self) ?? []).some(p => p.includes(text));
 
   // Its own thread names no agent; its context block says how to ask.
-  expect(prompts.get(self)![0]).toContain('boite settings bot request <key> <value> --why <reason>');
+  expect(prompts.get(self)![0]).toContain('boite settings mochi request <key> <value> --why <reason>');
   expect((await run(['settings', 'bot', 'request', 'dailyBudget', '2', '--why', 'Releases cost me two dollars.'], self)).code).toBe(0);
   expect((await run(['settings', 'bot', 'request', 'effort', 'high', '--why', 'Reviews need more thought.'], self)).code).toBe(0);
   expect((await run(['settings', 'agent', 'request', 'model', 'gpt-nothing', '--why', 'Try it.'], self)).err).toContain('the provider does not offer this model');
@@ -271,7 +271,7 @@ test("an agent asks about its own settings from its thread; a change from its se
   expect(drawn(self, helpers!.id)!.answer).toBeNull();
 });
 
-test('a bot asks to rename itself and to pause, then archive, another bot; the owner applies each card', async () => {
+test('a mochi asks to rename itself and to pause, then archive, another mochi; the owner applies each card', async () => {
   const { h, owner, self, worker, prompts, run, profile, cards, drawn } = await setup();
   const heard = (text: string) => (prompts.get(self) ?? []).some(p => p.includes(text));
   const { agent: herald } = await owner.call('agents.create', { threadId: worker, name: 'Herald' }) as AgentCreated;
@@ -279,7 +279,7 @@ test('a bot asks to rename itself and to pause, then archive, another bot; the o
   const apply = async (questionId: string) => { await owner.call('agents.settings.apply', { threadId: self, questionId }); await waitFor(() => !cards(self).some(c => c.id === questionId)); };
 
   // The words are the name as typed, accents and parentheses included; a name another bot holds is refused.
-  expect((await run(['settings', 'bot', 'request', 'name', 'herald', '--why', 'Take its name.'], self)).err).toContain('another bot is named "Herald"');
+  expect((await run(['settings', 'bot', 'request', 'name', 'herald', '--why', 'Take its name.'], self)).err).toContain('another mochi is named "Herald"');
   expect((await run(['settings', 'bot', 'request', 'avatar', 'a robot', '--why', 'A new face.'], self)).err).toContain('avatar: expected one or two characters');
   const renamed = await run(['settings', 'bot', 'request', 'name', 'Gargouille', '(Sécurité)', '--why', 'The user renamed me.'], self);
   expect(renamed.out).toContain(`change: Ada's name "Ada" -> "Gargouille (Sécurité)"`);
@@ -297,7 +297,7 @@ test('a bot asks to rename itself and to pause, then archive, another bot; the o
   await owner.call('agents.settings.apply', { threadId: worker, questionId: cards(worker)[0]!.id });
   expect(heraldNow().name).toBe('Sentinel');
   const second = cards(self)[0]!;
-  expect(await thrown(owner.call('agents.settings.apply', { threadId: self, questionId: second.id }))).toThrow('another bot is named "Sentinel"');
+  expect(await thrown(owner.call('agents.settings.apply', { threadId: self, questionId: second.id }))).toThrow('another mochi is named "Sentinel"');
   expect(profile().name).toBe('Gargouille (Sécurité)');
   await owner.call('questions.answer', { threadId: self, questionId: second.id, optionIds: ['refuse'] });
   await waitFor(() => cards(self).length === 0 && cards(worker).length === 0);
@@ -328,7 +328,7 @@ test('a bot asks to rename itself and to pause, then archive, another bot; the o
   expect(profile().status).toBe('active');
 });
 
-test('a bot puts on a picture file at once, dresses another bot by name, and a card proposes one; unknown pictures and bad files are refused', async () => {
+test('a mochi puts on a picture file at once, dresses another mochi by name, and a card proposes one; unknown pictures and bad files are refused', async () => {
   const { h, owner, self, worker, run, profile, cards } = await setup();
   const { agent: herald } = await owner.call('agents.create', { threadId: worker, name: 'Herald' }) as AgentCreated;
   const heraldNow = () => h.core.workforce.records.get('profile', herald.id) as AgentProfile;
@@ -391,7 +391,7 @@ test('an agent whose stored model its provider no longer lists still takes a pro
     .toThrow('the provider does not offer this model');
 });
 
-test('a bot asks to run on another provider; applying the card moves it there on its signed-in login and allows the route', async () => {
+test('a mochi asks to run on another provider; applying the card moves it there on its signed-in login and allows the route', async () => {
   const { h, owner, agent, self, run, profile, cards, drawn } = await setup();
   // A second provider on the echo driver, with its own models and a signed-in default account.
   const shipped = JSON.parse(readFileSync(join(import.meta.dir, '../src/providers/shipped/echo.json'), 'utf8')) as Record<string, unknown>;
@@ -465,14 +465,14 @@ test('a bot asks to run on another provider; applying the card moves it there on
   expect(h.core.workforce.resident.config(agent.id).allowedRoutes.map(route => `${route.providerId}/${route.model}`)).toEqual(['echo/echo', 'twin/twin-large', 'twin/echo/echo']);
 });
 
-test('a discussion creates the bot the user asked for, without a card, and reads its conversation', async () => {
+test('a discussion creates the mochi the user asked for, without a card, and reads its conversation', async () => {
   const { h, owner, prompts, worker, notes, run } = await setup();
   const bots = () => h.core.workforce.records.list('profile').map(p => p.name);
   const manual = join(h.dataDir, 'manual.md');
   await Bun.write(manual, 'Write the release notes.');
 
   // A taken name, an unknown project or model is refused and creates nothing.
-  expect((await run(['settings', 'bot', 'create', 'ada'], worker)).err).toContain('a bot named "Ada" already exists');
+  expect((await run(['settings', 'bot', 'create', 'ada'], worker)).err).toContain('a mochi named "Ada" already exists');
   expect((await run(['settings', 'bot', 'create', 'Herald', '--project', 'Nowhere'], worker)).err).toContain('no project "Nowhere"');
   expect((await run(['settings', 'bot', 'create', 'Herald', '--model', 'gpt-nothing'], worker)).err).toContain('no installed model matches "gpt-nothing"');
   expect(bots()).not.toContain('Herald');
@@ -488,7 +488,7 @@ test('a discussion creates the bot the user asked for, without a card, and reads
   expect(created.out).toContain(`boite threads send ${botThread} <text>`);
   // Its first turn introduces it, as a bot made on the Bots page.
   await waitFor(() => (prompts.get(botThread) ?? []).length > 0);
-  expect((await run(['settings', 'bot', 'create', 'herald'], worker)).err).toContain('a bot named "Herald" already exists');
+  expect((await run(['settings', 'bot', 'create', 'herald'], worker)).err).toContain('a mochi named "Herald" already exists');
 
   // The owner may call it too.
   expect((await owner.call('agents.create', { threadId: worker, name: 'Scout' }) as AgentCreated).agent.name).toBe('Scout');

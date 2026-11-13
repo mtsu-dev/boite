@@ -98,31 +98,31 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
     const slash = wanted.indexOf('/');
     const machine = wanted.slice(0, slash).trim();
     const name = wanted.slice(slash + 1).trim();
-    if (!machine || !name) throw invalid(`${field}: expected <machine>/<bot>`);
-    if (ctx.roster === null) throw refused(`${field}: this machine is in no group, so ${JSON.stringify(wanted)} names no bot`, { field });
+    if (!machine || !name) throw invalid(`${field}: expected <machine>/<mochi>`);
+    if (ctx.roster === null) throw refused(`${field}: this machine is in no group, so ${JSON.stringify(wanted)} names no mochi`, { field });
     const peer = ctx.roster.cores.find(core => core.coreId === machine) ?? ctx.roster.cores.find(core => core.name.toLowerCase() === machine.toLowerCase());
     if (!peer) throw refused(`${field}: no machine ${machine} in this group`, { field });
     if (peer.coreId === self()) {
       const here = among(ctx.agents.liveProfiles(), name);
-      if (!here) throw refused(`${field}: no bot ${JSON.stringify(name)}`, { field });
+      if (!here) throw refused(`${field}: no mochi ${JSON.stringify(name)}`, { field });
       return { ...here, coreId: self() };
     }
     const there = fakeCore(peer.coreId);
-    if (!there) throw refused(`${field}: ${peer.name} did not answer; its bots can join once it answers`, { field, reason: 'unreachable' });
+    if (!there) throw refused(`${field}: ${peer.name} did not answer; its mochis can join once it answers`, { field, reason: 'unreachable' });
     if (!there.experimentsInForce().includes('teams')) {
       throw refused(`${peer.name}: teams need the Teams experiment, which is off in the desktop app (Settings, Version, Experiments)`, { field, reason: 'experiment-off' });
     }
     const found = among(there.agents.liveProfiles(), name);
-    if (!found) throw refused(`${peer.name}: bot: no bot ${JSON.stringify(name)}`, { field, reason: 'peer-refused' });
+    if (!found) throw refused(`${peer.name}: bot: no mochi ${JSON.stringify(name)}`, { field, reason: 'peer-refused' });
     return { ...found, coreId: peer.coreId, machine: peer.name };
   };
   const bot = (ref: unknown, field = 'members'): FakeBot => {
     const wanted = typeof ref === 'string' ? ref.trim() : '';
-    if (!wanted) throw invalid(`${field}: expected a bot name or id`);
+    if (!wanted) throw invalid(`${field}: expected a mochi name or id`);
     const local = among(ctx.agents.liveProfiles(), wanted);
     if (local) return { ...local, coreId: self() };
     if (wanted.includes('/')) return distant(wanted, field);
-    throw refused(`${field}: no bot ${JSON.stringify(wanted)}`, { field });
+    throw refused(`${field}: no mochi ${JSON.stringify(wanted)}`, { field });
   };
   /** A team's own word for a bot: its id here, `<coreId>/<botId>` elsewhere. */
   const refOf = (entry: FakeBot) => (entry.coreId === self() ? entry.id : teamMemberKey(entry.coreId, entry.id));
@@ -133,7 +133,7 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
   const isMember = (team: Team, entry: FakeBot) => team.members.some(member => member.coreId === entry.coreId && member.botId === entry.id);
   const labelOf = (entry: FakeBot) => (entry.machine ? `${entry.name} (${entry.machine})` : entry.name);
   const bots = (refs: unknown): FakeBot[] => {
-    if (!Array.isArray(refs) || refs.length === 0 || refs.length > TEAM_MEMBERS_MAX) throw invalid(`members: expected 1 to ${TEAM_MEMBERS_MAX} bots`);
+    if (!Array.isArray(refs) || refs.length === 0 || refs.length > TEAM_MEMBERS_MAX) throw invalid(`members: expected 1 to ${TEAM_MEMBERS_MAX} mochis`);
     const found = refs.map(ref => bot(ref));
     return found.filter((entry, index) => found.findIndex(other => other.id === entry.id && other.coreId === entry.coreId) === index);
   };
@@ -151,7 +151,7 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
   };
   const caller = (threadId: unknown): AgentProfile => {
     const found = ctx.agents.liveProfiles().find(agent => typeof threadId === 'string' && ctx.agents.conversationOf(agent.id) === threadId);
-    if (!found) throw refused('threadId: teams are for bots; this thread is no bot\'s conversation', { field: 'threadId' });
+    if (!found) throw refused('threadId: teams are for mochis; this thread is no mochi\'s conversation', { field: 'threadId' });
     return found;
   };
   const named = (ref: unknown, member: TeamParty, pool = all()): Team => {
@@ -281,7 +281,7 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
       const id = `team-${self()}-${++ctx.seq}`;
       const now = ctx.now();
       const first = members.find(entry => entry.coreId === self());
-      if (!first) throw refused('members: name a bot of this machine; the team stays here and needs one of its own', { field: 'members' });
+      if (!first) throw refused('members: name a mochi of this machine; the team stays here and needs one of its own', { field: 'members' });
       const thread: Thread = { id: `t-${++ctx.seq}`, projectId: null, teamId: id, ...first.selection, title: name, titleSource: 'user', speed: null, cwd: `${DATA_DIR}/teams/${id}`, branch: null,
         status: 'idle', unread: false, archived: false, pinned: false, sessionId: null, sessionGeneration: 0, selectionVersion: 0, load: null, context: null,
         createdAt: now, updatedAt: now, messages: [], messagesBefore: null, turns: [], commands: [] };
@@ -329,7 +329,7 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
       const agent = bot(params.botId, 'botId');
       if (team.archived) throw refused(`${team.name} is archived`, { field: 'teamId' });
       if (isMember(team, agent)) throw refused(`${agent.name} is already a member of ${team.name}`, { field: 'botId' });
-      if (team.members.length >= TEAM_MEMBERS_MAX) throw refused(`a team holds at most ${TEAM_MEMBERS_MAX} bots`, { field: 'botId' });
+      if (team.members.length >= TEAM_MEMBERS_MAX) throw refused(`a team holds at most ${TEAM_MEMBERS_MAX} mochis`, { field: 'botId' });
       const saved = save(team, { members: [...team.members, memberOf(agent, team.lastSeq)] });
       settle(params.card, `applied: ${agent.name} joined ${team.name}`);
       return saved;
@@ -385,7 +385,7 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
       const name = checkName(params.name);
       const brief = checkBrief(params.brief);
       const others = bots(params.members).filter(other => other.id !== agent.id || other.coreId !== self());
-      if (others.length === 0) throw invalid('members: name at least one other bot');
+      if (others.length === 0) throw invalid('members: name at least one other mochi');
       const members: FakeBot[] = [{ ...agent, coreId: self() }, ...others];
       return draw(params.threadId, `${agent.name} proposes the team ${JSON.stringify(name)}: ${members.map(labelOf).join(', ')}.${brief ? ` ${brief}` : ''}`,
         { kind: 'create', by: agent.id, name, brief, members: members.map(refOf) });

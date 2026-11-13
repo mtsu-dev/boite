@@ -21,8 +21,8 @@ const INVITE_TTL = DAY;
 const DECLINED = 'The owner declined this request.';
 /** The core's cap on the relations a contact may hold here. */
 const MAX_RELATIONS = 64;
-const NO_BOT = 'turn on Contacts in Settings > Version > Experiments: it creates the Contacts bot';
-const BOT_ONLY = 'contacts.bot.*: only the Contacts bot\'s thread calls this';
+const NO_BOT = 'turn on Contacts in Settings > Version > Experiments: it creates the Contacts mochi';
+const BOT_ONLY = 'contacts.bot.*: only the Contacts mochi\'s thread calls this';
 const SMALL = new Set(['haiku', 'lite', 'oss', 'mini', 'nano']);
 const FRONTIER = new Set(['opus', 'fable', 'sol', 'luna']);
 
@@ -615,7 +615,7 @@ export function contactMethods(ctx: FakeContext) {
       if (!request || request.status !== 'pending') throw invalid('id: expected a pending request from a contact', 'id');
       if (params.accept && params.threadId !== undefined) {
         // Like the core: the owner's own pick, whatever the Operator planned.
-        if (botOf(ctx) === null || request.want === undefined || request.want === 'share') throw invalid('threadId: expected a request for a thread, on a core with a Contacts bot', 'threadId');
+        if (botOf(ctx) === null || request.want === undefined || request.want === 'share') throw invalid('threadId: expected a request for a thread, on a core with a Contacts mochi', 'threadId');
         relate(request, connectable(params.threadId), 'owner');
         changed();
         return structuredClone(request);
@@ -745,7 +745,7 @@ export function contactMethods(ctx: FakeContext) {
       botCall(params?.threadId);
       const state = contactState(ctx);
       const request = state.requests.find(entry => entry.id === params.id && entry.direction === 'out' && entry.status === 'pending' && entry.stage === 'bot');
-      if (!request) throw invalid('id: expected an outgoing request waiting for the bot', 'id');
+      if (!request) throw invalid('id: expected an outgoing request waiting for the mochi', 'id');
       const thread = ctx.threads.get(request.from.threadId);
       if (!thread || thread.archived) throw refuse('id: the thread that asked is gone or archived', 'id');
       const routes = fakeContactRoutes(ctx);

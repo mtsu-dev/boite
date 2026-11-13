@@ -35,9 +35,9 @@ export const strings = {
     options: 'Add to the message',
     mentionFile: 'Mention a file',
     commands: 'Commands',
-    /** A bot's model, effort and permission chips: read at rest, changed in its settings. */
+    /** A mochi's model, effort and permission chips: read at rest, changed in its settings. */
     botSettings: "Set in {name}'s settings",
-    /** The same chips while the bot's account is gone: the banner above holds the remedy. */
+    /** The same chips while the mochi's account is gone: the banner above holds the remedy. */
     botAccountGone: "{name}'s account was removed. Pick another account to continue.",
     /** The box at rest, on a new conversation or one under way: who reads the message. */
     placeholder: 'Message {name}',

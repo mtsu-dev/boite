@@ -33,7 +33,7 @@ export const fr: Translation = {
       coordination: "Laisser d'autres agents trouver ce fil et lui écrire",
       changes: 'Ce que ce fil a changé dans le code, fichier par fichier', files: 'Parcourir et lire les fichiers du projet',
       browser: 'La page web que regardent ce fil et son agent', device: "Un écran de téléphone ou d'émulateur que l'agent pilote",
-      desk: 'Le travail en cours de ce bot, ses routines et sa mémoire', agents: "Les agents d'aide que ce fil a lancés",
+      desk: 'Le travail en cours de ce mochi, ses routines et sa mémoire', agents: "Les agents d'aide que ce fil a lancés",
       terminal: 'Une ligne de commande dans le dossier du projet', customize: 'Choisir les panneaux que cette liste propose'
     },
     groups: { used: 'Utilisés dans ce fil', work: 'Travail', agents: 'Agents', tools: 'Outils' },

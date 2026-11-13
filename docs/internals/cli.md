@@ -353,7 +353,7 @@ each wake is its next turn, and that turn's answer goes to its parent as a
 result. Its watches end when it is stopped (its own Stop, `boite delegate
 stop`, its turn failing) and when its parent stops, is archived or is
 removed. Workflow steps and goal reviewers cannot watch: their run or their
-goal owns the work. A bot's thread watches like a conversation.
+goal owns the work. A mochi's thread watches like a conversation.
 At most 10 PRs per conversation.
 
 ## How an agent finds the core
@@ -405,27 +405,29 @@ recent thread (`--model` replaces the model, while `--effort` and `--speed`
 set its reasoning level and service tier). From a terminal, use `--core`
 to reach another machine; `--machine` is for an agent inside a thread.
 Inside the thread of
-a [bot](bots.md#projects-entrusted-to-a-bot) the same words
+a [mochi](mochis.md#projects-entrusted-to-a-mochi) the same words
 reach the threads of the projects the owner entrusted to it and the threads
-it started in any project, through `resident.*`, and its messages reach them as that bot's letters, never as the
+it started in any project, through `resident.*`, and its messages reach them as that mochi's letters, never as the
 user's. Deleting a thread and deciding a tool permission stay the owner's.
 
 `boite threads` (or `boite threads list`) is one listing of the threads the
 caller may see, with `--project <p>`, `--archived` and the machine of each.
-The owner sees every top-level thread of this core. A bot sees the threads of
+The owner sees every top-level thread of this core. A mochi sees the threads of
 the projects entrusted to it, then the threads on its desk that are not among
-them; each of those desk lines ends with `desk=started` (the bot started it),
+them; each of those desk lines ends with `desk=started` (the mochi started it),
 `desk=entrusted` (the owner entrusted that thread to it) or `desk=followed`
 (it wrote to it, answered for it or watches it). With `--archived`, the owner
-and a bot see the archived threads instead of the open ones. Any other thread
+and a mochi see the archived threads instead of the open ones. Any other thread
 sees the open threads coordination lets it reach, here and on linked machines,
 and its `--archived` is refused.
 
 The old spellings still work and print nothing more: `boite agents <x>` is
-`boite threads <x>`, `boite agent <x>` is `boite bot <x>`, `boite settings
-agent` is `boite settings bot` and `--agent <name>` is `--bot <name>`. Bots'
+`boite threads <x>`; `boite bot <x>` and `boite agent <x>` are `boite mochi
+<x>`; `boite settings bot` and `boite settings agent` are `boite settings
+mochi`; `--bot <name>` and `--agent <name>` are `--mochi <name>`. Mochis'
 brains and the user's notes name them; `boite help` shows only the new ones
-(`canonicalCommand` in `cli-args.ts`).
+(`canonicalCommand` in `cli-args.ts`, which keeps `bot` as the name the code
+runs).
 
 ## Commands
 
@@ -487,13 +489,13 @@ boite threads wait [thread] [--timeout <s>]
 boite threads contacts
 boite threads ask [--to <contact>/<thread-id>] [--contact <name>] [--new] [--share] [--wait] [--timeout <s>] [--] <text>
 boite contacts [view]|forward|connect|start|share|ask-owner|refuse|cut|deliver|block
-boite bot memory
-boite bot remember <fact>
-boite bot routines
-boite bot schedule <json>
-boite bot unschedule <routine-id>
-boite bot watch|unwatch <thread-id>
-boite bot event <bot> [--key <key>] <text>
+boite mochi memory
+boite mochi remember <fact>
+boite mochi routines
+boite mochi schedule <json>
+boite mochi unschedule <routine-id>
+boite mochi watch|unwatch <thread-id>
+boite mochi event <mochi> [--key <key>] <text>
 boite team list|say|dm|read|propose|invite|leave
 boite delegate models [--machine <name>]
 boite delegate profiles|list
@@ -511,16 +513,16 @@ boite workflow output|templates|save|start
 boite help
 ```
 
-`threads ask "<what you need>"` sends a request to a contact's Contacts bot
-([contacts](contacts.md#the-contacts-bot)), or, naming no contact, hands it
-to this machine's bot, which picks one: `--to
+`threads ask "<what you need>"` sends a request to a contact's Contacts mochi
+([contacts](contacts.md#the-contacts-mochi)), or, naming no contact, hands it
+to this machine's mochi, which picks one: `--to
 <contact>/<thread-id>` names the thread, `--contact <name>` the contact,
 `--new` asks for a new thread, `--share` for a project opened to you. The
 answer comes back as a message naming the thread to write to with `threads
 send <contact>/<thread-id> <text>`; an explicit owner decision is told apart
-from the bot's.
+from the mochi's.
 
-`boite contacts` is the Contacts bot's own group, refused to any other
+`boite contacts` is the Contacts mochi's own group, refused to any other
 thread: `view` (the default: requests, relations, flags, contacts and
 projects), `forward <request> <contact>[/<thread-id>] [text]`,
 `connect <request> <thread-id>`, `start <request> <project> <brief> [--model
@@ -555,11 +557,11 @@ Coordination commands are documented in [coordination](coordination.md#agent-com
 child controls in [delegation](delegation.md#agent-commands), and plan/output
 commands in [workflows](workflows.md#commands).
 
-`team` lets a bot talk with the other bots of its teams, behind the Teams
+`team` lets a mochi talk with the other mochis of its teams, behind the Teams
 experiment: group or private posts, reading, and cards that ask the owner to
 create, join or leave a team ([teams](teams.md#commands)).
 
-Bots schedule work from their own conversation. `bot schedule` accepts `name`, `prompt`, and `schedule`,
+Mochis schedule work from their own conversation. `mochi schedule` accepts `name`, `prompt`, and `schedule`,
 for example `{"kind":"daily","time":"09:00","timezone":"Europe/Paris"}`.
 Other schedules use `{"kind":"interval","everyMinutes":60}` or
 `{"kind":"once","at":1790240400000}` with a Unix timestamp in milliseconds.
@@ -587,7 +589,7 @@ the panel opening on it.
 thread goes to Done when the current turn ends, or at once when idle, through
 the same checks as the user's Mark done. A refusal that only appears at the end
 of the turn (the user wrote again, background work still runs) leaves a system
-line and the thread open. A sub-thread, a bot's thread and an archived one are
+line and the thread open. A sub-thread, a mochi's thread and an archived one are
 refused; a core restart drops a waiting request. Boite asks for it once a
 thread's pull requests are merged or closed
 ([merged pull requests](development.md#merged-pull-requests)).
@@ -632,10 +634,10 @@ Pause refuses, and a thread restricted to its own project cannot start one
 elsewhere. There is no hourly limit. A thread an agent started cannot start another
 until the user has
 written in it, so agents cannot chain threads on their own. Delegated
-children and workflow steps are refused. A bot's thread is not bound by
+children and workflow steps are refused. A mochi's thread is not bound by
 these settings: Off, Pause and the own-project restriction do not refuse it,
 so it starts threads in any project, where they land on its
-[desk](bots.md#the-desk) and stay its own to drive; an archived bot starts
+[desk](mochis.md#the-desk) and stay its own to drive; an archived mochi starts
 none. A retry
 with the same `--request-id` returns the thread already started.
 
@@ -657,15 +659,15 @@ way, as a letter between the two machines, and `threads send <machine>/<id>`
 steers it after. The caller's Communication settings decide as for a project
 of its own machine, except that another machine is always "elsewhere": a thread
 restricted to its own project cannot use it. The started thread obeys its own
-machine's rule: it starts nothing until the user writes in it. A bot's thread
+machine's rule: it starts nothing until the user writes in it. A mochi's thread
 takes another path: it starts threads on another machine only in a project
 there entrusted to it, named `<machine>/<project>` as `threads` lists it, or
 by its name there with `--machine`. That machine starts it while its
 `groupBots` switch is on, and the thread goes
-on the bot's desk, where its first answer arrives as an event; `machine:` in
+on the mochi's desk, where its first answer arrives as an event; `machine:` in
 the output names the machine and `thread send <machine>/<id>` steers it
-([bots](bots.md#projects-of-the-other-machines-of-the-group)). A project of
-that machine not entrusted to the bot is refused with the ones it may use
+([mochis](mochis.md#projects-of-the-other-machines-of-the-group)). A project of
+that machine not entrusted to the mochi is refused with the ones it may use
 there. Without explicit model, effort or speed, this path does not require
 `groupThreads`; choosing them reads the destination's model list, which
 requires `groupThreads` too.
@@ -681,15 +683,15 @@ Only a member of the
 group can ask: a contact or a paired device has no such operation. From a
 terminal, `--machine` is refused; `--core` reaches the other machine instead.
 
-In a bot's thread, `threads`, `thread show|send|done|archive|unarchive|rename|stop|move`,
+In a mochi's thread, `threads`, `thread show|send|done|archive|unarchive|rename|stop|move`,
 `questions` and `answer` also reach the projects of another machine of the
-group entrusted to the bot ([bots](bots.md#projects-of-the-other-machines-of-the-group)).
+group entrusted to the mochi ([mochis](mochis.md#projects-of-the-other-machines-of-the-group)).
 Their threads are `<machine>/<thread-id>`, their rows end with
 `machine=<name>`, and `--project <machine>/<name>` narrows the list to one of
 them. A machine whose `groupBots` switch is off, or that does not answer, adds
 an `unavailable: <machine> ...` line saying which, and a command on one of its
 threads is refused with the same reason. With `--json` and no thread named, a
-bot's `questions` and `permissions` print `{ questions|permissions, unavailable }`
+mochi's `questions` and `permissions` print `{ questions|permissions, unavailable }`
 rather than a bare list, so an empty list is not taken for nothing pending. The owner's own terminal does not
 take `<machine>/<thread-id>`.
 
@@ -712,19 +714,19 @@ own project refuse it. There is no hourly limit. A thread an agent started
 adds none until the user has written in it, and delegated children and
 workflow steps are refused.
 
-A bot adds a project from its own conversation only while its `addProjects`
+A mochi adds a project from its own conversation only while its `addProjects`
 setting is on (`AgentSettingCards.entrust` in `agents/setting-cards.ts`). It
-is off by default: the refusal tells the bot to ask with
-`boite settings bot request addProjects true --why <reason>`, a card only the
+is off by default: the refusal tells the mochi to ask with
+`boite settings mochi request addProjects true --why <reason>`, a card only the
 owner applies. With it on, the same checks and Communication settings apply,
-the folder is one of the bot's own machine (`--machine` is refused for a
-bot), and the new project joins those entrusted to it at once, through the
+the folder is one of the mochi's own machine (`--machine` is refused for a
+mochi), and the new project joins those entrusted to it at once, through the
 code that writes its `projects` setting: the line reads "Added and entrusted
 to you." and `--json` carries `entrusted: true`. A folder that was already a
 project is answered with `added: false` and changes nothing: `entrusted`
-tells whether the bot already held it, and the bot gains no project by naming
+tells whether the mochi already held it, and the mochi gains no project by naming
 its folder. Only for one it does not hold, the line says to ask with
-`boite settings bot request projects +<name> --why <reason>`. A bot that
+`boite settings mochi request projects +<name> --why <reason>`. A mochi that
 already holds 50 projects is refused before the folder is added.
 
 With `--machine <name>`, the folder is one of another machine of the group,
@@ -917,107 +919,107 @@ thread. The MCP tool takes it as `boite_settings_request` with `page:
 "agents"` (the old `"plugins"` is still accepted) and `plugin: { url, ref?
 }`.
 
-`settings bot [key]` reads a bot's settings a card may change: `name`,
+`settings mochi [key]` reads a mochi's settings a card may change: `name`,
 `domain` (its role), `instructions`, `avatar`, `status` (`active`, `paused`,
 `archived`), `projects` (those entrusted to it), `model`, `effort`,
 `autoMemory` (the memory pass), `eventWakes` (automatic project and desk wakes),
-`addProjects` (the bot may add a folder of its machine as a project, off by
+`addProjects` (the mochi may add a folder of its machine as a project, off by
 default), `subagents` and `dailyBudget` (dollars a day,
-or `null` for none). It prints the bot's name, each value and, for status,
+or `null` for none). It prints the mochi's name, each value and, for status,
 projects, models and efforts, the choices; a model reads `<provider>/<model>`,
 and its choices span every provider signed in on the machine. The listing cuts
 long instructions and choice lists to their start, one key or `--json` prints
-them whole. `--bot <name or id>`
-names the bot; in a bot's own conversation it defaults to that bot.
-`eventWakes` defaults to `false`: a bot wakes at once only for threads it
+them whole. `--mochi <name or id>`
+names the mochi; in a mochi's own conversation it defaults to that mochi.
+`eventWakes` defaults to `false`: a mochi wakes at once only for threads it
 started, was entrusted or watches, and for outside events, while the other
 project and desk facts wait durably for the next admitted routine. Setting it
-to `true` wakes the bot for every fact. User messages and routines run either
+to `true` wakes the mochi for every fact. User messages and routines run either
 way. Permission checks run again before delivery. Facts are
 journaled with that routine once, including after a restart; failed admission
 keeps them queued. Creation and instruction-change wakes keep their behavior.
 
-`settings bot request <key> <value> --why <text>` draws the card. `name`,
+`settings mochi request <key> <value> --why <text>` draws the card. `name`,
 `domain`, `instructions`, `avatar` and `status` take the words as typed
 (`name Gargouille (Sécurité)`), and `instructions --instructions-file <path>`
 reads a file, as `avatar --picture <path>` imports an image file for the card
 to propose; `projects` takes `+name -name` edits or a whole list
 (`Notes,Other`, or JSON), resolved by name or id and stored as ids; a project
 of another machine of the group is `<machine>/<name>` (`+skoll/Hearthfall`),
-offered once that machine lets bots in (`groupBots`) and stored as
+offered once that machine lets mochis in (`groupBots`) and stored as
 `<core-id>/<project-id>`; `model` takes `<provider>/<model>`
-(`codex/gpt-6.1-sol`), or a model id of the bot's own provider; the other
-keys read their value as `settings request` does. The refusals are the same, plus an unknown or ambiguous bot
+(`codex/gpt-6.1-sol`), or a model id of the mochi's own provider; the other
+keys read their value as `settings request` does. The refusals are the same, plus an unknown or ambiguous mochi
 (the refusal lists them) and a model on an account the owner granted only to
-other bots. A model outside the bot's allowed routes joins them when the card
-is applied ([bots](bots.md#asking-to-change-a-bots-settings)).
+other mochis. A model outside the mochi's allowed routes joins them when the card
+is applied ([mochis](mochis.md#asking-to-change-a-mochis-settings)).
 
-The card names the bot and the change; for projects, each project added or
+The card names the mochi and the change; for projects, each project added or
 removed has a tick the owner can clear before Apply. Apply calls
-`agents.settings.apply`, owner only, which writes through the bot's own
-settings checks. Any change to the bot, from the card or from its settings
-page, settles every card it answers; a card about a bot that is archived or
-removed closes unanswered. The asking thread reads `applied: <bot>'s <key>
-is now <value>`, `changed: the user set <bot>'s <key> to <value>, not
-<proposed>` or `refused: <bot>'s <key> stays <value>`, projects by name
+`agents.settings.apply`, owner only, which writes through the mochi's own
+settings checks. Any change to the mochi, from the card or from its settings
+page, settles every card it answers; a card about a mochi that is archived or
+removed closes unanswered. The asking thread reads `applied: <mochi>'s <key>
+is now <value>`, `changed: the user set <mochi>'s <key> to <value>, not
+<proposed>` or `refused: <mochi>'s <key> stays <value>`, projects by name
 (`are` and `stay` for them).
 
-`settings bot create <name>` creates a bot for a thread the user told to set
+`settings mochi create <name>` creates a mochi for a thread the user told to set
 one up. Where the machine setting `agentBotCreation` is `ask` (a new install),
 it draws a card in the thread instead and prints `asked: <name>`, the card's
 id and the command that asks the owner to lift the card (`boite settings
-request agentBotCreation free --why "<reason>"`); the bot exists once the
+request agentBotCreation free --why "<reason>"`); the mochi exists once the
 owner approves, and the answer reaches the thread like a setting request's.
-Where it is `free`, the bot is created at once. The bot runs on the calling thread's own
+Where it is `free`, the mochi is created at once. The mochi runs on the calling thread's own
 route unless `--model <provider/model>` names another (resolved as `delegate
 spawn --model` does, from every installed model), at its model's default
-effort unless `--effort` names one, with full access like a bot made on the
-Bots page. `--domain <text>` is its role, `--instructions-file <path>` its
+effort unless `--effort` names one, with full access like a mochi made on the
+Mochis page. `--domain <text>` is its role, `--instructions-file <path>` its
 instructions (32,000 characters at most) and `--project a,b` the projects
-entrusted to it, by name or id. A name a live bot already has, any case, is
-refused with that bot's id, as are an unknown model or project. Created at once, it prints
+entrusted to it, by name or id. A name a live mochi already has, any case, is
+refused with that mochi's id, as are an unknown model or project. Created at once, it prints
 `created: <name> (<id>)`, its route, its projects and its conversation, to
-reach it with `boite threads send`; the bot then introduces itself there. The
+reach it with `boite threads send`; the mochi then introduces itself there. The
 MCP tool `boite_bot_create` does the same.
 
-`settings bot picture <image>` gives a bot a face at once, with no card: the
-bot whose conversation calls it, or `--bot <name>` for another bot of the
-machine. The owner asked that agents dress bots themselves (2026-11-01); only
+`settings mochi picture <image>` gives a mochi a face at once, with no card: the
+mochi whose conversation calls it, or `--mochi <name>` for another mochi of the
+machine. The owner asked that agents dress mochis themselves (2026-11-01); only
 the avatar changes. An image file, a PNG, JPEG, WebP or GIF of at most 512 KB
 recognized by its first bytes, is imported with `agents.picture.put` and worn
 through `agents.avatar.set`; a larger one is refused with its size, to shrink
 first. Anything that is not a file is taken as an avatar value: a robot code,
 one or two characters, an `img:` picture this machine holds, or `""` for the
-robot the bot's id draws. A value that looks like a path to no file is refused
+robot the mochi's id draws. A value that looks like a path to no file is refused
 with that path. It prints `picture: <name> (<id>) now wears <avatar>`, and any
-open card about that bot's avatar settles.
+open card about that mochi's avatar settles.
 
 Exit codes: 0, 1 on a refusal or a failure (`error: ...` on stderr), 2 on a
 usage error (the usage text on stderr).
 
 [Agent coordination](coordination.md) is on by default for ordinary
-conversations and bots, across projects and linked machines. The owner can turn it off
+conversations and mochis, across projects and linked machines. The owner can turn it off
 or restrict it to one project. `threads find`, `threads read` and the directory
 reach only those contacts. Replies preserve their message reference and
 authenticated sender identity.
 
-The `bot` commands belong to [bots](bots.md), not ordinary thread
-coordination, and work only from a bot's own thread. `bot memory` prints
-MEMORY.md and its path; `bot remember <fact>` adds a dated line to it. `bot
-routines` lists its routines, `bot schedule <json>` saves one (`name`,
-`prompt`, `schedule`, with `id` to edit one and `enabled`), `bot unschedule
-<routine-id>` removes one. `bot watch|unwatch <thread-id>` puts a thread of
-its projects on its desk or takes one off; a watched thread wakes the bot at
+The `mochi` commands belong to [mochis](mochis.md), not ordinary thread
+coordination, and work only from a mochi's own thread. `mochi memory` prints
+MEMORY.md and its path; `mochi remember <fact>` adds a dated line to it. `mochi
+routines` lists its routines, `mochi schedule <json>` saves one (`name`,
+`prompt`, `schedule`, with `id` to edit one and `enabled`), `mochi unschedule
+<routine-id>` removes one. `mochi watch|unwatch <thread-id>` puts a thread of
+its projects on its desk or takes one off; a watched thread wakes the mochi at
 once, one it only wrote to waits for its routines. Use `--json` to
 preserve the structured result.
 
-`bot event <bot> [--key <key>] <text>` is the exception: it is for a service
-outside Boite, never a bot's thread, and wakes the named bot (id or name) with
-an outside event ([bots](bots.md#outside-events)). On the host it reads the
+`mochi event <mochi> [--key <key>] <text>` is the exception: it is for a service
+outside Boite, never a mochi's thread, and wakes the named mochi (id or name) with
+an outside event ([mochis](mochis.md#outside-events)). On the host it reads the
 owner token from `core.json`; from another host it takes `--core <url>` with a
 paired device's session token in `BOITE_TOKEN`. A second event with the same
-key replaces one the bot has not read yet. Pair one device per service, so
-the bot's prompt names it and revoking it cuts that service alone.
+key replaces one the mochi has not read yet. Pair one device per service, so
+the mochi's prompt names it and revoking it cuts that service alone.
 Pass `--request-id <stable-id>` when retrying a send after a lost response. The
 flag covers `threads send`, `threads reply`, `delegate spawn` and `delegate
 send`: a retry with the id of a call that already landed returns that letter

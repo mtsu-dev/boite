@@ -64,7 +64,7 @@ test('an old prompt displays what was asked; a batch of notices displays Project
   expect(migratedDisplay('Hello\nCurrent work: x')).toBeNull();
 });
 
-for (const missing of ['provider', 'account'] as const) test(`a bot whose ${missing} is gone opens for reading and can move to an available model`, async () => {
+for (const missing of ['provider', 'account'] as const) test(`a mochi whose ${missing} is gone opens for reading and can move to an available model`, async () => {
   const h = await startTestCore(); cores.push(h);
   const client = await h.connect();
   const accountId = echoAccount(h);
@@ -92,7 +92,7 @@ for (const missing of ['provider', 'account'] as const) test(`a bot whose ${miss
   await waitFor(() => h.core.journal.getTurn(turn.id)?.status === 'done');
 });
 
-test('a bot with an account from another provider opens but cannot start a turn', async () => {
+test('a mochi with an account from another provider opens but cannot start a turn', async () => {
   const h = await startTestCore(); cores.push(h);
   const client = await h.connect();
   const foreign = { ...h.core.accounts.require(echoAccount(h)), id: 'acc_foreign', providerId: 'claude' };

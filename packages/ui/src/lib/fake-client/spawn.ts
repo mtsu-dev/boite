@@ -36,12 +36,12 @@ export function spawnMethods(ctx: FakeContext, create: FakeMethods['threads.crea
         const owner = ctx.agents.ownerOf(caller.id);
         bot = owner === null ? null : ctx.agents.profileOf(owner);
         if (bot?.status === 'archived') bot = null;
-        if (bot === null) throw refuse('this thread has no project and is no bot\'s own conversation: it cannot add projects', { threadId: caller.id, field: 'threadId' });
+        if (bot === null) throw refuse('this thread has no project and is no mochi\'s own conversation: it cannot add projects', { threadId: caller.id, field: 'threadId' });
         if (ctx.agents.configOf(bot.id).addProjects !== true) {
-          throw refuse(`the owner has not let ${bot.name} add projects; ask with boite settings bot request addProjects true --why <reason>`, { threadId: caller.id, field: 'addProjects', expected: true });
+          throw refuse(`the owner has not let ${bot.name} add projects; ask with boite settings mochi request addProjects true --why <reason>`, { threadId: caller.id, field: 'addProjects', expected: true });
         }
         if (params.machine !== undefined) {
-          throw refuse('a bot adds projects on its own machine only; ask for a project of another machine with boite settings bot request projects +<machine>/<project> --why <reason>', { threadId: caller.id, field: 'machine' });
+          throw refuse('a mochi adds projects on its own machine only; ask for a project of another machine with boite settings mochi request projects +<machine>/<project> --why <reason>', { threadId: caller.id, field: 'machine' });
         }
       }
       const path = typeof params.path === 'string' ? params.path.trim() : '';
@@ -86,7 +86,7 @@ export function spawnMethods(ctx: FakeContext, create: FakeMethods['threads.crea
       gate();
       if (missingFolder(path)) throw refuse('a project path must be an existing directory', { path });
       if (bot !== null && new Set(bot.projectIds ?? []).size >= AGENT_PROJECTS_MAX) {
-        throw refuse(`projects: ${bot.name} holds ${AGENT_PROJECTS_MAX} projects already, the most an agent holds; ask for one to be taken away with boite settings bot request projects -<name> --why <reason>`, { threadId: caller.id, field: 'projects' });
+        throw refuse(`projects: ${bot.name} holds ${AGENT_PROJECTS_MAX} projects already, the most an agent holds; ask for one to be taken away with boite settings mochi request projects -<name> --why <reason>`, { threadId: caller.id, field: 'projects' });
       }
       const project = await addProject({ path, ...(params.name === undefined ? {} : { name: params.name.trim() }) });
       systemLine(`The agent added the project ${project.name} (${project.path}).`);

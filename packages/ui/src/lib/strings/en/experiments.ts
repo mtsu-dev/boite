@@ -10,7 +10,7 @@ export const strings = {
     },
     contacts: {
       title: 'Contacts',
-      hint: 'A Home page beside Threads where you link your Boite with another owner\'s through Tailscale. A built-in bot, the Operator, carries every request between your agents and theirs. Not ready for everyday use'
+      hint: 'A Home page beside Threads where you link your Boite with another owner\'s through Tailscale. A built-in mochi, the Operator, carries every request between your agents and theirs. Not ready for everyday use'
     },
     autoGoal: {
       title: 'Automatic goals',
@@ -21,7 +21,7 @@ export const strings = {
     },
     teams: {
       title: 'Teams',
-      hint: 'Bots that work together in a shared chat, listed above them on the Bots page: a post wakes the bots it names, and each answers in the group or privately. Your bots post with boite team. Not ready for everyday use'
+      hint: 'Mochis that work together in a shared chat, listed above them on the Mochis page: a post wakes the mochis it names, and each answers in the group or privately. Your mochis post with boite team. Not ready for everyday use'
     },
     debates: {
       title: 'Council',
