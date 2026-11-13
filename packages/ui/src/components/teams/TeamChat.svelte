@@ -1,24 +1,29 @@
 <script lang="ts">
   import { markFeature } from '@boite/contracts';
   import { tick } from 'svelte';
-  import { Archive, ArrowDown, ArrowUp, Lock, Pause, Reply, UserRound } from '@lucide/svelte';
+  import { Archive, ArrowDown, ArrowUp, CornerDownRight, Lock, Pause, Reply } from '@lucide/svelte';
   import { TEAM_OWNER, type AgentProfile, type Message, type TeamParty, type TeamPostRef, type Thread } from '@boite/contracts';
   import { agentDirectory, followAgentDirectories } from '../../lib/agent-directory.svelte';
   import { experimentOn } from '../../lib/experiments.svelte';
-  import { dayClock, fullTime, longDay } from '../../lib/format';
+  import { avatarLit } from '../../lib/avatar-lit';
+  import { dayClock, fullTime } from '../../lib/format';
   import { fill, strings } from '../../lib/strings';
   import type { Store } from '../../lib/store.svelte';
   import { botIdOf, followTeams, listNames, teamsOf } from '../../lib/teams.svelte';
   import AgentAvatar from '../agents/AgentAvatar.svelte';
+  import DayDivider from '../DayDivider.svelte';
   import Prose from '../Prose.svelte';
   import TeamComposer, { type TeamReply } from './TeamComposer.svelte';
 
   /**
-   * A team's chat (`docs/internals/teams.md`): the members over the posts, each post
-   * with its author, its time, whether it was private and to whom, the post it
-   * answers and who it woke; the owner's composer under them. The posts are
-   * the thread's messages, so they arrive live, page like a thread's, and the
-   * chat reads as read once opened.
+   * A team's chat (`docs/internals/teams.md`), in a thread's language: one reading
+   * column, a bot's post as an answer under its picture and name, the owner's
+   * as a bubble on the right, the calendar's chip between two days, and the
+   * composer's card under them. Who a post woke, that it was private and the
+   * post it answers are one quiet line each. The column opens on the room
+   * itself: its members, each opening its bot, and what the team is for. The
+   * posts are the thread's messages, so they arrive live, page like a
+   * thread's, and the chat reads as read once opened.
    */
   let { store, thread }: { store: Store; thread: Thread } = $props();
   const labels = $derived(strings.teamChat);
@@ -41,6 +46,10 @@
   const closed = $derived(!experimentOn('teams') || (directory.loaded && !team) ? labels.unavailable
     : team?.archived || thread.archived ? labels.archived : null);
   let reply = $state<TeamReply | null>(null);
+  /** The chat is about these bots: their pictures keep their colours here (`lib/avatar-lit.ts`). */
+  const LIT = avatarLit({ open: true });
+  /** Only a post that lands while the chat is open rises; the ones it opened on stand still. */
+  const openedAt = Date.now();
 
   function profileOf(botId: string): Pick<AgentProfile, 'id' | 'name' | 'avatar'> | undefined {
     return profiles.find(profile => profile.id === botId);
@@ -117,24 +126,23 @@
 </script>
 
 <section class="team-chat" data-testid="team-chat" data-team-id={team?.id}>
-  {#if team}
-    <header class="members" data-testid="team-members">
-      <div class="member-row" role="group" aria-label={labels.members}>
-        {#each team.members as member (member.key)}
-          {@const profile = profileOf(member.botId)}
-          <button type="button" class="ghost member" title={member.machine ? `${member.name} (${member.machine})` : member.name} disabled={!profile} onclick={() => store.showAgents(member.botId)} data-testid="team-member" data-bot-id={member.botId}>
-            <AgentAvatar kind="profile" id={member.botId} name={member.name} avatar={profile?.avatar ?? ''} size={20} />
-            <span class="ui-label">{member.name}</span>
-            {#if member.machine}<span class="machine ui-label" data-testid="team-member-machine">{member.machine}</span>{/if}
-          </button>
-        {/each}
-      </div>
-      {#if team.brief}<p class="brief" title={team.brief}>{team.brief}</p>{/if}
-    </header>
-  {/if}
-
   <div class="scroller" bind:this={scroller} onscroll={measure} data-testid="team-posts">
     <div class="column" bind:this={column}>
+      {#if team}
+        <header class="about" data-testid="team-members">
+          <div class="member-row" role="group" aria-label={labels.members}>
+            {#each team.members as member (member.key)}
+              {@const profile = profileOf(member.botId)}
+              <button type="button" class="ghost member" title={member.machine ? `${member.name} (${member.machine})` : member.name} disabled={!profile} onclick={() => store.showAgents(member.botId)} data-testid="team-member" data-bot-id={member.botId}>
+                <AgentAvatar kind="profile" id={member.botId} name={member.name} avatar={profile?.avatar ?? ''} size={20} lit={LIT} />
+                <span class="ui-label">{member.name}</span>
+                {#if member.machine}<span class="machine ui-label" data-testid="team-member-machine">{member.machine}</span>{/if}
+              </button>
+            {/each}
+          </div>
+          {#if team.brief}<p class="brief">{team.brief}</p>{/if}
+        </header>
+      {/if}
       {#if thread.messagesBefore !== null}
         <button type="button" class="ghost small page" disabled={store.loadingOlder} onclick={() => void earlier()} data-testid="team-earlier"><ArrowUp size={14} /><span class="ui-label">{labels.earlier}</span></button>
       {/if}
@@ -149,37 +157,42 @@
         {@const grouped = !day && continues(previous, post)}
         {@const own = post.ref.author === TEAM_OWNER}
         {@const botId = own ? '' : botIdOf(post.ref.author)}
+        {@const secret = post.ref.audience === 'private'}
         {@const replied = post.ref.inReplyTo ? byId.get(post.ref.inReplyTo) : undefined}
         {@const line = woke(post)}
-        {#if day}<div class="day" role="separator"><span class="ui-label">{longDay(post.at)}</span></div>{/if}
-        <article class="post" class:grouped class:private={post.ref.audience === 'private'} data-testid="team-post" data-post-id={post.ref.id} data-author={post.ref.author} data-audience={post.ref.audience}>
-          <div class="gutter">
-            {#if grouped}<time class="aside" datetime={new Date(post.at).toISOString()} title={fullTime(post.at)}>{dayClock(post.at)}</time>
-            {:else if own}<span class="owner-avatar" aria-hidden="true"><UserRound size={16} strokeWidth={1.75} /></span>
-            {:else}<AgentAvatar kind="profile" id={botId} name={nameOf(post.ref.author)} avatar={profileOf(botId)?.avatar ?? ''} size={28} />{/if}
+        {#if day}<div class="day-slot"><DayDivider at={post.at} /></div>{/if}
+        <article class="post" class:fresh={post.at >= openedAt} class:own class:grouped class:private={secret} data-testid="team-post" data-post-id={post.ref.id} data-author={post.ref.author} data-audience={post.ref.audience}>
+          {#if own}
+            {#if !grouped}<span class="visually-hidden" data-testid="team-post-author">{nameOf(post.ref.author)}</span>{/if}
+          {:else if !grouped}
+            <div class="byline">
+              <span class="face"><AgentAvatar kind="profile" id={botId} name={nameOf(post.ref.author)} avatar={profileOf(botId)?.avatar ?? ''} size={20} lit={LIT} /></span>
+              <span class="author" data-testid="team-post-author">{nameOf(post.ref.author)}</span>
+              {#if machineOf(post.ref.author)}<span class="machine ui-label" data-testid="team-post-machine">{machineOf(post.ref.author)}</span>{/if}
+              <time datetime={new Date(post.at).toISOString()} title={fullTime(post.at)}>{dayClock(post.at)}</time>
+            </div>
+          {/if}
+          {#if secret}
+            <span class="meta secret" data-testid="team-post-private"><Lock size={12} />{fill(labels.privateTo, { name: nameOf(post.ref.to[0] ?? TEAM_OWNER, true) })}</span>
+          {/if}
+          {#if replied}
+            <button type="button" class="meta quote" onclick={() => jump(replied.ref.id)} data-testid="team-post-quote">
+              <CornerDownRight size={12} />
+              <span class="quote-who">{fill(labels.replyTo, { name: nameOf(replied.ref.author, true) })}</span>
+              <span class="excerpt">{excerpt(replied.text)}</span>
+            </button>
+          {/if}
+          <div class="said">
+            <div class="body" class:bubble={own} title={own || grouped ? fullTime(post.at) : undefined}><Prose text={post.text} {store} threadId={thread.id} /></div>
+            {#if !closed && team}
+              <button type="button" class="ghost small icon reply" title={labels.reply} aria-label={labels.reply} onclick={() => answer(post)} data-testid="team-post-reply"><Reply size={14} /></button>
+            {/if}
           </div>
-          <div class="main">
-            {#if !grouped}
-              <div class="head">
-                <span class="author" class:own data-testid="team-post-author">{nameOf(post.ref.author)}</span>
-                {#if machineOf(post.ref.author)}<span class="machine ui-label" data-testid="team-post-machine">{machineOf(post.ref.author)}</span>{/if}
-                <time datetime={new Date(post.at).toISOString()} title={fullTime(post.at)}>{dayClock(post.at)}</time>
-              </div>
-            {/if}
-            {#if post.ref.audience === 'private'}
-              <span class="private-chip" data-testid="team-post-private"><Lock size={12} />{fill(labels.privateTo, { name: nameOf(post.ref.to[0] ?? TEAM_OWNER, true) })}</span>
-            {/if}
-            {#if replied}
-              <button type="button" class="quote" onclick={() => jump(replied.ref.id)} data-testid="team-post-quote">
-                <span class="ui-label">{fill(labels.replyTo, { name: nameOf(replied.ref.author, true) })}</span>
-                <span class="excerpt">{excerpt(replied.text)}</span>
-              </button>
-            {/if}
-            <div class="body"><Prose text={post.text} {store} threadId={thread.id} /></div>
-            {#if line}<p class="woke" class:nobody={line.nobody} data-testid="team-post-woke">{line.text}</p>{/if}
-          </div>
-          {#if !closed && team}
-            <button type="button" class="ghost small icon reply" title={labels.reply} aria-label={labels.reply} onclick={() => answer(post)} data-testid="team-post-reply"><Reply size={14} /></button>
+          {#if line || own}
+            <p class="meta foot">
+              {#if line}<span class="woke" class:nobody={line.nobody} data-testid="team-post-woke">{line.text}</span>{/if}
+              {#if own}<time datetime={new Date(post.at).toISOString()} title={fullTime(post.at)}>{dayClock(post.at)}</time>{/if}
+            </p>
           {/if}
         </article>
       {/each}
@@ -200,42 +213,61 @@
 <style>
   .team-chat { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 
-  .members { flex: none; padding: 8px 20px; border-bottom: 1px solid var(--color-border); }
-  .member-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; max-width: var(--content); margin: 0 auto; }
-  .member { gap: 6px; height: var(--control); padding: 0 8px 0 4px; border-radius: var(--radius-full); color: var(--color-foreground); }
+  /* A thread's timeline (MessageList.svelte): one column at the dock's width, its bubbles, prose and cards sharing it. */
+  .scroller { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 20px; }
+  .column { display: flex; flex-direction: column; width: 100%; max-width: var(--content); margin: 0 auto; padding: 20px 0 12px; --prose: var(--content); }
+  .page { align-self: center; gap: 6px; margin: 0 0 12px; color: var(--color-muted-foreground); }
+  .placeholder { margin: 32px auto; max-width: 420px; color: var(--color-muted-foreground); text-align: center; font-size: var(--text-sm); }
+
+  /* The room, where the conversation starts: who is in it and what it is for. No band, no rule: it scrolls with the posts. */
+  .about { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 4px 0 20px; }
+  .member-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px; }
+  .member { gap: 7px; height: var(--control-head); padding: 0 10px 0 6px; border-radius: var(--radius-full); color: var(--color-foreground); font-size: var(--text-sm); font-weight: 500; }
   .member:disabled { opacity: 1; cursor: default; }
-  .machine { min-width: 0; max-width: 16ch; overflow: hidden; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
-  .brief { max-width: var(--content); margin: 4px auto 0; color: var(--color-muted-foreground); font-size: var(--text-sm); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; }
+  .machine { min-width: 0; max-width: 16ch; overflow: hidden; color: var(--color-subtle); font-size: var(--text-xs); font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
+  .brief { max-width: 64ch; margin: 0; color: var(--color-muted-foreground); font-size: var(--text-sm); line-height: 1.5; text-align: center; text-wrap: balance; overflow-wrap: anywhere; }
 
-  .scroller { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-  .column { display: flex; flex-direction: column; max-width: var(--content); margin: 0 auto; padding: 12px 20px 8px; }
-  .page { align-self: center; gap: 6px; margin: 4px 0 8px; color: var(--color-muted-foreground); }
-  .placeholder { margin: 48px auto; max-width: 420px; color: var(--color-muted-foreground); text-align: center; font-size: var(--text-sm); }
+  .day-slot { display: flex; flex-direction: column; margin-top: var(--chat-message-gap); }
+  .day-slot:first-child, .about + .day-slot { margin-top: 0; }
+  .day-slot + .post { margin-top: 0; }
 
-  .day { display: flex; align-items: center; gap: 10px; margin: 16px 0 8px; color: var(--color-subtle); font-size: var(--text-xs); }
-  .day::before, .day::after { content: ''; flex: 1; height: 1px; background: var(--color-border); }
+  /* One post, a thread's message: the bot's on the page under its picture and name, the owner's a bubble on the right. */
+  /* Positioned: the owner's hidden name stays inside its post, not at the end of a scrolling ancestor. */
+  .post { position: relative; display: flex; flex-direction: column; align-items: flex-start; min-width: 0; margin-top: var(--chat-message-gap); }
+  .post.fresh { animation: rise var(--dur-3) var(--ease-out-quint); }
+  .post.own { align-items: flex-end; }
+  /* The same author going on: no name again, half the gap. */
+  .post.grouped { margin-top: 10px; }
+  .post.own.grouped { margin-top: 6px; }
 
-  .post { position: relative; display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; gap: 0 8px; margin-top: 10px; padding: 4px 6px; border-radius: var(--radius-md); }
-  .post.grouped { margin-top: 0; }
-  .post:hover { background: var(--color-hover); }
-  .gutter { display: flex; justify-content: center; padding-top: 2px; }
-  .owner-avatar { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--color-active); color: var(--color-foreground); }
-  .aside { visibility: hidden; padding-top: 3px; color: var(--color-subtle); font-size: 11px; font-variant-numeric: tabular-nums; }
-  .post:hover .aside { visibility: visible; }
-  .main { min-width: 0; }
-  .head { display: flex; align-items: baseline; gap: 8px; }
-  .author { font-weight: 600; color: var(--color-foreground); }
-  .author.own { color: var(--color-foreground); }
-  .head time { color: var(--color-subtle); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
-  .private-chip { display: inline-flex; align-items: center; gap: 4px; margin: 2px 0; padding: 1px 8px; border-radius: var(--radius-full); background: var(--color-active); color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 500; }
-  .quote { display: flex; align-items: baseline; gap: 6px; max-width: 100%; margin: 2px 0 4px; padding: 2px 8px; border: 0; border-radius: var(--radius-sm); background: var(--color-hover); color: var(--color-muted-foreground); font-size: var(--text-sm); text-align: left; cursor: pointer; }
-  .quote:hover { color: var(--color-foreground); }
-  .quote .ui-label { flex: none; font-weight: 600; }
-  .quote .excerpt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .body { min-width: 0; overflow-wrap: anywhere; }
-  .woke { margin-top: 2px; color: var(--color-subtle); font-size: var(--text-xs); }
+  .byline { display: flex; align-items: center; gap: 8px; min-width: 0; margin-bottom: 6px; padding-left: var(--activity-padding); }
+  .face { display: inline-flex; flex: none; }
+  .author { min-width: 0; overflow: hidden; color: var(--color-foreground); font-size: var(--text-sm); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+  .byline time, .foot time { flex: none; color: var(--instrument-meta); font-size: var(--instrument-meta-size); font-variant-numeric: tabular-nums; }
+
+  /* What surrounds a post: private, the post it answers, who it woke. One quiet line each, in the meta ink. */
+  .meta { display: flex; align-items: center; gap: 6px; max-width: 100%; margin: 0; padding: 0 var(--activity-padding); color: var(--instrument-meta); font-size: var(--instrument-meta-size); line-height: 1.4; }
+  .meta :global(svg) { flex: none; }
+  .secret { margin-bottom: 4px; color: var(--color-muted-foreground); }
+  .quote { height: auto; min-height: 22px; margin: 0 0 4px calc(-1 * var(--space-1)); padding: 2px calc(var(--activity-padding) + var(--space-1)); border: 0; border-radius: var(--radius-sm); background: transparent; box-shadow: none; text-align: left; cursor: pointer; transition: background var(--dur-2), color var(--dur-2); }
+  .post.own .quote { margin: 0 calc(-1 * var(--space-1)) 4px 0; max-width: min(85%, var(--prose)); }
+  .quote:hover, .quote:focus-visible { background: var(--color-hover); color: var(--color-foreground); }
+  .quote-who { flex: none; color: var(--color-muted-foreground); font-weight: 500; }
+  .quote:hover .quote-who { color: inherit; }
+  .excerpt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .foot { margin-top: 4px; }
   .woke.nobody { color: var(--color-live); }
-  .reply { opacity: 0; align-self: start; }
+
+  /* The words and, beside them, the one action a post takes. */
+  .said { display: flex; align-items: flex-start; gap: 4px; width: 100%; min-width: 0; }
+  .post:not(.own) .body { flex: 1; }
+  .post.own .said { flex-direction: row-reverse; width: auto; max-width: min(85%, var(--prose)); }
+  .body { flex: 0 1 auto; min-width: 0; padding-left: var(--activity-padding); overflow-wrap: anywhere; }
+  /* The owner's own words: a prompt's bubble (UserMessage.svelte). */
+  .bubble { padding: 12px 16px; background: var(--color-surface-2); border: 1px solid var(--color-border); border-radius: var(--radius-bubble); border-bottom-right-radius: var(--radius-sm); }
+  .post.own.private .bubble { border-style: dashed; border-color: var(--color-edge); }
+  .reply { flex: none; opacity: 0; color: var(--color-muted-foreground); transition: opacity var(--dur-2); }
+  .post.own .reply { align-self: center; }
   .post:hover .reply, .post:focus-within .reply { opacity: 1; }
   @media (hover: none) { .reply { opacity: 1; } }
 
@@ -250,14 +282,14 @@
     text-align: center;
   }
 
+  @media (prefers-reduced-motion: reduce) { .post.fresh { animation: none; } }
   @media (max-width: 720px) {
-    .members { padding: 6px 12px; }
-    .member-row { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
-    .member { flex: none; height: var(--touch-target); }
-    .brief { display: none; }
-    .column { padding: 8px 12px; }
-    .post { grid-template-columns: 32px minmax(0, 1fr) auto; padding: 4px 2px; }
-    .post:hover { background: transparent; }
-    .reply { width: var(--touch-target); height: var(--touch-target); }
+    .scroller { padding: 0 12px; }
+    .column { padding: 12px 0 8px; }
+    .about { margin-bottom: 16px; }
+    .member { height: var(--touch-target); }
+    .bubble { padding: 10px 14px; }
+    .post.own .said, .post.own .quote { max-width: 92%; }
+    .reply { width: var(--touch-target); height: var(--touch-target); margin: -8px 0; }
   }
 </style>
