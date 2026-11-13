@@ -37,7 +37,7 @@
   import { retryOrReload } from './lib/retry-load';
   import { experimentOn } from './lib/experiments.svelte';
   import { contactsShown, contactsViews } from './lib/contacts-views.svelte';
-  import { installWhipEscape } from './lib/whip.svelte';
+  import { whipEntry } from './lib/whip-entry.svelte';
   import { rightPanel } from './lib/right-panel.svelte';
   import { workspace } from './lib/workspace.svelte';
   import { listAbsent } from './lib/list-absent';
@@ -177,11 +177,9 @@
   });
   // With the first open thread, so the corner is there before a stop lands in it.
   $effect(() => { if (store.openThread) need('MemoryCorner'); });
-  let WhipOverlay = $state<typeof import('./components/WhipOverlay.svelte').default>();
+  // The Whip's control, then its rope, the first time its switch is on (lib/whip-entry.svelte.ts).
   $effect(() => {
-    if (!store.booted || !experimentOn('whip') || WhipOverlay) return;
-    void import('./components/WhipOverlay.svelte').then(module => { WhipOverlay = module.default; })
-      .catch(error => { store.error = String(error); });
+    if (store.booted && experimentOn('whip')) whipEntry.need(error => { store.error = String(error); });
   });
   // Browser profiles live on this computer, whichever machine is in view: they
   // are kept by the core this shell started (lib/browser-profiles.svelte.ts).
@@ -223,7 +221,6 @@
     if (tour) need('Onboarding');
   });
 
-  onMount(installWhipEscape);
 
   // This computer's own setting decides whether the window's updater installs by itself.
   $effect(() => { appUpdater.autoInstall = workspace.machines.find((machine) => machine.store.localCore)?.store.settings?.autoInstallUpdates === true; });
@@ -638,7 +635,7 @@
     blocked={mobileRecovery && localNetwork.state === 'denied'} onopen={() => { mobileScreen = 'chat'; }} />
   <UndoToast onerror={(error) => (store.error = errorText(error))} />
   {#if store.page === 'chat' && deferred.MemoryCorner}{@const MemoryCorner = deferred.MemoryCorner}<MemoryCorner {store} />{/if}
-  {#if store.booted && experimentOn('whip') && WhipOverlay}
+  {#if store.booted && experimentOn('whip') && whipEntry.overlay}{@const WhipOverlay = whipEntry.overlay}
     <WhipOverlay onerror={(error) => (store.error = errorText(error))} />
   {/if}
 </div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { markFeature } from '@boite/contracts';
   import { tick } from 'svelte';
   import { ArrowDownLeft, ArrowUpRight, Check, ChevronDown, Ellipsis, GitBranch, Waypoints, X } from '@lucide/svelte';
   import type { ContactRequest } from '@boite/contracts';
@@ -53,6 +54,8 @@
     if (!text) return;
     if (await view.decide(request.id, { accept: false, reason: text })) { refusing = false; reason = ''; }
   }
+  // Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
+  markFeature('boite-feature:contacts');
 </script>
 
 {#if pending}

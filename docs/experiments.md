@@ -8,6 +8,10 @@ disappear, so each one has a switch in Settings, Experiments.
 Experiments exist in Nightly builds only. A Release has no Experiments page
 and runs none of them, whatever was switched on before.
 
+A few are still being built and exist only in Boite Dev, the build made from
+the source code. There, each switch says whether it is in Nightly too or in
+Dev only.
+
 - To try them, switch the machine to Nightly: in Settings, Machines and
   updates, change the Release channel to Nightly
   ([updates](updates.md#switch-between-release-and-nightly)). Nightly may

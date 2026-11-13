@@ -3,6 +3,7 @@
  * machine holding a team refuses them while its `teams` experiment is off. A
  * method that may have to reach another machine goes through `TeamPeers`.
  */
+import { markFeature } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { invalidParams } from '../errors.ts';
 
@@ -28,3 +29,6 @@ export function registerTeams(core: Core): void {
   core.router.register('teams.invite', params => machines().invite(object(params)));
   core.router.register('teams.leave', params => teams().leave(object(params)));
 }
+
+// Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
+markFeature('boite-feature:teams');

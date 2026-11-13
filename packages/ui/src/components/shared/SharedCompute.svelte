@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { markFeature } from '@boite/contracts';
   import { untrack } from 'svelte';
   import { Plus } from '@lucide/svelte';
   import type { SharedComputeJob, SharedComputeRoute, SharedProjectScope, SharedProjectView } from '@boite/contracts';
@@ -67,6 +68,8 @@
     catch (e) { error = errorText(e); }
     finally { busy = false; }
   }
+  // Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
+  markFeature('boite-feature:contacts');
 </script>
 
 <section class="compute" data-testid="shared-compute">

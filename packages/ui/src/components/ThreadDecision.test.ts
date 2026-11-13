@@ -207,3 +207,16 @@ test('with no field focused, 1 to 9 pick the question\'s choices, and a permissi
   key(document.body, 'Enter');
   expect(answer).not.toHaveBeenCalledWith('perm', expect.anything());
 });
+
+test('a team request left by a Nightly is a plain question in a build without the Teams: its choices stay, so it can be refused', async () => {
+  vi.stubGlobal('__BOITE_HAS_TEAMS__', false);
+  try {
+    const store = render();
+    const team = { kind: 'propose', teamId: 'team', teamName: 'Fixture team' } as unknown as NonNullable<QuestionRequest['team']>;
+    store.pendingQuestions = [{ ...question('team-ask', 1), text: 'Proposed team: Fixture team', options: [{ id: 'accept', label: 'Accept' }, { id: 'refuse', label: 'Refuse' }], allowText: false, team }];
+    flushSync();
+    await vi.waitFor(() => { flushSync(); expect(document.querySelector('[data-testid=question-card]')).not.toBeNull(); });
+    expect(document.querySelector('[data-testid=team-card]')).toBeNull();
+    expect(document.querySelector('[data-testid=question-card]')!.textContent).toContain('Refuse');
+  } finally { vi.unstubAllGlobals(); }
+});

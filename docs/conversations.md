@@ -85,6 +85,12 @@ replaced.
 - Muse Code, OpenCode, Antigravity, Grok and pi keep the prompt's title under
   Automatic.
 
+## Notifications
+
+On a desktop, notifications appear in the bottom-right corner without moving
+the conversation. They stay above the message box and its controls. On a
+phone, they sit above the message box or the bottom tabs.
+
 ## Done, archived and deleted
 
 - Mark done moves a thread to the Done group. Archive puts it aside to pick up

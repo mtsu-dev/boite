@@ -39,7 +39,7 @@
   import TasksSurface from './TasksSurface.svelte';
   import TraceSurface from './TraceSurface.svelte';
   import AgentDesk from './agents/AgentDesk.svelte';
-  import CouncilSalon from './council/CouncilSalon.svelte';
+  import LazyCouncilSalon from './LazyCouncilSalon.svelte';
   import PluginTabSurface from './PluginTabSurface.svelte';
   import { pluginUi } from '../lib/plugin-ui.svelte';
   import { workspace } from '../lib/workspace.svelte';
@@ -556,8 +556,7 @@
     {:else if active?.kind === 'tasks'}
       <TasksSurface {store} />
     {:else if active?.kind === 'council' && active.councilId}
-      <!-- One salon per debate: the tab moved to another debate starts its reading afresh. -->
-      {#key active.councilId}<CouncilSalon {store} councilId={active.councilId} threadId={panel.threadId ?? undefined} />{/key}
+      <LazyCouncilSalon {store} councilId={active.councilId} threadId={panel.threadId ?? undefined} />
     {:else if active?.kind === 'plugin' && active.tab}
       {#key active.tab}<PluginTabSurface tab={active.tab} threadId={pluginTabsHere ? (store.openThread?.id ?? null) : null} />{/key}
     {:else}

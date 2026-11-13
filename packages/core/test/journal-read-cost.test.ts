@@ -112,7 +112,7 @@ test('schema 49 gains lazy statistics without rewriting historical messages', ()
   const before = journal.db.query('SELECT * FROM messages').all();
   journal.db.exec('DROP TABLE message_compactions; PRAGMA user_version = 49');
   journal.close(); journal = new Journal(join(dir, 'journal.db'));
-  expect(journal.schema).toEqual({ from: 49, to: 50 });
+  expect(journal.schema).toEqual({ from: 49, to: 51 });
   expect(journal.db.query('SELECT * FROM messages').all()).toEqual(before);
   expect(journal.db.query('SELECT COUNT(*) AS n FROM message_compactions').get()).toEqual({ n: 0 });
   expect(journal.threadStats('thread')).toEqual({ compactions: 1, prompts: 0 });

@@ -484,7 +484,7 @@ test('a Release starts nothing from the Contacts bot: a plan or a share accepted
     expect(here(wanted.id)).toMatchObject({ status: 'pending', stage: 'bot' });
 
     // A new proposal is refused with the reason; a note for the owner and a refusal still go through.
-    const refusal = 'experiment.contacts runs in Nightly builds only, and this machine runs a Release (2.0.0)';
+    const refusal = 'experiment.contacts runs in Nightly and Dev builds only, and this machine runs a Release (2.0.0)';
     expect(await thrown(owner.call('contacts.bot.askOwner', { threadId: hostBot.threadId, id: later.id, start: { project: project.name, brief: 'Docs' } }))).toThrow(refusal);
     expect(await thrown(owner.call('contacts.decide', { id: planned.id, accept: true }))).toThrow(refusal);
     expect((await owner.call('contacts.bot.refuse', { threadId: hostBot.threadId, id: later.id, reason: 'Not in this build' })).status).toBe('refused');

@@ -13,6 +13,7 @@
     "core": "bun run --cwd packages/core start",
     "dev:core": "bun run --cwd packages/core dev",
     "dev:ui": "bun run --cwd packages/ui dev",
+    "dev:instance": "bun scripts/dev/instance.ts",
     "build:ui": "bun run --cwd packages/ui build",
     "build:core": "bun run --cwd packages/core build",
     "build:core:exe": "bun run --cwd packages/core build:exe",

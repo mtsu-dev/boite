@@ -12,6 +12,28 @@ beforeAll(async () => {
   await page.waitFor(`document.querySelector('[data-thread-id]')`);
 }, 90000);
 afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);
+test('desktop notifications stay at the right edge without moving the conversation', async () => {
+  await page.evaluate(`(async () => {
+    const {workspace} = await import('/src/lib/workspace.svelte.ts');
+    await workspace.active.open('t-trace');
+    window.__timelineBottom = document.querySelector('[data-testid=timeline]').getBoundingClientRect().bottom;
+    workspace.active.client.emitCoreLog('error', 'turn failed', {threadId:'t-descriptors'});
+  })()`);
+  await page.waitFor(`document.querySelector('[data-testid=error-toast] .open-thread')`);
+  await page.settleAnimations();
+  await page.screenshot(join(import.meta.dir, '.artifacts/notification-corner-desktop.png'));
+  expect(await page.evaluate(`(() => {
+    const toast = document.querySelector('[data-testid=error-toast]').getBoundingClientRect();
+    const timeline = document.querySelector('[data-testid=timeline]').getBoundingClientRect();
+    const strip = document.querySelector('[data-testid=composer-strip]')?.getBoundingClientRect();
+    const composer = document.querySelector('[data-testid=composer]').getBoundingClientRect();
+    const floor = strip?.height ? strip : composer;
+    return {right:Math.round(innerWidth - toast.right), moved:Math.abs(timeline.bottom - window.__timelineBottom), clear:toast.right <= floor.left || toast.left >= floor.right || toast.bottom <= floor.top};
+  })()`)).toEqual({right:16,moved:0,clear:true});
+  await page.click('[data-testid=error-toast] .dismiss');
+  await page.waitFor(`!document.querySelector('[data-testid=error-toast]')`);
+});
+
 test('minor errors disappear after five seconds on desktop and phone', async () => {
   for (const viewport of [{width:1300,height:850,mobile:false}, {width:390,height:844,mobile:true}]) {
     await page.send('Emulation.setDeviceMetricsOverride',{...viewport,deviceScaleFactor:1});
@@ -49,9 +71,9 @@ test('notification stays readable and can be dismissed', async () => {
   expect(await page.evaluate(`document.querySelector('[data-testid="error-toast"]').textContent`)).toContain('conversation is saved');
   expect(await page.evaluate(`(() => {const p = document.querySelector('[data-testid="error-toast"] .message'); return p.scrollHeight <= p.clientHeight && getComputedStyle(p).whiteSpace === 'pre-wrap';})()`)).toBe(true);
   await page.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
-  await page.screenshot(join(import.meta.dir,'.artifacts/notification-phone.png'));
   // On the phone too it stays whole on screen, right above what owns the bottom edge (the composer or the tab bar), covering none of it.
   await page.settleAnimations();
+  await page.screenshot(join(import.meta.dir,'.artifacts/notification-phone.png'));
   expect(await page.evaluate(`(() => {const r = document.querySelector('[data-testid="error-toast"]').getBoundingClientRect();
     const floor = [...document.querySelectorAll('[data-testid=composer],[data-testid=mobile-tabs]')].find(el => el.getClientRects().length > 0)?.getBoundingClientRect();
     return r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight && (!floor || r.bottom <= floor.top + 1);})()`)).toBe(true);
