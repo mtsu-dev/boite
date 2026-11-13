@@ -11,7 +11,7 @@
   import { separator, type MenuItem } from '../lib/menu';
   import { closeTabs } from '../lib/panel-close';
   import { innerWidth } from 'svelte/reactivity/window';
-  import { clampPanel, panelSibling, rightPanel } from '../lib/right-panel.svelte';
+  import { clampPanel, panelOverChat, panelSibling, rightPanel } from '../lib/right-panel.svelte';
   import type { BoundPanel, Surface, SurfaceKind } from '../lib/right-panel.svelte';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
@@ -69,6 +69,8 @@
    * stored for when the room comes back.
    */
   const docked = $derived(clampPanel(rightPanel.width, innerWidth.current ?? window.innerWidth, panelSibling(store, innerWidth.current ?? window.innerWidth)));
+  /** Too little room for the chat beside the list and a column: the panel lies over the chat instead. */
+  const over = $derived(panelOverChat(innerWidth.current ?? window.innerWidth, panelSibling(store, innerWidth.current ?? window.innerWidth)));
 
   let tabs = $state<HTMLDivElement | undefined>(undefined);
   let root = $state<HTMLElement | undefined>(undefined);
@@ -367,6 +369,7 @@
 <button
   type="button"
   class="sheet-scrim"
+  class:over
   class:floating={rightPanel.floating}
   class:closing
   aria-label={strings.common.close}
@@ -375,6 +378,7 @@
 
 <aside
   class="panel framed"
+  class:over
   class:maximized={rightPanel.maximized}
   class:floating={rightPanel.floating}
   class:dragging
@@ -393,7 +397,7 @@
     if (!root?.contains(event.relatedTarget as Node | null)) near = false;
   }}
 >
-  {#if !rightPanel.floating}<PanelResizeHandle {store} bind:dragging />{/if}
+  {#if !rightPanel.floating && !over}<PanelResizeHandle {store} bind:dragging />{/if}
 
   <header class="strip" data-panel-move data-testid="panel-titlebar">
     {#if rightPanel.floating}
@@ -765,46 +769,44 @@
     display: none;
   }
 
-  /* Under 981 px the panel stops being a column and lies over the chat. */
-  @media (max-width: 980px) {
-    .panel,
-    .panel.maximized {
-      position: absolute;
-      right: var(--frame-gap);
-      top: 0;
-      bottom: var(--frame-gap);
-      z-index: 30;
-      width: min(42vw, 448px);
-      min-width: 320px;
-      flex: none;
-      box-shadow: var(--shadow-overlay);
-      /* Over the chat it takes no room: it slides across from the right edge. */
-      --slide-room: calc(100% + var(--frame-gap));
-      animation: slide-over-left var(--motion-duration) var(--motion-curve);
-    }
+  /* Too little room (`panelOverChat`): the panel lies over the chat; `:where` lets the phone rules win. */
+  .panel:where(.over),
+  .panel.maximized:where(.over) {
+    position: absolute;
+    right: var(--frame-gap);
+    top: 0;
+    bottom: var(--frame-gap);
+    z-index: 30;
+    width: min(42vw, 448px);
+    min-width: 320px;
+    flex: none;
+    box-shadow: var(--shadow-overlay);
+    /* Over the chat it takes no room: it slides across from the right edge. */
+    --slide-room: calc(100% + var(--frame-gap));
+    animation: slide-over-left var(--motion-duration) var(--motion-curve);
+  }
 
-    .panel.closing,
-    .panel.maximized.closing {
-      animation: slide-over-right-out var(--motion-duration) var(--motion-curve);
-    }
+  .panel.closing:where(.over),
+  .panel.maximized.closing:where(.over) {
+    animation: slide-over-right-out var(--motion-duration) var(--motion-curve);
+  }
 
-    .sheet-scrim {
-      display: block;
-      position: absolute;
-      inset: 0;
-      z-index: 29;
-      height: auto;
-      padding: 0;
-      border: none;
-      border-radius: 0;
-      background: var(--color-scrim);
-      animation: fade var(--motion-duration) var(--motion-curve);
-    }
+  .sheet-scrim:where(.over) {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 29;
+    height: auto;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: var(--color-scrim);
+    animation: fade var(--motion-duration) var(--motion-curve);
+  }
 
-    .sheet-scrim.closing {
-      animation: fade-out var(--motion-duration) var(--motion-curve);
-      pointer-events: none;
-    }
+  .sheet-scrim.closing:where(.over) {
+    animation: fade-out var(--motion-duration) var(--motion-curve);
+    pointer-events: none;
   }
 
   @media (max-width: 720px) {

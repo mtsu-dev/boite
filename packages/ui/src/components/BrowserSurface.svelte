@@ -6,7 +6,7 @@
   import { browserProfiles } from '../lib/browser-profiles.svelte';
   import { separator, type MenuItem } from '../lib/menu';
   import Menu from './Menu.svelte';
-  import { rightPanel } from '../lib/right-panel.svelte';
+  import { panelOverChat, panelSibling, rightPanel } from '../lib/right-panel.svelte';
   import { browserBridge, normalizeUrl } from '../lib/browser-bridge';
   import { policySearch } from '../lib/policy';
   import { linuxShell } from '../lib/shell-platform';
@@ -86,7 +86,7 @@
               ...event.selection, id: secureId(), surfaceId
             });
             notice = added ? previewStrings.added : '';
-            if (added && window.innerWidth <= 980) panel.toggle();
+            if (added && panelOverChat(window.innerWidth, panelSibling(store, window.innerWidth))) panel.toggle();
           } catch { notice = previewStrings.failed; }
         }
       } else if (event.type === 'selection-failed' && event.requestId === request) {
