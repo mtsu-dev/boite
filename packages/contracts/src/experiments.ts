@@ -84,15 +84,16 @@ export function stageRuns(stage: FeatureStage, kind: BuildKind): boolean {
 export const BUILD_KIND_NAMES: Record<BuildKind, string> = { release: 'Release', nightly: 'Nightly', dev: 'Dev' };
 
 /**
- * What a refusal says after the feature's name: its tag ("runs in Dev builds
- * only"; a Dev build has the nightly features too, and the tag is the build to
- * ask for), the build this one is and the way to one that has it.
+ * What a refusal says after the feature's name: the builds that have it
+ * ("runs in Nightly and Dev builds only", "runs in Dev builds only"), the
+ * build this one is and the way to one that has it.
  */
 function refusalTail(stage: FeatureStage, version: string | null | undefined): string {
   const kind = buildKindOf(version);
   const article = kind === 'release' ? 'a Release' : `a ${BUILD_KIND_NAMES[kind]}`;
   const way = stage === 'nightly' ? 'switch the update channel to Nightly in Settings > Updates to try it' : 'it is still being built and no published build has it';
-  return `runs in ${BUILD_KIND_NAMES[stage]} builds only, and this machine runs ${article} (${version || 'unknown version'}): ${way}`;
+  const builds = BUILD_KINDS.filter((each) => stageRuns(stage, each)).map((each) => BUILD_KIND_NAMES[each]).join(' and ');
+  return `runs in ${builds} builds only, and this machine runs ${article} (${version || 'unknown version'}): ${way}`;
 }
 
 /*

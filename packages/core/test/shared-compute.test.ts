@@ -836,7 +836,7 @@ test('a Release host admits no job and no follow-up a contact\'s Nightly sends, 
     expect(children()).toBe(1);
     // The host's next build is a Release: the listener still runs, the gate is in the peer handlers.
     (b.h.core as { version: string }).version = '2.0.0';
-    const refusal = 'experiment.contacts runs in Nightly builds only, and this machine runs a Release (2.0.0)';
+    const refusal = 'experiment.contacts runs in Nightly and Dev builds only, and this machine runs a Release (2.0.0)';
     const peer = a.h.core.contacts.peers().find(p => p.coreId === b.coreId)!;
     const request = a.h.core.coordination.request.bind(a.h.core.coordination);
     const sent: Array<{method: string; error: string | null}> = [];

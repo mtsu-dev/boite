@@ -76,7 +76,7 @@ test('a dev feature exists in a Dev build only, a nightly one in a Nightly and a
   expect(listedExperiments(RELEASE, stages)).not.toContain('teams');
   expect(experimentRefusal('teams', NIGHTLY, stages)).toBeNull();
   expect(experimentRefusal('teams', DEV, stages)).toBeNull();
-  expect(experimentRefusal('teams', RELEASE, stages)).toBe(`experiment.teams runs in Nightly builds only, and this machine runs a Release (${RELEASE}): switch the update channel to Nightly in Settings > Updates to try it`);
+  expect(experimentRefusal('teams', RELEASE, stages)).toBe(`experiment.teams runs in Nightly and Dev builds only, and this machine runs a Release (${RELEASE}): switch the update channel to Nightly in Settings > Updates to try it`);
 
   // A stored choice for a feature the build lacks is ignored, and still there for the build that has it.
   const chosen = ['whip', 'teams'];
@@ -122,7 +122,7 @@ test('a Release core runs no experiment an app reports, refuses the card for one
   expect(read.settings.filter(setting => setting.key.startsWith('experiment.'))).toEqual([]);
 
   const asked = await owner.call('settings.request', { threadId, reason: 'Try the whip', key: 'experiment.whip', value: true }).catch((error: Error) => error.message);
-  expect(asked).toContain('experiment.whip runs in Nightly builds only, and this machine runs a Release (2.0.0)');
+  expect(asked).toContain('experiment.whip runs in Nightly and Dev builds only, and this machine runs a Release (2.0.0)');
   expect(asked).toContain('Settings > Updates');
   expect(await owner.call('settings.request', { threadId, reason: 'x', key: 'experiment.resident-agents', value: true }).catch((error: Error) => error.message)).toContain('no longer an experiment');
   expect(await owner.call('settings.request', { threadId, reason: 'x', key: 'deviceStream', value: true }).catch((error: Error) => error.message)).toContain('deviceStream is an experiment');
@@ -166,7 +166,7 @@ test('a Release reads the experimental settings as off, refuses to turn one on, 
   owner = await release.connect();
   expect(await owner.call('settings.get', {})).toMatchObject({ deviceStream: false, backgroundCompaction: false, cacheKeepalive: null });
   expect(release.core.settings.get().deviceStream).toBe(false);
-  expect(await owner.call('settings.set', { deviceStream: true }).catch((error: Error) => error.message)).toContain('deviceStream is an experiment: it runs in Nightly builds only, and this machine runs a Release (2.0.0)');
+  expect(await owner.call('settings.set', { deviceStream: true }).catch((error: Error) => error.message)).toContain('deviceStream is an experiment: it runs in Nightly and Dev builds only, and this machine runs a Release (2.0.0)');
   // An ordinary setting still saves, and an experiment sent as off is not refused: it is left as stored.
   expect(await owner.call('settings.set', { shortAnswers: true, deviceStream: false })).toMatchObject({ shortAnswers: true, deviceStream: false });
   expect(release.core.settings.stored().deviceStream).toBe(true);
@@ -233,7 +233,7 @@ test('a Release that saves a compaction limit, or the values it reads, leaves ev
 test('a Release core refuses the Contacts calls that start something and still reads and removes what exists', async () => {
   const release = await core(RELEASE);
   const owner = await release.connect();
-  const refusal = 'experiment.contacts runs in Nightly builds only, and this machine runs a Release (2.0.0)';
+  const refusal = 'experiment.contacts runs in Nightly and Dev builds only, and this machine runs a Release (2.0.0)';
   expect(await owner.call('contacts.invite', {}).then(() => 'accepted', (error: Error) => error.message)).toContain(refusal);
   expect(await owner.call('contacts.join', { link: 'boite://contact/none' }).then(() => 'accepted', (error: Error) => error.message)).toContain(refusal);
   expect(await owner.call('contacts.grant', { coreId: 'none', projectId: 'none' as never }).then(() => 'accepted', (error: Error) => error.message)).toContain(refusal);
