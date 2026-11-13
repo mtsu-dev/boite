@@ -46,10 +46,10 @@ tray. Otherwise it tries again at the next check. It does not touch agents.
 4. Press Restart, then confirm. Boite comes back on the other channel.
 
 Going back from Nightly to Release is allowed even when the version number is
-lower. Both channels keep the same conversations, accounts and settings. When a
-nightly has changed how Boite stores its data and the release cannot read it
-yet, the card says so and installs nothing: Boite stays on the nightly and
-offers the first release that can read it.
+lower. Both channels keep the same conversations, accounts and settings. When
+the other channel's newest build cannot read your data yet, or does not say
+whether it can, the card says so and installs nothing: Boite stays where it is
+and offers the first build of that channel that can read it.
 
 ### Limits
 

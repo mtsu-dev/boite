@@ -191,8 +191,10 @@ Each `latest.json` carries `journal_schema`, the `SCHEMA_VERSION` of
 reads; the shell's `build.rs` compiles the same line in. A release whose schema
 is lower answers the check with the `blocked` phase: the card names it and
 offers nothing, and it is not reported to other machines. A manifest without
-the field counts as schema 50, what v0.1.0 writes. The channel stays chosen, so
-the first release that reads the data is offered by the next check.
+the field is trusted only for v0.1.0, which writes schema 50; nightlies before
+the field wrote 49 or 50, so one of them is never offered to data of schema 50.
+The channel stays chosen, so the first release that reads the data is offered
+by the next check.
 
 Keep a backup before trying nightlies: the check covers the journal, not every
 file a nightly may write. Boite refuses a journal schema it
