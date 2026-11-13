@@ -13,6 +13,7 @@ import {
   ZOOM_DEFAULT,
   ZOOM_STEPS,
   clampPanel,
+  panelOverChat,
   stepZoom
 } from './right-panel.svelte';
 
@@ -441,6 +442,13 @@ describe('the right panel', () => {
     expect(clampPanel(2000, 900, 280)).toBe(PANEL_MIN);
     expect(clampPanel(10, 1400, 280)).toBe(PANEL_MIN);
     expect(clampPanel(400, 1400, 280)).toBe(400);
+    // Where the floor would crush the chat, the panel lies over it and the thread list stays.
+    expect(panelOverChat(1440, 300)).toBe(false);
+    expect(panelOverChat(1100, 300)).toBe(false);
+    expect(panelOverChat(1024, 440)).toBe(true);
+    expect(panelOverChat(1024, 312 + 240)).toBe(true);
+    expect(panelOverChat(1600, 0)).toBe(false);
+    expect(panelOverChat(980, 0)).toBe(true);
   });
 
   test('the zoom walks the ladder and stops at both ends', () => {

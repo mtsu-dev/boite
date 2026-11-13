@@ -209,6 +209,18 @@ export function panelSibling(layout: { sidebarCollapsed: boolean; sidebarWidth: 
   return (layout.sidebarCollapsed ? 0 : layout.sidebarWidth) + (contactsRail.shown(layout) ? CONTACTS_RAIL_WIDTH : 0);
 }
 
+/** The app rail and the frame gaps between the columns, measured on a desktop window. */
+const DESK_CHROME = 116;
+
+/**
+ * Whether the panel lies over the chat instead of taking a column: always
+ * under 981 px, and above that when the thread list and the contacts column
+ * leave the chat under its minimum beside the narrowest panel.
+ */
+export function panelOverChat(viewport: number, sibling: number): boolean {
+  return viewport <= 980 || viewport - sibling - DESK_CHROME - PANEL_MIN < SIBLING_MIN;
+}
+
 export function clampPanel(width: number, viewport: number, sibling: number): number {
   const room = Math.max(viewport - sibling - SIBLING_MIN, PANEL_MIN);
   const max = Math.max(PANEL_MIN, Math.min(Math.round(viewport * 0.7), room));
