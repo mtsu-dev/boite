@@ -97,8 +97,8 @@ test('thread metadata, message identity and expandable trace fit a narrow panel'
   expect(await page.evaluate(`document.querySelector('${id('usage-pill')}') === null`)).toBe(true);
   expect(await page.evaluate(`Array.from(document.querySelectorAll('.metadata')).every(e => !e.textContent.includes('No PR') && !e.textContent.includes('My computer') && !e.textContent.includes('Builder'))`)).toBe(true);
   // A row's pull request is an underlined link on the line under its title, beside the row's button and never inside it,
-  // named for screen readers and written as its number.
-  expect(await page.evaluate(`Array.from(document.querySelectorAll('${id('thread-pr')}')).every(e => e.matches('a[href]') && !e.closest('button') && !!e.closest('.thread ${id('thread-where')}') && !!e.getAttribute('aria-label') && /^#\\d+$/.test(e.textContent.trim()) && getComputedStyle(e).textDecorationLine.includes('underline'))`)).toBe(true);
+  // named for screen readers and written as its number. Its machine is named once by the project's card, never by the row.
+  expect(await page.evaluate(`Array.from(document.querySelectorAll('${id('thread-pr')}')).every(e => !e.closest('.thread').querySelector('.machine, .machine-place') && e.matches('a[href]') && !e.closest('button') && !!e.closest('.thread ${id('thread-where')}') && !!e.getAttribute('aria-label') && /^#\\d+$/.test(e.textContent.trim()) && getComputedStyle(e).textDecorationLine.includes('underline'))`)).toBe(true);
   await page.evaluate(`window.__openedPr = null; window.open = (url) => { window.__openedPr = url; return null; }`);
   const prNumber = (await page.text(id('thread-pr'))).trim().slice(1);
   await page.click(id('thread-pr'));
@@ -311,12 +311,14 @@ test('PR links appear during work without remounting and disappear after a move 
   await page.click(`${id('sidebar')} section${id('project')}[data-project-id="p-boite"] ${id('project-more')}`);
   await page.waitFor(`Array.from(document.querySelectorAll('${id('thread-row')}')).filter(row => row.textContent.includes('shared-folder conversation')).length === 2`);
   const sharedRowsHaveNoPr = `Array.from(document.querySelectorAll('${id('thread-row')}')).filter(row => row.textContent.includes('shared-folder conversation')).every(row => !row.closest('.thread').querySelector('${id('thread-pr')}'))`;
-  // A row's place line shows its pull request at rest, the thread's branch after it at the line's end.
+  // A row's place line shows its pull request at rest, the thread's live branch after it at the line's end.
   const prBeforeBranch = (scope: string) => page.evaluate<boolean>(`(() => {
     const links = Array.from(document.querySelectorAll('${scope} ${id('thread-pr')}'));
     return links.length > 0 && links.every(pr => {
       const branch = pr.nextElementSibling;
-      return pr.getBoundingClientRect().width > 0 && !!branch?.matches('${id('thread-branch')}') && pr.getBoundingClientRect().right < branch.getBoundingClientRect().left;
+      const live = globalThis.__boiteTest.workspace.active.threads.find(thread => thread.id === pr.closest('.thread').querySelector('[data-thread-id]').dataset.threadId)?.branch;
+      return pr.getBoundingClientRect().width > 0 && !!branch?.matches('${id('thread-branch')}') && pr.getBoundingClientRect().right < branch.getBoundingClientRect().left
+        && !!live && branch.title === live;
     });
   })()`);
   expect(await page.evaluate(sharedRowsHaveNoPr)).toBe(true);
