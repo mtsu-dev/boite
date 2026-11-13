@@ -260,7 +260,7 @@ minutes per pass. A worktree qualifies when all of these hold:
   dependencies and build output leave with the folder.
 - HEAD is on another local branch or remote-tracking ref, or a merged, non-fork
   GitHub pull request has that exact commit as its head. The proof is the one
-  [merged pull request archives](#merged-pull-request-archives) use, so a squash
+  [merged pull requests](#merged-pull-requests) use, so a squash
   or rebase merge counts. A worktree no thread stands in is asked for by branch
   name only.
 
@@ -281,8 +281,8 @@ the thread can be read but a turn is refused because the folder is gone. The
 field disappears once the thread moves to another folder.
 
 Owners turn this off per project through `projects.setAutoRemoveWorktrees`
-(owner only), shown as Remove settled worktrees beside Hide merged PR
-conversations in the grouping menu and in Manage project. `Project.autoRemoveWorktrees`
+(owner only), shown as Remove settled worktrees beside Ask to finish
+after merge in the grouping menu and in Manage project. `Project.autoRemoveWorktrees`
 is true unless turned off; a core older than this feature does not send it and
 the clients hide the switch. Turning it off stops later removals only.
 
@@ -332,13 +332,13 @@ with `onlyIfIdle: true` refuses pending work in the conversation's
 family before changing it, and its refusal names what is pending and in which
 child. Unsent drafts and paused input queues never block Mark done or manual
 deletion. Reported input and clients
-that cannot read their drafts still protect automatic expiry and merged-PR archives.
+that cannot read their drafts still protect automatic expiry and merged-PR questions.
 A paused workflow run holds expiry but not Mark done,
 which stops it as archiving does. Done reads archived summaries only on expansion,
 respecting the project and machine filters. A completed conversation opens for
 reading with a Move to Recent button in place of the composer. Reopening keeps
-history without restarting work. Mark done records its own date; automatic archives
-after a merged PR do the same. Settings > General > Archived threads controls the
+history without restarting work. Mark done records its own date; `boite thread done`
+and the merged-PR archives of older cores do the same. Settings > General > Archived threads controls the
 delay before deletion, 3 days by default, or 0 to disable it. Restoring clears the
 date, and marking done again starts a new delay. Manual and older archives without
 a done date stay retained. Expiry runs at startup and once per minute, skips
@@ -444,67 +444,99 @@ the window closes, so its turns and its reachability never hold the app open
 quitting. The warning distinguishes resident engines, which keep working, from
 engines configured to stop with the shell.
 
-### Merged pull request archives
+### Merged pull requests
 
 Projects default to `autoArchiveMergedPr: true`; the owner changes it through
-`projects.setAutoArchiveMergedPr`. The core can automatically archive a
-root conversation only for a clean linked worktree and a uniquely identified,
-merged, non-fork PR from the same repository with the exact branch tip. The
-proof takes the checkout's current branch from `git status`, not the thread's
-recorded starting branch. The repository's cached fetch remotes identify origin,
-then explicitly linked URLs are read directly with `gh pr view`, even when they
-are absent from the repository's page. Every linked PR is checked before accepting
-a merge: another open linked PR keeps the conversation visible. A linked merge
-needs the exact tip but may have another head name, because agents often push
-`HEAD:fix/...`.
+`projects.setAutoArchiveMergedPr`. The names stay for clients of other
+versions, but the core no longer archives anything: once every pull request of
+a root conversation is merged or closed, `MergedPrAsk` (`merged-pr-ask.ts`)
+starts one turn that asks its agent whether the conversation is done. The
+agent answers with `boite thread done` (`agent.done`, which applies when that
+turn ends) or keeps it open. An agent often still has something to say after a
+merge, so the decision stays with it.
+
+The question needs a clean linked worktree and a uniquely identified, merged,
+non-fork PR from the same repository with the exact branch tip. The proof takes
+the checkout's current branch from `git status`, not the thread's recorded
+starting branch. The repository's cached fetch remotes identify origin, then
+explicitly linked URLs are read directly with `gh pr view`, even when they are
+absent from the repository's page. Every linked PR is checked before accepting
+a merge: another open linked PR holds the question, and so does a link to
+another repository whose last read state is open. A linked merge needs the
+exact tip but may have another head name, because agents often push
+`HEAD:fix/...`. The same proof (`proveMerged`) lets the
+[settled worktree cleanup](#settled-worktree-cleanup) remove a branch, so it
+accepts no closed PR. A conversation whose linked PRs are all closed, none
+merged, is asked from their stored states instead, without a checkout proof.
 
 Without a linked proof, the repository's page, its 100 PRs updated last, is
 shared with sidebar discovery; only that read counts as evidence, never what
-earlier pages taught. Its branch needs exactly one local PR; unrelated fork branches do not
-count. A full page requires a branch-specific query and a complete result before
-archiving. `git status` runs only when a merged PR could match. A negative proof
-retries after one minute even when the thread has not changed, so an external
-merge is detected without further conversation activity.
-The grouping menu in both views exposes this project policy as Hide merged PR
-conversations and names the project it affects. In Recent it follows the project
-filter, or the current project when all projects are shown. Disabling reveals
-that project's automatically hidden conversations immediately, preserves manual
-archives and permits hiding them again when the policy is enabled.
-A shared checkout, reused branch history, ambiguous root holder, dirty tree or
-failed Git/GitHub read leaves the conversation visible.
+earlier pages taught. Its branch needs exactly one local PR; unrelated fork
+branches do not count. A full page requires a branch-specific query and a
+complete result. `git status` runs only when a merged PR could match. A
+negative proof retries after one minute even when the thread has not changed,
+so an external merge is detected without further conversation activity. A
+shared checkout, reused branch history, ambiguous root holder, dirty tree or
+failed Git/GitHub read asks nothing.
 
-When a badge read or linked-PR watch detects a merge, that conversation is checked
-directly, without the startup grace, settling delay or periodic history scan.
-Failed detected proofs suppress repeated reads for a minute, independently of the
-scan. A thread update or changed PR links permit an earlier retry. A failed read
-of one conversation leaves it visible and does not stop other detected merges.
-It moves to Done even while viewed, unread or finishing its current prompt.
-The prompt and its processes keep running, its final answer is retained, and the
-Done row shows its live state until it finishes. Pinned threads remain visible,
-as do threads with protected client input, terminals, queued turns,
-pending cards or messages, unfinished goals or loops, and active, paused or undelivered
-workflows. Completed workflow and delegated children can remain as history:
-every retained child, including an archived child, must be idle with a completed
-turn and be free of the same activity and input protections. Undelivered or
-uncertain family results keep the parent visible. Fresh repository and family
-state checks precede the archive transaction. A late child turn or wake cannot
-start under an archived parent; Restore admits new work again without changing
-the children's existing archive flags. A fallback history scan catches merges
-no surface has read. It starts after a 90-second startup grace and repeats at
-60-second intervals after completion, scanning at most 128 rows and admitting
-eight idle candidates within a 30-second budget for proof and validation.
+The grouping menu in both views exposes this project policy as Ask to finish
+after merge and names the project it affects. In Recent it follows the project
+filter, or the current project when all projects are shown. Disabling stops
+future questions and reveals the conversations older cores hid after a merge
+(`archiveReason.type === 'pr-merged'`); manual archives stay.
 
-Automatic archive changes visibility and records its reason; it does not stop
-work or remove a worktree or branch. An hour later the
-[settled worktree cleanup](#settled-worktree-cleanup) can remove both. Restore dismisses the exact PR and protects
-that restored checkout from another automatic archive, including after restart.
+When a badge read or linked-PR watch detects a merge, that conversation is
+checked directly, without the startup grace, settling delay or periodic history
+scan. Failed detected proofs suppress repeated reads for a minute,
+independently of the scan. A thread update or changed PR links permit an
+earlier retry. A merge seen while the conversation is busy, usually its agent
+merging its own PR, is checked again `settleMs` (60 seconds) after that turn
+ends, which leaves the user time to answer first. The question needs an idle
+conversation whose last turn completed, viewed or unread, with no pin,
+protected client input, waiting `agent.done`, terminals, queued turns, pending cards or
+messages, unfinished goals or loops, or active, paused or undelivered
+workflow. Completed workflow and delegated children can remain as history:
+every retained child, including an archived child, must be idle with a
+completed turn and be free of the same activity and input protections.
+Undelivered or uncertain family results hold the question. A fallback history
+scan catches merges no surface has read. It starts after a 90-second startup
+grace and repeats at 60-second intervals after completion, scanning at most 128
+rows and admitting eight idle candidates within a 30-second budget for proof and
+validation.
+
+A question costs a full turn, so it goes only while the provider's prompt cache
+still holds the conversation for the thread's current model and account
+(`thread.promptCache`, `warmForQuestion`), or
+within an hour of the last turn when the provider reports no cache. A colder
+conversation is left as it is: nobody pays to reread an old history for this.
+Each PR URL is asked about once (`asked` in `merged-pr-archive:<id>`). Restore
+of a conversation the agent put in Done dismisses its PRs, so it is not asked
+again for the same work. A pull request watch whose wake reports a merge or a
+close of the last open PR carries the same question (`WATCH_DONE_HINT`) in that
+wake and marks those PRs asked, so the conversation gets one turn, not two:
+while a watch holds a close it has not told, the sweep and detections wait for
+that wake. The hint follows the same ask-once and restore rules. A
+merge made by the agent's own account wakes no watch: the sweep asks then.
+
+`agent.done` (`threads/agent-done.ts`) puts only the caller's own top-level
+conversation in Done; bots' threads and sub-threads are refused. While a turn
+runs the request waits in memory and the turn runner applies it after the turn
+end is written, before any wake starts another turn. It goes through the same
+`assertIdleFamily` guard as Mark done, and also refuses while a device reports
+unsent input, since a client drops that input with the thread. A refusal at
+turn end leaves a system line naming the reason; a core restart drops the
+request and the thread stays open. Done stops the warm process and the
+thread's background resources like any archive; the worktree and branch stay
+until the [settled worktree cleanup](#settled-worktree-cleanup) removes them.
+
 Connected clients publish protected drafts and pending input through
 `threads.focus`. A focus caller that has never reported input protection blocks
-automatic archive until it reports protection or disconnects. This keeps older
-connected UIs from clearing parked input on an archive event; disconnected
-clients cannot report their input. The current UI retains unsent composer input,
-paused queues, preview undo and unsaved panel drafts on automatic archive.
-Manual archive and deletion keep their explicit clearing behavior.
+the question and `agent.done` until it reports protection or disconnects. This
+keeps older connected UIs from clearing parked input on an archive event;
+disconnected clients cannot report their input. The current UI retains unsent
+composer input, paused queues, preview undo and unsaved panel drafts when an
+older core's merged-PR archive arrives. Manual archive and deletion keep their
+explicit clearing behavior.
 
 ### Moving a thread
 
@@ -573,7 +605,7 @@ are spent. See [context](context.md#side-questions) for provider support.
 
 Side questions run without tools against a conversation snapshot and stay
 temporary. Pending requests and retained answers protect the root and retained
-descendants from automatic merged-PR archive; completed answers expire after 10
+descendants from the merged-PR question; completed answers expire after 10
 minutes and the core retains at most 64. Manual family archive cancels pending
 requests and ignores late results. Pending inference also blocks idle updater
 shutdown.
@@ -1095,7 +1127,7 @@ on `--motion-duration` and `--motion-curve`: the terminal grows its slot, the pa
 the sidebar slide in from their window edge behind a negative margin that
 shrinks to zero. The chat gives way over the whole movement instead of jumping
 in one frame. The panel and the sidebar keep their final size while they
-slide, so nothing inside them rewraps. Over the chat, under 981 px, the panel moves by a transform; floating,
+slide, so nothing inside them rewraps. Over the chat (under 981 px, or with too little room beside the list), the panel moves by a transform; floating,
 it only fades out. A panel tab opened or picked after the panel is in fades
 its surface in. Captures and pointer aims wait on `page.settleAnimations()`
 from `tests/e2e/lib/cdp.ts`, which leaves out animations inside a folded

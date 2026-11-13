@@ -4,6 +4,7 @@ import { startAutoGoal, startsAutoGoal } from './activity';
 import { createFakeThread, publishFakeThread } from './create-thread';
 import { trustContactMail } from './contact-hold';
 import { dismissMergedPr } from './merged-pr-archive';
+import { agentDoneMethods } from './agent-done';
 import { assertIdleFamily } from './completion';
 import { isThreadTerminal, protectedThreadIdsError, threadActive } from '@boite/contracts';
 /** Threads and their messages: create, read, select, archive, and the turn entry points. */
@@ -218,8 +219,9 @@ function pagingReply<T>(result: T): T {
  */
 export async function putAway(ctx: FakeContext, thread: Thread): Promise<void> {
   cancelSide(ctx, thread.id);
-  // A waiting move goes with the thread, before its turn ends and would apply it.
+  // A waiting move or Done goes with the thread, before its turn ends and would apply it.
   dropWaitingMove(ctx, thread);
+  ctx.waitingDone.delete(thread.id);
   await ctx.stopTurn(thread.id);
   for (const [questionId, pending] of [...ctx.pendingQuestions]) {
     if (pending.request.threadId !== thread.id) continue;
@@ -318,7 +320,7 @@ export async function deleteExpiredDoneThreads(ctx: FakeContext, remove: (id: st
 export function threadMethods(ctx: FakeContext) {
   const creations = new Map<string, { key: string; created: Promise<string> }>();
   const removing = new Set<string>();
-  return {
+  const methods = {
     ...sideQuestionMethods(ctx, (source, messages) => writeFakeFork(ctx, source, messages)),
     'threads.list': async (params) => {
       return [...ctx.threads.values()]
@@ -843,5 +845,9 @@ export function threadMethods(ctx: FakeContext) {
       };
       return where;
     },
+    ...agentDoneMethods(ctx),
   } satisfies Partial<FakeMethods>;
+  // `agent.done` goes through the user's Mark done, as the core's does.
+  ctx.markDone = threadId => methods['threads.archive']({ threadId, archived: true, onlyIfIdle: true });
+  return methods;
 }

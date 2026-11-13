@@ -202,6 +202,8 @@ export class TurnRunner {
     // A move the agent asked for during the turn happens now that no process
     // works in the old folder, before any wake or held answer starts the next.
     await this.threads.moves.applyWaiting(threadId);
+    // Done the agent asked for during the turn, now that its answer is written. A move asked in the same turn went first.
+    this.threads.agentDone.applyWaiting(threadId);
     // A thread an agent started answers it before a failure pauses its coordination.
     await this.threads.spawns.finished(finished);
     // A stopped turn pauses coordination until the user's next message. A failed one pauses nothing: another agent

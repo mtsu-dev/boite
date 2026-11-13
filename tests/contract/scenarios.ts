@@ -200,6 +200,19 @@ export const SCENARIOS: Record<string, Scenario> = {
     }
   },
   ...COUNCIL_SCENARIOS,
+  'agent.done refuses another thread, puts an idle one in Done and refuses it there': async (env) => {
+    const setup = await echo(env);
+    const own = await thread(env, setup, 'own');
+    const other = await thread(env, setup, 'other');
+    await finishedTurn(env, own.id);
+    // An agent reaches only its own thread. The fake's peer holds a copy of the threads, so the owner's connection does the rest.
+    const agent = await env.peer({ agentThreadId: own.id });
+    await refusedWith(agent.call('agent.done', { threadId: other.id }), RpcErrorCode.Refused);
+    same(await env.call('agent.done', { threadId: own.id }), { threadId: own.id, when: 'done' }, 'an idle thread');
+    await until('the thread in Done', async () => { const row = await summary(env, own.id); return row.archived && typeof row.doneAt === 'number'; });
+    same((await summary(env, other.id)).archived, false, 'the other thread');
+    same((await refusedWith(env.call('agent.done', { threadId: own.id }), RpcErrorCode.Refused, ['field']))['field'], 'threadId', 'a thread already in Done');
+  },
   'artifacts.viewBlock reuses HTML and refuses empty or oversized UTF-8 input': async (env) => {
     const html = '<p>Shared view</p>';
     const { url } = await env.call('artifacts.viewBlock', { html });
