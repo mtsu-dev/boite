@@ -36,6 +36,12 @@ export const fr: Translation = {
     search: 'Rechercher un réglage',
     searchEmpty: 'Aucun réglage ne correspond',
     connectProvider: 'Connecter un fournisseur',
+    /** The state line under a tile of the desktop's Settings home. */
+    providersReady: '{count} connectés',
+    providersOne: '1 connecté',
+    machinesCount: '{count} machines',
+    devicesCount: '{count} appareils appairés',
+    devicesOne: '1 appareil appairé',
     conversations: 'Fils',
     threadList: 'Liste des fils',
     inConversation: 'Dans le fil',

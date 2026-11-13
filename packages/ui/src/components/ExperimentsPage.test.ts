@@ -136,9 +136,9 @@ test('on a Release no experiment is on though storage holds it, Settings has no 
   expect(isExperimentEnabled('whip')).toBe(false);
   expect(isExperimentEnabled('teams')).toBe(false);
   expect(experimentsShown()).toBe(false);
-  // The tab is absent from the nav, desktop and phone, and a route to it lands on the first page.
+  // The tab is absent from the nav, desktop and phone, and a route to it lands on Home.
   expect(navOf('advanced', true)).not.toContain('experiments');
-  expect(desktopPage('experiments', true)).toBe('general');
+  expect(desktopPage('experiments', true)).toBe('home');
   expect(phonePage('experiments', null, true)).toBe('home');
   setExperiment('debates', true);
   setExperiment('whip', false);

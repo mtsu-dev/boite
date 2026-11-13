@@ -162,14 +162,23 @@ export function desktopSettings(phoneWidth: boolean): boolean {
 }
 
 /**
- * The page a desktop shows for a route: the view it is a section of, or
- * General for Home and wherever this window may not go. A desktop has two
- * levels, the nav and a page: its home is the nav's search over the first page.
+ * The page a desktop shows for a route: the view it is a section of, or Home
+ * (`SettingsHome.svelte`, one tile per page) for Home itself and wherever this
+ * window may not go.
  */
 export function desktopPage(tab: SettingsTab, owner: boolean): SettingsTab {
-  // A route to a page this window lacks (an owner page, Experiments on a Release) lands on the first page.
-  const view = pageAvailable(tab, owner) ? viewOf(tab, owner) : 'home';
-  return view === 'home' ? 'general' : view;
+  // A route to a page this window lacks (an owner page, Experiments on a Release) lands on Home.
+  return pageAvailable(tab, owner) ? viewOf(tab, owner) : 'home';
+}
+
+/**
+ * What Home lists in a family: every page this window may open, the ones
+ * merged into another included (Memory and processes, the task manager), since
+ * the nav names only their host and a tile is where their own name is found.
+ */
+export function homeOf(family: SettingsFamily, owner: boolean): SettingsTab[] {
+  const pages: readonly SettingsTab[] = SETTINGS_FAMILIES.find((one) => one.id === family)?.pages ?? [];
+  return pages.filter((tab) => pageAvailable(tab, owner));
 }
 
 /** The page a phone shows for a route: a whole page, one card's page, or Home. */

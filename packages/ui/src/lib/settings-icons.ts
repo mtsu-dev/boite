@@ -1,4 +1,4 @@
-import { Activity, Archive, Brain, ChartColumn, Cpu, FlaskConical, Gauge, GitBranch, Globe, KeyRound, Keyboard, MessagesSquare, Mic, Monitor, Palette, Puzzle, SlidersHorizontal, Smartphone, Stethoscope, Wrench } from '@lucide/svelte';
+import { Activity, Archive, Brain, ChartColumn, Cpu, FlaskConical, Gauge, GitBranch, Globe, House, KeyRound, Keyboard, MessagesSquare, Mic, Monitor, Palette, Puzzle, SlidersHorizontal, Smartphone, Stethoscope, Wrench } from '@lucide/svelte';
 import type { SettingsTab } from './settings-tabs';
 
 /**
@@ -6,7 +6,8 @@ import type { SettingsTab } from './settings-tabs';
  * alike (a list of words alone was slow to scan). One family, one
  * size and one stroke where they are drawn (`SETTINGS_ICON_SIZE`).
  */
-export const SETTINGS_ICONS: Record<Exclude<SettingsTab, 'home'> | 'conversations' | 'phone' | 'archived' | 'worktrees', typeof Palette> = {
+export const SETTINGS_ICONS: Record<SettingsTab | 'conversations' | 'phone' | 'archived' | 'worktrees', typeof Palette> = {
+  home: House,
   general: SlidersHorizontal,
   appearance: Palette,
   keyboard: Keyboard,
