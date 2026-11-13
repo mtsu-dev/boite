@@ -34,6 +34,14 @@ export const fr: Translation = {
     archive: 'Archiver cette conversation',
     themeDark: 'Thème : sombre',
     themeLight: 'Thème : clair',
-    themeSystem: 'Thème : système'
+    themeSystem: 'Thème : système',
+    oldPages: {
+      settings: 'général système avancé extensions expérimentations navigateur mises à jour general system advanced plugins experiments browser updates',
+      appearance: 'style langue look language',
+      providers: 'fournisseurs limites consommation quotas providers limits usage',
+      pair: 'machines',
+      taskManager: 'diagnostic ressources mémoire processus diagnostics resources',
+      archived: 'général conversations general'
+    }
   }
 };

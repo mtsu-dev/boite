@@ -63,7 +63,7 @@ export const strings = {
     paused: 'Paused: posts wait and reach the bots when the team resumes.',
     archived: 'This team is archived and takes no more posts.',
     /** In the composer's place when the core does not answer for the team: the Teams experiment off, or an older core. */
-    unavailable: 'Posting here needs the Teams experiment, in the desktop app under Settings, Experiments.',
+    unavailable: 'Posting here needs the Teams experiment, in the desktop app under Settings, Version, Experiments.',
     empty: 'No posts yet. Write to the whole team, or name a bot with {mention}.',
     earlier: 'Show earlier posts',
     newer: 'Show newer posts',

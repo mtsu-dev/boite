@@ -27,7 +27,7 @@ middle of a conversation without losing it.
 
 ## Default models
 
-Settings, Providers, Default models sets a model and effort per agent for new
+Settings, AI accounts, Providers, Default models sets a model and effort per agent for new
 threads, on this device. Existing threads keep their own choice. Without one,
 Claude starts on Opus 5.5 at high effort, Codex on GPT 6.1 Sol at medium and
 Grok on Grok 4.7 at high.

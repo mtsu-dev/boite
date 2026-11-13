@@ -4,7 +4,7 @@ export const fr: Translation = {
   plugins: {
     heading: 'Extensions',
     machine: 'Machine',
-    revealUnknownMachine: "Le fil ou le bot qu'une application demande d'afficher est sur une machine à laquelle cette fenêtre n'est pas connectée. Ajoutez-la dans Réglages, Machines et mises à jour.",
+    revealUnknownMachine: "Le fil ou le bot qu'une application demande d'afficher est sur une machine à laquelle cette fenêtre n'est pas connectée. Ajoutez-la dans Réglages, Appareils, Machines.",
     revealMachineOffline: "Le fil ou le bot qu'une application demande d'afficher est sur {machine}, qui n'est pas connectée pour l'instant.",
     intro: "Les extensions ajoutent des commandes d'agent, des compétences, des commandes slash, des apps et des passerelles. L'interrupteur d'une carte en désactive une sans la désinstaller ; l'engrenage ouvre ses réglages et ses détails. Un programme téléchargé est vérifié contre le SHA-256 publié par son manifeste.",
     installedHeading: 'Installées',

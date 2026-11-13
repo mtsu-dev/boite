@@ -38,7 +38,7 @@ export const fr: Translation = {
     over: 'Le council est terminé : le salon n’accepte plus de messages.',
     loading: 'Chargement du council',
     missing: 'Ce council n’existe plus.',
-    unavailable: 'Pour suivre un council, activez l’expérience Council dans l’application de bureau, sous Paramètres, Expériences.',
+    unavailable: 'Pour suivre un council, activez l’expérience Council dans l’application de bureau, sous Réglages, Version, Expérimentations.',
     empty: 'Les membres relisent. Leurs réponses apparaîtront ici.',
     table: {
       title: 'Revue du council',

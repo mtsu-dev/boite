@@ -174,7 +174,7 @@ A command line belongs in this authorized trace view, not diagnostic logs.
 
 ## Agent task manager
 
-Settings > Task manager opens with one card per connected machine: CPU and
+Settings > Troubleshooting > Task manager opens with one card per connected machine: CPU and
 GPU over the last minute, memory with the share Boite's agents hold, and the
 free space of each fixed disk, red under 10%. Picking a card lists that
 machine's live processes grouped by agent, with search and sorting by memory,
@@ -315,7 +315,7 @@ records. Invalid fields, filters and levels are refused.
 `diagnostics.logs`, `diagnostics.summary`, `diagnostics.export` and
 `diagnostics.issue` return the anonymized view. The owner calls them freely;
 an agent names its own thread and is refused while the `agentLogAccess`
-setting is off (Settings > Diagnostics). An agent is held to its own thread,
+setting is off (Settings > Troubleshooting). An agent is held to its own thread,
 like every agent call: it reads the records about no thread (the core, the
 shell, the clients), which say whether Boite itself failed, plus those of its
 thread and of every thread it started, never another conversation's. With
@@ -361,7 +361,7 @@ Windows applies `agentCpuCapPercent` to the global job and
 zero disables those explicit caps. A tree at its allocation cap can fail its
 next allocation. The automatic memory guard is separate and also runs on POSIX.
 
-Settings > Protection > Limits controls `memoryProtection`, quotas and reserve.
+Settings > Safeguards > Resource limits controls `memoryProtection`, quotas and reserve.
 Turning protection off removes automatic memory stops and Windows allocation
 caps immediately while retaining configured values. Zero quota or reserve means
 automatic sizing, not disabled protection. Resource readings remain visible;

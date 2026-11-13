@@ -30,7 +30,7 @@ export const strings = {
     /** Where the gateway runs: a URL the user types, or Douane run by this machine's core. */
     where: 'Where the gateway runs',
     remote: 'Remote gateway', local: 'Douane on this machine',
-    localHint: 'The Douane plugin, installed and run by Boite from Settings > Plugins. The proxy points at its loopback port by itself, and follows it if the port changes.',
+    localHint: 'The Douane plugin, installed and run by Boite from Settings > Agents > Plugins. The proxy points at its loopback port by itself, and follows it if the port changes.',
     localMissing: 'The Douane plugin is not installed on this machine.',
     localStopped: 'The Douane plugin is stopped.',
     localStarting: 'The Douane plugin is starting.',

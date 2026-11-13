@@ -76,8 +76,8 @@ export const strings = {
     lineLeftAccount: '{percent}% of {provider}\'s {window} limit left on {account}',
     /** A subscription gateway's accounts of one provider, read together: what they have left on average. */
     lineLeftPool: '{percent}% of {provider}\'s {window} limit left across {count} accounts',
-    /** The popover's way to the Limits page in Settings. */
-    allLimits: 'Limits page',
+    /** The popover's way to the Limits card in Settings, AI accounts. */
+    allLimits: 'Limits in Settings',
     /** A read of the limits failed; the core's reason follows. */
     readFailed: "Couldn't read the limits: {error}",
     quit: 'Quit Boite',

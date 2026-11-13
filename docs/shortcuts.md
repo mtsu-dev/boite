@@ -37,7 +37,7 @@ While a terminal has the keyboard, its own shortcuts come first:
 | Ctrl+Shift+H | Recent commands of the shell |
 | Ctrl+Up, Ctrl+Down | Go to the previous or next command |
 
-Pin, rename, archive, Regenerate title, the theme and a few Settings tabs have
+Pin, rename, archive, Regenerate title, the theme and a few Settings pages have
 no default shortcut; you can give them one. Alt+1 to Alt+9 follow the
 physical key, so they work on keyboard layouts where the top row types other
 characters. In a plain browser tab, the browser keeps Ctrl+Shift+T for
@@ -45,7 +45,7 @@ itself.
 
 ## Change a shortcut
 
-1. Open Settings, Keyboard. Filter commands finds a command by its name, its
+1. Open Settings, Input, Keyboard. Filter commands finds a command by its name, its
    id or its keys.
 2. Click a shortcut, hold the modifiers and press the key. It applies at once
    on this machine.
@@ -60,7 +60,7 @@ itself.
 
 ### Edit the shortcuts file
 
-The Keyboard page shows the Shortcuts file, with Open the file and Copy the
+Settings, Input shows the Shortcuts file card, with Open the file and Copy the
 path. It maps command ids to keys, or to `null` to take a key away:
 
 ```json
@@ -72,8 +72,8 @@ path. It maps command ids to keys, or to `null` to take a key away:
 ```
 
 `mod` is Ctrl on Windows and Linux and Cmd on macOS. Each command's id shows
-on the Keyboard page. Boite applies a save at once, without a restart. Lines
-it cannot read appear under Refused on the Keyboard page, and the others still
+in the Keyboard card. Boite applies a save at once, without a restart. Lines
+it cannot read appear under Refused in the Shortcuts file card, and the others still
 apply. A file that is not valid JSON applies nothing until you fix it.
 
 ## What you cannot change
@@ -87,7 +87,7 @@ apply. A file that is not valid JSON applies nothing until you fix it.
 - Edge scrollbars: scrollbars take no room. Each one fades in as the pointer
   nears the edge of its area and can still be dragged. It is on by default on
   a desktop, for mouse and pen only, and you can turn it off in Settings,
-  Appearance. Phones keep their own scrollbars, and high contrast mode keeps
+  Appearance, Terminal and scrollbars. Phones keep their own scrollbars, and high contrast mode keeps
   the native ones.
 - A thread starts loading when you press its row, before you release the
   button, so it opens faster, most of all on a remote machine. A drag or a

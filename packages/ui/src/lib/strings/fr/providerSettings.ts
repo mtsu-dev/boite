@@ -44,7 +44,7 @@ export const fr: Translation = {
     enable: 'Utiliser {provider}',
     enableHint: "Désactivé, Boite ne lance rien de ce fournisseur et aucune liste ne le propose. Ses comptes et ses conversations sont conservés.",
     /** A thread whose provider is off: the composer's chip and the sentence behind it. */
-    threadOff: '{provider} est désactivé. Activez-le dans Réglages > Fournisseurs pour continuer cette conversation.',
+    threadOff: '{provider} est désactivé. Activez-le dans Réglages > Comptes IA > Fournisseurs pour continuer cette conversation.',
     defaultModel: 'Modèle par défaut',
     autoUpdate: 'Mises à jour automatiques',
     checkUpdates: 'Rechercher des mises à jour',

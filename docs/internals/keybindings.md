@@ -3,7 +3,7 @@
 The UI defines default shortcuts; `<dataDir>/keybindings.json` stores overrides.
 The core reads the file at startup and watches for changes, publishing them
 through `keybindings.get` and `keybindings.updated`. Clients update keyboard
-handling, palette hints, tooltips and the Keyboard settings page together.
+handling, palette hints, tooltips and the Keyboard settings card together.
 
 ## From Settings
 

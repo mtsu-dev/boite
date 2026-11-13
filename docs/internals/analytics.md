@@ -7,8 +7,8 @@ disabled. The host preserves any saved choice, including Off.
 The tour's privacy step has three answers: the "NO! Just the basic counters"
 row keeps the counters, the "DEAL" row turns on enhanced mode, and the "turn
 usage analytics off" link under both rows saves Off. Each one closes the tour.
-Settings > General > Privacy and analytics has two switches. On a phone connected
-as the owner, they are under This phone > Privacy.
+Settings > Safeguards > Privacy and analytics has two switches. A phone connected
+as the owner lists the same page.
 Paired guest devices and agents cannot read or change these settings.
 
 The host stores consent. Opening another desktop or phone does not create a

@@ -17,8 +17,8 @@ export const fr: Translation = {
     clipboard: 'Le presse-papiers a refusé le texte.',
     revoked: "Cet appareil a été retiré du groupe. Rajoutez-le avec un nouveau code depuis l'une de vos machines.",
     unpaired: "Cet appareil n'est pas encore dans le groupe de cette machine. Ajoutez-le avec le code d'Ajouter un appareil.",
-    olderCore: "Boite sur {machine} est trop ancien pour cette action. Mettez-le à jour dans Réglages, Machines et mises à jour, puis réessayez.",
-    olderCoreHere: "Cette machine a une version de Boite trop ancienne pour cette action. Mettez-la à jour dans Réglages, Machines et mises à jour, puis réessayez.",
+    olderCore: "Boite sur {machine} est trop ancien pour cette action. Mettez-le à jour dans Réglages, Version, Mises à jour, puis réessayez.",
+    olderCoreHere: "Cette machine a une version de Boite trop ancienne pour cette action. Mettez-la à jour dans Réglages, Version, Mises à jour, puis réessayez.",
     notConnected: "{machine} n'est pas connectée. Boite se reconnecte tout seul dès qu'elle répond.",
     notConnectedHere: "Cette machine n'est pas connectée. Boite se reconnecte tout seul dès qu'elle répond.",
     pairingLink: "Ce n'est pas un lien pour ajouter un appareil. Copiez le lien affiché par Ajouter un appareil sur l'autre machine ; il commence par http et contient ?grant=."

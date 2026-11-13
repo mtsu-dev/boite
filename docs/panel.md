@@ -17,7 +17,7 @@ that runs it.
    Home, restores the default width, and Escape cancels a drag.
 
 Tabs are kept per conversation. The width is shared by every conversation on
-this device. Settings, Keyboard lists the shortcuts that open the panel and
+this device. Settings, Input, Keyboard lists the shortcuts that open the panel and
 each surface.
 
 ## What each surface shows
@@ -72,7 +72,8 @@ The Tasks tab has four sections:
 
 ## Point the agent at a page element
 
-Preview comments is on by default, in Settings, General.
+Preview comments is on by default, in Settings, Conversations, In the
+conversation.
 
 1. Open a Browser tab and choose Reference an element.
 2. Click an element. A mention is added to your message at the cursor.

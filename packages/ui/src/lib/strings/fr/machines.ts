@@ -8,10 +8,10 @@ export const fr: Translation = {
     intro: 'Chaque machine exécute ses propres agents sur ses propres fichiers.',
     details: 'Détails', address: 'Adresse', updateFailed: 'Mise à jour échouée',
     label: 'Nom de la machine', icon: 'Icône de la machine', icons: { desktop: 'Ordinateur fixe', laptop: 'Portable', phone: 'Téléphone', tablet: 'Tablette', apple: 'Mac', server: 'Serveur', rack: 'Baie', nas: 'NAS', database: 'Base de données', cloud: 'Cloud', cpu: 'Processeur', router: 'Routeur', terminal: 'Terminal', bot: 'Bot', gamepad: 'Console', tv: 'Télé', house: 'Maison' }, link: "Lien d'une autre machine", add: 'Ajouter une machine', adding: 'Connexion', connect: 'Connecter',
-    addHint: "Sur une machine de votre groupe, ouvrez Réglages, Machines, Ajouter un appareil, copiez le lien et collez-le ici.",
+    addHint: "Sur une machine de votre groupe, ouvrez Réglages, Appareils, Groupe, Ajouter un appareil, copiez le lien et collez-le ici.",
     scan: 'Scanner le code', pasteLink: 'Coller le lien', scanTitle: 'Scannez le code',
     linkPlainHttp: "{host} n'a pas d'adresse HTTPS : sa propre page s'ouvre pour finir d'ajouter cet appareil.",
-    scanHint: "Sur l'une de vos machines, ouvrez Réglages, Machines, Ajouter un appareil et visez son QR code avec la caméra.",
+    scanHint: "Sur l'une de vos machines, ouvrez Réglages, Appareils, Groupe, Ajouter un appareil et visez son QR code avec la caméra.",
     scanStarting: 'Démarrage de la caméra', scanClose: 'Fermer la caméra',
     scanErrors: {
       insecure: "La caméra demande une adresse HTTPS. Ouvrez Boite par son adresse HTTPS, ou collez le lien.",
@@ -59,6 +59,6 @@ export const fr: Translation = {
     threadFailed: 'Une conversation a échoué ici : {thread}',
     offlineLine: '{machine} est hors ligne',
     connectingLine: 'Connexion à {machine}',
-    agentLinkAddressRequired: 'Mettez les deux machines à jour pour utiliser le relais de l’app, ou définissez une adresse HTTPS joignable pour {machine} dans les réglages généraux.',
+    agentLinkAddressRequired: 'Mettez les deux machines à jour pour utiliser le relais de l’app, ou définissez une adresse HTTPS joignable pour {machine} dans Réglages, Appareils, Application mobile.',
   }
 };
