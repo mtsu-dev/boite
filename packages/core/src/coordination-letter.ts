@@ -107,7 +107,8 @@ export function letterPrompt(letters: AgentLetter[], context: (letter: AgentLett
 }
 
 /**
- * What every turn of a thread with coordination on reads about it; `contacts`
+ * What a session of a thread with coordination on reads about it, once and
+ * again when it changes (`threads/coordination-context.ts`); `contacts`
  * when this core has contacts the thread may reach. `bot`: `self` for the
  * Contacts bot's own thread, `other` for any other thread while the bot runs,
  * a member that asks through its group's Bots host included, `none` when

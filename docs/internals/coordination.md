@@ -302,6 +302,18 @@ with `origin: 'contact'`, written by the asking core from the contact's
 decision; the agent does not reply to it. The coordination guide mentions
 `boite threads contacts` and `ask` only while the core has a contact.
 
+The coordination guide, and the instructions of the agent a thread is
+entrusted to, go to a native session once (`threads/coordination-context.ts`).
+They go again on a new session (an account or provider switch, a rewind, a
+continuation), after a compaction, and when their text changes: coordination
+paused or resumed, contacts reachable or not, the Contacts bot's role. The
+session counts as holding them once the turn that carried them ends done; a
+failed or stopped turn sends them again. Letters, their labels, task data and
+the short-answer reminder still ride on every turn. Over 20 turns of one
+session the prompts carry 12,627 characters instead of 24,559: 11,932 fewer,
+about 2,983 tokens at 4 characters a token, for a guide of 628 characters
+(`coordination-guide-once.test.ts`, 2026-11-13).
+
 Agents are told to write compactly: one to three short lines, facts and asks,
 no greeting, recap or sign-off, since the recipient already sees who wrote.
 `boite threads send` and `reply` print a reminder past 600 characters.
