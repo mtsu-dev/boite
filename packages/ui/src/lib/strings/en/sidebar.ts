@@ -68,7 +68,7 @@ export const strings = {
     archivedByPlugin: 'Archived by plugin {name}',
     reopenThread: 'Move to Recent',
     reopenNamedThread: 'Move "{title}" to Recent',
-    doneNotice: 'This thread is done. Move it to Recent to continue.',
+    doneNotice: 'This thread is done',
     /** Above the composer, or the done notice, of a thread whose worktree Boite removed. */
     contactHold: {
       title: 'Contact mail holds this thread',

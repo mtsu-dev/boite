@@ -54,7 +54,7 @@ export const fr: Translation = {
     archivedByPlugin: 'Archivé par le plugin {name}',
     reopenThread: 'Remettre dans Récent',
     reopenNamedThread: 'Remettre « {title} » dans Récent',
-    doneNotice: 'Ce fil est terminé. Remettez-le dans Récent pour continuer.',
+    doneNotice: 'Ce fil est terminé',
     contactHold: {
       title: 'Courrier d’un contact : fil bloqué',
       body: 'Son historique contient des messages de {contacts}, envoyés hors d’un projet partagé. Boite ne peut pas borner ce qu’ils demandent, il refuse donc tout tour ici.',
