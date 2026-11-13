@@ -135,6 +135,10 @@ the cache, the skipped files with their log lines and each refusal.
 `packages/core/test/imports.test.ts` files a fixture transcript under an
 isolated account and checks the listing, the import, the second attempt and
 each refusal. The browser e2e does the same from the project menu on the real
-core. `claude.live.test.ts`, behind `BOITE_E2E_CLAUDE=1`, runs one real turn,
+core. `codex.live.test.ts`, behind `BOITE_E2E_CODEX=1`, runs `codex exec` itself in a
+temporary folder with a word to remember, imports the session it left in
+`~/.codex/sessions`, asks for the word on the imported thread and checks the
+session id is still the rollout's, then deletes that rollout.
+`claude.live.test.ts`, behind `BOITE_E2E_CLAUDE=1`, runs one real turn,
 removes the project so the session is free, imports it from the user's own
 `~/.claude/projects` and resumes it: the agent repeats the word it said.

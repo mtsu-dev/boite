@@ -173,6 +173,66 @@ live('codex app-server driver, live', () => {
   );
 
   test(
+    'a session the Codex CLI ran itself is listed for the folder, imported, and resumed on its own rollout',
+    async () => {
+      const client = await harness.connect();
+      await client.call('settings.set', { warmProcessMinutes: 0 });
+      const project = await client.call('projects.add', { path: projectDir, name: 'live codex import' });
+      const account = (await client.call('accounts.list', {})).find((entry) => entry.providerId === 'codex' && entry.label === 'Default');
+      if (account === undefined) throw new Error('no default codex account on this machine');
+      expect(await client.call('imports.list', { projectId: project.id })).toEqual([]);
+
+      // The smallest model the login lists, by name; the CLI's own default when none says so.
+      const probe = await client.call('providers.probe', { providerId: 'codex', accountId: account.id });
+      const small = probe.models.find((model) => /nano/i.test(model.id)) ?? probe.models.find((model) => /mini/i.test(model.id));
+      const args = ['exec', '--skip-git-repo-check', '--sandbox', 'read-only', '-C', projectDir, '-c', 'model_reasoning_effort="low"'];
+      if (small !== undefined) args.push('-m', small.id);
+      args.push('Remember the word quokka. Reply with exactly: ok');
+      // The CLI as a person runs it, outside Boite: the session this test imports.
+      const cli = Bun.spawn(['codex', ...args], { cwd: projectDir, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' });
+      const stop = setTimeout(() => cli.kill(), TURN_TIMEOUT_MS);
+      const [code, stderr] = await Promise.all([cli.exited, new Response(cli.stderr).text(), new Response(cli.stdout).text()]);
+      clearTimeout(stop);
+      if (code !== 0) throw new Error(`codex exec exited ${code}: ${stderr.slice(-600)}`);
+
+      let rollout: string | null = null;
+      try {
+        const listed = await client.call('imports.list', { projectId: project.id });
+        expect(listed).toHaveLength(1);
+        const mine = listed[0]!;
+        rollout = mine.file;
+        expect(mine).toMatchObject({ providerId: 'codex', accountId: account.id, threadId: null, title: 'Remember the word quokka. Reply with exactly: ok' });
+        expect(mine.file.endsWith(`-${mine.sessionId}.jsonl`)).toBe(true);
+
+        const imported = await client.call('imports.run', { projectId: project.id, accountId: account.id, sessionId: mine.sessionId });
+        expect(imported.sessionId).toBe(mine.sessionId);
+        const history = await client.call('threads.get', { threadId: imported.id });
+        expect(history.turns).toHaveLength(1);
+        expect(history.messages[0]?.parts).toEqual([{ type: 'text', text: 'Remember the word quokka. Reply with exactly: ok' }]);
+        expect(assistantText(history.messages).toLowerCase()).toContain('ok');
+
+        // Only the new prompt goes out: the word comes back from the rollout, through thread/resume.
+        await client.call('threads.subscribe', { threadId: imported.id });
+        const resumed = client.next('turn.finished', (turn) => turn.threadId === imported.id, TURN_TIMEOUT_MS);
+        await client.call('turns.start', { threadId: imported.id, prompt: 'Which word did I ask you to remember? Reply with that word only.' });
+        const done = await resumed;
+        expect(done.error).toBeNull();
+        expect(done.status).toBe('done');
+        const full = await client.call('threads.get', { threadId: imported.id });
+        // A lost session would have been replayed on a new Codex thread, under another id.
+        expect(full.sessionId).toBe(mine.sessionId);
+        expect(assistantText(full.messages).toLowerCase()).toContain('quokka');
+        console.info('Codex import proof:', JSON.stringify({ model: imported.model, sessionId: full.sessionId, answer: assistantText(full.messages), usage: done.usage }));
+        await waitFor(() => harness.core.procs.liveCount(imported.id) === 0, 30_000);
+      } finally {
+        // The one file this test made in the user's Codex home, by its exact path.
+        if (rollout !== null && /[\\/]sessions[\\/].*rollout-[^\\/]+\.jsonl$/.test(rollout)) rmSync(rollout, { force: true });
+      }
+    },
+    TURN_TIMEOUT_MS * 2 + 60_000,
+  );
+
+  test(
     'an effort changed while a real turn runs a command reaches that turn',
     async () => {
       const client = await harness.connect();
