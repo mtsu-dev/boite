@@ -7,7 +7,7 @@
   import InfoTip from './InfoTip.svelte';
 
   /**
-   * Settings > Providers: an ACP agent added from the command that starts it.
+   * Settings > AI accounts > Providers: an ACP agent added from the command that starts it.
    * The core writes it as a user descriptor and refuses a field it cannot use;
    * the refusal lands beside that field. Removing one sits in its row's details.
    */

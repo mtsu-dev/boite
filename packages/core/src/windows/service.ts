@@ -313,7 +313,7 @@ export class DesktopWindows {
     if ('unavailable' in backend) throw refused(backend.unavailable);
     const allowed = this.#allowedPaths(thread.projectId);
     const window = this.#resolve(await backend.list(), target, allowed);
-    if (this.#excluded(window)) throw refused(`${window.process} is never captured: password managers, the sign-in screen and the apps in Settings > Window capture are excluded`, { windowId: window.id });
+    if (this.#excluded(window)) throw refused(`${window.process} is never captured: password managers, the sign-in screen and the apps in Settings > Safeguards > Windows agents never see are excluded`, { windowId: window.id });
     if (window.minimized) throw refused('window minimized: restore it first', { windowId: window.id });
     if (connection?.identity.principal === 'agent' && this.#contactWroteThisTurn(thread.id)) {
       throw refused('a contact\'s letter is part of this turn: windows are captured only for the owner\'s own requests', { threadId: thread.id });
@@ -326,7 +326,7 @@ export class DesktopWindows {
     if (!current || current.pid !== window.pid || pathKey(current.path) !== pathKey(window.path)) {
       throw refused(`window ${window.id} of ${window.process} is gone`, { windowId: window.id, code: 'gone' });
     }
-    if (this.#excluded(current)) throw refused(`${current.process} is never captured: password managers, the sign-in screen and the apps in Settings > Window capture are excluded`, { windowId: current.id });
+    if (this.#excluded(current)) throw refused(`${current.process} is never captured: password managers, the sign-in screen and the apps in Settings > Safeguards > Windows agents never see are excluded`, { windowId: current.id });
     if (current.minimized) throw refused('window minimized: restore it first', { windowId: current.id, code: 'minimized' });
     return { backend, window: current, grant };
   }

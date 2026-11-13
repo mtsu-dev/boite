@@ -257,7 +257,7 @@ test('with a bot, an ordinary thread neither lists nor writes to a contact\'s th
   expect((await guest.core.coordination.directory(guestThread)).agents.some(agent => agent.coreId === hostId && agent.threadId === hostThread)).toBe(true);
   const direct = await send(guestThread, 'direct');
   await waitFor(() => lettersOf(host, hostThread).some(letter => letter.id === direct.id), 10000);
-  expect(await thrown(guestClient.call('collaboration.ask', { threadId: guestThread, text: 'Anyone on the docs?' }))).toThrow('Settings > Experiments');
+  expect(await thrown(guestClient.call('collaboration.ask', { threadId: guestThread, text: 'Anyone on the docs?' }))).toThrow('Settings > Version > Experiments');
 }, 60000);
 
 test('the bot starts a thread for a trusted contact\'s request, refuses another, and its share card opens a project only on the owner\'s Yes', async () => {

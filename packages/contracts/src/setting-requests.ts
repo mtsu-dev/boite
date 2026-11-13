@@ -264,7 +264,7 @@ export type SettingRequestParams = { threadId: ThreadId; reason: string } & (
   | { page: string; section?: string | null; plugin?: { url: string; ref?: string | null }; key?: never; value?: never; machine?: never }
 );
 
-/** The card of Settings > Plugins that reads a repository. */
+/** The card of Settings > Agents > Plugins that reads a repository. */
 export const PLUGIN_ADD_SECTION = 'plugins-add';
 
 /** What a missing key means, for the keys the core's defaults leave out. */
@@ -475,7 +475,7 @@ export function settingAnswerText(setting: SettingAsk, answer: QuestionAnswer): 
   if (setting.kind === 'open' && setting.plugin !== undefined) {
     const source = `${setting.plugin.url}${setting.plugin.ref === null ? '' : ` at ${setting.plugin.ref}`}`;
     return outcome === 'open'
-      ? `opened: the user is reading the preview of ${source} in Settings > Plugins; installing it is their click there, and no message follows`
+      ? `opened: the user is reading the preview of ${source} in Settings > Agents > Plugins; installing it is their click there, and no message follows`
       : `dismissed: the user did not preview ${source}`;
   }
   if (setting.kind === 'open') {

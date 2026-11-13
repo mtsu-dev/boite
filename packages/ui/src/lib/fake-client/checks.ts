@@ -135,7 +135,7 @@ export function turnedOff(provider: ProviderSummary): RpcFailure {
   }
   return new RpcFailure({
     code: RpcErrorCode.Unavailable,
-    message: `${provider.name} is turned off on this machine. Turn it on in Settings > Providers to use it`,
+    message: `${provider.name} is turned off on this machine. Turn it on in Settings > AI accounts > Providers to use it`,
     data: { providerId: provider.id, disabled: true },
   });
 }

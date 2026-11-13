@@ -474,7 +474,7 @@ export class AgentStore {
     if (!this.core.providers.enabled(runs.id)) {
       return this.core.providers.policyBlock(runs.id)
         ? `${runs.name} is blocked by your organization's policy; choose another model for ${agent.name} in its settings.`
-        : `${runs.name} is turned off on this machine; turn it on in Settings > Providers, or choose another model for ${agent.name} in its settings.`;
+        : `${runs.name} is turned off on this machine; turn it on in Settings > AI accounts > Providers, or choose another model for ${agent.name} in its settings.`;
     }
     const account = this.core.journal.getAccount(agent.selection.accountId);
     if (account === null || account.providerId !== provider.id) return `Its account is gone; choose another account for ${agent.name}.`;

@@ -259,7 +259,7 @@ const FORBIDS: Record<PolicyKey, string> = {
 /** A provider that is off refuses to start: by the user's switch, or by the admin policy, which no switch overrides. */
 export function providerOffFailure(name: string, block: PolicyRefusalData | null | undefined, data: Record<string, unknown>): RpcFailure {
   if (block) return unavailable(`${name} is blocked by your organization's policy, key ${block.policy} in ${block.file}`, { ...data, disabled: true, ...block });
-  return unavailable(`${name} is turned off on this machine. Turn it on in Settings > Providers to use it`, { ...data, disabled: true });
+  return unavailable(`${name} is turned off on this machine. Turn it on in Settings > AI accounts > Providers to use it`, { ...data, disabled: true });
 }
 
 export interface PolicyHost {

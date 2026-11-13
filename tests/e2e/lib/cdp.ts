@@ -166,7 +166,7 @@ export interface BrowserOptions {
   windowSize?: { width: number; height: number };
   /** Leaves the profile as a device that never saw the tour, which opens on boot. */
   showTour?: boolean;
-  /** Experiments switched on before the first boot, as Settings, Experiments stores them. */
+  /** Experiments switched on before the first boot, as Settings, Version, Experiments stores them. */
   experiments?: string[];
   /** The app's language from the first boot, as Settings stores it: no reload, which would drop a `?token=` the UI has not stored yet. */
   locale?: string;

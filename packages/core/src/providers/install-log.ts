@@ -61,7 +61,7 @@ export function detectionLogger(core: Core): (providers: ProviderSummary[], reje
       });
     }
     for (const id of gone) core.logs.info(`Provider ${id} is no longer loaded`, { source: 'providers', event: 'provider.removed', data: { providerId: id } });
-    if (rejectedChanged && rejected > 0) core.logs.warn(`${rejected} provider descriptors were rejected; Settings > Providers lists why`, { source: 'providers', event: 'provider.rejected', data: { rejected } });
+    if (rejectedChanged && rejected > 0) core.logs.warn(`${rejected} provider descriptors were rejected; Settings > AI accounts > Providers lists why`, { source: 'providers', event: 'provider.rejected', data: { rejected } });
   };
 }
 

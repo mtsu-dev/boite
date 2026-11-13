@@ -207,7 +207,7 @@ export class PluginStore {
    * scoped to what the owner granted, and a data folder that outlives it.
    */
   #access(id: string, manifest: PluginManifest): { token: string; dataDir: string | null } {
-    if (this.preferences.isOff(id)) throw refused(`${id} is turned off. Turn it on in Settings > Plugins first.`, { id, enabled: false });
+    if (this.preferences.isOff(id)) throw refused(`${id} is turned off. Turn it on in Settings > Agents > Plugins first.`, { id, enabled: false });
     if (manifest.schema === 1) return { token: this.#core.token, dataDir: null };
     const dataDir = this.dataDir(id);
     mkdirSync(dataDir, { recursive: true });
@@ -630,7 +630,7 @@ export class PluginStore {
     const disk = this.#onDisk(id);
     if (disk.kind === 'rejected') throw refused(`${id} was refused: ${disk.rejected.message}`, disk.rejected);
     if (disk.kind !== 'installed') throw refused(`Install ${id} first.`);
-    if (this.preferences.isOff(id)) throw refused(`${id} is turned off. Turn it on in Settings > Plugins first.`, { id, enabled: false });
+    if (this.preferences.isOff(id)) throw refused(`${id} is turned off. Turn it on in Settings > Agents > Plugins first.`, { id, enabled: false });
     return disk.installed;
   }
 

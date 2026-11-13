@@ -255,7 +255,7 @@ export class PluginApps {
     const delay = RELAUNCH_DELAYS_MS[entry.crashes.length - 1];
     if (delay === undefined) {
       entry.status = 'crashed';
-      entry.error = `${id} exited with code ${code} ${entry.crashes.length} times in ${CRASH_WINDOW_MS / 60_000} minutes; start it again from Settings > Plugins.`;
+      entry.error = `${id} exited with code ${code} ${entry.crashes.length} times in ${CRASH_WINDOW_MS / 60_000} minutes; start it again from Settings > Agents > Plugins.`;
       this.#host.log('warn', entry.error);
     } else {
       entry.status = 'starting';

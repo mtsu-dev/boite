@@ -138,7 +138,7 @@ export class CouncilStore {
     return experiments.includes(COUNCIL_EXPERIMENT);
   }
   gate(): void {
-    if (!this.enabled()) throw refused('the council needs the Council experiment, which is off in the desktop app (Settings, Experiments)', { reason: 'experiment-off' });
+    if (!this.enabled()) throw refused('the council needs the Council experiment, which is off in the desktop app (Settings, Version, Experiments)', { reason: 'experiment-off' });
   }
   /** A member's thread. */
   owns(threadId: string): boolean { return this.#children.has(threadId); }

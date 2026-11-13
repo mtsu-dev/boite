@@ -391,7 +391,7 @@ test('a member whose Boite has no model list is reported too old before anything
   pc.core.threads.spawns.catalogFor = async () => { throw invalidParams('operation: expected directory, deliver, receipt, search, read, group.sync, group.push, relay.*, thread.start, setting.* or bot.*'); };
   const before = pc.core.journal.listThreads().length;
   const spawned = await cli(['thread', 'new', 'notes', 'Brief', '--machine', machine, '--model', 'echo/echo']);
-  expect(spawned.err).toContain('is too old to start threads on a model chosen from another machine; the owner updates it in Settings, Machines and updates');
+  expect(spawned.err).toContain('is too old to start threads on a model chosen from another machine; the owner updates it in Settings, Version, Updates');
   expect((await cli(['delegate', 'models', '--machine', machine])).err).toContain('is too old to list its models for another machine');
   expect(pc.core.journal.listThreads()).toHaveLength(before);
   // Without --model nothing is read first: the thread starts as before.

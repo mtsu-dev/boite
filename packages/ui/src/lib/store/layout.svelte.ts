@@ -68,7 +68,7 @@ export class Layout {
   search = $state('');
   /** The agent an outside link asked the Agents page to open, with a fresh key for repeated asks; the page takes it once. */
   agentsTarget = $state<{ agentId: string; request: number; pane?: AgentPane } | null>(null);
-  /** The repository a plugin card asked Settings > Plugins to read, with a fresh key for repeated asks; the page takes it once. */
+  /** The repository a plugin card asked Settings > Agents > Plugins to read, with a fresh key for repeated asks; the page takes it once. */
   pluginSource = $state<{ url: string; ref: string | null; request: number } | null>(null);
   /** The contact the Contacts page shows, by core id; null shows the page that adds one. */
   contact = $state<string | null>(null);
@@ -116,7 +116,7 @@ export class Layout {
   }
 
   /**
-   * Settings > Plugins with `source` read, as a plugin card's Preview asks
+   * Settings > Agents > Plugins with `source` read, as a plugin card's Preview asks
    * (`boite plugin add`). A file or folder page goes in as the link itself,
    * so the core settles where its `<ref>/<path>` ends; any other ref is exact.
    */
