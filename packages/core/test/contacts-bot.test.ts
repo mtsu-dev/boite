@@ -7,6 +7,7 @@ import { agentsCommand } from '../src/agents-cli.ts';
 import type { AgentFact } from '../src/agents/runtime.ts';
 import type { CoreClient } from '../src/client.ts';
 import { contactsCommand } from '../src/contacts/cli.ts';
+import { removeDir } from '../src/fs-retry.ts';
 import { makeAgent } from './agent-fixture.ts';
 import { contactsBotOf } from './contacts-fixture.ts';
 import { startTestCore, testProject, waitFor, type TestCore } from './harness.ts';
@@ -490,6 +491,8 @@ test('a Release starts nothing from the Contacts bot: a plan or a share accepted
     expect((await owner.call('contacts.bot.refuse', { threadId: hostBot.threadId, id: later.id, reason: 'Not in this build' })).status).toBe('refused');
     owner.close();
   } finally {
-    rmSync(dataDir, { recursive: true, force: true });
+    // Windows refuses to delete a directory whose journal a core still holds: stop every core first.
+    for (const core of cores.splice(0)) await core.stop();
+    await removeDir(dataDir);
   }
 }, 60000);
