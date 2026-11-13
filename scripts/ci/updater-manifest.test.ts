@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
-import { TARGETS, releaseFiles, updaterManifest } from './updater-manifest';
+import { SCHEMA_VERSION } from '../../packages/core/src/journal/schema.ts';
+import { TARGETS, journalSchema, releaseFiles, updaterManifest } from './updater-manifest';
 
 const version = '2.0.0-nightly.20260922.1';
 const names = [
@@ -23,6 +24,9 @@ test('manifest binds every platform payload to the exact immutable release tag',
   expect(result.platforms['android-aarch64-server']!.url).toEndWith('_android.zip');
   expect(result.platforms['linux-aarch64-server']!.url).toEndWith('_arm64.zip');
   expect(result.notes).toBe('Changes');
+  // The shell offers no release that reads less of the journal than its own data.
+  expect(result.journal_schema).toBe(SCHEMA_VERSION);
+  expect(() => journalSchema('export const SCHEMA_VERSION = next;')).toThrow('SCHEMA_VERSION');
 });
 
 test('unsigned, incomplete or ambiguous release inputs cannot produce a manifest', () => {
