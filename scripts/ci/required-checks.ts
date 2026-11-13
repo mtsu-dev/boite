@@ -54,12 +54,17 @@ export function pullRequestWorkflows(files: string[], load: Load = loadWorkflow)
   });
 }
 
+// Checks a pull request reports that the ruleset leaves out on purpose: their
+// failure is shown and explained, never blocking. Bundle size left the ruleset
+// on 2026-11-12, a body reason can lift it and main's own debt can fail it.
+export const ADVISORY = ['Bundle size'];
+
 /** The names a pull request reports, which the ruleset requires. */
 export function requiredChecks(files: string[], load: Load = loadWorkflow): string[] {
   const names = pullRequestWorkflows(files, load).flatMap((file) => workflowChecks(file, load));
   const repeated = names.filter((name, index) => names.indexOf(name) !== index);
   if (repeated.length) throw new Error(`check names reported twice: ${[...new Set(repeated)].join(', ')}`);
-  return names.sort();
+  return names.filter((name) => !ADVISORY.includes(name)).sort();
 }
 
 type Rule = { type: string; parameters?: { required_status_checks?: { context: string }[] } };
