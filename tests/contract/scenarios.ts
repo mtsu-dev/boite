@@ -749,7 +749,7 @@ export const SCENARIOS: Record<string, Scenario> = {
     const setup = await echo(env);
     const { id: threadId } = await thread(env, setup);
     await finishedTurn(env, threadId);
-    const asked = await env.call('settings.request', { threadId, reason: 'Adds the standup command', page: 'plugins', plugin: { url: 'github.com/example/standup/releases/tag/v1.2.0?x=1' } });
+    const asked = await env.call('settings.request', { threadId, reason: 'Adds the standup command', page: 'agents', plugin: { url: 'github.com/example/standup/releases/tag/v1.2.0?x=1' } });
     same(asked.setting, { kind: 'open', page: 'agents', section: 'plugins-add', plugin: { url: 'https://github.com/example/standup', ref: 'v1.2.0' } }, 'the plugin card');
     const again = await refusedWith(env.call('settings.request', { threadId, reason: 'Again', page: 'plugins', plugin: { url: 'https://github.com/example/standup.git' } }), RpcErrorCode.Refused, ['field']);
     same(again.field, 'plugin.url', 'the repeated card field');

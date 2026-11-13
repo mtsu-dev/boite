@@ -153,7 +153,7 @@ jobs:
           }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           bun run apps/shell/scripts/stage-sidecar.ts
-      # The UI and core bundles just packaged hold no feature above the build's kind
+      # The UI and core bundles just packaged hold no cut feature above the build's kind
       # (docs/internals/experiments.md#out-of-the-build).
       - name: Feature cut of this build
         run: bun scripts/ci/feature-cut.ts
@@ -355,7 +355,7 @@ jobs:
             export BOITE_SMOKE_STARTUP_SECONDS=90
           fi
           bun scripts/ci/desktop-smoke.ts "$RUNNER_TEMP/Boite.app/Contents/MacOS/boite-shell"
-      # The UI and core bundles just packaged hold no feature above the build's kind
+      # The UI and core bundles just packaged hold no cut feature above the build's kind
       # (docs/internals/experiments.md#out-of-the-build).
       - name: Feature cut of this build
         run: bun scripts/ci/feature-cut.ts

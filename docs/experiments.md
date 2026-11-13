@@ -5,7 +5,7 @@ disappear, so each one has a switch in Settings, Version, Experiments.
 
 ## Where they exist
 
-Experiments exist in Nightly builds only. A Release has no Experiments card
+Experiments exist in Nightly and Dev builds only. A Release has no Experiments card
 on its Version page and runs none of them, whatever was switched on before.
 
 A few are still being built and exist only in Boite Dev, the build made from
