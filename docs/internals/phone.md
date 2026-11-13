@@ -10,7 +10,7 @@ the phone itself in Termux.
 
 ## Settings on a phone
 
-The bottom bar opens Threads and Activity; the Bots experiment adds Bots.
+The bottom bar opens Threads, Activity and Bots.
 Settings is a page, not a tab: the gear at the end of every list's header
 opens it, and its header's Back (or the system's back gesture) returns to the
 list it came from. With several machines, or while the link is down, the gear

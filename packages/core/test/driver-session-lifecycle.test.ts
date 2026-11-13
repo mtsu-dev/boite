@@ -69,9 +69,10 @@ for (const protocol of ['codex-appserver', 'muse', 'pi'] as const) {
     const fixture = protocol === 'codex-appserver' ? 'codex-server' : protocol === 'muse' ? 'muse-server' : 'pi-agent';
     const threadId = await providerThread(client, protocol, fileURLToPath(new URL(`./fixtures/${fixture}.ts`, import.meta.url)));
     const spawn = harness.core.procs.spawnChild.bind(harness.core.procs);
-    let restore: (() => void) | undefined, promptId: unknown, exitAt = 0;
+    let restore: (() => void) | undefined, promptId: unknown, exitAt = 0, launches = 0;
     const intercepted = spyOn(harness.core.procs, 'spawnChild').mockImplementation((...args) => {
       const child = spawn(...args);
+      if (args[0] === threadId) launches += 1;
       if (args[0] !== threadId || restore) return child;
       restore = delayStderrAfterExit(child, 30, !acknowledged);
       child.once('exit', () => { exitAt = performance.now(); });
@@ -108,6 +109,13 @@ for (const protocol of ['codex-appserver', 'muse', 'pi'] as const) {
       await waitFor(() => harness!.core.procs.liveCount(threadId) === 0);
       const replacement = client.next('turn.finished', turn => turn.threadId === threadId);
       await client.call('turns.start', { threadId, prompt: 'replacement after stderr' });
+      if (protocol === 'codex-appserver' && !acknowledged) {
+        // Exit settles the failed prompt, but a new writer must still wait for
+        // this deliberately held close, just as it waits for real pipe drainage.
+        await waitFor(() => harness!.core.threads.runner.handles.has(threadId));
+        expect(launches).toBe(1);
+        restore!();
+      }
       expect((await replacement).status).toBe('done');
     } finally { restore?.(); intercepted.mockRestore(); }
   }, 10000);

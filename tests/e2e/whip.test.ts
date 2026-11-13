@@ -247,7 +247,7 @@ test('Whip phone controls stay reachable with agents and disable mid-hit', async
   // The phone's own Experiments page, as its settings row opens it.
   await page.evaluate(`__boiteTest.workspace.active.showSettings('experiments')`);
   await page.waitFor(`document.querySelector('${toggle}')`);
-  await page.click('[data-testid=experiment-resident-agents]');
+  expect(await page.evaluate(`document.querySelector('[data-testid=experiment-resident-agents]')`)).toBeNull();
   await page.navigate(url);
   await toMobileList(page);
   await page.waitFor('document.querySelector("[data-testid=mobile-agents]")');

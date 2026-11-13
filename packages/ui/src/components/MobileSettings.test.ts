@@ -178,13 +178,14 @@ test('the phone settings list the desktop\'s families, each page a peer row, Gen
   expect(document.querySelector('[data-testid=setting-group-working-threads]')).toBeNull();
   await back();
 
-  // Experiments are this phone's own: Bots on the computer does not give the phone its tab until it is switched on here.
-  expect(document.querySelector('[data-testid=mobile-agents]')).toBeNull();
+  // Experiments are this phone's own: its page lists the switches of a build that runs them, Bots not among them.
+  expect(experimentOn('resident-agents')).toBe(true);
   query<HTMLButtonElement>('[data-testid=settings-tab-experiments]').click();
-  await waitFor(() => document.querySelector('[data-testid=experiment-resident-agents]') !== null);
-  query<HTMLInputElement>('[data-testid=experiment-resident-agents]').click();
+  await waitFor(() => document.querySelector('[data-testid=experiment-whip]') !== null);
+  expect(document.querySelector('[data-testid=experiment-resident-agents]')).toBeNull();
+  query<HTMLInputElement>('[data-testid=experiment-whip]').click();
   // The bar waits under the page, which is Settings' own; the switch is what took.
-  await waitFor(() => experimentOn('resident-agents'));
+  await waitFor(() => experimentOn('whip'));
   expect(document.querySelector('[data-testid=mobile-tabs]')).toBeNull();
   await back();
   await open('settings-tab-advanced', advanced);

@@ -5,11 +5,10 @@ works on its own, wakes on a schedule or when something happens in its
 projects, and tells you what matters. Teams put a few bots and you in one
 chat.
 
-Experimental: turn it on in Settings, Experiments, Bots. On the desktop, each
-bot then shows as a picture in the app rail, the column down the window's
-left edge, and the phone shows a Bots tab in its bottom bar. Teams come
-first; drag a picture up or down to put bots and teams in your own order,
-which this device keeps. Bots you made keep running while the switch is off.
+On the desktop, each bot shows as a picture in the app rail, the column down
+the window's left edge, and the phone shows a Bots tab in its bottom bar.
+Teams come first; drag a picture up or down to put bots and teams in your own
+order, which this device keeps.
 
 ## Create a bot
 
@@ -22,6 +21,15 @@ which this device keeps. Bots you made keep running while the switch is off.
    want it to ask.
 4. Press Create. Its conversation opens: it introduces itself, reads its
    instructions, sets up the routines they call for and tells you its plan.
+
+You can also ask the agent of any conversation to set a bot up for you. A
+card then appears in that conversation with the bot's name, role, projects and
+model, and the line "This bot runs with full access to this machine". Approve
+creates it; Decline creates nothing, and the agent is told either way. To let
+agents create bots without that card, turn on Create bots without asking in
+Settings, General, What agents may do alone. A bot created this way has full
+access to this machine. An install that already held conversations before this
+setting existed starts with it on, as it worked before.
 
 You talk to a bot in its conversation like in any thread. On the desktop,
 clicking its picture in the app rail opens it, with the bot's column in place
@@ -109,7 +117,8 @@ and the threads it started are done. Its `skills/` folder stays behind.
 
 ## Teams
 
-Experimental: turn it on in Settings, Experiments, Teams. It needs Bots.
+Experimental: Teams exist in Nightly builds only. Turn them on in Settings,
+Experiments, Teams ([experiments](experiments.md)).
 
 1. Press the `+` under the bots in the app rail and pick a new team.
 2. Give it a name, an optional brief that every member reads, and its members:

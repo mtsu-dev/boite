@@ -17,7 +17,6 @@ afterEach(async () => {
   for (const close of closers.splice(0)) close();
   workspace.machines = []; workspace.active = previousActive;
   setExperiment('teams', false);
-  setExperiment('resident-agents', false);
   vi.restoreAllMocks(); document.body.innerHTML = ''; localStorage.clear();
   document.documentElement.classList.remove('agents-detail-open');
 });
@@ -74,7 +73,6 @@ function phone() {
 /** The Bots page with Bots on, where the teams are listed while Teams is on; a phone's under its header, which holds the page's search. */
 function botsPage(store: Store, narrow: boolean) {
   if (narrow) phone();
-  setExperiment('resident-agents', true);
   store.showAgents();
   if (narrow) mounted.push(mount(MobileNavigation, { target: document.body, props: { store, screen: 'threads' } }));
   mounted.push(mount(AgentsPage, { target: document.body, props: { store } }));

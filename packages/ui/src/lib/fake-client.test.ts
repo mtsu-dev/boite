@@ -1771,3 +1771,58 @@ test('a paired device lists its own session, marked current, and not the owner d
   const phone = await createClient({ delayMs: 0, principal: 'session' });
   expect((await phone.call('sessions.list', {})).map(row => [row.id, row.current])).toEqual([['ses-phone', true]]);
 });
+
+test('a fake Release core refuses, hides and keeps the experimental settings as the real one, and starts nothing new in Contacts', async ({ createClient }) => {
+  const client = await createClient({ delayMs: 0, version: '2.0.0' });
+  const reason = 'runs in Nightly builds only, and this machine runs a Release (2.0.0)';
+  for (const patch of [{ deviceStream: true }, { backgroundCompaction: true }, { cacheKeepalive: { hours: 2 } }]) {
+    await expect(client.call('settings.set', patch)).rejects.toMatchObject({ code: RpcErrorCode.Refused, message: expect.stringContaining(reason) });
+  }
+  // No card proposes what the save would refuse.
+  await expect(client.call('settings.request', { threadId: 't-trace', reason: 'A live screen', key: 'deviceStream', value: true })).rejects.toMatchObject({ code: RpcErrorCode.Refused, message: expect.stringContaining('deviceStream is an experiment') });
+
+  // What the settings home holds is stored, read as off here, and survives a save of the values read.
+  await client.call('settings.follow', { patch: { cacheKeepalive: { hours: 2 }, compactionByType: { agent: { autoCompact: null, backgroundCompaction: true } } } });
+  const read = await client.call('settings.get', {});
+  expect(read).toMatchObject({ cacheKeepalive: null, compactionByType: { agent: { autoCompact: null, backgroundCompaction: false } } });
+  const limit = { tokens: 150_000, moments: ['turn-end' as const] };
+  const saved = await client.call('settings.set', { cacheKeepalive: read.cacheKeepalive, compactionByType: { agent: { ...read.compactionByType!.agent!, autoCompact: limit } } });
+  expect(saved).toMatchObject({ cacheKeepalive: null, compactionByType: { agent: { autoCompact: limit, backgroundCompaction: false } } });
+  expect(await client.call('settings.get', { stored: true })).toMatchObject({ cacheKeepalive: { hours: 2 }, compactionByType: { agent: { autoCompact: limit, backgroundCompaction: true } } });
+
+  await expect(client.call('contacts.invite', {})).rejects.toMatchObject({ code: RpcErrorCode.Refused, message: expect.stringContaining(`experiment.contacts ${reason}`) });
+  await expect(client.call('contacts.join', { link: 'boite://none' })).rejects.toMatchObject({ code: RpcErrorCode.Refused, message: expect.stringContaining(`experiment.contacts ${reason}`) });
+  expect((await client.call('contacts.get', {})).contacts.length).toBeGreaterThan(0);
+});
+
+test('a fake Release core accepts, activates, creates and relaunches nothing in a shared project or from the Contacts bot, and still declines, disables and removes', async ({ createClient }) => {
+  const client = await createClient({ delayMs: 0, version: '2.0.0' });
+  const gate = 'experiment.contacts runs in Nightly builds only, and this machine runs a Release (2.0.0)';
+  const scope = { threadId: 't-trace', sharedProjectId: 'shared-none' };
+  const closed: Promise<unknown>[] = [
+    client.call('sharedProjects.decide', { sharedProjectId: 'shared-none', accept: true, requestId: 'r1' }),
+    client.call('sharedProjects.configure', { sharedProjectId: 'shared-none', board: true }),
+    client.call('sharedProjects.configure', { sharedProjectId: 'shared-none', compute: { enabled: true, profiles: [], permissionMode: 'default', maxConcurrent: null } as never }),
+    client.call('sharedBoard.apply', { ...scope, command: { requestId: 'r2', cardId: 'c1', kind: 'add', text: 'New' } }),
+    client.call('sharedBoard.apply', { ...scope, command: { requestId: 'r3', cardId: 'c1', kind: 'update', text: 'Edited' } }),
+    client.call('sharedAccess.override', { sharedProjectId: 'shared-none', requestId: 'r4', override: { path: 'notes.md', actions: ['read'], jobId: null, reason: 'Needed', expiresAt: Date.now() + 60_000 } } as never),
+    client.call('sharedCompute.send', { ...scope, jobId: 'job-none', text: 'Go on', requestId: 'r5' }),
+    client.call('contacts.bot.askOwner', { threadId: 't-trace', id: 'req-none', start: { project: 'none', brief: 'Docs' } }),
+    client.call('contacts.bot.askOwner', { threadId: 't-trace', id: 'req-none', connect: 't-trace' }),
+    client.call('contacts.bot.flag', { threadId: 't-trace', id: 'cflag-none', deliver: true }),
+  ];
+  // What ends or turns off something is answered on its own terms: here the association does not exist, and no build is named.
+  const open: Promise<unknown>[] = [
+    client.call('sharedProjects.decide', { sharedProjectId: 'shared-none', accept: false, requestId: 'r6' }),
+    client.call('sharedProjects.configure', { sharedProjectId: 'shared-none', board: false }),
+    client.call('sharedProjects.revoke', { sharedProjectId: 'shared-none', requestId: 'r7' }),
+    client.call('sharedBoard.apply', { ...scope, command: { requestId: 'r8', cardId: 'c1', kind: 'remove' } }),
+    client.call('sharedAccess.revokeOverride', { sharedProjectId: 'shared-none', overrideId: 'o1', requestId: 'r9' } as never),
+    client.call('sharedCompute.cancel', { ...scope, jobId: 'job-none', requestId: 'r10' }),
+    client.call('contacts.bot.askOwner', { threadId: 't-trace', id: 'req-none', text: 'A note' }),
+    client.call('contacts.bot.flag', { threadId: 't-trace', id: 'cflag-none', deliver: false }),
+  ];
+  for (const call of [...closed, ...open]) call.catch(() => undefined);
+  for (const call of closed) await expect(call).rejects.toMatchObject({ code: RpcErrorCode.Refused, message: expect.stringContaining(gate), data: { reason: 'experiment-off' } });
+  for (const call of open) expect(String((await call.then(() => null, (error: Error) => error))?.message ?? '')).not.toContain('Nightly');
+});

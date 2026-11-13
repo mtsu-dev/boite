@@ -1,11 +1,18 @@
 /*
  * The experiments this build carries: work that is not finished and may change
- * or go away, turned on per machine from Settings, Experiments. The enabled ids
- * live in `localStorage` under `boite.experiments` as a JSON array of strings,
- * the way the theme lives under `boite.theme` and the window material under
- * `boite.glass`. These are client preferences, not core settings. A finished
- * experiment graduates to `features.ts`: on by default, switched in its own
- * Settings page.
+ * or go away, turned on per machine from Settings, Experiments. The ids this
+ * device chose live in `localStorage` under `boite.experiments` as a JSON array
+ * of strings, the way the theme lives under `boite.theme` and the window
+ * material under `boite.glass`. These are client preferences, not core settings.
+ *
+ * Every id has a stage (`EXPERIMENT_STAGES` in contracts). A finished one is
+ * on in every build and has no switch; an experimental one has a switch in a
+ * Nightly or a source build and does not exist in a Release. The build that
+ * decides is the primary machine's core (`heardBuild`), so what is in force
+ * (`readExperiments`) is `effectiveExperiments(chosen, thatVersion)`. The
+ * stored choice is never rewritten by that: a device that goes back to a
+ * Nightly finds its switches as it left them. A finished experiment a person
+ * would still want off gets a switch in `features.ts`.
  *
  * A phone or a browser follows the desktop app of its primary machine: the
  * core says which experiments that app has on (`client.preferences`,
@@ -22,7 +29,8 @@
  * the dedicated Agents interface.
  */
 
-import { EXPERIMENT_IDS, type ExperimentId } from '@boite/contracts';
+import { EXPERIMENT_IDS, effectiveExperiments, experimentListed, experimentsRun, listedExperiments, type ExperimentId } from '@boite/contracts';
+import { RELEASE_VERSION } from './release';
 
 /** Declared in contracts: the app reports which are on, and an agent may ask to flip one (`client.preferences`). */
 export { EXPERIMENT_IDS, type ExperimentId };
@@ -32,6 +40,8 @@ export const EXPERIMENTS_STORAGE_KEY = 'boite.experiments';
 export const FOLLOW_STORAGE_KEY = 'boite.experiments.follow';
 /** The desktop app's experiments as last heard, so a reload starts with them before the hello. */
 export const DESKTOP_STORAGE_KEY = 'boite.experiments.desktop';
+/** The version of the primary machine's core as last heard, so a reload lists the right switches before the hello. */
+export const BUILD_STORAGE_KEY = 'boite.experiments.build';
 
 
 type Listener = (enabled: ExperimentId[]) => void;
@@ -98,15 +108,45 @@ export function desktopExperiments(): ExperimentId[] | null {
   return heard()?.experiments ?? null;
 }
 
+/** The version heard in this session, held here only while the browser refuses storage. */
+let build: string | null = null;
+
 /**
- * The ids that are on: the desktop app's while this device follows it and
- * has heard them, else its own. An id nobody ships any more is dropped rather
- * than carried, so an old array left in storage cannot turn on something that
- * no longer exists.
+ * The version of the build that decides which experiments exist: the primary
+ * machine's core as last heard, else this app's own build before any hello.
  */
-export function readExperiments(): ExperimentId[] {
+export function experimentsBuild(): string {
+  return stored(BUILD_STORAGE_KEY) ?? build ?? RELEASE_VERSION;
+}
+
+/** Whether experiments exist in the build that decides: false on a Release, where Settings has no Experiments page. */
+export function experimentsAvailable(): boolean {
+  return experimentsRun(experimentsBuild());
+}
+
+/** The switches the Experiments page lists in the build that decides, in order. */
+export function listedSwitches(): ExperimentId[] {
+  return listedExperiments(experimentsBuild());
+}
+
+/**
+ * The switches turned on: the desktop app's while this device follows it and
+ * has heard them, else its own. This is what the app reports to a core
+ * (`client.preferences`), which reads it for its own build. An id nobody ships
+ * any more is dropped rather than carried, so an old array left in storage
+ * cannot turn on something that no longer exists.
+ */
+export function chosenExperiments(): ExperimentId[] {
   const desktop = followsDesktop() ? desktopExperiments() : null;
   return desktop ?? parse(stored(EXPERIMENTS_STORAGE_KEY)) ?? [];
+}
+
+/**
+ * The ids in force: every finished feature, and the chosen experiments where
+ * the build that decides runs them. On a Release none is, whatever storage holds.
+ */
+export function readExperiments(): ExperimentId[] {
+  return effectiveExperiments(chosenExperiments(), experimentsBuild());
 }
 
 export function isExperimentEnabled(id: ExperimentId): boolean {
@@ -118,17 +158,18 @@ export function writeExperiments(enabled: ExperimentId[]): void {
   const kept = EXPERIMENT_IDS.filter((id) => enabled.includes(id));
   store(EXPERIMENTS_STORAGE_KEY, JSON.stringify(kept));
   // Storage refused, the set still holds for this session's listeners.
-  tell(followsDesktop() && desktopExperiments() !== null ? readExperiments() : kept);
+  tell(followsDesktop() && desktopExperiments() !== null ? readExperiments() : effectiveExperiments(kept, experimentsBuild()));
 }
 
 /**
  * One switch, on or off: what the Experiments page and a card call. A device
- * that followed the desktop app keeps what it showed, with this flip, as its own.
+ * that followed the desktop app keeps what it showed, with this flip, as its
+ * own. An id without a switch in the build that decides (a finished feature,
+ * or any experiment on a Release) is refused: nothing is stored.
  */
 export function setExperiment(id: ExperimentId, on: boolean): void {
-  const enabled = new Set<ExperimentId>(readExperiments());
-  // Contacts runs through the Operator, a bot, and a team's chat lives on the Bots page: both go when Bots goes. The page greys their switches while Bots is off.
-  if (id === 'resident-agents' && !on) { enabled.delete('contacts'); enabled.delete('teams'); }
+  if (!experimentListed(id, experimentsBuild())) return;
+  const enabled = new Set<ExperimentId>(chosenExperiments());
   if (on) enabled.add(id);
   else enabled.delete(id);
   if (followsDesktop()) store(FOLLOW_STORAGE_KEY, 'off');
@@ -142,7 +183,7 @@ export function setFollowDesktop(follow: boolean): void {
     store(FOLLOW_STORAGE_KEY, null);
     tell();
   } else {
-    const shown = readExperiments();
+    const shown = chosenExperiments();
     store(FOLLOW_STORAGE_KEY, 'off');
     writeExperiments(shown);
   }
@@ -153,6 +194,16 @@ let leader: object | null = null;
 /** The Store whose machine's desktop app this device follows: the primary one, so a second machine's never takes turns with it. */
 export function followDesktopOf(owner: object | null): void {
   leader = owner;
+}
+
+/**
+ * The list to keep from what a core said of its desktop app, in an answer
+ * (`desktop`, `desktopChosen`) or an event (`experiments`, `chosen`): the
+ * one as chosen, which a Release core does not cut down, else the historic
+ * one of a core from before it.
+ */
+export function desktopHeard(said: { desktop?: ExperimentId[] | null; desktopChosen?: ExperimentId[] | null; experiments?: ExperimentId[]; chosen?: ExperimentId[] }): ExperimentId[] | null {
+  return said.desktopChosen ?? said.chosen ?? said.desktop ?? said.experiments ?? null;
 }
 
 /**
@@ -170,7 +221,19 @@ export function heardDesktop(owner: object, experiments: readonly ExperimentId[]
   if (before !== null && before.join() !== readExperiments().join()) tell();
 }
 
-/** Runs on every change. Returns the function that drops the listener. */
+/**
+ * The version the primary machine's core gave in its hello. It decides which
+ * experiments exist from then on, through reloads; another machine's core is
+ * not heard, and the stored choice is left as it is.
+ */
+export function heardBuild(owner: object, version: string | null | undefined): void {
+  if (owner !== leader || !version || version === experimentsBuild()) return;
+  store(BUILD_STORAGE_KEY, version);
+  build = stored(BUILD_STORAGE_KEY) === version ? null : version;
+  tell();
+}
+
+/** Runs on every change of what is in force or of the build that decides. Returns the function that drops the listener. */
 export function subscribeExperiments(listener: Listener): () => void {
   listeners.add(listener);
   return () => {

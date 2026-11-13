@@ -10,7 +10,8 @@
   import LimitsPage from './LimitsPage.svelte';
   import PluginsPage from './PluginsPage.svelte';
   import { COMMAND_GROUPS } from '../lib/keybindings';
-  import { EXPERIMENT_IDS } from '../lib/experiments';
+  import { experimentsListed, experimentsShown } from '../lib/experiments.svelte';
+  import { experimentsRun } from '@boite/contracts';
   import { experimentCopy } from '../lib/experiment-copy';
   import { fill, strings } from '../lib/strings';
   import type { SettingsTab, Store } from '../lib/store.svelte';
@@ -122,6 +123,7 @@
       { id: 'notifications', label: strings.settings.notificationsHeading },
       ...(store.owner ? [{ id: 'agent-replies', label: strings.settings.agentReplies }] : []),
       ...(store.owner ? [{ id: 'quiet', label: strings.protection.quiet }] : []),
+      ...(store.owner ? [{ id: 'agents-alone', label: strings.agentsAlone.heading }] : []),
       { id: 'workspace', label: strings.settings.workspace },
       { id: 'archived', label: strings.settings.archived.heading },
       ...(store.owner ? [{ id: 'worktrees', label: strings.settings.worktrees.heading }] : []),
@@ -162,7 +164,7 @@
       ...(desktopSettings(narrow.current) ? [{ id: 'details', label: strings.settings.terminalAndScrollbars }] : []),
       { id: 'core', label: strings.settings.core }
     ],
-    experiments: [...EXPERIMENT_IDS.map((id) => ({ id, label: experimentCopy()[id].title })), ...(store.owner ? [{ id: 'background-compaction', label: strings.settings.backgroundCompaction }, { id: 'device-stream', label: strings.settings.deviceStream }] : [])],
+    experiments: [...experimentsListed().map((id) => ({ id, label: experimentCopy()[id]?.title ?? id })), ...(store.owner && experimentsRun(target.core?.version) ? [{ id: 'background-compaction', label: strings.settings.backgroundCompaction }, { id: 'device-stream', label: strings.settings.deviceStream }] : [])],
     diagnostics: [
       { id: 'diagnostics-status', label: strings.diagnostics.status },
       { id: 'diagnostics-problems', label: strings.diagnostics.problems },
@@ -171,7 +173,8 @@
     ]
   });
 
-  let tabs = $derived(all.filter((tab) => store.owner || !ownerOnly(tab.id)));
+  // Experiments is a page only where the primary machine's build runs them: a Release has none, in the nav or in the search.
+  let tabs = $derived(all.filter((tab) => (store.owner || !ownerOnly(tab.id)) && (tab.id !== 'experiments' || experimentsShown())));
   /**
    * The nav's families (`SETTINGS_FAMILIES`), the same list a phone shows,
    * each page a peer inside its family (`navOf`): two levels, the nav and the
@@ -281,6 +284,8 @@
     ['machines', 'updates', strings.serverUpdate.updates],
     ['general', 'quiet', strings.settings.focusGuard],
     ['general', 'quiet', strings.settings.muteAgents],
+    ['general', 'agents-alone', strings.agentsAlone.reach],
+    ['general', 'agents-alone', strings.agentsAlone.bots],
     ['resources', 'limits', strings.settings.memoryProtection],
     ['resources', 'tasks', strings.settings.reapOrphans],
     ['advanced', 'phone', strings.settings.listenOnLan],

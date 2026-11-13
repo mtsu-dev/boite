@@ -397,6 +397,11 @@ test("a project header names another machine as a place once two are connected, 
     expect(reconnect()).toBeNull();
     const line = () => document.querySelector<HTMLElement>(`[data-testid=mobile-project-group][data-machine-id="${remote.machineId}"] [data-testid=project-offline]`);
     expect(line()).toBeNull();
+    expect(host()?.classList.contains('dim')).toBe(false);
+    // Retrying a dropped link: the name dims, no offline line yet.
+    remote.connection = 'connecting'; await settle();
+    expect(host()?.classList.contains('dim')).toBe(true);
+    expect(line()).toBeNull();
     remote.connection = 'closed'; await settle();
     // The state said once under the name, with its next step on that same line.
     expect(line()?.textContent).toContain('Builder is offline');

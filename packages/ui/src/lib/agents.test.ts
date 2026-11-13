@@ -4,7 +4,6 @@ import { RpcFailure } from './rpc-error';
 import { test } from '../test/fake-client';
 import { AgentsView, agentOfThread, agentRows, liveActivity, liveStep, openAgent, previewOf, avatarText } from './agents.svelte';
 import { AgentDirectory, agentDirectory } from './agent-directory.svelte';
-import { setExperiment } from './experiments';
 import { FakeAgents } from './fake-agents';
 import { openQuestionPage } from './question-page';
 import { rightPanel } from './right-panel.svelte';
@@ -174,44 +173,38 @@ test('the directory counts an agent at work from its own status when this client
 });
 
 test('an agent opens its own thread on the Agents page, and the thread list comes back to the thread it showed', async ({ ready }) => {
-  setExperiment('resident-agents', true);
-  try {
-    const { store, client } = await ready({ delayMs: 0, agentsDemo: true });
-    await store.open('t-trace');
-    expect(store.page).toBe('chat');
-    const view = AgentsView.of(store);
-    await view.refresh();
-    const mira = view.snapshot!.profiles.find(p => p.name === 'Mira')!;
-    store.showAgents();
-    const threadId = (await openAgent(store, mira.id))!;
-    expect(store.openThread?.id).toBe(threadId);
-    expect(store.page).toBe('agents');
-    // Its thread takes the user's messages like any thread: an ordinary turn, answered.
-    const turn = await client.call('turns.start', { threadId, prompt: 'hello' });
-    await vi.waitFor(() => expect(store.openThread?.turns.find(t => t.id === turn.id)?.status).toBe('done'));
-    store.showChat();
-    await vi.waitFor(() => expect(store.openThread?.id).toBe('t-trace'));
-    expect(store.page).toBe('chat');
-  } finally { setExperiment('resident-agents', false); }
+  const { store, client } = await ready({ delayMs: 0, agentsDemo: true });
+  await store.open('t-trace');
+  expect(store.page).toBe('chat');
+  const view = AgentsView.of(store);
+  await view.refresh();
+  const mira = view.snapshot!.profiles.find(p => p.name === 'Mira')!;
+  store.showAgents();
+  const threadId = (await openAgent(store, mira.id))!;
+  expect(store.openThread?.id).toBe(threadId);
+  expect(store.page).toBe('agents');
+  // Its thread takes the user's messages like any thread: an ordinary turn, answered.
+  const turn = await client.call('turns.start', { threadId, prompt: 'hello' });
+  await vi.waitFor(() => expect(store.openThread?.turns.find(t => t.id === turn.id)?.status).toBe('done'));
+  store.showChat();
+  await vi.waitFor(() => expect(store.openThread?.id).toBe('t-trace'));
+  expect(store.page).toBe('chat');
 });
 
 test('Open on an agent\'s login question shows the page beside its conversation, on the Agents page', async ({ ready }) => {
-  setExperiment('resident-agents', true);
-  try {
-    const { store, client } = await ready({ delayMs: 0, agentsDemo: true });
-    const view = AgentsView.of(store);
-    await view.refresh();
-    const iris = view.snapshot!.profiles.find(p => p.name === 'Iris')!;
-    store.showAgents();
-    const threadId = (await openAgent(store, iris.id))!;
-    await vi.waitFor(() => expect(store.pendingQuestions.some(q => q.threadId === threadId && q.open)).toBe(true));
-    const question = store.pendingQuestions.find(q => q.threadId === threadId && q.open)!;
-    await openQuestionPage(store, threadId, question.id);
-    expect(store.page).toBe('agents');
-    expect(store.openThread?.id).toBe(threadId);
-    const panel = rightPanel.for(store.threadKey(threadId));
-    await vi.waitFor(() => expect(panel.active?.kind).toBe('agent-browser'));
-    expect(panel.isOpen).toBe(true);
-    expect((await client.call('browser.remoteStatus', { threadId })).tabs).toMatchObject([{ url: 'https://dashboard.example.com/login', active: true }]);
-  } finally { setExperiment('resident-agents', false); }
+  const { store, client } = await ready({ delayMs: 0, agentsDemo: true });
+  const view = AgentsView.of(store);
+  await view.refresh();
+  const iris = view.snapshot!.profiles.find(p => p.name === 'Iris')!;
+  store.showAgents();
+  const threadId = (await openAgent(store, iris.id))!;
+  await vi.waitFor(() => expect(store.pendingQuestions.some(q => q.threadId === threadId && q.open)).toBe(true));
+  const question = store.pendingQuestions.find(q => q.threadId === threadId && q.open)!;
+  await openQuestionPage(store, threadId, question.id);
+  expect(store.page).toBe('agents');
+  expect(store.openThread?.id).toBe(threadId);
+  const panel = rightPanel.for(store.threadKey(threadId));
+  await vi.waitFor(() => expect(panel.active?.kind).toBe('agent-browser'));
+  expect(panel.isOpen).toBe(true);
+  expect((await client.call('browser.remoteStatus', { threadId })).tabs).toMatchObject([{ url: 'https://dashboard.example.com/login', active: true }]);
 });

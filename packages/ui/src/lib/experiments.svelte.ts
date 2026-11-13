@@ -6,13 +6,25 @@
  * can import it from anywhere.
  */
 
-import { readExperiments, subscribeExperiments, type ExperimentId } from './experiments';
+import { experimentsAvailable, listedSwitches, readExperiments, subscribeExperiments, type ExperimentId } from './experiments';
 
-const mirror = $state<{ enabled: ExperimentId[] }>({ enabled: readExperiments() });
+const mirror = $state<{ enabled: ExperimentId[]; listed: ExperimentId[]; available: boolean }>({ enabled: readExperiments(), listed: listedSwitches(), available: experimentsAvailable() });
 
 subscribeExperiments((enabled) => {
   mirror.enabled = enabled;
+  mirror.listed = listedSwitches();
+  mirror.available = experimentsAvailable();
 });
+
+/** Whether Settings has an Experiments page: false where the primary machine runs a Release. */
+export function experimentsShown(): boolean {
+  return mirror.available;
+}
+
+/** The switches the Experiments page lists, tracked by whoever reads them inside a rune. */
+export function experimentsListed(): ExperimentId[] {
+  return mirror.listed;
+}
 
 /** Whether an experiment is on, tracked by whoever reads it inside a rune. */
 export function experimentOn(id: ExperimentId): boolean {

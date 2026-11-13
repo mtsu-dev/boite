@@ -1003,8 +1003,7 @@ ownership and duplication, not an automatic split.
 
 ## UI spacing and motion
 
-Settings, Experiments, Pinned model quotas adds a pin to Account limits and
-the Limits page. The card follows the open conversation's model provider,
+Pinned model quotas put a pin on Account limits and the Limits page. The card follows the open conversation's model provider,
 including every matching Douane account, and offers four conversation corners
 or a dock below the thread or bot list. Drag the card from outside its buttons
 to a corner or the sidebar; arrow keys move a focused card and Home docks it.

@@ -1,12 +1,9 @@
 import { afterEach, beforeEach, expect, test } from 'vitest';
 import type { AgentsSnapshot, ThreadSummary } from '@boite/contracts';
-import { setExperiment } from './experiments';
 import { agentDirectory } from './agent-directory.svelte';
 import { entrustItems } from './thread-entrust';
 import type { Store } from './store.svelte';
 
-beforeEach(() => { setExperiment('resident-agents', true); });
-afterEach(() => { setExperiment('resident-agents', false); });
 
 const thread = (patch: Partial<ThreadSummary> = {}) => ({ id: 't1', projectId: 'p1', parentThreadId: null, archived: false, incognito: false, ...patch } as ThreadSummary);
 const profile = (id: string, status = 'active') => ({ id, name: id === 'mira' ? 'Mira' : 'Lin', status, domain: '', avatar: '' });

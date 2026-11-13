@@ -1,6 +1,6 @@
 import type { Attachment, PreviewReference, SentFrom } from './messages';
 import type { PermissionMode } from './threads';
-import type { ExperimentId } from './setting-requests';
+import type { ExperimentId } from './experiments';
 
 export interface ComposerChoice {
   providerId: string;

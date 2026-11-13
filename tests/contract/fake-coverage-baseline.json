@@ -14,7 +14,6 @@
   "agent.settings",
   "agent.spawn",
   "agent.where",
-  "agents.create",
   "agents.settings.apply",
   "agents.settings.read",
   "agents.settings.request",

@@ -118,6 +118,8 @@ export interface CoreOptions {
   secretVault?: (dir: string) => Promise<SecretVault>;
   /** The admin policy file this core reads instead of the machine's (`policy.ts`); tests point it inside their data directory. */
   policyFile?: string;
+  /** The version this core is, instead of its package's; tests name a Release to read what it holds off (`experiments.ts` in contracts). */
+  version?: string;
 }
 
 /**
@@ -153,7 +155,7 @@ export function resolveCliDir(
 }
 
 export class Core {
-  readonly version = CORE_VERSION;
+  readonly version: string;
   readonly bundleHash: string | undefined;
   readonly dataDir: string;
   readonly token: string;
@@ -367,6 +369,7 @@ export class Core {
     this.dataDir = options.dataDir;
     this.token = options.token;
     this.channel = options.channel ?? 'stable';
+    this.version = options.version ?? CORE_VERSION;
     mkdirSync(this.dataDir, { recursive: true });
 
     this.bus = new Bus();
@@ -383,6 +386,8 @@ export class Core {
       this.logs.info(`${message} in ${Math.round(now - phaseAt)} ms`, { source: 'startup', event, durationMs: now - phaseAt, ...(data ? { data } : {}) });
       phaseAt = now;
     };
+    // Read before the journal opens and creates its file: only a data directory older than this start counts as one.
+    const journalExisted = existsSync(join(this.dataDir, 'journal.db'));
     this.journal = new Journal(join(this.dataDir, 'journal.db'), { onError: (message) => this.log('error', message) });
     const schema = this.journal.schema;
     phase('startup.journal-opened', schema.from === schema.to ? `Journal opened at schema ${schema.to}` : `Journal opened and migrated from schema ${schema.from} to ${schema.to}`,
@@ -396,9 +401,11 @@ export class Core {
     this.#stopMoves = scheduleInlineValueMoves(this.journal, (message) => this.log('error', message));
     this.router = new Router();
     this.settings = new SettingsStore(this);
+    this.settings.seedAgentDefaults(journalExisted);
     this.clients = new ClientPreferencesBook(
       (preferences, before) => this.threads.cards.settleClient(preferences, before),
-      (experiments) => this.bus.emit('client.desktopExperiments', { experiments }),
+      (moved) => this.bus.emit('client.desktopExperiments', moved),
+      this.version,
     );
     this.providers = new ProviderRegistry(this.dataDir);
     this.providers.loadSwitches(this.journal.getSetting(PROVIDER_SWITCHES));

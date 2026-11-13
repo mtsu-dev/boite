@@ -18,7 +18,7 @@ const capture = async (name: string) => {
 beforeAll(async () => {
   const port = await freePort();
   server = await startUi(port);
-  page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1&agents=1`, experiments: ['resident-agents'], windowSize: { width: 1440, height: 900 } });
+  page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1&agents=1`, windowSize: { width: 1440, height: 900 } });
   await page.waitFor(`window.__boiteTest?.workspace.active.connection === 'ready'`);
   const agentId = await page.evaluate<string>(`(async () => {
     window.__boiteTest.setTheme('dark');
@@ -37,11 +37,11 @@ test('the bot desk shows who it is, Now, routines and memory in one column witho
     await page.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: width === 390 });
     // A first visit on a wide window opens the desk by itself: read its state once the panel has settled,
     // so the click never closes a desk that is still sliding in. Closed, the header's door opens it;
-    // open, the door (or the phone panel's own head) names it.
+    // open, its tab is the selected one (a phone panel's own head names it).
     await page.waitFor(`document.querySelector('${id('agent-desk-toggle')}') || document.querySelector('${id('agent-desk')}')`);
     await page.settleAnimations();
     if (!await page.evaluate(visible('agent-desk'))) await page.click(id('agent-desk-toggle'));
-    await page.waitFor(`${visible('agent-desk')} && [...document.querySelectorAll('${id('panel-door-name')}, ${id('panel-title')}')].some(name => name.checkVisibility() && name.textContent.trim() === 'Desk')`);
+    await page.waitFor(`${visible('agent-desk')} && ([...document.querySelectorAll('${id('panel-title')}')].some(name => name.checkVisibility() && name.textContent.trim() === 'Desk') || !!document.querySelector('${id('panel-tab')}[data-kind=desk][aria-selected=true]'))`);
     await page.settleAnimations();
     // One column, no tabs: who it is, then its routines and memory.
     for (const part of ['desk-ident', 'desk-schedule', 'desk-memory']) expect(await page.evaluate(visible(part))).toBe(true);

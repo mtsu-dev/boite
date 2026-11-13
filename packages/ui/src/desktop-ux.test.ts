@@ -61,7 +61,7 @@ test('a maximized panel stays with its thread: the Contacts page beside the list
   }
 });
 
-test('contacts are the Bots column\'s other side: its head folds the column on the right, a row opens a contact, and with Bots off the rail keeps their place', async () => {
+test('contacts are the Bots column\'s other side: its head folds the column on the right, a row opens a contact', async () => {
   writeExperiments(['resident-agents', 'contacts']);
   await mountOnFake();
   try {
@@ -103,16 +103,6 @@ test('contacts are the Bots column\'s other side: its head folds the column on t
     query<HTMLButtonElement>('[data-testid=contacts-rail-home]').click();
     await waitFor(() => store.page === 'home');
 
-    // With Bots off there is no switch: the rail holds Contacts' place and the side's title alone leads back.
-    writeExperiments(['contacts']);
-    await waitFor(() => document.querySelector('[data-testid=rail-contacts]') !== null);
-    expect(query('[data-testid=rail-contacts]').getAttribute('aria-current')).toBe('page');
-    expect(document.querySelector('[data-testid=side-switch]')).toBeNull();
-    query<HTMLButtonElement>('[data-testid=side-back]').click();
-    flushSync();
-    expect(store.page).toBe('chat');
-    query<HTMLButtonElement>('[data-testid=rail-contacts]').click();
-    await waitFor(() => store.page === 'home');
   } finally {
     if (!contactsRail.folded) contactsRail.toggle();
     store.showChat();
@@ -765,11 +755,12 @@ test('a page says where it applies once: one line for most of its cards, a tag o
   await mountOnFake('/?fake=1');
   await waitFor(() => workspace.machines.length === 1 && store.connection === 'ready');
   const machine = workspace.machines[0]!;
-  // General is mostly this device's switches and two machine cards: the line says "this device" once, each machine card its own.
+  // General is mostly this device's switches and three machine cards: the line says "this device" once, each machine card its own.
   store.showSettings('general');
   await waitFor(() => document.querySelector('#settings-agent-replies [data-testid=card-scope]') !== null);
   expect(query('[data-testid=settings-scope]').textContent?.trim()).toBe(strings.settings.scopeDevice);
-  expect([...document.querySelectorAll<HTMLElement>('[data-testid=card-scope]')].map((tag) => tag.dataset.kind)).toEqual(['machine', 'machine']);
+  expect([...document.querySelectorAll<HTMLElement>('[data-testid=card-scope]')].map((tag) => tag.dataset.kind)).toEqual(['machine', 'machine', 'machine']);
+  expect(query('#settings-agents-alone [data-testid=card-scope]').dataset.kind).toBe('machine');
   expect(document.body.textContent?.split(strings.settings.cardDevice)).toHaveLength(1);
   expect(query('#settings-agent-replies [data-testid=card-scope]').textContent?.trim()).toBe(fill(strings.settings.cardMachine, { machine: machineName(machine) }));
   // Browser holds this device's settings alone: its card carries no tag, the line under the title says it once.

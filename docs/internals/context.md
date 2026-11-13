@@ -10,8 +10,7 @@ there is no usage reading, or when neither a model window nor a compaction
 threshold is known. Hovering, focusing or tapping the ring
 opens exact counts and a separate manual compaction button. The panel opens
 above the message bar, using the available height, and scrolls on short screens.
-Behind the
-`prompt-cache` experiment the meter also carries the
+The meter also carries the
 [prompt cache timer](prompt-cache.md).
 
 When automatic compaction has a token threshold, the ring, percentage, bar and

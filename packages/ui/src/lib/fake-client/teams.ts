@@ -73,8 +73,7 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
   const self = () => ctx.identity.coreId;
   const key = (botId: string) => teamMemberKey(self(), botId);
   const gate = () => {
-    const experiments = ctx.desktopExperiments ?? ctx.clientPreferences?.experiments ?? [];
-    if (!experiments.includes('teams')) throw refused('teams need the Teams experiment, which is off in the desktop app (Settings, Experiments)', { reason: 'experiment-off' });
+    if (!ctx.experimentsInForce().includes('teams')) throw refused('teams need the Teams experiment, which is off in the desktop app (Settings, Experiments)', { reason: 'experiment-off' });
   };
   const all = () => [...state(ctx).teams.values()];
   const changed = (team: Team) => ctx.emit('teams.changed', { teamId: team.id, version: team.version });
@@ -110,7 +109,7 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
     }
     const there = fakeCore(peer.coreId);
     if (!there) throw refused(`${field}: ${peer.name} did not answer; its bots can join once it answers`, { field, reason: 'unreachable' });
-    if (!(there.desktopExperiments ?? there.clientPreferences?.experiments ?? []).includes('teams')) {
+    if (!there.experimentsInForce().includes('teams')) {
       throw refused(`${peer.name}: teams need the Teams experiment, which is off in the desktop app (Settings, Experiments)`, { field, reason: 'experiment-off' });
     }
     const found = among(there.agents.liveProfiles(), name);

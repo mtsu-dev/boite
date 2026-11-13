@@ -28,7 +28,6 @@
   import ContactHoldNotice from './ContactHoldNotice.svelte';
   import { firstRunScreen, needsAnAI } from '../lib/first-run';
   import { closingLine } from '../lib/closing-line';
-  import { HOUSE_BOT } from '../lib/robots';
 
   /** `locked`: the conversation reads but takes nothing more, said in place of the composer (an archived agent's). */
   let { store, locked = null }: { store: Store; locked?: string | null } = $props();
@@ -168,8 +167,6 @@
           {#if store.draft?.worktree}<small>{strings.thread.inWorktree}</small>{/if}
         </div>
         <div class="draft-heading" data-testid="draft-sentence">
-          <!-- The house bot greets the most seen empty screen, as first run does: the cluster's one focal point. -->
-          <span class="start-mark" aria-hidden="true"><Deferred part={parts.RobotFace} quiet>{#snippet children(RobotFace)}<RobotFace robot={HOUSE_BOT} />{/snippet}</Deferred></span>
           <h1 class="start">
             <span class="ui-label">{strings.thread.start}</span>
             <span class="ui-label">{strings.thread.inProject}</span>
@@ -339,10 +336,6 @@
     max-width: var(--content);
     text-align: center;
   }
-
-  /* Small: a greeting over the headline, not a hero; the group reads as headline, place and composer. */
-  .start-mark { display: block; width: 40px; height: 40px; margin-bottom: -2px; }
-  .start-mark :global(svg.robot) { display: block; width: 100%; height: 100%; border-radius: 50%; }
 
   .start {
     display: flex;

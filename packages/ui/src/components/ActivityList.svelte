@@ -9,8 +9,7 @@
   import { count } from '../lib/format';
   import ActivityRow from './ActivityRow.svelte';
   import MarkAllRead from './MarkAllRead.svelte';
-  import EmptyState, { HOUSE_BOT } from './EmptyState.svelte';
-  import RobotFace from './agents/RobotFace.svelte';
+  import EmptyState from './EmptyState.svelte';
   import { restoreActivity } from '../lib/activity-return.svelte';
 
   /**
@@ -69,7 +68,7 @@
     <!-- The first line carries Mark all as read on its right, whichever line it is. -->
     {#if needsCount > 0 || rows.length > 0}<div class="feed-head">
       {#if needsCount > 0}<h2 class="section-label" data-testid="activity-needs" data-count={needsCount}><span class="dot" aria-hidden="true"></span>{strings.sidebar.state.waiting}<span class="count">{count(needsCount)}</span></h2>
-      {:else}<p class="all-done" data-testid="activity-all-done"><span class="face" aria-hidden="true"><RobotFace robot={HOUSE_BOT} /></span>{strings.mobile.nothingNeedsYou}</p>{/if}
+      {:else}<p class="all-done" data-testid="activity-all-done">{strings.mobile.nothingNeedsYou}</p>{/if}
       <MarkAllRead {rows} />
     </div>{/if}
     {#if ContactInboxRows && contactsShown(store)}<ContactInboxRows {store} />{/if}
@@ -78,7 +77,7 @@
     {#each updates as { row, helpers } (`${row.machine.id}:${row.thread.id}`)}<ActivityRow {row} {helpers} {now} />{/each}
     {#if rows.length === 0 && inbox.contacts === 0}
       <!-- Nothing waits: the app's one empty view, small, with the one thing left to do. -->
-      <EmptyState line={strings.mobile.emptyActivity} testid="activity-empty" small>
+      <EmptyState line={strings.mobile.emptyActivity} testid="activity-empty" robot={null} small>
         {#snippet action()}<button type="button" class="primary" data-testid="activity-new-thread" onclick={newThread}>{strings.sidebar.newThread}</button>{/snippet}
       </EmptyState>
     {/if}
@@ -120,8 +119,6 @@
   h2 .count { margin-left: 6px; color: var(--color-live); font-variant-numeric: tabular-nums; }
   h2 { display: flex; align-items: center; }
   .dot { width: 8px; height: 8px; margin-right: 8px; flex: none; border-radius: var(--radius-full); background: var(--color-live); }
-  /* Only updates left: the house mascot, small, says nothing waits; the moment is rare, so it may smile. */
+  /* Only updates left: one quiet line says nothing waits. */
   .all-done { display: flex; align-items: center; gap: 10px; margin: 0 0 var(--space-4) 10px; font-size: var(--text-sm); font-weight: 500; color: var(--color-muted-foreground); }
-  .face { display: block; width: 24px; height: 24px; flex: none; }
-  .face :global(svg.robot) { display: block; width: 100%; height: 100%; border-radius: 50%; }
 </style>
