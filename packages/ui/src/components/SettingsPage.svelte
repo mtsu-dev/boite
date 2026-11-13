@@ -22,6 +22,7 @@
   import OriginsCard from './OriginsCard.svelte';
   import PhoneSettings from './PhoneSettings.svelte';
   import PluginsPage from './PluginsPage.svelte';
+  import AgentsAloneCard from './AgentsAloneCard.svelte';
   import PolicySettings from './PolicySettings.svelte';
   import QuietCard from './QuietCard.svelte';
   import ResourcesPage from './ResourcesPage.svelte';
@@ -115,6 +116,7 @@
   {:else if id === 'usage'}<UsagePage {store} />
   {:else if id === 'brain'}<BrainPage store={target} />
   {:else if id === 'plugins'}<PluginsPage store={target} />
+  {:else if id === 'agents-alone'}<AgentsAloneCard store={target} />
   {:else if id === 'auto-compact'}<CompactionSettings store={target} />
   {:else if id === 'execution'}<SchedulerSettings store={target} />
   {:else if id === 'quiet'}<QuietCard store={target} />

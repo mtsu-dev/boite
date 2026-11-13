@@ -1,4 +1,5 @@
 import { expect, vi } from 'vitest';
+import type { AgentCreated } from '@boite/contracts';
 import { flushSync, mount, unmount } from 'svelte';
 import { test } from '../../test/fake-client';
 import { AgentsView, agentOfThread, agentRows, openAgent } from '../../lib/agents.svelte';
@@ -171,14 +172,14 @@ test("a desktop's column is the open bot's: who it is, its conversation, its thr
     expect(document.querySelector('[data-testid^="agent-entry-"]')).toBeNull();
     expect(document.querySelector('[data-testid=agents-search-toggle]')).toBeNull();
     expect(document.querySelectorAll('.agents-rail .section-label')).toHaveLength(0);
-    // The window's top bar carries the chat's header in a thread header's pattern: its name, its view menu, the Panels door.
+    // The window's top bar carries the chat's header in a thread header's pattern: its name, its view menu, the panel's glyph.
     expect(document.querySelector('[data-testid=titlebar] [data-testid=agent-header]')).not.toBeNull();
     const botHead = document.querySelector('[data-testid=agent-header]')!;
     expect(botHead.querySelector('.agent-head-name')?.textContent).toBe(nova.name);
     expect(botHead.querySelector('[data-testid=agent-menu]')).not.toBeNull();
-    // One door: it reads "Panels" until the panel is in and names itself on it (`RightPanel.strip.test.ts`); here the panel is not loaded.
+    // One door: the panel glyph, its name in the tooltip, pressed while the panel is open.
     const door = botHead.querySelector<HTMLElement>('[data-testid=agent-desk-toggle]')!;
-    expect(door.textContent).toContain(strings.thread.panelMenu);
+    expect(door.title).toContain(strings.thread.panelHint);
     expect(door.getAttribute('aria-pressed')).toBe(String(store.panelOpen));
     expect(door.textContent).not.toContain(strings.agents.desk);
     expect(botHead.querySelectorAll('[data-testid=agent-desk-toggle]')).toHaveLength(1);
@@ -209,7 +210,7 @@ test('an empty desk is one centred prompt in the column, the way into its first 
     const { store, client } = await ready({ delayMs: 0, agentsDemo: true });
     const view = AgentsView.of(store);
     const { id: threadId } = await client.call('threads.create', { projectId: 'p-boite', providerId: 'echo', accountId: 'a-echo' });
-    const { agent } = await client.call('agents.create', { threadId, name: 'Scribe' });
+    const { agent } = await client.call('agents.create', { threadId, name: 'Scribe' }) as AgentCreated;
     await view.refresh();
     store.showAgents(agent.id);
     page = mount(AgentsPage, { target: document.body, props: { store } });

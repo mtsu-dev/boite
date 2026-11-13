@@ -221,10 +221,10 @@ export { ChangeLog, LIST_CHANGES_IDS, listCursorProblem } from './list-changes.t
 export { GOAL_TRACKER_DEFAULTS, GOAL_CHECKLIST_MAX_ITEMS, GOAL_CHECKLIST_SOURCE_MAX, GOAL_CHECKLIST_TEXT_MAX, defaultTrackerModel, trackerEffort, type GoalTrackerRule } from './goal-tracker.ts';
 export { DEVICE_METHODS, DEVICE_EVENTS, AGENT_EVENTS, AGENT_METHODS, SUBSCRIBED_EVENTS, accessRefusal, agentHearsEvent, pluginMayCall, pluginMayHear, deviceBound, deviceDiffRef, eventThreadId, mayHearEvent, PLUGIN_SELF_EVENTS, PLUGIN_SELF_METHODS, pluginSelfCall, type AccessRefusal, type Caller } from './access.ts';
 export {
-  APP_LANGUAGES, CLIENT_APP_PATTERN, CLIENT_LABELS_MAX, CLIENT_LABEL_CHARS, MACHINE_SETTINGS, PLUGIN_ADD_SECTION, REQUESTABLE_SETTINGS, REQUESTABLE_SETTING_KEYS, SETTING_REASON_MAX, SETTINGS_PAGES, SETTINGS_PAGE_ALIASES, SETTINGS_SECTION_PATTERN,
-  checkClientPreferences, checkSettingRequest, settledExperiment, currentSetting, effectiveSetting, experimentOf, isExperimentKey, isMachineSetting, isRequestableSetting, isSettingsPage, isSettingsPageName, readSettings,
+  AGENTS_ALONE_SECTION, APP_LANGUAGES, CLIENT_APP_PATTERN, CLIENT_LABELS_MAX, CLIENT_LABEL_CHARS, MACHINE_SETTINGS, PLUGIN_ADD_SECTION, REQUESTABLE_SETTINGS, REQUESTABLE_SETTING_KEYS, SETTING_REASON_MAX, SETTINGS_PAGES, SETTINGS_PAGE_ALIASES, SETTINGS_SECTION_PATTERN,
+  botCard, checkClientPreferences, checkSettingRequest, settledExperiment, currentSetting, effectiveSetting, experimentOf, isExperimentKey, isMachineSetting, isRequestableSetting, isSettingsPage, isSettingsPageName, readSettings,
   sameClientPreferences, sameSetting, settingAnswerText, settledMachineSetting, settledSetting,
-  type AppLanguage, type ClientPreferences, type ExperimentSettingKey, type MachineSetting, type RequestableKey, type RequestableSetting, type SettingAsk,
+  type AppLanguage, type BotAsk, type ClientPreferences, type ExperimentSettingKey, type MachineSetting, type RequestableKey, type RequestableSetting, type SettingAsk, type SettingCardAsk,
   type SettingMachine, type SettingNormalizer, type SettingOutcome, type SettingPlace, type SettingReading, type SettingRequestCheck, type SettingRequestParams, type SettingsPage, type SettingsPageAlias, type SettingsPageName,
   type SettingsReading,
 } from './setting-requests.ts';
@@ -242,8 +242,8 @@ export {
   type AgentSettingRequestCheck, type AgentSettingRequestParams, type AgentSettingsReading, type AgentSettingsReadParams,
 } from './agent-setting-requests.ts';
 export {
-  checkAgentCreate,
-  type AgentCreateCheck, type AgentCreateContext, type AgentCreateParams, type AgentCreateResult, type AgentCreation,
+  BOT_CARD_NOTE, checkAgentCreate,
+  type AgentCreateApproveParams, type AgentCreateAsked, type AgentCreateCheck, type AgentCreateContext, type AgentCreated, type AgentCreateParams, type AgentCreateResult, type AgentCreation,
 } from './agent-create.ts';
 export { SPEECH_CATALOGUE, SPEECH_CUSTOM_ID, SPEECH_DEFAULT_MODEL, isSpeechModelId, speechUrlProblem, type SpeechCatalogueModel, type SpeechModelTier, type SpeechBackend } from './speech-models.ts';
 

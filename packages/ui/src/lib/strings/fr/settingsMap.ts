@@ -52,6 +52,7 @@ export const fr: Translation = {
       brain: 'instructions compétences mémoire règles',
       hooks: 'scripts',
       plugins: 'extensions modules',
+      'agents-alone': 'bots coordination portée permission',
       'auto-compact': 'compaction contexte jetons résumé',
       execution: 'processus chargé inactif',
       quiet: 'focus muet audio fenêtres',

@@ -42,6 +42,7 @@ export function cardWords(): Record<SettingsCardId, CardWords> {
     brain: { title: strings.brain.heading, controls: [[strings.brain.folder], [strings.brain.autoPull], [strings.brain.globalInstructions, strings.brain.globalHint]] },
     hooks: { title: strings.hooks.heading, controls: [[strings.hooks.refresh]] },
     plugins: { title: strings.plugins.heading, controls: [[strings.plugins.search, strings.plugins.intro]] },
+    'agents-alone': { title: strings.agentsAlone.heading, controls: [[strings.agentsAlone.reach], [strings.agentsAlone.bots, strings.agentsAlone.botsEffect]] },
     'auto-compact': { title: s.compactionScope, controls: [[s.autoCompact], [s.compactionCustomize], [s.compactionSummary, s.compactionSummaryHint]] },
     execution: { title: s.execution, controls: [[s.warmProcessMinutes, s.warmProcessMinutesHint]] },
     quiet: { title: strings.protection.quiet, controls: [[s.focusGuard, fx.focusGuard], [s.muteAgents, fx.muteAgents]] },

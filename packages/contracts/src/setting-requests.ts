@@ -1,3 +1,4 @@
+import type { AgentCreation } from './agent-create.ts';
 import type { QuestionAnswer, QuestionOption, Settings, ThreadId } from './index.ts';
 import { readPluginSource, sameRepository, type PluginSourceInput } from './plugin-source.ts';
 import { EXPERIMENT_IDS, experimentRefusal, isExperimentId, listedExperiments, type ExperimentId } from './experiments.ts';
@@ -104,6 +105,9 @@ export interface SettingPlace {
   sensitive: boolean;
 }
 
+/** The card of Settings > Agents that holds what agents may do alone. */
+export const AGENTS_ALONE_SECTION = 'agents-alone';
+
 /**
  * The settings an agent may read and ask about. Credentials, account ids and
  * browser profiles are left out: an agent has no reason to read them.
@@ -138,6 +142,8 @@ export const REQUESTABLE_SETTINGS = {
   deviceStream: { page: 'version', section: 'device-stream', sensitive: false },
   groupThreads: { page: 'devices', section: 'machines', sensitive: false },
   groupBots: { page: 'devices', section: 'machines', sensitive: false },
+  agentBotCreation: { page: 'agents', section: AGENTS_ALONE_SECTION, sensitive: false },
+  coordinationReach: { page: 'agents', section: AGENTS_ALONE_SECTION, sensitive: false },
 } as const satisfies Partial<Record<keyof Settings, SettingPlace>>;
 
 export type RequestableSetting = keyof typeof REQUESTABLE_SETTINGS;
@@ -245,12 +251,35 @@ export type SettingAsk =
       plugin?: PluginSourceInput;
     };
 
+/** What a question's `setting` holds: a settings card, or the card of a bot an agent asked to create. */
+export type SettingCardAsk = SettingAsk | BotAsk;
+
+/**
+ * A bot a thread's agent asked to create while `agentBotCreation` is `ask`
+ * (`agents.create`). Approve is the owner's `agents.create.approve`, which
+ * creates it as the call would have; the only option is to decline.
+ */
+export interface BotAsk {
+  kind: 'bot';
+  /** The bot as the call was checked: Approve saves it, checked again. */
+  bot: AgentCreation;
+  /** Its projects by name, in the order of `bot.projectIds`. */
+  projects: string[];
+  /** Its model as the model picker names it. */
+  model: string;
+}
+
 /**
  * How a settings card ended, the one option id its answer carries. Only
  * `refuse` and `open` are options the user answers with; the core writes
  * `applied` and `changed` itself when the setting changes.
  */
 export type SettingOutcome = 'applied' | 'changed' | 'refuse' | 'open';
+
+/** The card `agents.create` draws, with the one option the user answers with. */
+export function botCard(bot: AgentCreation, projects: string[], model: string): { text: string; setting: BotAsk; options: QuestionOption[] } {
+  return { text: `Create the bot ${JSON.stringify(bot.name)}, which runs with full access to this machine`, setting: { kind: 'bot', bot, projects, model }, options: [{ id: 'refuse', label: 'Decline' }] };
+}
 
 export const SETTING_REASON_MAX = 500;
 
@@ -276,6 +305,8 @@ const MISSING: Partial<Record<RequestableSetting, unknown>> = {
   deviceStream: false,
   groupThreads: false,
   groupBots: false,
+  agentBotCreation: 'ask',
+  coordinationReach: 'project',
   shortAnswers: true,
   toolSummaries: false,
   titleModel: null,
@@ -346,7 +377,7 @@ export type SettingNormalizer = (patch: Partial<Settings>) => { ok: true; patch:
  * about another machine, `machine` names it and `settings` holds the value
  * that machine reported for the key.
  */
-export function checkSettingRequest(params: SettingRequestParams, settings: Settings, normalize: SettingNormalizer, open: readonly SettingAsk[], client: ClientPreferences | null = null, machine: SettingMachine | null = null, version?: string): SettingRequestCheck {
+export function checkSettingRequest(params: SettingRequestParams, settings: Settings, normalize: SettingNormalizer, open: readonly SettingCardAsk[], client: ClientPreferences | null = null, machine: SettingMachine | null = null, version?: string): SettingRequestCheck {
   const reason = typeof params.reason === 'string' ? params.reason.trim() : '';
   if (reason.length === 0 || reason.length > SETTING_REASON_MAX) return { ok: false, message: `reason must hold 1 to ${SETTING_REASON_MAX} characters`, data: { field: 'reason' } };
   const hasKey = params.key !== undefined;
@@ -409,7 +440,7 @@ export function checkSettingRequest(params: SettingRequestParams, settings: Sett
  * Plugins page reads it, so a URL the page would refuse never reaches a card,
  * and one thread holds one card per repository.
  */
-function pluginCard(params: Extract<SettingRequestParams, { page: string }>, reason: string, open: readonly SettingAsk[]): SettingRequestCheck {
+function pluginCard(params: Extract<SettingRequestParams, { page: string }>, reason: string, open: readonly SettingCardAsk[]): SettingRequestCheck {
   // Plugins is a card of the Agents page; `plugins` is its name from before.
   if (params.page !== 'agents' && params.page !== 'plugins') return { ok: false, message: 'a plugin card opens the plugins card of the agents page', data: { field: 'page', expected: ['agents'] } };
   const given = params.plugin as unknown;
@@ -432,7 +463,7 @@ function pluginCard(params: Extract<SettingRequestParams, { page: string }>, rea
  * asked from. An experiment's card never settles here: a core setting moving
  * flips no switch (`settledExperiment`).
  */
-export function settledSetting(setting: SettingAsk, settings: Settings): QuestionAnswer | null {
+export function settledSetting(setting: SettingCardAsk, settings: Settings): QuestionAnswer | null {
   if (setting.kind !== 'change' || isExperimentKey(setting.key) || setting.machine !== undefined) return null;
   const now = effectiveSetting(settings, setting.key as RequestableSetting);
   if (sameSetting(now, setting.previous)) return null;
@@ -444,7 +475,7 @@ export function settledSetting(setting: SettingAsk, settings: Settings): Questio
  * said its setting changed (`value`), or null while it holds the value the
  * card was asked from, or the card is about another machine or key.
  */
-export function settledMachineSetting(setting: SettingAsk, coreId: string, key: string, value: unknown): QuestionAnswer | null {
+export function settledMachineSetting(setting: SettingCardAsk, coreId: string, key: string, value: unknown): QuestionAnswer | null {
   if (setting.kind !== 'change' || setting.machine?.coreId !== coreId || setting.key !== key) return null;
   if (sameSetting(value, setting.previous)) return null;
   return { optionIds: [sameSetting(value, setting.value) ? 'applied' : 'changed'], value };
@@ -458,7 +489,7 @@ export function settledMachineSetting(setting: SettingAsk, coreId: string, key: 
  * restart. Another app that merely had a different value, a language change
  * or a core setting moving settles nothing.
  */
-export function settledExperiment(setting: SettingAsk, report: ClientPreferences, before: readonly ExperimentId[] | null): QuestionAnswer | null {
+export function settledExperiment(setting: SettingCardAsk, report: ClientPreferences, before: readonly ExperimentId[] | null): QuestionAnswer | null {
   if (setting.kind !== 'change') return null;
   const id = experimentOf(setting.key);
   if (id === null) return null;
@@ -470,8 +501,14 @@ export function settledExperiment(setting: SettingAsk, report: ClientPreferences
 }
 
 /** What the agent reads once its card settles, under the quoted reason. */
-export function settingAnswerText(setting: SettingAsk, answer: QuestionAnswer): string {
+export function settingAnswerText(setting: SettingCardAsk, answer: QuestionAnswer): string {
   const outcome = answer.optionIds[0];
+  if (setting.kind === 'bot') {
+    const name = JSON.stringify(setting.bot.name);
+    if (outcome !== 'applied') return `declined: the user did not create the bot ${name}; nothing was created`;
+    const made = (answer.value ?? {}) as { agentId?: string; threadId?: string | null };
+    return `approved: the bot ${name} exists (${made.agentId ?? 'id unknown'})${made.threadId ? `; its conversation is ${made.threadId}, and boite threads send ${made.threadId} <text> writes to it` : ''}`;
+  }
   if (setting.kind === 'open' && setting.plugin !== undefined) {
     const source = `${setting.plugin.url}${setting.plugin.ref === null ? '' : ` at ${setting.plugin.ref}`}`;
     return outcome === 'open'

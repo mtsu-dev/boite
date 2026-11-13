@@ -1,11 +1,14 @@
 import type { AgentProfile, AgentSelection } from './agents.ts';
-import type { ThreadId } from './index.ts';
+import type { RequestId, ThreadId } from './index.ts';
+import type { BotAsk } from './setting-requests.ts';
 import { AGENT_DOMAIN_MAX, AGENT_INSTRUCTIONS_MAX, AGENT_NAME_MAX, agentProjectIds, type AgentSettingChoice } from './agent-setting-requests.ts';
 
 /*
  * A thread creating a bot the user asked for (`agents.create`): it checks the
- * name, the route and the projects, then makes the bot as the Bots page does,
- * with no card in between. Changing a bot afterwards stays the owner's
+ * name, the route and the projects. With the machine setting
+ * `agentBotCreation` on `ask` it then draws a card the owner approves
+ * (`agents.create.approve`); on `free` it makes the bot at once, as the Bots
+ * page does. Changing a bot afterwards stays the owner's
  * (`agents.settings.request` draws a card).
  */
 
@@ -36,10 +39,28 @@ export interface AgentCreateParams {
 }
 
 /** The bot made, and its own conversation once it has one: `boite threads send` writes to it. */
-export interface AgentCreateResult {
+export interface AgentCreated {
   agent: AgentProfile;
   threadId: ThreadId | null;
 }
+
+/** Nothing was created: the owner reads a card in the calling thread (`agentBotCreation` is `ask`). */
+export interface AgentCreateAsked {
+  questionId: RequestId;
+  setting: BotAsk;
+}
+
+/** `agents.create`: the bot, or the card that asks the owner for it. */
+export type AgentCreateResult = AgentCreated | AgentCreateAsked;
+
+/** `agents.create.approve`: the open bot card of that thread the owner approves. */
+export interface AgentCreateApproveParams {
+  threadId: ThreadId;
+  questionId: RequestId;
+}
+
+/** What an agent reads beside the card it just drew: how to stop being asked. */
+export const BOT_CARD_NOTE = 'Nothing is created yet: the setting agentBotCreation is "ask" on this machine, so the owner approves each bot on its card. To create bots without a card, ask with: boite settings request agentBotCreation free --why "<reason>"';
 
 type Checked<T> = { ok: true; value: T } | { ok: false; message: string };
 

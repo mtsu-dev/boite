@@ -1,7 +1,7 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { isReleaseVersion, type Settings } from '@boite/contracts';
+import { OPEN_AGENT_DEFAULTS, isReleaseVersion, type Settings } from '@boite/contracts';
 import { connect } from '../src/client.ts';
 import type { CoreClient } from '../src/client.ts';
 import { Core, CORE_VERSION, type CoreOptions } from '../src/core.ts';
@@ -33,6 +33,8 @@ export interface TestCoreOptions {
   bundleHash?: string;
   helloTimeoutMs?: number;
   settings?: Partial<Settings>;
+  /** `boot`: keep `agentBotCreation` and `coordinationReach` as the core's own start stored them. */
+  agentDefaults?: 'boot';
   boiteGuide?: boolean;
   onShutdown?: () => void;
   retentionPassMs?: number;
@@ -97,10 +99,13 @@ export async function startTestCore(options: TestCoreOptions = {}): Promise<Test
   process.env.BOITE_TERMINAL_SHELL = process.platform === 'win32' ? (process.env.ComSpec ?? 'C:\\Windows\\System32\\cmd.exe') : '/bin/sh';
 
   const token = newToken();
+  const journalExisted = existsSync(join(dataDir, 'journal.db'));
   const core = new Core({ dataDir, token, version: options.version ?? TEST_VERSION, onShutdown: options.onShutdown, bundleHash: options.bundleHash, serverUpdates: options.serverUpdates, retentionPassMs: options.retentionPassMs, pullRequestWatches: options.pullRequestWatches, secretVault: options.secretVault ?? (() => Promise.resolve(new MemoryVault())), policyFile: options.policyFile ?? join(dataDir, 'no-policy.json') });
   // The scripted agents echo their prompt, and the line that teaches `boite ask`
   // would ride along in every reply: a test that wants it turns it back on.
-  core.settings.set({ asyncQuestions: false, shortAnswers: false, ...options.settings });
+  // A new data directory starts closed (`agentBotCreation`, `coordinationReach`); the suites written before
+  // those settings drive agents across projects and machines, so the harness opens it unless a test asks for the start as shipped.
+  core.settings.set({ asyncQuestions: false, shortAnswers: false, ...(journalExisted || options.agentDefaults === 'boot' ? {} : OPEN_AGENT_DEFAULTS), ...options.settings });
   // An install never reads the real update sources on GitHub: a test that needs one sets its own.
   core.plugins.updateSources = {};
   // Keep scripted replies limited to test input unless testing session context.

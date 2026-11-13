@@ -97,6 +97,8 @@ export const SETTINGS_CARDS = [
   { id: 'brain', page: 'agents', block: 'brain', scope: 'machine', owner: true, from: ['brain', null] },
   { id: 'hooks', page: 'agents', block: 'brain', scope: 'machine', owner: true, from: ['brain', 'hooks'] },
   { id: 'plugins', page: 'agents', block: 'plugins', scope: 'machine', owner: true, from: ['plugins', null] },
+  // What agents may do alone: how far they reach other conversations, and creating a bot without asking.
+  { id: 'agents-alone', page: 'agents', block: 'agents-alone', scope: 'machine', owner: true, from: ['general', 'agents-alone'] },
   { id: 'auto-compact', page: 'agents', block: 'auto-compact', scope: 'machine', owner: true, from: ['advanced', 'auto-compact'] },
   { id: 'execution', page: 'agents', block: 'execution', scope: 'machine', owner: true, desktop: true, from: ['advanced', 'execution'] },
   // Safeguards: what they are allowed to do.

@@ -1,5 +1,36 @@
 export const strings = {
   /** A settings card an agent put in the conversation (`boite settings request|open`). */
+  /** The card of a bot an agent asked to create (`boite settings bot create` where creation asks first). */
+  botRequest: {
+    heading: 'Bot to create',
+    asks: 'This conversation asks to create the bot {name}.',
+    name: 'Name',
+    role: 'Role',
+    projects: 'Projects',
+    model: 'Model',
+    none: 'None',
+    fullAccess: 'This bot runs with full access to this machine.',
+    guestHint: 'Only the computer running Boite can create this bot.',
+    approve: 'Approve',
+    decline: 'Decline',
+    created: 'Bot created',
+    declined: 'Declined',
+    closed: 'Closed without an answer',
+  },
+  /** Settings, Agents: what an agent does without a card. */
+  agentsAlone: {
+    heading: 'What agents may do alone',
+    reach: 'Other conversations an agent reaches',
+    steps: { project: 'This project', machine: 'This machine', group: 'All my machines' },
+    effects: {
+      project: 'An agent lists, reads and writes to the conversations of its own project only.',
+      machine: 'An agent lists, reads and writes to the conversations of every project on this machine.',
+      group: 'An agent lists, reads and writes to the conversations of every project, here and on the machines you trust.',
+    },
+    bots: 'Create bots without asking',
+    botsEffect: 'A bot created this way has full access to this machine',
+    values: { ask: 'Ask first', free: 'Without asking' },
+  },
   settingRequest: {
     heading: 'Suggested setting',
     headingOpen: 'Look in Settings',
@@ -49,6 +80,8 @@ export const strings = {
       worktreeStorage: 'Where new worktrees go',
       focusGuard: 'Keep agent windows out of the foreground',
       muteAgents: 'Mute agent audio',
+      coordinationReach: 'How far a conversation reaches other conversations',
+      agentBotCreation: 'Agents create bots without asking',
       agentCpuCapPercent: 'CPU cap for all agents',
       agentMemoryBudgetPercent: 'Memory budget for all agents',
       threadMemoryCapMb: 'Memory cap per conversation',

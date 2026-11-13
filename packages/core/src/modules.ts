@@ -2,7 +2,7 @@ import { registerJournalInspection } from './journal/integrity.ts';
 import type { Core } from './core.ts';
 import { requireAgent } from './threads/agentless.ts';
 import { registerPersistentAgents } from './agents/store.ts';
-import { createAgent } from './agents/create.ts';
+import { approveAgent, createAgent } from './agents/create.ts';
 import { registerAccountMethods } from './accounts.ts';
 import { registerHookMethods } from './hooks.ts';
 import { registerSecretMethods } from './secrets/rpc.ts';
@@ -134,6 +134,7 @@ export function registerModules(core: Core): void {
     await core.delegation.prepareRoutes(params.threadId, probe, [typeof params.model === 'string' ? params.model : undefined]);
     return createAgent(core, core.workforce, params);
   });
+  core.router.register('agents.create.approve', params => approveAgent(core, core.workforce, params));
   core.router.register('delegation.send', (params, ctx) => {
     const origin = ctx.connection.identity.principal === 'agent' ? 'agent' : 'user';
     return core.delegation.remote.child(params.threadId, params.toThreadId) ? core.delegation.remote.send(params, origin) : core.delegation.send(params, origin);
