@@ -21,11 +21,24 @@ test('file grouping and automatic previews default to compact and persist indepe
   expect(group.checked).toBe(true);
   expect(preview.checked).toBe(false);
   group.click(); preview.click(); flushSync();
-  expect(readChatPrefs()).toEqual({ groupChanges: false, expandDiffs: true });
+  expect(readChatPrefs()).toEqual({ groupChanges: false, expandDiffs: true, typingCorrection: true });
   localStorage.setItem(CHAT_PREFS_STORAGE_KEY, JSON.stringify({ groupChanges: true, expandDiffs: false }));
   window.dispatchEvent(new StorageEvent('storage', { key: CHAT_PREFS_STORAGE_KEY })); flushSync();
   expect(group.checked).toBe(true);
   expect(preview.checked).toBe(false);
+});
+
+test('typing correction is on until its switch turns it off, and the choice is kept on this device', () => {
+  running = mount(ConversationSwitches, { target: document.body, props: { part: 'conversation' } });
+  flushSync();
+  const correction = document.querySelector<HTMLInputElement>('[data-testid=chat-typing-correction]')!;
+  expect(correction.checked).toBe(true);
+  correction.click(); flushSync();
+  expect(chatPrefs.typingCorrection).toBe(false);
+  expect(readChatPrefs().typingCorrection).toBe(false);
+  // A preference saved before the switch existed reads as on: nothing changes until it is turned off.
+  localStorage.setItem(CHAT_PREFS_STORAGE_KEY, JSON.stringify({ groupChanges: true, expandDiffs: false }));
+  expect(readChatPrefs().typingCorrection).toBe(true);
 });
 
 test('the list part holds the grouping alone, and a phone, whose list display options hold it, has none', () => {

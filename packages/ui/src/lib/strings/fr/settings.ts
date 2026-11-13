@@ -47,6 +47,7 @@ export const fr: Translation = {
       groupIdle: 'Les projets sans rien à faire se replient dans Projets inactifs, en fin de liste',
       groupChanges: 'Les modifications rejoignent les autres étapes du tour au lieu d\'avoir chacune sa ligne',
       expandDiffs: 'Chaque modification montre son diff ouvert, sans clic',
+      typingCorrection: 'La zone de message souligne les fautes, corrige et met les majuscules pendant la frappe',
       openChatLinks: 'Un lien de fichier ou de dossier s\'ouvre dans son application',
       notifications: 'Une alerte quand un fil que vous ne regardez pas a besoin de vous',
       kinds: {
@@ -206,6 +207,7 @@ export const fr: Translation = {
     chatWidth: 'Largeur du chat',
     groupChanges: 'Regrouper les fichiers modifiés dans le fil',
     expandDiffs: 'Ouvrir les aperçus des changements par défaut',
+    typingCorrection: "Vérifier l'orthographe et corriger pendant la frappe",
     chatWidthComfortable: 'Confortable',
     chatWidthWide: 'Large',
     chatWidthFull: 'Pleine',

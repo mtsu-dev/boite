@@ -379,6 +379,11 @@
     white-space: normal;
   }
 
+  /* A row with a line under its name is a block of two: more air around it than inside it, so the
+     hint reads as its own row's and never as a title over the next one. */
+  .item:has(> .hint):not(.inline-hint) { padding-block: var(--space-2); }
+  .popover:has(> .item > .hint) { gap: var(--space-1); }
+
   /* Hover fills only where a pointer hovers: under a finger the last row
      touched kept its fill after the sheet opened or the press ended. Keyboard
      focus wears the shared accent ring (app.css). */

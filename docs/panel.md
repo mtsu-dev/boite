@@ -14,7 +14,7 @@ that runs it.
    opens a surface too: B the Browser, D the Device panel, M Discussions.
 3. Press **+** in the tab strip to open another surface beside the first.
 4. Drag the panel's left edge to resize it. A double click on the edge, or
-   Home, restores the default width, and Escape cancels a drag.
+   Home, restores the default width (420 px), and Escape cancels a drag.
 
 The conversation list stays open beside the panel. In a narrow window, where
 the list and the panel would leave the conversation too little room, the panel

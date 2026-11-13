@@ -2,6 +2,8 @@ export const strings = {
 
   palette: {
     placeholder: 'Search threads, projects or commands',
+    /** A heading over threads in one state: at work, a turn that ended, marked done, archived. */
+    groups: { running: 'Running', finished: 'Finished', done: 'Done', archived: 'Archived' },
     projects: 'Projects',
     /** Extra words a project row answers to: picking one starts a thread there. */
     newThreadWords: 'new thread start draft',

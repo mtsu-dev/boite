@@ -73,12 +73,14 @@ test('closed until asked, then the recents come first and the commands after the
   expect(ids.some((id) => id.startsWith('project:'))).toBe(false);
   expect(ids.at(-1)).toBe('archive');
   expect(selectedId()).toBe(ids[0]);
-  // Each project's threads sit together under its name, the commands after them.
+  // Threads stand under their state, the ones at work first (a thread that waits for the user is at work), the commands last.
   const sections = Array.from(document.querySelectorAll<HTMLElement>('[data-testid=palette-section]'));
   const of = (section: HTMLElement) => Array.from(section.querySelectorAll('[data-testid=palette-row]')).map((row) => row.getAttribute('data-palette-id'));
-  expect(sections.map((section) => section.querySelector('[data-testid=palette-project] .name')?.textContent ?? 'commands')).toEqual(['notes', 'boite', 'commands']);
-  expect(of(sections[0]!)).toEqual(['thread:t-descriptors']);
-  expect(of(sections[1]!).sort()).toEqual(['thread:t-bench', 'thread:t-scheduler', 'thread:t-trace']);
+  expect(sections.map((section) => section.querySelector('[data-testid=palette-heading]')?.textContent)).toEqual(['Running', 'Finished', 'Commands']);
+  expect(of(sections[0]!).sort()).toEqual(['thread:t-bench', 'thread:t-scheduler']);
+  expect(of(sections[1]!).sort()).toEqual(['thread:t-descriptors', 'thread:t-trace']);
+  // A row names its project at its end, since the heading no longer does.
+  expect(document.querySelector('[data-palette-id="thread:t-descriptors"] [data-testid=palette-where]')?.textContent).toBe('notes');
   // A row says what its thread is doing, the way the sidebar does: the amber dot in the one slot, its word in its name.
   const asks = document.querySelector('[data-palette-id="thread:t-bench"] [data-testid=thread-state]');
   expect([asks?.getAttribute('data-state'), asks?.getAttribute('aria-label'), asks?.textContent?.trim()]).toEqual(['waiting', 'Needs you', '']);
@@ -121,17 +123,18 @@ test('typing filters across threads and commands, the arrows move, Enter opens t
   await type('sched');
   expect(rows()).toEqual(['thread:t-scheduler']);
 
-  // A word the thread and a command share: both rows, the command's word
-  // start earlier in its label so it ranks first.
+  // A word the thread and a command share: both rows, and a query keeps the
+  // list's order, the thread before the command however well each matches.
   await type('trace');
-  expect(rows()).toEqual(['trace', 'thread:t-trace']);
-  expect(selectedId()).toBe('trace');
-  key('ArrowDown');
+  expect(rows()).toEqual(['thread:t-trace', 'trace']);
   expect(selectedId()).toBe('thread:t-trace');
   key('ArrowDown');
   expect(selectedId()).toBe('trace');
+  key('ArrowDown');
+  expect(selectedId()).toBe('thread:t-trace');
   key('End');
-  expect(selectedId()).toBe('thread:t-trace');
+  expect(selectedId()).toBe('trace');
+  key('Home');
   key('Enter');
 
   await tick();
@@ -214,7 +217,7 @@ test('a load tick leaves the row the keyboard is on where it is', async () => {
 });
 
 test('a closed search stops ranking live updates and reopening reads the latest titles', async () => {
-  const ranking = vi.spyOn(palette, 'rankItems');
+  const ranking = vi.spyOn(palette, 'paletteSections');
   store.paletteOpen = true;
   flushSync();
   await tick();
@@ -281,6 +284,27 @@ test('a subagent row names the thread that started it, and the parent title find
   expect(own.querySelector('[data-testid=palette-parent]')).toBeNull();
   // The parent's name finds its helpers too.
   expect(rows().some((id) => id.endsWith('t-sub-explore'))).toBe(true);
+});
+
+test('done threads follow the finished ones, archived ones answer only to a query, and a subagent stands under its own state', async () => {
+  const base = store.threads.find((thread) => thread.id === 't-descriptors')!;
+  store.threads.push(
+    { ...base, id: 't-marked', title: 'Loader shipped', doneAt: Date.now() },
+    { ...base, id: 't-shelved', title: 'Loader shelved', archived: true, archivedAt: Date.now() },
+    { ...base, id: 't-helper', title: 'Loader helper', parentThreadId: base.id, status: 'running', lastUserMessageAt: Date.now() }
+  );
+  store.paletteOpen = true;
+  flushSync(); await tick();
+  const shape = () => Array.from(document.querySelectorAll<HTMLElement>('[data-testid=palette-section]'))
+    .filter((section) => section.dataset['section'] !== 'command')
+    .map((section) => [section.dataset['section'], Array.from(section.querySelectorAll('[data-testid=palette-row]')).map((row) => row.getAttribute('data-palette-id')!.slice('thread:'.length))]);
+  expect(shape().map(([id]) => id)).toEqual(['running', 'finished', 'done']);
+  expect(shape()[0]![1]).toContain('t-helper');
+  expect(document.querySelector('[data-palette-id="thread:t-helper"]')?.classList.contains('sub')).toBe(true);
+  expect(shape()[2]![1]).toEqual(['t-marked']);
+  await type('loader');
+  // The helper's parent is at work while its helper is: it stands under Running too, after the more recent helper.
+  expect(shape()).toEqual([['running', ['t-helper', 't-descriptors']], ['done', ['t-marked']], ['archived', ['t-shelved']]]);
 });
 
 // The keyboard's ring marked the first row after a new query or a reopen, though no key had moved there.

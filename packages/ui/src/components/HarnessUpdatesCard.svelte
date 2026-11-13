@@ -107,7 +107,6 @@
   .auto > .words { display: grid; gap: 2px; min-width: 0; }
   .auto .ui-label-box { display: inline-flex; align-items: center; }
   .effect { color: var(--color-muted-foreground); font-size: var(--text-sm); line-height: 1.4; }
-  .auto input { flex: 0 0 40px; width: 40px; }
   @media (max-width: 720px) {
     header button { min-height: var(--touch-target); }
     /* The version stays at the end of its agent's line, in one column with the others: the

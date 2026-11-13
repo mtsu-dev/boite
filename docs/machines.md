@@ -59,7 +59,9 @@ or when the network is public and must be marked private in Windows settings.
 - The machine button at the foot of the app rail, or the display menu over
   the thread list, narrows the list from All machines to one machine.
 - The command palette (Ctrl+K) finds conversations, projects and machine
-  names. A new conversation's project picker lists every connected machine.
+  names. It lists conversations by state: Running, Finished, Done, then
+  Archived once you type, each most recent first, before projects, bots and
+  commands. A new conversation's project picker lists every connected machine.
 - Each settings page that belongs to one machine has a machine picker on top.
   Appearance and Experiments belong to the window.
 - In a browser or on a phone that reaches several machines, Main machine
