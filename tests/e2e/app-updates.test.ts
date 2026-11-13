@@ -17,21 +17,20 @@ async function capture(name: string) {
 }
 const version = '[data-testid="settings-page"][data-page="version"]';
 async function machines() {
-  // A phone's settings open on the machine itself, which leads to Machines.
+  // A phone's Settings open on the list of pages, a desktop's on a page with the list beside it.
   const phone = await page.evaluate<boolean>('innerWidth <= 720');
   if (phone) await mobileAction(page, 'mobile-settings');
   else await page.click(id('nav-settings'));
-  const entry = phone ? 'settings-tab-devices' : 'settings-tab-version';
-  await page.waitFor(`document.querySelector('${id(entry)}')`);
-  await page.click(id(entry));
-  // On the desktop the app's updates are a card of Version; a phone still reads them on Machines.
-  await page.waitFor(`document.querySelector('${phone ? id('machines-page') : version}')`);
+  await page.waitFor(`document.querySelector('${id('settings-tab-version')}')`);
+  await page.click(id('settings-tab-version'));
+  // The app's updates are a card of Version, on a desktop and on a phone.
+  await page.waitFor(`document.querySelector('${version}')`);
 }
 async function updates(phase: string, nightly = false) {
   await page.navigate(`${base}/?fake=1&appUpdate=${phase}${nightly ? '&appUpdateChannel=nightly&appUpdateCurrentChannel=nightly' : ''}`);
   await page.waitFor(`document.querySelector('${id('nav-settings')}')`);
   await machines();
-  await page.waitFor(`document.querySelector('${id('app-updates-card')}')`);
+  await page.waitFor(`document.querySelector('${version} ${id('app-updates-card')}')`);
 }
 async function pickLocale(locale: 'en' | 'fr') {
   await page.click(id('settings-tab-appearance'));
@@ -212,7 +211,13 @@ test('ordinary browsers have no native update controls in Machines, including Fr
   await page.waitFor(`document.querySelector('${id('app-updates-card')}')`);
   expect(await absent('app-update-nightly')).toBe(true);
   await capture('phone-fr');
-  expect((await page.text('[data-testid=mobile-settings-header] h1')).trim()).toBe('Machines et mises à jour');
+  expect((await page.text('[data-testid=mobile-settings-header] h1')).trim()).toBe('Version');
+  // Devices, where the machines are, has no update control either.
+  await page.click(id('mobile-settings-back'));
+  await page.waitFor(`document.querySelector('${id('mobile-settings-home')}')`);
+  await page.click(id('settings-tab-devices'));
+  await page.waitFor(`document.querySelector('${id('settings-page')}[data-page="devices"] ${id('machines-page')}')`);
+  for (const name of ['app-updates-card', 'updates-run-all', 'updates-check-all', 'app-update-status', 'app-update-nightly']) expect(await absent(name)).toBe(true);
 }, 30_000);
 
 test('waiting keeps channel changes disabled and cancellation restores the download at desktop and phone widths', async () => {

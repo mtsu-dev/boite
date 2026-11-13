@@ -29,9 +29,8 @@ async function machines() {
   await show('version');
   await page.waitFor(`document.querySelector('${id('app-updates-card')}')`);
 }
-/** On the desktop the machine list is on Devices and the updates card on Version; a phone reads both on Machines. */
+/** The machine list is on Devices and the updates card on Version, on a desktop and on a phone. */
 async function show(tab: 'devices' | 'version') {
-  if (await page.evaluate<boolean>('innerWidth <= 720')) return;
   await page.evaluate(`window.__boiteTest.workspace.active.showSettings('${tab}')`);
   await page.waitFor(`document.querySelector('${id('settings-page')}')?.dataset.page === '${tab}'`);
 }

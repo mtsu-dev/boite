@@ -206,6 +206,8 @@
   header { flex: none; display: flex; align-items: center; gap: var(--space-2); min-height: 52px; padding: max(var(--space-2), env(safe-area-inset-top)) max(var(--space-3), env(safe-area-inset-right)) var(--space-2) max(var(--space-3), env(safe-area-inset-left)); border-bottom: 1px solid var(--color-border); }
   header .icon { width: 44px; min-height: 44px; }
   header h1 { margin: 0; font-size: var(--text-md); font-weight: 600; }
+  /* The "i" keeps its whole finger's reach over the scope line under the title (app.css does the same in a switch row). */
+  header h1 :global(.info-tip) { position: relative; z-index: 1; }
   /* The title and its one context line, stacked as the thread header's (ThreadHeader.svelte). */
   .heading { display: flex; flex-direction: column; flex: 1; min-width: 0; }
   .page-scope { display: flex; align-items: center; gap: 6px; min-width: 0; margin: 2px 0 0; color: var(--color-subtle); font-size: var(--text-meta); line-height: 1.3; overflow-wrap: anywhere; }

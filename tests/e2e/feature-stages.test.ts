@@ -63,9 +63,9 @@ for (const [name, size] of [['desktop', DESKTOP], ['phone', PHONE]] as const) {
     await page.evaluate(`localStorage.setItem('boite.experiments', JSON.stringify(['whip']))`);
     await open('&version=2.0.0', size);
     await page.waitFor(`localStorage.getItem('boite.experiments.build') === '2.0.0'`);
-    // A route to the page that is gone lands on Settings' first page, not on an empty one.
+    // A route to the section that is gone lands on Version, where it stood, from the top: its updates card, not an empty page.
     await page.evaluate(`window.__boiteTest.workspace.active.showSettings('experiments')`);
-    await page.waitFor(`document.querySelector('[data-testid="settings-tab-appearance"]')?.getBoundingClientRect().width > 0`);
+    await page.waitFor(`document.querySelector('[data-testid="settings-page"][data-page="version"] [data-testid="app-updates-card"]')?.getBoundingClientRect().width > 0`);
     expect(await page.evaluate(`document.querySelector('[data-testid="settings-tab-experiments"]')`)).toBeNull();
     expect(await page.evaluate(`document.querySelector('[data-testid="experiments-page"]')`)).toBeNull();
     expect(await page.evaluate(`import('/src/lib/experiments.ts').then(({ isExperimentEnabled }) => [isExperimentEnabled('whip'), isExperimentEnabled('resident-agents')])`)).toEqual([false, true]);

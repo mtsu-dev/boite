@@ -109,7 +109,8 @@
   {:else if id === 'providers'}<AccountsPage store={target} extras={false} />
   {:else if id === 'local-acp'}<LocalAcpCard store={target} />
   {:else if id === 'secrets'}<SecretsCard />
-  {:else if id === 'quotas'}<LimitsPage store={target} proxyCard={false} />
+  <!-- The owner turns the gateway on in the proxy's own card; a paired device has no such card, so its Limits keep the switch. -->
+  {:else if id === 'quotas'}<LimitsPage store={target} proxyCard={!store.owner} />
   {:else if id === 'subscription-proxy'}<SubscriptionProxySettings store={target} />
   {:else if id === 'usage'}<UsagePage {store} />
   {:else if id === 'brain'}<BrainPage store={target} />

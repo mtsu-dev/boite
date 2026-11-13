@@ -95,14 +95,17 @@ test('agent updates live on Providers and Update and Skip target the machine its
   await page.click(`${row('claude')} ${id('harness-update-skip')}`);
   await page.waitFor(`document.querySelector('${row('claude')} ${id('harness-update-unskip')}')`);
 
-  // On a phone Machines lists what each machine still offers, and Update starts it there: back from Providers to the Settings list, then Machines.
+  // On a phone Version lists what each machine still offers, and Update starts it there: the page the desktop showed stays open at the phone's width.
   await size(390);
-  await page.waitFor(`document.querySelector('${id('mobile-settings-back')}') || document.querySelector('${id('settings-tab-devices')}') || document.querySelector('${id('machines-page')}')`);
-  if (await page.evaluate<boolean>(`!document.querySelector('${id('machines-page')}') && !document.querySelector('${id('settings-tab-devices')}')`)) await page.click(id('mobile-settings-back'));
-  await page.waitFor(`document.querySelector('${id('settings-tab-devices')}') || document.querySelector('${id('machines-page')}')`);
-  if (!await page.evaluate<boolean>(`document.querySelector('${id('machines-page')}') !== null`)) await page.click(id('settings-tab-devices'));
-  await page.waitFor(`document.querySelector('${id('machines-page')}') && document.querySelector('${id('updates-others')}')`);
-  expect((await page.text('[data-testid=mobile-settings-header] h1')).trim()).toBe('Machines and updates');
+  const version = `${id('settings-page')}[data-page="version"]`;
+  await page.waitFor(`document.querySelector('${id('mobile-settings-back')}') || document.querySelector('${id('mobile-settings-home')}')`);
+  if (await page.evaluate<boolean>(`!document.querySelector('${version}')`)) {
+    if (await page.evaluate<boolean>(`!document.querySelector('${id('mobile-settings-home')}')`)) await page.click(id('mobile-settings-back'));
+    await page.waitFor(`document.querySelector('${id('mobile-settings-home')}')`);
+    await page.click(id('settings-tab-version'));
+  }
+  await page.waitFor(`document.querySelector('${version} ${id('app-updates-card')}') && document.querySelector('${version} ${id('updates-others')}')`);
+  expect((await page.text('[data-testid=mobile-settings-header] h1')).trim()).toBe('Version');
   // Builder's codex is done and this PC's Claude is skipped: neither is offered again.
   expect(await page.evaluate(`document.querySelectorAll('${id('updates-other')}[data-part="codex"]').length`)).toBe(1);
   expect(await page.evaluate(`document.querySelectorAll('${id('updates-other')}[data-part="claude"]').length`)).toBe(1);
