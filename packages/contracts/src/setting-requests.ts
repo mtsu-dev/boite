@@ -1,5 +1,6 @@
 import type { QuestionAnswer, QuestionOption, Settings, ThreadId } from './index.ts';
 import { readPluginSource, sameRepository, type PluginSourceInput } from './plugin-source.ts';
+import { EXPERIMENT_IDS, experimentRefusal, isExperimentId, listedExperiments, type ExperimentId } from './experiments.ts';
 
 /*
  * An agent helping the user set Boite up: it reads the settings, then asks for
@@ -11,17 +12,6 @@ import { readPluginSource, sameRepository, type PluginSourceInput } from './plug
  * reports which are on (`client.preferences`), the card flips it there, and
  * the core settles the card on the next report. See docs/internals/cli.md.
  */
-
-/**
- * The experiments this build ships, in the order Settings lists them. Each
- * device turns them on for itself (`packages/ui/src/lib/experiments.ts`).
- */
-export const EXPERIMENT_IDS = ['theme-grain', 'session-import', 'prompt-cache', 'resident-agents', 'whip', 'recording-indicators', 'contacts', 'pinned-quotas', 'auto-goal', 'teams', 'debates'] as const;
-export type ExperimentId = (typeof EXPERIMENT_IDS)[number];
-
-export function isExperimentId(id: unknown): id is ExperimentId {
-  return typeof id === 'string' && (EXPERIMENT_IDS as readonly string[]).includes(id);
-}
 
 /** The languages the app speaks (`docs/internals/language.md`). */
 export const APP_LANGUAGES = ['en', 'fr'] as const;
@@ -295,11 +285,12 @@ function experimentPlace(id: ExperimentId): SettingPlace {
 }
 
 /** Every readable setting, an app's experiments after the core's settings once an app reported them. */
-export function readSettings(settings: Settings, client: ClientPreferences | null = null): SettingReading[] {
+export function readSettings(settings: Settings, client: ClientPreferences | null = null, version?: string): SettingReading[] {
   const labelled = (key: RequestableKey): { label?: string } => (client?.labels[key] === undefined ? {} : { label: client.labels[key] });
   const core: SettingReading[] = REQUESTABLE_SETTING_KEYS.map(key => ({ key, value: effectiveSetting(settings, key), ...REQUESTABLE_SETTINGS[key], ...labelled(key) }));
   if (client === null) return core;
-  return [...core, ...EXPERIMENT_IDS.map(id => {
+  // With the build's version, only the switches that build shows: a finished feature or one a Release lacks is not a setting.
+  return [...core, ...(version === undefined ? EXPERIMENT_IDS : listedExperiments(version)).map(id => {
     const key: ExperimentSettingKey = `experiment.${id}`;
     return { key, value: client.experiments.includes(id), ...experimentPlace(id), ...labelled(key) };
   })];
@@ -334,7 +325,7 @@ export type SettingNormalizer = (patch: Partial<Settings>) => { ok: true; patch:
  * about another machine, `machine` names it and `settings` holds the value
  * that machine reported for the key.
  */
-export function checkSettingRequest(params: SettingRequestParams, settings: Settings, normalize: SettingNormalizer, open: readonly SettingAsk[], client: ClientPreferences | null = null, machine: SettingMachine | null = null): SettingRequestCheck {
+export function checkSettingRequest(params: SettingRequestParams, settings: Settings, normalize: SettingNormalizer, open: readonly SettingAsk[], client: ClientPreferences | null = null, machine: SettingMachine | null = null, version?: string): SettingRequestCheck {
   const reason = typeof params.reason === 'string' ? params.reason.trim() : '';
   if (reason.length === 0 || reason.length > SETTING_REASON_MAX) return { ok: false, message: `reason must hold 1 to ${SETTING_REASON_MAX} characters`, data: { field: 'reason' } };
   const hasKey = params.key !== undefined;
@@ -357,7 +348,7 @@ export function checkSettingRequest(params: SettingRequestParams, settings: Sett
   }
   const experiment = typeof key === 'string' ? experimentOf(key) : null;
   if (!isRequestableSetting(key) && experiment === null) {
-    const keys = [...REQUESTABLE_SETTING_KEYS, ...EXPERIMENT_IDS.map(id => `experiment.${id}`)];
+    const keys = [...REQUESTABLE_SETTING_KEYS, ...(version === undefined ? EXPERIMENT_IDS : listedExperiments(version)).map(id => `experiment.${id}`)];
     return { ok: false, message: `${String(key)} is not a setting an agent may ask about; the keys are ${keys.join(', ')}`, data: { field: 'key', expected: keys } };
   }
   if (value === undefined) return { ok: false, message: 'a change needs a value', data: { field: 'value' } };
@@ -365,6 +356,9 @@ export function checkSettingRequest(params: SettingRequestParams, settings: Sett
   let place: SettingPlace;
   if (experiment !== null) {
     if (typeof value !== 'boolean') return { ok: false, message: 'an experiment is true or false', data: { field: 'value', expected: 'true or false' } };
+    // The build that answers decides: a finished feature has no switch, and a Release runs no experiment.
+    const unavailable = version === undefined ? null : experimentRefusal(experiment, version);
+    if (unavailable !== null) return { ok: false, message: unavailable, data: { field: 'key', key } };
     if (client === null) return { ok: false, message: 'no Boite app has reported its experiments yet; ask the user to open the app', data: { field: 'key', key } };
     proposed = value;
     place = experimentPlace(experiment);

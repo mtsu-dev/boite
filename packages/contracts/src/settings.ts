@@ -1,6 +1,7 @@
 import type { BrowserProfile } from './browser';
 import type { AccountId, ProviderId, RequestId } from './ids';
-import type { ClientPreferences, ExperimentId, SettingAsk, SettingRequestParams } from './setting-requests.ts';
+import type { ExperimentId } from './experiments.ts';
+import type { ClientPreferences, SettingAsk, SettingRequestParams } from './setting-requests.ts';
 import type { AutoCompact, CacheKeepalive } from './settings-validation.ts';
 import type { SubscriptionProxy } from './subscription-proxy';
 import type { ThreadSummary } from './threads';

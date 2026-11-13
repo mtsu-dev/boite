@@ -1,17 +1,20 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test';
-import type { ClientPreferences, ExperimentId, SentFrom } from '@boite/contracts';
+import { effectiveExperiments, type ClientPreferences, type ExperimentId, type SentFrom } from '@boite/contracts';
 import { connect, type CoreClient } from '../src/client.ts';
 import { ClientPreferencesBook } from '../src/client-preferences.ts';
 import type { Connection } from '../src/router.ts';
 import { startTestCore, type TestCore } from './harness.ts';
 
 const report = (experiments: ExperimentId[], app = 'app-0000-0001'): ClientPreferences => ({ app, language: 'en', experiments, labels: {} });
+const NIGHTLY = '2.0.0-nightly.20261111.1';
+/** What a Nightly core reads from these switches: the finished features, then the experiments chosen. */
+const on = (...chosen: ExperimentId[]): ExperimentId[] => effectiveExperiments(chosen, NIGHTLY);
 
 test('phones follow the desktop app on this machine before one reached from elsewhere, and hear only its changes', () => {
   const moves: ExperimentId[][] = [];
-  const book = new ClientPreferencesBook(() => {}, experiments => moves.push(experiments));
+  const book = new ClientPreferencesBook(() => {}, experiments => moves.push(experiments), NIGHTLY);
   let next = 0;
-  const socket = (sentFrom: SentFrom | null, remote: boolean, principal = 'owner') => ({ id: `c${next++}`, subscriptions: new Set(), identity: { principal, sessionId: null, threadId: null }, sentFrom, remote, sendEvent() {}, close() {} }) as unknown as Connection;
+  const socket = (sentFrom: SentFrom | null, remote: boolean, principal = 'owner') => ({ id: `c${next++}`, subscriptions: new Set(), identity: { principal, sessionId: null, threadId: null }, sentFrom, remote, sendEvent() {} }) as unknown as Connection;
   const phone = socket({ client: 'pwa', device: 'phone' }, true);
   const laptop = socket({ client: 'shell', device: 'laptop' }, true);
   const here = socket({ client: 'shell', device: 'pc' }, false);
@@ -21,15 +24,26 @@ test('phones follow the desktop app on this machine before one reached from else
   book.report(socket({ client: 'shell', device: 'paired' }, true, 'session'), report(['whip'], 'app-paired-01'));
   expect(book.desktopExperiments()).toBeNull();
   // A desktop app from elsewhere stands in while this machine's has not reported.
-  book.report(laptop, report(['theme-grain'], 'app-laptop-01'));
-  book.report(here, report(['resident-agents'], 'app-here-0001'));
+  book.report(laptop, report(['debates'], 'app-laptop-01'));
+  book.report(here, report(['teams'], 'app-here-0001'));
   // Once this machine's has, another desktop app's flips no longer move what phones follow.
   book.report(laptop, report(['contacts'], 'app-laptop-01'));
   // The same switches again, as after a reconnect, say nothing.
-  book.report(here, report(['resident-agents'], 'app-here-0001'));
-  book.report(here, report(['resident-agents', 'whip'], 'app-here-0001'));
-  expect(moves).toEqual([['theme-grain'], ['resident-agents'], ['resident-agents', 'whip']]);
-  expect(book.desktopExperiments()).toEqual(['resident-agents', 'whip']);
+  book.report(here, report(['teams'], 'app-here-0001'));
+  book.report(here, report(['teams', 'whip'], 'app-here-0001'));
+  expect(moves).toEqual([on('debates'), on('teams'), on('teams', 'whip')]);
+  expect(book.desktopExperiments()).toEqual(on('teams', 'whip'));
+});
+
+test('a Release core keeps the finished features and no experiment, whatever an app reports', () => {
+  const book = new ClientPreferencesBook(() => {}, () => {}, '2.0.0');
+  const here = { id: 'c0', subscriptions: new Set(), identity: { principal: 'owner', sessionId: null, threadId: null }, sentFrom: { client: 'shell', device: 'pc' }, remote: false, sendEvent() {} } as unknown as Connection;
+  book.report(here, report(['whip', 'teams', 'debates', 'auto-goal', 'contacts']));
+  const kept = book.desktopExperiments()!;
+  expect(kept).toEqual(effectiveExperiments([], '2.0.0'));
+  expect(kept).toContain('resident-agents');
+  for (const id of ['whip', 'teams', 'debates', 'auto-goal', 'contacts'] as const) expect(kept).not.toContain(id);
+  expect(book.current()!.experiments).toEqual(kept);
 });
 
 let h: TestCore;
@@ -48,7 +62,7 @@ test('a phone hears the desktop app\'s experiments in its report\'s answer and o
   expect(await phone.call('client.preferences', report([], 'app-phone-001'))).toEqual({ ok: true, desktop: null });
 
   const heard = phone.next('client.desktopExperiments', ({ experiments }) => experiments.includes('whip'));
-  await desktop.call('client.preferences', report(['whip', 'resident-agents'], 'app-desktop-1'));
-  expect((await heard).experiments).toEqual(['resident-agents', 'whip']);
-  expect(await phone.call('client.preferences', report([], 'app-phone-001'))).toEqual({ ok: true, desktop: ['resident-agents', 'whip'] });
+  await desktop.call('client.preferences', report(['whip', 'teams'], 'app-desktop-1'));
+  expect((await heard).experiments).toEqual(effectiveExperiments(['whip', 'teams'], h.core.version));
+  expect(await phone.call('client.preferences', report([], 'app-phone-001'))).toEqual({ ok: true, desktop: effectiveExperiments(['whip', 'teams'], h.core.version) });
 });

@@ -1,14 +1,18 @@
-import { checkClientPreferences, sameClientPreferences, type ClientPreferences, type ExperimentId, type SentFrom, type SettingsReading } from '@boite/contracts';
+import { checkClientPreferences, effectiveExperiments, sameClientPreferences, type ClientPreferences, type ExperimentId, type SentFrom, type SettingsReading } from '@boite/contracts';
 import { RpcErrorCode } from '@boite/contracts';
 import { RpcFailure } from './errors.ts';
 import type { Connection } from './router.ts';
+import { CORE_VERSION } from './version.ts';
 
 /** Apps remembered by id, so a reconnect compares with the app's last report; the oldest goes first. */
 const APPS_KEPT = 64;
 
 /*
  * What each app says of itself (`client.preferences`): its id, language, the
- * experiments it has on and the names it gives settings. Kept in memory only:
+ * experiments it has on and the names it gives settings. The experiments are
+ * read for the build this core is (`effectiveExperiments`): a finished feature
+ * is on whatever the app said, and a Release keeps none of the others, so
+ * nothing the core gates on them runs because an app claimed it. Kept in memory only:
  * an app says it again after every hello. Agents read the app the user last
  * used: the one that last sent a prompt or changed a preference, or the first
  * to report once that app's socket closed. A phone that merely reconnects in a
@@ -30,19 +34,22 @@ export class ClientPreferencesBook {
    */
   readonly #reported: (preferences: ClientPreferences, before: readonly ExperimentId[] | null) => void;
   readonly #desktopMoved: (experiments: ExperimentId[]) => void;
+  readonly #version: string;
 
   constructor(
     reported: (preferences: ClientPreferences, before: readonly ExperimentId[] | null) => void,
     desktopMoved: (experiments: ExperimentId[]) => void = () => {},
+    version: string = CORE_VERSION,
   ) {
     this.#reported = reported;
     this.#desktopMoved = desktopMoved;
+    this.#version = version;
   }
 
   report(connection: Connection, params: unknown): void {
     const checked = checkClientPreferences(params);
     if (!checked.ok) throw new RpcFailure(RpcErrorCode.InvalidParams, checked.message, { field: checked.field });
-    const preferences = checked.preferences;
+    const preferences = { ...checked.preferences, experiments: effectiveExperiments(checked.preferences.experiments, this.#version) };
     if (!this.#byConnection.has(connection.id)) connection.onClose?.(() => this.#byConnection.delete(connection.id));
     const entry = { preferences, from: connection.sentFrom ?? null };
     this.#byConnection.set(connection.id, entry);
