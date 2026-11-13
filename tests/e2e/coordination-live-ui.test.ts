@@ -13,6 +13,8 @@ test('signed agent mail opens from a compact summary and survives reload in its 
       const core = await startCore();
       cores.push(core);
       clients.push(await connect(core.url, core.token));
+      // A new install keeps an agent inside its project; this mail crosses machines.
+      await clients[i]!.call('settings.set', { coordinationReach: 'group' });
     }
     const threads = [];
     for (const [index, client] of clients.entries()) {

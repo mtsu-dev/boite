@@ -14,6 +14,8 @@ let callerId: string;
 let startedId: string;
 beforeAll(async () => {
   core = await startCore(); owner = await connect(core.url, core.token);
+  // A new install keeps an agent inside its project; the answer of a thread started in another project needs the machine.
+  await owner.call('settings.set', { coordinationReach: 'machine' });
   const desk = await owner.call('projects.add', { path: core.dataDir, name: 'Release desk' });
   const sitePath = join(core.dataDir, 'website');
   mkdirSync(sitePath, { recursive: true });

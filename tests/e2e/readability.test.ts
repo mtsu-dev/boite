@@ -60,12 +60,12 @@ test('connecting another machine keeps thread rows at their single-machine heigh
   await page.evaluate(`document.querySelector('${id('project-row')}').blur()`);
   await page.waitFor(swapped('1', '0'));
   await showThreadView(page, 'recent');
-  // Recent's rows are compact: where a row lives is said once, by the project's tile leading it or by its place line
-  // in words (project, then the machine among several), never both, and the row repeats no machine tag.
+  // Recent's card says where a row lives once, on the line under its title: another machine as a named icon,
+  // then the project in words. No tile leads the title.
   await page.waitFor(`Array.from(document.querySelectorAll('${id('thread-row')}')).every(e => {
-    const tile = !!e.querySelector('.headline ${id('project-tile')}');
-    const where = e.querySelector('${id('thread-where')}');
-    return tile !== !!where?.textContent.trim() && !e.querySelector('.machine') && e.querySelectorAll('.machine-place').length <= 1;
+    const card = e.closest('.thread'), machines = Array.from(card.querySelectorAll('.machine'));
+    return !card.querySelector('${id('project-tile')}') && !!card.querySelector('${id('thread-where')} ${id('thread-project')}')?.textContent.trim()
+      && machines.length === (e.dataset.machineId === 'local' ? 0 : 1) && machines.every(m => m.textContent.trim() === '' && m.getAttribute('aria-label') === 'on Builder');
   })`);
   await openProjectFilter(page);
   await page.evaluate(`Array.from(document.querySelectorAll('${id('project-filter-menu')} [data-value]')).find(e => { if (e.dataset.value === 'all') return false; const [machine, project] = JSON.parse(e.dataset.value); return JSON.stringify(machine).includes('Builder') && project === 'p-notes'; }).click()`);
@@ -96,9 +96,9 @@ test('thread metadata, message identity and expandable trace fit a narrow panel'
   await page.waitFor(`document.querySelectorAll('${id('thread-pr')}').length === 2`);
   expect(await page.evaluate(`document.querySelector('${id('usage-pill')}') === null`)).toBe(true);
   expect(await page.evaluate(`Array.from(document.querySelectorAll('.metadata')).every(e => !e.textContent.includes('No PR') && !e.textContent.includes('My computer') && !e.textContent.includes('Builder'))`)).toBe(true);
-  // A row's pull request is a named mark in the row's quiet ink, its machine named once by the card (another machine's only), never by the row.
-  // No link nests in the row's button: a click on the mark opens the pull request it names.
-  expect(await page.evaluate(`Array.from(document.querySelectorAll('${id('thread-pr')}')).every(e => !e.closest('.thread').querySelector('.machine, .machine-place') && !e.closest('a') && !!e.getAttribute('aria-label') && /^#\\d+$/.test(e.textContent.trim()))`)).toBe(true);
+  // A row's pull request is an underlined link on the line under its title, beside the row's button and never inside it,
+  // named for screen readers and written as its number.
+  expect(await page.evaluate(`Array.from(document.querySelectorAll('${id('thread-pr')}')).every(e => e.matches('a[href]') && !e.closest('button') && !!e.closest('.thread ${id('thread-where')}') && !!e.getAttribute('aria-label') && /^#\\d+$/.test(e.textContent.trim()) && getComputedStyle(e).textDecorationLine.includes('underline'))`)).toBe(true);
   await page.evaluate(`window.__openedPr = null; window.open = (url) => { window.__openedPr = url; return null; }`);
   const prNumber = (await page.text(id('thread-pr'))).trim().slice(1);
   await page.click(id('thread-pr'));
@@ -311,33 +311,21 @@ test('PR links appear during work without remounting and disappear after a move 
   await page.click(`${id('sidebar')} section${id('project')}[data-project-id="p-boite"] ${id('project-more')}`);
   await page.waitFor(`Array.from(document.querySelectorAll('${id('thread-row')}')).filter(row => row.textContent.includes('shared-folder conversation')).length === 2`);
   const sharedRowsHaveNoPr = `Array.from(document.querySelectorAll('${id('thread-row')}')).filter(row => row.textContent.includes('shared-folder conversation')).every(row => !row.closest('.thread').querySelector('${id('thread-pr')}'))`;
-  // The title wins at rest: a row shows its pull request under the pointer, after the title, the thread's live branch under its label.
-  const prNamesBranch = async (scope: string) => {
-    const threads = await page.evaluate<string[]>(`Array.from(document.querySelectorAll('${scope} ${id('thread-pr')}')).map(pr => pr.closest('[data-thread-id]').dataset.threadId)`);
-    if (threads.length === 0) return false;
-    let named = true;
-    for (const threadId of threads) {
-      const row = `${scope} [data-thread-id="${threadId}"]`;
-      const point = await page.evaluate<{ x: number; y: number }>(`(() => { const row = document.querySelector('${row}'); row.scrollIntoView({block:'nearest'}); const r = row.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
-      await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point });
-      named &&= await page.evaluate<boolean>(`(() => {
-        const pr = document.querySelector('${row} ${id('thread-pr')}');
-        const branch = globalThis.__boiteTest.workspace.active.threads.find(thread => thread.id === ${JSON.stringify(threadId)})?.branch;
-        const title = pr?.closest('.headline')?.querySelector('.title');
-        const box = pr?.getBoundingClientRect();
-        return !!branch && !!box && box.width > 0 && pr.title.split('\\n').at(-1) === branch && !!title && title.getBoundingClientRect().right <= box.left;
-      })()`);
-    }
-    // The pointer leaves the list, so the rows come back to rest.
-    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 900, y: 600 });
-    return named;
-  };
+  // A row's place line shows its pull request at rest, the thread's branch after it at the line's end.
+  const prBeforeBranch = (scope: string) => page.evaluate<boolean>(`(() => {
+    const links = Array.from(document.querySelectorAll('${scope} ${id('thread-pr')}'));
+    return links.length > 0 && links.every(pr => {
+      const branch = pr.nextElementSibling;
+      return pr.getBoundingClientRect().width > 0 && !!branch?.matches('${id('thread-branch')}') && pr.getBoundingClientRect().right < branch.getBoundingClientRect().left;
+    });
+  })()`);
   expect(await page.evaluate(sharedRowsHaveNoPr)).toBe(true);
-  expect(await prNamesBranch(id('sidebar'))).toBe(true);
+  expect(await prBeforeBranch(id('sidebar'))).toBe(true);
   await capture('pr-links-desktop');
   await showThreadView(page, 'recent');
-  // Recent lists compact rows without the project cards: a tile, the title and one marker; at rest no pull request shows.
-  await page.waitFor(`!document.querySelector('${id('sidebar')} section${id('project')}') && document.querySelector('${id('sidebar')} ${id('thread-row')}') && !Array.from(document.querySelectorAll('${id('sidebar')} ${id('thread-pr')}')).some(pr => pr.getClientRects().length > 0)`);
+  // Recent lists the same cards without the project sections: each names its project, and the pull request stays on its line.
+  await page.waitFor(`!document.querySelector('${id('sidebar')} section${id('project')}') && document.querySelector('${id('sidebar')} ${id('thread-project')}')`);
+  expect(await prBeforeBranch(id('sidebar'))).toBe(true);
   await capture('pr-links-recent');
   // The cards carry the pull request: the live one is followed there.
   await showThreadView(page, 'projects');
@@ -358,17 +346,19 @@ test('PR links appear during work without remounting and disappear after a move 
   await page.waitFor(`document.querySelector('${livePr}')?.textContent.includes('#185')`, 25_000);
   expect(await page.evaluate(`document.querySelector('[data-thread-id="t-trace"]') === window.__prRow`)).toBe(true);
   expect(await page.evaluate(`document.querySelector('[data-thread-id="t-trace"]').dataset.status`)).toBe('running');
-  expect(await prNamesBranch(id('sidebar'))).toBe(true);
+  expect(await prBeforeBranch(id('sidebar'))).toBe(true);
   await capture('pr-live-desktop');
   await showThreadView(page, 'projects');
   await page.send('Emulation.setDeviceMetricsOverride', { width:390, height:844, deviceScaleFactor:1, mobile:true });
   await mobileAction(page, 'mobile-conversations');
   await page.click(`${id('mobile-list')} ${id('mobile-project-group')}[data-project-id="p-boite"] ${id('project-more')}`);
   await page.waitFor(`Array.from(document.querySelectorAll('${id('mobile-list')} .thread')).filter(row => row.textContent.includes('shared-folder conversation')).length === 2`);
-  // A phone's row leaves the pull request to the thread (MobileThreadRow.svelte): no mark on any row, the live branch in the row's name.
+  // A phone's row carries the pull request on its place line (MobileThreadRow.svelte), the live branch after it; a row without one shows none.
   const phoneRow = `${id('mobile-list')} ${id('mobile-thread-t-trace')}`;
   await page.waitFor(`document.querySelector('${phoneRow}')?.title.split('\\n').includes('boite/publish-live-pr')`);
-  expect(await page.evaluate(`!document.querySelector('${id('mobile-list')} ${id('thread-pr')}')`)).toBe(true);
+  const phonePrs = `Array.from(document.querySelectorAll('${id('mobile-list')} ${id('thread-pr')}'))`;
+  await page.waitFor(`${phonePrs}.length === 1 && ${phonePrs}[0].textContent.includes('#185')`);
+  expect(await page.evaluate(`(() => { const pr = ${phonePrs}[0], row = document.querySelector('${phoneRow}'); return [pr.getAttribute('href'), row.contains(pr) || row.parentElement.contains(pr), pr.nextElementSibling?.matches('${id('thread-branch')}') && pr.nextElementSibling.title]; })()`)).toEqual(['https://github.com/example/repo/pull/185', true, 'boite/publish-live-pr']);
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
   await capture('pr-links-phone');
   await page.send('Emulation.setDeviceMetricsOverride', { width:1300, height:850, deviceScaleFactor:1, mobile:false });
@@ -441,7 +431,7 @@ test('a run of calls reads as the agent\'s own summaries, and a step of reasonin
   await page.waitFor(`${label} === 'Read 2 files and ran 1 command'`);
 });
 
-test('multiple-choice questions show checkboxes and single-choice questions keep round indicators', async () => {
+test('multiple-choice questions are checkboxes and single-choice ones radios, each row leading with its number', async () => {
   await page.evaluate(`document.documentElement.dataset.theme = 'dark'`);
   // A waiting question is written once, at the top of the composer card; the message keeps a quiet line.
   const card = `${id('thread-decision')} ${id('question-card')}`;
@@ -461,17 +451,13 @@ test('multiple-choice questions show checkboxes and single-choice questions keep
     await page.waitFor(`document.querySelector('${option(1)}')?.getAttribute('role') === '${multiple ? 'checkbox' : 'radio'}'`);
     for (const [width, height] of [[1300, 850], [390, 844]]) {
       await page.send('Emulation.setDeviceMetricsOverride', {width, height, deviceScaleFactor:1, mobile:width === 390});
-      const shape = await page.evaluate<{radius: number; width: number}>(`(() => {
-        const box = document.querySelector('${option(1)} .box');
-        return {radius:parseFloat(getComputedStyle(box).borderTopLeftRadius), width:box.getBoundingClientRect().width};
-      })()`);
-      if (multiple) expect(shape.radius).toBeLessThan(shape.width / 2);
-      else expect(shape.radius).toBeGreaterThanOrEqual(shape.width / 2);
+      // Docked, every row leads with its key, the composer's 1 to 9, whatever the kind: the role says one choice or several.
+      expect(await page.evaluate(`[1, 2, 3].map(index => { const box = document.querySelector('${card} ${id('question-option')}:nth-child(' + index + ') .box'); return box.classList.contains('key') && !box.classList.contains('round') ? box.textContent.trim() : null; })`)).toEqual(['1', '2', '3']);
       await page.click(option(1));
       await page.click(option(2));
       expect(await page.evaluate(`document.querySelector('${option(1)}').getAttribute('aria-checked')`)).toBe(String(multiple));
       expect(await page.evaluate(`document.querySelector('${option(2)}').getAttribute('aria-checked')`)).toBe('true');
-      // Docked in the composer, a picked choice wears a solid check in its ring or square: two picks, or the one a radio keeps.
+      // Docked in the composer, a picked choice turns its number to a check: two picks, or the one a radio keeps.
       expect(await page.evaluate(`document.querySelectorAll('${card} .box svg').length`)).toBe(multiple ? 2 : 1);
       await capture(`question-${multiple ? 'checkboxes' : 'radios'}-${width}`);
       await page.click(option(2));
