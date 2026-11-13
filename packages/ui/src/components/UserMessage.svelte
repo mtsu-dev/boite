@@ -229,16 +229,20 @@
   .bubble {
     max-width: min(85%, var(--prose));
     padding: 12px 16px;
-    background: var(--color-surface-2);
-    border: 1px solid var(--color-border);
+    /* The user's own words carry the accent: its tint under them, a third of it on the edge. */
+    background: var(--color-accent-soft);
+    border: 1px solid color-mix(in oklch, var(--color-accent) 35%, transparent);
     border-radius: var(--radius-bubble);
     border-bottom-right-radius: var(--radius-sm);
+    box-shadow: var(--shadow-e1);
   }
 
   /* A prompt another agent sent: outlined on the agent's side, so it never reads as the user's own bubble. */
   .bubble.agent {
     align-self: flex-start;
     background: transparent;
+    border-color: var(--color-border);
+    box-shadow: none;
     border-radius: var(--radius-lg);
     border-bottom-left-radius: var(--radius-sm);
   }

@@ -923,6 +923,18 @@
   --palette-light-amethyst-live: #866325;
 }
 
+/* What the agent says to the user, in a bubble on its side: its calls, its
+   reasoning and its narration between them stay bare lines of the page. */
+.answer-bubble {
+  width: fit-content;
+  max-width: 100%;
+  padding: 12px 16px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-bubble);
+  border-bottom-left-radius: var(--radius-sm);
+}
+@media (max-width: 720px) { .answer-bubble { padding: 10px 14px; } }
 .typing { display: inline-flex; align-items: center; gap: 4px; min-height: 24px; color: var(--color-muted-foreground); }
 .typing > span { width: 5px; height: 5px; border-radius: var(--radius-full); background: currentColor; animation: typing var(--dur-typing) ease-in-out infinite var(--loops); }
 .typing > span:nth-child(2) { animation-delay: var(--dur-typing-step); }

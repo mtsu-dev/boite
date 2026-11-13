@@ -13,8 +13,9 @@
    * or came from, in the order they started, with what was last said. A row
    * says first which way the burst went: what this agent sent sits on its side,
    * what reached it on the right, as in the discussion itself. A
-   * row opens that discussion in the panel, on the burst's first letter. Two
-   * lines a row: which way and with whom, then what was last said.
+   * row opens that discussion in the panel, on the burst's first letter. One
+   * line says which way and with whom, and never wraps; under it, what was
+   * last said is the card's content, read in full ink.
    */
   let { store, group }: { store: Store; group: AgentMailGroup } = $props();
   /** Past this many conversations, the rest is one line that opens the list. */
@@ -33,6 +34,16 @@
       : size === 1 ? strings.agentMessages.receivedOne : strings.agentMessages.receivedMany;
     return fill(text, { count: count(size) });
   }
+  const plain = (text: string) => text.replace(/\s+/g, ' ').trim().replace(/(\.{3}|\u2026)$/, '').trim().toLowerCase();
+  /**
+   * A thread named after the prompt that started it says the letter's own
+   * first words: the card then names the peer by its tag and place, and the
+   * words are read once, as the message.
+   */
+  function repeats(discussion: Discussion): boolean {
+    const title = plain(discussion.title);
+    return title.length >= 12 && plain(discussion.last.letter.text).startsWith(title);
+  }
 </script>
 
 <div class="exchanges" data-testid="agent-message-group" data-group-id={group.id}>
@@ -41,6 +52,7 @@
     {@const where = whereOf(discussion)}
     {@const last = discussion.last}
     {@const way = wayOf(discussion)}
+    {@const said = repeats(discussion)}
     <button type="button" class="discussion {way}" class:resident={discussion.resident}
       data-testid="agent-discussion-row" data-peer={discussion.key} data-count={discussion.entries.length} data-way={way}
       title={strings.agentMessages.open}
@@ -54,7 +66,8 @@
             {:else}<ArrowLeftRight size={13} strokeWidth={2} aria-hidden="true" />{/if}
             <span>{kicker(way, discussion)}</span>
           </span>
-          <strong class="title" data-testid="agent-discussion-title">{discussion.title}</strong>
+          <!-- A title that only says the message again is kept for a screen reader's name and the tooltip, not drawn twice. -->
+          <strong class="title" class:visually-hidden={said && (!!tag || !!where)} data-testid="agent-discussion-title" title={discussion.title}>{discussion.title}</strong>
           {#if discussion.contact}<RemoteChip name={discussion.contact} human={discussion.entries.every(entry => entry.letter.origin === 'contact-human')} />{/if}
           {#if tag}<span class="tag" data-relation={tag}>{strings.agentMessages.relation[tag]}</span>{/if}
           {#if where}<span class="where">{where}</span>{/if}
@@ -84,37 +97,43 @@
   .exchanges { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
   .discussion {
     display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 10px;
-    width: min(100%, 560px); height: auto; min-height: var(--control); padding: 5px 10px 5px 8px; border-radius: var(--radius-lg); border-bottom-left-radius: var(--radius-sm); background: var(--color-surface-2);
+    width: fit-content; max-width: min(100%, 560px); height: auto; min-height: var(--control); padding: 8px 10px 9px; border-radius: var(--radius-lg); border-bottom-left-radius: var(--radius-sm); background: var(--color-surface-2);
     color: var(--color-muted-foreground); text-align: left; font-size: var(--text-sm); white-space: normal;
     transition: background var(--dur-1) var(--ease-out-quint), border-color var(--dur-1) var(--ease-out-quint), transform var(--dur-1) var(--ease-out-quint);
   }
-  .discussion:hover { background: var(--color-surface-3); border-color: var(--color-edge); color: var(--color-foreground); }
+  .discussion > :global(svg:last-child) { opacity: .6; transition: opacity var(--dur-1) var(--ease-out-quint), transform var(--dur-1) var(--ease-out-quint); }
+  .discussion:hover > :global(svg:last-child) { opacity: 1; transform: translateX(2px); }
+  .discussion:hover { background: var(--color-surface-3); border-color: var(--color-edge); }
   .discussion:active { transform: scale(0.99); }
-  /* What reached this agent: the user's side, its corner toward the right. */
-  .discussion.in { align-self: flex-end; border-color: var(--color-edge); border-bottom-left-radius: var(--radius-lg); border-bottom-right-radius: var(--radius-sm); background: var(--color-accent-soft); }
-  .discussion.in:hover { background: var(--color-hover); border-color: var(--color-muted-foreground); }
+  /* What reached this agent: the user's side, its corner toward the right, on the accent's tint. The tint is
+     the soft accent with a share of the accent itself: alone it reads grey on the page since the accent lost chroma. */
+  .discussion.in {
+    --received: color-mix(in oklch, var(--color-accent) 12%, var(--color-accent-soft));
+    align-self: flex-end; border-color: color-mix(in oklch, var(--color-accent) 55%, transparent); border-bottom-left-radius: var(--radius-lg); border-bottom-right-radius: var(--radius-sm); background: var(--received);
+  }
+  .discussion.in:hover { background: color-mix(in oklch, var(--color-accent) 10%, var(--received)); border-color: var(--color-accent); }
   .discussion.resident { border-color: color-mix(in oklch, var(--color-resident) 45%, transparent); }
-  .kicker { flex: none; max-width: 40%; min-width: 0; display: inline-flex; align-items: center; align-self: center; gap: 5px; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; }
+  .body { min-width: 0; display: grid; gap: 3px; }
+  /* Which way and with whom, on one line at every width: the name gives way first, then the place. */
+  .top { min-width: 0; display: flex; align-items: center; gap: 6px; font-size: var(--text-xs); line-height: 18px; }
+  .kicker { flex: none; display: inline-flex; align-items: center; gap: 5px; color: var(--color-muted-foreground); font-weight: 600; white-space: nowrap; }
   .kicker :global(svg) { flex: none; }
-  .kicker > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .in .kicker { color: var(--color-muted-foreground); }
-  .body { min-width: 0; display: grid; gap: 1px; }
-  /* The title keeps its line; the tag and the place wrap under it when the row is narrow. */
-  .top { min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; }
-  .title { flex: 0 1 auto; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-foreground); font-weight: 600; }
-  .tag { flex: none; padding: 1px 6px; border-radius: var(--radius-full); background: var(--color-active); color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 500; }
+  .in .kicker { color: var(--color-accent); }
+  .title { flex: 0 1 auto; min-width: 3ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-foreground); font-weight: 600; }
+  .tag { flex: none; padding: 0 6px; border-radius: var(--radius-full); background: var(--color-active); color: var(--color-muted-foreground); font-weight: 500; }
   .resident .tag { background: var(--color-resident-soft); color: var(--color-resident); }
-  .where { flex: 1 1 0; min-width: 6ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); }
-  .preview { min-width: 0; display: flex; align-items: center; gap: 4px; font-size: var(--text-xs); }
-  .preview :global(svg) { flex: none; }
-  .preview > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .where { flex: 0 1000 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* The message is the content: full ink at the reading size of a row, two lines at most. */
+  .preview { min-width: 0; display: flex; align-items: baseline; gap: 4px; color: var(--color-foreground); font-size: var(--text-sm); line-height: 1.45; }
+  .preview :global(svg) { flex: none; align-self: center; color: var(--color-muted-foreground); }
+  .preview > span { min-width: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
   .counts { display: flex; gap: 6px; font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
   .count { display: inline-flex; align-items: center; gap: 2px; }
   .count.in { color: var(--color-foreground); }
   .line { display: inline-flex; align-items: center; gap: 6px; height: auto; min-height: 0; padding: 4px 10px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--color-muted-foreground); font-size: var(--text-xs); }
   .line:hover { color: var(--color-foreground); background: var(--color-hover); }
   @media (max-width: 720px) {
-    .discussion { width: 100%; min-height: var(--touch-target); }
+    .discussion { max-width: 100%; min-height: var(--touch-target); }
     .line { min-height: var(--touch-target); }
   }
 </style>
