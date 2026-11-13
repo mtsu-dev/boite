@@ -105,8 +105,6 @@ function awayNamed(entry: { id: string; name: string; machine?: string }, query:
 export function isControlCommand(parsed: Parsed): boolean {
   const [command, action] = parsed.positional;
   if (command === 'thread') {
-    // `thread done` alone is the agent's own Done (cli.ts); with an id it puts another thread there.
-    if (action === 'done' && parsed.positional.length === 2) return false;
     if (THREAD_ACTIONS.includes(action as typeof THREAD_ACTIONS[number])) return true;
     // `thread move <project> <thr_id>` names another thread; `thread move <project words>` stays the caller's own move.
     return action === 'move' && parsed.positional.length === 4 && /^(?:[^/\s]+\/)?thr_[0-9a-z]+$/.test(parsed.positional[3] ?? '');
@@ -336,6 +334,12 @@ export async function controlCommand(client: CoreClient, caller: Caller, threadI
     }
     case 'thread': {
       const action = want(0, `one of ${THREAD_ACTIONS.join(', ')} or move`);
+      if (action === 'done' && rest.length === 1) {
+        if (owner) throw new Usage('thread done needs a thread id (boite threads lists them)');
+        const done = await client.call('agent.done', { threadId });
+        print([doneLine(done)], done);
+        return;
+      }
       if (action === 'move') {
         const project = want(1, 'a project');
         const value = want(2, 'a thread id');
