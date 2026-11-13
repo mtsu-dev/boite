@@ -84,7 +84,7 @@ export function effectiveExperiments(chosen: readonly string[], version: string 
 /** Why the build with this version has no switch for `id`, or null when it has one. */
 export function experimentRefusal(id: ExperimentId, version: string | null | undefined): string | null {
   if (EXPERIMENT_STAGES[id] === 'normal') return `experiment.${id} is no longer an experiment: it is on in every build and has no switch`;
-  return experimentsRun(version) ? null : `experiment.${id} runs in Nightly builds only, and this machine runs a Release (${version || 'unknown version'}): switch the update channel to Nightly in Settings > Updates to try it`;
+  return experimentsRun(version) ? null : `experiment.${id} runs in Nightly builds only, and this machine runs a Release (${version || 'unknown version'}): switch the update channel to Nightly in Settings > Version > Updates to try it`;
 }
 
 /** Why a settings patch is refused in the build with this version: it turns on a setting that is an experiment. */

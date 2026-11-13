@@ -67,7 +67,7 @@ test('a Release core runs no experiment an app reports, refuses the card for one
 
   const asked = await owner.call('settings.request', { threadId, reason: 'Try the whip', key: 'experiment.whip', value: true }).catch((error: Error) => error.message);
   expect(asked).toContain('experiment.whip runs in Nightly builds only, and this machine runs a Release (2.0.0)');
-  expect(asked).toContain('Settings > Updates');
+  expect(asked).toContain('Settings > Version > Updates');
   expect(await owner.call('settings.request', { threadId, reason: 'x', key: 'experiment.resident-agents', value: true }).catch((error: Error) => error.message)).toContain('no longer an experiment');
   expect(await owner.call('settings.request', { threadId, reason: 'x', key: 'deviceStream', value: true }).catch((error: Error) => error.message)).toContain('deviceStream is an experiment');
   expect(await owner.call('questions.list', { threadId })).toEqual([]);
