@@ -5,8 +5,11 @@
   bottom: calc(12px + max(var(--corner-lift, 0px), env(safe-area-inset-bottom, 0px)));
   z-index: 80;
   width: min(340px, calc(100vw - 24px));
-  transition: bottom var(--motion-duration) var(--motion-curve);
+  transition: bottom var(--motion-duration) var(--motion-curve), top var(--motion-duration) var(--motion-curve);
 }
+
+/* Desktops stack cards down from the top-right corner, under the toasts. */
+.notify-corner[data-slot='top'] { top: var(--corner-top); bottom: auto; }
 
 /* Held while a thread loads (notify-corner.ts): out of sight until the page lands and its slot exists. */
 .notify-corner[data-held], .toast-slot[data-held] { visibility: hidden; }
@@ -19,7 +22,7 @@
 [data-corner-room='bottom'] { margin-bottom: var(--corner-room); }
 [data-testid=mobile-list] { transition: margin var(--dur-2) var(--ease-out-quint); }
 
-/* Desktop toasts use the right corner; phones keep room above the composer. */
+/* Desktop toasts use the top-right corner; phones keep room above the composer. */
 .toast-slot {
   position: fixed;
   top: var(--toast-top, 12px);

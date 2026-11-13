@@ -10,9 +10,9 @@
 
   /**
    * The toast that carries the last archive's way back, in the toasts' one
-   * home (`toastSlot`), as wide as its text: in room the page keeps for it,
-   * right above the composer or the tab bar on every width, so it never
-   * covers a line, a row or a title. `onerror` hears a restore that failed.
+   * home (`toastSlot`), as wide as its text: the top-right corner on a
+   * desktop, room the page keeps right above the composer or the tab bar on
+   * a phone, so there it never covers a line, a row or a title. `onerror` hears a restore that failed.
    */
   let { onerror }: { onerror: (error: unknown) => void } = $props();
 

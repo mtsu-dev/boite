@@ -5,11 +5,13 @@ import './notify-corner.css';
  * arriving cards (contact mail and requests, plugin updates, memory notes,
  * `class="notify-corner" use:notifyCorner`), all one form (Notice.svelte,
  * floating). Phones keep room above the composer or tab bar. Desktops use
- * the bottom-right corner without moving the conversation, stacking cards
- * above toasts and keeping the composer and its strip clear.
+ * the top-right corner, under the bars along the top edge, without moving
+ * the conversation: toasts first, cards stacked under them.
  */
-/** Bottom-edge owners. A composer centred in an empty thread is not one. */
+/** Bottom-edge owners on a phone. A composer centred in an empty thread is not one. */
 const FLOORS = '[data-testid=composer],[data-testid=thread-activity],[data-testid=mobile-tabs]';
+/** Top-edge bars a desktop corner stays under, with the buttons at their right end. */
+const CEILINGS = '[data-testid=titlebar],[data-testid=thread-header],[data-testid=panel-titlebar],[data-testid=agent-header],[data-testid=team-header]';
 const cards: HTMLElement[] = [];
 const toasts: HTMLElement[] = [];
 let timer = 0;
@@ -36,10 +38,10 @@ function shown(selector: string): HTMLElement | null {
 
 /**
  * Phones reserve room at the bottom of their timeline or list. Desktops
- * keep notifications in the corner, above any controls under that corner.
- * Returns the cards it placed.
+ * stack notifications down from the top-right corner. Returns the cards it
+ * placed and, on a desktop, the top the next card takes.
  */
-function placeToasts(): HTMLElement[] {
+function placeToasts(): { slotted: HTMLElement[]; next: number | null } {
   const up = toasts.filter((toast) => toast.offsetHeight > 0);
   const phone = innerWidth <= 720;
   // On a phone the list screen lies over the thread, which still lays out under it.
@@ -60,7 +62,7 @@ function placeToasts(): HTMLElement[] {
       delete node.dataset.slot;
       node.style.removeProperty('--toast-left');
     }
-    top = innerHeight - 12 - room + 8 - cornerFloor();
+    top = phone ? innerHeight - 12 - room + 8 - cornerFloor() : cornerCeiling();
     centre = null;
   }
   for (const toast of up) {
@@ -76,10 +78,20 @@ function placeToasts(): HTMLElement[] {
     card.dataset.slot = 'bottom';
     top += card.offsetHeight + 8;
   }
-  return slotted;
+  return { slotted, next: over || phone ? null : top };
 }
 
-/** Height of controls beneath the corner, shared by its toasts and cards. */
+/** The top of a desktop corner: 12 under the lowest bar along the top edge at the window's right end. */
+function cornerCeiling(): number {
+  let edge = 0;
+  for (const owner of document.querySelectorAll(CEILINGS)) {
+    const box = owner.getBoundingClientRect();
+    if (box.height && box.right > innerWidth - 480 && box.top < 120) edge = Math.max(edge, box.bottom);
+  }
+  return edge + 12;
+}
+
+/** Height of controls beneath a phone's corner, shared by its toasts and cards. */
 function cornerFloor(): number {
   let lift = 0;
   for (const node of [...cards, ...toasts]) {
@@ -94,11 +106,17 @@ function cornerFloor(): number {
   return lift;
 }
 
-function placeCards(slotted: HTMLElement[]): void {
+function placeCards({ slotted, next }: { slotted: HTMLElement[]; next: number | null }): void {
   let lift = -1;
   for (const card of cards) {
     // A card hidden on this page (display: none) keeps no room; one in the toasts' room is placed.
     if (!card.offsetHeight || slotted.includes(card)) continue;
+    if (next !== null) {
+      card.dataset.slot = 'top';
+      card.style.setProperty('--corner-top', `${Math.round(next)}px`);
+      next += card.offsetHeight + 8;
+      continue;
+    }
     if (lift < 0) {
       lift = cornerFloor();
       lift += toasts.reduce((sum, toast) => sum + (toast.offsetHeight > 0 && toast.dataset.slot === 'end' ? toast.offsetHeight + 8 : 0), 0);

@@ -13,7 +13,7 @@ function box(testid: string, rect: Partial<DOMRect>): HTMLElement {
 
 afterEach(() => { document.body.replaceChildren(); window.innerWidth = 1024; window.innerHeight = 768; });
 
-test('on a desktop a toast stays in the right corner without taking room from the timeline', () => {
+test('on a desktop a toast sits in the top-right corner under the thread header without taking room from the timeline', () => {
   window.innerWidth = 1440;
   box('thread-header', { top: 0, bottom: 48, left: 300, right: 1440, height: 48, width: 1140 });
   const timeline = box('timeline', { top: 48, bottom: 700, left: 300, right: 1300, height: 652, width: 1000 });
@@ -26,7 +26,8 @@ test('on a desktop a toast stays in the right corner without taking room from th
   expect(timeline.style.getPropertyValue('--corner-room')).toBe('');
   expect(timeline.dataset.cornerRoom).toBeUndefined();
   expect(strip.style.getPropertyValue('--corner-room')).toBe('');
-  expect(toast.style.getPropertyValue('--toast-top')).toBe('716px');
+  // 12 under the header's bottom at 48.
+  expect(toast.style.getPropertyValue('--toast-top')).toBe('60px');
   expect(toast.style.getPropertyValue('--toast-left')).toBe('');
   slot.destroy();
   expect(timeline.style.getPropertyValue('--corner-room')).toBe('');
@@ -77,14 +78,14 @@ test('on a phone thread an arriving card takes the room at the bottom of the tim
   slot.destroy();
   window.innerWidth = 1440;
   window.dispatchEvent(new Event('resize'));
-  expect(card.dataset.slot).toBeUndefined();
+  expect(card.dataset.slot).toBe('top');
   expect(card.style.getPropertyValue('--toast-left')).toBe('');
   expect(timeline.style.getPropertyValue('--corner-room')).toBe('');
   corner.destroy();
   expect(timeline.style.getPropertyValue('--corner-room')).toBe('');
 });
 
-test('on a desktop thread an arriving card stays in the right corner without taking room from the timeline', () => {
+test('on a desktop thread an arriving card sits in the top-right corner without taking room from the timeline', () => {
   window.innerWidth = 1440;
   window.innerHeight = 768;
   const timeline = box('timeline', { top: 48, bottom: 700, left: 300, right: 1300, height: 652, width: 1000 });
@@ -94,21 +95,22 @@ test('on a desktop thread an arriving card stays in the right corner without tak
   document.body.append(card);
   const corner = notifyCorner(card);
   expect(timeline.style.getPropertyValue('--corner-room')).toBe('');
-  expect(card.dataset.slot).toBeUndefined();
+  expect(card.dataset.slot).toBe('top');
   expect(card.style.getPropertyValue('--toast-left')).toBe('');
-  expect(card.style.getPropertyValue('--corner-lift')).toBe('0px');
+  expect(card.style.getPropertyValue('--corner-top')).toBe('12px');
   corner.destroy();
   expect(timeline.style.getPropertyValue('--corner-room')).toBe('');
 });
 
-test('a desktop page with no thread keeps the arriving card in the bottom-right corner', () => {
+test('a desktop page with no thread keeps the arriving card in the top-right corner, under the title bar', () => {
   window.innerWidth = 1440;
+  box('titlebar', { top: 0, bottom: 36, left: 0, right: 1440, height: 36, width: 1440 });
   const card = document.createElement('div');
   Object.defineProperty(card, 'offsetHeight', { value: 80 });
   document.body.append(card);
   const corner = notifyCorner(card);
-  expect(card.dataset.slot).toBeUndefined();
-  expect(card.style.getPropertyValue('--corner-lift')).toBe('0px');
+  expect(card.dataset.slot).toBe('top');
+  expect(card.style.getPropertyValue('--corner-top')).toBe('48px');
   corner.destroy();
 });
 
@@ -133,12 +135,12 @@ test('while a thread loads, a card and a toast wait out of sight with no room ke
   const timeline = box('timeline', { top: 48, bottom: 700, left: 300, right: 1300, height: 652, width: 1000 });
   slot.destroy();
   expect(card.dataset.held).toBeUndefined();
-  expect(card.dataset.slot).toBeUndefined();
+  expect(card.dataset.slot).toBe('top');
   expect(timeline.style.getPropertyValue('--corner-room')).toBe('');
   corner.destroy();
 });
 
-test('a desktop page with no thread stacks the arriving card above a toast in the corner, never under it', () => {
+test('a desktop page with no thread stacks the arriving card under a toast in the corner, never over it', () => {
   window.innerWidth = 1440;
   window.innerHeight = 768;
   const toast = document.createElement('div');
@@ -150,17 +152,18 @@ test('a desktop page with no thread stacks the arriving card above a toast in th
   document.body.append(card);
   const corner = notifyCorner(card);
   expect(toast.dataset.slot).toBe('end');
-  // The toast's bottom at 756 (768 - 12), its top at 716: the card ends 8 above it.
-  expect(toast.style.getPropertyValue('--toast-top')).toBe('716px');
-  expect(card.style.getPropertyValue('--corner-lift')).toBe('48px');
+  // The toast from 12 to 52: the card starts 8 under it.
+  expect(toast.style.getPropertyValue('--toast-top')).toBe('12px');
+  expect(card.style.getPropertyValue('--corner-top')).toBe('60px');
   slot.destroy();
-  expect(card.style.getPropertyValue('--corner-lift')).toBe('0px');
+  expect(card.style.getPropertyValue('--corner-top')).toBe('12px');
   corner.destroy();
 });
 
-test('desktop corner cards stack above toasts and keep the composer strip, queue and permission clear', () => {
+test('desktop corner cards stack under toasts at the top, away from the composer strip, queue and permission', () => {
   window.innerWidth = 1440;
   window.innerHeight = 768;
+  box('thread-header', { top: 0, bottom: 48, left: 300, right: 1440, height: 48, width: 1140 });
   const timeline = box('timeline', { top: 48, bottom: 460, left: 300, right: 1440, height: 412, width: 1140 });
   const wrap = box('composer-wrap', { top: 460, bottom: 768, left: 384, right: 1440, height: 308, width: 1056 });
   wrap.className = 'composer-wrap';
@@ -179,7 +182,8 @@ test('desktop corner cards stack above toasts and keep the composer strip, queue
   try {
     expect(timeline.style.getPropertyValue('--corner-room')).toBe('');
     expect(toast.dataset.slot).toBe('end');
-    expect(toast.style.getPropertyValue('--toast-top')).toBe('408px');
-    expect(card.style.getPropertyValue('--corner-lift')).toBe('356px');
+    // 12 under the thread header at 48, the card 8 under the toast.
+    expect(toast.style.getPropertyValue('--toast-top')).toBe('60px');
+    expect(card.style.getPropertyValue('--corner-top')).toBe('108px');
   } finally { slot.destroy(); corner.destroy(); }
 });
