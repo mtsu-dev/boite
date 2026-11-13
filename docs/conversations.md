@@ -14,6 +14,9 @@ draft folder when you have no project yet.
    branch instead of the project folder.
 4. Type your request and send it.
 
+The chat shows Starting agent while the agent launches, then Working for once
+it starts working. The startup timer counts the current turn.
+
 Add a project with Add a project at the bottom of the sidebar. The sidebar
 lists threads by project or by recent activity: switch between Projects and
 Recent in Display options.
