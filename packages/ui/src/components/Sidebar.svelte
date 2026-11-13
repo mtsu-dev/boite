@@ -267,7 +267,7 @@
       {/each}
       <!-- One history, newest first under the pins (lib/thread-order.ts compareRecent): the marks say what needs you. -->
       <WindowList items={attention} keyOf={entry => JSON.stringify([entry.machine.id, entry.thread.id])} {scrollRoot} estimate={54} measurements={measurements('recent')}>
-        {#snippet row(entry)}<ThreadCard {...entry} {now} compact showDone where={places(entry)} />{/snippet}
+        {#snippet row(entry)}<ThreadCard {...entry} {now} recent showDone where={places(entry)} />{/snippet}
       </WindowList>
       <!-- Done is the display menu's filter: on, the finished threads follow the live ones. -->
       {#if doneFilter.shown}
@@ -282,7 +282,7 @@
         {#if working.length > 0}
           <RecentGroup kind="working" count={working.length} bind:open={workingOpen}>
             <WindowList items={working} keyOf={entry => JSON.stringify([entry.machine.id, entry.thread.id])} {scrollRoot} estimate={34} measurements={measurements('recent-working')}>
-              {#snippet row(entry)}<ThreadCard {...entry} {now} compact showDone where={places(entry)} />{/snippet}
+              {#snippet row(entry)}<ThreadCard {...entry} {now} recent showDone where={places(entry)} />{/snippet}
             </WindowList>
           </RecentGroup>
         {/if}
