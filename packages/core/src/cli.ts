@@ -20,7 +20,7 @@ import { connect } from './client.ts';
 import type { CoreClient } from './client.ts';
 import { CORE_VERSION } from './version.ts';
 import { resolveDataDir } from './paths.ts';
-import { botCommand } from './agents/cli.ts';
+import { BOT_HELP, botCommand } from './agents/cli.ts';
 import { workflowCommand } from './workflow-cli.ts';
 import { DELEGATE_ACTIONS, delegateCommand } from './delegate-cli.ts';
 import { browserCommand, BROWSER_HELP } from './browser-cli.ts';
@@ -193,19 +193,7 @@ ${PLUGIN_HELP}
                                  (--contact <c>, --to <c>/<thread>, --new, --share);
                                  the answer names the thread to write to
   contacts [help]                the Contacts mochi's own commands
-  mochi memory                   a mochi's MEMORY.md and its path
-  mochi remember <fact>          add a dated line to MEMORY.md
-  mochi routines                 its routines: schedule, next run, last outcome
-  mochi schedule <json>          name, prompt, schedule; optional id and enabled
-  mochi unschedule <routine-id>  remove one routine
-  mochi watch|unwatch <thread-id>
-                                 put a thread of its projects on its desk, or
-                                 take one off; <machine>/<thread-id> for a
-                                 project another machine entrusted to it
-  mochi event <mochi> <text>     wake a mochi with an event from outside Boite
-                                 (--key <key>: a later event with the same key
-                                 replaces it while it waits); from a terminal
-                                 as the owner, or --core with a paired device
+${BOT_HELP}
   team <command>                 a mochi's teams: post, read, propose (boite team help)
   --request-id <id>              reuse to retry threads send|reply or delegate spawn|send
   delegate models                models, reasoning levels and speeds a subagent can use
