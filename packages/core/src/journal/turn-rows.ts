@@ -5,8 +5,8 @@ import { usageGroups, type UsageGroup } from './usage-sums.ts';
 
 export function writeTurn(db: Database, turn: Turn): void {
   db.query(
-    `INSERT OR REPLACE INTO turns (id, thread_id, status, queued_at, started_at, finished_at, usage, error, execution, checkpoint, queue_hold, agent_totals, quiet)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT OR REPLACE INTO turns (id, thread_id, status, queued_at, started_at, finished_at, usage, error, execution, checkpoint, queue_hold, agent_totals, quiet, switched)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     turn.id,
     turn.threadId,
@@ -21,6 +21,7 @@ export function writeTurn(db: Database, turn: Turn): void {
     turn.queueHold ? JSON.stringify(turn.queueHold) : null,
     turn.agentTotals ? JSON.stringify(turn.agentTotals) : null,
     turn.quiet ? 1 : 0,
+    turn.switched ? JSON.stringify(turn.switched) : null,
   );
 }
 
@@ -34,6 +35,8 @@ const ONE_TURN = {
   running: "SELECT * FROM turns WHERE thread_id = ? AND status = 'running' ORDER BY rowid DESC LIMIT 1",
   last: 'SELECT * FROM turns WHERE thread_id = ? ORDER BY rowid DESC LIMIT 1',
   conversation: "SELECT * FROM turns WHERE thread_id = ? AND COALESCE(json_extract(execution, '$.operation'), '') <> 'keepalive' ORDER BY rowid DESC LIMIT 1",
+  // The last turn that started before `?2` did, cache pings aside: what the transcript last stated (`threads/switch-notice.ts`).
+  stated: "SELECT * FROM turns WHERE thread_id = ?1 AND id <> ?2 AND started_at IS NOT NULL AND COALESCE(json_extract(execution, '$.operation'), '') <> 'keepalive' ORDER BY started_at DESC, rowid DESC LIMIT 1",
   ended: "SELECT * FROM turns WHERE thread_id = ? AND status NOT IN ('queued', 'running') ORDER BY rowid DESC LIMIT 1",
   queued: "SELECT * FROM turns WHERE thread_id = ? AND status = 'queued' AND json_extract(execution, '$.operation') = ? ORDER BY rowid LIMIT 1",
 } as const;

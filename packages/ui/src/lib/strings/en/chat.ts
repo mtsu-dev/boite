@@ -143,6 +143,27 @@ export const strings = {
     movePendingHide: 'Hide what the agent will be told',
     /** A line of the timeline: the agent moved its own thread with `boite thread move`. */
     movedByAgent: 'Moved by the agent to {project}',
+    /** The divider above the turn that first ran on another model, effort, speed or account (`TurnSwitch`). */
+    switched: {
+      /** A speed with no tier, beside a named one. */
+      standard: 'standard',
+      /** An effort the agent picks by itself, beside a named one. */
+      defaultEffort: 'default',
+      /** The tooltip of the dashed line at the foot of the thread: picked, not used yet. */
+      pending: 'Used from your next message',
+      handedOver: 'context handed over',
+      resumed: 'session resumed',
+      reason: { 'signed-out': '{account} signed out', removed: '{account} removed' },
+      reasonBare: { 'signed-out': 'account signed out', removed: 'account removed' },
+      show: 'Show what was handed over',
+      hide: 'Hide what was handed over',
+      detailFresh: 'A new session started on excerpts of this conversation, not on what the previous one held.',
+      detailResumed: 'The session left on this account came back and read only what it had missed.',
+      fullOne: '{count} message in full', fullMany: '{count} messages in full',
+      cutOne: '{count} shortened', cutMany: '{count} shortened',
+      omittedOne: '{count} left out', omittedMany: '{count} left out',
+      charsOne: '{count} character', charsMany: '{count} characters',
+    },
     /** A line of the timeline: Boite pinged the cached prompt while the thread waits on its agents. */
     keepalive: 'Prompt cache kept warm',
     keepaliveMany: 'Prompt cache kept warm {count} times',

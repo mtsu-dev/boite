@@ -1,4 +1,4 @@
-import type { Account, AccountId, ProviderId, ThreadSummary } from '@boite/contracts';
+import type { Account, AccountId, ProviderId, ThreadSummary, TurnExecution } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { refused } from '../errors.ts';
 
@@ -65,4 +65,11 @@ export function followAgent(core: Core, thread: ThreadSummary): ThreadSummary {
     }
   }
   return thread;
+}
+
+/** `followAgent`, with why the thread left its account when it did: the turn's divider says it (`TurnSwitch.reason`). */
+export function followedAgent(core: Core, thread: ThreadSummary): [ThreadSummary, TurnExecution['accountLeft']] {
+  const moved = followAgent(core, thread);
+  if (moved.accountId === thread.accountId) return [moved, undefined];
+  return [moved, core.journal.getAccount(thread.accountId) === null ? 'removed' : 'signed-out'];
 }

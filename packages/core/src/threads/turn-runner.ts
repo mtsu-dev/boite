@@ -10,6 +10,7 @@ import { withLoad } from './records.ts';
 import { markRunning } from './lifecycle.ts';
 import { TurnAttempts, type TurnAttemptState } from './turn-attempts.ts';
 import { stderrTail } from '../drivers/stderr-tail.ts';
+import { turnSwitch } from './switch-notice.ts';
 
 export { STOP_DEADLINE, STOP_DEADLINE_ERROR } from './turn-attempts.ts';
 
@@ -106,6 +107,9 @@ export class TurnRunner {
       thread: { ...selected, ...queued.execution, permissionMode: selected.permissionMode },
       running: { ...queued, status: 'running', startedAt: Date.now() },
     };
+    // What changed since the transcript last stated a selection: the turn's divider (`threads/switch-notice.ts`).
+    const switched = turnSwitch(this.#core, state.running);
+    if (switched) state.running.switched = switched;
     const permissions = this.#attempts.open(state);
 
     let result: TurnResult;

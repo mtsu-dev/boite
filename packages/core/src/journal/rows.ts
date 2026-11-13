@@ -73,6 +73,7 @@ export interface TurnRow {
   queue_hold?: string | null;
   agent_totals?: string | null;
   quiet?: number | null;
+  switched?: string | null;
 }
 
 export interface MessageRow {
@@ -179,6 +180,7 @@ export function toTurn(row: TurnRow): Turn {
     ...(row.queue_hold ? { queueHold: parseJson<NonNullable<Turn['queueHold']>>(row.queue_hold, `turns.queue_hold of ${row.id}`) } : {}),
     ...(row.agent_totals ? { agentTotals: parseJson<NonNullable<Turn['agentTotals']>>(row.agent_totals, `turns.agent_totals of ${row.id}`) } : {}),
     ...(row.quiet ? { quiet: true as const } : {}),
+    ...(row.switched ? { switched: parseJson<NonNullable<Turn['switched']>>(row.switched, `turns.switched of ${row.id}`) } : {}),
   };
 }
 
