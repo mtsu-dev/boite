@@ -4,7 +4,7 @@ export const fr: Translation = {
   devicePanel: {
     cover: 'Cet agent contrôle un appareil sur {machine}', coverHint: 'Rien n’est diffusé vers cet appareil avant que vous l’affichiez.',
     show: 'Afficher', hide: 'Masquer', hideHint: 'Arrêter de regarder et recouvrir la vue',
-    empty: "Aucun appareil n'est ouvert dans cette conversation. Un agent en ouvre un avec boite device open, ou ouvrez-en un ici.",
+    empty: "Aucun appareil n'est ouvert dans ce fil. Un agent en ouvre un avec boite device open, ou ouvrez-en un ici.",
     onMachine: 'Sur cette machine', add: 'Ouvrir un appareil',
     none: 'Aucun simulateur ni émulateur trouvé sur cette machine.',
     starting: 'Démarrage de {name}. Cela peut prendre une minute.', failed: "{name} n'a pas démarré",

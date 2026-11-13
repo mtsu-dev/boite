@@ -3,7 +3,7 @@ import type { Translation } from '../../i18n.svelte';
 export const fr: Translation = {
 
   experiments: {
-    pinnedQuotas: { title: 'Quotas du modèle épinglés', hint: 'Épingler les limites du fournisseur du modèle dans un coin de la discussion ou sous la liste des conversations' },
+    pinnedQuotas: { title: 'Quotas du modèle épinglés', hint: 'Épingler les limites du fournisseur du modèle dans un coin de la discussion ou sous la liste des fils' },
     recordingIndicators: { title: 'Actions visibles dans les vidéos', hint: 'Ajouter des repères de clics et les touches de navigation aux enregistrements. Le texte saisi et les mots de passe ne sont jamais affichés comme libellés de touches.' },
     whip: {
       title: 'Fouet',
@@ -18,11 +18,11 @@ export const fr: Translation = {
     },
     sessionImport: {
       title: 'Import de session Claude Code',
-      hint: 'Transformer une session lancée dans le terminal en conversation, depuis le menu du projet et la palette'
+      hint: 'Transformer une session lancée dans le terminal en fil, depuis le menu du projet et la palette'
     },
     promptCache: {
       title: 'Minuteur du cache de prompt',
-      hint: 'Une horloge à côté de la jauge de contexte, qui décompte le temps pendant lequel le provider garde la conversation en cache'
+      hint: 'Une horloge à côté de la jauge de contexte, qui décompte le temps pendant lequel le provider gardu fil en cache'
     },
     residentAgents: {
       title: 'Bots',
@@ -30,7 +30,7 @@ export const fr: Translation = {
     },
     contacts: {
       title: 'Contacts',
-      hint: 'Une page Accueil à côté des conversations, où vous reliez votre Boite à celle d\'un autre propriétaire via Tailscale. Un bot intégré, la Standardiste, porte chaque demande entre vos agents et les siens. Pas encore prêt pour un usage quotidien',
+      hint: 'Une page Accueil à côté des fils, où vous reliez votre Boite à celle d\'un autre propriétaire via Tailscale. Un bot intégré, la Standardiste, porte chaque demande entre vos agents et les siens. Pas encore prêt pour un usage quotidien',
       needsBots: 'Nécessite les Bots : la Standardiste qui porte chaque demande est un bot. Activez d\'abord les Bots'
     },
     autoGoal: {
@@ -42,7 +42,7 @@ export const fr: Translation = {
     },
     teams: {
       title: 'Équipes',
-      hint: "Des bots qui travaillent ensemble dans une conversation commune, affichée au-dessus d'eux sur la page Bots : un message réveille les bots qu'il nomme, et chacun répond au groupe ou en privé. Vos bots y écrivent avec boite team. Pas encore prêt pour un usage quotidien",
+      hint: "Des bots qui travaillent ensemble dans un salon commun, affiché au-dessus d'eux sur la page Bots : un message réveille les bots qu'il nomme, et chacun répond au groupe ou en privé. Vos bots y écrivent avec boite team. Pas encore prêt pour un usage quotidien",
       needsBots: "Nécessite les Bots : le salon d'une équipe est affiché avec ses bots. Activez d'abord les Bots"
     },
     debates: {

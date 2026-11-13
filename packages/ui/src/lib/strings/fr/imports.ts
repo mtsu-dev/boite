@@ -4,7 +4,7 @@ export const fr: Translation = {
 
   imports: {
     title: 'Importer une session dans {project}',
-    intro: "Sessions Claude Code lancées dans ce dossier. L'une d'elles devient une conversation avec son historique, et le tour suivant la continue.",
+    intro: "Sessions Claude Code lancées dans ce dossier. L'une d'elles devient un fil avec son historique, et le tour suivant le continue.",
     loading: 'Recherche des sessions',
     empty: 'Aucune session Claude Code pour ce dossier.',
     imported: 'Importée',
