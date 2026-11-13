@@ -229,8 +229,8 @@ test('pending agent updates remain in Machines after the tour closes', async () 
   expect(await page.evaluate(`document.querySelector('[data-testid=harness-update-notices]') === null`)).toBe(true);
   // A phone's settings open on the machine itself, which leads to Machines.
   await mobileAction(page, 'mobile-settings');
-  await page.waitFor(`document.querySelector('[data-testid=settings-tab-devices]')`);
-  await page.click('[data-testid=settings-tab-devices]');
+  await page.waitFor(`document.querySelector('[data-testid=settings-tab-version]')`);
+  await page.click('[data-testid=settings-tab-version]');
   // Machines lists what the agents still offer, and Update starts them from there.
   await page.waitFor(`[...document.querySelectorAll('[data-testid=updates-other]')].map(row => row.dataset.part).sort().join() === 'claude,codex'`);
   expect(await page.evaluate(`document.querySelector('[data-testid=updates-run-all]').disabled`)).toBe(false);
