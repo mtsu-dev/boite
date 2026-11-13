@@ -65,6 +65,8 @@ the VPN or the Wi-Fi.
 ## Use it
 
 - The bottom bar holds Threads, Activity and Bots. The + for a new conversation sits in the thread list's header.
+- Mark all as read, above Activity's list, clears failures, stops and
+  finished work. Questions and permissions stay until you answer them.
 - The gear at the end of each list's header opens Settings; Back, or the
   system's back gesture, returns to the list.
 - Slide a row left for Pin and Archive. Tap a conversation's title for its

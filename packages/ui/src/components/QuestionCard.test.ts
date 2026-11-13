@@ -203,10 +203,11 @@ test('a docked question the composer answers has no Answer of its own; one it do
   expect(query('[data-testid=question-skip]').textContent?.trim()).toBe('Skip question');
   options()[1]?.click();
   flushSync();
-  // One choice too: its row fills and its ring turns to a solid check.
+  // One choice too: its row fills and its number turns to a check; the others keep their number.
   expect(options()[1]?.classList.contains('picked')).toBe(true);
-  expect(options()[1]?.querySelector('.box.round svg')).not.toBeNull();
-  expect(options()[0]?.querySelector('.box.round svg')).toBeNull();
+  expect(options()[1]?.querySelector('.box.key svg')).not.toBeNull();
+  expect(options()[0]?.querySelector('.box.key svg')).toBeNull();
+  expect(options()[0]?.querySelector('.box.key')?.textContent?.trim()).toBe('1');
 
   // A subagent's question docked in its parent: the composer is not its field, so the card answers its picks.
   card(false);
@@ -297,16 +298,14 @@ test('several options are kept at once when the question takes several', () => {
   expect(options().every(option => option.getAttribute('role') === 'checkbox')).toBe(true);
   // The card says what a pick does: it marks rows, the card's Answer sends them.
   expect(document.querySelector('[data-testid=question-how]')).toBeNull();
-  // Docked, each row leads with an empty square, a choice before any pick, and a check once picked;
-  // its key stays a quiet hint right after the label it picks, never the mark of the choice.
-  expect(options().every(option => option.firstElementChild?.classList.contains('box') && !option.querySelector('.box')?.classList.contains('round'))).toBe(true);
+  // Docked, each row leads with its key, the composer's 1 to 9, which turns to a check once picked.
+  expect(options().every(option => option.firstElementChild?.classList.contains('key'))).toBe(true);
   expect(document.querySelector('.box svg')).toBeNull();
-  expect(options().map(option => option.querySelector('.label > kbd:last-child')?.textContent ?? null)).toEqual(['1', '2']);
+  expect(options().map(option => option.querySelector('.box.key')?.textContent?.trim() ?? null)).toEqual(['1', '2']);
   options()[0]?.click();
   options()[1]?.click();
   flushSync();
   expect(document.querySelectorAll('[aria-checked=true] .box svg')).toHaveLength(2);
-  expect(document.querySelector('kbd svg')).toBeNull();
   options()[0]?.click();
   flushSync();
   expect(options()[0]?.getAttribute('aria-checked')).toBe('false');

@@ -242,7 +242,6 @@
             </Menu>
           </span>
           <!-- The desktop's crumb names project and thread; the machine follows in the phone's muted form, once there are two. -->
-          {#if !mobile.current && place?.machine}<span class="crumb-place" data-testid="thread-place"><MachinePlace host={place.machine} /></span>{/if}
         {/if}
         {@const pending = pendingLine(thread)}
         {#if pending}
@@ -386,8 +385,6 @@
   .title { min-width: 0; }
   .title-menu { display: flex; flex: none; }
   /* After the title and its menu, in meta: the machine reads as where it runs, and gives way before the title does. */
-  .crumb-place { display: flex; flex: 0 1 auto; min-width: 0; margin-left: 2px; overflow: hidden; }
-  .crumb-place :global(.machine-place) { font-size: var(--text-sm); color: var(--color-muted-foreground); }
   .title-menu :global(.trigger) { min-width: 32px; min-height: 32px; justify-content: center; }
   @media (max-width: 720px) {
     /* The title is what tells one conversation from another: the buttons give

@@ -445,10 +445,10 @@
   <MobileSettings {store} {target} bar={bar ? machineBar : undefined} pick={bar && choices.length > 1 ? scopePicker : undefined} notes={machineNotes} search={searchField} found={searching ? searchResults : undefined} {onopenthread} />
 {:else}
 <div class="settings" data-testid="settings">
-  <nav aria-label={strings.settings.heading} style:--list-width={`${store.sidebarWidth}px`}>
+  <nav aria-label={strings.settings.heading}>
     <!-- The list's head leads back to the threads, like the bots column's; the rail's gear opens Settings' home. -->
     <button type="button" class="ghost title" data-testid="settings-back" title={strings.settings.back} onclick={() => { store.showChat(); store.sidebarCollapsed = false; }}>
-      <ChevronLeft size={16} aria-hidden="true" /><span class="ui-label">{strings.settings.heading}</span>
+      <ChevronLeft size={18} aria-hidden="true" /><span class="ui-label">{strings.settings.heading}</span>
     </button>
     {@render searchField(false)}
     <!-- The pages under their family heads, as on a phone, every page a peer of its family. -->
@@ -558,14 +558,14 @@
     .framed > :global(.policy-banner) { margin: 16px 16px 0; }
   }
   .tab span { flex: 1; text-align: left; }
-  .tab { gap: 10px; }
-  .tab :global(svg) { flex: none; color: var(--color-subtle); }
-  .tab.active :global(svg) { color: var(--color-foreground); }
+  .tab { gap: 12px; }
+  .tab :global(svg) { flex: none; width: 18px; height: 18px; color: var(--color-subtle); transition: color var(--dur-2); }
+  .tab.active :global(svg) { color: var(--color-accent); }
   /* A family: its head in the meta size over its entries, and air between two families. */
   .family { display: flex; flex-direction: column; gap: 2px; }
-  .family + .family { margin-top: var(--space-4); }
-  .search + .family { margin-top: var(--space-2); }
-  .family-head { margin: 0; padding: 0 10px var(--space-1); color: var(--color-subtle); font-size: var(--text-meta); font-weight: var(--weight-title); }
+  .family + .family { margin-top: var(--space-5); }
+  .search + .family { margin-top: var(--space-3); }
+  .family-head { margin: 0; padding: 0 12px var(--space-2); color: var(--color-subtle); font-size: var(--text-meta); font-weight: 500; }
 
   /* The search heads the nav, on the chrome like the rows under it. */
   .search {
@@ -573,9 +573,9 @@
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    height: var(--control);
+    height: 38px;
     margin: 0 0 var(--space-2);
-    padding: 0 10px;
+    padding: 0 12px;
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
     background: var(--color-hover);
@@ -585,7 +585,7 @@
   /* A field brightens its edge on focus, as every field does (app.css): an autofocused search wore an accent frame. */
   .search:focus-within { border-color: var(--color-composer-focus); }
   .search :global(svg) { flex: none; }
-  .search input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; box-shadow: none; outline: none; font-size: var(--text-sm); color: var(--color-foreground); }
+  .search input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; box-shadow: none; outline: none; font-size: var(--text-base); color: var(--color-foreground); }
   .search input::-webkit-search-cancel-button { display: none; }
   /* The phone's home: the field spans its column, first under the header, a finger tall. */
   .search.phone { width: auto; height: var(--touch-target); margin: 0 0 var(--space-5); background: var(--color-surface); }
@@ -631,8 +631,9 @@
   .framed > :global(.machines-page .head:not(:has(button:not(.ui-label + .info-tip)))) { display: none; }
   .framed > :global(.page > header) { justify-content: flex-end; }
 
-  /* The pages' list stands in the thread list's column, on the chrome, and
-     the page in the inset card beside it, as in the rest of the frame. */
+  /* The pages' list is a column of its own width, on the chrome: every page's name fits it,
+     so it does not follow the thread list's, which a long title can pull to a third of the
+     window. The page stands in the inset card beside it, as in the rest of the frame. */
   .settings {
     display: flex;
     flex: 1;
@@ -642,25 +643,25 @@
   }
 
   nav {
-    width: var(--list-width);
+    width: var(--settings-nav);
     flex: none;
     display: flex;
     flex-direction: column;
     gap: 2px;
-    padding: 0 6px 12px;
+    padding: 0 8px 12px;
     overflow-y: auto;
   }
 
   /* The thread list's head: same height, size and inset, so the switch reads as one column changing.
      It leads back to the threads (SideHead.svelte's back title), so it only lights under the pointer. */
-  .title { flex: none; justify-content: flex-start; gap: 2px; height: 36px; margin: 16px 4px 4px; padding: 0 8px 0 2px; font-size: 15px; font-weight: 600; letter-spacing: -0.015em; color: var(--color-subtle); }
+  .title { flex: none; justify-content: flex-start; gap: 4px; height: 40px; margin: 14px 0 8px; padding: 0 10px 0 6px; font-size: var(--text-lg); font-weight: 600; letter-spacing: -0.015em; color: var(--color-subtle); }
   .title .ui-label { color: var(--color-foreground); }
   .title:hover:not(:disabled) { background: var(--color-hover); color: var(--color-foreground); }
 
   .crumb { flex: 1; min-width: 0; }
   /* The screen's one title, at the top of its card in the settings column, one step over a card's. */
   .screen { display: flex; flex-direction: column; align-items: flex-start; padding: var(--space-8) max(var(--settings-gutter), calc((100% - var(--settings-width)) / 2)) 0; }
-  .screen h1 { min-width: 0; margin: 0; color: var(--color-foreground); font-size: var(--text-lg); font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; }
+  .screen h1 { min-width: 0; margin: 0; color: var(--color-foreground); font-size: var(--settings-title); font-weight: 650; line-height: 1.2; letter-spacing: -0.02em; }
   /* The first card's title follows the screen's title at the normal step, with no empty band between. */
   .screen ~ :global(.page) { padding-top: var(--space-4); }
   .screen ~ :global(.page > .card:first-child:has(> h2:first-child)),
@@ -672,13 +673,18 @@
   .tab {
     justify-content: flex-start;
     width: 100%;
-    min-height: var(--row);
+    position: relative;
+    min-height: 40px;
     height: auto;
-    padding: 6px 10px;
+    padding: 8px 12px;
     white-space: normal;
+    font-size: var(--text-head);
     line-height: 1.35;
     color: var(--color-muted-foreground);
   }
+  /* The open page's mark: a short bar of the accent at the row's edge, drawn in as the page changes. */
+  .tab::before { content: ''; position: absolute; left: 0; top: 50%; width: 3px; height: 18px; border-radius: 0 3px 3px 0; background: var(--color-accent); transform: translateY(-50%) scaleY(0); transition: transform var(--dur-3) var(--ease-out-quint); }
+  .tab.active::before { transform: translateY(-50%) scaleY(1); }
 
   /* A full width row does not shrink under the finger, it fills one step more. */
   .tab:active:not(:disabled) {
@@ -689,6 +695,7 @@
   .tab.active {
     background: var(--color-active);
     color: var(--color-foreground);
+    font-weight: 500;
   }
 
   section {
@@ -724,8 +731,9 @@
     .settings { gap: 0; }
     /* In a row, the head is the first chip, then the search, then each page a chip. */
     .title { height: var(--control); margin: 0; font-size: var(--text-sm); white-space: nowrap; }
-    .search { width: 180px; margin: 0; }
-    .tab { width: auto; white-space: nowrap; padding-left: 10px; }
+    .search { width: 180px; height: var(--control); margin: 0; }
+    .tab { width: auto; min-height: var(--row); white-space: nowrap; padding: 6px 10px; font-size: var(--text-sm); }
+    .tab::before { display: none; }
     .family { flex-direction: row; }
     .family + .family, .search + .family { margin-top: 0; }
     .family-head { display: none; }

@@ -69,7 +69,7 @@ test('an answer for a newer version than the list named still draws, and is aske
   expect(asked.mock.calls.filter(([method]) => method === 'projects.icon')).toHaveLength(1);
 });
 
-test("a project with no logo draws its stack's mark, every mark in the tile's one tone", async () => {
+test("a project with no logo draws its stack's mark in its brand colour, a black or white one in the text's ink", async () => {
   const { store } = await seeded();
   const notes = store.projects.find((p) => p.id === 'p-notes')!;
   draw(store, notes);
@@ -77,12 +77,15 @@ test("a project with no logo draws its stack's mark, every mark in the tile's on
   await vi.waitFor(() => expect(tile().dataset['tech']).toBe('python'));
   const path = tile().querySelector('path');
   expect(path?.getAttribute('d')).toBe(techGlyphs.python.path);
-  // A brand colour per stack made the list a rainbow: the shape alone tells them apart.
-  expect(path?.getAttribute('fill')).toBe('currentColor');
+  // The colour tells the projects apart at a glance: a grey mark for every stack did not.
+  expect(path?.getAttribute('fill')).toBe(techGlyphs.python.hex);
+  expect(techGlyphs.python.mono).toBe(false);
 
   unmount(running!, { outro: false });
   draw(store, { ...notes, icon: { kind: 'tech', id: 'rust' } });
+  expect(techGlyphs.rust.mono).toBe(true);
   expect(tile().querySelector('path')?.getAttribute('fill')).toBe('currentColor');
+  expect(tile().classList.contains('mono')).toBe(true);
 });
 
 test('nothing detected, a stack this UI does not know, or an image that cannot be fetched: the initial', async () => {
