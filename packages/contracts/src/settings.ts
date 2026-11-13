@@ -86,6 +86,12 @@ export interface Settings {
   /** Automatic memory stops and Windows allocation caps. Missing means enabled. */
   memoryProtection?: boolean;
   /**
+   * The machine that runs the core does not go to sleep while a turn runs or
+   * waits in the queue; a thread waiting for the user holds nothing. Missing
+   * means enabled. Each machine has its own.
+   */
+  keepAwake?: boolean;
+  /**
    * Windows of agent processes never keep the foreground: one that takes it is
    * sent to the bottom without activation and the window the user was on gets
    * the focus back. Windows only, ignored elsewhere.

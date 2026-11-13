@@ -47,6 +47,14 @@ test("settings reveal sections and protection switches persist across navigation
     await page.waitFor(
       '!document.querySelector("[data-testid=setting-reap-orphans]").checked',
     );
+    // On until the owner turns it off: the machine stays awake while agents work.
+    await page.waitFor(
+      'document.querySelector("[data-testid=setting-keep-awake]").checked',
+    );
+    await page.click("[data-testid=setting-keep-awake]");
+    await page.waitFor(
+      '!document.querySelector("[data-testid=setting-keep-awake]").checked',
+    );
     await page.click("[data-testid=settings-tab-general]");
     await page.waitFor(
       'document.querySelector("[data-testid=setting-mute-agents]") && document.querySelector("[data-testid=setting-focus-guard]")',
@@ -57,7 +65,7 @@ test("settings reveal sections and protection switches persist across navigation
     );
     await page.click("[data-testid=settings-tab-diagnostics]");
     await page.waitFor(
-      '!document.querySelector("[data-testid=setting-reap-orphans]")?.checked && document.querySelector("[data-testid=setting-reap-orphans]")',
+      '!document.querySelector("[data-testid=setting-reap-orphans]")?.checked && document.querySelector("[data-testid=setting-reap-orphans]") && document.querySelector("[data-testid=setting-keep-awake]")?.checked === false',
     );
     await page.click("[data-testid=settings-tab-general]");
     await page.waitFor(
