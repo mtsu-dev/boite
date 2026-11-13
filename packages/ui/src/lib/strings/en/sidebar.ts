@@ -29,7 +29,7 @@ export const strings = {
     groupingOptions: 'Display options',
     /** The thread list's name, in the rail and over the list. */
     threads: 'Threads',
-    /** The phone's Bots tab, read aloud: how many work now, and whether one needs the user. */
+    /** The phone's Mochis tab, read aloud: how many work now, and whether one needs the user. */
     surfaceWorking: '{count} at work',
     surfaceWaiting: '{count} at work, something needs you',
     /** The two ways the display options can list threads. */

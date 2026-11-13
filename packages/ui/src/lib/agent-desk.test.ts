@@ -34,7 +34,7 @@ test('the desk lists what needs the user first and settled threads last, newest 
   expect(order.map(w => w.threadId)).toEqual(['ask', 'silent', 'new-work', 'old-work', 'done']);
 });
 
-test('the column keeps what the bot still handles apart from what it is done with', () => {
+test('the column keeps what the mochi still handles apart from what it is done with', () => {
   const { handling, done } = splitDesk([
     watch('merged', { state: 'done', pullRequest: pr('merged'), lastActivityAt: 9 }),
     watch('review', { state: 'idle', pullRequest: pr('open', 'failing'), lastActivityAt: 8 }),

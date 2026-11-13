@@ -1,19 +1,19 @@
 export const strings = {
   /** A settings card an agent put in the conversation (`boite settings request|open`). */
-  /** The card of a bot an agent asked to create (`boite settings bot create` where creation asks first). */
+  /** The card of a mochi an agent asked to create (`boite settings mochi create` where creation asks first). */
   botRequest: {
-    heading: 'Bot to create',
-    asks: 'This conversation asks to create the bot {name}.',
+    heading: 'Mochi to create',
+    asks: 'This conversation asks to create the mochi {name}.',
     name: 'Name',
     role: 'Role',
     projects: 'Projects',
     model: 'Model',
     none: 'None',
-    fullAccess: 'This bot runs with full access to this machine.',
-    guestHint: 'Only the computer running Boite can create this bot.',
+    fullAccess: 'This mochi runs with full access to this machine.',
+    guestHint: 'Only the computer running Boite can create this mochi.',
     approve: 'Approve',
     decline: 'Decline',
-    created: 'Bot created',
+    created: 'Mochi created',
     declined: 'Declined',
     closed: 'Closed without an answer',
   },
@@ -27,8 +27,8 @@ export const strings = {
       machine: 'An agent lists, reads and writes to the conversations of every project on this machine.',
       group: 'An agent lists, reads and writes to the conversations of every project, here and on the machines you trust.',
     },
-    bots: 'Create bots without asking',
-    botsEffect: 'A bot created this way has full access to this machine',
+    bots: 'Create mochis without asking',
+    botsEffect: 'A mochi created this way has full access to this machine',
     values: { ask: 'Ask first', free: 'Without asking' },
   },
   settingRequest: {
@@ -81,7 +81,7 @@ export const strings = {
       focusGuard: 'Keep agent windows out of the foreground',
       muteAgents: 'Mute agent audio',
       coordinationReach: 'How far a conversation reaches other conversations',
-      agentBotCreation: 'Agents create bots without asking',
+      agentBotCreation: 'Agents create mochis without asking',
       agentCpuCapPercent: 'CPU cap for all agents',
       agentMemoryBudgetPercent: 'Memory budget for all agents',
       threadMemoryCapMb: 'Memory cap per conversation',
@@ -101,7 +101,7 @@ export const strings = {
       deviceStream: 'Live device stream',
       backgroundCompaction: 'Background compaction',
       groupThreads: 'Let the other machines start threads and add projects here',
-      groupBots: 'Let the bots of the other machines look after projects here',
+      groupBots: 'Let the mochis of the other machines look after projects here',
     },
     /** What 0 means for the settings where it is not a number. */
     zero: {

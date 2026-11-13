@@ -90,11 +90,11 @@ test('a desktop menu keeps eight rows at most on its first level and names its o
   // A transfer sign on the group: it moves the thread or hands it over, it sets nothing.
   expect(main.find(item => item.id === 'more')?.glyph).toBe(ArrowRightLeft);
   // The door says what a user does there, in words to act on: move it, give it to a bot.
-  expect(main.find(item => item.id === 'more')).toMatchObject({ submenu: true, label: 'Move to a project or a bot' });
+  expect(main.find(item => item.id === 'more')).toMatchObject({ submenu: true, label: 'Move to a project or a mochi' });
   expect(main.some(item => item.label === 'More')).toBe(false);
   const tools = threadToolItems(store, t, options);
   // The way back names the level it stands on, as the model picker's levels do.
-  expect(tools[0]).toMatchObject({ back: true, label: 'Move to a project or a bot' });
+  expect(tools[0]).toMatchObject({ back: true, label: 'Move to a project or a mochi' });
   // Where the thread goes, in the door's order: the hand-off, then where the thread lives. The panels have their own door.
   expect(ids(tools)).toEqual(['back', 'entrust', 'move', 'copy', 'pr']);
   // What the header says of the thread leads each part: its bot the bot rows, its branch the folder rows.

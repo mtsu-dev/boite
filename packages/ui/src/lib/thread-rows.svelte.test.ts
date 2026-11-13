@@ -13,7 +13,7 @@ async function ready(): Promise<{ store: Store; client: FakeClient }> {
   return { store, client };
 }
 
-test('project work delegated by a bot is listed while conversation helpers stay under their parent', async () => {
+test('project work delegated by a mochi is listed while conversation helpers stay under their parent', async () => {
   const { store, client } = await ready();
   try {
     const sample = store.threads[0]!;

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { avatarLit, litReason, moodFacts } from './avatar-lit';
 
-describe('a bot picture lights only for the owner', () => {
+describe('a mochi picture lights only for the owner', () => {
   test('each reason lights it, the strongest named first', () => {
     expect(litReason({ open: true })).toBe('open');
     expect(litReason({ attention: true })).toBe('attention');

@@ -5,7 +5,7 @@ import { AgentsView, statusOf } from '../../lib/agents.svelte';
 import { fill, strings } from '../../lib/strings';
 import AgentsPage from './AgentsPage.svelte';
 
-test('a bot whose account is gone offers its other accounts in place, and one pick puts it back to work', async ({ ready }) => {
+test('a mochi whose account is gone offers its other accounts in place, and one pick puts it back to work', async ({ ready }) => {
   let page: ReturnType<typeof mount> | null = null;
   try {
     const { store } = await ready({ delayMs: 0, agentsDemo: true });

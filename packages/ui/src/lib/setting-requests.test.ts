@@ -57,7 +57,7 @@ test('a graduated experiment keeps its name, and one with no switch left says it
 });
 
 test('an old card about a finished experiment reads as words, never as its key', () => {
-  expect(settingLabel('experiment.resident-agents' as RequestableKey)).toBe('Bots');
+  expect(settingLabel('experiment.resident-agents' as RequestableKey)).toBe('Mochis');
   expect(settingLabel('experiment.prompt-cache' as RequestableKey)).toBe('Prompt cache timer');
   expect(settingLabel('experiment.recording-indicators' as RequestableKey)).toBe('Show actions in recordings');
   for (const id of ['prompt-cache', 'recording-indicators']) {

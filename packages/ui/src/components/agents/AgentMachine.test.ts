@@ -63,7 +63,7 @@ function pick(value: string) {
   document.querySelector<HTMLButtonElement>(`[data-testid="agent-move-pick-menu"] [data-value="${value}"]`)!.click();
 }
 
-test('the Machine row moves a bot after the app asks, a refusal is told, and the Bots page follows it to its new machine', async () => {
+test('the Machine row moves a mochi after the app asks, a refusal is told, and the Mochis page follows it to its new machine', async () => {
   const { first, second, bot } = await setup();
   expect(one('agent-move-pick')!.textContent).toContain('First');
   one<HTMLButtonElement>('agent-move-pick')!.click();
@@ -86,7 +86,7 @@ test('the Machine row moves a bot after the app asks, a refusal is told, and the
   // A turn in flight on a machine that cannot hold a move for its end: the core refuses, the toast says it in one clear line, the bot stays.
   first.store.core = { ...first.store.core!, features: { ...first.store.core!.features, botMoveQueue: false } };
   call.mockImplementation(async (method, params) => {
-    if (method === 'agents.move') throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'agents.move: Operator has a turn running or queued; stop it or let it end before moving the bot', data: { field: 'agentId', reason: 'turn-in-flight' } });
+    if (method === 'agents.move') throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'agents.move: Operator has a turn running or queued; stop it or let it end before moving the mochi', data: { field: 'agentId', reason: 'turn-in-flight' } });
     return real(method, params);
   });
   pick('second');
@@ -127,7 +127,7 @@ test('the Machine row moves a bot after the app asks, a refusal is told, and the
   expect(first.store.error).toBeNull();
 });
 
-test('a member whose Boite cannot take a bot is shut in the menu and says to update it', async () => {
+test('a member whose Boite cannot take a mochi is shut in the menu and says to update it', async () => {
   const { second } = await setup();
   second.store.core = { ...second.store.core!, features: { ...second.store.core!.features, botMove: false } };
   flushSync();
@@ -147,7 +147,7 @@ test('a move that did not finish keeps its requestId through a reload, and a new
     // The target refused it, having read it: that move is over.
     new RpcFailure({ code: RpcErrorCode.Refused, message: 'agents.move: Second has no signed-in account to run Operator; sign in there first', data: { field: 'machine' } }),
     // The target made the bot and its answer was lost: the next try must be the same move.
-    new RpcFailure({ code: RpcErrorCode.Refused, message: 'agents.move: Second did not answer (timeout); the bot stays here, and the same requestId tries again without moving it twice', data: { field: 'machine', reason: 'unreachable' } }),
+    new RpcFailure({ code: RpcErrorCode.Refused, message: 'agents.move: Second did not answer (timeout); the mochi stays here, and the same requestId tries again without moving it twice', data: { field: 'machine', reason: 'unreachable' } }),
     droppedFailure('the connection dropped'),
     null,
   ];
@@ -182,7 +182,7 @@ test('a move that did not finish keeps its requestId through a reload, and a new
   expect(localStorage.getItem('boite.agentMoves')).toBeNull();
 });
 
-test('a bot at work moves once its turn ends: the dialog names the projects the target lacks, the row says where it goes, and a cancelled move keeps its id', async () => {
+test('a mochi at work moves once its turn ends: the dialog names the projects the target lacks, the row says where it goes, and a cancelled move keeps its id', async () => {
   const { first, second, bot, view } = await setup();
   await unmount(component!);
   // A project Second also lists under its name, one only First has, and one it had from Second that Second no longer has.

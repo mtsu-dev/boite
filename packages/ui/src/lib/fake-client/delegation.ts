@@ -472,7 +472,7 @@ export function delegationMethods(ctx: FakeContext) {
       if (params.project !== undefined && (typeof params.project !== 'string' || !params.project.trim() || params.project.length > 4096)) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'project: expected 1 to 4096 characters' });
       const wantedProject = params.project?.trim();
       // As the core: a bot's subagents stay on its machine, and the machine is part of the request.
-      if (params.machine !== undefined && parent.agentSessionId) throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'delegation.spawn.machine: a bot\'s subagents run on its own machine', data: { field: 'machine' } });
+      if (params.machine !== undefined && parent.agentSessionId) throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'delegation.spawn.machine: a mochi\'s subagents run on its own machine', data: { field: 'machine' } });
       const machine = params.machine === undefined ? undefined : fakeMember(ctx, params.machine, 'delegation.spawn');
       const fingerprint = JSON.stringify([params.profileId ?? null, params.model ?? null, params.effort ?? null, params.speed ?? null, task, params.title ?? null, params.context ?? null, params.worktree === true, ...(wantedProject === undefined ? [] : [wantedProject]), ...(machine === undefined ? [] : [{ machine: machine.coreId }])]);
       const requestKey = `${parent.id}:${params.requestId}`;

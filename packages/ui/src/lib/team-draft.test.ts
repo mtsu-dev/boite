@@ -40,7 +40,7 @@ test('an archived team whose members all left can be emptied, then restored', as
   expect((await client.call('teams.archive', { teamId: team.id, archived: false })).archived).toBe(false);
 });
 
-test('a member whose machine left the group is one row the owner can take out, while its other bots stay greyed', () => {
+test('a member whose machine left the group is one row the owner can take out, while its other mochis stay greyed', () => {
   const profile = (id: string, name: string) => ({ id, name, avatar: '', status: 'active' }) as AgentProfile;
   const store = { machineId: 'srv', coreId: 'firebat', group: null };
   const away = { store, snapshot: { profiles: [profile('munin', 'Munin'), profile('odin', 'Odin')] } } as unknown as AgentsView;

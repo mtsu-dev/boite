@@ -94,7 +94,7 @@ export const fr: Translation = {
     compactionCommon: 'Commun',
     compactionAgent: 'Fils',
     compactionSubagent: 'Sous-agents',
-    compactionBot: 'Bots',
+    compactionBot: 'Mochis',
     compactionCustomize: 'Personnaliser ce type',
     compactionInherited: 'Utilise les réglages communs.',
     compactionInheritanceHintRelease: "Chaque type hérite des réglages communs tant qu'il n'est pas personnalisé. Personnaliser copie tous les paramètres de compaction actuels. La compaction en arrière-plan demande une version Nightly. Désactivez pour rétablir l'héritage.",

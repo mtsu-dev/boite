@@ -95,16 +95,16 @@ async function openDialog() {
   return dialogShown();
 }
 
-test('with no team yet the Bots list shows the bots first, then the Teams heading with New team and one line', async () => {
+test('with no team yet the Mochis list shows the mochis first, then the Teams heading with New team and one line', async () => {
   const { store, bots } = await computer();
   page(store);
   await vi.waitFor(() => query(`[data-testid="agent-entry-${bots[0]!.id}"]`));
   await settle();
   // Nothing to list as a team yet: its prompt waits under the bots, which are what there is.
-  expect(all('.agents-rail .section-label').map(heading => heading.textContent)).toEqual(['Bots', 'Teams']);
+  expect(all('.agents-rail .section-label').map(heading => heading.textContent)).toEqual(['Mochis', 'Teams']);
   expect(query(`[data-testid="agent-entry-${bots[0]!.id}"]`).compareDocumentPosition(query('[data-testid=agents-teams-empty]')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect((await newTeam()).textContent?.trim()).toBe('New team');
-  expect(text('[data-testid=agents-teams-empty] p')).toBe('No team yet: put a few bots in one chat.');
+  expect(text('[data-testid=agents-teams-empty] p')).toBe('No team yet: put a few mochis in one chat.');
   expect(document.querySelector('[data-testid=agents-teams]')).toBeNull();
   // The empty line carries its one action: New team, right under it.
   document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle();
@@ -114,7 +114,7 @@ test('with no team yet the Bots list shows the bots first, then the Teams headin
   expect(await dialogShown()).not.toBeNull();
 });
 
-test('the dialog asks for a name and a bot, then creates the team on this machine and opens its chat', async () => {
+test('the dialog asks for a name and a mochi, then creates the team on this machine and opens its chat', async () => {
   const { client, store, bots } = await computer();
   const [huginn, jeux, muninn] = bots as [typeof bots[0], typeof bots[0], typeof bots[0]];
   page(store);
@@ -127,7 +127,7 @@ test('the dialog asks for a name and a bot, then creates the team on this machin
   query<HTMLButtonElement>('[data-testid=team-dialog-submit]').click(); await settle();
   expect(text('[data-testid=team-dialog-problem]')).toBe('Give the team a name.');
   type('[data-testid=team-dialog-name]', '  Launch   crew ');
-  expect(text('[data-testid=team-dialog-problem]')).toBe('Pick at least one bot.');
+  expect(text('[data-testid=team-dialog-problem]')).toBe('Pick at least one mochi.');
   member(huginn.id).click(); member(muninn.id).click(); flushSync();
   expect([member(huginn.id).getAttribute('aria-pressed'), member(jeux.id).getAttribute('aria-pressed'), member(muninn.id).getAttribute('aria-pressed')]).toEqual(['true', 'false', 'true']);
   expect(text('[data-testid=team-dialog-count]')).toBe('2 of 12');
@@ -163,7 +163,7 @@ test('a taken name says so as it is typed, and Escape closes the dialog without 
   expect((await client.call('teams.list', {})).teams).toHaveLength(1);
 });
 
-test("the bots of a machine outside the group are listed greyed with why, and cannot be picked", async () => {
+test("the mochis of a machine outside the group are listed greyed with why, and cannot be picked", async () => {
   const local = await computer();
   const remote = await machine(['Tour']);
   workspace.machines = [{ id: 'local', label: 'Local', store: local.store }, { id: 'srv', label: 'Server', store: remote.store }];
@@ -172,15 +172,15 @@ test("the bots of a machine outside the group are listed greyed with why, and ca
   await openDialog();
   const away = query<HTMLButtonElement>(`[data-testid=team-dialog-member][data-key='${JSON.stringify(['srv', remote.bots[0]!.id])}']`);
   expect(away.getAttribute('aria-disabled')).toBe('true');
-  expect(away.title).toBe("On Server: a team takes the bots of this machine's group.");
+  expect(away.title).toBe("On Server: a team takes the mochis of this machine's group.");
   expect(away.closest('li')?.querySelector('[data-testid=team-dialog-why]')).not.toBeNull();
   away.click(); flushSync();
   expect(away.getAttribute('aria-pressed')).toBe('false');
   // A tap says why on a screen with no hover.
-  expect(text('[data-testid=team-dialog-told]')).toBe("On Server: a team takes the bots of this machine's group.");
+  expect(text('[data-testid=team-dialog-told]')).toBe("On Server: a team takes the mochis of this machine's group.");
 });
 
-test("a bot of another machine of the group joins from the dialog under its machine's name, and an edit keeps it one row until it is taken out", async () => {
+test("a mochi of another machine of the group joins from the dialog under its machine's name, and an edit keeps it one row until it is taken out", async () => {
   setExperiment('teams', true);
   const local = await machine(['Huginn'], { coreId: 'desk', coreName: 'Desk', publicUrl: 'https://desk.test' });
   // Its second bot: no bot of this machine has that id, so nothing here can pass for it.
@@ -209,7 +209,7 @@ test("a bot of another machine of the group joins from the dialog under its mach
   far().click(); flushSync();
   expect(far().getAttribute('aria-pressed')).toBe('true');
   submit().click(); await settle();
-  expect(text('[data-testid=team-dialog-problem]')).toBe('Pick a bot of this machine too: it holds the team.');
+  expect(text('[data-testid=team-dialog-problem]')).toBe('Pick a mochi of this machine too: it holds the team.');
   expect((await local.client.call('teams.list', {})).teams).toEqual([]);
   member(huginn.id).click(); flushSync();
   expect(document.querySelector('[data-testid=team-dialog-problem]')).toBeNull();
@@ -312,7 +312,7 @@ test('a paired phone keeps New team and the team menu greyed, and says that chan
   expect(query('[data-testid=team-menu-menu]').textContent).toContain('Only the computer running Boite can create or change teams.');
 });
 
-test('a machine whose only bot is moving lists it greyed, without saying there is no bot', async () => {
+test('a machine whose only mochi is moving lists it greyed, without saying there is no mochi', async () => {
   const { store, bots } = await computer();
   const bot = bots[0]!;
   const view = { store, snapshot: { revision: 1, profiles: [bot], status: [{ agentId: bot.id, leaving: { agentId: bot.id, machine: 'srv', requestId: 'r1', at: 0 } }] } } as unknown as AgentsView;
@@ -342,7 +342,7 @@ test('a member that left the machine shows why while picked, and once unpicked t
   expect(member(huginn.id).closest('li')?.querySelector('[data-testid=team-dialog-why]')).toBeNull();
   gone.click(); flushSync();
   expect(gone.getAttribute('aria-pressed')).toBe('false');
-  expect(gone.title).toBe('No longer a bot of this machine: it leaves the team when you save.');
+  expect(gone.title).toBe('No longer a mochi of this machine: it leaves the team when you save.');
 });
 
 test('pause from the team menu says the connection is gone instead of doing nothing', async () => {

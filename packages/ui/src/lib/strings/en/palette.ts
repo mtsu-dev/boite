@@ -25,7 +25,7 @@ export const strings = {
     files: 'Show the files',
     tasks: 'Show the tasks',
     subagents: 'Show the subagents',
-    agents: 'Open the bots',
+    agents: 'Open the mochis',
     pin: 'Pin this thread',
     unpin: 'Unpin this thread',
     rename: 'Rename this thread',

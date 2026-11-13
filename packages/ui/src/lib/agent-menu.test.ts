@@ -49,7 +49,7 @@ function machine(profile: AgentProfile) {
 }
 const flush = () => new Promise(resolve => setTimeout(resolve, 10));
 
-test('the desktop menu has the thread menu\'s groups, words and glyphs, cut to what a bot has', () => {
+test('the desktop menu has the thread menu\'s groups, words and glyphs, cut to what a mochi has', () => {
   const items = agentMenuItems(alone(), agent(), { open: false });
   expect(items.map(item => item.id)).toEqual(['open', 'sep-open', 'rename', 'pin', 'edit', 'sep-archive', 'pause', 'archive', 'sep-tools', 'copy']);
   // Where a thread has the same action, the bot's row reads and looks the same.
@@ -77,7 +77,7 @@ test('a phone keeps rename, pin and edit, then pause and archive; a paired devic
   expect(agentMenuItems(alone(false), agent(), { open: false, phone: true })).toEqual([]);
 });
 
-test('pin, pause and resume save only their field, on the revision the bot\'s machine holds when the save runs', async () => {
+test('pin, pause and resume save only their field, on the revision the mochi\'s machine holds when the save runs', async () => {
   const profile = agent();
   const { view, sent, actions } = machine(profile);
   pickAgentAction(view, profile, 'pin', actions);
@@ -92,7 +92,7 @@ test('pin, pause and resume save only their field, on the revision the bot\'s ma
   expect(sent.slice(1).map(entry => (entry as [string, { value: AgentProfile }])[1].value.status)).toEqual(['paused', 'active']);
 });
 
-test('archive asks for the bot\'s exact name first, and a refused save says why on the page on screen', async () => {
+test('archive asks for the mochi\'s exact name first, and a refused save says why on the page on screen', async () => {
   const profile = agent();
   const { view, page, sent, actions } = machine(profile);
   const ask = vi.spyOn(confirm, 'ask').mockResolvedValueOnce(false);
@@ -110,7 +110,7 @@ test('archive asks for the bot\'s exact name first, and a refused save says why 
   expect(page.reportError).toHaveBeenCalledWith(expect.objectContaining({ message: 'profile revision changed' }), 'minor');
 });
 
-test('copy reads the brain folder on the bot\'s machine; open, edit and rename are the list\'s', async () => {
+test('copy reads the brain folder on the mochi\'s machine; open, edit and rename are the list\'s', async () => {
   const profile = agent();
   const { view, page, call, actions } = machine(profile);
   pickAgentAction(view, profile, 'copy', actions);
@@ -187,7 +187,7 @@ test('Move to a machine opens the group\'s machines where the menu stood, the of
 });
 
 
-test('Cancel move drops the move the bot waits to make, and says so when it is already on its way', async () => {
+test('Cancel move drops the move the mochi waits to make, and says so when it is already on its way', async () => {
   const profile = agent();
   const { view, call, actions } = machine(profile);
   const page = actions.report as Store;

@@ -18,7 +18,7 @@ afterEach(() => {
 
 const at = <T extends Element>(id: string) => document.querySelector<T>(`[data-testid=${id}]`)!;
 
-test('the reach is three steps with the selected one explained, bot creation a switch, and each writes its setting', async ({ createClient }) => {
+test('the reach is three steps with the selected one explained, mochi creation a switch, and each writes its setting', async ({ createClient }) => {
   const client = await createClient({ delayMs: 0 });
   await client.call('settings.set', CLOSED_AGENT_DEFAULTS);
   const store = new Store();
@@ -44,14 +44,14 @@ test('the reach is three steps with the selected one explained, bot creation a s
   await expect.poll(async () => (await client.call('settings.get', {})).agentBotCreation).toBe('free');
 });
 
-test('the bot card names the bot, its role, projects and model, says it has full access, and Approve creates it', async ({ createClient }) => {
+test('the mochi card names the mochi, its role, projects and model, says it has full access, and Approve creates it', async ({ createClient }) => {
   const client = await createClient({ delayMs: 0 });
   await client.call('settings.set', CLOSED_AGENT_DEFAULTS);
   const store = new Store();
   store.attach(client);
   await store.connect();
   const { id: threadId } = await client.call('threads.create', { projectId: 'p-boite', providerId: 'echo', accountId: 'a-echo' });
-  await client.call('turns.start', { threadId, prompt: 'make me a bot' });
+  await client.call('turns.start', { threadId, prompt: 'make me a mochi' });
   const asked = await client.call('agents.create', { threadId, name: 'Scribe', domain: 'Keeps the notes', projects: ['notes'] }) as { questionId: string; setting: BotAsk };
   mounted = mount(BotRequestCard, { target: document.body, props: { store, threadId, questionId: asked.questionId, setting: asked.setting, answer: null, pending: true, respond: async () => true } });
   flushSync();

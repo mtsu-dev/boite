@@ -34,7 +34,7 @@ function deferred<T = void>() {
   return { promise, resolve };
 }
 
-test('the settings archive keeps bot workers across live updates and restores the personal bot', async () => {
+test('the settings archive keeps mochi workers across live updates and restores the personal mochi', async () => {
   const { store, client } = await ready();
   const bot = await client.call('agents.profile.save', { value: {
     name: 'Scout', domain: '', instructions: '', avatar: '', status: 'active', projectIds: ['p-boite'],

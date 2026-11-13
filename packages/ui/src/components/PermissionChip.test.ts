@@ -57,7 +57,7 @@ test('on a phone the modes open as the shared bottom sheet with its title', asyn
   } finally { restore(); }
 });
 
-test("a bot's chip reads its mode and says where it is set, and opens nothing", () => {
+test("a mochi's chip reads its mode and says where it is set, and opens nothing", () => {
   const onpick = vi.fn();
   mounted = mount(PermissionChip, { target: document.body, props: { items: ITEMS, active: 'yolo', onpick, readonly: true, readonlyHint: "Set in Ada's settings" } });
   flushSync();

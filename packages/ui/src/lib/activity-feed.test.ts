@@ -58,7 +58,7 @@ test('Activity lists what needs the user, failures included, then the updates, e
   expect(feed.map(row => row.place)).toEqual(feed.map(() => 'Drafts'));
 });
 
-test('a sub-agent that failed under a parent still at work is the parent\'s business; a thread outside projects says its bot', () => {
+test('a sub-agent that failed under a parent still at work is the parent\'s business; a thread outside projects says its mochi', () => {
   const threads = [
     thread('parent', { status: 'running' }),
     thread('child', { status: 'error', unread: true, parentThreadId: 'parent' as ThreadSummary['parentThreadId'] }),

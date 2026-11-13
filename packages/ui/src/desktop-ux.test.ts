@@ -61,7 +61,7 @@ test('a maximized panel stays with its thread: the Contacts page beside the list
   }
 });
 
-test('contacts are the Bots column\'s other side: its head folds the column on the right, a row opens a contact', async () => {
+test('contacts are the Mochis column\'s other side: its head folds the column on the right, a row opens a contact', async () => {
   writeExperiments(['resident-agents', 'contacts']);
   await mountOnFake();
   try {
@@ -141,7 +141,7 @@ test('a panel widened while the contacts column was folded gives the chat its ro
   }
 });
 
-test('a docked side panel leaves the list column alone: the thread list beside a chat panel, the bot column beside a Desk card', async () => {
+test('a docked side panel leaves the list column alone: the thread list beside a chat panel, the mochi column beside a Desk card', async () => {
   writeExperiments(['resident-agents']);
   await mountOnFake('/?fake=1&agents=1');
   const folded = () => query('.body').classList.contains('sidebar-folded');

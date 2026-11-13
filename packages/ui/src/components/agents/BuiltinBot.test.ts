@@ -14,7 +14,7 @@ const one = <T extends HTMLElement>(selector: string) => document.querySelector<
  * says it is Boite's, its role and instructions are shown but locked, and
  * Reset, confirmed in the app's dialog, stands where Archive was.
  */
-test('a built-in bot carries its badge, locks its texts and resets after the app asks', async ({ ready }) => {
+test('a built-in mochi carries its badge, locks its texts and resets after the app asks', async ({ ready }) => {
   let page: ReturnType<typeof mount> | null = null;
   let bar: ReturnType<typeof mount> | null = null;
   try {

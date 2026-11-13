@@ -55,9 +55,9 @@ export const fr: Translation = {
     panelHint: 'Panneaux : modifications, fichiers, navigateur et outils de ce fil, à côté de la discussion',
     panelMenu: 'Panneaux',
     panelSwitch: '{name} : changer ou fermer le panneau',
-    manage: 'Déplacer vers un projet ou un bot',
+    manage: 'Déplacer vers un projet ou un mochi',
     manageNoBot: 'Déplacer vers un projet',
-    manageNoFolder: 'Confier à un bot',
+    manageNoFolder: 'Confier à un mochi',
     manageTitle: 'Dossier et branche',
     /** A desktop header's project crumb: back to the thread list, at this thread. */
     backToList: 'Revenir aux fils de {project}',
