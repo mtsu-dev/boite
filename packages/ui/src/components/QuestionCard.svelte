@@ -271,15 +271,17 @@
             onmousedown={keepFocus}
             onclick={() => toggle(option.id)}
           >
-            <!-- A ring for one choice, a square for several: a choice before any pick, a solid check once picked. -->
-            <span class="box" class:round={!multiple} aria-hidden="true">
+            <!-- Docked, the row leads with its number, the composer's 1 to 9, which turns to a check in the accent once
+                 picked. In the timeline, a ring for one choice and a square for several. -->
+            <span class="box" class:round={!multiple && !docked} class:key={docked} aria-hidden="true">
               {#if picked.includes(option.id) && (multiple || docked)}
-                <Check size={docked ? 12 : 10} strokeWidth={3} />
+                <Check size={docked ? 13 : 10} strokeWidth={3} />
+              {:else if docked}
+                <span class="ui-label">{index + 1}</span>
               {/if}
             </span>
-            <!-- The composer's 1 to 9 beside the label it picks, quiet: a hint for a keyboard, gone on a phone. -->
             <span class="labels">
-              <span class="label"><CodeText text={option.label} />{#if docked && index < 9}<kbd class="kbd" aria-hidden="true">{index + 1}</kbd>{/if}</span>
+              <span class="label"><CodeText text={option.label} /></span>
               {#if option.description}
                 <span class="muted description"><CodeText text={option.description} /></span>
               {/if}
@@ -361,34 +363,27 @@
   .waiting { color: var(--color-muted-foreground); }
 
   /* The choices are lines of the decision, not boxes in it: no fill and no
-     edge at rest, a fill under the pointer. The numbered keycap says each one
-     is a choice. A row keeps its two lines when the list is shorter than its
-     rows: the list scrolls, no row squeezes. */
+     edge at rest, a fill under the pointer. Each leads with its number in a
+     keycap, the composer's 1 to 9. A row keeps its two lines when the list is
+     shorter than its rows: the list scrolls, no row squeezes. */
   .docked .options { gap: 2px; }
   .docked .options > .option { flex-shrink: 0; }
-  .docked .option { align-items: center; gap: 12px; padding: 6px 10px; border-color: transparent; border-radius: var(--radius-lg); background: transparent; box-shadow: none; }
+  .docked .option { align-items: center; gap: 10px; padding: 6px 8px; border: 1px solid transparent; border-radius: var(--radius-md); background: transparent; box-shadow: none; }
   @media (hover: hover) {
     .docked .option:hover:not(:disabled) { transform: none; background: var(--color-hover); border-color: transparent; }
+    .docked .option:hover:not(:disabled) .key { border-color: var(--color-accent); color: var(--color-accent); }
   }
-  .docked .option:focus-visible { background: var(--color-hover); border-color: transparent; }
-  /* Each row leads with what it is, a ring for one choice or a square for
-     several, in the edge's ink at rest. Picked, as a chosen swatch: filled,
-     ringed in the ink, its mark a solid check, from the tap on. The pick holds
-     under the pointer that made it. */
-  .docked .box { width: 18px; height: 18px; margin: 0; border: 1.5px solid var(--color-muted-foreground); border-radius: calc(var(--radius-sm) / 1.5); color: var(--color-background); transition: background var(--dur-2) var(--ease-out-quint), border-color var(--dur-2) var(--ease-out-quint); }
-  .docked .box.round { border-radius: var(--radius-full); }
-  .docked .option.picked, .docked .option.picked:is(:hover, :focus-visible):not(:disabled) { background: color-mix(in oklab, var(--color-foreground) 10%, transparent); border-color: var(--color-foreground); }
-  .docked .option.picked .box { border-color: var(--color-foreground); background: var(--color-foreground); }
-  .docked .option:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -1px; }
+  .docked .option:focus-visible { background: var(--color-hover); outline: 2px solid var(--color-accent); outline-offset: -1px; }
+  /* The keycap: the number in the subtle ink on a raised square; picked, the accent fills it and its number
+     turns to a check, and the row takes the accent's tint. */
+  .docked .key { width: 22px; height: 22px; margin: 0; border: 1px solid var(--color-edge); border-radius: var(--radius-sm); background: var(--color-surface-2); color: var(--color-subtle); font-size: var(--text-xs); font-weight: 600; font-variant-numeric: tabular-nums; transition: background var(--dur-2) var(--ease-out-quint), border-color var(--dur-2) var(--ease-out-quint), color var(--dur-2) var(--ease-out-quint); }
+  .docked .option.picked, .docked .option.picked:is(:hover, :focus-visible):not(:disabled) { background: var(--color-accent-soft); border-color: color-mix(in oklch, var(--color-accent) 55%, transparent); }
+  .docked .option.picked .key, .docked .option.picked:hover .key { border-color: var(--color-accent); background: var(--color-accent); color: var(--color-accent-ink); }
   .docked .labels { flex: 1 1 auto; }
   .docked .label { font-weight: 550; }
-  /* The shared keycap right after the label it picks, quiet: a hint for the keyboard, not the choice itself. */
-  .kbd { width: 20px; height: 20px; margin-left: 8px; padding: 0; vertical-align: 1px; color: var(--color-subtle); font-weight: 400; }
 
-  /* After the rows' own padding, so the phone's tighter one wins; a phone has no 1 to 9 to hint. */
   @media (max-width: 720px) {
     .docked .option { min-height: var(--touch-target); padding: 3px 8px; }
-    .kbd { display: none; }
   }
 
   .waiting-row:disabled { opacity: 1; cursor: default; }

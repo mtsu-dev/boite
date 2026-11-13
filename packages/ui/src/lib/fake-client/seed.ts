@@ -20,7 +20,8 @@ export function seed(ctx: FakeContext): void {
   seedProjectIcons(ctx);
 
   // What Claude Code left under its projects folder for boite: one session
-  // to import, one that is already the trace thread.
+  // to import, one that is already the trace thread. Codex left one more in
+  // its own home.
   const transcripts = 'C:\\Users\\you\\.claude\\projects\\D--Dev-Collab-boite';
   ctx.importable = [
     {
@@ -46,6 +47,18 @@ export function seed(ctx: FakeContext): void {
       updatedAt: T0 - 3_600_000,
       bytes: 61_440,
       threadId: 't-trace'
+    },
+    {
+      projectId: 'p-boite',
+      providerId: 'codex',
+      accountId: 'a-codex',
+      sessionId: '01a2b3c4-5d6e-7f80-9a1b-2c3d4e5f6a7b',
+      file: 'C:\\Users\\you\\.codex\\sessions\\2026\\03\\02\\rollout-2026-03-02T09-14-00-01a2b3c4-5d6e-7f80-9a1b-2c3d4e5f6a7b.jsonl',
+      title: 'Sort the release notes by date',
+      startedAt: T0 - 50 * 3_600_000,
+      updatedAt: T0 - 49 * 3_600_000,
+      bytes: 92_160,
+      threadId: null
     }
   ];
 

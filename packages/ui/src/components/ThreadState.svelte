@@ -122,8 +122,12 @@
     gap: 4px;
     color: var(--color-muted-foreground);
   }
-  /* The word is the secondary tier, the time's weight in the row's grey: the mark carries the hue. */
-  .word { font-weight: 400; }
+  /* The word takes its mark's hue, so a list says at a glance who waits on the user, what runs and what failed:
+     amber for the user's turn, the accent for work, red for a failure. A stop stays neutral. */
+  .word { font-weight: 500; }
+  .state.waiting { color: var(--color-live); }
+  .state:is(.working, .queued, .delegating, .monitoring, .background, .watching) { color: var(--color-accent); }
+  .state.error { color: var(--color-danger); }
   /* The desktop list's word goes only where the title beside it would keep under about 12 characters a line:
      measured on the seeded titles beside the widest word, a 198 px row of text in English ("Needs you"), 218 px in
      French ("Vous attend"), a 236 or 256 px list. */

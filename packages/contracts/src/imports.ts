@@ -7,7 +7,7 @@ import type { ThreadSummary } from './threads';
 // files and turned into a thread the agent can resume.
 // ---------------------------------------------------------------------------
 
-/** One session an account's agent kept on disk for a project's folder. Claude Code today. */
+/** One session an account's agent kept on disk for a project's folder: a Claude Code transcript or a Codex rollout. */
 export interface ImportableSession {
   providerId: ProviderId;
   accountId: AccountId;
@@ -93,8 +93,10 @@ export interface ImportsRpcMethods {
 
   /**
    * The sessions the project's folder has on disk across every account whose
-   * agent keeps transcripts (Claude Code: `<config dir>/projects/<folder>/*.jsonl`),
-   * newest first. A file with no prompt is left out.
+   * agent keeps transcripts (Claude Code: `<config dir>/projects/<folder>/*.jsonl`;
+   * Codex: the rollouts under `<Codex home>/sessions` whose working directory is
+   * the folder), newest first. `providerId` tells the two apart. A file with no
+   * prompt, a subagent's and one the reader does not understand are left out.
    */
   'imports.list': { params: { projectId: ProjectId }; result: ImportableSession[] };
   /**
