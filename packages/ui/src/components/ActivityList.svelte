@@ -110,6 +110,6 @@
   h2 .count { margin-left: 6px; color: var(--color-live); font-variant-numeric: tabular-nums; }
   h2 { display: flex; align-items: center; }
   .dot { width: 8px; height: 8px; margin-right: 8px; flex: none; border-radius: var(--radius-full); background: var(--color-live); }
-  /* Only updates left: the house mascot, small, says nothing waits; the moment is rare, so it may smile. */
+  /* Only updates left: one quiet line says nothing waits. */
   .all-done { display: flex; align-items: center; gap: 10px; margin: 0 0 var(--space-4) 10px; font-size: var(--text-sm); font-weight: 500; color: var(--color-muted-foreground); }
 </style>

@@ -49,7 +49,7 @@
     {#if store === workspace.primary}<PluginSlotButtons slot="sidebar" threadId={store.openThread?.id ?? null} compact />{/if}
     <DisplayOptions {entries} {target} owner={targetOwner} {filters} word onaddproject={addProject} />
     {#if entries.length}
-      <button class="ghost icon small" title={`${strings.sidebar.search}${store.keyHint('palette')}`} aria-label={strings.sidebar.search} data-testid="sidebar-search-open" onclick={() => store.paletteOpen = true}><Search size={16} /></button>
+      <button class="ghost icon small search" title={`${strings.sidebar.search}${store.keyHint('palette')}`} aria-label={strings.sidebar.search} data-testid="sidebar-search-open" onclick={() => store.paletteOpen = true}><Search size={16} /></button>
       <button class="ghost icon small" title={`${newLabel}${store.keyHint('new-thread')}`} aria-label={newLabel} data-testid="new-thread" onclick={create}><Plus size={16} /></button>
     {/if}
   </div>
@@ -77,10 +77,14 @@
     .actions :global(button.worded) { width: 32px; padding: 0; justify-content: center; }
     .actions :global(button.worded .word) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   }
-  /* The narrowest column: the views' words keep 4 px sides, so French's "Projets" and "Récent" leave Filter and
-     search inside the head at 208 px. */
+  /* The narrowest column: the views' words keep 4 px sides and the glyphs 28 px; search leaves the head for its
+     shortcut and the palette, so Filter and New thread stay inside it at 208 px in English and French. */
   @container sidebar (max-width: 239px) {
     .list-head .title :global(.side) { padding: 0 4px; }
+    .actions :global(button.icon), .actions :global(button.worded) { width: 28px; height: 28px; }
+    .actions .search { display: none; }
+    .list-head { gap: 2px; }
+    .actions { gap: 0; }
   }
   @media (max-width: 720px) {
     /* `button.icon` grows to the touch target on a phone. */

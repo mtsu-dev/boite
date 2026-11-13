@@ -323,7 +323,7 @@
     ...(phone && active ? [separator('sep-close'), { id: CLOSE_TAB, label: fill(strings.rightPanel.closeTab, { title: label(active) }), glyph: X }] : [])
   ]);
 
-  // The door names the showing panel and switches it: the panel tells it what to say while it is here.
+  // The switcher (the strip's "+", the phone's door) lists the panels and names the showing one: the panel tells it what to say while it is here.
   $effect(() => {
     panelSwitch.store = store;
     panelSwitch.name = active ? label(active) : strings.thread.panelMenu;
@@ -444,7 +444,7 @@
           oncontextmenu={(event) => openTabMenu(event, surface)}
           use:longPress
         >
-          <!-- Every open panel is its glyph alone, named in its tooltip and on the header's door: one title in any frame.
+          <!-- Every open panel is its glyph alone, named in its tooltip (a phone's door names it too).
                The showing one is filled. Its close is a corner cross under the pointer. -->
           <span class="glyph solo" aria-hidden="true"><SurfaceIcon kind={surface.kind} size={14} /></span>
           <span class="name ui-label sr-only">{label(surface)}</span>
