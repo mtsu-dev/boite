@@ -283,6 +283,7 @@
     ['general', 'quiet', strings.settings.muteAgents],
     ['resources', 'limits', strings.settings.memoryProtection],
     ['resources', 'tasks', strings.settings.reapOrphans],
+    ['resources', 'tasks', strings.settings.keepAwake],
     ['advanced', 'phone', strings.settings.listenOnLan],
     ['machines', 'machines', strings.group.addDevice],
     ['machines', 'machines', strings.machines.home],

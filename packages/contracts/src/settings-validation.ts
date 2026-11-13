@@ -304,6 +304,7 @@ const SETTING_RULES: { readonly [K in keyof Settings]-?: FieldRule<K> } = {
   muteAgents: bool('muteAgents') as FieldRule<'muteAgents'>,
   reapOrphans: bool('reapOrphans') as FieldRule<'reapOrphans'>,
   memoryProtection: bool('memoryProtection') as FieldRule<'memoryProtection'>,
+  keepAwake: bool('keepAwake') as FieldRule<'keepAwake'>,
   autoUpdateHarnesses: bool('autoUpdateHarnesses') as FieldRule<'autoUpdateHarnesses'>,
   autoInstallUpdates: bool('autoInstallUpdates') as FieldRule<'autoInstallUpdates'>,
   asyncQuestions: bool('asyncQuestions') as FieldRule<'asyncQuestions'>,
