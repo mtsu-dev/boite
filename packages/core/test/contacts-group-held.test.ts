@@ -11,7 +11,7 @@ afterEach(async () => {
   for (const core of cores.splice(0)) await core.stop();
 });
 
-test('a contact a member still holds is the whole group\'s: asked from the Bots host, from that member and from a third member, the host\'s bot forwards it through the member and each answer comes back', async () => {
+test('a contact a member still holds is the whole group\'s: asked from the Mochis host, from that member and from a third member, the host\'s mochi forwards it through the member and each answer comes back', async () => {
   const { a, x, c, aClient, xClient, cClient, aId, xId, cId } = await setup(cores);
   const y = await startTestCore();
   cores.push(y);
@@ -132,7 +132,7 @@ test('a refusal the contact\'s core makes itself (a model tier) comes back throu
   await waitFor(() => letters(x, xThread).some(letter => letter.text.includes('tier')), 10000);
 }, 60000);
 
-test('an ask the holder still has to send moves with the contact when it reaches the Bots host, and is sent from there', async () => {
+test('an ask the holder still has to send moves with the contact when it reaches the Mochis host, and is sent from there', async () => {
   let sweep!: (force?: boolean) => void;
   const { a, x, c, cId, ask, incoming } = await heldSetup(({ a }) => {
     // A does not hand C to X yet.
@@ -182,7 +182,7 @@ function silenceHeldAsks(x: TestCore, silent: () => boolean): void {
   }) as typeof request;
 }
 
-test('an ask the holder never took is sent from the Bots host once the contact moved there, even with the holder gone silent', async () => {
+test('an ask the holder never took is sent from the Mochis host once the contact moved there, even with the holder gone silent', async () => {
   let sweep!: (force?: boolean) => void;
   const { a, x, cId, ask, incoming } = await heldSetup(({ a }) => {
     const link = a.core.contacts.groupLink;
@@ -201,7 +201,7 @@ test('an ask the holder never took is sent from the Bots host once the contact m
   expect(requestOn(x, asked.id)!.holder).toBeUndefined();
 }, 60000);
 
-test('an ask on its way to the holder when the contact moves to the Bots host is sent from there, even when the holder took it', async () => {
+test('an ask on its way to the holder when the contact moves to the Mochis host is sent from there, even when the holder took it', async () => {
   let sweep!: (force?: boolean) => void;
   const { a, x, cId, ask, incoming } = await heldSetup(({ a }) => {
     const link = a.core.contacts.groupLink;

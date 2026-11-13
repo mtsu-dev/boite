@@ -65,7 +65,7 @@ function replyLine(team: string, channel: TeamChannel | null, name: (party: Team
   const quiet = 'If nothing needs saying, end with a line [quiet] and nothing is posted.';
   if (channel?.audience === 'team') return `Your final answer is posted in the group of ${team}: @name wakes a teammate, @tous wakes them all. ${quiet}`;
   if (channel?.audience === 'private') return `Your final answer is posted privately to ${name(channel.recipient ?? TEAM_OWNER)}. ${quiet}`;
-  return `Answer with boite team say ${team} <text> for the group, or boite team dm ${team} <bot|owner> <text> for one reader; your final answer is not posted.`;
+  return `Answer with boite team say ${team} <text> for the group, or boite team dm ${team} <mochi|owner> <text> for one reader; your final answer is not posted.`;
 }
 
 /**

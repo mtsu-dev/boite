@@ -17,7 +17,7 @@ export function contactAnswer(core: Core, request: ContactRequest, name: string,
   // With a Contacts bot, an ordinary thread reaches a contact's thread only once the bots put them in touch (`reach.ts`), opened project or not.
   const bot = core.workforce.builtin('contacts') === null ? null : core.workforce.builtinThread('contacts');
   const throughBot = bot !== null && bot !== request.from.threadId;
-  const reach = throughBot ? `To write to one, ask for it: boite threads ask --to ${name.replace(/\s+/g, '-')}/<thread-id> <what you need>; the Contacts bots put you in touch.`
+  const reach = throughBot ? `To write to one, ask for it: boite threads ask --to ${name.replace(/\s+/g, '-')}/<thread-id> <what you need>; the Contacts mochis put you in touch.`
     : 'Write to one with boite threads send <contact>/<thread-id> <text>; boite threads shows them.';
   const body = request.status !== 'accepted' ? `${responder} refused your request: ${request.reason ?? 'no reason given'}`
     : peer ? `${responder} put you in touch with ${JSON.stringify(peer.title)} (${at}). Write to it with boite threads send ${at} <text>.`

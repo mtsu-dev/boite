@@ -80,14 +80,14 @@ async function setup(entrusted = true) {
   return { desk, pc, owner, pcOwner, pcId, deskId, notes, accounts, letter, ledger, grant, self, cli, facts, agent: fresh, machine, ref: `${machine}/${letter}` };
 }
 
-test('a bot sees, drives and hears a thread of a project another machine entrusted to it, until that machine takes its permission back', async () => {
+test('a mochi sees, drives and hears a thread of a project another machine entrusted to it, until that machine takes its permission back', async () => {
   const prompts = answering();
   const { desk, pc, pcOwner, pcId, deskId, letter, ledger, self, cli, facts, agent, machine, ref } = await setup();
 
   // Off by default on the machine that holds the project: the bot is told how to ask for it, and sees nothing there.
   const closed = await cli(['threads']);
   expect(closed.code).toBe(0);
-  expect(closed.out).toContain(`unavailable: ${pc.core.info().hostname} does not let the bots of the other machines of its group look after its projects`);
+  expect(closed.out).toContain(`unavailable: ${pc.core.info().hostname} does not let the mochis of the other machines of its group look after its projects`);
   expect(closed.out).toContain(`boite settings request groupBots true --machine ${machine} --why`);
   expect(closed.out).not.toContain(letter);
 
@@ -170,13 +170,13 @@ test('a bot sees, drives and hears a thread of a project another machine entrust
   await pcOwner.call('settings.set', { groupBots: false });
   const cut = await cli(['thread', 'show', ref]);
   expect(cut.code).not.toBe(0);
-  expect(cut.err).toContain('does not let the bots of the other machines of its group look after its projects');
+  expect(cut.err).toContain('does not let the mochis of the other machines of its group look after its projects');
   // Its thread stays on the desk as last seen, saying why it cannot be reached.
   expect((await cli(['threads'])).out).toStartWith(`${ref} idle "Letter to the bank" desk=touched machine=${machine} unreachable="${pc.core.info().hostname} has groupBots off"\nunavailable: `);
   expect(await thrown(pc.core.workforce.groupHost.handle(peer, 'bot.thread', { lease, target: letter }))).toThrow('groupBots is off on this machine');
 }, 30_000);
 
-test('a machine that does not answer is named unreachable, and its events reach the bot once it answers again', async () => {
+test('a machine that does not answer is named unreachable, and its events reach the mochi once it answers again', async () => {
   let release!: () => void;
   const held = new Promise<void>(resolve => { release = resolve; });
   answering(ctx => ctx.prompt.includes('Draft it') ? held : Promise.resolve());
@@ -241,7 +241,7 @@ test('a machine that does not answer is named unreachable, and its events reach 
   await waitFor(() => again.core.workforce.groupHost.outbox(deskId).length === 0);
 }, 30_000);
 
-test('a machine that stops while its bot events are on their way leaves no unhandled rejection, which would end its core', async () => {
+test('a machine that stops while its mochi events are on their way leaves no unhandled rejection, which would end its core', async () => {
   answering();
   const { pc, pcOwner, letter, cli, facts, pcId, ref } = await setup();
   await pcOwner.call('settings.set', { groupBots: true });
@@ -327,7 +327,7 @@ test('the machine holding the projects decides: its own switch, members of its g
   expect(offered.projects.map(project => project.name)).not.toContain('Accounts');
 }, 30_000);
 
-test('a bot starts a thread in a project another machine entrusted to it, and hears its first answer once, on its desk', async () => {
+test('a mochi starts a thread in a project another machine entrusted to it, and hears its first answer once, on its desk', async () => {
   const prompts = answering();
   const { desk, pc, pcOwner, pcId, deskId, notes, self, cli, facts, agent, machine } = await setup();
   await pcOwner.call('settings.set', { groupBots: true });
@@ -351,7 +351,7 @@ test('a bot starts a thread in a project another machine entrusted to it, and he
   expect(first.parts[0]).toMatchObject({ displayText: 'Sort the letters', startedBy: { threadId: self, title: agent().name, projectId: notes.id, project: 'Notes', machine: deskName } });
   // The start answer comes once the first message is saved; the driver gets its prompt a moment later.
   await waitFor(() => prompts.has(id));
-  expect(prompts.get(id)?.[0]).toContain(`This thread was started by ${agent().name}, a bot of the user's on ${deskName}`);
+  expect(prompts.get(id)?.[0]).toContain(`This thread was started by ${agent().name}, a mochi of the user's on ${deskName}`);
   const line = desk.core.journal.listMessages(self).find(m => m.role === 'system' && m.parts.some(p => p.type === 'text' && p.started));
   expect(line?.parts[0]).toMatchObject({ started: { threadId: id, project: 'Notes', machine: pc.core.coordination.identity().name } });
 
@@ -378,7 +378,7 @@ test('a bot starts a thread in a project another machine entrusted to it, and he
   expect(answered()).toHaveLength(1);
 }, 30_000);
 
-test('a bot starting in an entrusted remote project honors explicit model, effort and speed without falling back', async () => {
+test('a mochi starting in an entrusted remote project honors explicit model, effort and speed without falling back', async () => {
   answering();
   const { pc, pcOwner, notes, cli, machine } = await setup();
   const shipped = JSON.parse(readFileSync(join(import.meta.dir, '../src/providers/shipped/echo.json'), 'utf8')) as Record<string, unknown>;
@@ -407,12 +407,12 @@ test('a bot starting in an entrusted remote project honors explicit model, effor
   expect(pc.core.journal.listThreads()).toHaveLength(before + 1);
 }, 30_000);
 
-test('a bot starts no thread on a machine whose groupBots is off, nor in a project of it not entrusted to the bot', async () => {
+test('a mochi starts no thread on a machine whose groupBots is off, nor in a project of it not entrusted to the mochi', async () => {
   answering();
   const { desk, pc, pcOwner, deskId, notes, accounts, cli, agent, machine } = await setup();
   const off = await cli(['thread', 'new', `${machine}/Notes`, 'Sort the letters', '--request-id', 'sort-1']);
   expect(off.code).not.toBe(0);
-  expect(off.err).toContain('does not let the bots of the other machines of its group look after its projects');
+  expect(off.err).toContain('does not let the mochis of the other machines of its group look after its projects');
   expect(off.err).toContain(`boite settings request groupBots true --machine ${machine} --why`);
   expect(pc.core.journal.listThreads().filter(t => t.projectId === notes.id).map(t => t.title)).toEqual(['Letter']);
 
@@ -436,7 +436,7 @@ test('a bot starts no thread on a machine whose groupBots is off, nor in a proje
   expect(desk.core.workforce.group.desk(agent()).map(watch => watch.threadId)).toEqual([spawned.thread.id]);
 }, 30_000);
 
-test('a bot refuses ambiguous remote project names on both machines and accepts an explicit project id', async () => {
+test('a mochi refuses ambiguous remote project names on both machines and accepts an explicit project id', async () => {
   answering();
   const { desk, pc, owner, pcOwner, pcId, deskId, notes, accounts, cli, agent, machine } = await setup();
   await pcOwner.call('projects.rename', { projectId: accounts.id, name: 'nOtEs' });
@@ -469,7 +469,7 @@ test('a bot refuses ambiguous remote project names on both machines and accepts 
   expect(explicit.thread.projectId).toBe(accounts.id);
 }, 30_000);
 
-test('a bot\'s thread on a machine that does not answer is refused, naming it', async () => {
+test('a mochi\'s thread on a machine that does not answer is refused, naming it', async () => {
   answering();
   const { desk, pc, pcOwner, cli, machine } = await setup();
   await pcOwner.call('settings.set', { groupBots: true });
@@ -481,7 +481,7 @@ test('a bot\'s thread on a machine that does not answer is refused, naming it', 
   expect(away.err).toContain('the same --request-id later answers the thread if it started there');
 }, 30_000);
 
-test('a thread a bot started on another machine whose answer was lost comes back on its desk, and its first answer reaches the bot once', async () => {
+test('a thread a mochi started on another machine whose answer was lost comes back on its desk, and its first answer reaches the mochi once', async () => {
   let finish!: () => void;
   const held = new Promise<void>(resolve => { finish = resolve; });
   answering(ctx => ctx.prompt.includes('Sort the letters') ? held : Promise.resolve());
@@ -519,7 +519,7 @@ test('a thread a bot started on another machine whose answer was lost comes back
   expect(pc.core.workforce.groupHost.leases(deskId)[agent().id]!.started).toBeUndefined();
 }, 30_000);
 
-test('a thread a bot started on another machine and took off its desk before any lease sync stays off it', async () => {
+test('a thread a mochi started on another machine and took off its desk before any lease sync stays off it', async () => {
   answering();
   const { desk, pc, pcOwner, pcId, deskId, cli, agent, machine } = await setup();
   await pcOwner.call('settings.set', { groupBots: true });
@@ -541,7 +541,7 @@ test('a thread a bot started on another machine and took off its desk before any
   expect(pc.core.workforce.groupHost.leases(deskId)[agent().id]).toMatchObject({ watched: [id] });
 }, 30_000);
 
-test('a thread id of another machine too long for the bot\'s lease is refused, and the next lease sync still goes', async () => {
+test('a thread id of another machine too long for the mochi\'s lease is refused, and the next lease sync still goes', async () => {
   answering();
   const { desk, pc, pcOwner, pcId, deskId, owner, self, agent, machine } = await setup();
   await pcOwner.call('settings.set', { groupBots: true });

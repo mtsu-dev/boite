@@ -59,7 +59,7 @@ async function opened(hostDir?: string) {
 
 const letterAt = (h: TestCore, threadId: string, id: string): AgentLetter | undefined => h.core.coordination.get(threadId).messages.find(letter => letter.id === id);
 
-test('a flagged letter is held from its thread and wakes the bot, which delivers or blocks it; the owner no longer sees it as held mail', async () => {
+test('a flagged letter is held from its thread and wakes the mochi, which delivers or blocks it; the owner no longer sees it as held mail', async () => {
   const { host, guest, hostClient, hostId, guestId, bot, facts, hostThread, guestThread } = await opened();
   // The guest's letters to a project opened to it: the guest has no bot, so the old direct path.
   const send = (text: string, requestId: string) => guest.core.coordination.send({ threadId: guestThread, to: { coreId: hostId, threadId: hostThread }, text, requestId });
@@ -82,7 +82,7 @@ test('a flagged letter is held from its thread and wakes the bot, which delivers
   expect(((await hostClient.call('contacts.get', {})).mail ?? []).some(entry => entry.id === steering.id)).toBe(false);
 
   // Only the bot's thread decides.
-  expect(await thrown(hostClient.call('contacts.bot.flag', { threadId: hostThread, id: flag.id, deliver: true }))).toThrow('only the Contacts bot');
+  expect(await thrown(hostClient.call('contacts.bot.flag', { threadId: hostThread, id: flag.id, deliver: true }))).toThrow('only the Contacts mochi');
   expect(await hostClient.call('contacts.bot.flag', { threadId: bot.threadId, id: flag.id, deliver: true })).toMatchObject({ status: 'delivered' });
   expect(contactMailGate(host.core, hostThread).held(letterAt(host, hostThread, steering.id)!)).toBe(false);
   expect(await thrown(hostClient.call('contacts.bot.flag', { threadId: bot.threadId, id: flag.id, deliver: false }))).toThrow('already delivered');

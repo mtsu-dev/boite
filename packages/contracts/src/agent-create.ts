@@ -60,7 +60,7 @@ export interface AgentCreateApproveParams {
 }
 
 /** What an agent reads beside the card it just drew: how to stop being asked. */
-export const BOT_CARD_NOTE = 'Nothing is created yet: the setting agentBotCreation is "ask" on this machine, so the owner approves each bot on its card. To create bots without a card, ask with: boite settings request agentBotCreation free --why "<reason>"';
+export const BOT_CARD_NOTE = 'Nothing is created yet: the setting agentBotCreation is "ask" on this machine, so the owner approves each mochi on its card. To create mochis without a card, ask with: boite settings request agentBotCreation free --why "<reason>"';
 
 type Checked<T> = { ok: true; value: T } | { ok: false; message: string };
 
@@ -85,7 +85,7 @@ export function checkAgentCreate(params: Omit<AgentCreateParams, 'threadId'>, ct
   const name = typeof params.name === 'string' ? params.name.trim() : '';
   if (name.length === 0 || name.length > AGENT_NAME_MAX) return { ok: false, message: `name must hold 1 to ${AGENT_NAME_MAX} characters`, data: { field: 'name' } };
   const taken = ctx.bots.find(bot => sameName(bot.name, name));
-  if (taken !== undefined) return { ok: false, message: `a bot named ${JSON.stringify(taken.name)} already exists (${taken.id}); boite settings bot --bot ${JSON.stringify(taken.name)} reads its settings`, data: { field: 'name' } };
+  if (taken !== undefined) return { ok: false, message: `a mochi named ${JSON.stringify(taken.name)} already exists (${taken.id}); boite settings mochi --mochi ${JSON.stringify(taken.name)} reads its settings`, data: { field: 'name' } };
   const text = (value: unknown, field: string, max: number): Checked<string> => {
     if (value === undefined) return { ok: true, value: '' };
     const trimmed = typeof value === 'string' ? value.trim() : undefined;

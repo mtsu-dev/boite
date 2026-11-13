@@ -21,7 +21,7 @@ let restore: (() => void) | undefined;
 beforeEach(async () => { h = await startTestCore(); client = await h.connect(); });
 afterEach(async () => { restore?.(); restore = undefined; await h.stop(); });
 
-const BLOCK = 'Boite: who you are, as a bot.';
+const BLOCK = 'Boite: who you are, as a mochi.';
 
 function routine(agentId: string, over: Partial<AgentRoutine> = {}) {
   return client.call('agents.routine.save', { value: {
@@ -38,7 +38,7 @@ const read = (routineId: string) => h.core.workforce.records.get('routine', rout
 /** What a thread's system lines say. */
 const lines = (threadId: string) => h.core.journal.listMessages(threadId).filter(m => m.role === 'system').flatMap(m => m.parts.flatMap(p => p.type === 'text' ? [p.text] : []));
 
-test('a bot\'s Boite guide is the thread guide less the project-bound commands, ending with the bot section; its block carries that section only with the guide off', async () => {
+test('a mochi\'s Boite guide is the thread guide less the project-bound commands, ending with the mochi section; its block carries that section only with the guide off', async () => {
   const bot = agentGuide(true, false, [], true);
   const thread = agentGuide(true, false, [], false);
   expect(bot).toEndWith(`${BOT_GUIDE}\n\n`);
@@ -48,12 +48,12 @@ test('a bot\'s Boite guide is the thread guide less the project-bound commands, 
   for (const team of ['[quiet]', 'boite team say', 'boite team dm', 'boite team propose', 'Go private only']) expect(TEAM_GUIDE).toContain(team);
   expect(TEAM_GUIDE).not.toMatch(/question/i);
   expect(thread).not.toContain(BOT_GUIDE);
-  for (const command of ['boite pr link <url>', 'boite pr watch', 'boite ask', 'boite settings [bot]', 'boite attach', 'boite browser']) expect(bot).toContain(command);
+  for (const command of ['boite pr link <url>', 'boite pr watch', 'boite ask', 'boite settings [mochi]', 'boite attach', 'boite browser']) expect(bot).toContain(command);
   for (const projectBound of ['boite where', 'Stay in the checkout', 'boite todo', 'projects add']) {
     expect(thread).toContain(projectBound);
     expect(bot).not.toContain(projectBound);
   }
-  for (const own of ['[quiet]', 'boite bot remember', 'boite bot schedule', 'boite bot watch|unwatch', 'boite settings bot request', '--open <url>', 'boite thread send <id> <text>', 'boite answer <id> <ask-id> <option-or-text>']) expect(BOT_GUIDE).toContain(own);
+  for (const own of ['[quiet]', 'boite mochi remember', 'boite mochi schedule', 'boite mochi watch|unwatch', 'boite settings mochi request', '--open <url>', 'boite thread send <id> <text>', 'boite answer <id> <ask-id> <option-or-text>']) expect(BOT_GUIDE).toContain(own);
   // A bot proposes a setting that stopped fitting on its own, not only when asked: none of five real bots drew a card in about 970 turns.
   for (const when of ['When one no longer fits, propose the change yourself', 'eventWakes false', 'Never work around a setting']) expect(OWN_SETTINGS).toContain(when);
   expect(DELEGATION_WORDS.test(OWN_SETTINGS)).toBe(false);
@@ -208,7 +208,7 @@ test('past its daily budget a wake is skipped with one line, and the user\'s mes
   expect((await client.call('agents.snapshot', {})).status[0]!.today.costUsd).toBe(1);
 });
 
-test('a Codex bot\'s budget prices turns that report no cost at the model\'s rates and counts its subagents\' turns', async () => {
+test('a Codex mochi\'s budget prices turns that report no cost at the model\'s rates and counts its subagents\' turns', async () => {
   const driver = scripted(() => ({ text: 'Done.' })); restore = driver.restore;
   const { agent, threadId } = await makeAgent(h, client);
   const runtime = await client.call('agents.runtime.get', { agentId: agent.id });
@@ -247,7 +247,7 @@ test('a Codex bot\'s budget prices turns that report no cost at the model\'s rat
   expect((await client.call('agents.snapshot', {})).status[0]!.today.costUsd).toBeCloseTo(1.8, 6);
 });
 
-test('a bot\'s spend reaches a grandchild, falls back to the reported cost off the price list, and leaves out other threads and earlier turns', async () => {
+test('a mochi\'s spend reaches a grandchild, falls back to the reported cost off the price list, and leaves out other threads and earlier turns', async () => {
   const { threadId } = await makeAgent(h, client);
   const bot = h.core.threads.require(threadId);
   const child = { ...bot, id: 'thr_spend_child', parentThreadId: bot.id, agentSessionId: undefined };
@@ -279,7 +279,7 @@ test('a turn the core starts by itself meets the pause and the budget: held with
   await Bun.sleep(700);
   expect(turns()).toBe(before);
   const held = () => lines(threadId).filter(text => text.startsWith('Held the turn its background work asked for'));
-  expect(held()).toEqual(['Held the turn its background work asked for: bots are paused. It runs once bots resume.']);
+  expect(held()).toEqual(['Held the turn its background work asked for: mochis are paused. It runs once mochis resume.']);
   // Every other way the core starts a turn by itself meets the same gate.
   for (const origin of [{ kind: 'coordination' }, { kind: 'delegation' }, { kind: 'goal-check' }, { kind: 'pull-request' }, { kind: 'resume', reason: 'carry-on', requestId: 'auto-continue_trn_x' }] as const) {
     let error: unknown = null;
@@ -287,7 +287,7 @@ test('a turn the core starts by itself meets the pause and the budget: held with
     expect(isAgentHeld(error)).toBe(true);
   }
   await Bun.sleep(10);
-  expect(lines(threadId)).toContain('Held the automatic resume: bots are paused. It was dropped.');
+  expect(lines(threadId)).toContain('Held the automatic resume: mochis are paused. It was dropped.');
   // The user's own message runs through the pause and the spent budget.
   await client.call('turns.start', { threadId, prompt: 'Still there?' });
   await waitFor(() => turns() === before + 1 && settled(h, threadId));
@@ -338,7 +338,7 @@ test('facts gather into one event turn once the thread is free and the first is 
   expect(h.core.agentRuntime.facts(agent.id)).toEqual([]);
 });
 
-test('Stop on a bot holds the facts that would wake it until the user writes again', async () => {
+test('Stop on a mochi holds the facts that would wake it until the user writes again', async () => {
   // Only the user's first turn runs until stopped; the next prompt quotes it, so the text cannot tell them apart.
   let holds = 0;
   const driver = scripted(ctx => ({ text: 'Seen.', hold: ctx.prompt.includes('Hold on') && holds++ === 0 })); restore = driver.restore;
@@ -367,7 +367,7 @@ test('Stop on a bot holds the facts that would wake it until the user writes aga
   expect(h.core.agentRuntime.facts(agent.id)).toEqual([]);
 });
 
-test('a paired device lands an outside event on a bot: it wakes it with default settings, the same key replaces a pending one, an agent token is refused', async () => {
+test('a paired device lands an outside event on a mochi: it wakes it with default settings, the same key replaces a pending one, an agent token is refused', async () => {
   const driver = scripted(() => ({ text: '[quiet] read it' })); restore = driver.restore;
   const { agent, threadId } = await makeAgent(h, client);
   const events = () => turnsOf(h, threadId).filter(t => t.execution?.operation === 'event');
@@ -423,7 +423,7 @@ test('a paired device lands an outside event on a bot: it wakes it with default 
   expect(whole.text).not.toContain('cut by Boite');
 });
 
-test('scheduled-only bots retain facts across runtime restart and failed admission, then deliver once with a routine', async () => {
+test('scheduled-only mochis retain facts across runtime restart and failed admission, then deliver once with a routine', async () => {
   const driver = scripted(() => ({ text: 'Caught up.' })); restore = driver.restore;
   const { agent, threadId } = await makeAgent(h, client);
   const config = await client.call('agents.runtime.get', { agentId: agent.id });
@@ -610,7 +610,7 @@ test('urgent facts still spend facts skipped for budget or failed admission, wit
   expect(turnsOf(h, threadId)).toHaveLength(before);
 });
 
-test('a bot whose provider is turned off keeps its facts and letters, names the fix in its status, and runs them once the provider is back', async () => {
+test('a mochi whose provider is turned off keeps its facts and letters, names the fix in its status, and runs them once the provider is back', async () => {
   const driver = scripted(() => ({ text: 'Seen.' })); restore = driver.restore;
   const { agent, threadId } = await makeAgent(h, client);
   const tick = () => (h.core.agentRuntime as unknown as { tick(): void }).tick();
@@ -649,7 +649,7 @@ test('a bot whose provider is turned off keeps its facts and letters, names the 
   expect(h.core.agentRuntime.attempt(h.core.workforce.records.get('profile', agent.id), { kind: 'event', label: '1 project event', prompt: 'Anything?' }).held).toBe('off');
 });
 
-test('a bot with no thread yet still hears of its provider turned off', async () => {
+test('a mochi with no thread yet still hears of its provider turned off', async () => {
   // A core whose bots have no session record, as after a migration that lost one: the switch still redraws their rows.
   const dataDir = mkdtempSync(join(tmpdir(), 'boite-core-'));
   try {

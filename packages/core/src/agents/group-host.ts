@@ -136,7 +136,7 @@ export class GroupBotHost {
         else if (name === 'permission.requested') this.#onPermission(payload as PermissionRequest);
         else if (name === 'thread.updated') this.#onRow(payload as ThreadSummary);
       } catch (error) {
-        core.log('warn', `group bot event after ${name}: ${messageOf(error)}`);
+        core.log('warn', `group mochi event after ${name}: ${messageOf(error)}`);
       }
     });
     // A restart: the bots' desks learn how their threads stand here now, and what waited goes.
@@ -148,7 +148,7 @@ export class GroupBotHost {
       try {
         if (this.allowed()) for (const coreId of this.#coreIds()) this.#hello(coreId);
       } catch (error) {
-        core.log('warn', `group bot startup: ${messageOf(error)}`);
+        core.log('warn', `group mochi startup: ${messageOf(error)}`);
       }
     }, 0);
   }
@@ -245,7 +245,7 @@ export class GroupBotHost {
   #steward(peer: CoordinationPeer, lease: BotLease): Steward {
     return {
       agentId: lease.agentId, name: lease.name, projectIds: this.scope(lease),
-      by: () => `${lease.name}, a bot of ${peer.name} the user entrusted this project to`,
+      by: () => `${lease.name}, a mochi of ${peer.name} the user entrusted this project to`,
       log: { residentAgentId: lease.agentId, machine: peer.name },
       follow: threadId => this.#watch(peer.coreId, lease.agentId, threadId),
     };
@@ -485,7 +485,7 @@ export class GroupBotHost {
     const timer = setTimeout(() => {
       this.#timers.delete(coreId);
       // An unhandled rejection ends the core: a flush that failed here is logged, and its events wait for the next one.
-      void this.flush(coreId).catch(error => this.#core.log('warn', `group bot events for ${coreId}: ${messageOf(error)}`));
+      void this.flush(coreId).catch(error => this.#core.log('warn', `group mochi events for ${coreId}: ${messageOf(error)}`));
     }, delay);
     timer.unref?.();
     this.#timers.set(coreId, timer);

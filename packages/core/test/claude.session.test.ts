@@ -766,12 +766,12 @@ test('Send now during cold Claude startup stops the old turn and sends one new p
     const turn = await client.call('turns.start', { threadId, prompt: 'Keep working' });
     await waitFor(() => harness.core.threads.runner.handles.has(threadId));
     await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0, sendNow: true,
-      value: { input: { text: '', attachments: [], paused: false, queued: [{ id: 'claude-startup-followup', text: 'Also check the bots', attachments: [] }] } } });
+      value: { input: { text: '', attachments: [], paused: false, queued: [{ id: 'claude-startup-followup', text: 'Also check the mochis', attachments: [] }] } } });
     await Bun.sleep(30);
     expect(calls).toHaveLength(0);
     ready.resolve();
-    await waitFor(() => calls.some(call => call.prompts.some(prompt => prompt.endsWith('Also check the bots'))));
-    expect(calls.flatMap(call => call.prompts).filter(prompt => prompt.endsWith('Also check the bots'))).toHaveLength(1);
+    await waitFor(() => calls.some(call => call.prompts.some(prompt => prompt.endsWith('Also check the mochis'))));
+    expect(calls.flatMap(call => call.prompts).filter(prompt => prompt.endsWith('Also check the mochis'))).toHaveLength(1);
     await waitFor(() => harness.core.composer.storage.get('inputs', threadId).value?.input.queued.length === 0);
     const turns = harness.core.journal.listTurns(threadId);
     expect(turns).toHaveLength(2);

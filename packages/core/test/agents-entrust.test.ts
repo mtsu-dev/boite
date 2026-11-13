@@ -49,7 +49,7 @@ test('refuses threads and agents that cannot be entrusted', async () => {
   h.core.journal.putThread({ ...thread, id: 'loose', projectId: null });
   for (const [params, error] of [
     [{ threadId: 'child', agentId: agent.id }, 'delegated child'],
-    [{ threadId: 'session', agentId: agent.id }, "not a bot's thread"],
+    [{ threadId: 'session', agentId: agent.id }, "not a mochi's thread"],
     [{ threadId: 'archived', agentId: agent.id }, 'unarchived'],
     [{ threadId: 'missing', agentId: agent.id }, 'existing'],
     [{ threadId: 'loose', agentId: agent.id }, 'project'],
@@ -92,7 +92,7 @@ test('a blocker keeps the entrustment and wakes the agent; taking it back remove
   expect(h.core.workforce.entrusted.list()).toEqual([]);
 });
 
-test('taking a thread back takes the grant: the watch goes unless the bot reaches the thread another way', async () => {
+test('taking a thread back takes the grant: the watch goes unless the mochi reaches the thread another way', async () => {
   script('Working.');
   const desk = async (threadId: string) => (await client.call('agents.snapshot', {})).watches.find(w => w.agentId === agent.id && w.threadId === threadId)?.origin ?? null;
   const entrustAndTakeBack = async (threadId: string) => {
@@ -126,7 +126,7 @@ test('taking a thread back takes the grant: the watch goes unless the bot reache
   expect(h.core.workforce.projects.follows(agent.id, inProject)).toBe(true);
 });
 
-test('an entrustment that ends any way gives the grant back, and a watch the bot had before survives it', async () => {
+test('an entrustment that ends any way gives the grant back, and a watch the mochi had before survives it', async () => {
   const desk = async (threadId: string) => (await client.call('agents.snapshot', {})).watches.find(w => w.agentId === agent.id && w.threadId === threadId)?.origin ?? null;
   // A met goal ends it: the thread leaves the desk, and the news of the goal still reaches the bot.
   script('Done.\n[BOITE_GOAL_COMPLETE]');

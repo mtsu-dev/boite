@@ -15,7 +15,7 @@ const BRAIN_ROOT = 'agents:brain-root';
 const BRAIN_DIR = 'agents:brain-dir:';
 /** What a new agent's brain starts with. */
 export const BRAIN_FILES: Readonly<Record<string, string>> = {
-  'AGENTS.md': '# Individual brain\n\nKeep reusable procedures in skills/. Durable facts go to MEMORY.md through boite bot remember.\n',
+  'AGENTS.md': '# Individual brain\n\nKeep reusable procedures in skills/. Durable facts go to MEMORY.md through boite mochi remember.\n',
   'MEMORY.md': '',
 };
 const inside = (root: string, path: string) => { const rel = relative(root, path); return rel === '' || rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel); };
@@ -36,7 +36,7 @@ export class ResidentAgents {
     const saved = this.#core.journal.getSetting(`agents:runtime:${agentId}`) as (AgentRuntimeConfig & Record<string, unknown>) | undefined;
     if (saved) return { defaultRoute: agent.selection, allowedRoutes: saved.allowedRoutes, subagents: saved.subagents, autoMemory: saved.autoMemory !== false, eventWakes: saved.eventWakes === true, addProjects: saved.addProjects === true, dailyBudgetUsd: saved.dailyBudgetUsd ?? null };
     const model = agent.selection.model ?? agentProvider(this.#core, agent).models.find(m => m.default)?.id ?? agentProvider(this.#core, agent).models[0]?.id;
-    if (!model) throw refused('default model: choose a model for this bot');
+    if (!model) throw refused('default model: choose a model for this mochi');
     // Subagents are on by default: an agent splits its work the way a thread does, on any granted model.
     return { defaultRoute:{...agent.selection,model}, allowedRoutes:[{...agent.selection,model,id:'default',name:'Default'}], subagents:{enabled:true,paused:false,profiles:[],anyModel:true}, autoMemory:true, eventWakes:false, addProjects:false, dailyBudgetUsd:null };
   }
@@ -57,7 +57,7 @@ export class ResidentAgents {
     object(value,'route');
     const provider=this.#core.providers.require(text(value.providerId,'route.providerId',100));
     const account=this.#core.accounts.require(text(value.accountId,'route.accountId',160));
-    if(account.providerId!==provider.id || !this.accountAllowed(agentId,account.id))throw refused('route.accountId: account is not granted to this bot');
+    if(account.providerId!==provider.id || !this.accountAllowed(agentId,account.id))throw refused('route.accountId: account is not granted to this mochi');
     const model=text(value.model,'route.model',256);
     checkSavedSelection(provider,account.id,{...value,model},previous);
     return {...value,model};
@@ -110,7 +110,7 @@ export class ResidentAgents {
    */
   assertThreadRoute(threadId:string, selection:AgentSelection):void {
     const owner=this.ownerOf(threadId);if(!owner)return;
-    if(this.#records.get('profile',owner).status==='archived'||!this.allowed(owner,selection,!!this.#core.threads.require(threadId).parentThreadId))throw refused('account/model access was withdrawn from this bot');
+    if(this.#records.get('profile',owner).status==='archived'||!this.allowed(owner,selection,!!this.#core.threads.require(threadId).parentThreadId))throw refused('account/model access was withdrawn from this mochi');
   }
   /** Stops what runs on a route the owner withdrew, and the subagents of an archived agent. */
   enforce():void {

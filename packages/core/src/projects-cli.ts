@@ -45,7 +45,7 @@ export async function projectsCommand(client: CoreClient, caller: Caller, thread
         ? (project.added
           ? (project.entrusted === true ? 'Added and entrusted to you. boite thread new accepts it by name, id or folder.' : 'Added. boite thread new and boite thread move accept it by name, id or folder.')
           // A bot gains no project by naming its folder: the owner entrusts one that already exists.
-          : (project.entrusted === false ? `Already a project; nothing changed, and it is not entrusted to you. Ask with boite settings bot request projects +${JSON.stringify(project.name)} --why <reason>` : 'Already a project; nothing changed.'))
+          : (project.entrusted === false ? `Already a project; nothing changed, and it is not entrusted to you. Ask with boite settings mochi request projects +${JSON.stringify(project.name)} --why <reason>` : 'Already a project; nothing changed.'))
         : (project.added ? `Added on ${there}. boite thread new --machine ${there} accepts it by name, id or folder.` : `Already a project on ${there}; nothing changed.`),
     ], project);
     return;

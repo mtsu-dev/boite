@@ -84,7 +84,7 @@ export class ContactReach {
     if (shared || !this.#contacts.has(to.coreId)) return;
     const bot = contactsBot(this.#core);
     if (bot === null || bot.threadId === threadId || this.byRelation(threadId, to.coreId, to.threadId)) return;
-    throw refused('to: a contact\'s thread takes letters only from a thread the Contacts bot put in touch with it; ask the bot with boite threads ask', { field: 'to', expected: 'a thread in relation, or boite threads ask' });
+    throw refused('to: a contact\'s thread takes letters only from a thread the Contacts mochi put in touch with it; ask the mochi with boite threads ask', { field: 'to', expected: 'a thread in relation, or boite threads ask' });
   }
 
   mayRead(coreId: string, threadId: string): boolean { return this.#grantFor(coreId, threadId)?.readThreads === true; }

@@ -197,7 +197,7 @@ export class CoordinationLookups {
     }
     const peer = this.side.trusted().find(p => p.coreId === to.coreId);
     if (!config.machine(to.coreId)) throw refused(this.side.own(threadId).remote ? `target: ${reachRefusal(config.reach, 'group')}` : 'cross-machine coordination is disabled for this thread');
-    if (this.hidden(threadId)(to.coreId)) throw refused('target: only the Contacts bot reads a contact\'s threads; ask it with boite threads ask', { field: 'target' });
+    if (this.hidden(threadId)(to.coreId)) throw refused('target: only the Contacts mochi reads a contact\'s threads; ask it with boite threads ask', { field: 'target' });
     const payload = { threadId: to.threadId, ...queryPayload(query) };
     const closed = (): void => { if (!this.side.config(threadId).machine(to.coreId)) throw refused(`target: ${reachRefusal(this.side.config(threadId).reach, 'group')}`); };
     if (!peer) { const routed = await this.side.mailboxes.read(threadId, to.coreId, payload); closed(); return routed; }

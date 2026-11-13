@@ -5,7 +5,7 @@ import { followAgent } from '../src/threads/account-fallback.ts';
 
 const account = (id: string, status: Account['status']) => ({ id, providerId: 'claude', status }) as Account;
 
-test('a bot whose account signed out moves to the best account granted to it, even when a better one is not', () => {
+test('a mochi whose account signed out moves to the best account granted to it, even when a better one is not', () => {
   const accounts = [account('acc_bot', 'unauthenticated'), account('acc_best', 'ok'), account('acc_granted', 'ok')];
   const updates: unknown[] = [];
   let current = { id: 'thr_bot', providerId: 'claude', accountId: 'acc_bot', agentSessionId: 'agt_session_1', model: 'm', effort: null, speed: null } as unknown as ThreadSummary;

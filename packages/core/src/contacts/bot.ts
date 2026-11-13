@@ -45,7 +45,7 @@ export function tellBot(core: Core, key: string, body: string): boolean {
 
 function requireBot(core: Core, threadId: unknown, method: string): { agentId: string; threadId: string; name: string } {
   const bot = contactsBot(core);
-  if (bot === null || bot.threadId !== threadId) throw refused(`${method}: only the Contacts bot's thread calls this`, { field: 'threadId', expected: 'the Contacts bot\'s thread' });
+  if (bot === null || bot.threadId !== threadId) throw refused(`${method}: only the Contacts mochi's thread calls this`, { field: 'threadId', expected: 'the Contacts mochi\'s thread' });
   return bot;
 }
 
@@ -127,7 +127,7 @@ function planLine(request: ContactRequest, plan: ContactRequestPlan): string {
 export function connectByOwner(core: Core, id: string, threadId: unknown): ContactRequest {
   const { request } = core.contacts.requests.pending(id, 'in');
   const bot = contactsBot(core);
-  if (bot === null || request.want === undefined || request.want === 'share') throw invalidParams('contacts.decide.threadId: expected a request for a thread, on a core with a Contacts bot', { field: 'threadId' });
+  if (bot === null || request.want === undefined || request.want === 'share') throw invalidParams('contacts.decide.threadId: expected a request for a thread, on a core with a Contacts mochi', { field: 'threadId' });
   const settled = connectThreads(core, bot, request, core.contacts.find(request.coreId)?.name ?? request.contact, threadId, 'owner');
   withdrawOwnerCards(core, id);
   return settled;
@@ -252,7 +252,7 @@ export class ContactsBotMethods {
     withdrawOwnerCards(this.#core, request.id);
     this.#core.contacts.requests.mark(request.id, { plan });
     const body = `${name} asks: ${request.text.slice(0, 500)}\n\n${plan ? `If you accept, ${planLine(request, plan)}.${note ? `\n${note}` : ''}` : note}`;
-    return this.#card(bot.threadId, { kind: 'owner', requestId: request.id }, body, [{ id: 'accept', label: plan ? 'Accept' : 'Let the bot handle it' }, { id: 'refuse', label: 'Refuse' }]);
+    return this.#card(bot.threadId, { kind: 'owner', requestId: request.id }, body, [{ id: 'accept', label: plan ? 'Accept' : 'Let the mochi handle it' }, { id: 'refuse', label: 'Refuse' }]);
   }
 
   refuse(params: RpcParams<'contacts.bot.refuse'>): ContactRequest {

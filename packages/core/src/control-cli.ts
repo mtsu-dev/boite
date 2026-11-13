@@ -46,9 +46,9 @@ const THREAD_ACTIONS = ['show', 'send', 'stop', 'done', 'archive', 'unarchive', 
 export const CONTROL_HELP = `  threads [list] [--project <p>] [--archived]
                                  the threads you may see and their machine:
                                  every one here as the owner, those of your
-                                 projects and your desk as a bot, the ones that
+                                 projects and your desk as a mochi, the ones that
                                  let you reach them here and on linked machines
-                                 from any other thread. A bot also lists the
+                                 from any other thread. A mochi also lists the
                                  projects other machines of the group entrusted
                                  to it, as <machine>/<id>, and names a machine
                                  it cannot reach (--project <machine>/<name>)
@@ -63,8 +63,8 @@ export const CONTROL_HELP = `  threads [list] [--project <p>] [--archived]
   answer <id> <question-id> <option|text ...> (--skip)
   permissions [<id>]             pending tool permissions
   allow|deny <id> <request-id>   (owner only, threads of this machine)
-  A bot's <id> may be <machine>/<thread-id>: a thread of a project of that
-  machine entrusted to it, which that machine lets bots of the group drive`;
+  A mochi's <id> may be <machine>/<thread-id>: a thread of a project of that
+  machine entrusted to it, which that machine lets mochis of the group drive`;
 
 /** What an agent's own `thread done` prints. */
 export function doneLine(done: { when: 'turn-end' | 'done' }): string {
@@ -324,7 +324,7 @@ export async function controlCommand(client: CoreClient, caller: Caller, threadI
         print([...(lines.length === 0 ? ['threads: none'] : lines), ...listed.unavailable.map(reason => `unavailable: ${reason}`)], listed);
         return;
       }
-      if (parsed.archived) throw new Error('threads --archived lists archived threads for the owner and for bots; another thread sees the open ones it may reach');
+      if (parsed.archived) throw new Error('threads --archived lists archived threads for the owner and for mochis; another thread sees the open ones it may reach');
       const [{ self }, result] = await Promise.all([client.call('collaboration.get', { threadId }), client.call('collaboration.directory', { threadId })]);
       const shown = project === undefined ? result.agents : result.agents.filter(contact => contact.project?.toLowerCase() === project.toLowerCase());
       const lines = shown.map(contact => contactLine(contact, self.coreId));

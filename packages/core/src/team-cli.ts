@@ -7,7 +7,7 @@ import type { Team, TeamPost } from '@boite/contracts';
 import type { CoreClient } from './client.ts';
 import { Usage } from './cli-args.ts';
 
-export const TEAM_HELP = `boite team: talk with the other bots of your teams. Group posts every member reads; private posts only you, the recipient and the owner.
+export const TEAM_HELP = `boite team: talk with the other mochis of your teams. Group posts every member reads; private posts only you, the recipient and the owner.
   boite team list                                     your teams and their members
   boite team say <team> <text> [--reply <post-id>] [--request-id <id>]
                                                       post in the group; @name or @tous picks who it wakes
@@ -15,11 +15,11 @@ export const TEAM_HELP = `boite team: talk with the other bots of your teams. Gr
                                                       a private post to one member, or to the owner
   boite team read <team> [--before <seq>] [--limit <n>]
                                                       the posts you may read, oldest first
-  boite team propose --name <name> --members <bot,machine/bot> [--brief <text>]
+  boite team propose --name <name> --members <mochi,machine/mochi> [--brief <text>]
                                                       a card asking the owner to create a team
-  boite team invite <team> <bot|machine/bot>          a card asking the owner to add a bot
+  boite team invite <team> <mochi|machine/mochi>      a card asking the owner to add a mochi
   boite team leave <team>                             a card asking the owner to let you leave
-A bot of another machine of your group is written <machine>/<bot>. A team stays on the machine that created it; when that machine does not answer, the same command with the same --request-id posts once.
+A mochi of another machine of your group is written <machine>/<mochi>. A team stays on the machine that created it; when that machine does not answer, the same command with the same --request-id posts once.
 Your final answer to a team letter is posted for you; answer [quiet] to post nothing.`;
 
 export interface TeamCliResult { lines: string[]; value: unknown }
@@ -117,14 +117,14 @@ export async function teamCommand(args: string[], client: CoreClient, threadId: 
       if (positional.length > 0) throw new Usage('boite team propose takes --name, --members and an optional --brief');
       const name = values.get('name');
       const members = (values.get('members') ?? '').split(',').map(member => member.trim()).filter(Boolean);
-      if (name === undefined || members.length === 0) throw new Usage('boite team propose needs --name <name> and --members <bot,bot>');
+      if (name === undefined || members.length === 0) throw new Usage('boite team propose needs --name <name> and --members <mochi,mochi>');
       const brief = values.get('brief');
       const asked = await client.call('teams.propose', { threadId, name, members, ...(brief === undefined ? {} : { brief }) });
       return carded(asked.questionId, `create ${name} with ${members.join(', ')}`);
     }
     case 'invite': {
       const [team = '', bot = '', ...extra] = flags(rest, []).positional;
-      if (team === '' || bot === '' || extra.length > 0) throw new Usage('boite team invite needs a team and one bot');
+      if (team === '' || bot === '' || extra.length > 0) throw new Usage('boite team invite needs a team and one mochi');
       return carded((await client.call('teams.invite', { threadId, team, bot })).questionId, `add ${bot} to ${team}`);
     }
     case 'leave': {

@@ -57,7 +57,7 @@ function held(h: TestCore, agent: AgentProfile) {
 
 const lastText = (h: TestCore, threadId: string) => h.core.journal.listMessages(threadId).at(-1)?.parts[0];
 
-test('a move carries the bot, its memory, routines, projects and the end of its conversation; the next prompt there says so once', async () => {
+test('a move carries the mochi, its memory, routines, projects and the end of its conversation; the next prompt there says so once', async () => {
   const { desk, pc, owner, pcOwner, deskId, pcId, pcPeer, deskProject, pcProject } = await group();
   const { agent: made, threadId } = await makeAgent(desk, owner, {
     name: 'Ada', domain: 'Gardens', instructions: 'Water the plants.', avatar: 'bot:c.1.2.3.4.1.1.0', projectIds: [deskProject.id, `${pcId}/${pcProject.id}`], pinned: true,
@@ -125,7 +125,7 @@ test('a move carries the bot, its memory, routines, projects and the end of its 
   expect(second).toContain('And now?');
 }, 60_000);
 
-test('a bot wearing an imported picture takes it along: the target stores the bytes and serves the same avatar', async () => {
+test('a mochi wearing an imported picture takes it along: the target stores the bytes and serves the same avatar', async () => {
   const { desk, owner, pcOwner, pcId } = await group();
   const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
   const { avatar } = await owner.call('agents.picture.put', { dataUrl: png });
@@ -142,7 +142,7 @@ test('a bot wearing an imported picture takes it along: the target stores the by
   expect((await pcOwner.call('agents.snapshot', {})).profiles.find(p => p.id === other.id)?.avatar).toBe('');
 }, 60_000);
 
-test('a bot on its way to another machine joins no team meanwhile, and its archived team follows it', async () => {
+test('a mochi on its way to another machine joins no team meanwhile, and its archived team follows it', async () => {
   const { desk, owner, pcId } = await group();
   const { agent } = await makeAgent(desk, owner);
   await owner.call('client.preferences', { app: 'app-desktop-0001', language: 'en', experiments: ['teams'], labels: {} });
@@ -160,7 +160,7 @@ test('a bot on its way to another machine joins no team meanwhile, and its archi
   expect(desk.core.teams.list().map(team => team.name)).toEqual(['Old crew']);
 }, 60_000);
 
-test('an archived team whose member left before teams followed moves comes back: with the bot where its move went, without one nobody can find', async () => {
+test('an archived team whose member left before teams followed moves comes back: with the mochi where its move went, without one nobody can find', async () => {
   const { desk, owner, deskId, pcId } = await group();
   const { agent } = await makeAgent(desk, owner);
   await owner.call('client.preferences', { app: 'app-desktop-0001', language: 'en', experiments: ['teams'], labels: {} });
@@ -178,7 +178,7 @@ test('an archived team whose member left before teams followed moves comes back:
   expect(restored.members.map(member => [member.botId, member.coreId])).toEqual([[agent.id, pcId]]);
 }, 60_000);
 
-test('the same request reaching the target twice makes one bot, and the same requestId answers the first move again', async () => {
+test('the same request reaching the target twice makes one mochi, and the same requestId answers the first move again', async () => {
   const { desk, pc, owner, pcId } = await group();
   const { agent } = await makeAgent(desk, owner);
   // Every address of a member may be asked: the target hears the same request twice.
@@ -202,7 +202,7 @@ test('the same request reaching the target twice makes one bot, and the same req
   // Another request for a bot the target already holds is refused there.
   desk.core.coordination.request = request;
   const pcPeer = desk.core.group.peers().find(p => p.coreId === pcId)!;
-  expect(await thrown(request(pcPeer, 'bot.move', { ...sent, requestId: 'another' }))).toThrow(`already holds a bot ${agent.id}`);
+  expect(await thrown(request(pcPeer, 'bot.move', { ...sent, requestId: 'another' }))).toThrow(`already holds a mochi ${agent.id}`);
 }, 60_000);
 
 test('a move is refused, with nothing changed here, for this machine, an unknown one, a turn in flight, a target without an account or with its own built-in', async () => {
@@ -235,7 +235,7 @@ test('a move is refused, with nothing changed here, for this machine, an unknown
   await pcOwner.call('agents.builtin.ensure', { kind: 'contacts' });
   const operator = await quietAgent(owner, await owner.call('agents.builtin.ensure', { kind: 'contacts' }));
   const operatorBefore = held(desk, operator);
-  expect(await thrown(owner.call('agents.move', { agentId: operator.id, machine: pcId }))).toThrow('already has its own contacts bot');
+  expect(await thrown(owner.call('agents.move', { agentId: operator.id, machine: pcId }))).toThrow('already has its own contacts mochi');
   expect(held(desk, operator)).toEqual(operatorBefore);
   expect(desk.core.workforce.builtinThread('contacts')).not.toBeNull();
 
@@ -248,7 +248,7 @@ test('a move is refused, with nothing changed here, for this machine, an unknown
   expect(echo).toBeDefined();
 }, 60_000);
 
-test('the Contacts bot moves: the target answers for it and this machine no longer does', async () => {
+test('the Contacts mochi moves: the target answers for it and this machine no longer does', async () => {
   const { desk, pc, owner, pcId } = await group();
   desk.core.workforce.setLimits({ paused: true });
   const operator = await quietAgent(owner, await owner.call('agents.builtin.ensure', { kind: 'contacts' }));
@@ -261,7 +261,7 @@ test('the Contacts bot moves: the target answers for it and this machine no long
   expect(desk.core.workforce.builtin('contacts')).toBeNull();
 }, 60_000);
 
-test('an answer lost on the way back: the same requestId finishes the move here instead of a second bot there', async () => {
+test('an answer lost on the way back: the same requestId finishes the move here instead of a second mochi there', async () => {
   const { desk, pc, owner, pcId } = await group();
   const { agent, threadId } = await makeAgent(desk, owner);
   // Subagents on before the move, so turning them off later shows on the thread there.
@@ -314,7 +314,7 @@ test('an answer lost on the way back: the same requestId finishes the move here 
   expect(desk.core.agentRuntime.facts(agent.id)).toHaveLength(0);
 }, 60_000);
 
-test('facts filed while the bot travels go after it, nothing wakes it here meanwhile, and a lost second leg keeps them here', async () => {
+test('facts filed while the mochi travels go after it, nothing wakes it here meanwhile, and a lost second leg keeps them here', async () => {
   const { desk, pc, owner, pcId } = await group();
   const { agent } = await makeAgent(desk, owner);
   desk.core.workforce.fact(agent.id, { key: 'before', text: 'Filed before the move.', urgent: false });
@@ -349,7 +349,7 @@ test('facts filed while the bot travels go after it, nothing wakes it here meanw
   expect(desk.core.agentRuntime.facts(agent.id)).toHaveLength(0);
 }, 60_000);
 
-test('a rename, a memory and a routine the owner saves while the bot travels go after it; more facts than a move carries refuse it', async () => {
+test('a rename, a memory and a routine the owner saves while the mochi travels go after it; more facts than a move carries refuse it', async () => {
   const { desk, pc, owner, pcId } = await group();
   const { agent } = await makeAgent(desk, owner, { pinned: true });
   const request = desk.core.coordination.request.bind(desk.core.coordination);
@@ -379,11 +379,11 @@ test('a rename, a memory and a routine the owner saves while the bot travels go 
 
   const { agent: busy } = await makeAgent(desk, owner, { name: 'Busy' });
   for (let index = 0; index <= 100; index += 1) desk.core.workforce.fact(busy.id, { key: `k${index}`, text: 'A fact.', urgent: false });
-  expect(await thrown(owner.call('agents.move', { agentId: busy.id, machine: pcId }))).toThrow('101 facts wait for the bot');
+  expect(await thrown(owner.call('agents.move', { agentId: busy.id, machine: pcId }))).toThrow('101 facts wait for the mochi');
   expect(desk.core.agentRuntime.facts(busy.id)).toHaveLength(101);
 }, 60_000);
 
-test('a turn the owner starts while the bot travels keeps it here; the refusal names the generated requestId, which finishes the move once the turn ends', async () => {
+test('a turn the owner starts while the mochi travels keeps it here; the refusal names the generated requestId, which finishes the move once the turn ends', async () => {
   const { desk, pc, owner, pcId } = await group();
   const { agent, threadId } = await makeAgent(desk, owner);
   const request = desk.core.coordination.request.bind(desk.core.coordination);
@@ -425,7 +425,7 @@ async function working(h: TestCore, client: CoreClient, threadId: string) {
   return driver;
 }
 
-test('a move asked while the bot works leaves once its turn ends; a fact filed meanwhile goes with it rather than waking it here', async () => {
+test('a move asked while the mochi works leaves once its turn ends; a fact filed meanwhile goes with it rather than waking it here', async () => {
   const { desk, pc, owner, deskId, pcId, deskProject } = await group();
   const { agent, threadId } = await makeAgent(desk, owner, { projectIds: [deskProject.id] });
   // There the bot sleeps, so the fact stays one the test reads.
@@ -450,7 +450,7 @@ test('a move asked while the bot works leaves once its turn ends; a fact filed m
   expect(await owner.call('agents.move', { agentId: agent.id, machine: pcId, requestId: 'later-1' })).toMatchObject({ agentId: agent.id, machine: pcId });
 }, 60_000);
 
-test('a waiting move is cancelled while the bot works, and one asked of an idle bot leaves at the next pass', async () => {
+test('a waiting move is cancelled while the mochi works, and one asked of an idle mochi leaves at the next pass', async () => {
   const { desk, pc, owner, pcId } = await group();
   const { agent, threadId } = await makeAgent(desk, owner);
   const turn = await working(desk, owner, threadId);
@@ -469,7 +469,7 @@ test('a waiting move is cancelled while the bot works, and one asked of an idle 
   await waitFor(() => pc.core.workforce.records.find('profile', agent.id) !== null && desk.core.workforce.records.find('profile', agent.id) === null, 10_000);
 }, 60_000);
 
-test('a waiting move the target refuses once the turn ends leaves a line in the bot\'s thread, and the bot stays here', async () => {
+test('a waiting move the target refuses once the turn ends leaves a line in the mochi\'s thread, and the mochi stays here', async () => {
   const { desk, pc, owner, pcId } = await group();
   const { agent, threadId } = await makeAgent(desk, owner);
   const turn = await working(desk, owner, threadId);
@@ -484,7 +484,7 @@ test('a waiting move the target refuses once the turn ends leaves a line in the 
   expect(pc.core.workforce.records.find('profile', agent.id)).toBeNull();
 }, 60_000);
 
-test('work a bot waiting to move asked for runs before it leaves', async () => {
+test('work a mochi waiting to move asked for runs before it leaves', async () => {
   const { desk, pc, owner, pcId } = await group();
   const { agent, threadId } = await makeAgent(desk, owner);
   // In one tick: no scheduler pass sends the bot between the two.
@@ -517,7 +517,7 @@ test('a waiting move whose answer is lost stays waiting, says so once, and finis
   expect(pc.core.workforce.records.list('profile').filter(p => p.id === agent.id)).toHaveLength(1);
 }, 60_000);
 
-test('a waiting move outlives a restart of the machine the bot leaves', async () => {
+test('a waiting move outlives a restart of the machine the mochi leaves', async () => {
   const deskDir = mkdtempSync(join(tmpdir(), 'boite-core-'));
   dirs.push(deskDir);
   const { desk, pc, owner, pcId } = await group(deskDir);
@@ -534,7 +534,7 @@ test('a waiting move outlives a restart of the machine the bot leaves', async ()
   expect(again.core.journal.getSetting(`agents:move-queued:${agent.id}`)).toBeUndefined();
 }, 60_000);
 
-test('a fact set to another text and back while the bot travels ends there with its latest text', async () => {
+test('a fact set to another text and back while the mochi travels ends there with its latest text', async () => {
   const { desk, pc, owner, pcId } = await group();
   const { agent } = await makeAgent(desk, owner);
   const set = (text: string) => desk.core.agentRuntime.fact(agent.id, { key: 'door', text, urgent: false, replace: true });

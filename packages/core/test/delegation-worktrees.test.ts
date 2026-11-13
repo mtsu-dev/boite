@@ -101,7 +101,7 @@ test('a child that commits keeps its worktree, and its result names the branch t
   expect(existsSync(join(s.repo, 'fix.txt'))).toBe(false);
 }, 90_000);
 
-test('a bot child worktree branches from its entrusted project HEAD, including after a follow-up', async () => {
+test('a mochi child worktree branches from its entrusted project HEAD, including after a follow-up', async () => {
   const s = await setup();
   const projectId = s.h.core.threads.require(s.threadId).projectId!;
   const { agent, threadId } = await makeAgent(s.h, s.client, { projectIds: [projectId] });

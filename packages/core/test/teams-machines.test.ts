@@ -164,7 +164,7 @@ test('a group post, a distant @name, a private post and a final answer each reac
   expect(read.out).toContain('Ada privately to Bob');
 }, 120_000);
 
-test('the machine holding a team takes a member\'s word only from the machine that hosts that bot', async () => {
+test('the machine holding a team takes a member\'s word only from the machine that hosts that mochi', async () => {
   const { host, away, hostId, awayId, ada, bob, bobKey, team } = await crew();
   speak();
   const third = await startTestCore();
@@ -197,7 +197,7 @@ test('the machine holding a team takes a member\'s word only from the machine th
   // Nor does a machine say where another machine's bot went, or take it out of the team.
   expect(await fromThird('team.moved', { teamId: team.id, botId: bob.agent.id, to: third.core.coordination.card().coreId })).toThrow('runs on another machine');
   expect(await fromAway('team.owner', { teamId: team.id, action: 'remove', botId: ada.agent.id })).toThrow('runs on another machine');
-  expect(await fromThird('team.owner', { teamId: team.id, action: 'remove', botId: bob.agent.id })).toThrow('has no bot in Crew');
+  expect(await fromThird('team.owner', { teamId: team.id, action: 'remove', botId: bob.agent.id })).toThrow('has no mochi in Crew');
   expect(host.core.teams.get(team.id)!.members.map(member => member.coreId)).toEqual([hostId, awayId]);
 }, 90_000);
 
@@ -271,7 +271,7 @@ test('when the machine holding the team is away a command says so and loses noth
   expect(posts(back, team).filter(post => post.id === 'kept')).toHaveLength(1);
 }, 120_000);
 
-test('the experiment: a machine with it off lets no bot of its own join, and the holder\'s switch decides what its team takes', async () => {
+test('the experiment: a machine with it off lets no mochi of its own join, and the holder\'s switch decides what its team takes', async () => {
   const { host, away, hostOwner, awayOwner, awayId, ada, bob, adaKey, bobKey } = await machines();
   speak((prompt, threadId) => (threadId === bob.threadId && prompt.includes('answer me') ? { text: 'answered' } : { text: '[quiet]' }));
 
@@ -305,11 +305,11 @@ test('the experiment: a machine with it off lets no bot of its own join, and the
   expect(host.core.teams.get(team.id)!.members.map(member => member.key)).toEqual([adaKey, bobKey]);
 }, 120_000);
 
-test('a machine too old for teams across machines is named and not asked again each time it speaks; one that has no bot of that name says so; a team needs a bot of the machine holding it', async () => {
+test('a machine too old for teams across machines is named and not asked again each time it speaks; one that has no mochi of that name says so; a team needs a mochi of the machine holding it', async () => {
   const { host, ada, hostOwner, awayId } = await machines();
   speak();
-  expect(await thrown(hostOwner.call('teams.create', { name: 'Crew', members: [ada.agent.id, `${awayId}/Nobody`] }))).toThrow('no bot "Nobody"');
-  expect(await thrown(hostOwner.call('teams.create', { name: 'Crew', members: [`${awayId}/Bob`] }))).toThrow('name a bot of this machine');
+  expect(await thrown(hostOwner.call('teams.create', { name: 'Crew', members: [ada.agent.id, `${awayId}/Nobody`] }))).toThrow('no mochi "Nobody"');
+  expect(await thrown(hostOwner.call('teams.create', { name: 'Crew', members: [`${awayId}/Bob`] }))).toThrow('name a mochi of this machine');
   const request = host.core.coordination.request.bind(host.core.coordination);
   host.core.coordination.request = async (peer: CoordinationPeer, operation, payload) => {
     if (operation === 'team.bot') throw new PeerRefusal('operation: expected coordination.ask, not team.bot');

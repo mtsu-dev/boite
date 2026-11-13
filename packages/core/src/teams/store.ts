@@ -188,21 +188,21 @@ export class TeamStore {
 
   #find(ref: unknown, field: string): AgentProfile {
     const wanted = typeof ref === 'string' ? ref.trim() : '';
-    if (!wanted) throw invalidParams(`${field}: expected a bot name or id`);
+    if (!wanted) throw invalidParams(`${field}: expected a mochi name or id`);
     const live = this.#live();
     const byId = live.find(agent => agent.id === wanted);
     if (byId) return byId;
     const named = live.filter(agent => agent.name.toLowerCase() === wanted.toLowerCase());
     if (named.length === 1) return named[0]!;
-    if (named.length > 1) throw refused(`${field}: ${named.length} bots are named ${JSON.stringify(wanted)}; name it by id: ${named.map(agent => agent.id).join(', ')}`, { field });
-    const elsewhere = this.#core.group.peers().length > 0 ? '; a bot of another machine is written <machine>/<bot>' : '';
-    throw refused(`${field}: no bot ${JSON.stringify(wanted)}; the bots are ${live.map(agent => agent.name).join(', ') || 'none yet'}${elsewhere}`, { field });
+    if (named.length > 1) throw refused(`${field}: ${named.length} mochis are named ${JSON.stringify(wanted)}; name it by id: ${named.map(agent => agent.id).join(', ')}`, { field });
+    const elsewhere = this.#core.group.peers().length > 0 ? '; a mochi of another machine is written <machine>/<mochi>' : '';
+    throw refused(`${field}: no mochi ${JSON.stringify(wanted)}; the mochis are ${live.map(agent => agent.name).join(', ') || 'none yet'}${elsewhere}`, { field });
   }
 
   /** The bot whose own thread calls. */
   caller(threadId: unknown): AgentProfile {
     const bot = typeof threadId === 'string' ? this.#core.workforce.agentOfThread(threadId) : null;
-    if (!bot) throw refused('threadId: teams are for bots; this thread is no bot\'s conversation', { field: 'threadId' });
+    if (!bot) throw refused('threadId: teams are for mochis; this thread is no mochi\'s conversation', { field: 'threadId' });
     return bot;
   }
 
@@ -268,7 +268,7 @@ export class TeamStore {
 
   /** The bots a list names; `elsewhere` holds what `TeamPeers` found on other machines, by the words given. */
   #bots(refs: unknown, elsewhere?: ReadonlyMap<string, TeamBot>): TeamBot[] {
-    if (!Array.isArray(refs) || refs.length === 0 || refs.length > TEAM_MEMBERS_MAX) throw invalidParams(`members: expected 1 to ${TEAM_MEMBERS_MAX} bots`);
+    if (!Array.isArray(refs) || refs.length === 0 || refs.length > TEAM_MEMBERS_MAX) throw invalidParams(`members: expected 1 to ${TEAM_MEMBERS_MAX} mochis`);
     const bots = refs.map(ref => (typeof ref === 'string' ? elsewhere?.get(ref) : undefined) ?? this.localBot(ref));
     return bots.filter((bot, index) => bots.findIndex(other => other.botId === bot.botId) === index);
   }
@@ -312,7 +312,7 @@ export class TeamStore {
     // The chat runs no agent, yet a thread carries a selection: the one of a bot of this machine in the team.
     const local = bots.find(bot => bot.coreId === this.#self);
     const first = local ? this.#core.workforce.records.find('profile', local.botId) : null;
-    if (!first) throw refused('members: name a bot of this machine; the team stays here and needs one of its own', { field: 'members' });
+    if (!first) throw refused('members: name a mochi of this machine; the team stays here and needs one of its own', { field: 'members' });
     const id = randomUUID();
     const now = Date.now();
     const cwd = join(this.#core.dataDir, 'teams', id);
@@ -409,7 +409,7 @@ export class TeamStore {
     const bot = guest ?? this.localBot(params.botId, 'botId');
     if (team.archived) throw refused(`${team.name} is archived`, { field: 'teamId' });
     if (team.members.some(member => member.botId === bot.botId)) throw refused(`${bot.name} is already a member of ${team.name}`, { field: 'botId' });
-    if (team.members.length >= TEAM_MEMBERS_MAX) throw refused(`a team holds at most ${TEAM_MEMBERS_MAX} bots`, { field: 'botId' });
+    if (team.members.length >= TEAM_MEMBERS_MAX) throw refused(`a team holds at most ${TEAM_MEMBERS_MAX} mochis`, { field: 'botId' });
     // A new member starts reading after the posts already there; `boite team read` shows the older ones.
     const saved = this.save(team, { members: [...team.members, this.#joining(bot, team.lastSeq)] });
     if (params.card !== undefined) this.settle(params.card, `applied: ${this.#label(bot)} joined ${team.name}`);
@@ -721,7 +721,7 @@ export class TeamStore {
     const name = this.#checkName(params.name);
     const brief = this.#checkBrief(params.brief);
     const others = this.#bots(params.members, elsewhere).filter(other => other.botId !== bot.id);
-    if (others.length === 0) throw invalidParams('members: name at least one other bot');
+    if (others.length === 0) throw invalidParams('members: name at least one other mochi');
     const members: TeamBot[] = [{ coreId: this.#self, botId: bot.id, name: bot.name }, ...others];
     const text = `${bot.name} proposes the team ${JSON.stringify(name)}: ${members.map(member => this.#label(member)).join(', ')}.${brief ? ` ${brief}` : ''}`;
     return this.#draw(params.threadId, text, { kind: 'create', by: bot.id, name, brief, members: members.map(member => this.#cardRef(member)) });
