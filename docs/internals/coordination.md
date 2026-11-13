@@ -2,9 +2,37 @@
 
 Ordinary conversations have communication on, including existing conversations
 without saved communication settings. Their agents can find, read and message
-other unarchived conversations across projects and linked machines when the
-destination owner permits remote reading, and a
-message can wake an idle agent. There is no hourly budget on messages, wake
+other unarchived conversations, as far as the machine's reach allows and when
+the destination owner permits remote reading, and a
+message can wake an idle agent.
+
+## Reach
+
+The machine setting `coordinationReach` bounds what the agent of an ordinary
+thread lists, searches, reads and messages: `project` (its own project on this
+machine), `machine` (every project of this machine) or `group` (this machine
+and the trusted ones). A new install stores `project`; an install whose
+journal existed before the setting did gets `group` written once at its first
+start (`SettingsStore.seedAgentDefaults`, called from `Core` with whether
+`journal.db` existed before this boot), and the stored value is never
+rewritten afterwards.
+
+`Coordination.scope(threadId)` (`coordination-scope.ts`) is the one place the reach is applied: it
+returns the thread's own `CoordinationConfig` cut to the reach (`projects` for
+the other projects of this machine, `machine(coreId)` for another machine).
+The directory, search and read (`coordination-directory.ts`) and `send`
+take it instead of the thread's config, so the thread's config only narrows.
+Unchanged by the reach: a parent and its subagents, a workflow and its steps,
+team members, a bot and the threads of the projects entrusted to it, the
+Contacts bot's thread, and a project shared with a contact (its threads keep
+reaching that contact's machine). The reach bounds what this machine's threads
+ask for; a letter another machine sends here is still delivered.
+
+A refusal names the setting and the command that asks the owner to open it,
+for example `boite settings request coordinationReach machine --why
+"<reason>"` (`reachRefusal` in `packages/contracts/src/settings.ts`). The key
+is requestable through the settings card. The in-memory client applies the
+same bound in `fake-client/coordination.ts`. There is no hourly budget on messages, wake
 turns or threads an agent starts.
 
 Before sending or replying, agents check the recipient's current status, last

@@ -26,7 +26,7 @@ test('a real agent thread receives new setting cards and removes settled cards o
     // Its thread opens with its introduction; the cards land in that thread.
     const { threadId } = await owner.call('agents.open', { agentId: agent.id });
     await waitFor(() => harness.core.journal.listTurns(threadId).some(turn => turn.status === 'done'), 10_000);
-    page = await BrowserPage.launch({ url: `${harness.url}/?token=${harness.token}`, experiments: ['resident-agents'], windowSize: { width: 1440, height: 900 } });
+    page = await BrowserPage.launch({ url: `${harness.url}/?token=${harness.token}`, windowSize: { width: 1440, height: 900 } });
     await openRailBot(page, agent.id, 30_000);
     await page.waitFor('[...document.querySelectorAll("[data-testid=agent-header]")].some(head => head.textContent.includes("Mira"))');
 

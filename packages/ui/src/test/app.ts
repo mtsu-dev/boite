@@ -8,7 +8,7 @@ import { type FakeClient } from '../lib/fake-client';
 import { confirm } from '../lib/confirm.svelte';
 import { store } from '../lib/store.svelte';
 import { workspace } from '../lib/workspace.svelte';
-import { setExperiment, writeExperiments } from '../lib/experiments';
+import { BUILD_STORAGE_KEY, setExperiment, writeExperiments } from '../lib/experiments';
 import { storeEndpoint, upsertEnvironment } from '../lib/endpoint';
 import { closeTour } from '../lib/onboarding.svelte';
 import { work } from '../lib/work-prefs.svelte';
@@ -35,7 +35,8 @@ afterEach(() => {
   running = null;
   document.body.innerHTML = '';
   delete document.documentElement.dataset.theme;
-  // Through the writer, so the reactive mirror hears the reset too.
+  // Through the writer, so the reactive mirror hears the reset too, the build a test named included.
+  window.localStorage.removeItem(BUILD_STORAGE_KEY);
   writeExperiments([]);
   rightPanel.floating = false;
   rightPanel.maximized = false;

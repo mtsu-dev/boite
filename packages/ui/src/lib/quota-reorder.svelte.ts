@@ -11,8 +11,10 @@ export type QuotaReorderOptions = {
   order: () => string[];
   /** Saves a new priority; absent, nothing reorders. */
   onreorder: () => ((order: string[]) => Promise<boolean>) | undefined;
-  /** What one item is, matched from the pointer: it carries `data-account-id`. */
+  /** What one item is, matched from the pointer: it carries `data-account-id`, or the `attribute` below. */
   item: string;
+  /** The `dataset` key that names an item, `accountId` (`data-account-id`) by default: the app rail reorders bots and teams by theirs. */
+  attribute?: string;
   /** Where a touch drag may start inside an item. */
   grip: string;
   /** The box that scrolls while an item is held near its edges. */
@@ -39,11 +41,11 @@ export class QuotaReorder {
 
   get enabled(): boolean { return !!this.#options.onreorder(); }
 
-  /** The rows in the priority on screen: the one being dragged, else the saved one; unknown ids last. */
-  sort<T extends { accountId: string }>(rows: readonly T[]): T[] {
+  /** The rows in the priority on screen: the one being dragged, else the saved one; unknown ids last, in their given order. */
+  sort<T>(rows: readonly T[], idOf: (row: T) => string = (row) => (row as { accountId: string }).accountId): T[] {
     const priority = new Map((this.draft ?? this.#options.order()).map((id, index) => [id, index]));
-    const sorted = [...rows].sort((a, b) => (priority.get(a.accountId) ?? Infinity) - (priority.get(b.accountId) ?? Infinity));
-    this.#shown = sorted.map((row) => row.accountId);
+    const sorted = [...rows].sort((a, b) => (priority.get(idOf(a)) ?? Infinity) - (priority.get(idOf(b)) ?? Infinity));
+    this.#shown = sorted.map(idOf);
     return sorted;
   }
 
@@ -128,9 +130,10 @@ export class QuotaReorder {
   #place(x: number, y: number) {
     if (!this.dragging || !this.draft || !this.#root) return;
     const target = document.elementFromPoint(x, y)?.closest<HTMLElement>(this.#options.item);
-    if (!target || !this.#root.contains(target) || target.dataset.accountId === this.dragging) return;
-    const ids = this.draft.filter((id) => id !== this.dragging);
-    const index = ids.indexOf(target.dataset.accountId!);
+    const id = target?.dataset[this.#options.attribute ?? 'accountId'];
+    if (!target || !id || !this.#root.contains(target) || id === this.dragging) return;
+    const ids = this.draft.filter((entry) => entry !== this.dragging);
+    const index = ids.indexOf(id);
     if (index < 0) return;
     const box = target.getBoundingClientRect();
     ids.splice(index + (y > box.top + box.height / 2 ? 1 : 0), 0, this.dragging);

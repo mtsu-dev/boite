@@ -94,19 +94,19 @@ replaced.
   and a new thread brings it back. Remove from Boite removes the project and
   its threads; the files on disk stay.
 
-## Import a Claude Code session
-
-Experimental: turn it on in Settings, Experiments (Claude Code session import).
+## Import a Claude Code or Codex session
 
 1. Open a project's menu (right click, or the dots beside its name), then
-   Manage project, Import a Claude Code session.
+   Manage project, Import a session.
 2. Pick a session started in that folder. One already imported shows
    Imported.
 3. Boite opens a thread with its history, and your next message continues the
-   same Claude Code session.
+   same session.
 
-Only Claude Code sessions can be imported. Subagent conversations are left
-out, and the Usage page does not count the imported turns.
+The list holds the Claude Code and the Codex sessions of that folder, for
+every account of either agent. When it holds both kinds, each row names its
+agent. Other agents' sessions cannot be imported. Subagent conversations are
+left out, and the Usage page does not count the imported turns.
 
 ## Project icons
 
@@ -120,7 +120,7 @@ logo, pick Refresh icon in Manage project.
 - [First steps](first-steps.md): your first project and conversation.
 - [Models](models.md): change the agent or model in a conversation.
 - [Secrets](secrets.md): give an agent a key without pasting it in the chat.
-- [Experiments](experiments.md): turn on an experimental feature.
+- [Experiments](experiments.md): unfinished features, in Nightly builds.
 - Technical reference: [drafts](internals/drafts.md),
   [titles](internals/titles.md), [imports](internals/imports.md),
   [project icons](internals/project-icons.md).

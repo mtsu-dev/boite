@@ -56,9 +56,7 @@ export const strings = {
     footDecision: 'Waiting for approval:',
     footDecisions: '{count} decisions waiting:',
     footShowHint: 'Scroll to the command that asks',
-    /** The strip over the composer, the same on every screen: what this conversation waits on (`delegation.waiting`), then what waits to be sent; a press unfolds them. */
-    stripQueued: '· {count} queued',
-    stripQueuedAlone: '{count} queued',
+    /** The strip over the composer, the same on every screen: what this conversation waits on (`delegation.waiting`); a press unfolds it. */
     stripOpen: 'Show each one',
     stripClose: 'Fold into one line',
     /** The strip's Stop, worded by what it stops, its tooltip saying the rest. */
@@ -76,8 +74,6 @@ export const strings = {
     sendWhenLoaded: 'Sends once the files are ready',
     stop: 'Stop',
     queued: 'Sent after the next tool, or when the turn ends',
-    /** The word before a queued prompt's text: it goes after the running turn. */
-    queuedLabel: 'Queued',
     /** A refused send held the pending messages until the user sends again. */
     queuedPaused: 'Held after a refused send',
     sendNow: 'Send now',
@@ -92,8 +88,6 @@ export const strings = {
     outboxFailed: 'Not sent: {reason}',
     outboxRetry: 'Send again',
     outboxSettings: 'The model and effort it was written with could not be set again.',
-    queuedEdit: 'Edit',
-    queuedRemove: 'Delete',
     removeQueued: 'Delete this pending message',
     picker: 'Provider and model',
     models: 'Models',
@@ -108,12 +102,6 @@ export const strings = {
     installInSettings: 'Install in Settings',
     /** The effort chip and its slider: one short word, the levels say the rest. */
     effortTitle: 'Effort',
-    /** The slider's line under the level: what the level gives and what it costs, from the lowest to the highest. */
-    /** The trade-off of one level, by its id (EffortSlider); a level of another name reads its place on the scale. */
-    effortCost: { off: 'Answers at once, no extra thinking', low: 'Quick answers, light on your limits', middle: 'Balanced depth and speed', deeper: 'Thinks it through, a little slower', high: 'Thinks longer, uses more of your limits', top: 'Deepest thinking, slowest and costliest', extended: 'Extended thinking for the hardest problems' },
-    // With a fast tier on, the line keeps the level's depth and lets the tier speak for speed, so it never says slower and faster at once.
-    effortDepth: { off: 'No extra thinking', low: 'Light thinking', middle: 'Balanced thinking', deeper: 'Thinks it through', high: 'Thinks longer', top: 'Deepest thinking', extended: 'Extended thinking' },
-    effortWithFast: '{depth}, with {fast} replying sooner for more of your limits',
     speed: 'Response speed',
     /** The reasoning chip of a model whose agent keeps its own level until one is picked. */
     effortDefault: 'Default',

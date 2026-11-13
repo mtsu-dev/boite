@@ -42,7 +42,8 @@ iOS Simulators are view only in the panel: the agent drives them itself.
 
 ### Live device stream
 
-Experimental: turn it on in Settings, Experiments, Live device stream.
+Experimental, in Nightly builds only: turn it on in Settings, Experiments,
+Live device stream.
 
 Without it, the panel shows screenshots, a few per second, and only printable
 ASCII text reaches an Android device. With it on, an Android emulator or phone

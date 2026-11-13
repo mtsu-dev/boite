@@ -1,3 +1,5 @@
+import { experimentsShown } from './experiments.svelte';
+
 /** Every Settings page, so a value read from a link can be checked before it opens one. */
 export const SETTINGS_TABS = ['home', 'advanced', 'brain', 'voice', 'general', 'machines', 'appearance', 'keyboard', 'accounts', 'plugins', 'browser', 'usage', 'limits', 'resources', 'task-manager', 'experiments', 'diagnostics'] as const;
 export type SettingsTab = typeof SETTINGS_TABS[number];
@@ -48,6 +50,8 @@ const SECTION_PAGES: Partial<Record<SettingsTab, Record<string, { page: PhoneSec
     conversations: { page: 'conversations' },
     // Quiet is a card of the conversations page.
     quiet: { page: 'conversations', owner: true },
+    // What agents may do alone sits under Quiet, on the same page.
+    'agents-alone': { page: 'conversations', owner: true },
     // How agents answer is the machine's card under the same page, under its bar.
     'agent-replies': { page: 'conversations', owner: true },
     archived: { page: 'archived' },
@@ -124,7 +128,16 @@ export function sectionsOf(view: SettingsTab, owner: boolean): SettingsTab[] {
 /** What the nav lists in a family, in its order: the pages this window may open, those merged into another left out. */
 export function navOf(family: SettingsFamily, owner: boolean): SettingsTab[] {
   const pages: readonly SettingsTab[] = SETTINGS_FAMILIES.find((one) => one.id === family)?.pages ?? [];
-  return pages.filter((tab) => (owner || !ownerOnly(tab)) && viewOf(tab, owner) === tab);
+  return pages.filter((tab) => pageAvailable(tab, owner) && viewOf(tab, owner) === tab);
+}
+
+/**
+ * Whether this window has the page at all: an owner page needs the owner, and
+ * Experiments exists only where the primary machine's build runs experiments
+ * (a Nightly or a source build, never a Release).
+ */
+export function pageAvailable(tab: SettingsTab, owner: boolean): boolean {
+  return (owner || !ownerOnly(tab)) && (tab !== 'experiments' || experimentsShown());
 }
 
 export function ownerOnly(tab: SettingsTab): boolean {
@@ -154,7 +167,8 @@ export function desktopSettings(phoneWidth: boolean): boolean {
  * levels, the nav and a page: its home is the nav's search over the first page.
  */
 export function desktopPage(tab: SettingsTab, owner: boolean): SettingsTab {
-  const view = owner || !ownerOnly(tab) ? viewOf(tab, owner) : 'home';
+  // A route to a page this window lacks (an owner page, Experiments on a Release) lands on the first page.
+  const view = pageAvailable(tab, owner) ? viewOf(tab, owner) : 'home';
   return view === 'home' ? 'general' : view;
 }
 
@@ -163,7 +177,7 @@ export function phonePage(route: SettingsTab, section: string | null | undefined
   const moved = movedTo(route, section) ?? route;
   const tab = viewOf(moved, owner);
   const page = PAGES[tab];
-  if (page.owner && !owner) return 'home';
+  if (!pageAvailable(tab, owner)) return 'home';
   if (page.phone === 'page') return tab;
   if (page.phone === 'home') return 'home';
   // A card with a page of its own opens it; any other card lands on the group's index, a card it may not open on Home.

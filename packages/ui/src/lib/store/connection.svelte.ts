@@ -13,6 +13,7 @@ import { reconcileRows, unlistedPanels } from '../thread-rows';
 import { work } from '../work-prefs.svelte';
 import { installStatesOf } from './accounts.svelte';
 import type { StoreContext } from './context';
+import { heardBuild } from '../experiments';
 import { SETTINGS_TABS, type SettingsTab } from '../settings-tabs';
 import { retainRows } from './snapshot-reads';
 import { applyThreadChanges, readThreadList } from './thread-list';
@@ -187,6 +188,7 @@ export class Connection {
         // `&working=<n>` n more threads at work, `&principal=session` answers as a paired
         // phone, so the screens a device is refused can be walked without pairing one,
         // `&missing=<method>,...` answers those methods like an older machine,
+        // `&version=2.0.0` answers as a Release core, where no experiment runs,
         // and `&load=<n>` adds n threads that stream without end (`&loadtick=<ms>`).
         s.attach(
           new FakeClient({
@@ -208,6 +210,7 @@ export class Connection {
             councilDemo: params.get('council') === '1',
             pluginArchiveDemo: params.get('pluginArchive') === '1',
             uninstalled: params.get('uninstalled') === '1',
+            ...(params.get('version') ? { version: params.get('version')! } : {}),
             ...(params.get('principal') === 'session' ? { principal: 'session' as const } : {}),
             ...(params.get('missing') ? { missing: params.get('missing')!.split(',') } : {})
           })
@@ -469,6 +472,8 @@ export class Connection {
       const core = await client.connect();
       if (!this.ctx.currentClient(client, generation)) return;
       this.core = core;
+      // The primary machine's build decides which experiments exist; a client that reports no state says it here.
+      heardBuild(s, core.version);
       this.clockOffset = client.clockOffset ?? 0;
       // Before the landing: a draft it opens unfolds its project over the restored folds.
       this.ctx.projects.restoreFolds();

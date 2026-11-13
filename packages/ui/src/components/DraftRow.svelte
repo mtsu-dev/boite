@@ -58,6 +58,8 @@
   .draft[data-queued='waiting'] :global(svg) { color: var(--color-muted-foreground); }
   .draft[data-queued='starting'] :global(svg) { color: var(--color-foreground); }
   .draft.failed :global(svg) { color: var(--color-danger); }
-  .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+  /* No width of its own: a long draft takes what the row has left and is cut there. Sized by
+     its text, it widened the whole card and pushed the rows' states past the edge. */
+  .title { flex: 1 1 0; width: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
   .mark { width: 8px; height: 8px; flex: none; border-radius: 50%; border: 1.5px dashed var(--color-muted-foreground); }
 </style>

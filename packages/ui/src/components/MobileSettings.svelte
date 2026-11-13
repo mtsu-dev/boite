@@ -19,6 +19,7 @@
   import QuotaMachineScope from './QuotaMachineScope.svelte';
   import ResourcesPage from './ResourcesPage.svelte';
   import QuietCard from './QuietCard.svelte';
+  import AgentsAloneCard from './AgentsAloneCard.svelte';
   import TaskManagerLoader from './TaskManagerLoader.svelte';
   import MachinesPage from './MachinesPage.svelte';
   import PhoneSettings from './PhoneSettings.svelte';
@@ -35,6 +36,7 @@
   import { tick, type Snippet } from 'svelte';
   import { holdSettingsCard, revealSettingsCard } from '../lib/settings-flash';
   import { phonePage } from '../lib/settings-tabs';
+  import { experimentsShown } from '../lib/experiments.svelte';
   import { PageScope, providePageScope } from '../lib/page-scope.svelte';
   import { readTheme } from '../lib/theme';
   import { activeLocale } from '../lib/i18n.svelte';
@@ -253,7 +255,7 @@
           <!-- System holds one card on a phone, the machine's compaction: a paired phone has none to show. -->
           {#if target.owner}{@render row('settings-tab-advanced', strings.settings.tabs.advanced, () => store.showSettings('advanced'), 'advanced')}{/if}
           <!-- The phone follows the desktop app's experiments until it flips one here, and can follow it again from this page. -->
-          {@render row('settings-tab-experiments', strings.settings.tabs.experiments, () => store.showSettings('experiments'), 'experiments')}
+          {#if experimentsShown()}{@render row('settings-tab-experiments', strings.settings.tabs.experiments, () => store.showSettings('experiments'), 'experiments')}{/if}
           <!-- The task manager is Diagnostics' last section (lib/settings-tabs.ts); a paired phone, without the logs, opens it alone. -->
           {#if store.owner}{@render row('settings-tab-diagnostics', strings.diagnostics.heading, () => store.showSettings('diagnostics'), 'diagnostics')}
           {:else}{@render row('settings-tab-task-manager', strings.taskManager.title, () => store.showSettings('task-manager'), 'task-manager')}{/if}
@@ -318,7 +320,7 @@
         <!-- General's Conversations card, the switches this phone keeps; the list groups from its own display options. -->
         <div class="page"><section class="card" id="settings-conversations"><h2><span class="ui-label">{strings.settings.inConversation}</span><CardScope /></h2><ConversationSwitches part="conversation" phone /></section>
           <!-- How agents answer and Quiet change one machine: the first one's scope phrase holds the picker, the bar above keeps its notes. -->
-          {#if target.owner}{#if bar}<div class="bar inline">{@render (pick && notes ? notes : bar)()}</div>{/if}<AgentRepliesSettings store={target} /><QuietCard store={target} />{/if}
+          {#if target.owner}{#if bar}<div class="bar inline">{@render (pick && notes ? notes : bar)()}</div>{/if}<AgentRepliesSettings store={target} /><QuietCard store={target} /><AgentsAloneCard store={target} />{/if}
         </div>
       {:else if shown === 'brain' && target.owner}
         <BrainPage store={target} />

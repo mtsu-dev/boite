@@ -14,7 +14,7 @@ test('the owner creates and edits monthly, yearly and single-date reminders on d
     const owner = await h.connect();
     const accountId = (await owner.call('accounts.list', {})).find(a => a.providerId === 'echo')!.id;
     const { agent } = await makeAgent(h, owner, { name: 'Mira', instructions: '', selection: { providerId: 'echo', accountId, model: 'echo', effort: null, permissionMode: 'default' } });
-    page = await BrowserPage.launch({ url: `${h.url}/?token=${h.token}`, experiments: ['resident-agents'], windowSize: { width: 1440, height: 1000 } });
+    page = await BrowserPage.launch({ url: `${h.url}/?token=${h.token}`, windowSize: { width: 1440, height: 1000 } });
     const id = (name: string) => `[data-testid="${name}"]`;
     const artifacts = join(import.meta.dir, '.artifacts', 'agent-calendar');
     await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });

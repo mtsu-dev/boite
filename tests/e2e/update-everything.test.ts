@@ -29,7 +29,7 @@ beforeEach(async () => {
 afterEach(async () => { await page?.close(); }, 15_000);
 afterAll(async () => { await server?.close(); }, 30_000);
 
-test('a release found opens the card bottom left at once, without downloading, and its close button puts it off until a newer one', async () => {
+test('a release found opens the card beside its rail button at once, without downloading, and its close button puts it off until a newer one', async () => {
   await page.navigate(`${base}${fixture}`);
   await page.waitFor(`window.__boiteTest?.workspace.machines.length === 2 && document.querySelector('${id('updates-card')}')`);
   // Nothing was downloaded to make it appear: the app's release is offered as found.
@@ -39,17 +39,17 @@ test('a release found opens the card bottom left at once, without downloading, a
   expect(rows.map((row) => row.part)).toEqual(expect.arrayContaining(['app', 'boite', 'claude', 'codex']));
   expect(rows.every((row) => !/Downloading|Updating/.test(row.text))).toBe(true);
   expect(await page.text(id('updates-card'))).toContain('then asks to restart');
-  // Bottom left: the card's left edge on the app rail's, its bottom just above the rail's foot, where its button is.
+  // Beside its button: right of the app rail, over nothing of it, its foot on the button's, growing upward.
   await page.evaluate('Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))');
-  const place = await page.evaluate<{ left: number; gap: number }>(`(() => {
+  const place = await page.evaluate<{ left: number; foot: number }>(`(() => {
     const card = document.querySelector('${id('updates-card')}').getBoundingClientRect();
     const rail = document.querySelector('${id('app-rail')}').getBoundingClientRect();
-    const foot = document.querySelector('${id('app-rail')} .foot').getBoundingClientRect();
-    return { left: Math.round(card.left - rail.left), gap: Math.round(foot.top - card.bottom) };
+    const button = document.querySelector('${id('nav-updates')}').getBoundingClientRect();
+    return { left: Math.round(card.left - rail.right), foot: Math.round(card.bottom - button.bottom) };
   })()`);
-  expect(place.left).toBeLessThan(24);
-  expect(place.gap).toBeGreaterThanOrEqual(0);
-  expect(place.gap).toBeLessThan(16);
+  expect(place.left).toBeGreaterThanOrEqual(0);
+  expect(place.left).toBeLessThan(16);
+  expect(Math.abs(place.foot)).toBeLessThanOrEqual(2);
   expect(await page.evaluate(`document.querySelector('${id('nav-updates-dot')}') !== null`)).toBe(true);
   // Two buttons: this app alone, or everything.
   expect(await page.evaluate(`[...document.querySelectorAll('${id('updates-card')} footer button')].map(b => b.dataset.testid)`)).toEqual(['updates-app', 'updates-run']);

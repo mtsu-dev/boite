@@ -11,6 +11,7 @@ import { holdContactMail } from './fake-client/contact-hold';
 import { seedIdle, seedWorking } from './fake-client/working-seed';
 import { sweepMergedPrFixtures, type MergedPrFixture } from './fake-client/merged-pr-archive';
 import {
+  effectiveExperiments,
   RPC_CHUNK_BYTES,
   RpcErrorCode,
   StreamGate,
@@ -461,10 +462,10 @@ export class FakeClient implements ObservableClient {
     reconcileShared(this.#ctx);
   }
 
-  /** The desktop app on the fake machine reporting its experiments, as the core's book announces a change. */
+  /** The desktop app on the fake machine reporting its experiments, as the core's book announces a change: in force in this build, and as chosen. */
   reportDesktopExperiments(experiments: ExperimentId[]): void {
     this.#ctx.desktopExperiments = [...experiments];
-    this.#ctx.emit('client.desktopExperiments', { experiments: [...experiments] });
+    this.#ctx.emit('client.desktopExperiments', { experiments: effectiveExperiments(experiments, this.#ctx.core.version), chosen: [...experiments] });
   }
 
   /** The fake machine's addresses changing, as the core's network watch announces it to owner windows. */
@@ -477,7 +478,7 @@ export class FakeClient implements ObservableClient {
     this.#ctx.policy = structuredClone(policy);
     applyPolicy(this.#ctx);
     this.#ctx.emit('policy.changed', structuredClone(policy));
-    this.#ctx.emit('settings.updated', { ...this.#ctx.settings });
+    this.#ctx.emit('settings.updated', this.#ctx.settingsInForce());
     this.#ctx.emit('providers.updated', { loaded: structuredClone(this.#ctx.providers), rejected: [] });
   }
 

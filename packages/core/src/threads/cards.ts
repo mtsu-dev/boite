@@ -319,7 +319,7 @@ export class ThreadCards {
         const field = (error.data as { field?: unknown } | undefined)?.field;
         return { ok: false, message: error.message, field: typeof field === 'string' ? field : 'value' };
       }
-    }, open, this.#core.clients.current(), machine);
+    }, open, this.#core.clients.current(), machine, this.#core.version);
     if (!checked.ok) throw refused(checked.message, checked.data);
     const { reason, setting, options } = checked;
     const { questionId } = this.drawAsync(thread, { text: reason, options, allowText: false, multiple: false, async: true, setting });

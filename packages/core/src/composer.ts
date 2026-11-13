@@ -1,4 +1,5 @@
 import type { ComposerChoice, ComposerQueuedPrompt, ComposerRecord, ComposerValue, RpcParams, ThreadSummary } from '@boite/contracts';
+import { effectiveExperiments } from '@boite/contracts';
 import type { Core } from './core.ts';
 import type { Connection } from './router.ts';
 import { promptOrigin } from './client-preferences.ts';
@@ -239,7 +240,7 @@ export class Composer {
             this.#core.activity.set({ threadId: id, ...activity, attachments }, undefined, choice);
           } else this.#core.threads.startTurn(id, { prompt: batch.text, attachments, previews: batch.previewReferences }, { kind: 'user', requestId: batch.requestId, sentFrom: batch.entries[0]!.sentFrom ?? null }, { expectedSelectionVersion: current.selectionVersion ?? 0, choice,
             // Decided from the experiments the prompt was queued with, so a restart keeps what it meant.
-            autoGoal: startsAutoGoal(batch.text, item.experiments, this.#core.settings.get().autoGoalMinChars) ? batch.text : undefined });
+            autoGoal: startsAutoGoal(batch.text, effectiveExperiments(item.experiments ?? [], this.#core.version), this.#core.settings.get().autoGoalMinChars) ? batch.text : undefined });
           this.#complete(section, id, batch.entries.map(entry => entry.id));
         });
       } catch (error) {
