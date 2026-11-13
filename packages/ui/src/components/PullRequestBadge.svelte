@@ -4,7 +4,7 @@
   import { openExternal } from '../lib/links';
   import { pullRequestLabel } from './ThreadHeadline.svelte';
 
-  /** Recent's place line: the thread's pull request, its number in its state's tone; a click opens it. */
+  /** A thread row's place line (ThreadCard.svelte, MobileThreadRow.svelte): the thread's pull request, its number in its state's tone; a click opens it. */
   let { pullRequest }: { pullRequest: NonNullable<ThreadSummary['pullRequest']> } = $props();
   const label = $derived(pullRequestLabel(pullRequest));
   function open(event: MouseEvent) {

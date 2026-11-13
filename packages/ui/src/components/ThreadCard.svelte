@@ -31,7 +31,7 @@
     hidden = false,
     showDone = false,
     compact = false,
-    recent = false,
+    classic = false,
     at,
     lead,
     detail,
@@ -49,9 +49,9 @@
     showDone?: boolean;
     /** Recent's flat list: the project's tile leads the row while no place line names the project (`where`). */
     compact?: boolean;
-    /** Recent's card: the title with its state or time, and under it the machine, the project, the pull request and
-        the branch (`where` says which of the first two the list needs). */
-    recent?: boolean;
+    /** The card from before the redraw, in Recent and under a project: the title with its state or time, and under it
+        the machine and the project (`where` says which the list needs), the pull request and the branch, always shown. */
+    classic?: boolean;
     /** Activity's Needs you row (ActivityRow.svelte): since when, at the end of its place line. */
     at?: number;
     /** Activity: the kind line over the title, the card's one mark (ActivityKind.svelte). */
@@ -81,8 +81,8 @@
   // A move asked for while the turn runs, until the turn ends and applies it.
   let pending = $derived(pendingLine(thread));
   let doneAllowed = $derived(canMarkDone(owner, thread));
-  /** Recent's second line: only when it names something, the branch then rides along. */
-  const meta = $derived(recent && (!!where || pullRequest !== null));
+  /** The classic card's second line: only when it names a place or a pull request, the branch then rides along. */
+  const meta = $derived(classic && (!!where || pullRequest !== null));
   /** The details the row only shows under the pointer or the keyboard, in its tooltip at rest: the pull request, the branch, the time. */
   let tip = $derived([thread.title, pullRequest && pullRequestLabel(pullRequest), thread.branch, ago(thread.lastUserMessageAt ?? thread.createdAt, now)].filter(Boolean).join('\n'));
 
@@ -145,7 +145,7 @@
     class:unread={thread.unread}
     class:pinned={thread.pinned}
     class:compact
-    class:recent
+    class:classic
     class:meta
     class:feed={detail !== undefined}
     class:led={lead !== undefined}
@@ -176,20 +176,20 @@
            kind (work going on under a sub-agent that asks) wears the row's mark in that glyph's place. -->
       {#if detail}
         <span class="title-line">{#if !lead && stateForm(kind) !== null}<span class="lone-mark"><ThreadState {thread} {now} subagents={rowAsks(owner, thread.id)} {away} mark /></span>{/if}<ThreadHeadline {owner} {thread} {open} {pullRequest} offline={away} /></span>
-      {:else if recent}
+      {:else if classic}
         <ThreadHeadline {owner} {thread} {now} {open} fit offline={away} />
       {:else}
         <ThreadHeadline {owner} {thread} {now} {open} tile={compact && !where ? project : undefined} {pullRequest} fit offline={away} at={thread.lastUserMessageAt ?? thread.createdAt} />
       {/if}
       <!-- Where the row lives, under the title: the project, the machine among several, Offline once. -->
-      {#if !recent && (where || chip || (detail && at !== undefined))}
+      {#if !classic && (where || chip || (detail && at !== undefined))}
         <span class="where" data-testid="thread-where" title={where?.text}>{#if where?.project}<span class="ui-label" use:wordFit={where.project}></span>{/if}{#if where?.host}<MachinePlace host={where.host} />{/if}{#if chip}<span class="away" data-testid="thread-offline">{strings.connection.offline}</span>{/if}{#if detail && at !== undefined}<time class="since ui-label" title={exactTime(at)}>{ago(at, now)}</time>{/if}</span>
       {/if}
       {#if pending}
         <span class="pending" data-testid="thread-pending" title={pending}><FolderInput size={12} /><span class="ui-label">{pending}</span></span>
       {/if}
     </button>
-    <!-- Recent: the line under the title, over the row's bottom padding so the whole card stays one target. -->
+    <!-- The classic card: the line under the title, over the row's bottom padding so the whole card stays one target. -->
     {#if meta}
       <div class="metadata" data-testid="thread-where" title={where?.text}>
         {#if where?.host}<span class="machine" class:away={where.host.away} title={where.host.text} aria-label={where.host.text}><MachineIcon icon={machine.icon} os={owner.core?.os} size={12} /></span>{/if}
@@ -380,15 +380,15 @@
   .thread:is(:hover, :focus-within) :global(.headline .when:not(.state)) { visibility: hidden; }
   /* The time leaves its room to the title rather than to an empty slot. */
   .thread:not(.feed):is(:hover, :focus-within) :global(.headline > .at) { display: none; }
-  /* Recent's card, as it was before the redraw: one line for the title, its state or its time at the end, and the
+  /* The classic card, as it was before the redraw: one line for the title, its state or its time at the end, and the
      place line under it. */
-  .recent { --pad-x: 10px; }
-  .recent .row { min-height: var(--row); padding: 8px var(--pad-x); gap: 7px; }
-  .recent.meta .row { min-height: calc(var(--row) + 22px); padding: 9px 10px 28px; }
-  .thread.recent .row :global(.headline) { align-items: center; padding-top: 0; }
-  .thread.recent .row :global(.headline .title) { display: block; white-space: nowrap; -webkit-line-clamp: none; line-clamp: none; padding-bottom: 0.5em; margin-bottom: -0.5em; }
-  .thread.recent .row :global(.headline > :is(.when, .at, .bot, .draft, .pin, .pr, .tile)) { margin-top: 0; }
-  .recent :is(.actions, .done) { top: calc(19px - var(--act) / 2); }
+  .classic { --pad-x: 10px; }
+  .classic .row { min-height: var(--row); padding: 8px var(--pad-x); gap: 7px; }
+  .classic.meta .row { min-height: calc(var(--row) + 22px); padding: 9px 10px 28px; }
+  .thread.classic .row :global(.headline) { align-items: center; padding-top: 0; }
+  .thread.classic .row :global(.headline .title) { display: block; white-space: nowrap; -webkit-line-clamp: none; line-clamp: none; padding-bottom: 0.5em; margin-bottom: -0.5em; }
+  .thread.classic .row :global(.headline > :is(.when, .at, .bot, .draft, .pin, .pr, .tile)) { margin-top: 0; }
+  .classic :is(.actions, .done) { top: calc(19px - var(--act) / 2); }
   .metadata { position: absolute; bottom: 9px; left: 10px; right: 10px; display: flex; align-items: center; gap: 9px; min-width: 0; pointer-events: none; font-size: var(--text-xs); color: var(--color-muted-foreground); }
   .metadata > span { display: flex; align-items: center; gap: 4px; min-width: 0; }
   .metadata span span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -453,28 +453,31 @@ test('the project cards float a thread that waits on the user, Recent keeps stri
   store.threads.find((t) => t.id === last)!.status = 'waiting';
   await waitFor(() => rowsOf()[0] === last);
   expect(document.querySelector('[data-testid=thread-project]')).toBeNull();
-  // One line per row: no provider glyph and no branch line; the branch rides in the row's tooltip.
+  // The card from before the redraw: a thread without a pull request keeps one line, its branch in the
+  // row's tooltip; a thread with one shows its number and branch on a second line, no hover needed.
   const branched = store.threadsOf(project.id).find((t) => !t.pullRequest)!;
   branched.branch = 'boite/port-the-scheduler';
   const row = () => document.querySelector<HTMLElement>(`[data-testid=thread-row][data-thread-id="${branched.id}"]`)!;
   await waitFor(() => { const lines = row()?.title.split('\n') ?? []; return lines[0] === branched.title && lines.includes('boite/port-the-scheduler'); });
-  expect(document.querySelectorAll('[data-testid=thread-provider], [data-testid=thread-branch]')).toHaveLength(0);
-  expect(row().closest('.thread')!.querySelector('[data-testid=thread-pr]')).toBeNull();
-  // Only a thread with a pull request shows the mark, its number at the row's end.
-  for (const mark of document.querySelectorAll('[data-testid=thread-pr]')) expect(mark.textContent).toMatch(/^#\d+$/);
+  expect(document.querySelectorAll('[data-testid=thread-provider]')).toHaveLength(0);
+  expect(row().closest('.thread')!.querySelector('[data-testid=thread-branch], [data-testid=thread-pr]')).toBeNull();
+  const pulled = store.threads.find((t) => t.pullRequest && t.branch && document.querySelector(`[data-testid=thread-row][data-thread-id="${t.id}"]`))!;
+  const card = () => document.querySelector(`[data-testid=thread-row][data-thread-id="${pulled.id}"]`)!.closest('.thread')!;
+  await waitFor(() => card().querySelector('[data-testid=thread-where] [data-testid=thread-pr]')?.textContent === `#${pulled.pullRequest!.number}`);
+  expect(card().querySelector('[data-testid=thread-where] [data-testid=thread-branch]')?.textContent).toBe(pulled.branch);
 
   workspace.view = 'recent';
   // Recent is a history: under its pins, strictly newest first; the waiting thread keeps its place by
   // time and says it needs the user by its mark, so no row sits out of time order.
   const time = (id: string | null) => { const t = store.threads.find((thread) => thread.id === id)!; return t.lastUserMessageAt ?? t.createdAt; };
-  await waitFor(() => rowsOf().includes(last) && document.querySelector('.thread.recent [data-testid=thread-where]') !== null);
+  await waitFor(() => rowsOf().includes(last) && document.querySelector('.thread.classic [data-testid=thread-where]') !== null);
   const unpinned = rowsOf().filter((id) => !store.threads.find((t) => t.id === id)?.pinned);
   expect(unpinned.map(time)).toEqual(unpinned.map(time).sort((a, b) => b - a));
   // Recent keeps its card from before the redraw: no tile, and under the title the project's folder and name,
   // then the branch at the line's end.
-  const cards = () => Array.from(document.querySelectorAll('.thread.recent'));
+  const cards = () => Array.from(document.querySelectorAll('.thread.classic'));
   await waitFor(() => cards().length > 0 && cards().every((card) => card.querySelector('[data-testid=thread-project]') !== null));
-  expect(document.querySelector('.thread.recent [data-testid=project-tile]')).toBeNull();
+  expect(document.querySelector('.thread.classic [data-testid=project-tile]')).toBeNull();
   await waitFor(() => row().closest('.thread')!.querySelector('[data-testid=thread-branch]')?.textContent === 'boite/port-the-scheduler');
   expect(document.querySelector(`[data-thread-id="${last}"] [data-testid=thread-state]`)?.getAttribute('data-state')).toBe('waiting');
 });
