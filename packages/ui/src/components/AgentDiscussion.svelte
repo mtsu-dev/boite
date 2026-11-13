@@ -230,12 +230,12 @@
   .msg:not(.first) .bubble { border-top-left-radius: var(--radius-sm); }
   .msg.right .bubble { border-bottom-left-radius: var(--radius-lg); border-bottom-right-radius: var(--radius-sm); background: var(--color-surface-2); }
   .msg.right:not(.first) .bubble { border-top-left-radius: var(--radius-lg); border-top-right-radius: var(--radius-sm); }
-  .msg.resident .bubble { border-color: color-mix(in oklch, var(--color-resident) 45%, transparent); border-left: 2px solid var(--color-resident); background: var(--color-resident-soft); }
+  .msg.resident .bubble { border-color: color-mix(in oklch, var(--color-resident) 45%, transparent); background: var(--color-resident-soft); }
   .msg.resident .label { color: var(--color-resident); }
   .msg.failed .bubble { border-style: dashed; }
   .msg.flash .bubble { box-shadow: 0 0 0 2px var(--color-muted-foreground); }
   .text { margin: 0; font-size: var(--text-sm); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
-  .quote { display: flex; align-items: center; gap: 5px; width: 100%; height: auto; min-height: 0; margin: 0 0 5px; padding: 3px 7px; border: 0; border-left: 2px solid var(--color-edge); border-radius: var(--radius-sm); background: var(--color-hover); color: var(--color-muted-foreground); font-size: var(--text-xs); text-align: left; }
+  .quote { display: flex; align-items: center; gap: 5px; width: 100%; height: auto; min-height: 0; margin: 0 0 5px; padding: 3px 7px; border: 0; border-radius: var(--radius-sm); background: var(--color-hover); color: var(--color-muted-foreground); font-size: var(--text-xs); text-align: left; }
   .quote:hover { color: var(--color-foreground); }
   .quote :global(svg) { flex: none; }
   .quote > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

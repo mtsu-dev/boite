@@ -14,7 +14,12 @@ export interface Project {
   createdAt: Timestamp;
   /** Precheck Worktree in new drafts. An absent value means off; existing drafts keep their choice. */
   worktreeDefault?: boolean;
-  /** Automatically hide a quiescent worktree conversation after its exact PR merges. Missing means enabled. */
+  /**
+   * Once a quiescent worktree conversation's pull requests are all merged or
+   * closed, ask its agent whether the thread can go to Done; the agent decides
+   * (`agent.done`). Nothing is put away by itself. Missing means enabled. The
+   * name is older than this meaning and stays for clients of other versions.
+   */
   autoArchiveMergedPr?: boolean;
   /**
    * Remove a worktree the core created once every thread in it is archived or

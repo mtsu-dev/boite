@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, expect, test } from 'bun:test';
 import { ATTACHMENTS_PER_TURN, ATTACHMENTS_TOTAL_MAX_BYTES, decodedBytes, type Attachment, type ImageAttachment, type MessagePart, type ProviderDescriptor } from '@boite/contracts';
 import { FileReferences, fileReference, plannedFileReference } from '../src/attachments.ts';
-import { continuationInput, messageExcerpt, switchBackInput, switchGapFits, TOOL_ENTRY_LIMIT, TOOL_LIMIT, toolPointer } from '../src/continuation.ts';
+import { continuationInput, messageExcerpt, OMITTED_IDS, OMITTED_NOTE_LIMIT, omittedNote, RECENT_ROOM, stepTail, switchBackInput, switchGapFits, tailInput, TOOL_ENTRY_LIMIT, TOOL_LIMIT, toolPointer, type OmittedEntry } from '../src/continuation.ts';
 import { Journal } from '../src/journal.ts';
 
 let dir: string;
@@ -23,6 +23,7 @@ const provider = { name: 'Echo', capabilities: { images: true } } as ProviderDes
 /** The single full walk `continuationInput` made before it read only the kept messages, kept as the reference. */
 function fullWalk(threadId: string, upTo: string | null, input: { prompt: string; attachments: Attachment[]; moved?: true }, reference: (file: Extract<MessagePart, { type: 'file' }>) => string): { prompt: string; attachments: Attachment[] } {
   const first: string[] = [], recent: string[] = [], images: ImageAttachment[] = [];
+  const kept: OmittedEntry[] = [], left: OmittedEntry[] = [];
   let firstSize = 0, recentSize = 0, omitted = 0, imageCount = 0, moved = input.moved === true;
   for (const message of journal.walkMessages(threadId)) {
     if (upTo !== null && message.turnId === upTo) break;
@@ -42,9 +43,11 @@ function fullWalk(threadId: string, upTo: string | null, input: { prompt: string
       firstSize += entry.length;
     } else {
       recent.push(entry);
+      kept.push({ id: message.id, role: message.role });
       recentSize += entry.length;
-      while (recentSize > 64_000 && recent.length > 1) {
+      while (recentSize > RECENT_ROOM && recent.length > 1) {
         recentSize -= recent.shift()!.length;
+        left.unshift(kept.shift()!);
         omitted += 1;
       }
     }
@@ -53,7 +56,7 @@ function fullWalk(threadId: string, upTo: string | null, input: { prompt: string
   const weigh = (list: Attachment[]): number => list.reduce((sum, one) => sum + decodedBytes(one.data), 0);
   while (images.length && weigh(images) + weigh(input.attachments) > ATTACHMENTS_TOTAL_MAX_BYTES) images.shift();
   if (first.length === 0 && recent.length === 0) return input;
-  const gap = omitted ? `\n[${omitted} older messages omitted between the opening and recent exchanges.]\n` : '\n';
+  const gap = omitted ? `\n${omittedNote(threadId, omitted, 'older messages omitted between the opening and recent exchanges', left)}\n` : '\n';
   const imageNote = imageCount > 0 ? `\n${images.length} of ${imageCount} historical images follow, oldest to newest, then the current prompt's attachments. Other image placeholders are references only.\n` : '';
   const place = moved ? 'The thread moved to another folder during it: the latest move note says which folder you work in now.' : 'in the same working directory.';
   return {
@@ -123,10 +126,10 @@ test('the bounded walks build the prompt and images the full walk built, byte fo
 test('a switch back fits its gap only when the prompt it builds carries all of it, file paths included', () => {
   const put = (id: string, turnId: string, role: 'user' | 'assistant', parts: MessagePart[]): void => journal.putMessage({ id, threadId: 'thr_gap', turnId, role, state: 'complete', createdAt: 0, parts });
   put('anchor', 'turn-a', 'assistant', [{ type: 'text', text: 'the session ends here' }]);
-  // 63,950 characters of history entries with a short file placeholder, past 64,000 once the file is its copy's path.
+  // 62,350 characters of history entries with a short file placeholder, past the 62,400 of `RECENT_ROOM` once the file is its copy's path.
   put('with-file', 'turn-b', 'user', [{ type: 'text', text: 'see file' }, { type: 'file', name: 'notes.txt', mimeType: 'text/plain', data: Buffer.from('notes').toString('base64') }]);
   for (let index = 0; index < 5; index++) put(`pad-${index}`, 'turn-b', 'assistant', [{ type: 'text', text: 'x'.repeat(11_000) }]);
-  put('pad-last', 'turn-b', 'assistant', [{ type: 'text', text: 'y'.repeat(8_775) }]);
+  put('pad-last', 'turn-b', 'assistant', [{ type: 'text', text: 'y'.repeat(7_175) }]);
   const anchor = { turnId: 'turn-a', afterPart: null };
   const built = switchBackInput(journal, 'thr_gap', anchor, 'turn-back', { prompt: 'back', attachments: [] }, provider, part => fileReference(dir, part));
   expect(built.prompt).toContain('earlier messages omitted');
@@ -175,4 +178,36 @@ test('tool output keeps to its own budget, with a pointer to the whole of it, an
   expect(last.length).toBeLessThan(1_510 + TOOL_ENTRY_LIMIT + 6 * 160);
   // A move carries no pointer: the journal it would read stays on the other machine.
   expect(messageExcerpt(journal.getMessage('a-0')!)).toContain(`[${output(0).length - TOOL_LIMIT} of ${output(0).length} output characters omitted.]`);
+});
+
+test('a history that leaves messages out names the newest of them with the command that reads one, inside its bound', () => {
+  const put = (threadId: string, index: number, turnId: string): void => journal.putMessage({ id: `m-${index}`, threadId, turnId, role: index % 2 ? 'assistant' : 'user', state: 'complete', createdAt: index, parts: [{ type: 'text', text: `say-${index} ${'w'.repeat(3_000)}` }] });
+  for (let index = 0; index < 80; index++) put('thr_cut', index, index === 0 ? 'turn-a' : 'turn-b');
+  const input = { prompt: 'Current request', attachments: [] };
+  const { prompt } = continuationInput(journal, 'thr_cut', 'next', input, provider);
+  const note = /\[(\d+) older messages omitted between the opening and recent exchanges\. (.*)\]/.exec(prompt)!;
+  // Measured on 2026-11-13: this prompt was 73,190 characters with the bare count and one more message in it.
+  console.log(`fresh session over 80 messages: ${prompt.length} characters, note of ${note[0].length}`);
+  expect(note[0].length).toBeLessThanOrEqual(OMITTED_NOTE_LIMIT);
+  const history = prompt.slice(prompt.indexOf('<conversation-history>'), prompt.indexOf('</conversation-history>'));
+  expect(history.length).toBeLessThanOrEqual(12_000 + 64_000 + 80);
+  // The messages left out are 3 to 59: the note names the 20 newest, oldest first, and says reading is optional.
+  expect(Number(note[1])).toBe(57);
+  expect(note[2]).toBe(`Reading them is optional: do it only when the current request needs a detail one holds, with boite threads read thr_cut --entry <id>. The newest ${OMITTED_IDS}, oldest first: ${Array.from({ length: 20 }, (_, at) => `${at % 2 ? 'assistant' : 'user'} m-${40 + at}`).join(', ')}`);
+  expect(prompt).not.toContain('say-59 ');
+  expect(prompt).toContain('say-60 ');
+  // The exchanges after a point (a compaction made ahead, a switch back, a swap during a turn) name theirs the same way.
+  const anchor = { turnId: 'turn-a', afterPart: null };
+  const named = `[59 earlier messages omitted. Reading them is optional: do it only when the current request needs a detail one holds, with boite threads read thr_cut --entry <id>. The newest 20, oldest first: user m-40, assistant m-41,`;
+  expect(tailInput(journal, 'thr_cut', anchor, 'next', input).prompt).toContain(named);
+  expect(switchBackInput(journal, 'thr_cut', anchor, 'next', input, provider).prompt).toContain(named);
+  expect(stepTail(journal, 'thr_cut', anchor)).toContain(named);
+  // Few enough to name them all, and an id the shell would split stays one word.
+  expect(omittedNote('thr_x', 2, 'earlier messages omitted', [{ id: "b c's", role: 'assistant' }, { id: 'a', role: 'user' }])).toBe("[2 earlier messages omitted. Reading them is optional: do it only when the current request needs a detail one holds, with boite threads read thr_x --entry <id>. They are: user a, assistant 'b c'\\''s']");
+  // Ids too long for the room are left to the count.
+  const long = omittedNote('thr_x', 30, 'earlier messages omitted', Array.from({ length: 20 }, (_, at) => ({ id: `${at}`.padEnd(100, 'i'), role: 'assistant' as const })));
+  expect(long.length).toBeLessThanOrEqual(OMITTED_NOTE_LIMIT);
+  const fitted = /The newest (\d+), oldest first: assistant (\d+)i/.exec(long)!;
+  expect(Number(fitted[1])).toBeLessThan(OMITTED_IDS);
+  expect(Number(fitted[2])).toBe(Number(fitted[1]) - 1);
 });

@@ -79,7 +79,6 @@
     white-space: pre-line;
     margin: 0 0 8px;
     padding: 8px 12px;
-    border-left: 2px solid var(--color-edge);
     border-radius: var(--radius-sm);
     background: var(--color-surface-2);
     color: var(--color-muted-foreground);

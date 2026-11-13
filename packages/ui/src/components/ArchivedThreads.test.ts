@@ -59,7 +59,7 @@ test('the settings archive keeps bot workers across live updates and restores th
   expect(row(threadId)?.querySelector('[data-testid=archived-open]')).toBeTruthy();
 });
 
-test('the mounted settings archive shows merged PR identity/time, reloads reason and restores the retained conversation', async () => {
+test('the mounted settings archive shows an older core\'s merged PR identity/time, reloads reason and restores the retained conversation', async () => {
   const { store, client } = await ready();
   const account = (await client.call('accounts.list', {})).find(account => account.providerId === 'echo')!;
   const thread = await client.call('threads.create', { projectId: 'p-boite', providerId: 'echo', accountId: account.id, title: 'Merged conversation', worktree: { branch: 'merged-ui-fixture' } });
@@ -73,7 +73,8 @@ test('the mounted settings archive shows merged PR identity/time, reloads reason
   await draw();
   expect(document.querySelector('[data-testid=archived-empty]')).not.toBeNull();
   const loaded = calls.mock.calls.length;
-  expect(await client.sweepMergedPrArchives()).toBe(1);
+  // This version asks the agent; a `pr-merged` archive is one an older core made.
+  client.setMergedPrArchive(thread.id, { number: 7, url: 'https://github.com/example/repo/pull/7' });
   await settle();
   expect(calls.mock.calls.slice(loaded).some(([method]) => method === 'threads.list')).toBe(false);
   const row = () => document.querySelector<HTMLElement>(`[data-thread-id="${thread.id}"]`)!;
@@ -103,10 +104,14 @@ test('the mounted settings archive shows merged PR identity/time, reloads reason
   expect(row()).toBeNull();
 });
 
-test('a mounted settings archive reconciles a late sweep and removal ahead of its initial list response', async () => {
+test('a mounted settings archive reconciles a late merged-PR question and removal ahead of its initial list response', async () => {
   const { store, client } = await ready();
   const account = (await client.call('accounts.list', {})).find(account => account.providerId === 'echo')!;
   const thread = await client.call('threads.create', { projectId: 'p-boite', providerId: 'echo', accountId: account.id, title: 'Late merged conversation', worktree: { branch: 'late-archive-fixture' } });
+  // A finished, read turn: the agent's prompt cache is warm, so the question is worth a turn.
+  const turn = await client.call('turns.start', { threadId: thread.id, prompt: 'Work on the change.' });
+  await vi.waitFor(async () => expect((await client.call('threads.get', { threadId: thread.id })).turns.find(row => row.id === turn.id)?.status).toBe('done'));
+  await client.call('threads.markRead', { threadId: thread.id });
   client.setMergedPrFixture(thread.id, { repository: 'github.com/example/repo', branch: thread.branch!, tip: 'b'.repeat(40), clean: true, candidates: [{ repository: 'github.com/example/repo', branch: thread.branch!, sha: 'b'.repeat(40), number: 8, url: 'https://github.com/example/repo/pull/8', mergedAt: '2026-10-01T13:00:00Z' }] });
   const started = deferred(), released = deferred(), call = client.call.bind(client);
   const calls = vi.spyOn(client, 'call').mockImplementation(async (method, params) => {
@@ -121,8 +126,10 @@ test('a mounted settings archive reconciles a late sweep and removal ahead of it
     await client.call('threads.remove', { threadId: 't-parser' });
   } finally { released.resolve(); }
   await settle();
-  expect([...document.querySelectorAll('[data-testid=archived-list] li')].map(row => row.getAttribute('data-thread-id'))).toEqual([thread.id]);
-  expect(document.querySelector('[data-testid=archived-list] [data-testid=archive-merged-reason]')?.textContent).toContain('Archived after PR #8 merged');
+  // The agent was asked, the thread was not put away: the archive holds neither it nor the removed one.
+  expect((await client.call('threads.get', { threadId: thread.id })).archived).toBe(false);
+  expect([...document.querySelectorAll('[data-testid=archived-list] li')].map(row => row.getAttribute('data-thread-id'))).toEqual([]);
+  expect(document.querySelector('[data-thread-id="' + thread.id + '"]')).toBeNull();
   expect(calls.mock.calls.filter(([method, params]) => method === 'threads.list' && 'includeArchived' in params && params.includeArchived)).toHaveLength(1);
 });
 
