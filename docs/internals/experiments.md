@@ -43,8 +43,35 @@ run": the version in the hello (`info.version`) is enough.
   Release it returns the settings with `cacheKeepalive` null and
   `backgroundCompaction` and `deviceStream` false, the per-type compaction
   policies included, and leaves the saved file alone, so a machine that goes
-  back to a Nightly finds its choice. `packages/core/test/feature-stages.test.ts`
-  covers it.
+  back to a Nightly finds its choice. A save on a Release never writes that
+  reading back: `keepStoredExperimentalSettings(stored, patch, version)` drops
+  the three settings from the patch and gives every per-type compaction policy
+  the background choice already stored (a type customized for the first time
+  takes the common stored one), so changing a compaction limit, or saving the
+  values the app read, stores no "off". The copy from the group's settings
+  home is the exception: `settings.follow` stores what the home holds, and
+  the client that makes the copy reads both ends with
+  `settings.get { stored: true }`, the settings as saved, so a Release home
+  never hands a Nightly follower its own reading as a choice
+  (`packages/ui/src/lib/settings-sync.ts`). The core also starts nothing new
+  in Contacts on a Release (`contacts/gate.ts`, `experimentStartRefusal`):
+  inviting, joining, granting, offering, asking, accepting a request or mail,
+  trusting a contact, storing a Tailscale key and the Contacts bot's
+  forwards are refused with the Nightly reason, while reading, refusing,
+  revoking and removing what exists still answer. The same holds for what a
+  Nightly left in the data directory: accepting an association, turning its
+  board, compute or reviewer on, a new, edited or claimed card
+  (`sharedBoard.apply`, `todos.update` on a shared card), a path override and
+  a follow-up to a compute job are refused, while declining, turning off,
+  removing a card, releasing a claim, cancelling a job and revoking go
+  through. The Contacts bot proposes no plan (`contacts.bot.askOwner` with
+  `connect` or `start`), and a Yes on a card drawn as a Nightly opens and
+  starts nothing: the build is read when the owner answers and again when the
+  plan runs, and the request goes back to the bot. A letter the bot held as a
+  Nightly is not delivered either (`contacts.bot.flag` with `deliver: true`):
+  its flag stays open, and blocking it still answers. A workflow step meets
+  the same refusal, since the compute service reads the build itself.
+  `packages/core/test/feature-stages.test.ts` covers it.
 - The app (`packages/ui/src/lib/experiments.ts`) follows the version of its
   primary machine's core: the Store `followDesktopOf` names says it on every
   hello (`heardBuild`, from `store/events.ts` and `store/connection.svelte.ts`).
@@ -57,7 +84,9 @@ run": the version in the hello (`info.version`) is enough.
   storage holds. `setExperiment` refuses an id without a switch in that build.
   The stored choice (`boite.experiments`) is never rewritten by a version: a
   device that goes back to a Nightly finds its switches. The app still reports
-  its chosen list in `client.preferences`; the core normalizes it.
+  its chosen list in `client.preferences`; the core normalizes it for its own
+  gates and tells phones the desktop app's list twice: in force in its build
+  on the historic field, and as chosen on a separate one.
 - Settings lists `listedExperiments(version)` and has no Experiments page when
   experiments do not run (`pageAvailable` in `lib/settings-tabs.ts`, desktop
   nav, search and phone list): a route or a card that points there lands on
@@ -68,7 +97,10 @@ run": the version in the hello (`info.version`) is enough.
 - The in-memory client (`lib/fake-client`) has a core version like the real
   one (`FakeClientOptions.version`, `?fake=1&version=2.0.0`), gives it to
   `checkSettingRequest` and `readSettings`, and gates teams, council and
-  automatic goals on the list in force.
+  automatic goals on the list in force. It shares the core's helpers for the
+  three experimental settings (the refusal, the reading as off, the stored
+  values a save keeps, `settings.get { stored: true }`) and for the Contacts
+  calls a Release refuses.
 
 ## Graduating an experiment
 
@@ -97,7 +129,18 @@ machine, and changes when that app does. The core answers each app's report
 (`client.preferences`) with the desktop app's experiments and announces their
 changes (`client.desktopExperiments`); a desktop app on the machine's loopback
 outranks one reached from elsewhere. Only an app on the owner's own token
-counts: a paired device that calls itself a desktop app is not followed. The
+counts: a paired device that calls itself a desktop app is not followed. Both
+carry the list twice. The historic field (`desktop` in the answer,
+`experiments` in the event) is what is in force in the core's build
+(`ClientPreferencesBook.desktopExperiments`, which the core's own gates read
+too): an app from before the stages takes that field for what is on, so a
+Release names no experiment there. The separate field (`desktopChosen` in the
+answer, `chosen` in the event) is the list as the desktop app chose it, not
+cut down (`desktopChosen`): the phone keeps that one (`desktopHeard`) and
+reads it with `effectiveExperiments` for the build that decides, so a machine
+that spends a while on a Release does not erase the followed switches. A core
+from before the separate field sends the historic one alone, and the phone
+keeps it. The
 core keeps them in memory, and the phone keeps the last set in
 `boite.experiments.desktop`, with the id of the core that named it, so a reload
 starts with it. A core that has heard no desktop app yet leaves that set in
@@ -160,8 +203,7 @@ switch.
 
 ## Teams
 
-Teams of bots ([teams](teams.md)). Teams needs Bots: its switch stays greyed
-while Bots is off, and turning Bots off turns Teams off too. The switch gates
+Teams of bots ([teams](teams.md)). The switch gates
 the `teams.*` methods and `boite team` commands on the teams a machine holds,
 on the core, which reads the desktop app's experiments, and the team lines of
 the bots' guide. A machine with its switch off lets no bot of its own enter a
@@ -186,8 +228,7 @@ round under way: its answers still come back.
 
 ## Contacts
 
-Contacts needs Bots: its switch stays greyed while Bots is off, and turning
-Bots off turns Contacts off too. Turning it on creates the Contacts bot
+Turning it on creates the Contacts bot
 ([contacts](contacts.md#the-contacts-bot)) on the window's machine and on
 every connected owner machine with a contact, once; turning it off leaves the
 bot on the core, like any bot. A paired phone only flips its own switch.

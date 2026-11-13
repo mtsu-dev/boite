@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, onTestFinished, test, vi } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
 import ExperimentsPage from './ExperimentsPage.svelte';
-import { BUILD_STORAGE_KEY, EXPERIMENTS_STORAGE_KEY, followDesktopOf, heardBuild, heardDesktop, isExperimentEnabled, readExperiments, setExperiment, subscribeExperiments, writeExperiments } from '../lib/experiments';
+import { BUILD_STORAGE_KEY, DESKTOP_STORAGE_KEY, EXPERIMENTS_STORAGE_KEY, desktopHeard, followDesktopOf, heardBuild, heardDesktop, isExperimentEnabled, readExperiments, setExperiment, subscribeExperiments, writeExperiments } from '../lib/experiments';
 import { experimentsShown } from '../lib/experiments.svelte';
 import { cardsOf, desktopPlace, phonePage } from '../lib/settings-tabs';
 import { FakeClient } from '../lib/fake-client';
@@ -207,6 +207,31 @@ test('the owner turns the live device stream and background compaction on; a pai
   expect(document.querySelector('[data-testid=background-compaction-on]')).toBeNull();
   expect(document.querySelector('[data-testid=cache-keepalive-settings]')).toBeNull();
 });
+test('a phone keeps the switches its desktop app chose through a Release, and has them again on a Nightly before any new report', async () => {
+  const client = new FakeClient({ delayMs: 0, version: RELEASE });
+  const store = new Store();
+  followDesktopOf(store);
+  onTestFinished(() => { followDesktopOf(null); store.detach(); client.close(); });
+  // The Release core says both: the list in force, as an app from before the stages reads it, and the list as chosen beside it.
+  client.reportDesktopExperiments(['whip', 'teams']);
+  store.attach(client);
+  await store.connect();
+  for (let i = 0; i < 10; i++) { await Promise.resolve(); flushSync(); }
+  expect(JSON.parse(window.localStorage.getItem(DESKTOP_STORAGE_KEY)!).experiments).toEqual(['whip', 'teams']);
+  expect(readExperiments()).toEqual(FINISHED);
+  expect(await client.call('client.preferences', { app: 'app-old-0001', language: 'en', experiments: [], labels: {} })).toEqual({ ok: true, desktop: FINISHED, desktopChosen: ['whip', 'teams'] });
+  // A flip on the desktop says both lists, and the phone keeps the chosen one.
+  const said: unknown[] = [];
+  client.on('client.desktopExperiments', (payload) => said.push(payload));
+  client.reportDesktopExperiments(['whip', 'teams']);
+  for (let i = 0; i < 10; i++) { await Promise.resolve(); flushSync(); }
+  expect(said).toEqual([{ experiments: FINISHED, chosen: ['whip', 'teams'] }]);
+  expect(JSON.parse(window.localStorage.getItem(DESKTOP_STORAGE_KEY)!).experiments).toEqual(['whip', 'teams']);
+  // The machine goes back to a Nightly: the hello alone brings the followed switches back.
+  heardBuild(store, NIGHTLY);
+  expect([isExperimentEnabled('whip'), isExperimentEnabled('teams'), isExperimentEnabled('debates')]).toEqual([true, true, false]);
+});
+
 test('a phone has the desktop app\'s experiments until it flips one of its own, and can follow again', async () => {
   window.localStorage.setItem(EXPERIMENTS_STORAGE_KEY, '["teams"]');
   const client = new FakeClient({ delayMs: 0 });
@@ -246,6 +271,20 @@ test('a phone has the desktop app\'s experiments until it flips one of its own, 
   query<HTMLInputElement>('[data-testid=experiments-follow]').click();
   await settle();
   expect([on('contacts'), on('whip'), on('teams')]).toEqual([true, false, false]);
+});
+
+test('the followed cache keeps the chosen list a new core sends, and the historic list of a core from before it', () => {
+  const owner = {};
+  followDesktopOf(owner);
+  onTestFinished(() => followDesktopOf(null));
+  heardBuild(owner, RELEASE);
+  heardDesktop(owner, desktopHeard({ experiments: FINISHED as never, chosen: ['whip', 'teams'] }), 'core-a');
+  expect(JSON.parse(window.localStorage.getItem(DESKTOP_STORAGE_KEY)!).experiments).toEqual(['whip', 'teams']);
+  // A core from before the separate field says one list only: that one is kept.
+  heardDesktop(owner, desktopHeard({ experiments: ['debates'] }), 'core-a');
+  expect(JSON.parse(window.localStorage.getItem(DESKTOP_STORAGE_KEY)!).experiments).toEqual(['debates']);
+  expect(desktopHeard({ desktop: null })).toBeNull();
+  expect(desktopHeard({ desktop: ['teams'], desktopChosen: ['teams', 'whip'] })).toEqual(['teams', 'whip']);
 });
 
 test('a core that has heard no desktop app keeps its own set, not another machine\'s', () => {

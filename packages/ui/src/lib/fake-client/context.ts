@@ -66,7 +66,7 @@ import {
   type Turn,
   type Usage,
 } from '@boite/contracts';
-import { effectiveExperiments } from '@boite/contracts';
+import { effectiveExperiments, experimentStartRefusal, holdExperimentalSettings } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { FakeAgents } from '../fake-agents';
 import { checkEffort, checkModel, defaultModel } from './checks';
@@ -336,7 +336,7 @@ export class FakeContext {
   clientPreferences: ClientPreferences | null = null;
   /** Each app's last report by its id, as the core's book keeps them. */
   readonly clientApps = new Map<string, ClientPreferences>();
-  /** What the fake machine's desktop app has on, as `client.desktopExperiments` says; null before it reported. */
+  /** What the fake machine's desktop app chose, as `client.desktopExperiments` says in `chosen`; null before it reported. */
   desktopExperiments: ExperimentId[] | null = null;
 
   /**
@@ -346,6 +346,16 @@ export class FakeContext {
    */
   experimentsInForce(): ExperimentId[] {
     return effectiveExperiments(this.desktopExperiments ?? this.clientPreferences?.experiments ?? [], this.core.version);
+  }
+  /** The settings in force, as the core's `SettingsStore.get`: `settings` is what is stored, and a Release reads the ones that are experiments as off. */
+  settingsInForce(): Settings {
+    return holdExperimentalSettings({ ...this.settings }, this.core.version);
+  }
+
+  /** As the core's `contactsGate`: a Release starts nothing new in an experiment, and still reads and removes what exists. */
+  startGate(id: ExperimentId): void {
+    const refusal = experimentStartRefusal(id, this.core.version);
+    if (refusal !== null) throw new RpcFailure({ code: RpcErrorCode.Refused, message: refusal, data: { reason: 'experiment-off' } });
   }
   speech: SpeechConfig = { engine: 'local', language: '', apiProvider: 'groq', fallback: false, executable: '', modelPath: '', model: SPEECH_DEFAULT_MODEL };
   readonly speechStatus: SpeechStatus = { revision: 'fake-voice', engine: 'local', ready: true, localReady: true, groqKeySet: false, openrouterKeySet: false, installing: false, downloadedBytes: 0, totalBytes: 0, error: null, canInstallRuntime: true, models: fakeSpeechModels(), downloading: null, runtimeOutdated: false };

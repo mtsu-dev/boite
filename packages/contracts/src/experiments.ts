@@ -114,3 +114,27 @@ export function holdExperimentalSettings<T extends Partial<Settings>>(settings: 
   }
   return held;
 }
+
+/**
+ * The patch a save stores in the build with this version. Where experiments
+ * do not run, the app only knows the values `holdExperimentalSettings` reads
+ * as off, and a save hands them back: the settings that are experiments stay
+ * as `stored` has them, so no Release writes "off" over a Nightly's choice. A
+ * type customized for the first time takes the common stored choice, the one
+ * it followed until then.
+ */
+export function keepStoredExperimentalSettings(stored: Partial<Settings>, patch: Partial<Settings>, version: string | null | undefined): Partial<Settings> {
+  if (experimentsRun(version)) return patch;
+  const kept = { ...patch };
+  for (const key of Object.keys(EXPERIMENTAL_SETTINGS) as ExperimentalSetting[]) Reflect.deleteProperty(kept, key);
+  if (patch.compactionByType !== undefined) {
+    kept.compactionByType = Object.fromEntries(Object.entries(patch.compactionByType).map(([target, policy]) => [target, policy === undefined ? policy
+      : { ...policy, backgroundCompaction: stored.compactionByType?.[target as keyof NonNullable<Settings['compactionByType']>]?.backgroundCompaction ?? stored.backgroundCompaction === true }])) as NonNullable<Settings['compactionByType']>;
+  }
+  return kept;
+}
+
+/** Why the build with this version starts nothing new in the experiment `id`, or null where experiments run. What exists can still be read and removed. */
+export function experimentStartRefusal(id: ExperimentId, version: string | null | undefined): string | null {
+  return EXPERIMENT_STAGES[id] === 'normal' ? null : experimentRefusal(id, version);
+}

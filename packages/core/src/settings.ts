@@ -1,4 +1,4 @@
-import { checkSettingsPatch, experimentalSettingRefusal, followedPatch, holdExperimentalSettings, keepLaterFavorites, readSettings, MACHINE_SETTINGS, DEFAULT_THREAD_DONE_RETENTION_DAYS, DEFAULT_THREAD_DELETION_RETENTION_DAYS, subscriptionProxyOf, type AdminPolicy, type Settings, type SubscriptionProxy } from '@boite/contracts';
+import { checkSettingsPatch, experimentalSettingRefusal, followedPatch, holdExperimentalSettings, keepLaterFavorites, keepStoredExperimentalSettings, readSettings, MACHINE_SETTINGS, DEFAULT_THREAD_DONE_RETENTION_DAYS, DEFAULT_THREAD_DELETION_RETENTION_DAYS, subscriptionProxyOf, type AdminPolicy, type Settings, type SubscriptionProxy } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { writesTitles } from './drivers/index.ts';
 import { invalidParams, refused } from './errors.ts';
@@ -40,7 +40,11 @@ export class SettingsStore {
     return this.#overlay(this.stored());
   }
 
-  /** The settings in force with the experiments as saved: what a following machine compares the home's values with. */
+  /**
+   * The settings in force with the experiments as saved: what a following
+   * machine compares the home's values with, and what the home hands the copy
+   * (`settings.get` with `stored`), so a Release never passes its "off" on.
+   */
   unheld(): Settings {
     const saved = this.stored();
     return { ...saved, ...this.#core.policy.lockedSettings(saved) };
@@ -115,7 +119,9 @@ export class SettingsStore {
   set(patch: Partial<Settings>, persistPrivate?: () => void, followed = false): Settings {
     const saved = this.stored();
     const previous = this.#overlay(saved);
-    const checked = keepLaterFavorites(previous, this.normalize(patch, followed));
+    const normalized = this.normalize(patch, followed);
+    // A Release only shows the experiments as off: a save that hands that back is not a choice, the copy from the settings home is.
+    const checked = keepLaterFavorites(previous, followed ? normalized : keepStoredExperimentalSettings(saved, normalized, this.#core.version));
     const kept: Settings = { ...saved, ...this.#withoutHeld(saved, checked) };
     const next = this.#overlay(kept);
     this.#core.journal.append({ type: 'settings.changed', threadId: null, version: 1, payload: next }, () => {
@@ -193,7 +199,7 @@ export function localProxy(proxy: SubscriptionProxy, port: number): Subscription
 }
 
 export function registerSettingsMethods(core: Core): void {
-  core.router.register('settings.get', () => core.settings.get());
+  core.router.register('settings.get', (params) => params?.stored === true ? core.settings.unheld() : core.settings.get());
   core.router.register('settings.set', async (params) => {
     core.settings.set(params);
     if (params.subscriptionProxy !== undefined) await prepareLocalProxyKey(core);
@@ -210,7 +216,7 @@ export function registerSettingsMethods(core: Core): void {
   core.router.register('agent.settings', () => ({ app: core.clients.app(), settings: readSettings(core.settings.get(), core.clients.current(), core.version) }));
   core.router.register('client.preferences', (params, ctx) => {
     core.clients.report(ctx.connection, params);
-    return { ok: true, desktop: core.clients.desktopExperiments() } as const;
+    return { ok: true, desktop: core.clients.desktopExperiments(), desktopChosen: core.clients.desktopChosen() } as const;
   });
   core.router.register('settings.request', (params) => core.threads.cards.requestSetting(params));
 }

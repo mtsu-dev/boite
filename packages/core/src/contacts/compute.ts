@@ -15,6 +15,7 @@ import { gitCommonDirOf } from './git-remote.ts';
 import { computePolicy, sameProject, threadRef, projectAddress } from './project-policy.ts';
 import { fingerprint } from './project-journal.ts';
 import type { SharedPeerContext } from './projects.ts';
+import { contactsGate } from './gate.ts';
 
 type StartWire = SharedProjectPeerMethods['compute.start']['params'];
 const hostKey = (id: string) => `shared-compute-host:${id}`;
@@ -166,6 +167,8 @@ export class SharedCompute {
     const work = this.#startJob(p, connection); this.#background(work); return work;
   }
   async #startJob(p: RpcParams<'sharedCompute.start'>, connection?: Connection): Promise<SharedComputeJob> {
+    // Here and not at the RPC: a workflow step starts its job through the service.
+    contactsGate(this.core);
     const ctx = this.#sourceContext(p, connection);
     const { threadId: _thread, sharedProjectId: _shared, ...raw } = p;
     const input = computeInput(raw);
@@ -448,6 +451,8 @@ export class SharedCompute {
     return this.journal.get(record.job.id, 'source')!.job;
   }
   async send(p: RpcParams<'sharedCompute.send'>, connection?: Connection): Promise<{ ok: true }> {
+    // A follow-up starts a turn, and wakes a finished job again.
+    contactsGate(this.core);
     const ctx = this.#sourceContext(p, connection), record = this.#localRecord(ctx, p.jobId);
     const body = text(p.text, 'text', 4000), requestId = text(p.requestId, 'requestId', 100);
     if (record.claimClosed) throw refused('compute.claim: reservation is permanently closed');

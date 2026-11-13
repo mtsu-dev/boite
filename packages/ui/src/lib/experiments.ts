@@ -197,6 +197,16 @@ export function followDesktopOf(owner: object | null): void {
 }
 
 /**
+ * The list to keep from what a core said of its desktop app, in an answer
+ * (`desktop`, `desktopChosen`) or an event (`experiments`, `chosen`): the
+ * one as chosen, which a Release core does not cut down, else the historic
+ * one of a core from before it.
+ */
+export function desktopHeard(said: { desktop?: ExperimentId[] | null; desktopChosen?: ExperimentId[] | null; experiments?: ExperimentId[]; chosen?: ExperimentId[] }): ExperimentId[] | null {
+  return said.desktopChosen ?? said.chosen ?? said.desktop ?? said.experiments ?? null;
+}
+
+/**
  * What a core (`core`, its id) said its desktop app has on
  * (`client.preferences`, `client.desktopExperiments`). Null says nothing yet:
  * the same core keeps the set heard last, through reloads and restarts, but

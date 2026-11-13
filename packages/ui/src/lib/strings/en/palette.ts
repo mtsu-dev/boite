@@ -13,7 +13,7 @@ export const strings = {
     /** A subagent's row, after its title: the thread that started it, so two "Explore" rows read apart. */
     subagentOf: 'in {parent}',
     addProject: 'Add a project',
-    importSession: 'Import a Claude Code session',
+    importSession: 'Import a session',
     settings: 'Open settings',
     appearance: 'Look and language settings',
     providers: 'Providers and accounts',

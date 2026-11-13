@@ -229,7 +229,7 @@ export {
   type SettingsReading,
 } from './setting-requests.ts';
 export {
-  EXPERIMENT_IDS, EXPERIMENT_STAGES, EXPERIMENTAL_SETTINGS, effectiveExperiments, experimentListed, experimentRefusal, experimentalSettingRefusal, experimentsRun, holdExperimentalSettings,
+  EXPERIMENT_IDS, EXPERIMENT_STAGES, EXPERIMENTAL_SETTINGS, effectiveExperiments, experimentListed, experimentRefusal, experimentStartRefusal, experimentalSettingRefusal, experimentsRun, holdExperimentalSettings, keepStoredExperimentalSettings,
   isExperimentId, isExperimentalSetting, isReleaseVersion, listedExperiments,
   type ExperimentId, type ExperimentalSetting, type FeatureStage,
 } from './experiments.ts';

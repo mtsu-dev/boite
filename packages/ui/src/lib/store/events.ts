@@ -15,7 +15,7 @@ import { needsUser } from '../thread-state';
 import { installStatesOf } from './accounts.svelte';
 import { observable } from './connection.svelte';
 import { reportPreferences } from '../client-preferences.svelte';
-import { heardBuild, heardDesktop } from '../experiments';
+import { desktopHeard, heardBuild, heardDesktop } from '../experiments';
 import { lightPage } from './reading-pages.svelte';
 import type { StoreContext } from './context';
 import { probeKey } from './models.svelte';
@@ -87,7 +87,7 @@ export function listen(ctx: StoreContext, client: Client): void {
   // After the state handler above, so a reconnect has its principal and core first.
   if (observable(client) && client.onClockOffset) ctx.off.push(client.onClockOffset((offset) => { if (current()) ctx.connection.clockOffset = offset; }));
   if (observable(client)) ctx.off.push(reportPreferences(client, current, experiments => heardDesktop(s, experiments, s.core?.coreId ?? null)));
-  on('client.desktopExperiments', ({ experiments }) => heardDesktop(s, experiments, s.core?.coreId ?? null));
+  on('client.desktopExperiments', (said) => heardDesktop(s, desktopHeard(said), s.core?.coreId ?? null));
 
   on('network.changed', () => networkChanged());
   on('core.updateChanged', snapshot => ctx.serverUpdater.apply(snapshot));

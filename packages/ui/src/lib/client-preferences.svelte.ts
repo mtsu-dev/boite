@@ -11,7 +11,7 @@ import { EXPERIMENT_IDS, REQUESTABLE_SETTING_KEYS, SETTINGS_PAGES, type ClientPr
 import { untrack } from 'svelte';
 import type { ObservableClient } from './client';
 import { experimentCopy } from './experiment-copy';
-import { chosenExperiments, subscribeExperiments } from './experiments';
+import { chosenExperiments, desktopHeard, subscribeExperiments } from './experiments';
 import { activeLocale } from './i18n.svelte';
 import { secureId } from './secure-id';
 import { settingLabel, settingsPageLabel } from './setting-requests';
@@ -55,8 +55,8 @@ export function reportPreferences(client: ObservableClient, current: () => boole
     if (!again && said === sent) return;
     sent = said;
     client.call('client.preferences', preferences).then((answer) => {
-      // An older core answers without it.
-      if (current()) desktop(answer.desktop ?? null);
+      // An older core answers without it, and one from before the chosen list with the historic one alone.
+      if (current()) desktop(desktopHeard(answer));
     }, () => {
       // An older core has no such method; a later change tries again.
       sent = '';
