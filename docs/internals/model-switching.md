@@ -226,6 +226,16 @@ and end preserved. Gaps are identified to the receiving agent. These are
 transport bounds, not token estimates. Some old details may be absent; the
 journal remains unchanged.
 
+A gap names what it left out. The line that counts the omitted messages lists
+the newest 20 of them by role and id, oldest first, with the command that
+reads one, `boite threads read <thread> --entry <id>`, and says that reading
+them is optional. A thread reads its own entries whatever its coordination
+settings. The line takes at most 1,600 characters, reserved out of the 64,000:
+the recent exchanges fill 62,400. On a thread of 80 messages of 3,000
+characters, the prompt goes from 73,190 characters with a bare count to 70,591
+with 20 messages named (`continuation.test.ts`, 2026-11-13). The exchanges
+after a compaction made ahead and after a switch back name theirs the same way.
+
 Tool output has its own, smaller budget so the conversation's text keeps the
 room: a call carries the head and tail of its output up to 1,000 characters,
 and one message all its calls' output up to 3,000, newest call first. A call
@@ -270,7 +280,7 @@ continuation of an image-bearing history explicitly.
 A thread that returns to an account it ran on resumes the native session it
 left there, when that session can come back: same provider, same folder, the
 turn it ended on still in the journal (an edit or rewind before it removes
-it), and the exchanges since then within the 64,000 characters of recent
+it), and the exchanges since then within the 62,400 characters of recent
 history. The next prompt carries only those exchanges, cut like the transfer
 above, then the request; once that turn is done, later prompts carry the
 request alone. The session's history counts as ending at its last answered

@@ -9,7 +9,7 @@ export const fr: Translation = {
     filesLoading: "Un fichier est encore en chargement. Répondez une fois qu'il est prêt.",
     prefix: 'Erreur',
     activityUnsupported: "Ce cœur ne gère pas les objectifs ni les boucles. Mettez Boite à jour sur {machine}, puis reconnectez-vous. Votre commande n'a pas été envoyée.",
-    pullRequestUnsupported: "Mettez Boite à jour sur la machine qui héberge cette conversation pour afficher sa pull request. Ce cœur ne sait pas encore les chercher.",
+    pullRequestUnsupported: "Mettez Boite à jour sur la machine qui héberge ce fil pour afficher sa pull request. Ce cœur ne sait pas encore les chercher.",
     noEndpoint: "Aucun point de connexion n'a pu être résolu.",
     coreStart: "Le cœur de cet ordinateur n'a pas démarré : {reason}",
     coreRetrying: 'Boite réessaie tout seul.',

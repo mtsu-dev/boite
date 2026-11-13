@@ -12,7 +12,7 @@ export const fr: Translation = {
     },
     contacts: {
       title: 'Contacts',
-      hint: 'Une page Accueil à côté des conversations, où vous reliez votre Boite à celle d\'un autre propriétaire via Tailscale. Un bot intégré, la Standardiste, porte chaque demande entre vos agents et les siens. Pas encore prêt pour un usage quotidien'
+      hint: 'Une page Accueil à côté des fils, où vous reliez votre Boite à celle d\'un autre propriétaire via Tailscale. Un bot intégré, la Standardiste, porte chaque demande entre vos agents et les siens. Pas encore prêt pour un usage quotidien'
     },
     autoGoal: {
       title: 'Objectifs automatiques',
@@ -23,7 +23,7 @@ export const fr: Translation = {
     },
     teams: {
       title: 'Équipes',
-      hint: "Des bots qui travaillent ensemble dans une conversation commune, affichée au-dessus d'eux sur la page Bots : un message réveille les bots qu'il nomme, et chacun répond au groupe ou en privé. Vos bots y écrivent avec boite team. Pas encore prêt pour un usage quotidien"
+      hint: "Des bots qui travaillent ensemble dans un salon commun, affiché au-dessus d'eux sur la page Bots : un message réveille les bots qu'il nomme, et chacun répond au groupe ou en privé. Vos bots y écrivent avec boite team. Pas encore prêt pour un usage quotidien"
     },
     debates: {
       title: 'Council',

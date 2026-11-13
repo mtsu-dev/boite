@@ -18,10 +18,10 @@ export const fr: Translation = {
     removeTitle: 'Supprimer {account} ?',
     removeBody: "Cela déconnecte le compte de Boite et supprime ses fichiers.",
     removeDefaultBody: "Boite cesse d'utiliser ce login. Il reste connecté sur votre ordinateur.",
-    removeThread: "1 conversation utilise encore ce compte. Son prochain message la fait passer sur un autre compte connecté du même agent, ce qui recharge tout son contexte.",
-    removeThreads: "{count} conversations utilisent encore ce compte. Le prochain message de chacune la fait passer sur un autre compte connecté du même agent, ce qui recharge tout son contexte.",
+    removeThread: "1 fil utilise encore ce compte. Son prochain message le fait passer sur un autre compte connecté du même agent, ce qui recharge tout son contexte.",
+    removeThreads: "{count} fils utilisent encore ce compte. Le prochain message de chacun le fait passer sur un autre compte connecté du même agent, ce qui recharge tout son contexte.",
     removed: 'Compte supprimé',
-    removedHint: 'Le compte de cette conversation a été supprimé. Choisissez un autre compte pour continuer.',
+    removedHint: 'Le compte de ce fil a été supprimé. Choisissez un autre compte pour continuer.',
     status: {
       unknown: 'inconnu',
       ok: 'ok',

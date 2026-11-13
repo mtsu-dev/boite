@@ -6,7 +6,7 @@ export const fr: Translation = {
       cover: 'Un agent a ouvert ici une fenêtre de {machine}', coverHint: "Rien n'est capturé tant que vous ne l'affichez pas.",
       show: 'Afficher', hide: 'Masquer', hideHint: 'Arrêter de regarder et recouvrir la vue',
       close: 'Fermer', closeHint: 'Fermer le panneau Fenêtre ; un agent peut le rouvrir',
-      empty: "Aucune fenêtre n'est ouverte dans cette conversation. Un agent en ouvre une avec boite window watch.",
+      empty: "Aucune fenêtre n'est ouverte dans ce fil. Un agent en ouvre une avec boite window watch.",
       readOnly: "Lecture seule : vos actions ici n'agissent pas sur la fenêtre.",
       waiting: 'En attente de la première image…',
       picture: 'Vue en direct de {process}'
@@ -25,7 +25,7 @@ export const fr: Translation = {
     },
     settings: {
       allowedHeading: 'Fenêtres visibles par les agents', allowedIntro: "Les agents d'un projet peuvent capturer les fenêtres de ces applications sans demander votre accord. Une application est ajoutée quand vous choisissez Toujours pour ce projet dans une demande de capture.",
-      allowedEmpty: "Aucune application n'est encore autorisée. Les applications sont ajoutées depuis une demande de capture dans la conversation.",
+      allowedEmpty: "Aucune application n'est encore autorisée. Les applications sont ajoutées depuis une demande de capture dans le fil.",
       remove: 'Retirer', removeTitle: 'Ne plus autoriser {process} ?', removeBody: 'Les agents du projet {project} demanderont de nouveau votre accord avant de capturer {process}.',
       exclusionsHeading: 'Fenêtres jamais montrées aux agents', exclusionsIntro: 'Aucun agent ne peut capturer les fenêtres de ces exécutables, même avec votre accord. Indiquez leur nom ou leur chemin.',
       always: "Les gestionnaires de mots de passe et l'écran de connexion sont toujours exclus : {list}.",
