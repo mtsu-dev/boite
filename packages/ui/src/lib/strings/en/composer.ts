@@ -102,12 +102,6 @@ export const strings = {
     installInSettings: 'Install in Settings',
     /** The effort chip and its slider: one short word, the levels say the rest. */
     effortTitle: 'Effort',
-    /** The slider's line under the level: what the level gives and what it costs, from the lowest to the highest. */
-    /** The trade-off of one level, by its id (EffortSlider); a level of another name reads its place on the scale. */
-    effortCost: { off: 'Answers at once, no extra thinking', low: 'Quick answers, light on your limits', middle: 'Balanced depth and speed', deeper: 'Thinks it through, a little slower', high: 'Thinks longer, uses more of your limits', top: 'Deepest thinking, slowest and costliest', extended: 'Extended thinking for the hardest problems' },
-    // With a fast tier on, the line keeps the level's depth and lets the tier speak for speed, so it never says slower and faster at once.
-    effortDepth: { off: 'No extra thinking', low: 'Light thinking', middle: 'Balanced thinking', deeper: 'Thinks it through', high: 'Thinks longer', top: 'Deepest thinking', extended: 'Extended thinking' },
-    effortWithFast: '{depth}, with {fast} replying sooner for more of your limits',
     speed: 'Response speed',
     /** The reasoning chip of a model whose agent keeps its own level until one is picked. */
     effortDefault: 'Default',
