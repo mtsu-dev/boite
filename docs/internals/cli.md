@@ -433,6 +433,7 @@ brains and the user's notes name them; `boite help` shows only the new ones
 boite where                      thread, title, project, cwd, branch, worktree, agent
 boite thread move <project>      move this thread to another project (name, id or
                                  folder) when this turn ends
+boite thread done                put this thread in Done when this turn ends
 boite thread new <project> <brief> [--worktree] [--title <title>] [--machine <name>] [--model <provider/model>] [--effort <level>] [--speed <tier>] [context flags]
                                  start a thread in a project, on this machine or
                                  another of the group; its first answer comes
@@ -581,6 +582,15 @@ page as a new tab of the conversation's browser instead, which becomes the
 active tab of `boite browser`. A client watching the conversation brings it
 forward; one that opens the conversation later finds it among the tabs without
 the panel opening on it.
+
+`thread done` without an id, or with the agent's own, calls `agent.done`: the
+thread goes to Done when the current turn ends, or at once when idle, through
+the same checks as the user's Mark done. A refusal that only appears at the end
+of the turn (the user wrote again, background work still runs) leaves a system
+line and the thread open. A sub-thread, a bot's thread and an archived one are
+refused; a core restart drops a waiting request. Boite asks for it once a
+thread's pull requests are merged or closed
+([merged pull requests](development.md#merged-pull-requests)).
 
 `thread move` accepts a project ID, unique name or absolute registered folder.
 Ambiguous names are refused with matching IDs. It moves only the authenticated

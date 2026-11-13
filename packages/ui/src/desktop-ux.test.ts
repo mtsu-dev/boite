@@ -114,6 +114,8 @@ test('a panel widened while the contacts column was folded gives the chat its ro
   expect(contactsRail.folded).toBe(true);
   const stored = rightPanel.width;
   rightPanel.width = 700;
+  // Wide enough that list, contacts and a docked panel all fit beside the chat.
+  window.innerWidth = 1600;
   await mountOnFake();
   try {
     if (!store.panelOpen) store.togglePanel();
@@ -131,36 +133,41 @@ test('a panel widened while the contacts column was folded gives the chat its ro
     // The width asked for stays, for the day the room comes back.
     expect(rightPanel.width).toBe(700);
   } finally {
+    window.innerWidth = 1024;
     if (!contactsRail.folded) contactsRail.toggle();
     rightPanel.width = stored;
   }
 });
 
-test('a docked side panel lends the thread list beside a chat panel, while a bot\'s Desk card leaves the bot column open', async () => {
+test('a docked side panel leaves the list column alone: the thread list beside a chat panel, the bot column beside a Desk card', async () => {
   writeExperiments(['resident-agents']);
   await mountOnFake('/?fake=1&agents=1');
   const folded = () => query('.body').classList.contains('sidebar-folded');
+  const stays = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    flushSync();
+    expect(store.sidebarCollapsed).toBe(false);
+    expect(folded()).toBe(false);
+  };
   try {
     await waitFor(() => store.openThread !== null);
     expect(store.sidebarCollapsed).toBe(false);
-    // A chat: three zones, rail, chat and panel.
     store.togglePanel();
-    await waitFor(() => store.sidebarCollapsed && folded());
+    await waitFor(() => store.panelOpen);
+    await stays();
     store.togglePanel();
-    await waitFor(() => !store.sidebarCollapsed && !folded());
+    await stays();
 
-    // The Bots page: opening a bot opens its Desk on the first visit, and the bot column it was picked from stays.
     workspace.showAgents(store);
     const view = AgentsView.of(store);
     await view.refresh();
     await openAgent(store, view.snapshot!.profiles[0]!.id);
     await waitFor(() => store.page === 'agents' && !!store.openThread?.agentSessionId);
-    store.panel.open('desk');
+    store.panel.closeAll();
     flushSync();
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(store.panel.active?.kind).toBe('desk');
-    expect(store.sidebarCollapsed).toBe(false);
-    expect(folded()).toBe(false);
+    store.panel.open('desk');
+    await waitFor(() => store.panelOpen);
+    await stays();
     store.panel.closeAll();
   } finally {
     store.showChat();

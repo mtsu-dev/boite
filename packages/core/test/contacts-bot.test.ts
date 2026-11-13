@@ -490,6 +490,7 @@ test('a Release starts nothing from the Contacts bot: a plan or a share accepted
     expect((await owner.call('contacts.bot.refuse', { threadId: hostBot.threadId, id: later.id, reason: 'Not in this build' })).status).toBe('refused');
     owner.close();
   } finally {
+    for (const core of cores.splice(0)) await core.stop();
     rmSync(dataDir, { recursive: true, force: true });
   }
 }, 60000);

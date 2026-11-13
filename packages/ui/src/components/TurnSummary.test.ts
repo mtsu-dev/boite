@@ -53,6 +53,29 @@ test('a silent running turn reports work without implying an answer is being wri
   expect(document.querySelector('[data-testid=turn-summary] .spinner')).not.toBeNull();
 });
 
+test('the startup phase is visible until the agent begins working', () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(STARTED + 8_000);
+  const message = { id: 'prompt', role: 'user', turnId: 'turn-1', parts: [{ type: 'text', text: 'Check the files' }] } as Message;
+  const show = (phase: 'starting' | 'thinking') => {
+    if (running) unmount(running, { outro: false });
+    running = mount(MessageTurnSummary, { target: document.body, props: {
+      store: { connection: 'ready', clockOffset: 0, openThread: {
+        id: 't-1', status: 'running', turns: [],
+        progress: { turnId: 'turn-1', phase, detail: null, at: STARTED, since: STARTED },
+      } } as unknown as Store,
+      threadId: 't-1', turn: turn({ status: 'running', finishedAt: null, usage: null }), message, messages: [message],
+    } });
+    flushSync();
+  };
+  show('starting');
+  expect(text('turn-elapsed')).toBe('Starting agent · 8s');
+  expect(document.querySelector('[data-testid=turn-summary]')?.getAttribute('aria-label')).toBe('Starting agent');
+  expect(document.querySelector('[data-testid=turn-summary]')?.getAttribute('title')).toBe('Starting agent');
+  show('thinking');
+  expect(text('turn-elapsed')).toBe('Working for 8s');
+});
+
 test('while an approval or a question waits on the user, the turn says no "Working for": the card that asks is the one status', () => {
   const message = { id: 'prompt', role: 'user', turnId: 'turn-1', parts: [{ type: 'text', text: 'Push the branch' }] } as Message;
   const show = (status: string) => {

@@ -484,13 +484,14 @@ const SUMMARY: Record<WatchChange['kind'], string> = { failed: 'checks failed', 
  * A delegated agent's answer to this wake reaches its parent's conversation, not its parent's agent
  * (`AgentLetter.quiet`), so its text says how to reach the parent.
  */
-export function wakeMessage(updates: { number: number; url: string; changes: WatchChange[] }[], delegated = false): { text: string; label: string } {
+export function wakeMessage(updates: { number: number; url: string; changes: WatchChange[] }[], delegated = false, doneHint: string | null = null): { text: string; label: string } {
   const sections = updates.map(update => [`Pull request #${update.number} (${update.url}):`, ...update.changes.flatMap(changeLines)].join('\n'));
   const text = [
     `Boite is watching ${updates.length === 1 ? 'this pull request' : 'these pull requests'} for you and ${updates.length === 1 ? 'it' : 'they'} changed.`,
     ...sections,
     '',
     'Look into each item and act on it as your task requires, then end your turn: Boite keeps watching and wakes you on the next change, so do not poll. `boite pr unwatch <url>` stops a watch.',
+    ...(doneHint ? [doneHint] : []),
     ...(delegated ? ['While you watch a pull request, your answer to this update shows in your parent\'s conversation without waking its agent: when your parent must decide or know something now, write to it with `boite delegate send <parent-thread-id> <text>`. Your answer reaches its agent again once you watch no pull request.'] : []),
   ].join('\n');
   const label = updates.map(update => `#${update.number}: ${update.changes.map(change => change.kind === 'closed' ? change.state.toLowerCase() : SUMMARY[change.kind]).join(', ')}`).join('; ');

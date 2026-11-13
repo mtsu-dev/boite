@@ -1,5 +1,5 @@
 import { PolicyStore, policyFileFor } from './policy.ts';
-import { MergedPrArchive } from './merged-pr-archive.ts';
+import { MergedPrAsk } from './merged-pr-ask.ts';
 import { PullRequests } from './pull-requests.ts';
 import { LinkedPullRequests } from './linked-pull-requests.ts';
 import { PullRequestWatches, type WatchTiming } from './pull-request-watch.ts';
@@ -169,7 +169,7 @@ export class Core {
   readonly diagnostics: Diagnostics;
   readonly pullRequests: PullRequests;
   readonly linkedPullRequests: LinkedPullRequests;
-  readonly mergedPrArchive: MergedPrArchive;
+  readonly mergedPrAsk: MergedPrAsk;
   readonly worktreeCleanup: WorktreeCleanup;
   readonly pullRequestWatches: PullRequestWatches;
   readonly journal: Journal;
@@ -515,8 +515,8 @@ export class Core {
     this.agentRuntime = new AgentRuntime(this);
     queueMicrotask(() => this.composer.start());
     this.brain.start();
-    this.mergedPrArchive = new MergedPrArchive(this, this.pullRequests);
-    this.mergedPrArchive.start();
+    this.mergedPrAsk = new MergedPrAsk(this, this.pullRequests);
+    this.mergedPrAsk.start();
     this.worktreeCleanup = new WorktreeCleanup(this);
     this.worktreeCleanup.start();
     this.pullRequestWatches.start();
@@ -599,7 +599,7 @@ export class Core {
     this.council.beginClose();
     this.coordination.beginClose();
     this.teams.close();
-    void this.mergedPrArchive.close();
+    void this.mergedPrAsk.close();
     void this.worktreeCleanup.close();
     void this.pullRequestWatches.close();
     this.group.beginClose();
@@ -641,7 +641,7 @@ export class Core {
     this.lazyMcp.close();
     this.artifactPreviews.stop();
     this.threads.sideQuestions.close();
-    await this.mergedPrArchive.close();
+    await this.mergedPrAsk.close();
     await this.worktreeCleanup.close();
     await this.pullRequestWatches.close();
     this.threads.titles.close();

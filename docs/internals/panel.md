@@ -2,7 +2,9 @@
 
 The Panel button or [surface shortcuts](keybindings.md) open a thread's tabs
 beside the chat. Tabs are stored per machine/thread; width is shared on this device.
-At 720 px and below it covers the chat; **Chat** or Back hides it without
+Opening it never folds the thread list. Under 981 px, or when the list and the
+contacts column would leave the chat under its 360 px minimum beside a 300 px
+panel, it lies over the chat (`panelOverChat`). At 720 px and below it covers the chat; **Chat** or Back hides it without
 closing the agent's browser tabs. The phone header's **Browser** button opens
 the agent browser directly. New agent pages leave the phone on its chosen
 view. A mobile reload keeps tabs but starts with the panel closed, without
@@ -68,12 +70,12 @@ with a fresh panel. If another client archives the open thread, it stays on
 screen with its tabs and unsaved file edits, reconnects included, until this
 client opens another thread or a draft. Leaving a manually archived thread drops
 its layout.
-Automatic merged-PR archive preserves unsent composer input and unsaved file
-drafts for restoration. On reconnect, this machine's `threads.list` prunes
+A merged-PR archive from an older core preserves unsent composer input and
+unsaved file drafts for restoration. On reconnect, this machine's `threads.list` prunes
 layouts for threads it no longer lists, except the open thread and layouts with
 unsaved file drafts. A machine that has not connected keeps its own layouts.
-[Automatic merged-PR archive](machines.md#merged-pr-conversations) documents
-the archive conditions.
+[Merged PR conversations](machines.md#merged-pr-conversations) documents
+what happens after a merge now.
 
 A panel with no tab yet opens on the surface the device starts with, Files or
 Changes, or on its launcher. The tour's first question sets it and Settings,

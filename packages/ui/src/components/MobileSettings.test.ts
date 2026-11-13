@@ -68,7 +68,12 @@ test('a thread archived on the phone comes back from its own settings list', asy
   const account = (await client.call('accounts.list', {})).find(account => account.providerId === 'echo')!;
   const merged = await client.call('threads.create', { projectId: 'p-boite', providerId: 'echo', accountId: account.id, title: 'Merged phone conversation', worktree: { branch: 'merged-phone-fixture' } });
   client.setMergedPrFixture(merged.id, { repository: 'github.com/example/repo', branch: merged.branch!, tip: 'a'.repeat(40), clean: true, candidates: [{ repository: 'github.com/example/repo', branch: merged.branch!, sha: 'a'.repeat(40), number: 7, url: 'https://github.com/example/repo/pull/7', mergedAt: '2026-10-01T12:00:00Z' }] });
-  expect(await client.sweepMergedPrArchives()).toBe(1);
+  // This version asks the agent after a merge; a `pr-merged` archive is one an older core made.
+  const turn = await client.call('turns.start', { threadId: merged.id, prompt: 'Finish the change.' });
+  await waitFor(() => store.threads.find(thread => thread.id === merged.id)?.status === 'idle');
+  expect((await client.call('threads.get', { threadId: merged.id })).turns.find(row => row.id === turn.id)?.status).toBe('done');
+  await client.call('threads.markRead', { threadId: merged.id });
+  client.setMergedPrArchive(merged.id, { number: 7, url: 'https://github.com/example/repo/pull/7' });
   store.showSettings();
   await waitFor(() => document.querySelector('[data-testid=settings-tab-conversations]') !== null);
   query<HTMLButtonElement>('[data-testid=settings-tab-conversations]').click();
@@ -98,6 +103,7 @@ test('a thread archived on the phone comes back from its own settings list', asy
   expect(query(`[data-thread-id="${merged.id}"] [data-testid=archive-merged-reason]`).textContent).toContain('PR #7');
   query<HTMLButtonElement>(`[data-thread-id="${merged.id}"] [data-testid=archived-restore]`).click();
   await waitFor(() => store.threads.find(thread => thread.id === merged.id)?.archived === false);
+  // A restored checkout is never asked about.
   expect(await client.sweepMergedPrArchives()).toBe(0);
 });
 
