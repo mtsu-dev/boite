@@ -29,4 +29,7 @@
   .rollup:not(.queued) .work-ring { border-style: solid; border-top-color: transparent; animation: spin 0.9s steps(54) infinite var(--loops); }
   .rollup.queued .work-ring { border-style: dotted; border-color: var(--color-muted-foreground); }
   .rollup.interrupted :global(svg) { color: var(--color-subtle); }
+  /* Still under reduced motion, as Spinner.svelte. */
+  @media (prefers-reduced-motion: reduce) { .rollup:not(.queued) .work-ring { animation: none; } }
+  :global(html[data-motion='reduced']) .rollup:not(.queued) .work-ring { animation: none; }
 </style>

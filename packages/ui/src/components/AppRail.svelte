@@ -462,4 +462,7 @@
   @media (max-width: 720px) {
     .app-rail { display: none; }
   }
+  /* Still under reduced motion, as Spinner.svelte. */
+  @media (prefers-reduced-motion: reduce) { .work svg { animation: none; } }
+  :global(html[data-motion='reduced']) .work svg { animation: none; }
 </style>

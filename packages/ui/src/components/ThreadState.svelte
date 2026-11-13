@@ -141,4 +141,7 @@
   .dot { flex: none; width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--color-live); }
   .state :global(svg) { flex: none; }
   .interrupted :global(svg) { color: var(--color-subtle); }
+  /* Still under reduced motion, as Spinner.svelte. */
+  @media (prefers-reduced-motion: reduce) { .work-ring.turning { animation: none; } }
+  :global(html[data-motion='reduced']) .work-ring.turning { animation: none; }
 </style>

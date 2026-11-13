@@ -103,4 +103,7 @@
     button.counter { position: relative; }
     button.counter::after { content: ''; position: absolute; inset: -6px -2px; }
   }
+  /* Still under reduced motion, as Spinner.svelte. */
+  @media (prefers-reduced-motion: reduce) { .work-ring { animation: none; } }
+  :global(html[data-motion='reduced']) .work-ring { animation: none; }
 </style>
