@@ -481,19 +481,12 @@
     <!-- The showing surface's head goes here (SurfaceHead.svelte): one head, named on its tab. A phone's strip holds the thread and the door. -->
     {#if phone}<span class="spacer"></span>{:else}<div class="surface-head" data-testid="panel-surface-head" bind:this={tools.slot}></div>{/if}
 
-    {#if !phone && rightPanel.floating}
-      <button type="button" class="ghost small icon" data-testid="panel-dock" title={strings.browser.dock} aria-label={strings.browser.dock}
-        onclick={() => { rightPanel.floating = false; rightPanel.maximized = false; }}>
-        <PanelsTopLeft size={14} strokeWidth={1.75} />
-      </button>
-    {/if}
     {#if !phone}
-      <button type="button" class="ghost small icon maximize" data-testid="panel-maximize"
-        title={rightPanel.maximized ? strings.rightPanel.restore : strings.rightPanel.maximize}
-        aria-label={rightPanel.maximized ? strings.rightPanel.restore : strings.rightPanel.maximize}
-        aria-pressed={rightPanel.maximized} onclick={() => (rightPanel.maximized = !rightPanel.maximized)}>
-        {#if rightPanel.maximized}<Minimize2 size={14} strokeWidth={1.75} />{:else}<Maximize2 size={14} strokeWidth={1.75} />{/if}
-      </button>
+      {#if rightPanel.floating}<button type="button" class="ghost small icon" data-testid="panel-dock" title={strings.browser.dock} aria-label={strings.browser.dock}
+        onclick={() => { rightPanel.floating = false; rightPanel.maximized = false; }}><PanelsTopLeft size={14} strokeWidth={1.75} /></button>{/if}
+      {@const sizeLabel = rightPanel.maximized ? strings.rightPanel.restore : strings.rightPanel.maximize}
+      <button type="button" class="ghost small icon maximize" data-testid="panel-maximize" title={sizeLabel} aria-label={sizeLabel} aria-pressed={rightPanel.maximized}
+        onclick={() => (rightPanel.maximized = !rightPanel.maximized)}>{#if rightPanel.maximized}<Minimize2 size={14} strokeWidth={1.75} />{:else}<Maximize2 size={14} strokeWidth={1.75} />{/if}</button>
     {/if}
 
     {#if phone}
