@@ -35,7 +35,7 @@ export const fr: Translation = {
     settingsLeave: 'Retour',
     settingsBack: 'Retour aux réglages',
     /** Activity's second line: why the thread is listed. */
-    feed: { run: 'Veut lancer :', helperAsks: '{title} vous attend', updates: 'Nouvelles', verb: { answer: 'Répondre', review: 'Examiner', deny: 'Refuser', skip: 'Passer' } },
+    feed: { run: 'Veut lancer :', helperAsks: '{title} vous attend', updates: 'Nouvelles', markAllRead: 'Tout marquer comme lu', markAllReadHint: 'Retire les échecs, les arrêts et le travail fini. Les questions et les permissions restent.', verb: { answer: 'Répondre', review: 'Examiner', deny: 'Refuser', skip: 'Passer' } },
     navigation: 'Navigation', activity: 'Activité',
     waitingElsewhere: '{count} en attente de vous',
     search: 'Trouver une conversation', noThreads: 'Aucune conversation ne correspond.'

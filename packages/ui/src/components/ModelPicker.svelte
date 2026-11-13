@@ -161,9 +161,6 @@
     }
   }
 
-  /* The chip's mark in one ink, like the chips beside it; the popover's tiles keep each provider's colours. */
-  .trigger :global(.logo) { filter: grayscale(1); }
-
   .trigger .label {
     overflow: hidden;
     text-overflow: ellipsis;

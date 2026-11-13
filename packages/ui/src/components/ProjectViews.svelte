@@ -86,6 +86,11 @@
     .list-head { gap: 2px; }
     .actions { gap: 0; }
   }
+  /* Level with the main column's bar: the head's middle on the title band's (RailFrame.svelte pulls the column up
+     over that band and pads it 6 px), so the views, Filter and search share one line with the bar's buttons. */
+  @media (min-width: 721px) {
+    .list-head { margin-top: calc(var(--titlebar) / 2 - 18px - 6px); }
+  }
   @media (max-width: 720px) {
     /* `button.icon` grows to the touch target on a phone. */
     .actions :global(button.icon) { width: var(--touch-target); height: var(--touch-target); }

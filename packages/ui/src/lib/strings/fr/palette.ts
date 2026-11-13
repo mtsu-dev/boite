@@ -14,7 +14,7 @@ export const fr: Translation = {
     newThread: 'Nouvelle conversation',
     subagentOf: 'dans {parent}',
     addProject: 'Ajouter un projet',
-    importSession: 'Importer une session Claude Code',
+    importSession: 'Importer une session',
     settings: 'Ouvrir les réglages',
     appearance: 'Réglages du style et de la langue',
     providers: 'Fournisseurs et comptes',

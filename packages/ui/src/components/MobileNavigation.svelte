@@ -49,6 +49,7 @@
   import { activityFeed, feedGroups, storeNeeds, type FeedKind, type FeedVerb } from '../lib/activity-feed';
   import { tabHeader } from '../lib/tab-header.svelte';
   import EmptyState from './EmptyState.svelte';
+  import MarkAllRead from './MarkAllRead.svelte';
   import { threadsNeedingYou } from '../lib/app-rail';
   import { needsUser, projectRollup, threadState } from '../lib/thread-state';
   import { foldQuiet } from '../lib/card-fold';
@@ -460,8 +461,12 @@
       {@const needsCount = needs.length + (asked ? inbox.contacts : 0)}
       <!-- The section's number is the tab's badge: its top rows (a sub-agent counts on its parent) and what contacts ask. -->
       <!-- The amber dot beside "Needs you", as on the desktop page; only updates left, one line says nothing waits. -->
-      {#if needsCount > 0}<h2 class="section-label feed-section" data-testid="activity-needs" data-count={needsCount}><span class="feed-dot" aria-hidden="true"></span>{strings.sidebar.state.waiting}<span class="feed-count">{count(needsCount)}</span></h2>
-      {:else if rows.length > 0}<p class="all-done" data-testid="activity-all-done">{strings.mobile.nothingNeedsYou}</p>{/if}
+      <!-- The first line carries Mark all as read on its right, whichever line it is, as on the desktop page. -->
+      {#if needsCount > 0 || rows.length > 0}<div class="feed-head">
+        {#if needsCount > 0}<h2 class="section-label feed-section" data-testid="activity-needs" data-count={needsCount}><span class="feed-dot" aria-hidden="true"></span>{strings.sidebar.state.waiting}<span class="feed-count">{count(needsCount)}</span></h2>
+        {:else}<p class="all-done" data-testid="activity-all-done">{strings.mobile.nothingNeedsYou}</p>{/if}
+        <MarkAllRead rows={rows.map(row => ({ machine: row.machine, thread: row.thread, kind: row.kind ?? null }))} />
+      </div>{/if}
       <div class="feed-tiles">{#if asked && ContactInboxRows}<ContactInboxRows {store} />{/if}<WindowList items={needs} keyOf={group => JSON.stringify([group.row.machine.id, group.row.thread.id])} {scrollRoot} estimate={66} measurements={measurements('activity')}>
         {#snippet row(group)}{@render threadRow(group.row, false, group.helpers)}{/snippet}
       </WindowList></div>
@@ -627,7 +632,10 @@
     .recent-done { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--color-border); }
     /* A section's name over its rows, from the rows' edge; the second stands off the first. */
     .feed-section { margin: 8px 12px 4px; }
-    .feed-section ~ .feed-section { margin-top: 20px; }
+    .feed-head ~ .feed-section { margin-top: 20px; }
+    /* The first line and Mark all as read on its right edge; the button keeps the line's height. */
+    .feed-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; min-height: var(--control-sm); margin: 8px 6px 4px 0; }
+    .feed-head > :is(.feed-section, .all-done) { margin-block: 0; min-width: 0; }
     /* The section's count, the tab badge's number: amber marks it, the word stays grey. */
     .feed-count { margin-left: 6px; color: var(--color-live); font-variant-numeric: tabular-nums; }
     .feed-section[data-testid=activity-needs] { display: flex; align-items: center; }

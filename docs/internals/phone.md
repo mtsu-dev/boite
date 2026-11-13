@@ -395,7 +395,10 @@ Activity's tab counts the conversations waiting for you; Bots counts the bots
 at work on every machine, as the desktop's switch does, in the waiting colour
 once one needs you. Conversations lists
 threads across connected machines; Activity puts waiting requests first,
-followed by running and queued turns. Each list's header shows the machine,
+followed by running and queued turns. A failure or a stop stays in Activity while its thread is
+unread, as a finish does; Mark all as read (`MarkAllRead.svelte`, desktop and
+phone) calls `threads.markRead` on each machine's core for every listed
+failure, stop and finish, and leaves questions and permissions. Each list's header shows the machine,
 which opens its connection settings, over the screen's name, and the project
 the + starts in, whose sheet also adds a project for owners. A conversation, a bot's
 page and an open keyboard hide the bar; the conversation's header shows its

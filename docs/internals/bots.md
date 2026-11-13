@@ -42,12 +42,17 @@ thread is archived too and read-only; unarchiving the bot restores it.
 
 On a desktop, every bot of every machine is a picture in the app rail, the
 column down the window's left edge (`AppRail.svelte`), under Threads and the
-contacts; its `+` makes a bot, a team or opens the bot engine. A picture says
+contacts; its `+` makes a bot, a team or opens the bot engine. Teams lead,
+then pinned bots, then bots by creation; a picture dragged 6 px or moved with
+the arrow keys reorders bots and teams together (`QuotaReorder`), and the order
+stays on the device under `boite.rail.order` (`lib/rail-order.svelte.ts`),
+keyed `machineId:bot:id` or `machineId:team:id`. A picture says
 how the bot stands (`railBotState`, `lib/app-rail.ts`, which the phone's bot
 list reads too): an amber count while it needs the user, a red `!` after a
 failure, a turning accent arc while it works, dimmed while paused. Clicking
 one opens the Bots page: the chat page with the bot column in the thread
-list's place (`BotColumnHead` and `BotColumn`). The column's head shows the
+list's place (`BotColumnHead` and `BotColumn`); unlike the thread list
+beside a chat panel, the column is not lent to a docked Desk. The column's head shows the
 bot's squircle, its name and one live line (the step and a timer, what it
 waits on, an error, its next wake); its more menu holds the row menu below,
 the brain and the bot engine. Under it come Conversation, then the threads

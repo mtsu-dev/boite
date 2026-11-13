@@ -8,27 +8,22 @@
   import { openAgent } from '../lib/open-agent';
   import { wordFit } from '../lib/word-fit';
 
-  let { store, threadId, turn = false, shown = $bindable(false), held = 0, open = false, ontoggle }: {
+  let { store, threadId, turn = false, open = false, ontoggle }: {
     store: Store;
     threadId: string;
     /** The line also stops the turn, and shows with nothing sent ("Working"): a question holds the field's button. */
     turn?: boolean;
-    /** The line is drawn: the strip folds the held prompts under it. */
-    shown?: boolean;
-    /** How many prompts wait to be sent, counted after the words ("Waiting on 3 subagents · 1 queued") and listed once it unfolds. */
-    held?: number;
-    /** Unfolded: one row per run under the line, the held prompts after them (`ComposerFoot`). */
+    /** Unfolded: one row per run under the line (`ComposerFoot`). */
     open?: boolean;
     ontoggle?: () => void;
   } = $props();
   /**
    * The strip's line above the composer while this thread waits on work it
-   * sent (`ComposerFoot`): a spinner, "Waiting on 4 subagents" (and "· 1
-   * queued"), their names in muted ink cut at a word, and a Stop at the right
-   * that names what it stops. The same words on a desktop and a phone, where
-   * the names are cut earlier. A tap unfolds one row per run, each opening
-   * it, then the queued prompts. A persistent agent's memory pass is the
-   * core's upkeep, not work it sent.
+   * sent (`ComposerFoot`): a spinner, "Waiting on 4 subagents", their names
+   * in muted ink cut at a word, and a Stop at the right that names what it
+   * stops. The same words on a desktop and a phone, where the names are cut
+   * earlier. A tap unfolds one row per run, each opening it. A persistent
+   * agent's memory pass is the core's upkeep, not work it sent.
    */
   // The team and the runs are the root conversation's: a subagent's own line counts only the ones it sent, never itself, its siblings or the root's runs.
   let root = $derived((store.delegation?.rootThreadId ?? threadId) === threadId);
@@ -46,9 +41,6 @@
     ? (agents === 1 ? strings.delegation.waitingOne : fill(strings.delegation.waiting, { count: String(agents) }))
     : !agents ? (runs.length === 1 ? strings.delegation.waitingWorkflowOne : fill(strings.delegation.waitingWorkflows, { count: String(runs.length) }))
     : fill(strings.delegation.waitingMixed, { count: String(count) }));
-  // Its own box after the words, never cut: a narrow line cuts the words at one of theirs and keeps the queued count whole.
-  let queued = $derived(held > 0 ? fill(strings.composer.stripQueued, { count: String(held) }) : '');
-  let queuedAlone = $derived(held > 0 ? fill(strings.composer.stripQueuedAlone, { count: String(held) }) : '');
   /** Each run once, the way to its own view when it has one. */
   let items = $derived([
     ...active.map(agent => ({ id: agent.thread.id, name: agent.thread.title, open: () => openAgent(store, agent) })),
@@ -67,9 +59,8 @@
     : active.length && runs.length ? 'stopSent' : active.length ? 'stopSubagents' : 'stopWorkflows');
 
   let drawn = $derived(count > 0 || (turn && !away));
-  $effect(() => { shown = drawn; });
-  /** Something to unfold: the runs one per row, or the held prompts. */
-  let foldable = $derived(!!ontoggle && (count > 0 || held > 0));
+  /** Something to unfold: the runs one per row. */
+  let foldable = $derived(!!ontoggle && count > 0);
 
   /** Stops what the line waits on: the subagents this thread sent, its running workflows, and the turn that runs a provider's own. */
   let stopping = $state(false);
@@ -92,16 +83,12 @@
     {#if foldable}
       <button type="button" class="ghost fold" data-testid="composer-foot-fold" aria-expanded={open} title={open ? strings.composer.stripClose : strings.composer.stripOpen} onclick={ontoggle}>
         <span class="label ui-label" data-testid="agent-dock-label" data-text={working} use:wordFit={working}></span>
-        {#if queued}<span class="queued ui-label" data-testid="agent-dock-queued">{queued}</span>{/if}
         <ChevronDown size={14} class={open ? 'turned' : ''} aria-hidden="true" />
       </button>
     {:else}
       <span class="label ui-label" data-testid="agent-dock-label" data-text={working} use:wordFit={working}></span>
-      {#if queued}<span class="queued ui-label" data-testid="agent-dock-queued">{queued}</span>{/if}
     {/if}
     {#if !open}
-      <!-- A phone's second line: the count leaves the first one, so the words stay whole; the one in the line above stays for a screen reader. -->
-      {#if queued}<span class="queued-under" aria-hidden="true">{queuedAlone}</span>{/if}
       <span class="names" data-testid="agent-dock-names" title={names} use:wordFit={names}></span>
     {/if}
     {#if stoppable}
@@ -133,8 +120,6 @@
      2 px cover the room word-fit keeps spare for canvas rounding. */
   .label { display: flex; flex-direction: column; flex: 0 1 auto; min-width: 0; overflow: hidden; }
   .label::before { content: attr(data-text); height: 0; padding-right: 2px; overflow: hidden; visibility: hidden; }
-  .queued { flex: none; }
-  .queued-under { display: none; }
   /* The names on one line in muted ink, cut at a word (lib/word-fit.ts): its
      width is what the counts and Stop leave, never its own words, so a phone
      cuts them earlier and drops them only when no word fits. */
@@ -160,15 +145,13 @@
     .foot-row.waiting[data-named] {
       display: grid;
       grid-template-columns: 16px auto minmax(0, 1fr) auto;
-      grid-template-areas: 'mark label label label' '. queued names stop';
+      grid-template-areas: 'mark label label label' '. names names stop';
       height: auto;
     }
     .foot-row.waiting[data-named] > * { height: var(--foot-row); }
     .foot-row.waiting[data-named] > .mark { grid-area: mark; }
     .foot-row.waiting[data-named] > :is(.fold, .label) { grid-area: label; justify-self: start; max-width: 100%; }
     .foot-row.waiting[data-named] > .names { grid-area: names; line-height: var(--foot-row); }
-    .foot-row.waiting[data-named] > .queued-under { display: block; grid-area: queued; margin-right: 4px; line-height: var(--foot-row); white-space: nowrap; }
-    .foot-row.waiting[data-named] .queued { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
     .foot-row.waiting[data-named] > .stop { grid-area: stop; }
     .stop { position: relative; }
     .stop::after { content: ''; position: absolute; inset: -8px -2px; }

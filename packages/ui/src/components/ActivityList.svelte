@@ -8,6 +8,7 @@
   import { strings } from '../lib/strings';
   import { count } from '../lib/format';
   import ActivityRow from './ActivityRow.svelte';
+  import MarkAllRead from './MarkAllRead.svelte';
   import EmptyState from './EmptyState.svelte';
   import { restoreActivity } from '../lib/activity-return.svelte';
 
@@ -64,8 +65,12 @@
 <section class="activity-page" data-testid="activity-list" aria-label={strings.mobile.activity} tabindex="-1" bind:this={page}>
   <div class="column">
     <!-- The section names the mark its rows wear: the amber dot beside "Needs you", learned together. -->
-    {#if needsCount > 0}<h2 class="section-label" data-testid="activity-needs" data-count={needsCount}><span class="dot" aria-hidden="true"></span>{strings.sidebar.state.waiting}<span class="count">{count(needsCount)}</span></h2>
-    {:else if rows.length > 0}<p class="all-done" data-testid="activity-all-done">{strings.mobile.nothingNeedsYou}</p>{/if}
+    <!-- The first line carries Mark all as read on its right, whichever line it is. -->
+    {#if needsCount > 0 || rows.length > 0}<div class="feed-head">
+      {#if needsCount > 0}<h2 class="section-label" data-testid="activity-needs" data-count={needsCount}><span class="dot" aria-hidden="true"></span>{strings.sidebar.state.waiting}<span class="count">{count(needsCount)}</span></h2>
+      {:else}<p class="all-done" data-testid="activity-all-done">{strings.mobile.nothingNeedsYou}</p>{/if}
+      <MarkAllRead {rows} />
+    </div>{/if}
     {#if ContactInboxRows && contactsShown(store)}<ContactInboxRows {store} />{/if}
     {#each needs as { row, helpers } (`${row.machine.id}:${row.thread.id}`)}<ActivityRow {row} {helpers} {now} />{/each}
     {#if updates.length > 0}<h2 class="section-label" data-testid="activity-updates">{strings.mobile.feed.updates}</h2>{/if}
@@ -105,7 +110,11 @@
   /* A section's name over its rows, from the rows' text edge; the next section stands off the last row. */
   /* From the rows' tile edge (ThreadCard's compact 10 px). */
   h2 { margin: 0 0 var(--space-2) 10px; }
-  h2 ~ h2 { margin-top: var(--space-6); }
+  .feed-head ~ h2 { margin-top: var(--space-6); }
+  /* The first line and Mark all as read on its right edge, centred on the line's words. */
+  .feed-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-width: 0; min-height: var(--control-sm); margin-bottom: var(--space-2); }
+  .feed-head > :is(h2, .all-done) { margin-bottom: 0; }
+  .feed-head:has(> .all-done) { margin-bottom: var(--space-4); }
   /* The section's count, the rail badge's number: amber marks it, the word stays grey. */
   h2 .count { margin-left: 6px; color: var(--color-live); font-variant-numeric: tabular-nums; }
   h2 { display: flex; align-items: center; }
