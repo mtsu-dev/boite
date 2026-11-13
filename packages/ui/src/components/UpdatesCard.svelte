@@ -118,12 +118,13 @@
 </script>
 
 <section class="card updates" id="settings-updates" data-testid="app-updates-card" aria-label={strings.appUpdate.updates}>
-  <div class="line">
-    <p class="version" data-testid="updates-version">
+  <!-- The title stands above the card like every other, the channel at its right end. -->
+  <div class="card-head">
+    <h2 class="version" data-testid="updates-version">
       <span class="name">Boite</span>
       <span class="number">{current}</span>
       {#if found}<ArrowRight size={13} aria-hidden="true" /><span class="number target" data-testid="updates-found">{found}</span>{/if}
-    </p>
+    </h2>
     {#if supported}
       <div class="segmented channel" role="group" aria-label={strings.appUpdate.channel}>
         <button type="button" class:on={app!.channel === 'nightly'} aria-pressed={app!.channel === 'nightly'} data-testid="app-update-nightly"
@@ -200,14 +201,17 @@
 </section>
 
 <style>
-  .updates { display: grid; gap: 10px; padding: 16px 20px; }
+  /* Rows of the card, a line between every two (app.css): each brings its own air. */
+  .updates > :not(.card-head) { padding: var(--space-3) 0; }
+  :global(.settings .page) .updates > .track { padding: 0; border-top: 0; margin-bottom: var(--space-3); }
   .line { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; min-width: 0; }
   p { margin: 0; }
-  .version { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; color: var(--color-muted-foreground); }
-  .name { color: var(--color-foreground); font-weight: 600; font-size: var(--text-md); }
+  .version { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
+  .version .number { color: var(--color-muted-foreground); font-weight: 400; }
+  .version :global(svg) { color: var(--color-muted-foreground); }
   /* A version is a label here, not code: the UI face, with figures that line up. */
   .number { font-size: var(--text-sm); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-  .target { color: var(--color-foreground); }
+  .version .target, .target { color: var(--color-foreground); }
   .status { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; color: var(--color-muted-foreground); font-size: var(--text-sm); overflow-wrap: anywhere; }
   .status.offer > span:first-child { color: var(--color-foreground); }
   .status.error { color: var(--color-danger); }
@@ -218,7 +222,7 @@
   .track { height: 3px; overflow: hidden; border-radius: var(--radius-sm); background: var(--color-surface-3); }
   .track span { display: block; height: 100%; border-radius: inherit; background: var(--color-accent); transition: width var(--dur-2) var(--ease-out-quint); }
   .track.indeterminate span { opacity: 0.4; }
-  .others { list-style: none; margin: 4px 0 0; padding: 10px 0 0; border-top: 1px solid var(--color-border); display: grid; gap: 6px; font-size: var(--text-sm); }
+  .others { list-style: none; margin: 0; display: grid; gap: 6px; font-size: var(--text-sm); }
   .others li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; color: var(--color-muted-foreground); }
   .others :global(svg) { flex: none; }
   .where { color: var(--color-foreground); font-weight: 500; }
@@ -235,7 +239,6 @@
   :global(html[data-motion='reduced']) .actions :global(.spinning) { animation: none; }
   @media (prefers-reduced-motion: reduce) { .actions :global(.spinning) { animation: none; } }
   @media (max-width: 720px) {
-    .updates { padding: 14px 16px; }
     .actions { width: 100%; }
     .actions button { flex: 1; min-height: var(--touch-target); }
     .channel button { min-height: var(--touch-target); }

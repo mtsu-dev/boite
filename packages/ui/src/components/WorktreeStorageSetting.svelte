@@ -83,7 +83,9 @@
 </form>
 
 <style>
-  form { margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--color-border); }
+  /* A row of its card: the card draws the line under it. The folder field, when shown, keeps its air. */
+  form { margin: 0; }
+  form:has(.directory) { padding-bottom: var(--space-3); }
   fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
   .switch-row { flex-wrap: wrap; gap: 8px; }
   label { display: block; font-size: var(--text-sm); margin: 12px 0 6px; }

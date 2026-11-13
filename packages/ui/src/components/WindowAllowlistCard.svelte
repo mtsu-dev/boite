@@ -103,19 +103,22 @@
 {/if}
 
 <style>
-  .project + .project { margin-top: 12px; }
-  h3 { margin-bottom: 6px; font-size: var(--text-sm); font-weight: 600; }
+  /* The card keeps only a hairline of room of its own: each project and the empty line bring a row's air. */
+  .project { padding: var(--space-3) 0; }
+  p { margin: 0; padding: var(--space-3) 0; }
+  .project p { padding: 0; }
+  h3 { margin: 0 0 var(--space-2); font-size: var(--text-sm); font-weight: 600; }
   ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
   li {
     display: flex;
     align-items: center;
     gap: 10px;
     min-height: var(--row);
-    padding: 4px 4px 4px 10px;
+    padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
   }
-  .what { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .what { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; line-height: 1.4; }
   .name { font-family: var(--font-mono); font-size: var(--text-sm); }
   .path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); color: var(--color-subtle); }
   li button { flex: none; }

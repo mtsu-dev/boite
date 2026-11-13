@@ -60,7 +60,9 @@
 {/if}
 
 <style>
-  ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+  /* The card keeps only a hairline of room of its own: the list, the empty line and the form bring a row's air. */
+  p.muted { margin: 0; padding: var(--space-3) 0; }
+  ul { list-style: none; margin: 0; padding: var(--space-3) 0; display: flex; flex-direction: column; gap: 2px; }
   li {
     display: flex;
     align-items: center;
@@ -72,7 +74,7 @@
   }
   .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); font-size: var(--text-sm); }
   .icon { flex: none; min-width: var(--control); min-height: var(--control); justify-content: center; }
-  .add { display: flex; gap: 8px; margin-top: 8px; }
+  .add { display: flex; gap: var(--space-2); padding: var(--space-3) 0; }
   .add input { flex: 1; min-width: 0; }
   .add button { flex: none; }
   .error { margin: 4px 0 0; }

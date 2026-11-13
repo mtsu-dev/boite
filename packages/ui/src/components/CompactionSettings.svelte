@@ -73,7 +73,7 @@
   .customize { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: var(--space-3) 0; }
   .words { display: flex; align-items: center; gap: 8px; }
   .hint { margin: 0 0 20px; }
-  fieldset { border: 0; padding: var(--space-3) 0 0; margin: 0; min-width: 0; }
+  fieldset { border: 0; padding: var(--space-3) 0; margin: 0; min-width: 0; }
   fieldset:disabled { opacity: 0.6; }
   @media (max-width: 720px) {
     .scope { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
