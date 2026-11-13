@@ -134,6 +134,8 @@ export function connectByOwner(core: Core, id: string, threadId: unknown): Conta
 }
 
 export async function runPlan(core: Core, id: string): Promise<ContactRequest> {
+  // Whoever calls: a plan written as a Nightly does not run on a Release.
+  contactsGate(core);
   const { request } = core.contacts.requests.pending(id, 'in');
   const bot = contactsBot(core);
   const plan = request.plan;
@@ -317,6 +319,8 @@ export class ContactsBotMethods {
     this.#core.threads.cards.ownerOnly.delete(questionId);
     const picked = answer?.optionIds[0] ?? null;
     try {
+      // The build is read when the owner answers, not when the card was drawn: a Yes on a card a Nightly left opens and starts nothing on a Release.
+      if ((card.kind === 'share' && picked === 'yes') || (card.kind === 'owner' && picked === 'accept')) contactsGate(this.#core);
       if (card.kind === 'share' && picked === 'yes') this.#core.contacts.requests.settle(card.requestId, true, card.projectId, undefined, 'owner');
       else if (card.kind === 'owner' && picked === 'accept') {
         // The plan the owner read runs now; without one the bot acts on its next wake.
@@ -340,7 +344,8 @@ export function registerContactsBot(core: Core): ContactsBotMethods {
   core.router.register('contacts.bot.connect', p => { contactsGate(core); return methods.connect(p); });
   core.router.register('contacts.bot.start', p => { contactsGate(core); return methods.start(p); });
   core.router.register('contacts.bot.share', p => { contactsGate(core); return methods.share(p); });
-  core.router.register('contacts.bot.askOwner', p => methods.askOwner(p));
+  // A card that carries a plan proposes new work; a note for the owner does not.
+  core.router.register('contacts.bot.askOwner', p => { if (p?.connect !== undefined || p?.start !== undefined) contactsGate(core); return methods.askOwner(p); });
   core.router.register('contacts.bot.refuse', p => methods.refuse(p));
   core.router.register('contacts.bot.cut', p => methods.cut(p));
   core.router.register('contacts.bot.flag', p => methods.flag(p));

@@ -57,8 +57,8 @@ test('a Release core runs no experiment an app reports, refuses the card for one
   await owner.call('turns.start', { threadId, prompt: 'hello' });
   await finished;
 
-  // The answer carries what the desktop app chose, for the phones that follow it; the core itself runs none of it.
-  expect(await owner.call('client.preferences', report(EXPERIMENTAL))).toEqual({ ok: true, desktop: EXPERIMENTAL });
+  // The historic field stays what is in force, as an app from before the stages reads it; the chosen list rides beside it for the phones that keep it.
+  expect(await owner.call('client.preferences', report(EXPERIMENTAL))).toEqual({ ok: true, desktop: effectiveExperiments([], RELEASE), desktopChosen: EXPERIMENTAL });
   expect(h.core.clients.current()!.experiments).not.toContain('whip');
   expect(h.core.council.enabled()).toBe(false);
 
@@ -82,7 +82,7 @@ test('a Nightly core keeps the experiments an app chose beside the finished feat
   const finished = owner.next('turn.finished', turn => turn.threadId === threadId, 10000);
   await owner.call('turns.start', { threadId, prompt: 'hello' });
   await finished;
-  expect(await owner.call('client.preferences', report(['teams', 'debates']))).toEqual({ ok: true, desktop: ['teams', 'debates'] });
+  expect(await owner.call('client.preferences', report(['teams', 'debates']))).toEqual({ ok: true, desktop: effectiveExperiments(['teams', 'debates'], NIGHTLY), desktopChosen: ['teams', 'debates'] });
   expect(h.core.council.enabled()).toBe(true);
   const read = await owner.call('agent.settings', { threadId });
   expect(read.settings.filter(setting => setting.key.startsWith('experiment.')).map(setting => [setting.key, setting.value])).toEqual([

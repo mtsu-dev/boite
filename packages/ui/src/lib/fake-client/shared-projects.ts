@@ -35,6 +35,7 @@ export function sharedProjectMethods(ctx: FakeContext) {
       notifyShared(ctx,id); return sharedView(ctx,requireShared(ctx,id));
     },
     'sharedProjects.decide': async p => {
+      if (p?.accept === true) ctx.startGate('contacts');
       if (typeof p.accept !== 'boolean') throw invalidShared('accept: expected a boolean');
       const s = requireShared(ctx,p.sharedProjectId), {local,remote,index} = endpoints(ctx,s);
       onceShared(ctx,`control:${s.id}:${sharedText(p.requestId,'requestId')}`,p,() => {
@@ -48,6 +49,8 @@ export function sharedProjectMethods(ctx: FakeContext) {
       notifyShared(ctx,s.id); return sharedView(ctx,s);
     },
     'sharedProjects.configure': async p => {
+      // Turning a part on starts something; turning it off stays open in every build.
+      if (p?.board === true || p?.compute?.enabled === true || p?.reviewer?.enabled === true) ctx.startGate('contacts');
       const s = requireShared(ctx,p.sharedProjectId), {index} = endpoints(ctx,s); assertSharedActive(ctx,s);
       if (p.board !== undefined && typeof p.board !== 'boolean') throw invalidShared('board: expected a boolean');
       if (p.computeThreadId !== undefined && p.compute === undefined) throw invalidShared('computeThreadId: expected compute policy');

@@ -336,7 +336,7 @@ export class FakeContext {
   clientPreferences: ClientPreferences | null = null;
   /** Each app's last report by its id, as the core's book keeps them. */
   readonly clientApps = new Map<string, ClientPreferences>();
-  /** What the fake machine's desktop app has on, as `client.desktopExperiments` says; null before it reported. */
+  /** What the fake machine's desktop app chose, as `client.desktopExperiments` says in `chosen`; null before it reported. */
   desktopExperiments: ExperimentId[] | null = null;
 
   /**

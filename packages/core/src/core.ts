@@ -401,7 +401,7 @@ export class Core {
     this.settings = new SettingsStore(this);
     this.clients = new ClientPreferencesBook(
       (preferences, before) => this.threads.cards.settleClient(preferences, before),
-      (experiments) => this.bus.emit('client.desktopExperiments', { experiments }),
+      (moved) => this.bus.emit('client.desktopExperiments', moved),
       this.version,
     );
     this.providers = new ProviderRegistry(this.dataDir);

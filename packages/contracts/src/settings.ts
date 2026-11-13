@@ -315,11 +315,13 @@ export interface SettingsRpcMethods {
    * The app says its language, the experiments it has on and the names it
    * gives settings, after each hello and on every change. Agents read them
    * from the app the user last used (`agent.settings`), and a card about an
-   * experiment settles when that app reports it changed. `desktop` is what
-   * `client.desktopExperiments` last said, null before any desktop app
-   * reported: a phone follows the computer's switches from its first hello.
+   * experiment settles when that app reports it changed. `desktop` and
+   * `desktopChosen` are what `client.desktopExperiments` last said in
+   * `experiments` and `chosen`, null before any desktop app reported: a phone
+   * follows the computer's switches from its first hello. A core from before
+   * `desktopChosen` answers without it.
    */
-  'client.preferences': { params: ClientPreferences; result: { ok: true; desktop: ExperimentId[] | null } };
+  'client.preferences': { params: ClientPreferences; result: { ok: true; desktop: ExperimentId[] | null; desktopChosen?: ExperimentId[] | null } };
 }
 
 export interface SettingsRpcEvents {
@@ -328,11 +330,13 @@ export interface SettingsRpcEvents {
   /**
    * The experiments of the desktop app this core follows, once its report
    * changes them: the app on this machine's loopback, else the last desktop
-   * app to report from elsewhere. The list is the one that app chose, not
-   * cut down to what this core's build runs: the device that follows it
-   * reads it for the build that decides (`effectiveExperiments`), so a
-   * Release in between erases nobody's switches. Kept in memory, like the
-   * reports.
+   * app to report from elsewhere. `experiments` is what is in force in this
+   * core's build (`effectiveExperiments`), which is what an app from before
+   * the stages takes it for: a Release names no experiment there. `chosen`
+   * is the list as that app chose it, not cut down: the device that follows
+   * it keeps this one and reads it for the build that decides, so a Release
+   * in between erases nobody's switches. A core from before `chosen` sends
+   * `experiments` alone. Kept in memory, like the reports.
    */
-  'client.desktopExperiments': { experiments: ExperimentId[] };
+  'client.desktopExperiments': { experiments: ExperimentId[]; chosen?: ExperimentId[] };
 }

@@ -12,10 +12,11 @@ const APPS_KEPT = 64;
  * experiments it has on and the names it gives settings. The experiments are
  * read for the build this core is (`effectiveExperiments`): a finished feature
  * is on whatever the app said, and a Release keeps none of the others, so
- * nothing the core gates on them runs because an app claimed it. What phones
- * follow is the desktop app's list as it chose it (`desktopChosen`): each
- * reader applies its own build, so a Release in between loses nobody's
- * switches. Kept in memory only:
+ * nothing the core gates on them runs because an app claimed it. Phones are
+ * told the desktop app's list twice: in force here (`desktopExperiments`),
+ * which is all an app from before the stages reads, and as it chose it
+ * (`desktopChosen`), which a phone keeps and reads for its own build, so a
+ * Release in between loses nobody's switches. Kept in memory only:
  * an app says it again after every hello. Agents read the app the user last
  * used: the one that last sent a prompt or changed a preference, or the first
  * to report once that app's socket closed. A phone that merely reconnects in a
@@ -33,15 +34,16 @@ export class ClientPreferencesBook {
    * `reported` runs on every report with the experiments that app had at its
    * previous one, null when the core has none: a card settles on a flip, not
    * on another app's different value. `desktopMoved` runs when the followed
-   * desktop app's chosen experiments change, with that list as chosen.
+   * desktop app's chosen experiments change, with that list in force
+   * in this build and as chosen.
    */
   readonly #reported: (preferences: ClientPreferences, before: readonly ExperimentId[] | null) => void;
-  readonly #desktopMoved: (experiments: ExperimentId[]) => void;
+  readonly #desktopMoved: (moved: { experiments: ExperimentId[]; chosen: ExperimentId[] }) => void;
   readonly #version: string;
 
   constructor(
     reported: (preferences: ClientPreferences, before: readonly ExperimentId[] | null) => void,
-    desktopMoved: (experiments: ExperimentId[]) => void = () => {},
+    desktopMoved: (moved: { experiments: ExperimentId[]; chosen: ExperimentId[] }) => void = () => {},
     version: string = CORE_VERSION,
   ) {
     this.#reported = reported;
@@ -73,15 +75,15 @@ export class ClientPreferencesBook {
     if (!local && this.#desktop?.local === true) return;
     const changed = this.#desktop === null || this.#desktop.experiments.join() !== experiments.join();
     this.#desktop = { experiments: [...experiments], local };
-    if (changed) this.#desktopMoved([...experiments]);
+    if (changed) this.#desktopMoved({ experiments: effectiveExperiments(experiments, this.#version), chosen: [...experiments] });
   }
 
-  /** What the followed desktop app has in force in this build, or null before one reported: what the core's own gates read. */
+  /** What the followed desktop app has in force in this build, or null before one reported: what the core's own gates read, and what an app from before the stages is handed. */
   desktopExperiments(): ExperimentId[] | null {
     return this.#desktop === null ? null : effectiveExperiments(this.#desktop.experiments, this.#version);
   }
 
-  /** The switches the followed desktop app chose, whatever this build runs, or null before one reported: what a phone is handed. */
+  /** The switches the followed desktop app chose, whatever this build runs, or null before one reported: what a phone keeps. */
   desktopChosen(): ExperimentId[] | null {
     return this.#desktop === null ? null : [...this.#desktop.experiments];
   }

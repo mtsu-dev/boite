@@ -216,7 +216,7 @@ export function registerSettingsMethods(core: Core): void {
   core.router.register('agent.settings', () => ({ app: core.clients.app(), settings: readSettings(core.settings.get(), core.clients.current(), core.version) }));
   core.router.register('client.preferences', (params, ctx) => {
     core.clients.report(ctx.connection, params);
-    return { ok: true, desktop: core.clients.desktopChosen() } as const;
+    return { ok: true, desktop: core.clients.desktopExperiments(), desktopChosen: core.clients.desktopChosen() } as const;
   });
   core.router.register('settings.request', (params) => core.threads.cards.requestSetting(params));
 }

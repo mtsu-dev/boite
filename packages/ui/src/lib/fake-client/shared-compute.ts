@@ -163,6 +163,7 @@ export function sharedComputeMethods(ctx:FakeContext){
       return cloneShared(record.job);
     },
     'sharedCompute.send':async p=>{
+      ctx.startGate('contacts');
       computeSource(ctx,p);const found=job(p),{host,shared}=found,text=sharedText(p.text,'text',4000),requestId=sharedText(p.requestId,'requestId');
       if(found.record.job.host.coreId!==ctx.identity.coreId&&!remoteShared(ctx,shared))throw refusedShared('compute.host: unavailable');
       const record=stateOf(host).jobs.get(found.record.job.id)!;

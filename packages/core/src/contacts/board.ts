@@ -175,6 +175,8 @@ export class SharedBoard {
     return [...projected.values()];
   }
   async apply(p: RpcParams<'sharedBoard.apply'>, connection?: Connection): Promise<SharedBoardReceipt> {
+    // A new card, an edit or a claim is new work on the board; removing a card and releasing a claim are upkeep. Read here, so `todos.update` on a shared card meets it too.
+    if (p?.command?.kind !== 'remove' && p?.command?.kind !== 'release') contactsGate(this.core);
     const ctx = this.core.sharedProjects.scope(p, connection); this.check(ctx);
     const command = boardCommand(p.command), value: PendingBoardCommand = {threadId: p.threadId, source: ctx.source, command};
     if (ctx.source.kind === 'agent' && (command.kind === 'remove' || command.kind === 'update' && command.status === 'done')) throw refused('sharedBoard: only the user confirms or removes a card');

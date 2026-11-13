@@ -471,9 +471,10 @@ export function registerSharedProjectMethods(core: Core): void {
   core.router.register('sharedProjects.list', (p, c) => service.list(p.threadId, c.connection));
   core.router.register('sharedProjects.get', (p, c) => service.get(p, c.connection));
   core.router.register('sharedProjects.offer', p => { contactsGate(core); return service.offer(p); });
-  core.router.register('sharedProjects.decide', p => service.decide(p));
+  // Accepting an association and turning one of its parts on start something; declining, turning off and revoking stay open in every build.
+  core.router.register('sharedProjects.decide', p => { if (p?.accept === true) contactsGate(core); return service.decide(p); });
   core.router.register('sharedProjects.revoke', p => service.revoke(p));
-  core.router.register('sharedProjects.configure', p => service.configure(p));
+  core.router.register('sharedProjects.configure', p => { if (p?.board === true || p?.compute?.enabled === true || p?.reviewer?.enabled === true) contactsGate(core); return service.configure(p); });
   core.router.register('sharedProjects.threads', (p, c) => service.threads(p, c.connection));
   core.router.register('sharedProjects.search', (p, c) => service.search(p, c.connection));
   core.router.register('sharedProjects.read', (p, c) => service.read(p, c.connection));

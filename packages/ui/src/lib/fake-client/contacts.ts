@@ -798,6 +798,8 @@ export function contactMethods(ctx: FakeContext) {
       return { questionId: `contact-share-${request.id}` };
     },
     'contacts.bot.askOwner': async (params) => {
+      // A card that carries a plan proposes new work; a note for the owner does not.
+      if (params?.connect !== undefined || params?.start !== undefined) ctx.startGate('contacts');
       botCall(params?.threadId);
       const request = incoming(params.id, false);
       if (contactState(ctx).contacts.find(entry => entry.coreId === request.coreId)?.trusted) throw refuse(`id: ${request.contact} is trusted; act on the request yourself`, 'id');

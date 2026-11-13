@@ -58,7 +58,16 @@ run": the version in the hello (`info.version`) is enough.
   inviting, joining, granting, offering, asking, accepting a request or mail,
   trusting a contact, storing a Tailscale key and the Contacts bot's
   forwards are refused with the Nightly reason, while reading, refusing,
-  revoking and removing what exists still answer.
+  revoking and removing what exists still answer. The same holds for what a
+  Nightly left in the data directory: accepting an association, turning its
+  board, compute or reviewer on, a new, edited or claimed card
+  (`sharedBoard.apply`, `todos.update` on a shared card), a path override and
+  a follow-up to a compute job are refused, while declining, turning off,
+  removing a card, releasing a claim, cancelling a job and revoking go
+  through. The Contacts bot proposes no plan (`contacts.bot.askOwner` with
+  `connect` or `start`), and a Yes on a card drawn as a Nightly opens and
+  starts nothing: the build is read when the owner answers and again when the
+  plan runs, and the request goes back to the bot.
   `packages/core/test/feature-stages.test.ts` covers it.
 - The app (`packages/ui/src/lib/experiments.ts`) follows the version of its
   primary machine's core: the Store `followDesktopOf` names says it on every
@@ -73,7 +82,8 @@ run": the version in the hello (`info.version`) is enough.
   The stored choice (`boite.experiments`) is never rewritten by a version: a
   device that goes back to a Nightly finds its switches. The app still reports
   its chosen list in `client.preferences`; the core normalizes it for its own
-  gates and passes the desktop app's list on to phones as chosen.
+  gates and tells phones the desktop app's list twice: in force in its build
+  on the historic field, and as chosen on a separate one.
 - Settings lists `listedExperiments(version)` and has no Experiments page when
   experiments do not run (`pageAvailable` in `lib/settings-tabs.ts`, desktop
   nav, search and phone list): a route or a card that points there lands on
@@ -117,11 +127,17 @@ machine, and changes when that app does. The core answers each app's report
 changes (`client.desktopExperiments`); a desktop app on the machine's loopback
 outranks one reached from elsewhere. Only an app on the owner's own token
 counts: a paired device that calls itself a desktop app is not followed. Both
-carry the list as the desktop app chose it, not cut down to what the core's
-build runs (`ClientPreferencesBook.desktopChosen`): the phone reads it with
-`effectiveExperiments` for the build that decides, so a machine that spends
-a while on a Release does not erase the followed switches. The core's own
-gates read the same list for its build (`desktopExperiments`). The
+carry the list twice. The historic field (`desktop` in the answer,
+`experiments` in the event) is what is in force in the core's build
+(`ClientPreferencesBook.desktopExperiments`, which the core's own gates read
+too): an app from before the stages takes that field for what is on, so a
+Release names no experiment there. The separate field (`desktopChosen` in the
+answer, `chosen` in the event) is the list as the desktop app chose it, not
+cut down (`desktopChosen`): the phone keeps that one (`desktopHeard`) and
+reads it with `effectiveExperiments` for the build that decides, so a machine
+that spends a while on a Release does not erase the followed switches. A core
+from before the separate field sends the historic one alone, and the phone
+keeps it. The
 core keeps them in memory, and the phone keeps the last set in
 `boite.experiments.desktop`, with the id of the core that named it, so a reload
 starts with it. A core that has heard no desktop app yet leaves that set in

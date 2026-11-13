@@ -386,7 +386,7 @@ export function requestMethods(ctx: FakeContext) {
       ctx.clientApps.set(preferences.app, preferences);
       ctx.clientPreferences = preferences;
       settleSettings(ctx, ctx.settingsInForce(), { preferences, before });
-      return { ok: true, desktop: ctx.desktopExperiments === null ? null : [...ctx.desktopExperiments] };
+      return { ok: true, desktop: ctx.desktopExperiments === null ? null : effectiveExperiments(ctx.desktopExperiments, ctx.core.version), desktopChosen: ctx.desktopExperiments === null ? null : [...ctx.desktopExperiments] };
     },
     'questions.skip': async (params) => {
       const pending = ctx.pendingQuestions.get(params.questionId);

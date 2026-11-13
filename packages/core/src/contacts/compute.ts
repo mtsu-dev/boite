@@ -568,6 +568,7 @@ export function registerSharedComputeMethods(core: Core): void {
   core.router.register('sharedCompute.start', (p, c) => { contactsGate(core); return core.sharedCompute.start(p, c.connection); });
   core.router.register('sharedCompute.list', (p, c) => core.sharedCompute.list(p, c.connection));
   core.router.register('sharedCompute.get', (p, c) => core.sharedCompute.get(p, c.connection));
-  core.router.register('sharedCompute.send', (p, c) => core.sharedCompute.send(p, c.connection));
+  // A follow-up starts a turn, and wakes a finished job again.
+  core.router.register('sharedCompute.send', (p, c) => { contactsGate(core); return core.sharedCompute.send(p, c.connection); });
   core.router.register('sharedCompute.cancel', (p, c) => core.sharedCompute.cancel(p, c.connection));
 }
