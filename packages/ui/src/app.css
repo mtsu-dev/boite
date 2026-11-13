@@ -2022,11 +2022,11 @@ tr:last-child td {
 }
 
 /* A line between every two rows of a card. What belongs to the row above (a
-   hint, an error, a status) joins it without one. */
-:is(.settings .page > .card, .settings .page > form > .card, .settings .page > .settings-stack > .card) > :not(h2, :first-child) {
+   hint, an error, a status) joins it without one. A button that is a row keeps its own outline. */
+:is(.settings .page > .card, .settings .page > form > .card, .settings .page > .settings-stack > .card) > :not(h2, :first-child, button) {
   border-top: 1px solid var(--color-border);
 }
-:is(.settings .page > .card, .settings .page > form > .card, .settings .page > .settings-stack > .card) > :is(h2 + *, .hint, [role=alert], .error, [hidden]) {
+:is(.settings .page > .card, .settings .page > form > .card, .settings .page > .settings-stack > .card) > :is(h2 + *, .hint, [role=alert], .error, [hidden]):not(button) {
   border-top: 0;
 }
 
@@ -2266,6 +2266,9 @@ tr:last-child td {
   :is(.settings .framed .page > .card, .settings .framed .page > form > .card, .settings .framed .page > .settings-stack > .card) > h2:first-child { left: var(--space-5); right: var(--space-5); }
   .settings .framed .page .card h2,
   .settings .framed .page > .group-heading h2 { font-size: var(--text-title); }
+  /* A title beside an action and a title over a list of cards stand at the card's own inset, as a card's plain title does. */
+  :is(.settings .framed .page > .card, .settings .framed .page > form > .card, .settings .framed .page > .settings-stack > .card) > .card-head:first-child { left: var(--space-5); right: var(--space-5); }
+  .settings .framed .page > .group-heading { padding-inline: var(--space-5); }
   .settings .framed .segmented button { padding: 0 14px; }
 }
 

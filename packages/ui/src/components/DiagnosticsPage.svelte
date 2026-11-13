@@ -430,7 +430,8 @@
   .files { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; font-size: var(--text-sm); }
   .files span { color: var(--color-muted-foreground); }
   code { font-family: var(--font-mono); font-size: var(--text-xs); }
-  .buttons { margin-top: 18px; }
+  /* The row's air stands under its line, so the buttons do not sit on it. */
+  .buttons { padding: var(--space-3) 0; }
   .buttons button { gap: 6px; }
   .note { margin-top: 10px; overflow-wrap: anywhere; }
 

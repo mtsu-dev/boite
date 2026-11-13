@@ -501,6 +501,11 @@
   .mobile button { min-height: var(--touch-target); }
   .mobile .icon-only { min-width: var(--touch-target); }
   .mobile .field button { flex: 1; }
+  /* A window with room: the inset of every other card of the page, its title with it. */
+  @media (min-width: 721px) {
+    :global(.settings .framed) .group { padding-inline: var(--space-5); }
+    :global(.settings .framed) .group > :global(.card-head:first-child) { left: var(--space-5); right: var(--space-5); }
+  }
   @media (max-width: 720px) {
     .group { padding: 14px 16px; }
     .row { flex-wrap: wrap; }
