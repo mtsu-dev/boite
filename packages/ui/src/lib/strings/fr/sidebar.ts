@@ -37,7 +37,7 @@ export const fr: Translation = {
     groupIdleRow: 'Projets inactifs',
     showDoneRow: 'Conversations terminées',
     showDoneHint: 'Affiche les conversations terminées après les autres, dans Projets et Récent. Cet appareil seulement.',
-    autoArchiveMergedPrHint: 'Une fois toutes les pull requests d’une conversation en worktree fusionnées ou fermées, Boite demande à son agent si la conversation est terminée. L’agent la passe en Terminés ou la garde ouverte. S’applique à ce projet.',
+    autoArchiveMergedPrHint: 'Une fois toutes ses PR fusionnées ou fermées, Boite demande à l’agent si la conversation est terminée. S’applique à ce projet.',
     autoRemoveWorktreesHint: 'Une heure après que toutes les conversations d’un worktree sont terminées ou archivées, Boite supprime le worktree si rien ne se perd : son dernier commit est sur une autre branche, ou une pull request fusionnée a exactement ce commit. Une branche fusionnée part aussi. Les modifications non commitées restent toujours. S’applique à ce projet.',
     noActiveProjects: 'Aucune conversation à traiter.',
     markDone: 'Marquer comme terminé',

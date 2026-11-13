@@ -46,7 +46,7 @@ export const strings = {
     groupIdleRow: 'Idle projects',
     showDoneRow: 'Done threads',
     showDoneHint: 'Lists finished threads after the live ones, in Projects and Recent. This device only.',
-    autoArchiveMergedPrHint: 'Once every pull request of a worktree conversation is merged or closed, Boite asks its agent whether the conversation is done. The agent moves it to Done or keeps it open. Applies to this project.',
+    autoArchiveMergedPrHint: 'After every PR merges or closes, Boite asks the agent whether the conversation is done. Applies to this project.',
     autoRemoveWorktreesHint: 'An hour after every conversation in a worktree is done or archived, Boite deletes the worktree if nothing would be lost: its last commit is on another branch, or a merged pull request has that exact commit. A merged branch goes too. Uncommitted changes always stay. Applies to this project.',
     noActiveProjects: 'No conversations need attention.',
     markDone: 'Mark done',
