@@ -737,8 +737,9 @@ test('with a brain, a new Claude session reads the Boite guide in its system pro
   // The session's first message carries the brain, the second none; neither has a second `boite ask` note.
   expect(calls[0]!.prompts).toHaveLength(2);
   expect(first).toContain('Shared convention');
-  // No prefix at all: the user's words open the message, the coordination note follows them.
-  expect(second!.startsWith('second\n')).toBe(true);
+  // No prefix at all, and the coordination note the first message carried stays in the session.
+  expect(first).toContain('Boite coordination');
+  expect(second).toBe('second');
   for (const prompt of [first, second]) {
     expect(prompt).not.toContain('boite where');
     expect(prompt).not.toContain('boite ask');

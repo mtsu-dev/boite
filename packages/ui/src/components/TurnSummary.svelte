@@ -72,10 +72,12 @@
   const compactOperation = $derived(turn.execution?.operation === 'compact');
   const observed = $derived(running && !waiting && !stale && progress?.turnId === turn.id ? progress : null);
   const compacting = $derived(running && !waiting && !stale && (compactOperation || observed?.phase === 'compacting'));
+  const starting = $derived(observed?.phase === 'starting');
   const lastUpdate = $derived(!stale ? '' : now - heard! < 60_000 ? strings.chat.lastUpdateNow : fill(strings.chat.lastUpdate, { time: relativeTime(heard!, now) }));
   const label = $derived.by(() => {
     if (stale) return lastUpdate;
     if (compacting) return strings.chat.compacting;
+    if (starting) return strings.chat.progress.starting;
     if (turn.status === 'done') return compactOperation ? strings.chat.compactionUnknown : strings.notify.done;
     if (turn.status === 'error') return compactOperation ? strings.chat.compactionFailed : strings.notify.failed;
     if (turn.status === 'stopped') return compactOperation ? strings.chat.compactionStopped : strings.chat.stopped;
@@ -85,7 +87,7 @@
   // A compaction reports its own duration; work counts what the user's request worked before this turn.
   const spent = $derived(own === null ? null : own + (compactOperation ? 0 : Math.max(0, workedBefore)));
   /** This turn's own share, shown on hover when the request spans several turns. */
-  const ownLabel = $derived(own !== null && spent !== null && spent - own >= 1000 ? fill(strings.chat.turnOwnTime, { time: elapsed(own) }) : undefined);
+  const ownLabel = $derived(own !== null && spent! - own >= 1000 ? fill(strings.chat.turnOwnTime, { time: elapsed(own) }) : undefined);
   /** A compaction inside a turn counts from when its phase began, which an older core does not send. */
   const compactionSpent = $derived(compactOperation ? spent : observed?.since == null ? null : Math.max(0, now - observed.since));
   const elapsedLabel = $derived(compactOperation ? turn.status === 'done' ? strings.chat.compactedFor : strings.chat.compactionElapsed : running ? strings.chat.workingFor : strings.chat.workedFor);
@@ -138,10 +140,11 @@
     {:else}
     <!-- A finished turn needs no tick: its time and the answer above already say it ended; only a failure or a stop is marked. -->
     {#if turn.status === 'error'}{#if !carded}<CircleAlert size={14} />{/if}{:else if turn.status === 'stopped'}<Square size={12} />{:else if turn.status !== 'done' && !activeContent && !activeTool && !stale && !held}<Spinner size={12} paused={hidden || waiting} />{/if}
-    {#if stale}
-      <span class="ui-label meta" data-testid="turn-last-update" title={exactTime(heard!)}>{lastUpdate}</span>
-    {:else if spent !== null && !held}
-      <span class="ui-label meta" data-testid="turn-elapsed" title={ownLabel}>{fill(elapsedLabel, { time: elapsed(spent) })}</span>
+    {#if stale || starting || (spent !== null && !held)}
+      <span class="ui-label meta"
+        data-testid={stale ? 'turn-last-update' : 'turn-elapsed'}
+        title={stale ? exactTime(heard!) : ownLabel}
+      >{stale ? lastUpdate : starting ? label + (own === null ? '' : ` · ${elapsed(own)}`) : fill(elapsedLabel, { time: elapsed(spent!) })}</span>
     {/if}
     {#if compactOperation && (turn.status === 'error' || turn.status === 'stopped')}
       {@render metric('compaction-result', label)}

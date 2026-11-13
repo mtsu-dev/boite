@@ -36,6 +36,7 @@ import { BACKGROUND_COMPACT, compactionTail } from './background-compact.ts';
 import { nativeCommandPrompt, systemOperation } from './operations.ts';
 import { stoppedInput } from './stopped-input.ts';
 import { brainContextFor, forgetBrainContext } from './brain-context.ts';
+import { coordinationGuideFor, forgetCoordinationGuide } from './coordination-context.ts';
 import { sessionUsage } from '../usage.ts';
 import { pluginGuideLines } from '../plugins/extensions.ts';
 
@@ -325,7 +326,10 @@ export class TurnContexts {
         if (part.type === 'compaction' && part.background !== true) this.#threads.backgroundCompact.compactedInTurn(threadId);
         // Any compaction, a background one in the agent's own session included (pi): the summary keeps no more
         // than a trace of the brain's instructions, so the next turn sends them whole.
-        if (part.type === 'compaction') forgetBrainContext(this.#core, threadId);
+        if (part.type === 'compaction') {
+          forgetBrainContext(this.#core, threadId);
+          forgetCoordinationGuide(this.#core, threadId);
+        }
         if (boundary) this.#core.bus.emit('turn.toolCompleted', { threadId, turnId: turn.id, boundary: `${messageId}:${partIndex}` });
         if (segment && answer && segment !== answer.segments.at(-1)) closeIdle(segment);
       },
@@ -418,7 +422,8 @@ export class TurnContexts {
       // Boite's own text, so the guide switch turns it off with the rest.
       const said = origin && inject && guideEnabled && (sessionId === null || !sameOrigin(origin, this.#sentFromBefore(threadId, origin.messageId)))
         ? sentFromNote(origin.from) : '';
-      const coordinationGuide = inject && !bare && guideEnabled ? this.#core.coordination.instructions(threadId) + this.#core.workforce.entrusted.instructions(threadId) : '';
+      // The coordination guide and an entrusted thread's instructions: whole on a fresh session or once they changed, else nothing (`coordination-context.ts`).
+      const coordinationGuide = inject && !bare && guideEnabled ? coordinationGuideFor(this.#core, thread, sessionId, turn.id, this.#core.coordination.instructions(threadId) + this.#core.workforce.entrusted.instructions(threadId)) : '';
       // A driver that takes the guide in its system prompt keeps it there, compaction included.
       const guide = inject && sessionId === null && guideEnabled && systemGuide === undefined ? this.#boiteGuide(thread, provider) : '';
       // Custom rules lead every fresh session, whatever the guides, on every provider.

@@ -225,8 +225,8 @@
   .author.own { color: var(--color-foreground); }
   .head time { color: var(--color-subtle); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
   .private-chip { display: inline-flex; align-items: center; gap: 4px; margin: 2px 0; padding: 1px 8px; border-radius: var(--radius-full); background: var(--color-active); color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 500; }
-  .quote { display: flex; align-items: baseline; gap: 6px; max-width: 100%; margin: 2px 0 4px; padding: 2px 8px; border: 0; border-left: 2px solid var(--color-border); border-radius: 0; background: transparent; color: var(--color-muted-foreground); font-size: var(--text-sm); text-align: left; cursor: pointer; }
-  .quote:hover { border-left-color: var(--color-muted-foreground); }
+  .quote { display: flex; align-items: baseline; gap: 6px; max-width: 100%; margin: 2px 0 4px; padding: 2px 8px; border: 0; border-radius: var(--radius-sm); background: var(--color-hover); color: var(--color-muted-foreground); font-size: var(--text-sm); text-align: left; cursor: pointer; }
+  .quote:hover { color: var(--color-foreground); }
   .quote .ui-label { flex: none; font-weight: 600; }
   .quote .excerpt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .body { min-width: 0; overflow-wrap: anywhere; }

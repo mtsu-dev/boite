@@ -25,7 +25,7 @@
  */
 import type { AgentAddress, AgentContact, AgentLetter, Contact, ContactCapabilities, ContactOffer, CoordinationPeer, ModelTier } from '@boite/contracts';
 import { address, text } from '../coordination-letter.ts';
-import { checkMatchExtras, checkRemoteContact, checkTranscript, queryPayload, type TranscriptQuery } from '../coordination-lookup.ts';
+import { checkMatchExtras, checkRemoteContact, remoteTranscript, queryPayload, type TranscriptQuery } from '../coordination-lookup.ts';
 import { PeerRefusal, type Operation } from '../coordination-wire.ts';
 import type { Core } from '../core.ts';
 import { invalidParams, messageOf, refused, RpcFailure, unavailable } from '../errors.ts';
@@ -274,7 +274,7 @@ export class ContactMembers {
     const answer = await this.ask(at.member, contactId, 'read', { threadId: at.threadId, ...queryPayload(query) });
     const contact = checkRemoteContact((answer as { contact?: AgentContact } | null)?.contact as AgentContact, at.member);
     if (contact.threadId !== at.threadId) throw new Error('transcript of another thread');
-    return { contact: this.#outward(contact, at.member), ...checkTranscript(answer, query) };
+    return remoteTranscript(this.#outward(contact, at.member), answer, query);
   }
 
   async deliver(contactId: string, at: { member: CoordinationPeer; threadId: string }, letter: AgentLetter): Promise<AgentLetter> {

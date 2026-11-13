@@ -16,6 +16,10 @@ that runs it.
 4. Drag the panel's left edge to resize it. A double click on the edge, or
    Home, restores the default width, and Escape cancels a drag.
 
+The conversation list stays open beside the panel. In a narrow window, where
+the list and the panel would leave the conversation too little room, the panel
+lies over the conversation instead; click outside it to hide it.
+
 Tabs are kept per conversation. The width is shared by every conversation on
 this device. Settings, Keyboard lists the shortcuts that open the panel and
 each surface.

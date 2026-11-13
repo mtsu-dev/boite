@@ -611,7 +611,6 @@
     right: 0;
     height: var(--line);
     background: var(--color-selection);
-    border-left: 2px solid var(--color-muted-foreground);
     pointer-events: none;
     z-index: 0;
   }
@@ -675,7 +674,6 @@
 
   .line.on {
     background: var(--color-selection);
-    box-shadow: inset 2px 0 0 var(--color-muted-foreground);
   }
 
   .line-number {

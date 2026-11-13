@@ -14,6 +14,9 @@ draft folder when you have no project yet.
    branch instead of the project folder.
 4. Type your request and send it.
 
+The chat shows Starting agent while the agent launches, then Working for once
+it starts working. The startup timer counts the current turn.
+
 Add a project with Add a project at the bottom of the sidebar. The sidebar
 lists threads by project or by recent activity: switch between Projects and
 Recent in Display options.
@@ -61,8 +64,10 @@ branch.
   after all its conversations are done or archived, only when its last commit
   is on another branch or in a merged pull request. Uncommitted changes always
   stay.
-- Hide merged PR conversations moves a worktree conversation to Done once its
-  branch is merged.
+- Ask to finish after merge: once every pull request of a worktree conversation
+  is merged or closed, Boite asks its agent whether the conversation is done.
+  The agent moves it to Done or keeps it open when it still has something to
+  say. Nothing goes to Done by itself.
 
 ## Titles
 

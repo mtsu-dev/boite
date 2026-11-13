@@ -6,6 +6,7 @@ import { promptCacheOf } from '../prompt-cache.ts';
 import { withLoad } from './records.ts';
 import { restingStatus } from './lifecycle.ts';
 import { brainContextEnded } from './brain-context.ts';
+import { coordinationGuideEnded } from './coordination-context.ts';
 import { quietTurn } from '../agents/runtime.ts';
 
 interface Settlement {
@@ -38,6 +39,7 @@ export function finishTurn(core: Core, finished: Turn, cause: TurnClose, patch?:
   core.journal.append({ type, threadId, version: 1, payload: finished }, () => core.journal.putTurn(finished));
   // In the same transaction: the next turn knows whether the brain's instructions go again.
   brainContextEnded(core, finished);
+  coordinationGuideEnded(core, finished);
   const current = core.journal.getThread(threadId);
   if (current === null) return { thread: null, owned: false, toolsClosed };
   const newer = core.journal.db.query("SELECT id FROM turns WHERE thread_id = ? AND id != ? AND status IN ('queued', 'running') LIMIT 1").get(threadId, finished.id);

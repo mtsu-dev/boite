@@ -59,7 +59,7 @@ Windows registry policies are not read yet; the file is the only source.
 | `network.groups` | `false` | Creating, joining and inviting to groups is refused, group exchanges with other machines stop, the extra tailnet and LAN listeners close, and the group settings are off. Adding a device of the user's own (the pairing link of Settings > Devices) stays available. |
 | `network.contacts` | `false` | Contact joins, invitations, exchanges over kept links, contact relays through groups and the Tailscale API are refused. Kept links are not dialed, and Funnel routes close at startup. |
 | `network.push` | `false` | Web Push subscriptions are refused and nothing is sent to subscriptions kept from before. |
-| `pullRequests` | `false` | Boite runs no `gh` command: pull request discovery, linking, watching and the merged-PR archive stop. |
+| `pullRequests` | `false` | Boite runs no `gh` command: pull request discovery, linking, watching and the merged-PR question stop. |
 
 `true` on a boolean key, or a missing key, leaves the choice to the user. A
 setting a key locks reads back with the locked value, and an attempt to change
