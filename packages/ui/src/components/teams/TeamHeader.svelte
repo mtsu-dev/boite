@@ -86,7 +86,7 @@
   markFeature('boite-feature:teams');
 </script>
 
-<header data-feature="boite-feature:teams" class="agent-head" data-testid="team-header" data-paused={team?.paused ? 'true' : undefined} data-archived={team?.archived ? 'true' : undefined}>
+<header class="agent-head" data-testid="team-header" data-paused={team?.paused ? 'true' : undefined} data-archived={team?.archived ? 'true' : undefined}>
   {#if onback}<button type="button" class="ghost icon agent-mobile-back" aria-label={strings.agents.list} title={strings.agents.list} onclick={onback} data-testid="agent-back"><ArrowLeft size={18} strokeWidth={1.75} /></button>{/if}
   <span class="team-head-identity">
     <span class="agent-head-robot"><AgentAvatar kind="team" id={team?.id ?? thread.id} name={team?.name ?? thread.title} members={pictures} size={36} lit={avatarLit({ open: true })} /></span>

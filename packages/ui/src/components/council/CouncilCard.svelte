@@ -40,7 +40,7 @@
   markFeature('boite-feature:debates');
 </script>
 
-<div class="council-card" data-feature="boite-feature:debates" data-testid="council-card" data-council-id={councilId} data-status={council?.status} role="group" aria-label={fill(labels.title, { topic: council?.request ?? part.topic })}>
+<div class="council-card" data-testid="council-card" data-council-id={councilId} data-status={council?.status} role="group" aria-label={fill(labels.title, { topic: council?.request ?? part.topic })}>
   <div class="top">
     {#if council}
       <span class="faces" aria-hidden="true">

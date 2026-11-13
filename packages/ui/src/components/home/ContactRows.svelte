@@ -26,7 +26,7 @@
   <!-- A row stands for every copy of its contact in the group: it is current on any of them. -->
   {#each rows as { machine, contact, waiting: asks } (`${machine.id}:${contact.coreId}`)}
     {@const current = (machine.store === workspace.active || (!!machine.store.group && machine.store.group.id === workspace.active.group?.id)) && store.page === 'home' && store.contact === contact.coreId}
-    <button data-feature="boite-feature:contacts" type="button" class="ghost row" class:current aria-current={current ? 'page' : undefined} data-link={contact.link}
+    <button type="button" class="ghost row" class:current aria-current={current ? 'page' : undefined} data-link={contact.link}
       onclick={() => show(machine.store, contact.coreId)} data-testid="rail-contact" data-core-id={contact.coreId}>
       <span class="avatar" aria-hidden="true">{initialsOf(contact.name)}<span class="dot"></span></span>
       <span class="text">

@@ -53,7 +53,7 @@
 
 <SharedDialog title={project ? `${strings.shared.heading} · ${project.contact.name}` : strings.shared.heading} {onclose} compact testid="shared-project-dialog">
   {#if project}
-    <p data-feature="boite-feature:contacts" class="state" data-testid="shared-project-state">{strings.shared.state[project.shared.state]}{#if project.connection !== 'connected'} · {strings.shared.offline}{/if}</p>
+    <p class="state" data-testid="shared-project-state">{strings.shared.state[project.shared.state]}{#if project.connection !== 'connected'} · {strings.shared.offline}{/if}</p>
     {#if project.shared.state === 'active'}
       {@const local = project.shared.access.find(access => sameSharedProject(access.project, project.local))!}
       <div class="tabs" role="tablist" aria-label={strings.shared.heading}>

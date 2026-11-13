@@ -116,7 +116,7 @@
   markFeature('boite-feature:teams');
 </script>
 
-<section data-feature="boite-feature:teams" class="team-chat" data-testid="team-chat" data-team-id={team?.id}>
+<section class="team-chat" data-testid="team-chat" data-team-id={team?.id}>
   {#if team}
     <header class="members" data-testid="team-members">
       <div class="member-row" role="group" aria-label={labels.members}>

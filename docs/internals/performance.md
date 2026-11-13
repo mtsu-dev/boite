@@ -878,7 +878,11 @@ dictation button draws a disabled microphone of the same size until its chunk
 lands. `qrcode` loads when a code is drawn. The modules the boot shares with a
 lazy chunk are one `boot` chunk (a Rolldown `codeSplitting` group in
 `vite.config.ts`), because the core speaks HTTP/1.1 and a browser fetches six
-files at a time. Geist Mono ships as latin, latin-ext and rest subsets with
+files at a time. Rolldown's count of sharers misses most lazy chunks, so the
+ones that would otherwise weigh on the entry (Markdown with its file and
+inline views, the list of teams, the live views and the tables of lazy
+imports of the cut features) are named in a second group, `shared`: one more
+script and one more style sheet at boot. Geist Mono ships as latin, latin-ext and rest subsets with
 its weight axis; its latin cut carries the arrows and box drawing a terminal
 draws. The text faces (Inter, Atkinson Hyperlegible Next, Source Sans 3, IBM
 Plex Sans) ship as latin and latin-ext.

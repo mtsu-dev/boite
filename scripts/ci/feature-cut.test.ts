@@ -23,7 +23,7 @@ function bundle(files: Record<string, string>): string {
 // Whip stands for a dev feature and teams for a nightly one; both cut from both bundles.
 const stages = { ...EXPERIMENT_STAGES, whip: 'dev', teams: 'nightly' } as const;
 const cuts: Cuts = { whip: { ui: true, core: true }, teams: { ui: true, core: false } };
-const whip = `x.setAttribute("data-feature","${featureMarker('whip')}")`;
+const whip = `mark("${featureMarker('whip')}")`;
 const teams = `const m="${featureMarker('teams')}"`;
 
 test('a bundle that holds exactly the features of its kind passes, for each of the three kinds', () => {

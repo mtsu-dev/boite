@@ -35,7 +35,7 @@
   markFeature('boite-feature:contacts');
 </script>
 
-<section data-feature="boite-feature:contacts" class="contacts" data-testid="sidebar-contacts">
+<section class="contacts" data-testid="sidebar-contacts">
   <div class="head">
     <button type="button" class="ghost toggle" aria-expanded={open} onclick={toggle} data-testid="sidebar-contacts-toggle">
       <span class="mark"><Contact size={16} strokeWidth={1.75} /><span class="fold-caret" class:open aria-hidden="true"><ChevronRight size={16} /></span></span>

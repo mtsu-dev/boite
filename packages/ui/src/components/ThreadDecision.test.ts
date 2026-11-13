@@ -216,7 +216,7 @@ test('a team request left by a Nightly is a plain question in a build without th
     store.pendingQuestions = [{ ...question('team-ask', 1), text: 'Proposed team: Fixture team', options: [{ id: 'accept', label: 'Accept' }, { id: 'refuse', label: 'Refuse' }], allowText: false, team }];
     flushSync();
     await vi.waitFor(() => { flushSync(); expect(document.querySelector('[data-testid=question-card]')).not.toBeNull(); });
-    expect(document.querySelector('[data-feature="boite-feature:teams"]')).toBeNull();
+    expect(document.querySelector('[data-testid=team-card]')).toBeNull();
     expect(document.querySelector('[data-testid=question-card]')!.textContent).toContain('Refuse');
   } finally { vi.unstubAllGlobals(); }
 });

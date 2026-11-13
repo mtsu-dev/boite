@@ -38,7 +38,7 @@
 
 <!-- The core decides on the owner's machine, so a paired device does not see the threshold. -->
 {#if store.owner && store.settings}
-  <div class="option" data-testid="auto-goal-settings" data-feature="boite-feature:auto-goal">
+  <div class="option" data-testid="auto-goal-settings">
     <span class="icon"><TextQuote size={18} strokeWidth={1.75} /></span>
     <label for="{uid}-chars" class="name"><span class="ui-label">{strings.experiments.autoGoal.minChars}</span><InfoTip topic={strings.experiments.autoGoal.minChars} text={strings.experiments.autoGoal.minCharsHint} /></label>
     <span class="field">

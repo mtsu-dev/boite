@@ -71,7 +71,7 @@
 </script>
 
 {#if displayed && toast.shown}
-  <div data-feature="boite-feature:contacts" class="notice notify-corner" class:closing={toast.closing} use:toast.attach use:notifyCorner onanimationend={toast.end} data-testid="contact-request-notice" data-kind={displayed.letter ? 'mail' : 'request'}>
+  <div class="notice notify-corner" class:closing={toast.closing} use:toast.attach use:notifyCorner onanimationend={toast.end} data-testid="contact-request-notice" data-kind={displayed.letter ? 'mail' : 'request'}>
     {#if displayed.letter}
       {@const letter = displayed.letter}
       {@const busy = displayed.view.isBusy(`mail:${letter.id}`) || toast.closing}
