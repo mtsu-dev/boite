@@ -18,6 +18,10 @@ box, and the agent asks in the chat for anything the mode does not cover.
   by itself.
 - Auto keeps a warning colour on its chip, since it reaches the whole
   computer. Boite asks for no confirmation.
+- Claude Code still raises its own safety checks in Auto, such as an `rm -rf`
+  on a variable that may be empty. Auto does not show a card for them: the
+  call is refused with Claude Code's reason, and the agent runs it in a safe
+  form, here `"${DIR:?}"`. A hook of yours that asks still shows its card.
 - YOLO picks the agent's most permissive mode and also accepts every request
   that still reaches Boite, without a card. Your own hooks and plugin hooks
   still run.

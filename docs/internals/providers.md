@@ -1151,6 +1151,13 @@ native unrestricted mode and Boite accepts remaining approval requests.
 Antigravity uses its permission-skip flag. Questions seeking input still ask for real
 answers; YOLO does not invent form values or complete a device sign-in.
 
+In Auto, Claude Code still sends its own safety checks to the permission
+callback (2.1.323: `rm -rf "$D/$p"` on possibly-empty variables). Such an ask
+sets `suppressAlwaysAllowRule`; a hook's ask does not. `drivers/claude/permissions.ts`
+denies the first kind without a card, with the CLI's `decisionReason`, which
+names the safe form, so the agent retries it. A hook's ask and an ask rule of
+the user's settings (`matchedAskRule`) keep their card.
+
 Protected shared work adds an immutable file/tool capability to the host-selected
 mode and account. Claude removes native tools and user MCP/plugins/hooks and
 provides only in-process protected tools. Codex disables alternate execution
