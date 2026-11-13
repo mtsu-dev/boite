@@ -590,6 +590,7 @@ any branch opens the same setup.
 ```sh
 bun run dev:instance            # build what is stale, start, print the address
 bun run dev:instance status
+bun run dev:instance cli projects
 bun run dev:instance capture shot.png --width 1280 --height 800
 bun run dev:instance stop
 ```
@@ -615,10 +616,15 @@ It also prints how to open, drive and stop the instance:
   `<browser> "$(bun run --silent dev:instance url)"`, and keep it out of files,
   commits and logs: nothing `start` prints carries the token.
 - `capture <file.png>` opens that link in the muted headless browser of
-  `tests/e2e/lib/cdp.ts` (`BOITE_E2E_BROWSER` names another executable) and
+  `tests/e2e/lib/cdp.ts` (`BOITE_E2E_BROWSER` names the executable; without it,
+  the suite's candidates, then a `chrome-headless-shell` on the PATH) and
   writes a screenshot; `--width 390 --height 844` gives a phone.
-- `packages/core/bin/boite --channel dev projects` is the owner CLI on that
-  core ([CLI](cli.md)).
+- `bun run dev:instance cli projects` runs the `boite` CLI ([CLI](cli.md)) as
+  the owner of this instance. Use it instead of a plain `boite`: inside a Boite
+  thread, `BOITE_CORE_URL`, `BOITE_AGENT_TOKEN` and `BOITE_THREAD_ID` send
+  `boite`, `--channel dev` included, to that thread's own core, so
+  `projects add` would land there. The subcommand passes none of them on and
+  names the instance's data directory.
 - `stop` asks the core to shut down over `POST /shutdown`, waits for the PID
   captured at spawn and removes temporary data. One instance per checkout.
 

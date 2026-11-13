@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { Database } from 'bun:sqlite';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { BRANCH_SCHEMA, journalSchema, schemaState } from './dev-data.ts';
@@ -26,7 +26,7 @@ const spawned: Bun.Subprocess[] = [];
 
 async function instance(box: ReturnType<typeof sandbox>, ...args: string[]): Promise<{ code: number; out: string; err: string }> {
   // The core's own variables travel through --env: the script drops every inherited BOITE_* one.
-  const core = args[0] === 'stop' || args[0] === 'url' ? [] : ['--no-build', '--env', 'BOITE_HOST_AGENTS=0', '--env', 'BOITE_TAILNET=0', '--env', 'BOITE_TELEMETRY_URL='];
+  const core = args[0] === 'stop' || args[0] === 'url' || args[0] === 'cli' ? [] : ['--no-build', '--env', 'BOITE_HOST_AGENTS=0', '--env', 'BOITE_TAILNET=0', '--env', 'BOITE_TELEMETRY_URL='];
   const proc = Bun.spawn([process.execPath, SCRIPT, ...args, ...core], { env: box.env, stdout: 'pipe', stderr: 'pipe', windowsHide: true });
   const [out, err, code] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
   return { code, out, err };
@@ -88,6 +88,33 @@ describe('bun run dev:instance', () => {
     expect(second.out).not.toContain('No Dev data yet');
     expect(second.out).toContain(`journal schema ${BRANCH_SCHEMA}, reused as it is`);
     expect(second.out).toContain('BOITE_ECHO=1 is set');
+  }, TIMEOUT);
+
+  test('cli reaches this checkout\'s Dev core, whatever Boite thread the caller runs in', async () => {
+    const box = fresh();
+    const started = await instance(box);
+    expect(started.out).toContain('cli     bun run dev:instance cli projects');
+    // What a Boite thread hands its commands: with these, the plain `boite` shim talks to the caller's own core.
+    const real = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => { reached += 1; return new Response('the real core', { status: 500 }); } });
+    let reached = 0;
+    box.env.BOITE_CORE_URL = `http://127.0.0.1:${real.port}`;
+    box.env.BOITE_AGENT_TOKEN = 'not-this-core';
+    box.env.BOITE_THREAD_ID = 'thr_elsewhere';
+    try {
+      const folder = join(box.home, 'some-project');
+      mkdirSync(folder);
+      const added = await instance(box, 'cli', 'projects', 'add', folder, '--name', 'only-in-dev');
+      expect(added.err).toBe('');
+      expect(added.code).toBe(0);
+      const listed = await instance(box, 'cli', 'projects', '--json');
+      expect(listed.code).toBe(0);
+      expect(listed.out).toContain('only-in-dev');
+      expect(reached).toBe(0);
+      // The exit code is the CLI's own.
+      expect((await instance(box, 'cli', '--nope')).code).not.toBe(0);
+    } finally {
+      await real.stop(true);
+    }
   }, TIMEOUT);
 
   test('Dev data held by another core is named, left alone, and still open to --copy', async () => {

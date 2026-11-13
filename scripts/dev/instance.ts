@@ -21,6 +21,7 @@ const RUN = 'bun run dev:instance';
 const USAGE = `${RUN} [start] [options]   start this checkout on the Dev data, in the background
 ${RUN} stop                stop what this checkout started, and remove its temporary data
 ${RUN} status              say what this checkout runs
+${RUN} cli <args>          the boite CLI as the owner of this instance: ${RUN} cli projects
 ${RUN} url                 print the owner link (it carries the token: use it in a command substitution, never paste it)
 ${RUN} capture <file.png>  screenshot the running instance in a headless browser [--width 1280 --height 800]
 
@@ -303,7 +304,7 @@ async function start(options: Options): Promise<void> {
     `open    the page needs the owner token of ${join(state.dataDir, 'core.json')}; "${RUN} url" prints the full link.`,
     `        Headless browser: <browser> "$(bun run --silent dev:instance url)", or ${RUN} capture shot.png`,
     '        Keep that link out of files, commits and logs.',
-    `cli     packages/core/bin/boite --channel dev${mode === 'dev' ? '' : ` --data-dir ${state.dataDir}`} projects`,
+    `cli     ${RUN} cli projects   (the boite CLI on this instance; a plain "boite" in a Boite thread talks to that thread's own core)`,
     `stop    ${RUN} stop`,
     ...(mode === 'scratch' ? [] : [messages.quota(options.echo)]),
     ...(mode === 'copy' ? ['The copy carries the same sign-ins as the Dev data: an agent that renews a sign-in here may sign the original out.'] : []),
@@ -354,12 +355,40 @@ function ownerLink(state: State): string {
   return `${state.url}/?${PAIR_QUERY_PARAM}=${token}`;
 }
 
+/**
+ * The `boite` CLI as the owner of this checkout's instance. A caller inside a
+ * Boite thread carries BOITE_CORE_URL, BOITE_AGENT_TOKEN and BOITE_THREAD_ID,
+ * which send a plain `boite` to that thread's own core: none is passed on, and
+ * the data directory names the core, whose `core.json` the CLI reads.
+ */
+function cli(args: string[]): number {
+  const state = runningState();
+  const env: Record<string, string> = {};
+  for (const [name, value] of Object.entries(process.env)) {
+    if (value !== undefined && !name.startsWith('BOITE_')) env[name] = value;
+  }
+  const result = spawnSync(process.execPath, [MAIN, 'cli', '--data-dir', state.dataDir, ...args], { env, stdio: 'inherit', windowsHide: true });
+  return result.status ?? 1;
+}
+
+/** The suite's browser, else a `chrome-headless-shell` on the PATH, which the suite does not look for. */
+async function browserExecutable(): Promise<string> {
+  const { findBrowser } = await import('../../tests/e2e/lib/cdp.ts');
+  try {
+    return findBrowser();
+  } catch (error) {
+    const headless = Bun.which('chrome-headless-shell');
+    if (headless !== null) return headless;
+    throw new Refusal(`${(error as Error).message}\nA chrome-headless-shell on the PATH is used too.`, 1);
+  }
+}
+
 async function capture(options: Options): Promise<void> {
   const file = options.rest[0];
   if (file === undefined) throw new Refusal(`capture needs a file: ${RUN} capture shot.png`, 2);
   const state = runningState();
   const { BrowserPage } = await import('../../tests/e2e/lib/cdp.ts');
-  const page = await BrowserPage.launch({ url: ownerLink(state), windowSize: { width: options.width, height: options.height } });
+  const page = await BrowserPage.launch({ url: ownerLink(state), executable: await browserExecutable(), windowSize: { width: options.width, height: options.height } });
   try {
     await page.waitFor('document.readyState === "complete" && document.body.innerText.trim().length > 0', 30_000);
     await Bun.sleep(1500);
@@ -371,6 +400,11 @@ async function capture(options: Options): Promise<void> {
 }
 
 async function main(argv: string[]): Promise<void> {
+  // Every word after `cli` is the CLI's own, flags included.
+  if (argv[0] === 'cli') {
+    process.exitCode = cli(argv.slice(1));
+    return;
+  }
   const options = parseArgs(argv);
   if (options.command === 'start') await start(options);
   else if (options.command === 'stop') await stop();
