@@ -108,7 +108,7 @@ export function floating(node: HTMLElement, options: { anchor: () => HTMLElement
       left = box.right + gap;
       if (left + node.offsetWidth > width - margin) left = box.left - node.offsetWidth - gap;
       // `end`: the card's foot on its anchor's, growing upward, as a button low on a rail wants.
-      top = options.align === 'end' ? box.bottom - node.offsetHeight : Math.min(box.top, height - node.offsetHeight - margin);
+      top = options.align === 'end' ? Math.max(margin, box.bottom - node.offsetHeight) : Math.min(box.top, height - node.offsetHeight - margin);
     } else {
       const below = height - box.bottom - gap - margin;
       const ceiling = Math.max(margin, document.querySelector('.titlebar')?.getBoundingClientRect().bottom ?? 0);
