@@ -158,7 +158,7 @@ export const fr: Translation = {
     deleteDraft: 'Supprimer le brouillon',
     draftQueued: 'Démarre au retour de {machine}',
     draftStarting: 'Démarrage sur {machine}',
-    draftQueueFailed: 'Non démarrée : {reason}',
+    draftQueueFailed: 'Non démarré : {reason}',
     cancelQueuedDraft: 'Annuler le démarrage'
   }
 };

@@ -21,7 +21,7 @@ export const fr: Translation = {
     lastSeen: 'vu en dernier {time}',
     latest: 'Dernier message',
     threads: 'Fils touchés',
-    missingThread: 'absente de cette machine',
+    missingThread: 'absent de cette machine',
     log: 'Journal',
     level: 'Niveau',
     atLeast: { debug: 'Tout', info: 'Info et plus', warn: 'Avertissements et erreurs', error: 'Erreurs seulement' },
