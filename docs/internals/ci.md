@@ -651,6 +651,15 @@ installer regressions and native shell E2E on Windows, the installed Debian
 package, the extracted AppImage and the macOS bundle. The Rust tests are
 skipped because the commit's CI already ran them.
 
+Each of those jobs then runs `bun scripts/ci/feature-cut.ts` on the UI and core
+bundles it just packaged, the compiled core included: it fails when a bundle
+holds the marker of a feature tagged above the build's kind, so a Release with
+a Nightly feature's code, or a Nightly with a Dev one's, is not published.
+The Linux x64 job also runs it with `--build`, which builds both bundles for
+the three kinds aside and reads them all
+([out of the build](experiments.md#the-proof)). They are steps of the
+existing jobs, not checks of their own.
+
 A dispatch with `dry-run` builds any branch with throwaway signing keys, even a
 commit that already has a nightly. It accepts that branch's pull request CI run
 without rerunning or following it, skips reservation and every

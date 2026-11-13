@@ -1774,7 +1774,7 @@ test('a paired device lists its own session, marked current, and not the owner d
 
 test('a fake Release core refuses, hides and keeps the experimental settings as the real one, and starts nothing new in Contacts', async ({ createClient }) => {
   const client = await createClient({ delayMs: 0, version: '2.0.0' });
-  const reason = 'runs in Nightly builds only, and this machine runs a Release (2.0.0)';
+  const reason = 'runs in Nightly and Dev builds only, and this machine runs a Release (2.0.0)';
   for (const patch of [{ deviceStream: true }, { backgroundCompaction: true }, { cacheKeepalive: { hours: 2 } }]) {
     await expect(client.call('settings.set', patch)).rejects.toMatchObject({ code: RpcErrorCode.Refused, message: expect.stringContaining(reason) });
   }
@@ -1797,7 +1797,7 @@ test('a fake Release core refuses, hides and keeps the experimental settings as 
 
 test('a fake Release core accepts, activates, creates and relaunches nothing in a shared project or from the Contacts bot, and still declines, disables and removes', async ({ createClient }) => {
   const client = await createClient({ delayMs: 0, version: '2.0.0' });
-  const gate = 'experiment.contacts runs in Nightly builds only, and this machine runs a Release (2.0.0)';
+  const gate = 'experiment.contacts runs in Nightly and Dev builds only, and this machine runs a Release (2.0.0)';
   const scope = { threadId: 't-trace', sharedProjectId: 'shared-none' };
   const closed: Promise<unknown>[] = [
     client.call('sharedProjects.decide', { sharedProjectId: 'shared-none', accept: true, requestId: 'r1' }),

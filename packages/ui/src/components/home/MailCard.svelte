@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { markFeature } from '@boite/contracts';
   import { ArrowDownLeft, Check, X } from '@lucide/svelte';
   import type { HeldContactLetter } from '@boite/contracts';
   import type { ContactsView } from '../../lib/contacts.svelte';
@@ -13,6 +14,8 @@
   let { view, letter, now }: { view: ContactsView; letter: HeldContactLetter; now: number } = $props();
   const labels = $derived(strings.contacts.mail);
   const busy = $derived(view.isBusy(`mail:${letter.id}`) || view.store.connection !== 'ready');
+  // Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
+  markFeature('boite-feature:contacts');
 </script>
 
 <article class="mail" data-testid="contact-mail-{letter.id}">

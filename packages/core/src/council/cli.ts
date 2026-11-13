@@ -4,11 +4,15 @@
  * this thread as one message, and `again` asks the same members for one more
  * round, from zero (`docs/internals/council.md`).
  */
+import { markFeature } from '@boite/contracts';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { COUNCIL_LIMITS, councilRoleBrief, type Council, type RpcParams } from '@boite/contracts';
 import type { CoreClient } from '../client.ts';
 import { Usage } from '../cli-args.ts';
+
+/** What `scripts/ci/feature-cut.ts` looks for in a core bundle (`featureMarker('debates')`): this module is in none below the Council's tag. */
+export const FEATURE_MARKER = 'boite-feature:debates';
 
 type Print = (lines: string[], value: unknown) => void;
 
@@ -152,3 +156,6 @@ export async function councilCommand(client: CoreClient, threadId: string, words
     `${ROUND_NOTE} boite delegate council again ${council.id} starts one more round; boite delegate stop ${council.id} ends the council.`,
   ], council);
 }
+
+// Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
+markFeature('boite-feature:debates');

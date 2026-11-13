@@ -18,7 +18,7 @@
   import type { MenuItem } from '../lib/menu';
   import type { ThreadSummary } from '@boite/contracts';
   import Menu from './Menu.svelte';
-  import WhipButton from './WhipButton.svelte';
+  import { whipEntry } from '../lib/whip-entry.svelte';
   import { experimentOn } from '../lib/experiments.svelte';
   import { mobileChrome } from '../lib/mobile-chrome.svelte';
   import { focusOnMount } from '../lib/actions';
@@ -56,6 +56,7 @@
   import { minuteClock } from '../lib/clock.svelte';
   import { needsAnAI } from '../lib/first-run';
   import { contactsShown } from '../lib/contacts-rail.svelte';
+  import { contactsParts } from '../lib/contacts-entry';
   import { ScreenSlide } from '../lib/screen-slide.svelte';
   import { doneFilter, feedPlace, feedThread, inbox } from '../lib/inbox.svelte';
   import { followActivityReturn, leaveForAct, restoreActivity } from '../lib/activity-return.svelte';
@@ -82,9 +83,9 @@
   let ContactInboxRows = $state<typeof import('./home/ContactInboxRows.svelte').default>();
   $effect(() => {
     if (!contactsShown(store) || SidebarContacts) return;
-    void import('./home/SidebarContacts.svelte').then(module => { SidebarContacts = module.default; }).catch(() => {});
-    void import('./home/ContactRequestNotice.svelte').then(module => { ContactRequestNotice = module.default; }).catch(() => {});
-    void import('./home/ContactInboxRows.svelte').then(module => { ContactInboxRows = module.default; }).catch(() => {});
+    void contactsParts?.SidebarContacts().then(module => { SidebarContacts = module.default; }).catch(() => {});
+    void contactsParts?.ContactRequestNotice().then(module => { ContactRequestNotice = module.default; }).catch(() => {});
+    void contactsParts?.ContactInboxRows().then(module => { ContactInboxRows = module.default; }).catch(() => {});
   });
   let search = $state('');
   const query = $derived(search.trim().toLocaleLowerCase());
@@ -325,7 +326,7 @@
   {#if threadViews}<span class="header-display"><DisplayOptions entries={groups} target={undefined} owner={store} prefix="mobile-" compact filters={filters} {atWork} onaddproject={store.addsProjects ? addProject : undefined} /></span>{/if}
   {#if searchable}<button class="ghost icon" data-testid={lent?.searchTestid ?? 'mobile-search-open'} aria-label={lent?.searchLabel ?? strings.mobile.search} title={lent?.searchLabel ?? strings.mobile.search} onclick={() => searching = true}><Search size={20} /></button>{/if}
   {/if}
-  {#if !recover && !chatting && experimentOn('whip')}<WhipButton mobile />{/if}
+  {#if !recover && !chatting && experimentOn('whip') && whipEntry.feature}{@const WhipButton = whipEntry.feature.WhipButton}<WhipButton mobile />{/if}
   {#if narrow.current && ContactRequestNotice && contactsShown(store)}<ContactRequestNotice {store} />{/if}
   <!-- One way to create per screen: a page (Bots, Contacts, Settings) owns its own. Activity answers what is
        asked, so it creates nothing; the thread list's "+" is one tab away. -->

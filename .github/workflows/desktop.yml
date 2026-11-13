@@ -153,6 +153,10 @@ jobs:
           }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           bun run apps/shell/scripts/stage-sidecar.ts
+      # The UI and core bundles just packaged hold no feature above the build's kind
+      # (docs/internals/experiments.md#out-of-the-build).
+      - name: Feature cut of this build
+        run: bun scripts/ci/feature-cut.ts
       - name: Windows installer regression tests
         env:
           BOITE_CI_INSTALLER_REQUIRED: '1'
@@ -351,6 +355,14 @@ jobs:
             export BOITE_SMOKE_STARTUP_SECONDS=90
           fi
           bun scripts/ci/desktop-smoke.ts "$RUNNER_TEMP/Boite.app/Contents/MacOS/boite-shell"
+      # The UI and core bundles just packaged hold no feature above the build's kind
+      # (docs/internals/experiments.md#out-of-the-build).
+      - name: Feature cut of this build
+        run: bun scripts/ci/feature-cut.ts
+      # Once per run: the same for a Release, a Nightly and a Dev build, built aside.
+      - name: Feature cut of the three build kinds
+        if: env.PORTABLE_ID == 'linux-x64'
+        run: bun scripts/ci/feature-cut.ts --build
       - name: Collect release bundles
         run: bun scripts/ci/desktop-bundles.ts "$RUNNER_TEMP/desktop-bundles"
       - name: Bundle and sign standalone Linux server

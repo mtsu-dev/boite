@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { markFeature } from '@boite/contracts';
   import { ArrowLeftRight, MessageSquare, ShieldAlert } from '@lucide/svelte';
   import type { ContactRelation } from '@boite/contracts';
   import { agentDirectory } from '../../lib/agent-directory.svelte';
@@ -41,6 +42,8 @@
     if (!await confirm.ask({ title: labels.endTitle, body: fill(labels.endBody, words), confirmLabel: labels.end, cancelLabel: strings.common.cancel, danger: true })) return;
     await view.cutRelation(relation.id);
   }
+  // Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
+  markFeature('boite-feature:contacts');
 </script>
 
 {#if bot || relations.length || flags.length || away}

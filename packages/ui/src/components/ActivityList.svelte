@@ -3,6 +3,7 @@
   import { workspace } from '../lib/workspace.svelte';
   import { activityFeed, feedGroups } from '../lib/activity-feed';
   import { contactsShown } from '../lib/contacts-rail.svelte';
+  import { contactsParts } from '../lib/contacts-entry';
   import { feedPlace, feedThread, inbox } from '../lib/inbox.svelte';
   import { minuteClock } from '../lib/clock.svelte';
   import { strings } from '../lib/strings';
@@ -35,7 +36,7 @@
   let ContactInboxRows = $state<typeof import('./home/ContactInboxRows.svelte').default>();
   $effect(() => {
     if (!contactsShown(store) || ContactInboxRows) return;
-    void import('./home/ContactInboxRows.svelte').then(module => { ContactInboxRows = module.default; }).catch(() => {});
+    void contactsParts?.ContactInboxRows().then(module => { ContactInboxRows = module.default; }).catch(() => {});
   });
 
   // A thread or another draft opened from anywhere (a row here, the list, the palette, a notification) takes the card back.

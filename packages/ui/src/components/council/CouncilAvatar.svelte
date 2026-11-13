@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { markFeature } from '@boite/contracts';
   /**
    * A member's round face in a council's card and salon (`docs/internals/council.md`):
    * the first letter of the model's name on its series colour, the same
@@ -13,6 +14,8 @@
     label: string;
     size?: number;
   } = $props();
+  // Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
+  markFeature('boite-feature:debates');
 </script>
 
 <span

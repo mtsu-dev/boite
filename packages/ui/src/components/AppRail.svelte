@@ -10,6 +10,7 @@
   import { agentRows, waitingOn, type AgentRowData } from '../lib/agents.svelte';
   import { watchTeams, type TeamRow } from '../lib/teams.svelte';
   import { contactsShown } from '../lib/contacts-rail.svelte';
+  import { contactsParts } from '../lib/contacts-entry';
   import { machineFilter } from '../lib/machine-filter.svelte';
   import { projectView } from '../lib/project-view.svelte';
   import { botEngine, newBot, newTeam } from '../lib/agents-view.svelte';
@@ -22,7 +23,7 @@
   import AgentAvatar from './agents/AgentAvatar.svelte';
   import { avatarLit } from '../lib/avatar-lit';
   import MachineStatus, { type MachineLine } from './MachineStatus.svelte';
-  import WhipButton from './WhipButton.svelte';
+  import { whipEntry } from '../lib/whip-entry.svelte';
   import FailMark from './FailMark.svelte';
   import Deferred from './Deferred.svelte';
   import { parts } from '../lib/deferred-parts';
@@ -174,7 +175,7 @@
   let ContactRequestNotice = $state<typeof import('./home/ContactRequestNotice.svelte').default>();
   $effect(() => {
     if (!contactsOn || ContactRequestNotice) return;
-    void import('./home/ContactRequestNotice.svelte').then(module => { ContactRequestNotice = module.default; }).catch(() => {});
+    void contactsParts?.ContactRequestNotice().then(module => { ContactRequestNotice = module.default; }).catch(() => {});
   });
 </script>
 
@@ -291,7 +292,7 @@
     </div>
     <!-- Each with the same name card as every rail button; a slot with no button (nothing to update) takes no room. -->
     {#if !narrow.current}<div class="slot extra"><Deferred part={parts.UpdatesNotice} quiet>{#snippet children(UpdatesNotice)}<UpdatesNotice name={statusName} />{/snippet}</Deferred></div>{/if}
-    {#if experimentOn('whip')}<div class="slot extra"><WhipButton name={statusName} /></div>{/if}
+    {#if experimentOn('whip') && whipEntry.feature}{@const WhipButton = whipEntry.feature.WhipButton}<div class="slot extra"><WhipButton name={statusName} /></div>{/if}
     <div class="slot" class:selected={store.page === 'settings'}>
       <span class="pip" aria-hidden="true"></span>
       <button type="button" class="ghost icon" class:on={store.page === 'settings'} aria-current={store.page === 'settings' ? 'page' : undefined}

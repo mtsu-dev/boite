@@ -9,6 +9,7 @@
  * post's author in the team by the group identity of the machine asking, never
  * in what it says.
  */
+import { markFeature } from '@boite/contracts';
 import { randomUUID } from 'node:crypto';
 import {
   TEAM_BRIEF_MAX, TEAM_MEMBERS_MAX, TEAM_NAME_MAX, TEAM_POST_MAX,
@@ -555,3 +556,6 @@ export class TeamPeers {
     return unavailable(`${peer.name} did not answer (${messageOf(error)}); ${away}`, { reason: 'unreachable' });
   }
 }
+
+// Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
+markFeature('boite-feature:teams');

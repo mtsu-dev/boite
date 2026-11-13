@@ -58,6 +58,11 @@ that runs a core on a phone, comes beside it as
   Keep every emitted file together when distributing this bundle. Lazy imports
   keep the SDKs off the start path. `bun run core` and the shell both prefer this
   bundle over the sources when it is there.
+  `packages/core/bin/build.ts` runs it and passes the build's kind and its
+  features as `--define` flags, read from the version in the core's
+  `package.json`, as `vite.config.ts` does for the UI and `bin/compile.ts` for
+  the compiled core: a Release bundle holds no code of a feature tagged
+  `nightly` or `dev` ([out of the build](experiments.md#out-of-the-build)).
 - `build:core:exe` compiles `packages/core/dist/boite-core`, with `.exe` on Windows. On x64 it embeds
   Bun's baseline runtime, which needs no AVX2. That runtime, and the other
   architecture's in a cross build, is not the running Bun, and `bun build

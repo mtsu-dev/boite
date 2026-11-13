@@ -63,7 +63,7 @@ async function asRelease(was: Awaited<ReturnType<typeof side>>) {
   cores.push(h);
   return { ...was, h, client: await h.connect() };
 }
-const NIGHTLY_ONLY = 'experiment.contacts runs in Nightly builds only, and this machine runs a Release (2.0.0)';
+const NIGHTLY_ONLY = 'experiment.contacts runs in Nightly and Dev builds only, and this machine runs a Release (2.0.0)';
 
 test('a Release accepts no association a Nightly left pending, and still declines it', async () => {
   const { a, b } = await pair();

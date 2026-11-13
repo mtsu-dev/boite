@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { teamsBuilt } from '../lib/teams-entry';
   import { Activity, Bot, FishingHook, MessageCircleQuestionMark, Settings2, Users } from '@lucide/svelte';
   import { showDecision } from '../lib/decision-tail.svelte';
   import { replyOf, repliesOf, sendAnswer, writeAnswer } from '../lib/question-reply.svelte';
@@ -11,6 +12,7 @@
   import { planOf } from '../lib/plan';
   import Deferred from './Deferred.svelte';
   import { parts } from '../lib/deferred-parts';
+  import { councilBuilt } from '../lib/council-entry';
   import { planPart } from '../lib/plan-part';
   import { openQuestionPage } from '../lib/question-page';
   import SettingRequestCard from './SettingRequestCardLoader.svelte';
@@ -223,7 +225,7 @@
           pending={store.pendingQuestions.some((q) => q.id === part.questionId)}
           respond={(optionId) => store.answerQuestion(message.threadId, part.questionId, [optionId])}
         />
-      {:else if part.type === 'question' && part.team}
+      {:else if part.type === 'question' && part.team && teamsBuilt()}
         {@const team = part.team}
         <Deferred part={parts.TeamCard}>{#snippet children(TeamCard)}<TeamCard
           {store}
@@ -277,7 +279,7 @@
         <Deferred part={parts.SecretCard}>{#snippet children(SecretCard)}<SecretCard {store} threadId={message.threadId} {part} />{/snippet}</Deferred>
       {:else if part.type === 'council' || part.type === 'debate'}
         <!-- Drawn only with the Council experiment on: off, the card leaves no trace in the thread. -->
-        <Deferred part={parts.CouncilCard}>{#snippet children(CouncilCard)}<CouncilCard {store} threadId={message.threadId} {part} />{/snippet}</Deferred>
+        {#if councilBuilt()}<Deferred part={parts.CouncilCard}>{#snippet children(CouncilCard)}<CouncilCard {store} threadId={message.threadId} {part} />{/snippet}</Deferred>{/if}
       {:else if part.type === 'compaction'}
         {@render compaction(part)}
       {:else if part.type === 'hook'}

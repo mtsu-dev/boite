@@ -58,6 +58,8 @@ prerequisites, adjacent runtime files and shell E2E coverage.
   `strings.en.ts` runs `bun scripts/migrate/split-catalogues.ts` after merging
   main. No native `<select>`,
   `window.confirm` or hard-coded hex.
+- Unfinished work carries a tag, `release`, `nightly` or `dev`, and its code stays out of the builds below it:
+  [experiments](docs/internals/experiments.md) says how to tag, promote and cut a feature.
 - Each connected machine owns its client and Store. Route actions through the
   owning Store; project and thread IDs can collide between machines.
 

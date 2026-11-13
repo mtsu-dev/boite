@@ -39,7 +39,7 @@
   import TasksSurface from './TasksSurface.svelte';
   import TraceSurface from './TraceSurface.svelte';
   import AgentDesk from './agents/AgentDesk.svelte';
-  import CouncilSalon from './council/CouncilSalon.svelte';
+  import { loadCouncilSalon } from '../lib/council-entry';
   import PluginTabSurface from './PluginTabSurface.svelte';
   import { pluginUi } from '../lib/plugin-ui.svelte';
   import { workspace } from '../lib/workspace.svelte';
@@ -124,6 +124,8 @@
   let threadTitle = $derived(store.openThread?.title ?? null);
   let surfaces = $derived(panel.surfaces);
   let active = $derived(panel.active);
+  let CouncilSalon = $state.raw<typeof import('./council/CouncilSalon.svelte').default>(), loadingSalon: Promise<void> | undefined; // fetched with the first council tab (lib/council-entry.ts)
+  $effect(() => { if (active?.kind === 'council' && !CouncilSalon) loadingSalon ??= loadCouncilSalon()?.then(module => { CouncilSalon = module.default; }).catch(() => { loadingSalon = undefined; }); });
   let empty = $derived(surfaces.length === 0);
   /** A bot's desk alone keeps the side card's form, at a column's width. */
   let deskOnly = $derived(!phone && !rightPanel.floating && surfaces.length === 1 && surfaces[0]!.kind === 'desk');
@@ -555,7 +557,7 @@
       {/if}
     {:else if active?.kind === 'tasks'}
       <TasksSurface {store} />
-    {:else if active?.kind === 'council' && active.councilId}
+    {:else if active?.kind === 'council' && active.councilId && CouncilSalon}
       <!-- One salon per debate: the tab moved to another debate starts its reading afresh. -->
       {#key active.councilId}<CouncilSalon {store} councilId={active.councilId} threadId={panel.threadId ?? undefined} />{/key}
     {:else if active?.kind === 'plugin' && active.tab}

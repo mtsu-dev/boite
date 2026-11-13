@@ -1,4 +1,4 @@
-import { threadActive } from '@boite/contracts';
+import { experimentRefusal, threadActive } from '@boite/contracts';
 import type { ActivityTurn, AgentTask, Attachment, ComposerChoice, GoalReview, MessagePart, RpcParams, ThreadActivity, ThreadSummary, Turn } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { invalidParams, messageOf, refused } from './errors.ts';
@@ -10,8 +10,8 @@ import type { ChildRoute } from './delegation/routes.ts';
 import { GoalTracker, modelRead, newChecklist } from './goal-tracker.ts';
 import type { ProviderProbe } from './providers/probe.ts';
 import { needsModelDiscovery } from './threads/selection.ts';
-import { nativeCommandPrompt } from './threads/operations.ts';
-import { addGoalCard, unlinkGoalCards } from './todos.ts';
+import { unlinkGoalCards } from './todos.ts';
+import { autoGoalCode } from './auto-goal-entry.ts';
 
 const empty = (): ThreadActivity => ({ goal: null, loop: null, tasks: [] });
 type PendingAttachments = Partial<Record<'goal' | 'loop', Attachment[]>>;
@@ -158,63 +158,26 @@ export class ActivityStore {
   }
 
   /**
-   * An automatic goal (`auto-goal` experiment, `docs/internals/goals.md`): the user's
-   * message `messageId` becomes a reviewed goal's objective, verbatim, and
-   * the project's board gets a card linked to it. False, and nothing changes,
-   * when the conversation is a subthread or already holds a goal or a loop.
-   * It never throws: the turn it follows is already accepted, so a goal that
-   * cannot start is logged and the prompt runs alone.
+   * An automatic goal (`auto-goal.ts`, behind its experiment's build flag):
+   * the user's message becomes a reviewed goal's objective. False, and
+   * nothing changes, when it cannot start or the build has no automatic goals.
    */
   autoGoal(threadId: string, turnId: string, messageId: string, objective: string, executionChoice?: ComposerChoice): boolean {
-    const thread = this.#core.journal.getThread(threadId);
-    if (!thread || thread.archived || thread.parentThreadId || this.busy(threadId) || !objective.trim()) return false;
-    try { this.set({ threadId, goal: { objective, review: true } }, undefined, executionChoice, true); } catch (error) {
-      this.#core.log('warn', `automatic goal: ${messageOf(error)}`);
-      return false;
-    }
-    // The turn still under way is the goal's first: its claim or blocker counts, and no second run starts before them.
-    // `first` keeps that across a restart, while the turn waits in line.
-    const first = ['queued', 'running', 'waiting'].includes(this.#core.journal.getTurn(turnId)?.status ?? '');
-    if (first) {
-      this.#ownTurns.set(turnId, { kind: 'goal', generation: this.#generations.get(`${threadId}:goal`) ?? 0, iteration: 1 });
-      this.#states.get(threadId)!.goal!.iterations = 1;
-      this.#save(threadId);
-    }
-    this.#core.journal.setSetting(`auto-goal:${threadId}`, { turnId, messageId, ...(first ? { first } : {}) });
-    try { addGoalCard(this.#core, threadId, objective); } catch (error) { this.#core.log('warn', `automatic goal card: ${messageOf(error)}`); }
-    return true;
+    return autoGoalCode()?.autoGoal(this.#core, this, threadId, turnId, messageId, objective, executionChoice) ?? false;
   }
 
-  /**
-   * `boite goal track`: the agent asks for an automatic goal on the user's
-   * last prompt, below the threshold. Refused while the experiment is off,
-   * while a goal or a loop runs, and when that prompt already started one.
-   */
+  /** `boite goal track`: an automatic goal on the user's last prompt, or the refusal of a build without them. */
   track(threadId: string): ThreadActivity {
-    const thread = this.#core.journal.getThread(threadId);
-    if (!thread || thread.archived) throw refused('goal track needs an existing, unarchived conversation');
-    const experiments = this.#core.clients.desktopExperiments() ?? this.#core.clients.current()?.experiments ?? [];
-    if (!experiments.includes('auto-goal')) throw refused('goal track needs the Automatic goals experiment, which is off in the desktop app (Settings, Version, Experiments)', { reason: 'experiment-off' });
-    if (this.busy(threadId)) throw refused('this conversation already has a goal or a loop; it must finish or be removed first', { reason: 'busy' });
-    const last = this.#lastPrompt(threadId);
-    if (!last) throw refused('this conversation has no prompt of the user to track', { reason: 'no-prompt' });
-    const started = this.#core.journal.getSetting(`auto-goal:${threadId}`) as { messageId?: string } | undefined;
-    if (started?.messageId === last.messageId) throw refused("the user's last prompt already started a goal", { reason: 'already-tracked' });
-    if (!this.autoGoal(threadId, last.turnId, last.messageId, last.text)) throw refused('a reviewed goal starts reviewer conversations; start it in a top-level conversation', { reason: 'subthread' });
-    return this.get(threadId);
+    const code = autoGoalCode();
+    if (!code) throw refused(experimentRefusal('auto-goal', this.#core.version) ?? 'automatic goals are not in this build', { reason: 'experiment-off' });
+    return code.track(this.#core, this, threadId);
   }
 
-  /** The user's newest prompt, a steer included: no operation, no goal or loop turn, no native command. */
-  #lastPrompt(threadId: string): { turnId: string; messageId: string; text: string } | null {
-    for (const message of this.#core.journal.walkMessages(threadId, { newestFirst: true, blobs: false })) {
-      if (message.role !== 'user' || !message.turnId || this.#core.journal.getTurn(message.turnId)?.execution?.operation) continue;
-      const part = message.parts[0];
-      if (part?.type !== 'text' || part.activity || part.startedBy) continue;
-      const text = part.displayText ?? part.text;
-      if (!text.trim() || nativeCommandPrompt(text)) continue;
-      return { turnId: message.turnId, messageId: message.id, text };
-    }
-    return null;
+  /** The goal just set takes the turn still under way as its first run: its claim or blocker counts, and no second run starts before them. */
+  takeFirstTurn(threadId: string, turnId: string): void {
+    this.#ownTurns.set(turnId, { kind: 'goal', generation: this.#generations.get(`${threadId}:goal`) ?? 0, iteration: 1 });
+    this.#states.get(threadId)!.goal!.iterations = 1;
+    this.#save(threadId);
   }
 
   /** A user's turn an automatic goal took as its first: the agent hears the goal's rules on it. */

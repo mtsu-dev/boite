@@ -8,6 +8,7 @@
  * the experiment on reads it again.
  */
 
+import { markFeature } from '@boite/contracts';
 import { COUNCIL_EXPERIMENT, RpcErrorCode, type Council, type CouncilPost, type CouncilRpcEvents, type ThreadId } from '@boite/contracts';
 import { untrack } from 'svelte';
 import type { Client } from './client';
@@ -183,3 +184,6 @@ export function followCouncil(reader: () => { store: Store; watch(): () => void;
     untrack(() => current.follow());
   });
 }
+
+// Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
+markFeature('boite-feature:debates');

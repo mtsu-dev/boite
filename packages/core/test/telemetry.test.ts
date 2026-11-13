@@ -25,7 +25,8 @@ test('every core build inlines the release flag present at build time and only t
   const root = join(import.meta.dir, '..');
   const scripts = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).scripts as Record<string, string>;
   expect(scripts['build:linux']).toContain('bun run bin/compile.ts ');
-  for (const command of [scripts.build, readFileSync(join(root, 'bin', 'compile.ts'), 'utf8')]) {
+  expect(scripts.build).toBe('bun run bin/build.ts');
+  for (const command of [readFileSync(join(root, 'bin', 'build.ts'), 'utf8'), readFileSync(join(root, 'bin', 'compile.ts'), 'utf8')]) {
     expect(command).toContain('--env=BOITE_RELEASE_*');
   }
   // The CLI, as the build scripts run it: Bun.build reads the environment its process started with.

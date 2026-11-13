@@ -28,8 +28,7 @@
   import AgentProblem from './AgentProblem.svelte';
   import AgentEditor from './AgentEditor.svelte';
   import AgentEngineSettings from './AgentEngineSettings.svelte';
-  import TeamDialog from '../teams/TeamDialog.svelte';
-  import TeamHeader from '../teams/TeamHeader.svelte';
+  import { teamsParts } from '../../lib/teams-entry';
   import './agents.css';
 
   /**
@@ -72,6 +71,13 @@
   /** A team's chat on screen, while Teams is on (`docs/internals/teams.md`): the rail lists the teams above the bots. */
   const teamThread = $derived(!thread && store.openThread?.teamId && experimentOn('teams') ? store.openThread : null);
   const team = $derived(teamThread ? teamsOf(store).ofThread(teamThread.id) : null);
+  // The team's dialog and header load with the experiment, out of the builds below its tag (lib/teams-entry.ts).
+  let TeamDialog = $state.raw<typeof import('../teams/TeamDialog.svelte').default>();
+  let TeamHeader = $state.raw<typeof import('../teams/TeamHeader.svelte').default>();
+  $effect(() => {
+    if (!experimentOn('teams') || TeamDialog || !teamsParts) return;
+    void Promise.all([teamsParts.TeamDialog(), teamsParts.TeamHeader()]).then(([dialog, header]) => { TeamDialog = dialog.default; TeamHeader = header.default; }).catch(() => {});
+  });
   /** The dialog that creates a team by hand is open (`docs/internals/teams.md`, In the app). */
   let creatingTeam = $state(false);
   const directory = $derived(agentDirectory(store));
@@ -224,7 +230,7 @@
   onopen={open} onteam={openTeam} oncreate={() => { focus = { kind: 'new' }; }} onnewteam={() => { creatingTeam = true; }} onengine={() => { focus = focus?.kind === 'engine' ? null : { kind: 'engine' }; }}
   onpane={next => { focus = null; pane = pane === next ? null : next; }} />
 
-{#if creatingTeam}
+{#if creatingTeam && TeamDialog}
   <TeamDialog {view} {others} onclose={() => { creatingTeam = false; }} ondone={created => { if (here) openTeam(here, created); }} />
 {/if}
 
@@ -269,7 +275,7 @@
       <!-- A thread the snapshot does not name yet, a moment after the agent was created. -->
       <div class="agents-chat"><ChatView {store} /></div>
     {:else if teamThread}
-      <TeamHeader {store} {view} {others} thread={teamThread} {team} onback={narrow.current ? back : undefined} />
+      {#if TeamHeader}<TeamHeader {store} {view} {others} thread={teamThread} {team} onback={narrow.current ? back : undefined} />{/if}
       <div class="agents-chat"><ChatView {store} /></div>
     {:else if !snapshot}
       <p class="agent-empty">{view.loadError ? labels.offline : strings.app.loading}</p>

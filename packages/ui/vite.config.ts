@@ -12,6 +12,7 @@ import { lucideGlyph } from './icon-plugin.ts';
 import { completeCatalogues } from './catalogue-plugin.ts';
 import { prepaintMinify } from './prepaint.ts';
 import { releaseVersion } from './release-version.ts';
+import { featureDefines } from '../contracts/src/experiments.ts';
 
 const COMPRESSIBLE = /\.(?:html|js|css|svg|json|webmanifest)$/;
 
@@ -188,7 +189,10 @@ function offlineParts(): Plugin {
 export default defineConfig({
   plugins: [lucideGlyph(), completeCatalogues(), svelte(), { name: 'boite-colors-prepaint', transformIndexHtml: () => [{ tag: 'script', children: colorsBootScript(), injectTo: 'head' }] }, browserFloor(), dropFakeClient(), localePreload(), offlineParts(), prepaintMinify(), precompress()],
   base: './',
-  define: { __BOITE_VERSION__: JSON.stringify(releaseVersion()) },
+  // The build's kind and one flag per tagged feature, from the stamped version: a
+  // Release bundle holds no nightly or dev feature (docs/internals/experiments.md#out-of-the-build).
+  // BOITE_BUILD_VERSION lets `scripts/ci/feature-cut.ts` build another kind without restamping the tree.
+  define: { __BOITE_VERSION__: JSON.stringify(releaseVersion()), ...featureDefines(process.env.BOITE_BUILD_VERSION || releaseVersion()) },
   // AudioWorklet modules must be same-origin files, never data URLs under the shell CSP.
   build: {
     outDir: 'dist', emptyOutDir: true, target: 'es2022', assetsInlineLimit: (file) => file.endsWith('speech-worklet.js') ? false : undefined,
