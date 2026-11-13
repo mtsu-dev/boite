@@ -248,16 +248,19 @@ fn journal_schema() -> u64 {
     env!("BOITE_JOURNAL_SCHEMA").parse().expect("build.rs writes a number")
 }
 
-/// What a manifest without `journal_schema` reads: v0.1.0, the only release
-/// published before the field that can still be offered, writes schema 50.
-const SCHEMA_BEFORE_FIELD: u64 = 50;
+/// The one release published before `journal_schema` whose schema is known:
+/// v0.1.0 writes 50. Nightlies before the field wrote 49 or 50, and nothing
+/// in their manifest tells which.
+const BEFORE_FIELD: (&str, u64) = ("0.1.0", 50);
 
 /// The schema of a release older than this build's data, read from its
-/// latest.json. A core refuses a journal newer than it knows and exits, so
-/// such a release is never offered: going back from Nightly to Release waits
-/// for a release that reads what Nightly wrote.
+/// latest.json; 0 when the manifest does not say. A core refuses a journal
+/// newer than it knows and exits, so such a release is never offered: going
+/// back from Nightly to Release waits for a release that reads what Nightly
+/// wrote, and a nightly that does not say waits for the next one.
 fn reads_less_than(manifest: &serde_json::Value, ours: u64) -> Option<u64> {
-    let theirs = manifest.get("journal_schema").and_then(serde_json::Value::as_u64).unwrap_or(SCHEMA_BEFORE_FIELD);
+    let known = || (manifest.get("version").and_then(serde_json::Value::as_str) == Some(BEFORE_FIELD.0)).then_some(BEFORE_FIELD.1);
+    let theirs = manifest.get("journal_schema").and_then(serde_json::Value::as_u64).or_else(known).unwrap_or(0);
     (theirs < ours).then_some(theirs)
 }
 
@@ -624,13 +627,17 @@ mod tests {
     #[test]
     fn a_release_that_cannot_read_this_data_is_not_offered() {
         let ours = journal_schema();
-        assert!(ours >= SCHEMA_BEFORE_FIELD);
+        assert!(ours >= BEFORE_FIELD.1);
         assert_eq!(reads_less_than(&serde_json::json!({ "journal_schema": ours }), ours), None);
         assert_eq!(reads_less_than(&serde_json::json!({ "journal_schema": ours + 1 }), ours), None);
         assert_eq!(reads_less_than(&serde_json::json!({ "journal_schema": 49 }), 50), Some(49));
         // v0.1.0's manifest predates the field: it reads schema 50, not 51.
         assert_eq!(reads_less_than(&serde_json::json!({ "version": "0.1.0" }), 50), None);
         assert_eq!(reads_less_than(&serde_json::json!({ "version": "0.1.0" }), 51), Some(50));
+        // The nightly published on 2026-11-11 says nothing and writes schema 49:
+        // a manifest that does not say is never trusted with schema-50 data.
+        assert_eq!(reads_less_than(&serde_json::json!({ "version": "2.0.0-nightly.20261111.1" }), 50), Some(0));
+        assert_eq!(reads_less_than(&serde_json::json!({ "version": "2.0.0", "journal_schema": "50" }), 50), Some(0));
     }
 
     #[test]
