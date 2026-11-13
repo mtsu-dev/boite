@@ -430,7 +430,7 @@ identify a thread's PR. Non-repositories and detached checkouts have no PR.
 Lookups share the common Git directory across worktrees: `git remote -v` is
 cached for five minutes. Each GitHub repository has one page, the 100 PRs
 updated last (`gh api graphql`, one rate-limit point), kept 15 seconds; a
-failed read is kept 15 seconds. The merged-PR archive reads the same two caches.
+failed read is kept 15 seconds. The merged-PR question reads the same two caches.
 Badges and linked PRs answer from the pages: a branch or a link the pages never
 showed gets its own `gh pr list --head` or `gh pr view` once, then the pages
 carry its changes. That holds while each page reaches back past the newest
@@ -525,32 +525,37 @@ meaning, which closes the open sheet ([phone](phone.md)).
 
 ## Merged PR conversations
 
-Git projects default to Archive merged PR conversations. An owner can change
-this per project in its menu under Manage project, from desktop or phone.
-Older cores without the setting omit the toggle. The change is sent through
-that project's owning Store, even when another machine has the same project ID.
+Git projects default to Ask to finish after merge (`autoArchiveMergedPr`, a
+name kept for clients of other versions). An owner can change this per project
+in its menu under Manage project, from desktop or phone. Older cores without
+the setting omit the toggle. The change is sent through that project's owning
+Store, even when another machine has the same project ID.
 
-Automatic archive hides an eligible idle worktree conversation after its exact
-branch tip is proved merged. The proof reads the checkout's current branch, so
-an agent may leave the starting branch for one named after its fix. A PR linked
-with `boite pr link` counts too, even when the agent pushed under another branch
-name, as long as its head commit is the checkout's tip. It preserves the worktree, branch, commits, files,
-history and provider session. Archived conversations show the PR reason/link
-and archive time; Restore makes them visible and protects that restored checkout
-from automatic archiving again.
+Once every pull request of an eligible idle worktree conversation is merged or
+closed, the core asks its agent, in a turn of its own, whether the conversation
+can go to Done. The agent answers with `boite thread done` or leaves it open:
+nothing is put away by itself, since an agent often has a last thing to say
+after a merge. The merge proof is the one settled worktrees use: the exact
+branch tip, or a PR linked with `boite pr link` whose head commit is the
+checkout's tip. Linked PRs that were all closed without a merge count too, as
+last read. Each PR is asked about once; a restored conversation is not asked
+again for the same work.
 
-The core leaves viewed, pinned, unread, busy or dirty conversations visible.
-Drafts, shared checkouts, child/resident-agent conversations, ambiguous/fork PRs,
-pending cards/input, active goals/loops/workflows and undelivered results are
-protected too. A root can archive with completed retained children only after
-every child is idle, read and free of protected input or remaining work, and all
-family results have been delivered. Child histories and archive flags stay
-intact; new child work requires restoring the parent. Connected clients report
-parked input; older or disconnected clients cannot report it. Missing
-authentication, unavailable repositories or failed checks leave the conversation
-visible. The [lifecycle reference](development.md#merged-pull-request-archives)
-details proof validation and protection checks. Turning the toggle off stops
-future automatic archives; it does not restore conversations already archived.
+The core asks no pinned, busy or dirty conversation, and waits for the
+agent's turn to end when it merged its own PR. Drafts, shared checkouts,
+child/resident-agent conversations, ambiguous/fork PRs, pending cards/input,
+active goals/loops/workflows and undelivered results are protected too, and a
+root with retained children is asked only once every child is idle and its results are
+delivered. The question costs a turn, so it is asked only while the agent's
+prompt cache still holds the conversation for its current model and account (within
+one hour of the last turn when the agent reports no cache); later the conversation
+stays as it is. A pull request
+watch whose wake tells of a merge or a close someone else made carries the
+question in that wake instead of a second turn. Missing authentication,
+unavailable repositories or failed checks ask nothing. The
+[lifecycle reference](development.md#merged-pull-requests) details proof
+validation and protection checks. Turning the toggle off stops future
+questions and reveals the conversations older cores hid after a merge.
 
 ## Isolation and tests
 

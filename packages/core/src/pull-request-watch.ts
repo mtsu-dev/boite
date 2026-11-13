@@ -1,4 +1,4 @@
-import { pullRequestAddress, type PullRequestWatch, type PullRequestWatchSeen, type ThreadId } from '@boite/contracts';
+import { pullRequestAddress, WATCH_DONE_HINT, type PullRequestWatch, type PullRequestWatchSeen, type ThreadId } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { messageOf, refused } from './errors.ts';
 import {
@@ -366,6 +366,11 @@ export class PullRequestWatches {
     return all;
   }
 
+  /** A close or merge this thread's watches saw and have not told yet: their wake carries the Done question. */
+  holdsClose(threadId: ThreadId): boolean {
+    return (this.#records.get(threadId) ?? []).some(record => record.pending.some(change => change.kind === 'closed'));
+  }
+
   /** Wakes a thread at rest with what its watches have to tell, once each burst settled. */
   #deliver(threadId: ThreadId): void {
     const records = this.#records.get(threadId) ?? [];
@@ -375,9 +380,12 @@ export class PullRequestWatches {
     const thread = this.core.journal.getThread(threadId);
     if (!thread || thread.archived) return;
     if (this.core.threads.isBusy(threadId)) return;
-    const { text, label } = wakeMessage(due.map(record => ({ number: record.number, url: record.url, changes: record.pending })), this.core.delegation.delegated(threadId));
+    // A merge or a close someone else made wakes the agent anyway: that turn asks about Done, so no second one does.
+    const settled = due.some(record => record.pending.some(change => change.kind === 'closed')) ? this.core.mergedPrAsk.watchHint(thread) : null;
+    const { text, label } = wakeMessage(due.map(record => ({ number: record.number, url: record.url, changes: record.pending })), this.core.delegation.delegated(threadId), settled ? WATCH_DONE_HINT : null);
     try {
       this.core.threads.startTurn(threadId, { prompt: text, display: label }, { kind: 'pull-request' });
+      if (settled) this.core.mergedPrAsk.asked(threadId, settled.urls);
     } catch (error) {
       // Tried again after another interval, never in a tight loop.
       for (const record of due) record.pendingSince = now + this.#timing.intervalMs - this.#timing.coalesceMs;

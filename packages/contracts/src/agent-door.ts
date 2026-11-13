@@ -135,6 +135,13 @@ export interface AgentMove {
   stopsBackground: boolean;
 }
 
+/** What `agent.done` answers: when the thread goes to Done. */
+export interface AgentDone {
+  threadId: ThreadId;
+  /** `turn-end`: a turn runs and Done waits for it to end. `done`: the thread is in Done now. */
+  when: 'turn-end' | 'done';
+}
+
 export interface AgentDoorRpcMethods {
 
   // -- The agent's own methods: the CLI, and the owner's UI behind the same surfaces.
@@ -155,6 +162,17 @@ export interface AgentDoorRpcMethods {
    * ends drops a waiting move.
    */
   'agent.move': { params: { threadId: ThreadId; project: string }; result: AgentMove };
+  /**
+   * The agent puts its own conversation in Done, as the user's Mark done
+   * would: what Boite asks once every pull request of the thread is merged or
+   * closed. While a turn runs it waits for that turn to end (`when:
+   * 'turn-end'`), so the answer that asked is written first; an idle thread
+   * goes on the spot. A refusal that only appears at the end of the turn (the
+   * user wrote again, background work still runs) is a system message on the
+   * thread, which stays open. Refused for a sub-thread, a bot's thread and an
+   * archived one. A core restart before the turn ends drops the request.
+   */
+  'agent.done': { params: { threadId: ThreadId }; result: AgentDone };
   /**
    * The unarchived projects the owner added, the caller's own marked
    * `current`: the names `delegation.spawn` and `agent.move` accept.
