@@ -1,9 +1,12 @@
 import { afterEach, expect, test } from 'bun:test';
+import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { settingAnswerText, type AgentCreateAsked, type AgentCreated, type MessagePart, type Settings } from '@boite/contracts';
+import { settingAnswerText, type AgentContact, type CoordinationPeer, type AgentCreateAsked, type AgentCreated, type MessagePart, type Settings } from '@boite/contracts';
 import { runCli } from '../src/cli.ts';
+import { connect } from '../src/client.ts';
+import { contactsBotOf } from './contacts-fixture.ts';
 import { echoThread, removeDir, startTestCore, waitFor, type TestCore } from './harness.ts';
 
 const cores: TestCore[] = [];
@@ -148,4 +151,79 @@ test('a new data directory stays closed after a restart', async () => {
   await (await boot(dataDir)).stop();
   const second = await boot(dataDir);
   expect(second.core.settings.get()).toMatchObject({ agentBotCreation: 'ask', coordinationReach: 'project' });
+});
+
+// Review round 1: who may approve, the core's exceptions at the closed reach, and a reach closed while an answer is in flight.
+test('agent cannot approve or open the settings; repeated and archived approvals fail', async () => {
+ const h=await boot(), owner=await h.connect(), {threadId}=await echoThread(h,owner);
+ await owner.call('turns.start',{threadId,prompt:'hello'});
+ await waitFor(()=>h.core.threads.require(threadId).status==='idle');
+ const asked=await owner.call('agents.create',{threadId,name:'ReviewBot'});
+ if ('agent' in asked) throw Error('missing card');
+ const agent=await connect(h.url,h.core.agents.tokenFor(threadId));
+ try {
+  expect((await thrown(agent.call('agents.create.approve',{threadId,questionId:asked.questionId}))).message).toContain('owner only');
+  expect((await thrown(agent.call('settings.set',{agentBotCreation:'free',coordinationReach:'group'}))).message).toContain('owner only');
+  expect((await thrown(agent.call('questions.answer',{threadId,questionId:asked.questionId,optionIds:['applied']}))).message).toContain('agent');
+ } finally {agent.close();}
+ const made=await owner.call('agents.create.approve',{threadId,questionId:asked.questionId});
+ expect(made.agent.name).toBe('ReviewBot');
+ expect((await thrown(owner.call('agents.create.approve',{threadId,questionId:asked.questionId}))).message).toContain('no open bot card');
+ const next=await owner.call('agents.create',{threadId,name:'ArchivedBot'});
+ if ('agent' in next) throw Error('missing card');
+ await owner.call('threads.archive',{threadId});
+ expect((await thrown(owner.call('agents.create.approve',{threadId,questionId:next.questionId}))).message).toContain('no open bot card');
+});
+
+async function pair() {
+ const a=await boot(),b=await boot(), ac=await a.connect(),bc=await b.connect();
+ const at=await echoThread(a,ac,'alpha'),bt=await echoThread(b,bc,'bravo');
+ a.core.contacts.setSettings({minTier:2});b.core.contacts.setSettings({minTier:2});
+ a.core.contacts.selfUrl=async()=>a.url;
+ const ai=a.core.coordination.card().coreId,bi=b.core.coordination.card().coreId;
+ await bc.call('contacts.join',{link:(await ac.call('contacts.invite',{})).link});
+ await waitFor(()=>a.core.contacts.linked(bi));
+ const ap=a.core.threads.require(at.threadId).projectId!,bp=b.core.threads.require(bt.threadId).projectId!;
+ await ac.call('contacts.grant',{coreId:bi,projectId:ap,readThreads:true});
+ await bc.call('contacts.grant',{coreId:ai,projectId:bp,readThreads:true});
+ await waitFor(()=>a.core.contacts.find(bi)?.capabilities?.sharedProjects===1);
+ const offer=await ac.call('sharedProjects.offer',{coreId:bi,projectId:ap,remote:{ownerCoreId:bi,coreId:bi,projectId:bp},requestId:'offer'});
+ await bc.call('sharedProjects.decide',{sharedProjectId:offer.shared.id,accept:true,requestId:'accept'});
+ return {a,b,ac,bc,at,bt,ai,bi};
+}
+
+test('project reach preserves associated contact directory, read and send',async()=>{
+ const {a,at,bt,bi}=await pair();
+ expect((await a.core.coordination.directory(at.threadId)).agents.some(t=>t.threadId===bt.threadId)).toBe(true);
+ expect((await a.core.coordination.read(at.threadId,{coreId:bi,threadId:bt.threadId})).contact.threadId).toBe(bt.threadId);
+ expect((await a.core.coordination.send({threadId:at.threadId,to:{coreId:bi,threadId:bt.threadId},text:'hello',requestId:'probe'})).status).not.toBe('rejected');
+});
+
+test('Contacts bot keeps its group reach on a new install',async()=>{
+ const h=await boot(),owner=await h.connect(),{threadId,accountId}=await echoThread(h,owner);
+ const bot=await contactsBotOf(h,owner);
+ expect(h.core.coordination.scope(bot.threadId).reach).toBe('group');
+ expect((await h.core.coordination.directory(bot.threadId)).agents.some(t=>t.threadId===threadId)).toBe(true);
+});
+
+test.each(['directory','search','read'] as const)('reach change hides an unrelated peer from a deferred %s even while a shared contact stays reachable',async operation=>{
+ const {a,at}=await pair();
+ a.core.settings.set({coordinationReach:'group'});
+ const keys=generateKeyPairSync('ed25519'),publicKey=keys.publicKey.export({type:'spki',format:'pem'}).toString();
+ const peer:CoordinationPeer={coreId:createHash('sha256').update(publicKey).digest('hex'),name:'synthetic',url:'http://127.0.0.1:1',publicKey,viaClient:true};
+ const contact:AgentContact={coreId:peer.coreId,threadId:'synthetic',title:'synthetic',machine:'synthetic',resources:'',status:'idle',mode:'brief'};
+ a.core.coordination.trust(peer);
+ const started=Promise.withResolvers<void>(),released=Promise.withResolvers<void>();
+ a.core.coordination.bridge.request=async(coreId,envelope)=>{
+  const req=JSON.parse(envelope.body);started.resolve();await released.promise;
+  const result=req.operation==='directory'?[contact]:req.operation==='search'?[{...contact,matched:['title'],excerpts:[]}]:{contact,entries:[],more:false};
+  const body=JSON.stringify({nonce:req.nonce,result});return {status:200,body,signature:sign(null,Buffer.from(body),keys.privateKey).toString('base64')};
+ };
+ const pending=(operation==='directory'?a.core.coordination.directory(at.threadId):operation==='search'?a.core.coordination.search(at.threadId,'synthetic'):a.core.coordination.read(at.threadId,contact)).catch(()=>null);
+ await started.promise;
+ a.core.settings.set({coordinationReach:'project'});
+ released.resolve();
+ const out=await pending;
+ const seen=out&&('agents' in out?out.agents:'matches' in out?out.matches:[out.contact]);
+ expect(seen?.some(t=>t.coreId===peer.coreId)??false).toBe(false);
 });

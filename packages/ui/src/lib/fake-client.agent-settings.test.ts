@@ -1,7 +1,8 @@
 import { expect } from 'vitest';
 import { RpcErrorCode, type AgentCreated, type AgentProfile } from '@boite/contracts';
 import { test } from '../test/fake-client';
-import type { FakeClient } from './fake-client';
+import { FakeClient } from './fake-client';
+import { sharedPair } from '../test/shared-projects';
 
 async function agent(client: FakeClient, name = 'Mira'): Promise<AgentProfile> {
   return client.call('agents.profile.save', { value: { name, domain: '', instructions: '', avatar: '', status: 'active', projectIds: [],
@@ -263,4 +264,27 @@ test('the fake bounds a thread to its project until the machine reach opens, and
 
   await client.call('settings.set', { coordinationReach: 'machine' });
   expect((await others()).map((agent) => agent.threadId)).toContain(far.threadId);
+});
+
+// Review round 1: the core's exceptions hold on the in-memory client at the closed reach.
+test.each(['directory','read'] as const)('fake preserves the contact-shared project exception at project reach for %s',async operation=>{
+ const pair=await sharedPair();
+ const {a,b,bid,at,bt}=pair;
+ try {
+  const allowed=()=>operation==='directory'?a.call('collaboration.directory',{threadId:at.id}):a.call('collaboration.read',{threadId:at.id,target:{coreId:bid,threadId:bt.id}});
+  await b.call('contacts.grant',{coreId:pair.aid,projectId:pair.bp.id,readThreads:true});
+  await a.call('settings.set',{coordinationReach:'project'});
+  const out=await allowed();
+  expect('agents' in out?out.agents.some(t=>t.coreId===bid&&t.threadId===bt.id):out.contact.coreId===bid).toBe(true);
+ } finally {pair.close();}
+});
+
+test('fake preserves Contacts bot reach on a closed machine',async()=>{
+ const client=new FakeClient({delayMs:0});await client.connect();
+ try{
+  await client.call('settings.set',{coordinationReach:'project'});
+  const bot=await client.call('agents.builtin.ensure',{kind:'contacts'});
+  const {threadId}=await client.call('agents.open',{agentId:bot.id});
+  expect((await client.call('collaboration.directory',{threadId})).agents.some(t=>t.project==='boite')).toBe(true);
+ }finally{client.close();}
 });
