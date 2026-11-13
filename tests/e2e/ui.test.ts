@@ -522,8 +522,8 @@ test(
 test(
   'the trace panel lists what the turn launched, or says it launched nothing',
   async () => {
-    // The header's Panels door opens the panel; open, the door is the panel
-    // switcher, whose list holds the trace ("Processes") and the way to close.
+    // The header's panel glyph opens the panel; the strip's "+" lists the
+    // trace ("Processes"), and the glyph closes the panel again.
     const switcher = `${testid('panel-add-menu')}:not(.closing)`;
     const pickPanel = async (value: string) => {
       await page.click(testid('panel-add'));
@@ -537,7 +537,7 @@ test(
     await page.waitFor(
       `document.querySelector('${testid('trace-row')}') || document.querySelector('${testid('trace-empty')}')`,
     );
-    await pickPanel('panel-hide');
+    await page.click(testid('panel-toggle'));
     await page.waitFor(`!document.querySelector('${testid('trace-panel')}')`);
     await page.waitFor(`document.querySelector('${testid('panel-toggle')}')`);
   },

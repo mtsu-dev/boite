@@ -356,8 +356,9 @@
               onclick={(e) => openProjectMenu(e, machine, project, list, section)}><Ellipsis size={15} /></button
             >
           </div>
-          <!-- Out of reach, said once under the name with its next step; the rows below dim as last seen. -->
-          {#if away}<div class="offline"><MachineOffline store={owner} label={machine.label} /></div>{/if}
+          <!-- Offline, said once under the name with its next step; the rows below dim as last seen. A reconnect
+               in progress says nothing here: the rows dim and the machine's icon says it, so a blip does not jump the list. -->
+          {#if owner.connection === 'closed'}<div class="offline"><MachineOffline store={owner} label={machine.label} /></div>{/if}
           <div id="{controls}-body" class="disclosure-fold" class:open={!collapsed} inert={collapsed}>
             <div>
               <SharedProjectThreads store={owner} projectId={project.id} active={!collapsed && !away}>

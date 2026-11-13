@@ -183,14 +183,14 @@ test("a desktop's column is the open bot's: who it is, its conversation, its thr
     expect(document.querySelector('[data-testid^="agent-entry-"]')).toBeNull();
     expect(document.querySelector('[data-testid=agents-search-toggle]')).toBeNull();
     expect(document.querySelectorAll('.agents-rail .section-label')).toHaveLength(0);
-    // The window's top bar carries the chat's header in a thread header's pattern: its name, its view menu, the Panels door.
+    // The window's top bar carries the chat's header in a thread header's pattern: its name, its view menu, the panel's glyph.
     expect(document.querySelector('[data-testid=titlebar] [data-testid=agent-header]')).not.toBeNull();
     const botHead = document.querySelector('[data-testid=agent-header]')!;
     expect(botHead.querySelector('.agent-head-name')?.textContent).toBe(nova.name);
     expect(botHead.querySelector('[data-testid=agent-menu]')).not.toBeNull();
-    // One door: it reads "Panels" until the panel is in and names itself on it (`RightPanel.strip.test.ts`); here the panel is not loaded.
+    // One door: the panel glyph, its name in the tooltip, pressed while the panel is open.
     const door = botHead.querySelector<HTMLElement>('[data-testid=agent-desk-toggle]')!;
-    expect(door.textContent).toContain(strings.thread.panelMenu);
+    expect(door.title).toContain(strings.thread.panelHint);
     expect(door.getAttribute('aria-pressed')).toBe(String(store.panelOpen));
     expect(door.textContent).not.toContain(strings.agents.desk);
     expect(botHead.querySelectorAll('[data-testid=agent-desk-toggle]')).toHaveLength(1);
