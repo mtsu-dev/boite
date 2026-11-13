@@ -19,6 +19,7 @@ function line(ctx: FakeContext, thread: Thread, text: string): void {
 
 /** As the user's Mark done: an idle family only, and the thread lands in the Done list. */
 function apply(ctx: FakeContext, thread: Thread): Promise<unknown> {
+  if (ctx.composer.records.get(JSON.stringify(['inputs', thread.id]))?.value?.input.queued.length) throw refusal('the user wrote a message that waits to be sent', { threadId: thread.id, reason: 'queued-input' });
   // Nobody watches this one land: unsent input on a device keeps the thread open.
   if (ctx.hasProtectedInput(thread.id)) throw refusal('the user has unsent input open on a device', { threadId: thread.id, field: 'threadId', expected: 'a thread without unsent input' });
   assertIdleFamily(ctx, thread.id, true);

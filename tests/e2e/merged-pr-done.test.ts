@@ -70,6 +70,7 @@ for (const width of [1280, 390]) {
       await page.waitFor(`document.querySelector('${project} [data-testid="group-label-done"] .count')?.textContent.trim() === '1'`);
       const done = `${root} [data-testid="done-thread"][data-thread-id="${threadId}"]`;
       await page.waitFor(`document.querySelector('${done} time') && !document.querySelector('${done} [data-testid="thread-state"]')`);
+      await page.waitFor(`document.querySelector('${done} [data-testid="done-thread-pr"]')?.dataset.state === 'MERGED'`);
       await page.settleAnimations();
       await page.screenshot(join(import.meta.dir, '.artifacts', `merged-pr-agent-done-${width}.png`));
       await page.evaluate(`document.querySelector('${done} [data-testid="done-thread-open"]').focus()`);

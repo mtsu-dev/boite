@@ -100,13 +100,16 @@ export async function sweepMergedPrFixtures(ctx: FakeContext, detectedId?: Threa
     try { url = new URL(proof.url); } catch { continue; }
     if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || `${url.host}${url.pathname}`.toLowerCase() !== `${fixture.repository}/pull/${proof.number}`.toLowerCase()) continue;
     // Asked once per pull request: a restored thread or one the agent kept open is not asked again for the same work.
-    if (state.asked?.includes(proof.url) || state.dismissed.includes(proof.url) || state.restoredCheckout === checkout) continue;
+    const seen = [...(state.asked ?? []), ...state.dismissed].map(url => url.toLowerCase());
+    if (seen.includes(proof.url.toLowerCase()) || state.restoredCheckout === checkout) continue;
     ctx.mergedPrArchive.set(id, { ...state, binding: proof.url });
     await fixture.beforeValidate?.();
     const currentFixture = ctx.mergedPrFixtures.get(id);
     if (!eligible(ctx, id, detected) || (!detected && ctx.thread(id).updatedAt !== updatedAt) || checkoutKey(ctx.thread(id)) !== checkout || (ctx.mergedPrArchive.get(id)?.generation ?? 0) !== state.generation || !currentFixture || currentFixture.repository !== proof.repository || !currentFixture.clean || currentFixture.tip !== proof.sha || currentFixture.branch !== proof.branch) continue;
     const { text, label } = doneQuestion({ urls: [proof.url], summary: `#${proof.number} merged` });
     try {
+      // Keep the discovered PR on the summary so its Done row retains the badge.
+      thread.pullRequest = { number: proof.number, url: proof.url, state: 'MERGED' };
       ctx.startTurn(id, text, [], 'pull-request', undefined, undefined, [], false, label);
     } catch {
       continue;

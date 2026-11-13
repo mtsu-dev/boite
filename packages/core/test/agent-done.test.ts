@@ -116,6 +116,24 @@ describe('agent.done', () => {
     expect(systemLines(threadId).at(-1)).toBe('Put in Done by its agent.');
   });
 
+  test.each(['queued', 'unsent'] as const)('an idle thread with %s input refuses Done before reporting success', async input => {
+    holdingEcho();
+    const { threadId } = await echoThread(h, client);
+    if (input === 'queued') {
+      const value: ComposerValue = { input: { text: '', attachments: [], paused: true, queued: [{ id: 'before-done', text: 'One more thing', attachments: [] }] } };
+      await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0, value });
+    } else h.core.threads.focus.set('typing-device', null, [threadId]);
+    const agent = await connect(h.url, h.core.agents.tokenFor(threadId));
+    try {
+      const failure = await refusal(agent.call('agent.done', { threadId }));
+      expect(failure.code).toBe(RpcErrorCode.Refused);
+      expect(failure.message).toContain(input === 'queued' ? 'waits to be sent' : 'unsent input');
+    } finally { agent.close(); }
+    expect(h.core.threads.require(threadId).archived).toBe(false);
+    expect(h.core.threads.agentDone.pending(threadId)).toBe(false);
+    expect(systemLines(threadId)).not.toContain('Put in Done by its agent.');
+  });
+
   test('is refused for a sub-thread, which stays open', async () => {
     holdingEcho();
     const { threadId } = await echoThread(h, client);

@@ -36,6 +36,7 @@ export class AgentDoneRequests {
     // Refused now if anything holds the thread; put away on the next tick, once
     // this answer has left: Done closes the agent's own connection.
     assertIdleFamily(this.#core, threadId, 'explicit');
+    this.#assertNoInput(threadId);
     this.#waiting.add(threadId);
     setImmediate(() => this.#settle(threadId));
     return { threadId, when: 'done' };
@@ -67,9 +68,10 @@ export class AgentDoneRequests {
     const thread = this.#core.journal.getThread(threadId);
     if (!thread || thread.archived) return;
     try {
-      // A message the user queued while the agent answered is theirs to see answered.
-      if (this.#core.composer.storage.queued.has(recordKey('inputs', threadId))) throw refused('the user wrote a message that waits to be sent', { threadId, reason: 'queued-input' });
-      this.#apply(threadId);
+      this.#assertNoInput(threadId);
+      // As the user's Mark done otherwise: an idle family only, and the thread lands in the Done list.
+      this.threads.archive(threadId, true, true);
+      this.#line(threadId, 'Put in Done by its agent.');
     } catch (error) {
       const reason = messageOf(error);
       this.#core.log('info', `thread ${threadId}: the agent asked for Done, the thread stays open: ${reason}`, { source: 'threads', threadId });
@@ -86,15 +88,14 @@ export class AgentDoneRequests {
     return this.#waiting.has(threadId);
   }
 
-  #apply(threadId: ThreadId): void {
+  #assertNoInput(threadId: ThreadId): void {
+    // A message the user queued while the agent answered is theirs to see answered.
+    if (this.#core.composer.storage.queued.has(recordKey('inputs', threadId))) throw refused('the user wrote a message that waits to be sent', { threadId, reason: 'queued-input' });
     // Nobody watches this one land: unsent input on a device keeps the thread
     // open, as for the automatic passes, since a client drops it with the thread.
     if (this.threads.focus.hasProtectedInput(threadId)) {
       throw refused('the user has unsent input open on a device', { threadId, field: 'threadId', expected: 'a thread without unsent input' });
     }
-    // As the user's Mark done otherwise: an idle family only, and the thread lands in the Done list.
-    this.threads.archive(threadId, true, true);
-    this.#line(threadId, 'Put in Done by its agent.');
   }
 
   /** A line of the timeline from the core, on the thread's last turn. */

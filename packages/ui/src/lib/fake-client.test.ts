@@ -1652,6 +1652,14 @@ test('fake agent.done puts its own thread in Done when the turn ends, refuses a 
 
   // An idle thread goes on the spot.
   const { id: idleId } = await newThread(client);
+  const value = { input: { text: '', attachments: [], paused: true, queued: [{ id: 'before-done', text: 'One more thing', attachments: [] }] } };
+  const queued = await client.call('composer.put', { section: 'inputs', id: idleId, expectedRevision: 0, value });
+  await expect(client.call('agent.done', { threadId: idleId })).rejects.toMatchObject({ code: RpcErrorCode.Refused, message: 'the user wrote a message that waits to be sent' });
+  expect((await client.call('threads.get', { threadId: idleId })).archived).toBe(false);
+  expect((await client.call('composer.put', { section: 'inputs', id: idleId, expectedRevision: queued.record.revision, value: null })).accepted).toBe(true);
+  await client.call('threads.focus', { threadId: null, protectedThreadIds: [idleId] });
+  await expect(client.call('agent.done', { threadId: idleId })).rejects.toMatchObject({ code: RpcErrorCode.Refused, message: 'the user has unsent input open on a device' });
+  await client.call('threads.focus', { threadId: null, protectedThreadIds: [] });
   expect(await client.call('agent.done', { threadId: idleId })).toEqual({ threadId: idleId, when: 'done' });
   expect((await client.call('threads.get', { threadId: idleId })).doneAt).toEqual(expect.any(Number));
 

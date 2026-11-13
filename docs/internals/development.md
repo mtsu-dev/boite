@@ -492,9 +492,9 @@ independently of the scan. A thread update or changed PR links permit an
 earlier retry. A merge seen while the conversation is busy, usually its agent
 merging its own PR, is checked again `settleMs` (60 seconds) after that turn
 ends, which leaves the user time to answer first. The question needs an idle
-conversation whose last turn completed, viewed or unread, with no pin, no
-protected client input, no waiting `agent.done`, terminals, queued turns, pending cards or
-messages, unfinished goals or loops, and no active, paused or undelivered
+conversation whose last turn completed, viewed or unread, with no pin,
+protected client input, waiting `agent.done`, terminals, queued turns, pending cards or
+messages, unfinished goals or loops, or active, paused or undelivered
 workflow. Completed workflow and delegated children can remain as history:
 every retained child, including an archived child, must be idle with a
 completed turn and be free of the same activity and input protections.

@@ -157,7 +157,8 @@ export class MergedPrAsk {
     const state = archiveState(this.#core.journal, thread.id);
     const restored = state.restoredCheckout;
     if (restored && restored.cwd === thread.cwd && restored.branch === thread.branch && restored.projectId === thread.projectId) return false;
-    return urls.some(url => !state.asked?.includes(url) && !state.dismissed?.includes(url));
+    const seen = [...(state.asked ?? []), ...(state.dismissed ?? [])].map(url => url.toLowerCase());
+    return urls.some(url => !seen.includes(url.toLowerCase()));
   }
   /** A watch's wake already asked about these: the sweep does not ask again. */
   asked(threadId: string, urls: readonly string[]): void {

@@ -66,7 +66,7 @@ async function completedWorkflow() {
 }
 
 test('fake badge detection during a prompt asks once the prompt ends, and never archives', async () => {
-  const { thread } = await fixture(50);
+  const { thread, proof } = await fixture(50);
   const turn = await client.call('turns.start', { threadId: thread.id, prompt: 'Final answer after the merge.' });
   expect(await client.call('threads.pullRequest', { threadId: thread.id })).toMatchObject({ state: 'MERGED' });
   const during = await client.call('threads.get', { threadId: thread.id });
@@ -78,6 +78,8 @@ test('fake badge detection during a prompt asks once the prompt ends, and never 
   // Asked once per pull request: neither the badge nor the sweep asks again.
   await client.call('threads.markRead', { threadId: thread.id });
   await client.call('threads.pullRequest', { threadId: thread.id });
+  // Repository casing may change between a linked URL and GitHub's response.
+  proof.candidates[0]!.url = 'https://github.com/Example/Repo/pull/7';
   expect(await client.sweepMergedPrArchives()).toBe(0);
   expect(questions(await client.call('threads.get', { threadId: thread.id }))).toHaveLength(1);
 });

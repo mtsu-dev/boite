@@ -555,7 +555,7 @@ Asynchronous creation and send retain the original core, thread and draft
 identity. Accepted work does not select a thread after newer navigation or
 consume the newer draft. A merged-PR archive from an older core preserves local
 input and pauses retained queues; manual archive and deletion clear input as
-requested, and `boite thread done` waits while a device reports input. See
+requested, and `boite thread done` is refused while a device reports input. See
 [merged pull requests](development.md#merged-pull-requests).
 
 ## Editing a message and forking

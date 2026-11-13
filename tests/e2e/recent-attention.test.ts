@@ -185,6 +185,7 @@ test('a merged PR asks the agent, its answer puts the thread in Done, and projec
   await page.waitFor(`!document.querySelector(${JSON.stringify(desktopRow(main, threadId))})`);
   await showDone(true);
   await page.waitFor(`document.querySelector(${JSON.stringify(inGroup('done', main, threadId))})`);
+  expect(await page.evaluate(`document.querySelector(${JSON.stringify(inGroup('done', main, threadId))})?.querySelector('[data-testid="done-thread-pr"]')?.getAttribute('href')`)).toBe('https://github.com/example/repo/pull/407');
   await capture('recent-done-desktop.png');
   await openProjectFilter(page);
   await page.evaluate(`Array.from(document.querySelectorAll('${id('project-filter-menu')} [data-value]')).find(e => e.dataset.value === ${builderKey('p-boite')}).click()`);

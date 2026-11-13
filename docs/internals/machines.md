@@ -545,10 +545,11 @@ The core asks no pinned, busy or dirty conversation, and waits for the
 agent's turn to end when it merged its own PR. Drafts, shared checkouts,
 child/resident-agent conversations, ambiguous/fork PRs, pending cards/input,
 active goals/loops/workflows and undelivered results are protected too, and a
-root with retained children only once every child is idle and its results are
+root with retained children is asked only once every child is idle and its results are
 delivered. The question costs a turn, so it is asked only while the agent's
-prompt cache still holds the conversation (one hour after the last turn when the
-agent reports no cache); later the conversation stays as it is. A pull request
+prompt cache still holds the conversation for its current model and account (within
+one hour of the last turn when the agent reports no cache); later the conversation
+stays as it is. A pull request
 watch whose wake tells of a merge or a close someone else made carries the
 question in that wake instead of a second turn. Missing authentication,
 unavailable repositories or failed checks ask nothing. The

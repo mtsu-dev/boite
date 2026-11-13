@@ -3,7 +3,6 @@ import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CONVERSATION_PROFILE_ID, doneQuestion, RpcErrorCode, type PromptCache } from '@boite/contracts';
 import { assertAllowed } from '../src/access.ts';
-import { connect } from '../src/client.ts';
 import { Core } from '../src/core.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import { echoDriver } from '../src/drivers/echo.ts';
@@ -871,6 +870,7 @@ test('foreign fork must not block the local merged PR', async () => {
   const f = await fixture();
   f.setCandidates([f.candidates[0]!, {...f.candidates[0]!, number: 8, url: 'https://github.com/example/repo/pull/8', state: 'OPEN', isCrossRepository: true, headRepositoryOwner: {login: 'foreigner'}}]);
   expect(await service.sweep()).toBe(1);
+  await expectAsked(f.threadId);
 });
 
 test('an old linked merge must not archive a newer open PR', async () => {
@@ -926,6 +926,13 @@ test('a second sweep does not ask again about the same pull request', async () =
   service.observe(f.threadId);
   await Bun.sleep(100);
   expect(questions(f.threadId)).toHaveLength(1);
+});
+
+test.each(['asked', 'dismissed'] as const)('a URL already %s with different repository casing is not asked again', async field => {
+  const f = await fixture();
+  harness.core.journal.setSetting(archiveStateKey(f.threadId), { ...archiveState(harness.core.journal, f.threadId), [field]: ['https://github.com/Example/Repo/pull/7'] });
+  expect(await service.sweep()).toBe(0);
+  expect(questions(f.threadId)).toHaveLength(0);
 });
 
 test('a thread the user restored from Done is not asked about its merged pull request', async () => {
