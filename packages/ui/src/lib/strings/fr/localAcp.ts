@@ -26,6 +26,6 @@ export const fr: Translation = {
     source: 'Ajouté ici',
     remove: 'Retirer le fournisseur',
     removeTitle: 'Retirer {provider} ?',
-    removeBody: 'Boite supprime son fichier de fournisseur. Ses comptes et conversations restent, et reviennent si vous le rajoutez sous le même nom.'
+    removeBody: 'Boite supprime son fichier de fournisseur. Ses comptes et fils restent, et reviennent si vous le rajoutez sous le même nom.'
   }
 };

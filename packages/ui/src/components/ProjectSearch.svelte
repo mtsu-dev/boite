@@ -359,10 +359,9 @@
     cursor: pointer;
   }
 
-  /* The row Enter takes, as in the command palette: the selection wash and a bar on its edge. */
+  /* The row Enter takes, as in the command palette: the selection wash. */
   .row.highlight {
     background: var(--color-accent-soft);
-    box-shadow: inset 2px 0 0 var(--color-muted-foreground);
   }
 
   .row:active {

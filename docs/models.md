@@ -51,6 +51,12 @@ request, when the agent allows it:
 A change never interrupts a turn. A change of permission mode applies at once;
 see [Permissions](permissions.md).
 
+The conversation shows the change. As soon as you pick another model, effort,
+speed or account, a dashed line under the last message says what changes, such
+as "Opus 5.5 high" to "GPT 6.1 Sol medium". Pick the previous one back and it
+goes. Once you send, the line stays above that message for good, on every
+device. A conversation with no message yet shows nothing.
+
 ## What carries over
 
 | Change | What happens |
@@ -66,6 +72,11 @@ see [Permissions](permissions.md).
   switches account or agent. Compacting first changes nothing.
 - An agent that cannot read images refuses a conversation that holds images.
 - The conversation, its folder and its worktree stay where they are.
+- After a change of account or agent, the line in the conversation says
+  "context handed over". Select it to see how many messages went in full, how
+  many were shortened or left out, and their size. When Boite moves a
+  conversation because its account signed out or was removed, the line says so.
+- The line is for you: the agent is not sent it and it is not a message.
 
 ## The prompt cache
 

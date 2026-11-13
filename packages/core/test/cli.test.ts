@@ -167,6 +167,9 @@ test('the history a fresh session carries points at its own tool output, which t
   // With coordination off too: the thread reads nothing but its own journal.
   const config = harness.core.coordination.config(threadId);
   harness.core.coordination.configure(threadId, { ...config, mode: 'off' });
+  // So does a message the history left out, which it names by id.
+  harness.core.journal.putMessage({ id: 'left-out', threadId, turnId: 'history', role: 'user', state: 'complete', createdAt: Date.now() - 1, parts: [{ type: 'text', text: 'an exchange the history left out' }] });
+  expect((await boite(['threads', 'read', threadId, '--entry', 'left-out'])).out).toContain('user: [characters 0 to 32 of 32]\n    an exchange the history left out');
   const first = await boite(command!.split(' '));
   expect(first.code).toBe(0);
   expect(first.out).toContain('assistant: [tools: Bash] [characters 0 to 16000 of 20021]\n    first line\n    xxx');
@@ -199,16 +202,16 @@ test('threads reach each other by a short address, find by chat, read and wait f
   const read = await boite(['threads', 'read', other, '--last', '5']);
   expect(read.out).toContain('user:\n    the staging database keeps timing out');
   // A cut entry prints the command that reads its rest, and running it does.
-  const report = `${'r'.repeat(3000)}the rest of the report`;
+  const report = `${'r'.repeat(500)}the rest of the report`;
   harness.core.journal.putMessage({ id: 'report', threadId: other, turnId: 'history', role: 'assistant', state: 'complete', createdAt: Date.now() + 1, parts: [{ type: 'text', text: report }] });
   const cut = await boite(['threads', 'read', other, '--last', '1']);
-  const command = /the rest: boite (threads read \S+ --entry report --offset 3000)\)/.exec(cut.out)?.[1];
-  expect(command).toBe(`threads read ${other} --entry report --offset 3000`);
+  const command = /the rest: boite (threads read \S+ --entry report --offset 500)\)/.exec(cut.out)?.[1];
+  expect(command).toBe(`threads read ${other} --entry report --offset 500`);
   const rest = await boite(command!.split(' '));
-  expect(rest.out).toContain('[characters 3000 to 3022 of 3022]\n    the rest of the report');
+  expect(rest.out).toContain('[characters 500 to 522 of 522]\n    the rest of the report');
   // An id another machine chose is printed as one shell word, so the hint cannot run anything else.
   harness.core.journal.putMessage({ id: "x'; touch pwned; '", threadId: other, turnId: 'history', role: 'assistant', state: 'complete', createdAt: Date.now() + 2, parts: [{ type: 'text', text: report }] });
-  expect((await boite(['threads', 'read', other, '--last', '1'])).out).toContain(`--entry 'x'\\''; touch pwned; '\\''' --offset 3000)`);
+  expect((await boite(['threads', 'read', other, '--last', '1'])).out).toContain(`--entry 'x'\\''; touch pwned; '\\''' --offset 500)`);
   const self = harness.core.coordination.get(threadId).self;
   // The answer goes out once the CLI waits for it: one that came first would wake this idle thread
   // with a turn instead. The CLI reaches its wait late here, as it did on a loaded macOS runner.

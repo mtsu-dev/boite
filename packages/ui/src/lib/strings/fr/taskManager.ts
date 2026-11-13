@@ -14,7 +14,7 @@ export const fr: Translation = {
     diskHint: 'Lectures et écritures sur le stockage observées pendant que cette vue est ouverte. Les processus brefs peuvent échapper à la mesure. Il s’agit d’activité, pas de la taille du dossier.',
     tcpHint: 'Réception et envoi TCP observés pendant que cette vue est ouverte. Les connexions brèves et le trafic UDP peuvent échapper à la mesure.',
     gpuHint: 'Utilisation du moteur GPU le plus sollicité par cet agent, mesurée par Windows.',
-    stop: 'Arrêter les processus', stopConfirm: 'Arrêter tous les processus de cette conversation ?', stopping: 'Arrêt des processus',
+    stop: 'Arrêter les processus', stopConfirm: 'Arrêter tous les processus de ce fil ?', stopping: 'Arrêt des processus',
     machines: 'Machines', online: (online: number, total: number) => `${online} sur ${total} en ligne`, memoryInUse: 'Mémoire utilisée',
     agentsOn: (machine: string) => `Agents sur ${machine}`,
     machine: {

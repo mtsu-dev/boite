@@ -42,9 +42,9 @@ export const fr: Translation = {
     experimental: 'Expérimental',
     /** The switch's accessible name: `{provider}` is the provider's own name. */
     enable: 'Utiliser {provider}',
-    enableHint: "Désactivé, Boite ne lance rien de ce fournisseur et aucune liste ne le propose. Ses comptes et ses conversations sont conservés.",
+    enableHint: "Désactivé, Boite ne lance rien de ce fournisseur et aucune liste ne le propose. Ses comptes et ses fils sont conservés.",
     /** A thread whose provider is off: the composer's chip and the sentence behind it. */
-    threadOff: '{provider} est désactivé. Activez-le dans Réglages > Comptes IA > Fournisseurs pour continuer cette conversation.',
+    threadOff: '{provider} est désactivé. Activez-le dans Réglages > Comptes IA > Fournisseurs pour continuer ce fil.',
     defaultModel: 'Modèle par défaut',
     autoUpdate: 'Mises à jour automatiques',
     checkUpdates: 'Rechercher des mises à jour',

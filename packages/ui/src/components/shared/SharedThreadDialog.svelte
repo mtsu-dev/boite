@@ -77,7 +77,7 @@
   .where { margin: 0 0 12px; overflow-wrap: anywhere; }
   .actions { display: flex; gap: 8px; }
   .transcript { display: grid; gap: 12px; max-height: 36dvh; overflow-y: auto; margin-block: 12px; }
-  article { padding: 8px 12px; border-left: 2px solid var(--color-border); }
+  article { padding: 8px 12px; border-radius: var(--radius-md); }
   article[data-role='user'] { background: var(--color-surface-2); }
   article p { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--text-sm); line-height: 1.5; }
   form { border-top: 1px solid var(--color-border); padding-top: 12px; }

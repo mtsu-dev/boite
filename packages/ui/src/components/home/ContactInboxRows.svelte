@@ -232,7 +232,7 @@
   .fold :global(svg) { flex: none; transition: rotate var(--dur-2) var(--ease-out-quint); }
   .fold[aria-expanded='true'] :global(svg) { rotate: 90deg; }
   /* Each copy of a merged ask: one line on the desktop, its words whole; they wrap on a phone. */
-  .copies { display: flex; flex-direction: column; gap: 2px; margin: 2px 0 0; padding: 0 0 0 10px; border-left: 2px solid var(--color-edge); list-style: none; }
+  .copies { display: flex; flex-direction: column; gap: 2px; margin: 2px 0 0; padding: 0 0 0 10px; list-style: none; }
   .copy { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; min-width: 0; font-size: var(--text-xs); line-height: 18px; color: var(--color-subtle); }
   .from { min-width: 0; color: var(--color-muted-foreground); overflow-wrap: anywhere; }
   /* The menu at the kind line's end, its glyph's box on the card's edge, as a thread card's; shown under the pointer

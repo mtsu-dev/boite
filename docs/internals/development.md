@@ -610,6 +610,104 @@ minutes and the core retains at most 64. Manual family archive cancels pending
 requests and ignores late results. Pending inference also blocks idle updater
 shutdown.
 
+## Testing in Boite Dev
+
+A change can be tried in a real Boite, with real accounts and projects, in one
+command. The dev channel (`--channel dev`, and the app "Boite Dev" that
+`bun run build:shell:dev` builds) keeps its own data directory, `boite2-dev`
+beside `boite2`, and nothing wipes it. Once the owner has set a Dev instance up
+(an agent signed in or a gateway provider, a few projects), every later build of
+any branch opens the same setup.
+
+```sh
+bun run dev:instance            # build what is stale, start, print the address
+bun run dev:instance status
+bun run dev:instance cli projects
+bun run dev:instance capture shot.png --width 1280 --height 800
+bun run dev:instance stop
+```
+
+Run it from the root of any checkout or worktree; it serves that checkout
+(`scripts/dev/instance.ts`). `start` rebuilds `packages/ui/dist` when it is
+missing or older than its sources, the test `ensureProductionUi` applies, and
+runs the core from the sources, so the core needs no build. The core starts in
+the background with no window, on `--channel dev`, and the command returns once
+the ready line is there:
+
+```text
+boite-core ready http://127.0.0.1:7347
+data    ~/.local/share/boite2-dev (the persistent Dev data, journal schema 50, reused as it is)
+process pid 1164, output in /tmp/boite-dev-instance-ab6e1b768883.log
+```
+
+It also prints how to open, drive and stop the instance:
+
+- The page needs the owner token of `<dataDir>/core.json`. `bun run dev:instance url`
+  prints the owner link, `<url>/?token=<token>`, the link `pairingUrlOf` in
+  `tests/e2e/lib/core.ts` builds. Use it in a command substitution,
+  `<browser> "$(bun run --silent dev:instance url)"`, and keep it out of files,
+  commits and logs: nothing `start` prints carries the token.
+- `capture <file.png>` opens that link in the muted headless browser of
+  `tests/e2e/lib/cdp.ts` (`BOITE_E2E_BROWSER` names the executable; without it,
+  the suite's candidates, then a `chrome-headless-shell` on the PATH) and
+  writes a screenshot; `--width 390 --height 844` gives a phone.
+- `bun run dev:instance cli projects` runs the `boite` CLI ([CLI](cli.md)) as
+  the owner of this instance. Use it instead of a plain `boite`: inside a Boite
+  thread, `BOITE_CORE_URL`, `BOITE_AGENT_TOKEN` and `BOITE_THREAD_ID` send
+  `boite`, `--channel dev` included, to that thread's own core, so
+  `projects add` would land there. The subcommand passes none of them on and
+  names the instance's data directory.
+- `stop` asks the core to shut down over `POST /shutdown`, waits for the
+  process captured at spawn and removes temporary data and the output
+  file. The state keeps each
+  PID with the start time the OS gives that run (`startKey` on Linux, the
+  creation time on Windows, `ps -o lstart=` on macOS): a PID
+  that is now another process is never signalled, and `stop` then only clears
+  the stale state. A start whose process gives no start time is stopped at
+  once and refused. One instance per checkout.
+
+On the real Dev data the core keeps the port its last run bound, as the app
+does. Inherited `BOITE_*` variables are not passed to the core, so a run from
+inside a Boite thread does not hand its thread identity or data directory on;
+`--env NAME=VALUE` passes one deliberately. The core is always given
+`--data-dir` with the directory the command checked, and `--env` refuses
+`BOITE_DATA_DIR`, `XDG_DATA_HOME`, `HOME`, `USERPROFILE` and `LOCALAPPDATA`,
+so the lock and schema checks and the core never look at two directories.
+
+| Case | What the command does |
+| --- | --- |
+| No Dev data yet | Starts on an empty `boite2-dev` and says so. The owner sets it up once, in the page or in the Boite Dev app: sign in an agent or add a gateway provider, add projects. |
+| Dev data in use (`core.lock` held by the Boite Dev app or another Dev core) | Exits 3, names the holder (PID, version, address, command line on Linux) and leaves it alone. Use `--copy`, stop the other `dev:instance` from its own checkout, or ask the owner to quit Boite Dev. |
+| The branch's journal schema is newer than the data's | Exits 4. Opening the data migrates it for good, and an older build, the installed Boite Dev included, may then refuse it. `--copy` is the safe way; `--migrate` migrates the real Dev data and is for when the owner agreed. |
+| The data's journal schema is newer than the branch's | Exits 4: this branch's core would refuse the journal. Merge or rebase, or use `--scratch`. |
+
+| Option | Meaning |
+| --- | --- |
+| `--copy` | Runs on a copy of the Dev data in a temporary directory, removed at `stop`. The journal is copied with `VACUUM INTO`, so it works while Boite Dev runs. Logs, the browser profile, `core.json` and `core.lock` are not copied. The copy carries the same sign-ins: an agent that renews one there may sign the original out. |
+| `--migrate` | Lets the branch migrate the real Dev data. |
+| `--scratch` | Empty temporary data, removed at `stop`. |
+| `--echo` | Sets `BOITE_ECHO=1`: the [echo provider](#the-echo-provider) joins the model list, and its turns cost nothing. |
+| `--shell` | Builds Boite Dev (`bun run build:shell:dev`, then the sidecar staging) and launches its window hidden with `BOITE_SHELL_HIDDEN=1`, instead of a bare core. It always opens the real Dev data: `--copy` and `--scratch` are refused with it. |
+| `--no-build` | Serves `packages/ui/dist` as it is. |
+| `--timeout <seconds>` | How long to wait for the ready line, 90 by default. |
+
+The Dev data holds the owner's real accounts: a turn there spends real quota,
+and `start` says so each time. Keep turns few and short, and use `--echo` with
+the echo provider when the flow needs no real model. The command never opens
+the stable `boite2` directory. Automated tests and benches do not use it: they
+keep a fresh temporary `BOITE_DATA_DIR`.
+
+| Need | Use |
+| --- | --- |
+| A component or a state of the UI, no core | `?fake=1` fixtures ([the UI](#the-ui)) |
+| Repeatable behaviour to assert, in CI | The E2E suite on temporary echo cores ([checks and tests](#checks-and-tests)) |
+| The change in a real Boite: real providers, accounts, the owner's projects, existing history, a migration on real data | `bun run dev:instance` |
+
+`scripts/dev/instance.test.ts` runs each case on a home directory of its own.
+`--shell` was written against the Windows and macOS layout and has not been run:
+on Linux it stops when the WebKitGTK headers are missing
+([rebuilding the shell executable](#rebuilding-the-shell-executable)).
+
 ## Checks and tests
 
 ```sh
@@ -867,6 +965,7 @@ Never terminate processes by executable name or a path pattern.
 | Chatbar alerts and subagent answer routing | `tests/e2e/subagent-questions.test.ts` |
 | Draft durability, overlays and reduced motion | `tests/e2e/drafts-overlays.test.ts` |
 | Provider transfer over fixture ACP | `tests/e2e/model-switch.test.ts` |
+| Model change line, pending and recorded | `tests/e2e/switch-marker.test.ts` |
 | Folder picker and absent project | `tests/e2e/project-picker.test.ts`, `folder-gone.test.ts` |
 | Appearance controls | `tests/e2e/theme-colors.test.ts` |
 | Composer image references and uploads | `tests/e2e/composer-images.test.ts`, `attachments.test.ts` |

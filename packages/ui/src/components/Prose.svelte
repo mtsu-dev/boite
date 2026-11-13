@@ -413,8 +413,9 @@
 
   .prose :global(blockquote) {
     margin: 0 0 var(--chat-block-gap);
-    padding: 2px 0 2px 12px;
-    border-left: 2px solid var(--color-edge);
+    padding: 8px 12px;
+    border-radius: var(--radius-md);
+    background: var(--color-surface-2);
     color: var(--color-muted-foreground);
   }
 

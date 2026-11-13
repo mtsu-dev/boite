@@ -8,7 +8,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { RpcErrorCode } from '@boite/contracts';
 import type { AgentContact, AgentLetter, ContactRequest, CoordinationPeer, RpcParams, RpcResult } from '@boite/contracts';
 import type { Core } from '../core.ts';
-import { checkRemoteContact, checkTranscript, checkMatchExtras, PARTIAL, partialList, partialName } from '../coordination-lookup.ts';
+import { checkRemoteContact, remoteTranscript, checkMatchExtras, PARTIAL, partialList, partialName } from '../coordination-lookup.ts';
 import { address, LETTER_TTL_MS, RESIDENT_LETTER_TTL_MS, same, text } from '../coordination-letter.ts';
 import { PeerRefusal, type Operation } from '../coordination-wire.ts';
 import { refused, unavailable, messageOf, RpcFailure } from '../errors.ts';
@@ -180,7 +180,7 @@ export class ContactMailboxes {
     this.#source(threadId);
     const contact = checkRemoteContact(result.contact, { coreId, name: route.name, url: '', publicKey: '' });
     if (contact.threadId !== (payload as { threadId: string }).threadId) throw refused('transcript of another thread');
-    return { contact, ...checkTranscript(result, payload as { entry?: string; offset?: number }) };
+    return remoteTranscript(contact, result, payload as { entry?: string; offset?: number });
   }
   search(threadId: string, words: string[]): Promise<{ entries: RpcResult<'collaboration.search'>['matches']; unavailable: string[] }> {
     return this.#lookup(threadId, 'search', { words, partial: PARTIAL }, (entry, peer) => ({ ...checkRemoteContact(entry as AgentContact, peer), ...checkMatchExtras(entry as { matched?: unknown; excerpts?: unknown }) }));

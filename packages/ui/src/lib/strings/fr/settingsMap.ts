@@ -5,7 +5,7 @@ export const fr: Translation = {
     pages: {
       appearance: 'Apparence',
       input: 'Saisie',
-      conversations: 'Conversations',
+      conversations: 'Fils',
       ai: 'Comptes IA',
       agents: 'Agents',
       safeguards: 'Garde-fous',

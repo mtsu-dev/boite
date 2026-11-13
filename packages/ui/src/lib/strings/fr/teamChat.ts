@@ -19,7 +19,7 @@ export const fr: Translation = {
     dialog: {
       createTitle: 'Nouvelle équipe',
       editTitle: 'Modifier {team}',
-      intro: 'Quelques bots et vous dans un salon. Chaque bot répond depuis sa propre conversation.',
+      intro: 'Quelques bots et vous dans un salon. Chaque bot répond depuis son propre fil.',
       name: 'Nom',
       namePlaceholder: 'Équipe lancement',
       brief: 'Mission',
