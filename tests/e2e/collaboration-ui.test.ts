@@ -167,7 +167,7 @@ test('the chat shows one row per discussion, and the panel lists discussions and
   await page.click('[data-testid=agent-discussion-back]');
   await page.waitFor(`document.querySelectorAll('[data-testid=agent-discussion]').length === 3`);
   await settled();
-  expect(await page.text(`[data-testid=agent-discussion][data-peer="here/${notesId}"]`)).toContain('Lancée d\'ici');
+  expect(await page.text(`[data-testid=agent-discussion][data-peer="here/${notesId}"]`)).toContain('Lancé d\'ici');
   expect(await page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')).toBe(true);
   await page.screenshot(join(import.meta.dir, '.artifacts', 'agent-discussions-list-phone-fr.png'));
   await page.evaluate(`import('/src/lib/i18n.svelte.ts').then(module => module.setLocaleSetting('en'))`);
