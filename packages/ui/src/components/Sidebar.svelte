@@ -173,6 +173,8 @@
     const { [key]: was, ...rest } = unfolded;
     unfolded = was ? rest : { ...rest, [key]: true };
   }
+  /** A card lists its done threads under the display menu's switch, or once its own Done count is pressed. */
+  const doneShown = (entry: ProjectEntry) => doneFilter.shown || projectThreadView.isOpen(entry, 'done');
   /** Each listed project's sorted rows, shared by its section and by Alt+digit. */
   let projectLists = $derived(listsFor(activeGroups));
   /** The rows of the listed projects in drawn order, read only as far as the ninth: projects below it cost nothing. */
@@ -187,7 +189,7 @@
       const { lists } = projectLists.get(projectKey(entry))!;
       const { shown } = cardRows(entry, lists.attention);
       for (const thread of open ? [...shown, ...lists.working] : shown) rows.push({ store: entry.machine.store, threadId: thread.id });
-      for (const kind of ['done', 'archived'] as const) if (kind === 'done' ? doneFilter.shown : later) rows.push(...projectDoneRows[JSON.stringify([kind, projectKey(entry)])] ?? []);
+      for (const kind of ['done', 'archived'] as const) if (kind === 'done' ? doneShown(entry) : later) rows.push(...projectDoneRows[JSON.stringify([kind, projectKey(entry)])] ?? []);
     }
     return rows;
   }
@@ -299,7 +301,7 @@
         {@const owner = machine.store}
         {@const workingOpen = projectThreadView.isOpen(entry, 'working')}
         {@const later = section === 'later'}
-        {@const doneOpen = archiveCount(project, 'done') > 0 && doneFilter.shown}
+        {@const doneOpen = archiveCount(project, 'done') > 0 && doneShown(entry)}
         {@const archivedOpen = later && archiveCount(project, 'archived') > 0}
         {@const { lists } = projectLists.get(projectKey(entry))!}
         {@const fold = cardRows(entry, lists.attention)}

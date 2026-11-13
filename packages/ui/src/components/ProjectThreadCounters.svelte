@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { CheckCheck } from '@lucide/svelte';
   import type { ProjectEntry } from '../lib/project-view.svelte';
-  import { projectThreadView } from '../lib/project-threads.svelte';
+  import { archiveCount, projectThreadView } from '../lib/project-threads.svelte';
+  import { doneFilter } from '../lib/inbox.svelte';
   import { count as formatCount, projectName } from '../lib/format';
   import { fill, strings } from '../lib/strings';
   import { recentPreferences } from '../lib/recent.svelte';
@@ -14,7 +16,9 @@
    * rows' words leaves them their dot alone (ThreadState.svelte `fit`). The tooltip and the accessible name always
    * say it. The working count stands only where no row says it:
    * a folded card, or the fold of working threads (the display menu's grouping), whose toggle it is, so there it
-   * stays beside Needs you. The archived ones live in the card's menu (lib/project-menu.ts).
+   * stays beside Needs you. The done ones keep a count of their own, the toggle of the card's done fold, unless the
+   * display menu's switch already lists every card's done threads. The archived ones live in the card's menu
+   * (lib/project-menu.ts).
    * `away`: the machine is not connected; its last known counts stay, the working one without its live colour, the
    * one that asks as Activity and the rail's badge count it.
    * The amber count stands alone in the header: with threads that need the user, the working fold's toggle moves
@@ -30,6 +34,9 @@
     failOnly ? fill(strings.sidebar.projectFailedThreads, { count: String(waiting), project: projectName(entry.project) })
     : failed > 0 ? fill(strings.sidebar.projectMixedThreads, { waiting: String(waiting - failed), failed: String(failed), project: projectName(entry.project) })
     : fill(strings.sidebar.projectWaitingThreads, { count: String(waiting), project: projectName(entry.project) }));
+  const done = $derived(archiveCount(entry.project, 'done'));
+  const doneOpen = $derived(!collapsed && projectThreadView.isOpen(entry, 'done'));
+  const doneLabel = $derived(fill(strings.sidebar.projectDoneThreads, { count: String(done), project: projectName(entry.project) }));
   const workingLabel = $derived(fill(strings.sidebar.projectWorkingThreads, { count: String(working), project: projectName(entry.project) }));
 </script>
 
@@ -50,6 +57,13 @@
       title={workingLabel} aria-label={workingLabel} aria-expanded={grouped ? open : undefined} aria-controls={grouped ? `${controls}-working` : undefined} disabled={!grouped || searching}
       onclick={() => projectThreadView.toggle(entry, 'working', collapsed)}>
       <span class="work-ring" aria-hidden="true"></span><span class="ui-label word">{strings.sidebar.workingThreads}</span><span class="ui-label">{formatCount(working)}</span>
+    </button>
+  {/if}
+  {#if done > 0 && !doneFilter.shown}
+    <button type="button" class="ghost counter done" class:active={doneOpen} data-testid="project-done-toggle" data-count={done}
+      title={doneLabel} aria-label={doneLabel} aria-expanded={doneOpen} aria-controls="{controls}-done"
+      onclick={() => projectThreadView.toggle(entry, 'done', collapsed)}>
+      <CheckCheck size={13} aria-hidden="true" /><span class="ui-label">{formatCount(done)}</span>
     </button>
   {/if}
 </div>{/if}
@@ -90,6 +104,8 @@
   .away .work-ring { border-color: var(--color-muted-foreground); border-top-color: transparent; }
   .counter:hover:not(:disabled) { background: var(--color-hover); color: var(--color-foreground); }
   .counter.active { background: var(--color-active); color: var(--color-foreground); }
+  /* Done: the rows' finished green on the mark alone, the count in the header's grey. */
+  .done :global(svg) { color: var(--color-success); }
   /* The working fold's toggle inside the card, a quiet row over the fold, as the group labels read. */
   .fold-toggle { display: flex; align-items: center; gap: 6px; width: 100%; height: 28px; padding: 0 10px; justify-content: flex-start; border-radius: var(--radius-sm);
     color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 500; }

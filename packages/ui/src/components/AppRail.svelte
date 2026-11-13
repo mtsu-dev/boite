@@ -345,11 +345,11 @@
 
   /* The name card right of the rail, as a menu's surface: it waits a beat under the pointer, so a sweep down the
      rail does not flash every name, and shows at once for the keyboard. */
-  /* The card opens past the list column, over the main card's edge: never over a row's words. `--bar-left` is the
-     list's width and gap (App.svelte), the frame gap alone while the list is folded. */
+  /* The card opens against its button, over the list's edge, so it reads as the button's own: placed past the list
+     column, it stood 300 px from the pointer and went unseen (2026-11-13). */
   .rail-name {
     position: absolute;
-    left: calc(100% + var(--bar-left, 0px) + 4px);
+    left: calc(100% + 4px);
     top: 50%;
     z-index: 3;
     display: flex;
@@ -391,8 +391,8 @@
   .slot:hover .rail-name.machines-name, .slot:has(:global(:focus-visible)) .rail-name.machines-name { transform: none; }
   .separator { flex: none; width: 28px; height: 1px; background: var(--color-edge); }
   .bots { display: flex; flex: 0 1 auto; flex-direction: column; align-items: center; gap: 8px; width: 100%; min-height: 0; overflow-y: auto; scrollbar-width: none; }
-  /* Fixed against the window, so the scroller does not clip it (placeName). `--bar-left` as for every other card. */
-  .bots .rail-name { position: fixed; left: calc(var(--name-x, var(--app-rail)) + var(--bar-left, 0px)); top: var(--name-y, 0px); }
+  /* Fixed against the window, so the scroller does not clip it (placeName), beside its slot as every other card. */
+  .bots .rail-name { position: fixed; left: var(--name-x, var(--app-rail)); top: var(--name-y, 0px); }
 
   /* Activity's count in a small pill on the inbox glyph's lower right corner: a neutral raised ground with the
      digit in the amber ink (amber is a dot or a count, never a filled badge), ringed in the tile's own ground so
