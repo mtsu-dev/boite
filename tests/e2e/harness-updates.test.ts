@@ -97,10 +97,10 @@ test('agent updates live on Providers and Update and Skip target the machine its
 
   // On a phone Machines lists what each machine still offers, and Update starts it there: back from Providers to the Settings list, then Machines.
   await size(390);
-  await page.waitFor(`document.querySelector('${id('mobile-settings-back')}') || document.querySelector('${id('mobile-settings-connection')}') || document.querySelector('${id('machines-page')}')`);
-  if (await page.evaluate<boolean>(`!document.querySelector('${id('machines-page')}') && !document.querySelector('${id('mobile-settings-connection')}')`)) await page.click(id('mobile-settings-back'));
-  await page.waitFor(`document.querySelector('${id('mobile-settings-connection')}') || document.querySelector('${id('machines-page')}')`);
-  if (!await page.evaluate<boolean>(`document.querySelector('${id('machines-page')}') !== null`)) await page.click(id('mobile-settings-connection'));
+  await page.waitFor(`document.querySelector('${id('mobile-settings-back')}') || document.querySelector('${id('settings-tab-devices')}') || document.querySelector('${id('machines-page')}')`);
+  if (await page.evaluate<boolean>(`!document.querySelector('${id('machines-page')}') && !document.querySelector('${id('settings-tab-devices')}')`)) await page.click(id('mobile-settings-back'));
+  await page.waitFor(`document.querySelector('${id('settings-tab-devices')}') || document.querySelector('${id('machines-page')}')`);
+  if (!await page.evaluate<boolean>(`document.querySelector('${id('machines-page')}') !== null`)) await page.click(id('settings-tab-devices'));
   await page.waitFor(`document.querySelector('${id('machines-page')}') && document.querySelector('${id('updates-others')}')`);
   expect((await page.text('[data-testid=mobile-settings-header] h1')).trim()).toBe('Machines and updates');
   // Builder's codex is done and this PC's Claude is skipped: neither is offered again.

@@ -295,8 +295,7 @@ test('the Douane plugin: its gear in Plugins and the proxy card pointing at it, 
     await local.waitFor('document.querySelector("[data-testid=mobile-header]")');
     await mobileAction(local, 'mobile-settings');
     await local.waitFor('document.querySelector("[data-testid=mobile-settings-home]")');
-    await local.click('[data-testid="settings-tab-usage"]');
-    await local.click('[data-testid="mobile-usage-tab-limits"]');
+    await local.click('[data-testid="settings-tab-ai"]');
     await local.waitFor('document.querySelector("[data-testid=subscription-proxy-settings]")');
     await local.evaluate('document.querySelector("[data-testid=subscription-proxy-settings]").closest("details").open = true');
     await local.waitFor('document.querySelector("[data-testid=subscription-proxy-plugin]")?.dataset.state === "running"');

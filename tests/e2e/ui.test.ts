@@ -753,10 +753,8 @@ test(
       expect(await phone.evaluate<string>('location.search')).toBe('');
       await phone.waitFor(`document.querySelector('[data-testid=mobile-header]')`);
       await mobileAction(phone, 'mobile-settings');
-      // The phone's own settings are a row of General.
-      await phone.click('[data-testid=settings-tab-general]');
-      await phone.waitFor(`document.querySelector('[data-testid=mobile-settings-phone]')`);
-      await phone.click('[data-testid=mobile-settings-phone]');
+      // The phone's own settings are a card of Devices.
+      await phone.click('[data-testid=settings-tab-devices]');
       await phone.waitFor(`document.querySelector('[data-testid=phone-settings]')`);
       expect(await phone.evaluate(`document.querySelector('[data-testid=phone-public-url]') === null`)).toBe(true);
       await phone.waitFor(`navigator.serviceWorker.controller !== null`, RECONNECT_TIMEOUT_MS);

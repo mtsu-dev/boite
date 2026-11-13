@@ -5,9 +5,10 @@ import { experimentsShown } from './experiments.svelte';
  * The map of Settings: nine pages, one per question a person asks, each a
  * list of cards. This file is the one place that knows the pages, their
  * order, their cards, who may open them and where a route from before the map
- * lands. The desktop screen renders a page from `blocksOf`, the search indexes
- * `SETTINGS_CARDS` (`settings-index.ts`), and a card an agent asks for opens
- * through `placeOf`.
+ * lands. The desktop screen and the phone's render a page from `blocksOf`,
+ * the search indexes `SETTINGS_CARDS` (`settings-index.ts`), and a card an
+ * agent asks for opens through `placeOf`. A phone shows every card but the
+ * ones marked `desktop`: that mark is the whole phone rule.
  */
 export type { SettingsPage };
 
@@ -28,21 +29,19 @@ interface PageDef {
   owner?: true;
   /** It is long enough for the nav to list its sections under it while it is open. */
   long?: true;
-  /** What a phone opens for the page until it has the map: a page of its own list. */
-  phone: readonly [LegacyTab, string | null];
 }
 
 /** The nine pages, in the nav's order (`SETTINGS_PAGES`). */
 export const PAGES: Record<SettingsPage, PageDef> = {
-  appearance: { scope: 'device', phone: ['appearance', null] },
-  input: { scope: 'machine', phone: ['voice', null] },
-  conversations: { scope: 'device', phone: ['general', 'conversations'] },
-  ai: { scope: 'machine', long: true, phone: ['accounts', null] },
-  agents: { scope: 'machine', owner: true, phone: ['brain', null] },
-  safeguards: { scope: 'machine', phone: ['general', null] },
-  devices: { scope: 'group', phone: ['machines', null] },
-  version: { scope: 'machine', phone: ['machines', null] },
-  help: { scope: 'machine', phone: ['diagnostics', null] }
+  appearance: { scope: 'device' },
+  input: { scope: 'machine' },
+  conversations: { scope: 'device' },
+  ai: { scope: 'machine', long: true },
+  agents: { scope: 'machine', owner: true },
+  safeguards: { scope: 'machine' },
+  devices: { scope: 'group' },
+  version: { scope: 'machine' },
+  help: { scope: 'machine' }
 };
 
 interface CardDef {
@@ -59,7 +58,7 @@ interface CardDef {
   readonly owner?: true;
   /** It exists only where the primary machine's build runs experiments. */
   readonly experimental?: true;
-  /** Drawn by the desktop app or a wide window only. */
+  /** Drawn by the desktop app or a wide window only: a phone has every card but these. */
   readonly desktop?: true;
   /** Where it was before the map: the old page and its anchor there (null: the page itself). */
   readonly from: readonly [LegacyTab, string | null];
@@ -82,7 +81,7 @@ export const SETTINGS_CARDS = [
   // Conversations: how threads are listed and answer. This device first, then the machine.
   { id: 'thread-list', page: 'conversations', block: 'thread-list', scope: 'device', desktop: true, from: ['general', 'thread-list'] },
   { id: 'conversations', page: 'conversations', block: 'conversations', scope: 'device', from: ['general', 'conversations'] },
-  { id: 'notifications', page: 'conversations', block: 'notifications', scope: 'device', from: ['general', 'notifications'] },
+  { id: 'notifications', page: 'conversations', block: 'notifications', scope: 'device', desktop: true, from: ['general', 'notifications'] },
   { id: 'agent-replies', page: 'conversations', block: 'agent-replies', scope: 'machine', owner: true, from: ['general', 'agent-replies'] },
   { id: 'archived', page: 'conversations', block: 'archived', scope: 'machine', from: ['general', 'archived'] },
   { id: 'worktrees', page: 'conversations', block: 'worktrees', scope: 'machine', owner: true, from: ['general', 'worktrees'] },
@@ -99,7 +98,7 @@ export const SETTINGS_CARDS = [
   { id: 'hooks', page: 'agents', block: 'brain', scope: 'machine', owner: true, from: ['brain', 'hooks'] },
   { id: 'plugins', page: 'agents', block: 'plugins', scope: 'machine', owner: true, from: ['plugins', null] },
   { id: 'auto-compact', page: 'agents', block: 'auto-compact', scope: 'machine', owner: true, from: ['advanced', 'auto-compact'] },
-  { id: 'execution', page: 'agents', block: 'execution', scope: 'machine', owner: true, from: ['advanced', 'execution'] },
+  { id: 'execution', page: 'agents', block: 'execution', scope: 'machine', owner: true, desktop: true, from: ['advanced', 'execution'] },
   // Safeguards: what they are allowed to do.
   { id: 'quiet', page: 'safeguards', block: 'quiet', scope: 'machine', owner: true, from: ['general', 'quiet'] },
   { id: 'windows', page: 'safeguards', block: 'windows', scope: 'machine', owner: true, from: ['machines', 'windows'] },
@@ -109,12 +108,12 @@ export const SETTINGS_CARDS = [
   { id: 'privacy', page: 'safeguards', block: 'privacy', scope: 'machine', owner: true, from: ['general', 'privacy'] },
   { id: 'policy', page: 'safeguards', block: 'policy', scope: 'machine', from: ['general', 'policy'] },
   // Devices: who connects to what.
-  { id: 'app', page: 'devices', block: 'app', scope: 'device', from: ['general', 'app'] },
+  { id: 'app', page: 'devices', block: 'app', scope: 'device', desktop: true, from: ['general', 'app'] },
   { id: 'main-machine', page: 'devices', block: 'app', scope: 'device', from: ['machines', null] },
   { id: 'group', page: 'devices', block: 'machines', scope: 'group', from: ['machines', 'group'] },
   { id: 'machines', page: 'devices', block: 'machines', scope: 'group', from: ['machines', 'machines'] },
   { id: 'phone', page: 'devices', block: 'phone', scope: 'machine', from: ['advanced', 'phone'] },
-  { id: 'origins', page: 'devices', block: 'origins', scope: 'machine', owner: true, from: ['advanced', 'origins'] },
+  { id: 'origins', page: 'devices', block: 'origins', scope: 'machine', owner: true, desktop: true, from: ['advanced', 'origins'] },
   // Version: stable or ahead.
   { id: 'updates', page: 'version', block: 'updates', scope: 'group', from: ['machines', 'updates'] },
   { id: 'agent-updates', page: 'version', block: 'agent-updates', scope: 'machine', owner: true, from: ['accounts', 'agent-updates'] },
@@ -129,7 +128,7 @@ export const SETTINGS_CARDS = [
   { id: 'diagnostics-agents', page: 'help', block: 'diagnostics', scope: 'machine', owner: true, from: ['diagnostics', 'diagnostics-agents'] },
   { id: 'tasks', page: 'help', block: 'tasks', scope: 'machine', owner: true, from: ['resources', 'tasks'] },
   { id: 'task-manager', page: 'help', block: 'task-manager', scope: 'group', from: ['task-manager', null] },
-  { id: 'core', page: 'help', block: 'core', scope: 'machine', from: ['advanced', 'core'] },
+  { id: 'core', page: 'help', block: 'core', scope: 'machine', desktop: true, from: ['advanced', 'core'] },
   { id: 'tour', page: 'help', block: 'tour', scope: 'device', desktop: true, from: ['general', 'tour'] }
 ] as const satisfies readonly CardDef[];
 
@@ -171,9 +170,9 @@ const LEGACY: Record<LegacyTab, readonly [SettingsPage, SettingsCardId | null]> 
 
 const isPage = (tab: string): tab is SettingsPage => (SETTINGS_PAGES as readonly string[]).includes(tab);
 
-/** A card as this window's Settings would draw it, or not at all. */
-function cardShown(card: CardDef, owner: boolean): boolean {
-  return (owner || !card.owner) && (!card.experimental || experimentsShown());
+/** A card as this window's Settings would draw it, or not at all: the owner's cards, the experiments, and on a phone no desktop card. */
+function cardShown(card: CardDef, owner: boolean, phone = false): boolean {
+  return (owner || !card.owner) && (!card.experimental || experimentsShown()) && !(phone && card.desktop);
 }
 
 /** The card that draws an anchor which is not a card itself, by how the anchor starts: a provider's row sits in the providers. */
@@ -185,27 +184,38 @@ const HOSTS: readonly (readonly [SettingsPage, string, SettingsCardId])[] = [
   ['agents', 'brain-', 'brain']
 ];
 
-/**
- * Whether this window's desktop Settings draws what a route names: its page,
- * and the card when the route names one, or the card an anchor sits in.
- */
-export function desktopHas(tab: SettingsTab, section: string | null | undefined, owner: boolean): boolean {
-  const place = placeOf(tab, section);
-  if (!pageAvailable(place.page, owner)) return false;
+/** The card a route's section names or sits in, on the page the route lands on. */
+function cardAt(place: { page: SettingsPage; section: string | null }): CardDef | undefined {
   const host = place.section ? HOSTS.find(([page, prefix]) => page === place.page && place.section!.startsWith(prefix))?.[2] : undefined;
-  const card = cardOf(place.section) ?? cardOf(host);
-  return card ? cardShown(card, owner) : true;
+  return cardOf(place.section) ?? cardOf(host);
+}
+
+/**
+ * Whether this window's Settings draws what a route names, a desktop's or a
+ * phone's: its page, and the card when the route names one, or the card an
+ * anchor sits in.
+ */
+export function settingsHas(tab: SettingsTab, section: string | null | undefined, owner: boolean, phone = false): boolean {
+  const place = placeOf(tab, section);
+  if (!pageAvailable(place.page, owner, phone)) return false;
+  const card = cardAt(place);
+  return card ? cardShown(card, owner, phone) : true;
+}
+
+/** `settingsHas` for a desktop. */
+export function desktopHas(tab: SettingsTab, section: string | null | undefined, owner: boolean): boolean {
+  return settingsHas(tab, section, owner);
 }
 
 /** The cards a page shows this window, in order. */
-export function cardsOf(page: SettingsPage, owner: boolean): SettingsCard[] {
-  return CARDS.filter((card) => card.page === page && cardShown(card, owner));
+export function cardsOf(page: SettingsPage, owner: boolean, phone = false): SettingsCard[] {
+  return CARDS.filter((card) => card.page === page && cardShown(card, owner, phone));
 }
 
 /** A page's render units in order: one component each, with the cards it draws. */
-export function blocksOf(page: SettingsPage, owner: boolean): { block: SettingsBlock; cards: SettingsCard[] }[] {
+export function blocksOf(page: SettingsPage, owner: boolean, phone = false): { block: SettingsBlock; cards: SettingsCard[] }[] {
   const blocks: { block: SettingsBlock; cards: SettingsCard[] }[] = [];
-  for (const card of cardsOf(page, owner)) {
+  for (const card of cardsOf(page, owner, phone)) {
     const last = blocks.at(-1);
     if (last?.block === card.block) last.cards.push(card);
     else blocks.push({ block: card.block as SettingsBlock, cards: [card] });
@@ -218,13 +228,13 @@ export function ownerOnly(page: SettingsPage): boolean {
 }
 
 /** Whether this window has the page at all: an owner page needs the owner, and any page needs a card to show. */
-export function pageAvailable(page: SettingsPage, owner: boolean): boolean {
-  return (owner || !ownerOnly(page)) && cardsOf(page, owner).length > 0;
+export function pageAvailable(page: SettingsPage, owner: boolean, phone = false): boolean {
+  return (owner || !ownerOnly(page)) && cardsOf(page, owner, phone).length > 0;
 }
 
-/** What the nav lists, in its order: nine entries for the owner, no family above them. */
-export function navOf(owner: boolean): SettingsPage[] {
-  return SETTINGS_PAGES.filter((page) => pageAvailable(page, owner));
+/** What the nav lists, and a phone's list, in the map's order: nine entries for the owner, no family above them. */
+export function navOf(owner: boolean, phone = false): SettingsPage[] {
+  return SETTINGS_PAGES.filter((page) => pageAvailable(page, owner, phone));
 }
 
 /**
@@ -232,17 +242,17 @@ export function navOf(owner: boolean): SettingsPage[] {
  * whose cards it shows somewhere. A paired device, which had no Providers
  * page, has no route by that name either.
  */
-export function aliasesOf(owner: boolean): LegacyTab[] {
+export function aliasesOf(owner: boolean, phone = false): LegacyTab[] {
   return (Object.keys(LEGACY) as LegacyTab[]).filter((alias) => {
-    if (isPage(alias)) return false;
+    if (isPage(alias) || (phone && alias === 'home')) return false;
     const cards = CARDS.filter((card) => card.from[0] === alias);
-    return cards.length === 0 ? pageAvailable(LEGACY[alias][0], owner) : cards.some((card) => cardShown(card, owner));
+    return cards.length === 0 ? pageAvailable(LEGACY[alias][0], owner, phone) : cards.some((card) => cardShown(card, owner, phone));
   });
 }
 
 /** The sections the nav lists under a long page while it is open. */
-export function navSectionsOf(page: SettingsPage, owner: boolean): SettingsCard[] {
-  return PAGES[page].long ? cardsOf(page, owner).filter((card) => card.nav) : [];
+export function navSectionsOf(page: SettingsPage, owner: boolean, phone = false): SettingsCard[] {
+  return PAGES[page].long ? cardsOf(page, owner, phone).filter((card) => card.nav) : [];
 }
 
 /** What most of a page's cards change, the line under its title. */
@@ -278,10 +288,25 @@ export function placeOf(tab: SettingsTab, section: string | null | undefined): {
  */
 export function desktopPlace(tab: SettingsTab, section: string | null | undefined, owner: boolean): { page: SettingsPage; section: string | null } {
   const place = placeOf(tab, section);
-  const card = cardOf(place.section);
+  const card = cardAt(place);
   if (!pageAvailable(place.page, owner)) return { page: 'appearance', section: null };
   // A card this window lacks: its page, from the top.
   if (card && !cardShown(card, owner)) return { page: place.page, section: null };
+  return place;
+}
+
+/**
+ * What a phone shows for a route: its place on the map, the page from the top
+ * for a card a phone lacks (the shortcuts, the toolbar), or its list of pages
+ * (a null page) for `home` and for a page it has no card of. A phone has two
+ * levels as well: the list, then a page.
+ */
+export function phonePlace(tab: SettingsTab, section: string | null | undefined, owner: boolean): { page: SettingsPage | null; section: string | null } {
+  if (tab === 'home') return { page: null, section: null };
+  const place = placeOf(tab, section);
+  if (!pageAvailable(place.page, owner, true)) return { page: null, section: null };
+  const card = cardAt(place);
+  if (card && !cardShown(card, owner, true)) return { page: place.page, section: null };
   return place;
 }
 
@@ -296,105 +321,4 @@ export function desktopPage(tab: SettingsTab, owner: boolean, section?: string |
  */
 export function desktopSettings(phoneWidth: boolean): boolean {
   return !phoneWidth || window.__TAURI_INTERNALS__ !== undefined;
-}
-
-// ---------------------------------------------------------------------------
-// The phone, until it has the map: its list still names the pages from before
-// (`MobileSettings.svelte`). A route to one of the nine pages is read back to
-// the old page that holds its card there.
-// ---------------------------------------------------------------------------
-
-interface PhonePage {
-  owner?: true;
-  /** The page itself, a phone page for some of its cards (`SECTION_PAGES`, the rest on its index), or Home where the phone has none. */
-  phone: 'page' | 'sections' | 'home';
-}
-
-const PHONE: Record<LegacyTab, PhonePage> = {
-  home: { phone: 'home' },
-  general: { phone: 'sections' },
-  appearance: { phone: 'page' },
-  keyboard: { phone: 'home' },
-  voice: { phone: 'page' },
-  accounts: { owner: true, phone: 'page' },
-  plugins: { owner: true, phone: 'page' },
-  browser: { owner: true, phone: 'page' },
-  brain: { owner: true, phone: 'page' },
-  usage: { phone: 'page' },
-  limits: { phone: 'page' },
-  'task-manager': { phone: 'page' },
-  resources: { owner: true, phone: 'page' },
-  machines: { phone: 'page' },
-  advanced: { phone: 'sections' },
-  diagnostics: { owner: true, phone: 'page' },
-  experiments: { phone: 'page' }
-};
-
-/** The cards of a long page that a phone shows on a page of their own, and that page. */
-const SECTION_PAGES: Partial<Record<LegacyTab, Record<string, { page: PhoneSectionPage; owner?: true }>>> = {
-  general: {
-    conversations: { page: 'conversations' },
-    quiet: { page: 'conversations', owner: true },
-    'agent-replies': { page: 'conversations', owner: true },
-    archived: { page: 'archived' },
-    worktrees: { page: 'worktrees', owner: true }
-  }
-};
-
-export type PhoneSectionPage = 'conversations' | 'archived' | 'worktrees';
-
-/** On a phone, Resources and the task manager are the last sections of Diagnostics for the owner. */
-const PHONE_MERGED: Partial<Record<LegacyTab, LegacyTab>> = { resources: 'diagnostics', 'task-manager': 'diagnostics' };
-
-/** Cards the phone draws on another of its pages than the one a route from before names. */
-const PHONE_MOVED: Partial<Record<LegacyTab, Record<string, LegacyTab>>> = {
-  appearance: { workspace: 'general' },
-  resources: { quiet: 'general' },
-  accounts: { 'browser-profiles': 'browser' },
-  general: { secrets: 'accounts', 'browser-profiles': 'browser', windows: 'machines', 'window-exclusions': 'machines' }
-};
-
-/** Anchors inside a card of the map, by their page and how they start: a provider's row, a usage chart, an experiment's switch. */
-const ANCHORS: readonly (readonly [SettingsPage, string, LegacyTab])[] = [
-  ['ai', 'provider-', 'accounts'],
-  ['ai', 'usage-', 'usage'],
-  ['input', 'keys-', 'keyboard'],
-  ['agents', 'plugins-', 'plugins'],
-  ['agents', 'brain-', 'brain'],
-  // Version's only anchors that are not cards are the experiments' switches.
-  ['version', '', 'experiments']
-];
-
-/**
- * A route as the phone's list names it: a route from before unchanged, one to
- * a page of the map as the old page and anchor of its card.
- */
-export function legacyRoute(tab: SettingsTab, section: string | null | undefined, owner: boolean): { tab: LegacyTab; section: string | null } {
-  if (!isPage(tab) || (tab === 'appearance' && !cardOf(section))) return { tab: tab as LegacyTab, section: section ?? null };
-  const card = cardOf(section);
-  if (card && card.page === tab) return { tab: card.from[0], section: card.from[1] };
-  // A paired phone has no providers: AI accounts opens on its limits, Troubleshooting on the task manager.
-  if (tab === 'ai' && !owner) return { tab: 'limits', section: section ?? null };
-  if (tab === 'help' && !owner) return { tab: 'task-manager', section: section ?? null };
-  // An anchor inside a card: the old page that drew it, known by how the anchor starts.
-  const inside = section ? ANCHORS.find(([page, prefix]) => page === tab && section.startsWith(prefix)) : undefined;
-  if (inside && section) return { tab: inside[2], section };
-  const [old, anchor] = PAGES[tab].phone;
-  return { tab: old, section: section ?? anchor };
-}
-
-/** The page a phone shows for a route: a whole page, one card's page, or Home. */
-export function phonePage(route: SettingsTab, section: string | null | undefined, owner: boolean): LegacyTab | PhoneSectionPage {
-  const old = legacyRoute(route, section, owner);
-  const moved = (old.section ? PHONE_MOVED[old.tab]?.[old.section] : undefined) ?? old.tab;
-  const host = PHONE_MERGED[moved];
-  const tab = host && (owner || !PHONE[host].owner) ? host : moved;
-  const page = PHONE[tab];
-  if ((!owner && page.owner) || (tab === 'experiments' && !experimentsShown())) return 'home';
-  if (page.phone === 'page') return tab;
-  if (page.phone === 'home') return 'home';
-  // A card with a page of its own opens it; any other card lands on the group's index, a card it may not open on Home.
-  const card = old.section ? SECTION_PAGES[tab]?.[old.section] : undefined;
-  if (!card) return tab;
-  return owner || !card.owner ? card.page : 'home';
 }

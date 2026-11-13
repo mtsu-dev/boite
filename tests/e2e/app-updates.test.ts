@@ -21,7 +21,7 @@ async function machines() {
   const phone = await page.evaluate<boolean>('innerWidth <= 720');
   if (phone) await mobileAction(page, 'mobile-settings');
   else await page.click(id('nav-settings'));
-  const entry = phone ? 'mobile-settings-connection' : 'settings-tab-version';
+  const entry = phone ? 'settings-tab-devices' : 'settings-tab-version';
   await page.waitFor(`document.querySelector('${id(entry)}')`);
   await page.click(id(entry));
   // On the desktop the app's updates are a card of Version; a phone still reads them on Machines.

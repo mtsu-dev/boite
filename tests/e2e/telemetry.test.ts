@@ -68,8 +68,8 @@ test('owner controls consent on desktop and phone; captures both layouts', async
   await page.evaluate(`Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`);
   await page.screenshot(join(import.meta.dir, '.artifacts/telemetry-desktop.png'));
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-  // Privacy is a card at the foot of the phone's General page, the page the desktop left open.
-  await page.waitFor(`document.querySelector('[data-testid="mobile-settings-general"] ${card} input')`);
+  // Privacy is a card of Safeguards on a phone too, the page the desktop left open.
+  await page.waitFor(`document.querySelector('[data-testid="mobile-settings-detail"] ${card} input')`);
   await page.evaluate(`document.querySelector('${card}').scrollIntoView(); document.fonts.ready`);
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
   await page.screenshot(join(import.meta.dir, '.artifacts/telemetry-phone.png'));

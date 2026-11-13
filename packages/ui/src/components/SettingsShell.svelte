@@ -3,47 +3,9 @@
   import { tick, untrack } from 'svelte';
   import { ChevronDown, ChevronLeft, ChevronRight, Monitor, MonitorSmartphone, Network, Search } from '@lucide/svelte';
   import MobileSettings from './MobileSettings.svelte';
+  import SettingsPage from './SettingsPage.svelte';
   import InfoTip from './InfoTip.svelte';
-  import AccountsPage from './AccountsPage.svelte';
-  import AgentRepliesSettings from './AgentRepliesSettings.svelte';
-  import AppearancePage from './AppearancePage.svelte';
-  import ArchivedThreads from './ArchivedThreads.svelte';
-  import BrainPage from './BrainPage.svelte';
-  import BrowserProfilesCard from './BrowserProfilesCard.svelte';
-  import CompactionSettings from './CompactionSettings.svelte';
-  import ConversationCard from './ConversationCard.svelte';
-  import CoreCard from './CoreCard.svelte';
-  import DeviceCard from './DeviceCard.svelte';
-  import DiagnosticsPage from './DiagnosticsPage.svelte';
-  import ExperimentsPage from './ExperimentsPage.svelte';
-  import HarnessUpdatesCard from './HarnessUpdatesCard.svelte';
-  import KeyboardPage from './KeyboardPage.svelte';
-  import LimitsPage from './LimitsPage.svelte';
-  import LocalAcpCard from './LocalAcpCard.svelte';
-  import MachinesPage from './MachinesPage.svelte';
-  import MainMachine from './MainMachine.svelte';
-  import NotificationsCard from './NotificationsCard.svelte';
-  import OriginsCard from './OriginsCard.svelte';
-  import PhoneSettings from './PhoneSettings.svelte';
-  import PluginsPage from './PluginsPage.svelte';
   import PolicyBanner from './PolicyBanner.svelte';
-  import PolicySettings from './PolicySettings.svelte';
-  import QuietCard from './QuietCard.svelte';
-  import ResourcesPage from './ResourcesPage.svelte';
-  import SchedulerSettings from './SchedulerSettings.svelte';
-  import SecretsCard from './SecretsCard.svelte';
-  import SubscriptionProxySettings from './SubscriptionProxySettings.svelte';
-  import TaskManagerLoader from './TaskManagerLoader.svelte';
-  import TelemetrySettings from './TelemetrySettings.svelte';
-  import TerminalCard from './TerminalCard.svelte';
-  import TourCard from './TourCard.svelte';
-  import UpdatesCard from './UpdatesCard.svelte';
-  import UsagePage from './UsagePage.svelte';
-  import VoiceSettings from './VoiceSettings.svelte';
-  import WindowAllowlistCard from './WindowAllowlistCard.svelte';
-  import WindowExclusionsCard from './WindowExclusionsCard.svelte';
-  import WorkspaceCard from './WorkspaceCard.svelte';
-  import WorktreesCard from './WorktreesCard.svelte';
   import SettingsMachineBar from './SettingsMachineBar.svelte';
   import Menu from './Menu.svelte';
   import MachineIcon from './MachineIcon.svelte';
@@ -56,7 +18,7 @@
   import { providerGroups } from '../lib/provider-family';
   import { isThisPC, listedName, machineName, workspace } from '../lib/workspace.svelte';
   import { holdSettingsCard, revealSettingsCard } from '../lib/settings-flash';
-  import { aliasesOf, blocksOf, desktopPlace, desktopSettings, machinePage, navOf, navSectionsOf, pageScopeOf, phonePage, type SettingsBlock, type SettingsCardId, type SettingsPage } from '../lib/settings-tabs';
+  import { aliasesOf, desktopPlace, desktopSettings, machinePage, navOf, navSectionsOf, pageScopeOf, phonePlace, settingsHas, type SettingsCardId, type SettingsPage as Page } from '../lib/settings-tabs';
   import { cardWords, searchSettings, settingsEntries, type ExtraEntry, type SettingsEntry } from '../lib/settings-index';
   import { PageScope, providePageScope } from '../lib/page-scope.svelte';
   import { titleSlot } from '../lib/title-slot.svelte';
@@ -71,9 +33,14 @@
    */
   /** A paired device reads one card of Safeguards, the admin policy: without a policy the page has nothing for it. */
   let bare = $derived(!store.owner && !store.policy?.present);
-  let place = $derived.by(() => {
-    const found = desktopPlace(store.settingsTab, store.settingsSection?.id, store.owner);
-    return bare && found.page === 'safeguards' ? { page: navOf(false)[0]!, section: null } : found;
+  const narrow = new MediaQuery('(max-width: 720px)');
+  const inShell = window.__TAURI_INTERNALS__ !== undefined;
+  /** A phone browser: the list of pages, then a page (`MobileSettings.svelte`), with the cards a phone has. */
+  let phone = $derived(!desktopSettings(narrow.current));
+  let place = $derived.by((): { page: Page; section: string | null } => {
+    // A phone on its list picks no machine: its place is its first page's, until a page opens.
+    const found = phone ? phonePlace(store.settingsTab, store.settingsSection?.id, store.owner) : desktopPlace(store.settingsTab, store.settingsSection?.id, store.owner);
+    return found.page === null || (bare && found.page === 'safeguards') ? { page: navOf(false, phone)[0]!, section: null } : { page: found.page, section: found.section };
   });
   let tab = $derived(place.page);
 
@@ -105,8 +72,6 @@
     if (machine === store) return;
     untrack(() => { machine.settingsTab = route; machine.settingsSection = section; });
   });
-  const narrow = new MediaQuery('(max-width: 720px)');
-  const inShell = window.__TAURI_INTERNALS__ !== undefined;
 
   // Derived, not built once: the nav is written in the language the app is
   // speaking, and the language changes without a reload. Each entry wears its
@@ -115,15 +80,6 @@
   let words = $derived(cardWords());
   /** A long page lists its sections under its entry while it is open. */
   let sections = $derived(navSectionsOf(tab, store.owner).map((card) => ({ id: card.id, label: words[card.id as SettingsCardId].title })));
-  let blocks = $derived(blocksOf(tab, store.owner));
-
-  /**
-   * The blocks that are an older page whole: each brings its own `.page`. The
-   * others are one card, which the screen wraps in a page of its own.
-   */
-  const WHOLE: ReadonlySet<SettingsBlock> = new Set(['appearance', 'keyboard', 'voice', 'providers', 'quotas', 'usage', 'brain', 'plugins', 'limits', 'machines', 'experiments', 'diagnostics', 'tasks', 'task-manager']);
-  /** The whole pages with no card title of their own to say what they are: the screen heads them, and their route lands on that head. */
-  const HEADED: ReadonlySet<SettingsBlock> = new Set(['keyboard', 'voice', 'providers', 'quotas', 'usage', 'brain', 'plugins', 'experiments', 'task-manager']);
 
   /** One title per screen, and what the page answers behind the "i" beside it. */
   let title = $derived(strings.settingsMap.pages[tab]);
@@ -169,7 +125,9 @@
   ]);
   /** Rows only the app draws: a browser has no tray, no sign-in start and no zoom of its own. */
   let shellOnly = $derived(new Set([strings.settings.closeToTray, strings.settings.launchAtLogin, strings.settings.zoom, strings.features.openChatLinks.title]));
-  let entries = $derived(settingsEntries(store.owner, extras).filter((entry) => inShell || !shellOnly.has(entry.label)));
+  /** A phone finds only what it can open: the map leaves the desktop cards (the shortcuts, the toolbar) out of its entries. */
+  let entries = $derived(settingsEntries(store.owner, extras.filter((extra) => settingsHas(extra.page, extra.section, store.owner, phone)), phone)
+    .filter((entry) => !(bare && entry.page === 'safeguards') && (inShell || !shellOnly.has(entry.label))));
 
   const motion = (): ScrollBehavior => (window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth');
 
@@ -183,9 +141,7 @@
   let panel = $state<HTMLElement>();
   /** The result Enter opens: the arrows move it, a new query puts it back on top. */
   let active = $state(0);
-  /** A phone finds only what it can open: a desktop card it lacks (the shortcuts, the plugins) would land on Home. */
-  let reachable = $derived(desktopSettings(narrow.current) ? entries : entries.filter((entry) => phonePage(entry.page, entry.section, store.owner) !== 'home'));
-  let results = $derived(searchSettings(reachable, query));
+  let results = $derived(searchSettings(entries, query));
   let searching = $derived(query.trim() !== '');
 
   /** A result opens its page on its card, and rings the card once so the eye lands on it. */
@@ -225,8 +181,10 @@
   // perform the first scroll without timing guesses in the caller. On a page
   // already open the card glides into view; on one just opened it jumps and
   // holds, since the blocks above it are still filling in.
-  let shown: SettingsPage | null = null;
+  let shown: Page | null = null;
   $effect(() => {
+    // A phone's screen reveals its own card (`MobileSettings.svelte`).
+    if (phone) return;
     const page = tab, id = place.section, section = store.settingsSection;
     void store.settingsTab;
     void section?.request;
@@ -286,7 +244,7 @@
   {#if chosen}<SettingsMachineBar machine={chosen} machines={choices} picker={false} onpick={(id) => { picked = id; }} />{/if}
 {/snippet}
 
-{#if !desktopSettings(narrow.current)}
+{#if phone}
   <MobileSettings {store} {target} bar={bar ? machineBar : undefined} pick={bar && choices.length > 1 ? scopePicker : undefined} notes={machineNotes} search={searchField} found={searching ? searchResults : undefined} {onopenthread} />
 {:else}
 <div class="settings" data-testid="settings">
@@ -335,74 +293,13 @@
         {#if bar}{@render machineNotes()}{/if}
         {#key target}
         <PolicyBanner store={target} />
-        <div class="map" class:long={sections.length > 0} data-testid="settings-page" data-page={tab}>
-          {#each blocks as entry (entry.block)}
-            {#if WHOLE.has(entry.block)}
-              <div class="block" data-block={entry.block}>
-                {#if HEADED.has(entry.block) && blocks.length > 1}
-                  <div class="page"><div class="group-heading" id="settings-{entry.block}">
-                    <h2>{words[entry.cards[0]!.id as SettingsCardId].title}</h2>
-                    {#if entry.cards[0]!.scope === 'group' && scopeKind !== 'group'}<span class="card-scope" data-testid="card-scope" data-kind="group"><Network size={13} strokeWidth={1.75} aria-hidden="true" /><span class="ui-label">{strings.settingsMap.scope.group}</span></span>{/if}
-                  </div></div>
-                {/if}
-                {@render block(entry.block)}
-              </div>
-            {:else}
-              <div class="page" data-block={entry.block}>{@render block(entry.block)}</div>
-            {/if}
-          {/each}
-        </div>
+        <SettingsPage {store} {target} page={tab} line={scopeKind} {onopenthread} />
         {/key}
       {/if}
     </section>
   {/key}
 </div>
 {/if}
-
-<!-- One block of the map: the component that draws its cards, on the machine or the device they belong to. -->
-{#snippet block(id: SettingsBlock)}
-  {#if id === 'appearance'}<AppearancePage {store} />
-  {:else if id === 'workspace'}<WorkspaceCard />
-  {:else if id === 'details'}<TerminalCard />
-  {:else if id === 'keyboard'}<KeyboardPage store={target} />
-  {:else if id === 'voice'}<VoiceSettings store={target} />
-  {:else if id === 'thread-list'}<ConversationCard part="list" />
-  {:else if id === 'conversations'}<ConversationCard part="conversation" />
-  {:else if id === 'notifications'}<NotificationsCard {store} />
-  {:else if id === 'agent-replies'}<AgentRepliesSettings store={target} />
-  {:else if id === 'archived'}<ArchivedThreads store={target} />
-  {:else if id === 'worktrees'}<WorktreesCard store={target} />
-  {:else if id === 'providers'}<AccountsPage store={target} extras={false} />
-  {:else if id === 'local-acp'}<LocalAcpCard store={target} />
-  {:else if id === 'secrets'}<SecretsCard />
-  {:else if id === 'quotas'}<LimitsPage store={target} proxyCard={false} />
-  {:else if id === 'subscription-proxy'}<SubscriptionProxySettings store={target} />
-  {:else if id === 'usage'}<UsagePage {store} />
-  {:else if id === 'brain'}<BrainPage store={target} />
-  {:else if id === 'plugins'}<PluginsPage store={target} />
-  {:else if id === 'auto-compact'}<CompactionSettings store={target} />
-  {:else if id === 'execution'}<SchedulerSettings store={target} />
-  {:else if id === 'quiet'}<QuietCard store={target} />
-  {:else if id === 'windows'}<WindowAllowlistCard store={target} />
-  {:else if id === 'window-exclusions'}<WindowExclusionsCard store={target} />
-  {:else if id === 'limits'}<ResourcesPage store={target} part="limits" />
-  {:else if id === 'browser-profiles'}<BrowserProfilesCard />
-  {:else if id === 'privacy'}<TelemetrySettings store={target} />
-  {:else if id === 'policy'}<PolicySettings store={target} />
-  {:else if id === 'app'}<DeviceCard /><MainMachine />
-  {:else if id === 'machines'}<MachinesPage {onopenthread} {store} extras={false} />
-  {:else if id === 'phone'}<PhoneSettings store={target} />
-  {:else if id === 'origins'}<OriginsCard store={target} />
-  {:else if id === 'updates'}<div class="own"><UpdatesCard /></div>
-  {:else if id === 'agent-updates'}<HarnessUpdatesCard store={target} />
-  {:else if id === 'experiments'}<ExperimentsPage {store} {target} />
-  {:else if id === 'diagnostics'}<DiagnosticsPage store={target} {onopenthread} />
-  {:else if id === 'tasks'}<ResourcesPage store={target} part="tasks" />
-  {:else if id === 'task-manager'}<TaskManagerLoader {store} {onopenthread} />
-  {:else if id === 'core'}<CoreCard store={target} />
-  {:else if id === 'tour'}<TourCard {store} />
-  {/if}
-{/snippet}
 
 <style>
   /* The panel scrolls title, bar and page together, on one column. */
@@ -472,26 +369,6 @@
   .result .trail { flex: 1; min-width: 0; font-size: var(--text-sm); color: var(--color-muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .result :global(svg) { flex: none; color: var(--color-subtle); }
 
-  /* A page of the map is a column of blocks: an old page whole, or a card. Each keeps the settings
-     column and gives up its own scroll and its own top and bottom room, so the blocks read as one page. */
-  .map { padding: var(--space-4) 0 var(--space-8); }
-  .map > .block > :global(.page), .map > :global(.page) { height: auto; overflow: visible; padding-block: 0; padding-inline: max(var(--settings-gutter), calc((100% - var(--settings-width)) / 2)); }
-  /* The last block fills the panel, so its route can scroll it to the top. */
-  .map.long > .block:last-child { min-height: 100%; }
-
-  /* The screen carries the page's title and a block its section's: the old page's own heading steps aside,
-     and its header with it unless it holds an action. A lock or another mark in the title stays. */
-  .map > .block > :global(.page > header h1 > .ui-label),
-  .map > .block > :global(.page > header h1 > .ui-label + .info-tip),
-  .map > .block > :global(.page > header h1:not(:has(> :not(.ui-label, .ui-label + .info-tip)))),
-  .map > .block > :global(.limits-page > header h1),
-  /* A card with its own padding and no title above it (the app's version): it keeps them, one step in from the page's card rules. */
-  .own > :global(.card) { max-width: var(--settings-width); margin-bottom: var(--space-6); }
-  .map > .block > :global(.machines-page .head h1) { display: none; }
-  .map > .block > :global(.page > header:not(:has(button:not(.ui-label + .info-tip), [role='status'], .policy-lock))),
-  .map > .block > :global(.machines-page .head:not(:has(button:not(.ui-label + .info-tip)))) { display: none; }
-  .map > .block > :global(.page > header) { justify-content: flex-end; }
-
   /* The pages' list stands in the thread list's column, on the chrome, and
      the page in the inset card beside it, as in the rest of the frame. */
   .settings {
@@ -522,11 +399,6 @@
   /* The screen's one title, at the top of its card in the settings column, one step over a card's. */
   .screen { display: flex; flex-direction: column; align-items: flex-start; padding: var(--space-8) max(var(--settings-gutter), calc((100% - var(--settings-width)) / 2)) 0; }
   .screen h1 { min-width: 0; margin: 0; color: var(--color-foreground); font-size: var(--text-lg); font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; }
-  /* The first card's title follows the screen's title at the normal step, with no empty band between. */
-  .map > :first-child:is(.block) > :global(.page:first-child > .card:first-child:has(> h2:first-child)),
-  .map > :first-child:is(.block) > :global(.page:first-child > header:first-child + .card:has(> h2:first-child)),
-  .map > :global(.page:first-child > .card:first-child:has(> h2:first-child)) { margin-top: var(--card-head); }
-  .map > :first-child:is(.block) > :global(.page:first-child > .group-heading:first-child) { margin-top: 0; }
   /* The machine's name in the scope line is the picker: a word with an edge and a chevron, so it reads as one at rest. */
   :global(.settings .scope .trigger.text) { margin: -2px 0; color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-edge); }
   :global(.settings .scope .pick-name) { overflow: hidden; max-width: 28ch; text-overflow: ellipsis; white-space: nowrap; }

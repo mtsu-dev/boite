@@ -4,7 +4,7 @@ import { REQUESTABLE_SETTINGS, SETTINGS_PAGES, SETTINGS_PAGE_ALIASES } from '@bo
 const experiments = vi.hoisted(() => ({ shown: true }));
 vi.mock('./experiments.svelte', () => ({ experimentsShown: () => experiments.shown }));
 
-import { PAGES, aliasesOf, SETTINGS_CARDS, SETTINGS_TABS, blocksOf, cardOf, cardsOf, desktopHas, desktopPage, desktopPlace, legacyRoute, machinePage, navOf, navSectionsOf, ownerOnly, pageScopeOf, phonePage, placeOf, type SettingsTab } from './settings-tabs';
+import { PAGES, aliasesOf, SETTINGS_CARDS, SETTINGS_TABS, blocksOf, cardOf, cardsOf, desktopHas, desktopPage, desktopPlace, machinePage, settingsHas, navOf, navSectionsOf, ownerOnly, pageScopeOf, phonePlace, placeOf, type SettingsTab } from './settings-tabs';
 
 beforeEach(() => { experiments.shown = true; });
 
@@ -188,49 +188,64 @@ describe('the map of Settings', () => {
     expect(navOf(true)).toContain('version');
     expect(desktopPlace('experiments', null, true)).toEqual({ page: 'version', section: null });
     expect(desktopHas('experiments', 'device-stream', true)).toBe(false);
-    expect(phonePage('experiments', null, true)).toBe('home');
+    expect(phonePlace('experiments', null, true)).toEqual({ page: 'version', section: null });
   });
 });
 
-describe('the phone, which still lists the pages from before', () => {
-  test('a route from before opens what it opened', () => {
-    expect(phonePage('accounts', null, true)).toBe('accounts');
-    expect(phonePage('accounts', null, false)).toBe('home');
-    expect(phonePage('voice', null, false)).toBe('voice');
-    expect(phonePage('usage', null, true)).toBe('usage');
-    expect(phonePage('experiments', null, true)).toBe('experiments');
-    expect(phonePage('resources', null, true)).toBe('diagnostics');
-    expect(phonePage('resources', null, false)).toBe('home');
-    expect(phonePage('plugins', null, true)).toBe('plugins');
-    expect(phonePage('plugins', null, false)).toBe('home');
-    expect(phonePage('keyboard', null, true)).toBe('home');
-    expect(phonePage('task-manager', null, true)).toBe('diagnostics');
-    expect(phonePage('task-manager', null, false)).toBe('task-manager');
-    expect(phonePage('general', 'quiet', true)).toBe('conversations');
-    expect(phonePage('general', 'quiet', false)).toBe('home');
-    expect(phonePage('general', 'secrets', true)).toBe('accounts');
-    expect(phonePage('general', 'secrets', false)).toBe('home');
-    expect(phonePage('general', 'windows', true)).toBe('machines');
-    expect(phonePage('advanced', 'auto-compact', true)).toBe('advanced');
-    expect(phonePage('general', 'archived', true)).toBe('archived');
+describe('the phone, on the same map', () => {
+  const ids = (page: Parameters<typeof cardsOf>[0], owner: boolean) => cardsOf(page, owner, true).map((card) => card.id);
+
+  test('its list is the map\'s pages in the map\'s order, the owner\'s pages left out for a paired phone', () => {
+    expect(navOf(true, true)).toEqual(['appearance', 'input', 'conversations', 'ai', 'agents', 'safeguards', 'devices', 'version', 'help']);
+    expect(navOf(false, true)).toEqual(['appearance', 'input', 'conversations', 'ai', 'safeguards', 'devices', 'version', 'help']);
   });
 
-  test('a route to a page of the map is read back to the old page that holds its card', () => {
-    expect(legacyRoute('conversations', 'agent-replies', true)).toEqual({ tab: 'general', section: 'agent-replies' });
-    expect(phonePage('conversations', 'agent-replies', true)).toBe('conversations');
-    expect(phonePage('conversations', 'archived', true)).toBe('archived');
-    expect(phonePage('safeguards', 'limits', true)).toBe('diagnostics');
-    expect(phonePage('safeguards', 'quiet', true)).toBe('conversations');
-    expect(phonePage('ai', 'usage', true)).toBe('usage');
-    expect(phonePage('ai', 'quotas', false)).toBe('limits');
-    expect(phonePage('ai', 'provider-claude', true)).toBe('accounts');
-    expect(phonePage('agents', 'auto-compact', true)).toBe('advanced');
-    expect(phonePage('agents', 'plugins', true)).toBe('plugins');
-    expect(phonePage('devices', 'machines', true)).toBe('machines');
-    expect(phonePage('version', 'device-stream', true)).toBe('experiments');
-    expect(phonePage('input', 'voice', true)).toBe('voice');
-    expect(phonePage('input', 'keyboard', true)).toBe('home');
-    expect(phonePage('appearance', 'theme', true)).toBe('appearance');
+  test('a phone has every card but the desktop ones: what it could open before the map, no more, no less', () => {
+    expect(SETTINGS_CARDS.filter((card) => 'desktop' in card).map((card) => card.id)).toEqual(
+      ['buttons', 'workspace', 'details', 'keyboard', 'keybinding-file', 'thread-list', 'notifications', 'execution', 'app', 'origins', 'core', 'tour']);
+    expect(ids('appearance', true)).toEqual(['theme', 'reading']);
+    expect(ids('input', true)).toEqual(['voice']);
+    expect(ids('conversations', true)).toEqual(['conversations', 'agent-replies', 'archived', 'worktrees']);
+    expect(ids('ai', true)).toEqual(['providers', 'local-acp', 'secrets', 'quotas', 'limit-resume', 'subscription-proxy', 'usage']);
+    expect(ids('agents', true)).toEqual(['brain', 'hooks', 'plugins', 'auto-compact']);
+    expect(ids('safeguards', true)).toEqual(['quiet', 'windows', 'window-exclusions', 'limits', 'browser-profiles', 'privacy', 'policy']);
+    expect(ids('devices', true)).toEqual(['main-machine', 'group', 'machines', 'phone']);
+    expect(ids('version', true)).toEqual(['updates', 'agent-updates', 'experiments', 'cache-keepalive', 'background-compaction', 'device-stream']);
+    expect(ids('help', true)).toEqual(['diagnostics-status', 'diagnostics-problems', 'diagnostics-log', 'diagnostics-agents', 'tasks', 'task-manager']);
+    // A paired phone: what it reads or changes today.
+    expect(ids('appearance', false)).toEqual(['theme', 'reading']);
+    expect(ids('input', false)).toEqual(['voice']);
+    expect(ids('conversations', false)).toEqual(['conversations', 'archived']);
+    expect(ids('ai', false)).toEqual(['quotas', 'usage']);
+    expect(ids('agents', false)).toEqual([]);
+    expect(ids('safeguards', false)).toEqual(['policy']);
+    expect(ids('devices', false)).toEqual(['main-machine', 'group', 'machines', 'phone']);
+    expect(ids('version', false)).toEqual(['updates', 'experiments']);
+    expect(ids('help', false)).toEqual(['task-manager']);
+  });
+
+  test('a route lands on the card\'s page, on the page from the top for a desktop card, on the list for a page it lacks', () => {
+    expect(phonePlace('home', null, true)).toEqual({ page: null, section: null });
+    expect(phonePlace('accounts', null, true)).toEqual({ page: 'ai', section: null });
+    expect(phonePlace('plugins', null, false)).toEqual({ page: null, section: null });
+    expect(phonePlace('resources', null, true)).toEqual({ page: 'safeguards', section: 'limits' });
+    expect(phonePlace('resources', null, false)).toEqual({ page: 'safeguards', section: null });
+    expect(phonePlace('task-manager', null, false)).toEqual({ page: 'help', section: 'task-manager' });
+    expect(phonePlace('general', 'quiet', true)).toEqual({ page: 'safeguards', section: 'quiet' });
+    expect(phonePlace('general', 'archived', false)).toEqual({ page: 'conversations', section: 'archived' });
+    expect(phonePlace('conversations', 'agent-replies', true)).toEqual({ page: 'conversations', section: 'agent-replies' });
+    expect(phonePlace('conversations', 'agent-replies', false)).toEqual({ page: 'conversations', section: null });
+    expect(phonePlace('ai', 'provider-claude', true)).toEqual({ page: 'ai', section: 'provider-claude' });
+    expect(phonePlace('ai', 'provider-claude', false)).toEqual({ page: 'ai', section: null });
+    expect(phonePlace('version', 'device-stream', true)).toEqual({ page: 'version', section: 'device-stream' });
+    // The shortcuts stay on the desktop: Input opens on what a phone has of it.
+    expect(phonePlace('keyboard', null, true)).toEqual({ page: 'input', section: null });
+    expect(phonePlace('input', 'keys-chat', true)).toEqual({ page: 'input', section: null });
+    expect(phonePlace('general', 'app', true)).toEqual({ page: 'devices', section: null });
+    expect(settingsHas('input', 'keyboard', true, true)).toBe(false);
+    expect(settingsHas('input', 'voice', false, true)).toBe(true);
+    expect(settingsHas('agents', 'execution', true, true)).toBe(false);
+    expect(settingsHas('agents', 'execution', true)).toBe(true);
   });
 });
 

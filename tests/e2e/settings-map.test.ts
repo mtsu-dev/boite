@@ -9,9 +9,23 @@ import { startUi } from './lib/ui.ts';
  * entry each, the page's name and scope line at its head, every card of the
  * map on its page, a route from before landing where its content went, and
  * the search opening a card and ringing it. Each page is captured for review.
+ * A phone (390x844) walks the same map: its list, each page it has, one search.
  */
 const ARTIFACTS = join(import.meta.dir, '.artifacts', 'settings-map');
 const DESKTOP = { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false };
+const PHONE = { width: 390, height: 844, deviceScaleFactor: 1, mobile: true };
+/** What a phone has of each page: the map's cards without the desktop ones, by an anchor each draws. */
+const PHONE_PAGES = [
+  ['appearance', 'Appearance', 'device', ['theme', 'reading'], ['buttons', 'workspace', 'details']],
+  ['input', 'Input', 'machine', [], ['keyboard', 'keybinding-file']],
+  ['conversations', 'Conversations', 'device', ['conversations', 'agent-replies', 'archived', 'worktrees'], ['thread-list', 'notifications']],
+  ['ai', 'AI accounts', 'machine', ['providers', 'local-acp', 'secrets', 'quotas', 'subscription-proxy', 'usage'], []],
+  ['agents', 'Agents', 'machine', ['brain', 'plugins', 'auto-compact'], ['execution']],
+  ['safeguards', 'Safeguards', 'machine', ['quiet', 'limits', 'browser-profiles', 'privacy'], []],
+  ['devices', 'Devices', 'group', ['group', 'machines', 'phone'], ['app', 'origins']],
+  ['version', 'Version', 'machine', ['updates', 'agent-updates', 'experiments'], []],
+  ['help', 'Troubleshooting', 'machine', ['diagnostics-status', 'diagnostics-problems', 'diagnostics-log', 'tasks', 'task-manager'], ['core', 'tour']]
+] as const;
 const PAGES = [
   ['appearance', 'Appearance', 'device', ['theme', 'reading', 'buttons', 'workspace', 'details']],
   ['input', 'Input', 'machine', ['keyboard', 'keybinding-file', 'voice']],
@@ -140,3 +154,69 @@ test('a paired desktop reads the admin policy on Safeguards, and has no page of 
   await page.navigate(`${base}/?fake=1`);
   await page.waitFor(`window.__boiteTest?.workspace.active.connection === 'ready'`);
 }, 60000);
+
+test('a phone lists the pages it has in the map\'s order, each with its cards, and its search lands on a card', async () => {
+  await page.send('Emulation.setDeviceMetricsOverride', PHONE);
+  await page.navigate(`${base}/?fake=1`);
+  await page.waitFor(`window.__boiteTest?.workspace.active.connection === 'ready'`);
+  const slid = `!document.getAnimations().some(animation => /^screen-/.test(animation.animationName ?? '') && animation.playState === 'running')`;
+  await page.evaluate(`window.__boiteTest.workspace.active.showSettings()`);
+  await page.waitFor(`document.querySelector('${id('mobile-settings-pages')}') !== null && ${slid}`);
+  // One list: an icon and a name a row, no family head, in the map's order.
+  expect(await page.evaluate(`[...document.querySelectorAll('${id('mobile-settings-pages')} > .row')].map(row => [row.dataset.testid, row.querySelector('.ui-label').textContent, row.querySelector('svg.lead') !== null])`))
+    .toEqual(PHONE_PAGES.map(([name, title]) => [`settings-tab-${name}`, title, true]));
+  expect(await page.evaluate(`document.querySelector('${id('mobile-settings-home')} h2, ${id('settings-family')}')`)).toBe(null);
+  await capture('phone-list.png');
+  for (const [name, title, scope, cards, absent] of PHONE_PAGES) {
+    await page.click(id(`settings-tab-${name}`));
+    await page.waitFor(`document.querySelector('${id('mobile-settings-detail')} ${id('settings-page')}')?.dataset.page === '${name}' && ${slid}`);
+    for (const card of cards) await page.waitFor(`document.getElementById('settings-${card}') !== null`);
+    for (const card of absent) expect(await page.evaluate(`document.getElementById('settings-${card}')`)).toBe(null);
+    expect(await page.evaluate(`document.querySelector('${id('mobile-settings-header')} h1 .ui-label').textContent`)).toBe(title);
+    expect(await page.evaluate(`document.querySelector('${id('mobile-settings-page-scope')}').dataset.scope`)).toBe(scope);
+    expect(await page.evaluate(`[...document.querySelectorAll('${id('mobile-settings-detail')} [id^="settings-"]')].map(node => node.id).filter((one, index, all) => all.indexOf(one) !== index)`)).toEqual([]);
+    // Nothing wider than the screen: no card pushes the page sideways.
+    expect(await page.evaluate(`(() => { const panel = document.querySelector('${id('mobile-settings-detail')}'); return panel.scrollWidth <= panel.clientWidth; })()`)).toBe(true);
+    await capture(`phone-${name}.png`);
+    // Back returns to the list, at the row it left.
+    await page.click(id('mobile-settings-back'));
+    await page.waitFor(`document.querySelector('${id('mobile-settings-pages')}') !== null && document.querySelector('${id('mobile-settings-detail')}') === null && ${slid}`);
+  }
+  // The browser's own Back leaves a page as the arrow does.
+  await page.click(id('settings-tab-conversations'));
+  await page.waitFor(`document.querySelector('${id('settings-page')}')?.dataset.page === 'conversations' && ${slid}`);
+  await page.evaluate(`history.back()`);
+  await page.waitFor(`document.querySelector('${id('mobile-settings-pages')}') !== null && document.querySelector('${id('mobile-settings-detail')}') === null`);
+
+  // The search is the desktop's registry: a desktop card is not found, a phone card opens its page and is rung.
+  await page.type(id('settings-search'), 'origins');
+  await page.waitFor(`document.querySelector('${id('settings-search-empty')}') !== null || document.querySelector('${id('settings-search-result')}')?.dataset.section !== 'origins'`);
+  expect(await page.evaluate(`[...document.querySelectorAll('${id('settings-search-result')}')].some(row => row.dataset.section === 'origins')`)).toBe(false);
+  await page.evaluate(`(() => { const field = document.querySelector('${id('settings-search')}'); field.value = ''; field.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+  await page.type(id('settings-search'), 'compaction');
+  await page.waitFor(`document.querySelector('${id('settings-search-result')}')?.dataset.section === 'auto-compact'`);
+  await capture('phone-search.png');
+  await page.click(id('settings-search-result'));
+  await page.waitFor(`document.querySelector('${id('settings-page')}')?.dataset.page === 'agents' && ${slid}`);
+  await page.waitFor(`(() => { const card = document.getElementById('settings-auto-compact'); return card !== null && (card.classList.contains('settings-flash') || window.__boiteTest.workspace.active.settingsSection?.flash === true); })()`);
+  await page.waitFor(`(() => { const card = document.getElementById('settings-auto-compact'), panel = document.querySelector('${id('mobile-settings-detail')}'); const top = card.getBoundingClientRect().top - panel.getBoundingClientRect().top; return top >= -4 && top < panel.clientHeight && card.getBoundingClientRect().bottom <= panel.getBoundingClientRect().bottom + 4; })()`);
+  await capture('phone-search-landed.png');
+
+  // An agent's setting card and `boite settings open` name a page from before or a card: both land on the card's page.
+  await page.evaluate(`window.__boiteTest.workspace.active.showSettings('resources', 'limits', { flash: true })`);
+  await page.waitFor(`document.querySelector('${id('settings-page')}')?.dataset.page === 'safeguards' && document.getElementById('settings-limits') !== null`);
+  await page.evaluate(`window.__boiteTest.workspace.active.showSettings('keyboard')`);
+  await page.waitFor(`document.querySelector('${id('settings-page')}')?.dataset.page === 'input' && document.querySelector('${id('voice-settings')}') !== null`);
+
+  // A paired phone: the shared pages, none of the owner's alone.
+  await page.navigate(`${base}/?fake=1&principal=session`);
+  await page.waitFor(`window.__boiteTest?.workspace.active.connection === 'ready'`);
+  await page.evaluate(`window.__boiteTest.workspace.active.showSettings()`);
+  await page.waitFor(`document.querySelector('${id('mobile-settings-pages')}') !== null`);
+  expect(await page.evaluate(`[...document.querySelectorAll('${id('mobile-settings-pages')} > .row')].map(row => row.dataset.testid)`))
+    .toEqual(['appearance', 'input', 'conversations', 'ai', 'devices', 'version', 'help'].map(name => `settings-tab-${name}`));
+  await capture('phone-paired-list.png');
+  await page.send('Emulation.setDeviceMetricsOverride', DESKTOP);
+  await page.navigate(`${base}/?fake=1`);
+  await page.waitFor(`window.__boiteTest?.workspace.active.connection === 'ready'`);
+}, 240000);

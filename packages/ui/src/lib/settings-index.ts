@@ -95,16 +95,16 @@ function formerNames(page: SettingsPage): string {
   return ['appearance', ...SETTINGS_PAGE_ALIASES].filter((old) => placeOf(old as SettingsTab, null).page === page).map((old) => tabs[old] ?? '').join(' ');
 }
 
-/** Every entry this window may open, pages first in the nav's order, each page's cards in its own. */
-export function settingsEntries(owner: boolean, extras: readonly ExtraEntry[] = []): SettingsEntry[] {
+/** Every entry this window may open, a phone's without the desktop cards, pages first in the nav's order, each page's cards in its own. */
+export function settingsEntries(owner: boolean, extras: readonly ExtraEntry[] = [], phone = false): SettingsEntry[] {
   const words = cardWords();
   const keywords: Partial<Record<SettingsCardId, string>> = strings.settingsMap.keywords;
   const entries: SettingsEntry[] = [];
   for (const page of SETTINGS_PAGES) {
-    if (!pageAvailable(page, owner)) continue;
+    if (!pageAvailable(page, owner, phone)) continue;
     const name = strings.settingsMap.pages[page];
     entries.push({ page, section: null, label: name, trail: '', more: `${strings.settingsMap.about[page]} ${formerNames(page)}` });
-    for (const card of cardsOf(page, owner)) {
+    for (const card of cardsOf(page, owner, phone)) {
       const { title, controls } = words[card.id as SettingsCardId];
       entries.push({ page, section: card.id, label: title, trail: name, more: keywords[card.id as SettingsCardId] ?? '' });
       for (const [label, hint] of controls) {

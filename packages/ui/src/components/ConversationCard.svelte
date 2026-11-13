@@ -3,8 +3,8 @@
   import ConversationSwitches from './ConversationSwitches.svelte';
   import { strings } from '../lib/strings';
 
-  /** How this device lists its threads (`list`) or shows a conversation (`conversation`): one card each. */
-  let { part }: { part: 'list' | 'conversation' } = $props();
+  /** How this device lists its threads (`list`) or shows a conversation (`conversation`): one card each; `phone` keeps the switches a phone has. */
+  let { part, phone = false }: { part: 'list' | 'conversation'; phone?: boolean } = $props();
 </script>
 
 {#if part === 'list'}
@@ -15,6 +15,6 @@
 {:else}
   <section class="card" id="settings-conversations" data-testid="settings-card-conversation">
     <h2><span class="ui-label">{strings.settings.inConversation}</span><CardScope /></h2>
-    <ConversationSwitches part="conversation" />
+    <ConversationSwitches part="conversation" {phone} />
   </section>
 {/if}

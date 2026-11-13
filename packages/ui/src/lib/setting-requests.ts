@@ -6,10 +6,9 @@
  * `packages/core/src/threads/cards.ts`.
  */
 import { EXPERIMENT_STAGES, REQUESTABLE_SETTINGS, experimentOf, isRequestableSetting, type AutoCompactMoment, type ProviderSummary, type RequestableKey, type RequestableSetting, type SettingAsk, type SettingsPage, type SettingsPageName } from '@boite/contracts';
-import { cardOf, desktopHas, legacyRoute, placeOf, type LegacyTab, type SettingsCardId } from './settings-tabs';
+import { cardOf, placeOf, settingsHas, type SettingsCardId } from './settings-tabs';
 import { cardWords } from './settings-index';
 import { experimentCopy } from './experiment-copy';
-import { experimentsShown } from './experiments.svelte';
 import { formatLocale } from './i18n.svelte';
 import { fill, strings } from './strings';
 import { formatTokens } from './format';
@@ -137,41 +136,14 @@ export function settingsSectionLabel(section: string, providers: readonly Provid
   return card ? cardWords()[card.id as SettingsCardId].title : null;
 }
 
-/** The phone's pages from before the map that a paired device's Settings leaves out. */
-const OWNER_PAGES: readonly LegacyTab[] = ['accounts', 'plugins', 'resources', 'brain'];
-/** Cards of the shared pages that only the owner's Settings draws there. */
-const OWNER_SECTIONS: readonly string[] = ['quiet', 'agent-replies', 'worktrees', 'privacy', 'execution', 'origins', 'auto-compact', 'device-stream', 'background-compaction'];
 /**
- * What a phone browser's Settings (`MobileSettings.svelte`) draws, by its
- * pages from before the map: the pages it opens whole, then the cards it has
- * of the others. Keep it in step with that component's `page`.
- */
-const PHONE_PAGES: readonly LegacyTab[] = ['appearance', 'accounts', 'voice', 'usage', 'limits', 'task-manager', 'experiments', 'brain'];
-const PHONE_CARDS: Partial<Record<LegacyTab, readonly string[]>> = {
-  resources: ['limits', 'tasks'],
-  machines: ['machines', 'group'],
-  general: ['archived', 'worktrees', 'conversations', 'quiet', 'agent-replies'],
-  advanced: ['auto-compact'],
-};
-
-/**
- * Whether this client's Settings has the card a settings card points at. A
- * button that would land on another page instead is not offered.
+ * Whether this client's Settings has the card a settings card points at, on
+ * a desktop or a phone: the map decides (`settingsHas`). A button that would
+ * land on another page instead is not offered.
  */
 export function settingsReachable(setting: SettingAsk, client: { owner: boolean; phone: boolean }): boolean {
   const place = settingPlace(setting);
-  if (!client.phone) return desktopHas(place.page, place.section, client.owner);
-  // The phone still lists the pages from before: the route is read back to the one that holds the card there.
-  const old = setting.kind === 'open' ? legacyRoute(setting.page, setting.section, client.owner) : legacyRoute(place.page, place.section, client.owner);
-  const section = old.section;
-  // A Release has no Experiments page.
-  if (old.tab === 'experiments' && !experimentsShown()) return false;
-  if (!client.owner && (OWNER_PAGES.includes(old.tab) || (section !== null && OWNER_SECTIONS.includes(section)))) return false;
-  if (PHONE_PAGES.includes(old.tab)) return true;
-  const cards = PHONE_CARDS[old.tab];
-  if (cards === undefined) return false;
-  // Resources and Machines open as pages of their own; General and Advanced only through one of their cards.
-  return section === null ? old.tab === 'resources' || old.tab === 'machines' : cards.includes(section);
+  return settingsHas(place.page, place.section, client.owner, client.phone);
 }
 
 /** `Safeguards › Resource limits`, the trail under a card. */
