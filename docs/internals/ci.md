@@ -138,6 +138,9 @@ ruleset lacks or one no pull request reports. No job needs it: the tests still
 run, and once the ruleset matches, a rerun of that job alone turns the run
 green. Pull requests skip it, so it is not required. `--ruleset <file>`
 compares with saved `gh api` output instead.
+`Bundle size` is reported but left out of the ruleset on purpose
+(`ADVISORY` in the script): its failure shows on the pull request and blocks
+nothing.
 
 - Adding a job: merge the pull request, then add its name to the ruleset in
   the same sitting; until then main's run fails and the new job is unguarded.
