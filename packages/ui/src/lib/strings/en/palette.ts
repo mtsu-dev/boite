@@ -33,6 +33,15 @@ export const strings = {
     archive: 'Archive this thread',
     themeDark: 'Theme: dark',
     themeLight: 'Theme: light',
-    themeSystem: 'Theme: system'
+    themeSystem: 'Theme: system',
+    /** Never shown: the names of the Settings pages before the nine, so typing one finds the command that opens where it went (lib/command-table.ts). */
+    oldPages: {
+      settings: 'general system advanced plugins experiments browser updates',
+      appearance: 'look language',
+      providers: 'providers limits usage quotas',
+      pair: 'machines',
+      taskManager: 'diagnostics resources memory processes',
+      archived: 'general conversations'
+    }
   }
 } as const;
