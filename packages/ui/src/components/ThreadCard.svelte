@@ -249,7 +249,7 @@
     user-select: none;
   }
   /* One line of 34 px: the title's 20 px line in 7 px of padding, the chat's looser rhythm rather than a packed
-     table. A title too long for its line takes a second one. */
+     table. A title too long for its line is cut, never wrapped. */
   .row {
     display: flex;
     flex-direction: column;
@@ -330,11 +330,11 @@
   /* The keyboard reads the whole title: the focused row's title wraps, and word-fit (lib/word-fit.ts) shows it uncut
      once its line is no longer one. The pointer gets it in the tooltip, so the list never moves under it. */
   .thread:not(.feed) .row:focus-visible :global(.headline .title) { display: block; -webkit-line-clamp: none; line-clamp: none; }
-  /* A list row's title wraps to a second line rather than dying mid-word (word-fit honours the clamp); its marks and
-     time stay on the first line, centred on its capitals: .ui-label trims the title's box to them, so the line
-     opens 5 px down and their middle sits 0.36 em under that. */
+  /* A list row's title holds one line, cut after its last whole word (word-fit honours the clamp), so every row of a
+     card keeps one height; its marks and time stand on that line, centred on its capitals: .ui-label trims the
+     title's box to them, so the line opens 5 px down and their middle sits 0.36 em under that. */
   .thread:not(.feed) .row :global(.headline) { align-items: flex-start; padding-top: 5px; }
-  .thread:not(.feed) .row :global(.headline .title) { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; padding-bottom: 0.25em; margin-bottom: -0.25em; }
+  .thread:not(.feed) .row :global(.headline .title) { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; line-clamp: 1; overflow-wrap: anywhere; padding-bottom: 0.25em; margin-bottom: -0.25em; }
   .thread:not(.feed) .row :global(.headline > :is(.when, .at, .bot, .provider, .draft, .pin, .pr)) { height: 20px; margin-top: calc(0.36 * var(--text-body) - 10px); }
   /* The time on the same line whether the row's mark draws it (no state) or the row does. */
   .thread:not(.feed) .row :global(.headline > :is(.at, .when:not(.state))) { line-height: 20px; }

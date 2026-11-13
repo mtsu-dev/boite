@@ -7,6 +7,7 @@ import { followDesktopOf } from './experiments';
 import { modelFavorites } from './model-favorites.svelte';
 import { readLayout, readPrefs } from './prefs';
 import { watchIncognito } from './store/incognito.svelte';
+import { markRead as markThreadsRead } from './store/mark-read';
 import type { Accounts } from './store/accounts.svelte';
 import type { Composer } from './store/composer.svelte';
 import type { Connection } from './store/connection.svelte';
@@ -623,6 +624,7 @@ export class Store {
   rename(...args: Parameters<Threads['rename']>) { return this.#ctx.threads.rename(...args); }
   retitle(...args: Parameters<Threads['retitle']>) { return this.#ctx.threads.retitle(...args); }
   pin(...args: Parameters<Threads['pin']>) { return this.#ctx.threads.pin(...args); }
+  markRead(threadIds: readonly ThreadId[]) { return markThreadsRead(this.#ctx, threadIds); }
   trustContactHistory(...args: Parameters<Threads['trustContactHistory']>) { return this.#ctx.threads.trustContactHistory(...args); }
   move(...args: Parameters<Threads['move']>) { return this.#ctx.threads.move(...args); }
   cancelMove(...args: Parameters<Threads['cancelMove']>) { return this.#ctx.threads.cancelMove(...args); }
