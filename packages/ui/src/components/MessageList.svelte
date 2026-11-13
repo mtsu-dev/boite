@@ -335,10 +335,8 @@
     return () => cancelAnimationFrame(frame);
   });
 
-  /**
-   * The slice of messages that meets the viewport, the overscan added, and the two heights the spacers carry for the rest.
-   * While pinned the window hangs off the end of the list, not `scrollTop`, so the bottom is right on the first frame.
-   */
+  /** The slice of messages that meets the viewport, the overscan added, and the two heights the spacers carry for the rest.
+   * While pinned the window hangs off the end of the list, not `scrollTop`, so the bottom is right on the first frame. */
   let lastView: WindowView | undefined;
   const view = $derived.by(() => {
     void measured;
