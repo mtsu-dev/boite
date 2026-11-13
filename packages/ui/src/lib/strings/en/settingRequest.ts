@@ -17,6 +17,7 @@ export const strings = {
     guestHint: 'Only the computer running Boite can change this setting.',
     retired: 'This experiment has its own switch in Settings now.',
     retiredAlwaysOn: 'This experiment is now always on.',
+    retiredRelease: 'This experiment exists in Nightly builds only.',
     loadOnPress: 'Load on press',
     elsewhere: 'This is in the Settings of the computer running Boite.',
     machineAway: '{machine} is not connected here: change it from {machine}.',

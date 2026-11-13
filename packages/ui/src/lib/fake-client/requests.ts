@@ -1,5 +1,5 @@
 /** Permission requests and questions: asked by a turn, answered by the user. */
-import { RpcErrorCode, agentSettingAnswerText, checkClientPreferences, checkSettingRequest, isMachineSetting, MACHINE_SETTINGS, settledMachineSetting, settledExperiment, type SettingMachine, type ClientPreferences, type ExperimentId, checkSettingsPatch, readSettings, settingAnswerText, settledSetting, type Message, type MessagePart, type PermissionRequest, type QuestionAnswer, type QuestionOption, type QuestionRequest, type AgentSettingAsk, type SettingAsk, type SettingRequestParams, type Settings, type TeamAsk, type Thread, type ThreadId, type Turn } from '@boite/contracts';
+import { RpcErrorCode, agentSettingAnswerText, checkClientPreferences, checkSettingRequest, effectiveExperiments, isMachineSetting, MACHINE_SETTINGS, settledMachineSetting, settledExperiment, type SettingMachine, type ClientPreferences, type ExperimentId, checkSettingsPatch, readSettings, settingAnswerText, settledSetting, type Message, type MessagePart, type PermissionRequest, type QuestionAnswer, type QuestionOption, type QuestionRequest, type AgentSettingAsk, type SettingAsk, type SettingRequestParams, type Settings, type TeamAsk, type Thread, type ThreadId, type Turn } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { fakeCore } from './coordination';
 import { checkAnswer, checkAsk } from './checks';
@@ -203,7 +203,7 @@ export function requestSetting(ctx: FakeContext, thread: Thread, turn: Turn, par
   const checked = checkSettingRequest(params, settings, (patch) => {
     const result = checkSettingsPatch(patch);
     return result.ok ? { ok: true, patch: result.patch } : { ok: false, message: result.message, field: result.field };
-  }, open, ctx.clientPreferences, machine);
+  }, open, ctx.clientPreferences, machine, ctx.core.version);
   if (!checked.ok) throw new RpcFailure({ code: RpcErrorCode.Refused, message: checked.message, data: checked.data });
   return { questionId: askSetting(ctx, thread, turn, checked.reason, checked.options, checked.setting), setting: checked.setting };
 }
@@ -372,15 +372,17 @@ export function requestMethods(ctx: FakeContext) {
     },
     'agent.settings': async () => ({
       app: ctx.clientPreferences === null ? null : { language: ctx.clientPreferences.language, device: null, client: null },
-      settings: readSettings(ctx.settings, ctx.clientPreferences),
+      settings: readSettings(ctx.settings, ctx.clientPreferences, ctx.core.version),
     }),
     'client.preferences': async (params) => {
       const checked = checkClientPreferences(params);
       if (!checked.ok) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: checked.message, data: { field: checked.field } });
       const before = ctx.clientApps.get(checked.preferences.app)?.experiments ?? null;
-      ctx.clientApps.set(checked.preferences.app, checked.preferences);
-      ctx.clientPreferences = checked.preferences;
-      settleSettings(ctx, ctx.settings, { preferences: checked.preferences, before });
+      // As the core: what the app chose, read for the build this core is.
+      const preferences = { ...checked.preferences, experiments: effectiveExperiments(checked.preferences.experiments, ctx.core.version) };
+      ctx.clientApps.set(preferences.app, preferences);
+      ctx.clientPreferences = preferences;
+      settleSettings(ctx, ctx.settings, { preferences, before });
       return { ok: true, desktop: ctx.desktopExperiments === null ? null : [...ctx.desktopExperiments] };
     },
     'questions.skip': async (params) => {

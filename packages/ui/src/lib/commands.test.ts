@@ -30,11 +30,8 @@ function ids(store: Store): string[] {
 }
 
 test('the list carries every app command, the thread ones only while one is open', async ({ store }) => {
-  // Session import joins the palette; persistent agents only have their launcher.
-  expect(ids(store)).not.toContain('import-session');
+  // Session import is in the palette with nothing stored; persistent agents only have their launcher.
   expect(ids(store)).not.toContain('agents');
-  setExperiment('session-import', true);
-  setExperiment('resident-agents', true);
   expect(ids(store)).toEqual([
     'new-thread',
     'add-project',

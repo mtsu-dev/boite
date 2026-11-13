@@ -5,22 +5,13 @@ import { mountOnFake, press, query, test, waitFor } from '../test/app';
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
 
-test('the project menu carries no import until the session-import experiment is on', async () => {
+test('the project menu carries the import with nothing stored: session import is on in every build', async () => {
   store.draft = null;
+  expect(window.localStorage.getItem('boite.experiments')).toBeNull();
   await mountOnFake();
   await waitFor(() => document.querySelector('[data-testid=project-row][data-project-id="p-boite"]') !== null);
 
   const head = query<HTMLElement>('[data-testid=project-row][data-project-id="p-boite"]');
-  head.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 40 }));
-  await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=copy]') !== null);
-  query<HTMLButtonElement>('[data-testid=context-menu] [data-value=manage]').click();
-  await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=back]') !== null);
-  expect(document.querySelector('[data-testid=context-menu] [data-value=import]')).toBeNull();
-  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-  await waitFor(() => document.querySelector('[data-testid=context-menu]') === null);
-
-  // The switch on the Experiments page is what puts the row in, no reload.
-  setExperiment('session-import', true);
   head.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 40 }));
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=manage]') !== null);
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=manage]').click();

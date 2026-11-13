@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, expect, onTestFinished, test, vi } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
 import ExperimentsPage from './ExperimentsPage.svelte';
-import { EXPERIMENTS_STORAGE_KEY, followDesktopOf, heardDesktop, isExperimentEnabled } from '../lib/experiments';
+import { BUILD_STORAGE_KEY, EXPERIMENTS_STORAGE_KEY, followDesktopOf, heardBuild, heardDesktop, isExperimentEnabled, readExperiments, setExperiment, subscribeExperiments, writeExperiments } from '../lib/experiments';
+import { experimentsShown } from '../lib/experiments.svelte';
+import { navOf, desktopPage, phonePage } from '../lib/settings-tabs';
 import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
 import { strings } from '../lib/strings';
@@ -13,10 +15,27 @@ beforeEach(() => {
   window.localStorage.clear();
 });
 
+/** A core that runs experiments (a source build) and one that does not (a Release). */
+const NIGHTLY = '2.0.0-nightly.20261111.1';
+const RELEASE = '2.0.0';
+const FINISHED = ['theme-grain', 'session-import', 'prompt-cache', 'resident-agents', 'recording-indicators', 'pinned-quotas'];
+
+/** The primary machine's core says its version, as a hello does. */
+function primarySays(version: string): object {
+  const owner = {};
+  followDesktopOf(owner);
+  onTestFinished(() => followDesktopOf(null));
+  heardBuild(owner, version);
+  return owner;
+}
+
 afterEach(() => {
   if (running) unmount(running, { outro: false });
   running = null;
   document.body.innerHTML = '';
+  window.localStorage.clear();
+  // Through the writer, so the reactive mirror forgets the build a test named.
+  writeExperiments([]);
   window.localStorage.clear();
 });
 
@@ -26,7 +45,8 @@ function query<T extends Element>(selector: string): T {
   return node;
 }
 
-test('the page carries one switch per experiment and a toggle writes the enabled ids', async () => {
+test('on a Nightly the page lists exactly the five experiments, and a toggle writes the chosen ids', async () => {
+  primarySays(NIGHTLY);
   running = mount(ExperimentsPage, { target: document.body });
   flushSync();
   await tick();
@@ -37,48 +57,104 @@ test('the page carries one switch per experiment and a toggle writes the enabled
   flushSync();
   expect(query('[data-testid=info-tip-text]').textContent).toContain('unfinished');
 
-  const grain = query<HTMLInputElement>('[data-testid=experiment-theme-grain]');
-  expect(grain.checked).toBe(false);
-  expect(grain.closest('label')?.textContent).toContain('Grain theme');
-  expect(window.localStorage.getItem(EXPERIMENTS_STORAGE_KEY)).toBeNull();
-
-  const sessions = query<HTMLInputElement>('[data-testid=experiment-session-import]');
-  expect(sessions.checked).toBe(false);
-  const sessionsHelp = sessions.closest('label')!.querySelector<HTMLButtonElement>('[data-testid=info-tip]')!;
-  sessionsHelp.click();
-  flushSync();
-  expect(document.getElementById(sessionsHelp.getAttribute('aria-describedby')!)?.textContent).toContain('terminal');
-  expect(sessions.checked).toBe(false);
-  // Graduated features have their switch in the page they belong to, not here.
-  for (const id of ['chat-artifacts', 'open-chat-links', 'preview-comments', 'edge-scrollbars', 'press-preload', 'goal2']) {
+  expect([...document.querySelectorAll('[data-testid^=experiment-]')].map((node) => node.getAttribute('data-testid'))).toEqual(
+    ['whip', 'contacts', 'auto-goal', 'teams', 'debates'].map((id) => `experiment-${id}`));
+  // A finished feature is on in every build and has no switch; graduated features have theirs in the page they belong to.
+  for (const id of [...FINISHED, 'chat-artifacts', 'open-chat-links', 'preview-comments', 'edge-scrollbars', 'press-preload', 'goal2']) {
     expect(document.querySelector(`[data-testid=experiment-${id}]`)).toBeNull();
   }
 
-  grain.click();
+  const whip = query<HTMLInputElement>('[data-testid=experiment-whip]');
+  expect(whip.checked).toBe(false);
+  expect(whip.closest('label')?.textContent).toContain('Whip');
+  expect(window.localStorage.getItem(EXPERIMENTS_STORAGE_KEY)).toBeNull();
+  const help = whip.closest('label')!.querySelector<HTMLButtonElement>('[data-testid=info-tip]')!;
+  help.click();
+  flushSync();
+  expect(document.getElementById(help.getAttribute('aria-describedby')!)?.textContent).toContain('pointer');
+  expect(whip.checked).toBe(false);
+
+  whip.click();
   flushSync();
   await tick();
+  expect(window.localStorage.getItem(EXPERIMENTS_STORAGE_KEY)).toBe('["whip"]');
+  expect(query<HTMLInputElement>('[data-testid=experiment-whip]').checked).toBe(true);
 
-  expect(window.localStorage.getItem(EXPERIMENTS_STORAGE_KEY)).toBe('["theme-grain"]');
-  expect(query<HTMLInputElement>('[data-testid=experiment-theme-grain]').checked).toBe(true);
-
-  query<HTMLInputElement>('[data-testid=experiment-theme-grain]').click();
-  flushSync();
-  await tick();
-
-  expect(window.localStorage.getItem(EXPERIMENTS_STORAGE_KEY)).toBe('[]');
-  expect(query<HTMLInputElement>('[data-testid=experiment-theme-grain]').checked).toBe(false);
-});
-
-test('a stored list that still names goal2 loads the rest and drops it on the next save', async () => {
-  window.localStorage.setItem(EXPERIMENTS_STORAGE_KEY, '["goal2","theme-grain"]');
-  running = mount(ExperimentsPage, { target: document.body });
-  flushSync();
-  await tick();
-  expect(query<HTMLInputElement>('[data-testid=experiment-theme-grain]').checked).toBe(true);
   query<HTMLInputElement>('[data-testid=experiment-whip]').click();
   flushSync();
   await tick();
-  expect(window.localStorage.getItem(EXPERIMENTS_STORAGE_KEY)).toBe('["theme-grain","whip"]');
+  expect(window.localStorage.getItem(EXPERIMENTS_STORAGE_KEY)).toBe('[]');
+  expect(query<HTMLInputElement>('[data-testid=experiment-whip]').checked).toBe(false);
+});
+
+test('with empty storage every finished feature is on, and none of them can be switched', () => {
+  expect(window.localStorage.getItem(EXPERIMENTS_STORAGE_KEY)).toBeNull();
+  expect(isExperimentEnabled('resident-agents')).toBe(true);
+  expect([...readExperiments()].sort()).toEqual([...FINISHED].sort());
+  // No switch, so no flip: nothing is stored and Bots stays on.
+  setExperiment('resident-agents', false);
+  expect(window.localStorage.getItem(EXPERIMENTS_STORAGE_KEY)).toBeNull();
+  expect(isExperimentEnabled('resident-agents')).toBe(true);
+  // On a Release too.
+  primarySays(RELEASE);
+  for (const id of FINISHED) expect(readExperiments()).toContain(id);
+});
+
+test('on a Release no experiment is on though storage holds it, Settings has no Experiments page, and a switch is refused', () => {
+  window.localStorage.setItem(EXPERIMENTS_STORAGE_KEY, '["whip","teams"]');
+  primarySays(RELEASE);
+  expect(isExperimentEnabled('whip')).toBe(false);
+  expect(isExperimentEnabled('teams')).toBe(false);
+  expect(experimentsShown()).toBe(false);
+  // The tab is absent from the nav, desktop and phone, and a route to it lands on the first page.
+  expect(navOf('advanced', true)).not.toContain('experiments');
+  expect(desktopPage('experiments', true)).toBe('general');
+  expect(phonePage('experiments', null, true)).toBe('home');
+  setExperiment('debates', true);
+  setExperiment('whip', false);
+  expect(window.localStorage.getItem(EXPERIMENTS_STORAGE_KEY)).toBe('["whip","teams"]');
+  // The page, were it drawn, lists nothing.
+  running = mount(ExperimentsPage, { target: document.body });
+  flushSync();
+  expect(document.querySelectorAll('[data-testid^=experiment-]').length).toBe(0);
+});
+
+test('a Release primary heard after a Nightly one turns the switches off without erasing the stored choice', async () => {
+  window.localStorage.setItem(EXPERIMENTS_STORAGE_KEY, '["whip","debates"]');
+  const owner = primarySays(NIGHTLY);
+  const heard: string[][] = [];
+  onTestFinished(subscribeExperiments((enabled) => { heard.push(enabled); }));
+  expect([isExperimentEnabled('whip'), isExperimentEnabled('debates'), experimentsShown()]).toEqual([true, true, true]);
+  expect(navOf('advanced', true)).toContain('experiments');
+
+  // Another machine's core is not the one that decides.
+  heardBuild({}, RELEASE);
+  expect(isExperimentEnabled('whip')).toBe(true);
+
+  heardBuild(owner, RELEASE);
+  flushSync();
+  expect([isExperimentEnabled('whip'), isExperimentEnabled('debates'), experimentsShown()]).toEqual([false, false, false]);
+  expect(heard.at(-1)).not.toContain('whip');
+  expect(window.localStorage.getItem(EXPERIMENTS_STORAGE_KEY)).toBe('["whip","debates"]');
+  // The version is kept for the next load.
+  expect(window.localStorage.getItem(BUILD_STORAGE_KEY)).toBe(RELEASE);
+
+  // Back on a Nightly, the device finds its switches as it left them.
+  heardBuild(owner, NIGHTLY);
+  flushSync();
+  expect([isExperimentEnabled('whip'), isExperimentEnabled('debates'), experimentsShown()]).toEqual([true, true, true]);
+});
+
+test('a stored list that still names goal2 loads the rest and drops it on the next save', async () => {
+  window.localStorage.setItem(EXPERIMENTS_STORAGE_KEY, '["goal2","debates"]');
+  running = mount(ExperimentsPage, { target: document.body });
+  flushSync();
+  await tick();
+  expect(query<HTMLInputElement>('[data-testid=experiment-debates]').checked).toBe(true);
+  query<HTMLInputElement>('[data-testid=experiment-whip]').click();
+  flushSync();
+  await tick();
+  expect(window.localStorage.getItem(EXPERIMENTS_STORAGE_KEY)).toBe('["whip","debates"]');
 });
 
 test('a click on a row name flips its switch, the "i" beside it only opens the tip', async () => {
@@ -86,26 +162,26 @@ test('a click on a row name flips its switch, the "i" beside it only opens the t
   flushSync();
   await tick();
 
-  const grain = query<HTMLInputElement>('[data-testid=experiment-theme-grain]');
-  const row = grain.closest('label')!;
+  const whip = query<HTMLInputElement>('[data-testid=experiment-whip]');
+  const row = whip.closest('label')!;
   // The switch is named by its title alone, not by the button's label too.
-  expect(document.getElementById(grain.getAttribute('aria-labelledby')!)?.textContent).toBe('Grain theme');
+  expect(document.getElementById(whip.getAttribute('aria-labelledby')!)?.textContent).toBe('Whip');
 
   row.querySelector<HTMLButtonElement>('[data-testid=info-tip]')!.click();
   flushSync();
-  expect(grain.checked).toBe(false);
+  expect(whip.checked).toBe(false);
   expect(query('[data-testid=info-tip-text]').textContent).toBeTruthy();
 
-  document.getElementById(grain.getAttribute('aria-labelledby')!)!.click();
+  document.getElementById(whip.getAttribute('aria-labelledby')!)!.click();
   flushSync();
   await tick();
-  expect(grain.checked).toBe(true);
-  expect(window.localStorage.getItem(EXPERIMENTS_STORAGE_KEY)).toBe('["theme-grain"]');
+  expect(whip.checked).toBe(true);
+  expect(window.localStorage.getItem(EXPERIMENTS_STORAGE_KEY)).toBe('["whip"]');
 });
 
-test('the owner turns the live device stream and background compaction on; a paired device does not see the switches', async () => {
+test('the owner turns the live device stream and background compaction on; a paired device does not see the switches, nor does a Release machine', async () => {
   const saved: unknown[] = [];
-  const store = { owner: true, settings: { deviceStream: false, backgroundCompaction: false }, providers: [], accountsOf: () => [], modelsOf: () => [], saveSettings: async (patch: unknown) => { saved.push(patch); return true; } } as unknown as Store;
+  const store = { owner: true, core: { version: NIGHTLY }, settings: { deviceStream: false, backgroundCompaction: false }, providers: [], accountsOf: () => [], modelsOf: () => [], saveSettings: async (patch: unknown) => { saved.push(patch); return true; } } as unknown as Store;
   running = mount(ExperimentsPage, { target: document.body, props: { store } });
   flushSync();
   await tick();
@@ -123,14 +199,22 @@ test('the owner turns the live device stream and background compaction on; a pai
   await tick();
   expect(document.querySelector('[data-testid=device-stream-settings]')).toBeNull();
   expect(document.querySelector('[data-testid=background-compaction-settings]')).toBeNull();
+  // The machine's own experiments are absent where its core is a Release, the owner's included.
+  unmount(running);
+  running = mount(ExperimentsPage, { target: document.body, props: { store: { ...store, core: { version: RELEASE } } as unknown as Store } });
+  flushSync();
+  await tick();
+  expect(document.querySelector('[data-testid=device-stream-on]')).toBeNull();
+  expect(document.querySelector('[data-testid=background-compaction-on]')).toBeNull();
+  expect(document.querySelector('[data-testid=cache-keepalive-settings]')).toBeNull();
 });
 test('a phone has the desktop app\'s experiments until it flips one of its own, and can follow again', async () => {
-  window.localStorage.setItem(EXPERIMENTS_STORAGE_KEY, '["theme-grain"]');
+  window.localStorage.setItem(EXPERIMENTS_STORAGE_KEY, '["teams"]');
   const client = new FakeClient({ delayMs: 0 });
   const store = new Store();
   followDesktopOf(store);
   onTestFinished(() => { followDesktopOf(null); store.detach(); client.close(); });
-  client.reportDesktopExperiments(['prompt-cache']);
+  client.reportDesktopExperiments(['debates']);
   store.attach(client);
   await store.connect();
   const settle = async () => { for (let i = 0; i < 10; i++) { await Promise.resolve(); flushSync(); } };
@@ -141,10 +225,10 @@ test('a phone has the desktop app\'s experiments until it flips one of its own, 
 
   // The report's answer names the desktop app's switches; this phone's own wait underneath.
   expect(query<HTMLInputElement>('[data-testid=experiments-follow]').checked).toBe(true);
-  expect([on('prompt-cache'), on('theme-grain')]).toEqual([true, false]);
-  expect(isExperimentEnabled('prompt-cache')).toBe(true);
+  expect([on('debates'), on('teams')]).toEqual([true, false]);
+  expect(isExperimentEnabled('debates')).toBe(true);
   // A flip on the desktop reaches the open page.
-  client.reportDesktopExperiments(['prompt-cache', 'whip']);
+  client.reportDesktopExperiments(['debates', 'whip']);
   await settle();
   expect(on('whip')).toBe(true);
   // A second machine's desktop app is not the one followed.
@@ -152,21 +236,21 @@ test('a phone has the desktop app\'s experiments until it flips one of its own, 
   expect(isExperimentEnabled('contacts')).toBe(false);
 
   // A flip here keeps what was shown, with it, as this phone's own.
-  query<HTMLInputElement>('[data-testid=experiment-theme-grain]').click();
+  query<HTMLInputElement>('[data-testid=experiment-teams]').click();
   await settle();
   expect(query<HTMLInputElement>('[data-testid=experiments-follow]').checked).toBe(false);
-  expect(window.localStorage.getItem(EXPERIMENTS_STORAGE_KEY)).toBe('["theme-grain","prompt-cache","whip"]');
-  client.reportDesktopExperiments(['resident-agents', 'contacts']);
+  expect(window.localStorage.getItem(EXPERIMENTS_STORAGE_KEY)).toBe('["whip","teams","debates"]');
+  client.reportDesktopExperiments(['contacts']);
   await settle();
   expect([on('contacts'), on('whip')]).toEqual([false, true]);
 
   query<HTMLInputElement>('[data-testid=experiments-follow]').click();
   await settle();
-  expect([on('contacts'), on('whip'), on('theme-grain')]).toEqual([true, false, false]);
+  expect([on('contacts'), on('whip'), on('teams')]).toEqual([true, false, false]);
 });
 
 test('a core that has heard no desktop app keeps its own set, not another machine\'s', () => {
-  window.localStorage.setItem(EXPERIMENTS_STORAGE_KEY, '["theme-grain"]');
+  window.localStorage.setItem(EXPERIMENTS_STORAGE_KEY, '["whip"]');
   const owner = {};
   followDesktopOf(owner);
   onTestFinished(() => followDesktopOf(null));
@@ -174,7 +258,7 @@ test('a core that has heard no desktop app keeps its own set, not another machin
   heardDesktop(owner, null, 'core-a');
   expect(isExperimentEnabled('contacts')).toBe(true);
   heardDesktop(owner, null, 'core-b');
-  expect([isExperimentEnabled('contacts'), isExperimentEnabled('theme-grain')]).toEqual([false, true]);
+  expect([isExperimentEnabled('contacts'), isExperimentEnabled('whip')]).toEqual([false, true]);
 });
 
 test('the desktop app follows no one', async () => {
@@ -192,7 +276,7 @@ test('the desktop app follows no one', async () => {
 });
 test('Automatic goals is off by default; on, its threshold row sits under the switch and saves a valid length', async () => {
   const saved: unknown[] = [];
-  const store = { owner: true, settings: {}, providers: [], accountsOf: () => [], modelsOf: () => [], saveSettings: async (patch: unknown) => { saved.push(patch); return true; } } as unknown as Store;
+  const store = { owner: true, core: { version: NIGHTLY }, settings: {}, providers: [], accountsOf: () => [], modelsOf: () => [], saveSettings: async (patch: unknown) => { saved.push(patch); return true; } } as unknown as Store;
   running = mount(ExperimentsPage, { target: document.body, props: { store } });
   flushSync();
   await tick();
@@ -235,7 +319,7 @@ test('Automatic goals is off by default; on, its threshold row sits under the sw
   expect(document.querySelector('[data-testid=auto-goal-settings]')).toBeNull();
 });
 
-test('Contacts and Teams wait on Bots: greyed until Bots is on, Contacts made with the Operator, and both off again with Bots', async () => {
+test('Contacts and Teams wait on nothing: Bots is always on, and Contacts is made with the Operator', async () => {
   const client = new FakeClient({ delayMs: 0 });
   const store = new Store();
   store.attach(client);
@@ -245,24 +329,14 @@ test('Contacts and Teams wait on Bots: greyed until Bots is on, Contacts made wi
   flushSync();
   const contacts = () => query<HTMLInputElement>('[data-testid=experiment-contacts]');
   const teams = () => query<HTMLInputElement>('[data-testid=experiment-teams]');
-  const bots = () => query<HTMLInputElement>('[data-testid=experiment-resident-agents]');
 
-  // Bots off: the switch cannot be turned on, and its "i" says why.
-  expect([contacts().disabled, contacts().getAttribute('aria-disabled')]).toEqual([true, 'true']);
+  expect(isExperimentEnabled('resident-agents')).toBe(true);
+  expect([contacts().disabled, contacts().getAttribute('aria-disabled'), teams().disabled]).toEqual([false, null, false]);
   const help = contacts().closest('label')!.querySelector<HTMLButtonElement>('[data-testid=info-tip]')!;
   help.click();
   flushSync();
-  expect(document.getElementById(help.getAttribute('aria-describedby')!)?.textContent).toBe(strings.experiments.contacts.needsBots);
-  // A team's chat is listed on the Bots page: Teams waits the same way, with its own reason.
-  expect(teams().disabled).toBe(true);
-  const teamsHelp = teams().closest('label')!.querySelector<HTMLButtonElement>('[data-testid=info-tip]')!;
-  teamsHelp.click();
-  flushSync();
-  expect(document.getElementById(teamsHelp.getAttribute('aria-describedby')!)?.textContent).toBe(strings.experiments.teams.needsBots);
+  expect(document.getElementById(help.getAttribute('aria-describedby')!)?.textContent).toBe(strings.experiments.contacts.hint);
 
-  bots().click();
-  flushSync();
-  expect([contacts().disabled, teams().disabled]).toEqual([false, false]);
   teams().click();
   flushSync();
   expect(isExperimentEnabled('teams')).toBe(true);
@@ -274,13 +348,6 @@ test('Contacts and Teams wait on Bots: greyed until Bots is on, Contacts made wi
   await vi.waitFor(async () => expect((await client.call('contacts.get', {})).bot).not.toBeNull());
   expect(call.mock.calls.filter(([method]) => method === 'agents.builtin.ensure').map(([, params]) => params)).toEqual([{ kind: 'contacts', name: strings.agents.builtin.name.contacts }]);
   expect(isExperimentEnabled('contacts')).toBe(true);
-
-  // Bots off takes Contacts and Teams with it.
-  bots().click();
-  flushSync();
-  await tick();
-  expect([isExperimentEnabled('resident-agents'), isExperimentEnabled('contacts'), contacts().checked, contacts().disabled]).toEqual([false, false, false, true]);
-  expect([isExperimentEnabled('teams'), teams().checked, teams().disabled]).toEqual([false, false, true]);
 });
 
 test('turning Contacts on makes nothing when a machine of the group has the Operator, and a failure is told with the switch left on', async () => {
@@ -290,7 +357,6 @@ test('turning Contacts on makes nothing when a machine of the group has the Oper
   onTestFinished(() => { for (const store of stores) store.detach(); home.close(); other.close(); workspace.machines = []; });
   workspace.machines = [{ id: 'home', label: 'Home', store: stores[0]! }, { id: 'other', label: 'Other', store: stores[1]! }];
   await other.call('agents.builtin.ensure', { kind: 'contacts' });
-  window.localStorage.setItem(EXPERIMENTS_STORAGE_KEY, '["resident-agents"]');
   running = mount(ExperimentsPage, { target: document.body, props: { store: stores[0] } });
   flushSync();
   const ensured = vi.spyOn(home, 'call');
@@ -306,7 +372,7 @@ test('turning Contacts on makes nothing when a machine of the group has the Oper
   running = null;
   document.body.innerHTML = '';
   workspace.machines = [];
-  window.localStorage.setItem(EXPERIMENTS_STORAGE_KEY, '["resident-agents"]');
+  window.localStorage.setItem(EXPERIMENTS_STORAGE_KEY, '[]');
   ensured.mockRestore();
   const real = home.call.bind(home);
   vi.spyOn(home, 'call').mockImplementation(async (method, params) => {

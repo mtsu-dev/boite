@@ -155,11 +155,13 @@ test('the app tells its core the language and experiments it has, and an experim
   localStorage.setItem('boite.experiments', JSON.stringify(['resident-agents']));
   const { client, store } = await setup();
   try {
-    // The agent reads what the user sees: on, and named as the Experiments page names it.
+    // The agent reads what the user sees: the switches of the Experiments page, named as the page names them.
     await vi.waitFor(async () => expect((await client.call('agent.settings', { threadId: 't-trace' })).app).toEqual({ language: 'en', device: null, client: null }));
     const read = await client.call('agent.settings', { threadId: 't-trace' });
-    expect(read.settings.find((reading) => reading.key === 'experiment.resident-agents')).toMatchObject({ value: true, label: 'Bots', page: 'experiments', section: 'resident-agents' });
-    await expect(client.call('settings.request', { threadId: 't-trace', reason: 'x', key: 'experiment.resident-agents', value: true })).rejects.toThrow('already true');
+    expect(read.settings.find((reading) => reading.key === 'experiment.whip')).toMatchObject({ value: false, label: 'Whip', page: 'experiments', section: 'whip' });
+    // A finished feature is not a setting any more: it has no reading and no card.
+    expect(read.settings.find((reading) => reading.key === 'experiment.resident-agents')).toBeUndefined();
+    await expect(client.call('settings.request', { threadId: 't-trace', reason: 'x', key: 'experiment.resident-agents', value: true })).rejects.toThrow('no longer an experiment');
 
     const { questionId } = await client.call('settings.request', { threadId: 't-trace', reason: 'Try the whip', key: 'experiment.whip', value: true });
     card(store, await asked(store, questionId));

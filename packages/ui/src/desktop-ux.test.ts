@@ -61,7 +61,7 @@ test('a maximized panel stays with its thread: the Contacts page beside the list
   }
 });
 
-test('contacts are the Bots column\'s other side: its head folds the column on the right, a row opens a contact, and with Bots off the rail keeps their place', async () => {
+test('contacts are the Bots column\'s other side: its head folds the column on the right, a row opens a contact', async () => {
   writeExperiments(['resident-agents', 'contacts']);
   await mountOnFake();
   try {
@@ -103,16 +103,6 @@ test('contacts are the Bots column\'s other side: its head folds the column on t
     query<HTMLButtonElement>('[data-testid=contacts-rail-home]').click();
     await waitFor(() => store.page === 'home');
 
-    // With Bots off there is no switch: the rail holds Contacts' place and the side's title alone leads back.
-    writeExperiments(['contacts']);
-    await waitFor(() => document.querySelector('[data-testid=rail-contacts]') !== null);
-    expect(query('[data-testid=rail-contacts]').getAttribute('aria-current')).toBe('page');
-    expect(document.querySelector('[data-testid=side-switch]')).toBeNull();
-    query<HTMLButtonElement>('[data-testid=side-back]').click();
-    flushSync();
-    expect(store.page).toBe('chat');
-    query<HTMLButtonElement>('[data-testid=rail-contacts]').click();
-    await waitFor(() => store.page === 'home');
   } finally {
     if (!contactsRail.folded) contactsRail.toggle();
     store.showChat();

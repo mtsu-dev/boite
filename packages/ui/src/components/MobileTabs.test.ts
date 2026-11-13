@@ -23,8 +23,8 @@ test('the bar holds only places and marks the current one; a new conversation an
     tab(id!)!.click(); await settle();
     expect(navigate).toHaveBeenLastCalledWith(destination);
   }
-  // Settings is the header's gear, not a tab: with the bots off, two places.
-  expect(document.querySelectorAll('.mobile-tabs .tab')).toHaveLength(2);
+  // Settings is the header's gear, not a tab: three places, Bots the last, with nothing stored.
+  expect([...document.querySelectorAll('.mobile-tabs .tab')].map((node) => node.getAttribute('data-testid'))).toEqual(['mobile-conversations', 'mobile-activity', 'mobile-agents']);
   expect(tab('mobile-settings')).toBeNull();
 });
 
@@ -57,7 +57,7 @@ test('Bots carries a dot while bots work, in the waiting colour once one asks th
   expect(tab('mobile-agents')!.getAttribute('aria-label')).toBe('Bots, 1 at work, something needs you');
 });
 
-test('a paired device, which may call no contacts method, is offered no way into Contacts; the owner is', async () => {
+test('Contacts has no tab of its own for anyone: the Bots tab, always there, holds its side', async () => {
   setExperiment('contacts', true);
   app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 0, navigate: () => {} } }); await settle();
   expect(tab('mobile-contacts')).toBeNull();
@@ -65,8 +65,8 @@ test('a paired device, which may call no contacts method, is offered no way into
 
   client = new FakeClient({ delayMs: 0 }); store = new Store(); store.attach(client); await store.connect();
   app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 0, navigate: () => {} } }); await settle();
-  tab('mobile-contacts')!.click(); await settle();
-  expect(store.page).toBe('home');
+  expect(tab('mobile-contacts')).toBeNull();
+  expect(tab('mobile-agents')).not.toBeNull();
 });
 
 test('with the bots on, the bar keeps three places: Contacts is the Bots tab\'s other side, which stays marked on it', async () => {

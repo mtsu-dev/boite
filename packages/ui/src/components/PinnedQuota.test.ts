@@ -38,9 +38,7 @@ function fixture(owner = true) {
 test('pin is opt-in and remembers both placement and unpinning', async () => {
   mounted = mount(QuotaPin, { target: document.body });
   await settle();
-  expect(document.querySelector('[data-testid=quota-pin]')).toBeNull();
-  setExperiment('pinned-quotas', true);
-  await settle();
+  // The pin is there with nothing stored: pinned quotas are on in every build.
   document.querySelector<HTMLButtonElement>('[data-testid=quota-pin]')!.click();
   await settle();
   expect(pinnedQuotas.current).toEqual({ pinned: true, position: 'bottom-left' });

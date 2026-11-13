@@ -15,7 +15,7 @@ import { needsUser } from '../thread-state';
 import { installStatesOf } from './accounts.svelte';
 import { observable } from './connection.svelte';
 import { reportPreferences } from '../client-preferences.svelte';
-import { heardDesktop } from '../experiments';
+import { heardBuild, heardDesktop } from '../experiments';
 import { lightPage } from './reading-pages.svelte';
 import type { StoreContext } from './context';
 import { probeKey } from './models.svelte';
@@ -58,6 +58,8 @@ export function listen(ctx: StoreContext, client: Client): void {
           models.effortAttempts.clear();
           s.error = null;
           s.core = client.core;
+          // The primary machine's build decides which experiments exist.
+          heardBuild(s, s.core?.version);
           ctx.connection.clockOffset = client.clockOffset ?? 0;
           if (ctx.connection.localCore) noteThisComputer(s.core?.hostname);
           undo.discardExpired(s, s.core?.startedAt);

@@ -18,6 +18,7 @@ export const fr: Translation = {
     guestHint: "Seul l'ordinateur qui fait tourner Boite peut changer ce réglage.",
     retired: 'Cette expérience a maintenant son propre interrupteur dans les réglages.',
     retiredAlwaysOn: 'Cette expérience est maintenant toujours active.',
+    retiredRelease: "Cette expérience n'existe que dans les versions Nightly.",
     loadOnPress: 'Chargement à l’appui',
     elsewhere: "C'est dans les Réglages de l'ordinateur qui fait tourner Boite.",
     machineAway: "{machine} n'est pas connectée ici : changez-le depuis {machine}.",
