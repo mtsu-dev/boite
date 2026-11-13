@@ -12,7 +12,10 @@ const APPS_KEPT = 64;
  * experiments it has on and the names it gives settings. The experiments are
  * read for the build this core is (`effectiveExperiments`): a finished feature
  * is on whatever the app said, and a Release keeps none of the others, so
- * nothing the core gates on them runs because an app claimed it. Kept in memory only:
+ * nothing the core gates on them runs because an app claimed it. What phones
+ * follow is the desktop app's list as it chose it (`desktopChosen`): each
+ * reader applies its own build, so a Release in between loses nobody's
+ * switches. Kept in memory only:
  * an app says it again after every hello. Agents read the app the user last
  * used: the one that last sent a prompt or changed a preference, or the first
  * to report once that app's socket closed. A phone that merely reconnects in a
@@ -23,14 +26,14 @@ export class ClientPreferencesBook {
   /** Each app's last report by its id, across its sockets. */
   readonly #byApp = new Map<string, ClientPreferences>();
   #latest: { connectionId: string; preferences: ClientPreferences; from: SentFrom | null } | null = null;
-  /** The desktop app phones follow: one on this machine's loopback outranks one reached from elsewhere. */
+  /** The desktop app phones follow, with the switches it chose: one on this machine's loopback outranks one reached from elsewhere. */
   #desktop: { experiments: ExperimentId[]; local: boolean } | null = null;
 
   /**
    * `reported` runs on every report with the experiments that app had at its
    * previous one, null when the core has none: a card settles on a flip, not
    * on another app's different value. `desktopMoved` runs when the followed
-   * desktop app's experiments change.
+   * desktop app's chosen experiments change, with that list as chosen.
    */
   readonly #reported: (preferences: ClientPreferences, before: readonly ExperimentId[] | null) => void;
   readonly #desktopMoved: (experiments: ExperimentId[]) => void;
@@ -62,7 +65,7 @@ export class ClientPreferencesBook {
     const vacant = this.#latest === null || !this.#byConnection.has(this.#latest.connectionId) || this.#latest.connectionId === connection.id;
     if (vacant || moved) this.#latest = { connectionId: connection.id, ...entry };
     // A paired device may call itself a shell: only the owner's desktop app is followed.
-    if (entry.from?.client === 'shell' && connection.identity.principal === 'owner') this.#follow(preferences.experiments, connection.remote === false);
+    if (entry.from?.client === 'shell' && connection.identity.principal === 'owner') this.#follow(checked.preferences.experiments, connection.remote === false);
     this.#reported(preferences, before?.experiments ?? null);
   }
 
@@ -73,8 +76,13 @@ export class ClientPreferencesBook {
     if (changed) this.#desktopMoved([...experiments]);
   }
 
-  /** The followed desktop app's experiments, or null before one reported. */
+  /** What the followed desktop app has in force in this build, or null before one reported: what the core's own gates read. */
   desktopExperiments(): ExperimentId[] | null {
+    return this.#desktop === null ? null : effectiveExperiments(this.#desktop.experiments, this.#version);
+  }
+
+  /** The switches the followed desktop app chose, whatever this build runs, or null before one reported: what a phone is handed. */
+  desktopChosen(): ExperimentId[] | null {
     return this.#desktop === null ? null : [...this.#desktop.experiments];
   }
 

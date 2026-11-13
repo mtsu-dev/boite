@@ -1,5 +1,5 @@
 /** Permission requests and questions: asked by a turn, answered by the user. */
-import { RpcErrorCode, agentSettingAnswerText, checkClientPreferences, checkSettingRequest, effectiveExperiments, isMachineSetting, MACHINE_SETTINGS, settledMachineSetting, settledExperiment, type SettingMachine, type ClientPreferences, type ExperimentId, checkSettingsPatch, readSettings, settingAnswerText, settledSetting, type Message, type MessagePart, type PermissionRequest, type QuestionAnswer, type QuestionOption, type QuestionRequest, type AgentSettingAsk, type SettingAsk, type SettingRequestParams, type Settings, type TeamAsk, type Thread, type ThreadId, type Turn } from '@boite/contracts';
+import { RpcErrorCode, agentSettingAnswerText, checkClientPreferences, checkSettingRequest, effectiveExperiments, experimentalSettingRefusal, isMachineSetting, MACHINE_SETTINGS, settledMachineSetting, settledExperiment, type SettingMachine, type ClientPreferences, type ExperimentId, checkSettingsPatch, readSettings, settingAnswerText, settledSetting, type Message, type MessagePart, type PermissionRequest, type QuestionAnswer, type QuestionOption, type QuestionRequest, type AgentSettingAsk, type SettingAsk, type SettingRequestParams, type Settings, type TeamAsk, type Thread, type ThreadId, type Turn } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { fakeCore } from './coordination';
 import { checkAnswer, checkAsk } from './checks';
@@ -191,17 +191,20 @@ export function fakeMember(ctx: FakeContext, query: string, method: string): Set
 /** `settings.request` on a thread whose turn is known; the fake agent's `[settings]` markers come here too. */
 export function requestSetting(ctx: FakeContext, thread: Thread, turn: Turn, params: SettingRequestParams): { questionId: string; setting: SettingAsk } {
   const open = [...ctx.pendingQuestions.values()].flatMap((pending) => (pending.request.threadId === thread.id && pending.request.setting ? [pending.request.setting] : []));
-  let settings = ctx.settings;
+  // As the core: a card reads the settings in force, and proposes nothing the save would refuse.
+  let settings = ctx.settingsInForce();
   let machine: SettingMachine | null = null;
   if (params.machine !== undefined) {
     if (!isMachineSetting(params.key)) throw new RpcFailure({ code: RpcErrorCode.Refused, message: `${String(params.key)} is this machine's own; a card for another machine asks about ${MACHINE_SETTINGS.join(', ')}`, data: { field: 'key' } });
     machine = fakeMember(ctx, params.machine, 'settings.request');
     const other = fakeCore(machine.coreId);
     if (other === undefined) throw new RpcFailure({ code: RpcErrorCode.Unavailable, message: `${machine.name} did not answer`, data: { field: 'machine' } });
-    settings = { ...ctx.settings, [params.key]: other.settings[params.key] };
+    settings = { ...settings, [params.key]: other.settings[params.key] };
   }
   const checked = checkSettingRequest(params, settings, (patch) => {
     const result = checkSettingsPatch(patch);
+    const experiment = result.ok ? experimentalSettingRefusal(result.patch, ctx.core.version) : null;
+    if (experiment !== null) return { ok: false, message: experiment.message, field: experiment.key };
     return result.ok ? { ok: true, patch: result.patch } : { ok: false, message: result.message, field: result.field };
   }, open, ctx.clientPreferences, machine, ctx.core.version);
   if (!checked.ok) throw new RpcFailure({ code: RpcErrorCode.Refused, message: checked.message, data: checked.data });
@@ -372,7 +375,7 @@ export function requestMethods(ctx: FakeContext) {
     },
     'agent.settings': async () => ({
       app: ctx.clientPreferences === null ? null : { language: ctx.clientPreferences.language, device: null, client: null },
-      settings: readSettings(ctx.settings, ctx.clientPreferences, ctx.core.version),
+      settings: readSettings(ctx.settingsInForce(), ctx.clientPreferences, ctx.core.version),
     }),
     'client.preferences': async (params) => {
       const checked = checkClientPreferences(params);
@@ -382,7 +385,7 @@ export function requestMethods(ctx: FakeContext) {
       const preferences = { ...checked.preferences, experiments: effectiveExperiments(checked.preferences.experiments, ctx.core.version) };
       ctx.clientApps.set(preferences.app, preferences);
       ctx.clientPreferences = preferences;
-      settleSettings(ctx, ctx.settings, { preferences, before });
+      settleSettings(ctx, ctx.settingsInForce(), { preferences, before });
       return { ok: true, desktop: ctx.desktopExperiments === null ? null : [...ctx.desktopExperiments] };
     },
     'questions.skip': async (params) => {

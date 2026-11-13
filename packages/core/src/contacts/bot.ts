@@ -13,6 +13,7 @@ import { invalidParams, messageOf, refused } from '../errors.ts';
 import { gitRemoteOf } from './git-remote.ts';
 import { contactFace } from './face.ts';
 import { contactNotice } from './answers.ts';
+import { contactsGate } from './gate.ts';
 
 /** Cards the bot drew for the owner, by question id, so their answer acts after a restart too. */
 const CARDS = 'contacts:cards';
@@ -335,10 +336,10 @@ export class ContactsBotMethods {
 export function registerContactsBot(core: Core): ContactsBotMethods {
   const methods = new ContactsBotMethods(core);
   core.router.register('contacts.bot.view', p => { requireBot(core, p.threadId, 'contacts.bot.view'); return botView(core); });
-  core.router.register('contacts.bot.forward', p => methods.forward(p));
-  core.router.register('contacts.bot.connect', p => methods.connect(p));
-  core.router.register('contacts.bot.start', p => methods.start(p));
-  core.router.register('contacts.bot.share', p => methods.share(p));
+  core.router.register('contacts.bot.forward', p => { contactsGate(core); return methods.forward(p); });
+  core.router.register('contacts.bot.connect', p => { contactsGate(core); return methods.connect(p); });
+  core.router.register('contacts.bot.start', p => { contactsGate(core); return methods.start(p); });
+  core.router.register('contacts.bot.share', p => { contactsGate(core); return methods.share(p); });
   core.router.register('contacts.bot.askOwner', p => methods.askOwner(p));
   core.router.register('contacts.bot.refuse', p => methods.refuse(p));
   core.router.register('contacts.bot.cut', p => methods.cut(p));

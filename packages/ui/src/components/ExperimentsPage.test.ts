@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, onTestFinished, test, vi } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
 import ExperimentsPage from './ExperimentsPage.svelte';
-import { BUILD_STORAGE_KEY, EXPERIMENTS_STORAGE_KEY, followDesktopOf, heardBuild, heardDesktop, isExperimentEnabled, readExperiments, setExperiment, subscribeExperiments, writeExperiments } from '../lib/experiments';
+import { BUILD_STORAGE_KEY, DESKTOP_STORAGE_KEY, EXPERIMENTS_STORAGE_KEY, followDesktopOf, heardBuild, heardDesktop, isExperimentEnabled, readExperiments, setExperiment, subscribeExperiments, writeExperiments } from '../lib/experiments';
 import { experimentsShown } from '../lib/experiments.svelte';
 import { navOf, desktopPage, phonePage } from '../lib/settings-tabs';
 import { FakeClient } from '../lib/fake-client';
@@ -207,6 +207,23 @@ test('the owner turns the live device stream and background compaction on; a pai
   expect(document.querySelector('[data-testid=background-compaction-on]')).toBeNull();
   expect(document.querySelector('[data-testid=cache-keepalive-settings]')).toBeNull();
 });
+test('a phone keeps the switches its desktop app chose through a Release, and has them again on a Nightly before any new report', async () => {
+  const client = new FakeClient({ delayMs: 0, version: RELEASE });
+  const store = new Store();
+  followDesktopOf(store);
+  onTestFinished(() => { followDesktopOf(null); store.detach(); client.close(); });
+  // The Release core passes the desktop app's list on as chosen, not cut down to what it runs.
+  client.reportDesktopExperiments(['whip', 'teams']);
+  store.attach(client);
+  await store.connect();
+  for (let i = 0; i < 10; i++) { await Promise.resolve(); flushSync(); }
+  expect(JSON.parse(window.localStorage.getItem(DESKTOP_STORAGE_KEY)!).experiments).toEqual(['whip', 'teams']);
+  expect(readExperiments()).toEqual(FINISHED);
+  // The machine goes back to a Nightly: the hello alone brings the followed switches back.
+  heardBuild(store, NIGHTLY);
+  expect([isExperimentEnabled('whip'), isExperimentEnabled('teams'), isExperimentEnabled('debates')]).toEqual([true, true, false]);
+});
+
 test('a phone has the desktop app\'s experiments until it flips one of its own, and can follow again', async () => {
   window.localStorage.setItem(EXPERIMENTS_STORAGE_KEY, '["teams"]');
   const client = new FakeClient({ delayMs: 0 });

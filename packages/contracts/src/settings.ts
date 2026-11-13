@@ -296,7 +296,13 @@ export interface SettingsRpcMethods {
   'telemetry.configure': { params: { mode: TelemetryState['mode']; countChoice?: boolean }; result: TelemetryState };
   'telemetry.export': { params: Record<string, never>; result: Record<string, unknown> };
   'telemetry.retryForget': { params: Record<string, never>; result: TelemetryState };
-  'settings.get': { params: Record<string, never>; result: Settings };
+  /**
+   * The settings in force. `stored` asks for the ones that are experiments as
+   * saved rather than as this build reads them (a Release reads them as off):
+   * what the copy to a following machine sends, so a hidden choice is never
+   * copied as "off". A core older than the stages ignores it and hides nothing.
+   */
+  'settings.get': { params: { stored?: boolean }; result: Settings };
   'settings.set': { params: Partial<Settings>; result: Settings };
   /**
    * The copy from the group's settings home (`Group.settingsHome`): only the
@@ -322,7 +328,11 @@ export interface SettingsRpcEvents {
   /**
    * The experiments of the desktop app this core follows, once its report
    * changes them: the app on this machine's loopback, else the last desktop
-   * app to report from elsewhere. Kept in memory, like the reports.
+   * app to report from elsewhere. The list is the one that app chose, not
+   * cut down to what this core's build runs: the device that follows it
+   * reads it for the build that decides (`effectiveExperiments`), so a
+   * Release in between erases nobody's switches. Kept in memory, like the
+   * reports.
    */
   'client.desktopExperiments': { experiments: ExperimentId[] };
 }

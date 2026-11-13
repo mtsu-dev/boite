@@ -1710,3 +1710,26 @@ test('a paired device lists its own session, marked current, and not the owner d
   const phone = await createClient({ delayMs: 0, principal: 'session' });
   expect((await phone.call('sessions.list', {})).map(row => [row.id, row.current])).toEqual([['ses-phone', true]]);
 });
+
+test('a fake Release core refuses, hides and keeps the experimental settings as the real one, and starts nothing new in Contacts', async ({ createClient }) => {
+  const client = await createClient({ delayMs: 0, version: '2.0.0' });
+  const reason = 'runs in Nightly builds only, and this machine runs a Release (2.0.0)';
+  for (const patch of [{ deviceStream: true }, { backgroundCompaction: true }, { cacheKeepalive: { hours: 2 } }]) {
+    await expect(client.call('settings.set', patch)).rejects.toMatchObject({ code: RpcErrorCode.Refused, message: expect.stringContaining(reason) });
+  }
+  // No card proposes what the save would refuse.
+  await expect(client.call('settings.request', { threadId: 't-trace', reason: 'A live screen', key: 'deviceStream', value: true })).rejects.toMatchObject({ code: RpcErrorCode.Refused, message: expect.stringContaining('deviceStream is an experiment') });
+
+  // What the settings home holds is stored, read as off here, and survives a save of the values read.
+  await client.call('settings.follow', { patch: { cacheKeepalive: { hours: 2 }, compactionByType: { agent: { autoCompact: null, backgroundCompaction: true } } } });
+  const read = await client.call('settings.get', {});
+  expect(read).toMatchObject({ cacheKeepalive: null, compactionByType: { agent: { autoCompact: null, backgroundCompaction: false } } });
+  const limit = { tokens: 150_000, moments: ['turn-end' as const] };
+  const saved = await client.call('settings.set', { cacheKeepalive: read.cacheKeepalive, compactionByType: { agent: { ...read.compactionByType!.agent!, autoCompact: limit } } });
+  expect(saved).toMatchObject({ cacheKeepalive: null, compactionByType: { agent: { autoCompact: limit, backgroundCompaction: false } } });
+  expect(await client.call('settings.get', { stored: true })).toMatchObject({ cacheKeepalive: { hours: 2 }, compactionByType: { agent: { autoCompact: limit, backgroundCompaction: true } } });
+
+  await expect(client.call('contacts.invite', {})).rejects.toMatchObject({ code: RpcErrorCode.Refused, message: expect.stringContaining(`experiment.contacts ${reason}`) });
+  await expect(client.call('contacts.join', { link: 'boite://none' })).rejects.toMatchObject({ code: RpcErrorCode.Refused, message: expect.stringContaining(`experiment.contacts ${reason}`) });
+  expect((await client.call('contacts.get', {})).contacts.length).toBeGreaterThan(0);
+});

@@ -31,12 +31,15 @@ test('phones follow the desktop app on this machine before one reached from else
   // The same switches again, as after a reconnect, say nothing.
   book.report(here, report(['teams'], 'app-here-0001'));
   book.report(here, report(['teams', 'whip'], 'app-here-0001'));
-  expect(moves).toEqual([on('debates'), on('teams'), on('teams', 'whip')]);
+  // Phones are told the switches as chosen; the core's own gates read them for its build.
+  expect(moves).toEqual([['debates'], ['teams'], ['whip', 'teams']]);
+  expect(book.desktopChosen()).toEqual(['whip', 'teams']);
   expect(book.desktopExperiments()).toEqual(on('teams', 'whip'));
 });
 
-test('a Release core keeps the finished features and no experiment, whatever an app reports', () => {
-  const book = new ClientPreferencesBook(() => {}, () => {}, '2.0.0');
+test('a Release core keeps the finished features and no experiment, whatever an app reports, and passes on what the desktop app chose', () => {
+  const moves: ExperimentId[][] = [];
+  const book = new ClientPreferencesBook(() => {}, experiments => moves.push(experiments), '2.0.0');
   const here = { id: 'c0', subscriptions: new Set(), identity: { principal: 'owner', sessionId: null, threadId: null }, sentFrom: { client: 'shell', device: 'pc' }, remote: false, sendEvent() {} } as unknown as Connection;
   book.report(here, report(['whip', 'teams', 'debates', 'auto-goal', 'contacts']));
   const kept = book.desktopExperiments()!;
@@ -44,6 +47,9 @@ test('a Release core keeps the finished features and no experiment, whatever an 
   expect(kept).toContain('resident-agents');
   for (const id of ['whip', 'teams', 'debates', 'auto-goal', 'contacts'] as const) expect(kept).not.toContain(id);
   expect(book.current()!.experiments).toEqual(kept);
+  // A phone that follows this desktop app keeps its choices for the day the machine runs a Nightly again.
+  expect(book.desktopChosen()).toEqual(['whip', 'contacts', 'auto-goal', 'teams', 'debates']);
+  expect(moves).toEqual([['whip', 'contacts', 'auto-goal', 'teams', 'debates']]);
 });
 
 let h: TestCore;
@@ -63,6 +69,6 @@ test('a phone hears the desktop app\'s experiments in its report\'s answer and o
 
   const heard = phone.next('client.desktopExperiments', ({ experiments }) => experiments.includes('whip'));
   await desktop.call('client.preferences', report(['whip', 'teams'], 'app-desktop-1'));
-  expect((await heard).experiments).toEqual(effectiveExperiments(['whip', 'teams'], h.core.version));
-  expect(await phone.call('client.preferences', report([], 'app-phone-001'))).toEqual({ ok: true, desktop: effectiveExperiments(['whip', 'teams'], h.core.version) });
+  expect((await heard).experiments).toEqual(['whip', 'teams']);
+  expect(await phone.call('client.preferences', report([], 'app-phone-001'))).toEqual({ ok: true, desktop: ['whip', 'teams'] });
 });

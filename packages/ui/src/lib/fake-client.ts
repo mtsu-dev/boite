@@ -477,7 +477,7 @@ export class FakeClient implements ObservableClient {
     this.#ctx.policy = structuredClone(policy);
     applyPolicy(this.#ctx);
     this.#ctx.emit('policy.changed', structuredClone(policy));
-    this.#ctx.emit('settings.updated', { ...this.#ctx.settings });
+    this.#ctx.emit('settings.updated', this.#ctx.settingsInForce());
     this.#ctx.emit('providers.updated', { loaded: structuredClone(this.#ctx.providers), rejected: [] });
   }
 

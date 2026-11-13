@@ -57,7 +57,8 @@ test('a Release core runs no experiment an app reports, refuses the card for one
   await owner.call('turns.start', { threadId, prompt: 'hello' });
   await finished;
 
-  expect(await owner.call('client.preferences', report(EXPERIMENTAL))).toEqual({ ok: true, desktop: effectiveExperiments([], RELEASE) });
+  // The answer carries what the desktop app chose, for the phones that follow it; the core itself runs none of it.
+  expect(await owner.call('client.preferences', report(EXPERIMENTAL))).toEqual({ ok: true, desktop: EXPERIMENTAL });
   expect(h.core.clients.current()!.experiments).not.toContain('whip');
   expect(h.core.council.enabled()).toBe(false);
 
@@ -81,7 +82,7 @@ test('a Nightly core keeps the experiments an app chose beside the finished feat
   const finished = owner.next('turn.finished', turn => turn.threadId === threadId, 10000);
   await owner.call('turns.start', { threadId, prompt: 'hello' });
   await finished;
-  expect(await owner.call('client.preferences', report(['teams', 'debates']))).toEqual({ ok: true, desktop: effectiveExperiments(['teams', 'debates'], NIGHTLY) });
+  expect(await owner.call('client.preferences', report(['teams', 'debates']))).toEqual({ ok: true, desktop: ['teams', 'debates'] });
   expect(h.core.council.enabled()).toBe(true);
   const read = await owner.call('agent.settings', { threadId });
   expect(read.settings.filter(setting => setting.key.startsWith('experiment.')).map(setting => [setting.key, setting.value])).toEqual([
@@ -110,8 +111,9 @@ test('a Release reads the experimental settings as off, refuses to turn one on, 
   expect(await owner.call('settings.get', {})).toMatchObject({ deviceStream: false, backgroundCompaction: false, cacheKeepalive: null });
   expect(release.core.settings.get().deviceStream).toBe(false);
   expect(await owner.call('settings.set', { deviceStream: true }).catch((error: Error) => error.message)).toContain('deviceStream is an experiment: it runs in Nightly builds only, and this machine runs a Release (2.0.0)');
-  // An ordinary setting still saves, and turning an experiment off is never refused.
+  // An ordinary setting still saves, and an experiment sent as off is not refused: it is left as stored.
   expect(await owner.call('settings.set', { shortAnswers: true, deviceStream: false })).toMatchObject({ shortAnswers: true, deviceStream: false });
+  expect(release.core.settings.stored().deviceStream).toBe(true);
   // The group's settings home may hold one on: the copy is stored without a refusal and stays off here.
   const followed = await owner.call('settings.follow', { patch: { backgroundCompaction: true, muteAgents: false } as never });
   expect(followed).toMatchObject({ backgroundCompaction: false, muteAgents: false });
@@ -122,7 +124,68 @@ test('a Release reads the experimental settings as off, refuses to turn one on, 
   const back = await core(NIGHTLY, dataDir);
   owner = await back.connect();
   const again = await owner.call('settings.get', {});
-  expect(again).toMatchObject({ backgroundCompaction: true, deviceStream: false, muteAgents: false });
+  expect(again).toMatchObject({ backgroundCompaction: true, deviceStream: true, muteAgents: false });
   expect(again.cacheKeepalive).toEqual(keepalive);
+  owner.close();
+});
+
+test('a Release that saves a compaction limit, or the values it reads, leaves every hidden experiment as a Nightly stored it', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'boite-stages-'));
+  dirs.push(dataDir);
+  const rule = { tokens: 200_000, moments: ['turn-end' as const] };
+
+  const nightly = await core(NIGHTLY, dataDir);
+  let owner = await nightly.connect();
+  await owner.call('settings.set', {
+    deviceStream: true, backgroundCompaction: true, cacheKeepalive: { hours: 2 },
+    compactionByType: { agent: { autoCompact: rule, backgroundCompaction: true }, bot: { autoCompact: null, backgroundCompaction: true } },
+  });
+  owner.close();
+  await cores.pop()!.stop();
+
+  const release = await core(RELEASE, dataDir);
+  owner = await release.connect();
+  const read = await owner.call('settings.get', {});
+  expect(read.compactionByType).toEqual({ agent: { autoCompact: rule, backgroundCompaction: false }, bot: { autoCompact: null, backgroundCompaction: false } });
+  // The app's `compactionPatch`: the map as read, with one type's limit changed and a type customized for the first time.
+  const saved = await owner.call('settings.set', { compactionByType: {
+    ...read.compactionByType,
+    agent: { ...read.compactionByType!.agent!, autoCompact: { ...rule, tokens: 150_000 } },
+    subagent: { autoCompact: null, backgroundCompaction: false },
+  } });
+  expect(saved.compactionByType!.agent).toEqual({ autoCompact: { ...rule, tokens: 150_000 }, backgroundCompaction: false });
+  // A save that hands back what this build reads is no choice either.
+  await owner.call('settings.set', { cacheKeepalive: read.cacheKeepalive, deviceStream: read.deviceStream, backgroundCompaction: read.backgroundCompaction });
+  expect(release.core.settings.stored()).toMatchObject({
+    deviceStream: true, backgroundCompaction: true, cacheKeepalive: { hours: 2 },
+    compactionByType: { agent: { backgroundCompaction: true }, bot: { backgroundCompaction: true }, subagent: { backgroundCompaction: true } },
+  });
+  // What the machine stores, for the copy to a machine that follows it: never the masked read.
+  expect(await owner.call('settings.get', { stored: true })).toMatchObject({ cacheKeepalive: { hours: 2 }, compactionByType: { bot: { autoCompact: null, backgroundCompaction: true } } });
+  owner.close();
+  await cores.pop()!.stop();
+
+  const back = await core(NIGHTLY, dataDir);
+  owner = await back.connect();
+  expect(await owner.call('settings.get', {})).toMatchObject({
+    deviceStream: true, backgroundCompaction: true, cacheKeepalive: { hours: 2 },
+    compactionByType: { agent: { autoCompact: { ...rule, tokens: 150_000 }, backgroundCompaction: true }, bot: { autoCompact: null, backgroundCompaction: true }, subagent: { autoCompact: null, backgroundCompaction: true } },
+  });
+  owner.close();
+});
+
+test('a Release core refuses the Contacts calls that start something and still reads and removes what exists', async () => {
+  const release = await core(RELEASE);
+  const owner = await release.connect();
+  const refusal = 'experiment.contacts runs in Nightly builds only, and this machine runs a Release (2.0.0)';
+  expect(await owner.call('contacts.invite', {}).then(() => 'accepted', (error: Error) => error.message)).toContain(refusal);
+  expect(await owner.call('contacts.join', { link: 'boite://contact/none' }).then(() => 'accepted', (error: Error) => error.message)).toContain(refusal);
+  expect(await owner.call('contacts.grant', { coreId: 'none', projectId: 'none' as never }).then(() => 'accepted', (error: Error) => error.message)).toContain(refusal);
+  expect(await owner.call('contacts.decide', { id: 'none', accept: true }).then(() => 'accepted', (error: Error) => error.message)).toContain(refusal);
+  expect(await owner.call('contacts.update', { coreId: 'none', trusted: true }).then(() => 'accepted', (error: Error) => error.message)).toContain(refusal);
+  // Reading, cancelling and refusing are how a person cleans up: they answer as on a Nightly.
+  expect((await owner.call('contacts.get', {})).contacts).toEqual([]);
+  expect(await owner.call('contacts.cancelInvites', {})).toEqual({ cancelled: 0 });
+  expect(await owner.call('contacts.decide', { id: 'none', accept: false }).then(() => 'accepted', (error: Error) => error.message)).not.toContain('Nightly');
   owner.close();
 });

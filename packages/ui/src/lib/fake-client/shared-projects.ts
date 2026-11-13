@@ -17,6 +17,7 @@ export function sharedProjectMethods(ctx: FakeContext) {
     },
     'sharedProjects.get': async p => {assertWorkerScope(ctx,p);const s = requireShared(ctx,p.sharedProjectId); sharedActor(ctx,p.threadId,endpoints(ctx,s).local); return sharedView(ctx,s);},
     'sharedProjects.offer': async p => {
+      ctx.startGate('contacts');
       const contact = sharedContact(ctx,p.coreId), local = {ownerCoreId: contact?.via ?? ctx.identity.coreId, coreId: p.machine ?? ctx.identity.coreId, projectId: p.projectId}, remote = projectReference(p.remote);
       if (local.coreId !== ctx.identity.coreId) throw refusedShared('machine: offer from the project owning Store/core');
       if (remote.ownerCoreId !== p.coreId || !granted(ctx,local,p.coreId)) throw refusedShared('projectId: expected a project explicitly granted to this contact');

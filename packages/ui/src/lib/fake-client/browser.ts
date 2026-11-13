@@ -141,7 +141,7 @@ export function browserMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
       if (profiles.length >= BROWSER_PROFILES_MAX) throw refusal(`this machine already has ${BROWSER_PROFILES_MAX} browser profiles; the owner removes one in Settings`);
       const profile = { id: `p-${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`, name };
       ctx.settings = { ...ctx.settings, browserProfiles: [...profiles, profile] };
-      ctx.emit('settings.updated', { ...ctx.settings });
+      ctx.emit('settings.updated', ctx.settingsInForce());
       return { value: { ...profile, created: true } };
     }
     const current = browser?.tabs.find(one => one.tabId === browser.active);
@@ -215,7 +215,7 @@ export function browserMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
           let name = wanted;
           for (let n = 2; taken.has(name.toLowerCase()); n++) name = `${wanted} ${n}`;
           ctx.settings = { ...ctx.settings, browserProfiles: [...profiles, { id: profile.id, name }] };
-          ctx.emit('settings.updated', { ...ctx.settings });
+          ctx.emit('settings.updated', ctx.settingsInForce());
         }
       }
       return { imported: cookies.length, profile: profile.id };

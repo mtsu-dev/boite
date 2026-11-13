@@ -128,6 +128,7 @@ export function sharedComputeMethods(ctx:FakeContext){
     'sharedCompute.host':async p=>{requireShared(ctx,p.sharedProjectId);return {threadId:stateOf(ctx).bindings.get(p.sharedProjectId)??null};},
     'sharedCompute.models':async p=>{const {shared}=computeSource(ctx,p);return cloneShared(routes(hostFor(ctx,shared,p.host),shared));},
     'sharedCompute.start':async p=>{
+      ctx.startGate('contacts');
       const {shared,local}=computeSource(ctx,p);
       for(const key of Object.keys(p))if(!['threadId','sharedProjectId','requestId','host','profileId','task','title','baseCommit','claimId'].includes(key))throw invalidShared(`compute.${key}: expected only job fields`);
       sharedText(p.requestId,'requestId');sharedText(p.task,'task',12000);if(p.title!==undefined)sharedText(p.title,'title',120);

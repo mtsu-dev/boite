@@ -14,6 +14,7 @@ import { SharedProjectSubscriptions } from './project-subscriptions.ts';
 import { projectContact, checkProjectRoute, projectRoute } from './project-relay.ts';
 import { redactSharedText, redactSharedContact } from './file-policy.ts';
 import { contactFace } from './face.ts';
+import { contactsGate } from './gate.ts';
 
 export interface SharedPeerContext {
   shared: SharedProject;
@@ -469,7 +470,7 @@ export function registerSharedProjectMethods(core: Core): void {
   const service = core.sharedProjects;
   core.router.register('sharedProjects.list', (p, c) => service.list(p.threadId, c.connection));
   core.router.register('sharedProjects.get', (p, c) => service.get(p, c.connection));
-  core.router.register('sharedProjects.offer', p => service.offer(p));
+  core.router.register('sharedProjects.offer', p => { contactsGate(core); return service.offer(p); });
   core.router.register('sharedProjects.decide', p => service.decide(p));
   core.router.register('sharedProjects.revoke', p => service.revoke(p));
   core.router.register('sharedProjects.configure', p => service.configure(p));

@@ -158,6 +158,7 @@ export function sharedBoardMethods(ctx:FakeContext){
     },
     'sharedBoard.apply':async p=>applySharedBoard(ctx,p),
     'sharedBoard.start':async p=>{
+      ctx.startGate('contacts');
       const {shared,local}=check(ctx,p),host=authority(ctx,shared);if(!host)throw refusedShared('sharedBoard: claim authority unavailable');
       const card=boardOf(host,shared.id).cards.get(p.cardId),assignment=card?.assignment,board=boardOf(ctx,shared.id);
       if(!assignment||assignment.claimId!==p.claimId||!sameProject(assignment.worker.project,local)||assignment.worker.threadId!==p.threadId||board.starts.has(`stopped:${p.claimId}`))throw refusedShared('claimId: expected this host worker reservation');

@@ -15,6 +15,7 @@ import { projectAddress, sameProject, threadRef } from './project-policy.ts';
 import { fingerprint } from './project-journal.ts';
 import type { SharedPeerContext } from './projects.ts';
 import { accessBinding, bindBoard } from './access-scopes.ts';
+import { contactsGate } from './gate.ts';
 
 export class SharedBoard {
   readonly journal: SharedBoardJournal;
@@ -488,5 +489,5 @@ export class SharedBoard {
 export function registerSharedBoardMethods(core: Core): void {
   core.router.register('sharedBoard.get', (p, ctx) => core.sharedBoard.get(p, ctx.connection));
   core.router.register('sharedBoard.apply', (p, ctx) => core.sharedBoard.apply(p, ctx.connection));
-  core.router.register('sharedBoard.start', (p, ctx) => core.sharedBoard.start(p, ctx.connection));
+  core.router.register('sharedBoard.start', (p, ctx) => { contactsGate(core); return core.sharedBoard.start(p, ctx.connection); });
 }

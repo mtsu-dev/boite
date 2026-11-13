@@ -15,6 +15,7 @@ import { gitCommonDirOf } from './git-remote.ts';
 import { computePolicy, sameProject, threadRef, projectAddress } from './project-policy.ts';
 import { fingerprint } from './project-journal.ts';
 import type { SharedPeerContext } from './projects.ts';
+import { contactsGate } from './gate.ts';
 
 type StartWire = SharedProjectPeerMethods['compute.start']['params'];
 const hostKey = (id: string) => `shared-compute-host:${id}`;
@@ -564,7 +565,7 @@ export function registerSharedComputeMethods(core: Core): void {
   // Private host configuration: deliberately absent from device, agent and peer method sets.
   core.router.register('sharedCompute.host', p => core.sharedCompute.hostBinding(p.sharedProjectId));
   core.router.register('sharedCompute.models', (p, c) => core.sharedCompute.models(p, c.connection));
-  core.router.register('sharedCompute.start', (p, c) => core.sharedCompute.start(p, c.connection));
+  core.router.register('sharedCompute.start', (p, c) => { contactsGate(core); return core.sharedCompute.start(p, c.connection); });
   core.router.register('sharedCompute.list', (p, c) => core.sharedCompute.list(p, c.connection));
   core.router.register('sharedCompute.get', (p, c) => core.sharedCompute.get(p, c.connection));
   core.router.register('sharedCompute.send', (p, c) => core.sharedCompute.send(p, c.connection));
