@@ -1748,6 +1748,7 @@ test('a fake Release core accepts, activates, creates and relaunches nothing in 
     client.call('sharedCompute.send', { ...scope, jobId: 'job-none', text: 'Go on', requestId: 'r5' }),
     client.call('contacts.bot.askOwner', { threadId: 't-trace', id: 'req-none', start: { project: 'none', brief: 'Docs' } }),
     client.call('contacts.bot.askOwner', { threadId: 't-trace', id: 'req-none', connect: 't-trace' }),
+    client.call('contacts.bot.flag', { threadId: 't-trace', id: 'cflag-none', deliver: true }),
   ];
   // What ends or turns off something is answered on its own terms: here the association does not exist, and no build is named.
   const open: Promise<unknown>[] = [
@@ -1758,6 +1759,7 @@ test('a fake Release core accepts, activates, creates and relaunches nothing in 
     client.call('sharedAccess.revokeOverride', { sharedProjectId: 'shared-none', overrideId: 'o1', requestId: 'r9' } as never),
     client.call('sharedCompute.cancel', { ...scope, jobId: 'job-none', requestId: 'r10' }),
     client.call('contacts.bot.askOwner', { threadId: 't-trace', id: 'req-none', text: 'A note' }),
+    client.call('contacts.bot.flag', { threadId: 't-trace', id: 'cflag-none', deliver: false }),
   ];
   for (const call of [...closed, ...open]) call.catch(() => undefined);
   for (const call of closed) await expect(call).rejects.toMatchObject({ code: RpcErrorCode.Refused, message: expect.stringContaining(gate), data: { reason: 'experiment-off' } });

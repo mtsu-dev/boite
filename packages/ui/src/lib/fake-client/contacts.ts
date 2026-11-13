@@ -851,6 +851,8 @@ export function contactMethods(ctx: FakeContext) {
       return { relations: relations.length, projects: before - contact.grants.length };
     },
     'contacts.bot.flag': async (params) => {
+      // Delivering wakes the letter's thread: a Release starts nothing in Contacts.
+      if (params?.deliver === true) ctx.startGate('contacts');
       botCall(params?.threadId);
       if (typeof params.deliver !== 'boolean') throw invalid('deliver: expected true or false', 'deliver');
       const flag = (contactState(ctx).flags ?? []).find(entry => entry.id === params.id);
